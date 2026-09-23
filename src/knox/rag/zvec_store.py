@@ -18,6 +18,7 @@ import json
 import os
 import shutil
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
@@ -164,10 +165,29 @@ class ZvecWikiStore:
         self._collection = self._create_collection()
         count = self._index_nodes(self._collection, wiki.nodes, batch_size, base_dir=base_dir)
         self._prune_orphans(self._collection, wiki.nodes)
+        # HNSW is built lazily: a configured vector index sits at 0% completeness
+        # until optimize() runs. Build it exactly once after the bulk insert —
+        # optimize() costs ~40 ms per call, so never call it per document.
+        self._collection.optimize()
         return count
 
-    def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
-        """Search indexed wiki content by semantic similarity."""
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_any: Sequence[str] | None = None,
+        tags_all: Sequence[str] | None = None,
+        attributes_any: Sequence[str] | None = None,
+        attributes_all: Sequence[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Search indexed wiki content by semantic similarity.
+
+        Optional keyword filters are pushed down into zvec as
+        ``CONTAIN_ANY``/``CONTAIN_ALL`` clauses over the array fields
+        ``tags``/``attributes``; multiple clauses combine with ``and``.
+        Omitting them reproduces the unfiltered result set.
+        """
         if not self.available or self._provider is None:
             return []
         if self._collection is None:
@@ -175,11 +195,17 @@ class ZvecWikiStore:
         results = self._collection.query(
             _zvec.Query(ZvecField.EMBEDDING, vector=self._provider.embed(query)),
             topk=top_k,
+            filter=_build_filter(
+                tags_any=tags_any,
+                tags_all=tags_all,
+                attributes_any=attributes_any,
+                attributes_all=attributes_all,
+            ),
         )
         return [
             {
                 "id": (r.fields.get(ZvecField.NODE_ID, r.id) if isinstance(r.fields, dict) else r.id),
-                "score": r.score if r.score is not None else 0.0,
+                "score": _score_from_distance(r.score),
                 **(r.fields if isinstance(r.fields, dict) else {}),
             }
             for r in results
@@ -250,14 +276,15 @@ class ZvecWikiStore:
                 ZvecField.EMBEDDING,
                 _zvec.DataType.VECTOR_FP32,
                 self._provider.dim,
+                index_param=_zvec.HnswIndexParam(metric_type=_zvec.MetricType.COSINE),
             ),
         )
         if self.db_file.exists():
             try:
                 collection = _zvec.open(path=str(self.db_file))
                 stored_dim = collection.schema.vectors[0].dimension
-                stored_field_names = {f.name for f in collection.schema.fields}
-                expected_field_names = {f.name for f in schema.fields}
+                stored_fields = {f.name: f.data_type for f in collection.schema.fields}
+                expected_fields = {f.name: f.data_type for f in schema.fields}
                 if stored_dim != self._provider.dim:
                     logger.warning(
                         "Vector store at %s has dimension %d but the embedding model produces %d; rebuilding",
@@ -267,18 +294,24 @@ class ZvecWikiStore:
                     )
                     collection.destroy()
                     collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
-                elif stored_field_names != expected_field_names:
-                    missing = sorted(expected_field_names - stored_field_names)
-                    obsolete = sorted(stored_field_names - expected_field_names)
-                    # zvec's add_column only supports numeric data types, so a
-                    # missing STRING field forces a full destroy+rebuild (no
-                    # silent failure at insert time). Document the change so
-                    # users understand the embedding cost.
+                elif stored_fields != expected_fields:
+                    # Compare (name, data_type), not names alone: a field that
+                    # keeps its name but changes type (e.g. tags STRING ->
+                    # ARRAY_STRING) must rebuild rather than silently accept
+                    # list values into a STRING column.
+                    missing = sorted(set(expected_fields) - set(stored_fields))
+                    obsolete = sorted(set(stored_fields) - set(expected_fields))
+                    retyped = sorted(
+                        f"{name}: {stored_fields[name].name}->{expected_fields[name].name}"
+                        for name in set(stored_fields) & set(expected_fields)
+                        if stored_fields[name] != expected_fields[name]
+                    )
                     logger.warning(
-                        "Vector store at %s schema mismatch: missing fields=%s, obsolete fields=%s; destroying and rebuilding (re-embedding required)",
+                        "Vector store at %s schema mismatch: missing=%s, obsolete=%s, retyped=%s; destroying and rebuilding (re-embedding required)",
                         self.db_file,
                         missing,
                         obsolete,
+                        retyped,
                     )
                     collection.destroy()
                     collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
@@ -318,8 +351,8 @@ class ZvecWikiStore:
                     ZvecField.NODE_TYPE: node.node_type,
                     ZvecField.SOURCE_FILE: source_file,
                     ZvecField.CONTENT_PREVIEW: node.content[: self._PREVIEW_LEN],
-                    ZvecField.TAGS: ",".join(node.metadata.get(MetadataField.TAGS, [])) if node.metadata.get(MetadataField.TAGS) else "",
-                    ZvecField.ATTRIBUTES: _serialize_attributes(node.metadata.get(MetadataField.ATTRIBUTES) or {}),
+                    ZvecField.TAGS: list(node.metadata.get(MetadataField.TAGS, [])),
+                    ZvecField.ATTRIBUTES: _attributes_to_list(node.metadata.get(MetadataField.ATTRIBUTES) or {}),
                 },
             )
             docs_batch.append(doc)
@@ -344,24 +377,19 @@ class ZvecWikiStore:
     def _prune_orphans(self, collection: ZvecCollection, nodes: list[WikiNode]) -> int:
         """Delete store docs whose id is absent from *nodes* (renamed/removed pages).
 
-        The zvec API cannot enumerate stored pks, so the previous build's ids
-        are tracked in a manifest file beside the store. Upsert keeps changed
-        pages fresh; this removes ids the current wiki no longer has.
+        The candidate set is read from the collection's actual contents
+        (``iter_docs``) rather than diffing the previous manifest, so docs
+        written before the manifest mechanism existed are pruned too. Upsert
+        keeps changed pages fresh; this removes ids the current wiki no longer
+        has.
         """
-        manifest = self._manifest_file()
-        old_ids: set[str] = set()
-        if manifest.is_file():
-            try:
-                raw = json.loads(manifest.read_text(encoding="utf-8"))
-                if isinstance(raw, list):
-                    old_ids = {str(i) for i in raw}
-            except (json.JSONDecodeError, OSError) as exc:
-                logger.warning("Vector manifest corrupt — skipping prune: %s (%s)", manifest, exc)
         keep = {_safe_id(n.id) for n in nodes}
-        orphans = old_ids - keep
+        present = {doc.id for doc in collection.iter_docs()}
+        orphans = sorted(present - keep)
         if orphans:
-            collection.delete(sorted(orphans))
+            collection.delete(orphans)
             logger.info("Pruned %d stale vector(s) from %s", len(orphans), self.db_file)
+        manifest = self._manifest_file()
         try:
             manifest.write_text(json.dumps(sorted(keep)), encoding="utf-8")
         except OSError as exc:  # pragma: no cover — filesystem-dependent
@@ -377,8 +405,8 @@ class ZvecWikiStore:
             _zvec.FieldSchema(ZvecField.NODE_TYPE, _zvec.DataType.STRING),
             _zvec.FieldSchema(ZvecField.SOURCE_FILE, _zvec.DataType.STRING),
             _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.TAGS, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.ATTRIBUTES, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.TAGS, _zvec.DataType.ARRAY_STRING, index_param=_zvec.InvertIndexParam()),
+            _zvec.FieldSchema(ZvecField.ATTRIBUTES, _zvec.DataType.ARRAY_STRING, index_param=_zvec.InvertIndexParam()),
         ]
 
 
@@ -390,13 +418,63 @@ def _safe_id(node_id: str) -> str:
     return f"{node_id[: _ZVEC_MAX_ID_LEN - 9]}-{suffix}"
 
 
-def _serialize_attributes(attrs: dict[str, list[str]]) -> str:
-    """Serialize attribute dict to a filterable string like ``key1=val1,key2=val2``."""
-    parts: list[str] = []
-    for key, values in attrs.items():
-        for v in values:
-            parts.append(f"{key}={v}")
-    return ",".join(parts)
+def _attributes_to_list(attrs: dict[str, list[str]]) -> list[str]:
+    """Flatten an attribute dict to filterable ``key=value`` tokens.
+
+    Stored as an ``ARRAY_STRING`` so zvec evaluates ``CONTAIN_ANY``/
+    ``CONTAIN_ALL`` membership server-side instead of a wildcard scan.
+    """
+    return [f"{key}={value}" for key, values in attrs.items() for value in values]
+
+
+def _build_filter(
+    *,
+    tags_any: Sequence[str] | None = None,
+    tags_all: Sequence[str] | None = None,
+    attributes_any: Sequence[str] | None = None,
+    attributes_all: Sequence[str] | None = None,
+) -> str | None:
+    """Compose a zvec filter string from optional array-membership filters.
+
+    Returns ``None`` when nothing is requested, reproducing the unfiltered
+    query. Only ``CONTAIN_ANY``/``CONTAIN_ALL`` are used: ``LIKE`` on an
+    ``ARRAY_STRING`` field segfaults zvec 0.7.0.
+    """
+    clauses: list[str] = []
+    if tags_all:
+        clauses.append(_contain_clause(ZvecField.TAGS, tags_all, require_all=True))
+    if tags_any:
+        clauses.append(_contain_clause(ZvecField.TAGS, tags_any, require_all=False))
+    if attributes_all:
+        clauses.append(_contain_clause(ZvecField.ATTRIBUTES, attributes_all, require_all=True))
+    if attributes_any:
+        clauses.append(_contain_clause(ZvecField.ATTRIBUTES, attributes_any, require_all=False))
+    return " and ".join(clauses) if clauses else None
+
+
+def _contain_clause(field: str, values: Sequence[str], *, require_all: bool) -> str:
+    """Build a zvec ``CONTAIN_ALL``/``CONTAIN_ANY`` clause over an array field."""
+    operator = "CONTAIN_ALL" if require_all else "CONTAIN_ANY"
+    quoted = ", ".join(f'"{_escape_filter_value(v)}"' for v in values)
+    return f"{field} {operator} ({quoted})"
+
+
+def _escape_filter_value(value: str) -> str:
+    """Escape a value for a double-quoted zvec filter literal."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _score_from_distance(score: float | None) -> float:
+    """Convert a zvec COSINE distance to a similarity score (higher = better).
+
+    The embedding field is indexed with ``MetricType.COSINE``, whose zvec score
+    is a distance in ``[0, 2]``. Retrievers rank descending by ``score``, so
+    expose ``1 - distance``: for L2-normalised embeddings this equals the
+    cosine similarity and reproduces the previous inner-product scores.
+    """
+    if score is None:
+        return 0.0
+    return 1.0 - score
 
 
 # ── Embedding provider interface ────────────────────────────────────────
