@@ -135,7 +135,7 @@ class MemoryStore:
 
         embedding = provider.embed(query)
         results = self._collection.query(
-            _zvec.VectorQuery(MemoryField.QUERY_EMBEDDING, vector=embedding),
+            _zvec.Query(MemoryField.QUERY_EMBEDDING, vector=embedding),
             topk=top_k,
         )
 

@@ -173,7 +173,7 @@ class ZvecWikiStore:
         if self._collection is None:
             raise RuntimeError("Vector collection not initialized")
         results = self._collection.query(
-            _zvec.VectorQuery(ZvecField.EMBEDDING, vector=self._provider.embed(query)),
+            _zvec.Query(ZvecField.EMBEDDING, vector=self._provider.embed(query)),
             topk=top_k,
         )
         return [
