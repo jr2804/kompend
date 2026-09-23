@@ -202,26 +202,32 @@ class VaultPaths:
         ├── .knox/                  ← knox_dir
         │   ├── cache/              ← cache_dir
         │   │   ├── images/         ← images_dir
-        │   │   └── extract/        ← extract_dir
+        │   │   ├── extract/        ← extract_dir
+        │   │   └── downloaded.json ← downloaded_file
         │   ├── dedup/              ← dedup_dir
         │   ├── provenance/         ← provenance_dir
         │   ├── review/             ← review_dir
-        │   ├── vectors/            ← vectors_dir
+        │   ├── vectors/            ← vectors_dir (zvec directory store)
+        │   ├── vectors.manifest.json ← zvec indexed-node id sidecar
         │   ├── config.toml         ← config_file
+        │   ├── rumdl.toml          ← RUMDL_CONFIG_FILE
         │   ├── compile_state.json  ← compile_state_file
         │   ├── last_wiki.json      ← wiki_cache_file
         │   ├── compiled_wiki.json  ← compiled_wiki_file
-        │   ├── memory.db           ← memory_db_file
+        │   ├── memory.db           ← memory_db_file (zvec dir, NOT SQLite)
         │   ├── memory.jsonl        ┆ memory_log_file
         │   ├── memory.json         ← memory_store_file
         │   ├── verification.json   ← verification_file
         │   ├── private.json        ← private_file
-        │   ├── downloaded.json     ← downloaded_file
-    │   ├── last_organize.json  ← organize_report_file
-    │   ├── lint_history.jsonl  ← lint_history_file
-    │   ├── references.json     ← references_file
-    │   ├── attachments.jsonl   ← attachments_manifest_file
-    │   └── state.json          ← state_file
+        │   ├── last_organize.json  ← organize_report_file
+        │   ├── lint_history.jsonl  ← lint_history_file
+        │   ├── runs.jsonl          ← runs_file
+        │   ├── log.md              ← log_file
+        │   ├── references.json     ← references_file
+        │   ├── entity_types.json   ← ENTITY_TYPES_FILE
+        │   ├── assets.json         ← assets_file
+        │   ├── attachments.jsonl   ← attachments_manifest_file
+        │   └── state.json          ← state_file
         ├── sources/                ← sources_dir
         ├── attachments/            ← attachments_dir (per-source)
         ├── exported/               ← full-source markdown exports (on demand)
@@ -337,7 +343,12 @@ class VaultPaths:
 
     @property
     def memory_db_file(self) -> Path:
-        """SQLite memory store database."""
+        """Semantic query-memory collection directory (zvec, not SQLite).
+
+        Despite the ``.db`` suffix this is a zvec directory store opened via
+        ``memory.store.MemoryStore._ensure_collection``; the rebuildable
+        chronological twin is ``memory_log_file``.
+        """
         return self.knox_dir / MEMORY_DB_FILE
 
     @property
@@ -405,7 +416,7 @@ class VaultPaths:
 
     @property
     def log_file(self) -> Path:
-        """Pipeline log file (prepended after each stage)."""
+        """Rendered markdown pipeline log report (written on demand by ``knox log``)."""
         return self.knox_dir / LOG_FILE
 
     @property
@@ -414,7 +425,7 @@ class VaultPaths:
         return self.knox_dir / LINT_HISTORY_FILE
 
     @property
-    def runs_dir(self) -> Path:
+    def runs_file(self) -> Path:
         """Append-only JSONL audit trail of every CLI command run."""
         return self.knox_dir / RUNS_FILE
 

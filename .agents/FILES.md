@@ -43,7 +43,7 @@ any `.py` file outside `paths.py`. Always import from `knox.core.paths`.
 | `CONFIG_FILE` | `"config.toml"` | Project-local config |
 | `VECTORS_DIR` | `"vectors"` | Embedding vector store |
 | `DOWNLOADED_FILE` | `"downloaded.json"` | URL download manifest |
-| `MEMORY_DB_FILE` | `"memory.db"` | SQLite memory store |
+| `MEMORY_DB_FILE` | `"memory.db"` | Semantic query-memory collection **directory** (zvec, not SQLite) |
 | `MEMORY_LOG_FILE` | `"memory.jsonl"` | Memory append-only log |
 | `MEMORY_STORE_FILE` | `"memory.json"` | Memory JSON export |
 | `PROVENANCE_DIR` | `"provenance"` | Provenance trace directory |
@@ -74,8 +74,8 @@ from knox.core.paths import VaultPaths
 
 paths = VaultPaths(base_dir)
 paths.cache_dir  # base_dir/.knox/cache
-paths.compile_state_path  # base_dir/.knox/compile_state.json
-paths.wiki_cache_path  # base_dir/.knox/last_wiki.json
+paths.compile_state_file  # base_dir/.knox/compile_state.json
+paths.wiki_cache_file  # base_dir/.knox/last_wiki.json
 paths.extract_dir  # base_dir/.knox/cache/extract
 paths.images_dir  # base_dir/.knox/cache/images
 ```

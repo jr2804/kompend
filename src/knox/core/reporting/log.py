@@ -48,7 +48,7 @@ def build_log_report(base_dir: Path, *, last_n: int = 25) -> str:
     if compile_section:
         sections.extend(compile_section)
 
-    runs_section = _runs_section(paths.runs_dir, last_n=last_n)
+    runs_section = _runs_section(paths.runs_file, last_n=last_n)
     if runs_section:
         sections.extend(runs_section)
 
@@ -72,9 +72,9 @@ def _compile_section(base_dir: Path) -> list[str]:
     return ["## Last Compile", "", entry, ""]
 
 
-def _runs_section(runs_dir: Path, *, last_n: int) -> list[str]:
+def _runs_section(runs_file: Path, *, last_n: int) -> list[str]:
     """Render the command timeline from ``runs.jsonl``."""
-    runs = _load_runs(runs_dir)
+    runs = _load_runs(runs_file)
     if not runs:
         return []
     # Show the most recent runs; each "end" is a completed command.
@@ -121,12 +121,12 @@ def _lint_section(lint_file: Path, *, last_n: int) -> list[str]:
     return ["## Lint Trend", "", text, ""]
 
 
-def _load_runs(runs_dir: Path) -> list[RunEvent]:
+def _load_runs(runs_file: Path) -> list[RunEvent]:
     """Parse ``runs.jsonl`` into a list of event dicts (skips bad lines)."""
-    if not runs_dir.is_file():
+    if not runs_file.is_file():
         return []
     out: list[RunEvent] = []
-    for raw in runs_dir.read_text(encoding="utf-8").splitlines():
+    for raw in runs_file.read_text(encoding="utf-8").splitlines():
         stripped = raw.strip()
         if not stripped:
             continue
