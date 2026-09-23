@@ -5,6 +5,8 @@ Replaced the old segmented-excerpt loop with a single-pass approach:
 if the excerpt is too long, skip the LLM call and go straight to substring.
 """
 
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
+
 from __future__ import annotations
 
 import json
@@ -18,8 +20,10 @@ from knox.agents.types import VerificationDeps
 from knox.agents.verification import AgenticVerificationAgent, VerificationAgent
 from knox.core.config._core import DEFAULTS
 from knox.core.models import Citation, CompiledWiki, WikiNode, extract_citations
-from knox.core.paths import VaultPaths
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import VERIFICATION_TABLE
 from knox.core.templates import get_template_loader
+from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 
 _SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
@@ -76,10 +80,28 @@ def verify_wiki(
     if result.claims:
         result.average_confidence = sum(c.confidence for c in result.claims) / len(result.claims)
 
-    report_file = VaultPaths(base_dir).verification_file
-    report_file.parent.mkdir(parents=True, exist_ok=True)
-    report_file.write_text(json.dumps(asdict(result), indent=2, default=str), encoding="utf-8")
+    _persist_verification(base_dir, result)
     return result
+
+
+def _persist_verification(base_dir: Path, result: VerificationResult) -> None:
+    """Append the verification summary + per-claim records to ``verification``.
+
+    Each run appends a row; readers take the latest (``ORDER BY id DESC``).
+    """
+    claims_json = json.dumps([asdict(c) for c in result.claims], default=str)
+    with open_store(vault_db_path(base_dir)) as conn:
+        conn.execute(
+            f"INSERT INTO {VERIFICATION_TABLE} (written_at, total, verified, unsupported, average_confidence, claims) VALUES (?, ?, ?, ?, ?, ?)",
+            (
+                iso_local(),
+                result.total,
+                result.verified,
+                result.unsupported,
+                result.average_confidence,
+                claims_json,
+            ),
+        )
 
 
 def _verify_wiki_agentic(wiki: CompiledWiki, sources_dir: Path, agent: AgenticVerificationAgent) -> list[ClaimVerification]:

@@ -20,9 +20,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from slugify import slugify as _slugify_impl
-
 from knox.core.models import WikiNode
+from knox.core.text.slug import slugify as _slug
 from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 
@@ -204,5 +203,4 @@ class ReviewQueue:
 
 def slugify(title: str) -> str:
     """Convert a title into a filesystem-safe slug."""
-    result = _slugify_impl(title)
-    return result if result else "untitled"
+    return _slug(title, default="untitled")

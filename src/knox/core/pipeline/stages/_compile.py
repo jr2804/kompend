@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from knox.core.models import (
     ChunkNode,
     ChunkTree,
     CompiledWiki,
     MetadataField,
-    WikiField,
     WikiNode,
+)
+from knox.core.models.wiki import (
+    WIKI_SNAPSHOT_COMPILED,
+    load_wiki_snapshot,
+    write_wiki_snapshot_payload,
 )
 from knox.core.pipeline.runtime import PipelineRuntime
 from knox.core.pipeline.stages._parse import parse_and_chunk
@@ -47,52 +48,33 @@ def run_output_tier(pipeline: PipelineRuntime) -> None:
 
 
 def save_compiled_wiki(pipeline: PipelineRuntime, wiki: CompiledWiki) -> None:
-    """Serialize CompiledWiki to JSON on disk."""
-    path = compiled_wiki_file(pipeline)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        WikiField.NODES: [
-            {
-                "id": n.id,
-                "title": n.title,
-                "content": n.content,
-                "node_type": n.node_type,
-                "source_chunks": n.source_chunks or [],
-                "metadata": pipeline.normalize_metadata_paths(n.metadata),
-            }
-            for n in wiki.nodes
-        ],
-        WikiField.EDGES: wiki.edges,
-        WikiField.TOC: wiki.toc,
-        WikiField.QUALITY_SCORE: wiki.quality_score,
-        WikiField.ITERATION: wiki.iteration,
-        "metadata": wiki.metadata,
-    }
-    path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
-
-
-def load_compiled_wiki(pipeline: PipelineRuntime) -> CompiledWiki | None:
-    """Load CompiledWiki from JSON on disk. Returns *None* on cache miss."""
-    path = compiled_wiki_file(pipeline)
-    if not path.exists():
-        return None
-    # Corrupt snapshot is a bug — let it raise so the real cause surfaces
-    # instead of silently recompiling from scratch.
-    data = json.loads(path.read_text(encoding="utf-8"))
-    nodes = [WikiNode(**n) for n in data.get(WikiField.NODES, [])]
-    return CompiledWiki(
+    """Serialize CompiledWiki to the ``compiled`` snapshot in ``knox.db``."""
+    nodes = [
+        {
+            "id": n.id,
+            "title": n.title,
+            "content": n.content,
+            "node_type": n.node_type,
+            "source_chunks": n.source_chunks or [],
+            "metadata": pipeline.normalize_metadata_paths(n.metadata),
+        }
+        for n in wiki.nodes
+    ]
+    write_wiki_snapshot_payload(
+        pipeline.base_directory,
+        WIKI_SNAPSHOT_COMPILED,
         nodes=nodes,
-        edges=data.get(WikiField.EDGES, []),
-        toc=data.get(WikiField.TOC, []),
-        quality_score=data.get(WikiField.QUALITY_SCORE, 0.0),
-        iteration=data.get(WikiField.ITERATION, 0),
-        metadata=data.get(WikiField.METADATA, {}),
+        edges=list(wiki.edges),
+        toc=list(wiki.toc),
+        quality_score=wiki.quality_score,
+        iteration=wiki.iteration,
+        metadata=dict(wiki.metadata),
     )
 
 
-def compiled_wiki_file(pipeline: PipelineRuntime) -> Path:
-    """Resolve the compiled wiki JSON path."""
-    return pipeline.config.paths.compiled_wiki_file
+def load_compiled_wiki(pipeline: PipelineRuntime) -> CompiledWiki | None:
+    """Load the ``compiled`` snapshot from ``knox.db``. Returns *None* on miss."""
+    return load_wiki_snapshot(pipeline.base_directory, WIKI_SNAPSHOT_COMPILED)
 
 
 def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[ChunkTree]) -> None:

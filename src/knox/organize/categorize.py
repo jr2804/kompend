@@ -12,7 +12,6 @@ The module is responsible for the *brain* of the organize workflow:
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,9 +21,8 @@ from knox.agents.deps import CategorizeDeps
 from knox.compilation._two_phase_core import Extraction
 from knox.core.config import OrganizeConfig
 from knox.core.paths import VaultPaths, is_protected_source
+from knox.core.text.slug import slugify
 from knox.logging import get_logger
-
-_FILENAME_RE = re.compile(r"[^a-z0-9-]+")
 
 logger = get_logger(__name__)
 
@@ -258,7 +256,7 @@ def _node_from_json(entry: dict[str, Any], assigned: set[str], known: list[str])
     name_raw = entry.get("name", "")
     if not isinstance(name_raw, str) or not name_raw.strip():
         return None
-    name = _slugify_category(name_raw)
+    name = slugify(name_raw, default="misc")
     files_raw = entry.get("files", [])
     if not isinstance(files_raw, list):
         files_raw = []
@@ -313,7 +311,7 @@ def _prune(
     depth: int,
     effective_min: int,
 ) -> CategoryNode:
-    name = _slugify_category(node.name)
+    name = slugify(node.name, default="misc")
     kept_subs: list[CategoryNode] = []
     collapsed_files: list[str] = []
     for child in node.subcategories:
@@ -350,16 +348,3 @@ def _prune(
         files=list(node.files) + collapsed_files,
         subcategories=kept_subs,
     )
-
-
-def _slugify_category(name: str) -> str:
-    """Normalise a category name to lowercase-hyphenated form.
-
-    Strips characters that are not safe for cross-platform directory names
-    and collapses runs of separators. Empty input maps to ``"misc"`` so the
-    result is never a hidden / empty directory.
-    """
-    cleaned = name.strip().lower()
-    cleaned = _FILENAME_RE.sub("-", cleaned)
-    cleaned = re.sub(r"-+", "-", cleaned).strip("-")
-    return cleaned or "misc"

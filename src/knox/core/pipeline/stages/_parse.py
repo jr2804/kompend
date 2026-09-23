@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from typing import Any, cast
 
 from knox.agents.vlm import VlmAgent
 from knox.core.config.rumdl import resolve_rumdl_config
@@ -26,12 +26,17 @@ from knox.core.pipeline.attachments import (
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.ingest import (
     PARSE_CACHE_PARSER_KEY,
-    cached_entry_is_current,
-    parse_cache_name,
+    parse_cache_is_current,
     preserve_cached_metadata,
     relativize_image_paths,
 )
+from knox.core.pipeline.parse_cache import (
+    content_hash_prefix,
+    read_document,
+    write_document,
+)
 from knox.core.pipeline.runtime import PipelineRuntime
+from knox.core.store import vault_db_path
 from knox.core.text.encoding import normalize_to_utf8_path
 from knox.core.text.rumdl import normalize_element_markdown
 from knox.llm.models import resolve_vlm_model
@@ -43,6 +48,7 @@ from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
 from knox.resolution.vlm_enricher import VLMEnricher
 from knox.trust import filter_sensitive
+from knox.types import JSONDict
 
 logger = get_logger(__name__)
 
@@ -297,16 +303,17 @@ def _chunk_cache_deps(pipeline: PipelineRuntime, content_hash: str) -> dict[str,
 
 
 def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument | None:
-    """Load a cached ParsedDocument if available."""
-    cache_file = pipeline.cache_directory() / f"{cache_key(source_file)}.json"
-    if not cache_file.exists():
+    """Load a cached ParsedDocument from the store if available."""
+    db_path = vault_db_path(Path(pipeline.base_directory))
+    key = cache_key(source_file)
+    data = read_document(db_path, key)
+    if data is None:
         return None
-    if pipeline.router is not None and not cached_entry_is_current(cache_file, pipeline.router.fingerprint()):
+    if pipeline.router is not None and not parse_cache_is_current(data, pipeline.router.fingerprint()):
         # Entry produced by a different parser chain — re-parse so a parser
         # switch takes effect instead of silently serving stale output.
         return None
     try:
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
         elements = [
             DocumentElement(
                 type=ElementType(el["type"]),
@@ -316,36 +323,35 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
                 heading_level=el.get("heading_level"),
                 metadata=el.get("metadata", {}),
             )
-            for el in data.get("elements", [])
+            for el in cast("list[dict[str, Any]]", data.get("elements") or [])
         ]
         # scrub_document: caches written before surrogate scrubbing carry
         # lone \\udXXX escapes that json.loads restores as surrogate chars.
         return scrub_document(
             ParsedDocument(
-                source_file=pipeline.abs_file(data.get(MetadataField.SOURCE_FILE, "")),
+                source_file=pipeline.abs_file(cast("str", data.get(MetadataField.SOURCE_FILE, ""))),
                 elements=elements,
-                title=data.get("title", ""),
-                author=data.get("author", ""),
-                language=data.get("language", "en"),
-                page_count=data.get("page_count", 0),
-                metadata=data.get(WikiField.METADATA, {}),
+                title=cast("str", data.get("title", "")),
+                author=cast("str", data.get("author", "")),
+                language=cast("str", data.get("language", "en")),
+                page_count=cast("int", data.get("page_count", 0)),
+                metadata=cast("dict[str, Any]", data.get(WikiField.METADATA) or {}),
             )
         )
-    except (json.JSONDecodeError, KeyError, OSError):
-        # Corrupt/unreadable cache entry = miss: re-parse. Warn so it's visible.
-        logger.warning("Corrupt parse cache at %s — reparsing", cache_file, exc_info=True)
+    except (KeyError, ValueError, TypeError):
+        # Corrupt entry = miss: re-parse. Warn so it's visible.
+        logger.warning("Corrupt parse cache for %s — reparsing", key, exc_info=True)
         return None
 
 
 def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocument) -> None:
-    """Write a ParsedDocument to cache."""
-    cache_dir = pipeline.cache_directory()
-    cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_dir / f"{cache_key(source_file)}.json"
+    """Write a ParsedDocument to the store."""
+    db_path = vault_db_path(Path(pipeline.base_directory))
+    key = cache_key(source_file)
     try:
         # Preserve user-set tags/attributes across the overwrite (a --no-cache
         # compile, or an automatic re-parse after a parser change).
-        preserve_cached_metadata(doc, cache_file)
+        preserve_cached_metadata(doc, read_document(db_path, key))
         data = {
             str(MetadataField.SOURCE_FILE): pipeline.rel_file(doc.source_file),
             PARSE_CACHE_PARSER_KEY: pipeline.router.fingerprint() if pipeline.router is not None else "",
@@ -366,9 +372,9 @@ def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocumen
                 for el in doc.elements
             ],
         }
-        cache_file.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        write_document(db_path, key, cast("JSONDict", data))
     except Exception:
-        logger.debug("Cache write failed for %s — ignoring", cache_file, exc_info=True)
+        logger.debug("Cache write failed for %s — ignoring", key, exc_info=True)
 
 
 def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, dict[str, object]]]:
@@ -395,7 +401,7 @@ def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, di
 
 def cache_key(source_file: Path) -> str:
     """Content-discriminated cache key — collision-proof across same-stem files."""
-    return parse_cache_name(source_file).removesuffix(".json")
+    return f"{source_file.stem}-{content_hash_prefix(source_file.read_bytes())}"
 
 
 def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:

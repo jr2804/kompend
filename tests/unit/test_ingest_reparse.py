@@ -19,18 +19,18 @@ writes them.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from knox.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from knox.core.pipeline.ingest import (
     PARSE_CACHE_PARSER_KEY,
-    cached_entry_is_current,
     ingest_documents,
     parse_cache_is_current,
     preserve_cached_metadata,
 )
+from knox.core.pipeline.parse_cache import iter_documents, write_document
+from knox.core.store import vault_db_path
 from knox.preprocessing.parsers.base import BaseParser, ParserRouter
 
 # ── Router fingerprint ─────────────────────────────────────────────────
@@ -120,55 +120,39 @@ def test_parse_cache_is_current_rejects_legacy_entries() -> None:
     assert not parse_cache_is_current({"metadata": {}}, "abc")
 
 
-def test_cached_entry_is_current_unreadable_is_stale(tmp_path: Path) -> None:
-    missing = tmp_path / "nope.json"
-    assert not cached_entry_is_current(missing, "abc")
-    corrupt = tmp_path / "bad.json"
-    corrupt.write_text("{not json", encoding="utf-8")
-    assert not cached_entry_is_current(corrupt, "abc")
-
-
 # ── Metadata preservation ──────────────────────────────────────────────
 
 
-def test_preserve_metadata_unions_tags_and_merges_attributes(tmp_path: Path) -> None:
-    cache_file = tmp_path / "note-abcd1234.json"
-    cache_file.write_text(
-        json.dumps(
-            {
-                "metadata": {
-                    MetadataField.TAGS: ["audio", "standards"],
-                    MetadataField.ATTRIBUTES: {"version": "2", "status": "old"},
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
+def test_preserve_metadata_unions_tags_and_merges_attributes() -> None:
+    prior: dict[str, Any] = {
+        "metadata": {
+            MetadataField.TAGS: ["audio", "standards"],
+            MetadataField.ATTRIBUTES: {"version": "2", "status": "old"},
+        }
+    }
     doc = ParsedDocument(source_file=Path("sources/note.md"), elements=[], title="")
     doc.metadata = {
         MetadataField.TAGS: ["standards", "new"],
         MetadataField.ATTRIBUTES: {"status": "draft"},
     }
 
-    preserve_cached_metadata(doc, cache_file)
+    preserve_cached_metadata(doc, prior)
 
     assert doc.metadata[MetadataField.TAGS] == ["standards", "new", "audio"]
     # Current value ("draft") wins over the prior ("old"); "version" is kept.
     assert doc.metadata[MetadataField.ATTRIBUTES] == {"version": "2", "status": "draft"}
 
 
-def test_preserve_metadata_is_noop_without_prior_entry(tmp_path: Path) -> None:
+def test_preserve_metadata_is_noop_without_prior_entry() -> None:
     doc = ParsedDocument(source_file=Path("sources/note.md"), elements=[], title="")
     doc.metadata = {MetadataField.TAGS: ["keep"]}
-    preserve_cached_metadata(doc, tmp_path / "missing.json")
+    preserve_cached_metadata(doc, None)
     assert doc.metadata[MetadataField.TAGS] == ["keep"]
 
 
-def test_preserve_metadata_ignores_corrupt_entry(tmp_path: Path) -> None:
-    cache_file = tmp_path / "note-abcd1234.json"
-    cache_file.write_text("{broken", encoding="utf-8")
+def test_preserve_metadata_ignores_missing_prior_entry() -> None:
     doc = ParsedDocument(source_file=Path("sources/note.md"), elements=[], title="")
-    preserve_cached_metadata(doc, cache_file)
+    preserve_cached_metadata(doc, None)
     assert doc.metadata is None or MetadataField.TAGS not in doc.metadata
 
 
@@ -193,11 +177,10 @@ def test_parser_change_forces_reparse_and_preserves_metadata(tmp_path: Path) -> 
     ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), config=None)
 
     # Simulate ``knox sources tag`` / ``attr`` writing into the cache entry.
-    entry_path = sorted((base / ".knox" / "cache").glob("note-*.json"))[0]
-    entry = json.loads(entry_path.read_text(encoding="utf-8"))
+    key, entry = _cache_entry_with_key(base)
     entry["metadata"][MetadataField.TAGS] = ["audio"]
     entry["metadata"][MetadataField.ATTRIBUTES] = {"version": "2"}
-    entry_path.write_text(json.dumps(entry, indent=2), encoding="utf-8")
+    _write_entry(base, key, entry)
 
     switched = _IngestRouter("chain-B")
     result = ingest_documents(files=[src], base_dir=base, router=switched, config=None)
@@ -216,11 +199,10 @@ def test_forced_reingest_preserves_and_merges_cli_metadata(tmp_path: Path) -> No
 
     ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), config=None)
 
-    entry_path = sorted((base / ".knox" / "cache").glob("note-*.json"))[0]
-    entry = json.loads(entry_path.read_text(encoding="utf-8"))
+    key, entry = _cache_entry_with_key(base)
     entry["metadata"][MetadataField.TAGS] = ["audio"]
     entry["metadata"][MetadataField.ATTRIBUTES] = {"version": "2", "status": "old"}
-    entry_path.write_text(json.dumps(entry, indent=2), encoding="utf-8")
+    _write_entry(base, key, entry)
 
     forced = _IngestRouter("chain-A")
     result = ingest_documents(
@@ -241,9 +223,18 @@ def test_forced_reingest_preserves_and_merges_cli_metadata(tmp_path: Path) -> No
 
 
 def _cache_entry(base: Path) -> dict[str, Any]:
-    entries = sorted((base / ".knox" / "cache").glob("note-*.json"))
-    assert entries, "expected a parse-cache entry"
-    return json.loads(entries[0].read_text(encoding="utf-8"))
+    return _cache_entry_with_key(base)[1]
+
+
+def _cache_entry_with_key(base: Path) -> tuple[str, dict[str, Any]]:
+    db_path = vault_db_path(base / ".knox" / "cache")
+    records = list(iter_documents(db_path))
+    assert records, "expected a parse-cache entry"
+    return records[0]
+
+
+def _write_entry(base: Path, key: str, entry: dict[str, Any]) -> None:
+    write_document(vault_db_path(base / ".knox" / "cache"), key, entry)
 
 
 def test_attachments_untouched_by_reingest(tmp_path: Path) -> None:

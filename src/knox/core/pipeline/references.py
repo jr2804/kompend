@@ -1,14 +1,15 @@
 """Persistent storage for extracted bibliographic references.
 
-Follows the :class:`TierStateStore` pattern: a simple JSON file
-(``references.json``) keyed by source file path, where each entry is a
-list of CSL JSON-aligned :class:`~knox.core.models.references.Reference`
-objects.
+Backed by the ``bib_references`` table of the single ``.knox/knox.db`` store,
+keyed by ``(source, ref_id)``; each row carries the full CSL JSON dict in a
+``payload`` column so no field is lost.
 
 The store is loaded once at pipeline start and saved after all sources
 are processed. A re-run merges new references with existing ones so the
 store is cumulative across compilations.
 """
+
+# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
 
 from __future__ import annotations
 
@@ -17,6 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from knox.core.models.references import Reference
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import REFERENCES_TABLE
 from knox.core.text.matching import cosine
 from knox.logging import get_logger
 from knox.rag.zvec_store import make_provider
@@ -48,39 +51,54 @@ class ReferenceStore:
         File to read/write. Created lazily on first save.
     """
 
-    def __init__(self, references_file: Path) -> None:
+    def __init__(self, references_file: Path, base_dir: Path | None = None) -> None:
         self._file = references_file
+        self._db_path = vault_db_path(base_dir if base_dir is not None else references_file)
         self._data: dict[str, list[dict[str, Any]]] = {}
         self.load()
 
     def load(self) -> None:
-        """Read the references file into memory.
-
-        A missing file means a fresh start (empty store). A corrupt file
-        is logged as a warning and treated as empty rather than crashing
-        the pipeline.
-        """
-        if not self._file.exists():
+        """Read the references into memory, grouped by source in stored order."""
+        if not self._db_path.exists():
             self._data = {}
             return
-        try:
-            raw = json.loads(self._file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("ReferenceStore: corrupt file %s — starting fresh: %s", self._file, exc)
-            self._data = {}
-            return
-        if isinstance(raw, dict):
-            self._data = {k: v for k, v in raw.items() if isinstance(v, list)}
-        else:
-            self._data = {}
+        with open_store(self._db_path) as conn:
+            rows = conn.execute(f"SELECT source, payload FROM {REFERENCES_TABLE} ORDER BY rowid").fetchall()
+        data: dict[str, list[dict[str, Any]]] = {}
+        for row in rows:
+            try:
+                ref = json.loads(row["payload"])
+            except json.JSONDecodeError:
+                logger.warning("ReferenceStore: corrupt payload for %s — skipping", row["source"])
+                continue
+            data.setdefault(row["source"], []).append(ref)
+        self._data = data
 
     def save(self) -> None:
-        """Persist the in-memory store to disk."""
-        self._file.parent.mkdir(parents=True, exist_ok=True)
-        self._file.write_text(
-            json.dumps(self._data, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        """Persist the in-memory store (full overwrite).
+
+        ``ref_id`` is the reference's CSL ``id`` when present (made unique
+        within the source), else its list position; the full dict is preserved
+        in the ``payload`` column, so load round-trips exactly.
+        """
+        rows: list[tuple[str, str, str]] = []
+        for source, refs in self._data.items():
+            seen: set[str] = set()
+            for index, ref in enumerate(refs):
+                base = str(ref.get("id") or f"#{index}")
+                ref_id = base
+                suffix = 1
+                while ref_id in seen:
+                    ref_id = f"{base}#{suffix}"
+                    suffix += 1
+                seen.add(ref_id)
+                rows.append((source, ref_id, json.dumps(ref)))
+        with open_store(self._db_path) as conn:
+            conn.execute(f"DELETE FROM {REFERENCES_TABLE}")
+            conn.executemany(
+                f"INSERT INTO {REFERENCES_TABLE}(source, ref_id, payload) VALUES (?, ?, ?)",
+                rows,
+            )
 
     def add_source(self, source: str, refs: list[Reference]) -> int:
         """Replace the reference list for *source* with *refs*.

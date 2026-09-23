@@ -27,12 +27,14 @@ from knox.core.models import (
 )
 from knox.core.paths import VaultPaths, rel_to_vault
 from knox.core.pipeline.config import PipelineConfig, Tier
+from knox.core.pipeline.parse_cache import clear_documents
 from knox.core.pipeline.stages._compile import load_compiled_wiki, run_compile_tier, run_output_tier
 from knox.core.pipeline.stages._index import detect_resume_tier, iter_sources, run_index_tier
 from knox.core.pipeline.stages._parse import parse_and_chunk
 from knox.core.pipeline.stages._resolve import apply_tags_to_tree, resolve_chunks
 from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.resolution.xref_checker import CrossReferenceResult
+from knox.core.store import vault_db_path
 from knox.core.templates import get_template_loader
 from knox.llm.user_providers import set_user_providers
 from knox.logging import get_logger
@@ -90,7 +92,7 @@ class WikiPipeline:
         self.base_directory = config.resolved_base_dir()
         self.state_store = state_store or TierStateStore(self._default_state_file(), self.base_directory)
         self._progress_callback: ProgressCallback | None = None
-        self.cache_store = CacheStore(self.cache_directory())
+        self.cache_store = CacheStore(self.cache_directory(), self.base_directory)
         self._tier_timings: dict[str, float] = {}
         self.last_chunk_count: int = 0
         self.xref_result: CrossReferenceResult | None = None
@@ -151,6 +153,7 @@ class WikiPipeline:
         if self.config.force:
             logger.info("Force mode enabled — invalidating all caches")
             self.cache_store.invalidate()
+            clear_documents(vault_db_path(self.base_directory))
 
         all_trees: list[ChunkTree] = []
         resolved: list[ResolvedChunk] = []

@@ -1,12 +1,14 @@
-"""Tests for the ReferenceStore JSON-backed reference storage."""
+"""Tests for the ReferenceStore DB-backed reference storage."""
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from knox.core.models.references import Author, Reference
 from knox.core.pipeline.references import ReferenceStore
+from knox.core.store import open_store, vault_db_path
 
 # ---------------------------------------------------------------------------
 # Load / save round-trip
@@ -15,9 +17,12 @@ from knox.core.pipeline.references import ReferenceStore
 
 class TestRoundTrip:
     def test_empty_store_has_no_file(self, tmp_path: Path) -> None:
-        store = ReferenceStore(tmp_path / "refs.json")
+        ref_file = tmp_path / "refs.json"
+        store = ReferenceStore(ref_file)
         assert store.total_count() == 0
         assert store.source_count() == 0
+        # A read-only open must not create the store.
+        assert not vault_db_path(ref_file).exists()
 
     def test_round_trip(self, tmp_path: Path) -> None:
         ref_file = tmp_path / "refs.json"
@@ -25,8 +30,7 @@ class TestRoundTrip:
         store.add_source("paper.pdf", [_make_ref()])
         store.save()
 
-        assert ref_file.exists()
-        data = json.loads(ref_file.read_text())
+        data = store.to_dict()
         assert "paper.pdf" in data
         assert data["paper.pdf"][0]["id"] == "smith2020"
 
@@ -41,7 +45,7 @@ class TestRoundTrip:
         store = ReferenceStore(ref_file)
         store.add_source("x.md", [_make_ref()])
         store.save()
-        assert ref_file.exists()
+        assert vault_db_path(ref_file).exists()
 
     def test_replace_on_add(self, tmp_path: Path) -> None:
         store = ReferenceStore(tmp_path / "refs.json")
@@ -128,18 +132,25 @@ class TestAggregation:
 class TestMalformedEntries:
     def test_get_source_skips_malformed(self, tmp_path: Path) -> None:
         ref_file = tmp_path / "refs.json"
-        data = {
-            "s.pdf": [
-                {"id": "good", "type": "book", "title": "T"},
-                {"this": "has no required fields and wrong types", "type": 12345},
-            ]
-        }
-        ref_file.write_text(json.dumps(data))
+        store = ReferenceStore(ref_file)
+        # Seed one well-formed and one malformed reference row directly.
+        db_path = vault_db_path(ref_file)
+        write_reference_row(db_path, "s.pdf", "good", {"id": "good", "type": "book", "title": "T"})
+        write_reference_row(db_path, "s.pdf", "bad", {"this": "has no required fields and wrong types", "type": 12345})
         store = ReferenceStore(ref_file)
         refs = store.get_source("s.pdf")
         # The malformed entry is silently skipped
         assert len(refs) == 1
         assert refs[0].id == "good"
+
+
+def write_reference_row(db_path: Path, source: str, ref_id: str, payload: dict[str, Any]) -> None:
+    """Seed a raw reference row (bypassing ReferenceStore) for load tests."""
+    with open_store(db_path) as conn:
+        conn.execute(
+            "INSERT INTO bib_references(source, ref_id, payload) VALUES (?, ?, ?)",
+            (source, ref_id, json.dumps(payload)),
+        )
 
 
 def _make_ref(

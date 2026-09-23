@@ -1,12 +1,15 @@
 """Unit tests for the on-demand pipeline log report (``knox log``)."""
 
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
+
 from __future__ import annotations
 
 import json
 from pathlib import Path
 
-from knox.core.paths import LINT_HISTORY_FILE, RUNS_FILE
 from knox.core.reporting.log import build_log_report
+from knox.core.store import open_store
+from knox.core.store.schema import LINT_RUNS_TABLE, RUNS_TABLE
 
 
 class TestBuildLogReport:
@@ -45,17 +48,21 @@ class TestBuildLogReport:
 
 
 def _write_runs(state_dir: Path, events: list[dict]) -> None:
-    state_dir.mkdir(parents=True, exist_ok=True)
-    with (state_dir / RUNS_FILE).open("w", encoding="utf-8") as fh:
+    with open_store(state_dir / "knox.db") as conn:
         for ev in events:
-            fh.write(json.dumps(ev) + "\n")
+            conn.execute(
+                f"INSERT INTO {RUNS_TABLE} (event, run_id, cmd, ts, status, duration_s, exit, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",  # noqa: S608
+                (ev["event"], ev["run_id"], ev["cmd"], ev["ts"], ev.get("status"), ev.get("duration_s"), ev.get("exit"), ev.get("error")),
+            )
 
 
 def _write_lint(state_dir: Path, entries: list[dict]) -> None:
-    state_dir.mkdir(parents=True, exist_ok=True)
-    with (state_dir / LINT_HISTORY_FILE).open("w", encoding="utf-8") as fh:
+    with open_store(state_dir / "knox.db") as conn:
         for e in entries:
-            fh.write(json.dumps(e) + "\n")
+            conn.execute(
+                f"INSERT INTO {LINT_RUNS_TABLE} (timestamp, duration_seconds, options, llm, config_snapshot, wiki_meta, report) VALUES (?, ?, ?, ?, ?, ?, ?)",  # noqa: S608
+                (e["timestamp"], e.get("duration_seconds", 0.0), "{}", None, "{}", "{}", json.dumps(e["report"], default=str)),
+            )
 
 
 def _make_run(run_id: str, cmd: str, *, status: str | None = None, dur: float = 1.5) -> list[dict]:

@@ -20,9 +20,29 @@ from knox.core.store.schema import (
     SCHEMA_VERSION_TABLE,
 )
 
-
-def _db_path(tmp_path: Path) -> Path:
-    return VaultPaths(tmp_path).knox_db_file
+_INSERT_CASES: tuple[tuple[str, str, tuple[object, ...]], ...] = (
+    ("documents", "INSERT INTO documents(cache_key, source_file) VALUES (?, ?)", ("doc-1", "s.md")),
+    ("chunks", "INSERT INTO chunks(cache_key, payload) VALUES (?, ?)", ("c1", "{}")),
+    ("extractions", "INSERT INTO extractions(layer, cache_key, payload) VALUES (?, ?, ?)", ("extract", "e1", "{}")),
+    ("assets", "INSERT INTO assets(id, kind) VALUES (?, ?)", ("a1", "table")),
+    ("tier_state", "INSERT INTO tier_state(stem, source_file, content_hash) VALUES (?, ?, ?)", ("t1", "s.md", "h")),
+    ("wiki_snapshot", "INSERT INTO wiki_snapshot(kind) VALUES (?)", ("last",)),
+    ("dedup_fingerprints", "INSERT INTO dedup_fingerprints(slug, closest_score) VALUES (?, ?)", ("d1", 0.5)),
+    ("attachment_manifest", "INSERT INTO attachment_manifest(path, source) VALUES (?, ?)", ("x.png", "s")),
+    ("lint_runs", "INSERT INTO lint_runs(timestamp) VALUES (?)", ("2026-01-01T00:00:00",)),
+    ("runs", "INSERT INTO runs(event, run_id, ts) VALUES (?, ?, ?)", ("start", "r1", "2026-01-01T00:00:00")),
+    ("memory_states", "INSERT INTO memory_states(node_id, confidence) VALUES (?, ?)", ("n1", 0.7)),
+    ("memory_log", "INSERT INTO memory_log(ts, query) VALUES (?, ?)", ("2026-01-01T00:00:00", "q")),
+    (REFERENCES_TABLE, "INSERT INTO bib_references(source, ref_id) VALUES (?, ?)", ("s.md", "ref1")),
+    ("entity_types", "INSERT INTO entity_types(concept_key, folder_name) VALUES (?, ?)", ("k", "person")),
+    ("downloaded", "INSERT INTO downloaded(url, sha256) VALUES (?, ?)", ("https://x", "h")),
+    ("organize_reports", "INSERT INTO organize_reports(written_at) VALUES (?)", ("2026-01-01T00:00:00",)),
+    ("verification", "INSERT INTO verification(written_at) VALUES (?)", ("2026-01-01T00:00:00",)),
+    ("private_pages", "INSERT INTO private_pages(id) VALUES (?)", ("p1",)),
+    ("provenance", "INSERT INTO provenance(node_id) VALUES (?)", ("n1",)),
+    ("review_state", "INSERT INTO review_state(slug, status) VALUES (?, ?)", ("draft-1", "approved")),
+    ("blobs", "INSERT INTO blobs(path, content) VALUES (?, ?)", ("cache/images/a.png", b"\x89PNG")),
+)
 
 
 def test_create_on_missing(tmp_path: Path) -> None:
@@ -63,28 +83,23 @@ def test_version_mismatch_recreates_clean(tmp_path: Path) -> None:
         assert conn.execute(f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1").fetchone()[0] == SCHEMA_VERSION
 
 
-_INSERT_CASES: tuple[tuple[str, str, tuple[object, ...]], ...] = (
-    ("documents", "INSERT INTO documents(cache_key, source_file) VALUES (?, ?)", ("doc-1", "s.md")),
-    ("chunks", "INSERT INTO chunks(cache_key, payload) VALUES (?, ?)", ("c1", "{}")),
-    ("extractions", "INSERT INTO extractions(layer, cache_key, payload) VALUES (?, ?, ?)", ("extract", "e1", "{}")),
-    ("assets", "INSERT INTO assets(id, kind) VALUES (?, ?)", ("a1", "table")),
-    ("tier_state", "INSERT INTO tier_state(stem, source_file, content_hash) VALUES (?, ?, ?)", ("t1", "s.md", "h")),
-    ("wiki_snapshot", "INSERT INTO wiki_snapshot(kind) VALUES (?)", ("last",)),
-    ("dedup_fingerprints", "INSERT INTO dedup_fingerprints(slug, closest_score) VALUES (?, ?)", ("d1", 0.5)),
-    ("attachment_manifest", "INSERT INTO attachment_manifest(path, source) VALUES (?, ?)", ("x.png", "s")),
-    ("lint_runs", "INSERT INTO lint_runs(timestamp) VALUES (?)", ("2026-01-01T00:00:00",)),
-    ("runs", "INSERT INTO runs(event, run_id, ts) VALUES (?, ?, ?)", ("start", "r1", "2026-01-01T00:00:00")),
-    ("memory_states", "INSERT INTO memory_states(node_id, confidence) VALUES (?, ?)", ("n1", 0.7)),
-    ("memory_log", "INSERT INTO memory_log(ts, query) VALUES (?, ?)", ("2026-01-01T00:00:00", "q")),
-    (REFERENCES_TABLE, "INSERT INTO bib_references(source, ref_id) VALUES (?, ?)", ("s.md", "ref1")),
-    ("entity_types", "INSERT INTO entity_types(concept_key, folder_name) VALUES (?, ?)", ("k", "person")),
-    ("downloaded", "INSERT INTO downloaded(url, sha256) VALUES (?, ?)", ("https://x", "h")),
-    ("organize_reports", "INSERT INTO organize_reports(written_at) VALUES (?)", ("2026-01-01T00:00:00",)),
-    ("verification", "INSERT INTO verification(written_at) VALUES (?)", ("2026-01-01T00:00:00",)),
-    ("private_pages", "INSERT INTO private_pages(id) VALUES (?)", ("p1",)),
-    ("provenance", "INSERT INTO provenance(node_id) VALUES (?)", ("n1",)),
-    ("blobs", "INSERT INTO blobs(path, content) VALUES (?, ?)", ("cache/images/a.png", b"\x89PNG")),
-)
+def test_additive_schema_adds_missing_table_without_version_bump(tmp_path: Path) -> None:
+    """A table added to the DDL after a store exists is created on next open,
+    with no version bump and no data loss (the additive path).
+    """
+    db = _db_path(tmp_path)
+    with open_store(db) as conn:
+        conn.execute("INSERT INTO tier_state(stem, source_file, content_hash) VALUES ('keep', 's.md', 'h')")
+        # Simulate a store created before review_state existed.
+        conn.execute("DROP TABLE review_state")
+
+    with open_store(db) as conn:
+        names = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+        # Missing table is recreated …
+        assert "review_state" in names
+        # … and existing data survives (no recreate happened).
+        assert conn.execute("SELECT COUNT(*) FROM tier_state").fetchone()[0] == 1
+        assert conn.execute(f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1").fetchone()[0] == SCHEMA_VERSION
 
 
 @pytest.mark.parametrize(("table", "insert_sql", "params"), _INSERT_CASES)
@@ -210,3 +225,7 @@ def test_schema_is_usable_without_fk_violations(tmp_path: Path) -> None:
     with open_store(_db_path(tmp_path)) as conn:
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert isinstance(conn, sqlite3.Connection)
+
+
+def _db_path(tmp_path: Path) -> Path:
+    return VaultPaths(tmp_path).knox_db_file

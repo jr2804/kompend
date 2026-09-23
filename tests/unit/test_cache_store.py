@@ -153,13 +153,12 @@ class TestCacheStoreAdmin:
 
 
 class TestCacheStoreErrors:
-    def test_corrupt_file_is_miss(self, tmp_path: Path) -> None:
+    def test_corrupt_payload_is_miss(self, tmp_path: Path) -> None:
         store = CacheStore(tmp_path)
         deps = {"src": "abc"}
         store.set("test", deps, "data")
-        # Corrupt the JSON cache file
-        path = store._resolve("test", make_cache_key(deps))
-        path.write_bytes(b"not valid json")
+        # Overwrite the stored payload with invalid JSON — a corrupt cache entry.
+        store._write_payload("test", make_cache_key(deps), "not valid json")
         assert store.get("test", deps) is None
 
     def test_non_existent_layer(self, tmp_path: Path) -> None:

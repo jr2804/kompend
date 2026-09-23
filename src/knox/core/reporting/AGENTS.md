@@ -13,11 +13,13 @@ stores into human-readable markdown — no LLM calls.
 | Module | Contents |
 |--------|----------|
 | `log.py` | `build_log_report` — the engine behind `knox log` |
-| `runlog.py` | `RunHandle`, `log_run_start`, `log_run_end` — append-only JSONL audit trail |
+| `runlog.py` | `RunHandle`, `log_run_start`, `log_run_end` — append-only audit trail in the `runs` table |
 
 ## Rules
 
 - Import: `from knox.core.reporting.log import build_log_report`,
   `from knox.core.reporting.runlog import log_run_start`.
 - These are CLI-facing presentation modules, not pipeline core logic.
-- `runlog.py` writes to `.knox/runs.jsonl` and prunes to a soft cap.
+- `runlog.py` inserts `start`/`end` rows into the `runs` table of `.knox/knox.db`
+  (via `core.store.open_store`) and prunes to a soft cap. `log.py` reads `runs`
+  and `lint_runs`. No JSONL — the store is the single opener.

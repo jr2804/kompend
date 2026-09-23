@@ -30,6 +30,7 @@ module inlines a table literal.
 
 from __future__ import annotations
 
+import functools
 import sqlite3
 from typing import Final
 
@@ -61,6 +62,7 @@ ORGANIZE_REPORTS_TABLE: Final[str] = "organize_reports"
 VERIFICATION_TABLE: Final[str] = "verification"
 PRIVATE_PAGES_TABLE: Final[str] = "private_pages"
 PROVENANCE_TABLE: Final[str] = "provenance"
+REVIEW_STATE_TABLE: Final[str] = "review_state"
 BLOBS_TABLE: Final[str] = "blobs"
 
 #: Every data table (excludes the version bookkeeping table and FTS shadows).
@@ -84,6 +86,7 @@ TABLE_NAMES: Final[tuple[str, ...]] = (
     VERIFICATION_TABLE,
     PRIVATE_PAGES_TABLE,
     PROVENANCE_TABLE,
+    REVIEW_STATE_TABLE,
     BLOBS_TABLE,
 )
 
@@ -285,6 +288,7 @@ _DDL: Final[tuple[str, ...]] = (
         raw TEXT NOT NULL DEFAULT '',
         citing_source TEXT NOT NULL DEFAULT '',
         in_text_keys TEXT NOT NULL DEFAULT '[]',
+        payload TEXT NOT NULL DEFAULT '{{}}',
         PRIMARY KEY (source, ref_id)
     )
     """,
@@ -353,20 +357,36 @@ _DDL: Final[tuple[str, ...]] = (
         content BLOB NOT NULL
     )
     """,
+    # Review-queue state (was review/_state.json). The human-editable queue
+    # markdown stays on disk; only the approve/reject decisions move here.
+    f"""
+    CREATE TABLE IF NOT EXISTS {REVIEW_STATE_TABLE} (
+        slug TEXT PRIMARY KEY,
+        status TEXT NOT NULL DEFAULT '',
+        title TEXT NOT NULL DEFAULT '',
+        reason TEXT NOT NULL DEFAULT '',
+        source_node_id TEXT NOT NULL DEFAULT '',
+        saved_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
 )
 
 
 def apply_schema(conn: sqlite3.Connection, version: int) -> None:
     """Create every table/index/trigger and stamp *version*.
 
-    Idempotent for a matching version (``IF NOT EXISTS`` throughout); the caller
-    is responsible for recreating first when the version differs.
+    Every statement is ``IF NOT EXISTS``, so this is fully idempotent: calling
+    it on an existing store adds only missing tables/triggers and never touches
+    existing rows. This is why :func:`knox.core.store.ensure_schema` can apply
+    the schema on every open instead of early-returning on a version match —
+    additive changes (new tables/columns) need no version bump. A version bump
+    is reserved for *incompatible* changes (drops, retypes), where the caller
+    recreates first.
     """
     for statement in _DDL:
         conn.execute(statement)
     conn.execute(
-        f"INSERT INTO {SCHEMA_VERSION_TABLE}(id, version, created_at) VALUES (1, ?, datetime('now')) "
-        f"ON CONFLICT(id) DO UPDATE SET version = excluded.version, created_at = excluded.created_at",
+        f"INSERT INTO {SCHEMA_VERSION_TABLE}(id, version, created_at) VALUES (1, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET version = excluded.version",
         (version,),
     )
 
@@ -381,3 +401,51 @@ def current_version(conn: sqlite3.Connection) -> int | None:
         return None
     row = conn.execute(f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1").fetchone()
     return int(row["version"]) if row is not None else None
+
+
+def reconcile_columns(conn: sqlite3.Connection) -> list[str]:
+    """Add any column present in the DDL but missing from an existing table.
+
+    ``CREATE TABLE IF NOT EXISTS`` cannot add a column to a table that already
+    exists, so a column added to the DDL after a store was first created would
+    otherwise drift silently and surface later as ``no such column`` from a
+    distant consumer. This closes that gap: additive columns are reconciled in
+    place (no version bump, no data loss). Returns the ``table.column`` names
+    added so the caller can log them loudly.
+    """
+    added: list[str] = []
+    for table, columns in _expected_columns().items():
+        actual = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
+        for name, fragment in columns.items():
+            if name not in actual:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {fragment}")
+                added.append(f"{table}.{name}")
+    return added
+
+
+@functools.cache
+def _expected_columns() -> dict[str, dict[str, str]]:
+    """Column DDL fragments derived from the DDL itself, via a scratch DB.
+
+    Built once per process: creates the schema in an in-memory database and
+    reads back each table's columns, so the expected column set can never
+    drift from ``_DDL``. Fragments are ``"name TYPE [DEFAULT x]"``, suitable
+    for ``ALTER TABLE ... ADD COLUMN``.
+    """
+    scratch = sqlite3.connect(":memory:")
+    try:
+        for statement in _DDL:
+            scratch.execute(statement)
+        expected: dict[str, dict[str, str]] = {}
+        for table in TABLE_NAMES:
+            columns: dict[str, str] = {}
+            for row in scratch.execute(f"PRAGMA table_info({table})"):
+                name, col_type, default = row[1], row[2], row[4]
+                fragment = f"{name} {col_type}"
+                if default is not None:
+                    fragment += f" DEFAULT {default}"
+                columns[name] = fragment
+            expected[table] = columns
+        return expected
+    finally:
+        scratch.close()

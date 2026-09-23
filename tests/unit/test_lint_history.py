@@ -34,7 +34,7 @@ class _StubConfig:
 
 class TestSaveLoad:
     def test_save_and_load_single_entry(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
+        path = _hist(tmp_path)
         entry = _make_entry()
         save_lint_entry(entry, path)
 
@@ -46,7 +46,7 @@ class TestSaveLoad:
         assert loaded[0]["report"]["health_score"] == entry["report"]["health_score"]
 
     def test_save_appends_multiple_entries(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
+        path = _hist(tmp_path)
         for i in range(5):
             save_lint_entry(_make_entry(timestamp=f"2025-01-0{i + 1}T00:00:00+00:00"), path)
 
@@ -55,27 +55,21 @@ class TestSaveLoad:
         assert loaded[0]["timestamp"] == "2025-01-01T00:00:00+00:00"
         assert loaded[-1]["timestamp"] == "2025-01-05T00:00:00+00:00"
 
-    def test_save_creates_parent_dirs(self, tmp_path: Path) -> None:
-        path = tmp_path / "subdir" / "nested" / "lint_history.jsonl"
-        save_lint_entry(_make_entry(), path)
-        assert path.exists()
+    def test_save_creates_store(self, tmp_path: Path) -> None:
+        save_lint_entry(_make_entry(), _hist(tmp_path))
+        assert (tmp_path / ".knox" / "knox.db").exists()
 
     def test_load_missing_file_returns_empty(self, tmp_path: Path) -> None:
         loaded = load_lint_history(tmp_path / "nonexistent.jsonl")
         assert loaded == []
 
-    def test_load_skips_blank_lines(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
-        entry = _make_entry()
-        line = json.dumps(entry, default=str, ensure_ascii=False)
-        path.write_text(f"\n{line}\n\n\n", encoding="utf-8")
-        loaded = load_lint_history(path)
-        assert len(loaded) == 1
+    def test_load_empty_store_returns_empty(self, tmp_path: Path) -> None:
+        assert load_lint_history(_hist(tmp_path)) == []
 
 
 class TestLastN:
     def test_last_n_returns_most_recent(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
+        path = _hist(tmp_path)
         for i in range(10):
             save_lint_entry(_make_entry(timestamp=f"2025-01-{i + 1:02d}T00:00:00+00:00"), path)
 
@@ -85,13 +79,13 @@ class TestLastN:
         assert loaded[-1]["timestamp"] == "2025-01-10T00:00:00+00:00"
 
     def test_last_n_zero_returns_empty(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
+        path = _hist(tmp_path)
         save_lint_entry(_make_entry(), path)
         loaded = load_lint_history(path, last_n=0)
         assert loaded == []
 
     def test_last_n_larger_than_count(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
+        path = _hist(tmp_path)
         save_lint_entry(_make_entry(), path)
         loaded = load_lint_history(path, last_n=100)
         assert len(loaded) == 1
@@ -99,7 +93,7 @@ class TestLastN:
 
 class TestPrune:
     def test_prune_keep_last(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
+        path = _hist(tmp_path)
         for i in range(10):
             save_lint_entry(_make_entry(timestamp=f"2025-01-{i + 1:02d}T00:00:00+00:00"), path)
 
@@ -109,7 +103,7 @@ class TestPrune:
         assert len(remaining) == 3
 
     def test_prune_max_age_days(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
+        path = _hist(tmp_path)
         now = datetime.now(UTC)
         for days_ago in [100, 50, 10, 1, 0]:
             ts = (now - timedelta(days=days_ago)).isoformat(timespec="seconds")
@@ -121,7 +115,7 @@ class TestPrune:
         assert len(remaining) == 3
 
     def test_prune_combines_keep_and_age(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
+        path = _hist(tmp_path)
         now = datetime.now(UTC)
         for days_ago in [100, 50, 10, 5, 1]:
             ts = (now - timedelta(days=days_ago)).isoformat(timespec="seconds")
@@ -133,7 +127,7 @@ class TestPrune:
         assert len(remaining) == 2
 
     def test_prune_noop_when_nothing_matches(self, tmp_path: Path) -> None:
-        path = tmp_path / "lint_history.jsonl"
+        path = _hist(tmp_path)
         save_lint_entry(_make_entry(), path)
         removed = prune_lint_history(path, keep_last=100)
         assert removed == 0
@@ -145,7 +139,7 @@ class TestPrune:
 
     def test_prune_requires_at_least_one_criterion(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="At least one"):
-            prune_lint_history(tmp_path / "lint_history.jsonl")
+            prune_lint_history(_hist(tmp_path))
 
 
 class TestEntryFromReport:
@@ -233,6 +227,15 @@ class TestFormatting:
         entry["llm"] = {"model": "openai/gpt-4o", "usage": {}}
         text = history_to_text([entry])
         assert "openai/gpt-4o" in text
+
+
+def _hist(tmp_path: Path) -> Path:
+    """Return a ``.knox/lint_history.jsonl`` path the store resolver understands.
+
+    The path only locates the vault's ``knox.db``; lint history now lives in
+    the ``lint_runs`` table, not in a file.
+    """
+    return tmp_path / ".knox" / "lint_history.jsonl"
 
 
 def _make_entry(*, timestamp: str = "2025-01-01T00:00:00+00:00", score: float = 90.0) -> LintEntry:

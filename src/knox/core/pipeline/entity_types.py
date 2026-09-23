@@ -5,22 +5,10 @@ folder assignment under ``entities/<type>/<id>.md`` does not flicker
 when the model gives a slightly different ``type`` value for the same
 concept on different runs.
 
-File shape::
-
-    {
-      "polqa": "standard",
-      "itu-t": "organization",
-      "john-doe": "person",
-      ...
-    }
-
+Backed by the ``entity_types`` table of the single ``.knox/knox.db`` store.
 Keys are :func:`knox.compilation.concept_keys.normalize_concept_key`
 of the concept name; values are sanitized folder names (see
 :func:`knox.compilation.flows.generation._sanitize_entity_type`).
-
-Persistence semantics: on first read, the file is loaded once. On
-write, the entire dict is rewritten atomically (tmp-file + rename)
-so a crash mid-write does not corrupt the registry.
 
 See p863 wiki roundup (2026-09-10) for the motivating bug — the
 model returned different ``type`` values for POLQA across runs,
@@ -28,82 +16,56 @@ causing its page to land in ``entities/standard/`` one time and
 ``entities/polqa/`` the next.
 """
 
+# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
+
 from __future__ import annotations
 
-import contextlib
-import json
-import os
-import tempfile
 from pathlib import Path
 
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import ENTITY_TYPES_TABLE
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
 
 
 class EntityTypeRegistry:
-    """JSON-backed registry mapping concept keys to sanitized entity kinds.
+    """Store mapping concept keys to sanitized entity kinds.
+
+    Backed by the ``entity_types`` table of ``.knox/knox.db``.
 
     Parameters
     ----------
     entity_types_file:
-        File to read/write. Created lazily on first save.
+        Legacy artifact path (``.knox/entity_types.json``) used to locate the
+        vault root, or the vault ``base_dir`` itself.
+    base_dir:
+        Vault root. When given, *entity_types_file* is ignored.
     """
 
-    def __init__(self, entity_types_file: Path) -> None:
+    def __init__(self, entity_types_file: Path, base_dir: Path | None = None) -> None:
         self._file = entity_types_file
+        self._db_path = vault_db_path(base_dir if base_dir is not None else entity_types_file)
         self._data: dict[str, str] = {}
         self.load()
 
     def load(self) -> None:
-        """Read the registry file into memory.
-
-        A missing file means a fresh start (empty registry). A corrupt
-        file is logged and treated as empty rather than crashing — the
-        next compile will rebuild it from the model's output.
-        """
-        if not self._file.exists():
+        """Read the registry into memory. A missing store is a fresh start."""
+        if not self._db_path.exists():
             self._data = {}
             return
-        try:
-            raw = json.loads(self._file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning(
-                "Entity-type registry at %s is unreadable (%s); treating as empty",
-                self._file,
-                exc,
-            )
-            self._data = {}
-            return
-        if not isinstance(raw, dict):
-            logger.warning(
-                "Entity-type registry at %s has unexpected shape (%s); treating as empty",
-                self._file,
-                type(raw).__name__,
-            )
-            self._data = {}
-            return
-        # Coerce values to str (defensive against bad writes).
-        self._data = {str(k): str(v) for k, v in raw.items() if isinstance(v, (str, int))}
+        with open_store(self._db_path) as conn:
+            rows = conn.execute(f"SELECT concept_key, folder_name FROM {ENTITY_TYPES_TABLE}").fetchall()
+        self._data = {str(row["concept_key"]): str(row["folder_name"]) for row in rows}
 
     def save(self) -> None:
-        """Persist the in-memory registry to disk atomically.
-
-        Uses ``tempfile`` + ``os.replace`` so a crash mid-write doesn't
-        leave a partially-written file.
-        """
-        self._file.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp_path = tempfile.mkstemp(dir=self._file.parent, prefix=".entity_types.", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                json.dump(self._data, fh, indent=2, sort_keys=True)
-                fh.write("\n")
-            os.replace(tmp_path, self._file)
-        except Exception:
-            # Clean up the tmp file on failure.
-            with contextlib.suppress(OSError):
-                os.unlink(tmp_path)
-            raise
+        """Persist the in-memory registry (full overwrite)."""
+        with open_store(self._db_path) as conn:
+            conn.execute(f"DELETE FROM {ENTITY_TYPES_TABLE}")
+            conn.executemany(
+                f"INSERT INTO {ENTITY_TYPES_TABLE}(concept_key, folder_name) VALUES (?, ?)",
+                list(self._data.items()),
+            )
 
     def get(self, concept_key: str) -> str | None:
         """Return the registered type for *concept_key*, or None."""

@@ -1,5 +1,7 @@
 """Privacy redaction, private flag, lifecycle states for compiled output."""
 
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
+
 from __future__ import annotations
 
 import json
@@ -16,7 +18,8 @@ from knox.core.models import (
     CompiledWiki,
     WikiNode,
 )
-from knox.core.paths import VaultPaths
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import PRIVATE_PAGES_TABLE
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
@@ -165,14 +168,18 @@ def filter_sensitive(text: str) -> tuple[str, int]:
 
 
 def mark_wiki_private(wiki: CompiledWiki, base_dir: Path) -> None:
-    """Write .knox/private.json index of private pages."""
-    private_index = VaultPaths(base_dir).private_file
-    private_index.parent.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "saved_at": iso_local(),
-        "pages": [{"id": n.id, "title": n.title} for n in wiki.nodes],
-    }
-    private_index.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+    """Record the private-page index in the ``private_pages`` table.
+
+    Snapshot semantics: the previous index is replaced, matching the old
+    ``private.json`` full-overwrite behaviour.
+    """
+    saved_at = iso_local()
+    with open_store(vault_db_path(base_dir)) as conn:
+        conn.execute(f"DELETE FROM {PRIVATE_PAGES_TABLE}")
+        conn.executemany(
+            f"INSERT OR REPLACE INTO {PRIVATE_PAGES_TABLE} (id, title, saved_at) VALUES (?, ?, ?)",
+            [(n.id, n.title, saved_at) for n in wiki.nodes],
+        )
 
 
 def mark_stale(

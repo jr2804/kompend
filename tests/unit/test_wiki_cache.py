@@ -9,22 +9,23 @@ import pytest
 
 from knox.cli._pipeline_helpers import write_wiki_cache
 from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
-from knox.core.paths import KNOX_DIR, WIKI_CACHE_FILE
+from knox.core.paths import KNOX_DIR
+from knox.core.store import open_store, vault_db_path
 
 
 class TestWriteWikiCache:
-    def test_writes_cache_file(self, tmp_path: Any) -> None:
+    def test_writes_snapshot(self, tmp_path: Any) -> None:
         wiki = _make_wiki()
         write_wiki_cache(wiki, tmp_path)
 
-        cache_file = tmp_path / KNOX_DIR / WIKI_CACHE_FILE
-        assert cache_file.exists()
-
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
-        assert len(data["nodes"]) == 1
-        assert data["nodes"][0]["id"] == "intro"
-        assert data["quality_score"] == 0.85
-        assert data["iteration"] == 2
+        assert vault_db_path(tmp_path).exists()
+        with open_store(vault_db_path(tmp_path)) as conn:
+            row = conn.execute("SELECT nodes, quality_score, iteration FROM wiki_snapshot WHERE kind = 'last'").fetchone()
+        assert row is not None
+        assert len(json.loads(row["nodes"])) == 1
+        assert json.loads(row["nodes"])[0]["id"] == "intro"
+        assert row["quality_score"] == 0.85
+        assert row["iteration"] == 2
 
     def test_creates_knox_dir(self, tmp_path: Any) -> None:
         wiki = _make_wiki()
@@ -63,13 +64,13 @@ class TestLoadCachedWiki:
         assert loaded.quality_score == 0.85
         assert loaded.iteration == 2
 
-    def test_corrupt_json_raises(self, tmp_path: Any) -> None:
-        # Per src/knox/AGENTS.md: a corrupt wiki cache is a bug, not a silent miss.
+    def test_corrupt_payload_raises(self, tmp_path: Any) -> None:
+        # Per src/knox/AGENTS.md: a corrupt wiki snapshot is a bug, not a silent miss.
         # Missing -> None (caller prompts to compile); corrupt -> raises so the
         # real cause surfaces instead of a misleading "run compile first".
-        cache_dir = tmp_path / KNOX_DIR
-        cache_dir.mkdir(parents=True)
-        (cache_dir / WIKI_CACHE_FILE).write_text("{invalid json", encoding="utf-8")
+        db_path = vault_db_path(tmp_path)
+        with open_store(db_path) as conn:
+            conn.execute("INSERT INTO wiki_snapshot(kind, nodes) VALUES ('last', '{invalid json')")
         with pytest.raises(json.JSONDecodeError):
             load_cached_wiki(tmp_path)
 

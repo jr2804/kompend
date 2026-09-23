@@ -1,16 +1,19 @@
-"""Persistent lint history — append-only JSONL of lint runs.
+"""Persistent lint history — one row per lint run in the ``lint_runs`` table.
 
-Each line is a JSON dict with keys: timestamp, duration_seconds, options,
-llm, config_snapshot, wiki_meta, report.
+Each row holds: timestamp, duration_seconds, options, llm, config_snapshot,
+wiki_meta, report.
 
-The :class:`LintEntry` TypedDict is the schema for one JSONL line — it types
-  key access without a runtime wrapper. Use save_lint_entry()/
-  load_lint_history() for I/O; callers pass ``LintEntry`` dicts.
+The :class:`LintEntry` TypedDict is the schema for one row — it types
+key access without a runtime wrapper. Use save_lint_entry()/
+load_lint_history() for I/O; callers pass ``LintEntry`` dicts.
 """
+
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
 
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, TypedDict
@@ -21,6 +24,8 @@ from knox.core.config.keys import (
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_ROLE_MODELS,
 )
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import LINT_RUNS_TABLE
 from knox.core.utils.time import iso_local, now_local
 from knox.lint.runner import LintReport, report_to_dict
 
@@ -78,10 +83,20 @@ def _build_config_snapshot(cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 def save_lint_entry(entry: LintEntry, path: Path) -> None:
-    """Append *entry* as a single JSONL line to *path*."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as fh:
-        fh.write(json.dumps(entry, default=str, ensure_ascii=False) + "\n")
+    """Append *entry* as one row in the ``lint_runs`` table for the vault at *path*."""
+    with open_store(vault_db_path(path)) as conn:
+        conn.execute(
+            f"INSERT INTO {LINT_RUNS_TABLE} (timestamp, duration_seconds, options, llm, config_snapshot, wiki_meta, report) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (
+                entry["timestamp"],
+                entry["duration_seconds"],
+                json.dumps(entry["options"], default=str, ensure_ascii=False),
+                json.dumps(entry["llm"], default=str, ensure_ascii=False) if entry["llm"] is not None else None,
+                json.dumps(entry["config_snapshot"], default=str, ensure_ascii=False),
+                json.dumps(entry["wiki_meta"], default=str, ensure_ascii=False),
+                json.dumps(entry["report"], default=str, ensure_ascii=False),
+            ),
+        )
 
 
 def prune_lint_history(
@@ -90,33 +105,34 @@ def prune_lint_history(
     keep_last: int | None = None,
     max_age_days: int | None = None,
 ) -> int:
-    """Remove old entries from the history file.
+    """Remove old rows from the ``lint_runs`` table for the vault at *path*.
 
     Returns the number of entries removed.
     """
     if keep_last is None and max_age_days is None:
         raise ValueError("At least one of keep_last or max_age_days must be set.")
 
-    entries = load_lint_history(path)
-    if not entries:
+    db_path = vault_db_path(path)
+    if not db_path.is_file():
         return 0
 
-    original_count = len(entries)
-    surviving = entries
+    with open_store(db_path) as conn:
+        rows = conn.execute(f"SELECT id, timestamp FROM {LINT_RUNS_TABLE} ORDER BY id").fetchall()
+        if not rows:
+            return 0
 
-    if max_age_days is not None:
-        cutoff = now_local() - timedelta(days=max_age_days)
-        surviving = [e for e in surviving if _parse_timestamp(e["timestamp"]) >= cutoff]
+        surviving = [(r["id"], r["timestamp"]) for r in rows]
+        if max_age_days is not None:
+            cutoff = now_local() - timedelta(days=max_age_days)
+            surviving = [(rid, ts) for rid, ts in surviving if _parse_timestamp(ts) >= cutoff]
+        if keep_last is not None:
+            surviving = surviving[-keep_last:] if keep_last > 0 else []
 
-    if keep_last is not None:
-        surviving = surviving[-keep_last:]
-
-    removed = original_count - len(surviving)
-    if removed == 0:
-        return 0
-
-    _rewrite(path, surviving)
-    return removed
+        keep_ids = {rid for rid, _ in surviving}
+        doomed = [r["id"] for r in rows if r["id"] not in keep_ids]
+        if doomed:
+            conn.executemany(f"DELETE FROM {LINT_RUNS_TABLE} WHERE id = ?", [(rid,) for rid in doomed])
+        return len(doomed)
 
 
 def load_lint_history(
@@ -124,24 +140,35 @@ def load_lint_history(
     *,
     last_n: int | None = None,
 ) -> list[LintEntry]:
-    """Load lint history entries from *path* (oldest first).
+    """Load lint history rows for the vault at *path* (oldest first).
 
-    A missing file returns an empty list.
+    A missing store returns an empty list.
     """
-    if not path.exists():
-        return []
-
+    db_path = vault_db_path(path)
     entries: list[LintEntry] = []
-    with path.open("r", encoding="utf-8") as fh:
-        for raw_line in fh:
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            entries.append(json.loads(stripped))
+    if db_path.is_file():
+        with open_store(db_path) as conn:
+            rows = conn.execute(
+                f"SELECT timestamp, duration_seconds, options, llm, config_snapshot, wiki_meta, report FROM {LINT_RUNS_TABLE} ORDER BY id"
+            ).fetchall()
+        entries = [_row_to_entry(row) for row in rows]
 
     if last_n is not None and last_n >= 0:
         entries = entries[-last_n:] if last_n > 0 else []
     return entries
+
+
+def _row_to_entry(row: sqlite3.Row) -> LintEntry:
+    """Rebuild a :class:`LintEntry` from a ``lint_runs`` row."""
+    return {
+        "timestamp": row["timestamp"],
+        "duration_seconds": row["duration_seconds"],
+        "options": json.loads(row["options"]),
+        "llm": json.loads(row["llm"]) if row["llm"] is not None else None,
+        "config_snapshot": json.loads(row["config_snapshot"]),
+        "wiki_meta": json.loads(row["wiki_meta"]),
+        "report": json.loads(row["report"]),
+    }
 
 
 def history_to_json(entries: list[LintEntry]) -> str:
@@ -196,12 +223,3 @@ def _sparkline(values: list[float]) -> str:
 def _parse_timestamp(ts: str) -> datetime:
     """Parse an ISO-8601 timestamp, returning a timezone-aware datetime."""
     return datetime.fromisoformat(ts)
-
-
-def _rewrite(path: Path, entries: list[LintEntry]) -> None:
-    """Atomically rewrite the history file with *entries*."""
-    tmp = path.with_suffix(".tmp")
-    with tmp.open("w", encoding="utf-8") as fh:
-        for entry in entries:
-            fh.write(json.dumps(entry, default=str, ensure_ascii=False) + "\n")
-    tmp.replace(path)

@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from knox.core.store.connection import connect, ensure_schema, open_store
 from knox.core.store.legacy import obsolete_artifacts
+from knox.core.store.locate import resolve_base_dir, vault_db_path
 from knox.core.store.schema import SCHEMA_VERSION, TABLE_NAMES
 
 __all__ = [
@@ -26,4 +27,6 @@ __all__ = [
     "ensure_schema",
     "obsolete_artifacts",
     "open_store",
+    "resolve_base_dir",
+    "vault_db_path",
 ]

@@ -28,27 +28,12 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-from knox.core.store.schema import SCHEMA_VERSION, apply_schema, current_version
+from knox.core.store.schema import SCHEMA_VERSION, apply_schema, current_version, reconcile_columns
 from knox.logging import get_logger
-
-logger = get_logger(__name__)
 
 _BUSY_TIMEOUT_MS = 5000
 
-
-def connect(db_path: Path) -> sqlite3.Connection:
-    """Open a connection with the required PRAGMAs applied.
-
-    Creates parent directories. The caller owns closing. Prefer
-    :func:`open_store` unless a long-lived handle is genuinely needed.
-    """
-    db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    conn.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
-    return conn
+logger = get_logger(__name__)
 
 
 @contextmanager
@@ -68,24 +53,47 @@ def open_store(db_path: Path) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+def connect(db_path: Path) -> sqlite3.Connection:
+    """Open a connection with the required PRAGMAs applied.
+
+    Creates parent directories. The caller owns closing. Prefer
+    :func:`open_store` unless a long-lived handle is genuinely needed.
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
+    return conn
+
+
 def ensure_schema(conn: sqlite3.Connection, db_path: Path) -> None:
-    """Create the schema, or recreate it from scratch on a version mismatch."""
+    """Create the schema, recreating from scratch only on an incompatible version.
+
+    The DDL is fully idempotent (``IF NOT EXISTS`` throughout), so the schema
+    is applied on every open: tables/triggers added after a store was first
+    created are picked up without a version bump and without touching existing
+    rows. A ``SCHEMA_VERSION`` mismatch is reserved for genuinely incompatible
+    changes and triggers the clean-cut recreate.
+    """
     version = current_version(conn)
-    if version is None:
-        apply_schema(conn, SCHEMA_VERSION)
-        conn.commit()
-        return
-    if version == SCHEMA_VERSION:
-        return
-    logger.warning(
-        "knox.db schema version %d != %d — recreating store at %s. "
-        ".knox/ state is NOT migrated; run `knox compile --force` to rebuild.",
-        version,
-        SCHEMA_VERSION,
-        db_path,
-    )
-    _drop_all(conn)
+    if version is not None and version != SCHEMA_VERSION:
+        logger.warning(
+            "knox.db schema version %d != %d — recreating store at %s. .knox/ state is NOT migrated; run `knox compile --force` to rebuild.",
+            version,
+            SCHEMA_VERSION,
+            db_path,
+        )
+        _drop_all(conn)
     apply_schema(conn, SCHEMA_VERSION)
+    added = reconcile_columns(conn)
+    if added:
+        logger.warning(
+            "knox.db schema drift reconciled at %s: added missing columns %s (no version bump, no data loss)",
+            db_path,
+            ", ".join(added),
+        )
     conn.commit()
 
 

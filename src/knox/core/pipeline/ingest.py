@@ -8,33 +8,36 @@ cache without running the full compile pipeline.
 from __future__ import annotations
 
 import hashlib
-import json
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, cast
 
 from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import ElementType, MetadataField, ParsedDocument
 from knox.core.paths import VaultPaths
+from knox.core.pipeline.parse_cache import (
+    PARSE_CACHE_PARSER_KEY,
+    extract_text_from_cached,  # noqa: F401 — re-exported for capture.py
+    extract_text_from_data,
+    read_document,
+    write_document,
+)
+from knox.core.pipeline.parse_cache import (
+    cache_key as document_cache_key,
+)
 from knox.core.pipeline.state import TierStateStore
+from knox.core.store import vault_db_path
 from knox.core.text.encoding import normalize_to_utf8_path
 from knox.core.text.rumdl import normalize_element_markdown
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupOrchestrator
 from knox.preprocessing.parsers.base import FileExtension, ParserRouter
+from knox.types import JSONDict
 
-# Length of the content-hash suffix appended to parse-cache filenames.
-# 8 hex chars (32 bits) plus the stem prefix makes collisions astronomically
-# unlikely within a single corpus while keeping filenames human-readable.
+# Length of the content-hash suffix appended to parse-cache keys.
 _CACHE_HASH_LEN = 8
-
-#: Top-level parse-cache key recording which parser chain produced the entry.
-#: Compared against :meth:`ParserRouter.fingerprint` on load; a mismatch is a
-#: cache miss so switching ``[ingest] parser`` re-parses instead of silently
-#: reusing output from the old backend.
-PARSE_CACHE_PARSER_KEY: Final[str] = "_parser_fingerprint"
 
 logger = get_logger(__name__)
 
@@ -150,6 +153,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
 
     cache_dir = paths.cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
+    db_path = vault_db_path(paths.cache_dir)
 
     state_store = TierStateStore(paths.compile_state_file)
     state = state_store.load()
@@ -174,10 +178,10 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         # Compute content hash once, reuse for cache key AND state store.
         # Avoids reading the entire file twice on cache-hit paths.
         content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
-        cache_key = f"{source_file.stem}-{content_hash[:_CACHE_HASH_LEN]}.json"
-        out_file = cache_dir / cache_key
+        doc_key = document_cache_key(source_file, content_hash)
+        prior_data = read_document(db_path, doc_key)
 
-        if not no_cache and out_file.exists() and cached_entry_is_current(out_file, parser_fingerprint):
+        if not no_cache and prior_data is not None and parse_cache_is_current(prior_data, parser_fingerprint):
             logger.info("Skipping %s — already cached", source_file.name)
             cached += 1
             count += 1
@@ -211,7 +215,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         # Preserve user-set tags/attributes before the entry is overwritten.
         # A re-parse (forced, or after a parser change) must not drop what
         # ``knox sources tag`` / ``attr`` wrote into the previous entry.
-        preserve_cached_metadata(doc, out_file)
+        preserve_cached_metadata(doc, prior_data)
 
         # Attach CLI-provided tags — union with any preserved tags.
         if tags:
@@ -235,10 +239,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         data = asdict(doc)
         data[MetadataField.SOURCE_FILE] = str(_relative(Path(data[MetadataField.SOURCE_FILE])))
         data[PARSE_CACHE_PARSER_KEY] = parser_fingerprint
-        out_file.write_text(
-            json.dumps(data, indent=2, default=str),
-            encoding="utf-8",
-        )
+        write_document(db_path, doc_key, data)
         count += 1
         state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
 
@@ -256,10 +257,11 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
                 continue
             if progress_fn is not None:
                 progress_fn(idx, total, f"embedding {source_file.name}")
-            cached_file = cache_dir / parse_cache_name(source_file)
-            if not cached_file.exists():
+            key = document_cache_key(source_file, _content_hash(source_file))
+            data = read_document(db_path, key)
+            if data is None:
                 continue
-            text = extract_text_from_cached(cached_file)
+            text = extract_text_from_data(data)
             dedup_fps[slug] = dedup_orch.fingerprint(slug, text)
 
     # ── Content-level duplicate comparison (end of ingest) ──────────
@@ -295,20 +297,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     )
 
 
-def cached_entry_is_current(cache_file: Path, parser_fingerprint: str) -> bool:
-    """Read *cache_file* and report whether the current parser chain wrote it.
-
-    A missing or unreadable entry is *not* current, so the caller re-parses.
-    """
-    try:
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        logger.warning("Corrupt parse cache at %s — reparsing", cache_file, exc_info=True)
-        return False
-    return parse_cache_is_current(data, parser_fingerprint)
-
-
-def parse_cache_is_current(data: dict[str, Any], parser_fingerprint: str) -> bool:
+def parse_cache_is_current(data: JSONDict, parser_fingerprint: str) -> bool:
     """True when a parse-cache entry was produced by the current parser chain.
 
     Entries written before this key existed return ``False`` — a one-time
@@ -317,8 +306,8 @@ def parse_cache_is_current(data: dict[str, Any], parser_fingerprint: str) -> boo
     return data.get(PARSE_CACHE_PARSER_KEY) == parser_fingerprint
 
 
-def preserve_cached_metadata(doc: ParsedDocument, cache_file: Path) -> None:
-    """Carry user-set tags/attributes from *cache_file* into *doc* before overwrite.
+def preserve_cached_metadata(doc: ParsedDocument, prior_data: JSONDict | None) -> None:
+    """Carry user-set tags/attributes from the prior entry into *doc*.
 
     Called before every parse-cache rewrite. The parser produces content,
     never user metadata; without this a forced re-parse (``knox ingest
@@ -326,27 +315,22 @@ def preserve_cached_metadata(doc: ParsedDocument, cache_file: Path) -> None:
     silently drop what ``knox sources tag`` / ``attr`` wrote into the
     previous entry.
 
-    Reads the entry being overwritten — same content hash, so a re-parse
-    of unchanged content preserves its metadata exactly. Merges are
-    additive: tags are unioned, attributes kept with *doc*'s existing
-    values winning on key conflict. No-op when *cache_file* is absent or
-    unreadable.
+    *prior_data* is the entry being overwritten (read from the store before
+    the write) — same content hash, so a re-parse of unchanged content
+    preserves its metadata exactly. Merges are additive: tags are unioned,
+    attributes kept with *doc*'s existing values winning on key conflict.
+    No-op when *prior_data* is ``None``.
     """
-    if not cache_file.exists():
+    if prior_data is None:
         return
-    try:
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        logger.debug("Unreadable prior parse cache %s — not preserving metadata", cache_file)
-        return
-    prior_meta = data.get("metadata") or {}
-    if not isinstance(prior_meta, dict):  # nocheck: defensive against hand-edited cache
+    prior_meta = prior_data.get("metadata") or {}
+    if not isinstance(prior_meta, dict):
         return
 
     if doc.metadata is None:
         doc.metadata = {}
 
-    prior_tags = prior_meta.get(MetadataField.TAGS) or []
+    prior_tags = cast("list[str]", prior_meta.get(MetadataField.TAGS) or [])
     if prior_tags:
         merged_tags = list(doc.metadata.get(MetadataField.TAGS) or [])
         for tag in prior_tags:
@@ -354,7 +338,7 @@ def preserve_cached_metadata(doc: ParsedDocument, cache_file: Path) -> None:
                 merged_tags.append(tag)
         doc.metadata[MetadataField.TAGS] = merged_tags
 
-    prior_attributes = prior_meta.get(MetadataField.ATTRIBUTES) or {}
+    prior_attributes = cast("dict[str, str]", prior_meta.get(MetadataField.ATTRIBUTES) or {})
     if prior_attributes:
         merged_attributes = dict(prior_attributes)
         merged_attributes.update(doc.metadata.get(MetadataField.ATTRIBUTES) or {})
@@ -377,35 +361,6 @@ def relativize_image_paths(doc: ParsedDocument, base_dir: Path) -> None:
                     el.content = image_path.relative_to(base_dir).as_posix()
 
 
-def parse_cache_name(source_file: Path) -> str:
-    """Content-discriminated parse-cache filename for *source_file*.
-
-    Format: ``<stem>-<content-hash-prefix>.json``. Two files with the same
-    stem but different content get different cache entries; the same file
-    moved to a different subdirectory keeps its entry (content unchanged).
-    """
-    return f"{source_file.stem}-{_content_hash(source_file)}.json"
-
-
 def _content_hash(source_file: Path) -> str:
     """SHA-256 prefix of file contents, used to discriminate same-stem files."""
     return hashlib.sha256(source_file.read_bytes()).hexdigest()[:_CACHE_HASH_LEN]
-
-
-def extract_text_from_cached(json_file: Path) -> str:
-    """Extract plain text from a cached parsed JSON document.
-
-    Concatenates string-type element content. Falls back to reading the
-    cached file's raw bytes when no elements are found.
-    """
-    try:
-        data = json.loads(json_file.read_text(encoding="utf-8"))
-    except Exception:
-        logger.debug("Failed to read cached %s", json_file.name, exc_info=True)
-        return json_file.read_text(errors="replace")
-    text = ""
-    for element in data.get("elements", []):
-        content = element.get("content")
-        if isinstance(content, str) and content.strip():
-            text += content + "\n\n"
-    return text or json_file.read_text(errors="replace")

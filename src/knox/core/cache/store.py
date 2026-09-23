@@ -1,33 +1,32 @@
 """Content-addressed cache store with dependency tracking.
 
-Each cached output is stored as a JSON file in
-``<cache_dir>/<layer>/<sha256-key>.json``.  The key is derived from the
-dependency hashes, so identical inputs always map to the same file.
+Entries live in the single ``.knox/knox.db`` store, in the ``chunks`` table
+(the ``chunk`` layer) or the ``extractions`` table (every other layer, keyed by
+``(layer, cache_key)``). The key is derived from the dependency hashes, so
+identical inputs always map to the same row.
 
-On lookup the store verifies that *every* stored dependency hash still
-matches the caller-provided current hash.  If any dependency changed,
-the entry is treated as a miss and the caller re-generates the value.
+On lookup the store verifies that *every* stored dependency hash still matches
+the caller-provided current hash.  If any dependency changed, the entry is
+treated as a miss and the caller re-generates the value.
 
-Thread safety
--------------
-Different inputs write to different cache files (different keys), so
-workers never contend on the same file.  Writes use an atomic
-write-to-temp-then-rename pattern.  Two workers that compute the same
-key produce the same value, so the race is harmless (idempotent write).
+Concurrency
+-----------
+Different inputs write to different rows (different keys), so workers never
+contend on the same entry.  Writes are idempotent upserts; the DB is opened
+with WAL, so readers do not block the writer (see ``knox.core.store``).
 """
+
+# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
 
 from __future__ import annotations
 
 import hashlib
 import json
-import os
-import shutil
-import tempfile
 from base64 import b64decode, b64encode
 from dataclasses import fields, is_dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import cast
+from typing import Final, cast
 
 from knox.core.models import (
     Chunk,
@@ -38,6 +37,8 @@ from knox.core.models import (
     ResolvedChunk,
     WikiNode,
 )
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import CHUNKS_TABLE, EXTRACTIONS_TABLE
 from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 from knox.types import CacheValue, JSONDict, JSONValue
@@ -57,6 +58,9 @@ _CACHE_ENUMS: dict[str, type[StrEnum]] = {
     "ElementType": ElementType,
 }
 
+#: Cache layer whose payloads are keyed only by ``cache_key`` (no layer column).
+_CHUNK_LAYER: Final[str] = "chunk"
+
 logger = get_logger(__name__)
 
 
@@ -70,12 +74,17 @@ class CacheStore:
     Parameters
     ----------
     cache_dir:
-        Root directory for cache files (typically ``.knox/cache/``).
-        Created lazily on first write.
+        Cache directory used to locate the vault root (typically
+        ``.knox/cache/``), or the vault ``base_dir`` itself.
+    base_dir:
+        Vault root. When given (needed if *cache_dir* is overridden outside
+        ``.knox/``) it is used directly.
     """
 
-    def __init__(self, cache_dir: Path) -> None:
+    def __init__(self, cache_dir: Path, base_dir: Path | None = None) -> None:
         self._cache_dir = cache_dir
+        self._base_dir = base_dir
+        self._db_path = vault_db_path(base_dir if base_dir is not None else cache_dir)
 
     def get(self, layer: str, deps: dict[str, str]) -> CacheValue | None:
         """Look up a cached value.
@@ -95,23 +104,23 @@ class CacheStore:
         The cached value, or ``None`` on miss / stale / error.
         """
         key = make_cache_key(deps)
-        path = self._resolve(layer, key)
-        if not path.exists():
+        payload = self._read_payload(layer, key)
+        if payload is None:
             return None
 
         try:
-            decoded = decode_json(json.loads(path.read_text(encoding="utf-8")))
+            decoded = decode_json(json.loads(payload))
             if not isinstance(decoded, dict):
-                raise ValueError(f"Cache entry at {path} is not a JSON object")
+                raise ValueError(f"Cache entry {layer}/{key} is not a JSON object")
         except Exception:
-            logger.debug("Cache read error for %s - treating as miss", path, exc_info=True)
+            logger.debug("Cache read error for %s/%s - treating as miss", layer, key, exc_info=True)
             return None
         entry = cast("JSONDict", decoded)
 
         # Validate every stored dependency against the caller's current deps.
         stored_deps = entry.get("deps")
         if not isinstance(stored_deps, dict):
-            raise ValueError(f"Cache entry at {path} has missing or malformed deps block")
+            raise ValueError(f"Cache entry {layer}/{key} has missing or malformed deps block")
         for dep_name, stored_hash in stored_deps.items():
             if deps.get(dep_name) != stored_hash:
                 logger.debug("Cache dep mismatch %s/%s: %s changed", layer, key, dep_name)
@@ -146,10 +155,7 @@ class CacheStore:
         return value
 
     def set(self, layer: str, deps: dict[str, str], value: CacheValue) -> None:
-        """Store a value with its dependency hashes.
-
-        Uses an atomic write-to-temp-then-rename so concurrent writers
-        never see a partial file.
+        """Store a value with its dependency hashes (idempotent upsert).
 
         Parameters
         ----------
@@ -162,9 +168,6 @@ class CacheStore:
             Arbitrary Python object (JSON-serialised).
         """
         key = make_cache_key(deps)
-        path = self._resolve(layer, key)
-        path.parent.mkdir(parents=True, exist_ok=True)
-
         entry = {
             "key": key,
             "layer": layer,
@@ -172,28 +175,24 @@ class CacheStore:
             "value": value,
             "created_at": iso_local(),
         }
-
-        # Atomic write to avoid partial reads from concurrent workers.
         try:
-            fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".tmp", text=True)
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(encode_json(entry), f)
-            os.replace(tmp, path)
-            logger.debug("Cache write OK layer=%s key=%s size=%d", layer, key, path.stat().st_size)
-        except OSError:
+            payload = json.dumps(encode_json(entry))
+        except (TypeError, ValueError):
             # Cache write failure is non-fatal (next read is a miss), but make it visible.
-            logger.warning("Cache write failed for %s", path, exc_info=True)
+            logger.warning("Cache write failed for %s/%s", layer, key, exc_info=True)
+            return
+        self._write_payload(layer, key, payload)
+        logger.debug("Cache write OK layer=%s key=%s size=%d", layer, key, len(payload))
 
     def has(self, layer: str, deps: dict[str, str]) -> bool:
-        """Quick existence check — returns ``True`` if the file exists.
+        """Quick existence check — ``True`` if the row exists.
 
         .. note::
 
            This does **not** validate dependencies.  Use :meth:`get`
            when you need a correctness check.
         """
-        path = self._resolve(layer, make_cache_key(deps))
-        return path.exists()
+        return self._read_payload(layer, make_cache_key(deps)) is not None
 
     def invalidate(self, layer: str | None = None) -> None:
         """Delete cached entries.
@@ -201,21 +200,52 @@ class CacheStore:
         Parameters
         ----------
         layer:
-            If given, only that layer is cleared.  ``None`` wipes the
-            entire cache directory.
+            If given, only that layer is cleared.  ``None`` wipes every
+            layer owned by this store (the ``chunk`` layer and all
+            ``extractions`` layers).
         """
-        if layer is not None:
-            target = self._cache_dir / layer
-            if target.is_dir():
-                shutil.rmtree(target, ignore_errors=True)
-                logger.debug("Cache layer %s invalidated", layer)
-        elif self._cache_dir.is_dir():
-            shutil.rmtree(self._cache_dir, ignore_errors=True)
-            logger.debug("Entire cache invalidated")
+        if layer is None:
+            sqls = [
+                (f"DELETE FROM {CHUNKS_TABLE}", ()),
+                (f"DELETE FROM {EXTRACTIONS_TABLE}", ()),
+            ]
+        elif layer == _CHUNK_LAYER:
+            sqls = [(f"DELETE FROM {CHUNKS_TABLE}", ())]
+        else:
+            sqls = [(f"DELETE FROM {EXTRACTIONS_TABLE} WHERE layer = ?", (layer,))]
+        with open_store(self._db_path) as conn:
+            for sql, params in sqls:
+                conn.execute(sql, params)
+        logger.debug("Cache invalidated: layer=%s", layer or "*")
 
-    def _resolve(self, layer: str, key: str) -> Path:
-        """Resolve the on-disk path for a cache entry."""
-        return self._cache_dir / layer / f"{key}.json"
+    def _read_payload(self, layer: str, key: str) -> str | None:
+        """Return the stored payload JSON for a layer/key, or ``None``."""
+        if not self._db_path.exists():
+            return None
+        if layer == _CHUNK_LAYER:
+            sql = f"SELECT payload FROM {CHUNKS_TABLE} WHERE cache_key = ?"
+            params = (key,)
+        else:
+            sql = f"SELECT payload FROM {EXTRACTIONS_TABLE} WHERE layer = ? AND cache_key = ?"
+            params = (layer, key)
+        with open_store(self._db_path) as conn:
+            row = conn.execute(sql, params).fetchone()
+        return None if row is None else cast("str", row["payload"])
+
+    def _write_payload(self, layer: str, key: str, payload: str) -> None:
+        """Upsert the payload JSON for a layer/key."""
+        with open_store(self._db_path) as conn:
+            if layer == _CHUNK_LAYER:
+                conn.execute(
+                    f"INSERT INTO {CHUNKS_TABLE}(cache_key, payload) VALUES (?, ?) ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload",
+                    (key, payload),
+                )
+            else:
+                conn.execute(
+                    f"INSERT INTO {EXTRACTIONS_TABLE}(layer, cache_key, payload) VALUES (?, ?, ?) "
+                    f"ON CONFLICT(layer, cache_key) DO UPDATE SET payload = excluded.payload",
+                    (layer, key, payload),
+                )
 
 
 def encode_json(obj: object) -> JSONValue:  # noqa: PLR0911

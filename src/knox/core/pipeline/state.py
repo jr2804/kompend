@@ -2,18 +2,15 @@
 
 Tracks the highest tier that has been completed for each source file,
 its content hash at the time of compilation, and a few auxiliary
-counters. The state lives in ``.knox/compile_state.json`` inside the
-output directory so a restart picks up exactly where the previous run
-left off.
-
-The store is deliberately simple: a JSON file keyed by source-file
-stem (and resolved path) — the kind of state that has to survive a
-process restart and not require sqlite migrations.
+counters. The state lives in the ``tier_state`` table of the single
+``.knox/knox.db`` store so a restart picks up exactly where the previous
+run left off.
 """
+
+# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
 
 from __future__ import annotations
 
-import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import StrEnum
@@ -22,6 +19,8 @@ from typing import Any
 
 from knox.core.models import MetadataField
 from knox.core.pipeline.config import Tier
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import TIER_STATE_TABLE
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
@@ -96,39 +95,70 @@ class TierState:
 
 
 class TierStateStore:
-    """JSON-backed store for per-source tier state.
+    """Store for per-source tier state, backed by the single ``knox.db``.
 
     Parameters
     ----------
     state_file:
-        File to read/write. Created lazily on first save.
+        Legacy artifact path (``.knox/compile_state.json``) used to locate the
+        vault root, or the vault ``base_dir`` itself.
+    base_dir:
+        Vault root. When given (the pipeline passes it) *state_file* is ignored.
     """
 
     def __init__(self, state_file: Path, base_dir: Path | None = None) -> None:
         self.state_file = state_file
         self._base_dir = base_dir
+        self._db_path = vault_db_path(base_dir if base_dir is not None else state_file)
 
     def load(self) -> TierState:
-        """Read the state file.
+        """Read tier state from the store.
 
-        Returns an empty state when the file is missing (fresh start). A
-        corrupt file is a bug — it raises so the real cause surfaces instead
-        of silently wiping tier progress.
+        Returns an empty state when no rows exist (fresh start).
         """
-        if not self.state_file.exists():
+        if not self._db_path.exists():
             return TierState()
-        data = json.loads(self.state_file.read_text(encoding="utf-8"))
-        if not isinstance(data, dict):
-            return TierState()
-        return TierState.from_dict(data)
+        with open_store(self._db_path) as conn:
+            rows = conn.execute(
+                f"SELECT stem, source_file, content_hash, current_tier, last_compile, search_hits, last_hit, ingested_by FROM {TIER_STATE_TABLE}"
+            ).fetchall()
+        return TierState(
+            entries={
+                row["stem"]: SourceState(
+                    stem=row["stem"],
+                    source_file=row["source_file"],
+                    content_hash=row["content_hash"],
+                    current_tier=int(row["current_tier"]),
+                    last_compile=row["last_compile"],
+                    search_hits=int(row["search_hits"]),
+                    last_hit=row["last_hit"],
+                    ingested_by=row["ingested_by"],
+                )
+                for row in rows
+            }
+        )
 
     def save(self, state: TierState) -> None:
-        """Persist the state to disk. Creates parent directories as needed."""
-        self.state_file.parent.mkdir(parents=True, exist_ok=True)
-        self.state_file.write_text(
-            json.dumps(state.to_dict(), indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        """Replace the stored tier state with *state* (full overwrite)."""
+        with open_store(self._db_path) as conn:
+            conn.execute(f"DELETE FROM {TIER_STATE_TABLE}")
+            conn.executemany(
+                f"INSERT INTO {TIER_STATE_TABLE}(stem, source_file, content_hash, current_tier, "
+                f"last_compile, search_hits, last_hit, ingested_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    (
+                        entry.stem,
+                        entry.source_file,
+                        entry.content_hash,
+                        entry.current_tier,
+                        entry.last_compile,
+                        entry.search_hits,
+                        entry.last_hit,
+                        entry.ingested_by,
+                    )
+                    for entry in state.entries.values()
+                ],
+            )
 
     def record(
         self,

@@ -15,15 +15,19 @@ This is the API surface: ``knox log`` is a thin CLI wrapper around
 :func:`build_log_report`.
 """
 
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
+
 from __future__ import annotations
 
-import json
+import sqlite3
 from pathlib import Path
 
 from knox.core.models import load_cached_wiki
 from knox.core.page_builder import PageBuilder, code_span, em
 from knox.core.paths import VaultPaths
 from knox.core.reporting.runlog import RunEvent
+from knox.core.store import open_store
+from knox.core.store.schema import RUNS_TABLE
 from knox.lint.history import history_to_text, load_lint_history
 from knox.logging import get_logger
 from knox.output.wiki_index import LogStage, generate_log_entry
@@ -48,11 +52,11 @@ def build_log_report(base_dir: Path, *, last_n: int = 25) -> str:
     if compile_section:
         sections.extend(compile_section)
 
-    runs_section = _runs_section(paths.runs_file, last_n=last_n)
+    runs_section = _runs_section(paths.knox_db_file, last_n=last_n)
     if runs_section:
         sections.extend(runs_section)
 
-    lint_section = _lint_section(paths.lint_history_file, last_n=last_n)
+    lint_section = _lint_section(paths.knox_db_file, last_n=last_n)
     if lint_section:
         sections.extend(lint_section)
 
@@ -72,9 +76,9 @@ def _compile_section(base_dir: Path) -> list[str]:
     return ["## Last Compile", "", entry, ""]
 
 
-def _runs_section(runs_file: Path, *, last_n: int) -> list[str]:
-    """Render the command timeline from ``runs.jsonl``."""
-    runs = _load_runs(runs_file)
+def _runs_section(db_path: Path, *, last_n: int) -> list[str]:
+    """Render the command timeline from the ``runs`` table."""
+    runs = _load_runs(db_path)
     if not runs:
         return []
     # Show the most recent runs; each "end" is a completed command.
@@ -110,30 +114,37 @@ def _runs_section(runs_file: Path, *, last_n: int) -> list[str]:
     return [*lines, ""]
 
 
-def _lint_section(lint_file: Path, *, last_n: int) -> list[str]:
-    """Render the lint trend from ``lint_history.jsonl``."""
-    if not lint_file.is_file():
-        return []
-    entries = load_lint_history(lint_file, last_n=last_n)
+def _lint_section(db_path: Path, *, last_n: int) -> list[str]:
+    """Render the lint trend from the ``lint_runs`` table."""
+    entries = load_lint_history(db_path, last_n=last_n)
     if not entries:
         return []
     text = history_to_text(entries, show_trend=True)
     return ["## Lint Trend", "", text, ""]
 
 
-def _load_runs(runs_file: Path) -> list[RunEvent]:
-    """Parse ``runs.jsonl`` into a list of event dicts (skips bad lines)."""
-    if not runs_file.is_file():
-        return []
+def _load_runs(db_path: Path) -> list[RunEvent]:
+    """Read the ``runs`` table into event dicts (oldest first, nulls omitted)."""
     out: list[RunEvent] = []
-    for raw in runs_file.read_text(encoding="utf-8").splitlines():
-        stripped = raw.strip()
-        if not stripped:
-            continue
-        try:
-            out.append(json.loads(stripped))
-        except json.JSONDecodeError:
-            logger.debug("skipping unparseable run entry: %s", stripped, exc_info=True)
+    if not db_path.is_file():
+        return out
+    try:
+        with open_store(db_path) as conn:
+            rows = conn.execute(f"SELECT event, run_id, cmd, ts, status, duration_s, exit, error FROM {RUNS_TABLE} ORDER BY id").fetchall()
+    except sqlite3.Error as exc:
+        logger.debug("could not read runs table: %s", exc)
+        return out
+    for row in rows:
+        event: RunEvent = {"event": row["event"], "run_id": row["run_id"], "cmd": row["cmd"], "ts": row["ts"]}
+        if row["status"] is not None:
+            event["status"] = row["status"]
+        if row["duration_s"] is not None:
+            event["duration_s"] = row["duration_s"]
+        if row["exit"] is not None:
+            event["exit"] = row["exit"]
+        if row["error"] is not None:
+            event["error"] = row["error"]
+        out.append(event)
     return out
 
 

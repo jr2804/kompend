@@ -8,10 +8,10 @@ first-seen kind and uses it on every subsequent compile.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from knox.core.pipeline.entity_types import EntityTypeRegistry
+from knox.core.store import vault_db_path
 
 
 def test_get_returns_none_for_missing_key(tmp_path: Path) -> None:
@@ -52,10 +52,8 @@ def test_save_then_load_round_trip(tmp_path: Path) -> None:
     reg.record("itu-t", "organization")
     reg.save()
 
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    assert raw == {"polqa": "standard", "itu-t": "organization"}
-
     reg2 = EntityTypeRegistry(path)
+    assert reg2.all() == {"polqa": "standard", "itu-t": "organization"}
     assert reg2.get("polqa") == "standard"
     assert reg2.get("itu-t") == "organization"
     assert len(reg2) == 2
@@ -67,37 +65,21 @@ def test_load_missing_file_is_empty(tmp_path: Path) -> None:
     assert len(reg) == 0
 
 
-def test_load_corrupt_file_is_empty_not_crash(tmp_path: Path) -> None:
-    path = tmp_path / "entity_types.json"
-    path.write_text("{not json", encoding="utf-8")
-    reg = EntityTypeRegistry(path)
-    assert reg.all() == {}
-
-
-def test_load_non_dict_treated_as_empty(tmp_path: Path) -> None:
-    """A list or string at the top level is treated as empty (defensive)."""
-    path = tmp_path / "entity_types.json"
-    path.write_text(json.dumps(["not", "a", "dict"]), encoding="utf-8")
-    reg = EntityTypeRegistry(path)
-    assert reg.all() == {}
-
-
 def test_save_creates_parent_dir(tmp_path: Path) -> None:
     path = tmp_path / "nested" / "subdir" / "entity_types.json"
     reg = EntityTypeRegistry(path)
     reg.record("polqa", "standard")
     reg.save()
-    assert path.exists()
+    assert vault_db_path(path).exists()
 
 
-def test_save_is_atomic(tmp_path: Path) -> None:
-    """No .tmp files left behind on successful save."""
+def test_save_is_durable(tmp_path: Path) -> None:
+    """A saved registry is visible to a fresh instance (committed, not cached)."""
     path = tmp_path / "entity_types.json"
     reg = EntityTypeRegistry(path)
     reg.record("polqa", "standard")
     reg.save()
-    siblings = [p.name for p in path.parent.iterdir()]
-    assert siblings == ["entity_types.json"]
+    assert EntityTypeRegistry(path).get("polqa") == "standard"
 
 
 def test_all_returns_copy(tmp_path: Path) -> None:
