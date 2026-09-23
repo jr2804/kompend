@@ -129,11 +129,6 @@ class MarkdownContext:
     resolve_image: ImageResolver | None = None
 
 
-def _no_image(_alt_text: str, _ref_url: str) -> None:
-    """Default resolver: no images available (markdown-only backends)."""
-    return None
-
-
 # ── The converter ──────────────────────────────────────────────────────
 
 
@@ -297,6 +292,11 @@ def markdown_to_elements(  # noqa: PLR0912 — one branch per markdown block kin
         i = j
 
     return elements, reading_order, first_h1
+
+
+def _no_image(_alt_text: str, _ref_url: str) -> None:
+    """Default resolver: no images available (markdown-only backends)."""
+    return None
 
 
 def build_image_element(
