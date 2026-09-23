@@ -25,9 +25,28 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
 - `TAGS` and `ATTRIBUTES` are `ARRAY_STRING` fields with `InvertIndexParam`.
   Filter them with `CONTAIN_ANY` / `CONTAIN_ALL` only — `LIKE` on an
   `ARRAY_STRING` field segfaults zvec 0.7.0.
-- The reopen drift guard compares `(name, data_type)` pairs, not names alone: a
-  field whose type changed while keeping its name (e.g. `tags` STRING →
-  ARRAY_STRING) must destroy and rebuild, never reopen.
+- The reopen drift guard compares a `(name, "data_type/index_kind")` fingerprint,
+  not names or types alone: a field whose type changed while keeping its name
+  (e.g. `tags` STRING → ARRAY_STRING) **and** a field that gained an index
+  (e.g. `title` gaining `FtsIndexParam`, which leaves name/type unchanged) must
+  destroy and rebuild, never reopen.
+- `TITLE` and `CONTENT_PREVIEW` carry `FtsIndexParam`; lexical recall is
+  **preview-bounded** (`content_preview` is capped at `_PREVIEW_LEN`). Page
+  bodies live in the wiki markdown the LLM reads for synthesis, so lexical search
+  only has to *find* the right pages — do not grow the stored payload to full text.
+- `ATTR_KEYS` is a bare-key `ARRAY_STRING` (alongside `ATTRIBUTES`' `key=value`
+  tokens) so attribute **key-presence** is expressible server-side. `attribute_keys`
+  filters `ATTR_KEYS CONTAIN_ALL`.
+- Server-side filters are `CONTAIN_ANY`/`CONTAIN_ALL` only (never `LIKE` on an
+  array field). `tags_dnf` is OR-of-ANDs: each group is `tags CONTAIN_ALL (...)`
+  and groups are `or`-joined inside one parenthesised clause; clause *types*
+  combine with `and`.
+- `fts_search()` fuses the two FTS fields with `RrfReRanker`; `hybrid_search()`
+  fuses `[vector, title-fts, content_preview-fts]` in **one** `collection.query`
+  with `WeightedReRanker([vector_weight, fts_weight, fts_weight])`. FTS and
+  reranker scores are already higher-is-better — unlike the vector path, do NOT
+  apply `_score_from_distance` to them. Both degrade to `[]`/vector-only when the
+  collection has no FTS index (logged once, never raised into the query path).
 - `_prune_orphans` derives its candidate set from the collection's actual
   contents (`iter_docs()`), not the manifest diff, so docs written before the
   manifest existed are pruned too.

@@ -224,6 +224,7 @@ def test_wiki_store_prunes_docs_missing_from_manifest(tmp_path: Path) -> None:
                     "content_preview": "",
                     "tags": [],
                     "attributes": [],
+                    "attr_keys": [],
                 },
             ),
         ],

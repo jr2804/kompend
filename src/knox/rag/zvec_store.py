@@ -59,6 +59,7 @@ class ZvecField(StrEnum):
     CONTENT_PREVIEW = "content_preview"
     TAGS = "tags"
     ATTRIBUTES = "attributes"
+    ATTR_KEYS = "attr_keys"
     EMBEDDING = "embedding"
 
 
@@ -136,6 +137,7 @@ class ZvecWikiStore:
         self.db_file = Path(db_file)
         self._provider = embedding_provider
         self._collection: ZvecCollection | None = None
+        self._fts_unavailable = False
 
     @property
     def available(self) -> bool:
@@ -211,6 +213,95 @@ class ZvecWikiStore:
             for r in results
         ]
 
+    def fts_search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_any: Sequence[str] | None = None,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_any: Sequence[str] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> list[dict[str, object]]:
+        """Lexical (BM25) search over the FTS-indexed ``title`` + ``content_preview``.
+
+        Returns the same dict shape as :meth:`search`; ``score`` is the fused
+        BM25 relevance (higher = better, no distance conversion). Returns ``[]``
+        when the store is closed or the collection has no FTS index (logged
+        once) — never raises into the query path.
+        """
+        if not self.available or self._collection is None:
+            return []
+        try:
+            results = self._collection.query(
+                self._fts_queries(query),
+                topk=top_k,
+                filter=_build_filter(
+                    tags_any=tags_any,
+                    tags_all=tags_all,
+                    tags_dnf=tags_dnf,
+                    attributes_any=attributes_any,
+                    attributes_all=attributes_all,
+                    attribute_keys=attribute_keys,
+                ),
+                reranker=_zvec.RrfReRanker(),
+            )
+        except Exception as exc:
+            self._note_fts_unavailable(exc)
+            return []
+        return [_hit_to_dict(r) for r in results]
+
+    def hybrid_search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_any: Sequence[str] | None = None,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_any: Sequence[str] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+        vector_weight: float = 1.0,
+        fts_weight: float = 0.3,
+    ) -> list[dict[str, object]]:
+        """Fuse vector similarity and lexical BM25 in ONE zvec call.
+
+        Sub-queries are ``[vector, title-fts, content-preview-fts]`` combined by
+        ``WeightedReRanker([vector_weight, fts_weight, fts_weight])``. zvec's
+        weighted-reranker score is already higher-is-better (verified). When the
+        collection has no FTS index, degrades to the vector-only path (logged
+        once).
+        """
+        if not self.available or self._provider is None or self._collection is None:
+            return []
+        filter_expr = _build_filter(
+            tags_any=tags_any,
+            tags_all=tags_all,
+            tags_dnf=tags_dnf,
+            attributes_any=attributes_any,
+            attributes_all=attributes_all,
+            attribute_keys=attribute_keys,
+        )
+        try:
+            results = self._collection.query(
+                [_zvec.Query(ZvecField.EMBEDDING, vector=self._provider.embed(query)), *self._fts_queries(query)],
+                topk=top_k,
+                filter=filter_expr,
+                reranker=_zvec.WeightedReRanker([vector_weight, fts_weight, fts_weight]),
+            )
+        except Exception as exc:
+            self._note_fts_unavailable(exc)
+            fallback = self._collection.query(
+                _zvec.Query(ZvecField.EMBEDDING, vector=self._provider.embed(query)),
+                topk=top_k,
+                filter=filter_expr,
+            )
+            return [_vector_hit_to_dict(r) for r in fallback]
+        return [_hit_to_dict(r) for r in results]
+
     def close(self) -> None:
         if self._collection is not None:
             with contextlib.suppress(Exception):
@@ -265,6 +356,16 @@ class ZvecWikiStore:
             logger.warning("No zvec store found at %s. Rebuild with build_index().", coll_dir)
         return store
 
+    def _note_fts_unavailable(self, exc: Exception) -> None:
+        """Log FTS unavailability once; keeps the query path exception-free."""
+        if not self._fts_unavailable:
+            self._fts_unavailable = True
+            logger.warning(
+                "FTS unavailable for %s (%s); lexical/hybrid search disabled until the next rebuild",
+                self.db_file,
+                exc,
+            )
+
     def _create_collection(self) -> ZvecCollection:
         if self._provider is None:
             raise RuntimeError("Embedding provider not configured. Call build_index() first.")
@@ -283,8 +384,8 @@ class ZvecWikiStore:
             try:
                 collection = _zvec.open(path=str(self.db_file))
                 stored_dim = collection.schema.vectors[0].dimension
-                stored_fields = {f.name: f.data_type for f in collection.schema.fields}
-                expected_fields = {f.name: f.data_type for f in schema.fields}
+                stored_fields = {f.name: _field_fingerprint(f) for f in collection.schema.fields}
+                expected_fields = {f.name: _field_fingerprint(f) for f in schema.fields}
                 if stored_dim != self._provider.dim:
                     logger.warning(
                         "Vector store at %s has dimension %d but the embedding model produces %d; rebuilding",
@@ -302,7 +403,7 @@ class ZvecWikiStore:
                     missing = sorted(set(expected_fields) - set(stored_fields))
                     obsolete = sorted(set(stored_fields) - set(expected_fields))
                     retyped = sorted(
-                        f"{name}: {stored_fields[name].name}->{expected_fields[name].name}"
+                        f"{name}: {stored_fields[name][1]}->{expected_fields[name][1]}"
                         for name in set(stored_fields) & set(expected_fields)
                         if stored_fields[name] != expected_fields[name]
                     )
@@ -353,6 +454,7 @@ class ZvecWikiStore:
                     ZvecField.CONTENT_PREVIEW: node.content[: self._PREVIEW_LEN],
                     ZvecField.TAGS: list(node.metadata.get(MetadataField.TAGS, [])),
                     ZvecField.ATTRIBUTES: _attributes_to_list(node.metadata.get(MetadataField.ATTRIBUTES) or {}),
+                    ZvecField.ATTR_KEYS: list(node.metadata.get(MetadataField.ATTRIBUTES, {}).keys()),
                 },
             )
             docs_batch.append(doc)
@@ -397,16 +499,31 @@ class ZvecWikiStore:
         return len(orphans)
 
     @staticmethod
+    def _fts_queries(query: str) -> list[_zvec.Query]:
+        """FTS sub-queries over the two FTS-indexed text fields.
+
+        Lexical recall is preview-bounded: ``content_preview`` is capped at
+        ``_PREVIEW_LEN`` chars and the page body lives in the wiki markdown the
+        LLM reads for synthesis (memory #844). Lexical search only has to
+        *find* the right pages.
+        """
+        return [
+            _zvec.Query(ZvecField.TITLE, fts=_zvec.Fts(match_string=query)),
+            _zvec.Query(ZvecField.CONTENT_PREVIEW, fts=_zvec.Fts(match_string=query)),
+        ]
+
+    @staticmethod
     def _expected_field_schemas() -> list[_zvec.FieldSchema]:
         """Canonical field list declared by the current knox version (SoT)."""
         return [
             _zvec.FieldSchema(ZvecField.NODE_ID, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.TITLE, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.TITLE, _zvec.DataType.STRING, index_param=_zvec.FtsIndexParam()),
             _zvec.FieldSchema(ZvecField.NODE_TYPE, _zvec.DataType.STRING),
             _zvec.FieldSchema(ZvecField.SOURCE_FILE, _zvec.DataType.STRING),
-            _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING),
+            _zvec.FieldSchema(ZvecField.CONTENT_PREVIEW, _zvec.DataType.STRING, index_param=_zvec.FtsIndexParam()),
             _zvec.FieldSchema(ZvecField.TAGS, _zvec.DataType.ARRAY_STRING, index_param=_zvec.InvertIndexParam()),
             _zvec.FieldSchema(ZvecField.ATTRIBUTES, _zvec.DataType.ARRAY_STRING, index_param=_zvec.InvertIndexParam()),
+            _zvec.FieldSchema(ZvecField.ATTR_KEYS, _zvec.DataType.ARRAY_STRING, index_param=_zvec.InvertIndexParam()),
         ]
 
 
@@ -427,28 +544,83 @@ def _attributes_to_list(attrs: dict[str, list[str]]) -> list[str]:
     return [f"{key}={value}" for key, values in attrs.items() for value in values]
 
 
+def _field_fingerprint(field: _zvec.FieldSchema) -> tuple[str, str]:
+    """Schema identity used by the rebuild guard: ``(name, "TYPE/index")``.
+
+    Includes the index kind so adding an FTS index to an existing field
+    (which leaves name and data_type unchanged) still trips a rebuild.
+    """
+    return (field.name, f"{field.data_type.name}/{_index_kind(field.index_param)}")
+
+
+def _index_kind(index_param: _zvec.InvertIndexParam | _zvec.FtsIndexParam | None) -> str:
+    """Name of a scalar field's index type, or ``"none"`` when unindexed."""
+    if index_param is None:
+        return "none"
+    return index_param.type.name
+
+
+def _hit_to_dict(hit: _zvec.Doc) -> dict[str, object]:
+    """Search-result dict for FTS/reranked hits — ``score`` kept as returned.
+
+    FTS and reranker scores are already higher-is-better, so no distance
+    conversion is applied here (unlike :func:`_vector_hit_to_dict`).
+    """
+    fields = hit.fields if isinstance(hit.fields, dict) else {}
+    return {
+        "id": fields.get(ZvecField.NODE_ID, hit.id),
+        "score": hit.score if hit.score is not None else 0.0,
+        **fields,
+    }
+
+
+def _vector_hit_to_dict(hit: _zvec.Doc) -> dict[str, object]:
+    """Search-result dict for a raw vector hit (COSINE distance -> similarity)."""
+    fields = hit.fields if isinstance(hit.fields, dict) else {}
+    return {
+        "id": fields.get(ZvecField.NODE_ID, hit.id),
+        "score": _score_from_distance(hit.score),
+        **fields,
+    }
+
+
 def _build_filter(
     *,
     tags_any: Sequence[str] | None = None,
     tags_all: Sequence[str] | None = None,
+    tags_dnf: Sequence[Sequence[str]] | None = None,
     attributes_any: Sequence[str] | None = None,
     attributes_all: Sequence[str] | None = None,
+    attribute_keys: Sequence[str] | None = None,
 ) -> str | None:
     """Compose a zvec filter string from optional array-membership filters.
 
     Returns ``None`` when nothing is requested, reproducing the unfiltered
     query. Only ``CONTAIN_ANY``/``CONTAIN_ALL`` are used: ``LIKE`` on an
     ``ARRAY_STRING`` field segfaults zvec 0.7.0.
+
+    ``tags_dnf`` is an OR-of-ANDs (DNF): each inner group becomes
+    ``tags CONTAIN_ALL (...)`` and the groups are ``or``-joined inside one
+    parenthesised clause. All clause *types* are combined with ``and``, so the
+    full query is ``(tags) and (attributes) and (attr-keys) and similarity``.
+    ``attribute_keys`` matches bare attribute keys (presence), while
+    ``attributes_all``/``attributes_any`` match ``key=value`` tokens.
     """
     clauses: list[str] = []
     if tags_all:
         clauses.append(_contain_clause(ZvecField.TAGS, tags_all, require_all=True))
     if tags_any:
         clauses.append(_contain_clause(ZvecField.TAGS, tags_any, require_all=False))
+    if tags_dnf:
+        groups = [_contain_clause(ZvecField.TAGS, group, require_all=True) for group in tags_dnf if group]
+        if groups:
+            clauses.append(f"({' or '.join(groups)})")
     if attributes_all:
         clauses.append(_contain_clause(ZvecField.ATTRIBUTES, attributes_all, require_all=True))
     if attributes_any:
         clauses.append(_contain_clause(ZvecField.ATTRIBUTES, attributes_any, require_all=False))
+    if attribute_keys:
+        clauses.append(_contain_clause(ZvecField.ATTR_KEYS, attribute_keys, require_all=True))
     return " and ".join(clauses) if clauses else None
 
 
