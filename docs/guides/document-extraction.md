@@ -46,6 +46,41 @@ uv pip install mineru       # layout-aware PDF/Office with OCR (torch, ONNX)
 List currently available backends with `knox list-parsers`. Uninstalled
 backends configured in `parser` are silently skipped (with a warning).
 
+> **Installing them into a knox project:** run the `uv pip install` commands
+> above *outside* the project's resolved environment (a separate venv or a
+> container), then point knox at that environment. They cannot be added to the
+> project's dependency graph without regressing the core LLM stack — see
+> below.
+
+### Why `marker` cannot be a locked extra
+
+Measured against the current lock, `marker-pdf` 2.0.0 resolves only by
+downgrading eight packages, five of them backwards past what knox's LLM stack
+requires:
+
+| Package | knox | marker forces | Note |
+|---------|------|---------------|------|
+| `pydantic-ai` | 2.48.0 | 2.31.1 | via `openai<3` / `anthropic<1` |
+| `pydantic-ai-harness` | 0.34.0 | 0.24.0 | `AgenticHarness` targets 0.34 |
+| `anthropic` | 1.8.0 | 0.125.0 | below `pydantic-ai[anthropic]`'s `>=1.8.0` |
+| `openai` | 3.19.0 | 2.54.0 | below `pydantic-ai[openai]`'s `>=3.8.0` |
+| `pillow` | 12.3.0 | 10.4.0 | `marker-pdf`/`surya-ocr` `<11` |
+| `opencv-python-headless` | 5.0.0.93 | 4.11.0.86 | `surya-ocr` **exact** pin |
+| `pypdfium2` | 5.13.0 | 5.10.1 | `pdftext` **exact** pin |
+| `filelock` | 4.0.1 | 3.32.7 | `surya-ocr` `<4` |
+
+The three hard blockers live in marker's transitive tree, not in marker itself:
+`surya-ocr` pins `opencv-python-headless==4.11.0.86`, `pdftext` pins
+`pypdfium2==5.10.1`, and `marker-pdf` caps `anthropic<1` / `openai<3` — the
+last two are mutually exclusive with `pydantic-ai[anthropic]>=1.8.0` and
+`pydantic-ai[openai]>=3.8.0`, which knox needs for its Anthropic-protocol and
+OpenAI-compatible providers.
+
+Relaxing knox's own `opencv-python-headless` floor removes the first conflict
+but not the rest, and the resolution that remains still walks the LLM stack
+back. `mineru` and `glmocr` install cleanly, which is why they are the two
+manual backends actually used.
+
 ## Supported Formats
 
 > **Default coverage:** `liteparse` handles `.pdf`, `.docx`, `.pptx`, and
@@ -125,7 +160,7 @@ to on.
 |---------|---------------|-------------|
 | `liteparse` | Fastest by a wide margin (Rust core, no Python ML stack); native PDF via PDFium; office formats via an external LibreOffice install; figures extracted with real bytes; the right default for high-volume, born-digital text. | **No equation support at all** — its Markdown never contains `$$`, so no FORMULA element can ever be produced. Table detection is layout-blind and can produce garbage rows on multi-column pages. No internal captioning (every figure needs the VLM pass). |
 | `docling` | Broadest format coverage (20+, incl. email/EPUB/AsciiDoc); the only backend here that is a single locked extra with no manual install; structure-preserving headings/lists/figures; table structure + formula + code enrichment all available and on by default; RapidOCR handles scanned pages with no GPU. | Slowest of the local backends (ML models per document); table accuracy good but not best-in-class for complex borderless tables; no bounding-box/page-layout coordinates exposed; first parse downloads models. |
-| `marker` | Highest reported benchmark accuracy of the local backends; equations and tables as first-class output; device-aware modes; optional LLM processors for extra quality when an LLM service is configured. | Cannot be a locked extra (its dependency graph conflicts), so it needs `uv pip install marker-pdf`; model download + GPU strongly preferred; slowest on CPU; internal figure captions only via the opt-in LLM path. |
+| `marker` | Highest reported benchmark accuracy of the local backends; equations and tables as first-class output; device-aware modes; optional LLM processors for extra quality when an LLM service is configured. | Cannot be a locked extra — its transitive pins (`opencv-python-headless` and `pypdfium2` exact, `anthropic<1`, `openai<3`) force an eight-package downgrade incl. `pydantic-ai` (see [above](#why-marker-cannot-be-a-locked-extra)); model download + GPU strongly preferred; slowest on CPU; internal figure captions only via the opt-in LLM path. |
 | `mineru` | Layout-aware with selectable backends (`pipeline` OCR + layout, `vlm`, `hybrid`); `formula_enable`/`table_enable` on by default; parse-method control (`auto`/`ocr`/`txt`) lets you force or skip OCR per corpus. | Cannot be a locked extra; heavy install (torch + ONNX); its Markdown carries no page markers, so `page_count` is reported as unknown (`0`); slower than docling on typical corpora. |
 | `glmocr` | Strong on image-only and raster content (photos, scans, screenshots) via a multimodal VLM; emits a structured per-element JSON (labels + bounding boxes) rather than a flat Markdown blob; no local model, so CPU-only hosts work. | Needs `ZHIPU_API_KEY` (cloud) or a running self-hosted endpoint; network latency per page; cannot be a locked extra; per-element page attribution is fixed to page 1 in the crop path. |
 | `pandoc` | No ML, no model downloads; excellent for legacy text formats (RST, LaTeX, ODT, EPUB, TEX) and any text file without a dedicated parser; equation and code passthrough from LaTeX sources. | No figures, no OCR, no layout analysis — it re-renders whatever the source format already encodes; the binary is downloaded on first use. |
