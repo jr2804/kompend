@@ -17,10 +17,11 @@ from knox.cli._pipeline_helpers import resolve_compile_inputs
 from knox.cli._post_compile import write_wiki_cache
 from knox.cli._shared import build_cli_overrides
 from knox.cli._sources import resolve_files
+from knox.core import source_metadata
 from knox.core.config import resolve_config
 from knox.core.models import MetadataField, WikiField, load_wiki_from_files
 from knox.core.paths import VaultPaths, vault_paths
-from knox.core.pipeline.ingest import extract_text_from_cached, ingest_documents, parse_cache_glob
+from knox.core.pipeline.ingest import ingest_documents
 from knox.core.templates import get_template_loader
 from knox.core.text.slug import slugify
 from knox.core.trust.actor import resolve_actor
@@ -181,10 +182,9 @@ def wiki_write(
         source_files = resolve_files(*source, sources_dir=vp.sources_dir)
         for sf in source_files:
             stem = sf.stem
-            matches = sorted(vp.cache_dir.glob(parse_cache_glob(stem)))
-            cached = matches[0] if matches else None
             try:
-                text = extract_text_from_cached(cached) if cached and cached.exists() else sf.read_text(encoding="utf-8", errors="replace")
+                cached = source_metadata.cached_text(vp.cache_dir, sf.name)
+                text = cached if cached is not None else sf.read_text(encoding="utf-8", errors="replace")
                 source_texts.append((stem, text.strip()))
             except Exception as exc:
                 logger.warning("could not read %s: %s", sf, exc)

@@ -2,15 +2,17 @@
 
 For each "Missing topic" recommendation, checks whether the **sources**
 already discuss the topic — using the embedding model to compare the topic
-against source-chunk texts from the parse cache (``.knox/cache/chunk/``).
+against source-chunk texts from the ``chunk`` layer of the single
+``.knox/knox.db`` cache store.
 
 A topic that is semantically covered by a source is NOT a "add a source"
 gap — it is a generation/linking gap: the material exists but no wiki page
 was produced for it, and the right fix is ``knox lint remediate`` (which
 generates the page from the cached extraction).
 
-Chunk embeddings are cached in ``.knox/cache/gap_chunk_vectors.json`` keyed
-by content hash, so repeated lint runs only embed new/changed chunks.
+Chunk embeddings are cached in ``gap_chunk_vectors.json`` keyed by content
+hash **and** the embedding model name (key is a flat dict under that path),
+so repeated lint runs only embed new/changed chunks with the same model.
 """
 
 from __future__ import annotations
@@ -20,6 +22,8 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
+from knox.core.cache import CacheStore
+from knox.core.models import ChunkField, ChunkNodeField, ChunkTreeField
 from knox.core.paths import safe_stem
 from knox.core.text.embedding_text import embed_text
 from knox.core.text.matching import cosine
@@ -63,13 +67,14 @@ def verify_topics(
     all topics — the check is strictly additive signal.
     """
     vp_paths = base_dir / ".knox"
-    chunk_cache_dir = vp_paths / "cache" / "chunk"
     vector_cache_path = vp_paths / "cache" / _GAP_VECTOR_CACHE
 
-    chunks = _load_leaf_chunks(chunk_cache_dir)
+    chunks = _load_leaf_chunks(base_dir)
     results = {t: TopicCoverage(topic=t, covered=False, best_score=0.0, best_source="") for t in topics}
     if not chunks:
-        logger.info("Semantic gap check: no source chunks found in %s", chunk_cache_dir)
+        logger.warning(
+            "Semantic gap check: no source chunks in the vault store chunk layer; run 'knox ingest' first for semantic coverage to apply",
+        )
         return results
 
     cache = _load_vector_cache(vector_cache_path, embed_model)
@@ -119,33 +124,33 @@ def verify_topics(
     return results
 
 
-def _load_leaf_chunks(chunk_cache_dir: Path) -> list[tuple[str, str, str]]:
-    """Load ``(source_stem, text, contextual_context)`` for leaf chunks."""
+def _load_leaf_chunks(base_dir: Path) -> list[tuple[str, str, str]]:
+    """Load ``(source_stem, text, contextual_context)`` for every leaf chunk.
+
+    Reads the ``chunk`` layer from the single ``.knox/knox.db`` store (the
+    former ``cache/chunk/<stem>-<hash8>.json`` files are gone). A missing store
+    or unreadable rows yield fewer chunks, never an error.
+    """
     chunks: list[tuple[str, str, str]] = []
-    if not chunk_cache_dir.is_dir():
-        return chunks
-    for cache_file in sorted(chunk_cache_dir.glob("*.json")):
-        try:
-            data = json.loads(cache_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
+    for value in CacheStore(base_dir).load_layer("chunk"):
+        if not isinstance(value, dict):
             continue
-        value = data.get("value") if isinstance(data, dict) else None
-        nodes = value.get("nodes") if isinstance(value, dict) else None
+        nodes = value.get(ChunkTreeField.NODES)
         if not isinstance(nodes, dict):
             continue
-        source_file = str(value.get("source_file", "")) or cache_file.stem
-        stem = safe_stem(source_file) if source_file else cache_file.stem
+        source_file = str(value.get(ChunkTreeField.SOURCE_FILE) or "")
+        stem = safe_stem(source_file) if source_file else ""
         for node in nodes.values():
             if not isinstance(node, dict):
                 continue
-            # Chunk text lives on node["chunk"] (null for internal tree nodes,
+            # Chunk text lives on node[CHUNK] (null for internal tree nodes,
             # whose content duplicates the leaves).
-            chunk = node.get("chunk")
+            chunk = node.get(ChunkNodeField.CHUNK)
             if not isinstance(chunk, dict):
                 continue
-            text = str(chunk.get("text", "")).strip()
+            text = str(chunk.get(ChunkField.TEXT, "")).strip()
             if text:
-                context = str(node.get("contextual_context", ""))
+                context = str(node.get(ChunkNodeField.CONTEXTUAL_CONTEXT, ""))
                 chunks.append((stem, text, context))
     return chunks
 

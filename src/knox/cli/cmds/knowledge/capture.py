@@ -21,10 +21,10 @@ from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli._sources import resolve_files
 from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, SourceAttrs, SourceTags
+from knox.core import source_metadata
 from knox.core.config import resolve_config
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
-from knox.core.pipeline.ingest import extract_text_from_cached, parse_cache_glob
 from knox.core.text.encoding import read_text_auto
 from knox.core.text.matching import SemanticMatcher
 from knox.core.text.slug import slugify
@@ -258,11 +258,9 @@ def write_cmd(
         source_files = resolve_files(*source, sources_dir=vp.sources_dir)
         for sf in source_files:
             stem = sf.stem
-            # Parse cache is now content-discriminated: glob for any entry.
-            matches = sorted(vp.cache_dir.glob(parse_cache_glob(stem)))
-            cached = matches[0] if matches else None
             try:
-                text = extract_text_from_cached(cached) if cached and cached.exists() else read_text_auto(sf)
+                cached = source_metadata.cached_text(vp.cache_dir, sf.name)
+                text = cached if cached is not None else read_text_auto(sf)
                 source_texts.append((stem, text.strip()))
             except Exception as exc:
                 get_err_console().print(f"Warning: could not read {sf}: {exc}")

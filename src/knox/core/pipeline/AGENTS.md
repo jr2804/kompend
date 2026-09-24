@@ -22,7 +22,7 @@ persistence, and standalone ingestion.
 | `config.py`           | `Tier`, `Compiler`, `ALL_TIERS`, `TIER_LEVEL`, `TIER_DESCRIPTIONS`, `PipelineConfig`     |
 | `state.py`            | `TierStateStore`, `TierState`, `SourceState`, `CompileStatus`, `classify_compile_status` |
 | `references.py`       | `ReferenceStore` — JSON-backed bibliographic reference persistence                       |
-| `ingest.py`           | `ingest_documents`, `parse_cache_name`, `parse_cache_glob`, `preserve_cached_metadata`, `parse_cache_is_current`, `PARSE_CACHE_PARSER_KEY`, `IngestResult` |
+| `ingest.py`           | `ingest_documents`, `parse_cache_name`, `preserve_cached_metadata`, `parse_cache_is_current`, `PARSE_CACHE_PARSER_KEY`, `IngestResult` |
 
 ## Rules
 
@@ -41,3 +41,9 @@ persistence, and standalone ingestion.
   `preserve_cached_metadata` first so user tags/attributes (written by
   `knox sources tag`/`attr`) survive a forced re-ingest. The chunk cache
   keys on the same fingerprint, so a re-parse also re-chunks.
+- Contextual chunk enrichment is opt-in via `search.contextual.enabled`
+  (default false). When on, `build_pipeline` constructs a `ContextualEnricher`;
+  `_parse.py` runs it after chunking and **before** the chunk-cache write, so the
+  cached tree carries `contextual_context`. The chunk-cache key includes the gate
+  state, so enabling it invalidates prior un-enriched trees instead of embedding
+  stale text. Gate off ⇒ cached output is unchanged.

@@ -56,11 +56,6 @@ class IngestResult:
     cache_dir: Path = Path()
 
 
-def parse_cache_glob(stem: str) -> str:
-    """Glob pattern matching any parse-cache entry for files named ``<stem>``."""
-    return f"{stem}-*.json"
-
-
 def _extract_text_for_dedup(doc: ParsedDocument, source_file: Path) -> str:
     """Extract plain text from a parsed document for dedup fingerprinting.
 

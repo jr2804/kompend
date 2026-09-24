@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 from knox.chunking.extractors import extract_structured
+from knox.core import source_metadata
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_DOC_HEADINGS
 from knox.core.models import (
@@ -40,7 +41,6 @@ from knox.core.models.structured import structured_to_dict
 from knox.core.page_builder import PageBuilder, link
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.assets import AssetStore
-from knox.core.pipeline.ingest import parse_cache_glob
 from knox.logging import get_logger
 
 __all__ = ["export_source", "load_cache_entry", "render_document_markdown"]
@@ -90,7 +90,7 @@ def export_source(
     Returns the output file path. Raises :class:`FileNotFoundError` when no
     cache entry matches *source_id*.
     """
-    data, _ = load_cache_entry(source_id, cache_dir)
+    data = load_cache_entry(source_id, cache_dir)
     assets_dir = out_path.parent / f"{out_path.stem}_assets"
     md = render_document_markdown(
         data,
@@ -105,27 +105,20 @@ def export_source(
     return out_path
 
 
-def load_cache_entry(source_id: str, cache_dir: Path) -> tuple[dict[str, Any], Path]:
-    """Load the parse-cache entry for *source_id* as ``(data, cache_file)``.
+def load_cache_entry(source_id: str, cache_dir: Path) -> dict[str, Any]:
+    """Load the parse-cache record for *source_id*.
 
     *source_id* may be the ``source_file`` string printed by ``knox sources
     list`` (e.g. ``sources/doc.pdf``) or a bare stem. When several same-stem
     entries exist (content-discriminated cache), the entry whose
-    ``source_file`` equals *source_id* wins.
+    ``source_file`` equals *source_id* wins. Read from the ``documents`` table
+    of the single ``.knox/knox.db`` store (the former ``cache/<stem>-*.json``
+    files are gone).
     """
-    matches = sorted(cache_dir.glob(parse_cache_glob(Path(source_id).stem)))
-    if not matches:
+    data = source_metadata.find_entry(cache_dir, source_id)
+    if data is None:
         raise FileNotFoundError(f"No cache entry found for {source_id!r}; run 'knox ingest' first.")
-    if len(matches) > 1:
-        for m in matches:
-            try:
-                data = json.loads(m.read_text(encoding="utf-8"))
-                if data.get(MetadataField.SOURCE_FILE) == source_id:
-                    return data, m
-            except (json.JSONDecodeError, OSError):
-                continue
-    m = matches[0]
-    return json.loads(m.read_text(encoding="utf-8")), m
+    return data
 
 
 def render_document_markdown(

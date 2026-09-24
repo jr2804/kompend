@@ -24,6 +24,8 @@ from knox.core.pipeline.export import (
     load_cache_entry,
     render_document_markdown,
 )
+from knox.core.pipeline.parse_cache import write_document
+from knox.core.store import vault_db_path
 from knox.mcp.tools.sources import sources_export as mcp_sources_export  # noqa: E402
 
 _cli_runner = CliRunner()
@@ -146,11 +148,12 @@ class TestLoadCacheEntry:
     def test_same_stem_exact_source_wins(self, tmp_path: Path) -> None:
         cache_dir = tmp_path / ".knox" / "cache"
         cache_dir.mkdir(parents=True)
-        (cache_dir / "doc-11111111.json").write_text(json.dumps(_cache_data(title="one", source_file="sources/other.pdf")), encoding="utf-8")
-        (cache_dir / "doc-22222222.json").write_text(json.dumps(_cache_data(title="two", source_file="sources/doc.pdf")), encoding="utf-8")
-        data, _ = load_cache_entry("sources/doc.pdf", cache_dir)
+        db_path = vault_db_path(cache_dir)
+        write_document(db_path, "doc-11111111", _cache_data(title="one", source_file="sources/other.pdf"))
+        write_document(db_path, "doc-22222222", _cache_data(title="two", source_file="sources/doc.pdf"))
+        data = load_cache_entry("sources/doc.pdf", cache_dir)
         assert data["title"] == "two"
-        data, _ = load_cache_entry("doc", cache_dir)
+        data = load_cache_entry("doc", cache_dir)
         assert data["title"] == "one"  # bare stem: first sorted match
 
 
@@ -363,12 +366,10 @@ def _cache_data(*elements: dict, title: str = "Doc Title", source_file: str = "s
     }
 
 
-def _write_cache(tmp_path: Path, data: dict, stem: str = "doc") -> Path:
+def _write_cache(tmp_path: Path, data: dict, stem: str = "doc") -> None:
     cache_dir = tmp_path / ".knox" / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
-    cache_file = cache_dir / f"{stem}-a1b2c3d4.json"
-    cache_file.write_text(json.dumps(data), encoding="utf-8")
-    return cache_file
+    write_document(vault_db_path(cache_dir), f"{stem}-a1b2c3d4", data)
 
 
 def _render(data: dict, tmp_path: Path, **kwargs: object) -> str:
@@ -401,5 +402,5 @@ def _seed_vault_with_cache(tmp_path: Path, *cache: dict) -> Path:
         stem = Path(data["source_file"]).stem
         cache_dir = base / ".knox" / "cache"
         cache_dir.mkdir(exist_ok=True)
-        (cache_dir / f"{stem}-{i:08x}.json").write_text(json.dumps(data), encoding="utf-8")
+        write_document(vault_db_path(cache_dir), f"{stem}-{i:08x}", data)
     return base

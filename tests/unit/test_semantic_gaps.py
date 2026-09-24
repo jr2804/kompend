@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from knox.core.cache import CacheStore
 from knox.core.text.embedding_text import embed_text
 from knox.lint import semantic_gaps
 from knox.lint.semantic_gaps import _load_vector_cache, _save_vector_cache
@@ -124,15 +125,12 @@ def _cache_file(tmp_path: Path) -> Path:
 
 
 def _write_chunk_cache(base_dir: Path, *, text: str, context: str) -> None:
-    chunk_dir = base_dir / ".knox" / "cache" / "chunk"
-    chunk_dir.mkdir(parents=True, exist_ok=True)
-    payload = {
-        "value": {
-            "source_file": "doc.md",
-            "nodes": {"n1": {"chunk": {"text": text}, "contextual_context": context}},
-        }
+    """Store a one-node chunk tree in the ``chunk`` layer of the vault store."""
+    tree = {
+        "source_file": "doc.md",
+        "nodes": {"n1": {"chunk": {"text": text}, "contextual_context": context}},
     }
-    (chunk_dir / "doc.json").write_text(json.dumps(payload), encoding="utf-8")
+    CacheStore(base_dir).set("chunk", {"source": "doc.md"}, tree)
 
 
 def _gap_vectors(base_dir: Path) -> dict[str, list[float]]:
