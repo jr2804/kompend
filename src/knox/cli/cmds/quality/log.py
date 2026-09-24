@@ -1,8 +1,8 @@
 """``knox log`` — regenerate the pipeline log report on demand.
 
 The human-readable ``log.md`` is no longer auto-written during builds.
-This command rebuilds it from the structured stores (``runs.jsonl``,
-``lint_history.jsonl``, ``last_wiki.json`` metadata) and prints it, or
+This command rebuilds it from the structured stores (the ``runs``,
+``lint_runs``, and ``wiki_snapshot`` tables in ``.knox/knox.db``) and prints it, or
 writes it to ``.knox/log.md`` with ``--write``.
 
 The rendering lives in :mod:`knox.core.log_report` so it is callable from
