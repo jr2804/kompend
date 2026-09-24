@@ -1,35 +1,4 @@
-
 [tasks.add-skills]
-description = "Install agent skills for AI assistants"
+description = "Install agent skills for AI assistants (driven by data/dev-features.csv and skills.csv)"
 depends = ["dev"]
-run = [
-	"bun x skills add gastownhall/beads -a universal -y",
-	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-grepai -a universal -y",
-	"bun x skills add AlmogBaku/debug-skill -a universal -y",
-	"bun x skills add https://github.com/FlorianBruniaux/claude-code-ultimate-guide/tree/main/examples -s rtk-optimizer -a universal -y",
-	"bun x skills add shadcn/improve -a universal -y",
-	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-codegraph -a universal -y",
-	
-	# AI code review skills
-	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-fartrun -a universal -y",
-	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-sloppylint -a universal -y",
-	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-ai-slop-detector -a universal -y",
-	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-vibecheck -a universal -y",
-	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-aislop -a universal -y",
-	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-deep-slop-scan -a universal -y",
-	"bun x skills add https://codeberg.org/jr2804/copier-uv-plus.git -s cli-repowise -a universal -y",
-	"bun x skills add https://github.com/alinaqi/claude-bootstrap -s code-deduplication -a universal -y",
-	"bun x skills add https://github.com/hardikpandya/stop-slop -a universal -y",
-	"bun x skills add 1broseidon/ketch -s ketch -a universal -y",
-
-	# Python coding
-	"bun x skills add https://github.com/jr2804/prompts -s python-ultimate -a universal -y",
-	"bun x skills add https://github.com/s2005/uv-skill -a universal -y",
-	"bun x skills add https://github.com/ramziddin/solid-skills -a universal -y",
-
-	# documentation skills
-	"bun x skills add https://github.com/nicobailon/visual-explainer -a universal -y",
-	"bun x skills add plannotator/effective-html -a universal -y",
-	"bun x skills add hoodini/ai-agents-skills -s mermaid-diagrams -a universal -y",
-	"bun x skills add dkyazzentwatwa/chatgpt-skills -s svg-precision-skill -a universal -y",
-]
+run = "uv run .config/mise/scripts/install_dev_features.py add-skills"

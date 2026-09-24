@@ -1,0 +1,18 @@
+category,tool,tool_value,mcp_command,mcp_name,skill_repo,skill
+slop,pypi:sloppylint,latest,,,https://codeberg.org/jr2804/copier-uv-plus.git,cli-sloppylint
+slop,pypi:ai-slop-detector,"{ version = ""latest"", extras = [""all""] }",,,https://codeberg.org/jr2804/copier-uv-plus.git,cli-ai-slop-detector
+slop,npm:@yuvrajangadsingh/vibecheck,latest,vibecheck --mcp,vibecheck,https://codeberg.org/jr2804/copier-uv-plus.git,cli-vibecheck
+slop,npm:aislop,latest,mise x --command aislop-mcp,aislop,https://codeberg.org/jr2804/copier-uv-plus.git,cli-aislop
+slop,,,,,https://codeberg.org/jr2804/copier-uv-plus.git,cli-deep-slop-scan
+slop,github:djinn-soul/CytoScnPy,latest,cytoscnpy mcp-server,cytoscnpy,,
+slop,github:ChuprinaDaria/Vibecode-Cleaner-Fartrun,latest,fartrun mcp,fartrun,https://codeberg.org/jr2804/copier-uv-plus.git,cli-fartrun
+codebase,github:yoanbernabeu/grepai,latest,grepai mcp-serve,grepai,https://codeberg.org/jr2804/copier-uv-plus.git,cli-grepai
+codebase,npm:@colbymchenry/codegraph,latest,codegraph serve --mcp,codegraph,https://codeberg.org/jr2804/copier-uv-plus.git,cli-codegraph
+codebase,pypi:repowise,latest,repowise mcp .,repowise,https://codeberg.org/jr2804/copier-uv-plus.git,cli-repowise
+codebase,github:1broseidon/ketch,latest,ketch mcp serve,ketch,1broseidon/ketch,ketch
+dev,github:AlmogBaku/debug-skill,latest,,,AlmogBaku/debug-skill,
+dev,github:rtk-ai/rtk,latest,,,https://github.com/FlorianBruniaux/claude-code-ultimate-guide/tree/main/examples,rtk-optimizer
+tracking,github:gastownhall/beads,latest,,,gastownhall/beads,
+tracking,github:dolthub/dolt,latest,,,,
+tracking,pypi:beads-mcp,latest,mise x --command beads-mcp,beads,,
+general,pipx:hound-mcp,latest,uv run hound,hound,,

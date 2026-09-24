@@ -1,39 +1,7 @@
-
-[tools]
-"github:yoanbernabeu/grepai" = "latest"
-"github:AlmogBaku/debug-skill" = "latest"
-"github:rtk-ai/rtk" = "latest"
-"github:djinn-soul/CytoScnPy" = "latest"
-"github:ChuprinaDaria/Vibecode-Cleaner-Fartrun" = "latest"
-"pipx:sloppylint" = "latest"
-"pipx:ai-slop-detector" = { version = "latest", extras = ["all"] }
-"npm:@yuvrajangadsingh/vibecheck" = "latest"
-"npm:aislop" = "latest"
-"github:gastownhall/beads" = "latest"
-"github:dolthub/dolt" = "latest"
-"pipx:beads-mcp" = "latest"
-"pipx:repowise" = { version = "latest", uvx_args = "-p 3.13" }
-"github:1broseidon/ketch" = "latest"
-"pipx:hound-mcp" = { version = "latest", extras = ["all"] }
-"github:colbymchenry/codegraph" = "latest"
-
 [tasks.add-mcp-servers]
-description = "Register MCP servers with AI assistants"
+description = "Install dev-feature tools and register MCP servers (driven by data/dev-features.csv)"
 depends = ["dev"]
 usage = '''
 arg "<ai_agent>" help="AI assistant: claude, gemini, copilot, opencode, ... (see https://github.com/neondatabase/add-mcp)"
 '''
-shell = "pwsh -NoProfile -Command"
-run = [
-	"cls",
-	'bun x add-mcp "grepai mcp-serve" -y -a {{usage.ai_agent}} -n grepai',
-	'bun x add-mcp "cytoscnpy mcp-server" -y -a {{usage.ai_agent}} -n cytoscnpy',
-	'bun x add-mcp "codegraph serve --mcp" -y -a {{usage.ai_agent}} -n codegraph',
-	'bun x add-mcp "fartrun mcp" -y -a {{usage.ai_agent}} -n fartrun',
-	'bun x add-mcp "vibecheck  --mcp" -y -a {{usage.ai_agent}} -n vibecheck',
-	'bun x add-mcp "npx -y aislop-mcp" -y -a {{usage.ai_agent}} -n aislop',
-	'bun x add-mcp "uv run beads-mcp" -y -a {{usage.ai_agent}} -n beads',
-	'bun x add-mcp "repowise mcp ." -y -a {{usage.ai_agent}} -n repowise',
-	'bun x add-mcp "ketch mcp serve" -y -a {{usage.ai_agent}} -n ketch',
-	'bun x add-mcp "uv run hound" -y -a {{usage.ai_agent}} -n hound',
-]
+run = "uv run .config/mise/scripts/install_dev_features.py add-mcp-servers {{usage.ai_agent}}"
