@@ -23,6 +23,7 @@ from pathlib import Path
 from knox.core.models.attachments import Attachment, AttachmentManifest
 from knox.core.models.wiki import CompiledWiki
 from knox.core.paths import attachment_slugs_for_source
+from knox.core.pipeline.state import SourceState, TierState, TierStateStore
 from knox.lint.base import LintResult, LintRuleOutcome
 from knox.lint.runner import LintRunner
 from knox.lint.structural import OrphanAttachmentsRule
@@ -49,8 +50,7 @@ class TestOrphanAttachmentsSlugMatch:
         (vault / "sources" / "p862" / "T-REC-P.862-200102-W!!PDF-E.pdf").write_text("x", encoding="utf-8")
         # Attachment registered with the bare-name slug.
         _make_orphan(vault, "t-rec-p_862-200102-w_pdf-e", "dsp.c")
-        (vault / ".knox").mkdir()
-        (vault / ".knox" / "compile_state.json").write_text("{}", encoding="utf-8")
+        _seed_compile_state(vault)
 
         rule = OrphanAttachmentsRule()
         results = rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(vault / "sources"))
@@ -65,8 +65,7 @@ class TestDestructiveGate:
         orphan = _make_orphan(vault, "orphan-source", "old.c")
         rel_path = orphan.relative_to(vault).as_posix()
         _seed_manifest(vault, rel_path)
-        (vault / ".knox").mkdir(exist_ok=True)
-        (vault / ".knox" / "compile_state.json").write_text("{}", encoding="utf-8")
+        _seed_compile_state(vault)
 
         rule = OrphanAttachmentsRule()
         rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(vault / "sources"))
@@ -84,8 +83,7 @@ class TestDestructiveGate:
         orphan = _make_orphan(vault, "orphan-source", "old.c")
         rel_path = orphan.relative_to(vault).as_posix()
         _seed_manifest(vault, rel_path)
-        (vault / ".knox").mkdir(exist_ok=True)
-        (vault / ".knox" / "compile_state.json").write_text("{}", encoding="utf-8")
+        _seed_compile_state(vault)
 
         runner = LintRunner(
             rules=["orphan-attachments"],
@@ -103,8 +101,7 @@ class TestDestructiveGate:
         orphan = _make_orphan(vault, "orphan-source", "old.c")
         rel_path = orphan.relative_to(vault).as_posix()
         _seed_manifest(vault, rel_path)
-        (vault / ".knox").mkdir(exist_ok=True)
-        (vault / ".knox" / "compile_state.json").write_text("{}", encoding="utf-8")
+        _seed_compile_state(vault)
 
         runner = LintRunner(
             rules=["orphan-attachments"],
@@ -115,6 +112,12 @@ class TestDestructiveGate:
         report = runner.run(CompiledWiki(nodes=[], edges=[], toc=[]))
         assert not orphan.exists(), "file must be deleted with fix_destructive"
         assert any(r.fix_applied for r in report.results)
+
+
+def _seed_compile_state(vault: Path) -> None:
+    """Seed tier state via the store so the orphan rule's compile gate passes."""
+    store = TierStateStore(vault / ".knox" / "compile_state.json")
+    store.save(TierState(entries={"report": SourceState(stem="report", source_file="sources/report.pdf", content_hash="h")}))
 
 
 def _seed_manifest(base_dir: Path, path: str) -> None:

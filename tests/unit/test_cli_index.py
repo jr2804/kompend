@@ -1,8 +1,8 @@
 """Unit tests for the ``knox index`` CLI command.
 
 ``knox index`` is a recovery command that rebuilds the zvec vector index
-from the cached ``last_wiki.json``. These tests mock the wiki loader and
-the index builder so no real embedding provider is required.
+from the compiled-wiki snapshot in the vault store. These tests mock the wiki
+loader and the index builder so no real embedding provider is required.
 """
 
 from __future__ import annotations
