@@ -9,6 +9,7 @@ from knox.core.models import (
     CHUNK_TREE_CACHE_VERSION,
     Chunk,
     ChunkNode,
+    ChunkNodeField,
     ChunkStrategy,
     ChunkTree,
     CompiledWiki,
@@ -334,6 +335,26 @@ def test_node_roundtrip_structured(sample_tree: tuple[ChunkTree, dict[str, Chunk
     assert restored.structured is not None
     assert isinstance(restored.structured, StructuredTable)
     assert restored.structured.columns == ["X"]
+
+
+def test_node_contextual_context_survives_roundtrip(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
+    """TASK-20: contextual enrichment must survive the chunk-cache boundary —
+    otherwise the enricher runs and its output is discarded before embedding.
+    """
+    _, nodes = sample_tree
+    node = nodes["leaf-1"]
+    node.contextual_context = "Situated in the intro of the report."
+    d = node.to_dict()
+    assert d[ChunkNodeField.CONTEXTUAL_CONTEXT] == "Situated in the intro of the report."
+    assert ChunkNode.from_dict(d).contextual_context == "Situated in the intro of the report."
+
+
+def test_node_contextual_context_defaults_to_empty(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:
+    """Absent key (older cache, gate off) deserialises to '' — no KeyError."""
+    _, nodes = sample_tree
+    d = nodes["leaf-1"].to_dict()
+    d.pop(ChunkNodeField.CONTEXTUAL_CONTEXT)
+    assert ChunkNode.from_dict(d).contextual_context == ""
 
 
 def test_node_roundtrip_internal(sample_tree: tuple[ChunkTree, dict[str, ChunkNode]]) -> None:

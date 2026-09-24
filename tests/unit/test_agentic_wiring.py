@@ -17,12 +17,13 @@ from typing import cast
 import pytest
 from pydantic_ai import RunContext
 
-from knox.agents.context_chunk_agentic import make_agentic_context_chunk_agent
+from knox.agents.context_chunk_agentic import AgenticContextChunkAgent, make_agentic_context_chunk_agent
 from knox.agents.query_agentic import make_agentic_query_agent
 from knox.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
 from knox.agents.types import ContextChunkDeps, QueryAgentDeps
 from knox.chunking.contextual import ContextualEnricher
 from knox.compilation.query_tools import read_page, search_wiki
+from knox.core.config._configs import SearchConfig, SearchContextualConfig
 from knox.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
 from knox.core.pipeline.config import Compiler, EmbeddingConfig, LLMConfig, PipelineConfig
 from knox.core.pipeline.orchestrator import build_pipeline
@@ -96,6 +97,43 @@ class TestAgenticSummarizerAgentWiring:
         pipeline = build_pipeline(config)
         assert pipeline.summarizer is not None
         assert isinstance(pipeline.summarizer._agent, AgenticSummarizerAgent)  # noqa: SLF001
+
+
+def test_build_pipeline_enricher_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TASK-20: `search.contextual.enabled` defaults false → no enricher, and
+    today's chunk-cache output is unchanged.
+    """
+    monkeypatch.setattr(
+        "knox.core.pipeline.stages._factory.discover_context_window",
+        lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
+    )
+    config = PipelineConfig(
+        source_dir=make_tmp_vault(),
+        output_dir=make_tmp_vault(),
+        llm=LLMConfig(default_model="ollama/gpt-oss:20b", vlm_model="vlm"),
+        embedding=EmbeddingConfig(model="hash"),
+        compiler=Compiler.GRAPH,
+    )
+    assert build_pipeline(config).enricher is None
+
+
+def test_build_pipeline_enricher_wired_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    """TASK-20: enabling the gate constructs a ContextualEnricher with an agent."""
+    monkeypatch.setattr(
+        "knox.core.pipeline.stages._factory.discover_context_window",
+        lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
+    )
+    config = PipelineConfig(
+        source_dir=make_tmp_vault(),
+        output_dir=make_tmp_vault(),
+        llm=LLMConfig(default_model="ollama/gpt-oss:20b", vlm_model="vlm"),
+        embedding=EmbeddingConfig(model="hash"),
+        compiler=Compiler.GRAPH,
+        search=SearchConfig(contextual=SearchContextualConfig(enabled=True)),
+    )
+    pipeline = build_pipeline(config)
+    assert pipeline.enricher is not None
+    assert isinstance(pipeline.enricher._agent, AgenticContextChunkAgent)  # noqa: SLF001
 
 
 class TestAgenticContextChunkAgentWiring:

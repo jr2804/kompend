@@ -30,6 +30,7 @@ from knox.core.config import (
     PdfConfig,
     ResolvedConfig,
 )
+from knox.core.config._configs import SearchConfig
 from knox.core.paths import VaultPaths
 
 __all__ = [
@@ -167,6 +168,7 @@ class PipelineConfig:
     images_scale: float = 200.0 / 72.0  # Docling image resolution multiplier (200 DPI base)
     parser: str = "liteparse"  # ingestion backend name (see PARSER_BACKENDS)
     source_tags: list[str] = field(default_factory=list)  # CLI-provided source tags
+    search: SearchConfig = field(default_factory=SearchConfig)  # search config (contextual enrichment gate lives here)
     attachments_ingest_adopted: bool = False  # attachments.ingest_adopted: global gate — manifest flag AND this gate decides ingestion
     providers: dict[str, dict] = field(default_factory=dict)  # user-defined providers from [providers] section
 
@@ -268,6 +270,7 @@ class PipelineConfig:
             notes_file=notes_file,
             llm=llm_config,
             budget=budget_config,
+            search=SearchConfig(**_kwargs_for(SearchConfig, "search")),
             output=output_config,
             embedding=embedding_config,
             pdf=pdf_config,

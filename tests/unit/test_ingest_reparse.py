@@ -19,17 +19,23 @@ writes them.
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
-from knox.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
+from knox.chunking.hierarchical import HierarchicalChunker
+from knox.core.cache.store import CacheStore
+from knox.core.models import ChunkTree, DocumentElement, ElementType, MetadataField, ParsedDocument
 from knox.core.pipeline.ingest import (
     PARSE_CACHE_PARSER_KEY,
     ingest_documents,
     parse_cache_is_current,
     preserve_cached_metadata,
 )
-from knox.core.pipeline.parse_cache import iter_documents, write_document
+from knox.core.pipeline.parse_cache import cache_key, iter_documents, write_document
+from knox.core.pipeline.stages._parse import _chunk_cache_deps, _process_single_source  # noqa: PLC2701
+from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.store import vault_db_path
 from knox.preprocessing.parsers.base import BaseParser, ParserRouter
 
@@ -257,3 +263,127 @@ def _seed_vault(tmp_path: Path) -> Path:
     (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
     (base / "sources" / "note.md").write_text("# Note\n", encoding="utf-8")
     return base
+
+
+def _runtime_for_chunk_deps(*, contextual: bool, enricher: object | None) -> Any:
+    """Minimal stand-in exposing only what ``_chunk_cache_deps`` reads."""
+    config = SimpleNamespace(search=SimpleNamespace(contextual=SimpleNamespace(enabled=contextual)))
+    return SimpleNamespace(
+        chunker=SimpleNamespace(_effective_max=512),
+        router=_router_of("chain-A"),
+        config=config,
+        enricher=enricher,
+    )
+
+
+def test_chunk_cache_deps_gate_off_matches_default() -> None:
+    """Default (gate off) chunk-cache identity is byte-identical to today."""
+    deps = _chunk_cache_deps(_runtime_for_chunk_deps(contextual=False, enricher=None), "abc")
+    assert deps["contextual"] == "0"
+
+
+def test_chunk_cache_deps_gate_on_invalidates() -> None:
+    """Enabling the contextual gate changes the chunk-cache key, so a tree
+    written without enrichment is a miss rather than silently un-enriched.
+    """
+    off = _chunk_cache_deps(_runtime_for_chunk_deps(contextual=False, enricher=None), "abc")
+    on = _chunk_cache_deps(_runtime_for_chunk_deps(contextual=True, enricher=object()), "abc")
+    assert off != on
+    assert on["contextual"] == "1"
+
+
+class _StubEnricher:
+    """Sets a contextual paragraph on every leaf, like the real agent path."""
+
+    def enrich_tree(self, tree: ChunkTree, doc: ParsedDocument) -> ChunkTree:  # noqa: ARG002
+        for leaf in tree.leaves():
+            leaf.contextual_context = f"context for {leaf.id}"
+        return tree
+
+
+class _StubRuntime:
+    """Minimal PipelineRuntime for the chunk+enrich+cache path."""
+
+    def __init__(self, base: Path, *, enricher: object | None) -> None:
+        self.base_directory = base
+        self.config = SimpleNamespace(
+            no_cache=False,
+            force=False,
+            privacy_filter=False,
+            search=SimpleNamespace(contextual=SimpleNamespace(enabled=enricher is not None)),
+        )
+        self.router = None
+        self.chunker = HierarchicalChunker(max_tokens=512)
+        self.enricher = enricher
+        self.state = TierState()
+        self.cache_store = CacheStore(base / ".knox" / "cache", base)
+        self.state_store = TierStateStore(base / ".knox" / "compile_state.json", base)
+
+    def rel_file(self, file: Path) -> str:
+        return str(file)
+
+    def abs_file(self, file_str: str) -> Path:
+        p = Path(file_str)
+        return p if p.is_absolute() else self.base_directory / p
+
+    def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:  # noqa: ARG002
+        return
+
+
+def _seed_parse_cache(base: Path, source_file: Path, content_hash: str) -> None:
+    data: dict[str, Any] = {
+        str(MetadataField.SOURCE_FILE): str(source_file),
+        PARSE_CACHE_PARSER_KEY: "",
+        "title": "Note",
+        "author": "",
+        "language": "en",
+        "page_count": 1,
+        "metadata": {},
+        "elements": [
+            {
+                "type": str(ElementType.TEXT),
+                "content": "body text",
+                "page": None,
+                str(MetadataField.READING_ORDER): 0,
+                "heading_level": None,
+                "metadata": {},
+            }
+        ],
+    }
+    write_document(vault_db_path(base), cache_key(source_file, content_hash), data)
+
+
+def test_enriched_tree_is_what_gets_cached(tmp_path: Path) -> None:
+    """TASK-20: enrichment runs after chunking and BEFORE the chunk-cache write,
+    so the cached tree (and therefore the embeddings) carry the context.
+    """
+    base = _seed_vault(tmp_path)
+    source_file = Path("sources/note.md")
+    content_hash = hashlib.sha256((base / "sources" / "note.md").read_bytes()).hexdigest()
+    _seed_parse_cache(base, source_file, content_hash)
+
+    runtime = _StubRuntime(base, enricher=_StubEnricher())
+    tree = _process_single_source(runtime, base / "sources" / "note.md", {})
+
+    assert tree is not None
+    cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(runtime, content_hash))
+    assert cached is not None
+    contexts = [n["contextual_context"] for n in cached["nodes"].values()]
+    assert any(contexts), "cached tree must carry contextual_context"
+
+
+def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
+    """Default-transparent: with the gate off, cached nodes carry no context
+    (byte-identical to today's output).
+    """
+    base = _seed_vault(tmp_path)
+    source_file = Path("sources/note.md")
+    content_hash = hashlib.sha256((base / "sources" / "note.md").read_bytes()).hexdigest()
+    _seed_parse_cache(base, source_file, content_hash)
+
+    runtime = _StubRuntime(base, enricher=None)
+    _process_single_source(runtime, base / "sources" / "note.md", {})
+
+    cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(runtime, content_hash))
+    assert cached is not None
+    assert all(n["contextual_context"] == "" for n in cached["nodes"].values())

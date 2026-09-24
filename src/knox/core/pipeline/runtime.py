@@ -17,6 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Protocol
 
+from knox.chunking.contextual import ContextualEnricher
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.chunking.summarizer import NodeSummarizer
 from knox.compilation.base import BaseCompiler
@@ -56,6 +57,7 @@ class PipelineRuntime(Protocol):
     compiler: BaseCompiler | None
     output_writer: BaseOutputWriter | None
     summarizer: NodeSummarizer | None
+    enricher: ContextualEnricher | None
     downloader: BaseDownloader | None
 
     # ── State & cache ──────────────────────────────────────────────────

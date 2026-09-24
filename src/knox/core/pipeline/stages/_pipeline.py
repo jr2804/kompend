@@ -12,6 +12,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
+from knox.chunking.contextual import ContextualEnricher
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.chunking.summarizer import NodeSummarizer
 from knox.compilation.base import BaseCompiler
@@ -79,6 +80,7 @@ class WikiPipeline:
         output_writer: BaseOutputWriter | None = None,
         state_store: TierStateStore | None = None,
         summarizer: NodeSummarizer | None = None,
+        enricher: ContextualEnricher | None = None,
     ) -> None:
         self.config = config
         set_user_providers(config.providers)
@@ -89,6 +91,7 @@ class WikiPipeline:
         self.compiler = compiler
         self.output_writer = output_writer
         self.summarizer = summarizer
+        self.enricher = enricher
         self.base_directory = config.resolved_base_dir()
         self.state_store = state_store or TierStateStore(self._default_state_file(), self.base_directory)
         self._progress_callback: ProgressCallback | None = None
@@ -333,9 +336,16 @@ class WikiPipeline:
                 logger.warning("Progress callback raised in phase %s — continuing", phase, exc_info=True)
 
     def dedup_store_file(self) -> Path:
-        """Resolve the dedup fingerprint store path."""
+        """Resolve the dedup fingerprint store path.
+
+        Returns the vault DB handle (``knox.db``) — the dedup fingerprints now
+        live in the ``dedup_fingerprints`` table; ``DedupStore`` resolves the
+        vault DB from any path under it, so the legacy ``fingerprints.json``
+        path stays valid as a handle but names a file that is no longer
+        written.
+        """
         base_dir = self.config.resolved_base_dir()
-        return VaultPaths(base_dir).dedup_dir / "fingerprints.json"
+        return VaultPaths(base_dir).knox_db_file
 
     def cache_directory(self) -> Path:
         """Resolve the cache directory."""

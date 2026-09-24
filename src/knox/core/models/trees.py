@@ -55,6 +55,7 @@ class ChunkNode:
             ChunkNodeField.STRUCTURED: self.structured.to_dict() if self.structured else None,
             ChunkNodeField.SUMMARY: self.summary,
             ChunkNodeField.TOKEN_COUNT: self.token_count,
+            ChunkNodeField.CONTEXTUAL_CONTEXT: self.contextual_context,
         }
 
     @classmethod
@@ -70,6 +71,7 @@ class ChunkNode:
             structured=structured_from_dict(d[ChunkNodeField.STRUCTURED]) if d.get(ChunkNodeField.STRUCTURED) else None,
             summary=d.get(ChunkNodeField.SUMMARY, ""),
             token_count=d.get(ChunkNodeField.TOKEN_COUNT, 0),
+            contextual_context=d.get(ChunkNodeField.CONTEXTUAL_CONTEXT, ""),
         )
 
 

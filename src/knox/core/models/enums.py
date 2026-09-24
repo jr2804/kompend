@@ -103,6 +103,7 @@ class ChunkNodeField(StrEnum):
     STRUCTURED = "structured"
     SUMMARY = "summary"
     TOKEN_COUNT = "token_count"  # noqa: S105
+    CONTEXTUAL_CONTEXT = "contextual_context"
 
 
 class ChunkStrategy(StrEnum):

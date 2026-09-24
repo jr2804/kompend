@@ -191,6 +191,9 @@ def _process_single_source(
     tree = pipeline.chunker.chunk(parsed)
     pipeline.apply_tags_to_tree(tree, source_file)
 
+    if pipeline.enricher is not None:
+        tree = pipeline.enricher.enrich_tree(tree, parsed)
+
     if content_hash:
         pipeline.state_store.record(pipeline.state, stem, Path(pipeline.rel_file(source_file)), content_hash, tier=1)
         chunk_deps = _chunk_cache_deps(pipeline, content_hash)
@@ -299,6 +302,7 @@ def _chunk_cache_deps(pipeline: PipelineRuntime, content_hash: str) -> dict[str,
         "source": content_hash,
         "chunk_effective_max": str(getattr(pipeline.chunker, "_effective_max", 0)),
         "parser": pipeline.router.fingerprint() if pipeline.router is not None else "",
+        "contextual": "1" if (pipeline.config.search.contextual.enabled and pipeline.enricher is not None) else "0",
     }
 
 
@@ -466,6 +470,9 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
                 node.chunk.metadata["source_asset"] = True
                 node.chunk.metadata["parent_source"] = att.source
                 node.chunk.metadata["asset_file"] = att.path
+
+            if pipeline.enricher is not None:
+                tree = pipeline.enricher.enrich_tree(tree, doc)
 
             trees.append(tree)
             logger.info("Processed attachment: %s → %d chunk(s)", att.filename, len(list(tree.leaves())))

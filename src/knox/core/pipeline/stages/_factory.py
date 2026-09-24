@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from knox.agents.context_chunk_agentic import (
+    AgenticContextChunkAgent,
+    make_agentic_context_chunk_agent,
+)
 from knox.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
+from knox.chunking.contextual import ContextualEnricher
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.chunking.summarizer import NodeSummarizer
 from knox.compilation.base import BaseCompiler
@@ -67,6 +72,7 @@ def build_pipeline(
     resolver: BaseResolver | None = None
     base_compiler: BaseCompiler | None = None
     summarizer_agent: AgenticSummarizerAgent | None = None
+    enricher_agent: AgenticContextChunkAgent | None = None
     chunker_context_window = None
     if needs_llm:
         model = config.llm.default_model
@@ -88,6 +94,16 @@ def build_pipeline(
             context_window=cw.max_input,
             rlm=config.llm.rlm,
         )
+        if config.search.contextual.enabled:
+            enricher_agent = make_agentic_context_chunk_agent(
+                model_string=model,
+                timeout=config.llm.timeout,
+                skills=config.skills,
+                retries=config.llm.output_retries if config.llm.output_retries_enabled else 0,
+                output_retries=config.llm.agentic_output_retries if config.llm.output_retries_enabled else 0,
+                context_window=cw.max_input,
+                rlm=config.llm.rlm,
+            )
         resolver = build_resolver_chain(config)
 
         if config.compiler == Compiler.WICER:
@@ -148,4 +164,5 @@ def build_pipeline(
             target_chars=config.budget.summary_target_chars,
             skip_single_child=config.budget.summary_skip_single_child,
         ),
+        enricher=ContextualEnricher(agent=enricher_agent) if enricher_agent is not None else None,
     )
