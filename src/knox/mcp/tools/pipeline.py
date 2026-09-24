@@ -82,7 +82,7 @@ def wiki_ingest(
 
     images_dir = VaultPaths(base_dir).images_dir
     parser_name = cfg.knox.ingest.parser
-    router = build_default_router(ParserBuildOptions(images_dir=images_dir), names=parser_name or "liteparse")
+    router = build_default_router(ParserBuildOptions(images_dir=images_dir), names=parser_name or "liteparse", fallback=cfg.knox.ingest.parser_fallback)
 
     try:
         ingest_start = time.monotonic()

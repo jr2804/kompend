@@ -87,6 +87,7 @@ logger = get_logger(__name__)
 
 @app.command(name="parse")
 def parse_cmd(
+    ctx: typer.Context,
     files: ParseFiles,
     recursive: bool = False,
     print_elements: PrintElements = False,
@@ -101,13 +102,16 @@ def parse_cmd(
         recursive=recursive,
         ignore_patterns=None,
     )
-    router: ParserRouter = build_default_router(names=parser or "liteparse")
+    vp = vault_paths_from_ctx(ctx, require_vault=False)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    router: ParserRouter = build_default_router(names=parser or "liteparse", fallback=cfg.knox.ingest.parser_fallback)
     for path in resolved:
-        instance = router.route(path)
-        if instance is None:
-            get_err_console().print(f"No parser for {path}")
+        try:
+            doc = router.parse(path)
+        except ValueError as exc:
+            # No backend claims the file, or every backend failed.
+            get_err_console().print(f"No parser for {path}: {exc}")
             continue
-        doc = instance.parse(path)
         get_console().print(f"{path.name}: {len(doc.elements)} element(s)")
         if print_elements:
             element_text_limit = DEFAULTS.get(DISPLAY_CLI_ELEMENT_CHARS, 80)
@@ -355,7 +359,7 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
 
     images_dir = VaultPaths(base_dir).images_dir
     parser_name = cfg.knox.ingest.parser
-    router: ParserRouter = build_default_router(ParserBuildOptions(images_dir=images_dir), names=parser_name)
+    router: ParserRouter = build_default_router(ParserBuildOptions(images_dir=images_dir), names=parser_name, fallback=cfg.knox.ingest.parser_fallback)
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),
         force_progress=show_progress,
