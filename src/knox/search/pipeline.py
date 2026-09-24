@@ -178,7 +178,7 @@ class EnhancedRetriever:
             expansions.extend(result.semantic_rewrites)
             return expansions[: self._expansion_variants + 1]
         except Exception as exc:
-            logger.warning("Query expansion failed: %s", exc, exc_info=True)
+            logger.warning("Query expansion (%s) failed: %s", type(self._expansion_agent).__name__, exc, exc_info=True)
             return [query]
 
     # ── HyDE ──────────────────────────────────────────────────────────────
@@ -195,7 +195,7 @@ class EnhancedRetriever:
                 logger.debug("HyDE generated hypothetical passage (%d chars)", len(result))
                 return result.strip()
         except Exception as exc:
-            logger.warning("HyDE generation failed: %s", exc, exc_info=True)
+            logger.warning("HyDE generation (%s) failed: %s", type(self._hyde_agent).__name__, exc, exc_info=True)
         return query
 
     # ── Neural Re-ranker ──────────────────────────────────────────────────
@@ -293,7 +293,9 @@ class EnhancedRetriever:
             grade = self._crag_agent.run(deps)
             return max(0.0, min(1.0, grade.relevance))
         except Exception as exc:
-            logger.debug("CRAG grading failed for %s: %s", result.title, exc)
+            # Retrieval enhancement must stay visible: a silent fallback left CRAG
+            # returning its neutral 0.5 unobserved. Degrade, but log a warning.
+            logger.warning("CRAG grading (%s) failed for %s: %s", type(self._crag_agent).__name__, result.title, exc, exc_info=True)
         return 0.5  # neutral fallback
 
     @staticmethod

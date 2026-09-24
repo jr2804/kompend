@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from knox.agents.deps import PipelineAgentDeps
+from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from knox.core.models import CompiledWiki, WikiNode
+from knox.core.templates import get_template_loader
 from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import SearchResult, SynthesisResult
 
@@ -118,6 +124,68 @@ class TestSynthesize:
             synthesis = retriever.synthesize("q", results)
 
         assert synthesis.answer == "the answer"
+
+
+class TestSearchAgentPrompts:
+    """Regression: the caller pre-renders the prompt; the agent must not re-render it.
+
+    These agents previously declared the variable-bearing ``search/*.md.j2``
+    template as both user and system template, so the base rendered it with no
+    variables and raised — swallowed by the pipeline's fallback, silently
+    disabling the feature.
+    """
+
+    @pytest.mark.parametrize("agent_cls", [QueryExpansionAgent, CragGradeAgent, HydeAgent])
+    def test_agent_returns_prerendered_prompt(self, agent_cls: type) -> None:
+        agent = agent_cls(model_string="ollama/gpt-oss:20b")
+        deps = PipelineAgentDeps(text="PROMPT BODY", source_id="test", timeout=120)
+        assert agent.render_user_prompt(deps) == "PROMPT BODY"
+        assert agent.render_system_prompt(deps) == ""
+
+    def test_search_prompt_templates_render(self) -> None:
+        loader = get_template_loader()
+        expanded = loader.render("search/expand_query.md.j2", query="voice activity detection")
+        assert "voice activity detection" in expanded
+
+        graded = loader.render("search/crag_grade.md.j2", query="the query", title="Title", snippet="Snippet")
+        assert "the query" in graded
+        assert "Title" in graded
+        assert "Snippet" in graded
+
+        hyde = loader.render("search/hyde_generate.md.j2", query="what is VAD")
+        assert "what is VAD" in hyde
+
+
+class TestRetrievalEnhancementWarnings:
+    """A retrieval-enhancement stage that cannot run must warn, not fail silently."""
+
+    def test_expansion_failure_warns_and_falls_back(self, caplog: pytest.LogCaptureFixture) -> None:
+        agent = MagicMock()
+        agent.run.side_effect = RuntimeError("boom")
+        retriever = EnhancedRetriever(_make_wiki(), expansion_agent=agent, expansion_enabled=True)
+        with caplog.at_level(logging.WARNING):
+            assert retriever._expand_queries("q") == ["q"]
+        assert _warned(caplog, "Query expansion")
+
+    def test_hyde_failure_warns_and_falls_back(self, caplog: pytest.LogCaptureFixture) -> None:
+        agent = MagicMock()
+        agent.run.side_effect = RuntimeError("boom")
+        retriever = EnhancedRetriever(_make_wiki(), hyde_agent=agent, hyde_enabled=True)
+        with caplog.at_level(logging.WARNING):
+            assert retriever._generate_hypothetical("q") == "q"
+        assert _warned(caplog, "HyDE generation")
+
+    def test_crag_failure_warns_and_returns_neutral(self, caplog: pytest.LogCaptureFixture) -> None:
+        agent = MagicMock()
+        agent.run.side_effect = RuntimeError("boom")
+        retriever = EnhancedRetriever(_make_wiki(), crag_agent=agent, crag_enabled=True)
+        with caplog.at_level(logging.WARNING):
+            assert retriever._grade_relevance("q", _search_result("a")) == 0.5
+        assert _warned(caplog, "CRAG grading")
+
+
+def _warned(caplog: pytest.LogCaptureFixture, needle: str) -> bool:
+    return any(record.levelno == logging.WARNING and needle in record.getMessage() for record in caplog.records)
 
 
 def _make_wiki() -> CompiledWiki:

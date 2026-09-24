@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
-
 from pydantic import BaseModel
 
 from knox.agents.base import KnoxAgentBase
@@ -23,28 +21,34 @@ class CragGradeOutput(BaseModel):
     relevance: float = 0.5
 
 
-class QueryExpansionAgent(KnoxAgentBase[QueryExpansionOutput, PipelineAgentDeps]):
+class _PreRenderedPromptAgent:
+    """Mixin for search agents whose prompt is rendered by the caller.
+
+    ``EnhancedRetriever`` renders the ``search/*.md.j2`` template with the
+    query/title/snippet variables and passes the finished prompt as
+    ``deps.text``. Declaring that template as ``template_name`` /
+    ``system_template_name`` made the base render it a second time with no
+    variables, which raised at runtime; these agents instead return
+    ``deps.text`` verbatim and carry no system prompt.
+    """
+
+    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301 — overrides KnoxAgentBase for its subclasses
+        return deps.text
+
+
+class QueryExpansionAgent(_PreRenderedPromptAgent, KnoxAgentBase[QueryExpansionOutput, PipelineAgentDeps]):
     """PydanticAI agent for multi-query expansion (RAG-Fusion)."""
 
-    template_name: ClassVar[str] = "expand_query.md.j2"
-    system_template_name: ClassVar[str] = "expand_query.md.j2"
-    template_prefix: ClassVar[str] = "search/"
     temperature: float | None = 0.0
 
 
-class CragGradeAgent(KnoxAgentBase[CragGradeOutput, PipelineAgentDeps]):
+class CragGradeAgent(_PreRenderedPromptAgent, KnoxAgentBase[CragGradeOutput, PipelineAgentDeps]):
     """PydanticAI agent for CRAG relevance grading."""
 
-    template_name: ClassVar[str] = "crag_grade.md.j2"
-    system_template_name: ClassVar[str] = "crag_grade.md.j2"
-    template_prefix: ClassVar[str] = "search/"
     temperature: float | None = 0.0
 
 
-class HydeAgent(KnoxAgentBase[str, PipelineAgentDeps]):
+class HydeAgent(_PreRenderedPromptAgent, KnoxAgentBase[str, PipelineAgentDeps]):
     """PydanticAI agent for HyDE hypothetical answer generation."""
 
-    template_name: ClassVar[str] = "hyde_generate.md.j2"
-    system_template_name: ClassVar[str] = "hyde_generate.md.j2"
-    template_prefix: ClassVar[str] = "search/"
     temperature: float | None = 0.7
