@@ -221,7 +221,6 @@ class LLMConfig(_KnoxBaseModel):
     context_window: int | None = Field(
         default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model"
     )
-    role_models: dict[str, str] = Field(default_factory=dict)
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias=EnvVar.LLM_DATA_FORMAT)
     output_retries: int = Field(default=2, validation_alias=EnvVar.LLM_OUTPUT_RETRIES)
     output_retries_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_OUTPUT_RETRIES_ENABLED)

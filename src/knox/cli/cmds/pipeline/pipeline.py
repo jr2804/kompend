@@ -43,7 +43,6 @@ from knox.cli.args import (
     LlmDefaultModel,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
-    LlmRoleModel,
     MemoryEnabled,
     NoCacheFlag,
     NoPrivacy,
@@ -148,7 +147,6 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     llm_default_model: LlmDefaultModel = None,
     vlm_model: VlmModel = None,
     memory_enabled: MemoryEnabled = None,
-    llm_role_model: LlmRoleModel = None,
     cli_set: CliSet = None,
     json_progress: JsonProgress = False,
 ) -> None:
@@ -188,7 +186,6 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
         memory_enabled=memory_enabled,
         llm_fallback_chain=llm_fallback_chain,
         llm_fallback_max_retries=llm_fallback_max_retries,
-        llm_role_model=llm_role_model,
         embed_model=embed_model,
         in_place_sources=in_place,
         cli_set=parse_cli_set(cli_set),

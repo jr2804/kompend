@@ -22,7 +22,6 @@ from knox.core.config.keys import (
     COMPILE_COMPILER,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
-    COMPILE_LLM_ROLE_MODELS,
 )
 from knox.core.store import open_store, vault_db_path
 from knox.core.store.schema import LINT_RUNS_TABLE
@@ -34,7 +33,6 @@ _SNAPSHOT_KEYS = (
     COMPILE_COMPILER,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
-    COMPILE_LLM_ROLE_MODELS,
 )
 
 

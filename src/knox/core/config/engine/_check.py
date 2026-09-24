@@ -181,8 +181,21 @@ def _check_loaded(
     schema_default_values = _schema_defaults()
     user_keys = set(flat_keys(raw))
     removed_leaf_keys = _removed_leaf_keys()
-    unknown_keys = sorted((user_keys - schema_keys) - removed_leaf_keys)
-    removed_keys = sorted(user_keys & removed_leaf_keys)
+
+    def _removed_ancestor(key: str) -> str | None:
+        """Return the retired key that *key* equals or sits under, if any.
+
+        Table-valued retired keys (e.g. ``compile.llm.role_models``) flatten to
+        nested leaves like ``compile.llm.role_models.<role>``, so matching must be
+        prefix-aware, not exact.
+        """
+        for removed in removed_leaf_keys:
+            if key == removed or key.startswith(f"{removed}."):
+                return removed
+        return None
+
+    unknown_keys = sorted(k for k in (user_keys - schema_keys) if _removed_ancestor(k) is None)
+    removed_keys = sorted({a for k in user_keys if k not in schema_keys and (a := _removed_ancestor(k)) is not None})
 
     # Validation pass via pydantic to surface type/value errors.
     merged: dict[str, Any] = _overlay_merge(_safe_dump_defaults(), raw)

@@ -347,20 +347,6 @@ Verify against a live local model with
 vs. off over a synthetic corpus larger than the model's context window;
 skips cleanly when Ollama is unavailable).
 
-## Per-role model overrides
-
-Some roles can be routed to a different model than the primary (e.g. a
-cheaper model for extraction, a stronger one for generation):
-
-```toml
-[compile.llm.role_models]
-"compile.extract" = "ollama/qwen3"
-"compile.generate" = "openai/gpt-4o"
-```
-
-The role identifiers are config keys under `compile.llm.role_models`, resolved by
-[`LLMConfig`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/core/config/_configs.py).
-
 ## Token usage observability
 
 Every successful call feeds a shared

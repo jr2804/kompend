@@ -73,7 +73,6 @@ from .other import (
     LlmDefaultModel,
     LlmFallbackChain,
     LlmFallbackMaxRetries,
-    LlmRoleModel,
     MemoryEnabled,
     NoPrivacy,
     OrganizeCollapseSingle,
@@ -167,7 +166,6 @@ __all__ = [
     "LlmDefaultModel",
     "LlmFallbackChain",
     "LlmFallbackMaxRetries",
-    "LlmRoleModel",
     # Memory
     "MemoryAnswer",
     "MemoryEnabled",

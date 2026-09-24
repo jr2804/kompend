@@ -13,6 +13,7 @@ from knox.core.config import (
     STATUS_ERROR,
     STATUS_MODIFIED,
     STATUS_OK,
+    STATUS_REMOVED,
     ConfigCheckReport,
     check_config_file,
     check_config_files,
@@ -78,6 +79,23 @@ class TestCheckConfigFile:
         assert report.has_errors
         assert all(e.status == STATUS_ERROR for e in report.entries)
         assert all("does not exist" in (e.message or "") for e in report.entries)
+
+    def test_removed_key_reported(self, tmp_path: Path) -> None:
+        """Keys retired from the schema (REMOVED_KEYS) are reported as removed,
+        not as unknown-key errors, so old vaults get a clear cleanup hint.
+        """
+        cfg = tmp_path / "cfg.toml"
+        cfg.write_text(
+            "[compile.llm]\nrole_models = { compile = 'openai/gpt-4o-mini' }\n",
+            encoding="utf-8",
+        )
+        report = check_config_file(cfg)
+        removed = next(e for e in report.entries if e.key == "compile.llm.role_models")
+        assert removed.status == STATUS_REMOVED
+        assert removed.set_in_toml is True
+        assert removed.current == {"compile": "openai/gpt-4o-mini"}
+        assert report.removed_count >= 1
+        assert not report.has_errors
 
     def test_nested_model_leaves_are_reachable(self, tmp_path: Path) -> None:
         """Optional nested model leaves (e.g. compile.llm.rlm.enable) MUST appear

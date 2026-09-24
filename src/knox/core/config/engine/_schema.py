@@ -70,6 +70,7 @@ ENV_MAP: dict[str, str] = _build_env_map()
 REMOVED_KEYS: dict[str, list[str]] = {
     "compile.budget": ["concepts_per_batch"],
     "compile.pdf": ["page_chunk_overlap"],
+    "compile.llm": ["role_models"],
 }
 
 

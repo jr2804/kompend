@@ -59,7 +59,6 @@ COMPILE_TIER_STATE_FILE: Final[str] = "compile.tier_state_file"
 COMPILE_LLM_DEFAULT_MODEL: Final[str] = "compile.llm.default_model"
 COMPILE_LLM_VLM_MODEL: Final[str] = "compile.llm.vlm_model"
 COMPILE_LLM_FALLBACK_CHAIN: Final[str] = "compile.llm.fallback_chain"
-COMPILE_LLM_ROLE_MODELS: Final[str] = "compile.llm.role_models"
 COMPILE_LLM_FALLBACK_MAX_RETRIES: Final[str] = "compile.llm.fallback_max_retries"
 COMPILE_LLM_CONTEXT_WINDOW_CAP: Final[str] = "compile.llm.context_window_cap"  # deprecated — use COMPILE_LLM_CONTEXT_WINDOW
 COMPILE_LLM_CONTEXT_WINDOW: Final[str] = "compile.llm.context_window"

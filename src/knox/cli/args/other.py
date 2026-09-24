@@ -360,19 +360,3 @@ LlmFallbackMaxRetries = Annotated[
         rich_help_panel="LLM",
     ),
 ]
-
-LlmRoleModel = Annotated[
-    list[str] | None,
-    typer.Option(
-        "--llm-role-model",
-        help=(
-            "Override primary model for a pipeline role (repeatable). "
-            "Format: 'role=provider/model', e.g. "
-            "'resolve=openai/gpt-4o-mini' "
-            "'compile=anthropic/claude-3.5-sonnet'. "
-            "Roles: resolve, compile, enrich, query. Default: config llm.role_models."
-        ),
-        envvar=EnvVar.LLM_ROLE_MODEL,
-        rich_help_panel="LLM",
-    ),
-]

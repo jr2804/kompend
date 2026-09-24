@@ -153,7 +153,6 @@ class TestEntryFromReport:
                 "compile.compiler": "wicer",
                 "compile.llm.default_model": "openai/gpt-4o",
                 "compile.llm.fallback_chain": ["anthropic/claude-3.5-sonnet"],
-                "compile.llm.role_models": {"resolve": "openai/gpt-4o-mini"},
             },
             node_count=42,
             llm={"model": "openai/gpt-4o", "usage": {"prompt_tokens": 100}},

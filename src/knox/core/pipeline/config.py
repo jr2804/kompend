@@ -215,12 +215,6 @@ class PipelineConfig:
                 "--set compile.llm.default_model=... on the command line."
             )
         llm_kwargs = _kwargs_for(LLMConfig, "compile.llm")
-        # Sanitize role_models values (pydantic handles enum/Path coercion)
-        role_models_raw = llm_kwargs.pop("role_models", {})
-        if isinstance(role_models_raw, dict):
-            llm_kwargs["role_models"] = {k: str(v).strip() for k, v in role_models_raw.items() if str(v).strip()}
-        else:
-            llm_kwargs["role_models"] = {}
         llm_config = LLMConfig(**llm_kwargs)
 
         budget_config = BudgetConfig(**_kwargs_for(BudgetConfig, "compile.budget"))
