@@ -1,7 +1,7 @@
 """Tests for the QueryAgent (knox-pyda Phase 4).
 
 The agent wraps a PydanticAI Agent around the existing query synthesis
-prompt template. Unlike ExtractionAgent/GenerationAgent (structured
+prompt template. Unlike ExtractionAgent (structured
 JSON output), the query agent returns free text (``output_type=str``).
 """
 

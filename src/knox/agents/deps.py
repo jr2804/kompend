@@ -7,7 +7,7 @@ analysed, the source identifier for provenance, and per-call budget
 hints from the surrounding pipeline.
 
 The shared pipeline deps (:class:`PipelineAgentDeps`,
-:class:`GenerationDeps`, :class:`ToolGenerationDeps`) live in
+:class:`ToolGenerationDeps`) live in
 ``knox.agents.types`` (a leaf module that breaks the agents ↔
 compilation import cycle) and are re-exported here for backward
 compatibility. This module keeps the agent-specific deps
@@ -18,12 +18,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from knox.agents.types import GenerationDeps, PipelineAgentDeps, RemediationDeps, ToolGenerationDeps
+from knox.agents.types import PipelineAgentDeps, RemediationDeps, ToolGenerationDeps
 
 __all__ = [
     "CategorizeDeps",
     "DistillDeps",
-    "GenerationDeps",
     "PipelineAgentDeps",
     "QueryDeps",
     "RemediationDeps",

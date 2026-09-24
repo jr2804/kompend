@@ -1,28 +1,17 @@
-r"""GenerationAgent — PydanticAI wrapper for the two-phase generation stage.
+r"""Generation agents — PydanticAI wrappers for the two-phase generation stage.
 
-Replaces the raw direct LLM call in ``knox/compilation/two_phase.py``
-generation stage with a typed PydanticAI agent. The agent's
-``output_type`` is :class:`~knox.compilation.schema.GenerationOutput`,
-so the LLM is asked to produce that exact Pydantic model. PydanticAI
-handles JSON extraction + validation + auto-retry on mismatch
-internally.
 
-Usage::
 
-    from knox.agents.generation import GenerationAgent
-    from knox.agents.types import GenerationDeps
+``AgenticGenerationAgent`` (built via :func:`make_agentic_generation_agent`)
 
-    agent = GenerationAgent(model_string="ollama/gpt-oss:20b")
-    result = agent.run(
-        GenerationDeps(
-            concepts_json="{}",
-            content="### content",
-            source_id="batch-1",
-            pinned_facts=[],
-        )
-    )
-    for page in result.pages:
-        print(page.title, page.content)
+is the live generation path: a tool-using agent whose ``output_type`` is
+
+:class:`~knox.compilation.schema.GenerationOutput`, so the LLM is asked to
+
+produce that exact Pydantic model. PydanticAI handles JSON extraction +
+
+validation + auto-retry on mismatch internally.
+
 """
 
 from __future__ import annotations
@@ -34,7 +23,7 @@ from pydantic_ai.agent.abstract import AgentRetries
 
 from knox.agents.agentic_harness import AgenticHarness
 from knox.agents.base import KnoxAgentBase
-from knox.agents.types import GenerationDeps, ToolGenerationDeps
+from knox.agents.types import ToolGenerationDeps
 from knox.compilation.gen_tools import build_gen_tools
 from knox.compilation.schema import GenerationOutput, GenerationPage
 from knox.core.config._configs import RlmConfig
@@ -42,39 +31,11 @@ from knox.core.text.slug import slugify
 from knox.llm.usage import UsageTracker
 
 
-class GenerationAgent(KnoxAgentBase[GenerationOutput, GenerationDeps]):
-    """PydanticAI agent for the compilation generation stage.
-
-    The agent's system + user prompts come from the existing Jinja2
-    templates (``generation_system.md.j2``, ``generation_prompt.md.j2``)
-    so the LLM-facing surface is identical to the current direct LLM
-    path. Only the dispatch and validation are upgraded.
-    """
-
-    template_name: ClassVar[str] = "generation_prompt.md.j2"
-    system_template_name: ClassVar[str] = "generation_system.md.j2"
-    use_delta_retry: bool = True
-
-    def validate_output(self, ctx: RunContext[GenerationDeps], output: GenerationOutput) -> GenerationOutput:  # noqa: PLR6301
-        """Semantic output validator for generation results.
-
-        Checks for empty pages list (the only issue that warrants a model retry).
-        Empty and duplicate slugs are auto-fixed locally — asking the model to
-        fix them triggers content loss on small models (Qwen3.5-2B interprets
-        "provide slugs ONLY" literally and drops all content).
-        """
-        if not output.pages:
-            raise ModelRetry("You returned an empty pages list. Generate at least one wiki page with a title, slug, and content.")
-
-        _fix_slugs_locally(output.pages)
-        return output
-
-
 class AgenticGenerationAgent(KnoxAgentBase[GenerationOutput, ToolGenerationDeps]):
     """PydanticAI agent for tool-based agentic generation.
 
-    Unlike :class:`GenerationAgent` (which receives concepts + content as
-    static prompt variables), this agent discovers concepts via
+    Unlike a static-prompt generation agent, this agent discovers concepts via
+
     ``fetch_concepts()`` and source content via ``read_segment()`` tools.
     It uses :class:`~knox.agents.deps.ToolGenerationDeps` and the
     ``generation_agentic_*`` template pair.

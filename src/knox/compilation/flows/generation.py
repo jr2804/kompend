@@ -464,6 +464,11 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             "Entity-type registry overrode model choice for %d concept(s)",
             overrides_applied,
         )
+
+    # Deterministic kind for pre-assigned concept entries (mandatory entity
+    # pages). A model that drops or alters the kind must not misfile these;
+    # pages the model invents keep their own kind.
+    preassigned_kinds: dict[str, str] = {normalize_concept_key(str(c.get(ExtractionField.NAME, ""))): str(c["kind"]) for c in concepts if c.get("kind")}
     # Coverage credit: rapidfuzz T2 + embedding T3 (single instances shared
     # across segments so title/concept embeddings are cached compile-wide).
     coverage = _CoverageCredit(compiler._config.embedding.model)
@@ -631,7 +636,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             for idx, page in enumerate(valid_pages):
                 seg_titles.add(normalize_concept_key(page.title or ""))
                 node_id = slugify(page.title or f"concept-{seg_idx}-{idx}", max_length=compiler._config.llm.slug_max_length)
-                kind = _allowed_kind(page.kind, compiler._config.extraction_categories)
+                kind = _resolve_page_kind(page.kind, page.title or "", preassigned_kinds, compiler._config.extraction_categories)
                 page_content = _SOURCE_WIKILINK_RE.sub(r"[\1]", page.content)
                 node_metadata: dict[str, Any] = {
                     MetadataField.PROVENANCE: page.provenance,
@@ -874,6 +879,23 @@ def _rate_suffix(tracker: UsageTracker | None) -> str:
     if not overall and not recent:
         return ""
     return f" · {recent:.1f} tok/s" if recent else f" · avg {overall:.1f} tok/s"
+
+
+def _resolve_page_kind(
+    model_kind: str,
+    title: str,
+    preassigned: dict[str, str],
+    extras: dict[str, str],
+) -> str:
+    """Resolve a page kind: a pre-assigned kind wins, else the model's label.
+
+    ``_with_entity_pages`` pre-assigns ``kind: entity`` to mandatory pages.
+    Those are enforced deterministically so a model that drops or alters the
+    kind cannot misfile the page (entity subdirectory routing depends on it).
+    Pages the model invents keep their own kind, validated by ``_allowed_kind``.
+    """
+    expected = preassigned.get(normalize_concept_key(title))
+    return _allowed_kind(expected or model_kind, extras)
 
 
 def _allowed_kind(kind: str, extras: dict[str, str]) -> str:

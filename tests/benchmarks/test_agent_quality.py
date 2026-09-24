@@ -31,14 +31,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from knox.agents.deps import GenerationDeps, PipelineAgentDeps, QueryDeps
+from knox.agents.deps import PipelineAgentDeps, QueryDeps, ToolGenerationDeps
 from knox.compilation.schema import ExtractionOutput
 
 # Agents to benchmark — each is a KnoxAgentBase subclass
 _AGENT_SPECS: list[tuple[str, str, str, str, bool]] = [
     # (label, module_name, class_name, template_dir, is_query_agent)
     ("extraction", "knox.agents.extraction", "ExtractionAgent", "compilation", False),
-    ("generation", "knox.agents.generation", "GenerationAgent", "compilation", False),
+    ("generation", "knox.agents.generation", "AgenticGenerationAgent", "compilation", False),
     ("query", "knox.agents.query", "QueryAgent", "query", True),
 ]
 
@@ -88,12 +88,11 @@ class TestFullRunBenchmark:
                 findings=[],
             )
         elif label == "generation":
-            deps = GenerationDeps(
-                concepts_json="[]",
-                content="test content",
+            deps = ToolGenerationDeps(
+                source_content="test content",
                 source_id="test",
             )
-            # GenerationAgent returns GenerationOutput but we mock run_sync
+            # AgenticGenerationAgent returns GenerationOutput but we mock run_sync
             result_obj = MagicMock()
         elif label == "query":
             deps = QueryDeps(

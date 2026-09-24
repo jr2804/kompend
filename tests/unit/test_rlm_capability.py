@@ -18,8 +18,8 @@ from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.settings import ModelSettings
 
 from knox.agents.base import KnoxAgentBase
-from knox.agents.deps import GenerationDeps, PipelineAgentDeps, QueryDeps
-from knox.agents.generation import GenerationAgent
+from knox.agents.deps import PipelineAgentDeps, QueryDeps
+from knox.agents.extraction import ExtractionAgent
 from knox.agents.knox_model import KnoxModel
 from knox.agents.query import QueryAgent
 from knox.agents.rlm import (
@@ -387,13 +387,13 @@ class TestPromptPlaceholder:
     def test_base_render_user_prompt_rlm_placeholder(self) -> None:
         """The base render_user_prompt swaps the rlm_context_field var."""
         big = "BIG CONTENT " * 50
-        deps = GenerationDeps(concepts_json="[]", content=big, source_id="s")
-        plain = GenerationAgent(model_string="ollama/x")
+        deps = PipelineAgentDeps(text=big, source_id="s")
+        plain = ExtractionAgent(model_string="ollama/x")
         assert big in plain.render_user_prompt(deps)
-        rlm_agent = GenerationAgent(
+        rlm_agent = ExtractionAgent(
             model_string="ollama/x",
             rlm=RlmConfig(enable=True),
-            rlm_context_field="content",
+            rlm_context_field="text",
         )
         assert big not in rlm_agent.render_user_prompt(deps)
         assert "execute_code" in rlm_agent.render_user_prompt(deps)

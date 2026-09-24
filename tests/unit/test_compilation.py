@@ -1141,10 +1141,12 @@ class TestTwoPhaseConceptSalvage:
             )
         )
         chunks = _make_chunks(count=3, heading="Some Heading")
-        # Extraction succeeds, generation returns empty (all calls fail)
+        # Extraction succeeds, generation fails on every pass (all calls fail).
+        failing_agent = MagicMock()
+        failing_agent.run.side_effect = LLMOutputError("generation failed")
         with (
             patch.object(compiler, "extract", return_value=ext_set),
-            patch("knox.compilation.flows.generation.try_pydanticai_generation", return_value=None),
+            patch("knox.compilation.flows.generation.make_agentic_generation_agent", return_value=failing_agent),
             pytest.raises(LLMOutputError, match=r"produced no page\(s\) for any of its 1 assigned concept\(s\)"),
         ):
             compiler.compile(chunks)

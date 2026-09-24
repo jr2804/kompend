@@ -58,18 +58,6 @@ class BaseGenerationDeps:
 
 
 @dataclass
-class GenerationDeps(BaseGenerationDeps):
-    """Runtime context for the static generation stage.
-
-    Expects concepts_json and content as static prompt variables.
-    """
-
-    concepts_json: str = ""
-    content: str = ""
-    categories: str = ""  # rendered extra-category instructions
-
-
-@dataclass
 class ToolGenerationDeps(BaseGenerationDeps):
     """Runtime context for the agentic generation stage.
 
@@ -352,6 +340,10 @@ class QueryAgentDeps:
             ``results`` is keyed by whatever index ``add_finding`` uses).
         retriever: Raw wiki retrieval surface the tools call.
         max_sub_questions: Upper bound declared to the model in the prompt.
+        tag_groups: Tag filters as an OR-of-ANDs (DNF); empty means no tag
+            filter. Pushed down through the retriever by ``search_wiki``.
+        attr_filters: Attribute filters as ``(key, value)`` pairs (``value``
+            ``None`` = key-presence); all must hold. Pushed down likewise.
         results: Collected answer fragments keyed by sub-question index.
         source_id: Identifier for tracking.
         timeout: Per-call timeout in seconds.
@@ -361,6 +353,8 @@ class QueryAgentDeps:
     sub_questions: list[str]
     retriever: QuerySearchProtocol
     max_sub_questions: int = 5
+    tag_groups: list[list[str]] = field(default_factory=list)
+    attr_filters: list[tuple[str, str | None]] = field(default_factory=list)
     results: dict[int, str] = field(default_factory=dict)
     source_id: str = "query"
     timeout: float = 120.0
@@ -387,7 +381,16 @@ class QuerySearchProtocol(Protocol):
     synthesise answers — that would re-enter the query agent.
     """
 
-    def search(self, query: str, top_k: int) -> Sequence[WikiHitProtocol]: ...
+    def search(
+        self,
+        query: str,
+        top_k: int,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> Sequence[WikiHitProtocol]: ...
 
     def read_page(self, slug: str) -> str | None: ...
 

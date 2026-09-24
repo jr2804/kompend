@@ -50,6 +50,6 @@ page in `generation_prompt.md.j2`; `_allowed_kind` in `flows/generation.py`
 validates it at node creation — anything outside the allowed set falls back
 to `concept` (permissive-consumption model, never a hard failure).
 Exception: extracted entities become mandatory pages — `ExtractionSet.entity_pages()`
-merges them with a pre-assigned `kind: entity`, and `_page_kind` overrides
-the LLM's label for those entries. Entity specs colliding with an existing
+merges them with a pre-assigned `kind: entity`, and `_resolve_page_kind` in `flows/generation.py`
+overrides the LLM's label for those entries. Entity specs colliding with an existing
 concept key are dropped to avoid duplicate pages.

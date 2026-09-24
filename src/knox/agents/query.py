@@ -2,7 +2,7 @@ r"""QueryAgent — PydanticAI wrapper for the wiki query/synthesis stage.
 
 Replaces the raw direct LLM call in ``knox/search/retriever.py``
 ``TokenOverlapRetriever.synthesize()`` with a typed PydanticAI agent.
-Unlike ExtractionAgent and GenerationAgent (which return structured
+Unlike ExtractionAgent (which returns structured
 Pydantic models), the query agent returns **free text** — the answer
 string. PydanticAI's ``output_type=str`` handles this natively.
 

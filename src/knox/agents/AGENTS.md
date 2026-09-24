@@ -26,7 +26,7 @@ is the **only** layer that talks to pydantic-ai `Agent` directly.
 All agents extend `KnoxAgentBase[ResultT, DepsT]` (ABC):
 
 - `ExtractionAgent`, `ExtractionReduceAgent`
-- `GenerationAgent`
+- `AgenticGenerationAgent`
 - `ReferenceExtractionAgent` (bibliographic reference parsing)
 - `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`
 - `QueryAgent`
@@ -116,7 +116,6 @@ feedback loop — was removed.
 | Deps class          | Used by                                                                               |
 | ------------------- | ------------------------------------------------------------------------------------- |
 | `PipelineAgentDeps` | extraction, search, capture, lint, verification, categorize, summarize, context-chunk |
-| `GenerationDeps`    | GenerationAgent (adds `concepts_json`, `wicer_findings`)                              |
 | `QueryDeps`         | QueryAgent (adds `retrieved_context`, `query`, `mode`)                                |
 | `WicerProbeDeps`    | WicerProbeAgent                                                                       |
 | `WicerEvaluateDeps` | WicerEvaluateAgent                                                                    |

@@ -316,7 +316,7 @@ the pipeline stages:
 | ----------------------- | -------------------------- | ---------------------------- |
 | `ExtractionAgent`       | TwoPhase extraction        | `ExtractionOutput` (JSON)    |
 | `ExtractionReduceAgent` | TwoPhase extraction reduce | `ExtractionOutput` (JSON)    |
-| `GenerationAgent`       | TwoPhase generation        | `GenerationOutput` (JSON)    |
+| `AgenticGenerationAgent` | TwoPhase generation        | `GenerationOutput` (JSON)    |
 | `QueryAgent`            | RAG query synthesis        | `str` (free text)            |
 | `WicerProbeAgent`       | WiCER probe generation     | `WicerProbeOutput` (JSON)    |
 | `WicerEvaluateAgent`    | WiCER evaluation           | `WicerEvaluateOutput` (JSON) |
@@ -386,7 +386,7 @@ the pipeline stages:
 | Path                              | Scope                                                                                                                                                                                                                                             |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `acp/`                            | ACP agent — `providers/set` credential injection, TOML-defined conversational agents, tool-calling loop, slash commands                                                                                                                           |
-| `agents/`                         | PydanticAI pipeline agents — `ExtractionAgent`, `GenerationAgent`, `QueryAgent`, `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`. All LLM stages route through native pydantic-ai models via `build_model()` + `KnoxModel` wrapper. |
+| `agents/`                         | PydanticAI pipeline agents — `ExtractionAgent`, `AgenticGenerationAgent`, `QueryAgent`, `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`. All LLM stages route through native pydantic-ai models via `build_model()` + `KnoxModel` wrapper. |
 | `cli/AGENTS.md`                   | CLI layer — thin shell over core, Typer commands, argument declarations                                                                                                                                                                           |
 | `core/AGENTS.md`                  | Core foundation — models, paths, config, pipeline, cache, templates, trust, reporting, utils, resolution                                                                                                                                          |
 | `llm/AGENTS.md`                   | LLM client — error hierarchy, failover (provider rules delegated to `providers/AGENTS.md`)                                                                                                                                                        |
