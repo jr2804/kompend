@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -31,7 +32,7 @@ from knox.compilation.two_phase import (
 )
 from knox.core.config import EmbeddingConfig, LLMConfig
 from knox.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
-from knox.core.paths import KNOX_DIR, PROVENANCE_DIR, REVIEW_DIR, STATE_FILE
+from knox.core.paths import KNOX_DIR, REVIEW_DIR, STATE_FILE
 from knox.core.pipeline.config import Tier
 from knox.core.pipeline.orchestrator import (
     ALL_TIERS,
@@ -51,7 +52,7 @@ from knox.core.pipeline.state import (
     classify_compile_status,
 )
 from knox.core.store import open_store
-from knox.core.store.schema import PRIVATE_PAGES_TABLE, VERIFICATION_TABLE
+from knox.core.store.schema import PRIVATE_PAGES_TABLE, PROVENANCE_TABLE, VERIFICATION_TABLE
 from knox.provenance import annotate_wiki_with_provenance
 from knox.review import ReviewQueue, ReviewStatus, slugify
 from knox.trust import (
@@ -79,8 +80,8 @@ class TestTierLevelRanges:
 
     def test_should_run_default_runs_all(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"),
-            output_dir=Path("o"),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -90,8 +91,8 @@ class TestTierLevelRanges:
 
     def test_should_run_output_only(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"),
-            output_dir=Path("o"),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
             start_at_tier=Tier.OUTPUT,
@@ -394,8 +395,8 @@ class TestWikiPipelineTiered:
 
     def test_pipeline_config_defaults(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"),
-            output_dir=Path("o"),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -404,8 +405,8 @@ class TestWikiPipelineTiered:
 
     def test_start_level_default(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"),
-            output_dir=Path("o"),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -415,8 +416,8 @@ class TestWikiPipelineTiered:
 
     def test_start_level_output_only(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"),
-            output_dir=Path("o"),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
             start_at_tier=Tier.OUTPUT,
@@ -427,8 +428,8 @@ class TestWikiPipelineTiered:
 
     def test_validate_prerequisites_empty_state_raises(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"),
-            output_dir=Path("o"),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
             start_at_tier=Tier.RESOLVE,
@@ -439,8 +440,8 @@ class TestWikiPipelineTiered:
 
     def test_run_tier_unknown_raises(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"),
-            output_dir=Path("o"),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -450,7 +451,7 @@ class TestWikiPipelineTiered:
 
     def test_list_tiers_returns_all(self, tmp_path: Path) -> None:
         config = PipelineConfig(
-            source_dir=Path("s"),
+            source_dir=_tmp_dir(),
             output_dir=tmp_path,
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
@@ -826,8 +827,8 @@ class TestAgenticSegmentSizing:
 
     def _compiler(self, *, context_window: int = 65536, gen_output_max: int = 16384) -> TwoPhaseCompiler:
         config = PipelineConfig(
-            source_dir=Path("."),
-            output_dir=Path("."),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(
                 default_model="test/model",
                 vlm_model="test/vlm",
@@ -841,13 +842,18 @@ class TestAgenticSegmentSizing:
         return compiler
 
 
+def _tmp_dir() -> Path:
+    """A throwaway base dir so store-backed configs never write into the repo."""
+    return Path(tempfile.mkdtemp(prefix="knox-tput-"))
+
+
 class TestTwoPhaseCompiler:
     """TwoPhaseCompiler behaviour."""
 
     def test_empty_input(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("."),
-            output_dir=Path("."),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -859,8 +865,8 @@ class TestTwoPhaseCompiler:
     def test_extraction_failure_skips_source(self) -> None:
         """When extraction LLM fails for a source, the source is skipped — pipeline continues."""
         config = PipelineConfig(
-            source_dir=Path("."),
-            output_dir=Path("."),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm", batch_retry_attempts=0),
             embedding=EmbeddingConfig(model="hash"),
         )
@@ -887,7 +893,10 @@ class TestTwoPhaseCompiler:
     def test_compile_flags_incomplete_on_high_failure_rate(self) -> None:
         """When most batches fail (after retries), compile stops early and flags incomplete."""
         config = PipelineConfig(
-            source_dir=Path("."), output_dir=Path("."), llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"), embedding=EmbeddingConfig(model="hash")
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
+            embedding=EmbeddingConfig(model="hash"),
         )
         config.no_cache = True
         compiler = TwoPhaseCompiler(config=config)
@@ -916,8 +925,8 @@ class TestTwoPhaseCompiler:
 
     def test_extract_returns_extractions(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("."),
-            output_dir=Path("."),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -953,8 +962,8 @@ class TestTwoPhaseCompiler:
 
     def test_extract_populates_extraction_stats(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("."),
-            output_dir=Path("."),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -999,8 +1008,8 @@ class TestTwoPhaseCompiler:
 
     def test_compile_writes_extraction_stats_to_metadata(self) -> None:
         config = PipelineConfig(
-            source_dir=Path("."),
-            output_dir=Path("."),
+            source_dir=_tmp_dir(),
+            output_dir=_tmp_dir(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -1047,7 +1056,7 @@ class TestTwoPhaseCompiler:
 
         # The agentic generation path builds a real agent per segment; patch the
         # factory to return a stub whose run() validates the side-effect dict
-        # against GenerationOutput (mirrors the old try_pydanticai_generation seam).
+        # against GenerationOutput (the agentic generation seam).
         def _fake_agent_factory(**kwargs: object) -> object:
             agent = MagicMock()
             agent.result_type = GenerationOutput
@@ -1177,7 +1186,7 @@ class TestMergeDuplicates:
 
 
 class TestAnnotateWikiWithProvenance:
-    """annotate_wiki_with_provenance writes per-node files and updates metadata."""
+    """annotate_wiki_with_provenance persists per-node citations and updates metadata."""
 
     def test_annotates_and_persists(self, tmp_path: Path) -> None:
         wiki = _wiki(
@@ -1192,10 +1201,12 @@ class TestAnnotateWikiWithProvenance:
         )
         out = annotate_wiki_with_provenance(wiki, tmp_path)
         assert out.metadata["provenance_annotated"] is True
-        record_file = tmp_path / KNOX_DIR / PROVENANCE_DIR / "n1.json"
-        assert record_file.exists()
-        record = json.loads(record_file.read_text(encoding="utf-8"))
-        assert record["citations"] == ["[a.pdf:1-3]"]
+        assert out.nodes[0].metadata["citation_count"] == 1
+        with open_store(tmp_path / KNOX_DIR / "knox.db") as conn:
+            row = conn.execute(f"SELECT title, citations FROM {PROVENANCE_TABLE} WHERE node_id = ?", ("n1",)).fetchone()
+        assert row is not None
+        assert row["title"] == "A"
+        assert json.loads(row["citations"]) == ["[a.pdf:1-3]"]
 
 
 # ===========================================================================

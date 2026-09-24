@@ -1,10 +1,17 @@
-"""Lightweight query memory store using zvec for semantic retrieval and JSONL
-for chronological logs.
+"""Query memory store: zvec for semantic retrieval, ``knox.db`` for the
+chronological log.
+
+The chronological/feedback log lives in the ``memory_log`` table of
+``.knox/knox.db``; the legacy ``memory.jsonl`` is no longer written or read.
+The zvec collection (``memory.db``) remains the regenerate-from-log embedding
+branch.
 """
+
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
+# no runtime value ever enters an identifier or statement.
 
 from __future__ import annotations
 
-import json
 import shutil
 from enum import StrEnum
 from pathlib import Path
@@ -15,6 +22,8 @@ import zvec as _zvec
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_MEMORY_QUERY_CHARS
 from knox.core.paths import VaultPaths
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import MEMORY_LOG_TABLE
 from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 from knox.rag.zvec_store import EmbeddingProvider, make_provider
@@ -69,7 +78,7 @@ class MemoryStore:
         self.base_dir = Path(base_dir)
         _paths = VaultPaths(self.base_dir)
         self.db_file = _paths.memory_db_file
-        self.log_file = _paths.memory_log_file
+        self._log_db_path = vault_db_path(self.base_dir)
         self._embedding_model = embedding_model
         self._provider: EmbeddingProvider | None = embedding_provider
         self._collection: _zvec.Collection | None = None
@@ -93,8 +102,9 @@ class MemoryStore:
 
         # Trigger embedding to ensure dim is resolved if using LiteLLM
         embedding = provider.embed(query)
+        mem_id = f"mem_{timestamp.replace(':', '').replace('.', '')}"
         doc = _zvec.Doc(
-            id=f"mem_{timestamp.replace(':', '').replace('.', '')}",
+            id=mem_id,
             vectors={str(MemoryField.QUERY_EMBEDDING): embedding},
             fields={
                 str(MemoryField.QUERY): query,
@@ -105,19 +115,11 @@ class MemoryStore:
         )
         self._collection.insert([doc])
 
-        # Append to chronological JSONL log for synthesis
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write(
-                json.dumps(
-                    {
-                        str(MemoryField.TIMESTAMP): timestamp,
-                        str(MemoryField.QUERY): query,
-                        str(MemoryField.ANSWER): answer,
-                        str(MemoryField.FEEDBACK): feedback or "",
-                        str(MemoryField.MEMORY_BY): memory_by,
-                    }
-                )
-                + "\n"
+        # Chronological/feedback log for synthesis lives in the vault store.
+        with open_store(self._log_db_path) as conn:
+            conn.execute(
+                f"INSERT INTO {MEMORY_LOG_TABLE}(mem_id, ts, query, answer, feedback, memory_by) VALUES (?, ?, ?, ?, ?, ?)",
+                (mem_id, timestamp, query, answer, feedback or "", memory_by),
             )
 
         query_log_limit = DEFAULTS.get(DISPLAY_MEMORY_QUERY_CHARS, 50)
@@ -155,16 +157,23 @@ class MemoryStore:
 
     def get_recent_entries(self, limit: int = 20) -> list[MemoryEntry]:
         """Get the most recent memory entries chronologically (for synthesis)."""
-        if not self.log_file.exists():
+        if not self._log_db_path.exists():
             return []
-
-        entries = []
-        with open(self.log_file, encoding="utf-8") as f:
-            for line in f:
-                if line.strip():
-                    entries.append(json.loads(line))
-
-        return list(reversed(entries[-limit:]))
+        with open_store(self._log_db_path) as conn:
+            rows = conn.execute(
+                f"SELECT ts, query, answer, feedback, memory_by FROM {MEMORY_LOG_TABLE} ORDER BY id DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return [
+            {
+                "timestamp": row["ts"],
+                "query": row["query"],
+                "answer": row["answer"],
+                "feedback": row["feedback"],
+                "memory_by": row["memory_by"],
+            }
+            for row in rows
+        ]
 
     def close(self) -> None:
         """Close the underlying collection."""
@@ -172,7 +181,7 @@ class MemoryStore:
             self._collection = None
 
     def _ensure_collection(self) -> EmbeddingProvider:
-        """Initialize the zvec collection and JSONL file for memory entries."""
+        """Initialize the zvec collection for memory entries."""
         if self._collection is not None:
             if self._provider is None:
                 raise RuntimeError("Memory collection exists but embedding provider is unset — internal invariant violated")

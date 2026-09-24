@@ -7,11 +7,16 @@ Provenance lives in two places:
   and exposed via :func:`knox provenance <slug>`.
 
 The format is intentionally simple and human-readable so it can survive
-a round-trip through the markdown output writer.
+a round-trip through the markdown output writer. The per-node record is
+persisted in the ``provenance`` table of ``.knox/knox.db``; the legacy
+``.knox/provenance/`` directory is no longer written or read.
 
 Note: ``Citation``, ``extract_citations``, ``merge_duplicate_citations``,
 and lifecycle constants moved to :mod:`knox.core.models`. Import from there.
 """
+
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
+# no runtime value ever enters an identifier or statement.
 
 from __future__ import annotations
 
@@ -23,7 +28,8 @@ from knox.core.models import (
     WikiNode,
     extract_citations,
 )
-from knox.core.paths import VaultPaths
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import PROVENANCE_TABLE
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -32,22 +38,15 @@ logger = get_logger(__name__)
 def annotate_wiki_with_provenance(wiki: CompiledWiki, base_dir: Path) -> CompiledWiki:
     """Persist provenance citations for each node and return a new wiki.
 
-    Writes a per-node ``.knox/provenance/<id>.json`` file containing the
-    list of citations parsed from the node's content. The wiki itself
-    is returned with updated metadata so callers can chain output steps.
+    Upserts one ``provenance`` row per node (id, title, citations) in the vault
+    store. The wiki itself is returned with updated metadata so callers can
+    chain output steps.
     """
-    prov_dir = VaultPaths(base_dir).provenance_dir
-    prov_dir.mkdir(parents=True, exist_ok=True)
-
+    rows: list[tuple[str, str, str]] = []
     new_nodes: list[WikiNode] = []
     for node in wiki.nodes:
         citations = extract_citations(node.content)
-        record = {
-            "node_id": node.id,
-            "title": node.title,
-            "citations": [c.to_marker() for c in citations],
-        }
-        (prov_dir / f"{node.id}.json").write_text(json.dumps(record, indent=2, default=str), encoding="utf-8")
+        rows.append((node.id, node.title, json.dumps([c.to_marker() for c in citations], ensure_ascii=False)))
         new_nodes.append(
             WikiNode(
                 id=node.id,
@@ -57,6 +56,13 @@ def annotate_wiki_with_provenance(wiki: CompiledWiki, base_dir: Path) -> Compile
                 source_chunks=node.source_chunks,
                 metadata={**(node.metadata or {}), "citation_count": len(citations)},
             )
+        )
+
+    with open_store(vault_db_path(base_dir)) as conn:
+        conn.executemany(
+            f"INSERT INTO {PROVENANCE_TABLE}(node_id, title, citations) VALUES (?, ?, ?) "
+            f"ON CONFLICT(node_id) DO UPDATE SET title = excluded.title, citations = excluded.citations",
+            rows,
         )
 
     return CompiledWiki(

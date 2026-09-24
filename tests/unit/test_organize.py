@@ -21,7 +21,10 @@ from knox.core.config.keys import (
     ORGANIZE_MIN_FILES_PER_CATEGORY,
     ORGANIZE_MIN_SUBCATEGORIES,
 )
+from knox.core.models import CompiledWiki, WikiNode
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KNOX_DIR, ORGANIZE_REPORT_FILE
+from knox.core.store import open_store
+from knox.core.store.schema import PROVENANCE_TABLE
 from knox.core.text.slug import slugify
 from knox.organize import (
     CategoryNode,
@@ -40,6 +43,7 @@ from knox.organize import (
 from knox.organize.categorize import _tree_from_json
 from knox.organize.engine import resolve_organize_config
 from knox.organize.moves import FileMove
+from knox.provenance import annotate_wiki_with_provenance
 
 # ── Slug helper ──────────────────────────────────────────────────────────
 
@@ -572,18 +576,13 @@ class TestUpdateWikiLinks:
         assert page.read_text(encoding="utf-8") == ("Some claim [new.md:1-2] here.\nAnother [new.md:5-7] ref.")
 
     def test_updates_provenance(self, tmp_path: Path) -> None:
-        prov_dir = tmp_path / KNOX_DIR / "provenance"
-        prov_dir.mkdir(parents=True)
-        prov_file = prov_dir / "node.json"
-        prov_file.write_text(
-            json.dumps(
-                {
-                    "node_id": "node",
-                    "title": "T",
-                    "citations": ["[old.md:1-2]"],
-                },
+        annotate_wiki_with_provenance(
+            CompiledWiki(
+                nodes=[WikiNode(id="node", title="T", content="Claim ^[old.md:1-2]", node_type="section")],
+                edges=[],
+                toc=[],
             ),
-            encoding="utf-8",
+            tmp_path,
         )
 
         wiki = tmp_path / "wiki"
@@ -593,8 +592,10 @@ class TestUpdateWikiLinks:
         counts = update_wiki_links(tmp_path, wiki, remap)
 
         assert counts["provenance_files"] == 1
-        data = json.loads(prov_file.read_text(encoding="utf-8"))
-        assert data["citations"] == ["[new.md:1-2]"]
+        with open_store(tmp_path / KNOX_DIR / "knox.db") as conn:
+            row = conn.execute(f"SELECT citations FROM {PROVENANCE_TABLE} WHERE node_id = ?", ("node",)).fetchone()  # noqa: S608 — table name from Final constant
+        assert row is not None
+        assert json.loads(row["citations"]) == ["[new.md:1-2]"]
 
     def test_updates_wiki_node_metadata(self, tmp_path: Path) -> None:
         wiki = tmp_path / "wiki"

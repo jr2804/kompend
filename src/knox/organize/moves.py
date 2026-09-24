@@ -10,6 +10,8 @@ from pathlib import Path
 
 from knox.core.models import MetadataField, WikiField
 from knox.core.paths import VaultPaths, is_protected_source
+from knox.core.store import open_store
+from knox.core.store.schema import PROVENANCE_TABLE
 from knox.logging import get_logger
 from knox.organize.categorize import CategoryNode, CategoryTree
 
@@ -150,9 +152,7 @@ def update_wiki_links(base_dir: Path, output_dir: Path, remap: LinkRemap) -> dic
     if output_dir.is_dir():
         for fpath in output_dir.rglob("*.md"):
             counts["wiki_files"] += _rewrite_citations(fpath, remap)
-    if (prov_dir := paths.provenance_dir).is_dir():
-        for fpath in prov_dir.glob("*.json"):
-            counts["provenance_files"] += _rewrite_provenance(fpath, remap)
+    counts["provenance_files"] = _rewrite_provenance_table(paths.knox_db_file, remap)
     counts["wiki_node_metadata"] = _rewrite_wiki_node_paths(output_dir, remap)
     counts["tier_state"] = _rewrite_tier_state(paths.compile_state_file, remap, output_dir)
     return counts
@@ -179,27 +179,35 @@ def _rewrite_citations(filepath: Path, remap: LinkRemap) -> int:
     return edits
 
 
-def _rewrite_provenance(filepath: Path, remap: LinkRemap) -> int:
-    try:
-        data = json.loads(filepath.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return 0
-    if not isinstance(data, dict):
-        return 0
-    citations = data.get("citations", [])
-    if not isinstance(citations, list):
+def _rewrite_provenance_table(db_path: Path, remap: LinkRemap) -> int:
+    """Rewrite citation source names in the ``provenance`` table after a rename."""
+    if not db_path.exists():
         return 0
     edits = 0
-    for i, marker in enumerate(citations):
-        if not isinstance(marker, str):
-            continue
-        m = _CITATION_RE.match(marker)
-        if not m or not (new := remap.get(m.group(1))):
-            continue
-        citations[i] = f"[{new}:{m.group(2)}-{m.group(3)}]"
-        edits += 1
-    if edits:
-        filepath.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+    updates: list[tuple[str, str]] = []
+    with open_store(db_path) as conn:
+        rows = conn.execute(f"SELECT node_id, citations FROM {PROVENANCE_TABLE}").fetchall()  # noqa: S608 — table name from Final constant
+        for row in rows:
+            try:
+                citations = json.loads(row["citations"])
+            except (TypeError, json.JSONDecodeError):
+                continue
+            if not isinstance(citations, list):
+                continue
+            changed = 0
+            for i, marker in enumerate(citations):
+                if not isinstance(marker, str):
+                    continue
+                m = _CITATION_RE.match(marker)
+                if not m or not (new := remap.get(m.group(1))):
+                    continue
+                citations[i] = f"[{new}:{m.group(2)}-{m.group(3)}]"
+                changed += 1
+            if changed:
+                updates.append((json.dumps(citations, ensure_ascii=False), row["node_id"]))
+                edits += changed
+        if updates:
+            conn.executemany(f"UPDATE {PROVENANCE_TABLE} SET citations = ? WHERE node_id = ?", updates)  # noqa: S608 — table name from Final constant
     return edits
 
 

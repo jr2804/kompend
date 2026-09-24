@@ -7,7 +7,6 @@ nothing. ``fix()`` deletes the file on disk + tombstones the manifest entry.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from knox.core.models.attachments import Attachment, AttachmentManifest
@@ -43,12 +42,10 @@ def test_fix_removes_orphan_file_and_tombstones_manifest(tmp_path: Path) -> None
     assert "Deleted orphan attachment" in results[0].message
     assert not orphan.exists(), "orphan file should be gone"
     # read_all returns active entries; the tombstone is gone from there.
-    assert rel_path not in AttachmentManifest(vault / ".knox" / "attachments.jsonl").read_all()
-    # Raw read confirms the tombstone entry (deleted=True) was appended.
-    raw_lines = (vault / ".knox" / "attachments.jsonl").read_text(encoding="utf-8").splitlines()
-    last_entry = json.loads(raw_lines[-1])
-    assert last_entry["path"] == rel_path
-    assert last_entry["deleted"] is True
+    manifest = AttachmentManifest(vault / ".knox" / "attachments.jsonl")
+    assert rel_path not in manifest.read_all()
+    # The tombstone is recorded (deleted=True) and visible to deleted_paths().
+    assert rel_path in manifest.deleted_paths()
 
 
 def test_fix_removes_empty_slug_dir(tmp_path: Path) -> None:

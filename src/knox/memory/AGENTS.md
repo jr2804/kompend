@@ -12,6 +12,10 @@ KNOX memory layer. Two concerns:
 - **Compile memory** (`lifecycle.py`): confidence scoring, tier promotion,
   supersession, and retention/decay for wiki nodes across compiles.
 
+Both persist to the single vault store (`.knox/knox.db`): the query log in
+`memory_log`, lifecycle state in `memory_states`. The legacy `memory.json` /
+`memory.jsonl` files are no longer written or read (clean-cut store).
+
 ## Modules
 
 | Module | Contents |
@@ -25,9 +29,11 @@ KNOX memory layer. Two concerns:
 - Import from the package root for the public API:
   `from knox.memory import MemoryStore`, or from submodules for specifics:
   `from knox.memory.lifecycle import update_memory_for_compile`.
-- `lifecycle.py` depends on `knox.core.paths` and `knox.core.utils.time`.
+- `lifecycle.py` persists to `.knox/knox.db` (`memory_states`) via
+  `knox.core.store`; it still depends on `knox.core.paths` and
+  `knox.core.utils.time`.
 - `store.py` depends on `knox.core.config`, `knox.core.paths`, `knox.core.utils.time`,
-  and `knox.rag.zvec_store`.
+  `knox.core.store` (the `memory_log` table), and `knox.rag.zvec_store`.
 - `store.py` keeps zvec's default **flat** index for
   `MemoryField.QUERY_EMBEDDING` — it is built inline on insert, always
   complete, with zero insert overhead. Do NOT add `HnswIndexParam` or per-insert

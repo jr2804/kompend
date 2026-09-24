@@ -2,22 +2,27 @@
 
 Attachments are supplementary files (photos, binaries, source code, etc.)
 that belong to a source but are not ingested by default. They live in
-``attachments/<source-stem>/`` and are tracked by an append-only JSONL
-manifest at ``.knox/attachments.jsonl``.
+``attachments/<source-stem>/`` and are tracked in the ``attachment_manifest``
+table of ``.knox/knox.db`` (the legacy ``attachments.jsonl`` is no longer
+written or read).
 
 Each attachment has an explicit ``ingestible`` flag and an optional
 ``embed`` override for the global ``search.embed_attachments`` config.
 """
 
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
+# no runtime value ever enters an identifier or statement.
+
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
 from knox.core.paths import VaultPaths, attachment_slugs_for_source, is_protected_source
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import ATTACHMENT_MANIFEST_TABLE
 
 __all__ = ["Attachment", "AttachmentManifest", "adopt_orphan_attachments"]
 
@@ -83,9 +88,8 @@ INGESTIBLE_EXTENSIONS: Final[frozenset[str]] = TEXT_EXTENSIONS | IMAGE_EXTENSION
 class Attachment:
     """A registered attachment (supplementary file) for a source.
 
-    Stored as one JSON line in the manifest (``.knox/attachments.jsonl``).
-    The manifest is append-only; to update an entry, append a new line
-    with the same ``path``. When reading, the latest entry wins.
+    Stored as one row in the ``attachment_manifest`` table. Re-registering a
+    path replaces its row (latest wins); a tombstone row marks a removal.
     """
 
     path: str
@@ -171,68 +175,51 @@ class Attachment:
 
 
 class AttachmentManifest:
-    """Append-only JSONL manifest tracking registered attachments.
+    """Attachment manifest backed by the single vault store.
 
-    Each line is a JSON-serialized :class:`Attachment`. To update an entry,
-    append a new line with the same ``path``. When reading, the latest
-    entry for each ``path`` wins (tombstone entries mark deletions).
+    One row per ``path`` in the ``attachment_manifest`` table; ``deleted = 1``
+    is a tombstone recording an explicit user removal. This is read-equivalent
+    to the legacy append-only JSONL ("latest entry per path wins"): re-appending
+    a tombstoned path clears the tombstone.
     """
 
     def __init__(self, path: Path) -> None:
         self._path = path
+        self._db_path = vault_db_path(path)
 
     @property
     def path(self) -> Path:
-        """The manifest file path."""
+        """The path this manifest was constructed with (legacy artifact path)."""
         return self._path
 
     def exists(self) -> bool:
-        """Check if the manifest file exists."""
-        return self._path.exists()
+        """Whether the store currently holds any attachment row."""
+        if not self._db_path.exists():
+            return False
+        with open_store(self._db_path) as conn:
+            row = conn.execute(f"SELECT 1 FROM {ATTACHMENT_MANIFEST_TABLE} LIMIT 1").fetchone()
+        return row is not None
 
     def read_all(self) -> dict[str, Attachment]:
-        """Read all active (non-deleted) attachments, keyed by path.
-
-        Returns:
-            Dict mapping attachment path to the latest :class:`Attachment`.
-        """
-        if not self._path.exists():
+        """Read all active (non-deleted) attachments, keyed by path."""
+        if not self._db_path.exists():
             return {}
-        entries: dict[str, Attachment] = {}
-        for raw_line in self._path.read_text(encoding="utf-8").splitlines():
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            try:
-                d = json.loads(stripped)
-            except json.JSONDecodeError:
-                continue
-            att = Attachment.from_dict(d)
-            if att.deleted:
-                entries.pop(att.path, None)
-            else:
-                entries[att.path] = att
-        return entries
+        with open_store(self._db_path) as conn:
+            rows = conn.execute(
+                f"SELECT path, source, ingestible, embed, registered_at FROM {ATTACHMENT_MANIFEST_TABLE} WHERE deleted = 0",
+            ).fetchall()
+        return {row["path"]: _attachment_from_row(row) for row in rows}
 
     def read_for_source(self, source_stem: str) -> list[Attachment]:
         """Read all active attachments for a specific source."""
         return [a for a in self.read_all().values() if a.source == source_stem]
 
     def append(self, attachment: Attachment) -> None:
-        """Append an attachment entry to the manifest.
-
-        Args:
-            attachment: The attachment to record.
-        """
-        self._path.parent.mkdir(parents=True, exist_ok=True)
-        with self._path.open("a", encoding="utf-8") as f:
-            f.write(json.dumps(attachment.to_dict()) + "\n")
+        """Upsert an attachment row (re-registering a path clears its tombstone)."""
+        self._upsert(attachment)
 
     def remove(self, attachment_file: str) -> bool:
-        """Mark an attachment as deleted (tombstone entry).
-
-        Args:
-            attachment_file: The relative path of the attachment to remove.
+        """Mark an attachment as deleted (tombstone row).
 
         Returns:
             ``True`` if the attachment existed and was marked deleted.
@@ -240,21 +227,11 @@ class AttachmentManifest:
         existing = self.read_all()
         if attachment_file not in existing:
             return False
-        tombstone = Attachment(
-            path=attachment_file,
-            source=existing[attachment_file].source,
-            deleted=True,
-        )
-        self.append(tombstone)
+        self._upsert(Attachment(path=attachment_file, source=existing[attachment_file].source, deleted=True))
         return True
 
     def set_ingestible(self, attachment_file: str, ingestible: bool) -> bool:
-        """Update the ingestible flag of an attachment (append-only update).
-
-        Appends a new entry with the same ``path`` and the new flag; the
-        latest entry wins on read. Independent of the global
-        ``attachments.ingest_adopted`` gate — that gate is applied at
-        compile time on top of this per-attachment flag.
+        """Update the ingestible flag of an attachment.
 
         Returns:
             ``True`` if the attachment existed and was updated.
@@ -263,14 +240,7 @@ class AttachmentManifest:
         if attachment_file not in existing:
             return False
         att = existing[attachment_file]
-        updated = Attachment(
-            path=att.path,
-            source=att.source,
-            ingestible=ingestible,
-            embed=att.embed,
-            registered_at=att.registered_at,
-        )
-        self.append(updated)
+        self._upsert(Attachment(path=att.path, source=att.source, ingestible=ingestible, embed=att.embed, registered_at=att.registered_at))
         return True
 
     def list_sources(self) -> list[str]:
@@ -283,22 +253,44 @@ class AttachmentManifest:
         Auto-adoption must skip these: a tombstone is an explicit user
         removal, and re-adopting the file would silently undo it.
         """
-        if not self._path.exists():
+        if not self._db_path.exists():
             return set()
-        last_deleted: dict[str, bool] = {}
-        for raw_line in self._path.read_text(encoding="utf-8").splitlines():
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            try:
-                d = json.loads(stripped)
-            except json.JSONDecodeError:
-                continue
-            p = str(d.get("path", ""))
-            if not p:
-                continue
-            last_deleted[p] = bool(d.get("deleted"))
-        return {p for p, deleted in last_deleted.items() if deleted}
+        with open_store(self._db_path) as conn:
+            rows = conn.execute(f"SELECT path FROM {ATTACHMENT_MANIFEST_TABLE} WHERE deleted = 1").fetchall()
+        return {row["path"] for row in rows}
+
+    def _upsert(self, attachment: Attachment) -> None:
+        with open_store(self._db_path) as conn:
+            conn.execute(
+                f"""INSERT INTO {ATTACHMENT_MANIFEST_TABLE}(path, source, ingestible, embed, registered_at, deleted)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(path) DO UPDATE SET
+                    source = excluded.source,
+                    ingestible = excluded.ingestible,
+                    embed = excluded.embed,
+                    registered_at = excluded.registered_at,
+                    deleted = excluded.deleted""",
+                (
+                    attachment.path,
+                    attachment.source,
+                    int(attachment.ingestible),
+                    None if attachment.embed is None else int(attachment.embed),
+                    attachment.registered_at,
+                    int(attachment.deleted),
+                ),
+            )
+
+
+def _attachment_from_row(row: Any) -> Attachment:
+    """Build an :class:`Attachment` from an ``attachment_manifest`` row."""
+    embed = row["embed"]
+    return Attachment(
+        path=row["path"],
+        source=row["source"],
+        ingestible=bool(row["ingestible"]),
+        embed=None if embed is None else bool(embed),
+        registered_at=row["registered_at"],
+    )
 
 
 def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> list[Attachment]:

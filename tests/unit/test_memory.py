@@ -1,11 +1,11 @@
 """Tests for KNOX Query Memory layer."""
 
-import json
 from pathlib import Path
 
 import pytest
 
-from knox.core.paths import KNOX_DIR, MEMORY_LOG_FILE
+from knox.memory.lifecycle import MemoryStore as LifecycleStore
+from knox.memory.lifecycle import NodeState
 from knox.memory.store import MemoryField, MemoryStore
 from tests.conftest import DeterministicTestEmbeddingProvider
 
@@ -15,22 +15,19 @@ _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
 class TestMemoryStore:
     """Tests for MemoryStore."""
 
-    def test_add_entry_creates_jsonl_and_zvec(self, temp_wiki_dir: Path) -> None:
-        """Adding an entry should write to both JSONL and zvec."""
+    def test_add_entry_writes_log_and_zvec(self, temp_wiki_dir: Path) -> None:
+        """Adding an entry should write to both the memory_log table and zvec."""
         store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
         try:
             store.add_entry(query="What is the capital of France?", answer="Paris", feedback="Correct and concise.")
 
-            # Check JSONL
-            log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
-            assert log_file.exists()
-            with open(log_file, encoding="utf-8") as f:
-                line = f.readline()
-                data = json.loads(line)
-                assert data[MemoryField.QUERY.value] == "What is the capital of France?"
-                assert data[MemoryField.ANSWER.value] == "Paris"
-                assert data[MemoryField.FEEDBACK.value] == "Correct and concise."
-                assert MemoryField.TIMESTAMP in data
+            entries = _log(temp_wiki_dir)
+            assert len(entries) == 1
+            data = entries[0]
+            assert data[MemoryField.QUERY.value] == "What is the capital of France?"
+            assert data[MemoryField.ANSWER.value] == "Paris"
+            assert data[MemoryField.FEEDBACK.value] == "Correct and concise."
+            assert MemoryField.TIMESTAMP in data
 
             # Check zvec search works
             results = store.search(query="capital france", top_k=1)
@@ -92,9 +89,7 @@ class TestUserTracking:
             store.add_entry(query="q", answer="a", memory_by="alice")
         finally:
             store.close()
-        log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
-        data = json.loads(log_file.read_text(encoding="utf-8").splitlines()[0])
-        assert data[MemoryField.MEMORY_BY.value] == "alice"
+        assert _log(temp_wiki_dir)[0][MemoryField.MEMORY_BY.value] == "alice"
 
     def test_add_entry_default_memory_by_empty(self, temp_wiki_dir: Path) -> None:
         store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
@@ -102,9 +97,7 @@ class TestUserTracking:
             store.add_entry(query="q", answer="a")
         finally:
             store.close()
-        log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
-        data = json.loads(log_file.read_text(encoding="utf-8").splitlines()[0])
-        assert data[MemoryField.MEMORY_BY.value] == ""
+        assert _log(temp_wiki_dir)[0][MemoryField.MEMORY_BY.value] == ""
 
     def test_store_reopens_across_instances(self, temp_wiki_dir: Path) -> None:
         """Regression: a second MemoryStore on the same path must not crash.
@@ -122,10 +115,9 @@ class TestUserTracking:
         finally:
             s2.close()
 
-        log_file = temp_wiki_dir / KNOX_DIR / MEMORY_LOG_FILE
-        entries = [json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines() if line.strip()]
-        assert [e[MemoryField.QUERY.value] for e in entries] == ["q1", "q2"]
-        assert [e[MemoryField.MEMORY_BY.value] for e in entries] == ["alice", "bob"]
+        log_entries = _log(temp_wiki_dir)
+        assert [e[MemoryField.QUERY.value] for e in log_entries] == ["q1", "q2"]
+        assert [e[MemoryField.MEMORY_BY.value] for e in log_entries] == ["alice", "bob"]
 
     def test_get_recent_entries_includes_memory_by(self, temp_wiki_dir: Path) -> None:
         store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
@@ -135,6 +127,36 @@ class TestUserTracking:
             assert recent[0][MemoryField.MEMORY_BY.value] == "carol"
         finally:
             store.close()
+
+
+class TestLifecycleStore:
+    """Memory lifecycle state persists to the vault store."""
+
+    def test_save_load_roundtrip(self, temp_wiki_dir: Path) -> None:
+        store_file = temp_wiki_dir / ".knox" / "memory.json"
+        original = LifecycleStore(
+            states={
+                "n1": NodeState(node_id="n1", title="Alpha", confidence=0.8, tier="episodic", review_count=3),
+                "n2": NodeState(node_id="n2", title="Beta", superseded_by="n1"),
+            }
+        )
+        original.save(store_file)
+
+        loaded = LifecycleStore.load(store_file)
+        assert set(loaded.states) == {"n1", "n2"}
+        assert loaded.get("n1").confidence == 0.8
+        assert loaded.get("n1").tier == "episodic"
+        assert loaded.get("n1").review_count == 3
+        assert loaded.get("n2").is_superseded()
+
+    def test_load_absent_store_is_empty(self, temp_wiki_dir: Path) -> None:
+        loaded = LifecycleStore.load(temp_wiki_dir / ".knox" / "memory.json")
+        assert loaded.states == {}
+
+
+def _log(temp_wiki_dir: Path, limit: int = 20) -> list[dict]:
+    """Chronological log entries, oldest first, from the vault store."""
+    return list(reversed(MemoryStore(base_dir=temp_wiki_dir).get_recent_entries(limit=limit)))
 
 
 @pytest.fixture

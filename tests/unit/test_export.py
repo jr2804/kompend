@@ -12,6 +12,7 @@ import pytest
 from typer.testing import CliRunner  # noqa: E402
 
 from knox.cli.app import app as cli_app  # noqa: E402
+from knox.core.models.attachments import Attachment, AttachmentManifest
 from knox.core.models.enums import AssetKind
 from knox.core.pipeline.assets import AssetStore
 from knox.core.pipeline.export import (
@@ -162,20 +163,14 @@ class TestAttachments:
         att_dir = knox_dir / "attachments" / "doc"
         att_dir.mkdir(parents=True)
         att_dir.joinpath("notes.txt").write_text("hi", encoding="utf-8")
-        manifest = knox_dir / "attachments.jsonl"
-        manifest.write_text(
-            json.dumps(
-                {
-                    "path": "doc/notes.txt",
-                    "source": "doc",
-                    "ingestible": True,
-                    "embed": None,
-                    "registered_at": "2026-08-16T00:00:00+00:00",
-                    "deleted": False,
-                }
+        manifest = AttachmentManifest(knox_dir / "attachments.jsonl")
+        manifest.append(
+            Attachment(
+                path="doc/notes.txt",
+                source="doc",
+                ingestible=True,
+                registered_at="2026-08-16T00:00:00+00:00",
             )
-            + "\n",
-            encoding="utf-8",
         )
         data = _cache_data(_element("text", "body"))
         md = _render(data, tmp_path)

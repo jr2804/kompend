@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from knox.core.models.attachments import (
@@ -187,45 +186,43 @@ def test_manifest_tombstone_then_readd(tmp_path: Path) -> None:
     assert entries["r/a.txt"].ingestible is True
 
 
-def test_manifest_jsonl_format(tmp_path: Path) -> None:
-    """Manifest is valid JSONL (one JSON object per line)."""
-    f = tmp_path / "attachments.jsonl"
-    manifest = AttachmentManifest(f)
+def test_manifest_roundtrips_through_store(tmp_path: Path) -> None:
+    """Manifest rows round-trip through the vault store."""
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
     manifest.append(Attachment(path="r/a.txt", source="r"))
     manifest.append(Attachment(path="r/b.txt", source="r"))
 
-    lines = f.read_text().strip().splitlines()
-    assert len(lines) == 2
-    for line in lines:
-        obj = json.loads(line)
-        assert "path" in obj
-        assert "source" in obj
+    entries = manifest.read_all()
+    assert set(entries) == {"r/a.txt", "r/b.txt"}
+    assert entries["r/a.txt"].source == "r"
 
 
 # ── AttachmentManifest edge cases ───────────────────────────────────────
 
 
-def test_manifest_corrupt_line_skipped(tmp_path: Path) -> None:
-    """Corrupt JSON lines are silently skipped."""
-    f = tmp_path / "attachments.jsonl"
-    f.write_text(
-        json.dumps({"path": "r/a.txt", "source": "r", "ingestible": True}) + "\nTHIS IS NOT JSON\n" + json.dumps({"path": "r/b.txt", "source": "r"}) + "\n",
-    )
-    manifest = AttachmentManifest(f)
-    entries = manifest.read_all()
-    assert len(entries) == 2
-    assert "r/a.txt" in entries
-    assert "r/b.txt" in entries
+def test_manifest_absent_store_reads_empty(tmp_path: Path) -> None:
+    """A manifest whose store does not exist yet reads as empty."""
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
+    assert manifest.read_all() == {}
+    assert manifest.deleted_paths() == set()
+    assert manifest.exists() is False
 
 
-def test_manifest_blank_lines_skipped(tmp_path: Path) -> None:
-    """Blank lines in the manifest are ignored."""
-    f = tmp_path / "attachments.jsonl"
-    f.write_text(
-        "\n" + json.dumps({"path": "r/a.txt", "source": "r"}) + "\n\n",
-    )
-    manifest = AttachmentManifest(f)
-    assert len(manifest.read_all()) == 1
+def test_tombstone_survives_new_manifest_instance(tmp_path: Path) -> None:
+    """A removal is durable: a fresh manifest on the same store honours it.
+
+    The tombstone is the only record of an explicit ``knox attachments remove``.
+    If it did not survive the storage move, auto-adoption would silently
+    re-adopt the removed file.
+    """
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
+    manifest.append(Attachment(path="r/keep.txt", source="r"))
+    manifest.append(Attachment(path="r/gone.txt", source="r"))
+    assert manifest.remove("r/gone.txt") is True
+
+    reopened = AttachmentManifest(tmp_path / "attachments.jsonl")
+    assert set(reopened.read_all()) == {"r/keep.txt"}
+    assert reopened.deleted_paths() == {"r/gone.txt"}
 
 
 def test_adopt_registers_orphaned_files(tmp_path: Path) -> None:
@@ -277,9 +274,9 @@ def test_adopt_idempotent_and_respects_tombstone(tmp_path: Path) -> None:
     adopted = adopt_orphan_attachments(base)
     assert adopted == []
 
-    # Recovery scenario: manifest deleted entirely — tombstone knowledge is
+    # Recovery scenario: the store is deleted entirely — tombstone knowledge is
     # gone with it, so both files are re-adopted.
-    (base / ".knox" / "attachments.jsonl").unlink()
+    _delete_store(base)
     adopted = adopt_orphan_attachments(base)
     assert {a.path for a in adopted} == {"report/notes.txt", "report/removed.txt"}
 
@@ -325,3 +322,10 @@ def _make_vault(tmp_path: Path) -> Path:
     (base / "sources" / "report.pdf").write_bytes(b"%PDF fake")
     (base / "attachments").mkdir()
     return base
+
+
+def _delete_store(base: Path) -> None:
+    """Delete the vault store (and WAL sidecars) to simulate manifest loss."""
+    db = base / ".knox" / "knox.db"
+    for suffix in ("", "-wal", "-shm"):
+        db.with_name(db.name + suffix).unlink(missing_ok=True)

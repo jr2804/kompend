@@ -11,11 +11,16 @@ Implements the Rohit-v2 memory lifecycle concepts:
 * **Retention/decay** — exponential forgetting curve based on time since last
   review.  Nodes whose retention drops below a threshold become stale-page
   candidates.
+
+State lives in the single vault store (``.knox/knox.db``, ``memory_states``
+table); the legacy ``memory.json`` is no longer written or read.
 """
+
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
+# no runtime value ever enters an identifier or statement.
 
 from __future__ import annotations
 
-import json
 import math
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -25,6 +30,8 @@ from typing import Any
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.paths import VaultPaths
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import MEMORY_STATES_TABLE
 from knox.core.utils.time import iso_local, now_local
 from knox.logging import get_logger
 
@@ -131,10 +138,21 @@ class MemoryStore:
     states: dict[str, NodeState] = field(default_factory=dict)
 
     def save(self, store_file: Path) -> None:
-        """Persist the memory store to *store_file* as JSON."""
-        store_file.parent.mkdir(parents=True, exist_ok=True)
-        data = {"states": [s.to_dict() for s in self.states.values()]}
-        store_file.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        """Persist the memory store to the vault store.
+
+        *store_file* may be the vault ``base_dir`` or the legacy
+        ``.knox/memory.json`` path; both resolve to the same ``knox.db``. The
+        ``memory_states`` table is replaced with the in-memory set.
+        """
+        db_path = vault_db_path(store_file)
+        rows = [(s.node_id, s.title, s.confidence, s.tier, s.birth_at, s.review_at, s.review_count, s.superseded_by) for s in self.states.values()]
+        with open_store(db_path) as conn:
+            conn.execute(f"DELETE FROM {MEMORY_STATES_TABLE}")
+            conn.executemany(
+                f"INSERT INTO {MEMORY_STATES_TABLE}(node_id, title, confidence, tier, birth_at, review_at, review_count, superseded_by) "
+                f"VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                rows,
+            )
 
     # ── Access ────────────────────────────────────────────────────────
 
@@ -239,23 +257,30 @@ class MemoryStore:
 
     @classmethod
     def load(cls, store_file: Path) -> MemoryStore:
-        """Load a memory store from a JSON file.
+        """Load a memory store from the vault store.
 
-        Returns an empty store if the file does not exist or is corrupt.
+        *store_file* may be the vault ``base_dir`` or the legacy
+        ``.knox/memory.json`` path; both resolve to the same ``knox.db``.
+        Returns an empty store when the database does not exist yet.
         """
-        if not store_file.exists():
+        db_path = vault_db_path(store_file)
+        if not db_path.exists():
             return cls()
-        try:
-            data = json.loads(store_file.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError) as exc:
-            logger.warning("Failed to load memory store from %s: %s", store_file, exc, exc_info=True)
-            return cls()
-        raw_states = data.get("states", []) if isinstance(data, dict) else []
+        with open_store(db_path) as conn:
+            rows = conn.execute(f"SELECT * FROM {MEMORY_STATES_TABLE}").fetchall()
         states: dict[str, NodeState] = {}
-        for raw in raw_states:
-            if isinstance(raw, dict) and "node_id" in raw:
-                state = NodeState.from_dict(raw)
-                states[state.node_id] = state
+        for row in rows:
+            state = NodeState(
+                node_id=row["node_id"],
+                title=row["title"],
+                confidence=float(row["confidence"]),
+                tier=row["tier"],
+                birth_at=row["birth_at"],
+                review_at=row["review_at"],
+                review_count=int(row["review_count"]),
+                superseded_by=row["superseded_by"],
+            )
+            states[state.node_id] = state
         return cls(states=states)
 
 
