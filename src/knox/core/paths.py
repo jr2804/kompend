@@ -87,12 +87,12 @@ VECTORS_DIR: Final[str] = "vectors"
 DOWNLOADED_FILE: Final[str] = "downloaded.json"
 
 # ── Memory ──────────────────────────────────────────────────────────────
-MEMORY_DB_FILE: Final[str] = "memory.db"
-MEMORY_LOG_FILE: Final[str] = "memory.jsonl"
-MEMORY_STORE_FILE: Final[str] = "memory.json"
+MEMORY_DB_FILE: Final[str] = "memory.db"  # zvec collection dir (rebuildable from the log)
+MEMORY_LOG_FILE: Final[str] = "memory.jsonl"  # legacy — superseded by knox.db
+MEMORY_STORE_FILE: Final[str] = "memory.json"  # legacy — superseded by knox.db
 
 # ── Provenance ──────────────────────────────────────────────────────────
-PROVENANCE_DIR: Final[str] = "provenance"
+PROVENANCE_DIR: Final[str] = "provenance"  # legacy — superseded by knox.db
 
 # ── Verification ────────────────────────────────────────────────────────
 VERIFICATION_FILE: Final[str] = "verification.json"
@@ -125,7 +125,7 @@ ASSETS_FILE: Final[str] = "assets.json"
 
 # ── Attachments (user-provided supplementary files per source) ───────────
 ATTACHMENTS_DIR_NAME: Final[str] = "attachments"
-ATTACHMENTS_MANIFEST: Final[str] = "attachments.jsonl"
+ATTACHMENTS_MANIFEST: Final[str] = "attachments.jsonl"  # legacy — manifest now backed by knox.db
 
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 DEDUP_DIR: Final[str] = "dedup"
@@ -208,36 +208,41 @@ class VaultPaths:
         │   │   ├── extract/        ← extract_dir
         │   │   └── downloaded.json ← downloaded_file
         │   ├── dedup/              ← dedup_dir
-        │   ├── provenance/         ← provenance_dir
+        │   ├── provenance/         ← provenance_dir (legacy)
         │   ├── review/             ← review_dir
         │   ├── vectors/            ← vectors_dir (zvec directory store)
         │   ├── vectors.manifest.json ← zvec indexed-node id sidecar
         │   ├── knox.db             ← knox_db_file (single non-vector store)
         │   ├── config.toml         ← config_file
         │   ├── rumdl.toml          ← RUMDL_CONFIG_FILE
-        │   ├── compile_state.json  ← compile_state_file
-        │   ├── last_wiki.json      ← wiki_cache_file
-        │   ├── compiled_wiki.json  ← compiled_wiki_file
+        │   ├── compile_state.json  ← compile_state_file (legacy)
+        │   ├── last_wiki.json      ← wiki_cache_file (legacy)
+        │   ├── compiled_wiki.json  ← compiled_wiki_file (legacy)
         │   ├── memory.db           ← memory_db_file (zvec dir, NOT SQLite)
-        │   ├── memory.jsonl        ┆ memory_log_file
-        │   ├── memory.json         ← memory_store_file
-        │   ├── verification.json   ← verification_file
-        │   ├── private.json        ← private_file
+        │   ├── memory.jsonl        ┆ memory_log_file (legacy)
+        │   ├── memory.json         ← memory_store_file (legacy)
+        │   ├── verification.json   ← verification_file (legacy)
+        │   ├── private.json        ← private_file (legacy)
         │   ├── last_organize.json  ← organize_report_file
-        │   ├── lint_history.jsonl  ← lint_history_file
-        │   ├── runs.jsonl          ← runs_file
+        │   ├── lint_history.jsonl  ← lint_history_file (legacy)
+        │   ├── runs.jsonl          ← runs_file (legacy)
         │   ├── log.md              ← log_file
-        │   ├── references.json     ← references_file
-        │   ├── entity_types.json   ← ENTITY_TYPES_FILE
-        │   ├── assets.json         ← assets_file
-        │   ├── attachments.jsonl   ← attachments_manifest_file
-        │   └── state.json          ← state_file
+        │   ├── references.json     ← references_file (legacy)
+        │   ├── entity_types.json   ← ENTITY_TYPES_FILE (legacy)
+        │   ├── assets.json         ← assets_file (legacy)
+        │   ├── attachments.jsonl   ← attachments_manifest_file (legacy)
+        │   └── state.json          ← state_file (unused placeholder)
         ├── sources/                ← sources_dir
         ├── attachments/            ← attachments_dir (per-source)
         ├── exported/               ← full-source markdown exports (on demand)
         ├── wiki/                   ← output_dir
         │   ├── summaries/          ← per-source summary pages
         │   └── index.md            ← index_file
+
+    Entries marked ``(legacy)`` are flat-file artifacts superseded by the single
+    ``knox.db`` store and are no longer written or read. Their path names remain
+    only so existing vaults can be detected and cleaned
+    (:func:`knox.core.store.legacy.obsolete_artifacts`).
     """
 
     base_dir: Path
@@ -310,7 +315,7 @@ class VaultPaths:
 
     @property
     def provenance_dir(self) -> Path:
-        """Per-node provenance JSON directory."""
+        """Path handle for provenance — the store resolves it to :attr:`knox_db_file` (``provenance``); the flat directory is no longer written."""
         return self.knox_dir / PROVENANCE_DIR
 
     @property
@@ -337,17 +342,17 @@ class VaultPaths:
 
     @property
     def compile_state_file(self) -> Path:
-        """Persistent tier-state checkpoint file."""
+        """Path handle for tier state — the store resolves it to :attr:`knox_db_file` (``tier_state``); the flat file is no longer written."""
         return self.knox_dir / COMPILE_STATE_FILE
 
     @property
     def wiki_cache_file(self) -> Path:
-        """Serialised ``CompiledWiki`` snapshot."""
+        """Path handle for the compiled-wiki snapshot — resolves to :attr:`knox_db_file` (``wiki_snapshot``); flat file no longer written."""
         return self.knox_dir / WIKI_CACHE_FILE
 
     @property
     def compiled_wiki_file(self) -> Path:
-        """Full compiled wiki JSON (used by pipeline internally)."""
+        """Path handle for the compiled-wiki snapshot — resolves to :attr:`knox_db_file` (``wiki_snapshot``); flat file no longer written."""
         return self.knox_dir / COMPILED_WIKI_FILE
 
     @property
@@ -362,22 +367,22 @@ class VaultPaths:
 
     @property
     def memory_log_file(self) -> Path:
-        """Append-only memory log."""
+        """Path handle for the query-memory log — the store resolves it to :attr:`knox_db_file` (``memory_log``); the flat file is no longer written."""
         return self.knox_dir / MEMORY_LOG_FILE
 
     @property
     def memory_store_file(self) -> Path:
-        """Memory JSON export."""
+        """Path handle for memory lifecycle state — the store resolves it to :attr:`knox_db_file` (``memory_states``); the flat file is no longer written."""
         return self.knox_dir / MEMORY_STORE_FILE
 
     @property
     def verification_file(self) -> Path:
-        """Verification results JSON."""
+        """Path handle for the verification report — the store resolves it to :attr:`knox_db_file` (``verification``); the flat file is no longer written."""
         return self.knox_dir / VERIFICATION_FILE
 
     @property
     def private_file(self) -> Path:
-        """Private page manifest."""
+        """Path handle for the private-page index — the store resolves it to :attr:`knox_db_file` (``private_pages``); the flat file is no longer written."""
         return self.knox_dir / PRIVATE_FILE
 
     @property
@@ -392,12 +397,14 @@ class VaultPaths:
 
     @property
     def references_file(self) -> Path:
-        """Bibliographic references store (CSL JSON-aligned)."""
+        """Path handle for bibliographic references — the store resolves it to :attr:`knox_db_file` (``bib_references``); the flat file is no longer written."""
         return self.knox_dir / REFERENCES_FILE
 
     @property
     def entity_types_file(self) -> Path:
-        """Stable per-concept entity-kind registry (JSON).
+        """Path handle for the entity-kind registry — the store resolves it to :attr:`knox_db_file` (``entity_types``); the flat file is no longer written.
+
+        Stable per-concept entity-kind registry.
 
         Keyed by ``normalize_concept_key(name)``; values are the sanitized
         folder names (``person``, ``organization``, ``standard``, …) used
@@ -410,17 +417,17 @@ class VaultPaths:
 
     @property
     def assets_file(self) -> Path:
-        """Separated structured-asset store (tables/figures, JSON)."""
+        """Path handle for structured assets — the store resolves it to :attr:`knox_db_file` (``assets``); the flat file is no longer written."""
         return self.knox_dir / ASSETS_FILE
 
     @property
     def attachments_manifest_file(self) -> Path:
-        """Attachment manifest (JSONL)."""
+        """Path handle for the attachment manifest — resolves to :attr:`knox_db_file` (``attachment_manifest``); flat file no longer written."""
         return self.knox_dir / ATTACHMENTS_MANIFEST
 
     @property
     def state_file(self) -> Path:
-        """General state file."""
+        """Unused legacy placeholder — no producer or consumer."""
         return self.knox_dir / STATE_FILE
 
     @property
@@ -430,12 +437,12 @@ class VaultPaths:
 
     @property
     def lint_history_file(self) -> Path:
-        """Append-only JSONL log of lint runs."""
+        """Path handle for lint-run history — the store resolves it to :attr:`knox_db_file` (``lint_runs``); the flat file is no longer written."""
         return self.knox_dir / LINT_HISTORY_FILE
 
     @property
     def runs_file(self) -> Path:
-        """Append-only JSONL audit trail of every CLI command run."""
+        """Path handle for the command audit trail — the store resolves it to :attr:`knox_db_file` (``runs``); the flat file is no longer written."""
         return self.knox_dir / RUNS_FILE
 
     # ── Files inside output_dir/ ────────────────────────────────────────

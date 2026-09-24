@@ -16,7 +16,7 @@ base_dir/
 │       ├── photo.jpg
 │       └── data.csv
 └── .knox/
-    └── attachments.jsonl ← manifest (append-only)
+    └── knox.db           ← single store (attachment manifest, with tombstones)
 ```
 
 **Slug convention**: `attachments/<source-slug>/`, where the slug is the source's
@@ -57,8 +57,9 @@ knox attachments list --source report
 knox attachments remove report/photo.jpg
 ```
 
-The manifest is append-only JSONL. Removing an attachment appends a tombstone entry;
-re-adding the same path creates a new active entry (latest wins).
+The manifest records one row per path in `.knox/knox.db`. Removing an attachment
+writes a tombstone row (the file stays on disk); re-adding the same path clears the
+tombstone (latest wins).
 
 ## Auto-adoption
 

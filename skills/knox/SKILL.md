@@ -58,7 +58,7 @@ uv tool install --git https://codeberg.org/jr2804/knox
 .                       ← wiki project root
 ├── index.md            ← vault-root hub → wiki catalog (portable entry point)
 ├── knox.toml           ← project config (optional, overriden by .knox/config.toml)
-├── .knox/              ← derived state ONLY (cache, vectors, search db, memory) — never required to read the wiki
+├── .knox/              ← derived state ONLY (store, cache, vectors, memory) — never required to read the wiki
 ├── sources/            ← source documents (PDF, DOCX, markdown, URLs) — user-owned
 │   ├── _captured/      ← knowledge items extracted from conversation (LLM)
 │   ├── _learned/       ← verbatim facts stored without an LLM
@@ -138,7 +138,7 @@ per-source: a page from sources with `version=1` and `version=2` carries
 
 Supplementary files (photos, binaries, source code) that belong to a source
 but are **not** ingested by default. Stored under `attachments/<source-slug>/`
-and tracked by an append-only manifest (`.knox/attachments.jsonl`).
+and tracked by a manifest in `.knox/knox.db` (tombstones for removals).
 
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|

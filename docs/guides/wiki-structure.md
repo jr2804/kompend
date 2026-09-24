@@ -135,15 +135,11 @@ project/
 ├── exported/              # Full-source markdown exports — `knox sources export`
 │                          # without OUTPUT lands here (on demand, reference only)
 └── .knox/                 # Derived state ONLY — never required to read the wiki
-    ├── cache/             # Parse cache + extracted images (regenerable)
-    ├── assets.json        # Separated tables/figures working store
-    ├── references.json    # Bibliographic reference store (CSL-aligned)
-    ├── verification.json  # WiCER per-claim results (exported to wiki/quality.md)
-    ├── compile_state.json # Tier checkpoints per source
-    ├── last_wiki.json     # Cached CompiledWiki (maintenance accelerator)
-    ├── search.db          # FTS5 index (if compile.index on — default)
-    ├── memory.json        # Memory lifecycle state
-    └── vectors/           # Vector store sidecar (if compile.index on — default)
+    ├── knox.db            # Single non-vector store (tier state, caches, assets,
+    │                      #   references, verification, memory, attachments, …)
+    ├── cache/             # Extracted images + normalized copies (regenerable)
+    ├── vectors/           # Vector store sidecar (if compile.index on — default)
+    └── memory.db          # Zvec query-memory collection (regenerable)
 ```
 
 ### Markdown-only invariant

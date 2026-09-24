@@ -45,7 +45,7 @@ knox ingest *.pdf              # download + parse only (no LLM)
 knox compile --start-at-tier chunk   # later: T2→T5 using parsed sources
 ```
 
-Parsed documents are cached in `.knox/cache/` using the same key format
+Parsed documents are cached in `.knox/knox.db` using the same key format
 as the pipeline, so compile picks them up transparently.
 
 ## WiCER compiler (config: `compile.compiler = wicer`)
@@ -153,7 +153,7 @@ knox compile *.pdf --set compile.memory_half_life_days=180
 knox compile *.pdf --set compile.memory_decay_threshold=0.2
 ```
 
-Memory state is persisted at `base_dir/.knox/memory.json`. Stale and superseded pages surface as lint failures in the `stale-page` rule.
+Memory state is persisted in the `memory_states` table of `base_dir/.knox/knox.db`. Stale and superseded pages surface as lint failures in the `stale-page` rule.
 
 ## Event hooks
 
@@ -205,25 +205,9 @@ knox compile *.pdf --set compile.budget.gen_output_max=100000
 
 ## Per-source state
 
-KNOX persists a tier checkpoint for every source file:
-
-```json
-{
-  "entries": {
-    "paper": {
-      "stem": "paper",
-      "source_file": "sources/paper.pdf",
-      "content_hash": "a1b2c3...",
-      "current_tier": 3,
-      "last_compile": "2026-06-08T12:34:56+00:00",
-      "search_hits": 0
-    }
-  }
-}
-```
-
-The file lives at `.knox/compile_state.json` (at the project root). Delete
-it (or pass `--force`) to force a full recompile.
+KNOX persists a tier checkpoint for every source file in the `tier_state`
+table of `.knox/knox.db` (stem, source file, content hash, current tier,
+last compile, search hits). Pass `--force` to force a full recompile.
 
 ## Tier listing
 

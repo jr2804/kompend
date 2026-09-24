@@ -7,7 +7,7 @@ KNOX includes a lightweight, native memory layer that allows the system to learn
 The memory layer operates on a dual-storage model for optimal performance and flexibility:
 
 1. **Semantic Search (`zvec`)**: Past queries and answers are embedded and stored in `.knox/memory.db`, allowing the system to retrieve highly relevant past interactions based on semantic similarity.
-2. **Chronological Log (`JSONL`)**: An append-only log at `.knox/memory.jsonl` maintains a strict timeline of interactions, which is essential for periodic context synthesis.
+2. **Chronological Log**: An append-only log in the `memory_log` table of `.knox/knox.db` maintains a strict timeline of interactions, which is essential for periodic context synthesis.
 
 ## CLI Usage
 

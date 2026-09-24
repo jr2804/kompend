@@ -17,7 +17,6 @@ This guide covers:
 
 - How agents are structured and wired into the pipeline
 - The agent inventory (single-shot and agentic)
-- Per-role model overrides (`compile.llm.role_models`)
 - Writing and configuring skills (`compile.skills`)
 - Writing a new agent
 
@@ -158,29 +157,6 @@ and adds KNOX-specific concerns:
   observability and budget enforcement.
 - **Debug dumps** — `_save_debug()` writes the full request/response
   pair to the LLM debug log when enabled.
-
----
-
-## Per-role model overrides
-
-`compile.llm.role_models` is a map from a role key to a model string, settable
-in TOML or from the CLI (`--role-model role=model`), intended to let different
-stages use different models:
-
-```toml
-[compile.llm.role_models]
-"compile.extract" = "ollama/gpt-oss:20b"
-"compile.generate" = "openai/gpt-4o"
-```
-
-> **Status: not applied as of this revision.** No code reads `role_models` when
-> constructing an agent, and `build_model()` takes only a model string. Every
-> agent currently uses `compile.llm.default_model` (with `compile.llm.fallback_chain`).
-> Treat per-role overrides as unimplemented until the map is consumed by the
-> agent construction path.
-
-The role keys that would be used are the `role:` values declared in each
-agent template's frontmatter (shown in the inventory above).
 
 ---
 

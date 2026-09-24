@@ -54,7 +54,7 @@ knox config set compile.memory_decay_threshold 0.3
 knox compile *.pdf --set compile.memory_half_life_days=90
 ```
 
-State is persisted at `base_dir/.knox/memory.json`.
+State is persisted in the `memory_states` table of `base_dir/.knox/knox.db`.
 
 ## See also
 

@@ -29,7 +29,7 @@ or query results:
 knox compile *.pdf --private
 ```
 
-This writes a `.knox/private.json` index. To include private
+This records a private-page index in `.knox/knox.db`. To include private
 pages in a query:
 
 ```bash
@@ -39,7 +39,7 @@ knox query "topic" --include-private
 ## Grounding verification
 
 `--verify` runs an LLM-as-judge on every claim in the compiled wiki
-and writes a report to `.knox/verification.json`. It is **on by default**;
+and records a report in the verification table of `.knox/knox.db`. It is **on by default**;
 pass `--no-verify` to skip the cost:
 
 ```bash
@@ -67,8 +67,9 @@ Verified 12/18 claims (avg confidence 0.74)
 
 Compiled pages are tracked through a memory lifecycle that models
 confidence decay, tier promotion, and supersession. The store lives
-at `base_dir/.knox/memory.json` and is updated automatically on each
-compile when `compile.memory_enabled` is `True` (the default).
+in the `memory_states` table of `base_dir/.knox/knox.db` and is updated
+automatically on each compile when `compile.memory_enabled` is `True` (the
+default).
 
 ### Tiers
 
