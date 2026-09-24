@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Any
+from typing import Any, cast
 
 from knox.agents.deps import PipelineAgentDeps
 from knox.agents.summarizer import SummarizerAgent
@@ -65,7 +65,7 @@ class NodeSummarizer:
 
     def __init__(
         self,
-        agent: SummarizerAgent | None = None,
+        agent: SummarizerAgent | AgenticSummarizerAgent | None = None,
         cache_store: CacheStore | None = None,
         *,
         max_content_chars: int = 8000,
@@ -199,7 +199,7 @@ class NodeSummarizer:
         try:
             if self._agent is None:
                 raise RuntimeError("SummarizerAgent not initialized")
-            result = self._agent.run(deps)
+            result = cast("SummarizerAgent", self._agent).run(deps)
             return result.strip()
         except Exception as exc:
             logger.warning("Summarizer failed for '%s': %s", heading_chain, exc)

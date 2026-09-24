@@ -19,11 +19,15 @@ from pydantic_ai import RunContext
 
 from knox.agents.context_chunk_agentic import make_agentic_context_chunk_agent
 from knox.agents.query_agentic import make_agentic_query_agent
-from knox.agents.summarizer_agentic import make_agentic_summarizer_agent
+from knox.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
 from knox.agents.types import ContextChunkDeps, QueryAgentDeps
 from knox.chunking.contextual import ContextualEnricher
 from knox.compilation.query_tools import read_page, search_wiki
 from knox.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
+from knox.core.pipeline.config import Compiler, EmbeddingConfig, LLMConfig, PipelineConfig
+from knox.core.pipeline.orchestrator import build_pipeline
+from knox.llm.context_window import ContextSource, ContextWindow
+from tests.conftest import make_tmp_vault
 
 # NOTE: system-prompt-tools == registered-tools is guarded centrally for every
 # agent in tests/unit/test_agent_templates.py; only the per-agent tool lists
@@ -73,6 +77,25 @@ class TestAgenticSummarizerAgentWiring:
     def test_factory_injects_harness_capabilities(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b", context_window=8192)
         assert agent.extra_capabilities
+
+    def test_build_pipeline_wires_agentic_summarizer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression: NodeSummarizer was built without `agent=`, so every
+        summary silently fell back to the extractive path (0iv2.6).
+        """
+        monkeypatch.setattr(
+            "knox.core.pipeline.stages._factory.discover_context_window",
+            lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
+        )
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/gpt-oss:20b", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="hash"),
+            compiler=Compiler.GRAPH,
+        )
+        pipeline = build_pipeline(config)
+        assert pipeline.summarizer is not None
+        assert isinstance(pipeline.summarizer._agent, AgenticSummarizerAgent)  # noqa: SLF001
 
 
 class TestAgenticContextChunkAgentWiring:
