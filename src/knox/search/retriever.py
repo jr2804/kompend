@@ -560,30 +560,6 @@ def tokenize(text: str) -> list[str]:
     return [t for t in TOKEN_SPLIT_RE.split(text.lower()) if t]
 
 
-def _node_tags(node: WikiNode | None) -> set[str]:
-    """Tags from node metadata, guarded against missing node/non-list shapes.
-
-    ``node`` is ``None`` when a vector-store hit references an id absent
-    from the loaded wiki (stale index after recompile/rename).
-    """
-    if node is None or not node.metadata:
-        return set()
-    raw = node.metadata.get(MetadataField.TAGS)
-    if isinstance(raw, list):
-        return {str(t) for t in raw}
-    return set()
-
-
-def _node_attributes(node: WikiNode | None) -> dict[str, list[str]]:
-    """Attributes from node metadata, guarded against missing node."""
-    if node is None or not node.metadata:
-        return {}
-    raw = node.metadata.get(MetadataField.ATTRIBUTES)
-    if isinstance(raw, dict):
-        return {k: list(v) if isinstance(v, list) else [str(v)] for k, v in raw.items()}
-    return {}
-
-
 def _node_matches_filters(
     node: WikiNode,
     *,
@@ -609,6 +585,30 @@ def _node_matches_filters(
     for key in attribute_keys or ():
         attr_filters.append((key, None))
     return matches_attr_filter(_node_attributes(node), attr_filters)
+
+
+def _node_tags(node: WikiNode | None) -> set[str]:
+    """Tags from node metadata, guarded against missing node/non-list shapes.
+
+    ``node`` is ``None`` when a vector-store hit references an id absent
+    from the loaded wiki (stale index after recompile/rename).
+    """
+    if node is None or not node.metadata:
+        return set()
+    raw = node.metadata.get(MetadataField.TAGS)
+    if isinstance(raw, list):
+        return {str(t) for t in raw}
+    return set()
+
+
+def _node_attributes(node: WikiNode | None) -> dict[str, list[str]]:
+    """Attributes from node metadata, guarded against missing node."""
+    if node is None or not node.metadata:
+        return {}
+    raw = node.metadata.get(MetadataField.ATTRIBUTES)
+    if isinstance(raw, dict):
+        return {k: list(v) if isinstance(v, list) else [str(v)] for k, v in raw.items()}
+    return {}
 
 
 def extract_snippet(content: str, query_tokens: set[str], max_chars: int | None = None) -> str:

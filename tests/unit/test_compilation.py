@@ -793,9 +793,10 @@ class TestWiCERCompilerWithMock:
         mock_llm.diagnose.return_value = self._diagnose_output([])
         chunks = _make_chunks(count=2, heading="Test")
         config = PipelineConfig(
-            source_dir=make_tmp_vault(), output_dir=make_tmp_vault(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
-            embedding=EmbeddingConfig(model="model")
+            embedding=EmbeddingConfig(model="model"),
         )
         config.budget.wicer_max_iterations = 1
         compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
@@ -812,9 +813,10 @@ class TestWiCERCompilerWithMock:
         mock_llm.diagnose.return_value = self._diagnose_output(["KNOX is a knowledge base project."])
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(
-            source_dir=make_tmp_vault(), output_dir=make_tmp_vault(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
-            embedding=EmbeddingConfig(model="model")
+            embedding=EmbeddingConfig(model="model"),
         )
         config.budget.wicer_max_iterations = 1
         config.budget.min_content_length = 0
@@ -830,9 +832,10 @@ class TestWiCERCompilerWithMock:
         mock_llm.diagnose.return_value = self._diagnose_output([])
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(
-            source_dir=make_tmp_vault(), output_dir=make_tmp_vault(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
-            embedding=EmbeddingConfig(model="model")
+            embedding=EmbeddingConfig(model="model"),
         )
         config.budget.wicer_max_iterations = 3
         compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
@@ -845,9 +848,10 @@ class TestWiCERCompilerWithMock:
         """When the WiCER agents fail, WiCER skips (0 iterations)."""
         chunks = _make_chunks(count=2, heading="Fallback")
         config = PipelineConfig(
-            source_dir=make_tmp_vault(), output_dir=make_tmp_vault(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
-            embedding=EmbeddingConfig(model="model")
+            embedding=EmbeddingConfig(model="model"),
         )
         config.budget.wicer_max_iterations = 2
         compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
@@ -880,9 +884,10 @@ class TestWiCERCompilerWithMock:
                 )
 
         config = PipelineConfig(
-            source_dir=make_tmp_vault(), output_dir=make_tmp_vault(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
-            embedding=EmbeddingConfig(model="model")
+            embedding=EmbeddingConfig(model="model"),
         )
         config.budget.wicer_max_iterations = 3
         compiler = WiCERCompiler(config=config, base_compiler=DummyCompiler())
@@ -927,9 +932,10 @@ class TestWiCERWithGraphCompiler:
     def test_compiles_multi_section_doc(self) -> None:
         chunks = _make_diverse_chunks()
         config = PipelineConfig(
-            source_dir=make_tmp_vault(), output_dir=make_tmp_vault(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
-            embedding=EmbeddingConfig(model="model")
+            embedding=EmbeddingConfig(model="model"),
         )
         config.budget.wicer_max_iterations = 1
         compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
@@ -941,9 +947,10 @@ class TestWiCERWithGraphCompiler:
     def test_default_initializer(self) -> None:
         """WiCERCompiler() creates a GraphCompiler internally."""
         config = PipelineConfig(
-            source_dir=make_tmp_vault(), output_dir=make_tmp_vault(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
-            embedding=EmbeddingConfig(model="model")
+            embedding=EmbeddingConfig(model="model"),
         )
         config.budget.wicer_max_iterations = 3
         compiler = WiCERCompiler(config=config, context_window=_make_test_cw())

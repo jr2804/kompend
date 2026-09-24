@@ -24,6 +24,11 @@ from knox.search.filters import matches_attr_filter, matches_tag_filter
 from knox.search.retriever import KeywordRetriever, SearchResult, run_agentic_query
 
 
+@dataclass
+class _Ctx:
+    deps: QueryAgentDeps
+
+
 class _FakeRetriever:
     """Raw retrieval surface — structurally satisfies QuerySearchProtocol."""
 
@@ -55,27 +60,6 @@ class _FakeRetriever:
 
     def read_page(self, slug: str) -> str | None:
         return self._pages.get(slug)
-
-
-@dataclass
-class _Ctx:
-    deps: QueryAgentDeps
-
-
-def _ctx(deps: QueryAgentDeps) -> RunContext[QueryAgentDeps]:
-    return cast(RunContext[QueryAgentDeps], _Ctx(deps))
-
-
-def _deps(retriever: QuerySearchProtocol, **kwargs: object) -> QueryAgentDeps:
-    return QueryAgentDeps(question="What is P.863?", sub_questions=[], retriever=retriever, **kwargs)  # type: ignore[arg-type]
-
-
-def _fake() -> _FakeRetriever:
-    hits = [
-        SearchResult(article_id="p1", title="P.863", snippet="s", score=1.0, content="Full body of p1"),
-        SearchResult(article_id="p2", title="MOS-LQO", snippet="s", score=0.5, content="Full body of p2"),
-    ]
-    return _FakeRetriever(hits, {"p1": "Full body of p1"})
 
 
 async def test_search_wiki_returns_real_retrieved_content() -> None:
@@ -120,6 +104,14 @@ async def test_search_wiki_sends_no_filters_when_deps_empty() -> None:
     assert call["attribute_keys"] is None
 
 
+def _ctx(deps: QueryAgentDeps) -> RunContext[QueryAgentDeps]:
+    return cast(RunContext[QueryAgentDeps], _Ctx(deps))
+
+
+def _deps(retriever: QuerySearchProtocol, **kwargs: object) -> QueryAgentDeps:
+    return QueryAgentDeps(question="What is P.863?", sub_questions=[], retriever=retriever, **kwargs)  # type: ignore[arg-type]
+
+
 def test_run_agentic_query_builds_deps_and_returns_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _fake()
     seen: dict[str, object] = {}
@@ -151,6 +143,14 @@ def test_run_agentic_query_builds_deps_and_returns_answer(monkeypatch: pytest.Mo
     assert seen["model"] == "ollama/x"
 
 
+def _fake() -> _FakeRetriever:
+    hits = [
+        SearchResult(article_id="p1", title="P.863", snippet="s", score=1.0, content="Full body of p1"),
+        SearchResult(article_id="p2", title="MOS-LQO", snippet="s", score=0.5, content="Full body of p2"),
+    ]
+    return _FakeRetriever(hits, {"p1": "Full body of p1"})
+
+
 def test_keyword_retriever_applies_filters() -> None:
     nodes = [
         WikiNode(id="a", title="Audio paper", content="audio codec", node_type="concept", metadata={"tags": ["audio", "paper"]}),
@@ -171,13 +171,6 @@ def test_retriever_read_page_returns_node_content() -> None:
     assert retriever.read_page("missing") is None
 
 
-def _cfg(enabled: bool) -> ResolvedConfig:
-    return cast(
-        ResolvedConfig,
-        SimpleNamespace(knox=SimpleNamespace(search=SimpleNamespace(agentic=SimpleNamespace(enabled=enabled)))),
-    )
-
-
 def test_agentic_disabled_by_default() -> None:
     assert should_use_agentic(_cfg(False), raw=False, model="m") is False
 
@@ -186,6 +179,13 @@ def test_agentic_gating_allows_filtered_queries() -> None:
     assert should_use_agentic(_cfg(True), raw=False, model="m") is True
     assert should_use_agentic(_cfg(True), raw=True, model="m") is False
     assert should_use_agentic(_cfg(True), raw=False, model=None) is False
+
+
+def _cfg(enabled: bool) -> ResolvedConfig:
+    return cast(
+        ResolvedConfig,
+        SimpleNamespace(knox=SimpleNamespace(search=SimpleNamespace(agentic=SimpleNamespace(enabled=enabled)))),
+    )
 
 
 def test_shared_matchers_unchanged() -> None:

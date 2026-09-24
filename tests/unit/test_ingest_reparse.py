@@ -89,6 +89,44 @@ class _IngestRouter(ParserRouter):
         return _RecordingParser(self.parsed)
 
 
+class _StubEnricher:
+    """Sets a contextual paragraph on every leaf, like the real agent path."""
+
+    def enrich_tree(self, tree: ChunkTree, doc: ParsedDocument) -> ChunkTree:  # noqa: ARG002
+        for leaf in tree.leaves():
+            leaf.contextual_context = f"context for {leaf.id}"
+        return tree
+
+
+class _StubRuntime:
+    """Minimal PipelineRuntime for the chunk+enrich+cache path."""
+
+    def __init__(self, base: Path, *, enricher: object | None) -> None:
+        self.base_directory = base
+        self.config = SimpleNamespace(
+            no_cache=False,
+            force=False,
+            privacy_filter=False,
+            search=SimpleNamespace(contextual=SimpleNamespace(enabled=enricher is not None)),
+        )
+        self.router = None
+        self.chunker = HierarchicalChunker(max_tokens=512)
+        self.enricher = enricher
+        self.state = TierState()
+        self.cache_store = CacheStore(base / ".knox" / "cache", base)
+        self.state_store = TierStateStore(base / ".knox" / "compile_state.json", base)
+
+    def rel_file(self, file: Path) -> str:
+        return str(file)
+
+    def abs_file(self, file_str: str) -> Path:
+        p = Path(file_str)
+        return p if p.is_absolute() else self.base_directory / p
+
+    def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:  # noqa: ARG002
+        return
+
+
 def test_fingerprint_is_stable() -> None:
     assert _router_of("Alpha").fingerprint() == _router_of("Alpha").fingerprint()
 
@@ -103,14 +141,6 @@ def test_fingerprint_changes_with_fallback() -> None:
     b = _router_of("Alpha")
     b.set_text_fallback(type("OtherFallback", (_StubParser,), {})())
     assert a.fingerprint() != b.fingerprint()
-
-
-def _router_of(*parser_names: str) -> ParserRouter:
-    router = ParserRouter()
-    for name in parser_names:
-        router.register(type(name, (_StubParser,), {})())
-    router.set_text_fallback(_StubParser())
-    return router
 
 
 # ── Cache-currency checks ──────────────────────────────────────────────
@@ -256,26 +286,6 @@ def test_attachments_untouched_by_reingest(tmp_path: Path) -> None:
     assert manifest.read_text(encoding="utf-8") == before
 
 
-def _seed_vault(tmp_path: Path) -> Path:
-    base = tmp_path / "vault"
-    (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
-    (base / "sources" / "note.md").write_text("# Note\n", encoding="utf-8")
-    return base
-
-
-def _runtime_for_chunk_deps(*, contextual: bool, enricher: object | None) -> Any:
-    """Minimal stand-in exposing only what ``_chunk_cache_deps`` reads."""
-    config = SimpleNamespace(search=SimpleNamespace(contextual=SimpleNamespace(enabled=contextual)))
-    return SimpleNamespace(
-        chunker=SimpleNamespace(_effective_max=512),
-        router=_router_of("chain-A"),
-        config=config,
-        enricher=enricher,
-    )
-
-
 def test_chunk_cache_deps_gate_off_matches_default() -> None:
     """Default (gate off) chunk-cache identity is byte-identical to today."""
     deps = _chunk_cache_deps(_runtime_for_chunk_deps(contextual=False, enricher=None), "abc")
@@ -292,65 +302,23 @@ def test_chunk_cache_deps_gate_on_invalidates() -> None:
     assert on["contextual"] == "1"
 
 
-class _StubEnricher:
-    """Sets a contextual paragraph on every leaf, like the real agent path."""
-
-    def enrich_tree(self, tree: ChunkTree, doc: ParsedDocument) -> ChunkTree:  # noqa: ARG002
-        for leaf in tree.leaves():
-            leaf.contextual_context = f"context for {leaf.id}"
-        return tree
-
-
-class _StubRuntime:
-    """Minimal PipelineRuntime for the chunk+enrich+cache path."""
-
-    def __init__(self, base: Path, *, enricher: object | None) -> None:
-        self.base_directory = base
-        self.config = SimpleNamespace(
-            no_cache=False,
-            force=False,
-            privacy_filter=False,
-            search=SimpleNamespace(contextual=SimpleNamespace(enabled=enricher is not None)),
-        )
-        self.router = None
-        self.chunker = HierarchicalChunker(max_tokens=512)
-        self.enricher = enricher
-        self.state = TierState()
-        self.cache_store = CacheStore(base / ".knox" / "cache", base)
-        self.state_store = TierStateStore(base / ".knox" / "compile_state.json", base)
-
-    def rel_file(self, file: Path) -> str:
-        return str(file)
-
-    def abs_file(self, file_str: str) -> Path:
-        p = Path(file_str)
-        return p if p.is_absolute() else self.base_directory / p
-
-    def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:  # noqa: ARG002
-        return
+def _runtime_for_chunk_deps(*, contextual: bool, enricher: object | None) -> Any:
+    """Minimal stand-in exposing only what ``_chunk_cache_deps`` reads."""
+    config = SimpleNamespace(search=SimpleNamespace(contextual=SimpleNamespace(enabled=contextual)))
+    return SimpleNamespace(
+        chunker=SimpleNamespace(_effective_max=512),
+        router=_router_of("chain-A"),
+        config=config,
+        enricher=enricher,
+    )
 
 
-def _seed_parse_cache(base: Path, source_file: Path, content_hash: str) -> None:
-    data: dict[str, Any] = {
-        str(MetadataField.SOURCE_FILE): str(source_file),
-        PARSE_CACHE_PARSER_KEY: "",
-        "title": "Note",
-        "author": "",
-        "language": "en",
-        "page_count": 1,
-        "metadata": {},
-        "elements": [
-            {
-                "type": str(ElementType.TEXT),
-                "content": "body text",
-                "page": None,
-                str(MetadataField.READING_ORDER): 0,
-                "heading_level": None,
-                "metadata": {},
-            }
-        ],
-    }
-    write_document(vault_db_path(base), cache_key(source_file, content_hash), data)
+def _router_of(*parser_names: str) -> ParserRouter:
+    router = ParserRouter()
+    for name in parser_names:
+        router.register(type(name, (_StubParser,), {})())
+    router.set_text_fallback(_StubParser())
+    return router
 
 
 def test_enriched_tree_is_what_gets_cached(tmp_path: Path) -> None:
@@ -387,3 +355,35 @@ def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
     cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(runtime, content_hash))
     assert cached is not None
     assert all(n["contextual_context"] == "" for n in cached["nodes"].values())
+
+
+def _seed_vault(tmp_path: Path) -> Path:
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    (base / ".knox").mkdir(parents=True)
+    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    (base / "sources" / "note.md").write_text("# Note\n", encoding="utf-8")
+    return base
+
+
+def _seed_parse_cache(base: Path, source_file: Path, content_hash: str) -> None:
+    data: dict[str, Any] = {
+        str(MetadataField.SOURCE_FILE): str(source_file),
+        PARSE_CACHE_PARSER_KEY: "",
+        "title": "Note",
+        "author": "",
+        "language": "en",
+        "page_count": 1,
+        "metadata": {},
+        "elements": [
+            {
+                "type": str(ElementType.TEXT),
+                "content": "body text",
+                "page": None,
+                str(MetadataField.READING_ORDER): 0,
+                "heading_level": None,
+                "metadata": {},
+            }
+        ],
+    }
+    write_document(vault_db_path(base), cache_key(source_file, content_hash), data)
