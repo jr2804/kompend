@@ -329,3 +329,23 @@ def _delete_store(base: Path) -> None:
     db = base / ".knox" / "knox.db"
     for suffix in ("", "-wal", "-shm"):
         db.with_name(db.name + suffix).unlink(missing_ok=True)
+
+
+# ── Tombstone-inclusive reads (CLI ``--all``) ───────────────────────────
+
+
+def test_read_all_includes_deleted_on_request(tmp_path: Path) -> None:
+    """``read_all`` excludes tombstones by default; ``include_deleted`` returns them."""
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
+    manifest.append(Attachment(path="doc/live.txt", source="doc", ingestible=True))
+    manifest.append(Attachment(path="doc/gone.txt", source="doc", ingestible=True))
+    assert manifest.remove("doc/gone.txt") is True
+
+    active = manifest.read_all()
+    assert set(active) == {"doc/live.txt"}
+    assert active["doc/live.txt"].deleted is False
+
+    every = manifest.read_all(include_deleted=True)
+    assert set(every) == {"doc/live.txt", "doc/gone.txt"}
+    assert every["doc/gone.txt"].deleted is True
+    assert every["doc/live.txt"].deleted is False

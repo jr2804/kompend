@@ -200,13 +200,18 @@ class AttachmentManifest:
             row = conn.execute(f"SELECT 1 FROM {ATTACHMENT_MANIFEST_TABLE} LIMIT 1").fetchone()
         return row is not None
 
-    def read_all(self) -> dict[str, Attachment]:
-        """Read all active (non-deleted) attachments, keyed by path."""
+    def read_all(self, *, include_deleted: bool = False) -> dict[str, Attachment]:
+        """Read attachments keyed by path.
+
+        By default tombstoned rows are excluded; ``include_deleted=True``
+        returns them too (the ``--all`` view), with ``Attachment.deleted`` set.
+        """
         if not self._db_path.exists():
             return {}
+        where = "" if include_deleted else " WHERE deleted = 0"
         with open_store(self._db_path) as conn:
             rows = conn.execute(
-                f"SELECT path, source, ingestible, embed, registered_at FROM {ATTACHMENT_MANIFEST_TABLE} WHERE deleted = 0",
+                f"SELECT path, source, ingestible, embed, registered_at, deleted FROM {ATTACHMENT_MANIFEST_TABLE}{where}",
             ).fetchall()
         return {row["path"]: _attachment_from_row(row) for row in rows}
 
@@ -290,6 +295,7 @@ def _attachment_from_row(row: Any) -> Attachment:
         ingestible=bool(row["ingestible"]),
         embed=None if embed is None else bool(embed),
         registered_at=row["registered_at"],
+        deleted=bool(row["deleted"]),
     )
 
 

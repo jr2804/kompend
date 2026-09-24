@@ -12,7 +12,6 @@ Sub-commands
 
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 
@@ -246,19 +245,7 @@ def list_attachments(
         console.print("No attachments registered.")
         return
 
-    if show_all:
-        # Read raw JSONL (including tombstones)
-        entries = []
-        for raw_line in manifest.path.read_text(encoding="utf-8").splitlines():
-            stripped = raw_line.strip()
-            if not stripped:
-                continue
-            try:
-                entries.append(Attachment.from_dict(json.loads(stripped)))
-            except (json.JSONDecodeError, KeyError):
-                continue
-    else:
-        entries = list(manifest.read_all().values())
+    entries = list(manifest.read_all(include_deleted=show_all).values())
 
     if source:
         entries = [e for e in entries if e.source == source]
