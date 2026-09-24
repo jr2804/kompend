@@ -20,11 +20,26 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-from knox.core.paths import VaultPaths, attachment_slugs_for_source, is_protected_source
+from knox.core.paths import ATTACHMENTS_DIR_NAME, VaultPaths, attachment_slugs_for_source, is_protected_source
 from knox.core.store import open_store, vault_db_path
 from knox.core.store.schema import ATTACHMENT_MANIFEST_TABLE
 
-__all__ = ["Attachment", "AttachmentManifest", "adopt_orphan_attachments"]
+__all__ = ["Attachment", "AttachmentManifest", "adopt_orphan_attachments", "attachments_relative"]
+
+
+def attachments_relative(path: str | Path) -> str:
+    """Normalise a path to the manifest's key form: ``<slug>/<file>``.
+
+    Two coordinate systems meet here and only here: the orphan lint rule and
+    :func:`knox.lint.structural.orphan_attachment_dirs` emit **vault-relative**
+    paths (``attachments/<slug>/<file>``), while ``attachments add`` and
+    :func:`adopt_orphan_attachments` store **attachments-relative** keys
+    (``<slug>/<file>``). Accepts either form; strips at most one leading
+    ``attachments/`` segment and normalises backslashes.
+    """
+    normalized = str(path).replace("\\", "/").lstrip("/")
+    prefix = f"{ATTACHMENTS_DIR_NAME}/"
+    return normalized[len(prefix) :] if normalized.startswith(prefix) else normalized
 
 # ── Ingestible file types ────────────────────────────────────────────────
 
@@ -181,6 +196,11 @@ class AttachmentManifest:
     is a tombstone recording an explicit user removal. This is read-equivalent
     to the legacy append-only JSONL ("latest entry per path wins"): re-appending
     a tombstoned path clears the tombstone.
+
+    Paths are stored **attachments-relative** (``<slug>/<file>``). The mutating
+    methods (:meth:`append`, :meth:`remove`, :meth:`set_ingestible`) also accept a
+    vault-relative ``attachments/<slug>/<file>`` path and normalise it via
+    :func:`attachments_relative`, so the two coordinate systems cannot diverge.
     """
 
     def __init__(self, path: Path) -> None:
@@ -226,25 +246,32 @@ class AttachmentManifest:
     def remove(self, attachment_file: str) -> bool:
         """Mark an attachment as deleted (tombstone row).
 
+        *attachment_file* may be vault-relative (``attachments/<slug>/<file>``)
+        or attachments-relative (``<slug>/<file>``); see :func:`attachments_relative`.
+
         Returns:
             ``True`` if the attachment existed and was marked deleted.
         """
+        key = attachments_relative(attachment_file)
         existing = self.read_all()
-        if attachment_file not in existing:
+        if key not in existing:
             return False
-        self._upsert(Attachment(path=attachment_file, source=existing[attachment_file].source, deleted=True))
+        self._upsert(Attachment(path=key, source=existing[key].source, deleted=True))
         return True
 
     def set_ingestible(self, attachment_file: str, ingestible: bool) -> bool:
         """Update the ingestible flag of an attachment.
 
+        Accepts the same path forms as :meth:`remove`.
+
         Returns:
             ``True`` if the attachment existed and was updated.
         """
+        key = attachments_relative(attachment_file)
         existing = self.read_all()
-        if attachment_file not in existing:
+        if key not in existing:
             return False
-        att = existing[attachment_file]
+        att = existing[key]
         self._upsert(Attachment(path=att.path, source=att.source, ingestible=ingestible, embed=att.embed, registered_at=att.registered_at))
         return True
 
@@ -265,6 +292,7 @@ class AttachmentManifest:
         return {row["path"] for row in rows}
 
     def _upsert(self, attachment: Attachment) -> None:
+        key = attachments_relative(attachment.path)
         with open_store(self._db_path) as conn:
             conn.execute(
                 f"""INSERT INTO {ATTACHMENT_MANIFEST_TABLE}(path, source, ingestible, embed, registered_at, deleted)
@@ -276,7 +304,7 @@ class AttachmentManifest:
                     registered_at = excluded.registered_at,
                     deleted = excluded.deleted""",
                 (
-                    attachment.path,
+                    key,
                     attachment.source,
                     int(attachment.ingestible),
                     None if attachment.embed is None else int(attachment.embed),
