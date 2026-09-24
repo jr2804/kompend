@@ -20,6 +20,7 @@ from knox.core.models import CompiledWiki, MetadataField
 from knox.core.models.attachments import AttachmentManifest
 from knox.core.paths import KIND_FOLDERS, KNOX_DIR, REFERENCES_FILE, VaultPaths, attachment_slugs_for_source, is_protected_source
 from knox.core.pipeline.references import ReferenceStore, consolidate_references
+from knox.core.pipeline.state import TierStateStore
 from knox.core.text.matching import best_match
 from knox.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from knox.logging import get_logger
@@ -611,7 +612,7 @@ class OrphanAttachmentsRule(BaseLintRule):
     derived from config). Files whose slug matches NO source cannot be
     recovered by that pass — the parent source is gone or was renamed — so
     they are flagged here for manual intervention. ``--fix`` deletes them
-    on disk + tombstones them in ``.knox/attachments.jsonl``; the caller
+    on disk + tombstones them in the ``attachment_manifest`` table (in ``.knox/knox.db``); the caller
     must opt in via the lint ``--fix`` flag.
     """
 
@@ -643,7 +644,7 @@ class OrphanAttachmentsRule(BaseLintRule):
 
         # A compile must have run at least once — before that, orphan state
         # is meaningless (nothing was ever adoptable).
-        if not vp.compile_state_file.exists():
+        if not TierStateStore(vp.compile_state_file).load().entries:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No compile state — run compile first"))
             return results
 
@@ -692,7 +693,7 @@ class OrphanAttachmentsRule(BaseLintRule):
         """Delete orphan attachment files from disk + tombstone in the manifest.
 
         Destructive. Each FAIL result becomes a removed file + a tombstone
-        entry in ``.knox/attachments.jsonl``. Empty slug directories are
+        entry in the ``attachment_manifest`` table (in ``.knox/knox.db``). Empty slug directories are
         also removed after their last file is deleted. Failures (permission
         errors, missing manifest) leave the result outcome FAIL but record
         the error in ``details["error"]`` and log at WARNING.

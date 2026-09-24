@@ -5,7 +5,6 @@ Compile/parse already live in knowledge.py (wiki_compile/wiki_parse).
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import Any
@@ -19,7 +18,7 @@ from knox.cli._shared import build_cli_overrides
 from knox.cli._sources import resolve_files
 from knox.core import source_metadata
 from knox.core.config import resolve_config
-from knox.core.models import MetadataField, WikiField, load_wiki_from_files
+from knox.core.models import MetadataField, load_cached_wiki, load_wiki_from_files
 from knox.core.paths import VaultPaths, vault_paths
 from knox.core.pipeline.ingest import ingest_documents
 from knox.core.templates import get_template_loader
@@ -295,19 +294,17 @@ def wiki_organize(
 
 def _load_related_titles(base_dir: Path, source_texts: list[tuple[str, str]]) -> list[str]:
     related: list[str] = []
-    wiki_cache = VaultPaths(base_dir).wiki_cache_file
-    if not wiki_cache.exists() or not source_texts:
+    if not source_texts:
         return related
-    try:
-        data: dict[str, Any] = json.loads(wiki_cache.read_text(encoding="utf-8"))
-        source_stems = {s for s, _ in source_texts}
-        for node in data.get(WikiField.NODES, []):
-            prov = node.get("metadata", {}).get(MetadataField.PROVENANCE) or []
-            node_sources = {Path(str(p)).stem for p in prov if p}
-            if node_sources & source_stems:
-                related.append(str(node.get("title", "")))
-    except Exception as exc:
-        logger.debug("Failed to load last_wiki.json for related nodes: %s", exc)
+    wiki = load_cached_wiki(base_dir)
+    if wiki is None:
+        return related
+    source_stems = {s for s, _ in source_texts}
+    for node in wiki.nodes:
+        prov = (node.metadata or {}).get(MetadataField.PROVENANCE) or []
+        node_sources = {Path(str(p)).stem for p in prov if p}
+        if node_sources & source_stems:
+            related.append(str(node.title))
     return related
 
 

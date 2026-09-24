@@ -19,9 +19,11 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
 
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_LINT_FEEDBACK_CHARS
+from knox.core.models import load_cached_wiki
 from knox.lint.base import LintReport, LintReportResult
 
 _CLARITY_LOW_THRESHOLD = 4
@@ -60,6 +62,24 @@ class GapRecommendation:
     finding: str
     action: str
     resolution: str = "missing"
+
+
+def load_degree_map(base_dir: Path) -> dict[str, int] | None:
+    """Page id → edge count from the ``last`` compiled-wiki snapshot.
+
+    Built from the snapshot's ``edges`` by reading the vault store (not a flat
+    file); ``None`` when no compiled wiki exists. Used by :func:`analyze_gaps`
+    for coverage-weighted gap priority.
+    """
+    wiki = load_cached_wiki(base_dir)
+    if wiki is None:
+        return None
+    degree: dict[str, int] = {}
+    for edge in wiki.edges:
+        for endpoint in (edge.get("source"), edge.get("target")):
+            if endpoint:
+                degree[str(endpoint)] = degree.get(str(endpoint), 0) + 1
+    return degree or None
 
 
 def analyze_gaps(report: LintReport, degree_map: dict[str, int] | None = None) -> list[GapRecommendation]:

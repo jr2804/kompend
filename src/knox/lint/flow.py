@@ -8,9 +8,7 @@ override, then compile.llm.default_model).
 
 from __future__ import annotations
 
-import json
 import time
-from pathlib import Path
 from typing import Any
 
 import yaml
@@ -24,7 +22,7 @@ from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, load_cached_wiki
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE, VaultPaths
 from knox.lint.base import LintReport, LintReportResult
-from knox.lint.gap_analysis import analyze_gaps
+from knox.lint.gap_analysis import analyze_gaps, load_degree_map
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.remediation import RemediationStatus, remediate
 from knox.lint.runner import LintRunner, report_to_text
@@ -52,10 +50,6 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     Called by `knox lint all` and `knox compile --lint-all`. One merged
     history entry per call.
     """
-    wiki_cache = vp.knox_dir / "last_wiki.json"
-    if not wiki_cache.exists():
-        raise FileNotFoundError(f"No compiled wiki found in {vp.output_dir}. Run 'knox compile' first.")
-
     wiki = load_cached_wiki(vp.base_dir)
     if wiki is None:
         raise FileNotFoundError(f"No compiled wiki found in {vp.output_dir}. Run 'knox compile' first.")
@@ -87,7 +81,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
                 semantic_report, _ = _run_pass(wiki, vp, cfg, rules=None, enable_llm=True, lint_agent=lint_agent, fix=False)
             elif name == "gaps":
                 merged_results = _merge_results(check_report, semantic_report)
-                analyze_gaps(LintReport(results=merged_results), _load_degree_map(vp.base_dir))
+                analyze_gaps(LintReport(results=merged_results), load_degree_map(vp.base_dir))
             elif name == "remediate":
                 merged_results = _merge_results(check_report, semantic_report)
                 actions = _remediate_phase(wiki, vp, cfg, merged_results, lint_agent, fix)
@@ -131,7 +125,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
 
     merged_dict = entry["report"]
     if json_output:
-        get_console().print_json(merged_dict)
+        get_console().print_json(data=merged_dict)
     else:
         get_console().print(report_to_text(merged_report))
     return merged_dict
@@ -228,23 +222,6 @@ def _rich_report(results: list[LintReportResult]) -> LintReport:
         skips=skips,
         health_score=health_score,
     )
-
-
-def _load_degree_map(base_dir: Path) -> dict[str, int] | None:
-    cache_file = base_dir / ".knox" / "last_wiki.json"
-    if not cache_file.exists():
-        return None
-    try:
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    degree: dict[str, int] = {}
-    for edge in data.get("edges", []):
-        if isinstance(edge, dict):
-            for endpoint in (edge.get("source"), edge.get("target")):
-                if endpoint:
-                    degree[str(endpoint)] = degree.get(str(endpoint), 0) + 1
-    return degree or None
 
 
 def _format_output_phase(vp: VaultPaths, cfg: Any) -> None:

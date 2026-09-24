@@ -8,8 +8,10 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-from knox.core.models import MetadataField, WikiField
+from knox.core.cache.wiki import write_wiki_cache
+from knox.core.models import MetadataField, load_cached_wiki
 from knox.core.paths import VaultPaths, is_protected_source
+from knox.core.pipeline.state import TierStateStore
 from knox.core.store import open_store
 from knox.core.store.schema import PROVENANCE_TABLE
 from knox.logging import get_logger
@@ -211,62 +213,39 @@ def _rewrite_provenance_table(db_path: Path, remap: LinkRemap) -> int:
     return edits
 
 
-def _rewrite_tier_state(filepath: Path, remap: LinkRemap, wiki_root: Path) -> int:
-    try:
-        data = json.loads(filepath.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return 0
-    if not isinstance(data, dict):
-        return 0
-    entries = data.get("entries")
-    if not isinstance(entries, dict):
-        return 0
+def _rewrite_tier_state(store_path: Path, remap: LinkRemap, wiki_root: Path) -> int:
+    store = TierStateStore(store_path)
+    state = store.load()
     edits = 0
-    for entry in entries.values():
-        if not isinstance(entry, dict):
-            continue
-        source = entry.get(MetadataField.SOURCE_FILE)
-        if not isinstance(source, str):
+    for entry in state.entries.values():
+        source = entry.source_file
+        if not source:
             continue
         new_source = _remap(source, remap)
         if new_source != source:
-            entry[MetadataField.SOURCE_FILE] = new_source
+            entry.source_file = new_source
             edits += 1
     if edits:
-        filepath.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+        store.save(state)
     return edits
 
 
 def _rewrite_wiki_node_paths(wiki_root: Path, remap: LinkRemap) -> int:
-    """Rewrite source_file metadata in wiki_cache.json."""
-    cache = VaultPaths(wiki_root.parent).wiki_cache_file
-    if not cache.is_file():
-        return 0
-    try:
-        data = json.loads(cache.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return 0
-    if not isinstance(data, dict):
-        return 0
-    nodes = data.get(WikiField.NODES, [])
-    if not isinstance(nodes, list):
+    """Rewrite source_file metadata in the compiled-wiki snapshot."""
+    wiki = load_cached_wiki(wiki_root.parent)
+    if wiki is None:
         return 0
     edits = 0
-    for node in nodes:
-        if not isinstance(node, dict):
-            continue
-        meta = node.get(WikiField.METADATA)
-        if not isinstance(meta, dict):
-            continue
-        source = meta.get(MetadataField.SOURCE_FILE)
+    for node in wiki.nodes:
+        source = node.metadata.get(MetadataField.SOURCE_FILE)
         if not isinstance(source, str):
             continue
         new = _remap(source, remap)
         if new != source:
-            meta[MetadataField.SOURCE_FILE] = new
+            node.metadata[MetadataField.SOURCE_FILE] = new
             edits += 1
     if edits:
-        cache.write_text(json.dumps(data, indent=2, default=str), encoding="utf-8")
+        write_wiki_cache(wiki, wiki_root.parent)
     return edits
 
 

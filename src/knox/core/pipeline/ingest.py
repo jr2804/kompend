@@ -124,7 +124,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         config: Resolved config dict (or ``None`` to skip dedup). Used to
             configure content-level duplicate detection.
         ingested_by: OS user to record as the ingest actor in source state
-            (``compile_state.json``). Empty string records no identity.
+            (``tier_state`` table in ``.knox/knox.db``). Empty string records no identity.
         tags: Optional list of source tags to attach to each parsed document's
             metadata (stored under ``MetadataField.TAGS``).
         attributes: Optional key=value source attributes to attach to each

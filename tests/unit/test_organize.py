@@ -15,6 +15,7 @@ from knox.agents.categorize_models import CategoryTree as PydanticTree
 from knox.cli.app import app
 from knox.compilation._two_phase_core import Extraction
 from knox.core.cache import CacheStore
+from knox.core.cache.wiki import write_wiki_cache
 from knox.core.config import OrganizeConfig, resolve_config
 from knox.core.config.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,
@@ -22,8 +23,9 @@ from knox.core.config.keys import (
     ORGANIZE_MIN_FILES_PER_CATEGORY,
     ORGANIZE_MIN_SUBCATEGORIES,
 )
-from knox.core.models import CompiledWiki, WikiNode
+from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KNOX_DIR, ORGANIZE_REPORT_FILE
+from knox.core.pipeline.state import SourceState, TierState, TierStateStore
 from knox.core.store import open_store, vault_db_path
 from knox.core.store.schema import ORGANIZE_REPORTS_TABLE, PROVENANCE_TABLE
 from knox.core.text.slug import slugify
@@ -593,48 +595,26 @@ class TestUpdateWikiLinks:
     def test_updates_wiki_node_metadata(self, tmp_path: Path) -> None:
         wiki = tmp_path / "wiki"
         wiki.mkdir()
-        cache_dir = tmp_path / KNOX_DIR
-        cache_dir.mkdir()
-        cache = cache_dir / "last_wiki.json"
-        cache.write_text(
-            json.dumps(
-                {
-                    "nodes": [
-                        {
-                            "id": "n1",
-                            "title": "T",
-                            "content": "x",
-                            "metadata": {"source_file": "sources/old.md"},
-                        },
-                    ],
-                    "edges": [],
-                    "toc": [],
-                },
+        write_wiki_cache(
+            CompiledWiki(
+                nodes=[WikiNode(id="n1", title="T", content="x", node_type="section", metadata={"source_file": "sources/old.md"})],
+                edges=[],
+                toc=[],
             ),
-            encoding="utf-8",
+            tmp_path,
         )
 
         remap = build_link_remap([("sources/old.md", "sources/new.md")])
         counts = update_wiki_links(tmp_path, wiki, remap)
 
         assert counts["wiki_node_metadata"] == 1
-        data = json.loads(cache.read_text(encoding="utf-8"))
-        assert data["nodes"][0]["metadata"]["source_file"] == "sources/new.md"
+        loaded = load_cached_wiki(tmp_path)
+        assert loaded is not None
+        assert loaded.nodes[0].metadata["source_file"] == "sources/new.md"
 
     def test_updates_tier_state(self, tmp_path: Path) -> None:
-        state_dir = tmp_path / KNOX_DIR
-        state_dir.mkdir()
-        state = state_dir / "compile_state.json"
-        state.write_text(
-            json.dumps(
-                {
-                    "entries": {
-                        "a": {"source_file": "sources/old.md", "stem": "a"},
-                    },
-                },
-            ),
-            encoding="utf-8",
-        )
+        store = TierStateStore(tmp_path / KNOX_DIR / "compile_state.json")
+        store.save(TierState(entries={"a": SourceState(stem="a", source_file="sources/old.md", content_hash="h")}))
 
         wiki = tmp_path / "wiki"
         wiki.mkdir()
@@ -643,8 +623,7 @@ class TestUpdateWikiLinks:
         counts = update_wiki_links(tmp_path, wiki, remap)
 
         assert counts["tier_state"] == 1
-        data = json.loads(state.read_text(encoding="utf-8"))
-        assert data["entries"]["a"]["source_file"] == "sources/new.md"
+        assert store.load().entries["a"].source_file == "sources/new.md"
 
     def test_empty_remap_is_noop(self, tmp_path: Path) -> None:
         wiki = tmp_path / "wiki"

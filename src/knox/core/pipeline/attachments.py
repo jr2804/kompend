@@ -2,7 +2,7 @@
 
 Attachments are user-registered files that belong to a source but are not
 ingested by default (photos, binaries, etc.). They are tracked
-by the JSONL manifest (``.knox/attachments.jsonl``) and live under
+by the ``attachment_manifest`` table of ``.knox/knox.db`` and live under
 ``attachments/<source-slug>/``.
 
 Only attachments explicitly marked ``ingestible`` are processed at compile

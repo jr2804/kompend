@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
+import dataclasses
 from pathlib import Path
 from typing import Any
 
-from knox.core.models import MetadataField, WikiField
+from knox.core.models import MetadataField, WikiField, load_cached_wiki
 from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 from knox.search.retriever import SearchResult
@@ -39,14 +39,22 @@ def source_of(node: dict[str, Any]) -> str:
 
 
 def load_wiki() -> dict[str, Any]:
-    """Load the compiled wiki from cache."""
-    cache = VaultPaths(_PROJECT_DIR).wiki_cache_file
-    if not cache.exists():
-        return {WikiField.NODES: [], WikiField.EDGES: [], WikiField.TOC: [], WikiField.QUALITY_SCORE: 0.0, MetadataField.NODE_COUNT: 0}
-    try:
-        data = json.loads(cache.read_text(encoding="utf-8"))
-        data[MetadataField.NODE_COUNT] = len(data.get(WikiField.NODES, []))
-        return data
-    except Exception as exc:
-        logger.warning("Failed to load wiki cache: %s", exc, exc_info=True)
-        return {WikiField.NODES: [], WikiField.EDGES: [], WikiField.TOC: [], WikiField.QUALITY_SCORE: 0.0, MetadataField.NODE_COUNT: 0}
+    """Load the compiled wiki from the vault store snapshot."""
+    empty: dict[str, Any] = {
+        WikiField.NODES: [],
+        WikiField.EDGES: [],
+        WikiField.TOC: [],
+        WikiField.QUALITY_SCORE: 0.0,
+        MetadataField.NODE_COUNT: 0,
+    }
+    wiki = load_cached_wiki(VaultPaths(_PROJECT_DIR).base_dir)
+    if wiki is None:
+        return empty
+    nodes = [dataclasses.asdict(node) for node in wiki.nodes]
+    return {
+        WikiField.NODES: nodes,
+        WikiField.EDGES: list(wiki.edges),
+        WikiField.TOC: list(wiki.toc),
+        WikiField.QUALITY_SCORE: wiki.quality_score,
+        MetadataField.NODE_COUNT: len(nodes),
+    }

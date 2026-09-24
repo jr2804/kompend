@@ -3,7 +3,7 @@
 Aggregates the structured stores produced during a build into a single
 human-readable markdown report — without re-running any LLM calls:
 
-- **Last compile**: rendered from ``last_wiki.json`` metadata (extraction
+- **Last compile**: rendered from the compiled-wiki snapshot in ``.knox/knox.db`` (extraction
   stats, page/entity/concept counts, LLM usage, timings) via
   :func:`knox.output.wiki_index.generate_log_entry`.
 - **Command timeline**: from ``runs.jsonl`` — every command that ran, with
@@ -66,7 +66,7 @@ def build_log_report(base_dir: Path, *, last_n: int = 25) -> str:
 
 
 def _compile_section(base_dir: Path) -> list[str]:
-    """Render the last-compile detail from ``last_wiki.json`` metadata."""
+    """Render the last-compile detail from the compiled-wiki snapshot in ``.knox/knox.db``."""
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
         return []

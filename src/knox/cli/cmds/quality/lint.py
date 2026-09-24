@@ -52,7 +52,7 @@ from knox.lint.flow import (
 from knox.lint.flow import (
     _run_pass as _run_rules_pass,
 )
-from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
+from knox.lint.gap_analysis import analyze_gaps, gaps_to_text, load_degree_map
 from knox.lint.history import (
     entry_from_report,
     history_to_json,
@@ -439,7 +439,7 @@ def lint_gaps(
     report = _to_lint_report(report_dict)
 
     # Coverage weighting: node degree from the cached wiki graph.
-    degree_map = _load_degree_map(vp.base_dir)
+    degree_map = load_degree_map(vp.base_dir)
     recs = analyze_gaps(report, degree_map)
 
     # Semantic source-coverage verification for missing topics.
@@ -482,24 +482,6 @@ def lint_gaps(
         score = report_dict.get("health_score", 0.0)
         get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
         get_console().print(gaps_to_text(recs))
-
-
-def _load_degree_map(base_dir: Path) -> dict[str, int] | None:
-    """Node id → edge count from the cached compiled wiki (None when absent)."""
-    cache_file = base_dir / ".knox" / "last_wiki.json"
-    if not cache_file.exists():
-        return None
-    try:
-        data = json.loads(cache_file.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
-        return None
-    degree: dict[str, int] = {}
-    for edge in data.get("edges", []):
-        if isinstance(edge, dict):
-            for endpoint in (edge.get("source"), edge.get("target")):
-                if endpoint:
-                    degree[str(endpoint)] = degree.get(str(endpoint), 0) + 1
-    return degree or None
 
 
 def _run_remediation_for_gaps(ctx: typer.Context, vp: Any, cfg: Any, report: Any) -> None:

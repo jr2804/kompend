@@ -16,6 +16,7 @@ from knox.compilation._two_phase_core import Extraction
 from knox.compilation.schema import Concept, Entity
 from knox.core.config.rumdl import _shipped_hash, resolve_rumdl_config
 from knox.core.models import CompiledWiki, WikiNode
+from knox.core.pipeline.state import SourceState, TierState, TierStateStore
 from knox.lint import _remediation_gaps as gaps_module
 from knox.lint.base import LintReport, LintReportResult, LintResult, LintRuleOutcome, RemediationStatus, Severity
 from knox.lint.history import entry_from_report
@@ -1360,7 +1361,8 @@ class TestOrphanAttachmentsRule:
         (base / "sources").mkdir(parents=True)
         (base / "sources" / "report.pdf").write_bytes(b"%PDF fake")
         (base / ".knox").mkdir()
-        (base / ".knox" / "compile_state.json").write_text("{}", encoding="utf-8")
+        store = TierStateStore(base / ".knox" / "compile_state.json")
+        store.save(TierState(entries={"report": SourceState(stem="report", source_file="sources/report.pdf", content_hash="h")}))
         return base, str(base / "sources")
 
 

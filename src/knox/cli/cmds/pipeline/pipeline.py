@@ -418,7 +418,7 @@ def index_cmd(
 ) -> None:
     """Rebuild the zvec vector index for semantic search.
 
-    Uses the cached :class:`CompiledWiki` from ``.knox/last_wiki.json``.
+    Uses the cached :class:`CompiledWiki` from the ``wiki_snapshot`` table in ``.knox/knox.db``.
     This is a recovery command — a normal ``knox compile`` already builds
     the index automatically via post-compile actions.
 

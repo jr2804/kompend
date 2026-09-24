@@ -49,7 +49,7 @@ def add_attachment(
     """Register an attachment for a source.
 
     The attachment file is copied to ``attachments/<source-slug>/`` and
-    recorded in the attachment manifest (``.knox/attachments.jsonl``).
+    recorded in the ``attachment_manifest`` table of ``.knox/knox.db``.
     """
     vp = vault_paths_from_ctx(ctx)
     console = get_console()

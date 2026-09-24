@@ -170,8 +170,7 @@ def filter_sensitive(text: str) -> tuple[str, int]:
 def mark_wiki_private(wiki: CompiledWiki, base_dir: Path) -> None:
     """Record the private-page index in the ``private_pages`` table.
 
-    Snapshot semantics: the previous index is replaced, matching the old
-    ``private.json`` full-overwrite behaviour.
+    Snapshot semantics: the previous index is replaced.
     """
     saved_at = iso_local()
     with open_store(vault_db_path(base_dir)) as conn:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -23,8 +22,8 @@ from knox.cli.app import app
 from knox.cli.args import CaptureText, Frontmatter, LearnText, SourceAttrs, SourceTags
 from knox.core import source_metadata
 from knox.core.config import resolve_config
-from knox.core.models import MetadataField, WikiField
-from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, VaultPaths
+from knox.core.models import MetadataField, load_cached_wiki
+from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
 from knox.core.text.encoding import read_text_auto
 from knox.core.text.matching import SemanticMatcher
 from knox.core.text.slug import slugify
@@ -317,19 +316,17 @@ def _load_related_titles(
 ) -> list[str]:
     """Return titles of wiki nodes that reference any of the given sources."""
     related: list[str] = []
-    wiki_cache = VaultPaths(base_dir).wiki_cache_file
-    if not wiki_cache.exists() or not source_texts:
+    if not source_texts:
         return related
-    try:
-        data: dict[str, Any] = json.loads(wiki_cache.read_text(encoding="utf-8"))
-        source_stems = {s for s, _ in source_texts}
-        for node in data.get(WikiField.NODES, []):
-            prov = node.get("metadata", {}).get(MetadataField.PROVENANCE) or []
-            node_sources = {Path(str(p)).stem for p in prov if p}
-            if node_sources & source_stems:
-                related.append(str(node.get("title", "")))
-    except Exception as exc:
-        logger.debug("Failed to load last_wiki.json for related nodes: %s", exc)
+    wiki = load_cached_wiki(base_dir)
+    if wiki is None:
+        return related
+    source_stems = {s for s, _ in source_texts}
+    for node in wiki.nodes:
+        prov = (node.metadata or {}).get(MetadataField.PROVENANCE) or []
+        node_sources = {Path(str(p)).stem for p in prov if p}
+        if node_sources & source_stems:
+            related.append(str(node.title))
     return related
 
 
