@@ -62,6 +62,7 @@ def build_pipeline(
             pdf_config=config.pdf,
         ),
         names=config.parser,
+        fallback=config.parser_fallback,
     )
 
     # T0 (index) and T1 (parse) run without an LLM — ``knox ingest``

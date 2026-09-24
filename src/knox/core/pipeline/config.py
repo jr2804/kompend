@@ -167,6 +167,7 @@ class PipelineConfig:
     notes_file: Path | None = None  # User notes file path (None = no notes)
     images_scale: float = 200.0 / 72.0  # Docling image resolution multiplier (200 DPI base)
     parser: str = "liteparse"  # ingestion backend name (see PARSER_BACKENDS)
+    parser_fallback: bool = True  # try the next configured backend when one fails (ingest.parser_fallback)
     source_tags: list[str] = field(default_factory=list)  # CLI-provided source tags
     search: SearchConfig = field(default_factory=SearchConfig)  # search config (contextual enrichment gate lives here)
     attachments_ingest_adopted: bool = False  # attachments.ingest_adopted: global gate — manifest flag AND this gate decides ingestion
@@ -264,6 +265,7 @@ class PipelineConfig:
             compiler=Compiler(knox.compile.compiler),
             privacy_filter=knox.trust.privacy_filter,
             parser=knox.ingest.parser,
+            parser_fallback=knox.ingest.parser_fallback,
             memory_enabled=knox.compile.memory_enabled,
             memory_half_life_days=knox.compile.memory_half_life_days,
             memory_decay_threshold=knox.compile.memory_decay_threshold,

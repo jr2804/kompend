@@ -31,6 +31,7 @@ from knox.preprocessing.parsers.base import (
     BaseParser,
     FileExtension,
 )
+from knox.preprocessing.parsers.libreoffice import ensure_libreoffice_env, needs_libreoffice
 
 _ITEM_TYPE_MAP: dict[str, ElementType] = {
     "TextItem": ElementType.TEXT,
@@ -118,6 +119,11 @@ class DoclingParser(BaseParser):
         self._converters: dict[tuple[bool, bool], DocumentConverter] = {}
 
     def parse(self, source_file: Path) -> ParsedDocument:
+        if needs_libreoffice(source_file):
+            # OLE formats go through LibreOffice; resolve its binary if the user
+            # hasn't configured one (docling's own probe misses Windows default
+            # install locations).
+            ensure_libreoffice_env()
         is_pdf = source_file.suffix.lower() == ".pdf"
         do_ocr = self._resolve_do_ocr(source_file) if is_pdf else True
         converter = self._get_converter(do_ocr=do_ocr)

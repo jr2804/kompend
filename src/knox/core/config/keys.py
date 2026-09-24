@@ -24,6 +24,7 @@ PATHS_STATE_DIR: Final[str] = "paths.state_dir"
 
 # ── ingest section ──
 INGEST_PARSER: Final[str] = "ingest.parser"
+INGEST_PARSER_FALLBACK: Final[str] = "ingest.parser_fallback"
 
 # ── downloader section ──
 DOWNLOADER_UNDETECTED: Final[str] = "downloader.undetected"

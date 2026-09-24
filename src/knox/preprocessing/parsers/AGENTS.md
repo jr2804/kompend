@@ -33,9 +33,19 @@ backends are registered in that order and the first one whose
 appended last (legacy formats + LaTeX + universal text fallback), so formats
 no listed backend handles never regress.
 
+With `ingest.parser_fallback` (default **true**) a backend that raises during
+:meth:`parse` hands off to the *next* configured backend that also claims the
+file, logging a WARNING naming the file, the failed backend, the error, and the
+backend that succeeded. This is chain fallback *between configured backends* —
+distinct from the *text* fallback above, which applies only to files no backend
+claims. `parser_fallback = false` restores one-shot routing (first match only,
+the failure propagates). The parse cache keys on it, so flipping the flag
+invalidates instead of reusing output produced under the other policy.
+
 `ParserRouter.fingerprint()` returns a hash of the ordered backend class
-names plus the text fallback — the identity of the parser chain. The parse
-cache and chunk cache key on it, so switching `ingest.parser` re-parses and
+names plus the text fallback and the fallback policy — the identity of the
+parser chain. The parse cache and chunk cache key on it, so switching
+`ingest.parser` or `ingest.parser_fallback` re-parses and
 re-chunks instead of silently reusing output from the previous backend.
 
 The canonical file-extension enum (`FileExtension`, in `base.py`) is the

@@ -541,6 +541,16 @@ class NotesConfig(_KnoxBaseModel):
 
 class IngestConfig(_KnoxBaseModel):
     parser: str = Field(default="liteparse", validation_alias=EnvVar.INGEST_PARSER)
+    parser_fallback: bool = Field(
+        default=True,
+        validation_alias=EnvVar.INGEST_PARSER_FALLBACK,
+        description=(
+            "Parse-tier chain fallback *between configured backends* — a backend that fails "
+            "hands off to the next backend in `[ingest] parser` that claims the file. "
+            "Distinct from the *text* fallback (pandoc filling in at the end of the chain "
+            "for unclaimed plain-text files)."
+        ),
+    )
 
 
 class DownloaderConfig(_KnoxBaseModel):

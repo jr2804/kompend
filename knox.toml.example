@@ -43,6 +43,15 @@ file = "NOTES.md"
 [ingest]
 # parser = "liteparse,docling,web"
 
+# Chain fallback between the configured backends: when the first backend that
+# claims a file fails, the next configured backend that also claims it is
+# tried, with a WARNING naming the file, the failure, and the backend that
+# succeeded. Distinct from the text fallback (pandoc as the last resort for
+# unclaimed plain-text files). Set false for one-shot routing (first match
+# only, failure propagates).
+# Env: KNOX_INGEST_PARSER_FALLBACK
+# parser_fallback = true
+
 # ── Downloader settings ─────────────────────────────────────────────────
 # Controls how URLs are fetched. URLs whose path looks like HTML (no
 # extension, .html/.htm/.aspx/.php/.jsp, or trailing /) go through the

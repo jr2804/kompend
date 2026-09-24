@@ -148,6 +148,7 @@ def build_default_router(
     options: ParserBuildOptions | None = None,
     *,
     names: str | Sequence[str] = "liteparse",
+    fallback: bool = True,
 ) -> ParserRouter:
     """Construct a :class:`ParserRouter` wired with an ordered backend chain.
 
@@ -165,6 +166,10 @@ def build_default_router(
         names: Ordered backend names — a comma-separated string
             (``"liteparse,docling"``) or a sequence. A single name
             (``"docling"``) is accepted for backward compatibility.
+        fallback: When ``True`` (default), a backend that fails during parsing
+            hands off to the next backend in *names* that claims the file
+            (``[ingest] parser_fallback``). When ``False``, the first matching
+            backend runs once and any failure propagates.
     """
     if options is None:
         options = ParserBuildOptions()
@@ -192,7 +197,7 @@ def build_default_router(
         )
     installed_order = [n for n in ordered if n in available]
 
-    router = ParserRouter()
+    router = ParserRouter(fallback=fallback)
     if installed_order:
         for backend_name in installed_order:
             router.register(get_backend(backend_name)(options))

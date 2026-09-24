@@ -127,6 +127,28 @@ put it ahead of `liteparse` in the `parser` priority list:
 parser = "docling,liteparse,web"
 ```
 
+### Fallback between backends
+
+When the first backend that claims a file **fails**, knox tries the next
+backend in the configured order that also claims it, and logs a `WARNING`
+naming the file, the failed backend, the error, and the backend that
+succeeded. This is `parser_fallback` — parse-tier chain fallback *between
+configured backends*. It is distinct from the *text* fallback, which is pandoc
+filling in at the end of the chain for unclaimed plain-text files.
+
+```toml
+[ingest]
+parser = "docling,liteparse,web"
+parser_fallback = true   # default; false = first match only, failure propagates
+```
+
+This is on by default and matters most for formats claimed by more than one
+backend: `.doc` is claimed by both `docling` and `liteparse`, so with `docling`
+first and its LibreOffice conversion failing, `liteparse` now produces the
+document instead of the file being skipped. The parse and chunk caches key on
+the fallback flag, so flipping it re-parses rather than reusing output produced
+under the other policy.
+
 ## Backend Comparison: Strengths and Weaknesses
 
 > Capabilities below reflect what each backend **actually emits into the
@@ -261,7 +283,11 @@ that docling does not support: OpenDocument (`.odt`), reStructuredText
 handles plain text files (`.txt`) and serves as the binaryornot text
 fallback. Legacy binary Word (`.doc`) is **not** pandoc's job — pandoc has
 no reader for the OLE container format; LiteParse and Docling read `.doc`
-via LibreOffice instead.
+via LibreOffice instead. knox locates LibreOffice itself — `PATH` first, then
+the conventional Windows (`%PROGRAMFILES%\LibreOffice\program\soffice.exe`) and
+macOS install locations — and sets Docling's `DOCLING_LIBREOFFICE_CMD` only
+when it is unset, so no per-project setup step is needed. An explicit
+`DOCLING_LIBREOFFICE_CMD` always wins.
 
 PandocParser is registered **after** DoclingParser in the parser router, so
 docling always wins for formats both support (e.g. `.docx` is handled by
