@@ -171,8 +171,15 @@ class PipelineConfig:
     providers: dict[str, dict] = field(default_factory=dict)  # user-defined providers from [providers] section
 
     def resolved_base_dir(self) -> Path:
-        """Return the effective base directory."""
-        return self.base_dir if self.base_dir is not None else self.output_dir.parent
+        """Return the effective vault root as an absolute, resolved path.
+
+        Downstream code must never see a CWD-relative vault base: a relative
+        ``base_dir``/``output_dir`` would otherwise be re-resolved against
+        whatever process CWD happens to be active (e.g. an MCP server, a test
+        runner) and scatter ``.knox/`` state into the wrong directory.
+        """
+        base = self.base_dir if self.base_dir is not None else self.output_dir.parent
+        return base.expanduser().resolve()
 
     def knox_dir(self) -> Path:
         """Return the ``.knox`` directory (always inside base_dir)."""

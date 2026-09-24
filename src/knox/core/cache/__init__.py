@@ -2,4 +2,6 @@
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from knox.core.cache.store import CacheStore
+
+__all__ = ["CacheStore"]

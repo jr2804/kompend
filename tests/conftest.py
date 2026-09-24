@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,16 @@ from knox.rag.zvec_store import EmbeddingProvider
 
 _test_dir = Path(__file__).parent
 _data_dir = _test_dir / "data"
+
+
+def make_tmp_vault() -> Path:
+    """Return an absolute throwaway vault root.
+
+    Store-backed ``PipelineConfig``s must not carry a CWD-relative
+    ``source_dir``/``output_dir`` — that would resolve the vault DB against the
+    process CWD and scatter ``.knox/`` state into the repository root.
+    """
+    return Path(tempfile.mkdtemp(prefix="knox-vault-"))
 
 
 class DeterministicTestEmbeddingProvider(EmbeddingProvider):

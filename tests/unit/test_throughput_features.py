@@ -5,7 +5,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -70,6 +69,7 @@ from knox.verification import (
     verify_node,
     verify_wiki,
 )
+from tests.conftest import make_tmp_vault
 
 
 class TestTierLevelRanges:
@@ -80,8 +80,8 @@ class TestTierLevelRanges:
 
     def test_should_run_default_runs_all(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -91,8 +91,8 @@ class TestTierLevelRanges:
 
     def test_should_run_output_only(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
             start_at_tier=Tier.OUTPUT,
@@ -395,8 +395,8 @@ class TestWikiPipelineTiered:
 
     def test_pipeline_config_defaults(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -405,8 +405,8 @@ class TestWikiPipelineTiered:
 
     def test_start_level_default(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -416,8 +416,8 @@ class TestWikiPipelineTiered:
 
     def test_start_level_output_only(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
             start_at_tier=Tier.OUTPUT,
@@ -428,8 +428,8 @@ class TestWikiPipelineTiered:
 
     def test_validate_prerequisites_empty_state_raises(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
             start_at_tier=Tier.RESOLVE,
@@ -440,8 +440,8 @@ class TestWikiPipelineTiered:
 
     def test_run_tier_unknown_raises(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -451,7 +451,7 @@ class TestWikiPipelineTiered:
 
     def test_list_tiers_returns_all(self, tmp_path: Path) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
             output_dir=tmp_path,
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
@@ -827,8 +827,8 @@ class TestAgenticSegmentSizing:
 
     def _compiler(self, *, context_window: int = 65536, gen_output_max: int = 16384) -> TwoPhaseCompiler:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(
                 default_model="test/model",
                 vlm_model="test/vlm",
@@ -842,18 +842,13 @@ class TestAgenticSegmentSizing:
         return compiler
 
 
-def _tmp_dir() -> Path:
-    """A throwaway base dir so store-backed configs never write into the repo."""
-    return Path(tempfile.mkdtemp(prefix="knox-tput-"))
-
-
 class TestTwoPhaseCompiler:
     """TwoPhaseCompiler behaviour."""
 
     def test_empty_input(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -865,8 +860,8 @@ class TestTwoPhaseCompiler:
     def test_extraction_failure_skips_source(self) -> None:
         """When extraction LLM fails for a source, the source is skipped — pipeline continues."""
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm", batch_retry_attempts=0),
             embedding=EmbeddingConfig(model="hash"),
         )
@@ -893,8 +888,8 @@ class TestTwoPhaseCompiler:
     def test_compile_flags_incomplete_on_high_failure_rate(self) -> None:
         """When most batches fail (after retries), compile stops early and flags incomplete."""
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="hash"),
         )
@@ -925,8 +920,8 @@ class TestTwoPhaseCompiler:
 
     def test_extract_returns_extractions(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -962,8 +957,8 @@ class TestTwoPhaseCompiler:
 
     def test_extract_populates_extraction_stats(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
@@ -1008,8 +1003,8 @@ class TestTwoPhaseCompiler:
 
     def test_compile_writes_extraction_stats_to_metadata(self) -> None:
         config = PipelineConfig(
-            source_dir=_tmp_dir(),
-            output_dir=_tmp_dir(),
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
             llm=LLMConfig(default_model="test/model", vlm_model="test/vlm"),
             embedding=EmbeddingConfig(model="test/model"),
         )
