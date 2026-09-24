@@ -10,7 +10,6 @@ Tests verify:
 
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
@@ -33,6 +32,7 @@ from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.exceptions import LLMOutputError
 from knox.core.utils.tokens import estimate_tokens
 from knox.llm.context_window import ContextSource, ContextWindow
+from tests.conftest import make_tmp_vault
 
 # ── _batch_texts ─────────────────────────────────────────────────────────
 
@@ -271,9 +271,12 @@ def _make_compiler(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL
 
 
 def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> PipelineConfig:
+    # Absolute vault root: a CWD-relative source_dir/output_dir would resolve the
+    # vault store against the process CWD and write .knox/ into the repo root.
+    vault = make_tmp_vault()
     return PipelineConfig(
-        source_dir=Path("."),
-        output_dir=Path("."),
+        source_dir=vault / "sources",
+        output_dir=vault / "wiki",
         llm=LLMConfig(default_model="ollama/test", vlm_model="vlm", extraction_strategy=strategy),
         embedding=EmbeddingConfig(model="model"),
     )
