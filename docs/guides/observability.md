@@ -167,7 +167,7 @@ export KNOX_OTEL_HEADERS="Authorization=Bearer <your-write-token>"
 | Agent type | Span prefix | Notes |
 |------------|-------------|-------|
 | `ExtractionAgent` | `extraction.*` | Concept/entity extraction from source chunks |
-| `GenerationAgent` | `generation.*` | Wiki page generation with structured output |
+| `AgenticGenerationAgent` | `generation.*` | Wiki page generation, multi-turn tool loop |
 | `WiCER` | `wicer.evaluate` / `wicer.probe` | Two-phase refinement; retries visible as child spans |
 | `LintRuleAgent` | `lint.rule.*` | Rule evaluation + remediation spans |
 | `QueryAgent` | `query.*` | Search + synthesis pipeline |

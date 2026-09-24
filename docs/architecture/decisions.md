@@ -310,10 +310,10 @@ tool-using agent is more capable.
 - **Capture.** Single-shot `CaptureAgent` by design (see the table); the
   planned agentic capture was never built.
 
-**Do not cite as live:** the legacy template `GenerationAgent` and
-`generate_all_pages()` are unreachable dead code (targeted for removal in
-`knox-0iv2.12`). An `Agentic*` class file existing on disk is **not** evidence
-that an agentic path is wired — wiring status is tracked in `knox-0iv2`.
+The legacy template `GenerationAgent` and its `generate_all_pages()` loop were
+removed in `knox-0iv2.12`. An `Agentic*` class file existing on disk is **not**
+evidence that an agentic path is wired — wiring status is tracked in
+`knox-0iv2`.
 
 **Consequences:**
 

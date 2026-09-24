@@ -138,8 +138,10 @@ production path constructs them. Do not describe them as live pipeline stages.
 
 | Agent | Output | Deps | Notes |
 |-------|--------|------|-------|
-| `GenerationAgent` | `GenerationOutput` | `GenerationDeps` | The legacy template generator; only referenced from the unreachable `generate_all_pages()`. Targeted for removal in `knox-0iv2.12`. |
 | `WikiIndexAgent` | `dict[str, Any]` | `PipelineAgentDeps` | No construction site; superseded by `AgenticOverviewAgent`. |
+
+The legacy template `GenerationAgent` (and its `generate_all_pages()` loop) were
+removed in `knox-0iv2.12`.
 
 ### KnoxModel
 
