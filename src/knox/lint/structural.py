@@ -601,38 +601,6 @@ class SourceNotFoundRule(BaseLintRule):
         return results
 
 
-# ── Rule: orphan-attachments ─────────────────────────────────────────────
-
-
-def orphan_attachment_dirs(base_dir: Path, sources_dir: Path) -> list[str]:
-    """Attachment files whose directory slug matches no live source.
-
-    Returns **vault-relative** paths (``attachments/<slug>/<file>``). Shared by
-    :class:`OrphanAttachmentsRule` and ``knox attachments verify`` so the slug
-    logic has exactly one implementation. Matches both slug forms (full
-    relative path and bare filename) — see :func:`attachment_slugs_for_source`.
-    """
-    attachments_root = VaultPaths(base_dir).attachments_dir
-    if not attachments_root.is_dir():
-        return []
-
-    sources_root = Path(sources_dir)
-    live_slugs: set[str] = set()
-    if sources_root.is_dir():
-        for p in sources_root.rglob("*"):
-            if p.is_file() and not is_protected_source(p, sources_root):
-                live_slugs.update(attachment_slugs_for_source(p.relative_to(sources_root).as_posix()))
-
-    orphans: list[str] = []
-    for slug_dir in sorted(attachments_root.iterdir()):
-        if not slug_dir.is_dir() or slug_dir.name in live_slugs:
-            continue
-        for f in sorted(slug_dir.rglob("*")):
-            if f.is_file():
-                orphans.append(f.relative_to(base_dir).as_posix())
-    return orphans
-
-
 class OrphanAttachmentsRule(BaseLintRule):
     """Detect attachment files whose slug matches no source in the vault.
 
@@ -1019,6 +987,38 @@ class RumdlRule(BaseLintRule):
             return json.loads(result.stdout or "[]")
         except json.JSONDecodeError:
             return []
+
+
+# ── Rule: orphan-attachments ─────────────────────────────────────────────
+
+
+def orphan_attachment_dirs(base_dir: Path, sources_dir: Path) -> list[str]:
+    """Attachment files whose directory slug matches no live source.
+
+    Returns **vault-relative** paths (``attachments/<slug>/<file>``). Shared by
+    :class:`OrphanAttachmentsRule` and ``knox attachments verify`` so the slug
+    logic has exactly one implementation. Matches both slug forms (full
+    relative path and bare filename) — see :func:`attachment_slugs_for_source`.
+    """
+    attachments_root = VaultPaths(base_dir).attachments_dir
+    if not attachments_root.is_dir():
+        return []
+
+    sources_root = Path(sources_dir)
+    live_slugs: set[str] = set()
+    if sources_root.is_dir():
+        for p in sources_root.rglob("*"):
+            if p.is_file() and not is_protected_source(p, sources_root):
+                live_slugs.update(attachment_slugs_for_source(p.relative_to(sources_root).as_posix()))
+
+    orphans: list[str] = []
+    for slug_dir in sorted(attachments_root.iterdir()):
+        if not slug_dir.is_dir() or slug_dir.name in live_slugs:
+            continue
+        for f in sorted(slug_dir.rglob("*")):
+            if f.is_file():
+                orphans.append(f.relative_to(base_dir).as_posix())
+    return orphans
 
 
 def _node_ids_set(wiki: CompiledWiki) -> set[str]:

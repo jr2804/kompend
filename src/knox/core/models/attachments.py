@@ -26,21 +26,6 @@ from knox.core.store.schema import ATTACHMENT_MANIFEST_TABLE
 
 __all__ = ["Attachment", "AttachmentManifest", "adopt_orphan_attachments", "attachments_relative"]
 
-
-def attachments_relative(path: str | Path) -> str:
-    """Normalise a path to the manifest's key form: ``<slug>/<file>``.
-
-    Two coordinate systems meet here and only here: the orphan lint rule and
-    :func:`knox.lint.structural.orphan_attachment_dirs` emit **vault-relative**
-    paths (``attachments/<slug>/<file>``), while ``attachments add`` and
-    :func:`adopt_orphan_attachments` store **attachments-relative** keys
-    (``<slug>/<file>``). Accepts either form; strips at most one leading
-    ``attachments/`` segment and normalises backslashes.
-    """
-    normalized = str(path).replace("\\", "/").lstrip("/")
-    prefix = f"{ATTACHMENTS_DIR_NAME}/"
-    return normalized[len(prefix) :] if normalized.startswith(prefix) else normalized
-
 # ── Ingestible file types ────────────────────────────────────────────────
 
 # Text/markdown extensions — parsed via standard parser pipeline
@@ -312,6 +297,21 @@ class AttachmentManifest:
                     int(attachment.deleted),
                 ),
             )
+
+
+def attachments_relative(path: str | Path) -> str:
+    """Normalise a path to the manifest's key form: ``<slug>/<file>``.
+
+    Two coordinate systems meet here and only here: the orphan lint rule and
+    :func:`knox.lint.structural.orphan_attachment_dirs` emit **vault-relative**
+    paths (``attachments/<slug>/<file>``), while ``attachments add`` and
+    :func:`adopt_orphan_attachments` store **attachments-relative** keys
+    (``<slug>/<file>``). Accepts either form; strips at most one leading
+    ``attachments/`` segment and normalises backslashes.
+    """
+    normalized = str(path).replace("\\", "/").lstrip("/")
+    prefix = f"{ATTACHMENTS_DIR_NAME}/"
+    return normalized[len(prefix) :] if normalized.startswith(prefix) else normalized
 
 
 def _attachment_from_row(row: Any) -> Attachment:
