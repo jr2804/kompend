@@ -14,9 +14,11 @@
 
 from knox.mcp.tools.attachments import (
     attachments_add,
+    attachments_adopt,
     attachments_ingest,
     attachments_no_ingest,
     attachments_remove,
+    attachments_verify,
 )
 from knox.mcp.tools.config import (
     config_check,
@@ -72,9 +74,11 @@ from knox.mcp.tools.sources import (
 
 __all__ = [
     "attachments_add",
+    "attachments_adopt",
     "attachments_ingest",
     "attachments_no_ingest",
     "attachments_remove",
+    "attachments_verify",
     "compile_wiki",
     "config_check",
     "config_get",

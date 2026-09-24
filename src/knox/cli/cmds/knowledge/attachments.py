@@ -6,6 +6,8 @@ Sub-commands
 * ``knox attachments add``    — register an attachment for a source.
 * ``knox attachments remove`` — remove (tombstone) a registered attachment.
 * ``knox attachments list``   — list registered attachments.
+* ``knox attachments verify`` — read-only check (orphan dirs, missing files); no compile needed.
+* ``knox attachments adopt``  — register orphaned files on disk (compile-hook adoption).
 
 ``att`` is a registered alias for ``attachments`` (e.g. ``knox att add``).
 """
@@ -18,14 +20,17 @@ from pathlib import Path
 import typer
 from binaryornot.check import is_binary
 
-from knox.cli._shared import vault_paths_from_ctx
+from knox.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from knox.cli.app import app as main_app
+from knox.core.config import resolve_config
 from knox.core.models.attachments import (
     IMAGE_EXTENSIONS,
     Attachment,
     AttachmentManifest,
+    adopt_orphan_attachments,
 )
 from knox.core.paths import attachment_slug
+from knox.lint.structural import orphan_attachment_dirs
 from knox.logging import get_console
 
 attachments_app = typer.Typer(
@@ -272,3 +277,56 @@ def list_attachments(
                 status_parts.append("[dim]embed=inherit[/dim]")
         status = " | ".join(status_parts)
         console.print(f"  {att.path:<40} [{att.source}] {status}")
+
+
+@attachments_app.command("verify")
+def verify_attachments(ctx: typer.Context) -> None:
+    """Check attachments against sources and disk (read-only; no compile needed).
+
+    Reports two findings separately: attachment directories whose slug matches
+    no source in ``sources/``, and manifest rows whose file is absent on disk.
+    Exits 1 when anything is found, 0 when clean.
+    """
+    vp = vault_paths_from_ctx(ctx)
+    console = get_console()
+
+    orphans = orphan_attachment_dirs(vp.base_dir, vp.sources_dir)
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
+    missing = [att.path for att in manifest.read_all().values() if not (vp.attachments_dir / att.path).is_file()]
+
+    if not orphans and not missing:
+        console.print("[green]Attachments OK.[/green]")
+        return
+
+    if orphans:
+        console.print(f"[yellow]Orphan attachment(s) ({len(orphans)})[/yellow] — slug matches no source:")
+        for rel in orphans:
+            console.print(f"  {rel}")
+    if missing:
+        console.print(f"[yellow]Missing file(s) ({len(missing)})[/yellow] — manifest row has no file on disk:")
+        for rel in missing:
+            console.print(f"  {rel}")
+    console.print(f"\n{len(orphans)} orphan attachment(s), {len(missing)} missing file(s)")
+    raise typer.Exit(code=1)
+
+
+@attachments_app.command("adopt")
+def adopt_attachments(ctx: typer.Context) -> None:
+    """Register orphaned attachment files on disk (same adoption the compile hook runs).
+
+    Idempotent: a second run adopts nothing. Whether adopted files become
+    ingestible follows ``attachments.ingest_adopted`` from config.
+    """
+    vp = vault_paths_from_ctx(ctx)
+    console = get_console()
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+
+    adopted = adopt_orphan_attachments(vp.base_dir, ingest_adopted=bool(cfg.knox.attachments.ingest_adopted))
+    if not adopted:
+        console.print("Nothing to adopt.")
+        return
+
+    console.print(f"[green]Adopted {len(adopted)} attachment(s):[/green]")
+    for att in adopted:
+        flag = " [ingestible]" if att.ingestible else ""
+        console.print(f"  {att.path}{flag}")

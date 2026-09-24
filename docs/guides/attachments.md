@@ -55,27 +55,40 @@ knox attachments list --source report
 
 # Remove an attachment (tombstone in manifest; file kept on disk)
 knox attachments remove report/photo.jpg
+
+# Read-only check: orphan dirs + manifest rows with no file on disk (no compile needed)
+knox attachments verify
+
+# Register orphaned files on disk (same adoption the compile hook runs; idempotent)
+knox attachments adopt
 ```
 
 The manifest records one row per path in `.knox/knox.db`. Removing an attachment
 writes a tombstone row (the file stays on disk); re-adding the same path clears the
 tombstone (latest wins).
 
+`knox attachments verify` reports two findings separately — directories whose slug
+matches no source in `sources/`, and manifest rows whose file is missing on disk —
+and exits `1` when it finds any, `0` when clean. It is read-only and works before a
+compile, unlike the `orphan-attachments` lint rule (which needs a compiled wiki).
+
 ## Auto-adoption
 
 At compile start, KNOX scans `attachments/<slug>/` for files that have no
 manifest entry and registers them automatically:
 
-- `ingestible` depends on `attachments.ingest_adopted` (default `true`):
+- `ingestible` depends on `attachments.ingest_adopted` (default `false`):
   text and image extensions become ingestible, binaries are registered
-  only. With `false`, adoption only registers the file.
+  only. With `false` (the default), adoption only registers the file.
 - `embed` inherits the global `attachments.embed` setting.
 - Tombstoned paths (explicit `attachments remove`) are never re-adopted.
 - Subdirectories whose slug matches no source in `sources/` are skipped —
   the `orphan-attachments` lint rule flags them instead.
 
 This makes recovery from a deleted `.knox/` lossless for attachments: the
-files under `attachments/` are re-registered on the next compile.
+files under `attachments/` are re-registered on the next compile. Run the same
+pass on demand with `knox attachments adopt` (idempotent); check the result
+before a compile with `knox attachments verify`.
 
 ## Configuration
 
@@ -126,13 +139,15 @@ but excluded from the vector index.
 
 ## MCP tools
 
-Three MCP tools provide attachment access to agents:
+Five MCP tools provide attachment access to agents:
 
 | Tool | Description |
 |------|-------------|
 | `wiki_list_attachments(source?)` | List registered attachments (optionally filtered by source). |
 | `wiki_read_attachment(source, attachment_name)` | Read text content (up to 100KB) or metadata for binary files. |
 | `wiki_attachment_info(source, attachment_name)` | Return manifest entry + file metadata. |
+| `attachments_verify(wiki_dir?)` | Read-only check: orphan dirs + manifest rows with no file on disk. |
+| `attachments_adopt(wiki_dir?)` | Register orphaned files on disk (compile-hook adoption). |
 
 ## Captured and distilled sources
 

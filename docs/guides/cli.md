@@ -255,6 +255,17 @@ The `attachments.embed` setting (and per-attachment `--embed`/`--no-embed`
 flags at registration) controls whether attachment-derived nodes are indexed.
 The old `search.embed_attachments` key still works but is deprecated.
 
+## `knox attachments`
+
+Manage per-source supplementary files. `add`, `remove`, and `list` are covered
+in the [Attachments guide](attachments.md); two maintenance commands need no
+compile:
+
+| Command | Description |
+|---------|-------------|
+| `knox attachments verify` | Read-only check: orphan directories (slug matches no source) and manifest rows with no file on disk. Exits `1` when anything is found, `0` when clean. |
+| `knox attachments adopt` | Register orphaned files under `attachments/<slug>/` — the same adoption the compile hook runs. Idempotent. |
+
 ## `knox doctor`
 
 Validate configuration and connectivity.

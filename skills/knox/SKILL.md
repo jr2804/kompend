@@ -145,6 +145,8 @@ and tracked by a manifest in `.knox/knox.db` (tombstones for removals).
 | `knox attachments add <source> <file>` | Register an attachment for a source (alias: `knox att add`) | `--ingest` (parse at compile; text via router, PNG/JPG via VLM), `--embed`/`--no-embed` (override global `attachments.embed`) |
 | `knox attachments list` | List registered attachments (alias: `knox att list`) | `--source <stem>` (filter), `--all` (include deleted) |
 | `knox attachments remove <path>` | Remove an attachment (tombstone in manifest, keeps file) | — |
+| `knox attachments verify` | Read-only check: orphan dirs + manifest rows with no file on disk (no compile needed); exits 1 when anything is found | — |
+| `knox attachments adopt` | Register orphaned files on disk (same adoption as the compile hook; idempotent) | — |
 
 Only attachments marked `--ingest` are processed during compile; PNG/JPG
 require a configured VLM (`compile.llm.vlm_model`). Set `attachments.embed =

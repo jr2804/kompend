@@ -6,12 +6,15 @@ from typing import Any
 
 from binaryornot.check import is_binary
 
+from knox.core.config import resolve_config
 from knox.core.models.attachments import (
     IMAGE_EXTENSIONS,
     Attachment,
     AttachmentManifest,
+    adopt_orphan_attachments,
 )
 from knox.core.paths import attachment_slug, vault_paths
+from knox.lint.structural import orphan_attachment_dirs
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -189,3 +192,32 @@ def _set_ingestible(
         "updated": len(targets),
         "ingestible": ingestible,
     }
+
+
+def attachments_verify(wiki_dir: str | None = None) -> dict[str, Any]:
+    """Check attachments against sources and disk (read-only; no compile needed).
+
+    Returns ``status: "error"`` when any orphan attachment directory or any
+    manifest row with no file on disk is found; ``"ok"`` otherwise.
+    """
+    vp = vault_paths(wiki_dir)
+    orphans = orphan_attachment_dirs(vp.base_dir, vp.sources_dir)
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
+    missing = [a.path for a in manifest.read_all().values() if not (vp.attachments_dir / a.path).is_file()]
+    return {
+        "status": "error" if (orphans or missing) else "ok",
+        "orphan_attachments": orphans,
+        "missing_files": missing,
+    }
+
+
+def attachments_adopt(wiki_dir: str | None = None) -> dict[str, Any]:
+    """Register orphaned attachment files on disk (the compile-hook adoption).
+
+    Idempotent; whether adopted files become ingestible follows
+    ``attachments.ingest_adopted`` from config.
+    """
+    vp = vault_paths(wiki_dir)
+    cfg = resolve_config(base_dir=vp.base_dir)
+    adopted = adopt_orphan_attachments(vp.base_dir, ingest_adopted=bool(cfg.knox.attachments.ingest_adopted))
+    return {"status": "ok", "adopted": [a.path for a in adopted], "count": len(adopted)}
