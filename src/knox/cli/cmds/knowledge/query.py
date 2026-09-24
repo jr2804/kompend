@@ -135,9 +135,20 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
         )
         raise typer.Exit(1)
 
-    if should_use_agentic(cfg, raw=raw, model=model, tag_groups=tag_groups, attr_filters=attr_groups):
+    if should_use_agentic(cfg, raw=raw, model=model):
         try:
-            run_agentic_query_output(query, wiki, vector_store, format, cfg, cw, remember, state_dir)
+            run_agentic_query_output(
+                query,
+                wiki,
+                vector_store,
+                format,
+                cfg,
+                cw,
+                remember,
+                state_dir,
+                tag_groups=tag_groups,
+                attr_filters=attr_groups,
+            )
         finally:
             if vector_store is not None:
                 vector_store.close()

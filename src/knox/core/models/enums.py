@@ -193,6 +193,7 @@ class MetadataField(StrEnum):
     IMAGE_BASE64 = "image_base64"
     TAGS = "tags"
     ATTRIBUTES = "attributes"
+    DESCRIPTION = "description"
     MODEL = "model"
     EMBEDDING_MODEL = "embedding_model"
     KINDS = "kinds"

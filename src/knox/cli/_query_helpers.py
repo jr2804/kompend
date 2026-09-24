@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
 
 import typer
 
@@ -26,6 +25,7 @@ from knox.output.vault import VaultWriter
 from knox.rag import build_vector_index
 from knox.rag.zvec_store import ZvecWikiStore
 from knox.search.adaptive_retriever import AdaptiveRetriever
+from knox.search.filters import matches_attr_filter, matches_tag_filter
 from knox.search.pipeline import EnhancedRetriever
 from knox.search.retriever import (
     HybridRetriever,
@@ -35,6 +35,7 @@ from knox.search.retriever import (
     run_agentic_query,
     synthesize_results,
 )
+from knox.types import JSONDict, JSONList
 
 #: On-disk folder per node kind — mirrors ``VaultWriter._KIND_FOLDERS`` plus
 #: the overview kind, which stays at the bundle root.
@@ -180,49 +181,15 @@ def handle_enhanced_search(  # noqa: PLR0917
     return None
 
 
-def matches_tag_filter(node_tags: set[str], tag_groups: list[list[str]]) -> bool:
-    """Check if node satisfies at least one AND-group (OR of ANDs)."""
-    if not tag_groups:
-        return True
-    return any(group and all(tag in node_tags for tag in group) for group in tag_groups)
-
-
-def matches_attr_filter(
-    node_attrs: dict[str, list[str]],
-    attr_filters: list[tuple[str, str | None]],
-) -> bool:
-    """Check if node attributes satisfy all filters (AND of key/value checks).
-
-    Each filter is ``(key, value)``: *value* is ``None`` when only key presence
-    is required; otherwise the node's value list must contain the exact value.
-    """
-    if not attr_filters:
-        return True
-    for key, value in attr_filters:
-        values = node_attrs.get(key)
-        if values is None:
-            return False
-        if value is not None and value not in values:
-            return False
-    return True
-
-
-def should_use_agentic(
-    cfg: ResolvedConfig,
-    *,
-    raw: bool,
-    model: str | None,
-    tag_groups: list[list[str]],
-    attr_filters: list[tuple[str, str | None]],
-) -> bool:
+def should_use_agentic(cfg: ResolvedConfig, *, raw: bool, model: str | None) -> bool:
     """Whether this query should take the opt-in agentic path.
 
-    Disabled by default. Falls back to the classic path when filters are
-    present — the agentic tools do not thread filters yet (server-side
-    pushdown is wired separately), so filtering would be silently dropped.
+    Disabled by default. The agentic tools honour tag/attribute filters
+    (pushed down through the retriever), so filters no longer disqualify the
+    path.
     """
     agentic = cfg.knox.search.agentic
-    return bool(agentic.enabled and not raw and model and not tag_groups and not attr_filters)
+    return bool(agentic.enabled and not raw and model)
 
 
 def run_agentic_query_output(
@@ -234,6 +201,8 @@ def run_agentic_query_output(
     cw: ContextWindow | None,
     remember: bool,
     state_dir: Path,
+    tag_groups: list[list[str]] | None = None,
+    attr_filters: list[tuple[str, str | None]] | None = None,
 ) -> None:
     """Run the agentic query agent and print its answer.
 
@@ -252,6 +221,8 @@ def run_agentic_query_output(
             model=model,
             max_sub_questions=cfg.knox.search.agentic.max_sub_questions,
             context_window=cw.max_input if cw is not None else None,
+            tag_groups=tag_groups or [],
+            attr_filters=attr_filters or [],
         )
     except Exception as exc:
         get_err_console().print(f"Agentic query failed: {exc}")
@@ -366,7 +337,7 @@ def is_captured_source(source_file: str | None) -> bool:
     return bool(source_file) and CAPTURED_SUBDIR in source_file.replace("\\", "/")
 
 
-def structured_answer(synthesis: SynthesisResult, wiki: CompiledWiki | None = None) -> dict[str, Any]:
+def structured_answer(synthesis: SynthesisResult, wiki: CompiledWiki | None = None) -> JSONDict:
     """Build the structured ``{answer, citations}`` payload for agent output."""
     node_types = node_type_index(wiki)
     return {
@@ -421,19 +392,19 @@ def print_raw_results(results: list[SearchResult], format: LlmDataFormat) -> Non
 
 def encode_raw_results(results: list[SearchResult], fmt: LlmDataFormat) -> str:
     """Build the raw-results payload and encode it for agent consumers."""
-    payload = [
-        {
+    payload: JSONList = []
+    for r in results:
+        row: JSONDict = {
             "article": r.title,
             "source": r.source_file,
             "snippet": r.snippet,
             "score": round(r.score, 3),
         }
-        for r in results
-    ]
-    return encode_structured(payload, fmt)
+        payload.append(row)
+    return encode_for_llm(payload, fmt)
 
 
-def encode_structured(payload: Any, fmt: LlmDataFormat) -> str:  # noqa: ANN401
+def encode_structured(payload: JSONDict, fmt: LlmDataFormat) -> str:
     """Encode a structured payload as json/toon/ison for agent consumers."""
     if fmt == LlmDataFormat.JSON:
         return json.dumps(payload, indent=2)

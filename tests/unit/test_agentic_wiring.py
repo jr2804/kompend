@@ -43,7 +43,16 @@ class _FakeRetriever:
 
     pages: dict[str, str]
 
-    def search(self, query: str, top_k: int) -> list[_Hit]:
+    def search(
+        self,
+        query: str,
+        top_k: int,
+        *,
+        tags_all: object = None,
+        tags_dnf: object = None,
+        attributes_all: object = None,
+        attribute_keys: object = None,
+    ) -> list[_Hit]:  # noqa: ARG002
         return [_Hit(article_id=slug, title=slug.title(), content=body) for slug, body in list(self.pages.items())[:top_k]]
 
     def read_page(self, slug: str) -> str | None:

@@ -120,7 +120,16 @@ class VectorStoreLike(Protocol):
     @property
     def available(self) -> bool: ...
 
-    def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]: ...
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> list[dict[str, Any]]: ...
 
 
 class ZvecWikiStore:
@@ -183,8 +192,10 @@ class ZvecWikiStore:
         *,
         tags_any: Sequence[str] | None = None,
         tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
         attributes_any: Sequence[str] | None = None,
         attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
         """Search indexed wiki content by semantic similarity.
 
@@ -203,8 +214,10 @@ class ZvecWikiStore:
             filter=_build_filter(
                 tags_any=tags_any,
                 tags_all=tags_all,
+                tags_dnf=tags_dnf,
                 attributes_any=attributes_any,
                 attributes_all=attributes_all,
+                attribute_keys=attribute_keys,
             ),
         )
         return [

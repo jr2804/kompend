@@ -9,13 +9,14 @@ browsable directly).
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, TypedDict
 
 from knox.agents.deps import PipelineAgentDeps, QueryDeps
 from knox.agents.query import QueryAgent
-from knox.agents.query_agentic import AgenticQueryAgent, make_agentic_query_agent
+from knox.agents.query_agentic import make_agentic_query_agent
 from knox.agents.search import QueryExpansionAgent
 from knox.agents.types import QueryAgentDeps, QuerySearchProtocol
 from knox.core.config import DEFAULTS, RlmConfig
@@ -24,6 +25,7 @@ from knox.core.models import CompiledWiki, MetadataField, WikiNode
 from knox.core.templates import TemplateLoader
 from knox.logging import get_logger
 from knox.rag.zvec_store import VectorStoreLike, ZvecField
+from knox.search.filters import matches_attr_filter, matches_tag_filter
 
 TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
 _TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
@@ -80,8 +82,24 @@ class HybridRetriever:
         self._vector_store = vector_store
         self._node_by_id: dict[str, WikiNode] = {n.id: n for n in wiki.nodes}
 
-    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        return self.search_wiki(query, top_k=top_k)
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> list[SearchResult]:
+        return self.search_wiki(
+            query,
+            top_k=top_k,
+            tags_all=tags_all,
+            tags_dnf=tags_dnf,
+            attributes_all=attributes_all,
+            attribute_keys=attribute_keys,
+        )
 
     def read_page(self, slug: str) -> str | None:
         """Return the full page body for *slug* (a wiki node id), or None.
@@ -92,8 +110,24 @@ class HybridRetriever:
         node = self._node_by_id.get(slug)
         return node.content if node is not None else None
 
-    def search_wiki(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        return self._wiki_vector_results(query, top_k)
+    def search_wiki(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> list[SearchResult]:
+        return self._wiki_vector_results(
+            query,
+            top_k,
+            tags_all=tags_all,
+            tags_dnf=tags_dnf,
+            attributes_all=attributes_all,
+            attribute_keys=attribute_keys,
+        )
 
     def search_hybrid(
         self,
@@ -151,11 +185,27 @@ class HybridRetriever:
             content=node.content if node else "",
         )
 
-    def _wiki_vector_results(self, query: str, top_k: int) -> list[SearchResult]:
+    def _wiki_vector_results(
+        self,
+        query: str,
+        top_k: int,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> list[SearchResult]:
         if self._vector_store is None or not self._vector_store.available:
             return []
         try:
-            hits = self._vector_store.search(query, top_k=top_k)
+            hits = self._vector_store.search(
+                query,
+                top_k=top_k,
+                tags_all=tags_all,
+                tags_dnf=tags_dnf,
+                attributes_all=attributes_all,
+                attribute_keys=attribute_keys,
+            )
         except Exception as exc:
             logger.warning("Vector search failed: %s", exc, exc_info=True)
             return []
@@ -171,7 +221,14 @@ class HybridRetriever:
             results.append(self._hit_to_result(hit, query_tokens))
         if not results:
             logger.warning("Vector index returned no matching pages (stale after recompile?). Falling back to keyword search over the wiki.")
-            return KeywordRetriever(self._wiki).search(query, top_k=top_k)
+            return KeywordRetriever(self._wiki).search(
+                query,
+                top_k=top_k,
+                tags_all=tags_all,
+                tags_dnf=tags_dnf,
+                attributes_all=attributes_all,
+                attribute_keys=attribute_keys,
+            )
         return results
 
     def _graph_expansion_results(self, initial_results: list[SearchResult], top_k: int) -> list[SearchResult]:
@@ -227,11 +284,28 @@ class KeywordRetriever:
     def __init__(self, wiki: CompiledWiki) -> None:
         self._nodes = {n.id: n for n in wiki.nodes}
 
-    def search(self, query: str, top_k: int = 5) -> list[SearchResult]:
-        """Rank wiki pages by token overlap with *query*."""
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> list[SearchResult]:
+        """Rank wiki pages by token overlap with *query*, honouring filters."""
         query_tokens = set(tokenize(query))
         scored: list[tuple[float, WikiNode]] = []
         for node in self._nodes.values():
+            if not _node_matches_filters(
+                node,
+                tags_all=tags_all,
+                tags_dnf=tags_dnf,
+                attributes_all=attributes_all,
+                attribute_keys=attribute_keys,
+            ):
+                continue
             title_tokens = set(tokenize(node.title))
             content_tokens = set(tokenize(node.content or ""))
             desc = node.description
@@ -261,9 +335,25 @@ class KeywordRetriever:
             )
         return results
 
-    def search_wiki(self, query: str, top_k: int = 5) -> list[SearchResult]:
+    def search_wiki(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> list[SearchResult]:
         """Alias of :meth:`search`."""
-        return self.search(query, top_k=top_k)
+        return self.search(
+            query,
+            top_k=top_k,
+            tags_all=tags_all,
+            tags_dnf=tags_dnf,
+            attributes_all=attributes_all,
+            attribute_keys=attribute_keys,
+        )
 
     def read_page(self, slug: str) -> str | None:
         """Return the full page body for *slug* (a wiki node id), or None."""
@@ -315,7 +405,7 @@ def synthesize_results(
     skills: dict[str, str] | None = None,
     reasoning_effort: str | None = None,
     rlm: RlmConfig | None = None,
-    query_agent: QueryAgent | AgenticQueryAgent | None = None,
+    query_agent: QueryAgent | None = None,
 ) -> SynthesisResult:
     """Format search results into context and call the LLM for an answer.
 
@@ -404,6 +494,8 @@ def run_agentic_query(
     retries: int = 2,
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
+    tag_groups: list[list[str]] | None = None,
+    attr_filters: list[tuple[str, str | None]] | None = None,
 ) -> str:
     """Answer *question* with the agentic query agent against *retriever*.
 
@@ -426,6 +518,8 @@ def run_agentic_query(
         sub_questions=[],
         retriever=retriever,
         max_sub_questions=max_sub_questions,
+        tag_groups=tag_groups or [],
+        attr_filters=attr_filters or [],
         timeout=timeout,
     )
     return agent.run(deps)
@@ -488,6 +582,33 @@ def _node_attributes(node: WikiNode | None) -> dict[str, list[str]]:
     if isinstance(raw, dict):
         return {k: list(v) if isinstance(v, list) else [str(v)] for k, v in raw.items()}
     return {}
+
+
+def _node_matches_filters(
+    node: WikiNode,
+    *,
+    tags_all: Sequence[str] | None = None,
+    tags_dnf: Sequence[Sequence[str]] | None = None,
+    attributes_all: Sequence[str] | None = None,
+    attribute_keys: Sequence[str] | None = None,
+) -> bool:
+    """Portable (store-less) equivalent of the zvec server-side filter.
+
+    Used by :class:`KeywordRetriever`; the store-backed
+    :class:`HybridRetriever` pushes the same filters into zvec instead.
+    """
+    node_tags = _node_tags(node)
+    if tags_all and not all(tag in node_tags for tag in tags_all):
+        return False
+    if tags_dnf and not matches_tag_filter(node_tags, [list(g) for g in tags_dnf]):
+        return False
+    attr_filters: list[tuple[str, str | None]] = []
+    for pair in attributes_all or ():
+        key, _, value = pair.partition("=")
+        attr_filters.append((key, value))
+    for key in attribute_keys or ():
+        attr_filters.append((key, None))
+    return matches_attr_filter(_node_attributes(node), attr_filters)
 
 
 def extract_snippet(content: str, query_tokens: set[str], max_chars: int | None = None) -> str:

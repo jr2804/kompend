@@ -45,7 +45,16 @@ class _FakeVectorStore:
         self._hits = hits or []
         self.available = True
 
-    def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:  # noqa: ARG002
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_all: object = None,
+        tags_dnf: object = None,
+        attributes_all: object = None,
+        attribute_keys: object = None,
+    ) -> list[dict[str, Any]]:  # noqa: ARG002
         return self._hits[:top_k]
 
 

@@ -35,7 +35,18 @@ def build_query_tools() -> list[Tool[QueryAgentDeps]]:
 
 async def search_wiki(ctx: RunContext[QueryAgentDeps], question: str, top_k: int = 5) -> str:
     """Search the wiki for content related to a question."""
-    hits = list(ctx.deps.retriever.search(question, top_k))
+    tags_dnf = ctx.deps.tag_groups or None
+    value_pairs = [f"{key}={value}" for key, value in ctx.deps.attr_filters if value is not None]
+    key_only = [key for key, value in ctx.deps.attr_filters if value is None]
+    hits = list(
+        ctx.deps.retriever.search(
+            question,
+            top_k,
+            tags_dnf=tags_dnf,
+            attributes_all=value_pairs or None,
+            attribute_keys=key_only or None,
+        )
+    )
     if not hits:
         return f"No wiki pages matched: {question}"
     payload: JSONList = []

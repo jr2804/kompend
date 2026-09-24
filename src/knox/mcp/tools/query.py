@@ -56,13 +56,14 @@ def query_wiki(
         retriever = HybridRetriever(wiki, vector_store=vector_store) if vector_store is not None else KeywordRetriever(wiki)
         model = cfg.knox.compile.llm.default_model or ""
         agentic = cfg.knox.search.agentic
-        if agentic.enabled and not raw and model and not attributes and search_mode != SearchMode.RAW:
+        if agentic.enabled and not raw and model and search_mode != SearchMode.RAW:
             answer = run_agentic_query(
                 query,
                 retriever=retriever,
                 model=agentic.model or model,
                 max_sub_questions=agentic.max_sub_questions,
                 rlm=RlmConfig.model_validate(cfg.knox.compile.llm.rlm or {}),
+                attr_filters=_parse_attr_filters(attributes) if attributes else [],
             )
             return {"status": "ok", "results": [], "raw": False, "synthesis": {"answer": answer, "citations": []}}
         expand_graph = search_mode == SearchMode.GRAPH
