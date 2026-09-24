@@ -25,9 +25,11 @@ import typer
 from typer.core import TyperGroup
 from typer.main import get_command_from_info, get_group
 
+from knox.cli._shared import format_exception_for_cli
 from knox.core.config.keys import EnvVar
 from knox.core.reporting.runlog import RunHandle, log_run_end, log_run_start
-from knox.logging import configure_logging, get_console, get_err_console
+from knox.core.verbosity import is_verbose, set_verbose
+from knox.logging import configure_logging, get_console
 
 # ── Lazy command registry ─────────────────────────────────────────────
 #
@@ -220,8 +222,15 @@ def _callback(
         "--no-user-tracking",
         help="Do not record the OS user (ingested_by / memory_by) in metadata for this invocation. Env: KNOX_USER_TRACKING=false.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        help="Show full tracebacks for errors (fatal crashes and recoverable parse failures). Env: KNOX_VERBOSE.",
+        envvar=EnvVar.VERBOSE,
+    ),
 ) -> None:
     """Knowledge Organizer for eXtended documents"""
+    set_verbose(verbose)
     if version:
         get_console().print(_get_version())
         raise typer.Exit()
@@ -251,22 +260,21 @@ def main() -> None:
     handle: RunHandle | None = None
     try:
         app()
-    except LookupError as exc:
-        # Fail-fast vault validation (vault_paths): render cleanly instead of
-        # dumping a traceback.
-        handle = _extract_handle()
-        get_err_console().print(f"error: {exc}")
-        log_run_end(handle, status="error", error=repr(exc))
-        raise SystemExit(1) from exc
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         handle = _extract_handle()
         log_run_end(handle, status="ok" if code == 0 else "error", exit_code=code)
         raise
+    except KeyboardInterrupt:
+        # System-level interrupt — keep default Python behaviour (no reformatting).
+        handle = _extract_handle()
+        log_run_end(handle, status="error", error="KeyboardInterrupt")
+        raise
     except BaseException as exc:  # noqa: BLE001 — capture any crash for the audit trail
         handle = _extract_handle()
         log_run_end(handle, status="error", error=repr(exc))
-        raise
+        sys.stderr.write(format_exception_for_cli(exc, verbose=is_verbose()) + "\n")
+        raise SystemExit(1) from exc
     handle = _extract_handle()
     log_run_end(handle, status="ok", exit_code=0)
 

@@ -39,6 +39,7 @@ from knox.core.pipeline.runtime import PipelineRuntime
 from knox.core.store import vault_db_path
 from knox.core.text.encoding import normalize_to_utf8_path
 from knox.core.text.rumdl import normalize_element_markdown
+from knox.core.verbosity import is_verbose
 from knox.llm.models import resolve_vlm_model
 from knox.llm.user_providers import effective_workers
 from knox.logging import get_logger
@@ -110,8 +111,8 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
                     tree = future.result()
                     if tree is not None:
                         trees.append(tree)
-                except Exception:
-                    logger.exception("Worker failed for %s", sf)
+                except Exception as exc:
+                    logger.error("Worker failed for %s: %s", sf, exc, exc_info=is_verbose())
                 finally:
                     completed += 1
                     pipeline.emit("parse", completed, len(source_files), sf.name)
@@ -241,8 +242,8 @@ def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool,
         parse_target, _encoding = normalize_to_utf8_path(source_file, pipeline.cache_directory()) if suffix.is_text else (source_file, None)
         parsed = selected.parse(parse_target)
         _ = len(parsed.elements)
-    except Exception:
-        logger.exception("Failed to parse %s", source_file)
+    except Exception as exc:
+        logger.error("Failed to parse %s: %s", source_file, exc, exc_info=is_verbose())
         return None
     # Portable cache: absolute image paths -> relative to the vault, BEFORE the
     # cache write so cache and in-memory doc agree (asset ids hash figure
@@ -342,9 +343,9 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
                 metadata=cast("dict[str, Any]", data.get(WikiField.METADATA) or {}),
             )
         )
-    except (KeyError, ValueError, TypeError):
+    except (KeyError, ValueError, TypeError) as exc:
         # Corrupt entry = miss: re-parse. Warn so it's visible.
-        logger.warning("Corrupt parse cache for %s — reparsing", key, exc_info=True)
+        logger.warning("Corrupt parse cache for %s — reparsing: %s", key, exc, exc_info=is_verbose())
         return None
 
 
@@ -377,8 +378,8 @@ def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocumen
             ],
         }
         write_document(db_path, key, cast("JSONDict", data))
-    except Exception:
-        logger.debug("Cache write failed for %s — ignoring", key, exc_info=True)
+    except Exception as exc:
+        logger.debug("Cache write failed for %s — ignoring: %s", key, exc, exc_info=is_verbose())
 
 
 def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, dict[str, object]]]:
@@ -398,8 +399,8 @@ def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, di
                     dedup_skip.add(slug)
                 elif entry.get("verdict") == "similar":
                     dedup_similar[slug] = entry
-    except Exception:
-        logger.debug("Dedup store not available — skipping dedup check", exc_info=True)
+    except Exception as exc:
+        logger.debug("Dedup store not available — skipping dedup check: %s", exc, exc_info=is_verbose())
     return dedup_skip, dedup_similar
 
 
@@ -444,8 +445,8 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
                 vlm_model,
                 timeout=pipeline.config.llm.timeout,
             )
-        except Exception:
-            logger.debug("VLM captioner not available for attachments", exc_info=True)
+        except Exception as exc:
+            logger.debug("VLM captioner not available for attachments: %s", exc, exc_info=is_verbose())
 
     trees: list[ChunkTree] = []
     pipeline.emit("parse", 0, len(ingestible), "starting")
@@ -477,8 +478,8 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
             trees.append(tree)
             logger.info("Processed attachment: %s → %d chunk(s)", att.filename, len(list(tree.leaves())))
 
-        except Exception:
-            logger.debug("Failed to process attachment %s", att.filename, exc_info=True)
+        except Exception as exc:
+            logger.debug("Failed to process attachment %s: %s", att.filename, exc, exc_info=is_verbose())
 
     if trees:
         logger.info("Processed %d ingestible attachment(s)", len(trees))
@@ -510,7 +511,7 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
             )
             logger.debug("VLMEnricher added to resolver chain (model=%s)", vlm_model)
         except Exception as exc:
-            logger.debug("VLMEnricher not available: %s", exc, exc_info=True)
+            logger.debug("VLMEnricher not available: %s", exc, exc_info=is_verbose())
 
     if not resolvers:
         logger.info("No resolvers configured — chunks will pass through without resolution")

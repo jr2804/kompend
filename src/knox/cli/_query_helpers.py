@@ -17,6 +17,7 @@ from knox.core.config._configs import LlmDataFormat, Verbosity
 from knox.core.models import CompiledWiki, MetadataField
 from knox.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, VECTORS_DIR
 from knox.core.trust.actor import resolve_actor
+from knox.core.verbosity import is_verbose
 from knox.llm.context_window import ContextWindow
 from knox.llm.format import encode_for_llm
 from knox.logging import get_console, get_err_console, get_logger
@@ -88,12 +89,12 @@ def open_vector_store(
                 "Could not rebuild stale vector index (%s); queries may fall back to keyword search: %s",
                 db_file,
                 exc,
-                exc_info=True,
+                exc_info=is_verbose(),
             )
     try:
         return ZvecWikiStore.open(db_file, embedding_model=model)
     except Exception as exc:
-        logger.warning("Could not open vector store at %s: %s", db_file, exc, exc_info=True)
+        logger.warning("Could not open vector store at %s: %s", db_file, exc, exc_info=is_verbose())
         return None
 
 

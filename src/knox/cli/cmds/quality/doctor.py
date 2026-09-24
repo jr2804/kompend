@@ -21,6 +21,7 @@ from pydantic_ai.settings import ModelSettings
 from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config import LLMConfig
 from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
+from knox.core.verbosity import is_verbose
 from knox.llm.context_window import discover_context_window
 from knox.llm.models import build_model, is_known_provider, resolve_vlm_model
 from knox.llm.usage import UsageTracker, tokens_per_second
@@ -520,8 +521,8 @@ def _ollama_ps_lookup(model_name: str) -> dict[str, Any] | None:
     """
     try:
         ps_models = ollama.ps().models
-    except Exception:
-        logger.debug("ollama.ps() failed for device check", exc_info=True)
+    except Exception as exc:
+        logger.debug("ollama.ps() failed for device check: %s", exc, exc_info=is_verbose())
         return None
     base = model_name.split(":", 1)[0]
     for m in ps_models:

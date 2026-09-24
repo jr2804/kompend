@@ -8,6 +8,7 @@ be imported and unit-tested without a running CLI context.
 from __future__ import annotations
 
 import logging
+import traceback
 from typing import Any
 
 import typer
@@ -157,3 +158,16 @@ def build_cli_overrides(
         # --set values are already coerced and validated; merged last = highest precedence.
         overrides.update(cli_set)
     return overrides
+
+
+def format_exception_for_cli(exc: BaseException, *, verbose: bool) -> str:
+    """Format a fatal exception for the CLI.
+
+    Default: a single ``error: <Type>: <message>`` line, no traceback. With
+    *verbose*, the full traceback. Deliberately does NOT use
+    ``traceback.format_exc()`` to build the short form — a compressed trace is
+    uglier than the trace it replaces.
+    """
+    if verbose:
+        return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip()
+    return f"error: {type(exc).__name__}: {exc}"

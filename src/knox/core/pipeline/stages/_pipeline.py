@@ -37,6 +37,7 @@ from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.resolution.xref_checker import CrossReferenceResult
 from knox.core.store import vault_db_path
 from knox.core.templates import get_template_loader
+from knox.core.verbosity import is_verbose
 from knox.llm.user_providers import set_user_providers
 from knox.logging import get_logger
 from knox.memory.lifecycle import update_memory_for_compile
@@ -332,8 +333,8 @@ class WikiPipeline:
         if self._progress_callback is not None:
             try:
                 self._progress_callback(phase, current, total, detail)
-            except Exception:  # best-effort: callback is user code, must not abort pipeline
-                logger.warning("Progress callback raised in phase %s — continuing", phase, exc_info=True)
+            except Exception as exc:  # best-effort: callback is user code, must not abort pipeline
+                logger.warning("Progress callback raised in phase %s — continuing: %s", phase, exc, exc_info=is_verbose())
 
     def dedup_store_file(self) -> Path:
         """Resolve the dedup fingerprint store path.
@@ -396,8 +397,8 @@ class WikiPipeline:
             stem = source_file.stem
             try:
                 content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
-            except OSError:
-                logger.warning("Could not read %s for tier-state hashing — skipping", source_file, exc_info=True)
+            except OSError as exc:
+                logger.warning("Could not read %s for tier-state hashing — skipping: %s", source_file, exc, exc_info=is_verbose())
                 continue
             self.state_store.record(state, stem, Path(self.rel_file(source_file)), content_hash, tier=tier)
         self.state_store.save(state)

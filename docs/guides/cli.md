@@ -42,9 +42,16 @@ KNOX provides a Typer-based CLI with the following commands:
 |------|-------------|
 | `--version`, `-v` | Show version and exit |
 | `--wiki-dir`, `-w` | Set project root — `sources/`, `wiki/`, `.knox/` resolved from here |
+| `--verbose` | Show full tracebacks for errors (fatal crashes and recoverable parse failures). Default is a one-line error. |
 | `--help` | Show help message and exit |
 
-`--wiki-dir` can also be set via the `KNOX_WIKI_DIR` environment variable.
+`--wiki-dir` can also be set via the `KNOX_WIKI_DIR` environment variable, and
+`--verbose` via `KNOX_VERBOSE=1`.
+
+Errors are **quiet by default**: a failed parse logs a single
+`WARNING: Failed to parse <file>: <error>` line and the run continues, and a
+fatal error prints one `error: <Type>: <message>` line. `--verbose` (or
+`KNOX_VERBOSE=1`) restores full tracebacks for both.
 
 ## `knox init`
 

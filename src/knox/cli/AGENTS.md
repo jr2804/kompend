@@ -68,7 +68,7 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 
 | File/Directory | Purpose |
 |---|---|
-| `app.py` | Typer app instance, version callback, **lazy command registration** |
+| `app.py` | Typer app instance, global callback (`--wiki-dir`, `--verbose`, `--version`), **lazy command registration** |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
 | `cmds/` | Command implementations organized by domain (see `cmds/AGENTS.md`) |
 | `_sources.py` | File resolution, glob expansion, copy-to-sources, URL download. |
@@ -105,6 +105,9 @@ See `src/knox/cli/cmds/AGENTS.md` for detailed command organization rules.
 - `try/except` at the top level is fine for user-facing error messages.
 - Use `get_console().print(msg)` for stdout output, `get_err_console().print(msg)` for stderr. Import from `knox.logging`.
 - `--json` flag: serialize and print. No other behavior change.
+- `--verbose` / `KNOX_VERBOSE` gates tracebacks globally via
+  `knox.core.verbosity`; the recoverable-log rule that accompanies it lives in
+  `core/pipeline/AGENTS.md`.
 
 ### CLI overrides → config
 

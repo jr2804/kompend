@@ -31,6 +31,7 @@ from knox.core.pipeline.state import TierStateStore
 from knox.core.store import vault_db_path
 from knox.core.text.encoding import normalize_to_utf8_path
 from knox.core.text.rumdl import normalize_element_markdown
+from knox.core.verbosity import is_verbose
 from knox.logging import get_logger
 from knox.preprocessing.dedup import DedupOrchestrator
 from knox.preprocessing.parsers.base import FileExtension, ParserRouter
@@ -203,7 +204,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
                 flavor=flavor,
             )
         except Exception as exc:
-            logger.warning("Failed to parse %s: %s", source_file, exc, exc_info=True)
+            logger.warning("Failed to parse %s: %s", source_file, exc, exc_info=is_verbose())
             failed += 1
             continue
 

@@ -41,6 +41,7 @@ from knox.core.models.structured import structured_to_dict
 from knox.core.page_builder import PageBuilder, link
 from knox.core.paths import VaultPaths
 from knox.core.pipeline.assets import AssetStore
+from knox.core.verbosity import is_verbose
 from knox.logging import get_logger
 
 __all__ = ["export_source", "load_cache_entry", "render_document_markdown"]
@@ -377,8 +378,8 @@ def _asset_id(kind: AssetKind, record_dict: dict[str, Any]) -> str:
 def _load_asset_store(base_dir: Path) -> AssetStore | None:
     try:
         return AssetStore(VaultPaths(base_dir).assets_file)
-    except Exception:
-        logger.debug("Asset store unavailable — annotations skipped", exc_info=True)
+    except Exception as exc:
+        logger.debug("Asset store unavailable — annotations skipped: %s", exc, exc_info=is_verbose())
         return None
 
 

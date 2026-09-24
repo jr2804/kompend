@@ -18,6 +18,7 @@ from knox.cli._sources_io import (
     extract_archive,
     looks_like_html_url,
 )
+from knox.core.verbosity import is_verbose
 from knox.logging import get_logger
 from knox.preprocessing.parsers._registry import get_all_extensions
 from knox.preprocessing.parsers.base import FileExtension
@@ -224,7 +225,7 @@ def get_supported_extensions() -> set[str]:
     try:
         extensions.update(get_all_extensions())
     except Exception as exc:
-        logger.debug("Could not load external parser extensions: %s", exc, exc_info=True)
+        logger.debug("Could not load external parser extensions: %s", exc, exc_info=is_verbose())
     return extensions
 
 

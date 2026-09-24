@@ -24,6 +24,7 @@ from knox.core.models.attachments import IMAGE_EXTENSIONS, Attachment, Attachmen
 from knox.core.paths import VaultPaths
 from knox.core.text.encoding import normalize_to_utf8_path
 from knox.core.text.rumdl import normalize_element_markdown
+from knox.core.verbosity import is_verbose
 from knox.logging import get_logger
 from knox.preprocessing.parsers.base import ParserRouter
 
@@ -126,7 +127,7 @@ def _parse_text(att_file: Path, att: Attachment, router: ParserRouter, cache_dir
         _tag_metadata(doc, att)
         return doc
     except Exception:
-        logger.debug("Failed to parse attachment %s", att_file, exc_info=True)
+        logger.debug("Failed to parse attachment %s", att_file, exc_info=is_verbose())
         return None
 
 
@@ -150,8 +151,8 @@ def _caption_image(att_file: Path, att: Attachment, vlm_captioner: VlmAgent) -> 
         if not caption or caption.strip().upper() == "SKIP":
             logger.warning("VLM returned empty caption for %s", att.filename)
             return None
-    except Exception:
-        logger.debug("Failed to caption image %s", att_file, exc_info=True)
+    except Exception as exc:
+        logger.debug("Failed to caption image %s: %s", att_file, exc, exc_info=is_verbose())
         return None
 
     doc = ParsedDocument(

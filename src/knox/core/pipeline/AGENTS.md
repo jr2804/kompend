@@ -47,3 +47,10 @@ persistence, and standalone ingestion.
   cached tree carries `contextual_context`. The chunk-cache key includes the gate
   state, so enabling it invalidates prior un-enriched trees instead of embedding
   stale text. Gate off ⇒ cached output is unchanged.
+- **Recoverable-log rule:** a log call that attaches a traceback gates it on
+  `knox.core.verbosity.is_verbose()` (`exc_info=is_verbose()`). Removing a
+  traceback is only safe when the one-line message carries the cause: bind the
+  exception (`except X as exc`) and append it (`"...: %s", exc`), never leave a
+  bare file/key with no reason. `logger.exception(...)` has no gate-able form —
+  use `logger.error(..., exc_info=is_verbose())`. The `--verbose` flag itself
+  lives in `cli/` (see `cli/AGENTS.md`).

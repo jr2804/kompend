@@ -12,6 +12,7 @@ from __future__ import annotations
 import fnmatch
 from pathlib import Path
 
+from knox.core.verbosity import is_verbose
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -124,7 +125,7 @@ def _read_gitignore_patterns(gitignore_file: Path) -> list[str]:
     try:
         text = gitignore_file.read_text(encoding="utf-8", errors="replace")
     except Exception as exc:
-        logger.debug("Failed to read %s: %s", gitignore_file, exc, exc_info=True)
+        logger.debug("Failed to read %s: %s", gitignore_file, exc, exc_info=is_verbose())
         return []
     patterns = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
     logger.debug("Loaded %d patterns from %s", len(patterns), gitignore_file)
