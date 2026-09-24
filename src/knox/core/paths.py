@@ -205,9 +205,9 @@ class VaultPaths:
         ├── .knox/                  ← knox_dir
         │   ├── cache/              ← cache_dir
         │   │   ├── images/         ← images_dir
-        │   │   ├── extract/        ← extract_dir
-        │   │   └── downloaded.json ← downloaded_file
-        │   ├── dedup/              ← dedup_dir
+        │   │   ├── extract/        ← extract_dir (legacy)
+        │   │   └── downloaded.json ← downloaded_file (legacy)
+        │   ├── dedup/              ← dedup_dir (legacy)
         │   ├── provenance/         ← provenance_dir (legacy)
         │   ├── review/             ← review_dir
         │   ├── vectors/            ← vectors_dir (zvec directory store)
@@ -223,7 +223,7 @@ class VaultPaths:
         │   ├── memory.json         ← memory_store_file (legacy)
         │   ├── verification.json   ← verification_file (legacy)
         │   ├── private.json        ← private_file (legacy)
-        │   ├── last_organize.json  ← organize_report_file
+        │   ├── last_organize.json  ← organize_report_file (legacy)
         │   ├── lint_history.jsonl  ← lint_history_file (legacy)
         │   ├── runs.jsonl          ← runs_file (legacy)
         │   ├── log.md              ← log_file

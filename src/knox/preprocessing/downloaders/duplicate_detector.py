@@ -1,15 +1,19 @@
 """SHA256-based duplicate detection for downloaded URLs.
 
-Uses a simple JSON file as storage to track which URLs have been
-downloaded and their corresponding content hashes.
+The URL → content-hash map lives in the ``downloaded`` table of the single
+``.knox/knox.db`` store (was the flat ``cache/downloaded.json`` file).
 """
+
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
+# no runtime value ever enters an identifier or statement.
 
 from __future__ import annotations
 
 import hashlib
-import json
 from pathlib import Path
 
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import DOWNLOADED_TABLE
 from knox.logging import get_logger
 
 logger = get_logger(__name__)
@@ -18,18 +22,20 @@ logger = get_logger(__name__)
 class DuplicateDetector:
     """Tracks downloaded URLs and content hashes to detect duplicates.
 
-    Uses a JSON file as persistent storage. Each entry maps a URL to
-    a SHA256 hash of its content.
+    Backed by the ``downloaded`` table in the vault store. Each row maps a URL
+    to a SHA256 hash of its content.
     """
 
     def __init__(self, db_file: Path) -> None:
-        """Initialize the detector with a path to the JSON database.
+        """Initialize the detector against the vault store.
 
         Args:
-            db_file: Path to the JSON file used for persistent storage.
-                     Will be created if it doesn't exist.
+            db_file: The vault artifact path this detector historically owned
+                (``.knox/cache/downloaded.json``). Kept so callers need no
+                change; the single store is resolved from it.
         """
         self.db_file = db_file
+        self._db_path = vault_db_path(db_file)
         self._db: dict[str, str] = {}
         self._load()
 
@@ -52,7 +58,11 @@ class DuplicateDetector:
             sha256: The SHA256 hex digest of the downloaded content.
         """
         self._db[url] = sha256
-        self._save()
+        with open_store(self._db_path) as conn:
+            conn.execute(
+                f"INSERT INTO {DOWNLOADED_TABLE}(url, sha256) VALUES (?, ?) ON CONFLICT(url) DO UPDATE SET sha256 = excluded.sha256",
+                (url, sha256),
+            )
 
     def batch_check(self, urls: list[str]) -> dict[str, bool]:
         """Check multiple URLs at once.
@@ -78,21 +88,10 @@ class DuplicateDetector:
         return hashlib.sha256(content).hexdigest()
 
     def _load(self) -> None:
-        """Load the database from disk."""
-        if self.db_file.exists():
-            try:
-                raw = self.db_file.read_text(encoding="utf-8")
-                self._db = json.loads(raw)
-            except (json.JSONDecodeError, OSError):
-                logger.warning("Corrupt or unreadable DB at %s, starting fresh", self.db_file, exc_info=True)
-                self._db = {}
-        else:
+        """Load the URL → hash map from the vault store."""
+        if not self._db_path.exists():
             self._db = {}
-
-    def _save(self) -> None:
-        """Persist the database to disk."""
-        self.db_file.parent.mkdir(parents=True, exist_ok=True)
-        self.db_file.write_text(
-            json.dumps(self._db, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+            return
+        with open_store(self._db_path) as conn:
+            rows = conn.execute(f"SELECT url, sha256 FROM {DOWNLOADED_TABLE}").fetchall()
+        self._db = {row["url"]: row["sha256"] for row in rows}

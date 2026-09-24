@@ -77,7 +77,8 @@ def download_urls(
     """Download URLs into *sources_dir*, return paths of successful downloads.
 
     Uses a DuplicateDetector to skip URLs that have already been downloaded.
-    The detector database is stored in ``base_dir/.knox/downloaded.json``.
+    The detector's URL → hash map lives in the ``downloaded`` table of the
+    single ``.knox/knox.db`` store.
 
     URLs are first passed through :class:`UrlResolverChain` so that
     recognised sites (Wikipedia, arXiv, …) are rewritten to better
@@ -94,7 +95,7 @@ def download_urls(
     Args:
         urls: URLs to download.
         sources_dir: Target directory for downloaded files.
-        base_dir: Vault root used to locate ``.knox/downloaded.json``.
+        base_dir: Vault root used to locate the ``.knox/knox.db`` store.
             When ``None``, defaults to ``sources_dir.parent``.
         undetected: When True (default), use Patchright undetected-browser
             mode with a real Edge/Chrome for stronger bot-protection bypass.

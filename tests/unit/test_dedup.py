@@ -63,18 +63,39 @@ class TestContentStore:
     def test_save_and_load(self, tmp_path: Path) -> None:
         store = _make_store(tmp_path)
         store.load()
-        store["doc-1"] = {"sha256": "abc"}
+        store["doc-1"] = StoreEntry(
+            verdict="different",
+            closest_match=None,
+            closest_score=0.0,
+            closest_method="",
+            embedding_score=None,
+            minhash_score=None,
+            embedding=None,
+            minhash=None,
+        )
         store.save()
 
         store2 = _make_store(tmp_path)
         store2.load()
-        assert store2.get("doc-1") == {"sha256": "abc"}
+        entry = store2.get("doc-1")
+        assert entry is not None
+        assert entry["closest_score"] == 0.0
+        assert entry["verdict"] == "different"
         assert store2.is_fresh()
 
     def test_freshness_stamp_mismatch(self, tmp_path: Path) -> None:
         store = _make_store(tmp_path)
         store.load()
-        store["doc-1"] = {"sha256": "abc"}
+        store["doc-1"] = StoreEntry(
+            verdict="different",
+            closest_match=None,
+            closest_score=0.0,
+            closest_method="",
+            embedding_score=None,
+            minhash_score=None,
+            embedding=None,
+            minhash=None,
+        )
         store.save()
 
         # Different config → different stamp → not fresh
@@ -82,10 +103,12 @@ class TestContentStore:
         store2.load()
         assert not store2.is_fresh()
 
-    def test_corrupt_file_starts_fresh(self, tmp_path: Path) -> None:
-        db_file = tmp_path / "store.json"
-        db_file.write_text("not json", encoding="utf-8")
-        store = DedupStore(db_file)
+    def test_legacy_file_ignored(self, tmp_path: Path) -> None:
+        """A leftover flat fingerprints.json is not read (clean cut)."""
+        legacy = tmp_path / "dedup" / "fingerprints.json"
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text("not json", encoding="utf-8")
+        store = DedupStore(tmp_path)
         store.load()
         assert len(store) == 0
         assert store.slugs == []
@@ -345,7 +368,7 @@ class TestDedupOrchestrator:
             assert r.minhash_score is not None
 
     def test_store_persistence(self, tmp_path: Path) -> None:
-        store = DedupStore(tmp_path / "fingerprints.json")
+        store = DedupStore(tmp_path)
         store.load()
         assert store.slugs == []
 
@@ -361,7 +384,7 @@ class TestDedupOrchestrator:
         )
         store.save()
 
-        store2 = DedupStore(tmp_path / "fingerprints.json")
+        store2 = DedupStore(tmp_path)
         store2.load()
         assert "doc-1" in store2
         entry = store2.get("doc-1")
@@ -455,7 +478,4 @@ def _make_embedding_matcher(**kwargs: object) -> EmbeddingMatcher:
 
 
 def _make_store(tmp_path: Path, config: dict | None = None) -> DedupStore:
-    return DedupStore(
-        tmp_path / "dedup" / "fingerprints.json",
-        config=config or {},
-    )
+    return DedupStore(tmp_path, config=config or {})

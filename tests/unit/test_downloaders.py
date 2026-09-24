@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from collections.abc import Generator
 from hashlib import sha256
 from pathlib import Path
@@ -12,6 +11,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.core.paths import DOWNLOADED_FILE, KNOX_DIR
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import DOWNLOADED_TABLE
 from knox.preprocessing.downloaders.crawler import WebCrawler
 from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
@@ -481,18 +482,17 @@ class TestWebCrawler:
 class TestDuplicateDetector:
     """Tests for DuplicateDetector (no network needed)."""
 
-    def test_init_creates_empty_db(self, tmp_path: Path) -> None:
-        """A newly initialized detector has an empty database."""
-        db_file = tmp_path / "hashes.json"
-        detector = DuplicateDetector(db_file)
+    def test_init_empty_writes_no_file(self, tmp_path: Path) -> None:
+        """A newly initialized detector is empty and creates no legacy file."""
+        detector = self._detector(tmp_path)
 
-        assert not db_file.exists() or db_file.read_text() == "{}"
         assert not detector.is_duplicate("https://example.com")
+        # Clean cut: the legacy flat file is never written.
+        assert not (tmp_path / KNOX_DIR / DOWNLOADED_FILE).exists()
 
     def test_mark_and_check(self, tmp_path: Path) -> None:
         """Marking a URL makes it detectable as duplicate."""
-        db_file = tmp_path / "hashes.json"
-        detector = DuplicateDetector(db_file)
+        detector = self._detector(tmp_path)
 
         assert not detector.is_duplicate("https://example.com/doc.pdf")
 
@@ -502,21 +502,36 @@ class TestDuplicateDetector:
 
     def test_persistence_across_instances(self, tmp_path: Path) -> None:
         """The database persists between detector instances."""
-        db_file = tmp_path / "hashes.json"
-
-        d1 = DuplicateDetector(db_file)
+        d1 = self._detector(tmp_path)
         d1.mark_downloaded("https://example.com/a.pdf", "hash1")
         d1.mark_downloaded("https://example.com/b.pdf", "hash2")
 
-        d2 = DuplicateDetector(db_file)
+        d2 = self._detector(tmp_path)
         assert d2.is_duplicate("https://example.com/a.pdf")
         assert d2.is_duplicate("https://example.com/b.pdf")
         assert not d2.is_duplicate("https://example.com/c.pdf")
 
+    def test_row_written_to_store(self, tmp_path: Path) -> None:
+        """mark_downloaded lands a row in the ``downloaded`` table."""
+        detector = self._detector(tmp_path)
+        detector.mark_downloaded("https://example.com/doc.pdf", "abc123")
+
+        with open_store(vault_db_path(tmp_path)) as conn:
+            rows = {row["url"]: row["sha256"] for row in conn.execute(f"SELECT url, sha256 FROM {DOWNLOADED_TABLE}").fetchall()}  # noqa: S608
+        assert rows == {"https://example.com/doc.pdf": "abc123"}
+
+    def test_legacy_file_ignored(self, tmp_path: Path) -> None:
+        """A leftover flat ``downloaded.json`` is not read (clean cut)."""
+        legacy = tmp_path / KNOX_DIR / DOWNLOADED_FILE
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text('{"https://example.com/old": "oldhash"}', encoding="utf-8")
+
+        detector = self._detector(tmp_path)
+        assert not detector.is_duplicate("https://example.com/old")
+
     def test_batch_check(self, tmp_path: Path) -> None:
         """batch_check returns correct mapping for multiple URLs."""
-        db_file = tmp_path / "hashes.json"
-        detector = DuplicateDetector(db_file)
+        detector = self._detector(tmp_path)
         detector.mark_downloaded("https://example.com/known.pdf", "hash")
 
         urls = [
@@ -532,28 +547,12 @@ class TestDuplicateDetector:
             "https://example.com/also_unknown.pdf": False,
         }
 
-    def test_corrupt_db_starts_fresh(self, tmp_path: Path) -> None:
-        """A corrupt JSON file is handled gracefully."""
-        db_file = tmp_path / "hashes.json"
-        db_file.write_text("not valid json{{{", encoding="utf-8")
-
-        detector = DuplicateDetector(db_file)
-        assert not detector.is_duplicate("https://example.com")
-        # Writing should work despite initial corruption
-        detector.mark_downloaded("https://example.com", "hash")
-        assert detector.is_duplicate("https://example.com")
-
     def test_compute_hash(self) -> None:
         """compute_hash returns the correct SHA256 hex digest."""
         content = b"hello world"
         expected = "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
         assert DuplicateDetector.compute_hash(content) == expected
 
-    def test_db_path_creates_parent_dirs(self, tmp_path: Path) -> None:
-        """mark_downloaded creates parent directories if needed."""
-        db_file = tmp_path / "subdir" / "nested" / "hashes.json"
-        detector = DuplicateDetector(db_file)
-        detector.mark_downloaded("https://example.com", "hash")
-        assert db_file.exists()
-        data = json.loads(db_file.read_text(encoding="utf-8"))
-        assert data == {"https://example.com": "hash"}
+    @staticmethod
+    def _detector(tmp_path: Path) -> DuplicateDetector:
+        return DuplicateDetector(tmp_path / KNOX_DIR / DOWNLOADED_FILE)

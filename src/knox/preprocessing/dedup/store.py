@@ -1,19 +1,32 @@
-"""Persistent store for dedup fingerprints with automatic invalidation."""
+"""Persistent store for dedup fingerprints with automatic invalidation.
+
+Rows live in the ``dedup_fingerprints`` table of the single ``.knox/knox.db``
+store (was ``.knox/dedup/fingerprints.json``). The bookkeeping record
+(``{stamp, store_version}``) is kept under the reserved slug ``"_meta"`` — its
+JSON payload is stored in the ``embedding`` column.
+"""
+
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
+# no runtime value ever enters an identifier or statement.
 
 from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from pathlib import Path
 from typing import TypedDict
 
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import DEDUP_FINGERPRINTS_TABLE
 from knox.logging import get_logger
 from knox.types import JSONDict, JSONValue
 
 # Current store schema version — bump when fingerprint format changes.
 _STORE_VERSION = "1"
 
-_META_KEY = "_meta"
+#: Reserved primary-key slug for the store bookkeeping row.
+_META_SLUG = "_meta"
 
 logger = get_logger(__name__)
 
@@ -26,7 +39,7 @@ class StoreMeta(TypedDict):
 
 
 class StoreEntry(TypedDict):
-    """Schema for one slug entry in the persistent dedup store (JSON)."""
+    """Schema for one slug entry in the persistent dedup store."""
 
     verdict: str
     closest_match: str | None
@@ -41,18 +54,16 @@ class StoreEntry(TypedDict):
 class DedupStore:
     """Persistent store of dedup fingerprints (+ closest-match metadata).
 
-    Lives at ``.knox/dedup/fingerprints.json``.
+    Backed by the ``dedup_fingerprints`` table in the vault store.
     Auto-invalidates when the config that produced the fingerprints changes:
     :meth:`stamp` fingerprints the relevant dedup config keys, and
     :meth:`is_fresh` compares the stored stamp against the current one.
-
-    The file layout is one JSON object per slug plus a ``_meta`` record;
-    :attr:`_entries` and :attr:`_meta` keep those two schemas apart.
     """
 
     def __init__(self, store_file: Path, config: JSONDict | None = None) -> None:
         self.store_file = store_file
         self.config = config or {}
+        self._db_path = vault_db_path(store_file)
         self._meta: StoreMeta = {"stamp": "", "store_version": _STORE_VERSION}
         self._entries: dict[str, StoreEntry] = {}
 
@@ -72,35 +83,38 @@ class DedupStore:
         return self._meta["stamp"] == self.stamp and self._meta["store_version"] == _STORE_VERSION
 
     def load(self) -> None:
-        """Load data from disk. Missing file = empty store."""
-        if not self.store_file.exists():
+        """Load data from the vault store. Missing store = empty."""
+        self._meta = {"stamp": "", "store_version": _STORE_VERSION}
+        self._entries = {}
+        if not self._db_path.exists():
             return
-        try:
-            raw_text = self.store_file.read_text(encoding="utf-8")
-            raw: JSONValue = json.loads(raw_text)
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Corrupt store at %s, starting fresh", self.store_file, exc_info=True)
-            return
-        if not isinstance(raw, dict):
-            raise ValueError(f"Corrupt dedup store {self.store_file}: top level must be a JSON object")
-        meta = raw.pop(_META_KEY, {})
-        if not isinstance(meta, dict):
-            raise ValueError(f"Corrupt dedup store {self.store_file}: {_META_KEY!r} must be a JSON object")
-        for slug, entry in raw.items():
-            if not isinstance(entry, dict):
-                raise ValueError(f"Corrupt dedup store {self.store_file}: entry {slug!r} is not a JSON object")
-        self._meta = StoreMeta(
-            stamp=str(meta.get("stamp", "")),
-            store_version=str(meta.get("store_version", "")),
-        )
-        self._entries = dict(raw.items())
+        with open_store(self._db_path) as conn:
+            rows = conn.execute(
+                f"SELECT slug, verdict, closest_match, closest_score, closest_method, "
+                f"embedding_score, minhash_score, embedding, minhash FROM {DEDUP_FINGERPRINTS_TABLE}",
+            ).fetchall()
+        for row in rows:
+            slug = str(row["slug"])
+            if slug == _META_SLUG:
+                self._meta = _decode_meta(row["embedding"])
+                continue
+            self._entries[slug] = _decode_entry(row)
 
     def save(self) -> None:
-        """Persist data to disk with the current stamp."""
-        self._meta = StoreMeta(stamp=self.stamp, store_version=_STORE_VERSION)
-        payload = {**self._entries, _META_KEY: self._meta}
-        self.store_file.parent.mkdir(parents=True, exist_ok=True)
-        self.store_file.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+        """Persist data to the vault store with the current stamp."""
+        with open_store(self._db_path) as conn:
+            conn.execute(f"DELETE FROM {DEDUP_FINGERPRINTS_TABLE}")
+            conn.execute(
+                f"INSERT INTO {DEDUP_FINGERPRINTS_TABLE}(slug, embedding) VALUES (?, ?)",
+                (_META_SLUG, json.dumps({"stamp": self.stamp, "store_version": _STORE_VERSION})),
+            )
+            conn.executemany(
+                f"INSERT INTO {DEDUP_FINGERPRINTS_TABLE}"
+                "(slug, verdict, closest_match, closest_score, closest_method, "
+                "embedding_score, minhash_score, embedding, minhash) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [_entry_row(slug, entry) for slug, entry in self._entries.items()],
+            )
 
     def get(self, slug: str) -> StoreEntry | None:
         """Return fingerprint data for *slug*, or ``None``."""
@@ -114,11 +128,11 @@ class DedupStore:
 
     @property
     def slugs(self) -> list[str]:
-        """All document slugs in the store (excluding metadata keys)."""
+        """All document slugs in the store (excluding bookkeeping)."""
         return list(self._entries)
 
     def __len__(self) -> int:
-        return len(self.slugs)
+        return len(self._entries)
 
     def update_closest(
         self,
@@ -159,9 +173,59 @@ class DedupStore:
             )
 
 
+def _decode_meta(raw: object) -> StoreMeta:
+    if isinstance(raw, str) and raw:
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            logger.warning("Corrupt dedup store bookkeeping row; starting fresh", exc_info=True)
+        else:
+            if isinstance(data, dict):
+                return {"stamp": str(data.get("stamp", "")), "store_version": str(data.get("store_version", ""))}
+    return {"stamp": "", "store_version": _STORE_VERSION}
+
+
+def _decode_entry(row: sqlite3.Row) -> StoreEntry:
+    return StoreEntry(
+        verdict=str(row["verdict"] or ""),
+        closest_match=None if row["closest_match"] is None else str(row["closest_match"]),
+        closest_score=float(row["closest_score"] or 0.0),
+        closest_method=str(row["closest_method"] or ""),
+        embedding_score=None if row["embedding_score"] is None else float(row["embedding_score"]),
+        minhash_score=None if row["minhash_score"] is None else float(row["minhash_score"]),
+        embedding=_decode_json_list(row["embedding"]),
+        minhash=_decode_json_list(row["minhash"]),
+    )
+
+
+def _decode_json_list(raw: object) -> list[JSONValue] | None:
+    if not isinstance(raw, str) or not raw:
+        return None
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    return data if isinstance(data, list) else None
+
+
+def _entry_row(slug: str, entry: StoreEntry) -> tuple[str, str, str | None, float, str, float | None, float | None, str | None, str | None]:
+    return (
+        slug,
+        entry["verdict"],
+        entry["closest_match"],
+        entry["closest_score"],
+        entry["closest_method"],
+        entry["embedding_score"],
+        entry["minhash_score"],
+        _encode_json_list(entry["embedding"]),
+        _encode_json_list(entry["minhash"]),
+    )
+
+
+def _encode_json_list(value: list[JSONValue] | None) -> str | None:
+    return None if value is None else json.dumps(value)
+
+
 def _cfg_str(config: JSONDict, key: str, default: str) -> str:
-    """Read a string config value, rejecting other types."""
-    raw = config.get(key, default)
-    if not isinstance(raw, str):
-        raise TypeError(f"Config key {key!r} must be a string, got {type(raw).__name__}")
-    return raw
+    value = config.get(key, default)
+    return value if isinstance(value, str) else str(value)

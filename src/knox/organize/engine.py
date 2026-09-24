@@ -7,6 +7,9 @@ contains the proposed tree, the list of moves, and the link-updater
 counters so they can render a meaningful summary.
 """
 
+# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
+# no runtime value ever enters an identifier or statement.
+
 from __future__ import annotations
 
 import json
@@ -16,7 +19,10 @@ from typing import Any
 
 from knox.agents.categorize import CategorizeAgent
 from knox.core.config import OrganizeConfig, resolve_config
-from knox.core.paths import VaultPaths, is_protected_source
+from knox.core.paths import is_protected_source
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import ORGANIZE_REPORTS_TABLE
+from knox.core.utils.time import iso_local
 from knox.logging import get_logger
 from knox.organize.categorize import (
     CategoryNode,
@@ -167,18 +173,23 @@ def _write_report(
     *,
     dry_run: bool,
 ) -> None:
-    """Persist a JSON report next to the wiki metadata."""
-    report_file = VaultPaths(base_dir).organize_report_file
-    payload = {
-        "dry_run": dry_run,
-        "categories": _tree_to_json(tree),
-        "moves": [{"old": m.old, "new": m.new} for m in moves],
-        "link_updates": link_updates,
-    }
-    report_file.write_text(
-        json.dumps(payload, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    """Persist an organize report to the vault store (``organize_reports``).
+
+    The legacy ``.knox/last_organize.json`` file is no longer written; the
+    report is one row so ``knox organize`` history survives in ``knox.db``.
+    """
+    db_path = vault_db_path(base_dir)
+    with open_store(db_path) as conn:
+        conn.execute(
+            f"INSERT INTO {ORGANIZE_REPORTS_TABLE}(written_at, dry_run, categories, moves, link_updates) VALUES (?, ?, ?, ?, ?)",
+            (
+                iso_local(),
+                int(dry_run),
+                json.dumps(_tree_to_json(tree), ensure_ascii=False),
+                json.dumps([{"old": m.old, "new": m.new} for m in moves], ensure_ascii=False),
+                json.dumps(link_updates, ensure_ascii=False),
+            ),
+        )
 
 
 def _tree_to_json(tree: CategoryTree) -> list[dict[str, object]]:

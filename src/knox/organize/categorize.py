@@ -3,7 +3,8 @@
 The module is responsible for the *brain* of the organize workflow:
 
 - :func:`load_all_extractions` reads every cached ``Extraction`` object
-  from ``.knox/cache/extract/`` and pairs it with the on-disk source file.
+  from the ``extract`` cache layer in the single store and pairs it with the
+  on-disk source file.
 - :func:`propose_categories` asks the LLM for a JSON category tree.
 - :func:`validate_tree` enforces the user-visible constraints (max depth,
   minimum siblings, single-file collapse).
@@ -14,15 +15,17 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from knox.agents.categorize import CategorizeAgent
 from knox.agents.deps import CategorizeDeps
 from knox.compilation._two_phase_core import Extraction
+from knox.core.cache import CacheStore
 from knox.core.config import OrganizeConfig
 from knox.core.paths import VaultPaths, is_protected_source
 from knox.core.text.slug import slugify
 from knox.logging import get_logger
+from knox.types import JSONDict
 
 logger = get_logger(__name__)
 
@@ -85,17 +88,13 @@ def load_all_extractions(
 ) -> dict[str, Extraction]:
     """Read every cached extraction and match it to a file in ``sources_dir``.
 
-    The cache key used by :class:`CacheStore` is content-addressed, so we
-    walk the ``extract/`` directory and read all ``*.json`` files. Only
-    entries whose ``source`` matches a file currently inside ``sources_dir``
-    are returned — stale extractions for moved or removed files are
-    silently dropped.
+    Extractions are read from the ``extract`` cache layer of the single
+    ``.knox/knox.db`` store. Only entries whose ``source`` matches a file
+    currently inside ``sources_dir`` are returned — stale extractions for
+    moved or removed files are silently dropped.
     """
     paths = VaultPaths(base_dir)
-    extract_dir = paths.extract_dir
-    if not extract_dir.is_dir():
-        logger.info("No extract cache at %s", extract_dir)
-        return {}
+    values = CacheStore(paths.cache_dir, base_dir).load_layer("extract")
 
     sources_root = sources_dir.resolve()
     # Index files currently on disk by basename so we survive moves (e.g.
@@ -109,29 +108,31 @@ def load_all_extractions(
             files_by_name.setdefault(path.name, path)
 
     known: dict[str, Extraction] = {}
-    for entry in sorted(extract_dir.glob("*.json")):
-        try:
-            raw = json.loads(entry.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            logger.debug("Skipping unreadable extract %s", entry, exc_info=True)
-            continue
-        value = raw.get("value")
+    for value in values:
         if not isinstance(value, dict):
             continue
-        source = value.get("source", "")
+        cached = cast("JSONDict", value)
+        source = cached.get("source", "")
         if not source:
             continue
-        ext = Extraction.from_dict(value)
+        ext = Extraction.from_dict(cached)
         if not ext.summary:
             continue
-        candidate = _resolve_cached_source(source, sources_root, files_by_name)
+        candidate = _resolve_cached_source(str(source), sources_root, files_by_name)
         if candidate is None:
             continue
         if is_protected_source(candidate, sources_root):
             continue
         rel = candidate.relative_to(sources_root).as_posix()
         known[rel] = ext
-    logger.info("Loaded %d extractions with summaries for sources in %s", len(known), sources_dir)
+    if known:
+        logger.info("Loaded %d extractions with summaries for sources in %s", len(known), sources_dir)
+    elif files_by_name:
+        logger.warning(
+            "No cached extractions for %d source(s) in %s — knox organize would categorise from nothing; run knox ingest/compile first",
+            len(files_by_name),
+            sources_dir,
+        )
     return known
 
 

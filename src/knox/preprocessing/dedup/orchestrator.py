@@ -19,7 +19,6 @@ from typing import Any
 
 from datasketch import MinHash
 
-from knox.core.paths import VaultPaths
 from knox.logging import get_logger
 from knox.preprocessing.dedup.base import ContentMatcher, DedupVerdict, classify_score
 from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
@@ -252,9 +251,9 @@ class DedupOrchestrator:
     # ── Internals ────────────────────────────────────────────────────────
 
     def _build_store(self, recreate: bool = False) -> DedupStore:
-        paths = VaultPaths(self._base_dir)
-        store_dir = paths.dedup_dir / "fingerprints.json"
-        return DedupStore(store_dir, config=self._config)
+        # The legacy path argument is now only used as a handle to the vault;
+        # the dedup rows live in the single store keyed by vault root.
+        return DedupStore(self._base_dir, config=self._config)
 
     def _build_matchers(self) -> tuple[list[AnyMatcher], dict[str, AnyMatcher]]:
         matchers_cfg = self._config.get("dedup.matchers", "embedding,minhash")

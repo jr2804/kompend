@@ -184,6 +184,33 @@ class CacheStore:
         self._write_payload(layer, key, payload)
         logger.debug("Cache write OK layer=%s key=%s size=%d", layer, key, len(payload))
 
+    def load_layer(self, layer: str) -> list[CacheValue]:
+        """Return every cached value for *layer* (dependency checks skipped).
+
+        Consumers that need the whole layer rather than one keyed lookup
+        (e.g. ``knox organize`` reading all extractions) use this. A missing
+        store yields an empty list; malformed rows are skipped.
+        """
+        if not self._db_path.exists():
+            return []
+        if layer == _CHUNK_LAYER:
+            sql = f"SELECT payload FROM {CHUNKS_TABLE}"
+            params: tuple[str, ...] = ()
+        else:
+            sql = f"SELECT payload FROM {EXTRACTIONS_TABLE} WHERE layer = ?"
+            params = (layer,)
+        values: list[CacheValue] = []
+        with open_store(self._db_path) as conn:
+            for row in conn.execute(sql, params).fetchall():
+                try:
+                    decoded = decode_json(json.loads(row["payload"]))
+                except Exception:
+                    logger.debug("Cache read error for %s - skipping row", layer, exc_info=True)
+                    continue
+                if isinstance(decoded, dict):
+                    values.append(cast("JSONDict", decoded).get("value"))
+        return values
+
     def has(self, layer: str, deps: dict[str, str]) -> bool:
         """Quick existence check — ``True`` if the row exists.
 

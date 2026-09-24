@@ -14,6 +14,7 @@ from knox.agents.categorize_models import CategoryNode as PydanticNode
 from knox.agents.categorize_models import CategoryTree as PydanticTree
 from knox.cli.app import app
 from knox.compilation._two_phase_core import Extraction
+from knox.core.cache import CacheStore
 from knox.core.config import OrganizeConfig, resolve_config
 from knox.core.config.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,
@@ -23,8 +24,8 @@ from knox.core.config.keys import (
 )
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KNOX_DIR, ORGANIZE_REPORT_FILE
-from knox.core.store import open_store
-from knox.core.store.schema import PROVENANCE_TABLE
+from knox.core.store import open_store, vault_db_path
+from knox.core.store.schema import ORGANIZE_REPORTS_TABLE, PROVENANCE_TABLE
 from knox.core.text.slug import slugify
 from knox.organize import (
     CategoryNode,
@@ -125,15 +126,7 @@ class TestLoadExtractions:
         other = base / "other"
         other.mkdir()
         (other / "x.md").write_text("x")
-        cache = base / KNOX_DIR / "cache" / "extract"
-        cache.mkdir(parents=True, exist_ok=True)
-        entry = {
-            "key": "k",
-            "layer": "extract",
-            "deps": {},
-            "value": {"source": "../other/x.md", "summary": "s", "entities": [], "concepts": [], "tags": []},
-        }
-        (cache / "x.json").write_text(json.dumps(entry), encoding="utf-8")
+        _write_extraction(base, "../other/x.md", "s")
 
         result = load_all_extractions(base, sources)
         assert result == {}
@@ -746,12 +739,14 @@ class TestOrganizeSourcesApply:
         assert (sources / "papers" / "a.md").exists()
         assert (sources / "papers" / "b.md").exists()
         assert len(result.moves) == 2
-        # Report written
-        report = base / KNOX_DIR / ORGANIZE_REPORT_FILE
-        assert report.is_file()
-        data = json.loads(report.read_text(encoding="utf-8"))
-        assert data["dry_run"] is False
-        assert len(data["moves"]) == 2
+        # Report persisted to the store (organize_reports)
+        with open_store(vault_db_path(base)) as conn:
+            row = conn.execute(
+                f"SELECT dry_run, moves FROM {ORGANIZE_REPORTS_TABLE} ORDER BY id DESC LIMIT 1",  # noqa: S608
+            ).fetchone()
+        assert row is not None
+        assert row["dry_run"] == 0
+        assert len(json.loads(row["moves"])) == 2
 
 
 class TestOrganizeReportPath:
@@ -845,14 +840,10 @@ def _fake_agent(payload: dict[str, Any] | None) -> CategorizeAgent:
 
 
 def _write_extraction(base_dir: Path, source: str, summary: str = "test summary") -> None:
-    cache = base_dir / KNOX_DIR / "cache" / "extract"
-    cache.mkdir(parents=True, exist_ok=True)
-    entry = {
-        "key": "x",
-        "layer": "extract",
-        "deps": {},
-        "value": {"source": source, "summary": summary, "entities": [], "concepts": [], "tags": []},
-    }
-    out = cache / f"{source}.json"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(entry), encoding="utf-8")
+    """Store an extraction in the ``extract`` cache layer (single store)."""
+    store = CacheStore(base_dir / KNOX_DIR / "cache", base_dir)
+    store.set(
+        "extract",
+        {"source": source},
+        {"source": source, "summary": summary, "entities": [], "concepts": [], "tags": []},
+    )
