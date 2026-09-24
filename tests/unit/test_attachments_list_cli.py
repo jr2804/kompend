@@ -19,18 +19,6 @@ from knox.core.paths import VaultPaths
 _cli_runner = CliRunner()
 
 
-def _seed(base: Path) -> AttachmentManifest:
-    """Vault with a live row and a tombstoned row, both in the store."""
-    (base / "sources").mkdir(parents=True, exist_ok=True)
-    (base / ".knox").mkdir(parents=True, exist_ok=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
-    manifest = AttachmentManifest(VaultPaths(base).attachments_manifest_file)
-    manifest.append(Attachment(path="doc/live.txt", source="doc", ingestible=True))
-    manifest.append(Attachment(path="doc/gone.txt", source="doc", ingestible=True))
-    assert manifest.remove("doc/gone.txt") is True
-    return manifest
-
-
 def test_list_all_includes_tombstones(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _seed(tmp_path)
     monkeypatch.chdir(tmp_path)
@@ -68,3 +56,15 @@ def test_list_all_does_not_open_legacy_jsonl(tmp_path: Path, monkeypatch: pytest
     result = _cli_runner.invoke(app, ["attachments", "list", "--all"])
     assert result.exit_code == 0, result.output
     assert "doc/gone.txt" in result.output
+
+
+def _seed(base: Path) -> AttachmentManifest:
+    """Vault with a live row and a tombstoned row, both in the store."""
+    (base / "sources").mkdir(parents=True, exist_ok=True)
+    (base / ".knox").mkdir(parents=True, exist_ok=True)
+    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    manifest = AttachmentManifest(VaultPaths(base).attachments_manifest_file)
+    manifest.append(Attachment(path="doc/live.txt", source="doc", ingestible=True))
+    manifest.append(Attachment(path="doc/gone.txt", source="doc", ingestible=True))
+    assert manifest.remove("doc/gone.txt") is True
+    return manifest

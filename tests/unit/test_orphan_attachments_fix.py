@@ -64,27 +64,6 @@ def test_fix_removes_empty_slug_dir(tmp_path: Path) -> None:
     assert not (vault / "attachments" / "orphan-source").exists()
 
 
-def _seed_manifest(base_dir: Path, path: str) -> None:
-    """Write a minimal manifest so the rule can read + tombstone it."""
-    manifest = AttachmentManifest(base_dir / ".knox" / "attachments.jsonl")
-    manifest.append(
-        Attachment(
-            path=path,
-            source="orphan-source",
-            ingestible=True,
-        )
-    )
-
-
-def _make_orphan(vault: Path, slug: str, name: str) -> Path:
-    """Create a file under attachments/<slug>/<name> and return its abs path."""
-    att_dir = vault / "attachments" / slug
-    att_dir.mkdir(parents=True, exist_ok=True)
-    f = att_dir / name
-    f.write_text("orphan contents", encoding="utf-8")
-    return f
-
-
 def test_fix_noop_when_no_failures(tmp_path: Path) -> None:
     vault = tmp_path
     rule = OrphanAttachmentsRule()
@@ -146,3 +125,24 @@ def test_fix_tombstone_prevents_readoption(tmp_path: Path) -> None:
     adopted = adopt_orphan_attachments(vault)
     assert not any(a.path == "orphan-source/old.c" for a in adopted)
     assert "orphan-source/old.c" in AttachmentManifest(vault / ".knox" / "attachments.jsonl").deleted_paths()
+
+
+def _seed_manifest(base_dir: Path, path: str) -> None:
+    """Write a minimal manifest so the rule can read + tombstone it."""
+    manifest = AttachmentManifest(base_dir / ".knox" / "attachments.jsonl")
+    manifest.append(
+        Attachment(
+            path=path,
+            source="orphan-source",
+            ingestible=True,
+        )
+    )
+
+
+def _make_orphan(vault: Path, slug: str, name: str) -> Path:
+    """Create a file under attachments/<slug>/<name> and return its abs path."""
+    att_dir = vault / "attachments" / slug
+    att_dir.mkdir(parents=True, exist_ok=True)
+    f = att_dir / name
+    f.write_text("orphan contents", encoding="utf-8")
+    return f

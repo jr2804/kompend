@@ -21,18 +21,6 @@ from knox.lint.flow import run_full_lint_flow
 from knox.lint.gap_analysis import load_degree_map
 
 
-def _seed_wiki(base_dir: Path) -> None:
-    wiki = CompiledWiki(
-        nodes=[
-            WikiNode(id="a", title="A", content="a", node_type="concept"),
-            WikiNode(id="b", title="B", content="b", node_type="concept"),
-        ],
-        edges=[{"source": "a", "target": "b", "type": "related"}],
-        toc=[],
-    )
-    write_wiki_cache(wiki, base_dir)
-
-
 def test_load_degree_map_reads_store_snapshot(tmp_path: Path) -> None:
     """The degree map is built from the store's compiled-wiki snapshot.
 
@@ -56,6 +44,18 @@ def test_run_full_lint_flow_succeeds_on_seeded_store(tmp_path: Path, monkeypatch
     monkeypatch.setattr("knox.lint.flow._plan", lambda *args, **kwargs: [])
     result = run_full_lint_flow(VaultPaths(tmp_path), types.SimpleNamespace(raw={}), show_progress=False, json_output=True)
     assert isinstance(result, dict)
+
+
+def _seed_wiki(base_dir: Path) -> None:
+    wiki = CompiledWiki(
+        nodes=[
+            WikiNode(id="a", title="A", content="a", node_type="concept"),
+            WikiNode(id="b", title="B", content="b", node_type="concept"),
+        ],
+        edges=[{"source": "a", "target": "b", "type": "related"}],
+        toc=[],
+    )
+    write_wiki_cache(wiki, base_dir)
 
 
 def test_run_full_lint_flow_raises_without_wiki(tmp_path: Path) -> None:

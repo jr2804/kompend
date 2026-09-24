@@ -23,22 +23,6 @@ from knox.lint.structural import OrphanAttachmentsRule, orphan_attachment_dirs
 _cli_runner = CliRunner()
 
 
-def _vault(tmp_path: Path) -> Path:
-    base = tmp_path / "vault"
-    (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
-    return base
-
-
-def _add_source(base: Path, name: str = "report.pdf") -> None:
-    (base / "sources" / name).write_bytes(b"%PDF fake")
-
-
-def _manifest(base: Path) -> AttachmentManifest:
-    return AttachmentManifest(VaultPaths(base).attachments_manifest_file)
-
-
 # ── verify ───────────────────────────────────────────────────────────────
 
 
@@ -159,3 +143,19 @@ def test_adopt_ignores_tombstoned_paths(tmp_path: Path, monkeypatch: pytest.Monk
     result = _cli_runner.invoke(app, ["attachments", "adopt"])
     assert result.exit_code == 0, result.output
     assert "Nothing to adopt" in result.output
+
+
+def _vault(tmp_path: Path) -> Path:
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    (base / ".knox").mkdir(parents=True)
+    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    return base
+
+
+def _add_source(base: Path, name: str = "report.pdf") -> None:
+    (base / "sources" / name).write_bytes(b"%PDF fake")
+
+
+def _manifest(base: Path) -> AttachmentManifest:
+    return AttachmentManifest(VaultPaths(base).attachments_manifest_file)
