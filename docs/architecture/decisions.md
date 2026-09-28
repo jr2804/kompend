@@ -278,7 +278,7 @@ flowchart LR
 
 **Context:** The "migrate all LLM-based actions to agentic multi-turn workflows"
 epic (`knox-0iv2`) proposed converting every LLM call into a tool-using agent.
-A read-only code audit (`.agents/plans/knox-0iv2-audit.md`, gitignored) found
+A read-only code audit (`.agents/history/2026-09-24-knox-0iv2-audit.md`) found
 that several actions are single-shot by design, that proposed agentic variants
 were built but never wired (then removed, or reachable only from tests), and
 that two areas are satisfied by a different design. This entry records the

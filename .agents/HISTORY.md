@@ -29,6 +29,41 @@ contributors from re-litigating settled questions.
 
 ## Project-specific History — KNOX
 
+### Plans completed and archived (2026-09-24)
+
+`2026-09-24-knox-0iv2-audit.md` and `2026-09-24-knox-storage-migration.md`
+archived to `.agents/history/`.
+
+- **0iv2 audit** — read-only audit that resolved a tracker/reality contradiction
+  ("user believes done, bd says open") from the code rather than from tracker
+  state. It classified all 15 epic children: 5 complete, 3 hollow, 3 dropped, 2
+  satisfied by another design, 1 docs-only, 1 dead-legacy. Every verdict was acted
+  on; the epic is now CLOSED with no children. The reusable part is the method,
+  not the findings: a per-class dynamic-access sweep (grep across `.py`/`.j2`/`.toml`
+  plus getattr/dispatch) and `git log -S "<Class>"` to prove a construction site
+  ever existed. Both were needed — a grep-only dead-code call was wrong twice in
+  that period for dynamic-access reasons.
+- **Storage migration** — design for consolidating `.knox/` into one SQLite file.
+  Accepted in full (engine = SQLite, migration = clean cut with no migration code)
+  and implemented: `61147c5f` (foundation — `core/store/` package, schema,
+  versioning, `.knox/knox.db`), `f6aee4c0` (consolidation of every non-vector
+  artifact), `8aaf2eca` (memory, attachments, provenance). 12 readers still
+  pointing at removed JSON paths were repointed at the store. `.knox/config.toml`
+  and `.knox/rumdl.toml` stay human-editable TOML; zvec's `vectors/` stays the
+  optional, regenerable embedding branch.
+
+### Plans completed and archived (2026-08-22)
+
+`2026-08-22-markdown-only-vault.md` archived to `.agents/history/`.
+
+Fully implemented — WP1–WP7 landed in `5d493119` (files-first query, per-source
+summary pages, copy-on-embed images, complete indexes, quality page) and
+`51ea1111` (docs across guides, skill, scaffold, DOX). The invariant it
+established: the wiki is represented by its generated markdown pages alone, and
+`.knox/` is purely derived state. That removed the "knox present (rich) vs knox
+absent (degraded)" two-branch architecture, which had made query correctness
+depend on derived cache state.
+
 ### Lint UX: `remediate` collapsed to LLM page generation (2026-08-14)
 
 `knox lint remediate` previously had three tiers: image-embed auto-fix
