@@ -4,7 +4,7 @@ dynamic = ["version"]
 description = "Knowledge Organizer for eXtended documents"
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.13"
 authors = [
     { name = "Jan Reimes", email = "jan@reimes.de" }
 ]
@@ -97,6 +97,13 @@ docling = [
 
 pandoc = [
     "pypandoc[tinytex]>=1.17",
+]
+
+# External document-intelligence pipeline (parsecraft adapter). Pinned to the
+# published release the adapter was written against; re-pinning is a reviewed
+# event (see .agents/plans/parsecraft-integration.md).
+parsecraft = [
+    "parsecraft==2026.9.26",
 ]
 
 otel = [

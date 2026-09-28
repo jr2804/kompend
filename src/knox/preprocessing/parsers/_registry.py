@@ -53,6 +53,12 @@ _BACKEND_MODULES: dict[str, str] = {
     "mineru": "knox.preprocessing.parsers.mineru_parser",
     "pandoc": "knox.preprocessing.parsers.pandoc_parser",
     "web": "knox.preprocessing.parsers.web_parser",
+    # parsecraft is deliberately NOT in KNOWN_BACKENDS: KNOWN_BACKENDS feeds
+    # get_all_extensions(), and advertising parsecraft's 31-suffix text family
+    # would broaden default vault discovery (.c/.h/.py/... become ingestible)
+    # as a silent side effect. Explicit selection still works:
+    # ``ingest.parser = "parsecraft"`` loads this module and self-registers.
+    "parsecraft": "knox.preprocessing.parsers.parsecraft_parser",
 }
 
 logger = get_logger(__name__)

@@ -8,6 +8,12 @@ from knox.core.pipeline.config import Tier
 from knox.core.pipeline.runtime import PipelineRuntime
 from knox.preprocessing.parsers._registry import get_all_extensions
 
+#: KNOX's own state directory. Never a source, regardless of which extensions
+#: the registered parsers claim — with a broad-capability backend (e.g.
+#: parsecraft claiming ``.toml``), ``.knox/rumdl.toml`` and cache artifacts
+#: would otherwise be discovered as sources in flat-layout vaults.
+_STATE_DIR = ".knox"
+
 
 def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     """Yield source files to process.
@@ -23,6 +29,8 @@ def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     extensions = get_all_extensions()
     sources = []
     for f in pipeline.config.source_dir.rglob("*"):
+        if _STATE_DIR in f.parts:
+            continue
         if f.suffix.lower() in extensions:
             sources.append(f)
     return sources
