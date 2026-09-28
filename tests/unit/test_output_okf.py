@@ -411,7 +411,13 @@ def test_log_survives_recompiles(tmp_path: Path) -> None:
     second = (tmp_path / "log.md").read_text(encoding="utf-8")
 
     assert second.count("**Creation**:") == 2, "expected one new entry per compile"
-    assert first in second, "previous compile entry must survive"
+    # The first compile's ENTRY must survive — not the whole first file:
+    # entries prepend newest-first within a date section, so the first file's
+    # layout legitimately changes when the second entry inserts above it
+    # (same-day writes). Asserting substring-of-file here only passed when
+    # both writes landed in the same second or straddled midnight UTC.
+    first_entry = first.splitlines()[-1]
+    assert first_entry in second, "previous compile entry must survive"
 
 
 def test_log_has_bold_action_prefix(tmp_path: Path) -> None:
