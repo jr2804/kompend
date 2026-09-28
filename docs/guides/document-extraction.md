@@ -23,15 +23,18 @@ Additional backends install as package extras:
 ```bash
 uv add knox[docling]        # high-accuracy PDF/EPUB/HTML (recommended for complex layouts)
 uv add knox[pandoc]         # legacy text formats (RST, LaTeX, ODT, EPUB, TEX)
+uv add knox[parsecraft]     # external document-intelligence pipeline (Python ≥3.13)
 ```
 
 Or several at once:
 
 ```bash
-uv add knox[docling,pandoc]
+uv add knox[docling,pandoc,parsecraft]
 ```
 
-> For `pip` users: `pip install knox[docling,pandoc]`.
+> **parsecraft** is an optional external adapter pinned to `==2026.9.26` and requires Python ≥3.13. KNOX consumes parsecraft's public API only — see [ParsecraftParser](#parsecraftparser-external-adapter) below.
+
+For `pip` users: `pip install knox[docling,pandoc]`.
 
 A few backends cannot ship as extras because their transitive dependencies
 conflict (pillow, transformers, ONNX) and cannot be locked. Install them
@@ -105,7 +108,8 @@ backends.
 | `.odt` | PandocParser | OpenDocument text |
 | `.rst` | PandocParser | reStructuredText |
 | `.rtf` | PandocParser | Rich Text Format |
-| `.txt` | PandocParser | Plain text, treated as markdown |
+| `.txt` | PandocParser / ParsecraftParser | Plain text, treated as markdown |
+| `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.sh`, `.tex`, `.rst`, `.ini`, `.cfg`, `.toml`, `.log`, `.text` | ParsecraftParser | Plain-text source family, routed through parsecraft's text backend when `parsecraft` is selected |
 
 Unknown file extensions are checked with
 [`binaryornot`](https://github.com/binaryornot/binaryornot). If the file
@@ -149,6 +153,17 @@ document instead of the file being skipped. The parse and chunk caches key on
 the fallback flag, so flipping it re-parses rather than reusing output produced
 under the other policy.
 
+#### Fallback inside parsecraft
+
+When `parsecraft` is the active backend for a file, the
+KNOX-level `parser_fallback` chain does **not** step inside parsecraft — a
+file routed to parsecraft stays inside parsecraft for that run. parsecraft
+runs its own per-page routing and fallback passes between its registered
+backends (native, OCR, LiteParse); the result is one `ParsedDocument` per
+source regardless of how many internal passes fired. Degraded pages
+(parsecraft downgraded an OCR route to native text) are surfaced as KNOX
+metadata (`degraded_pages`) so the choice is visible after the parse.
+
 ## Backend Comparison: Strengths and Weaknesses
 
 > Capabilities below reflect what each backend **actually emits into the
@@ -166,6 +181,7 @@ that content in their Markdown, but knox previously discarded it (see
 | `marker` | yes | yes | yes | yes | block OCR | medium (GPU-friendly) |
 | `mineru` | yes | yes | yes | yes | layout + OCR | medium–slow |
 | `glmocr` | yes (crops) | yes | yes | yes | VLM (cloud/self-host) | network-bound |
+| `parsecraft` | yes | yes | yes | yes | per-backend | medium |
 | `pandoc` | no | yes | yes | yes | no | fastest (no ML) |
 | `web` (trafilatura) | no | yes | n/a | yes | no | fastest |
 
@@ -292,6 +308,111 @@ when it is unset, so no per-project setup step is needed. An explicit
 PandocParser is registered **after** DoclingParser in the parser router, so
 docling always wins for formats both support (e.g. `.docx` is handled by
 docling, not pandoc).
+
+## ParsecraftParser: External Adapter
+
+[Parsecraft](https://pypi.org/project/parsecraft/) is an external
+document-intelligence pipeline (public API only, separate project from KNOX).
+KNOX consumes it through a single adapter (`preprocessing/parsers/parsecraft_parser.py`)
+and maps parsecraft's intermediate representation onto KNOX's element model.
+Install it as an optional extra:
+
+```bash
+uv add knox[parsecraft]    # pinned to parsecraft==2026.9.26 (Python ≥3.13)
+```
+
+The extra is pinned to a specific release; re-pinning is a reviewed event (see
+`.agents/plans/parsecraft-integration.md`). KNOX never imports parsecraft
+internals, private modules, or test helpers — only the documented public
+surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
+
+### What selecting parsecraft does
+
+Set `ingest.parser = "parsecraft"` (or `"parsecraft,<fallback>"`) to route
+matching files through parsecraft's full pipeline:
+
+```toml
+[ingest]
+parser = "parsecraft"           # everything parsecraft claims routes to it
+parser_fallback = true          # KNOX-level fallback to the next backend if parsecraft itself fails
+```
+
+The adapter calls `pipeline.execute()` — analyze → `plan_route` → per-range
+dispatch with fallback passes → aggregate `DocumentResult` — so routing,
+selective OCR escalation, and per-range fallback passes are inherited rather
+than reimplemented in KNOX. Figure enrichment is on (`figure_enrichment = True`)
+and parsecraft's own figure extraction flows through `VLMEnricher` like every
+other backend's.
+
+### Formats parsecraft claims
+
+parsecraft speaks MIME (`text/plain`, `application/pdf`, `image/jpeg`, …);
+KNOX discovers files by extension. The adapter consumes parsecraft's
+classifier (`media_type_for(path)`) for the MIME mapping and derives
+KNOX's ingestion set from `BackendRegistry.supported_formats()`. Selecting
+parsecraft broadens the set of extensions KNOX will treat as ingestible in
+that run to parsecraft's 31-suffix text family — `.txt`, `.text`, `.log`,
+`.rst`, `.ini`, `.cfg`, `.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`,
+`.sh`, `.tex`, plus the usual PDF/HTML/image set. KNOX's own text-extension
+table stays authoritative for plain-text formats, and `.knox/` is excluded
+from source discovery regardless of claimed formats — state artifacts like
+`.knox/rumdl.toml` are never ingested even when parsecraft claims `.toml`.
+
+### Fallback interaction
+
+`ingest.parser_fallback` is the KNOX-level chain between *configured backends*.
+When parsecraft is the active backend for a file, that chain does **not**
+step inside parsecraft — a file routed to parsecraft stays inside parsecraft
+for that run. parsecraft runs its own per-page routing and fallback passes
+between its registered sub-backends (native text/markdown/html/pdf, OCR
+backends, LiteParse); the result is one `ParsedDocument` per source regardless
+of how many internal passes fired.
+
+If parsecraft exhausts every pass on a page, the adapter raises
+`ParsecraftParseError` carrying the per-page cause — KNOX then falls through
+to the next KNOX-configured backend (when `parser_fallback = true`).
+
+### Diagnostics carried into KNOX metadata
+
+Three classes of parsecraft signal survive the parse into `.knox/knox.db`:
+
+- `metadata.parser` — `"parsecraft"`.
+- `metadata.backends` — comma-separated list of parsecraft sub-backends that
+  won each page group (parse provenance).
+- `metadata.quality_signals` — names of `QualitySignal` entries parsecraft
+  attached to the document (route degradation, missing extras, etc.).
+- `metadata.degraded_pages` — page numbers whose route was downgraded inside
+  parsecraft (e.g. OCR → native text because no eligible OCR backend was
+  installed). This is the trace that proves a parse silently downgraded,
+  rather than hiding the choice behind a structurally identical result.
+
+### Error mapping
+
+parsecraft raises typed `AnalysisError` subclasses; the adapter maps them to
+KNOX behaviour:
+
+| parsecraft exception | KNOX behaviour |
+|---|---|
+| `UnsupportedSourceError` | Input — skip the file with a warning naming the suffix |
+| `NoAnalyzerError` | Dependency/config — "install the matching extra" |
+| `DependencyUnavailableError` | Dependency/config — "install the named extra" |
+| `BackendError` (other) | Backend failure with cause preserved |
+| `RoutingError` | KNOX-side error with cause preserved |
+| Total exhaustion (`pipeline-all-passes-failed`) | `ParsecraftParseError` with per-page cause |
+
+Exit codes from the parsecraft CLI are **not** part of the contract — KNOX
+imports `parsecraft.pipeline` as a library, so typed exceptions cross the
+boundary, never exit codes.
+
+### Limitations
+
+- Adds an external dependency pinned to a specific parsecraft release;
+  upgrading parsecraft is a coordinated event, not a silent update.
+- Per-page routing and fallback are entirely parsecraft's responsibility —
+  KNOX cannot intervene mid-pipeline.
+- Adapter calls `execute()` **serially**, matching parsecraft's 8 GB one-
+  instance discipline (`pipeline/AGENTS.md`). KNOX-level parallelism across
+  documents is preserved (the existing parse worker pool is unchanged).
 
 ## LiteParseParser: Fast PDF/Office Parsing
 

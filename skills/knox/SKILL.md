@@ -444,7 +444,7 @@ Key config keys:
 | `compile.output.format` | `okf` | Output format (okf, markdown, json, typst) |
 | `compile.compiler` | `graph` | Compiler backend (graph, wicer) |
 | `compile.workers` | `1` | Parallel worker count |
-| `ingest.parser` | `liteparse` | Ingestion backend, or comma-separated priority list (liteparse, docling, pandoc, …; first match wins). Backends install via `uv sync --extra docling/pandoc` or manually `uv pip install marker-pdf/glmocr/mineru` (pillow conflicts prevent extras) |
+| `ingest.parser` | `liteparse` | Ingestion backend, or comma-separated priority list (liteparse, docling, pandoc, parsecraft, …; first match wins). Backends install via `uv sync --extra docling/pandoc/parsecraft` (parsecraft pinned to `==2026.9.26`, Python ≥3.13) or manually `uv pip install marker-pdf/glmocr/mineru` (pillow conflicts prevent extras) |
 | `compile.memory_enabled` | `true` | Enable memory store |
 | `dedup.enabled` | `false` | Enable deduplication |
 | `trust.privacy_filter` | `true` | Filter PII from queries |

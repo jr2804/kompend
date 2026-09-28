@@ -32,6 +32,9 @@ file = "NOTES.md"
 # Optional backends (install as extras):
 #   docling   — high-accuracy PDF/EPUB/HTML fallback (uv add knox[docling])
 #   pandoc    — legacy text formats (RST, LaTeX, ODT, …; uv add knox[pandoc])
+#   parsecraft — external document-intelligence pipeline: per-page routing
+#               across native + OCR backends, Python >=3.13, pinned release
+#               (uv add knox[parsecraft]; see docs/guides/document-extraction.md)
 # Manual install (conflicting transitive deps — not extras):
 #   marker    — deep-learning PDF/office/HTML (uv pip install marker-pdf)
 #   glm-ocr   — multimodal OCR for images and PDFs (uv pip install glmocr)

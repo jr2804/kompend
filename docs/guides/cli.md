@@ -234,6 +234,15 @@ knox compile                # re-chunks from the new parser output
 knox ingest --no-cache
 ```
 
+`ingest.parser` accepts the names of any installed parser backend.
+External backends install as package extras — `uv add knox[docling]`,
+`uv add knox[pandoc]`, or `uv add knox[parsecraft]` (pinned to
+`parsecraft==2026.9.26`, Python ≥3.13). Selecting `parsecraft` routes
+matching files through parsecraft's full pipeline; see
+[ParsecraftParser](document-extraction.md#parsecraftparser-external-adapter)
+for the fallback interaction and the diagnostics parsecraft carries into
+KNOX metadata.
+
 ## `knox index`
 
 Rebuild the zvec vector index for semantic search from the cached wiki.
@@ -348,7 +357,10 @@ Displays:
 
 ## `knox list-parsers`
 
-List all registered parsers (built-in, external, and HTTP).
+List all registered parsers (built-in, external, and HTTP). External
+backends appear only when their package extra is installed — `parsecraft`
+shows up after `uv add knox[parsecraft]`, and is otherwise absent (not an
+error, just not registered).
 
 ```text
 knox list-parsers [OPTIONS]
