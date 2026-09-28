@@ -9,7 +9,7 @@ The single non-vector store for a vault: one SQLite file (`.knox/knox.db`)
 holding every flat `.knox/` artifact that was previously loose JSON/JSONL.
 The embedding branch (`vectors/`, `memory.db`) stays separate and regenerable.
 
-Design + table mapping live in `.agents/plans/knox-storage-migration.md` §2.
+Design + table mapping live in `.agents/history/2026-09-24-knox-storage-migration.md` §2.
 
 ## Modules
 

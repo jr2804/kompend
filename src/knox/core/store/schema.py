@@ -1,7 +1,7 @@
 """Single source of truth for the ``.knox/knox.db`` SQLite schema.
 
 This is the DDL home for the one non-vector store (see
-``.agents/plans/knox-storage-migration.md`` §2). Every table, its columns, and
+``.agents/history/2026-09-24-knox-storage-migration.md`` §2). Every table, its columns, and
 the ``schema_version`` row live here so no other module invents schema.
 
 Design rules applied below:
