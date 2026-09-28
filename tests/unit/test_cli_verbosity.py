@@ -41,6 +41,30 @@ class _FailingRouter:
         return parser
 
 
+# ── default one-liners carry the cause (TASK-48) ─────────────────────────
+#
+# Suppressing a traceback is only safe if the one-line message names the cause.
+# These fail against the pre-TASK-48 messages ("Failed to parse <file>" with no
+# exception text).
+
+
+class _RaisingParser:
+    def parse(self, target: Path) -> Any:  # noqa: ARG002
+        raise ValueError("docling exploded")
+
+
+class _Router:
+    def route(self, source_file: Path) -> _RaisingParser:  # noqa: ARG002
+        return _RaisingParser()
+
+
+class _Pipeline:
+    router = _Router()
+
+    def cache_directory(self) -> Path:
+        return Path("/nonexistent-cache")  # noqa: S108 — never touched: parse raises first
+
+
 @pytest.fixture(autouse=True)
 def _reset_verbose() -> Any:
     set_verbose(False)
@@ -156,30 +180,6 @@ def test_main_fatal_is_traceback_with_verbose(monkeypatch: pytest.MonkeyPatch, c
     assert "RuntimeError: boom" in err
 
 
-# ── default one-liners carry the cause (TASK-48) ─────────────────────────
-#
-# Suppressing a traceback is only safe if the one-line message names the cause.
-# These fail against the pre-TASK-48 messages ("Failed to parse <file>" with no
-# exception text).
-
-
-class _RaisingParser:
-    def parse(self, target: Path) -> Any:  # noqa: ARG002
-        raise ValueError("docling exploded")
-
-
-class _Router:
-    def route(self, source_file: Path) -> _RaisingParser:  # noqa: ARG002
-        return _RaisingParser()
-
-
-class _Pipeline:
-    router = _Router()
-
-    def cache_directory(self) -> Path:
-        return Path("/nonexistent-cache")  # noqa: S108 — never touched: parse raises first
-
-
 def test_parse_source_default_message_carries_cause(caplog: pytest.LogCaptureFixture) -> None:
     set_verbose(False)
     with caplog.at_level(logging.ERROR):
@@ -191,9 +191,7 @@ def test_parse_source_default_message_carries_cause(caplog: pytest.LogCaptureFix
     assert not records[0].exc_info
 
 
-def test_load_asset_store_default_message_carries_cause(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
+def test_load_asset_store_default_message_carries_cause(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     def _boom(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("asset store kaput")
 

@@ -52,7 +52,7 @@ Every path below is defined in `src/knox/core/paths.py`. Layout reference:
 | 15 | `downloaded.json` | `DOWNLOADED_FILE` (paths.py:84) — **inside `cache/`** (`cache/downloaded.json`) | flat `{url: sha256hex}` (`preprocessing/downloaders/duplicate_detector.py:18–60`) | `DuplicateDetector.mark_downloaded` (`_sources_io.py:111`) | duplicate-URL check before download | **derived** | recreated as URLs re-download |
 | 16 | `last_organize.json` | `ORGANIZE_REPORT_FILE` (paths.py:112) | `{dry_run:bool, categories:[…tree…], moves:[{old,new}], link_updates}` (`organize/engine.py:165–179`) | `_write_report` (`organize/engine.py:171`) | `knox organize` report display | **derived** | re-run `knox organize` (LLM-based, non-deterministic) |
 | 17 | `log.md` | `LOG_FILE` (paths.py:98) | rendered Markdown report (runs + lint trend + wiki meta) | `cli/cmds/quality/log.py:61–66`, `mcp/tools/quality.py:521` | human reader | **derived** | `knox log --write` |
-| 18 | `state.json` | `STATE_FILE` (paths.py:105; `VaultPaths.state_file` paths.py:401) | — | **no `src/` producer or consumer**; the **constant** `STATE_FILE` is imported by `tests/integration/test_pipeline_mock.py:33,208` and `tests/unit/test_throughput_features.py:32,112–188,458` as a throwaway filename for `TierStateStore` | **unused property** — `VaultPaths.state_file` has no `src/knox/**` caller (grep-verified), but `STATE_FILE` is NOT safely deletable (tests import it). Semantically those tests should use `COMPILE_STATE_FILE`. Leave the constant; don't reuse the property until it has a real producer. |
+| 18 | `state.json` | `STATE_FILE` (paths.py:105; `VaultPaths.state_file` paths.py:401) | — | **no `src/` producer or consumer**; the **constant** `STATE_FILE` is imported by `tests/integration/test_pipeline_mock.py:33,208` and `tests/unit/test_throughput_features.py:32,112–188,458` as a throwaway filename for `TierStateStore` | **unused property** — `VaultPaths.state_file` has no `src/knox/**` caller (grep-verified), but `STATE_FILE` is NOT safely deletable (tests import it). Semantically those tests should use `COMPILE_STATE_FILE`. Leave the constant; don't reuse the property until it has a real producer. |  |  |
 
 ### 1.3 Directories under `.knox/`
 
@@ -139,7 +139,7 @@ Store nested payloads as `TEXT` with `json.dumps(..., ensure_ascii=False)`, or
 
 ### 2.5 `.knox/` after migration (target layout)
 
-```
+```text
 .knox/
 ├── config.toml          # TOML (unchanged)
 ├── rumdl.toml           # TOML (unchanged)

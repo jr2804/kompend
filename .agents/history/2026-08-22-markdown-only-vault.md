@@ -53,7 +53,7 @@ its generated pages alone*. Everything an LLM needs must be in markdown;
 
 ## 3. Target state
 
-```
+```text
 base_dir/
 ├── index.md            # vault-root hub → wiki/index.md (+ sources/, attachments/)
 ├── sources/            # inputs (untouched, user-owned; organize may rearrange)
@@ -225,7 +225,7 @@ Revised per review comment 4 — no `_extracted/` move, images cache stays.
 
 1. `wiki/quality.md`: WiCER verification summary — **per-page table**
    (page, claims checked, pass/fail, score; review comment — decided)
-   + overall stats + compile stamp. Link from `wiki/index.md`.
+   - overall stats + compile stamp. Link from `wiki/index.md`.
 2. Per-page: verification outcome goes into OKF frontmatter extension key
    (e.g. `verified_claims`, `quality_score`) — cheap, machine-readable,
    no page-body noise.
@@ -270,7 +270,7 @@ Revised per review comment 4 — no `_extracted/` move, images cache stays.
 
 ## 6. Order & dependencies
 
-```
+```text
 WP1 (query single-branch + keyword fallback) — independent, highest value, first
 WP3 (copy-on-embed images)          — independent, small, fixes broken media
 WP2 (per-source summary pages)      — after WP4 decides citation id format
@@ -318,7 +318,6 @@ WP7 (docs)                          — with each WP, final pass at end
 User Comments:
 
 1. `quality_score` -> .knox folder, `toc` -> wiki, if needed for navigation (?) in addition to index.md? Please explain `edges` and `HybridRetriever` more in detail. Are they necessary for query functionality, or can they be derived from the markdown pages?
-
 2. assets should primarily only be used for compilation process and embedding -> can remain in .knox folder. We recently implemented also the "full markdown export" for a source - this should contain all assets as well (as H2 sections + images + enrichments). Not sure if we should in general allow the "full source as markdown"-feature by default; for plain text search, we should rather use embeddings. For a quick per-source overview, we can generate a summary pages for each source?
 3. Drop numbering.
 4. Not sure if we should move images to a new `_extracted` folder. These should actually only be used during compilation (extracted enrichments/vlm pass) and when exporting the "full source as markdown" feature. The "attachments" folder should remain the main place for all attachments (per-source). Seems to challenge WP3 in general?

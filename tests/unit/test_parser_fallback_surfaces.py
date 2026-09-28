@@ -52,22 +52,6 @@ FirstFail = _stub("FirstFail", error=RuntimeError("libreoffice missing"))
 SecondOk = _stub("SecondOk")
 
 
-def _vault(tmp_path: Path, *, parser_fallback: bool) -> Path:
-    base = tmp_path / "vault"
-    (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text(f"[ingest]\nparser_fallback = {str(parser_fallback).lower()}\n", encoding="utf-8")
-    (base / "sources" / "note.txt").write_text("hello", encoding="utf-8")
-    return base
-
-
-def _chain(*parsers: type[BaseParser], fallback: bool) -> ParserRouter:
-    router = ParserRouter(fallback=fallback)
-    for parser in parsers:
-        router.register(parser())
-    return router
-
-
 # ── (a) the flag reaches each construction site ──────────────────────────
 
 
@@ -126,3 +110,19 @@ def test_parse_cli_falls_through_to_next_backend(tmp_path: Path, monkeypatch: py
     result = _cli_runner.invoke(app, ["--wiki-dir", str(base), "parse", str(doc)])
     assert result.exit_code == 0, result.output
     assert "1 element(s)" in result.output
+
+
+def _vault(tmp_path: Path, *, parser_fallback: bool) -> Path:
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    (base / ".knox").mkdir(parents=True)
+    (base / ".knox" / "config.toml").write_text(f"[ingest]\nparser_fallback = {str(parser_fallback).lower()}\n", encoding="utf-8")
+    (base / "sources" / "note.txt").write_text("hello", encoding="utf-8")
+    return base
+
+
+def _chain(*parsers: type[BaseParser], fallback: bool) -> ParserRouter:
+    router = ParserRouter(fallback=fallback)
+    for parser in parsers:
+        router.register(parser())
+    return router

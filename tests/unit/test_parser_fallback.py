@@ -34,13 +34,6 @@ LiteparseStub = _stub("LiteparseStub", {FileExtension.DOC})
 PandocStub = _stub("PandocStub", set())
 
 
-def _router(*parsers: type[BaseParser], fallback: bool = True) -> ParserRouter:
-    router = ParserRouter(fallback=fallback)
-    for parser in parsers:
-        router.register(parser())
-    return router
-
-
 class TestFallbackChain:
     def test_falls_through_to_next_backend(self, tmp_path: Path) -> None:
         doc = tmp_path / "legacy.doc"
@@ -150,3 +143,10 @@ class TestFingerprint:
 
     def test_fingerprint_changes_when_chain_changes(self) -> None:
         assert _router(DoclingStub).fingerprint() != _router(DoclingStub, LiteparseStub).fingerprint()
+
+
+def _router(*parsers: type[BaseParser], fallback: bool = True) -> ParserRouter:
+    router = ParserRouter(fallback=fallback)
+    for parser in parsers:
+        router.register(parser())
+    return router
