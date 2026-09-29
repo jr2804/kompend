@@ -16,3 +16,4 @@ tracking,github:gastownhall/beads,latest,,,gastownhall/beads,
 tracking,github:dolthub/dolt,latest,,,,
 tracking,pypi:beads-mcp,latest,mise x --command beads-mcp,beads,,
 general,pipx:hound-mcp,latest,uv run hound,hound,,
+general,npm:@jkudish/jev-mcp,latest,mise x --command jev-mcp,jev,jkudish/jev-mcp
