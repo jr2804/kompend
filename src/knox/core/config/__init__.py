@@ -31,6 +31,7 @@ from knox.core.config._configs import (
 )
 from knox.core.config._core import (
     DEFAULTS,
+    STATUS_DEPRECATED,
     STATUS_ERROR,
     STATUS_MODIFIED,
     STATUS_OK,
@@ -55,6 +56,7 @@ from knox.core.config.generate import generate_scaffold_config
 
 __all__ = [
     "DEFAULTS",
+    "STATUS_DEPRECATED",
     "STATUS_ERROR",
     "STATUS_MODIFIED",
     "STATUS_OK",

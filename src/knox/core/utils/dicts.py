@@ -19,6 +19,7 @@ __all__ = [
     "as_int",
     "as_str",
     "deep_merge",
+    "del_dot",
     "flat_keys",
     "get_dot",
     "nest_flat",
@@ -79,6 +80,18 @@ def set_dot(data: dict[str, Any], key: str, value: Any) -> None:
             current[part] = {}
         current = current[part]
     current[parts[-1]] = value
+
+
+def del_dot(data: dict[str, Any], key: str) -> None:
+    """Remove a dotted *key* from a nested dict; no-op when it is absent."""
+    parts = key.split(".")
+    current: Any = data
+    for part in parts[:-1]:
+        if not isinstance(current, dict) or part not in current:
+            return
+        current = current[part]
+    if isinstance(current, dict):
+        current.pop(parts[-1], None)
 
 
 def flat_keys(data: dict[str, Any], prefix: str = "") -> list[str]:

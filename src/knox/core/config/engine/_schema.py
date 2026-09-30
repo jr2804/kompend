@@ -73,6 +73,19 @@ REMOVED_KEYS: dict[str, list[str]] = {
     "compile.llm": ["role_models"],
 }
 
+# Deprecated config keys → their canonical replacement.  The single source of
+# truth for renames: the resolve-time migration (``_precedence``) and
+# ``knox config check`` both read it, so a rename cannot be migrated in one
+# place and misreported in another.
+#
+# A key here may still be a schema field (kept for a release) or already gone
+# from the schema.  Either way it is *migrated*, not ignored — which is what
+# separates it from REMOVED_KEYS.
+DEPRECATED_ALIASES: dict[str, str] = {
+    "search.embed_attachments": "attachments.embed",
+    "compile.llm.context_window_cap": "compile.llm.context_window",
+}
+
 
 def validate_config_key(key: str) -> bool:
     """Return ``True`` if *key* is a known leaf config key."""

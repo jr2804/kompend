@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 
 from knox.cli.app import app
 from knox.core.config import (
+    STATUS_DEPRECATED,
     STATUS_ERROR,
     STATUS_MODIFIED,
     STATUS_OK,
@@ -96,6 +97,25 @@ class TestCheckConfigFile:
         assert removed.current == {"compile": "openai/gpt-4o-mini"}
         assert report.removed_count >= 1
         assert not report.has_errors
+
+    def test_deprecated_alias_is_not_an_unknown_key_error(self, tmp_path: Path) -> None:
+        """A renamed key is reported as deprecated, not as an unknown-key error.
+
+        ``compile.llm.context_window_cap`` left the schema but is still
+        migrated at resolve time, so ``config check`` must say "deprecated —
+        use X" (exit 1) rather than fail it as unknown (exit 2).
+        """
+        cfg = tmp_path / "cfg.toml"
+        cfg.write_text("[compile.llm]\ncontext_window_cap = 65536\n", encoding="utf-8")
+        report = check_config_file(cfg)
+
+        entry = next(e for e in report.entries if e.key == "compile.llm.context_window_cap")
+        assert entry.status == STATUS_DEPRECATED
+        assert entry.current == 65536
+        assert "compile.llm.context_window" in entry.message
+        assert report.deprecated_count >= 1
+        assert not report.has_errors
+        assert not any(e.status == STATUS_ERROR for e in report.entries)
 
     def test_nested_model_leaves_are_reachable(self, tmp_path: Path) -> None:
         """Optional nested model leaves (e.g. compile.llm.rlm.enable) MUST appear

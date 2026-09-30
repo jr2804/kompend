@@ -30,7 +30,7 @@ from pydantic_core import PydanticUndefined
 
 from knox.core.config._configs import KnoxConfig
 from knox.core.config.engine._loading import load_toml
-from knox.core.config.engine._schema import DEFAULTS, REMOVED_KEYS
+from knox.core.config.engine._schema import DEFAULTS, DEPRECATED_ALIASES, REMOVED_KEYS
 from knox.core.utils.dicts import flat_keys, get_dot
 from knox.logging import get_logger
 from knox.types import JSONDict, JSONValue
@@ -41,6 +41,7 @@ STATUS_OK = "ok"
 STATUS_MODIFIED = "modified"
 STATUS_ERROR = "error"
 STATUS_REMOVED = "removed"  # key present in TOML but removed from schema
+STATUS_DEPRECATED = "deprecated"  # renamed key, still migrated at resolve time
 
 logger = get_logger(__name__)
 
@@ -97,6 +98,10 @@ class ConfigCheckReport:
     @property
     def removed_count(self) -> int:
         return sum(1 for e in self.entries if e.status == STATUS_REMOVED)
+
+    @property
+    def deprecated_count(self) -> int:
+        return sum(1 for e in self.entries if e.status == STATUS_DEPRECATED)
 
     @property
     def has_errors(self) -> bool:
@@ -194,8 +199,9 @@ def _check_loaded(
                 return removed
         return None
 
-    unknown_keys = sorted(k for k in (user_keys - schema_keys) if _removed_ancestor(k) is None)
+    unknown_keys = sorted(k for k in (user_keys - schema_keys) if _removed_ancestor(k) is None and k not in DEPRECATED_ALIASES)
     removed_keys = sorted({a for k in user_keys if k not in schema_keys and (a := _removed_ancestor(k)) is not None})
+    deprecated_keys = sorted(k for k in user_keys if k in DEPRECATED_ALIASES)
 
     # Validation pass via pydantic to surface type/value errors.
     merged: dict[str, Any] = _overlay_merge(_safe_dump_defaults(), raw)
@@ -284,6 +290,20 @@ def _check_loaded(
                 message="key removed from schema; value is ignored at runtime — please delete it from your config",
             ),
         )
+
+    # Renamed keys: still migrated at resolve time, so report the migration
+    # rather than an unknown-key error.
+    entries.extend(
+        ConfigCheckEntry(
+            key=key,
+            status=STATUS_DEPRECATED,
+            current=get_dot(raw, key),
+            default=get_dot(raw, DEPRECATED_ALIASES[key]),
+            set_in_toml=True,
+            message=f"deprecated — use '{DEPRECATED_ALIASES[key]}' instead; the value is migrated automatically",
+        )
+        for key in deprecated_keys
+    )
 
     return ConfigCheckReport(
         path=path,

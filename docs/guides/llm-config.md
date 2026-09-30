@@ -112,9 +112,9 @@ KNOX falls back to `fallback_max_input` from `[compile.llm]` (since
 self-hosted endpoints are not in the models.dev catalog).
 
 > **Deprecated:** `context_window_cap` (provider level and
-> `compile.llm.context_window_cap`) are still honored when the new
-> `context_window` key is unset, but new configs should use
-> `context_window`.
+> `compile.llm.context_window_cap`) was renamed to `context_window`. A config
+> still setting it keeps working — the value is migrated and a deprecation
+> warning is logged — but please update it.
 
 ## API key discovery
 

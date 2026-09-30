@@ -15,7 +15,7 @@ from knox.core.config.engine._loading import (
     find_all_project_configs,
     find_global_config,
 )
-from knox.core.config.engine._schema import DEFAULTS, REMOVED_KEYS, flat_keys
+from knox.core.config.engine._schema import DEFAULTS, DEPRECATED_ALIASES, REMOVED_KEYS, flat_keys
 from knox.core.paths import VaultPaths
 from knox.core.config.keys import (
     COMPILE_OUTPUT_DIR,
@@ -24,7 +24,7 @@ from knox.core.config.keys import (
     PATHS_SOURCES_DIR,
     PATHS_WIKI_DIR,
 )
-from knox.core.utils.dicts import deep_merge, get_dot, nest_flat, set_dot
+from knox.core.utils.dicts import deep_merge, del_dot, get_dot, nest_flat, set_dot
 from knox.logging import get_logger
 from knox.types import ConfigValue
 from knox.llm.user_providers import set_user_providers
@@ -257,14 +257,17 @@ def _resolve_deprecated_aliases(result: dict[str, Any], provenance: dict[str, Co
     to the canonical key when the canonical key is still at its default, and
     the provenance records the deprecation so ``knox config check`` and the
     resolved-config listing surface it.
+
+    The deprecated key is then dropped: the canonical key owns the value, and
+    a key that has left the schema would otherwise fail the strict
+    ``KnoxConfig`` validation.  The registry is ``DEPRECATED_ALIASES``.
     """
-    for old_key, new_key, old_default in (
-        ("search.embed_attachments", "attachments.embed", False),
-        ("compile.llm.context_window_cap", "compile.llm.context_window", None),
-    ):
+    for old_key, new_key in DEPRECATED_ALIASES.items():
         old_val = get_dot(result, old_key)
-        # Only migrate when the canonical key is still at its default layer —
-        # an explicitly set value (even the default value) always wins.
+        # A key still in the schema reports its default when unset; a key that
+        # has left it reports None.  Either way, only a non-default value is
+        # worth migrating — and an explicitly set canonical key always wins.
+        old_default = get_dot(DEFAULTS, old_key)
         if old_val is not None and old_val != old_default and provenance.get(new_key, ConfigSource("default")).path == "default":
             set_dot(result, new_key, old_val)
             provenance[new_key] = ConfigSource(
@@ -276,6 +279,7 @@ def _resolve_deprecated_aliases(result: dict[str, Any], provenance: dict[str, Co
                 old_key,
                 new_key,
             )
+        del_dot(result, old_key)
 
 
 def _resolve_paths(

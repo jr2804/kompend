@@ -14,6 +14,7 @@ Sub-modules (load in dependency order):
 #
 # Generic dict helpers live in knox.core.utils.dicts.
 from knox.core.config.engine._check import (
+    STATUS_DEPRECATED,
     STATUS_ERROR,
     STATUS_MODIFIED,
     STATUS_OK,
@@ -47,6 +48,7 @@ from knox.core.utils.dicts import deep_merge, flat_keys, get_dot, set_dot
 
 __all__ = [
     "DEFAULTS",
+    "STATUS_DEPRECATED",
     "STATUS_ERROR",
     "STATUS_MODIFIED",
     "STATUS_OK",

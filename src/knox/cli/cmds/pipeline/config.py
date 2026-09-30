@@ -14,6 +14,7 @@ from knox.cli.app import app
 from knox.cli.args.common import JsonOutput
 from knox.cli.args.config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
 from knox.core.config import (
+    STATUS_DEPRECATED,
     STATUS_ERROR,
     STATUS_MODIFIED,
     STATUS_OK,
@@ -205,6 +206,8 @@ def _render_report_text(report: ConfigCheckReport) -> None:
     summary = f"  ok: [green]{report.ok_count}[/green]  modified: [yellow]{report.modified_count}[/yellow]"
     if report.removed_count:
         summary += f"  removed: [yellow]{report.removed_count}[/yellow]"
+    if report.deprecated_count:
+        summary += f"  deprecated: [yellow]{report.deprecated_count}[/yellow]"
     summary += f"  error: [red]{report.error_count}[/red]"
     console.print(summary)
     console.print()
@@ -218,9 +221,10 @@ def _render_report_text(report: ConfigCheckReport) -> None:
     by_status: dict[str, list] = {
         STATUS_ERROR: [e for e in interesting if e.status == STATUS_ERROR],
         STATUS_REMOVED: [e for e in interesting if e.status == STATUS_REMOVED],
+        STATUS_DEPRECATED: [e for e in interesting if e.status == STATUS_DEPRECATED],
         STATUS_MODIFIED: [e for e in interesting if e.status == STATUS_MODIFIED],
     }
-    colors = {STATUS_ERROR: "red", STATUS_REMOVED: "yellow", STATUS_MODIFIED: "yellow"}
+    colors = {STATUS_ERROR: "red", STATUS_REMOVED: "yellow", STATUS_DEPRECATED: "yellow", STATUS_MODIFIED: "yellow"}
     for label, entries in by_status.items():
         if not entries:
             continue
@@ -241,6 +245,10 @@ def _format_entry_line(entry: ConfigCheckEntry) -> str:
         msg = f"  ({entry.message})" if entry.message else ""
         current = _render_value(entry.current)
         return f"[yellow]REMOVED[/yellow] {entry.key}  current={current}{msg}"
+    if entry.status == STATUS_DEPRECATED:
+        msg = f"  ({entry.message})" if entry.message else ""
+        current = _render_value(entry.current)
+        return f"[yellow]DEPRECATED[/yellow] {entry.key}  current={current}{msg}"
     # modified
     current = _render_value(entry.current)
     default = _render_value(entry.default)
@@ -261,13 +269,14 @@ def _render_value(value: JSON) -> str:
 
 
 def _exit_code_for(reports: list[ConfigCheckReport]) -> int:
-    """Map a set of reports to a CLI exit code (0 clean, 1 modified/removed, 2 error)."""
+    """Map a set of reports to a CLI exit code (0 clean, 1 modified/renamed/removed, 2 error)."""
     has_error = any(r.has_errors for r in reports)
     has_modified = any(r.modified_count > 0 for r in reports)
     has_removed = any(e.status == STATUS_REMOVED for r in reports for e in r.entries)
+    has_deprecated = any(e.status == STATUS_DEPRECATED for r in reports for e in r.entries)
     if has_error:
         return 2
-    if has_modified or has_removed:
+    if has_modified or has_removed or has_deprecated:
         return 1
     return 0
 

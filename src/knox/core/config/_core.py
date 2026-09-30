@@ -15,6 +15,7 @@ this module re-exports the public API for backward compatibility.
 
 from knox.core.config.engine import (  # noqa: F401
     DEFAULTS,
+    STATUS_DEPRECATED,
     STATUS_ERROR,
     STATUS_MODIFIED,
     STATUS_OK,
