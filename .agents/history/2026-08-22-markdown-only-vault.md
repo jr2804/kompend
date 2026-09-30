@@ -318,7 +318,15 @@ WP7 (docs)                          — with each WP, final pass at end
 User Comments:
 
 1. `quality_score` -> .knox folder, `toc` -> wiki, if needed for navigation (?) in addition to index.md? Please explain `edges` and `HybridRetriever` more in detail. Are they necessary for query functionality, or can they be derived from the markdown pages?
-2. assets should primarily only be used for compilation process and embedding -> can remain in .knox folder. We recently implemented also the "full markdown export" for a source - this should contain all assets as well (as H2 sections + images + enrichments). Not sure if we should in general allow the "full source as markdown"-feature by default; for plain text search, we should rather use embeddings. For a quick per-source overview, we can generate a summary pages for each source?
+2. assets should primarily only be used for compilation process and embedding -> can
+   remain in .knox folder. We recently implemented also the "full markdown export" for a
+   source - this should contain all assets as well (as H2 sections + images +
+   enrichments). Not sure if we should in general allow the "full source as
+   markdown"-feature by default; for plain text search, we should rather use embeddings.
+   For a quick per-source overview, we can generate a summary pages for each source?
 3. Drop numbering.
-4. Not sure if we should move images to a new `_extracted` folder. These should actually only be used during compilation (extracted enrichments/vlm pass) and when exporting the "full source as markdown" feature. The "attachments" folder should remain the main place for all attachments (per-source). Seems to challenge WP3 in general?
+4. Not sure if we should move images to a new `_extracted` folder. These should actually
+   only be used during compilation (extracted enrichments/vlm pass) and when exporting
+   the "full source as markdown" feature. The "attachments" folder should remain the
+   main place for all attachments (per-source). Seems to challenge WP3 in general?
 5. Correct, no legacy detection or migration needed.

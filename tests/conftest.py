@@ -23,6 +23,27 @@ _test_dir = Path(__file__).parent
 _data_dir = _test_dir / "data"
 
 
+class DeterministicTestEmbeddingProvider(EmbeddingProvider):
+    """Deterministic hash-based embedding for tests only.
+
+    NOT semantically meaningful — same text always produces the same vector.
+    Lives in test code, never in production. Replaces the old HashEmbeddingProvider.
+    """
+
+    def __init__(self, dim: int = 384) -> None:
+        self._dim = dim
+
+    @property
+    def dim(self) -> int:
+        return self._dim
+
+    def embed(self, text: str) -> list[float]:
+        digest = hashlib.sha256(text.encode("utf-8")).digest()
+        vec = [(digest[i % 32] - 128) / 128.0 for i in range(self._dim)]
+        norm = sum(v * v for v in vec) ** 0.5
+        return [v / norm for v in vec] if norm > 0 else vec
+
+
 def as_obj(value: object) -> dict[str, Any]:
     """Narrow *value* to a JSON object, asserting it is one."""
     assert isinstance(value, dict), f"expected a JSON object, got {type(value).__name__}"
@@ -45,27 +66,6 @@ def as_str(value: object) -> str:
     """Narrow *value* to a string, asserting it is one."""
     assert isinstance(value, str), f"expected a string, got {type(value).__name__}"
     return value
-
-
-class DeterministicTestEmbeddingProvider(EmbeddingProvider):
-    """Deterministic hash-based embedding for tests only.
-
-    NOT semantically meaningful — same text always produces the same vector.
-    Lives in test code, never in production. Replaces the old HashEmbeddingProvider.
-    """
-
-    def __init__(self, dim: int = 384) -> None:
-        self._dim = dim
-
-    @property
-    def dim(self) -> int:
-        return self._dim
-
-    def embed(self, text: str) -> list[float]:
-        digest = hashlib.sha256(text.encode("utf-8")).digest()
-        vec = [(digest[i % 32] - 128) / 128.0 for i in range(self._dim)]
-        norm = sum(v * v for v in vec) ** 0.5
-        return [v / norm for v in vec] if norm > 0 else vec
 
 
 def make_tmp_vault() -> Path:

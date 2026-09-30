@@ -277,7 +277,11 @@ Artifacts are created **lazily**, so vaults differ. Measured on the live vault
   `CompiledWiki` snapshots written by different paths. Pick one canonical
   (recommend collapsing into `wiki_snapshot` with `kind='last'`), or drop
   `compiled_wiki.json`.
-- `state.json` / `VaultPaths.state_file` has no `src/` producer or consumer; the `STATE_FILE` **constant** is nonetheless imported by two test files (`tests/integration/test_pipeline_mock.py`, `tests/unit/test_throughput_features.py`) as a throwaway `TierStateStore` filename. Not deletable without those edits; leave the constant, wire the property only if a real producer appears. (knox-1 verified.)
+- `state.json` / `VaultPaths.state_file` has no `src/` producer or consumer; the
+  `STATE_FILE` **constant** is nonetheless imported by two test files
+  (`tests/integration/test_pipeline_mock.py`, `tests/unit/test_throughput_features.py`)
+  as a throwaway `TierStateStore` filename. Not deletable without those edits; leave the
+  constant, wire the property only if a real producer appears. (knox-1 verified.)
 - `VaultPaths.runs_dir` named a **file** (`runs.jsonl`); renamed to `runs_file` (single caller: `core/reporting/log.py:51`). The internal `RunHandle.runs_dir` field / local param name in `reporting/runlog.py` is unchanged.
 
 ---

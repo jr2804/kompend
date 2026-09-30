@@ -268,9 +268,6 @@ class TwoPhaseRuntime(Protocol):
     _llm_stats: list[tuple[int, int]]
     _usage_tracker: UsageTracker
 
-    @staticmethod
-    def merge_by_concept_key(nodes: list[WikiNode]) -> list[WikiNode]: ...
-
     def merge_duplicate_nodes(
         self,
         nodes: list[WikiNode],
@@ -284,6 +281,9 @@ class TwoPhaseRuntime(Protocol):
     def dedup_content_duplicate_nodes(self, nodes: list[WikiNode]) -> list[WikiNode]: ...
 
     def disambiguate_duplicate_titles(self, nodes: list[WikiNode], chunks: list[ResolvedChunk]) -> None: ...
+
+    @staticmethod
+    def merge_by_concept_key(nodes: list[WikiNode]) -> list[WikiNode]: ...
 
     # ── Methods the flows call ───────────────────────────────────────
     def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction: ...

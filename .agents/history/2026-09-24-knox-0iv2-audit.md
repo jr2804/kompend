@@ -106,14 +106,23 @@ by a different design** (`.7 .11`, and `.12` narrowed to dead-code removal),
 
 ### knox-0iv2.9 — Agentic CaptureAgent + DistillAgent — PARTIAL
 
-- **Distill half: DONE.** `agents/distill_agentic.py:20`, factory `:28` (`tools=build_distill_tools()` `:53` + harness caps). `distill_tools.py:22` → `get_group`, `save_page`, matching `templates/capture/distill_agentic_system.md.j2`. Reachable: `cli/cmds/knowledge/capture.py:206`, `mcp/tools/knowledge.py:214`. (Was HOLLOW — no tools/caps — fixed by knox-3 this session.)
+- **Distill half: DONE.** `agents/distill_agentic.py:20`, factory `:28`
+  (`tools=build_distill_tools()` `:53` + harness caps). `distill_tools.py:22` →
+  `get_group`, `save_page`, matching `templates/capture/distill_agentic_system.md.j2`.
+  Reachable: `cli/cmds/knowledge/capture.py:206`, `mcp/tools/knowledge.py:214`. (Was
+  HOLLOW — no tools/caps — fixed by knox-3 this session.)
 - **Capture half: NOT IMPLEMENTED.** No `AgenticCaptureAgent` exists; `agents/capture.py:12 CaptureAgent` is single-shot, used by `capture/capture.py:79 _extract_with_agent`. The planned agentic capture was never built (the `capture_agentic.py` shim was dropped in `d443c583`).
 - Rec: split — close the distill child; drop or re-scope the capture child.
 
 ### knox-0iv2.10 — Agentic QueryAgent — HOLLOW/GHOST
 
 - Impl: `agents/query_agentic.py:16`; `query_tools.py:22` → `search_wiki`, `read_page`, `add_finding`; `templates/search/query_agentic_system.md.j2` matches.
-- **No factory and no wiring:** `synthesize_results(..., query_agent=QueryAgent|AgenticQueryAgent|None)` (`search/retriever.py:303`) — grep shows **no caller ever passes `query_agent=`** (`cli/_query_helpers.py:269`, `search/pipeline.py:153`, `search/retriever.py:112` all omit it). `build_query_tools()` has **zero callers**. Commit `6c1988c0` wired the *param* but never a construction site.
+- **No factory and no wiring:** `synthesize_results(...,
+  query_agent=QueryAgent|AgenticQueryAgent|None)` (`search/retriever.py:303`) — grep
+  shows **no caller ever passes `query_agent=`** (`cli/_query_helpers.py:269`,
+  `search/pipeline.py:153`, `search/retriever.py:112` all omit it).
+  `build_query_tools()` has **zero callers**. Commit `6c1988c0` wired the *param* but
+  never a construction site.
 - Rec: re-scope/delete — same hollow pattern.
 
 ### knox-0iv2.11 — ReferenceExtractionAgent + ReferenceResolverAgent — COMPLETE, but not agentic

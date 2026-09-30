@@ -30,9 +30,12 @@ Search order (first match wins):
 | 2 | User global overrides | `~/.config/knox/templates/` |
 | 3 (lowest) | Built-in package templates | `importlib.resources` in `knox/templates/` |
 
-    from knox.core.templates import get_template_loader
-    loader = get_template_loader()
-    rendered = loader.render("lint/clarity-score.md.j2", title="My Page", content="...")
+```python
+from knox.core.templates import get_template_loader
+
+loader = get_template_loader()
+rendered = loader.render("lint/clarity-score.md.j2", title="My Page", content="...")
+```
 
 ## Local Contracts
 
@@ -45,7 +48,7 @@ Search order (first match wins):
 - Every template **starts with a YAML frontmatter block** delimited by `---`,
   parsed by `TemplateLoader` and absent from the rendered output:
 
-```
+```text
 ---
 variables:
   - name: title
