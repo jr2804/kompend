@@ -88,7 +88,10 @@ Tick these BEFORE writing a function:
 `.githooks` (`mise run install-hooks`). `.githooks/pre-commit` runs the
 forbidden ruff rules plus the two AST gates, then `_delegate.sh` forwards to the
 hook files other tools own in `.beads/hooks` (beads, repowise) — never edit
-those, the tools regenerate them. `check_dox.py` is not wired yet: its
-duplication check flags the deliberately parallel AGENTS.md examples under
-`.agents/skills/*/references/` and the standard empty-child-index line.
-No CI job runs these; `mise run check-all` runs the two AST gates.
+those, the tools regenerate them. `check_dox.py` is not wired yet: it reports
+three over-budget files (`.agents/HISTORY.md`, `.agents/POLICIES.md`,
+`src/knox/AGENTS.md`) and one real duplication (the same empty-child-index
+sentence in three leaf docs). Its scope is the DOX files plus the core
+`.agents/` state files — `.agents/skills/**` and `.agents/history/**` are not
+project DOX and are skipped. No CI job runs these; `mise run check-all` runs the
+two AST gates.

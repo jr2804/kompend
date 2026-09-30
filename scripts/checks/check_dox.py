@@ -28,6 +28,18 @@ from pathlib import Path
 AGENTS_FILE_BUDGET = 120  # .agents/*.md
 SUBTREE_BUDGET = 250  # subtree AGENTS.md
 
+#: The fixed core state files under ``.agents/`` — always-injected context, so
+#: their size is budgeted. Everything else in ``.agents/`` (skills, plans,
+#: archived history) is not project DOX and is out of scope.
+CORE_AGENTS_FILES: tuple[str, ...] = (
+    "ONBOARDING.md",
+    "POLICIES.md",
+    "FILES.md",
+    "CHECKS.md",
+    "MAINTENANCE.md",
+    "HISTORY.md",
+)
+
 # Files exempt from size budget (root AGENTS.md is always loaded but is the
 # project rail — it's allowed to be larger than a subtree doc).
 SIZE_EXEMPT: set[str] = set()
@@ -80,18 +92,28 @@ def main() -> int:
 
 
 def _collect_dox_files(root: Path) -> list[Path]:
-    """Return AGENTS.md files and core .agents/ policy files under *root*."""
+    """Return AGENTS.md files and core .agents/ policy files under *root*.
+
+    ``.agents/`` holds two different things: the fixed core state files (a
+    size budget matters — they are always injected) and material that is not
+    project DOX at all (``skills/**``, ``plans/``, ``history/``, including the
+    parallel example AGENTS.md files a skill ships as reference). Only the core
+    files are checked; skipping the rest is what keeps the duplication check
+    from flagging those examples as redundancy.
+    """
     files: list[Path] = []
-    # All AGENTS.md files (root + subtree)
+    # All AGENTS.md files outside .agents/ (root + subtree DOX contracts).
+    agents_root = root / ".agents"
     for p in root.rglob("AGENTS.md"):
         if ".venv" in p.parts or "node_modules" in p.parts or ".git" in p.parts:
             continue
+        if agents_root in p.parents:
+            continue
         files.append(p)
-    # Core .agents/ policy files only (not skills/, plans/, etc.)
-    agents_dir = root / ".agents"
-    if agents_dir.is_dir():
-        for name in ("POLICIES.md", "CHECKS.md", "FILES.md", "MAINTENANCE.md", "HISTORY.md"):
-            p = agents_dir / name
+    # Core .agents/ state files only (not skills/, plans/, history/, etc.)
+    if agents_root.is_dir():
+        for name in CORE_AGENTS_FILES:
+            p = agents_root / name
             if p.is_file():
                 files.append(p)
     return sorted(files)
