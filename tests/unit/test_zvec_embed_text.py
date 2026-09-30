@@ -221,18 +221,18 @@ class TestManifestStaleness:
         assert _content_hash(_node("n1")) == "893fa586f558d6e1"
 
 
-@pytest.fixture
-def zvec_db(tmp_path: Path) -> Path:
-    """Provide a temp directory for zvec test databases."""
-    return tmp_path / "zvec_test_store"
-
-
 class _ManifestRow(TypedDict):
     """The `vector_manifest` row a build records: ids, hashes, embed version."""
 
     embed_version: int
     ids: list[str]
     hashes: dict[str, str]
+
+
+@pytest.fixture
+def zvec_db(tmp_path: Path) -> Path:
+    """Provide a temp directory for zvec test databases."""
+    return tmp_path / "zvec_test_store"
 
 
 def _manifest_row(store: ZvecWikiStore) -> _ManifestRow:
