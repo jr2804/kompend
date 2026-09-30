@@ -21,6 +21,7 @@ from knox.compilation._two_phase_core import (
     Extraction,
     ExtractionSet,
     TwoPhaseRuntime,
+    context_safety_tokens,
     merge_extractions,
     tokens_to_chars,
     try_pydanticai_extraction,
@@ -88,12 +89,7 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
     num_sources = len(by_source)
     logger.info("TwoPhase: extracting %d source(s)", num_sources)
 
-    cw = compiler._context_window
-    budget = compiler._budget
-    extract_char_budget = tokens_to_chars(
-        max(1, cw.max_input - compiler._extract_system_tokens - budget.extract_output_max),
-        chars_per_token=compiler._config.llm.default_chars_per_token,
-    )
+    extract_char_budget = _extract_char_budget(compiler)
 
     # Pre-compute total chars for weighted progress bar (larger files = more progress)
     source_char_totals: list[int] = []
@@ -206,26 +202,6 @@ def batch_texts(texts: list[str], char_budget: int) -> list[str]:
     return batches
 
 
-def _extract_cache_deps(compiler: TwoPhaseRuntime, text: str) -> dict[str, str]:
-    """Cache dependencies for one extraction batch.
-
-    Single source of truth for the ``extract`` cache key — used by both
-    :func:`extract_one` and :func:`extract_incremental`, which must agree.
-
-    ``CacheDeps.MODEL`` is part of the key because extraction output is
-    model-specific (which concepts a model finds, how it names them, how
-    verbose the definitions are).  Without it, switching models replays
-    the previous model's extractions instead of re-running them.
-    """
-    budget = compiler._budget
-    return {
-        CacheDeps.SOURCE_TEXT: hashlib.sha256(text.encode()).hexdigest(),
-        CacheDeps.MODEL: compiler._model or "",
-        CacheDeps.CHUNK_SIZE_MIN: str(budget.chunk_size_min),
-        CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
-    }
-
-
 def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extraction_system: str) -> Extraction | None:
     """Run a single extraction LLM call with cache."""
     extract_deps = _extract_cache_deps(compiler, combined)
@@ -297,6 +273,38 @@ def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extractio
     if not compiler._config.no_cache:
         compiler._cache_store.set("extract", extract_deps, result.to_dict())
     return result
+
+
+def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
+    """Character budget for one extraction batch.
+
+    The per-request cost that is NOT source content: the system template, the
+    reserved output, and the shared context safety margin.  Every term is
+    measured from the resolved config, never hard-coded.
+
+    The safety margin matters here: the chars-per-token heuristic undercounts
+    token-dense text (formulas, tables), so a nominally exact-fit batch used to
+    overflow a small local model's window — observed as
+    ``request (65762 tokens) exceeds the available context size (65536)``.
+    Content is never cropped: a smaller budget splits the source across more
+    batches.
+    """
+    cw = compiler._context_window
+    budget = compiler._budget
+    safety_tokens = context_safety_tokens(cw.max_input)
+    overhead = compiler._extract_system_tokens + budget.extract_output_max + safety_tokens
+    logger.info(
+        "TwoPhase: extract budget (cw=%d sys=%d out=%d safety=%d) -> %d tokens for content",
+        cw.max_input,
+        compiler._extract_system_tokens,
+        budget.extract_output_max,
+        safety_tokens,
+        max(1, cw.max_input - overhead),
+    )
+    return tokens_to_chars(
+        max(1, cw.max_input - overhead),
+        chars_per_token=compiler._config.llm.default_chars_per_token,
+    )
 
 
 def extract_incremental(
@@ -393,6 +401,26 @@ def extract_incremental(
         if compiler._batch_tracker.should_stop():
             return results, True
     return results, False
+
+
+def _extract_cache_deps(compiler: TwoPhaseRuntime, text: str) -> dict[str, str]:
+    """Cache dependencies for one extraction batch.
+
+    Single source of truth for the ``extract`` cache key — used by both
+    :func:`extract_one` and :func:`extract_incremental`, which must agree.
+
+    ``CacheDeps.MODEL`` is part of the key because extraction output is
+    model-specific (which concepts a model finds, how it names them, how
+    verbose the definitions are).  Without it, switching models replays
+    the previous model's extractions instead of re-running them.
+    """
+    budget = compiler._budget
+    return {
+        CacheDeps.SOURCE_TEXT: hashlib.sha256(text.encode()).hexdigest(),
+        CacheDeps.MODEL: compiler._model or "",
+        CacheDeps.CHUNK_SIZE_MIN: str(budget.chunk_size_min),
+        CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
+    }
 
 
 def _compact_history_inplace(history: list[ModelMessage], max_tokens: int) -> None:

@@ -86,6 +86,29 @@ effective  = max(chunk_size_min, min(raw, chunk_size_max))
 > sacrificing safety on small models, where the ``chunk_size_min`` floor
 > still applies.
 
+### Headroom margin
+
+Every stage that sizes a request against the context window also holds back a
+safety margin, defined once as ``context_safety_tokens()`` in
+`knox.compilation._two_phase_core`:
+
+```text
+margin = max(512, 8% of the context window)
+```
+
+Two reasons it is not simply "whatever the measured overhead leaves free":
+
+1. A server's **effective** usable context is smaller than the nominal window
+   (KV-cache slotting, prompt-cache rollover).
+2. ``default_chars_per_token`` (3.85) is a heuristic — it **undercounts**
+   token-dense content (formulas, tables, identifiers), so a nominally
+   exact-fit request can still overflow. Observed on a formula-heavy standard:
+   `request (65762 tokens) exceeds the available context size (65536 tokens)`.
+
+The margin never crops content — the content budget shrinks, so the work
+splits across more batches or segments. Both extraction batching and agentic
+generation segments use it, from the single shared definition.
+
 ### Concrete Sizing by Model Class
 
 | Model context | Available (− reserve) | Effective after clamp | Clamped? |

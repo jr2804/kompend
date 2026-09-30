@@ -56,6 +56,23 @@ _DEFAULT_CHARS_PER_TOKEN: float = 3.85
 # become concept pages.
 _RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
 
+
+#: Fraction of a model's context window held back as headroom beyond the
+#: measured per-request overhead.  Two reasons: a server's *effective* usable
+#: context is smaller than the nominal window (KV cache slotting, prompt-cache
+#: rollover), and the chars-per-token heuristic undercounts token-dense content
+#: (formulas, tables, identifiers).  Without it a nominally exact-fit request
+#: still overflows — observed as ``request (65762 tokens) exceeds the available
+#: context size (65536 tokens)`` on a formula-heavy standard.
+#:
+#: Content is never cropped because of this margin: the content budget shrinks,
+#: so the work splits across more batches/segments instead.
+CONTEXT_SAFETY_FRACTION: float = 0.08
+
+#: Floor for :func:`context_safety_tokens` so a narrow window cannot round the
+#: headroom away to nothing.
+CONTEXT_SAFETY_TOKENS: int = 512
+
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
@@ -269,6 +286,17 @@ class TwoPhaseRuntime(Protocol):
     def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction: ...
 
     def _report(self, current: int, total: int, description: str) -> None: ...
+
+
+def context_safety_tokens(max_input: int) -> int:
+    """Headroom in tokens to hold back from a *max_input*-token context window.
+
+    The single definition of the safety margin shared by every stage that
+    sizes a request against the context window (extraction batching, agentic
+    generation segments) — so the stages cannot drift apart on how much of the
+    window is actually available for content.
+    """
+    return max(CONTEXT_SAFETY_TOKENS, int(round(CONTEXT_SAFETY_FRACTION * max_input)))
 
 
 def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int:

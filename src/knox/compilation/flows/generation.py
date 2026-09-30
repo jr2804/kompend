@@ -23,9 +23,11 @@ from knox.compilation._checkpoints import (
     save_gen_checkpoint,
 )
 from knox.compilation._two_phase_core import (
+    CONTEXT_SAFETY_FRACTION,
     ExtractionSet,
     TwoPhaseRuntime,
     compute_quality_score,
+    context_safety_tokens,
     extract_images_from_chunks,
     segment_sources,
     slugify,
@@ -87,16 +89,6 @@ _UPSTREAM_TRANSIENT_MAX_RETRIES: int = 3
 _UPSTREAM_TRANSIENT_BACKOFF_BASE: float = 1.0
 
 
-#: Safety floor so a pathological known_titles/pinned list cannot zero the
-#: segment budget (content is preserved via more segments instead).
-_AGENTIC_SAFETY_TOKENS = 512
-#: Fraction of the context window reserved as extra headroom beyond the
-#: measured overhead. Ollama's effective usable context is smaller than the
-#: nominal num_ctx (KV cache + prompt-cache rollover), so exact-fit requests
-#: still stall; a fraction-based margin keeps the full request inside the
-#: *effective* window. Content is never cropped — the segment budget shrinks
-#: and sources split across more segments.
-_AGENTIC_SAFETY_FRACTION = 0.08
 #: Cosine threshold for the T3 semantic tier — catches paraphrases and
 #: punctuation variants the string tier misses (e.g. "ITU-T P.10/G.100" vs
 #: "P.10 G.100 Recommendation"). Conservative: a false *credit* silently
@@ -835,7 +827,7 @@ def _agentic_reserved_tokens(
     pinned_tokens = _token_estimate("\n".join(pinned_clean), cpt)
     categories = compiler._config.extraction_categories
     categories_tokens = _token_estimate("\n".join(f"{k}: {v}" for k, v in categories.items()), cpt)
-    fraction_safety = max(_AGENTIC_SAFETY_TOKENS, int(round(_AGENTIC_SAFETY_FRACTION * compiler._context_window.max_input)))
+    fraction_safety = context_safety_tokens(compiler._context_window.max_input)
     total = (
         system_tokens
         + prompt_tokens
@@ -857,7 +849,7 @@ def _agentic_reserved_tokens(
         _AGENTIC_TOOL_FRAMING_TOKENS,
         _AGENTIC_FETCH_ROUND_TOKENS,
         fraction_safety,
-        100 * _AGENTIC_SAFETY_FRACTION,
+        100 * CONTEXT_SAFETY_FRACTION,
     )
     return total
 

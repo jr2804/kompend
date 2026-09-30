@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
-from knox.compilation._two_phase_core import Extraction
+from knox.compilation._two_phase_core import Extraction, chars_to_tokens, context_safety_tokens
 from knox.compilation.flows import extraction as ext_module
 from knox.compilation.flows.extraction import (
     _compact_history_inplace,
@@ -268,25 +268,55 @@ class TestExtractIncrementalHistoryCompaction:
         compact_mock.assert_called_once()
 
 
-def _make_compiler(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> TwoPhaseCompiler:
-    config = _make_config(strategy)
-    return TwoPhaseCompiler(config=config, context_window=_make_cw())
+# ── extraction batch sizing ────────────────────────────────────────────
 
 
-def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> PipelineConfig:
-    # Absolute vault root: a CWD-relative source_dir/output_dir would resolve the
-    # vault store against the process CWD and write .knox/ into the repo root.
-    vault = make_tmp_vault()
-    return PipelineConfig(
-        source_dir=vault / "sources",
-        output_dir=vault / "wiki",
-        llm=LLMConfig(default_model="ollama/test", vlm_model="vlm", extraction_strategy=strategy),
-        embedding=EmbeddingConfig(model="model"),
-    )
+class TestContextSafetyTokens:
+    """Shared safety margin used by extraction batching and generation segments."""
+
+    def test_fraction_of_window(self) -> None:
+        assert context_safety_tokens(65536) == round(0.08 * 65536)
+
+    def test_floor_wins_on_narrow_windows(self) -> None:
+        # 8% of 2048 is 164 — the floor keeps the margin meaningful.
+        assert context_safety_tokens(2048) == 512
 
 
-def _make_cw() -> ContextWindow:
-    return ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
+class TestExtractCharBudget:
+    """The batch budget must leave headroom for the safety margin.
+
+    Regression: an exact-fit batch on a formula-dense standard overflowed a
+    65536-token local model (65762 tokens), because the chars-per-token
+    heuristic undercounts token-dense text.
+    """
+
+    def test_reserves_safety_margin(self) -> None:
+        compiler = _make_big_window_compiler()
+        cpt = compiler._config.llm.default_chars_per_token
+        cw = compiler._context_window.max_input
+
+        budget = ext_module._extract_char_budget(compiler)
+        content_tokens = chars_to_tokens(budget, chars_per_token=cpt)
+        safety = context_safety_tokens(cw)
+
+        # Everything that lands in the request, plus the margin, must fit.
+        assert content_tokens + compiler._extract_system_tokens + compiler._budget.extract_output_max + safety <= cw
+
+    def test_budget_is_smaller_than_without_margin(self) -> None:
+        compiler = _make_big_window_compiler()
+        cpt = compiler._config.llm.default_chars_per_token
+        cw = compiler._context_window.max_input
+
+        with_margin = ext_module._extract_char_budget(compiler)
+        without = ext_module.tokens_to_chars(
+            cw - compiler._extract_system_tokens - compiler._budget.extract_output_max,
+            chars_per_token=cpt,
+        )
+
+        assert with_margin < without
+        # The gap is the safety margin, converted to chars (±2 for int truncation).
+        expected_gap = ext_module.tokens_to_chars(context_safety_tokens(cw), chars_per_token=cpt)
+        assert abs((without - with_margin) - expected_gap) <= 2
 
 
 # ── extract cache key ───────────────────────────────────────────────────
@@ -335,3 +365,38 @@ class TestExtractCacheDeps:
 
         deps = compiler._cache_store.get_dict.call_args.args[1]
         assert deps[CacheDeps.MODEL] == "ollama/test"
+
+
+def _make_big_window_compiler() -> TwoPhaseCompiler:
+    """Compiler with a realistic cloud-scale window.
+
+    Batch sizing is only meaningful when the window comfortably exceeds the
+    reserved output — the 8192-token fixture window is smaller than
+    ``extract_output_max`` and collapses every budget to the 1-token floor.
+    A 65536-token window mirrors the local model this was observed on.
+    """
+    compiler = _make_compiler()
+    compiler._context_window = ContextWindow(max_input=65536, max_output=32768, source=ContextSource.OLLAMA)
+    compiler._extract_system_tokens = 1000
+    return compiler
+
+
+def _make_compiler(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> TwoPhaseCompiler:
+    config = _make_config(strategy)
+    return TwoPhaseCompiler(config=config, context_window=_make_cw())
+
+
+def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> PipelineConfig:
+    # Absolute vault root: a CWD-relative source_dir/output_dir would resolve the
+    # vault store against the process CWD and write .knox/ into the repo root.
+    vault = make_tmp_vault()
+    return PipelineConfig(
+        source_dir=vault / "sources",
+        output_dir=vault / "wiki",
+        llm=LLMConfig(default_model="ollama/test", vlm_model="vlm", extraction_strategy=strategy),
+        embedding=EmbeddingConfig(model="model"),
+    )
+
+
+def _make_cw() -> ContextWindow:
+    return ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
