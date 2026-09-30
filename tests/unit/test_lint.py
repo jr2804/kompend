@@ -791,10 +791,10 @@ class TestEdgeCases:
 
         ``RumdlRule`` and ``DuplicateReferencesRule`` are NOT singletons —
         they are instantiated by ``LintRunner._resolve_rules`` with config
-        values. The singleton list has 11 entries; ``RULE_BY_NAME`` maps all
-        13 names.
+        values. The singleton list has 12 entries; ``RULE_BY_NAME`` maps all
+        14 names.
         """
-        assert len(STRUCTURAL_RULES) == 11
+        assert len(STRUCTURAL_RULES) == 12
         expected = {
             "image-embed",
             "broken-wikilinks",
@@ -807,6 +807,7 @@ class TestEdgeCases:
             "stale-page",
             "source-not-found",
             "orphan-attachments",
+            "unreferenced-attachments",
             "rumdl",
             "duplicate-references",
         }

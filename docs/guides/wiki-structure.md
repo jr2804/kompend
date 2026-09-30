@@ -121,7 +121,8 @@ project/
 │   ├── _captured/         # capture/learn output
 │   └── _distilled/        # distill output
 ├── attachments/           # Durable media — per-source attachments + images
-│                          # copied out of .knox for wiki page embeds
+│                          # copied out of .knox for wiki page embeds;
+│                          # each page embeds the figures of ITS sources
 ├── wiki/                  # Compiled wiki (default: wiki/, resolved from --wiki-dir)
 │   ├── index.md           # Portable catalog — links EVERYTHING the wiki generates
 │   ├── log.md             # Activity journal (appended, never overwritten)
@@ -156,7 +157,12 @@ answers queries:
 - Without the optional vector sidecar, query falls back to keyword search
   over the same pages — same corpus, lower recall on paraphrase.
 - Wiki pages never reference `.knox/` (a structural lint rule enforces
-  this); embedded images are copied into `attachments/` at write time.
+  this); embedded images are copied into `attachments/<source-slug>/` at write
+  time. A page embeds the figures of the sources its provenance names; the
+  slug is derived from the image's own source, and an image that matches no
+  provenance entry is dropped rather than linked. Copies no page references
+  any more are reported by the `unreferenced-attachments` rule and removed
+  with `--fix-destructive`.
 
 `exported/` holds on-demand full-source dumps (`knox sources export`,
 default target when OUTPUT is omitted). They are reference material,

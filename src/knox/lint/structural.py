@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -54,6 +55,7 @@ _IMAGE_EXTENSIONS: frozenset[str] = frozenset(
 )
 
 #: ``[[img.png]]`` without the ``!`` embed prefix.
+_ATTACHMENT_LINK_RE = re.compile(r"\]\((?P<target>[^)]*attachments/[^)]+)\)")
 _IMAGE_EMBED_RE = re.compile(
     r"(?<!\!)\[\[([^\]]+\.(?:png|jpg|jpeg|gif|svg|webp|bmp|tiff))\]\]",
     re.IGNORECASE,
@@ -559,6 +561,103 @@ class StalePageRule(BaseLintRule):
 # ── Rule 8: source-not-found ────────────────────────────────────────────
 
 
+class UnreferencedAttachmentsRule(BaseLintRule):
+    """Detect published media no page references any more.
+
+    The vault writer copies every referenced figure out of ``.knox/`` into
+    ``attachments/<source-slug>/`` (markdown-only invariant). Nothing removes
+    those copies when a page is rewritten to reference fewer images, when a
+    source's slug changes (``sources_report`` → ``report``), or when a page
+    that referenced a directory is itself gone — so ``attachments/`` grows a
+    stale copy for every such change.
+
+    A file is unreferenced when no page under the vault links it **and** it is
+    not registered in the attachment manifest: registered files are
+    user-added inputs (``knox attachments add``), not writer output, and stay
+    even when no page embeds them yet. ``--fix-destructive`` deletes the
+    unregistered ones and prunes the directories they leave empty.
+    """
+
+    name = "unreferenced-attachments"
+    description = "Published media that no page references and no manifest registers"
+
+    #: Deletes files on disk — same opt-in contract as
+    #: :class:`OrphanAttachmentsRule`.
+    destructive: ClassVar[bool] = True
+
+    # Populated by check() so fix() does not need sources_dir threaded through.
+    _last_sources_dir: str | None = None
+
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
+        self._last_sources_dir = sources_dir
+        if sources_dir is None:
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided")]
+
+        base_dir = Path(sources_dir).parent
+        vp = VaultPaths(base_dir)
+        if not vp.attachments_dir.is_dir():
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No attachments directory")]
+
+        stale = unreferenced_attachment_files(base_dir)
+        if not stale:
+            return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No unreferenced attachments")]
+        return [
+            LintResult(
+                rule=self.name,
+                outcome=LintRuleOutcome.FAIL,
+                severity=Severity.WARNING,
+                message=(
+                    f"Unreferenced attachment '{rel}' — no page links it and the manifest does not "
+                    "register it (recompile after a page change, or delete it with --fix-destructive)"
+                ),
+                details={"path": rel},
+            )
+            for rel in stale
+        ]
+
+    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
+        """Delete unreferenced, unregistered attachment files (destructive).
+
+        Mirrors :meth:`OrphanAttachmentsRule.fix`: the lint runner's
+        ``--fix-destructive`` opt-in is the only trigger, and a failure leaves
+        the result FAIL with the error recorded. Empty slug directories are
+        pruned afterwards.
+        """
+        sources_dir = self._last_sources_dir
+        if not results or sources_dir is None:
+            return list(results)
+
+        base_dir = Path(sources_dir).parent
+        vp = VaultPaths(base_dir)
+        updated: list[LintResult] = []
+        deleted = 0
+        for r in results:
+            if r.outcome != LintRuleOutcome.FAIL:
+                updated.append(r)
+                continue
+            rel_path = (r.details or {}).get("path")
+            if not rel_path:
+                updated.append(r)
+                continue
+            abs_path = base_dir / rel_path
+            try:
+                if abs_path.is_file():
+                    abs_path.unlink()
+                    deleted += 1
+                r.fix_applied = True
+                r.message = f"Deleted unreferenced attachment '{rel_path}'"
+            except OSError as exc:
+                logger.warning("Could not delete unreferenced attachment %s: %s", abs_path, exc)
+                r.message = f"Could not delete unreferenced attachment '{rel_path}': {exc}"
+                r.details = {**(r.details or {}), "error": str(exc)}
+            updated.append(r)
+
+        if deleted:
+            logger.info("Deleted %d unreferenced attachment file(s)", deleted)
+            _prune_empty_dirs(vp.attachments_dir)
+        return updated
+
+
 class SourceNotFoundRule(BaseLintRule):
     """Detect pages that reference source files not present on disk."""
 
@@ -993,6 +1092,73 @@ class RumdlRule(BaseLintRule):
             return []
 
 
+def unreferenced_attachment_files(base_dir: Path) -> list[str]:
+    """Vault-relative attachment files no page links and the manifest does not know.
+
+    Shared with reporting so the predicate has one implementation. Page links
+    are the source of truth (markdown-first invariant): a file the written
+    pages do not reference is not part of the wiki, whatever produced it.
+    """
+    vp = VaultPaths(base_dir)
+    if not vp.attachments_dir.is_dir():
+        return []
+
+    referenced = _referenced_attachment_paths(base_dir)
+    registered = {att.path for att in AttachmentManifest(vp.attachments_manifest_file).read_all().values()}
+
+    stale: list[str] = []
+    for path in sorted(vp.attachments_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = path.relative_to(base_dir).as_posix()
+        inner = path.relative_to(vp.attachments_dir).as_posix()
+        if rel in referenced or inner in registered:
+            continue
+        stale.append(rel)
+    return stale
+
+
+def _referenced_attachment_paths(base_dir: Path) -> set[str]:
+    """Every vault-relative ``attachments/...`` path linked from a markdown file.
+
+    Reads the written pages, not the in-memory graph: the writer rewrites image
+    paths to relative links at write time, so only the files on disk show what
+    the wiki actually references. Links resolve page-relative first (what the
+    wiki writer emits) and vault-relative as a fallback (what an export uses).
+    """
+    referenced: set[str] = set()
+    for md in base_dir.rglob("*.md"):
+        parts = md.relative_to(base_dir).parts[:-1]
+        if any(part in {".knox", "sources", "attachments"} for part in parts):
+            continue
+        try:
+            text = md.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        for raw in _ATTACHMENT_LINK_RE.findall(text):
+            link = raw.strip().strip("<>").split("#", 1)[0]
+            for candidate in (md.parent / link, base_dir / link):
+                rel = _vault_relative(base_dir, candidate)
+                if rel is not None:
+                    referenced.add(rel)
+    return referenced
+
+
+def _vault_relative(base_dir: Path, candidate: Path) -> str | None:
+    """``candidate`` as a vault-relative posix path, or ``None`` when outside."""
+    try:
+        return Path(os.path.normpath(candidate)).relative_to(base_dir).as_posix()
+    except ValueError:
+        return None
+
+
+def _prune_empty_dirs(attachments_root: Path) -> None:
+    """Remove directories left empty under ``attachments/`` (deepest first)."""
+    for d in sorted((p for p in attachments_root.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+        with contextlib.suppress(OSError):
+            d.rmdir()
+
+
 # ── Rule: orphan-attachments ─────────────────────────────────────────────
 
 
@@ -1118,6 +1284,7 @@ STRUCTURAL_RULES: list[BaseLintRule] = [
     StalePageRule(),
     SourceNotFoundRule(),
     OrphanAttachmentsRule(),
+    UnreferencedAttachmentsRule(),
 ]
 
 RULE_BY_NAME: dict[str, Any] = {r.name: r for r in STRUCTURAL_RULES}

@@ -23,6 +23,12 @@ base_dir/
 relative path with `/` → `_`. For `report.pdf` → `report/`. For
 `papers/thesis.pdf` → `papers_thesis/`.
 
+Extracted figures share this layout: a page's images are copied to the slug of
+**the source they came from** (not of the page's first provenance entry, which
+may name a venue or product that is not a source at all). One directory per
+source holds each figure once; images a page cannot attribute to a source are
+not embedded.
+
 ## Registering attachments
 
 Use `knox attachments add` (alias `knox att add`) to register a file:
