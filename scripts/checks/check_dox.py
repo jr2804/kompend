@@ -42,6 +42,12 @@ _IGNORE_RE = re.compile(r"^(#+\s|[-*]\s|\d+\.\s|```|`[^`]+`$|\||\[rtk:|<!--|// )
 
 
 def main() -> int:
+    # Findings quote file contents, which can hold any Unicode (→, ≤, typographic
+    # quotes). A Windows console defaults to cp1252, so printing them raises
+    # UnicodeEncodeError — the checker crashed instead of reporting, and a
+    # crashed gate reads as "no findings".
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="DOX file size-budget and duplication scanner")
     parser.add_argument(
         "--json",

@@ -1,0 +1,3 @@
+#!/usr/bin/env sh
+# See _delegate.sh — beads and repowise own their hook files; this forwards.
+exec "$(dirname "$0")/_delegate.sh" "post-commit" "$@"

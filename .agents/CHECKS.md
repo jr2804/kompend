@@ -19,7 +19,8 @@ first — the alternatives are all antipatterns:
 
 A small set of scripts catch what linting misses: bare-string contract keys,
 magic-number crops, banned-noqa patterns. Run them locally before pushing.
-All exit non-zero on violations; all run in CI.
+All exit non-zero on violations; `mise run check-all` runs them (no CI job
+does — see **Wiring** below).
 
 Two guarantees keep them honest: a scan that finds no files is an error (an
 empty scan is not a pass), and an enforced contract that no longer exists in
@@ -79,8 +80,15 @@ Tick these BEFORE writing a function:
 |---|---|---|
 | `ruff check` | Most lint issues (PLC0415/E402 are warnings, not errors) | ruff.toml |
 | `scripts/checks/check_field_consistency.py` | Bare-string contract keys | scripts/checks/ |
-| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` | scripts/checks/ || `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
+| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` | scripts/checks/ |
+| `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
 | `scripts/analyze/analyze_codebase.py` | Files/submodules exceeding net-line targets (>350 lines/file, >7 files/submodule) | scripts/analyze/ |
 
-All four run in CI. Run locally: `mise run check-all`.
-Run the codebase analyzer: `uv run python scripts/analyze/analyze_codebase.py`.
+**Wiring.** Git honours one `core.hooksPath`; this repo points it at
+`.githooks` (`mise run install-hooks`). `.githooks/pre-commit` runs the
+forbidden ruff rules plus the two AST gates, then `_delegate.sh` forwards to the
+hook files other tools own in `.beads/hooks` (beads, repowise) — never edit
+those, the tools regenerate them. `check_dox.py` is not wired yet: its
+duplication check flags the deliberately parallel AGENTS.md examples under
+`.agents/skills/*/references/` and the standard empty-child-index line.
+No CI job runs these; `mise run check-all` runs the two AST gates.
