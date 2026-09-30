@@ -125,7 +125,7 @@ class MarkdownContext:
     reading_order: int = 0
     #: Optional resolver. ``None`` means "no figures" — resolved lazily inside
     #: :func:`markdown_to_elements` so the default never names a module-level
-    #: function (csort's stepdown ordering would move it after the dataclass).
+    #: function (pyreorder's stepdown ordering would move it after the dataclass).
     resolve_image: ImageResolver | None = None
 
 

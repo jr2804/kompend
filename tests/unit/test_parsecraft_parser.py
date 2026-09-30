@@ -45,7 +45,7 @@ from knox.preprocessing.parsers._registry import KNOWN_BACKENDS
 pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
 
 #: Resolved lazily via importlib: a static ``from ... import parsecraft_parser``
-#: would register the backend at collection time (csort hoists function-level
+#: would register the backend at collection time (pyreorder hoists function-level
 #: imports to module level — the TYPE_CHECKING incident, commit 010097d) and
 #: broaden ``get_all_extensions()`` for the rest of the test process.
 
