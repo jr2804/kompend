@@ -124,7 +124,7 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
         state_dir,
         wiki,
         embed_model=cfg.knox.compile.embedding.model,
-        embed_attachments=bool(cfg.knox.attachments.embed or cfg.knox.search.embed_attachments),
+        embed_attachments=cfg.knox.attachments.embed,
     )
     model = cfg.knox.compile.llm.default_model
     llm_cfg = LLMConfig(**cfg.raw.get("compile", {}).get("llm", {}))

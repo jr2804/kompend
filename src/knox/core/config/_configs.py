@@ -483,10 +483,6 @@ class SearchConfig(_KnoxBaseModel):
     contextual: SearchContextualConfig = Field(default_factory=SearchContextualConfig)
     agentic: SearchAgenticConfig = Field(default_factory=SearchAgenticConfig)
     synthesis: SearchSynthesisConfig = Field(default_factory=SearchSynthesisConfig)
-    embed_attachments: bool = Field(
-        default=False,
-        description="DEPRECATED — use attachments.embed. Whether ingestible attachments are included in the vector index.",
-    )
 
 
 class OrganizeConfig(_KnoxBaseModel):

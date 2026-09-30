@@ -36,7 +36,8 @@ def test_index_rebuilds_vector_index(tmp_path: Path, monkeypatch: pytest.MonkeyP
     assert "Indexed 1 nodes" in result.output
     mock_load.assert_called_once()
     mock_build.assert_called_once()
-    # embed_attachments defaults to False (no search.embed_attachments in config)
+    # embed_attachments comes from the canonical key (attachments.embed),
+    # which defaults to False
     call_kwargs = mock_build.call_args.kwargs
     assert call_kwargs["embed_attachments"] is False
     assert call_kwargs["embed_model"] == "test-embed"
@@ -59,7 +60,12 @@ def test_index_no_wiki_exits_error(tmp_path: Path, monkeypatch: pytest.MonkeyPat
 
 
 def test_index_respects_embed_attachments_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Knox index reads search.embed_attachments from config."""
+    """The deprecated search.embed_attachments spelling still reaches the builder.
+
+    The key was renamed to ``attachments.embed``; a config setting the old name
+    is migrated at resolve time (with a deprecation warning), which is the only
+    reason this still works — nothing reads the old key directly.
+    """
     base = tmp_path / "wiki"
     (base / "sources").mkdir(parents=True)
     (base / ".knox").mkdir(parents=True)

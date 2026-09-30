@@ -168,13 +168,22 @@ class ZvecWikiStore:
         *,
         batch_size: int = 10,
         base_dir: Path | None = None,
+        embed_attachments: bool = False,
     ) -> int:
         """Index compiled wiki nodes into the zvec store.
 
         If no provider was set at construction, ``embedding_model`` must be
         given to create one via :func:`make_provider`.
+
+        Coverage comes from :func:`indexable_nodes` — the same rule
+        :meth:`is_stale` compares against — so what gets embedded and what the
+        manifest records can never disagree. Callers pass the whole wiki, not a
+        pre-filtered copy: filtering in two places is how the manifest ended up
+        recording ids the staleness check did not expect, rebuilding the index
+        on the next query.
         """
-        if not wiki.nodes:
+        nodes = indexable_nodes(wiki, embed_attachments=embed_attachments)
+        if not nodes:
             return 0
 
         if self._provider is None:
@@ -183,8 +192,8 @@ class ZvecWikiStore:
             self._provider = make_provider(embedding_model)
 
         self._collection = self._create_collection()
-        count = self._index_nodes(self._collection, wiki.nodes, batch_size, base_dir=base_dir)
-        self._prune_orphans(self._collection, wiki.nodes)
+        count = self._index_nodes(self._collection, nodes, batch_size, base_dir=base_dir)
+        self._prune_orphans(self._collection, nodes)
         # HNSW is built lazily: a configured vector index sits at 0% completeness
         # until optimize() runs. Build it exactly once after the bulk insert —
         # optimize() costs ~40 ms per call, so never call it per document.

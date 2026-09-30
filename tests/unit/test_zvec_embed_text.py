@@ -17,8 +17,7 @@ from pathlib import Path
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode, load_wiki_from_files
-from knox.core.models import CompiledWiki as _CW
-from knox.rag.zvec_store import _EMBED_TEXT_VERSION, ZvecWikiStore, _embed_text, indexable_nodes
+from knox.rag.zvec_store import _EMBED_TEXT_VERSION, ZvecWikiStore, _embed_text
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -71,8 +70,9 @@ class TestIndexEligibilityParity:
         wiki = _wiki(_node("page"), _node("att", source_asset=True))
 
         # Built without attachments: the index covers one node, and the check
-        # must judge against that same one — not both.
-        assert store.build_index(_CW(nodes=indexable_nodes(wiki), edges=[], toc=[])) == 1
+        # must judge against that same one — not both. The store owns that
+        # rule, so no caller-side pre-filtering is involved.
+        assert store.build_index(wiki) == 1
         assert store.is_stale(wiki) is False
         # The same store judged with the other setting *is* stale.
         assert store.is_stale(wiki, embed_attachments=True) is True

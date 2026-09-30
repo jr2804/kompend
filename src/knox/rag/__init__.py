@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 from knox.core.models import CompiledWiki
-from knox.core.models import CompiledWiki as _CW
 from knox.core.paths import VaultPaths
 from knox.rag.zvec_store import ZvecField, ZvecWikiStore, indexable_nodes
 
@@ -41,19 +40,14 @@ def build_vector_index(
     if not embed_model:
         raise ValueError("An explicit 'embed_model' must be provided to build the vector index.")
 
-    nodes = indexable_nodes(wiki, embed_attachments=embed_attachments)
-
-    if not nodes:
-        return 0
-    filtered = _CW(
-        nodes=nodes,
-        edges=wiki.edges,
-        toc=wiki.toc,
-        metadata=wiki.metadata,
-    )
-
     resolved_base = base_dir if base_dir is not None else output_dir.parent
     store = ZvecWikiStore(db_file=VaultPaths(resolved_base).vectors_dir)
-    count = store.build_index(filtered, embedding_model=embed_model, batch_size=batch_size, base_dir=resolved_base)
+    count = store.build_index(
+        wiki,
+        embedding_model=embed_model,
+        batch_size=batch_size,
+        base_dir=resolved_base,
+        embed_attachments=embed_attachments,
+    )
     store.close()
     return count

@@ -37,9 +37,9 @@ if [ -n "$staged" ]; then
 fi
 
 echo "--- gates: field consistency, antipatterns, DOX budgets ---"
-uv run python "$root/scripts/checks/check_field_consistency.py" || exit 1
-uv run python "$root/scripts/checks/check_antipatterns.py" || exit 1
-uv run python "$root/scripts/checks/check_dox.py" || exit 1
+uv run "$root/scripts/checks/check_field_consistency.py" || exit 1
+uv run "$root/scripts/checks/check_antipatterns.py" || exit 1
+uv run "$root/scripts/checks/check_dox.py" || exit 1
 echo "✓ No field-consistency, antipattern, or DOX violations."
 
 exec "$(dirname "$0")/_delegate.sh" pre-commit "$@"
