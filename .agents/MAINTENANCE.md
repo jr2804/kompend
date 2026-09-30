@@ -36,7 +36,8 @@ How to keep `.agents/` files current.
 
 | File | Update when |
 |------|-------------|
-| `POLICIES.md` | Adding/changing boundary rules, priorities, response format |
+| `POLICIES.md` | Adding/changing priorities, boundaries, DOX authoring, response format |
+| `CODE.md` | Adding/changing a code antipattern, boundary, or the error-handling policy |
 | `FILES.md` | Renaming/adding path constants in `paths.py` |
 | `CHECKS.md` | Adding/changing verification commands or checklist items |
 | `HISTORY.md` | Resolving a known violation or making a notable design decision |
@@ -58,8 +59,9 @@ How to keep `.agents/` files current.
 | `.agents/` file | Referenced from |
 |-----------------|-----------------|
 | `POLICIES.md` | Root `AGENTS.md`, all subtree `AGENTS.md` `on entry` headers |
+| `CODE.md` | Root `AGENTS.md`, subtree `AGENTS.md` `on entry` headers, `tests/AGENTS.md` |
 | `FILES.md` | Root `AGENTS.md`, all subtree `AGENTS.md` `on entry` headers |
 | `CHECKS.md` | Root `AGENTS.md`, all subtree `AGENTS.md` `on entry` headers |
-| `HISTORY.md` | `src/knox/AGENTS.md` (Known violations section) |
+| `HISTORY.md` | `src/knox/AGENTS.md` (text-in-code violations pointer) |
 | `ONBOARDING.md` | Root `AGENTS.md` (First time? line) |
 | `MAINTENANCE.md` | Root `AGENTS.md` (.agents/ index) |

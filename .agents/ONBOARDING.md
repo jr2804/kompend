@@ -44,7 +44,8 @@ Every LLM call routes through PydanticAI agents in `src/knox/agents/`.
 | File | Why |
 |------|-----|
 | `AGENTS.md` | Root rail — index to all `.agents/` files |
-| `.agents/POLICIES.md` | Boundaries, priorities, response format |
+| `.agents/POLICIES.md` | Priorities, boundaries, DOX authoring, response format |
+| `.agents/CODE.md` | Code antipatterns, boundaries, error handling |
 | `.agents/FILES.md` | Path constants, VaultPaths, naming |
 | `src/knox/AGENTS.md` | Python-specific: text-in-code, antipatterns |
 | `docs/index.md` | User-facing documentation index |

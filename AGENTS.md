@@ -22,7 +22,8 @@ entry to the relevant subtree, or fetched from `.agents/` when the task needs it
 | File | What | Load when |
 |------|------|-----------|
 | `ONBOARDING.md` | Project orientation, entry points, commands | First session |
-| `POLICIES.md` | Boundaries, priorities, response rules | Always applicable |
+| `POLICIES.md` | Priorities, boundaries, DOX authoring, response rules | Always applicable |
+| `CODE.md` | Code antipatterns, boundaries, error handling | Writing or reviewing code |
 | `FILES.md` | Path constants, VaultPaths, naming | Touching files |
 | `CHECKS.md` | Verification, enforcement, checklist | Before commit |
 | `HISTORY.md` | Past decisions, known violations | Background |
@@ -124,7 +125,7 @@ explicitly asked.
 
 | Path | Scope |
 |------|-------|
-| `src/knox/AGENTS.md` | Python source — text-in-code, antipatterns, Jinja2, packs |
+| `src/knox/AGENTS.md` | Python source — text-in-code rule, child index |
 | `tests/AGENTS.md` | Testing conventions, test antipatterns |
 
 ## Tool Usage

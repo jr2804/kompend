@@ -1,7 +1,7 @@
 # DOX — tests
 
 <!-- on entry: loaded when agent enters tests -->
-<!-- parent: ../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 
@@ -33,6 +33,9 @@ go, and what patterns are forbidden.
   vice versa.
 
 ### Test-specific antipatterns
+
+Universal code antipatterns and error-handling rules — see `.agents/CODE.md`.
+They apply here too: no magic crops, no bare `except` to silence a failure.
 
 1. **No test-creation-by-guessing.** Always `find` or `rg` for existing test
    files before creating. Creating a duplicate test file is worse than not
@@ -88,9 +91,3 @@ go, and what patterns are forbidden.
 - `uv run pytest tests/ -x --timeout=120 -n auto` — all tests in parallel
 - `cd tests && find . -name "test_*.py" | sort` — before creating a new file,
   check this list first
-
----
-
-## Child DOX Index
-
-*No child AGENTS.md files — each subdirectory follows conventions above.*
