@@ -124,6 +124,15 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
   Only report a nested-model leaf when the user actually wrote its parent
   section (`_parent_key_present`), so an untouched optional model contributes
   no rows.
+- **User-named namespaces are matched, not enumerated** — a `dict[str, Model]`
+  field (`providers`, `compile.skills`, `providers.<name>.models`) becomes a
+  `providers.*.base_url` pattern: the user picks that segment, the model's fields
+  validate the rest, so an unknown sub-key is still an error. A free-form table
+  (`categories`, `frontmatter`, `hooks`) is an open namespace — its keys are data.
+  One cached walk (`_schema_walk`) feeds keys, defaults and open namespaces, so the
+  three views cannot drift. A dotted name inside the namespace
+  (`models."hf.co/qwen3.6"`) needs `resolve_dotted()`, because `get_dot()` splits
+  on every `.` and cannot see the key.
 - **`paths.py` is a leaf module** — never import `knox.core.config` from it.
   Dependency direction is one-way: `config` imports path constants and
   `VaultPaths` from `paths`; `paths` imports nothing from config. Config-driven

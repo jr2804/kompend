@@ -225,6 +225,94 @@ class TestCheckConfigFiles:
         assert any("does not exist" in (e.message or "") for e in report.entries)
 
 
+class TestUserNamedNamespaces:
+    """A ``dict[str, Model]`` field is a namespace the user names, not a typo.
+
+    ``providers``, ``compile.skills`` and ``providers.<name>.models`` hold models
+    keyed by name; the checker used to compare their leaves against a fixed key
+    list, so *every* provider key was reported as unknown — 18 false errors on a
+    real global config.
+    """
+
+    def test_provider_keys_are_not_unknown(self, tmp_path: Path) -> None:
+        cfg = tmp_path / "cfg.toml"
+        cfg.write_text(
+            '[providers.local]\nbase_url = "http://localhost:8001/v1"\napi_type = "anthropic"\ncontext_window = 32768\n',
+            encoding="utf-8",
+        )
+        report = check_config_file(cfg)
+
+        assert report.error_count == 0
+        by_key = {e.key: e for e in report.entries}
+        assert by_key["providers.local.base_url"].status == STATUS_MODIFIED
+        assert by_key["providers.local.base_url"].current == "http://localhost:8001/v1"
+        # The default comes from the pattern's field, not from one provider's row.
+        assert by_key["providers.local.api_type"].default == "openai-chat"
+        assert by_key["providers.local.context_window"].default is None
+
+    def test_unknown_provider_field_is_still_an_error(self, tmp_path: Path) -> None:
+        cfg = tmp_path / "cfg.toml"
+        cfg.write_text('[providers.local]\nbase_uri = "http://x/v1"\n', encoding="utf-8")
+        report = check_config_file(cfg)
+
+        assert report.error_count == 1
+        broken = [e for e in report.entries if e.status == STATUS_ERROR]
+        assert broken[0].key == "providers.local.base_uri"
+        assert "unknown config key" in (broken[0].message or "")
+
+    def test_misspelled_section_is_still_an_error(self, tmp_path: Path) -> None:
+        """The namespace fix must not blind the check to a typo'd section name."""
+        cfg = tmp_path / "cfg.toml"
+        cfg.write_text('[provider.local]\nbase_url = "http://x/v1"\n', encoding="utf-8")
+        report = check_config_file(cfg)
+
+        assert report.error_count >= 1
+        assert any(e.key.startswith("provider.") for e in report.entries if e.status == STATUS_ERROR)
+
+    def test_nested_namespace_with_a_dotted_name(self, tmp_path: Path) -> None:
+        """``providers.<p>.models.<m>`` where the model name itself has dots.
+
+        ``flat_keys()`` joins with ``.``, so a model called ``hf.co/qwen3.6``
+        arrives as three extra segments; ``*`` has to span all of them.
+        """
+        cfg = tmp_path / "cfg.toml"
+        cfg.write_text(
+            '[providers.ollama.models."hf.co/qwen3.6"]\ncontext_window = 262144\n',
+            encoding="utf-8",
+        )
+        report = check_config_file(cfg)
+
+        assert report.error_count == 0
+        entry = next(e for e in report.entries if "qwen3.6" in e.key)
+        assert entry.status == STATUS_MODIFIED
+        assert entry.current == 262144
+
+    def test_skills_namespace(self, tmp_path: Path) -> None:
+        cfg = tmp_path / "cfg.toml"
+        cfg.write_text('[compile.skills."domain-terms"]\ninstructions = "use ISO terms"\n', encoding="utf-8")
+        report = check_config_file(cfg)
+
+        assert report.error_count == 0
+        entry = next(e for e in report.entries if e.key == "compile.skills.domain-terms.instructions")
+        assert entry.status == STATUS_MODIFIED
+
+    def test_free_form_table_keys_are_user_data(self, tmp_path: Path) -> None:
+        """``categories`` is ``dict[str, str]``: its keys are content, not config keys."""
+        cfg = tmp_path / "cfg.toml"
+        cfg.write_text('[compile.extraction.categories]\nfigure = "figure"\ntable = "table"\n', encoding="utf-8")
+        report = check_config_file(cfg)
+
+        assert report.error_count == 0
+        assert not any("categories." in e.key and e.status == STATUS_ERROR for e in report.entries)
+
+    def test_file_that_cannot_be_loaded_lists_literal_keys(self, tmp_path: Path) -> None:
+        """Pattern namespaces are not listed as missing keys — a pattern is not a key."""
+        report = check_config_file(tmp_path / "nope.toml")
+
+        assert report.error_count > 0
+        assert not any("*" in e.key for e in report.entries)
+
+
 # ── CLI command tests ───────────────────────────────────────────────────────
 
 

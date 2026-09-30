@@ -23,6 +23,7 @@ __all__ = [
     "flat_keys",
     "get_dot",
     "nest_flat",
+    "resolve_dotted",
     "set_dot",
 ]
 
@@ -61,6 +62,35 @@ def get_dot(
         else:
             return default
     return current if current is not None else default
+
+
+def resolve_dotted(data: dict[str, Any], key: str) -> tuple[bool, Any]:
+    """Resolve a dotted *key*, tolerating dict keys that themselves contain dots.
+
+    :func:`get_dot` splits on every ``.``, so a name like a model id
+    (``models."hf.co/qwen3.6"``) cannot be resolved: the split invents segments
+    the dict does not have. This walks the path consuming the **longest** run of
+    segments that names a key at each level, which resolves plain and dotted key
+    names alike. Returns ``(found, value)``.
+
+    Ambiguity (a dict holding both ``a.b`` and ``a: {b: ...}``) resolves to the
+    longer key — a dotted name is one key, never a coincidence of nesting.
+    """
+    parts = key.split(".")
+    node: Any = data
+    index = 0
+    while index < len(parts):
+        if not isinstance(node, dict):
+            return False, None
+        for end in range(len(parts), index, -1):
+            candidate = ".".join(parts[index:end])
+            if candidate in node:
+                node = node[candidate]
+                index = end
+                break
+        else:
+            return False, None
+    return True, node
 
 
 def nest_flat(flat: dict[str, Any]) -> dict[str, Any]:

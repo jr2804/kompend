@@ -13,16 +13,26 @@ Used by the ``knox config check`` CLI command. For each provided file:
   value equals the default).
 - Adds one ``error`` row per leaf key present in the TOML but unknown to
   the schema (catches typos and removed fields).
+
+Fields whose keys the *user* names are namespaces, not typos: ``providers``,
+``compile.skills`` and ``providers.<name>.models`` hold models keyed by name,
+and ``categories``/``frontmatter``/``hooks`` are free-form tables. A key under
+one of those is matched segment-wise against the schema instead of compared to a
+fixed list, so ``providers.ollama.base_url`` is a normal row while
+``providers.ollama.base_uri`` is still an error.
 """
 
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
+import functools
 import json
+import re
 import types
 import typing
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel, ValidationError
 from pydantic.fields import FieldInfo
@@ -31,7 +41,7 @@ from pydantic_core import PydanticUndefined
 from knox.core.config._configs import KnoxConfig
 from knox.core.config.engine._loading import load_toml
 from knox.core.config.engine._schema import DEFAULTS, DEPRECATED_ALIASES, REMOVED_KEYS
-from knox.core.utils.dicts import flat_keys, get_dot
+from knox.core.utils.dicts import flat_keys, get_dot, resolve_dotted
 from knox.logging import get_logger
 from knox.types import JSONDict, JSONList, JSONValue
 
@@ -43,7 +53,25 @@ STATUS_ERROR = "error"
 STATUS_REMOVED = "removed"  # key present in TOML but removed from schema
 STATUS_DEPRECATED = "deprecated"  # renamed key, still migrated at resolve time
 
+#: Schema segment standing for a name the *user* chooses (provider, model,
+#: skill). Matching allows one ``*`` to span several dotted segments, because a
+#: provider or model name may itself contain dots
+#: (``[providers.ollama.models."hf.co/qwen3.6"]``).
+_DYNAMIC = "*"
+
+
+_KIND_LEAF = "leaf"
+_KIND_OPEN = "open"
+
 logger = get_logger(__name__)
+
+
+@dataclasses.dataclass(frozen=True)
+class _SchemaLeaf:
+    """One node of the config schema walk (:func:`_schema_walk`)."""
+
+    kind: str
+    default: Any = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -173,6 +201,7 @@ def _all_defaults_as_errors(path: Path, message: str) -> tuple[ConfigCheckEntry,
             message=f"{path}: {message}",
         )
         for k in sorted(_schema_leaf_keys())
+        if _DYNAMIC not in k
     )
 
 
@@ -183,10 +212,24 @@ def _check_loaded(
     files_scanned: tuple[Path, ...],
 ) -> ConfigCheckReport:
     """Diff ``raw`` against schema defaults and validate via :class:`KnoxConfig`."""
-    schema_keys = _schema_leaf_keys()
+    all_schema_keys = _schema_leaf_keys()
+    # Keys with a ``*`` segment describe a user-named namespace; they are matched
+    # segment-wise, never compared for equality.
+    schema_patterns = tuple(sorted(k for k in all_schema_keys if _DYNAMIC in k))
+    schema_keys = {k for k in all_schema_keys if _DYNAMIC not in k}
     schema_default_values = _schema_defaults()
     user_keys = set(flat_keys(raw))
     removed_leaf_keys = _removed_leaf_keys()
+
+    def _known_schema_key(key: str) -> bool:
+        """True when *key* is a schema leaf, in a namespace, or under a table."""
+        if key in schema_keys:
+            return True
+        for pattern in schema_patterns:
+            if _matches_schema_pattern(key, pattern):
+                return True
+        # A free-form table's keys are the user's data (``categories.foo``).
+        return any(key.startswith(f"{leaf}.") for leaf in _open_namespace_leaves())
 
     def _removed_ancestor(key: str) -> str | None:
         """Return the retired key that *key* equals or sits under, if any.
@@ -200,7 +243,7 @@ def _check_loaded(
                 return removed
         return None
 
-    unknown_keys = sorted(k for k in (user_keys - schema_keys) if _removed_ancestor(k) is None and k not in DEPRECATED_ALIASES)
+    unknown_keys = sorted(k for k in user_keys if not _known_schema_key(k) and _removed_ancestor(k) is None and k not in DEPRECATED_ALIASES)
     removed_keys = sorted({a for k in user_keys if k not in schema_keys and (a := _removed_ancestor(k)) is not None})
     deprecated_keys = sorted(k for k in user_keys if k in DEPRECATED_ALIASES)
 
@@ -266,6 +309,32 @@ def _check_loaded(
             ),
         )
 
+    # Rows for keys the user set inside a user-named namespace. They are not in
+    # ``schema_keys`` (that set is pattern-free), so without this pass a valid
+    # ``providers.ollama.base_url`` would silently vanish from the report.
+    for key in sorted(k for k in user_keys if k not in schema_keys and _known_schema_key(k)):
+        found, default_value = _schema_lookup(key, schema_default_values, schema_patterns)
+        if not found:
+            continue
+        found_value, user_value = resolve_dotted(raw, key)
+        user_value = user_value if found_value else None
+        status = STATUS_OK
+        message = None
+        if key in validation_error_keys:
+            status, message = STATUS_ERROR, validation_error_keys[key]
+        elif not _values_equal(user_value, default_value):
+            status = STATUS_MODIFIED
+        entries.append(
+            ConfigCheckEntry(
+                key=key,
+                status=status,
+                current=user_value,
+                default=default_value,
+                set_in_toml=True,
+                message=message,
+            ),
+        )
+
     # Add error rows for unknown keys the user wrote.
     for key in unknown_keys:
         entries.append(
@@ -325,59 +394,88 @@ def _removed_leaf_keys() -> set[str]:
 
 
 def _schema_leaf_keys() -> set[str]:
-    """Walk the live :class:`KnoxConfig` model and return every leaf dotted key.
+    """Every key the config schema accepts, as dotted paths.
 
-    Recurses into nested :class:`BaseModel` types, and only stops at fields
-    whose annotation is not itself a model. This catches nested-model fields
-    that the DEFAULTS dict may show as ``None`` because their parent is
-    optional (e.g. ``LLMConfig.rlm: RlmConfig | None`` → DEFAULTS has
-    ``None`` but the schema still exposes ``compile.llm.rlm.enable``).
+    A ``*`` segment marks a **user-named namespace** (a ``dict[str, Model]``
+    field): the user picks the segment, the schema validates what follows it.
+    Callers that need a literal key filter those out — a pattern is not a key.
     """
-
-    def _walk(cls: type[BaseModel], prefix: str) -> set[str]:
-        out: set[str] = set()
-        for name, info in cls.model_fields.items():
-            dotted = f"{prefix}.{name}" if prefix else name
-            nested = _nested_model_type(info, name)
-            if nested is not None:
-                out.update(_walk(nested, dotted))
-            else:
-                out.add(dotted)
-        return out
-
-    return _walk(KnoxConfig, "")
+    return set(_schema_walk())
 
 
 def _schema_defaults() -> dict[str, Any]:
-    """Walk the live :class:`KnoxConfig` model and return every leaf field's default.
+    """The authoritative default for every :func:`_schema_leaf_keys` entry.
 
-    Mirrors :func:`_schema_leaf_keys` but instead of keys returns
-    ``{key: pydantic FieldInfo.default}``. Used to compare user-set values
-    against the authoritative schema default when the DEFAULTS dump holds
-    ``None`` for the parent (e.g. optional nested model fields).
+    Read from the live model rather than the :data:`DEFAULTS` dump, which holds
+    ``None`` for optional parents (e.g. ``LLMConfig.rlm``) and would hide the
+    real default of a leaf underneath.
+    """
+    return {key: leaf.default for key, leaf in _schema_walk().items()}
 
-    Falls back to ``info.default_factory()`` (or an instantiated empty model
-    for nested fields) when ``info.default`` is :data:`PydanticUndefined`.
+
+def _open_namespace_leaves() -> set[str]:
+    """Leaves that are free-form tables — their keys are the user's data.
+
+    ``categories`` and ``frontmatter`` are ``dict[str, str]``/``dict[str, Any]``,
+    so ``categories.foo`` is a value the user chose, not a typo to report.
+    """
+    return {key for key, leaf in _schema_walk().items() if leaf.kind == _KIND_OPEN}
+
+
+@functools.cache
+def _schema_walk() -> dict[str, _SchemaLeaf]:
+    """Classify every leaf of :class:`KnoxConfig` in one traversal.
+
+    One walk feeds all three views (keys, defaults, open namespaces) so they
+    cannot drift apart — the failure mode this replaced: the keys walker and the
+    defaults walker each had to learn about dynamic namespaces separately. The
+    result is cached: the schema is static for the life of the process, and the
+    dynamic-key matcher consults the open-namespace view per user key.
+
+    Three kinds, because a key is only "unknown" when nothing can accept it:
+
+    * ``leaf``    — ordinary field, matched by exact key
+    * ``*`` key   — leaf under a user-named namespace with a schema
+      (``providers.<any>.base_url``), matched segment-wise
+    * ``open``    — free-form table, so any key under it is user data
     """
 
-    def _walk(cls: type[BaseModel], prefix: str) -> dict[str, Any]:
-        out: dict[str, Any] = {}
+    def _walk(cls: type[BaseModel], prefix: str) -> dict[str, _SchemaLeaf]:
+        out: dict[str, _SchemaLeaf] = {}
         for name, info in cls.model_fields.items():
             dotted = f"{prefix}.{name}" if prefix else name
             nested = _nested_model_type(info, name)
             if nested is not None:
                 out.update(_walk(nested, dotted))
-            else:
-                value = info.default
-                if value is PydanticUndefined and info.default_factory is not None:
-                    try:
-                        value = info.default_factory()
-                    except Exception:
-                        value = PydanticUndefined
-                out[dotted] = value
+                continue
+            value_type = _mapping_value_type(info, name)
+            if value_type is not None:
+                if isinstance(value_type, type) and issubclass(value_type, BaseModel):
+                    out.update(_walk(value_type, f"{dotted}.{_DYNAMIC}"))
+                else:
+                    out[dotted] = _SchemaLeaf(kind=_KIND_OPEN)
+                continue
+            out[dotted] = _SchemaLeaf(kind=_KIND_LEAF, default=_field_default(info))
         return out
 
     return _walk(KnoxConfig, "")
+
+
+def _field_default(info: FieldInfo) -> Any:
+    """The field's default, materializing a factory that needs no arguments.
+
+    pydantic types ``default_factory`` as either a zero-argument callable or one
+    taking validated data; only the former can be evaluated here, so the call is
+    narrowed explicitly instead of guessing at the union.
+    """
+    value = info.default
+    factory = cast("collections.abc.Callable[[], Any]", info.default_factory) if info.default_factory is not None else None
+    if value is PydanticUndefined and factory is not None:
+        try:
+            value = factory()
+        except Exception:
+            value = PydanticUndefined
+    return value
 
 
 def _nested_model_type(info: FieldInfo, name: str) -> type[BaseModel] | None:
@@ -410,6 +508,60 @@ def _nested_model_type(info: FieldInfo, name: str) -> type[BaseModel] | None:
     if isinstance(ann, type) and issubclass(ann, BaseModel):
         return ann
     return None
+
+
+def _mapping_value_type(info: FieldInfo, name: str) -> Any | None:
+    """Return the value type of a ``dict[str, X]`` / ``Mapping[str, X]`` field.
+
+    ``None`` means the field is not a string-keyed mapping, so it is an ordinary
+    leaf. A returned type tells the caller which namespace kind it is: a
+    :class:`BaseModel` subclass is a user-named namespace *with* a schema of its
+    own (validated), anything else is a free-form table (the keys are data).
+    """
+    ann = _resolved_annotation(info, name)
+    if ann is None or typing.get_origin(ann) not in (dict, collections.abc.Mapping):
+        return None
+    args = typing.get_args(ann)
+    if len(args) != 2 or args[0] is not str:
+        return None
+    return args[1]
+
+
+def _resolved_annotation(info: FieldInfo, name: str) -> Any | None:
+    """The field's annotation, resolving forward references where possible."""
+    ann = info.annotation
+    if isinstance(ann, str):
+        try:
+            ann = typing.get_type_hints(KnoxConfig, include_extras=True).get(name, ann)
+        except Exception:  # pragma: no cover — defensive
+            return None
+    return ann
+
+
+def _schema_lookup(key: str, table: dict[str, Any], patterns: tuple[str, ...]) -> tuple[bool, Any]:
+    """Resolve *key* through *table*, falling back to dynamic patterns.
+
+    Returns ``(found, value)``. The exact table wins; a pattern provides the
+    schema default for a user-named namespace (``providers.*.base_url`` → the
+    field default for any provider).
+    """
+    if key in table:
+        return True, table[key]
+    for pattern in patterns:
+        if _matches_schema_pattern(key, pattern):
+            return True, table[pattern]
+    return False, None
+
+
+def _matches_schema_pattern(key: str, pattern: str) -> bool:
+    """True when *key* is a valid instance of the dynamic schema *pattern*."""
+    return re.match(_pattern_to_regex(pattern), key) is not None
+
+
+def _pattern_to_regex(pattern: str) -> str:
+    """Compile a schema key into a regex, ``*`` spanning one or more segments."""
+    parts = [".+" if part == _DYNAMIC else re.escape(part) for part in pattern.split(".")]
+    return "^" + r"\.".join(parts) + "$"
 
 
 def _overlay_merge(base: dict[str, Any], overlay: dict[str, Any]) -> dict[str, Any]:
