@@ -562,24 +562,27 @@ class StalePageRule(BaseLintRule):
 
 
 class UnreferencedAttachmentsRule(BaseLintRule):
-    """Detect published media no page references any more.
+    """Detect published media in a live source directory that no page references.
 
     The vault writer copies every referenced figure out of ``.knox/`` into
     ``attachments/<source-slug>/`` (markdown-only invariant). Nothing removes
-    those copies when a page is rewritten to reference fewer images, when a
-    source's slug changes (``sources_report`` → ``report``), or when a page
-    that referenced a directory is itself gone — so ``attachments/`` grows a
-    stale copy for every such change.
+    those copies when a page is rewritten to reference fewer images or when a
+    page that referenced them is gone, so a live source directory keeps copies
+    the wiki no longer shows. (A directory whose slug maps to no source at all
+    is :class:`OrphanAttachmentsRule`'s territory — this rule skips those, so
+    the two never report the same file.)
 
-    A file is unreferenced when no page under the vault links it **and** it is
-    not registered in the attachment manifest: registered files are
-    user-added inputs (``knox attachments add``), not writer output, and stay
-    even when no page embeds them yet. ``--fix-destructive`` deletes the
-    unregistered ones and prunes the directories they leave empty.
+    A file is prunable only when it is byte-identical to an extracted image in
+    ``.knox/cache/images/``, the copy source. That keeps the rule lossless: it
+    deletes only what a later compile can recreate, and never a file a user
+    placed there (whose bytes came from somewhere else — hand-added, or written
+    by an earlier run whose cache entry is gone). Auto-adoption registers writer
+    copies in the manifest too, so the manifest row is not consulted for the
+    decision — only for tombstoning what gets deleted.
     """
 
     name = "unreferenced-attachments"
-    description = "Published media that no page references and no manifest registers"
+    description = "Published media in a live source directory that no page references"
 
     #: Deletes files on disk — same opt-in contract as
     #: :class:`OrphanAttachmentsRule`.
@@ -629,6 +632,7 @@ class UnreferencedAttachmentsRule(BaseLintRule):
 
         base_dir = Path(sources_dir).parent
         vp = VaultPaths(base_dir)
+        manifest = AttachmentManifest(vp.attachments_manifest_file)
         updated: list[LintResult] = []
         deleted = 0
         for r in results:
@@ -644,6 +648,10 @@ class UnreferencedAttachmentsRule(BaseLintRule):
                 if abs_path.is_file():
                     abs_path.unlink()
                     deleted += 1
+                # Tombstone the manifest row (auto-adoption registered writer
+                # copies too) so the manifest does not keep pointing at a file
+                # that is gone — the row keeps its history, marked deleted.
+                manifest.remove(rel_path)
                 r.fix_applied = True
                 r.message = f"Deleted unreferenced attachment '{rel_path}'"
             except OSError as exc:
@@ -1093,29 +1101,65 @@ class RumdlRule(BaseLintRule):
 
 
 def unreferenced_attachment_files(base_dir: Path) -> list[str]:
-    """Vault-relative attachment files no page links and the manifest does not know.
+    """Vault-relative regenerable media in live source dirs that no page links.
 
-    Shared with reporting so the predicate has one implementation. Page links
-    are the source of truth (markdown-first invariant): a file the written
-    pages do not reference is not part of the wiki, whatever produced it.
+    Page links are the source of truth (markdown-first invariant): a file the
+    written pages do not reference is not part of the wiki. Only directories
+    whose slug matches a live source are considered — dead slugs are
+    :class:`OrphanAttachmentsRule`'s job — and only files byte-identical to an
+    extracted image (:func:`_is_cached_extraction`), so nothing the wiki cannot
+    recreate is ever reported.
     """
     vp = VaultPaths(base_dir)
     if not vp.attachments_dir.is_dir():
         return []
 
     referenced = _referenced_attachment_paths(base_dir)
-    registered = {att.path for att in AttachmentManifest(vp.attachments_manifest_file).read_all().values()}
+    live_slugs = _live_attachment_slugs(base_dir)
+    cache_dir = vp.images_dir
 
     stale: list[str] = []
     for path in sorted(vp.attachments_dir.rglob("*")):
         if not path.is_file():
             continue
         rel = path.relative_to(base_dir).as_posix()
-        inner = path.relative_to(vp.attachments_dir).as_posix()
-        if rel in referenced or inner in registered:
+        slug = path.relative_to(vp.attachments_dir).as_posix().split("/", 1)[0]
+        if slug not in live_slugs:
+            continue  # orphan-attachments owns directories with no live source
+        if rel in referenced:
             continue
+        if not _is_cached_extraction(path, cache_dir):
+            continue  # not a regenerable copy — leave it alone
         stale.append(rel)
     return stale
+
+
+def _live_attachment_slugs(base_dir: Path) -> set[str]:
+    """Slug forms of every live source (both full-path and bare-name forms)."""
+    vp = VaultPaths(base_dir)
+    if not vp.sources_dir.is_dir():
+        return set()
+    slugs: set[str] = set()
+    for source in vp.sources_dir.rglob("*"):
+        if source.is_file():
+            slugs |= attachment_slugs_for_source(source.relative_to(vp.sources_dir))
+    return slugs
+
+
+def _is_cached_extraction(path: Path, cache_dir: Path) -> bool:
+    """Is *path* a byte-identical copy of an image the parser extracted?
+
+    Compares content, not just the name: same-named files diverge when a source
+    is re-parsed, and a re-parse invalidates the copy anyway. Cheap enough —
+    the caller only asks about files no page references.
+    """
+    original = cache_dir / path.name
+    try:
+        if not original.is_file() or original.stat().st_size != path.stat().st_size:
+            return False
+        return original.read_bytes() == path.read_bytes()
+    except OSError:
+        return False
 
 
 def _referenced_attachment_paths(base_dir: Path) -> set[str]:

@@ -193,7 +193,7 @@ out to the bundled rumdl binary.
 | `stale-page` | WARNING | ❌ | Pages whose source files changed since last compile |
 | `source-not-found` | ERROR | ❌ | Pages referencing source files that don't exist on disk |
 | `orphan-attachments` | WARNING | ❌ | Attachment files whose slug matches no source (unrecoverable by compile-time auto-adoption) |
-| `unreferenced-attachments` | WARNING | ⚠️ destructive | Attachment files no page links and the manifest does not register (stale copies left by earlier writes; delete with `--fix-destructive`) |
+| `unreferenced-attachments` | WARNING | ⚠️ destructive | Regenerable media in a live source dir that no page links (stale copies left by earlier writes; delete with `--fix-destructive`) |
 | `rumdl` | WARNING | ✅ | Markdown style issues on all vault folders except `sources/` (MD024 duplicate headings, MD013 line length, …) |
 
 ### Auto-fix behavior
