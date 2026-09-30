@@ -1,7 +1,7 @@
 # DOX — knox.core.utils
 
 <!-- on entry: loaded when agent enters src/knox/core/utils -->
-<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 

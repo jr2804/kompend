@@ -1,7 +1,7 @@
 # DOX — knox.capture
 
 <!-- on entry: loaded when agent enters src/knox/capture -->
-<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 

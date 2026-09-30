@@ -1,7 +1,7 @@
 # DOX — knox.cli.cmds
 
 <!-- on entry: loaded when agent enters src/knox/cli/cmds -->
-<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 
@@ -138,7 +138,3 @@ Example:
 - No circular imports with `app.py`: `uv run python -c "from knox.cli import app, cmds"`
 - All commands register with app: `uv run python -m knox.cli --help` shows all commands
 - `__init__.py` uses `__getattr__` for lazy module loading — do NOT add eager imports; add new modules to `_LAZY_MODULES` in `app.py` and `_MODULE_NAMES` in `__init__.py`
-
-## Child DOX Index
-
-*This module has no child AGENTS.md files.*

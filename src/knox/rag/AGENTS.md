@@ -74,7 +74,3 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
 
 - `uv run pytest tests/unit/test_rag.py tests/unit/test_zvec_store_rebuild.py tests/unit/test_zvec_tags_schema.py -q`
 - `uv run ruff check src/knox/rag && uv run ty check src/knox/rag`
-
-## Child DOX Index
-
-None.

@@ -1,7 +1,7 @@
 # DOX — knox.core.config
 
 <!-- on entry: loaded when agent enters src/knox/core/config -->
-<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 
@@ -149,9 +149,3 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
   wins in the correct order.
 - `knox.toml.example` must stay in sync with `DEFAULTS` — enforced by
   `TestKnoxDotExampleSync` in `tests/unit/test_config.py`.
-
----
-
-## Child DOX Index
-
-*This module has no child AGENTS.md files.*

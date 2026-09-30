@@ -1,7 +1,7 @@
 # DOX — knox.cli.args
 
 <!-- on entry: loaded when agent enters src/knox/cli/args -->
-<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 
@@ -166,7 +166,3 @@ when the command actually has options in it.
 - No unused type aliases in `__init__.py`
 - No circular imports: `uv run python -c "import knox.cli.args"`
 - All exported names match `__all__`: `uv run python -c "from knox.cli.args import *"`
-
-## Child DOX Index
-
-*This module has no child AGENTS.md files.*

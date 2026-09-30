@@ -1,13 +1,13 @@
 # DOX — knox.preprocessing.parsers
 
 <!-- on entry: loaded when agent enters src/knox/preprocessing/parsers -->
-<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 
 Pluggable ingestion backends. Each backend is a `BaseParser` subclass plus a
 factory that builds an instance from `ParserBuildOptions`. Backends self-register
-at import time via `register_backend` (mirror of `knox.llm.providers`);
+at import time via `register_backend` (same shape as the zvec/embedding provider factories);
 importing the `knox.preprocessing.parsers` package triggers registration.
 
 ## Architecture

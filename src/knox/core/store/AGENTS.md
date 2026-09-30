@@ -1,7 +1,7 @@
 # DOX — knox.core.store
 
 <!-- on entry: loaded when agent enters src/knox/core/store -->
-<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 
@@ -43,7 +43,3 @@ Design + table mapping live in `.agents/history/2026-09-24-knox-storage-migratio
 
 - `uv run pytest tests/unit/test_store.py -q`
 - `uv run ruff check src/knox/core/store/` and `uv run ty check src/knox/core/store/`
-
-## Child DOX Index
-
-None.

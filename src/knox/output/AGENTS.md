@@ -1,7 +1,7 @@
 # DOX — knox.output
 
 <!-- on entry: loaded when agent enters src/knox/output -->
-<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 
@@ -29,6 +29,36 @@ builds the wiki index page and serves wiki page previews.
 | ``pages/index.py`` | Vault-root index page rendering (portable catalog) |
 | ``pages/overview.py`` | Overview page rendering |
 | ``pages/log.py`` | Log page rendering (``LogStage`` enum, ``generate_log_entry`` via ``PageBuilder``) |
+
+## Local Contracts
+
+### OKF v0.2 conformance
+
+KNOX emits OKF v0.2 bundles; OKF is a **compliance spec**, not an output
+format, and `compile.output.format` only offers real formats (`markdown`,
+`json`, `typst`). Spec: <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>.
+User-facing guide: `docs/concepts/open-knowledge-format.md`.
+
+1. **Frontmatter** is built once by `VaultWriter.okf_frontmatter()` — every
+   writer delegates to it (single source of truth). Every concept file has
+   parseable YAML with a non-empty `type` (§11.2).
+2. **Trust fields** — `generated: {by, at}` (§5.2; `by` follows the §7 actor
+   convention `knox/<version>`) supersedes the v0.1 `timestamp`. `verified` is
+   emitted only when a verification pass ran; `status` defaults to `stable`.
+3. **Provenance fields are distinct** — `tags` is topic tags only (no filename
+   overload), `source_files` is the KNOX extension (provenance stems), `sources`
+   is OKF §5.1 structured objects `{id, resource, title, author}` from the
+   reference store, never bare strings.
+4. **Reserved filenames** — `index.md` and `log.md` follow §8/§9. `log.md` is
+   date-grouped `## YYYY-MM-DD` headings, newest first, entries as
+   `- [HH:mm:ss] **Action**: prose`; it is never wiped — compile, ingest, query,
+   and lint all append (`LogStage`). Root `index.md` may declare
+   `okf_version: "0.2"`.
+5. **Consumers MUST tolerate** missing optional fields, unknown `type` values,
+   unknown frontmatter keys, broken cross-links, and a missing `index.md`
+   (§10, permissive consumption).
+6. **Page kinds** — mandatory taxonomy plus configured extras; see
+   `compilation/AGENTS.md` (page kinds).
 
 ## Rules
 

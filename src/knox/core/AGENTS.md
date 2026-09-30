@@ -1,7 +1,7 @@
 # DOX — knox.core
 
 <!-- on entry: loaded when agent enters src/knox/core -->
-<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 
@@ -26,8 +26,10 @@ other KNOX subsystems build on.
 - One normaliser per concern: markdown formatting goes through
   `core.text.rumdl` (text/batch variants) or `output.renderer.format_output`
   (file sweep) — never a second hand-rolled formatter
-- See root AGENTS.md: Path Constants, New Code Checklist
-- See `src/knox/AGENTS.md`: Python Antipatterns, text-in-code rules
+- Path constants — see `.agents/FILES.md`; new-code checklist — see
+  `.agents/CHECKS.md`
+- Python antipatterns — see `.agents/CODE.md`; text-in-code — see
+  `src/knox/AGENTS.md`
 
 ## Child DOX Index
 
