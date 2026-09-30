@@ -6,8 +6,10 @@
 ## Purpose
 
 The single non-vector store for a vault: one SQLite file (`.knox/knox.db`)
-holding every flat `.knox/` artifact that was previously loose JSON/JSONL.
-The embedding branch (`vectors/`, `memory.db`) stays separate and regenerable.
+holding every flat `.knox/` artifact that was previously loose JSON/JSONL —
+including the vector branch's manifest row (`vector_manifest`), so `.knox/`
+holds one state file. The embedding branch itself (`vectors/`, `memory.db`)
+stays separate and regenerable.
 
 Design + table mapping live in `.agents/history/2026-09-24-knox-storage-migration.md` §2.
 

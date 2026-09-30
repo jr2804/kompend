@@ -10,6 +10,8 @@ which supports every provider pydantic-ai ships (openai, ollama, google,
 cohere, bedrock, and HuggingFace sentence-transformers).
 """
 
+# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
+
 from __future__ import annotations
 
 import contextlib
@@ -17,6 +19,7 @@ import hashlib
 import json
 import os
 import shutil
+import sqlite3
 from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from enum import StrEnum
@@ -29,7 +32,10 @@ from pydantic_ai.embeddings import infer_embedding_model
 from pydantic_ai.providers.ollama import OllamaProvider
 
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
-from knox.core.paths import rel_to_vault
+from knox.core.paths import KNOX_DB_FILE, rel_to_vault
+from knox.core.store import open_store
+from knox.core.store.schema import VECTOR_MANIFEST_TABLE
+from knox.core.utils.time import iso_local
 from knox.llm.models import OLLAMA_DEFAULT_BASE_URL
 from knox.logging import get_logger
 from knox.types import ZvecCollection, ZvecDoc
@@ -327,42 +333,42 @@ class ZvecWikiStore:
     def is_stale(self, wiki: CompiledWiki) -> bool:
         """Return True when the store's last build doesn't match ``wiki``.
 
-        Compares the set of indexed node ids (from the build-time manifest)
-        against the current wiki's node set. A missing manifest, a corrupt
-        manifest, or any id set mismatch means the sidecar index is stale and
-        must be rebuilt before it can serve the loaded wiki.
+        Compares the indexed node ids recorded by the last build against the
+        current wiki's node set.  Missing bookkeeping, an unreadable store, or
+        any id set mismatch means the sidecar index is stale and must be
+        rebuilt before it can serve the loaded wiki.
 
-        The manifest also records the embed-text version. A manifest written by
-        an older composition (or the legacy bare-id-list format) is stale even
-        when the ids match, because its vectors were built from different text.
+        The manifest row also records the embed-text version.  A row written by
+        an older composition is stale even when the ids match, because its
+        vectors were built from different text.
         """
         expected = {_safe_id(n.id) for n in wiki.nodes}
         if not expected:
             return True
-        manifest = self._manifest_file()
-        if not manifest.is_file():
+        manifest_db = self._manifest_db_path()
+        if not manifest_db.is_file():
             return True
         try:
-            raw: object = json.loads(manifest.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            logger.warning("Vector manifest corrupt — treating store as stale: %s", manifest)
+            with open_store(manifest_db) as conn:
+                row = conn.execute(
+                    f"SELECT embed_version, ids FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
+                ).fetchone()
+        except sqlite3.Error as exc:
+            logger.warning("Vector manifest unreadable — treating store as stale: %s", exc)
             return True
-        if not isinstance(raw, dict):
-            # Legacy bare-id-list manifest, written before the embed-text version
-            # was recorded. Its vectors were composed by unknown code, so rebuild
-            # rather than serve vectors we cannot vouch for.
-            logger.info("Vector manifest predates embed-text versioning — rebuilding: %s", manifest)
+        if row is None:
+            # No build recorded yet (fresh store, or a manifest left behind by an
+            # older KNOX as a loose JSON sidecar we deliberately do not read).
             return True
-        if raw.get("embed_version") != _EMBED_TEXT_VERSION:
+        if row["embed_version"] != _EMBED_TEXT_VERSION:
             logger.info(
                 "Vector manifest embed-text version %r != %d — rebuilding: %s",
-                raw.get("embed_version"),
+                row["embed_version"],
                 _EMBED_TEXT_VERSION,
-                manifest,
+                self.db_file,
             )
             return True
-        ids = raw.get("ids")
-        stored = {str(i) for i in ids} if isinstance(ids, list) else set()
+        stored = {str(i) for i in json.loads(row["ids"])}
         return stored != expected
 
     @classmethod
@@ -507,9 +513,33 @@ class ZvecWikiStore:
         logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_file)
         return indexed_count
 
-    def _manifest_file(self) -> Path:
-        """Id manifest from the last successful build, next to the store."""
-        return self.db_file.with_name(self.db_file.name + ".manifest.json")
+    def _manifest_db_path(self) -> Path:
+        """``knox.db`` beside the vector store — home of the index manifest row.
+
+        The vectors directory always sits in the vault's ``.knox/`` next to the
+        single non-vector store, so the manifest is a row there instead of a
+        loose JSON sidecar: ``.knox/`` holds one state file, not a scattering of
+        state files.  The vector branch itself (this directory) stays separate
+        and regenerable.
+        """
+        return self.db_file.parent / KNOX_DB_FILE
+
+    def _write_manifest(self, ids: set[str]) -> None:
+        """Record the indexed id set + embed-text version of the last build."""
+        try:
+            with open_store(self._manifest_db_path()) as conn:
+                conn.execute(
+                    f"INSERT INTO {VECTOR_MANIFEST_TABLE}(id, embed_version, ids, written_at) "
+                    "VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+                    "embed_version = excluded.embed_version, ids = excluded.ids, written_at = excluded.written_at",
+                    (_EMBED_TEXT_VERSION, json.dumps(sorted(ids)), iso_local()),
+                )
+        except (sqlite3.Error, OSError) as exc:
+            logger.warning(
+                "Could not record the vector manifest in %s: %s",
+                self._manifest_db_path(),
+                exc,
+            )
 
     def _prune_orphans(self, collection: ZvecCollection, nodes: list[WikiNode]) -> int:
         """Delete store docs whose id is absent from *nodes* (renamed/removed pages).
@@ -526,14 +556,7 @@ class ZvecWikiStore:
         if orphans:
             collection.delete(orphans)
             logger.info("Pruned %d stale vector(s) from %s", len(orphans), self.db_file)
-        manifest = self._manifest_file()
-        try:
-            manifest.write_text(
-                json.dumps({"embed_version": _EMBED_TEXT_VERSION, "ids": sorted(keep)}),
-                encoding="utf-8",
-            )
-        except OSError as exc:  # pragma: no cover — filesystem-dependent
-            logger.warning("Could not write vector manifest (%s): %s", manifest, exc)
+        self._write_manifest(keep)
         return len(orphans)
 
     @staticmethod

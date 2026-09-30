@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import gc
 import json
+import sqlite3
 from pathlib import Path
 
 import pytest
@@ -61,7 +62,7 @@ class TestManifestStaleness:
         store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
         wiki = _wiki(_node("n1"))
         assert store.build_index(wiki) == 1
-        manifest = json.loads(store._manifest_file().read_text(encoding="utf-8"))
+        manifest = _manifest_row(store)
         assert manifest["embed_version"] == _EMBED_TEXT_VERSION
         assert manifest["ids"] == ["n1"]
         assert store.is_stale(wiki) is False
@@ -72,20 +73,23 @@ class TestManifestStaleness:
         store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
         wiki = _wiki(_node("n1"))
         store.build_index(wiki)
-        store._manifest_file().write_text(
-            json.dumps({"embed_version": _EMBED_TEXT_VERSION - 1, "ids": ["n1"]}),
-            encoding="utf-8",
-        )
+        _set_manifest_version(store, _EMBED_TEXT_VERSION - 1)
         assert store.is_stale(wiki) is True
         store.close()
         gc.collect()
 
-    def test_legacy_bare_id_list_is_stale(self, zvec_db: Path) -> None:
-        """A manifest written before versioning cannot vouch for its vectors."""
+    def test_legacy_json_sidecar_is_ignored(self, zvec_db: Path) -> None:
+        """A pre-migration vault's loose JSON manifest is never read.
+
+        Policy: ``knox.db`` holds all non-vector state. A ``vectors.manifest.json``
+        left by an older KNOX is dead weight (reported by ``knox doctor``) and
+        its store is rebuilt rather than trusted.
+        """
         store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
         wiki = _wiki(_node("n1"))
         store.build_index(wiki)
-        store._manifest_file().write_text(json.dumps(["n1"]), encoding="utf-8")
+        _delete_manifest_row(store)
+        (store.db_file.parent / "vectors.manifest.json").write_text(json.dumps(["n1"]), encoding="utf-8")
         assert store.is_stale(wiki) is True
         store.close()
         gc.collect()
@@ -102,6 +106,26 @@ class TestManifestStaleness:
 def zvec_db(tmp_path: Path) -> Path:
     """Provide a temp directory for zvec test databases."""
     return tmp_path / "zvec_test_store"
+
+
+def _manifest_row(store: ZvecWikiStore) -> dict[str, object]:
+    """The vector manifest recorded by the last build (knox.db row)."""
+    with sqlite3.connect(store._manifest_db_path()) as conn:
+        row = conn.execute("SELECT embed_version, ids FROM vector_manifest WHERE id = 1").fetchone()
+    assert row is not None, "a build must record the vector manifest"
+    return {"embed_version": row[0], "ids": json.loads(row[1])}
+
+
+def _set_manifest_version(store: ZvecWikiStore, version: int) -> None:
+    """Overwrite the recorded embed-text version (simulates an older build)."""
+    with sqlite3.connect(store._manifest_db_path()) as conn:
+        conn.execute("UPDATE vector_manifest SET embed_version = ? WHERE id = 1", (version,))
+
+
+def _delete_manifest_row(store: ZvecWikiStore) -> None:
+    """Drop the manifest row, as a store built before the migration has none."""
+    with sqlite3.connect(store._manifest_db_path()) as conn:
+        conn.execute("DELETE FROM vector_manifest")
 
 
 def _wiki(*nodes: WikiNode) -> CompiledWiki:

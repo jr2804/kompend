@@ -24,7 +24,7 @@ project root — **not** inside `wiki/`.
 │   │   ├── downloaded.json     # URL download manifest
 │   │   └── gen_checkpoint/     # Per-batch generation checkpoints (resumable)
 │   ├── vectors/                # Zvec vector index (RAG) — regenerable
-│   ├── vectors.manifest.json   # Zvec indexed-node id sidecar
+│   ├── knox.db                 # Single SQLite store; `vector_manifest` row = zvec id sidecar
 │   ├── memory.db               # Zvec collection dir for semantic query memory (NOT SQLite)
 │   ├── dedup/                  # Content-level dedup fingerprints
 │   │   └── fingerprints.json   # Per-document fingerprints (embedding + minhash)
@@ -73,7 +73,7 @@ deleted after a `compile --force`.
 | `cache/downloaded.json` | URL download manifest (source URLs + content hashes) | < 10 KB | Project-local | `HTTPDownloader` / `WebCrawler` |
 | `cache/gen_checkpoint/` | Per-batch generation checkpoints (resumable on crash) | < 10 MB | Project-local | `TwoPhaseCompiler` |
 | `vectors/` | Zvec embedded vector database for semantic search | 1 – 100 MB | Project-local | `ZvecWikiStore` |
-| `vectors.manifest.json` | Indexed-node id set for staleness checks | < 10 KB | Project-local | `ZvecWikiStore` |
+| `knox.db` (`vector_manifest` row) | Indexed-node id set + embed-text version for staleness checks | < 10 KB | Project-local | `ZvecWikiStore` |
 | `memory.db` | Zvec collection dir for semantic query memory (rebuildable from the `memory_log` table) | < 100 KB | Project-local | `knox memory` commands |
 | `dedup/fingerprints.json` | Per-document dedup fingerprints (embedding + minhash) | < 1 MB | Project-local | `DedupOrchestrator` during ingest |
 | `review/*.md` | Wiki nodes pending human review (`.approved.md` / `.rejected.md` / `.locked`) | < 100 KB | Project-local | `ReviewQueue` |

@@ -9,8 +9,7 @@ Deliberately excluded from the candidate set — they are *not* superseded by th
 single store and must not be reported:
 
 * ``knox.db`` itself,
-* ``vectors/`` (+ ``vectors.manifest.json``) — the separate, regenerable
-  embedding branch,
+* ``vectors/`` — the separate, regenerable embedding branch,
 * ``memory.db`` — a zvec collection directory (rebuildable from ``memory_log``),
 * ``config.toml`` / ``rumdl.toml`` — user-editable TOML, and vault markers,
 * ``sources/`` / ``wiki/`` / ``attachments/`` — user content.
@@ -31,6 +30,7 @@ def obsolete_artifacts(base_dir: Path) -> list[Path]:
     """
     vault = VaultPaths(base_dir)
     candidates = (
+        vault.vectors_manifest_file,
         vault.compile_state_file,
         vault.wiki_cache_file,
         vault.compiled_wiki_file,

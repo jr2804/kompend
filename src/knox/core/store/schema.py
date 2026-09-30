@@ -64,6 +64,10 @@ PRIVATE_PAGES_TABLE: Final[str] = "private_pages"
 PROVENANCE_TABLE: Final[str] = "provenance"
 REVIEW_STATE_TABLE: Final[str] = "review_state"
 BLOBS_TABLE: Final[str] = "blobs"
+#: Bookkeeping for the separate vector branch (``vectors/``): the id set and
+#: embed-text version of the last build. Lives here rather than as a loose
+#: ``vectors.manifest.json`` sidecar so ``.knox/`` holds one state file.
+VECTOR_MANIFEST_TABLE: Final[str] = "vector_manifest"
 
 #: Every data table (excludes the version bookkeeping table and FTS shadows).
 TABLE_NAMES: Final[tuple[str, ...]] = (
@@ -88,6 +92,7 @@ TABLE_NAMES: Final[tuple[str, ...]] = (
     PROVENANCE_TABLE,
     REVIEW_STATE_TABLE,
     BLOBS_TABLE,
+    VECTOR_MANIFEST_TABLE,
 )
 
 # ── DDL ─────────────────────────────────────────────────────────────────
@@ -367,6 +372,17 @@ _DDL: Final[tuple[str, ...]] = (
         reason TEXT NOT NULL DEFAULT '',
         source_node_id TEXT NOT NULL DEFAULT '',
         saved_at TEXT NOT NULL DEFAULT ''
+    )
+    """,
+    # Vector-branch manifest (was vectors.manifest.json): the indexed id set and
+    # embed-text version of the last build, used to detect a stale vector store.
+    # Single row, id = 1, like schema_version.
+    f"""
+    CREATE TABLE IF NOT EXISTS {VECTOR_MANIFEST_TABLE} (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        embed_version INTEGER NOT NULL DEFAULT 0,
+        ids TEXT NOT NULL DEFAULT '[]',
+        written_at TEXT NOT NULL DEFAULT ''
     )
     """,
 )

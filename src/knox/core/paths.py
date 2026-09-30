@@ -82,6 +82,8 @@ QUALITY_FILE: Final[str] = "quality.md"
 
 # ── Vector store ────────────────────────────────────────────────────────
 VECTORS_DIR: Final[str] = "vectors"
+#: Legacy loose-JSON vector manifest; superseded by the ``vector_manifest`` row.
+VECTORS_MANIFEST_FILE: Final[str] = "vectors.manifest.json"
 
 # ── Download tracking ───────────────────────────────────────────────────
 DOWNLOADED_FILE: Final[str] = "downloaded.json"
@@ -211,8 +213,8 @@ class VaultPaths:
         │   ├── provenance/         ← provenance_dir (legacy)
         │   ├── review/             ← review_dir
         │   ├── vectors/            ← vectors_dir (zvec directory store)
-        │   ├── vectors.manifest.json ← zvec indexed-node id sidecar
         │   ├── knox.db             ← knox_db_file (single non-vector store)
+        │   │                            └ vector_manifest row = zvec id sidecar
         │   ├── config.toml         ← config_file
         │   ├── rumdl.toml          ← RUMDL_CONFIG_FILE
         │   ├── compile_state.json  ← compile_state_file (legacy)
@@ -327,6 +329,14 @@ class VaultPaths:
     def vectors_dir(self) -> Path:
         """Embedding vector store directory."""
         return self.knox_dir / VECTORS_DIR
+
+    @property
+    def vectors_manifest_file(self) -> Path:
+        """Loose JSON vector manifest (legacy — the row in :attr:`knox_db_file`
+        replaces it; this path exists only so the file can be reported and
+        removed, never read).
+        """
+        return self.knox_dir / VECTORS_MANIFEST_FILE
 
     # ── Files inside .knox/ ─────────────────────────────────────────────
 

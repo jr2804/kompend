@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sqlite3
 import tempfile
 from pathlib import Path
 
@@ -231,8 +232,8 @@ def test_wiki_store_prunes_docs_missing_from_manifest(tmp_path: Path) -> None:
     )
     store.close()
 
-    manifest = json.loads((tmp_path / "vectors.manifest.json").read_text(encoding="utf-8"))
-    assert "ghost" not in manifest
+    ids = _manifest_ids(tmp_path / "knox.db")
+    assert "ghost" not in ids
 
     store = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(4))
     assert store.build_index(_wiki_ids(4, "alpha", "beta")) == 2
@@ -241,6 +242,14 @@ def test_wiki_store_prunes_docs_missing_from_manifest(tmp_path: Path) -> None:
     assert "ghost" not in present
     assert present == {"alpha", "beta"}
     store.close()
+
+
+def _manifest_ids(db_path: Path) -> list[str]:
+    """Indexed id set recorded by the last build (knox.db ``vector_manifest``)."""
+    with sqlite3.connect(db_path) as conn:
+        row = conn.execute("SELECT ids FROM vector_manifest WHERE id = 1").fetchone()
+    assert row is not None, "build_index must record a vector manifest row"
+    return json.loads(row[0])
 
 
 def _wiki_ids(dim: int, *ids: str) -> CompiledWiki:
