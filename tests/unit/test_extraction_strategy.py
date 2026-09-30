@@ -10,6 +10,7 @@ Tests verify:
 
 from __future__ import annotations
 
+import hashlib
 from unittest.mock import MagicMock, patch
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
@@ -23,11 +24,13 @@ from knox.compilation.flows.extraction import (
 )
 from knox.compilation.schema import Concept, Entity, ExtractionOutput
 from knox.compilation.two_phase import TwoPhaseCompiler
+from knox.core.cache.store import make_cache_key
 from knox.core.config._configs import (
     EmbeddingConfig,
     ExtractionStrategy,
     LLMConfig,
 )
+from knox.core.models.enums import CacheDeps
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.exceptions import LLMOutputError
 from knox.core.utils.tokens import estimate_tokens
@@ -284,3 +287,51 @@ def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) 
 
 def _make_cw() -> ContextWindow:
     return ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
+
+
+# ── extract cache key ───────────────────────────────────────────────────
+
+
+class TestExtractCacheDeps:
+    """The ``extract`` cache key must identify the model.
+
+    Extraction output is model-specific, so an entry written by a previous
+    model must never be replayed after switching models (regression: the
+    key held only the source text and chunk sizes).
+    """
+
+    def test_key_records_model_and_text(self) -> None:
+        deps = ext_module._extract_cache_deps(_make_compiler(), "hello")
+        assert deps[CacheDeps.MODEL] == "ollama/test"
+        assert deps[CacheDeps.SOURCE_TEXT] == hashlib.sha256(b"hello").hexdigest()
+        assert deps[CacheDeps.CHUNK_SIZE_MIN] == "2048"
+        assert deps[CacheDeps.CHUNK_SIZE_MAX] == "131072"
+
+    def test_switching_model_changes_the_key(self) -> None:
+        text = "same text"
+        first = _make_compiler()
+        second = _make_compiler()
+        second._model = "ollama/other"
+
+        deps_a = ext_module._extract_cache_deps(first, text)
+        deps_b = ext_module._extract_cache_deps(second, text)
+
+        assert deps_a[CacheDeps.SOURCE_TEXT] == deps_b[CacheDeps.SOURCE_TEXT]
+        assert make_cache_key(deps_a) != make_cache_key(deps_b)
+
+    def test_extract_one_looks_up_with_model_dep(self) -> None:
+        """A cache read that omits the model cannot invalidate on model change."""
+        compiler = _make_compiler()
+        compiler._cache_store = MagicMock()
+        compiler._cache_store.get_dict.return_value = {
+            "source": "s",
+            "summary": "",
+            "entities": [],
+            "concepts": [],
+            "tags": [],
+        }
+
+        ext_module.extract_one(compiler, "s", "text", "system")
+
+        deps = compiler._cache_store.get_dict.call_args.args[1]
+        assert deps[CacheDeps.MODEL] == "ollama/test"

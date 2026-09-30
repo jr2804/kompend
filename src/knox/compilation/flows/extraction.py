@@ -206,14 +206,29 @@ def batch_texts(texts: list[str], char_budget: int) -> list[str]:
     return batches
 
 
-def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extraction_system: str) -> Extraction | None:
-    """Run a single extraction LLM call with cache."""
+def _extract_cache_deps(compiler: TwoPhaseRuntime, text: str) -> dict[str, str]:
+    """Cache dependencies for one extraction batch.
+
+    Single source of truth for the ``extract`` cache key — used by both
+    :func:`extract_one` and :func:`extract_incremental`, which must agree.
+
+    ``CacheDeps.MODEL`` is part of the key because extraction output is
+    model-specific (which concepts a model finds, how it names them, how
+    verbose the definitions are).  Without it, switching models replays
+    the previous model's extractions instead of re-running them.
+    """
     budget = compiler._budget
-    extract_deps: dict[str, str] = {
-        CacheDeps.SOURCE_TEXT: hashlib.sha256(combined.encode()).hexdigest(),
+    return {
+        CacheDeps.SOURCE_TEXT: hashlib.sha256(text.encode()).hexdigest(),
+        CacheDeps.MODEL: compiler._model or "",
         CacheDeps.CHUNK_SIZE_MIN: str(budget.chunk_size_min),
         CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
     }
+
+
+def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extraction_system: str) -> Extraction | None:
+    """Run a single extraction LLM call with cache."""
+    extract_deps = _extract_cache_deps(compiler, combined)
     if not compiler._config.no_cache:
         cached = compiler._cache_store.get_dict("extract", extract_deps)
         if cached is not None:
@@ -310,12 +325,8 @@ def extract_incremental(
     history: list[ModelMessage] = []
     agent: ExtractionAgent | None = None
     for batch_idx, combined in enumerate(batches_list):
-        # Per-batch cache (same key as extract_one)
-        extract_deps: dict[str, str] = {
-            CacheDeps.SOURCE_TEXT: hashlib.sha256(combined.encode()).hexdigest(),
-            CacheDeps.CHUNK_SIZE_MIN: str(budget.chunk_size_min),
-            CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
-        }
+        # Per-batch cache (same key as extract_one).
+        extract_deps = _extract_cache_deps(compiler, combined)
         if not compiler._config.no_cache:
             cached = compiler._cache_store.get_dict("extract", extract_deps)
             if cached is not None:
