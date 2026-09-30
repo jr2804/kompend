@@ -8,7 +8,7 @@ implementation detail.
 from __future__ import annotations
 
 from knox.core.models.attachments import Attachment, AttachmentManifest
-from knox.core.models.chunks import Chunk, ImageRef, ResolvedChunk
+from knox.core.models.chunks import Chunk, ImageRef, ResolvedChunk, image_source_key, images_for_provenance
 from knox.core.models.citations import (
     LIFECYCLE_ARCHIVED,
     LIFECYCLE_DRAFT,
@@ -100,6 +100,8 @@ __all__ = [
     "WikiField",
     "WikiNode",
     "extract_citations",
+    "image_source_key",
+    "images_for_provenance",
     "load_cached_wiki",
     "load_wiki_from_files",
     "merge_duplicate_citations",

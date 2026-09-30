@@ -43,7 +43,7 @@ from knox.compilation.flows.assembly import (
     merge_similar_concepts,
 )
 from knox.core.config.keys import MANDATORY_KINDS
-from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, load_cached_wiki
+from knox.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, images_for_provenance, load_cached_wiki
 from knox.core.models.enums import CacheDeps, ExtractionField, MetadataField
 from knox.core.paths import safe_stem
 from knox.core.pipeline.entity_types import EntityTypeRegistry
@@ -634,7 +634,8 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                     MetadataField.PROVENANCE: page.provenance,
                     MetadataField.RELATED: page.related,
                     MetadataField.TWO_PHASE: True,
-                    "images": all_images,
+                    # Only this page's sources' figures — see images_for_provenance.
+                    "images": images_for_provenance(all_images, page.provenance),
                     "frontmatter": {
                         "title": page.title or f"Concept {idx}",
                     },

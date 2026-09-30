@@ -32,7 +32,7 @@ from typing import Any, ClassVar
 import yaml
 
 from knox import __version__ as _KNOX_VERSION
-from knox.core.models import CompiledWiki, GraphEdge, ImageRef, MetadataField, WikiNode
+from knox.core.models import CompiledWiki, GraphEdge, ImageRef, MetadataField, WikiNode, image_source_key
 from knox.core.models.assets import AssetRecord
 from knox.core.models.enums import AssetKind
 from knox.core.page_builder import PageBuilder, link, strong
@@ -142,23 +142,32 @@ class VaultWriter(BaseOutputWriter):
         Markdown-only invariant: wiki pages must never reference ``.knox/``
         (the cache is derived state and may be absent). Any embedded image
         living under ``.knox/`` is copied to
-        ``attachments/<source-slug>/<filename>`` (existing per-source layout)
-        and the reference rewritten to a link relative to the page's
-        *folder*. Images outside ``.knox/`` and data URIs pass through
-        unchanged. Requires ``base_dir``; without it nothing is rewritten.
+        ``attachments/<source-slug>/<filename>`` and the reference rewritten to
+        a link relative to the page's *folder*. Images outside ``.knox/`` and
+        data URIs pass through unchanged. Requires ``base_dir``; without it
+        nothing is rewritten.
+
+        The slug comes from the image's own ``source_file`` matched against the
+        page provenance — never from the provenance string itself. Provenance
+        is agent-reported and frequently names something that is not a source
+        (a venue, a product): slugging it made a directory per invented label
+        and filled each with the same copied figures. Images whose source
+        matches no provenance entry are dropped, so an unattributable figure
+        cannot leave a ``.knox/`` link behind (the lint rule that enforces the
+        invariant forbids one).
         """
         if self._base_dir is None or not images:
             return images
-        # Provenance entries may be bare stems ("report") or source-relative
-        # paths ("sources/report.pdf"); the attachment flow slugs the source
-        # name without the sources/ prefix, so strip it first.
-        prov = provenance[0] if provenance else ""
+        # Provenance entries arrive as bare stems ("report") or source-relative
+        # paths ("sources/report.pdf"); attachment_slug() strips the sources/
+        # prefix so both forms land on the same directory.
         prefix = f"{DEFAULT_SOURCES_DIR_NAME}/"
-        if prov.startswith(prefix):
-            prov = prov[len(prefix) :]
-        slug = attachment_slug(prov) if prov else ""
-        if not slug:
-            return images
+        prov_by_key: dict[str, str] = {}
+        for entry in provenance:
+            if not entry:
+                continue
+            bare = entry[len(prefix) :] if entry.startswith(prefix) else entry
+            prov_by_key.setdefault(image_source_key(entry), bare)
         out: list[ImageRef] = []
         for img in images:
             raw = img.get("path", "")
@@ -169,6 +178,13 @@ class VaultWriter(BaseOutputWriter):
             src_file = self._base_dir / rel
             if not src_file.is_file():
                 out.append(img)
+                continue
+            matched = prov_by_key.get(image_source_key(str(img.get(MetadataField.SOURCE_FILE, ""))))
+            slug = attachment_slug(matched) if matched else ""
+            if not slug:
+                # No provenance entry names this image's source — drop it rather
+                # than invent a directory or emit a .knox/ link.
+                logger.debug("Dropping image with no provenance match: %s", rel)
                 continue
             dest = self._base_dir / ATTACHMENTS_DIR_NAME / slug / src_file.name
             if not dest.exists() or dest.read_bytes() != src_file.read_bytes():

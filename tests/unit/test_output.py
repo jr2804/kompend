@@ -501,7 +501,14 @@ class TestPortableImages:
                     source_chunks=["chunk-3"],
                     metadata={
                         "provenance": ["sources/report.pdf"],
-                        "images": [{"path": ".knox/cache/images/report_img_1.png", "caption": "A figure", "element_type": "image"}],
+                        "images": [
+                            {
+                                "path": ".knox/cache/images/report_img_1.png",
+                                "caption": "A figure",
+                                "element_type": "image",
+                                "source_file": "sources/report.pdf",
+                            }
+                        ],
                     },
                 ),
             ],

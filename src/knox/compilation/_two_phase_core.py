@@ -365,11 +365,14 @@ def _dedup_id(node_id: str, seen: set[str]) -> str:
 def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
     """Extract image metadata from IMAGE chunks.
 
-    Returns a list of dicts with keys: path, caption, element_type.
+    Returns a list of dicts with keys: path, caption, element_type, source_file.
     Images are collected from:
     - chunk.metadata["image_file"] (file mode)
     - chunk.metadata["image_base64"] (base64 mode)
     - VLM captions from resolved.entities with type="image_description"
+
+    ``source_file`` is the document the figure came from — callers select the
+    subset belonging to a page with :func:`images_for_provenance`.
     """
     images: list[ImageRef] = []
 
@@ -396,6 +399,7 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
                 "path": img_ref,
                 "caption": caption,
                 "element_type": "image",
+                "source_file": str(rc.chunk.source_file or ""),
             }
         )  # ImageRef
 
