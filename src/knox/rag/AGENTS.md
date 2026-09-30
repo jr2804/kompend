@@ -48,8 +48,10 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
   apply `_score_from_distance` to them. Both degrade to `[]`/vector-only when the
   collection has no FTS index (logged once, never raised into the query path).
 - `_prune_orphans` derives its candidate set from the collection's actual
-  contents (`iter_docs()`), not the manifest diff, so docs written before the
-  manifest existed are pruned too.
+  contents (`iter_docs()`), not the manifest id diff, so docs written before the
+  manifest existed are pruned too. The manifest itself (indexed ids + embed-text
+  version) is the `vector_manifest` row in `knox.db`, not a file beside
+  `vectors/`.
 - `search()` returns `score = 1 - cosine_distance` (higher is better) so
   descending-score callers keep their ordering, and keeps the same result dict
   shape (`id`, `score`, plus the stored fields).

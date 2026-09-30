@@ -43,6 +43,7 @@ any `.py` file outside `paths.py`. Always import from `knox.core.paths`.
 | `CACHE_DIR` | `".knox/cache"` | Full relative cache path (for DEFAULTS) |
 | `CONFIG_FILE` | `"config.toml"` | Project-local config |
 | `VECTORS_DIR` | `"vectors"` | Embedding vector store |
+| `VECTORS_MANIFEST_FILE` | `"vectors.manifest.json"` | Vector id sidecar (legacy — now the `vector_manifest` row) |
 | `DOWNLOADED_FILE` | `"downloaded.json"` | URL download manifest (legacy — now `downloaded` table) |
 | `MEMORY_DB_FILE` | `"memory.db"` | Semantic query-memory collection **directory** (zvec, not SQLite) |
 | `MEMORY_LOG_FILE` | `"memory.jsonl"` | Memory append-only log (legacy — now `memory_log` table) |
