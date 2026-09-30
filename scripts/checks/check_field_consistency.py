@@ -227,7 +227,7 @@ def main() -> int:
         by_file: dict[Path, list[Violation]] = defaultdict(list)
         for v in all_violations:
             by_file[v.file].append(v)
-        print(f"check-field-consistency: {len(all_violations)} violation(s) across {len(by_file)} file(s)")
+        print(f"check-field-consistency: {len(all_violations)} violation(s) in {len(by_file)} file(s), {len(py_files)} file(s) scanned")
         for f in sorted(by_file):
             print(f"\n{f.relative_to(REPO_ROOT)}:")
             for v in sorted(by_file[f], key=lambda x: (x.line, x.col)):
