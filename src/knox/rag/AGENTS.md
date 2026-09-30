@@ -17,9 +17,9 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
 ## Local Contracts
 
 - **The index is built from the markdown bundle, and staleness is judged by the
-  same rule.** `indexable_nodes()` / `indexable_node_ids()` (in `zvec_store.py`)
-  define which nodes the index covers; every builder and `is_stale()` must use
-  them. Two regressions came from violating this: the compile path indexed the
+  same rule.** `indexable_nodes()` (in `zvec_store.py`)
+  defines which nodes the index covers; every builder and `is_stale()` must use
+  it. Two regressions came from violating this: the compile path indexed the
   in-memory graph while `knox query` compared against `load_wiki_from_files()`
   (which also yields summary pages), and `embed_attachments=False` filtered the
   build but not the comparison. Both made the index look stale after every

@@ -687,11 +687,6 @@ def _embed_text(node: WikiNode) -> str:
     return f"{node.title}\n{node.content}"
 
 
-def indexable_node_ids(wiki: CompiledWiki, *, embed_attachments: bool = False) -> set[str]:
-    """Index ids (zvec PK form) for :func:`indexable_nodes`."""
-    return {_safe_id(n.id) for n in indexable_nodes(wiki, embed_attachments=embed_attachments)}
-
-
 def indexable_nodes(wiki: CompiledWiki, *, embed_attachments: bool = False) -> list[WikiNode]:
     """The nodes the vector index covers — the single eligibility rule.
 

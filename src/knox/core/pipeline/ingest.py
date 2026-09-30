@@ -57,22 +57,6 @@ class IngestResult:
     cache_dir: Path = Path()
 
 
-def _extract_text_for_dedup(doc: ParsedDocument, source_file: Path) -> str:
-    """Extract plain text from a parsed document for dedup fingerprinting.
-
-    Concatenates all element text. Falls back to raw file contents when the
-    document has no extractable elements.
-    """
-    text = ""
-    elements = getattr(doc, "elements", None)
-    if elements:
-        for element in elements:
-            element_text = getattr(element, "text", None)
-            if element_text:
-                text += element_text + "\n\n"
-    return text or source_file.read_text(errors="replace")
-
-
 def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest flow
     files: Sequence[Path],
     base_dir: Path,

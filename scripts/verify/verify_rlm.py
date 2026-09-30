@@ -128,10 +128,5 @@ def run_query(question: str, context: str, rlm: RlmConfig | None) -> str:
     return result
 
 
-def _message_text(message: object) -> str:
-    parts = getattr(message, "parts", ())
-    return "\n".join(getattr(p, "content", "") or "" for p in parts if "SystemPrompt" in type(p).__name__ or "UserPrompt" in type(p).__name__)
-
-
 if __name__ == "__main__":
     sys.exit(main())

@@ -273,13 +273,6 @@ def lint_all(
         )
 
 
-def _uses_llm_rule(rule: list[str] | None) -> bool:
-    """Return True if any requested rule name is LLM-powered."""
-    if not rule:
-        return False
-    return any(r in LLM_RULE_BY_NAME for r in rule)
-
-
 # ── Sub-command: history ─────────────────────────────────────────────────
 
 

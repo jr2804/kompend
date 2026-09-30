@@ -354,17 +354,6 @@ def slugify(text: str, max_length: int | None = None) -> str:
     return f"{truncated}-{hashlib.sha256(slug.encode()).hexdigest()[:4]}"
 
 
-def _dedup_id(node_id: str, seen: set[str]) -> str:
-    """Append a numeric suffix if node_id already exists in *seen*, then add."""
-    candidate = node_id
-    counter = 2
-    while candidate in seen:
-        candidate = f"{node_id}-{counter}"
-        counter += 1
-    seen.add(candidate)
-    return candidate
-
-
 def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
     """Extract image metadata from IMAGE chunks.
 

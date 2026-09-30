@@ -66,15 +66,6 @@ def write_document(db_path: Path, key: str, data: JSONDict) -> None:
         )
 
 
-def document_exists(db_path: Path, key: str) -> bool:
-    """Whether a parse-cache record exists (no fingerprint validation)."""
-    if not db_path.exists():
-        return False
-    with open_store(db_path) as conn:
-        row = conn.execute(f"SELECT 1 FROM {DOCUMENTS_TABLE} WHERE cache_key = ? LIMIT 1", (key,)).fetchone()
-    return row is not None
-
-
 def clear_documents(db_path: Path) -> None:
     """Delete every parse-cache record (used by ``--force``)."""
     with open_store(db_path) as conn:
@@ -166,7 +157,6 @@ __all__ = [
     "cache_key",
     "clear_documents",
     "content_hash_prefix",
-    "document_exists",
     "extract_text_from_cached",
     "extract_text_from_data",
     "iter_documents",

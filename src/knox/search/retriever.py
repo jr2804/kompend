@@ -14,15 +14,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, TypedDict
 
-from knox.agents.deps import PipelineAgentDeps, QueryDeps
+from knox.agents.deps import QueryDeps
 from knox.agents.query import QueryAgent
 from knox.agents.query_agentic import make_agentic_query_agent
-from knox.agents.search import QueryExpansionAgent
 from knox.agents.types import QueryAgentDeps, QuerySearchProtocol
 from knox.core.config import DEFAULTS, RlmConfig
-from knox.core.config.keys import DISPLAY_QUERY_EXPANSIONS, DISPLAY_SEARCH_SNIPPET_CHARS
+from knox.core.config.keys import DISPLAY_SEARCH_SNIPPET_CHARS
 from knox.core.models import CompiledWiki, MetadataField, WikiNode
-from knox.core.templates import TemplateLoader
 from knox.logging import get_logger
 from knox.rag.zvec_store import VectorStoreLike, ZvecField
 from knox.search.filters import matches_attr_filter, matches_tag_filter
@@ -523,33 +521,6 @@ def run_agentic_query(
         timeout=timeout,
     )
     return agent.run(deps)
-
-
-# ── Query expansion ────────────────────────────────────────────────────
-
-
-def expand_query(
-    query: str,
-    template_loader: TemplateLoader,
-    expansion_agent: QueryExpansionAgent | None = None,
-) -> list[str]:
-    """Expand a query into variants using the expansion agent."""
-    if expansion_agent is None:
-        return [query]
-
-    try:
-        system_prompt = template_loader.render("search/expand_query.md.j2", query=query)
-        deps = PipelineAgentDeps(text=system_prompt, source_id="expand", timeout=120)
-        result = expansion_agent.run(deps)
-
-        expansions: list[str] = [query]
-        expansions.extend(result.keyword_rewrites)
-        expansions.extend(result.semantic_rewrites)
-        expansions_limit = DEFAULTS.get(DISPLAY_QUERY_EXPANSIONS, 7)
-        return expansions[:expansions_limit]
-    except Exception as exc:
-        logger.warning("Query expansion failed: %s", exc, exc_info=True)
-        return [query]
 
 
 # ── Utilities ──────────────────────────────────────────────────────────

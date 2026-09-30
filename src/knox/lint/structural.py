@@ -1235,10 +1235,6 @@ def orphan_attachment_dirs(base_dir: Path, sources_dir: Path) -> list[str]:
     return orphans
 
 
-def _node_ids_set(wiki: CompiledWiki) -> set[str]:
-    return {n.id for n in wiki.nodes}
-
-
 def _incoming_link_counts(wiki: CompiledWiki) -> dict[str, int]:
     """Count incoming ``[[wikilinks]]`` per node id."""
     counts: dict[str, int] = {}
