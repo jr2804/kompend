@@ -318,9 +318,21 @@ class VaultWriter(BaseOutputWriter):
                 stale.unlink()
         for folder in set(self._KIND_FOLDERS.values()):
             sub = output_dir / folder
-            if sub.is_dir():
-                for stale in sub.glob("*.md"):
-                    stale.unlink()
+            if not sub.is_dir():
+                continue
+            # rglob, not glob: entity pages live in typed subfolders
+            # (``entities/<type>/<slug>.md``), so a non-recursive sweep left
+            # every stale page behind whenever the entity-type set changed —
+            # producing orphaned pages with broken concept links, plus
+            # duplicates when a type was renamed (``event/`` → ``conference/``).
+            for stale in sub.rglob("*.md"):
+                stale.unlink()
+            # Prune typed subfolders left empty by the sweep so the vault does
+            # not accumulate directories for entity types that no longer exist.
+            # Deepest first, so nested empties collapse in one pass.
+            for child in sorted((p for p in sub.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+                if next(child.iterdir(), None) is None:
+                    child.rmdir()
 
         # slug/title -> bundle-relative path mapping for link rendering.
         # Paths are relative (no leading slash) so links stay portable.

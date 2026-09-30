@@ -217,6 +217,43 @@ class TestSubfolderLayout:
         assert (tmp_path / "sec.md").exists()
         assert not (tmp_path / "concepts").exists()
 
+    def test_stale_entity_pages_in_typed_subfolders_are_pruned(self, tmp_path: Path) -> None:
+        """Recompiling with a changed entity type removes the previous page.
+
+        Entity pages live in ``entities/<type>/``.  A non-recursive stale
+        sweep left the old type's pages behind — producing orphans with
+        broken concept links, and a duplicate whenever the type was merely
+        renamed (regression: ``event/`` → ``conference/``).
+        """
+
+        def _wiki(entity_type: str) -> CompiledWiki:
+            return CompiledWiki(
+                nodes=[
+                    WikiNode(
+                        id="daga-2023",
+                        title="DAGA 2023",
+                        content="Body.",
+                        node_type="entity",
+                        metadata={"entity_type": entity_type},
+                    )
+                ],
+                edges=[],
+                toc=[],
+                metadata={"title": "Test"},
+            )
+
+        writer = MarkdownWriter(vault_mode=True)
+        writer.write(_wiki("event"), tmp_path)
+        assert (tmp_path / "entities" / "event" / "daga-2023.md").exists()
+
+        # Same page, entity type corrected to "conference".
+        writer.write(_wiki("conference"), tmp_path)
+
+        assert (tmp_path / "entities" / "conference" / "daga-2023.md").exists()
+        assert not (tmp_path / "entities" / "event" / "daga-2023.md").exists()
+        # The emptied typed folder goes too — no cruft accumulation.
+        assert not (tmp_path / "entities" / "event").exists()
+
     def test_index_lists_all_pages_regardless_of_folder(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
         MarkdownWriter(vault_mode=True).write(sample_wiki, temp_output)
         index = (temp_output / "index.md").read_text(encoding="utf-8")
