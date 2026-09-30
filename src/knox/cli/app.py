@@ -17,13 +17,21 @@ import importlib
 import os
 import sys
 from importlib.metadata import version
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
-import click
 import logfire
 import typer
-from typer.core import TyperGroup
+from typer.core import TyperCommand, TyperGroup
 from typer.main import get_command_from_info, get_group
+
+if TYPE_CHECKING:
+    # Typer 0.26 vendors its own click as ``typer._click``: its API types are a
+    # different class hierarchy from the standalone ``click`` package, so
+    # annotating these overrides with ``click.Context``/``click.Command`` both
+    # mismatched the parent signatures and made the returned command a foreign
+    # type. Name Typer's own types once, here.
+    from typer._click.core import Command as ClickCommand
+    from typer._click.core import Context as ClickContext
 
 from knox.cli._shared import format_exception_for_cli
 from knox.core.config.keys import EnvVar
@@ -142,11 +150,11 @@ class _LazyGroup(TyperGroup):
     are needed (dispatch, help rendering, completion, suggestions).
     """
 
-    def list_commands(self, ctx: click.Context) -> list[str]:  # noqa: PLR6301 — Click API override
+    def list_commands(self, ctx: ClickContext) -> list[str]:  # noqa: PLR6301 — Click API override
         order = {panel: idx for idx, panel in enumerate(_PANEL_ORDER)}
         return sorted(_COMMAND_MODULES, key=lambda n: (order[_COMMAND_PANELS[n]], n))
 
-    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+    def get_command(self, ctx: ClickContext, cmd_name: str) -> ClickCommand | None:
         # NOTE: Typer's get_group_from_info pre-fills self.commands eagerly
         # from already-imported modules (panels unset), so the panel must be
         # applied to EVERY served command — not just lazily built ones —
@@ -171,6 +179,8 @@ class _LazyGroup(TyperGroup):
                 # Sub-Typer groups from app.add_typer() (config, lint, attachments, …).
                 # Aliases ("att" → attachments_app) live on the GroupInfo name.
                 for group_info in app.registered_groups:
+                    if group_info.typer_instance is None:
+                        continue
                     gname = group_info.name or group_info.typer_instance.info.name or ""
                     if gname == cmd_name:
                         sub_group = get_group(group_info.typer_instance)
@@ -179,7 +189,9 @@ class _LazyGroup(TyperGroup):
                         break
         cmd = self.commands.get(cmd_name)
         panel = _COMMAND_PANELS.get(cmd_name)
-        if cmd is not None and panel is not None:
+        # ``rich_help_panel`` is declared on Typer's command class, not on the
+        # click base this group stores commands as — narrow before setting it.
+        if panel is not None and isinstance(cmd, TyperCommand):
             cmd.rich_help_panel = panel
         return cmd
 

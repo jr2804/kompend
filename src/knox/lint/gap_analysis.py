@@ -24,7 +24,7 @@ from pathlib import Path
 from knox.core.config import DEFAULTS
 from knox.core.config.keys import DISPLAY_LINT_FEEDBACK_CHARS
 from knox.core.models import load_cached_wiki
-from knox.lint.base import LintReport, LintReportResult
+from knox.lint.base import LintReport, LintResult
 
 _CLARITY_LOW_THRESHOLD = 4
 _CLARITY_MODERATE_THRESHOLD = 6
@@ -90,7 +90,7 @@ def analyze_gaps(report: LintReport, degree_map: dict[str, int] | None = None) -
     *degree_map* (page id → edge count, from the compiled wiki graph) enables
     coverage-weighted priority for missing topics.
     """
-    results: list[LintReportResult] = report.results
+    results: list[LintResult] = report.results
     recs: list[GapRecommendation] = []
 
     recs.extend(_analyze_broken_wikilinks(results, degree_map))
@@ -129,7 +129,7 @@ def gaps_to_text(recs: list[GapRecommendation]) -> str:
 
 
 def _analyze_broken_wikilinks(
-    results: list[LintReportResult],
+    results: list[LintResult],
     degree_map: dict[str, int] | None = None,
 ) -> list[GapRecommendation]:
     """Broken wikilinks point to topics the wiki doesn't cover yet.
@@ -221,7 +221,7 @@ def _is_source_reference(target: str) -> bool:
     return any(lower.endswith(ext) for ext in (".pdf", ".docx", ".doc", ".xlsx", ".pptx"))
 
 
-def _analyze_coverage_gaps(results: list[LintReportResult]) -> list[GapRecommendation]:
+def _analyze_coverage_gaps(results: list[LintResult]) -> list[GapRecommendation]:
     """LLM-identified concepts missing from the wiki."""
     recs: list[GapRecommendation] = []
     for r in results:
@@ -244,7 +244,7 @@ def _analyze_coverage_gaps(results: list[LintReportResult]) -> list[GapRecommend
     return recs
 
 
-def _analyze_clarity(results: list[LintReportResult]) -> list[GapRecommendation]:
+def _analyze_clarity(results: list[LintResult]) -> list[GapRecommendation]:
     """Low clarity scores indicate incomplete or poorly extracted content."""
     recs: list[GapRecommendation] = []
     for r in results:
@@ -281,7 +281,7 @@ def _analyze_clarity(results: list[LintReportResult]) -> list[GapRecommendation]
     return recs
 
 
-def _analyze_empty_pages(results: list[LintReportResult]) -> list[GapRecommendation]:
+def _analyze_empty_pages(results: list[LintResult]) -> list[GapRecommendation]:
     """Empty pages indicate source parsing failures or empty sources."""
     recs: list[GapRecommendation] = []
     for r in results:
@@ -299,7 +299,7 @@ def _analyze_empty_pages(results: list[LintReportResult]) -> list[GapRecommendat
     return recs
 
 
-def _analyze_orphans(results: list[LintReportResult]) -> list[GapRecommendation]:
+def _analyze_orphans(results: list[LintResult]) -> list[GapRecommendation]:
     """Orphan pages need related sources to build connections."""
     orphan_ids = [r.page_id for r in results if r.rule == "orphan-page" and r.outcome == "fail"]
     recs: list[GapRecommendation] = []
@@ -315,7 +315,7 @@ def _analyze_orphans(results: list[LintReportResult]) -> list[GapRecommendation]
     return recs
 
 
-def _analyze_contradictions(results: list[LintReportResult]) -> list[GapRecommendation]:
+def _analyze_contradictions(results: list[LintResult]) -> list[GapRecommendation]:
     """Contradictions may need an authoritative source to resolve."""
     recs: list[GapRecommendation] = []
     for r in results:

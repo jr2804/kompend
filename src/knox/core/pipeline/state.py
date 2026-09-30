@@ -94,6 +94,38 @@ class TierState:
         return cls(entries=entries)
 
 
+@dataclass(frozen=True)
+class CompileStatusInfo:
+    """Rich compile status for ``knox status`` output."""
+
+    status: CompileStatus
+    total: int = 0
+    indexed: int = 0
+    compiled: int = 0
+    error: str = ""
+
+    def label(self) -> str:
+        """Human-readable one-line label for CLI display."""
+        s = self.status
+        if s is CompileStatus.NOT_INITIALIZED:
+            result = "not initialized"
+        elif s is CompileStatus.NO_SOURCES:
+            result = "initialized, no sources"
+        elif s is CompileStatus.NOT_INDEXED:
+            result = f"{self.total} source(s) not indexed"
+        elif s is CompileStatus.IN_PROGRESS:
+            result = f"{self.indexed} source(s) ingested, not compiled"
+        elif s is CompileStatus.PARTIALLY_COMPILED:
+            result = f"partially compiled ({self.compiled}/{self.total})"
+        elif s is CompileStatus.COMPILED:
+            result = f"compiled ({self.compiled} source(s))"
+        elif s is CompileStatus.BROKEN:
+            result = f"broken: {self.error}" if self.error else "broken"
+        else:
+            result = str(s)
+        return result
+
+
 class TierStateStore:
     """Store for per-source tier state, backed by the single ``knox.db``.
 
@@ -209,38 +241,6 @@ class TierStateStore:
         existing.search_hits += 1
         existing.last_hit = iso_local()
         state.entries[stem] = existing
-
-
-@dataclass(frozen=True)
-class CompileStatusInfo:
-    """Rich compile status for ``knox status`` output."""
-
-    status: CompileStatus
-    total: int = 0
-    indexed: int = 0
-    compiled: int = 0
-    error: str = ""
-
-    def label(self) -> str:
-        """Human-readable one-line label for CLI display."""
-        s = self.status
-        if s is CompileStatus.NOT_INITIALIZED:
-            result = "not initialized"
-        elif s is CompileStatus.NO_SOURCES:
-            result = "initialized, no sources"
-        elif s is CompileStatus.NOT_INDEXED:
-            result = f"{self.total} source(s) not indexed"
-        elif s is CompileStatus.IN_PROGRESS:
-            result = f"{self.indexed} source(s) ingested, not compiled"
-        elif s is CompileStatus.PARTIALLY_COMPILED:
-            result = f"partially compiled ({self.compiled}/{self.total})"
-        elif s is CompileStatus.COMPILED:
-            result = f"compiled ({self.compiled} source(s))"
-        elif s is CompileStatus.BROKEN:
-            result = f"broken: {self.error}" if self.error else "broken"
-        else:
-            result = str(s)
-        return result
 
 
 def classify_compile_status(

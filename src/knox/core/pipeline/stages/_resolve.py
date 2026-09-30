@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 
 from knox.core.models import Chunk, ChunkTree, ElementType, ResolvedChunk
 from knox.core.pipeline.runtime import PipelineRuntime
@@ -10,6 +11,7 @@ from knox.core.resolution.entity_registry import EntityRegistry
 from knox.core.resolution.xref_checker import CrossReferenceChecker
 from knox.llm.models import resolve_vlm_model
 from knox.logging import get_logger
+from knox.types import CacheValue
 
 logger = get_logger(__name__)
 
@@ -61,14 +63,17 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
         deps = {"chunk_id": chunk.id, "vlm_model": vlm_model}
         cached = pipeline.cache_store.get_dict("resolve", deps)
         if cached is not None:
+            # Validate every element, not just the container: a cache entry is
+            # external data, and an entity that is not a mapping would reach
+            # the resolver as a broken record.
             entities_raw = cached.get("entities", [])
-            entities = entities_raw if isinstance(entities_raw, list) else []
+            entities = [e for e in entities_raw if isinstance(e, dict)] if isinstance(entities_raw, list) else []
             relations_raw = cached.get("relations", [])
-            relations = relations_raw if isinstance(relations_raw, list) else []
+            relations = [r for r in relations_raw if isinstance(r, dict)] if isinstance(relations_raw, list) else []
             refs_raw = cached.get("resolved_references", [])
-            resolved_references = refs_raw if isinstance(refs_raw, list) else []
+            resolved_references = [r for r in refs_raw if isinstance(r, str)] if isinstance(refs_raw, list) else []
             meta_raw = cached.get("metadata", {})
-            metadata = meta_raw if isinstance(meta_raw, dict) else {}
+            metadata = dict(meta_raw) if isinstance(meta_raw, dict) else {}
             return ResolvedChunk(
                 chunk=chunk,
                 entities=entities,
@@ -82,12 +87,18 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
         pipeline.cache_store.set(
             "resolve",
             deps,
-            {
-                "entities": result.entities,
-                "relations": result.relations,
-                "resolved_references": result.resolved_references,
-                "metadata": result.metadata,
-            },
+            # The resolver's entities/relations are JSON-shaped but declared
+            # as dict[str, Any], which the cache value union cannot accept
+            # positionally (invariant dict values) — erase at this boundary.
+            cast(
+                "CacheValue",
+                {
+                    "entities": result.entities,
+                    "relations": result.relations,
+                    "resolved_references": result.resolved_references,
+                    "metadata": result.metadata,
+                },
+            ),
         )
         return result
 

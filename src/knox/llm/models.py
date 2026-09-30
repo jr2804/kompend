@@ -447,7 +447,7 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
     try:
         for ps_model in ollama.ps().models:
             for ps_id in (ps_model.model, ps_model.name):
-                if ps_id == model_name or ps_id.split(":")[0] == model_name.split(":", maxsplit=1)[0]:
+                if ps_id is not None and (ps_id == model_name or ps_id.split(":")[0] == model_name.split(":", maxsplit=1)[0]):
                     loaded_ctx = ps_model.context_length
                     break
             else:

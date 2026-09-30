@@ -214,7 +214,7 @@ def _parse_aligns(aligns: Sequence[str | None] | None, width: int) -> list[str |
     if aligns is None:
         return [None] * width
     parsed = [_ALIGN_KEYS[a] for a in aligns]
-    unknown = {a for a in aligns if a not in _ALIGN_KEYS}
+    unknown = {a for a in aligns if a is not None and a not in _ALIGN_KEYS}
     if unknown:
         logger.warning("Unknown table alignments %s — ignored", sorted(unknown))
     return (parsed + [None] * width)[:width]

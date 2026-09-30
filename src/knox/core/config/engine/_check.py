@@ -33,7 +33,7 @@ from knox.core.config.engine._loading import load_toml
 from knox.core.config.engine._schema import DEFAULTS, DEPRECATED_ALIASES, REMOVED_KEYS
 from knox.core.utils.dicts import flat_keys, get_dot
 from knox.logging import get_logger
-from knox.types import JSONDict, JSONValue
+from knox.types import JSONDict, JSONList, JSONValue
 
 # ── Status kind ─────────────────────────────────────────────────────────────
 
@@ -62,8 +62,8 @@ class ConfigCheckEntry:
     set_in_toml: bool = False  # False → "not set; default resolves here"
     message: str | None = None  # populated only for error rows
 
-    def to_dict(self) -> dict[str, object]:
-        out: dict[str, object] = {
+    def to_dict(self) -> JSONDict:
+        out: JSONDict = {
             "key": self.key,
             "status": self.status,
             "default": self.default,
@@ -108,12 +108,13 @@ class ConfigCheckReport:
         return self.error_count > 0
 
     def to_dict(self) -> JSONDict:
+        entries: JSONList = [e.to_dict() for e in self.entries]
         out: JSONDict = {
             "ok": self.ok_count,
             "modified": self.modified_count,
             "error": self.error_count,
             "removed": self.removed_count,
-            "entries": [e.to_dict() for e in self.entries],
+            "entries": entries,
         }
         if self.path is not None:
             out["path"] = str(self.path)

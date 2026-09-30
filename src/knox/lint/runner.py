@@ -226,22 +226,7 @@ def report_to_json(report: LintReport) -> str:
 
 
 def report_to_dict(report: LintReport) -> dict[str, Any]:
-    """Serialize a lint report to a plain dict.
-
-    The results list may hold either :class:`LintResult` (StrEnum
-    outcome/severity, ``fix_applied``) or :class:`LintReportResult` (plain
-    strings, no severity/fix fields) — both flow through this serializer.
-    Values are normalized so the dict shape is identical regardless.
-    """
-
-    def _outcome(r: Any) -> str:
-        value = r.outcome
-        return value.value if hasattr(value, "value") else str(value)
-
-    def _severity(r: Any) -> str:
-        value = getattr(r, "severity", "warning")
-        return value.value if hasattr(value, "value") else str(value)
-
+    """Serialize a lint report to a plain dict (the ``lint_history`` shape)."""
     return {
         "health_score": report.health_score,
         "total_checks": report.total_checks,
@@ -251,11 +236,11 @@ def report_to_dict(report: LintReport) -> dict[str, Any]:
         "results": [
             {
                 "rule": r.rule,
-                "outcome": _outcome(r),
-                "severity": _severity(r),
+                "outcome": r.outcome.value,
+                "severity": r.severity.value,
                 "message": r.message,
                 "page_id": r.page_id,
-                "fix_applied": getattr(r, "fix_applied", False),
+                "fix_applied": r.fix_applied,
                 "details": r.details,
             }
             for r in report.results

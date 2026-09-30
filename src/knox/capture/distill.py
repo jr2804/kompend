@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypedDict
 
 import yaml
 
@@ -35,6 +36,14 @@ class CapturedNote:
     tags: list[str] = field(default_factory=list)
     source_file: Path | None = None
     captured_at: str = ""
+
+
+class DistilledPage(TypedDict):
+    """One synthesized distillation page, as written to frontmatter + body."""
+
+    title: str
+    content: str
+    tags: list[str]
 
 
 def distill(
@@ -180,7 +189,7 @@ def _distill_agentic(
         distill_agent.run(deps)
     except Exception as exc:
         logger.warning("AgenticDistillAgent failed: %s, falling back to per-group", exc)
-        return _distill_fallback_per_group(groups, distill_agent, timestamp, output_dir)
+        return _distill_fallback_per_group(groups, timestamp, output_dir)
 
     written = []
     for tag, note_list in groups.items():
@@ -188,11 +197,12 @@ def _distill_agentic(
         if page_data is None:
             page = _synthesize_fallback(tag, note_list)
         else:
-            page = {
-                "title": page_data.get("title") or tag.replace("-", " ").replace("_", " ").title(),
-                "content": page_data.get("content") or "",
-                "tags": page_data.get("tags") or [tag],  # nocheck: OKF frontmatter key, not wiki metadata
-            }
+            raw_tags = page_data.get("tags")  # nocheck: OKF frontmatter key, not wiki metadata
+            page = DistilledPage(
+                title=str(page_data.get("title") or tag.replace("-", " ").replace("_", " ").title()),
+                content=str(page_data.get("content") or ""),
+                tags=[str(t) for t in raw_tags] if isinstance(raw_tags, list) else [tag],
+            )
         slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in note_list]
         filepath = _distilled_path(output_dir, slug, timestamp)
@@ -204,13 +214,20 @@ def _distill_agentic(
 
 def _distill_fallback_per_group(
     groups: dict[str, list[CapturedNote]],
-    distill_agent: AgenticDistillAgent,
     timestamp: str,
     output_dir: Path,
 ) -> list[Path]:
+    """Deterministically merge every group after the agentic session failed.
+
+    The agentic agent's contract is one multi-group session (``groups``/
+    ``pages`` deps); it has no per-group entry point, so there is no second
+    LLM pass to fall back to. Passing it to ``_synthesize_with_agent`` — which
+    builds the *structured-output* agent's deps — only ever rendered a broken
+    prompt and landed here anyway, via the fallback it already returned.
+    """
     written: list[Path] = []
     for tag, group_notes in groups.items():
-        page = _synthesize_with_agent(tag, group_notes, distill_agent)
+        page = _synthesize_fallback(tag, group_notes)
         slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
         filepath = _distilled_path(output_dir, slug, timestamp)
@@ -241,7 +258,7 @@ def _synthesize_with_agent(
     tag: str,
     notes: list[CapturedNote],
     distill_agent: DistillAgent,
-) -> dict:
+) -> DistilledPage:
     """Use the DistillAgent to synthesize a group of notes into a single page."""
     notes_data = [
         {
@@ -273,7 +290,7 @@ def _synthesize_with_agent(
     }
 
 
-def _synthesize_fallback(tag: str, notes: list[CapturedNote]) -> dict:
+def _synthesize_fallback(tag: str, notes: list[CapturedNote]) -> DistilledPage:
     """Deterministically merge notes without an LLM call."""
     sections = []
     for note in notes:
@@ -291,7 +308,7 @@ def _synthesize_fallback(tag: str, notes: list[CapturedNote]) -> dict:
 
 def _write_page(
     filepath: Path,
-    page: dict,
+    page: DistilledPage,
     source_files: list[str],
     timestamp: str,
 ) -> None:

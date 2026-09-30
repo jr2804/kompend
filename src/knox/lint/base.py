@@ -64,21 +64,6 @@ class LintResult:
 
 
 @dataclass
-class LintReportResult:
-    """A single lint finding, as stored in ``lint_history.jsonl``.
-
-    Used by the remediation layer, which reads the serialized report dict
-    rather than in-memory :class:`LintResult` objects.
-    """
-
-    rule: str
-    outcome: str
-    details: dict[str, Any] = field(default_factory=dict)
-    message: str = ""
-    page_id: str = ""
-
-
-@dataclass
 class LintReport:
     """Typed wrapper around a lint report's ``results`` list.
 
@@ -88,9 +73,16 @@ class LintReport:
     ``runner.report_to_dict`` with ``AttributeError: 'LintReport' object has
     no attribute 'health_score'``). Summary fields default to 0/0.0; callers
     that can compute them (runner, flow) should fill them in.
+
+    ``results`` holds :class:`LintResult` — the same finding type the rules
+    return. A second, narrower ``LintReportResult`` used to exist for items
+    read back from ``lint_history.jsonl``, which meant every reader of a
+    report had to guess which of the two it held (``fix_applied`` and
+    ``severity`` exist on only one of them). History entries are now parsed
+    back into ``LintResult`` by :func:`knox.lint.history.report_from_dict`.
     """
 
-    results: list[LintReportResult]
+    results: list[LintResult]
     total_checks: int = 0
     failures: int = 0
     passes: int = 0

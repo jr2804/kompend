@@ -14,15 +14,16 @@ from knox.core.models import MetadataField, load_wiki_from_files
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE, REVIEW_DIR, VaultPaths, vault_paths
 from knox.core.reporting.log import build_log_report
 from knox.core.utils.dicts import as_str
-from knox.lint.base import LintReport, LintReportResult, RemediationStatus
-from knox.lint.flow import _persist_lint_fixes, run_full_lint_flow
+from knox.lint.base import RemediationStatus
 from knox.lint.flow import _run_pass as _run_rules_pass
+from knox.lint.flow import persist_lint_fixes, run_full_lint_flow
 from knox.lint.gap_analysis import analyze_gaps, gaps_to_text
 from knox.lint.history import (
     history_to_json,
     history_to_text,
     load_lint_history,
     prune_lint_history,
+    report_from_dict,
 )
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
 from knox.lint.remediation import remediate, remediation_to_text
@@ -83,7 +84,7 @@ def lint_check(
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=CHECK_STEP_RULES, enable_llm=False, lint_agent=None, fix=fix)
     fixes_applied = 0
     if fix and any(r.fix_applied for r in report.results):
-        fixes_applied = _persist_lint_fixes(wiki, vp.output_dir, vp.base_dir)
+        fixes_applied = persist_lint_fixes(wiki, vp)
     _persist_history(report, vp=vp, cfg=cfg, context="check", elapsed=elapsed, fix=fix, node_count=len(wiki.nodes), llm_meta=None)
     return {
         "status": "ok",
@@ -189,7 +190,7 @@ def lint_gaps(
         return {"status": "error", "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
 
     report_dict = entries[-1].get("report", {})
-    report = _to_lint_report(report_dict)
+    report = report_from_dict(report_dict)
     recs = analyze_gaps(report)
 
     if json_output:
@@ -226,7 +227,7 @@ def lint_remediate(
         return {"status": "error", "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
 
     report_dict = entries[-1].get("report", {})
-    report = _to_lint_report(report_dict)
+    report = report_from_dict(report_dict)
 
     wiki = load_wiki_from_files(VaultPaths(base_dir).output_dir)
     if wiki is None:
@@ -547,17 +548,3 @@ def list_parsers(
         ptype = p.get("type", "built-in")
         lines.append(f"  - {p['name']} ({ptype})  [{exts}]")
     return {"status": "ok", "parsers_text": "\n".join(lines)}
-
-
-def _to_lint_report(report_dict: dict[str, Any]) -> LintReport:
-    results = [
-        LintReportResult(
-            rule=r.get("rule", ""),
-            outcome=r.get("outcome", ""),
-            details=r.get("details", {}),
-            message=r.get("message", ""),
-            page_id=r.get("page_id", ""),
-        )
-        for r in report_dict.get("results", [])
-    ]
-    return LintReport(results=results)

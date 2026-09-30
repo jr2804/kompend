@@ -68,16 +68,6 @@ logger = get_logger(__name__)
 _registry: dict[str, ParserMetadata] = {}
 
 
-class ParserMetadata(TypedDict):
-    """Schema for one entry in the parser registry (``knox list-parsers``)."""
-
-    name: str
-    type: str
-    extensions: list[str]
-    figure_enrichment: bool
-    metadata: dict[str, Any]
-
-
 @dataclass(frozen=True)
 class ParserBuildOptions:
     """Inputs needed to construct a parser instance.
@@ -89,6 +79,16 @@ class ParserBuildOptions:
     image_mode: str = "file"
     images_scale: float = IMAGE_SCALE_DEFAULT
     pdf_config: PdfConfig | None = None
+
+
+class ParserMetadata(TypedDict):
+    """Schema for one entry in the parser registry (``knox list-parsers``)."""
+
+    name: str
+    type: str
+    extensions: list[str]
+    figure_enrichment: bool
+    metadata: dict[str, Any]
 
 
 def register_backend(

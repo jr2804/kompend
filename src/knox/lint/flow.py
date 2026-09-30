@@ -21,7 +21,7 @@ from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
 from knox.core.models import CompiledWiki, MetadataField, load_cached_wiki
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE, VaultPaths
-from knox.lint.base import LintReport, LintReportResult
+from knox.lint.base import LintReport, LintResult
 from knox.lint.gap_analysis import analyze_gaps, load_degree_map
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.remediation import RemediationStatus, remediate
@@ -101,7 +101,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
             progress.stop()
 
     if fix and check_report and any(r.fix_applied for r in check_report.results):
-        _persist_lint_fixes(wiki, vp)
+        persist_lint_fixes(wiki, vp)
 
     merged_results = _merge_results(check_report, semantic_report)
     merged_report = _rich_report(merged_results)
@@ -201,11 +201,11 @@ def run_runner_with_progress(
 def _merge_results(
     check_report: LintReport | None,
     semantic_report: LintReport | None,
-) -> list[LintReportResult]:
+) -> list[LintResult]:
     return (check_report.results if check_report else []) + (semantic_report.results if semantic_report else [])
 
 
-def _rich_report(results: list[LintReportResult]) -> LintReport:
+def _rich_report(results: list[LintResult]) -> LintReport:
     """Populate summary fields from a flat result list (single source of
     truth for the merge; mirrors ``runner._build_report`` aggregation).
     """
@@ -241,7 +241,7 @@ def _remediate_phase(  # noqa: PLR0917 — orchestrates one step with 6 inputs
     wiki: CompiledWiki,
     vp: VaultPaths,
     cfg: Any,
-    merged_results: list[LintReportResult],
+    merged_results: list[LintResult],
     lint_agent: Any,
     fix: bool,
 ) -> list[Any]:
@@ -259,8 +259,16 @@ def _remediate_phase(  # noqa: PLR0917 — orchestrates one step with 6 inputs
     return actions
 
 
-def _persist_lint_fixes(wiki: CompiledWiki, vp: VaultPaths) -> int:
-    """Write lint-fixed frontmatter to markdown files; returns updated count."""
+def persist_lint_fixes(wiki: CompiledWiki, vp: VaultPaths) -> int:
+    """Write lint-fixed frontmatter to the written pages and refresh the wiki cache.
+
+    Public because the MCP lint tool needs it too; it used to exist in two
+    copies (here and in the CLI), and the CLI's — three positional args — was
+    the one its callers kept using, so the MCP path called this one with too
+    many arguments and raised TypeError.
+
+    Returns the number of files updated.
+    """
     updated = 0
     for node in wiki.nodes:
         fm = node.metadata.get("frontmatter", {})

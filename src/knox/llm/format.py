@@ -25,7 +25,7 @@ import toon_format as _toon
 from pydantic import BaseModel
 
 from knox.core.config._configs import LlmDataFormat
-from knox.types import JSON, JSONDict, TypeType
+from knox.types import JSON, JSONDict, JSONReadable, TypeType
 
 # ── Reasoning strip ─────────────────────────────────────────────────────
 
@@ -280,7 +280,7 @@ def _coerce_list_to_object(items: list[JSON], schema: type[BaseModel] | dict[str
 # ── Format encode / decode ────────────────────────────────────────────────
 
 
-def encode_for_llm(data: JSON, fmt: LlmDataFormat) -> str:
+def encode_for_llm(data: JSONReadable, fmt: LlmDataFormat) -> str:
     """Serialize *data* to the LLM communication format *fmt*.
 
     Use this to serialize structured context data before injecting into

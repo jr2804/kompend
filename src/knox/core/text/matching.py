@@ -77,10 +77,10 @@ class SemanticMatcher:
 
     def match(self, query: str) -> tuple[str, float] | None:
         """Best candidate for *query* by cosine, or ``None``."""
-        if not self.available or not query:
+        if not self.available or not query or self.embedder is None:
             return None
         try:
-            q = self.embedder.embed(query)  # type: ignore[union-attr]
+            q = self.embedder.embed(query)
         except Exception as exc:
             logger.debug("SemanticMatcher: query embed failed: %s", exc)
             return None

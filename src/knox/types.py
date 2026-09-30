@@ -8,6 +8,7 @@ narrow before use instead of silently propagating ``Any``.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, TypeVar, runtime_checkable
 
@@ -26,6 +27,13 @@ TypeType = type[TypeT] | None  # Type object or None
 
 JSONDict = dict[str, JSONValue]  # JSON object (dictionary)
 JSONList = list[JSONValue]  # JSON array (list)
+
+#: JSON-shaped *input* — a mapping/sequence of JSON values, in read-only form.
+#: ``JSONValue``'s ``list``/``dict`` members are invariant, so a caller holding
+#: ``list[str]`` or ``dict[str, Any]`` (equally JSON-valid, but a different
+#: concrete container) could not pass it where ``JSONValue`` was expected.
+#: ``Mapping``/``Sequence`` are covariant, so both spellings are accepted.
+JSONReadable = Mapping[str, "JSONReadable"] | Sequence["JSONReadable"] | str | int | float | bool | None
 
 # Wiki page aliases were deleted: use WikiNode / ParsedDocument directly.
 
@@ -48,7 +56,11 @@ class DataclassInstance(Protocol):
     __dataclass_fields__: ClassVar[dict[str, Any]]
 
 
-CacheValue = JSONValue | Path | bytes | tuple["CacheValue", ...] | DataclassInstance
+#: A cacheable value. Beyond plain JSON it may hold paths, bytes, tuples and
+#: registered dataclasses, so the recursive members are spelled out: ``JSONValue``
+#: only nests ``JSONValue``, and an invariant ``dict[str, CacheValue]`` was
+#: therefore rejected as a cache value.
+CacheValue = JSONValue | Path | bytes | tuple["CacheValue", ...] | list["CacheValue"] | dict[str, "CacheValue"] | DataclassInstance
 
 # Template types
 TemplateContext = dict[str, JSONValue]  # Template rendering context

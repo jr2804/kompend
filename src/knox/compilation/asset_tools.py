@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from pydantic_ai import Tool
 
+from knox.agents.deps import PipelineAgentDeps
 from knox.core.models.assets import AssetRecord
 from knox.core.models.enums import AssetKind
 from knox.core.models.structured import StructuredFigure, structured_to_text
@@ -22,7 +23,7 @@ from knox.core.pipeline.assets import AssetStore
 # ---------------------------------------------------------------------------
 
 
-def build_asset_tools(store: AssetStore) -> list[Tool]:
+def build_asset_tools(store: AssetStore) -> list[Tool[PipelineAgentDeps]]:
     """Build the list of on-demand asset-inspection tools.
 
     Args:

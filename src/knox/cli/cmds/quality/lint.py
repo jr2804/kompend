@@ -19,7 +19,6 @@ from pathlib import Path
 from typing import Any
 
 import typer
-import yaml
 
 from knox.agents.remediate import make_agentic_remediation_agent
 from knox.cli._pipeline_helpers import write_wiki_cache
@@ -41,11 +40,12 @@ from knox.cli.args import (
 from knox.core.config import resolve_config
 from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
-from knox.core.models import CompiledWiki, MetadataField, load_cached_wiki
+from knox.core.models import MetadataField, load_cached_wiki
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE
-from knox.lint.base import LintReport, LintReportResult, RemediationStatus
+from knox.lint.base import LintReport, RemediationStatus
 from knox.lint.flow import (
     _make_lint_agent,
+    persist_lint_fixes,
     run_full_lint_flow,  # noqa: F401 — re-export
     run_runner_with_progress,
 )
@@ -59,6 +59,7 @@ from knox.lint.history import (
     history_to_text,
     load_lint_history,
     prune_lint_history,
+    report_from_dict,
     save_lint_entry,
 )
 from knox.lint.llm_rules import LLM_RULE_BY_NAME
@@ -145,7 +146,7 @@ def lint_check(
     report = run_runner_with_progress(runner, wiki, show_progress=None)
     elapsed = time.monotonic() - start
     if fix and any(r.fix_applied for r in report.results):
-        updated = _persist_lint_fixes(wiki, vp.output_dir, vp.base_dir)
+        updated = persist_lint_fixes(wiki, vp)
         get_console().print(f"Persisted fixes to {updated} file(s).")
 
     _persist_history(report, vp=vp, cfg=cfg, context="check", elapsed=elapsed, fix=fix, node_count=len(wiki.nodes), llm_meta=None)
@@ -279,41 +280,6 @@ def _uses_llm_rule(rule: list[str] | None) -> bool:
     return any(r in LLM_RULE_BY_NAME for r in rule)
 
 
-def _persist_lint_fixes(
-    wiki: CompiledWiki,
-    output_dir: Path,
-    base_dir: Path,
-) -> int:
-    """Write lint-fixed frontmatter to markdown files and update the wiki cache.
-
-    Returns the number of files updated.
-    """
-    updated = 0
-    for node in wiki.nodes:
-        fm = node.metadata.get("frontmatter", {})
-        if not isinstance(fm, dict) or "title" not in fm:
-            continue
-        md_file = output_dir / f"node_{node.id}.md"
-        if not md_file.exists():
-            continue
-        text = md_file.read_text(encoding="utf-8")
-        normalized = text.replace("\r\n", "\n")
-        if normalized.startswith("---\n"):
-            end_idx = normalized.find("\n---\n", 4)
-            if end_idx < 0:
-                continue
-            old_fm_text = normalized[4:end_idx]
-            body = normalized[end_idx + 5 :]
-            old_fm = yaml.safe_load(old_fm_text) or {}
-            old_fm.update(fm)
-            new_fm = yaml.dump(old_fm, default_flow_style=False, sort_keys=False, allow_unicode=True)
-            md_file.write_text(f"---\n{new_fm}---\n{body}", encoding="utf-8")
-            updated += 1
-
-    write_wiki_cache(wiki, base_dir)
-    return updated
-
-
 # ── Sub-command: history ─────────────────────────────────────────────────
 
 
@@ -436,7 +402,7 @@ def lint_gaps(
         raise typer.Exit(1)
 
     report_dict = entries[-1].get("report", {})
-    report = _to_lint_report(report_dict)
+    report = report_from_dict(report_dict)
 
     # Coverage weighting: node degree from the cached wiki graph.
     degree_map = load_degree_map(vp.base_dir)
@@ -546,7 +512,7 @@ def lint_remediate(
         raise typer.Exit(1)
 
     report_dict = entries[-1].get("report", {})
-    report = _to_lint_report(report_dict)
+    report = report_from_dict(report_dict)
 
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
@@ -645,18 +611,3 @@ def lint_format(
         get_console().print(f"Formatted {len(changed)} file(s) with rumdl.")
     else:
         get_console().print("No formatting changes needed.")
-
-
-def _to_lint_report(report_dict: dict[str, Any]) -> LintReport:
-    """Convert a raw ``report`` dict from ``lint_history.jsonl`` to :class:`LintReport`."""
-    results = [
-        LintReportResult(
-            rule=r.get("rule", ""),
-            outcome=r.get("outcome", ""),
-            details=r.get("details", {}),
-            message=r.get("message", ""),
-            page_id=r.get("page_id", ""),
-        )
-        for r in report_dict.get("results", [])
-    ]
-    return LintReport(results=results)

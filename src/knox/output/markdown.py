@@ -162,7 +162,7 @@ class MarkdownWriter(VaultWriter):
             body = node.content or ""
             images = node.metadata.get("images", [])
             if images:
-                folder = self._folder_for_kind(node.node_type, node.metadata.get(MetadataField.ENTITY_TYPE))
+                folder = self._folder_for_kind(node.node_type, str(node.metadata.get(MetadataField.ENTITY_TYPE) or ""))
                 images = self.portablize_images(
                     images,
                     node.metadata.get(MetadataField.PROVENANCE) or [],

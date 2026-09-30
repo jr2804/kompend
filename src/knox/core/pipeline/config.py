@@ -243,7 +243,12 @@ class PipelineConfig:
             notes_file = base_dir / notes_file_name
 
         providers_raw = cfg.get("providers", {})
-        providers = providers_raw if isinstance(providers_raw, dict) else {}
+        # Sections reach this point as raw config JSON; keep only the mappings
+        # (a non-mapping section is a config error the loader already reports)
+        # so the field's declared shape is what callers see.
+        providers: dict[str, dict[str, Any]] = (
+            {name: dict(section) for name, section in providers_raw.items() if isinstance(section, dict)} if isinstance(providers_raw, dict) else {}
+        )
 
         return cls(
             source_dir=source_dir,

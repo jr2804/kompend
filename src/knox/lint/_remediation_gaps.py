@@ -17,7 +17,7 @@ from knox.core.models import CompiledWiki, WikiNode
 from knox.core.templates import get_template_loader
 from knox.core.text.matching import best_match
 from knox.core.text.slug import slugify
-from knox.lint.base import LintReportResult, RemediationAction, RemediationStatus
+from knox.lint.base import LintResult, RemediationAction, RemediationStatus
 from knox.lint.gap_broker import GapBroker
 from knox.logging import get_logger
 from knox.organize.categorize import load_all_extractions
@@ -32,7 +32,7 @@ logger = get_logger(__name__)
 
 def remediate_coverage_gaps(
     wiki: CompiledWiki,
-    results: list[LintReportResult],
+    results: list[LintResult],
     *,
     base_dir: Path,
     agent: RemediationAgent | AgenticRemediationAgent,

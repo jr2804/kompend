@@ -268,6 +268,9 @@ class TwoPhaseRuntime(Protocol):
     _llm_stats: list[tuple[int, int]]
     _usage_tracker: UsageTracker
 
+    @staticmethod
+    def merge_by_concept_key(nodes: list[WikiNode]) -> list[WikiNode]: ...
+
     def merge_duplicate_nodes(
         self,
         nodes: list[WikiNode],

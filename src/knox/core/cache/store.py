@@ -320,19 +320,31 @@ def decode_json(obj: JSONValue) -> CacheValue:  # noqa: PLR0911
             # registry lookup erases the concrete type at the boundary.
             return cast("CacheValue", cls(**decoded))
         if "__path__" in obj:
-            return Path(obj["__path__"])
+            raw_path = obj["__path__"]
+            if not isinstance(raw_path, str):
+                raise ValueError(f"Bad __path__ payload: {type(raw_path).__name__}")
+            return Path(raw_path)
         if "__enum__" in obj:
             enum_cls = _CACHE_ENUMS.get(obj["__enum__"])
             if enum_cls is None:
                 raise ValueError(f"Unknown enum tag: {obj['__enum__']}")
             return enum_cls(obj["value"])
         if "__bytes__" in obj:
-            return b64decode(obj["__bytes__"])
+            raw_bytes = obj["__bytes__"]
+            if not isinstance(raw_bytes, str):
+                raise ValueError(f"Bad __bytes__ payload: {type(raw_bytes).__name__}")
+            return b64decode(raw_bytes)
         if "__tuple__" in obj:
-            return tuple(decode_json(v) for v in obj["__tuple__"])
-        return {k: decode_json(v) for k, v in obj.items()}
+            raw_tuple = obj["__tuple__"]
+            if not isinstance(raw_tuple, list):
+                raise ValueError(f"Bad __tuple__ payload: {type(raw_tuple).__name__}")
+            items: list[CacheValue] = [decode_json(v) for v in raw_tuple]
+            return tuple(items)
+        decoded_obj: dict[str, CacheValue] = {k: decode_json(v) for k, v in obj.items()}
+        return decoded_obj
     if isinstance(obj, list):
-        return [decode_json(v) for v in obj]
+        decoded_list: list[CacheValue] = [decode_json(v) for v in obj]
+        return decoded_list
     return obj
 
 

@@ -12,7 +12,7 @@ from pathlib import Path
 from knox.agents.remediate import AgenticRemediationAgent, RemediationAgent
 from knox.core.models import CompiledWiki
 from knox.lint._remediation_gaps import remediate_coverage_gaps
-from knox.lint.base import LintReport, LintReportResult, RemediationAction, RemediationStatus
+from knox.lint.base import LintReport, LintResult, RemediationAction, RemediationStatus
 from knox.logging import get_logger
 
 # ── Output formatting ──────────────────────────────────────────────────
@@ -55,7 +55,7 @@ def remediate(
 
     Returns a list of :class:`RemediationAction`.
     """
-    results: list[LintReportResult] = report.results
+    results: list[LintResult] = report.results
 
     if agent is None:
         return []

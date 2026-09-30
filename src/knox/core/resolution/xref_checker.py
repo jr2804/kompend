@@ -122,8 +122,9 @@ class CrossReferenceChecker:
         issues: list[CrossReferenceIssue] = []
         heading_chain = "/".join(node.heading_chain)
         location = f"{source_file}:{heading_chain}"
+        chunk_text = node.chunk.text if node.chunk is not None else ""
         for ref_type, pattern in _REF_PATTERNS:
-            for match in pattern.finditer(node.chunk.text or ""):
+            for match in pattern.finditer(chunk_text):
                 ref_id = match.group(1)
                 if ref_id in valid_targets.get(ref_type, set()):
                     continue

@@ -26,7 +26,8 @@ from knox.core.config.keys import (
 from knox.core.store import open_store, vault_db_path
 from knox.core.store.schema import LINT_RUNS_TABLE
 from knox.core.utils.time import iso_local, now_local
-from knox.lint.runner import LintReport, report_to_dict
+from knox.lint.base import LintReport, LintResult, LintRuleOutcome, Severity
+from knox.lint.runner import report_to_dict
 
 # Config keys captured in the snapshot
 _SNAPSHOT_KEYS = (
@@ -73,6 +74,36 @@ def entry_from_report(
         "wiki_meta": {"node_count": node_count},  # nocheck: lint-history schema, not wiki metadata
         "report": report_to_dict(report),
     }
+
+
+def report_from_dict(report_dict: dict[str, Any]) -> LintReport:
+    """Parse a ``lint_history.jsonl`` report dict back into :class:`LintReport`.
+
+    The inverse of :func:`knox.lint.runner.report_to_dict`, and the one place
+    history entries become typed findings again — the CLI and MCP each carried
+    their own copy of this conversion and both dropped ``severity`` and
+    ``fix_applied`` on the way in.
+    """
+    results = [
+        LintResult(
+            rule=str(r.get("rule", "")),
+            outcome=LintRuleOutcome(r.get("outcome", "") or "skip"),
+            severity=Severity(r.get("severity", "") or "warning"),
+            message=str(r.get("message", "")),
+            page_id=str(r.get("page_id", "")),
+            fix_applied=bool(r.get("fix_applied", False)),
+            details=dict(r.get("details") or {}),
+        )
+        for r in report_dict.get("results", [])
+    ]
+    return LintReport(
+        results=results,
+        total_checks=int(report_dict.get("total_checks", 0) or 0),
+        failures=int(report_dict.get("failures", 0) or 0),
+        passes=int(report_dict.get("passes", 0) or 0),
+        skips=int(report_dict.get("skips", 0) or 0),
+        health_score=float(report_dict.get("health_score", 0.0) or 0.0),
+    )
 
 
 def _build_config_snapshot(cfg: dict[str, Any]) -> dict[str, Any]:
