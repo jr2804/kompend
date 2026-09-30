@@ -15,50 +15,50 @@ between small/local and large/remote models.
 ## How KNOX Discovers the Context Window
 
 At startup, [`discover_context_window()`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/context_window.py)
-in `knox.llm.context_window` queries a four-tier discovery chain to
-determine the model's real input and output token capacity:
+in `knox.llm.context_window` resolves the model's real input and output token
+capacity through the chain below — the first tier that answers wins:
 
 ```mermaid
 flowchart TD
-    A[Model name] --> B{litellm metadata?}
-    B -- yes --> C[max_input_tokens / max_output_tokens]
+    A[Model name] --> B{"[providers.*]<br/>context_window?"}
+    B -- yes --> C[Use as-is]
     B -- no --> D{Ollama model?}
-    D -- yes --> E["GET /api/show<br/>or OLLAMA_NUM_CTX env"]
-    E --> F{num_ctx < litellm value?}
-    F -- yes --> G[Override with num_ctx]
-    F -- no --> C
-    D -- no --> Md{models.dev catalog?}
-    Md -- yes --> MdC[context / output limits]
-    Md -- no --> H["Fallback: max(2048, min(32768, 131072))<br/>= 32768 tokens"]
-    C --> I[ContextWindow]
-    G --> I
-    MdC --> I
-    H --> I
-    I --> J{context_window_cap set?}
-    J -- yes --> K["min(discovered, cap)"]
-    J -- no --> L[Use as-is]
-    K --> M[Final ContextWindow]
-    L --> M
+    D -- yes --> E["min of OLLAMA_NUM_CTX,<br/>loaded slot (ollama.ps),<br/>Modelfile num_ctx,<br/>GGUF context_length"]
+    E --> C
+    D -- no --> F{models.dev catalog?}
+    F -- yes --> C
+    F -- no --> G["[compile.llm]<br/>fallback_max_input / _output"]
+    G --> C
+    C --> H{"compile.llm.context_window<br/>cap set?"}
+    H -- yes --> I["min(discovered, cap)"]
+    H -- no --> J[Final ContextWindow]
+    I --> J
+    G -.->|nothing resolved| K["LookupError —<br/>wrong model name,<br/>unreachable provider,<br/>or config missing"]
 ```
 
 | Tier | Source | Typical models |
 |------|--------|----------------|
-| 1 — litellm | `litellm.get_model_info()` database | All major hosted models (OpenAI, Anthropic, Google, etc.) |
-| 2 — Ollama | `OLLAMA_NUM_CTX` env var or Modelfile `parameters.num_ctx` | Local Ollama models |
-| 3 — models.dev | [models.dev](https://models.dev) catalog via `knox.llm.models.resolve_model_limits()` | Custom-provider models absent from litellm (e.g. some Ollama Cloud models) |
-| 4 — User-defined | `context_window_cap` from `[providers.<id>]` in `knox.toml` | Self-hosted OpenAI-compatible endpoints (llama.cpp, vLLM, TGI) |
-| 5 — Fallback | `max(num_ctx_min, min(fallback_max_input, num_ctx_max))` = **32768** | Unknown providers with no catalog entry |
+| 1 — User config | `context_window` in `[providers.<name>]`, or finer-grained in `[providers.<name>.models."<model>"]` | Self-hosted OpenAI-compatible endpoints (llama.cpp, vLLM, TGI); any provider you want to pin explicitly |
+| 2 — Ollama | most restrictive of `OLLAMA_NUM_CTX`, the context the server actually loaded the model with (`ollama.ps()`), Modelfile `parameters.num_ctx`, and GGUF metadata (`ollama.show()`) | Local Ollama models |
+| 3 — models.dev | [models.dev](https://models.dev) catalog via `knox.llm.models.resolve_model_limits()` | Hosted models and custom-provider mirrors present in the catalog |
+| 4 — Fallback | `[compile.llm] fallback_max_input` / `fallback_max_output` | Models nothing else knows about |
+| — | none of the above | raises `LookupError` — an unresolved window usually means a wrong model name or an unreachable provider |
 
-The most restrictive value wins for Ollama: if litellm reports 128K but the
-Ollama Modelfile sets `num_ctx 8192`, KNOX uses 8192.
+Tiers 1–2 are used **as-is** — never clamped (except by the explicit cap).
+When several Ollama values exist the most restrictive wins: if GGUF metadata
+claims 128K but the server loaded the model with 65536 tokens, KNOX sizes
+against 65536.
 
-You can enforce a hard ceiling with `context_window_cap`:
+You can enforce a hard ceiling with `compile.llm.context_window`:
 
 ```toml
 [compile.llm]
 default_model = "ollama/llama3.1"
-context_window_cap = 32768   # never exceed 32K even if model reports more
+context_window = 32768   # never exceed 32K even if the model reports more
 ```
+
+`context_window_cap` still works but is deprecated in both `[compile.llm]`
+and `[providers.<name>]` — use `context_window`.
 
 ## Adaptive Chunking
 

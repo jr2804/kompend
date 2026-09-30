@@ -67,9 +67,10 @@ def discover_context_window(  # noqa: PLR0915
     or to supply defaults that explicit parameters override.
 
     Values from steps 1–2 are used **as-is** — never clamped or capped
-    (except by *context_window_cap* if set).  The old ``num_ctx_min`` /
-    ``num_ctx_max`` clamping (now removed) only existed for the hardcoded
-    8192 fallback default, which was silently masking misconfigurations.
+    (except by *context_window_cap* if set).  Silently clamping a
+    discovered value to a hardcoded range masks misconfiguration (a wrong
+    model name or an unreachable provider then looks like a small model)
+    instead of surfacing it.
 
     If *context_window_cap* is set (non-``None``), it caps both
     ``max_input`` and ``max_output`` to that value.  Use this when you

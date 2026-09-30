@@ -297,14 +297,10 @@ default_model = "${KNOX_LLM_DEFAULT_MODEL}"
 
 # Context window discovery:
 # The context window (max_input / max_output tokens) is discovered
-# automatically at startup from pydantic-ai or Ollama /api/show. If discovery
-# fails, these fallback values are used:
+# automatically: [providers.<name>] override → Ollama /api/show →
+# models.dev catalog. If discovery fails, these fallback values are used:
 # fallback_max_input = 8192
 # fallback_max_output = 4096
-
-# Safety rails for discovered context window:
-# num_ctx_min = 2048      # minimum context window to accept
-# num_ctx_max = 131072    # maximum context window to accept
 
 # User-configured context window override/cap (tokens).
 # When set, max_input and max_output are capped to this value regardless

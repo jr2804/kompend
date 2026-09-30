@@ -215,8 +215,6 @@ class LLMConfig(_KnoxBaseModel):
     timeout: float = Field(default=120.0, validation_alias=EnvVar.LLM_TIMEOUT)
     fallback_max_input: int = Field(default=32768, validation_alias=EnvVar.LLM_FALLBACK_MAX_INPUT)
     fallback_max_output: int = Field(default=4096, validation_alias=EnvVar.LLM_FALLBACK_MAX_OUTPUT)
-    num_ctx_min: int = Field(default=2048, validation_alias=EnvVar.LLM_NUM_CTX_MIN)
-    num_ctx_max: int = Field(default=131072, validation_alias=EnvVar.LLM_NUM_CTX_MAX)
     context_window_cap: int | None = Field(default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW_CAP, description="DEPRECATED — use context_window")
     context_window: int | None = Field(
         default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model"
