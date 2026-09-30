@@ -330,19 +330,23 @@ class ZvecWikiStore:
                 self._collection.flush()
             self._collection = None
 
-    def is_stale(self, wiki: CompiledWiki) -> bool:
+    def is_stale(self, wiki: CompiledWiki, *, embed_attachments: bool = False) -> bool:
         """Return True when the store's last build doesn't match ``wiki``.
 
-        Compares the indexed node ids recorded by the last build against the
-        current wiki's node set.  Missing bookkeeping, an unreadable store, or
-        any id set mismatch means the sidecar index is stale and must be
-        rebuilt before it can serve the loaded wiki.
+        Compares the ids the index covers (:func:`indexable_node_ids`) against
+        the ids recorded by the last build.  Missing bookkeeping, an unreadable
+        store, or any id set mismatch means the sidecar index is stale and must
+        be rebuilt before it can serve the loaded wiki.
+
+        *embed_attachments* must match the value the index was built with — the
+        eligibility rule is part of what "up to date" means, so a config flip
+        makes the index stale.
 
         The manifest row also records the embed-text version.  A row written by
         an older composition is stale even when the ids match, because its
         vectors were built from different text.
         """
-        expected = {_safe_id(n.id) for n in wiki.nodes}
+        expected = indexable_node_ids(wiki, embed_attachments=embed_attachments)
         if not expected:
             return True
         manifest_db = self._manifest_db_path()
@@ -611,6 +615,28 @@ def _embed_text(node: WikiNode) -> str:
     if description:
         return f"{node.title}\n{description}\n{node.content}"
     return f"{node.title}\n{node.content}"
+
+
+def indexable_nodes(wiki: CompiledWiki, *, embed_attachments: bool = False) -> list[WikiNode]:
+    """The nodes the vector index covers — the single eligibility rule.
+
+    Every builder and :meth:`ZvecWikiStore.is_stale` must agree on this set:
+    a staleness check that compares against *all* node ids reports the index
+    stale forever as soon as anything is filtered out.
+
+    Args:
+        wiki: The compiled wiki (or the markdown bundle loaded from disk).
+        embed_attachments: When ``False`` (default), pages derived from
+            attachments (``source_asset=True``) stay out of the index.
+    """
+    if embed_attachments:
+        return list(wiki.nodes)
+    return [n for n in wiki.nodes if not (n.metadata or {}).get("source_asset", False)]
+
+
+def indexable_node_ids(wiki: CompiledWiki, *, embed_attachments: bool = False) -> set[str]:
+    """Index ids (zvec PK form) for :func:`indexable_nodes`."""
+    return {_safe_id(n.id) for n in indexable_nodes(wiki, embed_attachments=embed_attachments)}
 
 
 def _safe_id(node_id: str) -> str:

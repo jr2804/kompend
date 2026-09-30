@@ -7,9 +7,9 @@ from pathlib import Path
 from knox.core.models import CompiledWiki
 from knox.core.models import CompiledWiki as _CW
 from knox.core.paths import VaultPaths
-from knox.rag.zvec_store import ZvecField, ZvecWikiStore
+from knox.rag.zvec_store import ZvecField, ZvecWikiStore, indexable_nodes
 
-__all__ = ["ZvecField", "ZvecWikiStore", "build_vector_index"]
+__all__ = ["ZvecField", "ZvecWikiStore", "build_vector_index", "indexable_nodes"]
 
 
 def build_vector_index(
@@ -22,6 +22,9 @@ def build_vector_index(
     embed_attachments: bool = False,
 ) -> int:
     """Build a vector index for semantic search over *wiki*.
+
+    Build from the **same** node set the query path judges staleness against
+    (``load_wiki_from_files``), or the index is rebuilt on the next query.
 
     Args:
         wiki: Compiled wiki to index.
@@ -38,9 +41,7 @@ def build_vector_index(
     if not embed_model:
         raise ValueError("An explicit 'embed_model' must be provided to build the vector index.")
 
-    nodes = wiki.nodes
-    if not embed_attachments:
-        nodes = [n for n in nodes if not (n.metadata or {}).get("source_asset", False)]
+    nodes = indexable_nodes(wiki, embed_attachments=embed_attachments)
 
     if not nodes:
         return 0

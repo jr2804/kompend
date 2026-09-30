@@ -16,8 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import _EMBED_TEXT_VERSION, ZvecWikiStore, _embed_text
+from knox.core.models import CompiledWiki, WikiNode, load_wiki_from_files
+from knox.core.models import CompiledWiki as _CW
+from knox.rag.zvec_store import _EMBED_TEXT_VERSION, ZvecWikiStore, _embed_text, indexable_nodes
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -53,6 +54,47 @@ class TestDescriptionDerivation:
     def test_does_not_truncate_after_an_initial(self) -> None:
         node = _node("a", content="John G. Beerends is the author.")
         assert node.description == "John G. Beerends is the author."
+
+
+class TestIndexEligibilityParity:
+    """Build and staleness must agree on *which* nodes the index covers.
+
+    A mismatch here is invisible except as waste: the index looks stale, so the
+    next query re-embeds the whole corpus. It regressed twice — once because the
+    compile path indexed the in-memory graph while the query path compares
+    against the markdown bundle (which also holds summary pages), and once
+    because ``embed_attachments`` filtered the build but not the comparison.
+    """
+
+    def test_attachment_filter_is_symmetric(self, zvec_db: Path) -> None:
+        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        wiki = _wiki(_node("page"), _node("att", source_asset=True))
+
+        # Built without attachments: the index covers one node, and the check
+        # must judge against that same one — not both.
+        assert store.build_index(_CW(nodes=indexable_nodes(wiki), edges=[], toc=[])) == 1
+        assert store.is_stale(wiki) is False
+        # The same store judged with the other setting *is* stale.
+        assert store.is_stale(wiki, embed_attachments=True) is True
+        store.close()
+        gc.collect()
+
+    def test_bundle_pages_the_graph_lacks_do_not_look_stale(self, tmp_path: Path) -> None:
+        """A summary page present only in the bundle must not force a rebuild."""
+        wiki_dir = tmp_path / "wiki"
+        (wiki_dir / "concepts").mkdir(parents=True)
+        (wiki_dir / "summaries").mkdir(parents=True)
+        (wiki_dir / "concepts" / "loudness.md").write_text("---\ntitle: Loudness\n---\n\nBody.\n", encoding="utf-8")
+        (wiki_dir / "summaries" / "itu-p862.md").write_text("---\ntitle: ITU P.862\n---\n\nSummary.\n", encoding="utf-8")
+        bundle = load_wiki_from_files(wiki_dir)
+        assert bundle is not None
+        assert sorted(n.id for n in bundle.nodes) == ["itu-p862", "loudness"]
+
+        store = ZvecWikiStore(db_file=str(tmp_path / "vectors"), embedding_provider=_TEST_PROVIDER)
+        assert store.build_index(bundle) == 2
+        assert store.is_stale(bundle) is False
+        store.close()
+        gc.collect()
 
 
 class TestManifestStaleness:
@@ -132,5 +174,6 @@ def _wiki(*nodes: WikiNode) -> CompiledWiki:
     return CompiledWiki(nodes=list(nodes), edges=[], toc=[])
 
 
-def _node(node_id: str, content: str = "body") -> WikiNode:
-    return WikiNode(id=node_id, title="T", content=content, node_type="page")
+def _node(node_id: str, content: str = "body", *, source_asset: bool = False) -> WikiNode:
+    metadata: dict[str, object] = {"source_asset": True} if source_asset else {}
+    return WikiNode(id=node_id, title="T", content=content, node_type="page", metadata=metadata)

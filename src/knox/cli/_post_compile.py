@@ -19,7 +19,7 @@ from knox.cli._progress import PipelineProgress
 from knox.core.cache.wiki import write_wiki_cache  # noqa: F401 — re-export
 from knox.core.config import resolve_config
 from knox.core.config._configs import LintConfig
-from knox.core.models import CompiledWiki, MetadataField, WikiField
+from knox.core.models import CompiledWiki, MetadataField, WikiField, load_wiki_from_files
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.time import iso_local
@@ -111,12 +111,19 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
 
     # Build vector index unless explicitly disabled (--no-index) or no
     # embedding model is configured (embedding is opt-in, no default model).
+    #
+    # Index the markdown bundle that was just written, not the in-memory graph:
+    # ``knox query`` judges staleness against ``load_wiki_from_files``, so the
+    # graph and the bundle must be the same node set or the first query after
+    # every compile rebuilds the whole index (the bundle also carries pages the
+    # graph has no node for — e.g. per-source summaries).
     embed_model = opts.embed_model or opts.pipeline_config.embedding.model
     if opts.index_store is not False and embed_model:
         opts.wiki.metadata[str(MetadataField.EMBEDDING_MODEL)] = embed_model
+        index_wiki = load_wiki_from_files(opts.output_dir) or opts.wiki
         try:
             cli_build_vector_index(
-                opts.wiki,
+                index_wiki,
                 opts.output_dir,
                 embed_model,
                 base_dir=base_dir,

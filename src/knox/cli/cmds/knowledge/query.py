@@ -120,7 +120,12 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
         )
         raise typer.Exit(1)
 
-    vector_store = open_vector_store(state_dir, wiki, embed_model=cfg.knox.compile.embedding.model)
+    vector_store = open_vector_store(
+        state_dir,
+        wiki,
+        embed_model=cfg.knox.compile.embedding.model,
+        embed_attachments=bool(cfg.knox.attachments.embed or cfg.knox.search.embed_attachments),
+    )
     model = cfg.knox.compile.llm.default_model
     llm_cfg = LLMConfig(**cfg.raw.get("compile", {}).get("llm", {}))
     cw = discover_context_window(model, llm_config=llm_cfg) if model else None

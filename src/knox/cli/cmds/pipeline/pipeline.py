@@ -69,7 +69,7 @@ from knox.core.config._configs import LintConfig
 from knox.core.config.keys import (
     DISPLAY_CLI_ELEMENT_CHARS,
 )
-from knox.core.models import MetadataField, WikiField, load_cached_wiki
+from knox.core.models import MetadataField, WikiField, load_cached_wiki, load_wiki_from_files
 from knox.core.paths import VaultPaths, vault_paths
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.pipeline.ingest import ingest_documents
@@ -442,7 +442,11 @@ def index_cmd(
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
     output_dir = vp.output_dir
 
-    wiki = load_cached_wiki(vp.base_dir)
+    # Index the markdown bundle — the node set ``knox query`` judges staleness
+    # against (a files-loaded wiki carries every page; the snapshot graph may
+    # not, e.g. per-source summaries).
+    cached = load_cached_wiki(vp.base_dir)
+    wiki = load_wiki_from_files(output_dir) or cached
     if wiki is None:
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'knox compile' first.")
         raise typer.Exit(1)
@@ -470,8 +474,11 @@ def index_cmd(
         raise typer.Exit(1) from exc
 
     # Persist embedding model metadata so ``knox query`` can open the store.
-    wiki.metadata[str(MetadataField.EMBEDDING_MODEL)] = resolved_model
-    write_wiki_cache(wiki, vp.base_dir)
+    # Written through the snapshot wiki, which is what the cache holds (the
+    # files-loaded wiki above has no graph metrics to cache).
+    if cached is not None:
+        cached.metadata[str(MetadataField.EMBEDDING_MODEL)] = resolved_model
+        write_wiki_cache(cached, vp.base_dir)
 
     if count > 0:
         get_console().print(f"Indexed {count} nodes in zvec store for semantic search.")

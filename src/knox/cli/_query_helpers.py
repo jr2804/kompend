@@ -56,12 +56,16 @@ def open_vector_store(
     wiki: CompiledWiki,
     *,
     embed_model: str | None = None,
+    embed_attachments: bool = False,
 ) -> ZvecWikiStore | None:
     """Open the zvec sidecar index built during compile, if it exists.
 
     The embedding model comes from wiki metadata when available (cache
     path) or falls back to *embed_model* (config value) — a files-loaded
     wiki carries no embedding metadata of its own.
+
+    *embed_attachments* must be the value the index was built with: it is part
+    of which nodes the index covers, so a mismatch would rebuild on every query.
     """
     db_file = knox_dir / VECTORS_DIR
     if not db_file.exists():
@@ -75,7 +79,7 @@ def open_vector_store(
     # Sidecar index can go stale when a wiki is recompiled (new/changed pages)
     # without a matching re-index. Detect via the build-time id manifest and
     # rebuild transparently so queries never silently fall back to keyword.
-    if ZvecWikiStore(db_file=db_file).is_stale(wiki):
+    if ZvecWikiStore(db_file=db_file).is_stale(wiki, embed_attachments=embed_attachments):
         logger.info("Vector index stale (wiki changed) — rebuilding with %s", model)
         try:
             build_vector_index(
@@ -83,6 +87,7 @@ def open_vector_store(
                 knox_dir,
                 embed_model=model,
                 base_dir=knox_dir.parent,
+                embed_attachments=embed_attachments,
             )
         except Exception as exc:
             logger.warning(

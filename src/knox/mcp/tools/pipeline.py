@@ -158,7 +158,13 @@ def wiki_index(
         return {"status": "error", "message": str(exc)}
 
     wiki.metadata[str(MetadataField.EMBEDDING_MODEL)] = resolved_model
-    write_wiki_cache(wiki, vp.base_dir)
+    # Write the model through the snapshot wiki: the files-loaded wiki above has
+    # no graph metrics (quality score, WiCER iteration), so caching it would
+    # reset them to zero.
+    cached = load_cached_wiki(vp.base_dir)
+    if cached is not None:
+        cached.metadata[str(MetadataField.EMBEDDING_MODEL)] = resolved_model
+        write_wiki_cache(cached, vp.base_dir)
 
     if count > 0:
         return {"status": "ok", "count": count, "message": f"Indexed {count} nodes in zvec store for semantic search."}

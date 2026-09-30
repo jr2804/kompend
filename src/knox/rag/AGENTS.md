@@ -16,6 +16,16 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
 
 ## Local Contracts
 
+- **The index is built from the markdown bundle, and staleness is judged by the
+  same rule.** `indexable_nodes()` / `indexable_node_ids()` (in `zvec_store.py`)
+  define which nodes the index covers; every builder and `is_stale()` must use
+  them. Two regressions came from violating this: the compile path indexed the
+  in-memory graph while `knox query` compared against `load_wiki_from_files()`
+  (which also yields summary pages), and `embed_attachments=False` filtered the
+  build but not the comparison. Both made the index look stale after every
+  compile, so the next query silently re-embedded the whole corpus. Pass the
+  same `embed_attachments` to `build_vector_index` and `is_stale` — it is part of
+  what "up to date" means.
 - `ZvecField` is the single source of truth for zvec field and vector names.
   The schema (`_expected_field_schemas`), the writes in `_index_nodes`, and the
   keys read from search hits must all use its members — never string literals.
