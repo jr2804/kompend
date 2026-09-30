@@ -8,14 +8,16 @@ reading; not required for day-to-day work.
 ### Pattern: Design Decision Log
 
 Record significant decisions that shaped the codebase. Each entry explains the
-context, the decision, and the commit where it landed. This prevents future
-contributors from re-litigating settled questions.
+context, the decision, and where it landed. This prevents future contributors
+from re-litigating settled questions.
 
 ### Rules
 
-- **Append-only.** New entries at the top, never delete old ones.
-- **Resolved entries.** Move to a "Resolved" subsection rather than removing.
-- **Date + commit.** Every entry includes a date and the relevant commit hash.
+- **Newest first**, **one entry per decision**, 2–6 lines: context, decision,
+  commit. Detail belongs in `.agents/history/` — link it.
+- **Budgeted like every `.agents/` file (≤120 lines).** Over budget → archive the
+  oldest entries to `.agents/history/`, leaving a pointer line.
+- Move resolved entries to a "Resolved" subsection rather than deleting them.
 
 ### Extension
 
@@ -29,181 +31,64 @@ contributors from re-litigating settled questions.
 
 ## Project-specific History — KNOX
 
-### Plans completed and archived (2026-09-24)
+### Archived plans — full detail in `.agents/history/`
 
-`2026-09-24-knox-0iv2-audit.md` and `2026-09-24-knox-storage-migration.md`
-archived to `.agents/history/`.
-
-- **0iv2 audit** — read-only audit that resolved a tracker/reality contradiction
-  ("user believes done, bd says open") from the code rather than from tracker
-  state. It classified all 15 epic children: 5 complete, 3 hollow, 3 dropped, 2
-  satisfied by another design, 1 docs-only, 1 dead-legacy. Every verdict was acted
-  on; the epic is now CLOSED with no children. The reusable part is the method,
-  not the findings: a per-class dynamic-access sweep (grep across `.py`/`.j2`/`.toml`
-  plus getattr/dispatch) and `git log -S "<Class>"` to prove a construction site
-  ever existed. Both were needed — a grep-only dead-code call was wrong twice in
-  that period for dynamic-access reasons.
-- **Storage migration** — design for consolidating `.knox/` into one SQLite file.
-  Accepted in full (engine = SQLite, migration = clean cut with no migration code)
-  and implemented: `61147c5f` (foundation — `core/store/` package, schema,
-  versioning, `.knox/knox.db`), `f6aee4c0` (consolidation of every non-vector
-  artifact), `8aaf2eca` (memory, attachments, provenance). 12 readers still
-  pointing at removed JSON paths were repointed at the store. `.knox/config.toml`
-  and `.knox/rumdl.toml` stay human-editable TOML; zvec's `vectors/` stays the
-  optional, regenerable embedding branch.
-
-### Plans completed and archived (2026-08-22)
-
-`2026-08-22-markdown-only-vault.md` archived to `.agents/history/`.
-
-Fully implemented — WP1–WP7 landed in `5d493119` (files-first query, per-source
-summary pages, copy-on-embed images, complete indexes, quality page) and
-`51ea1111` (docs across guides, skill, scaffold, DOX). The invariant it
-established: the wiki is represented by its generated markdown pages alone, and
-`.knox/` is purely derived state. That removed the "knox present (rich) vs knox
-absent (degraded)" two-branch architecture, which had made query correctness
-depend on derived cache state.
-
-### Lint UX: `remediate` collapsed to LLM page generation (2026-08-14)
-
-`knox lint remediate` previously had three tiers: image-embed auto-fix
-(Tier 1), LLM coverage-gap generation (Tier 2), and recommendations
-(Tier 3). The tiers overlapped confusingly with `run --fix` and `gaps`.
-Remediation now does one thing: LLM-generate missing concept pages from
-cached extractions. Image-embed fixing moved into `run --fix` as the new
-`image-embed` structural rule (which also stopped `broken-wikilinks` from
-flagging/stripping correct `![[img.png]]` embeds). Recommendations live only
-in `knox lint gaps`. `RemediationAction.tier` field removed. Docs updated:
-`docs/guides/lint.md`, `docs/guides/cli.md`.
-
-Also added the `rumdl` structural rule: runs `rumdl check` (JSON output) on
-all `*.md` files under the vault root except `sources/`, `.knox/`, and
-`attachments/`; `--fix` applies `rumdl check --fix` (self-written notes get
-reformatted, sources never touched). Files are passed explicitly to rumdl
-to bypass its ignore-file filtering — dir scans get eaten by `.gitignore`.
-
-### Plans completed and archived (2026-08-16)
-
-`2026-08-16-source-export-md.md` (`knox sources export`) archived to
-`.agents/history/`. Fully implemented — `export_source` in
-`core/pipeline/export.py`, `sources export` CLI command, `export.annotations` /
-`export.summary` config keys, parse-cache image paths relativized at write
-(portable caches), and the pre-existing `knox.chunking` circular import fixed
-by moving `structured_to_text` to `core/models/structured.py`. 19 new unit
-tests; full unit suite green.
-
-### Plans completed and archived (2026-08-14)
-
-`2026-08-14-migration-plan.md` (summarization-pydantic-ai integration) and
-`2026-08-14-refactoring-plan.md` (super-module splits) archived to
-`.agents/history/`.
-
-- MIGRATION_PLAN: fully implemented — `summarization-pydantic-ai>=0.1.10` in
-  pyproject, `ContextManagerCapability` wired in `agents/base.py`,
-  `_compact_messages` removed (commit `edb4d49`), `compile.llm.context_manager`
-  config key added.
-- REFACTORING_PLAN: Phases 1–4 + cleanup item 12 landed (pipeline `stages/`,
-  config `engine/`, mcp `tools/`, compilation `flows/`, web routes,
-  `_query_helpers`, `_sources_io`, `_post_compile`, `_checkpoints`,
-  `_remediation_gaps`, output `pages/`). Remaining Phase-5 targets
-  (`graph.py`, `wicer.py`, `dedup/orchestrator.py`) re-measured under the
-  350-net-line budget (335/308/184) — splits no longer needed.
-
-### Why `compile.embedding.dim` was removed
-
-The config fallback `dim = 384` shaped only the empty-text vector in the dedup
-embedding matcher; non-empty fingerprints came from `provider.embed()` at the
-provider's real dimension, so a mismatch crashed `EmbeddingMatcher.score`
-(`zip(..., strict=True)`). `dim` was also a no-op hint — `make_provider()`
-ignores it. Fix: the matcher reads `provider.dim` (lazily probed at runtime)
-and the config key was deleted. Commit: uncommitted (worktree after `fe517d1`).
-
-Same principle applied to the zvec stores (`rag/zvec_store.py`,
-`memory/store.py`): the `embedding_dim=384` defaults were the last
-`dim = 384` literals (AGENTS.md antipattern table). Removed entirely — the
-`embedding_dim` params/attributes and `make_provider(dim=)` are gone; dim
-always resolves from `provider.dim`. Additionally, both stores now rebuild
-instead of reopening when an existing collection's stored dimension differs
-from the current model (previously raised "field dimension mismatch" on
-insert, e.g. after switching from a 384-dim to a 768-dim embedding model).
-
-### Why `_ENV_LIST_VARS` is schema-derived and `KNOX_CHARS_PER_TOKEN` was dropped
-
-`_ENV_LIST_VARS` hand-listed KNOX_* names and drifted from the schema: it split
-`KNOX_DEDUP_MATCHERS` (a `str` field) and `KNOX_SEARCH_EXPANSION_VARIANTS` (an
-`int` field) into lists and listed dead `KNOX_LINT`. It now derives from
-list-typed config-map fields. Separately, `_two_phase_core` read
-`KNOX_CHARS_PER_TOKEN` by hand while the real config alias is
-`KNOX_LLM_DEFAULT_CHARS_PER_TOKEN` — the direct read was redundant (the value
-already flows via `default_chars_per_token`) and the env var was effectively
-dead. Removed. Commit: uncommitted (worktree after `fe517d1`).
-
-### Known text-in-code violations (T1–T10)
-
-Tracked via `bd` (beads). Check current status: `bd list`.
-
-These are LLM prompt strings that live inline in Python modules instead of in
-Jinja2 templates under `src/knox/packs/`. They must be migrated before adding
-new text-in-code.
-
-| Issue | File | What |
-|-------|------|------|
-| `knox-ox2` (T1) | `lint/llm_rules.py` | 3 LLM prompt strings for lint rules |
-| `knox-8b0` (T2) | `packs/base.py` | 4 default pack prompt strings |
-| `knox-1a8` (T3) | `packs/builtins/academic.py` | 3 academic pack prompt strings |
-| `knox-65z` (T4) | `packs/builtins/technical.py` | 3 technical pack prompt strings |
-| `knox-174` (T5) | `compilation/schema.py` | BUILTIN_KINDS dict with descriptions |
-| `knox-dnu` (T6) | `compilation/two_phase.py` | 4 extraction/generation prompt strings |
-| `knox-844` (T7) | `compilation/wicer.py` | 3 WiCER loop prompt strings |
-| `knox-lf5` (T8) | `verification.py` | 2 claim verification prompt strings |
-| `knox-8gj` (T9) | `output/wiki_index.py` | 1 synthesis prompt string |
-| `knox-sga` (T10) | `resolution/llm.py` | 1 default entity extraction prompt |
-
----
+| Archived | Slug | What landed |
+| -------- | ---- | ----------- |
+| 2026-09-24 | `knox-0iv2-audit` | Read-only audit resolving a tracker-vs-code contradiction from the code; the reusable part is the method — dynamic-access sweep plus `git log -S "<Class>"` |
+| 2026-09-24 | `knox-storage-migration` | `.knox/` consolidated into one SQLite file (`core/store/`); clean cut, no migration code — `61147c5f`, `f6aee4c0`, `8aaf2eca` |
+| 2026-08-22 | `markdown-only-vault` | The wiki is represented by its generated markdown alone; `.knox/` is purely derived — `5d493119`, `51ea1111` |
+| 2026-08-16 | `source-export-md`, `category-extraction`, `rumdl-format-wiring` | `knox sources export` from the parse cache; configurable extraction categories; rumdl wiring for every markdown writer |
+| 2026-08-15 | `env-any-refactor`, `rlm-integration` | Typed config access replacing `Any`; the optional RLM code-exploration capability |
+| 2026-08-14 | `migration-plan`, `refactoring-plan` | `summarization-pydantic-ai` context management (`edb4d49`); super-module splits into `stages/`, `engine/`, `tools/`, `flows/`, `pages/` |
 
 ### Why text-in-code is banned
 
-Historically, KNOX embedded LLM prompts directly in Python modules. This made
-prompts hard to discover, version, and maintain across packs. The rule now is
-that all LLM prompts must live in `packs/<name>/templates/` as Jinja2 files.
-The T1–T10 violations above are the remaining legacy cases.
-
----
+Prompts embedded in Python were undiscoverable, unversionable, and invisible to
+non-developers. All prompt text now lives in Jinja2 templates or pack TOML. The
+remaining legacy violations are tracked in beads — `bd list`, not a table here.
 
 ### Why litellm was removed
 
-Commit `c8055c0`. KNOX originally used litellm for multi-provider LLM dispatch.
+`c8055c0`. After moving to pydantic-ai's native `infer_model()` plus the
+models.dev catalog, litellm was 40+ transitive dependencies and added latency
+around a unified `build_model()` path. Removed.
 
-### Lazy-loader (SPEC-0001) for heavy imports
+### Why heavy imports are lazy-loaded (SPEC-0001)
 
-`knox --help` took ~80s because command modules eagerly imported heavy deps
-(docling/torch/transformers ~16s, datasketch/scipy ~5s, pydantic-ai ~3s,
-crawl4ai ~1s, MCP SDK ~1.5s). Root cause: `register_all_commands()` imports
-all 28 CLI command modules at module scope, each pulling transitively heavy
-optional deps through `__init__.py` files.
+`knox --help` took ~80s because `register_all_commands()` imported every command
+module, each transitively pulling docling/torch/pydantic-ai/MCP. `lazy.attach()`
+in five package `__init__.py` files, plus the `get_backend()` factory for
+function-body-only classes, took it to 11s (−86%). No `_LAZY` dicts, no
+`__getattr__` fallbacks.
 
-Fix: adopted `lazy-loader` (scientific-python SPEC-0001) — the standard
-solution battle-tested in scikit-image, scipy, librosa, napari.
-`lazy.attach(__name__, submod_attrs={...})` in `__init__.py` defers submodule
-loading until first attribute access. Applied to 5 packages: `knox.acp`,
-`knox.llm`, `knox.preprocessing.parsers`, `knox.preprocessing.dedup`,
-`knox.preprocessing.downloaders`. For heavy classes used only inside function
-bodies, the parser registry's `get_backend("name")(ParserBuildOptions())`
-factory pattern is used instead of module-scope imports.
+### Why `compile.embedding.dim` was removed
 
-Result: `--help` 80s → 11s (−86%). Replaces hand-rolled `_LAZY` dicts +
-`__getattr__` in `acp/__init__.py` and `llm/__init__.py`. `.pyi` stubs via
-`lazy.attach_stub()` solve the static-checker type gap (deferred).
+The `dim = 384` fallback shaped only the empty-text dedup vector while non-empty
+fingerprints used `provider.embed()`'s real dimension, so a mismatch crashed
+`EmbeddingMatcher.score(..., strict=True)` — and `make_provider()` ignored the
+hint anyway. Both zvec stores had the same literal; all are gone and dim always
+resolves from `provider.dim`, lazily probed. Stores rebuild when the stored
+dimension differs from the current model's.
 
-Rule added to `.agents/POLICIES.md`.
-After migrating to PydanticAI's native `infer_model()` and the models.dev
-catalog, litellm became dead weight — it pulled 40+ transitive dependencies
-and added latency. Removed in favor of the unified `build_model()` path in
-`src/knox/llm/`.
+### Why `_ENV_LIST_VARS` is schema-derived
 
----
+The hand-listed `KNOX_*` names drifted from the schema (splitting a `str` field
+into a list, listing a dead var). It now derives from list-typed config-map
+fields. Separately, `KNOX_CHARS_PER_TOKEN` was a dead env var — the real alias is
+`KNOX_LLM_DEFAULT_CHARS_PER_TOKEN` and the value already flows via
+`default_chars_per_token`.
+
+### Lint remediation collapsed to page generation (2026-08-14)
+
+Three overlapping tiers became one: LLM-generate missing concept pages from
+cached extractions. Image-embed fixing moved into `run --fix` as the
+`image-embed` structural rule; recommendations live only in `knox lint gaps`;
+`RemediationAction.tier` was removed. Same change added the `rumdl` structural
+rule (`rumdl check` JSON over the vault's markdown, sources never touched, files
+passed explicitly to bypass rumdl's ignore filtering).
 
 ### Release versioning
 
-Releases follow `YYYY.M.D` / `YYYY.M.D.N` calver format (no zero-padding, no
-`v` prefix). See `.forgejo/workflows/release.yml`.
+Calver `YYYY.M.D` / `YYYY.M.D.N` — no zero-padding, no `v` prefix. See
+`.forgejo/workflows/release.yml`.
