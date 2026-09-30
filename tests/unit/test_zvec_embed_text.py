@@ -12,12 +12,19 @@ from __future__ import annotations
 import gc
 import json
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
+from typing import TypedDict
 
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode, load_wiki_from_files
-from knox.rag.zvec_store import _EMBED_TEXT_VERSION, ZvecWikiStore, _embed_text
+from knox.rag.zvec_store import (
+    _EMBED_TEXT_VERSION,
+    ZvecWikiStore,
+    _content_hash,
+    _embed_text,
+)
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -143,6 +150,76 @@ class TestManifestStaleness:
         store.close()
         gc.collect()
 
+    def test_build_records_content_hashes(self, zvec_db: Path) -> None:
+        """One digest per indexed id — the fingerprint a later check compares."""
+        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        wiki = _wiki(_node("n1"))
+        store.build_index(wiki)
+
+        hashes = _manifest_row(store)["hashes"]
+        assert list(hashes) == ["n1"]
+        assert hashes["n1"] == _content_hash(_node("n1"))
+        assert store.is_stale(wiki) is False
+        store.close()
+        gc.collect()
+
+    def test_content_change_is_stale(self, zvec_db: Path) -> None:
+        """An edited page invalidates the index even though its id is unchanged.
+
+        The id set cannot see this: a lint fix, a hand edit or a recompile that
+        reworded a page leaves the vectors describing text search no longer
+        returns.
+        """
+        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store.build_index(_wiki(_node("n1", "original body")))
+        assert store.is_stale(_wiki(_node("n1", "rewritten body"))) is True
+        assert store.is_stale(_wiki(_node("n1", "original body"))) is False
+        store.close()
+        gc.collect()
+
+    def test_tag_change_is_stale(self, zvec_db: Path) -> None:
+        """Tags are filterable index fields, so retagging is a content change."""
+        tagged = WikiNode(
+            id="n1",
+            title="T",
+            content="body",
+            node_type="page",
+            metadata={"tags": ["a"]},
+        )
+        retagged = replace(tagged, metadata={"tags": ["a", "b"]})
+        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store.build_index(_wiki(tagged))
+
+        assert store.is_stale(_wiki(retagged)) is True
+        store.close()
+        gc.collect()
+
+    def test_manifest_without_hashes_is_stale(self, zvec_db: Path) -> None:
+        """A store built before hashing is stale once, then records them."""
+        wiki = _wiki(_node("n1"))
+        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store.build_index(wiki)
+        _clear_manifest_hashes(store)
+        assert store.is_stale(wiki) is True
+        store.close()
+        gc.collect()
+
+        # Rebuild through a fresh store — the shape `open_vector_store` uses.
+        rebuilt = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        rebuilt.build_index(wiki)
+        assert rebuilt.is_stale(wiki) is False
+        rebuilt.close()
+        gc.collect()
+
+    def test_hash_is_stable_for_a_fixed_node(self, zvec_db: Path) -> None:
+        """The digest is a contract: the payload cannot change silently.
+
+        A mismatch here means the hashed payload changed — update the expected
+        value deliberately, and bump ``_EMBED_TEXT_VERSION`` if the embedded
+        text itself moved.
+        """
+        assert _content_hash(_node("n1")) == "893fa586f558d6e1"
+
 
 @pytest.fixture
 def zvec_db(tmp_path: Path) -> Path:
@@ -150,18 +227,32 @@ def zvec_db(tmp_path: Path) -> Path:
     return tmp_path / "zvec_test_store"
 
 
-def _manifest_row(store: ZvecWikiStore) -> dict[str, object]:
+class _ManifestRow(TypedDict):
+    """The `vector_manifest` row a build records: ids, hashes, embed version."""
+
+    embed_version: int
+    ids: list[str]
+    hashes: dict[str, str]
+
+
+def _manifest_row(store: ZvecWikiStore) -> _ManifestRow:
     """The vector manifest recorded by the last build (knox.db row)."""
     with sqlite3.connect(store._manifest_db_path()) as conn:
-        row = conn.execute("SELECT embed_version, ids FROM vector_manifest WHERE id = 1").fetchone()
+        row = conn.execute("SELECT embed_version, ids, content_hashes FROM vector_manifest WHERE id = 1").fetchone()
     assert row is not None, "a build must record the vector manifest"
-    return {"embed_version": row[0], "ids": json.loads(row[1])}
+    return {"embed_version": row[0], "ids": json.loads(row[1]), "hashes": json.loads(row[2])}
 
 
 def _set_manifest_version(store: ZvecWikiStore, version: int) -> None:
     """Overwrite the recorded embed-text version (simulates an older build)."""
     with sqlite3.connect(store._manifest_db_path()) as conn:
         conn.execute("UPDATE vector_manifest SET embed_version = ? WHERE id = 1", (version,))
+
+
+def _clear_manifest_hashes(store: ZvecWikiStore) -> None:
+    """Blank the recorded hashes, as a build from before they were tracked has."""
+    with sqlite3.connect(store._manifest_db_path()) as conn:
+        conn.execute("UPDATE vector_manifest SET content_hashes = '{}' WHERE id = 1")
 
 
 def _delete_manifest_row(store: ZvecWikiStore) -> None:

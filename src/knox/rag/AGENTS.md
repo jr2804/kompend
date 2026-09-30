@@ -25,7 +25,14 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
   build but not the comparison. Both made the index look stale after every
   compile, so the next query silently re-embedded the whole corpus. Pass the
   same `embed_attachments` to `build_vector_index` and `is_stale` — it is part of
-  what "up to date" means.
+  what "up to date" means. `build_index()` applies the rule itself so a caller
+  cannot skip it.
+- **Staleness also covers content, not just ids.** `is_stale()` compares the
+  recorded `_content_hash()` per node — the embedded text plus the filterable
+  metadata (node type, tags, attributes) — so an edited page, a `lint --fix`, or
+  a reworded recompile rebuilds instead of serving vectors for text that is gone.
+  A manifest row written before hashes existed (empty mapping) is stale once,
+  then records them.
 - `ZvecField` is the single source of truth for zvec field and vector names.
   The schema (`_expected_field_schemas`), the writes in `_index_nodes`, and the
   keys read from search hits must all use its members — never string literals.
@@ -59,8 +66,8 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
   collection has no FTS index (logged once, never raised into the query path).
 - `_prune_orphans` derives its candidate set from the collection's actual
   contents (`iter_docs()`), not the manifest id diff, so docs written before the
-  manifest existed are pruned too. The manifest itself (indexed ids + embed-text
-  version) is the `vector_manifest` row in `knox.db`, not a file beside
+  manifest existed are pruned too. The manifest itself (indexed ids + content
+  hashes + embed-text version) is the `vector_manifest` row in `knox.db`, not a file beside
   `vectors/`.
 - `search()` returns `score = 1 - cosine_distance` (higher is better) so
   descending-score callers keep their ordering, and keeps the same result dict

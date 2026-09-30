@@ -374,14 +374,15 @@ _DDL: Final[tuple[str, ...]] = (
         saved_at TEXT NOT NULL DEFAULT ''
     )
     """,
-    # Vector-branch manifest (was vectors.manifest.json): the indexed id set and
-    # embed-text version of the last build, used to detect a stale vector store.
-    # Single row, id = 1, like schema_version.
+    # Vector-branch manifest (was vectors.manifest.json): the indexed id set,
+    # their content hashes and the embed-text version of the last build, used to
+    # detect a stale vector store. Single row, id = 1, like schema_version.
     f"""
     CREATE TABLE IF NOT EXISTS {VECTOR_MANIFEST_TABLE} (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         embed_version INTEGER NOT NULL DEFAULT 0,
         ids TEXT NOT NULL DEFAULT '[]',
+        content_hashes TEXT NOT NULL DEFAULT '{{}}',
         written_at TEXT NOT NULL DEFAULT ''
     )
     """,

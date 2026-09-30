@@ -37,7 +37,7 @@ from knox.core.store import open_store
 from knox.core.store.schema import VECTOR_MANIFEST_TABLE
 from knox.core.utils.time import iso_local
 from knox.llm.models import OLLAMA_DEFAULT_BASE_URL
-from knox.logging import get_logger
+from knox.logging import LOG_SAMPLE_LIMIT, get_logger
 from knox.types import ZvecCollection, ZvecDoc
 
 _ZVEC_MAX_ID_LEN = 64
@@ -342,20 +342,28 @@ class ZvecWikiStore:
     def is_stale(self, wiki: CompiledWiki, *, embed_attachments: bool = False) -> bool:
         """Return True when the store's last build doesn't match ``wiki``.
 
-        Compares the ids the index covers (:func:`indexable_node_ids`) against
-        the ids recorded by the last build.  Missing bookkeeping, an unreadable
-        store, or any id set mismatch means the sidecar index is stale and must
-        be rebuilt before it can serve the loaded wiki.
+        Compares the ids the index covers (:func:`indexable_nodes`) against the
+        ids recorded by the last build, then their content hashes
+        (:func:`_content_hash`).  Missing bookkeeping, an unreadable store, or
+        any mismatch means the sidecar index is stale and must be rebuilt before
+        it can serve the loaded wiki.  ``knox query`` calls this on every open,
+        so a false positive re-embeds the whole corpus — the id comparison is
+        what made a build/check disagreement cost a full rebuild per query.
+
+        The content comparison catches the other direction: an edited page keeps
+        its id, so an ids-only check would keep serving vectors that describe
+        text the wiki no longer contains.
 
         *embed_attachments* must match the value the index was built with — the
         eligibility rule is part of what "up to date" means, so a config flip
         makes the index stale.
 
         The manifest row also records the embed-text version.  A row written by
-        an older composition is stale even when the ids match, because its
-        vectors were built from different text.
+        an older composition is stale even when the ids and hashes match,
+        because its vectors were built from different text.
         """
-        expected = indexable_node_ids(wiki, embed_attachments=embed_attachments)
+        nodes = indexable_nodes(wiki, embed_attachments=embed_attachments)
+        expected = {_safe_id(n.id) for n in nodes}
         if not expected:
             return True
         manifest_db = self._manifest_db_path()
@@ -364,7 +372,7 @@ class ZvecWikiStore:
         try:
             with open_store(manifest_db) as conn:
                 row = conn.execute(
-                    f"SELECT embed_version, ids FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
+                    f"SELECT embed_version, ids, content_hashes FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
                 ).fetchone()
         except sqlite3.Error as exc:
             logger.warning("Vector manifest unreadable — treating store as stale: %s", exc)
@@ -382,7 +390,9 @@ class ZvecWikiStore:
             )
             return True
         stored = {str(i) for i in json.loads(row["ids"])}
-        return stored != expected
+        if stored != expected:
+            return True
+        return self._content_changed(row["content_hashes"], nodes)
 
     @classmethod
     def open(
@@ -409,6 +419,34 @@ class ZvecWikiStore:
         else:
             logger.warning("No zvec store found at %s. Rebuild with build_index().", coll_dir)
         return store
+
+    def _content_changed(self, recorded: str, nodes: list[WikiNode]) -> bool:
+        """Compare recorded content hashes against *nodes*.
+
+        The id check alone cannot see an edited page: a `lint --fix`, a hand
+        edit, or a recompile that produced different prose leaves the id set
+        unchanged while the vectors describe text search no longer returns.
+        Hashing the indexed payload closes that blind spot.
+
+        A row written before hashes were tracked (empty mapping) is stale by
+        definition — one rebuild records them.
+        """
+        stored: dict[str, str] = json.loads(recorded) if recorded else {}
+        if not stored:
+            logger.info("Vector manifest has no content hashes (pre-tracking build) — rebuilding: %s", self.db_file)
+            return True
+        expected = {_safe_id(n.id): _content_hash(n) for n in nodes}
+        changed = sorted(node_id for node_id, digest in expected.items() if stored.get(node_id) != digest)
+        if not changed:
+            return False
+        logger.info(
+            "Vector index content changed for %d of %d node(s), e.g. %s — rebuilding: %s",
+            len(changed),
+            len(expected),
+            changed[:LOG_SAMPLE_LIMIT],
+            self.db_file,
+        )
+        return True
 
     def _note_fts_unavailable(self, exc: Exception) -> None:
         """Log FTS unavailability once; keeps the query path exception-free."""
@@ -537,15 +575,18 @@ class ZvecWikiStore:
         """
         return self.db_file.parent / KNOX_DB_FILE
 
-    def _write_manifest(self, ids: set[str]) -> None:
-        """Record the indexed id set + embed-text version of the last build."""
+    def _write_manifest(self, nodes: list[WikiNode]) -> None:
+        """Record the indexed id set, content hashes and embed-text version."""
+        ids = sorted(_safe_id(n.id) for n in nodes)
+        hashes = {_safe_id(n.id): _content_hash(n) for n in nodes}
         try:
             with open_store(self._manifest_db_path()) as conn:
                 conn.execute(
-                    f"INSERT INTO {VECTOR_MANIFEST_TABLE}(id, embed_version, ids, written_at) "
-                    "VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
-                    "embed_version = excluded.embed_version, ids = excluded.ids, written_at = excluded.written_at",
-                    (_EMBED_TEXT_VERSION, json.dumps(sorted(ids)), iso_local()),
+                    f"INSERT INTO {VECTOR_MANIFEST_TABLE}(id, embed_version, ids, content_hashes, written_at) "
+                    "VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+                    "embed_version = excluded.embed_version, ids = excluded.ids, "
+                    "content_hashes = excluded.content_hashes, written_at = excluded.written_at",
+                    (_EMBED_TEXT_VERSION, json.dumps(ids), json.dumps(hashes, sort_keys=True), iso_local()),
                 )
         except (sqlite3.Error, OSError) as exc:
             logger.warning(
@@ -569,7 +610,7 @@ class ZvecWikiStore:
         if orphans:
             collection.delete(orphans)
             logger.info("Pruned %d stale vector(s) from %s", len(orphans), self.db_file)
-        self._write_manifest(keep)
+        self._write_manifest(nodes)
         return len(orphans)
 
     @staticmethod
@@ -609,6 +650,26 @@ change forces a rebuild instead of silently serving vectors built from the old
 text — a failure mode with no other signal. ``test_zvec_embed_text.py`` pins the
 composition, so changing it fails a test and reminds you to bump this.
 """
+
+
+def _content_hash(node: WikiNode) -> str:
+    """Hash of what the index stores for *node* — the staleness fingerprint.
+
+    Covers the embedded text (title, description, content) plus the filterable
+    metadata (node type, tags, attributes), because search sees all of it: a
+    retag that leaves the prose alone still makes the stored document wrong.
+
+    Deliberately excludes the source path: it is relativized against
+    ``base_dir`` at index time, so hashing it would report a stale index for a
+    vault move that changed no content. Field order is fixed and tags are
+    sorted, so the digest does not depend on dict ordering or
+    ``PYTHONHASHSEED``.
+    """
+    metadata = node.metadata or {}
+    tags = sorted(str(tag) for tag in metadata.get(MetadataField.TAGS, []))
+    attributes = sorted(_attributes_to_list(metadata.get(MetadataField.ATTRIBUTES) or {}))
+    payload = "\n".join([_embed_text(node), node.node_type, " ".join(tags), " ".join(attributes)])
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 
 def _embed_text(node: WikiNode) -> str:
