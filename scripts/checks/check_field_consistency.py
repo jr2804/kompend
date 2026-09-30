@@ -37,15 +37,17 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from _common import repo_root, require_scanned
+
+REPO_ROOT = repo_root()
 SRC_ROOT = REPO_ROOT / "src" / "knox"
 
 # Each enforced enum is scoped to the modules that consume its contract.
 # A value-only match is a violation ONLY if the hit is in one of the enum's
 # consumer modules. Cross-cutting enums (MetadataField, WikiField) apply
-# repo-wide; module-local schema enums (FtsField, ZvecField) apply only to
-# their own module + direct readers — enforcing them project-wide would
-# drown in false positives on generic words like "content", "title", "id".
+# repo-wide; module-local schema enums (ZvecField) apply only to their own
+# module + direct readers — enforcing them project-wide would drown in false
+# positives on generic words like "content", "title", "id".
 #
 # Entry shape: ``(module_name, class_name, consumer_glob_patterns)``.
 # ``consumer_glob_patterns`` is matched as POSIX-style suffix; an empty list
@@ -65,14 +67,6 @@ ENFORCED_ENUMS: list[tuple[str, str, list[str]]] = [
         "knox.memory.store",
         "MemoryField",
         ["memory/store.py", "memory/__init__.py", "cli/cmds/memory.py"],
-    ),
-    # FTS SQL schema — the contract is module-local to index.py (CREATE TABLE / INSERT / SELECT).
-    # Retrievers build unrelated dicts with generic keys ("content", "title", "id") that
-    # collide with chat-message and hit-dict shapes, so we do NOT police consumer files.
-    (
-        "knox.search.index",
-        "FtsField",
-        ["search/index.py"],
     ),
     # zvec collection schema — module-local to zvec_store.py (the DDL contract).
     # Retrievers read hit dicts but also build unrelated dicts with "title" keys,
@@ -210,6 +204,7 @@ def main() -> int:
 
     root = Path(args.src)
     py_files = discover_py_files(root)
+    require_scanned(len(py_files), [root])
 
     all_violations: list[Violation] = []
     for f in py_files:
@@ -242,22 +237,36 @@ def main() -> int:
 
 
 def load_enums(enums: list[tuple[str, str, list[str]]]) -> list[EnumEntry]:
-    """Import each StrEnum and register its member values."""
+    """Import each StrEnum and register its member values.
+
+    An entry that cannot be loaded is fatal: the registry is a claim about
+    what the gate enforces, so a module that moved (or a class that was
+    renamed) must fail the gate rather than quietly drop that contract.
+    """
     out: list[EnumEntry] = []
+    broken: list[str] = []
     for module_name, class_name, consumers in enums:
         try:
             mod = importlib.import_module(module_name)
         except Exception as exc:  # noqa: BLE001
-            print(f"WARNING: could not import {module_name}: {exc}", file=sys.stderr)
+            broken.append(f"{module_name}: import failed ({exc})")
             continue
         cls = getattr(mod, class_name, None)
         if cls is None:
-            print(f"WARNING: {module_name}.{class_name} not found", file=sys.stderr)
+            broken.append(f"{module_name}.{class_name}: class not found")
             continue
         entry = EnumEntry(module_name, class_name, consumers)
         for member in cls:
             entry.values[str(member.value)] = f"{class_name}.{member.name}"
         out.append(entry)
+    if broken:
+        for problem in broken:
+            print(f"ERROR: enforced enum unavailable — {problem}", file=sys.stderr)
+        print(
+            "ERROR: fix ENFORCED_ENUMS in this script (the contract it names no longer exists)",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
     return out
 
 

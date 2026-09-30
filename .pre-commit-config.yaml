@@ -25,14 +25,14 @@ repos:
     hooks:
       - id: check-field-consistency
         name: check field consistency (no bare-string contract keys)
-        entry: uv run python scripts/check_field_consistency.py
+        entry: uv run python scripts/checks/check_field_consistency.py
         language: system
         types: [python]
         pass_filenames: false
         stages: [pre-commit, manual]
       - id: check-antipatterns
         name: check antipatterns (no magic crops, banned noqa, etc.)
-        entry: uv run python scripts/check_antipatterns.py
+        entry: uv run python scripts/checks/check_antipatterns.py
         language: system
         types: [python]
         pass_filenames: false

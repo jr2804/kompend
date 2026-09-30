@@ -21,6 +21,13 @@ A small set of scripts catch what linting misses: bare-string contract keys,
 magic-number crops, banned-noqa patterns. Run them locally before pushing.
 All exit non-zero on violations; all run in CI.
 
+Two guarantees keep them honest: a scan that finds no files is an error (an
+empty scan is not a pass), and an enforced contract that no longer exists in
+the code (moved module, renamed enum) fails the script instead of warning.
+Per-line waivers exist for sites the rule cannot judge — `# nocheck: <reason>`
+in field-consistency, `# noqa: <code>` in antipatterns. The reason is part of
+the waiver: it states why this site is legitimate.
+
 ### Extension
 
 | Who | When | What |
@@ -60,7 +67,9 @@ Tick these BEFORE writing a function:
 - **Import** — at module level? Function-body imports (`PLC0415`) are rejected
   except for `try/except ImportError` probes for explicitly optional deps.
 - **Global state** — no `global` keyword or module-level mutable singleton
-  (`_cache = {}`, `_instance = None`).
+  (`_cache = {}`, `_instance = None`). A genuinely process-wide switch (one-shot
+  setup guard, verbosity toggle) may use `global` with a justified
+  `# noqa: PLW0603` — a contextvar would be wrong for it.
 - **Noqa suppression** — actually necessary with a justification comment?
   `PLC0415` and other banned-noqa rules cannot be suppressed.
 
@@ -70,8 +79,7 @@ Tick these BEFORE writing a function:
 |---|---|---|
 | `ruff check` | Most lint issues (PLC0415/E402 are warnings, not errors) | ruff.toml |
 | `scripts/checks/check_field_consistency.py` | Bare-string contract keys | scripts/checks/ |
-| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` | scripts/checks/ |
-| `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
+| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` | scripts/checks/ || `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
 | `scripts/analyze/analyze_codebase.py` | Files/submodules exceeding net-line targets (>350 lines/file, >7 files/submodule) | scripts/analyze/ |
 
 All four run in CI. Run locally: `mise run check-all`.

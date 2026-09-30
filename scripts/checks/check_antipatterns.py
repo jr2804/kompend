@@ -44,7 +44,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+from _common import repo_root, require_scanned
+
+REPO_ROOT = repo_root()
 SRC_ROOT = REPO_ROOT / "src" / "knox"
 TESTS_ROOT = REPO_ROOT / "tests"
 
@@ -141,6 +143,7 @@ def main() -> int:
     roots = [Path(p).resolve() for p in args.src] if args.src else [SRC_ROOT, TESTS_ROOT]
 
     py_files = discover_py_files(roots)
+    require_scanned(len(py_files), roots)
     all_violations: list[Violation] = []
     for f in py_files:
         all_violations.extend(scan_file(f))
@@ -186,7 +189,7 @@ def scan_file(path: Path) -> list[Violation]:
     out: list[Violation] = []
     out.extend(scan_noqa_bans(path, lines))
     out.extend(scan_import_error_guards(path, tree))
-    out.extend(scan_global_usage(path, tree))
+    out.extend(scan_global_usage(path, tree, lines))
     out.extend(scan_magic_crops(path, lines))
     out.extend(scan_env_var_literals(path, lines))
     return out
@@ -290,11 +293,16 @@ def scan_import_error_guards(path: Path, tree: ast.AST) -> list[Violation]:
     return out
 
 
-def scan_global_usage(path: Path, tree: ast.AST) -> list[Violation]:
+def scan_global_usage(path: Path, tree: ast.AST, lines: list[str]) -> list[Violation]:
     """Flag ``global`` keyword usage — usually a code smell.
 
     Allowlisted by path when module-level singleton state is a documented
-    design choice (see ``_GLOBAL_KEYWORD_ALLOWLIST``).
+    design choice (see ``_GLOBAL_KEYWORD_ALLOWLIST``), or per line by a
+    justified ``# noqa: ...`` — the project's general escape hatch, honoured
+    here exactly as ``scan_magic_crops`` honours it. Some switches are
+    genuinely process-wide (a one-shot setup guard, the verbosity toggle) and
+    a contextvar would be wrong for them: a new thread or task context would
+    read the default and lose the value.
     """
     if _is_test_file(path):
         return []
@@ -304,6 +312,8 @@ def scan_global_usage(path: Path, tree: ast.AST) -> list[Violation]:
     out: list[Violation] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Global):
+            if 0 < node.lineno <= len(lines) and _is_noqa_line(lines[node.lineno - 1]):
+                continue  # author opted out with a justification
             names = ", ".join(node.names)
             out.append(
                 Violation(
