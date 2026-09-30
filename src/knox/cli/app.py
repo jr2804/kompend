@@ -17,21 +17,20 @@ import importlib
 import os
 import sys
 from importlib.metadata import version
-from typing import TYPE_CHECKING, Final
+from typing import Final
 
 import logfire
 import typer
+
+# Typer 0.26 vendors its own click as ``typer._click``: its API types are a
+# different class hierarchy from the standalone ``click`` package, so
+# annotating these overrides with ``click.Context``/``click.Command`` both
+# mismatched the parent signatures and made the returned command a foreign
+# type. Name Typer's own types once, here.
+from typer._click.core import Command as ClickCommand
+from typer._click.core import Context as ClickContext
 from typer.core import TyperCommand, TyperGroup
 from typer.main import get_command_from_info, get_group
-
-if TYPE_CHECKING:
-    # Typer 0.26 vendors its own click as ``typer._click``: its API types are a
-    # different class hierarchy from the standalone ``click`` package, so
-    # annotating these overrides with ``click.Context``/``click.Command`` both
-    # mismatched the parent signatures and made the returned command a foreign
-    # type. Name Typer's own types once, here.
-    from typer._click.core import Command as ClickCommand
-    from typer._click.core import Context as ClickContext
 
 from knox.cli._shared import format_exception_for_cli
 from knox.core.config.keys import EnvVar

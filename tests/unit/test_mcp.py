@@ -131,7 +131,7 @@ def test_cli_mcp_parity() -> None:
         gname = sub_app.info.name or str(group.name)
         gnorm = _normalize_cli(gname)
         for cmd in sub_app.registered_commands:
-            cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name or "")}")
+            cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name or '')}")
 
     mcp_norm = {_normalize_mcp(t) for t in _mcp_tool_names()}
     # Apply explicit aliases: remove the aliased CLI command from the
@@ -160,7 +160,7 @@ def test_mcp_cli_parity_reverse() -> None:
         gname = sub_app.info.name or str(group.name)
         gnorm = _normalize_cli(gname)
         for cmd in sub_app.registered_commands:
-            cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name or "")}")
+            cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name or '')}")
 
     mcp_norm = {_normalize_mcp(t) for t in _mcp_tool_names()}
     # MCP tools that intentionally have no CLI equivalent (server bootstrap,
