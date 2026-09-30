@@ -7,6 +7,7 @@ to compute document vectors, then compares via cosine similarity.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 
 from knox.logging import get_logger
 from knox.preprocessing.dedup.base import ContentMatcher, require_json_number
@@ -80,7 +81,7 @@ class EmbeddingMatcher(ContentMatcher[list[float]]):
     def serialize(self, fingerprint: list[float]) -> list[float]:  # noqa: PLR6301 — overrides ABC
         return fingerprint
 
-    def deserialize(self, data: list[JSONValue]) -> list[float]:  # noqa: PLR6301 — overrides ABC
+    def deserialize(self, data: Sequence[JSONValue]) -> list[float]:  # noqa: PLR6301 — overrides ABC
         return [require_json_number(v) for v in data]
 
     def __repr__(self) -> str:

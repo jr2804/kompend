@@ -75,7 +75,7 @@ class ContentMatcher[FpT](ABC):
         ...
 
     @abstractmethod
-    def deserialize(self, data: list[JSONValue]) -> FpT:
+    def deserialize(self, data: Sequence[JSONValue]) -> FpT:
         """Restore a fingerprint from a serialised list."""
         ...
 

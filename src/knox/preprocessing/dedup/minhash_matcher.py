@@ -8,7 +8,7 @@ large corpora.
 from __future__ import annotations
 
 import re
-from collections.abc import Hashable
+from collections.abc import Hashable, Sequence
 from typing import Any
 
 from datasketch import MinHash, MinHashLSH
@@ -114,7 +114,7 @@ class MinhashMatcher(ContentMatcher[MinHash]):
         """Export a MinHash signature as a list of hash values."""
         return [int(h) for h in fingerprint.hashvalues]
 
-    def deserialize(self, data: list[JSONValue]) -> MinHash:
+    def deserialize(self, data: Sequence[JSONValue]) -> MinHash:
         """Restore a MinHash signature from a serialised list."""
         m = MinHash(num_perm=self._num_perm)
         m.hashvalues = [self._to_uint64(require_json_int(v)) for v in data]
