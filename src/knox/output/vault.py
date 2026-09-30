@@ -268,7 +268,7 @@ class VaultWriter(BaseOutputWriter):
             serialized: dict[str, str | list[str]] = {}
             for k, v in node_attrs.items():
                 serialized[k] = v[0] if len(v) == 1 else v
-            frontmatter["attributes"] = serialized
+            frontmatter["attributes"] = serialized  # nocheck: OKF frontmatter key, not wiki metadata
 
         # OKF trust (§5.2): ``generated`` records how/when content was produced.
         # Supersedes the v0.1 ``timestamp`` field (§13.1).
@@ -304,7 +304,7 @@ class VaultWriter(BaseOutputWriter):
         return {
             "claims": len(claims),
             "supported": supported,
-            "quality_score": round(sum(confidences) / len(confidences), 2),
+            "quality_score": round(sum(confidences) / len(confidences), 2),  # nocheck: OKF frontmatter key, not wiki metadata
         }
 
     def _write_vault(self, docs: list[Document], wiki: CompiledWiki, output_dir: Path) -> Path:
@@ -476,7 +476,7 @@ class VaultWriter(BaseOutputWriter):
                     {
                         "type": "Source",
                         "title": title,
-                        "description": f"Per-source overview of {key}",
+                        "description": f"Per-source overview of {key}",  # nocheck: OKF frontmatter key, not wiki metadata
                         "generated": {"by": _GENERATED_BY, "at": iso_local()},
                         "status": "stable",
                         "kind": "source",
@@ -608,7 +608,7 @@ class VaultWriter(BaseOutputWriter):
                 {
                     "type": "Quality",
                     "title": "Quality",
-                    "description": "Claim verification summary (WiCER pass)",
+                    "description": "Claim verification summary (WiCER pass)",  # nocheck: OKF frontmatter key, not wiki metadata
                     "generated": {"by": _GENERATED_BY, "at": iso_local()},
                     "status": "stable",
                     "kind": "quality",
@@ -677,7 +677,7 @@ class VaultWriter(BaseOutputWriter):
             {
                 "type": "Reference",
                 "title": "References",
-                "description": "Corpus sources and bibliographic entries cited by them",
+                "description": "Corpus sources and bibliographic entries cited by them",  # nocheck: OKF frontmatter key, not wiki metadata
                 "generated": {"by": _GENERATED_BY, "at": iso_local()},
                 "status": "stable",
                 "kind": "reference",

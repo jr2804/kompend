@@ -50,7 +50,7 @@ def sources_list(
             if not any(all(t in tag_set for t in group) for group in tag_groups):
                 continue
 
-        results.append({"file": file, "tags": source_tags})
+        results.append({"file": file, "tags": source_tags})  # nocheck: MCP response payload
 
     if not results:
         return {"status": "ok", "sources": [], "count": 0, "message": "No sources match the given tag filter."}

@@ -20,6 +20,7 @@ from knox.core.models import (
     DocumentElement,
     ElementType,
     EquationVariable,
+    MetadataField,
     StructuredData,
     StructuredEquation,
     StructuredFigure,
@@ -116,7 +117,7 @@ def extract_figure(el: DocumentElement) -> StructuredFigure:
     if el.metadata:
         caption = str(el.metadata.get("caption", ""))
         alt_text = str(el.metadata.get("alt_text", ""))
-        description = str(el.metadata.get("description", ""))
+        description = str(el.metadata.get(MetadataField.DESCRIPTION, ""))
     if isinstance(el.content, str):
         image_ref = el.content
     elif isinstance(el.content, bytes):

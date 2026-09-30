@@ -19,7 +19,7 @@ from knox.cli._progress import EtaColumn, PercentageColumn, _should_show_progres
 from knox.core.cache.wiki import write_wiki_cache
 from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
-from knox.core.models import CompiledWiki, load_cached_wiki
+from knox.core.models import CompiledWiki, MetadataField, load_cached_wiki
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE, VaultPaths
 from knox.lint.base import LintReport, LintReportResult
 from knox.lint.gap_analysis import analyze_gaps, load_degree_map
@@ -109,7 +109,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     llm_meta: dict[str, Any] | None = None
     if lint_agent is not None:
         usage = getattr(lint_agent, "usage", None)
-        llm_meta = {"model": lint_model}
+        llm_meta = {MetadataField.MODEL: lint_model}
         if usage is not None and hasattr(usage, "to_dict"):
             llm_meta["usage"] = usage.to_dict()
 

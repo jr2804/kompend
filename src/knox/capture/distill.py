@@ -191,7 +191,7 @@ def _distill_agentic(
             page = {
                 "title": page_data.get("title") or tag.replace("-", " ").replace("_", " ").title(),
                 "content": page_data.get("content") or "",
-                "tags": page_data.get("tags") or [tag],
+                "tags": page_data.get("tags") or [tag],  # nocheck: OKF frontmatter key, not wiki metadata
             }
         slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in note_list]

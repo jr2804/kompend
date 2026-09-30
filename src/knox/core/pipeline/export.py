@@ -232,12 +232,12 @@ def collect_annotations(data: dict[str, Any], store: AssetStore) -> list[dict[st
 
 
 def _element_from_dict(d: dict[str, Any]) -> DocumentElement:
-    src = d.get("source_file")
+    src = d.get(MetadataField.SOURCE_FILE)
     return DocumentElement(
         type=ElementType(d["type"]),
         content=d.get("content", ""),
         page=d.get("page"),
-        reading_order=d.get("reading_order"),
+        reading_order=d.get(MetadataField.READING_ORDER),
         heading_level=d.get("heading_level"),
         metadata=d.get("metadata") or {},
         source_file=Path(src) if src else None,

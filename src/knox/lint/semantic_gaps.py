@@ -23,7 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from knox.core.cache import CacheStore
-from knox.core.models import ChunkField, ChunkNodeField, ChunkTreeField
+from knox.core.models import ChunkField, ChunkNodeField, ChunkTreeField, MetadataField
 from knox.core.paths import safe_stem
 from knox.core.text.embedding_text import embed_text
 from knox.core.text.matching import cosine
@@ -169,7 +169,7 @@ def _load_vector_cache(cache_path: Path, embed_model: str) -> dict[str, list[flo
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning("Gap vector cache unreadable — rebuilding: %s (%s)", cache_path, exc)
         return {}
-    if not isinstance(raw, dict) or raw.get("model") != embed_model:
+    if not isinstance(raw, dict) or raw.get(MetadataField.MODEL) != embed_model:
         return {}
     vectors = raw.get("vectors")
     if not isinstance(vectors, dict):
@@ -179,6 +179,6 @@ def _load_vector_cache(cache_path: Path, embed_model: str) -> dict[str, list[flo
 
 def _save_vector_cache(cache_path: Path, vectors: dict[str, list[float]], embed_model: str) -> None:
     dim = len(next(iter(vectors.values()))) if vectors else 0
-    payload = {"model": embed_model, "dim": dim, "vectors": vectors}
+    payload = {MetadataField.MODEL: embed_model, "dim": dim, "vectors": vectors}
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(payload), encoding="utf-8")

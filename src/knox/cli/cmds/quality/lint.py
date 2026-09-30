@@ -41,7 +41,7 @@ from knox.cli.args import (
 from knox.core.config import resolve_config
 from knox.core.config._configs import LintConfig
 from knox.core.config.rumdl import resolve_rumdl_config
-from knox.core.models import CompiledWiki, load_cached_wiki
+from knox.core.models import CompiledWiki, MetadataField, load_cached_wiki
 from knox.core.paths import INDEX_FILE, LINT_HISTORY_FILE
 from knox.lint.base import LintReport, LintReportResult, RemediationStatus
 from knox.lint.flow import (
@@ -182,7 +182,7 @@ def lint_semantic(
         raise typer.Exit(1)
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
-    llm_meta = {"model": model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
+    llm_meta = {MetadataField.MODEL: model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
     _persist_history(report, vp=vp, cfg=cfg, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm_meta=llm_meta)
     _print_report(report, json_output, vp)
 
@@ -577,7 +577,7 @@ def lint_remediate(
                 [
                     {
                         "category": a.category,
-                        "description": a.description,
+                        "description": a.description,  # nocheck: CLI JSON output payload
                         "status": a.status,
                         "details": a.details,
                     }

@@ -49,7 +49,9 @@ def load_gen_checkpoint(
         return None
     try:
         nodes: list[WikiNode] = [
-            n for n in (decode_json(n) for n in raw.get("nodes", [])) if isinstance(n, WikiNode)
+            n
+            for n in (decode_json(n) for n in raw.get("nodes", []))  # nocheck: checkpoint file schema
+            if isinstance(n, WikiNode)
         ]  # guard: checkpoint format is untrusted JSON
     except Exception:
         logger.debug("Generation checkpoint node deserialization error -- ignoring", exc_info=True)

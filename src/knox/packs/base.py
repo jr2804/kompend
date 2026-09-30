@@ -158,7 +158,7 @@ def load_pack_toml(package: str, filename: str = "pack.toml") -> Pack:
 
     return Pack(
         name=pack_section.get("name", ""),
-        description=pack_section.get("description", ""),
+        description=pack_section.get("description", ""),  # nocheck: pack TOML schema key
         version=pack_section.get("version", "1.0.0"),
         roles=roles,
         dependencies=list(pack_section.get("dependencies", [])),

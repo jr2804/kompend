@@ -126,7 +126,7 @@ class TierStateStore:
             entries={
                 row["stem"]: SourceState(
                     stem=row["stem"],
-                    source_file=row["source_file"],
+                    source_file=row["source_file"],  # nocheck: knox.db column
                     content_hash=row["content_hash"],
                     current_tier=int(row["current_tier"]),
                     last_compile=row["last_compile"],

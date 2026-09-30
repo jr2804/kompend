@@ -30,9 +30,9 @@ class TypstWriter(BaseOutputWriter):
         lines.append(f'#text(size: 24pt, weight: "bold")[{title}]')
         lines.append("#v(2cm)")
 
-        if wiki.metadata.get("description"):
+        if wiki.metadata.get("description"):  # nocheck: wiki container metadata key
             lines.append("#align(center)")
-            lines.append(f"#text(size: 12pt)[{wiki.metadata['description']}]")
+            lines.append(f"#text(size: 12pt)[{wiki.metadata['description']}]")  # nocheck: wiki container metadata key
             lines.append("#v(1cm)")
 
         lines.append("#pagebreak()")

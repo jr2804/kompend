@@ -62,7 +62,7 @@ class VLMEnricher(BaseResolver):
         if ElementType.IMAGE not in resolved.chunk.element_types:
             return resolved
 
-        description = resolved.chunk.metadata.get("description")
+        description = resolved.chunk.metadata.get(MetadataField.DESCRIPTION)
         if description:
             resolved.entities.append(
                 {

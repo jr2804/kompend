@@ -12,6 +12,7 @@ from typing import Any, Final, NotRequired, TypedDict
 
 import yaml
 
+from knox.core.models.enums import MetadataField
 from knox.core.store import open_store, vault_db_path
 from knox.core.store.schema import WIKI_SNAPSHOT_TABLE
 from knox.core.utils.time import iso_local
@@ -248,14 +249,14 @@ def load_wiki_snapshot(base_dir: Path, kind: str) -> CompiledWiki | None:
         ).fetchone()
     if row is None:
         return None
-    raw_nodes = json.loads(row["nodes"])
+    raw_nodes = json.loads(row["nodes"])  # nocheck: wiki_snapshot column, not a metadata key
     nodes = [WikiNode(**n) if isinstance(n, dict) else n for n in raw_nodes]
     return CompiledWiki(
         nodes=nodes,
-        edges=json.loads(row["edges"]),
-        toc=json.loads(row["toc"]),
-        quality_score=float(row["quality_score"]),
-        iteration=int(row["iteration"]),
+        edges=json.loads(row["edges"]),  # nocheck: wiki_snapshot column
+        toc=json.loads(row["toc"]),  # nocheck: wiki_snapshot column
+        quality_score=float(row["quality_score"]),  # nocheck: wiki_snapshot column
+        iteration=int(row["iteration"]),  # nocheck: wiki_snapshot column
         metadata=json.loads(row["metadata"]),
     )
 
@@ -286,14 +287,14 @@ def load_wiki_from_files(output_dir: Path) -> CompiledWiki | None:
         title = str(frontmatter.get("title") or slug.replace("-", " ").title())
         kind = str(frontmatter.get("kind") or _KIND_TO_NODE_TYPE.get(str(frontmatter.get("type", "")), "concept"))
         metadata: dict[str, Any] = {}
-        if frontmatter.get("description"):
-            metadata["description"] = frontmatter["description"]
-        tags = frontmatter.get("tags")
+        if frontmatter.get("description"):  # nocheck: OKF frontmatter key, not wiki metadata
+            metadata[MetadataField.DESCRIPTION] = frontmatter["description"]  # nocheck: value read from OKF frontmatter
+        tags = frontmatter.get("tags")  # nocheck: OKF frontmatter key, not wiki metadata
         if tags:
-            metadata["tags"] = tags if isinstance(tags, list) else [tags]
+            metadata[MetadataField.TAGS] = tags if isinstance(tags, list) else [tags]
         source_files = frontmatter.get("source_files")
         if source_files:
-            metadata["provenance"] = source_files if isinstance(source_files, list) else [source_files]
+            metadata[MetadataField.PROVENANCE] = source_files if isinstance(source_files, list) else [source_files]
 
         nodes.append(WikiNode(id=slug, title=title, content=body.strip(), node_type=kind, metadata=metadata))
         slug_to_title[slug] = title

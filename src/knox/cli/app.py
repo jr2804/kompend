@@ -57,7 +57,7 @@ _COMMAND_MODULES: Final[dict[str, str]] = {
     "doctor": "knox.cli.cmds.quality.doctor_cmd",
     "status": "knox.cli.cmds.quality.status_cmd",
     "list-parsers": "knox.cli.cmds.quality.list_parsers_cmd",
-    "provenance": "knox.cli.cmds.quality.provenance_cmd",
+    "provenance": "knox.cli.cmds.quality.provenance_cmd",  # nocheck: CLI command registry key
     "init": "knox.cli.cmds.init",
     "lint": "knox.cli.cmds.quality.lint",
     "log": "knox.cli.cmds.quality.log",
@@ -117,7 +117,7 @@ _COMMAND_PANELS: Final[dict[str, str]] = {
     "status": "Quality & inspection",
     "log": "Quality & inspection",
     "review": "Quality & inspection",
-    "provenance": "Quality & inspection",
+    "provenance": "Quality & inspection",  # nocheck: CLI help-panel key
     "list-parsers": "Quality & inspection",
     "init": "Setup",
     "config": "Setup",

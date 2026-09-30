@@ -22,7 +22,7 @@ def pack_list() -> dict[str, Any]:
     return {
         "status": "ok",
         "count": len(registry.names),
-        "packs": [{"name": pack.name, "version": pack.version, "description": pack.description} for pack in registry.all],
+        "packs": [{"name": pack.name, "version": pack.version, "description": pack.description} for pack in registry.all],  # nocheck: MCP response payload
     }
 
 

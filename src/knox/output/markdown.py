@@ -157,7 +157,7 @@ class MarkdownWriter(VaultWriter):
                 quality = VaultWriter.node_quality(verification, node.id)
                 if quality:
                     frontmatter["verified_claims"] = f"{quality['supported']}/{quality['claims']}"
-                    frontmatter["quality_score"] = quality["quality_score"]
+                    frontmatter["quality_score"] = quality["quality_score"]  # nocheck: OKF frontmatter key, not wiki metadata
 
             body = node.content or ""
             images = node.metadata.get("images", [])
@@ -264,7 +264,7 @@ class MarkdownWriter(VaultWriter):
             for doc in sorted(group, key=lambda d: d.title):
                 folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
                 relative = f"{folder}/{doc.page_slug}.md" if folder else f"{doc.page_slug}.md"
-                description = doc.frontmatter.get("description", "")
+                description = doc.frontmatter.get("description", "")  # nocheck: OKF frontmatter read
                 if description:
                     item = Paragraph()
                     item.children.append(link(relative, doc.title))

@@ -21,6 +21,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Final, cast
 
+from knox.core.models import MetadataField
 from knox.core.store import open_store, vault_db_path
 from knox.core.store.schema import DOCUMENTS_TABLE
 from knox.types import JSONDict
@@ -38,7 +39,7 @@ def cache_key(source_file: Path, content_hash: str) -> str:
 
 def write_document(db_path: Path, key: str, data: JSONDict) -> None:
     """Upsert a parse-cache record from the caller's JSON dict *data*."""
-    source_file = str(data.get("source_file") or "")
+    source_file = str(data.get(MetadataField.SOURCE_FILE) or "")
     fingerprint = str(data.get(PARSE_CACHE_PARSER_KEY) or "")
     metadata = json.dumps(data.get("metadata") or {}, default=str)
     elements = json.dumps(data.get("elements") or [], default=str)
@@ -131,7 +132,7 @@ def read_document(db_path: Path, key: str) -> JSONDict | None:
     except json.JSONDecodeError:
         return None
     return {
-        "source_file": row["source_file"],
+        MetadataField.SOURCE_FILE: row["source_file"],  # nocheck: right side is a knox.db column
         PARSE_CACHE_PARSER_KEY: row["parser_fingerprint"],
         "title": row["title"],
         "author": row["author"],

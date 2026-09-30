@@ -83,7 +83,7 @@ def apply_tag(cache_dir: Path, file: str, tag: str, *, add: bool) -> SourceChang
         existing.remove(tag)
         message = f"Removed tag '{tag}' on {file}"
 
-    meta["tags"] = cast("JSONValue", list(existing))
+    meta[MetadataField.TAGS] = cast("JSONValue", list(existing))
     write_document(vault_db_path(cache_dir), key, record)
     return SourceChange(True, message)
 
@@ -91,7 +91,7 @@ def apply_tag(cache_dir: Path, file: str, tag: str, *, add: bool) -> SourceChang
 def source_tags(record: JSONDict) -> list[str]:
     """Tags recorded in *record*'s metadata (``[]`` when absent/malformed)."""
     meta = record.get("metadata")
-    tags = meta.get("tags") if isinstance(meta, dict) else None
+    tags = meta.get(MetadataField.TAGS) if isinstance(meta, dict) else None
     return [t for t in tags if isinstance(t, str)] if isinstance(tags, list) else []
 
 
@@ -122,7 +122,7 @@ def apply_attribute(cache_dir: Path, file: str, key_value: str, *, add: bool) ->
         del existing[key_value]
         message = f"Removed {key_value}"
 
-    meta["attributes"] = cast("JSONValue", dict(existing))
+    meta[MetadataField.ATTRIBUTES] = cast("JSONValue", dict(existing))
     write_document(vault_db_path(cache_dir), key, record)
     return SourceChange(True, message)
 
@@ -130,7 +130,7 @@ def apply_attribute(cache_dir: Path, file: str, key_value: str, *, add: bool) ->
 def source_attributes(record: JSONDict) -> dict[str, str]:
     """Key=value attributes recorded in *record*'s metadata."""
     meta = record.get("metadata")
-    attrs = meta.get("attributes") if isinstance(meta, dict) else None
+    attrs = meta.get(MetadataField.ATTRIBUTES) if isinstance(meta, dict) else None
     if not isinstance(attrs, dict):
         return {}
     return {k: v for k, v in attrs.items() if isinstance(k, str) and isinstance(v, str)}

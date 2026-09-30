@@ -98,8 +98,8 @@ def discover_context_window(  # noqa: PLR0915
     cfg = _user_providers.get(provider_id)
     if cfg:
         model_cfg = cfg.get("models", {}).get(model_name, {})
-        per_model = model_cfg.get("context_window") if isinstance(model_cfg, dict) else None
-        override = per_model if per_model is not None else cfg.get("context_window")
+        per_model = model_cfg.get("context_window") if isinstance(model_cfg, dict) else None  # nocheck: provider config schema key
+        override = per_model if per_model is not None else cfg.get("context_window")  # nocheck: provider config schema key
         if override is not None:
             max_input = int(override)
             max_output = int(override)

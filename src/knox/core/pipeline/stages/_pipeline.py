@@ -277,7 +277,7 @@ class WikiPipeline:
                 "tier": tier.value,
                 "level": Tier.level_of(tier),
                 "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= Tier.level_of(tier)),
-                "description": _TIER_DESCRIPTIONS[tier],
+                "description": _TIER_DESCRIPTIONS[tier],  # nocheck: progress-report payload
             }
             for tier in [ti.tier for ti in Tier.all_tiers()]
         ] + [
@@ -285,13 +285,13 @@ class WikiPipeline:
                 "tier": "_distribution",
                 "level": -1,
                 "sources_at_or_above": 0,
-                "description": f"tier distribution: {distribution}",
+                "description": f"tier distribution: {distribution}",  # nocheck: progress-report payload
             },
             {
                 "tier": "_sample",
                 "level": -2,
                 "sources_at_or_above": 0,
-                "description": f"sample sources: {[e.stem for e in sample]}",
+                "description": f"sample sources: {[e.stem for e in sample]}",  # nocheck: progress-report payload
             },
         ]
 

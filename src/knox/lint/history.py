@@ -87,7 +87,7 @@ def save_lint_entry(entry: LintEntry, path: Path) -> None:
             f"INSERT INTO {LINT_RUNS_TABLE} (timestamp, duration_seconds, options, llm, config_snapshot, wiki_meta, report) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (
                 entry["timestamp"],
-                entry["duration_seconds"],
+                entry["duration_seconds"],  # nocheck: lint_history column/payload key
                 json.dumps(entry["options"], default=str, ensure_ascii=False),
                 json.dumps(entry["llm"], default=str, ensure_ascii=False) if entry["llm"] is not None else None,
                 json.dumps(entry["config_snapshot"], default=str, ensure_ascii=False),
@@ -160,7 +160,7 @@ def _row_to_entry(row: sqlite3.Row) -> LintEntry:
     """Rebuild a :class:`LintEntry` from a ``lint_runs`` row."""
     return {
         "timestamp": row["timestamp"],
-        "duration_seconds": row["duration_seconds"],
+        "duration_seconds": row["duration_seconds"],  # nocheck: lint_history column/payload key
         "options": json.loads(row["options"]),
         "llm": json.loads(row["llm"]) if row["llm"] is not None else None,
         "config_snapshot": json.loads(row["config_snapshot"]),
