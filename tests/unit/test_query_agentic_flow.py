@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from pydantic_ai import RunContext
@@ -108,8 +108,13 @@ def _ctx(deps: QueryAgentDeps) -> RunContext[QueryAgentDeps]:
     return cast(RunContext[QueryAgentDeps], _Ctx(deps))
 
 
-def _deps(retriever: QuerySearchProtocol, **kwargs: object) -> QueryAgentDeps:
-    return QueryAgentDeps(question="What is P.863?", sub_questions=[], retriever=retriever, **kwargs)  # type: ignore[arg-type]
+def _deps(retriever: QuerySearchProtocol, **kwargs: Any) -> QueryAgentDeps:
+    return QueryAgentDeps(
+        question="What is P.863?",
+        sub_questions=[],
+        retriever=retriever,
+        **kwargs,
+    )
 
 
 def test_run_agentic_query_builds_deps_and_returns_answer(monkeypatch: pytest.MonkeyPatch) -> None:

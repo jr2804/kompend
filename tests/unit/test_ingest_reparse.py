@@ -22,7 +22,7 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 from knox.chunking.hierarchical import HierarchicalChunker
 from knox.core.cache.store import CacheStore
@@ -34,10 +34,12 @@ from knox.core.pipeline.ingest import (
     preserve_cached_metadata,
 )
 from knox.core.pipeline.parse_cache import cache_key, iter_documents, write_document
+from knox.core.pipeline.runtime import PipelineRuntime
 from knox.core.pipeline.stages._parse import _chunk_cache_deps, _process_single_source  # noqa: PLC2701
 from knox.core.pipeline.state import TierState, TierStateStore
 from knox.core.store import vault_db_path
 from knox.preprocessing.parsers.base import BaseParser, ParserRouter
+from tests.conftest import as_obj
 
 # ── Router fingerprint ─────────────────────────────────────────────────
 
@@ -331,12 +333,13 @@ def test_enriched_tree_is_what_gets_cached(tmp_path: Path) -> None:
     _seed_parse_cache(base, source_file, content_hash)
 
     runtime = _StubRuntime(base, enricher=_StubEnricher())
-    tree = _process_single_source(runtime, base / "sources" / "note.md", {})
+    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {})
 
     assert tree is not None
-    cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(runtime, content_hash))
+    cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(cast("PipelineRuntime", runtime), content_hash))
     assert cached is not None
-    contexts = [n["contextual_context"] for n in cached["nodes"].values()]
+    nodes = as_obj(as_obj(cached)["nodes"])
+    contexts = [node["contextual_context"] for node in nodes.values()]
     assert any(contexts), "cached tree must carry contextual_context"
 
 
@@ -350,11 +353,12 @@ def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
     _seed_parse_cache(base, source_file, content_hash)
 
     runtime = _StubRuntime(base, enricher=None)
-    _process_single_source(runtime, base / "sources" / "note.md", {})
+    _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {})
 
-    cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(runtime, content_hash))
+    cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(cast("PipelineRuntime", runtime), content_hash))
     assert cached is not None
-    assert all(n["contextual_context"] == "" for n in cached["nodes"].values())
+    nodes = as_obj(as_obj(cached)["nodes"])
+    assert all(node["contextual_context"] == "" for node in nodes.values())
 
 
 def _seed_vault(tmp_path: Path) -> Path:

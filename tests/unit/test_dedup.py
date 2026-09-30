@@ -13,6 +13,7 @@ from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from knox.preprocessing.dedup.orchestrator import DedupOrchestrator
 from knox.preprocessing.dedup.store import DedupStore, StoreEntry
 from knox.rag.zvec_store import PydanticAIEmbeddingProvider
+from knox.types import JSONDict
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 # ---------------------------------------------------------------------------
@@ -395,7 +396,7 @@ class TestDedupOrchestrator:
 
     def test_fingerprint_then_compare_matches_process_batch(self, tmp_path: Path) -> None:
         """Incremental fingerprint+compare must yield same verdicts as process_batch."""
-        config = {
+        config: JSONDict = {
             "dedup.enabled": True,
             "dedup.matchers": "minhash",
             "dedup.threshold_identical": 0.95,

@@ -7,6 +7,7 @@ import pytest
 from knox.agents import instrument
 from knox.agents.instrument import _parse_headers, configure_observability
 from knox.core.env import EnvVar
+from tests.conftest import as_obj
 
 
 def test_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -66,8 +67,9 @@ def test_enabled_wires_exporter_and_instrumentall(monkeypatch: pytest.MonkeyPatc
 
     assert instrumented_flag[0] is True
     assert calls.get("instrument_all") is True
-    assert calls["exporter"]["endpoint"] == "http://127.0.0.1:4318/v1/traces"
-    assert calls["exporter"]["headers"] is None
+    exporter = as_obj(calls["exporter"])
+    assert exporter["endpoint"] == "http://127.0.0.1:4318/v1/traces"
+    assert exporter["headers"] is None
     assert _flag() is True
 
 

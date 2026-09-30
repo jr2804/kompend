@@ -51,7 +51,7 @@ class TestEncodeStructured:
         out = encode_structured(payload, LlmDataFormat.ISON)
         assert out  # non-empty
         # ISON wraps the answer in a single-row table so the scalar survives
-        assert payload["answer"] in out
+        assert str(payload["answer"]) in out
         assert "table.answer" in out
         assert "table.citations" in out
 

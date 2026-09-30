@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from typer.testing import CliRunner
@@ -271,7 +272,7 @@ class TestPingModelWarmup:
 
         class _FakeAgent:
             def __init__(self, **kwargs: object) -> None:
-                self._tracker = kwargs["usage_tracker"]
+                self._tracker: Any = kwargs["usage_tracker"]
 
             def run(self, _deps: object) -> str:
                 nonlocal runs
@@ -403,7 +404,7 @@ class TestVlmFallbackIndication:
 
     def test_explicit_vlm_still_pinged(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Explicit vlm_model keeps the normal ping path (no fallback note)."""
-        pings: list[str] = []
+        pings: list[tuple[str, str]] = []
 
         def _fake_ping(model, model_label, **_kwargs) -> CheckResult:  # noqa: ANN001 — mock signature mirrors _ping_model
             pings.append((model, model_label))

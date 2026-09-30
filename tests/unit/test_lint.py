@@ -18,8 +18,8 @@ from knox.core.config.rumdl import _shipped_hash, resolve_rumdl_config
 from knox.core.models import CompiledWiki, WikiNode
 from knox.core.pipeline.state import SourceState, TierState, TierStateStore
 from knox.lint import _remediation_gaps as gaps_module
-from knox.lint.base import LintReport, LintReportResult, LintResult, LintRuleOutcome, RemediationStatus, Severity
-from knox.lint.history import entry_from_report
+from knox.lint.base import LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
+from knox.lint.history import entry_from_report, report_from_dict
 from knox.lint.llm_rules import (
     Contradiction,
     ContradictionOutput,
@@ -613,15 +613,22 @@ class TestReportFormatting:
 
 # ── entry_from_report (history serialization) ───────────────────────────
 class TestEntryFromReport:
-    def test_entry_from_report_with_lintreportresult(self) -> None:
-        """Regression: flow.py builds LintReport(results=LintReportResult)
-        and passes it to entry_from_report -> report_to_dict, which must not
-        crash on missing health_score/summary fields (previously the
-        narrow base.LintReport had no health_score: AttributeError).
+    def test_entry_from_report_survives_uncomputed_summary(self) -> None:
+        """Regression: flow.py builds a LintReport without summary fields and
+        passes it to entry_from_report -> report_to_dict, which must not crash
+        (previously the narrow base.LintReport had no health_score:
+        AttributeError) and must keep defaults.
         """
         entry = entry_from_report(
             LintReport(
-                results=[LintReportResult(rule="broken-wikilinks", outcome="fail", message="m", page_id="n1")],
+                results=[
+                    LintResult(
+                        rule="broken-wikilinks",
+                        outcome=LintRuleOutcome.FAIL,
+                        message="m",
+                        page_id="n1",
+                    )
+                ],
             ),
             duration_seconds=0.0,
             options={},
@@ -634,26 +641,38 @@ class TestEntryFromReport:
         assert report["results"][0]["rule"] == "broken-wikilinks"
         assert report["results"][0]["outcome"] == "fail"
 
-    def test_report_to_dict_normalizes_both_result_shapes(self) -> None:
-        """report_to_dict must tolerate StrEnum (LintResult) and plain-str
-        (LintReportResult) outcome/severity values.
-        """
-        rich = LintReport(
-            results=[LintResult(rule="a", outcome=LintRuleOutcome.PASS, severity=Severity.INFO)],
-            total_checks=1,
-            passes=1,
-            health_score=100.0,
-        )
-        data = report_to_dict(rich)
-        assert data["results"][0]["outcome"] == "pass"
-        assert data["results"][0]["severity"] == "info"
-        assert data["results"][0]["fix_applied"] is False
+    def test_report_dict_round_trips_every_field(self) -> None:
+        """report_to_dict -> report_from_dict keeps severity and fix_applied.
 
-        plain = LintReport(results=[LintReportResult(rule="b", outcome="fail")])
-        data2 = report_to_dict(plain)
-        assert data2["results"][0]["outcome"] == "fail"
-        assert data2["results"][0]["severity"] == "warning"  # default
-        assert data2["results"][0]["fix_applied"] is False
+        Both used to be lost on the way back from history, because the
+        deserializer built a narrower finding type that has neither.
+        """
+        report = LintReport(
+            results=[
+                LintResult(
+                    rule="broken-wikilinks",
+                    outcome=LintRuleOutcome.FAIL,
+                    severity=Severity.ERROR,
+                    message="m",
+                    page_id="n1",
+                    fix_applied=True,
+                    details={"target": "x"},
+                )
+            ],
+            total_checks=1,
+            failures=1,
+            health_score=0.0,
+        )
+
+        data = report_to_dict(report)
+        assert data["results"][0]["outcome"] == "fail"
+        assert data["results"][0]["severity"] == "error"
+        assert data["results"][0]["fix_applied"] is True
+
+        restored = report_from_dict(data)
+        assert restored.total_checks == 1
+        assert restored.failures == 1
+        assert restored.results[0] == report.results[0]
 
 
 # ── _build_report ────────────────────────────────────────────────────────
@@ -1372,9 +1391,9 @@ def _mock_agentic_remediation(pages: list[tuple[str, str]] | None = None) -> Mag
     agent = MagicMock(spec=AgenticRemediationAgent)
     pages = pages or []
 
-    def _run(deps: object) -> None:
+    def _run(deps: RemediationDeps) -> None:
         for name, content in pages:
-            deps.pages.append(RemediationPageResult(name=name, content=content))  # type: ignore[union-attr]
+            deps.pages.append(RemediationPageResult(name=name, content=content))
 
     agent.run.side_effect = _run
     return agent
@@ -1437,5 +1456,5 @@ def _mock_remediate_llm(content: str = "Generated concept page.") -> MagicMock:
     return client
 
 
-def _gap_result(concept: str) -> LintReportResult:
-    return LintReportResult(rule="coverage-gap", outcome="fail", message=f"{concept} — missing", details={"concept": concept})
+def _gap_result(concept: str) -> LintResult:
+    return LintResult(rule="coverage-gap", outcome=LintRuleOutcome.FAIL, message=f"{concept} — missing", details={"concept": concept})

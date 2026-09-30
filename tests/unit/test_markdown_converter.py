@@ -244,6 +244,7 @@ def test_round_trip_code_preserves_language() -> None:
 def test_round_trip_formula_strips_wrapper() -> None:
     e = DocumentElement(type=ElementType.FORMULA, content="E = m c^2")
     md = element_to_markdown(e)
+    assert md is not None
     assert markdown_to_element(ElementType.FORMULA, md) == "E = m c^2"
 
 

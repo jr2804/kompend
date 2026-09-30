@@ -6,6 +6,7 @@ from pathlib import Path
 
 from knox.core.cache.store import CacheStore, make_cache_key
 from knox.core.models import Chunk, ElementType, ResolvedChunk
+from knox.types import CacheValue
 
 # ---------------------------------------------------------------------------
 # make_cache_key
@@ -43,7 +44,7 @@ class TestCacheStoreRoundTrip:
     def test_round_trip(self, tmp_path: Path) -> None:
         store = CacheStore(tmp_path)
         deps = {"src": "abc", "cfg": "123"}
-        value = {"answer": 42, "items": [1, 2, 3]}
+        value: CacheValue = {"answer": 42, "items": [1, 2, 3]}
         store.set("test", deps, value)
         result = store.get("test", deps)
         assert result == value
@@ -72,7 +73,7 @@ class TestCacheStoreRoundTrip:
 class TestCacheStoreTypes:
     def test_list(self, tmp_path: Path) -> None:
         store = CacheStore(tmp_path)
-        val = [{"name": "foo"}, {"name": "bar"}]
+        val: CacheValue = [{"name": "foo"}, {"name": "bar"}]
         store.set("test", {"d": "1"}, val)
         assert store.get("test", {"d": "1"}) == val
 
@@ -106,7 +107,7 @@ class TestCacheStoreTypes:
     def test_custom_object(self, tmp_path: Path) -> None:
         """JSON codec handles plain nested dicts."""
         store = CacheStore(tmp_path)
-        obj = {"name": "hello", "nested": {"a": [1, 2, 3]}}
+        obj: CacheValue = {"name": "hello", "nested": {"a": [1, 2, 3]}}
         store.set("test", {"d": "1"}, obj)
         assert store.get("test", {"d": "1"}) == obj
 

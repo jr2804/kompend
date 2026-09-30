@@ -27,7 +27,7 @@ runner = CliRunner()
 
 
 class TestCheckConfigFile:
-    def test_ok_on_default_values(self, tmp_path: pytest.TempPathFactory) -> Path:
+    def test_ok_on_default_values(self, tmp_path: Path) -> None:
         cfg = tmp_path / "cfg.toml"
         cfg.write_text("", encoding="utf-8")
         report = check_config_file(cfg)
@@ -112,6 +112,7 @@ class TestCheckConfigFile:
         entry = next(e for e in report.entries if e.key == "compile.llm.context_window_cap")
         assert entry.status == STATUS_DEPRECATED
         assert entry.current == 65536
+        assert entry.message is not None
         assert "compile.llm.context_window" in entry.message
         assert report.deprecated_count >= 1
         assert not report.has_errors

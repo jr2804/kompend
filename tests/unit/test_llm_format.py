@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from knox.llm.format import salvage_json
+from tests.conftest import as_obj
 
 
 class TestSalvageValid:
@@ -33,7 +34,7 @@ class TestSalvageRawControlChars:
     def test_raw_newline_with_truncation(self) -> None:
         out = salvage_json('{"pages": [{"title": "X", "content": "line one\nline two')
         assert out is not None
-        assert out["pages"][0]["content"].startswith("line one")
+        assert as_obj(out)["pages"][0]["content"].startswith("line one")
 
     def test_structural_whitespace_preserved(self) -> None:
         # newline BETWEEN tokens is valid structural whitespace, not touched
@@ -49,7 +50,7 @@ class TestSalvageTruncation:
     def test_clean_truncation_mid_word(self) -> None:
         out = salvage_json('{"pages": [{"title": "X", "content": "plain text mid wor')
         assert out is not None
-        assert out["pages"][0]["content"] == "plain text mid wor"
+        assert as_obj(out)["pages"][0]["content"] == "plain text mid wor"
 
     def test_trailing_backslash_truncation(self) -> None:
         # truncated mid-escape: trailing backslash must not break the close
@@ -98,8 +99,8 @@ class TestSalvageSchemaGuided:
         Out = self._schema()
         out = salvage_json('{"summary": "s"}', schema=Out)
         assert out is not None
-        assert out["summary"] == "s"
-        assert out["pages"] == []  # salvage fills the missing list field
+        assert as_obj(out)["summary"] == "s"
+        assert as_obj(out)["pages"] == []  # salvage fills the missing list field
 
     def test_wrong_field_name_falls_back_to_schemaless(self) -> None:
         Out = self._schema()

@@ -12,11 +12,13 @@ with no diagnostics).
 from __future__ import annotations
 
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 from knox.core.models import ParsedDocument
 from knox.core.pipeline.ingest import ingest_documents
 from knox.core.pipeline.state import TierStateStore
+from knox.preprocessing.parsers import ParserRouter
 
 
 class _FakeRouter:
@@ -55,7 +57,7 @@ def test_binary_pdf_not_funneled_through_normalize(tmp_path: Path) -> None:
         result = ingest_documents(
             files=[src],
             base_dir=base,
-            router=router,  # type: ignore[arg-type]
+            router=cast("ParserRouter", router),
             no_cache=True,
             config=None,
         )
@@ -82,7 +84,7 @@ def test_text_md_still_normalized(tmp_path: Path) -> None:
         result = ingest_documents(
             files=[src],
             base_dir=base,
-            router=router,  # type: ignore[arg-type]
+            router=cast("ParserRouter", router),
             no_cache=True,
             config=None,
         )

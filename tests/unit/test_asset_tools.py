@@ -15,6 +15,7 @@ from typing import cast
 import pytest
 from pydantic_ai import Tool
 
+from knox.agents.deps import PipelineAgentDeps
 from knox.compilation.asset_tools import build_asset_tools
 from knox.core.models.assets import AssetRecord
 from knox.core.models.enums import AssetKind
@@ -182,7 +183,7 @@ def store(tmp_path: Path) -> AssetStore:
     return s
 
 
-def _raw_func(tool: Tool) -> Callable[[str], str]:
+def _raw_func(tool: Tool[PipelineAgentDeps]) -> Callable[[str], str]:
     """Asset tools are plain ``str -> str`` closures (see asset_tools.py).
 
     ``Tool.function``'s declared type also allows a RunContext first arg,

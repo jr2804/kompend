@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Iterator
 
 import pytest
 
@@ -115,7 +116,7 @@ class TestProviderMaxConnections:
         assert effective_workers("foo", 3) == 1
 
     @pytest.fixture(autouse=True)
-    def _clean(self) -> None:
+    def _clean(self) -> Iterator[None]:
         set_user_providers({})
         yield
         set_user_providers({})

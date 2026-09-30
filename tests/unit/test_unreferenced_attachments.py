@@ -27,53 +27,6 @@ from knox.lint.structural import UnreferencedAttachmentsRule, unreferenced_attac
 _STEM = "report"
 
 
-def _source(base_dir: Path) -> None:
-    """A live source, so the attachments dir counts as a live slug."""
-    sources = VaultPaths(base_dir).sources_dir
-    sources.mkdir(parents=True, exist_ok=True)
-    (sources / f"{_STEM}.pdf").write_bytes(b"%PDF-1.7")
-
-
-def _cached_image(base_dir: Path, name: str) -> bytes:
-    """An extracted figure in the parse cache — the copy source."""
-    images = VaultPaths(base_dir).images_dir
-    images.mkdir(parents=True, exist_ok=True)
-    payload = f"png:{name}".encode()
-    (images / name).write_bytes(payload)
-    return payload
-
-
-def _writer_copy(base_dir: Path, slug: str, name: str) -> str:
-    path = base_dir / "attachments" / slug / name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(_cached_image(base_dir, name))
-    return f"attachments/{slug}/{name}"
-
-
-def _user_file(base_dir: Path, slug: str, name: str, payload: bytes = b"notes") -> str:
-    path = base_dir / "attachments" / slug / name
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_bytes(payload)
-    return f"attachments/{slug}/{name}"
-
-
-def _register(base_dir: Path, rel: str) -> None:
-    manifest = AttachmentManifest(VaultPaths(base_dir).attachments_manifest_file)
-    inner = rel[len("attachments/") :]
-    manifest.append(Attachment(path=inner, source=inner.split("/", 1)[0], ingestible=False))
-
-
-def _page(base_dir: Path, link: str | None) -> None:
-    page = base_dir / "wiki" / "concepts" / "one.md"
-    page.parent.mkdir(parents=True, exist_ok=True)
-    embed = f"\n![fig](../../{link})\n" if link else "\nNo media here.\n"
-    page.write_text(f"---\ntitle: One\n---\n\n# One\n{embed}", encoding="utf-8")
-
-
-def _wiki() -> CompiledWiki:
-    return CompiledWiki(nodes=[WikiNode(id="one", title="One", content="Body.", node_type="concept")], edges=[], toc=[])
-
-
 def test_referenced_writer_copy_is_kept(tmp_path: Path) -> None:
     _source(tmp_path)
     link = _writer_copy(tmp_path, _STEM, "report_img_0.png")
@@ -130,6 +83,12 @@ def test_registered_user_file_survives(tmp_path: Path) -> None:
     assert unreferenced_attachment_files(tmp_path) == []
 
 
+def _register(base_dir: Path, rel: str) -> None:
+    manifest = AttachmentManifest(VaultPaths(base_dir).attachments_manifest_file)
+    inner = rel[len("attachments/") :]
+    manifest.append(Attachment(path=inner, source=inner.split("/", 1)[0], ingestible=False))
+
+
 def test_unregistered_user_file_survives(tmp_path: Path) -> None:
     """Not a cache copy → not writer output → not this rule's business."""
     _source(tmp_path)
@@ -137,6 +96,13 @@ def test_unregistered_user_file_survives(tmp_path: Path) -> None:
     _page(tmp_path, None)
 
     assert unreferenced_attachment_files(tmp_path) == []
+
+
+def _user_file(base_dir: Path, slug: str, name: str, payload: bytes = b"notes") -> str:
+    path = base_dir / "attachments" / slug / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(payload)
+    return f"attachments/{slug}/{name}"
 
 
 def test_dead_slug_directory_is_left_to_orphan_attachments(tmp_path: Path) -> None:
@@ -166,3 +132,37 @@ def test_rule_is_destructive_so_plain_fix_is_gated(tmp_path: Path) -> None:
     opted_in = LintRunner(rules=["unreferenced-attachments"], fix=True, fix_destructive=True, sources_dir=sources_dir)
     opted_in.run(_wiki())
     assert not (tmp_path / stale).exists(), "--fix-destructive must delete them"
+
+
+def _source(base_dir: Path) -> None:
+    """A live source, so the attachments dir counts as a live slug."""
+    sources = VaultPaths(base_dir).sources_dir
+    sources.mkdir(parents=True, exist_ok=True)
+    (sources / f"{_STEM}.pdf").write_bytes(b"%PDF-1.7")
+
+
+def _writer_copy(base_dir: Path, slug: str, name: str) -> str:
+    path = base_dir / "attachments" / slug / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(_cached_image(base_dir, name))
+    return f"attachments/{slug}/{name}"
+
+
+def _cached_image(base_dir: Path, name: str) -> bytes:
+    """An extracted figure in the parse cache — the copy source."""
+    images = VaultPaths(base_dir).images_dir
+    images.mkdir(parents=True, exist_ok=True)
+    payload = f"png:{name}".encode()
+    (images / name).write_bytes(payload)
+    return payload
+
+
+def _page(base_dir: Path, link: str | None) -> None:
+    page = base_dir / "wiki" / "concepts" / "one.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    embed = f"\n![fig](../../{link})\n" if link else "\nNo media here.\n"
+    page.write_text(f"---\ntitle: One\n---\n\n# One\n{embed}", encoding="utf-8")
+
+
+def _wiki() -> CompiledWiki:
+    return CompiledWiki(nodes=[WikiNode(id="one", title="One", content="Body.", node_type="concept")], edges=[], toc=[])

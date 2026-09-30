@@ -8,7 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
+from knox.compilation._two_phase_core import TwoPhaseRuntime
 from knox.compilation.flows.generation import build_known_titles, learn_wikilink_aliases
 from knox.core.cache.wiki import write_wiki_cache
 from knox.core.models import CompiledWiki, WikiNode
@@ -68,7 +70,7 @@ def test_build_known_titles_from_concepts(tmp_path: Path) -> None:
     """Merged concept names are passed through in order."""
     compiler = _fake_compiler(tmp_path)
     concepts = [{"name": "POLQA"}, {"name": "PESQ"}]
-    titles = build_known_titles(compiler, concepts)  # type: ignore[arg-type]
+    titles = build_known_titles(cast("TwoPhaseRuntime", compiler), concepts)
     assert titles == ["POLQA", "PESQ"]
 
 
@@ -87,14 +89,14 @@ def test_build_known_titles_merges_previous_aliases(tmp_path: Path) -> None:
     write_wiki_cache(previous, tmp_path)
 
     compiler = _fake_compiler(tmp_path)
-    titles = build_known_titles(compiler, [{"name": "POLQA"}])  # type: ignore[arg-type]
+    titles = build_known_titles(cast("TwoPhaseRuntime", compiler), [{"name": "POLQA"}])
     assert titles == ["POLQA", "Full-scale database (P.863 evaluation)"]
 
 
 def test_build_known_titles_survives_missing_cache(tmp_path: Path) -> None:
     """No previous cache (first compile) — only concept names, no error."""
     compiler = _fake_compiler(tmp_path)
-    titles = build_known_titles(compiler, [{"name": "POLQA"}])  # type: ignore[arg-type]
+    titles = build_known_titles(cast("TwoPhaseRuntime", compiler), [{"name": "POLQA"}])
     assert titles == ["POLQA"]
 
 

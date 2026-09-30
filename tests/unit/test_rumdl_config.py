@@ -29,8 +29,10 @@ def test_idempotent_when_hash_matches(tmp_path: Path) -> None:
     """Repeated calls don't rewrite when the marker hash matches shipped."""
     _seed_vault(tmp_path)
     p1 = resolve_rumdl_config(tmp_path)
-    content1 = p1.read_bytes()
     p2 = resolve_rumdl_config(tmp_path)
+    assert p1 is not None
+    assert p2 is not None
+    content1 = p1.read_bytes()
     content2 = p2.read_bytes()
     assert content1 == content2
 
@@ -41,6 +43,7 @@ def test_stale_file_is_refreshed(tmp_path: Path) -> None:
     stale = tmp_path / RUMDL_CONFIG_FILE
     stale.write_text("# old partial copy without marker\n", encoding="utf-8")
     p = resolve_rumdl_config(tmp_path)
+    assert p is not None
     text = p.read_text(encoding="utf-8")
     assert "MD025" in text  # refreshed config has the disable rule
     assert "# knox-managed:" in text
@@ -56,6 +59,7 @@ def test_user_edits_below_marker_are_preserved(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     p = resolve_rumdl_config(tmp_path)
+    assert p is not None
     text = p.read_text(encoding="utf-8")
     assert "[MD041]" in text
     assert "my custom rule" in text

@@ -33,6 +33,7 @@ from knox.core.config._core import (
 from knox.core.config.generate import extract_toml_keys, generate_scaffold_config, get_default_keys
 from knox.core.config.keys import PATHS_WIKI_DIR
 from knox.core.paths import KNOX_DIR
+from knox.types import JSONDict
 
 # ── Config generation ───────────────────────────────────────────────────
 
@@ -79,19 +80,19 @@ class TestDeepMerge:
 
 class TestDotPath:
     def test_get_top_level(self) -> None:
-        data = {"key": "value"}
+        data: JSONDict = {"key": "value"}
         assert get_dot(data, "key") == "value"
 
     def test_get_nested(self) -> None:
-        data = {"compile": {"llm": {"model": "gpt-4"}}}
+        data: JSONDict = {"compile": {"llm": {"model": "gpt-4"}}}
         assert get_dot(data, "compile.llm.model") == "gpt-4"
 
     def test_get_missing_returns_default(self) -> None:
-        data = {"a": 1}
+        data: JSONDict = {"a": 1}
         assert get_dot(data, "b", "fallback") == "fallback"
 
     def test_get_partial_path_returns_default(self) -> None:
-        data = {"a": {"b": 1}}
+        data: JSONDict = {"a": {"b": 1}}
         assert get_dot(data, "a.c", "missing") == "missing"
 
     def test_set_creates_intermediate(self) -> None:

@@ -10,6 +10,7 @@ import zvec as _zvec
 
 from knox.core.models import CompiledWiki, WikiNode
 from knox.rag.zvec_store import EmbeddingProvider, ZvecField, ZvecWikiStore
+from tests.conftest import as_float
 
 
 class _StubProvider(EmbeddingProvider):
@@ -53,7 +54,7 @@ class TestFtsSearch:
         assert hits
         assert hits[0]["id"] == "n1"
         # higher = better
-        scores = [float(h["score"]) for h in hits]
+        scores = [as_float(h["score"]) for h in hits]
         assert scores == sorted(scores, reverse=True)
         store.close()
 
@@ -79,7 +80,7 @@ class TestHybridSearch:
         hits = store.hybrid_search("ITU-T P.863 listening", top_k=3)
         assert hits
         assert hits[0]["id"] == "n1"
-        scores = [float(h["score"]) for h in hits]
+        scores = [as_float(h["score"]) for h in hits]
         assert scores == sorted(scores, reverse=True)
         store.close()
 

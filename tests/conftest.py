@@ -1,4 +1,11 @@
-"""Pytest configuration and fixtures for KNOX tests."""
+"""Pytest configuration, fixtures, and shared narrowing helpers for KNOX tests.
+
+``as_obj`` / ``as_list`` exist because KNOX's JSON types are precise recursive
+unions on purpose (see ``knox/types.py``): a payload read from LLM output, a
+config file or a cache must be narrowed before use rather than silently
+propagating ``Any``. In tests the expected shape is known, so narrowing is an
+assertion — these helpers fail loudly if a payload is not what the test claims.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +13,7 @@ import hashlib
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -13,6 +21,30 @@ from knox.rag.zvec_store import EmbeddingProvider
 
 _test_dir = Path(__file__).parent
 _data_dir = _test_dir / "data"
+
+
+def as_obj(value: object) -> dict[str, Any]:
+    """Narrow *value* to a JSON object, asserting it is one."""
+    assert isinstance(value, dict), f"expected a JSON object, got {type(value).__name__}"
+    return value
+
+
+def as_list(value: object) -> list[Any]:
+    """Narrow *value* to a JSON array, asserting it is one."""
+    assert isinstance(value, list), f"expected a JSON array, got {type(value).__name__}"
+    return value
+
+
+def as_float(value: object) -> float:
+    """Narrow *value* to a number, asserting it is one."""
+    assert isinstance(value, (int, float)), f"expected a number, got {type(value).__name__}"
+    return float(value)
+
+
+def as_str(value: object) -> str:
+    """Narrow *value* to a string, asserting it is one."""
+    assert isinstance(value, str), f"expected a string, got {type(value).__name__}"
+    return value
 
 
 class DeterministicTestEmbeddingProvider(EmbeddingProvider):

@@ -181,7 +181,7 @@ def test_docling_pipeline_do_ocr_flag() -> None:
 def test_docling_pipeline_table_mode_from_config() -> None:
     parser = DoclingParser(pdf_config=PdfConfig(table_mode=PdfTableMode.FAST))
     opts = parser._pipeline_options(generate_picture_images=False)  # noqa: SLF001
-    assert opts.table_structure_options.mode is TableFormerMode.FAST
+    assert getattr(opts.table_structure_options, "mode", None) is TableFormerMode.FAST  # mode moved between docling versions
 
 
 def test_docling_parse_returns_parsed_document() -> None:

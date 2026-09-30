@@ -7,9 +7,10 @@ vector path returns hits without requiring a real embedding index.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
 from knox.core.models import CompiledWiki, WikiNode
+from knox.rag.zvec_store import VectorStoreLike
 from knox.search.adaptive_retriever import AdaptiveRetriever
 
 
@@ -37,7 +38,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "n1", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,
+            vector_store=cast("VectorStoreLike", fake),
             max_input_tokens=128_000,
         )
         results = retriever.search("signal", top_k=5)
@@ -51,7 +52,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": f"n{i}", "score": 0.9 - i * 0.01} for i in range(10)])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,
+            vector_store=cast("VectorStoreLike", fake),
             max_input_tokens=128_000,
         )
         results = retriever.search("topic", top_k=3)
@@ -67,7 +68,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "s1", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,
+            vector_store=cast("VectorStoreLike", fake),
             max_input_tokens=128_000,
         )
         results = retriever.search("filtering", mode="zoom_in", top_k=5)
@@ -89,7 +90,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=hits)
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,
+            vector_store=cast("VectorStoreLike", fake),
             max_input_tokens=128_000,
         )
         results = retriever.search("section", mode="zoom_out", top_k=5)
@@ -103,7 +104,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "structured", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,
+            vector_store=cast("VectorStoreLike", fake),
             max_input_tokens=128_000,
         )
         results = retriever.search("table", mode="targeted", top_k=5)
@@ -115,7 +116,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "n1", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,
+            vector_store=cast("VectorStoreLike", fake),
             max_input_tokens=128_000,
         )
         results = retriever.search("test", mode="unknown_mode", top_k=5)
@@ -127,7 +128,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "n1", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,
+            vector_store=cast("VectorStoreLike", fake),
             max_input_tokens=128_000,
         )
         candidates = retriever._collect_candidates("signal", top_k=10)
@@ -141,7 +142,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,
+            vector_store=cast("VectorStoreLike", fake),
             max_input_tokens=128_000,
         )
         candidates = retriever._collect_candidates("", top_k=10)
@@ -160,7 +161,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore(hits=[{"id": "n1", "score": 0.9}])
         retriever = AdaptiveRetriever(
             wiki,
-            vector_store=fake,
+            vector_store=cast("VectorStoreLike", fake),
             max_input_tokens=128_000,
         )
         results = retriever._wiki_vector_results("test", top_k=5)

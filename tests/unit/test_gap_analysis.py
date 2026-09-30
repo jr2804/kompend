@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from knox.lint.base import LintReport, LintReportResult
+from knox.lint.base import LintReport, LintResult, LintRuleOutcome
 from knox.lint.gap_analysis import (
     GapPriority,
     _analyze_broken_wikilinks,
@@ -59,7 +59,7 @@ def test_source_reference_skipped() -> None:
 
 def test_pass_results_skipped() -> None:
     """Only failing broken-wikilinks become recommendations."""
-    results = [LintReportResult(rule="broken-wikilinks", outcome="pass", page_id="n1", message="ok")]
+    results = [LintResult(rule="broken-wikilinks", outcome=LintRuleOutcome.PASS, page_id="n1", message="ok")]
     recs = _analyze_broken_wikilinks(results)
     assert recs == []
 
@@ -114,14 +114,14 @@ def test_missing_topic_hub_ref_upgrades_priority() -> None:
     assert recs["'Fringe'"].priority == GapPriority.LOW
 
 
-def _lr(target: str, alias_of: str | None = None, page_id: str = "n1") -> LintReportResult:
-    """Build a failing broken-wikilinks LintReportResult."""
+def _lr(target: str, alias_of: str | None = None, page_id: str = "n1") -> LintResult:
+    """Build a failing broken-wikilinks LintResult."""
     details: dict[str, str] = {"target": target}
     if alias_of is not None:
         details["alias_of"] = alias_of
-    return LintReportResult(
+    return LintResult(
         rule="broken-wikilinks",
-        outcome="fail",
+        outcome=LintRuleOutcome.FAIL,
         page_id=page_id,
         message=f"Broken wikilink [[{target}]]",
         details=details,

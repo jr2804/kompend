@@ -256,7 +256,7 @@ class TestBuildModelUserProvider:
     def test_invalid_api_type_rejected_by_schema(self) -> None:
         """api_type is a closed Literal — unknown values fail config validation."""
         with pytest.raises(pydantic.ValidationError):
-            ProviderEndpoint(base_url="http://x/v1", api_type="grpc")
+            ProviderEndpoint.model_validate({"base_url": "http://x/v1", "api_type": "grpc"})
 
     def test_user_provider_beats_catalog_for_known_id(self) -> None:
         """A user-defined provider shadows a models.dev catalog entry with the same id.

@@ -6,7 +6,7 @@ import pytest
 
 from knox.memory.lifecycle import MemoryStore as LifecycleStore
 from knox.memory.lifecycle import NodeState
-from knox.memory.store import MemoryField, MemoryStore
+from knox.memory.store import MemoryEntry, MemoryField, MemoryStore
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -144,17 +144,21 @@ class TestLifecycleStore:
 
         loaded = LifecycleStore.load(store_file)
         assert set(loaded.states) == {"n1", "n2"}
-        assert loaded.get("n1").confidence == 0.8
-        assert loaded.get("n1").tier == "episodic"
-        assert loaded.get("n1").review_count == 3
-        assert loaded.get("n2").is_superseded()
+        n1 = loaded.get("n1")
+        n2 = loaded.get("n2")
+        assert n1 is not None
+        assert n2 is not None
+        assert n1.confidence == 0.8
+        assert n1.tier == "episodic"
+        assert n1.review_count == 3
+        assert n2.is_superseded()
 
     def test_load_absent_store_is_empty(self, temp_wiki_dir: Path) -> None:
         loaded = LifecycleStore.load(temp_wiki_dir / ".knox" / "memory.json")
         assert loaded.states == {}
 
 
-def _log(temp_wiki_dir: Path, limit: int = 20) -> list[dict]:
+def _log(temp_wiki_dir: Path, limit: int = 20) -> list[MemoryEntry]:
     """Chronological log entries, oldest first, from the vault store."""
     return list(reversed(MemoryStore(base_dir=temp_wiki_dir).get_recent_entries(limit=limit)))
 

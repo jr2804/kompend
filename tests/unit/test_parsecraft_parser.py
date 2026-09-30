@@ -23,6 +23,7 @@ import sys
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from parsecraft import pipeline
@@ -53,7 +54,7 @@ pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
 
 
 class TestMarkdownFidelity:
-    def test_element_kinds_preserved(self, parser: object, markdown_file: Path) -> None:
+    def test_element_kinds_preserved(self, parser: Any, markdown_file: Path) -> None:
         doc = parser.parse(markdown_file)  # type: ignore[attr-defined]
         kinds = [element.type for element in doc.elements]
         assert ElementType.HEADING in kinds
@@ -61,13 +62,13 @@ class TestMarkdownFidelity:
         assert ElementType.CODE in kinds
         assert ElementType.TABLE in kinds
 
-    def test_reading_order_is_document_order(self, parser: object, markdown_file: Path) -> None:
+    def test_reading_order_is_document_order(self, parser: Any, markdown_file: Path) -> None:
         doc = parser.parse(markdown_file)  # type: ignore[attr-defined]
         orders = [element.reading_order for element in doc.elements]
         assert orders == sorted(orders)
         assert orders[0] == 0
 
-    def test_heading_levels_survive_string_metadata(self, parser: object, markdown_file: Path) -> None:
+    def test_heading_levels_survive_string_metadata(self, parser: Any, markdown_file: Path) -> None:
         """Parsecraft carries levels as strings (``"1"``, ``"2"``); the adapter
         must convert — a heading with ``heading_level=None`` loses hierarchy.
         """
@@ -76,13 +77,13 @@ class TestMarkdownFidelity:
         assert 1 in levels
         assert 2 in levels
 
-    def test_code_content_preserved(self, parser: object, markdown_file: Path) -> None:
+    def test_code_content_preserved(self, parser: Any, markdown_file: Path) -> None:
         doc = parser.parse(markdown_file)  # type: ignore[attr-defined]
         code = [e for e in doc.elements if e.type is ElementType.CODE]
         assert len(code) == 1
         assert "x = 1" in str(code[0].content)
 
-    def test_table_content_preserved(self, parser: object, markdown_file: Path) -> None:
+    def test_table_content_preserved(self, parser: Any, markdown_file: Path) -> None:
         doc = parser.parse(markdown_file)  # type: ignore[attr-defined]
         tables = [e for e in doc.elements if e.type is ElementType.TABLE]
         assert len(tables) == 1
@@ -90,7 +91,7 @@ class TestMarkdownFidelity:
         assert "| A | B |" in content
         assert "| 1 | 2 |" in content
 
-    def test_metadata_json_serializable(self, parser: object, markdown_file: Path) -> None:
+    def test_metadata_json_serializable(self, parser: Any, markdown_file: Path) -> None:
         """Element metadata goes into the parse cache as JSON; a StrEnum leaking
         in would break cache writes.
         """
@@ -98,7 +99,7 @@ class TestMarkdownFidelity:
         for element in doc.elements:
             json.dumps(element.metadata)
 
-    def test_provenance_records_backend(self, parser: object, markdown_file: Path) -> None:
+    def test_provenance_records_backend(self, parser: Any, markdown_file: Path) -> None:
         doc = parser.parse(markdown_file)  # type: ignore[attr-defined]
         assert doc.metadata["parser"] == "parsecraft"
         assert doc.metadata["backends"] == "native-markdown"
@@ -116,7 +117,7 @@ class TestFailureShapes:
 
     def test_partial_exhaustion_keeps_good_pages(self) -> None:
         """One exhausted page must not discard the pages that parsed."""
-        good = _page(1, [_chunk("heading", "Kept", 1)])
+        good = _page(1, [_chunk(ChunkKind.HEADING, "Kept", 1)])
         bad = _exhausted_page(2)
         elements = _map(_document([good, bad]))
         assert [str(e.content) for e in elements] == ["Kept"]
@@ -126,7 +127,7 @@ class TestFailureShapes:
         attempts=[]) AND a fully populated document. The adapter must treat it
         as content — the winner/attempts discriminator, not winner alone.
         """
-        page = _page(1, [_chunk("heading", "Cached", 1)])
+        page = _page(1, [_chunk(ChunkKind.HEADING, "Cached", 1)])
         groups = [
             PageGroup(
                 page_numbers=[1],
@@ -150,10 +151,10 @@ class TestFailureShapes:
 
 
 class TestRegistryContract:
-    def test_extensions_derived_from_parsecraft_not_hardcoded(self, parser: object) -> None:
+    def test_extensions_derived_from_parsecraft_not_hardcoded(self, parser: Any) -> None:
         assert parser.supported_extensions == set(MEDIA_TYPES)  # type: ignore[attr-defined]
 
-    def test_can_parse_positive_and_negative(self, parser: object) -> None:
+    def test_can_parse_positive_and_negative(self, parser: Any) -> None:
         can_parse = parser.can_parse  # type: ignore[attr-defined]
         assert can_parse(Path("doc.pdf"))
         assert can_parse(Path("notes.txt"))
@@ -274,18 +275,18 @@ def _unregister_parsecraft_metadata() -> Iterator[None]:
 
 
 @pytest.fixture
-def parser() -> object:
+def parser() -> Any:
 
     return _adapter().ParsecraftParser()
 
 
-def _adapter() -> object:
+def _adapter() -> Any:
     """Lazy accessor for the adapter module (see module docstring)."""
     return importlib.import_module("knox.preprocessing.parsers.parsecraft_parser")
 
 
 @pytest.fixture
-def markdown_file(tmp_path: Path) -> Iterator[Path]:
+def markdown_file(tmp_path: Path) -> Path:
     """A markdown file exercising headings, code, and tables end-to-end."""
     path = tmp_path / "sample.md"
     path.write_text(

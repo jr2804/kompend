@@ -188,7 +188,7 @@ class TestDeprecatedProviderCapKey:
 
     def test_schema_no_longer_accepts_the_key(self) -> None:
         with pytest.raises(ValidationError):
-            ProviderEndpoint(base_url="http://x/v1", context_window_cap=16384)
+            ProviderEndpoint.model_validate({"base_url": "http://x/v1", "context_window_cap": 16384})
 
 
 class TestPerModelContextWindow:

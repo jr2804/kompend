@@ -47,10 +47,10 @@ def test_list_all_does_not_open_legacy_jsonl(tmp_path: Path, monkeypatch: pytest
 
     real_read_text = Path.read_text
 
-    def _guard(self: Path, *args: object, **kwargs: object) -> str:
+    def _guard(self: Path, encoding: str | None = None, errors: str | None = None) -> str:
         if self == legacy:
             raise AssertionError("legacy attachments.jsonl was read as a file")
-        return real_read_text(self, *args, **kwargs)
+        return real_read_text(self, encoding, errors)
 
     monkeypatch.setattr(Path, "read_text", _guard)
     result = _cli_runner.invoke(app, ["attachments", "list", "--all"])
