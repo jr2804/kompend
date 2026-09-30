@@ -53,7 +53,7 @@ from knox.core.utils.exceptions import LLMOutputError
 from knox.lint.base import LintRuleOutcome
 from knox.lint.structural import BrokenWikilinksRule
 from knox.llm.usage import UsageTracker
-from knox.logging import get_logger
+from knox.logging import LOG_SAMPLE_LIMIT, get_logger
 from knox.rag.zvec_store import make_provider
 
 # Matches wikilink-wrapped source citations like [[sources/foo.pdf]] so they
@@ -995,7 +995,7 @@ def assemble_wiki(
     toc: list[TocEntry] = [{"title": n.title, "id": n.id, "level": 1} for n in nodes]
     aliases = learn_wikilink_aliases(nodes)
     if aliases:
-        logger.info("TwoPhase: learned %d wikilink alias(es), e.g. %s", len(aliases), list(aliases.items())[:5])
+        logger.info("TwoPhase: learned %d wikilink alias(es), e.g. %s", len(aliases), list(aliases.items())[:LOG_SAMPLE_LIMIT])
     return CompiledWiki(
         nodes=nodes,
         edges=edges,

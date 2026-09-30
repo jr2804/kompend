@@ -22,6 +22,9 @@ __all__ = [
     "StructuredField",
     "WikiField",
 ]
+#: Chars of the asset kind value used as its short id prefix when a kind
+#: declares no explicit alias (``tab-<hash>``, ``fig-<hash>``).
+_PREFIX_LEN: int = 3
 
 
 class AssetField(StrEnum):
@@ -52,7 +55,7 @@ class AssetKind(StrEnum, MultiValueEnum):
     """
 
     def __init__(self, value: str, *aliases: str) -> None:
-        self.prefix = aliases[0] if aliases else value[:3]
+        self.prefix = aliases[0] if aliases else value[:_PREFIX_LEN]
 
     TABLE = "table", "tab"
     FIGURE = "figure", "fig"

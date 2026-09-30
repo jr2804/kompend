@@ -13,7 +13,7 @@ from knox.compilation.concept_keys import normalize_concept_key
 from knox.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
 from knox.core.paths import safe_stem
 from knox.core.text.matching import cosine as cosine_similarity
-from knox.logging import get_logger
+from knox.logging import LOG_SAMPLE_LIMIT, get_logger
 from knox.rag.zvec_store import make_provider
 
 #: Generic group key — compilers key groups by heading/source tuples.
@@ -117,7 +117,7 @@ class BaseCompiler(ABC):
                 # that the deterministic merge would have caught. The user
                 # must re-run with the embedding model available, or the
                 # duplicates will ship to the wiki.
-                sample = ", ".join(f"{k} ({', '.join(vs)})" for k, vs in residual_collisions[:5])
+                sample = ", ".join(f"{k} ({', '.join(vs)})" for k, vs in residual_collisions[:LOG_SAMPLE_LIMIT])
                 logger.error(
                     "%s — %d concept-key collision(s) remain unresolved: %s",
                     msg,

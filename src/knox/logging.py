@@ -30,6 +30,12 @@ from rich.logging import RichHandler
 
 DEFAULT_LEVEL: int = logging.WARNING
 
+#: How many items a diagnostic log line samples out of a larger collection
+#: ("first 5 collisions", "e.g. these aliases"). A log line summarises; it never
+#: lists the whole set, and the count is a presentation choice rather than a
+#: data limit — the full set is available at the call site.
+LOG_SAMPLE_LIMIT: int = 5
+
 
 @functools.cache
 def get_console() -> Console:

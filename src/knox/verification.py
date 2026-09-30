@@ -28,6 +28,12 @@ from knox.logging import get_logger
 
 _SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
 
+#: Cited source excerpt passed to the verification agent per citation. The
+#: agent judges a claim against this excerpt, so it is a context budget rather
+#: than a display crop — raise it if verdicts start missing support that the
+#: source does contain.
+_EXCERPT_CHARS: int = 5000
+
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
@@ -127,7 +133,7 @@ def _verify_wiki_agentic(wiki: CompiledWiki, sources_dir: Path, agent: AgenticVe
             if citation:
                 excerpt = _load_excerpt(citation.source, sources_dir)
                 if excerpt:
-                    sources.append({"slug": citation.source, "text": excerpt[:5000]})
+                    sources.append({"slug": citation.source, "text": excerpt[:_EXCERPT_CHARS]})
             pages.append({"slug": node.id, "content": node.content or ""})
             claim_id += 1
 

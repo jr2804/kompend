@@ -17,6 +17,11 @@ from pydantic_ai import RunContext
 
 from knox.agents.types import ContextChunkDeps
 
+#: Chunk text shown to the context-chunk agent — in the tool payload and in the
+#: prompt it answers. One budget for both, so the agent never sees a longer
+#: chunk in the tool result than the prompt prepared it for.
+CONTEXT_CHUNK_TEXT_PREVIEW_CHARS: int = 500
+
 
 def build_context_chunk_tools() -> list[Any]:
     """Return the full toolset for the agentic context chunk agent."""
@@ -33,7 +38,7 @@ async def next_chunk(ctx: RunContext[ContextChunkDeps]) -> str:
     ctx.deps.current_chunk = chunk
     stem = chunk.get("heading_chain", [])
     heading = " > ".join(stem) if stem else "document root"
-    text = chunk.get("text", "")[:500]
+    text = chunk.get("text", "")[:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]
     return f"Chunk {chunk['id']}: heading={heading}, text={text}"
 
 

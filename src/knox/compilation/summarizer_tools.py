@@ -17,6 +17,9 @@ from pydantic_ai import RunContext
 
 from knox.agents.types import SummarizerDeps
 
+#: Node content handed to the summarizer agent's tool payload.
+_NODE_CONTENT_CHARS: int = 2000
+
 
 def build_summarizer_tools() -> list[Any]:
     """Return the full toolset for the agentic summarizer agent."""
@@ -32,7 +35,7 @@ async def next_node(ctx: RunContext[SummarizerDeps]) -> str:
     node = pending[0]
     ctx.deps.current_node = node
     heading = node.get("heading_chain", "") or "document root"
-    content = node.get("content", "")[:2000]
+    content = node.get("content", "")[:_NODE_CONTENT_CHARS]
     return f"Node {node['id']}: heading={heading}, content={content}"
 
 

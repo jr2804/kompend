@@ -28,6 +28,10 @@ from knox.logging import get_logger
 #: Max chars of a reference title used for display labels in lint findings.
 _REF_LABEL_TITLE_MAX = 40
 
+#: Leading argv entries of the rumdl command shown in a failure warning —
+#: enough to identify the invocation without echoing every path.
+_CMD_PREVIEW_ARGS = 4
+
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
@@ -981,7 +985,7 @@ class RumdlRule(BaseLintRule):
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired):
-            logger.warning("rumdl invocation failed: %s", cmd[:4])
+            logger.warning("rumdl invocation failed: %s", cmd[:_CMD_PREVIEW_ARGS])
             return []
         try:
             return json.loads(result.stdout or "[]")

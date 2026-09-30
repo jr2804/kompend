@@ -9,7 +9,7 @@ from pydantic_ai.agent.abstract import AgentRetries
 from knox.agents.agentic_harness import AgenticHarness
 from knox.agents.base import KnoxAgentBase
 from knox.agents.types import ContextChunkDeps
-from knox.compilation.context_chunk_tools import build_context_chunk_tools
+from knox.compilation.context_chunk_tools import CONTEXT_CHUNK_TEXT_PREVIEW_CHARS, build_context_chunk_tools
 from knox.core.config._configs import RlmConfig
 
 
@@ -36,7 +36,7 @@ class AgenticContextChunkAgent(KnoxAgentBase[str, ContextChunkDeps]):
             f"Document: {deps.doc_title}\n"
             f"Summary: {deps.doc_summary}\n"
             f"Heading: {chunk.get('heading_chain', [])} \n"
-            f"Text: {chunk.get('text', '')[:500]}"
+            f"Text: {chunk.get('text', '')[:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]}"
         )
 
 

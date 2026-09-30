@@ -17,13 +17,13 @@ from knox.agents.verification import AgenticVerificationAgent, VerificationAgent
 from knox.agents.wiki_index import make_agentic_overview_agent
 from knox.cli._progress import PipelineProgress
 from knox.core.cache.wiki import write_wiki_cache  # noqa: F401 — re-export
-from knox.core.config import resolve_config  # noqa: PLC0415
+from knox.core.config import resolve_config
 from knox.core.config._configs import LintConfig
 from knox.core.models import CompiledWiki, MetadataField, WikiField
 from knox.core.paths import LINT_HISTORY_FILE, VaultPaths
 from knox.core.pipeline.config import PipelineConfig
 from knox.core.utils.time import iso_local
-from knox.lint.flow import run_full_lint_flow, run_runner_with_progress  # noqa: PLC0415
+from knox.lint.flow import run_full_lint_flow, run_runner_with_progress
 from knox.lint.history import entry_from_report, save_lint_entry
 from knox.lint.runner import LintRunner, report_to_summary
 from knox.logging import get_console, get_err_console, get_logger

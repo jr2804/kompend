@@ -3,6 +3,14 @@ from __future__ import annotations
 from knox.compilation._two_phase_core import Extraction
 from knox.compilation.schema import Concept, Entity
 
+# Digest budgets: how much of each recorded field survives into the compact
+# text block the agent reasons about. The digest is a running summary of a long
+# extraction, so every field is bounded — the full definitions stay in the
+# extraction result, not in the digest.
+_SUMMARY_CHARS: int = 120
+_DEFINITION_CHARS: int = 100
+_ENTITY_CONTEXT_CHARS: int = 80
+
 # ── Memory digests ─────────────────────────────────────────────────────
 
 
@@ -119,7 +127,7 @@ class ExtractionMemory:
         lines: list[str] = []
 
         if self.section_summaries:
-            line = "Section summary: " + " | ".join(s[:120] for s in self.section_summaries)
+            line = "Section summary: " + " | ".join(s[:_SUMMARY_CHARS] for s in self.section_summaries)
             lines.append(line)
 
         if self.concepts:
@@ -128,7 +136,7 @@ class ExtractionMemory:
             for d in concepts_sorted:
                 label = d.title
                 if d.definition:
-                    label += f": {d.definition[:100]}"
+                    label += f": {d.definition[:_DEFINITION_CHARS]}"
                 parts.append(label)
             lines.append("Concepts: " + "; ".join(parts))
 
@@ -140,7 +148,7 @@ class ExtractionMemory:
                 if d.entity_type:
                     label += f" ({d.entity_type})"
                 if d.context:
-                    label += f" — {d.context[:80]}"
+                    label += f" — {d.context[:_ENTITY_CONTEXT_CHARS]}"
                 eparts.append(label)
             lines.append("Entities: " + "; ".join(eparts))
 

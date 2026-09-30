@@ -22,6 +22,10 @@ from knox.core.text.rumdl import rumdl_available
 from knox.logging import get_logger
 from knox.output.models import Document
 
+#: Tail of rumdl's stderr included in the failure warning — enough to show the
+#: cause without dumping the whole diagnostic.
+_STDERR_PREVIEW_CHARS = 300
+
 # ── Flavour auto-detection ──────────────────────────────────────────────
 
 FLAVOR_ALIASES: dict[str, str] = {
@@ -204,7 +208,7 @@ def format_output(
         logger.warning("rumdl fmt failed — skipping output formatting", exc_info=True)
         return []
     if result.returncode not in (0, 1):
-        logger.warning("rumdl fmt exited %s: %s", result.returncode, result.stderr.strip()[:300])
+        logger.warning("rumdl fmt exited %s: %s", result.returncode, result.stderr.strip()[:_STDERR_PREVIEW_CHARS])
         return []
 
     if check_only:

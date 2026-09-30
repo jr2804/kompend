@@ -7,6 +7,8 @@ from typing import Annotated
 
 import typer
 
+from knox.core.env import EnvVar
+
 # ── `compile` command surface ───────────────────────────────────────────
 
 OnlineUrls = Annotated[
@@ -81,7 +83,7 @@ CompileLint = Annotated[
         "--lint/--no-lint",
         help="Run deterministic structural lint (no LLM) after compile. Default: on (override with KNOX_COMPILE_LINT).",
         rich_help_panel="Output",
-        envvar="KNOX_COMPILE_LINT",
+        envvar=EnvVar.COMPILE_LINT,
     ),
 ]
 
@@ -91,6 +93,6 @@ CompileLintAll = Annotated[
         "--lint-all/--no-lint-all",
         help="Run the full lint pipeline (structural + LLM rules + remediate) after compile. Implies --lint. Override with KNOX_COMPILE_LINT_ALL.",
         rich_help_panel="Output",
-        envvar="KNOX_COMPILE_LINT_ALL",
+        envvar=EnvVar.COMPILE_LINT_ALL,
     ),
 ]

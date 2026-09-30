@@ -22,6 +22,9 @@ from pydantic_ai import RunContext, Tool
 
 from knox.agents.types import VerificationDeps, VerificationVerdict
 
+#: Snippet length per source hit returned to the verification agent.
+_HIT_TEXT_CHARS: int = 200
+
 
 def build_verification_tools() -> list[Tool[VerificationDeps]]:
     """Return the PydanticAI toolset for the agentic verification agent."""
@@ -48,7 +51,7 @@ async def search_sources(ctx: RunContext[VerificationDeps], query: str, k: int =
     hits = [s for s in ctx.deps.sources if query.lower() in s["text"].lower()][:k]
     if not hits:
         return "(no matching sources found)"
-    return "\n".join(f"- [{s['slug']}] {s['text'][:200]}" for s in hits)
+    return "\n".join(f"- [{s['slug']}] {s['text'][:_HIT_TEXT_CHARS]}" for s in hits)
 
 
 async def read_page(ctx: RunContext[VerificationDeps], slug: str) -> str:

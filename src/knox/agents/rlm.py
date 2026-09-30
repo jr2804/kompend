@@ -42,6 +42,11 @@ from pydantic_ai_rlm.utils import format_repl_result
 from knox.agents.types import PipelineAgentDeps
 from knox.logging import get_logger
 
+#: Chars sampled from each end of the context when fingerprinting a recursive
+#: call ("have I seen this call already?"). A stable prefix+suffix pair is
+#: enough to identify the call, without hashing a whole context per call.
+_FINGERPRINT_SAMPLE_CHARS = 100
+
 _EXECUTE_CODE_DESCRIPTION = """\
 Execute Python code in a sandboxed REPL environment.
 
@@ -305,7 +310,9 @@ def _make_rlm_query(
             The child agent's final answer text.
         """
         ctx = str(context) if context is not None else str(parent_context)
-        fingerprint = hash((my_depth, prompt, len(ctx), ctx[:100], ctx[-100:] if len(ctx) > 200 else ""))
+        fingerprint = hash(
+            (my_depth, prompt, len(ctx), ctx[:_FINGERPRINT_SAMPLE_CHARS], ctx[-_FINGERPRINT_SAMPLE_CHARS:] if len(ctx) > 2 * _FINGERPRINT_SAMPLE_CHARS else "")
+        )
         with guard.lock:
             if guard.nodes_used >= guard.node_budget:
                 return f"Error: RLM node budget exhausted ({guard.node_budget} recursive calls) — synthesize an answer from the results gathered so far."

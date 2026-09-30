@@ -38,7 +38,7 @@ from knox.core.paths import rel_to_vault
 from knox.core.templates import get_template_loader
 from knox.core.utils.exceptions import LLMOutputError
 from knox.core.utils.tokens import estimate_tokens
-from knox.logging import get_logger
+from knox.logging import LOG_SAMPLE_LIMIT, get_logger
 
 logger = get_logger(__name__)
 
@@ -471,8 +471,8 @@ def _synthetic_history_response(extraction: Extraction) -> ModelResponse:
     upstream. Rather than replaying the original (potentially huge)
     assistant turn, we inject a compact one-line summary.
     """
-    concepts = ", ".join(c.name or "?" for c in extraction.concepts[:5])
-    entities = ", ".join(e.name or "?" for e in extraction.entities[:5])
+    concepts = ", ".join(c.name or "?" for c in extraction.concepts[:LOG_SAMPLE_LIMIT])
+    entities = ", ".join(e.name or "?" for e in extraction.entities[:LOG_SAMPLE_LIMIT])
     summary_bits = [f"summary: {extraction.summary}"]
     if concepts:
         summary_bits.append(f"concepts: {concepts}")
