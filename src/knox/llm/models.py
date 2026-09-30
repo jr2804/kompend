@@ -59,6 +59,11 @@ from knox.logging import get_logger
 # the base URL (the OpenAI SDK appends ``/chat/completions`` to it).
 OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 
+#: Ollama's server-wide default context length. Renamed from ``OLLAMA_NUM_CTX``
+#: (the old name is gone from the server: ollama 0.35.0 has zero references to
+#: it, one to this name), so reading the old one silently did nothing.
+OLLAMA_CONTEXT_LENGTH_ENV = "OLLAMA_CONTEXT_LENGTH"
+
 # Placeholder satisfies the OpenAI SDK's non-empty api_key requirement for
 # local / keyless OpenAI-compatible endpoints.
 _NO_KEY_PLACEHOLDER = "api-key-not-set"
@@ -406,7 +411,7 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
     """Query Ollama for the model's context window via ``ollama.show()``.
 
     Priority (most restrictive wins when multiple are set):
-    1. ``OLLAMA_NUM_CTX`` environment variable (global user override).
+    1. ``OLLAMA_CONTEXT_LENGTH`` environment variable (server-wide default).
     2. ``context_length`` from ``ollama.ps()`` — the context the server
        actually loaded the model with. GGUF metadata is aspirational;
        Ollama caps the slot by available KV memory at load time. Without
@@ -425,14 +430,14 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
     """
     # 1. Global env var.
     env_ctx: int | None = None
-    env_val = os.environ.get("OLLAMA_NUM_CTX")
+    env_val = os.environ.get(OLLAMA_CONTEXT_LENGTH_ENV)
     if env_val:
         try:
             env_ctx = int(env_val)
             if env_ctx <= 0:
                 env_ctx = None
         except ValueError:
-            logger.warning("OLLAMA_NUM_CTX=%r is not a valid integer", env_val, exc_info=True)
+            logger.warning("%s=%r is not a valid integer", OLLAMA_CONTEXT_LENGTH_ENV, env_val, exc_info=True)
     # 2. Context the server actually loaded the model with (ollama.ps()).
     loaded_ctx: int | None = None
     # 3. Modelfile parameters from ollama.show() - what Ollama enforces.

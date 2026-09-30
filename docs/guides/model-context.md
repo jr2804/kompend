@@ -23,7 +23,7 @@ flowchart TD
     A[Model name] --> B{"[providers.*]<br/>context_window?"}
     B -- yes --> C[Use as-is]
     B -- no --> D{Ollama model?}
-    D -- yes --> E["min of OLLAMA_NUM_CTX,<br/>loaded slot (ollama.ps),<br/>Modelfile num_ctx,<br/>GGUF context_length"]
+    D -- yes --> E["min of OLLAMA_CONTEXT_LENGTH,<br/>loaded slot (ollama.ps),<br/>Modelfile num_ctx,<br/>GGUF context_length"]
     E --> C
     D -- no --> F{models.dev catalog?}
     F -- yes --> C
@@ -39,7 +39,7 @@ flowchart TD
 | Tier | Source | Typical models |
 |------|--------|----------------|
 | 1 — User config | `context_window` in `[providers.<name>]`, or finer-grained in `[providers.<name>.models."<model>"]` | Self-hosted OpenAI-compatible endpoints (llama.cpp, vLLM, TGI); any provider you want to pin explicitly |
-| 2 — Ollama | most restrictive of `OLLAMA_NUM_CTX`, the context the server actually loaded the model with (`ollama.ps()`), Modelfile `parameters.num_ctx`, and GGUF metadata (`ollama.show()`) | Local Ollama models |
+| 2 — Ollama | most restrictive of `OLLAMA_CONTEXT_LENGTH`, the context the server actually loaded the model with (`ollama.ps()`), Modelfile `parameters.num_ctx`, and GGUF metadata (`ollama.show()`) | Local Ollama models |
 | 3 — models.dev | [models.dev](https://models.dev) catalog via `knox.llm.models.resolve_model_limits()` | Hosted models and custom-provider mirrors present in the catalog |
 | 4 — Fallback | `[compile.llm] fallback_max_input` / `fallback_max_output` | Models nothing else knows about |
 | — | none of the above | raises `LookupError` — an unresolved window usually means a wrong model name or an unreachable provider |
@@ -258,7 +258,7 @@ Beyond token budgets, `BudgetConfig` provides content-quality controls:
 ```toml
 [compile.llm]
 default_model = "ollama/llama3.1"
-# Ollama auto-detected via /api/show or OLLAMA_NUM_CTX.
+# Ollama auto-detected via /api/show or OLLAMA_CONTEXT_LENGTH.
 # For models without metadata, set explicitly:
 # context_window = 32768
 

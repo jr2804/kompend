@@ -14,7 +14,7 @@ from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
 import knox.llm.models as mod
 from knox.core.config._configs import ProviderEndpoint
-from knox.llm.models import _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
+from knox.llm.models import OLLAMA_CONTEXT_LENGTH_ENV, _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
 
 # ── _split ─────────────────────────────────────────────────────────────
 
@@ -301,12 +301,12 @@ class TestResolveModelLimits:
         assert max_output == 16384
 
 
-class TestQueryOllamaNumCtx:
+class TestQueryOllamaContextLength:
     """``_query_ollama_num_ctx`` prefers the context the server actually loaded."""
 
     def test_loaded_context_from_ps_wins_over_metadata(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A memory-capped slot (ps) beats the aspirational GGUF metadata."""
-        monkeypatch.delenv("OLLAMA_NUM_CTX", raising=False)
+        monkeypatch.delenv(OLLAMA_CONTEXT_LENGTH_ENV, raising=False)
         monkeypatch.setattr(mod.ollama, "ps", lambda: SimpleNamespaceLike(models=self._ps_models(65536)))
         monkeypatch.setattr(
             mod.ollama,
@@ -317,14 +317,14 @@ class TestQueryOllamaNumCtx:
 
     def test_env_override_beats_ps(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-        monkeypatch.setenv("OLLAMA_NUM_CTX", "32768")
+        monkeypatch.setenv(OLLAMA_CONTEXT_LENGTH_ENV, "32768")
         monkeypatch.setattr(mod.ollama, "ps", lambda: SimpleNamespaceLike(models=self._ps_models(65536)))
         monkeypatch.setattr(mod.ollama, "show", lambda name: SimpleNamespaceLike(parameters="", modelinfo={}))
         assert mod._query_ollama_num_ctx("m") == 32768
 
     def test_ps_failure_falls_back_to_show(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-        monkeypatch.delenv("OLLAMA_NUM_CTX", raising=False)
+        monkeypatch.delenv(OLLAMA_CONTEXT_LENGTH_ENV, raising=False)
 
         def _boom() -> object:
             raise RuntimeError("server down")

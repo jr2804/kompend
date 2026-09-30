@@ -53,7 +53,7 @@ def discover_context_window(  # noqa: PLR0915
        and integrated providers (e.g. ``[providers.ollama].context_window``).
        Finest granularity wins: per-model → provider-level.
     2. For ``ollama/`` models, query via ``ollama.show()`` — checks
-       ``OLLAMA_NUM_CTX`` env var then GGUF ``context_length`` metadata.
+       ``OLLAMA_CONTEXT_LENGTH`` env var then GGUF ``context_length`` metadata.
     3. Query the ``models.dev`` catalog — covers most cloud providers
        and custom OpenAI-compatible mirrors.
     4. If *fallback_max_input* is provided (from ``[compile.llm]`` config),
