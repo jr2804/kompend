@@ -34,6 +34,7 @@ SUBTREE_BUDGET = 250  # subtree AGENTS.md
 CORE_AGENTS_FILES: tuple[str, ...] = (
     "ONBOARDING.md",
     "POLICIES.md",
+    "CODE.md",
     "FILES.md",
     "CHECKS.md",
     "MAINTENANCE.md",

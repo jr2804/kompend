@@ -8,9 +8,10 @@
 #      ANN201  — missing return type annotation for public function
 #      ANN202  — missing return type annotation for private function
 #      PLC0415 — import placed outside module top level
-# 2. AST gates that linting cannot express (see .agents/CHECKS.md):
+# 2. Gates that linting cannot express (see .agents/CHECKS.md):
 #      check_field_consistency — bare-string cross-file contract keys
 #      check_antipatterns      — magic crops, banned noqa, global state
+#      check_dox               — DOX size budgets, cross-file duplication
 # 3. Whatever the tool-managed hooks want to run (_delegate.sh: beads, repowise).
 #
 # Scans 2 and 3 are whole-repo and run unconditionally — they are cheap and
@@ -35,9 +36,10 @@ if [ -n "$staged" ]; then
     echo "✓ No forbidden rule violations in staged files."
 fi
 
-echo "--- ast gates: field consistency, antipatterns ---"
+echo "--- gates: field consistency, antipatterns, DOX budgets ---"
 uv run python "$root/scripts/checks/check_field_consistency.py" || exit 1
 uv run python "$root/scripts/checks/check_antipatterns.py" || exit 1
-echo "✓ No field-consistency or antipattern violations."
+uv run python "$root/scripts/checks/check_dox.py" || exit 1
+echo "✓ No field-consistency, antipattern, or DOX violations."
 
 exec "$(dirname "$0")/_delegate.sh" pre-commit "$@"
