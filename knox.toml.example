@@ -675,7 +675,6 @@ history_size = 20
 # Whether ingestible attachments (text/image captions) are included in
 # the vector index. When false, attachment content is parsed and compiled
 # but not embedded. Per-attachment overrides via `knox attachments add --embed/--no-embed`.
-# embed_attachments = false  # DEPRECATED — use attachments.embed
 # synthesis.tokens.brief = 300
 # synthesis.tokens.standard = 800
 # synthesis.tokens.comprehensive = 2000

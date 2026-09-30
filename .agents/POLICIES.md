@@ -34,14 +34,14 @@ handling — live in `CODE.md`; project-specific standards in child AGENTS.md.
   imports before finishing.
 - **DRY** — check for an existing helper/constant before adding one; extract on
   the _third_ occurrence (Rule of Three), not earlier.
-- Prefer a little duplication over the wrong premature abstraction.
-- No new code-quality tooling, patterns, or value-object rules by default — opt
-  in per project.
+- Prefer a little duplication over the wrong premature abstraction; add no new
+  code-quality tooling, patterns, or value-object rules by default.
 
 ## Completion checklist
 
 Change solves the stated problem · relevant validation ran (or gaps explicitly
 stated, see `CHECKS.md`) · no unintended side effects · no secrets added
+
 ## DOX authoring (keep AGENTS.md lean)
 
 AGENTS.md and `.agents/` files share limited context. Bloat and duplication are
@@ -101,7 +101,7 @@ conclusion, approach, and caveats.
 - Plans go in `.agents/plans/<feature>/` — gitignored, never committed. Mutable
   working artifacts, not shipped docs. Prefix filenames with phase numbers so
   file order matches implementation order; carry `Created:` and `Status:` lines.
-- Shipped docs (user-facing guides, API references) go in `docs/` and ARE
+  Shipped docs (user-facing guides, API references) go in `docs/` and ARE
   committed.
 
 ### Documentation and archiving

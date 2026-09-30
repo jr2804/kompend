@@ -269,7 +269,7 @@ for that use `knox compile --force --start-at-tier chunk`.
 
 The `attachments.embed` setting (and per-attachment `--embed`/`--no-embed`
 flags at registration) controls whether attachment-derived nodes are indexed.
-The old `search.embed_attachments` key still works but is deprecated.
+The key was renamed from `search.embed_attachments`; a config still setting the old name is migrated with a warning (see `docs/guides/attachments.md`).
 
 ## `knox attachments`
 

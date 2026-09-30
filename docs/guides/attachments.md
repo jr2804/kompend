@@ -50,7 +50,7 @@ knox attachments add report.pdf ./private.txt --ingest --no-embed
 | Flag | Description |
 |------|-------------|
 | `--ingest` | Mark as ingestible (parsed during compile). Text/markdown via standard parser; PNG/JPG via VLM caption (if configured). |
-| `--embed` / `--no-embed` | Override global `search.embed_attachments` for this attachment. Without the flag, inherits the global setting. |
+| `--embed` / `--no-embed` | Override global `attachments.embed` for this attachment. Without the flag, inherits the global setting. |
 
 ## Managing attachments
 
@@ -104,9 +104,10 @@ ingest_adopted = true   # adopted text/image files are parsed at compile
 embed = false           # include attachment content in the vector index
 ```
 
-`search.embed_attachments` is **deprecated** — existing configs still work
-(the value migrates to `attachments.embed` with a warning), but new configs
-should use `[attachments] embed`.
+`search.embed_attachments` is gone from the schema — it was renamed to
+`attachments.embed`. An existing config still setting the old name is migrated
+at resolve time with a deprecation warning (`knox config check` reports it as
+deprecated, not as an unknown key); new configs use `[attachments] embed`.
 
 ## Ingestion rules
 
@@ -131,13 +132,13 @@ When `--ingest` is set on an attachment:
 
 ## Embedding (search/RAG)
 
-Set `search.embed_attachments = true` in `knox.toml` to include ingestible
-attachments in the vector index. Per-attachment `--embed` / `--no-embed` overrides
-take precedence.
+Set `attachments.embed = true` in `knox.toml` to include ingestible attachments
+in the vector index. Per-attachment `--embed` / `--no-embed` overrides take
+precedence.
 
 ```toml
-[search]
-embed_attachments = true   # default: false
+[attachments]
+embed = true   # default: false
 ```
 
 When `embed_attachments = false`, attachment nodes are still compiled into the wiki
