@@ -10,6 +10,10 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+from pydantic import ValidationError
+
+from knox.core.config._configs import ProviderEndpoint
 from knox.llm.context_window import (
     ContextSource,
     _coerce_context_window_cap,
@@ -17,6 +21,7 @@ from knox.llm.context_window import (
     discover_context_window,
 )
 from knox.llm.models import set_user_providers
+from knox.llm.user_providers import _user_providers
 
 
 class TestCoerceContextWindowCap:
@@ -152,6 +157,38 @@ class TestDiscoverContextWindowUserProvider:
         assert cw.max_input == 64000
         assert cw.max_output == 32000
         assert cw.source == ContextSource.FALLBACK
+
+
+class TestDeprecatedProviderCapKey:
+    """``context_window_cap`` left the schema; registration migrates it.
+
+    A config still setting the old provider-level key must keep working (value
+    migrated, deprecation warned) and must not reach strict schema validation.
+    """
+
+    def teardown_method(self) -> None:
+        set_user_providers({})
+
+    def test_migrates_to_context_window(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("WARNING"):
+            set_user_providers({"prov": {"base_url": "http://x/v1", "context_window_cap": 16384}})
+
+        assert discover_context_window("prov/any").max_input == 16384
+        assert "context_window_cap" not in _user_providers["prov"]
+        assert _user_providers["prov"]["context_window"] == 16384
+        assert any("providers.prov.context_window_cap" in r.getMessage() for r in caplog.records)
+
+    def test_canonical_key_wins_and_deprecated_is_dropped(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("WARNING"):
+            set_user_providers({"prov": {"base_url": "http://x/v1", "context_window": 8192, "context_window_cap": 16384}})
+
+        assert discover_context_window("prov/any").max_input == 8192
+        assert "context_window_cap" not in _user_providers["prov"]
+        assert any("ignored" in r.getMessage() for r in caplog.records)
+
+    def test_schema_no_longer_accepts_the_key(self) -> None:
+        with pytest.raises(ValidationError):
+            ProviderEndpoint(base_url="http://x/v1", context_window_cap=16384)
 
 
 class TestPerModelContextWindow:

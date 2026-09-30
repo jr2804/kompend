@@ -290,6 +290,33 @@ class TestResolveConfig:
         cfg = resolve_config()
         assert cfg.get("attachments.embed") is False
 
+    def test_deprecated_context_window_cap_migrates(self, tmp_path: Any, monkeypatch: Any, caplog: pytest.LogCaptureFixture) -> None:
+        """Old compile.llm.context_window_cap migrates to context_window.
+
+        The cap key left the schema, so a config still setting it must be
+        migrated (value preserved, deprecation warned) rather than fail the
+        strict ``KnoxConfig`` validation.
+        """
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("[compile.llm]\ncontext_window_cap = 65536\n")
+        monkeypatch.chdir(tmp_path)
+        with caplog.at_level("WARNING"):
+            cfg = resolve_config()
+        assert cfg.get("compile.llm.context_window") == 65536
+        assert "deprecated compile.llm.context_window_cap" in cfg.source_of("compile.llm.context_window").location
+        assert any("context_window_cap" in r.getMessage() for r in caplog.records)
+        # No ValidationError: the migrated key was dropped from the raw config.
+        assert cfg.knox.compile.llm.context_window == 65536
+
+    def test_new_context_window_wins_over_cap(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """An explicit context_window is canonical — the old cap does not override it."""
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text("[compile.llm]\ncontext_window_cap = 65536\ncontext_window = 8192\n")
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("compile.llm.context_window") == 8192
+        assert cfg.knox.compile.llm.context_window == 8192
+
     def test_toml_string_values_stripped(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
         config_file.write_text(

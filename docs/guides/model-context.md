@@ -57,8 +57,9 @@ default_model = "ollama/llama3.1"
 context_window = 32768   # never exceed 32K even if the model reports more
 ```
 
-`context_window_cap` still works but is deprecated in both `[compile.llm]`
-and `[providers.<name>]` — use `context_window`.
+`context_window_cap` was renamed to `context_window` in both `[compile.llm]`
+and `[providers.<name>]`; a config still setting the old name keeps working
+(the value is migrated, with a deprecation warning) — but please update it.
 
 ## Adaptive Chunking
 
@@ -259,7 +260,7 @@ Beyond token budgets, `BudgetConfig` provides content-quality controls:
 default_model = "ollama/llama3.1"
 # Ollama auto-detected via /api/show or OLLAMA_NUM_CTX.
 # For models without metadata, set explicitly:
-# context_window_cap = 32768
+# context_window = 32768
 
 [compile.budget]
 # Smaller chunks for finer retrieval granularity.

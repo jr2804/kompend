@@ -132,8 +132,7 @@ search_snippet_chars = 300 # max chars of a search-result snippet (RAG / RRF / h
 #
 # The ``api_key`` value supports ``${VAR_NAME}`` env-var references.
 # If omitted, a placeholder key is sent (works for keyless endpoints).
-# ``context_window`` overrides auto-discovery; the deprecated
-# ``context_window_cap`` key is still honored when ``context_window`` is unset.
+# ``context_window`` overrides auto-discovery.
 
 # ── Compile settings ────────────────────────────────────────────────────
 
@@ -307,8 +306,6 @@ default_model = "${KNOX_LLM_DEFAULT_MODEL}"
 # of what Ollama or models-dev report. Useful for limiting context usage
 # on slower/local models. None = no cap (use full discovered window).
 # context_window = 65536
-# DEPRECATED: context_window_cap — old name, still honored when context_window is unset.
-# context_window_cap = 65536
 
 # Transient-error retries before advancing to next fallback model
 fallback_max_retries = 2

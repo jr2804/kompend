@@ -215,7 +215,6 @@ class LLMConfig(_KnoxBaseModel):
     timeout: float = Field(default=120.0, validation_alias=EnvVar.LLM_TIMEOUT)
     fallback_max_input: int = Field(default=32768, validation_alias=EnvVar.LLM_FALLBACK_MAX_INPUT)
     fallback_max_output: int = Field(default=4096, validation_alias=EnvVar.LLM_FALLBACK_MAX_OUTPUT)
-    context_window_cap: int | None = Field(default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW_CAP, description="DEPRECATED — use context_window")
     context_window: int | None = Field(
         default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model"
     )
@@ -629,9 +628,6 @@ class ProviderEndpoint(_KnoxBaseModel):
     )
     context_window: int | None = Field(
         default=None, description="Default context window length for all models on this provider (overrides auto-discovery; per-model entries win)"
-    )
-    context_window_cap: int | None = Field(
-        default=None, description="DEPRECATED — use context_window. Old per-provider override key, still honored when context_window is unset"
     )
     models: dict[str, ProviderModelConfig] = Field(default_factory=dict, description="Per-model settings keyed by model name")
     max_connections: int | None = Field(

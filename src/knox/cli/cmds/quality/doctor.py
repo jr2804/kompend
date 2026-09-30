@@ -20,7 +20,7 @@ from pydantic_ai.settings import ModelSettings
 
 from knox.agents.doctor import DoctorAgent, DoctorDeps
 from knox.core.config import LLMConfig
-from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_CONTEXT_WINDOW_CAP, COMPILE_LLM_OUTPUT_RETRIES
+from knox.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_OUTPUT_RETRIES
 from knox.core.verbosity import is_verbose
 from knox.llm.context_window import discover_context_window
 from knox.llm.models import build_model, is_known_provider, resolve_vlm_model
@@ -104,8 +104,6 @@ def run_doctor(
     llm_timeout = float(cfg.get("compile.llm.timeout", 300)) if cfg else 300.0
     _retries = cfg.get(COMPILE_LLM_OUTPUT_RETRIES) if cfg else None
     context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW, 0) if cfg else None
-    if context_window_cap is None:
-        context_window_cap = _cfg_get_int(cfg, COMPILE_LLM_CONTEXT_WINDOW_CAP, 0) if cfg else None
     if context_window_cap == 0:
         context_window_cap = None
     llm_cfg = LLMConfig(**(cfg or {}).get("compile", {}).get("llm", {}))

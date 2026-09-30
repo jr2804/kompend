@@ -71,7 +71,6 @@ def discover_context_window(  # noqa: PLR0915
     discovered value to a hardcoded range masks misconfiguration (a wrong
     model name or an unreachable provider then looks like a small model)
     instead of surfacing it.
-
     If *context_window_cap* is set (non-``None``), it caps both
     ``max_input`` and ``max_output`` to that value.  Use this when you
     want to restrict a model's native context window.
@@ -90,16 +89,17 @@ def discover_context_window(  # noqa: PLR0915
 
     # 1. Explicit [providers.<name>] override (from knox.toml) — finest
     # granularity wins: per-model context_window → provider-level
-    # context_window (deprecated context_window_cap still honored).
-    # Checked before the probes so user config always beats auto-discovery,
-    # mirroring build_model()'s "explicit user config beats implicit catalog".
+    # context_window.  Checked before the probes so user config always beats
+    # auto-discovery, mirroring build_model()'s "explicit user config beats
+    # implicit catalog".  (``context_window_cap`` is migrated to
+    # ``context_window`` when providers are registered — see
+    # knox.llm.user_providers.)
     provider_id, model_name = _split_model(model)
     cfg = _user_providers.get(provider_id)
     if cfg:
         model_cfg = cfg.get("models", {}).get(model_name, {})
         per_model = model_cfg.get("context_window") if isinstance(model_cfg, dict) else None
-        provider_level = cfg.get("context_window", cfg.get("context_window_cap"))
-        override = per_model if per_model is not None else provider_level
+        override = per_model if per_model is not None else cfg.get("context_window")
         if override is not None:
             max_input = int(override)
             max_output = int(override)
@@ -131,8 +131,7 @@ def discover_context_window(  # noqa: PLR0915
         if fallback_max_output is None:
             fallback_max_output = llm_config.fallback_max_output
         if context_window_cap is None:
-            # New canonical key; fall back to the deprecated context_window_cap.
-            context_window_cap = llm_config.context_window if llm_config.context_window is not None else llm_config.context_window_cap
+            context_window_cap = llm_config.context_window
 
     # Apply explicit fallback from config if provided.
     if max_input is None and fallback_max_input is not None:
@@ -162,10 +161,10 @@ def discover_context_window(  # noqa: PLR0915
 
 
 def _coerce_context_window_cap(value: int | str | None) -> int | None:
-    """Coerce a raw config ``context_window_cap`` value to ``int | None``.
+    """Coerce a raw config ``context_window`` value to ``int | None``.
 
     Config values reach this point as strings when loaded from TOML with
-    env-var interpolation (e.g. ``context_window_cap = "${CTX_CAP}"``),
+    env-var interpolation (e.g. ``context_window = "${CTX_WINDOW}"``),
     since the surrounding quotes force a string type. Unset env vars
     leave a literal ``${...}`` placeholder, which is treated as "unset"
     (returns ``None``) rather than crashing.
@@ -177,12 +176,12 @@ def _coerce_context_window_cap(value: int | str | None) -> int | None:
     text = str(value).strip()
     if not text or "$" in text:
         # Empty string or an unexpanded ``${VAR}`` placeholder — treat as unset.
-        logger.warning("context_window_cap %r is not a valid integer; ignoring", value)
+        logger.warning("context_window %r is not a valid integer; ignoring", value)
         return None
     try:
         return int(text)
     except ValueError:
-        logger.warning("context_window_cap %r is not a valid integer; ignoring", value)
+        logger.warning("context_window %r is not a valid integer; ignoring", value)
         return None
 
 
