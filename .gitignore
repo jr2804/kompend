@@ -80,6 +80,7 @@ mcporter.json
 opencode.jsonc
 opencode.jsonl
 opencode.json
+.pi/
 
 # Pandoc installer (downloaded by build script, not tracked)
 *.msi
