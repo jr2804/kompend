@@ -387,6 +387,47 @@ Three classes of parsecraft signal survive the parse into `.knox/knox.db`:
   installed). This is the trace that proves a parse silently downgraded,
   rather than hiding the choice behind a structurally identical result.
 
+### Judge tier: model-assisted per-page routing
+
+By default parsecraft routes with its **deterministic rule table** (format,
+VRAM budget, page intent) and never calls a model. `[ingest] parsecraft_judge`
+opts into a *judge*: a System One model that re-ranks the candidates the hard
+constraints already admitted, so a text-native PDF stays on the fast path
+while a scanned, table-heavy one is sent to a strong backend — the speed vs.
+accuracy trade-off in [Parser Strategy](#parser-strategy-speed-vs-accuracy),
+decided per page instead of per configuration.
+
+```toml
+[ingest]
+parser = "parsecraft"
+parsecraft_judge = "ollama"            # none | ollama | zen | typesafe-ai
+parsecraft_judge_model = "parable-tinyjev"
+parsecraft_preference = "balanced"     # speed | balanced | quality
+```
+
+- **`ollama`** is the offline choice: it talks to your local daemon
+  (`http://localhost:11434`), needs no credential, and the model must be a
+  *decision* model — ollama must list `decision` under
+  `ollama show <model>` → `capabilities`. Completion-only GGUFs are rejected
+  by the daemon with `400 … does not support decision`. Use the bare ollama
+  name without the `:tag` suffix (`parable-tinyjev`, not
+  `parable-tinyjev:latest`): the SDK reads the suffix as a variant token and
+  refuses it. `uv sync --extra systemone` provides the SDK.
+- **`zen`** (`OPENCODE_API_KEY`) and **`typesafe-ai`** (`TYPESAFE_API_KEY`) are
+  the cloud choices; the credential is read from the environment only.
+- **`parsecraft_preference`** is the tiebreak axis among candidates that pass
+  the constraint check — `speed` prefers the cheapest eligible backend,
+  `quality` the strongest, `balanced` (default) capability bounded by the
+  host budget.
+
+A judge never turns a routing problem into a failed ingest: an unresolvable
+provider or missing credential degrades to the rule table at resolution time,
+and a judge that resolves but fails on its first call is retried once with the
+rule table and then remembered for the rest of the run (one `WARNING` per run).
+The judge configuration is part of the parse-cache fingerprint, so
+changing it re-parses rather than silently reusing pages routed under the old
+settings.
+
 ### Error mapping
 
 parsecraft raises typed `AnalysisError` subclasses; the adapter maps them to

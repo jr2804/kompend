@@ -20,7 +20,7 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -38,6 +38,8 @@ from parsecraft.ir.models import (
 )
 from parsecraft.pipeline import MEDIA_TYPES
 from parsecraft.pipeline.models import PageGroup
+from parsecraft.routing import NoEligibleBackendError, RoutingError
+from parsecraft.routing.judge import BackendDescriptor
 
 from knox.core.models import ElementType
 from knox.preprocessing.parsers import _registry as registry_module
@@ -193,6 +195,158 @@ class TestRegistryContract:
         letting the typed exceptions propagate.
         """
         assert issubclass(pipeline.UnsupportedSourceError, pipeline.AnalysisError)
+
+
+# ── Judge wiring ─────────────────────────────────────────────────────────
+
+
+class _SentinelJudge:
+    """Stand-in for a resolved JevJudge: records ``rank`` calls, never calls a model."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[object, list[str]]] = []
+
+    def rank(self, intent: object, candidates: Sequence[BackendDescriptor], context: object = None) -> list[str]:
+        names = [candidate.name for candidate in candidates]
+        self.calls.append((intent, names))
+        return names
+
+
+class TestJudgeWiring:
+    """The judge tier is opt-in and must never turn a misconfiguration into a failed ingest.
+
+    Two failure surfaces, both covered here: the *resolver* (bad spec, missing
+    credential, absent extra — all ``JudgeError`` subclasses) and the *call*
+    (``resolve_judge`` validates the spec only, so a cloud provider accepts any
+    model token and 400s on the first ``rank``; ``plan_route`` lets that
+    ``RoutingError`` escape).
+    """
+
+    def test_default_is_the_deterministic_judge(self) -> None:
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser()
+        assert isinstance(parser._get_judge(), adapter.DeterministicJudge)
+
+    def test_judge_without_model_warns_and_degrades(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="")
+        with caplog.at_level("WARNING"):
+            judge = parser._get_judge()
+        assert isinstance(judge, adapter.DeterministicJudge)
+        assert "parsecraft_judge_model is empty" in caplog.text
+
+    def test_unresolvable_provider_degrades(self, caplog: pytest.LogCaptureFixture) -> None:
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser(parsecraft_judge="nosuchprovider", parsecraft_judge_model="m")
+        with caplog.at_level("WARNING"):
+            judge = parser._get_judge()
+        assert isinstance(judge, adapter.DeterministicJudge)
+        assert "could not be resolved" in caplog.text
+
+    def test_live_judge_is_resolved_once_per_instance(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """One resolution per parser: the SDK memoises per page class on the
+        judge instance, so re-resolving per file would discard that memo.
+        """
+        adapter = _adapter()
+        sentinel = _SentinelJudge()
+        seen: list[str] = []
+
+        def fake_resolve(spec: str, **kwargs: object) -> object:
+            seen.append(spec)
+            return sentinel
+
+        monkeypatch.setattr(adapter, "resolve_judge", fake_resolve)
+        parser = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="m")
+        assert parser._get_judge() is sentinel
+        assert parser._get_judge() is sentinel
+        assert seen == ["ollama/m"]
+
+    def test_preference_maps_to_the_sdk_enum(self) -> None:
+        adapter = _adapter()
+        assert adapter._parse_preference("speed").value == "speed"
+        assert adapter._parse_preference("quality").value == "quality"
+        assert adapter._parse_preference("typo").value == "balanced"
+
+    def test_call_time_failure_degrades_to_the_rule_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A judge that resolves but fails on its first ``rank`` must not fail the ingest."""
+        adapter = _adapter()
+        sentinel = _SentinelJudge()
+        judges: list[object] = []
+
+        def fake_resolve(spec: str, **kwargs: object) -> object:
+            return sentinel
+
+        class _EmptyResult:
+            groups: list[object] = []
+
+        def fake_execute(*args: object, judge: object = None, **kwargs: object) -> object:
+            judges.append(judge)
+            if judge is sentinel:
+                raise RoutingError("judge exploded")
+            return _EmptyResult()
+
+        monkeypatch.setattr(adapter, "resolve_judge", fake_resolve)
+        monkeypatch.setattr(adapter, "execute", fake_execute)
+        parser = adapter.ParsecraftParser(parsecraft_judge="zen", parsecraft_judge_model="m")
+        result = parser._execute_with_judge(object(), object(), object(), object())
+        assert result.groups == []
+        assert parser._judge_degraded is True
+        assert judges[0] is sentinel
+        assert isinstance(judges[1], adapter.DeterministicJudge)
+
+        # A later file must not pay the doomed call again.
+        parser._execute_with_judge(object(), object(), object(), object())
+        assert judges[2] is judges[1]
+
+    def test_no_eligible_backend_error_is_not_absorbed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A real routing dead-end must surface: the deterministic judge could
+        not have fixed it, so falling back would hide a genuine failure.
+        """
+        adapter = _adapter()
+
+        def fake_execute(*args: object, judge: object = None, **kwargs: object) -> object:
+            raise NoEligibleBackendError(None, "no backend can parse this")
+
+        monkeypatch.setattr(adapter, "execute", fake_execute)
+        parser = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="m")
+        with pytest.raises(NoEligibleBackendError):
+            parser._execute_with_judge(object(), object(), object(), object())
+
+    def test_deterministic_failure_is_not_retried(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """With no live judge configured there is nothing to degrade from."""
+        adapter = _adapter()
+        calls = 0
+
+        def fake_execute(*args: object, judge: object = None, **kwargs: object) -> object:
+            nonlocal calls
+            calls += 1
+            raise RoutingError("routing broke")
+
+        monkeypatch.setattr(adapter, "execute", fake_execute)
+        parser = adapter.ParsecraftParser()
+        with pytest.raises(RoutingError):
+            parser._execute_with_judge(object(), object(), object(), object())
+        assert calls == 1
+
+    def test_build_options_carry_the_judge_config(self) -> None:
+        """The `[ingest]` routing keys reach the backend through ParserBuildOptions."""
+        adapter = _adapter()
+        router = registry_module.build_default_router(
+            registry_module.ParserBuildOptions(
+                parsecraft_judge="ollama",
+                parsecraft_judge_model="parable-tinyjev",
+                parsecraft_preference="quality",
+            ),
+            names="parsecraft",
+        )
+        backend: Any = next(p for p in router._parsers if type(p).__name__ == "ParsecraftParser")  # noqa: SLF001 — parser identity is the contract
+        assert backend._judge_name == "ollama"
+        assert backend._judge_model == "parable-tinyjev"
+        assert backend._judge_preference == "quality"
+        assert adapter.ParsecraftParser()._judge_name == "none"
 
 
 def _map(document: DocumentResult, name: str = "d.txt") -> list:

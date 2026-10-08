@@ -38,11 +38,17 @@ from parsecraft.pipeline import (
     ALL_PASSES_FAILED_CODE,
     MEDIA_TYPES,
     PageGroup,
+    PipelineResult,
     UnsupportedSourceError,
     analyze_source,
     execute,
     media_type_for,
 )
+from parsecraft.pipeline.analysis import AnalysisResult
+from parsecraft.routing import NoEligibleBackendError, RoutingConstraints, RoutingError
+from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
+from parsecraft.routing.judge_providers import JudgeError, resolve_judge
+from parsecraft.routing.models import RoutingPreference
 
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
 from knox.logging import get_logger
@@ -72,6 +78,12 @@ _CHUNK_KIND_TO_ELEMENT: dict[str, ElementType] = {
 logger = get_logger(__name__)
 
 
+#: Characters of a judge/SDK error message kept in a log line. The SDK wraps
+#: provider errors with the full HTTP exchange; the first clause names the
+#: cause and the rest is noise in a per-file warning.
+_JUDGE_ERROR_EXCERPT_CHARS = 160
+
+
 class ParsecraftParser:
     """KNOX Tier-1 parser backed by the parsecraft pipeline.
 
@@ -88,9 +100,27 @@ class ParsecraftParser:
 
     figure_enrichment = True
 
-    def __init__(self, registry: BackendRegistry | None = None) -> None:
+    def __init__(
+        self,
+        registry: BackendRegistry | None = None,
+        *,
+        parsecraft_judge: str = "none",
+        parsecraft_judge_model: str = "",
+        parsecraft_preference: str = "balanced",
+    ) -> None:
         self._registry = registry
         self._environment: EnvironmentInfo | None = None
+        #: Routing inputs — the same three keys the config exposes under
+        #: ``[ingest] parsecraft_*``. ``"none"`` keeps the deterministic rule
+        #: table; any other value resolves to a real :class:`RoutingJudge` once
+        #: ``parse()`` runs (and only then, so a misconfigured provider never
+        #: costs anything at CLI ``--help`` time).
+        self._judge_name = parsecraft_judge
+        self._judge_model = parsecraft_judge_model
+        self._judge_preference = parsecraft_preference
+        self._judge: RoutingJudge | None = None
+        self._judge_fallback: RoutingJudge | None = None  # DeterministicJudge after a real judge failed
+        self._judge_degraded = False  # live judge dropped this run (warn once, no retry)
 
     def can_parse(self, source_file: Path) -> bool:  # noqa: PLR6301 — parser-instance surface
         """True when parsecraft's classifier knows the file's suffix."""
@@ -118,7 +148,7 @@ class ParsecraftParser:
             media_type=media_type,
             installed_extras=constraints.installed_extras,
         )
-        result = execute(analysis, registry, constraints, source)
+        result = self._execute_with_judge(analysis, registry, constraints, source)
 
         document = result.document
         elements = _map_document(document, source_file)
@@ -138,6 +168,129 @@ class ParsecraftParser:
                 ),
             },
         )
+
+    def _execute_with_judge(
+        self,
+        analysis: AnalysisResult,
+        registry: BackendRegistry,
+        constraints: RoutingConstraints,
+        source: SourceDocument,
+    ) -> PipelineResult:
+        """Run ``execute`` with the configured judge, degrading to the rule table once.
+
+        ``resolve_judge`` validates the *spec*, never the *endpoint*: the cloud
+        providers accept any model token and only fail on the first ``rank``
+        call (``zen/does-not-exist`` 400s from opencode.ai; a completion-only
+        ollama model 400s from the daemon). ``plan_route`` calls
+        ``RoutingJudge.rank`` without a handler, so that failure reaches the
+        caller as a ``RoutingError``. A dead judge endpoint must cost a
+        degraded plan, not a failed ingest — therefore: retry exactly once
+        with the deterministic rule table, then remember the verdict for the
+        rest of the run so every later file skips the doomed call.
+
+        ``NoEligibleBackendError`` is re-raised: no judge can rank candidates
+        that do not exist, so it is a genuine routing dead-end and the caller
+        must see it (this is why the handler cannot simply catch
+        ``RoutingError``). A failure from the deterministic judge is re-raised
+        for the same reason — the retry is not a general-purpose error
+        absorber.
+        """
+        judge = self._get_judge()
+        try:
+            return execute(analysis, registry, constraints, source, judge=judge)
+        except NoEligibleBackendError:
+            raise
+        except RoutingError as exc:
+            if self._judge_degraded or isinstance(judge, DeterministicJudge):
+                raise
+            self._degrade_judge(exc)
+            fallback = self._judge_fallback if self._judge_fallback is not None else DeterministicJudge()
+            return execute(analysis, registry, constraints, source, judge=fallback)
+
+    def _degrade_judge(self, exc: BaseException) -> None:
+        """Drop a live judge that failed at call time; warn once per run."""
+        self._judge = None
+        self._judge_fallback = DeterministicJudge()
+        self._judge_degraded = True
+        logger.warning(
+            "parsecraft judge %s/%s failed at call time (%s: %s); falling back to the deterministic rule table for the rest of this run.",
+            self._judge_name,
+            self._judge_model,
+            type(exc).__name__,
+            str(exc)[:_JUDGE_ERROR_EXCERPT_CHARS],
+        )
+
+    def _get_judge(self) -> RoutingJudge:
+        """Return the routing judge for this parser, resolving it once per instance.
+
+        Three exit paths, in order:
+
+        1. ``parsecraft_judge == "none"`` (default): return a fresh
+           :class:`DeterministicJudge` every call. Cheap (in-process rule
+           table) and avoids sharing state between documents.
+        2. ``parsecraft_judge`` was configured: resolve via the SDK's
+           :func:`resolve_judge`, cache the verdict. A second parse reuses
+           the same judge instance, so the SDK's intra-instance memo (per
+           page class) survives across the run.
+        3. Resolver raised (spec error, missing credential, unreachable
+           endpoint, missing `decision` capability on the ollama model):
+           warn once and fall back to :class:`DeterministicJudge`. A dead
+           judge endpoint must never fail an ingest — the fallback is a
+           degraded parse, not a hard error.
+
+        Resolution is only half the story: ``resolve_judge`` validates the
+        *spec*, never the *endpoint* (a cloud provider accepts any model token
+        and 400s on the first call). The call-time failure is handled by
+        :meth:`_execute_with_judge`.
+        """
+        if self._judge is not None:
+            return self._judge
+        if self._judge_fallback is not None:
+            return self._judge_fallback
+        if self._judge_name in ("", "none"):
+            self._judge_fallback = DeterministicJudge()
+            return self._judge_fallback
+        if not self._judge_model:
+            msg = (
+                f"parsecraft_judge is {self._judge_name!r} but parsecraft_judge_model is empty; "
+                "falling back to the deterministic rule table. Set [ingest] parsecraft_judge_model "
+                "to the SDK's model token for the configured provider."
+            )
+            logger.warning(msg)
+            self._judge_fallback = DeterministicJudge()
+            return self._judge_fallback
+        try:
+            self._judge = resolve_judge(
+                f"{self._judge_name}/{self._judge_model}",
+                preference=_parse_preference(self._judge_preference),
+            )
+        except JudgeError as exc:
+            # Every resolution failure is a JudgeError subclass: JudgeSpecError
+            # (malformed spec), JudgeProviderUnavailableError (no loader / missing
+            # credential), JudgeProviderLoadError (extra not installed).
+            logger.warning(
+                "parsecraft judge %s/%s could not be resolved (%s: %s); falling back to the deterministic rule table.",
+                self._judge_name,
+                self._judge_model,
+                type(exc).__name__,
+                str(exc)[:_JUDGE_ERROR_EXCERPT_CHARS],
+            )
+            self._judge_fallback = DeterministicJudge()
+            return self._judge_fallback
+        return self._judge
+
+
+def _parse_preference(name: str) -> RoutingPreference:
+    """Map a config string to parsecraft's ``RoutingPreference``.
+
+    Accepts the same lowercase set the config validates against; an
+    unrecognised value falls through to BALANCED, never errors — a typo
+    in the config should not block a parse run.
+    """
+    try:
+        return RoutingPreference(name)
+    except ValueError:
+        return RoutingPreference.BALANCED
 
 
 class ParsecraftParseError(RuntimeError):
@@ -243,8 +396,19 @@ def _winning_backends(groups: list[PageGroup]) -> str:
     return ",".join(sorted(names))
 
 
-def _factory(options: ParserBuildOptions) -> ParsecraftParser:  # noqa: ARG001 — uniform backend signature
-    return ParsecraftParser()
+def _factory(options: ParserBuildOptions) -> ParsecraftParser:
+    """Build a parsecraft backend instance from the resolved build options.
+
+    The judge tier is wired through here so the config-level ``[ingest]``
+    routing inputs land on the parser without leaking into the router —
+    the factory is the single point where ``ParserBuildOptions`` meets a
+    backend-specific constructor.
+    """
+    return ParsecraftParser(
+        parsecraft_judge=options.parsecraft_judge,
+        parsecraft_judge_model=options.parsecraft_judge_model,
+        parsecraft_preference=options.parsecraft_preference,
+    )
 
 
 register_backend("parsecraft", _factory, parser_cls=ParsecraftParser)  # ty: ignore[invalid-argument-type]

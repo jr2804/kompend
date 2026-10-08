@@ -544,6 +544,39 @@ class IngestConfig(_KnoxBaseModel):
             "for unclaimed plain-text files)."
         ),
     )
+    parsecraft_judge: Literal["none", "ollama", "zen", "typesafe-ai"] = Field(
+        default="none",
+        validation_alias=EnvVar.INGEST_PARSECRAFT_JUDGE,
+        description=(
+            "Judge-tier routing for the parsecraft backend. `none` (default) leaves the "
+            "deterministic rule table in place — fast, but it cannot re-rank candidates per "
+            "page on a model signal. `ollama` requires a local ollama daemon running a "
+            "decision-capable model (capability `decision` in ollama's `details.capabilities`); "
+            "the SDK rejects completion-only models with 400. `zen` and `typesafe-ai` are "
+            "cloud providers that need credentials via `TYPESAFE_API_KEY` (or per-provider env)."
+        ),
+    )
+    parsecraft_judge_model: str = Field(
+        default="",
+        validation_alias=EnvVar.INGEST_PARSECRAFT_JUDGE_MODEL,
+        description=(
+            "Provider-specific model token for the judge. For `ollama` the bare model name as "
+            "ollama lists it (e.g. `parable-tinyjev`, `tev1`); the SDK validator rejects colon-suffixed "
+            "ollama tag tokens like `parable-tinyjev:latest`. Empty string is rejected at parse "
+            "time when `parsecraft_judge` is set to a non-`none` value — a provider without a model "
+            "is a misconfiguration, not a sensible default."
+        ),
+    )
+    parsecraft_preference: Literal["speed", "balanced", "quality"] = Field(
+        default="balanced",
+        validation_alias=EnvVar.INGEST_PARSECRAFT_PREFERENCE,
+        description=(
+            "Ranking axis the judge applies when several candidates tie on the constraint check. "
+            "Maps directly to parsecraft's `RoutingPreference`: `speed` favours lower-VRAM backends "
+            "(~native-fast first), `quality` favours the highest-VRAM strong backend, `balanced` is the "
+            "default tiebreak — a per-page intent re-ranks over the eligible candidates regardless."
+        ),
+    )
 
 
 class DownloaderConfig(_KnoxBaseModel):

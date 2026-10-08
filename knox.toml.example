@@ -55,6 +55,39 @@ file = "NOTES.md"
 # Env: KNOX_INGEST_PARSER_FALLBACK
 # parser_fallback = true
 
+# ── parsecraft judge tier (only used when parser = "parsecraft") ────────
+# parsecraft routes each page across its own backends. With the judge
+# disabled it uses a deterministic rule table (format + VRAM + intent). With
+# a judge enabled it asks a System One model to re-rank the candidates the
+# hard constraints already admitted, weighting speed against quality per
+# page. That is what keeps a text-native PDF on the fast path while a
+# scanned, table-heavy one moves to a strong backend.
+#
+#   none        (default) — deterministic rule table, no model, no network
+#   ollama      — local ollama daemon; the model MUST advertise the
+#                 "decision" capability (ollama show <model>), e.g.
+#                 parable-tinyjev or tev1. Completion-only GGUFs are
+#                 rejected by the daemon with HTTP 400.
+#   zen         — https://opencode.ai/zen; needs OPENCODE_API_KEY
+#   typesafe-ai — TypeSafe cloud; needs TYPESAFE_API_KEY
+#
+# The model token is the SDK's name for the provider: for ollama the bare
+# ollama model name (no ":tag" suffix — the SDK reads that as a variant and
+# rejects it), for the cloud providers their published model id.
+# A judge that cannot be reached, or that fails mid-run, degrades to the
+# rule table with a WARNING instead of failing the ingest.
+# Env: KNOX_INGEST_PARSECRAFT_JUDGE
+# parsecraft_judge = "none"
+# Env: KNOX_INGEST_PARSECRAFT_JUDGE_MODEL
+# parsecraft_judge_model = ""
+#
+# Ranking axis when several candidates tie on the constraint check:
+#   speed    — prefer the cheapest eligible backend
+#   balanced (default) — prefer capability, bounded by the host budget
+#   quality  — prefer the strongest eligible backend
+# Env: KNOX_INGEST_PARSECRAFT_PREFERENCE
+# parsecraft_preference = "balanced"
+
 # ── Downloader settings ─────────────────────────────────────────────────
 # Controls how URLs are fetched. URLs whose path looks like HTML (no
 # extension, .html/.htm/.aspx/.php/.jsp, or trailing /) go through the

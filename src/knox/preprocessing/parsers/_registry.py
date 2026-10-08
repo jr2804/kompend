@@ -79,6 +79,16 @@ class ParserBuildOptions:
     image_mode: str = "file"
     images_scale: float = IMAGE_SCALE_DEFAULT
     pdf_config: PdfConfig | None = None
+    #: Judge-tier routing for the parsecraft backend. `none` leaves the
+    #: deterministic rule table in place. Any non-`none` value is the SDK
+    #: provider name (`ollama`, `zen`, `typesafe-ai`).
+    parsecraft_judge: str = "none"
+    #: Provider-specific model token for the judge (e.g. `parable-tinyjev` for
+    #: ollama). Empty when the judge is `none`.
+    parsecraft_judge_model: str = ""
+    #: Ranking axis: `speed` | `balanced` | `quality`. Maps to
+    #: parsecraft's `RoutingPreference` and threads through every judge call.
+    parsecraft_preference: str = "balanced"
 
 
 class ParserMetadata(TypedDict):
