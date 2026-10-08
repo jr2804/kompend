@@ -103,7 +103,17 @@ pandoc = [
 # published release the adapter was written against; re-pinning is a reviewed
 # event (see .agents/plans/parsecraft-integration.md).
 parsecraft = [
-    "parsecraft==2026.9.26",
+    "parsecraft==2026.10.1",
+]
+
+#: Judge-tier routing via the System One wire. Requires a local ollama
+#: daemon running a decision-capable model (e.g. `parable-tinyjev`, `tev1`)
+#: or remote credentials for one of the cloud providers (typesafe-ai, zen).
+#: The knox-side config keys live under `[ingest] parsecraft_judge` and
+#: `[ingest] parsecraft_preference`; omitting both leaves the deterministic
+#: rule table in place.
+systemone = [
+    "parsecraft[systemone]==2026.10.1",
 ]
 
 otel = [

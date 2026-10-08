@@ -24,6 +24,7 @@ Additional backends install as package extras:
 uv add knox[docling]        # high-accuracy PDF/EPUB/HTML (recommended for complex layouts)
 uv add knox[pandoc]         # legacy text formats (RST, LaTeX, ODT, EPUB, TEX)
 uv add knox[parsecraft]     # external document-intelligence pipeline (Python ≥3.13)
+uv add knox[systemone]     # adds the System One judge (ollama/zen/typesafe-ai) on top of parsecraft
 ```
 
 Or several at once:
@@ -32,7 +33,7 @@ Or several at once:
 uv add knox[docling,pandoc,parsecraft]
 ```
 
-> **parsecraft** is an optional external adapter pinned to `==2026.9.26` and requires Python ≥3.13. KNOX consumes parsecraft's public API only — see [ParsecraftParser](#parsecraftparser-external-adapter) below.
+> **parsecraft** is an optional external adapter pinned to `==2026.10.1` and requires Python ≥3.13. KNOX consumes parsecraft's public API only — see [ParsecraftParser](#parsecraftparser-external-adapter) below.
 
 For `pip` users: `pip install knox[docling,pandoc]`.
 
