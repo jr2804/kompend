@@ -10,6 +10,7 @@ from __future__ import annotations
 import shutil
 import subprocess
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -32,6 +33,15 @@ TEMPLATE_AGENTS: Final[str] = "AGENTS.md.j2"  # rendered with config paths (agen
 
 AUTHORED_TEMPLATES: Final[tuple[str, ...]] = ("NOTES.md", "README.md")
 
+#: Files at the project root this scaffold owns. Already-existing copies
+#: of these are tracked content (.gitignore is the rail; AGENTS.md is the
+#: DOX contract) and must not be clobbered silently. force=True is
+#: required to overwrite them, and the clobbered set is reported so the
+#: caller can warn. NOTES.md is the user-authored equivalent: the
+#: scaffold only writes it in default mode (not bare), and an existing
+#: file is treated the same way.
+RAIL_FILES: Final[tuple[str, ...]] = (".gitignore", "AGENTS.md", "README.md")
+
 PROJECT_MARKERS: Final[tuple[str, ...]] = (PROJECT_CONFIG_FILE, KNOX_CONFIG_FILE)
 
 logger = get_logger(__name__)
@@ -43,6 +53,12 @@ class ScaffoldResult:
 
     Attributes:
     ----------
+    clobbered:
+        Rail files (.gitignore, AGENTS.md, README.md) or NOTES.md that
+        existed at the target *and* were overwritten by this run
+        (populated only when force=True is passed). Surfaces the cost
+        of --force so the caller can warn.
+
     target_dir:
         The resolved absolute path of the project directory.
     created_dirs:
@@ -62,6 +78,10 @@ class ScaffoldResult:
     git_initialised: bool = False
     sources_dir: str = ""
     output_dir: str = ""
+    #: Files this scaffold would have written that existed at the target
+    #: already. Populated only when force=True overwrote them, so the CLI
+    #: can warn.
+    clobbered: list[Path] = field(default_factory=list)
 
 
 class ScaffoldError(Exception):
@@ -89,8 +109,10 @@ def scaffold_project(
         created.
     force:
         When ``True``, overwrite an existing project marker (knox.toml
-        or .knox/config.toml). Other files are left untouched unless
-        *keep_cache* is also ``True``.
+        or .knox/config.toml) and any rail file the scaffold would
+        otherwise write. Otherwise the run refuses to clobber an existing
+        tracked rail file (.gitignore, AGENTS.md, README.md, NOTES.md) so
+        the user gets a single, explicit refusal listing every offender.
     git:
         When ``True``, run ``git init`` in the project directory and
         create an initial commit.
@@ -146,6 +168,17 @@ def scaffold_project(
     _write_config(resolved_target_dir, config_relative_file, config_file=Path(config_file) if config_file else None)
     result.copied_files.append(resolved_target_dir / config_relative_file)
 
+    # Two-phase rail-file guard. Phase 1 computes the set of files this
+    # scaffold run *would* write. Phase 2 inspects every entry the scaffold
+    # may produce and refuses the whole run if any of them pre-exists and is
+    # not scaffold-owned — with a single error listing every offender. A rail
+    # file is "scaffold-owned" iff the scaffold has already produced it in
+    # this same call, so re-writing it (e.g. across bare/notes branches) is
+    # idempotent and needs no separate check. NOTES.md is always checked,
+    # even under --bare — a user-owned NOTES.md is content, and the scaffold
+    # must not destroy it; --bare only stops the scaffold from writing it.
+    files_this_run: set[Path] = {resolved_target_dir / config_relative_file}
+
     sources_dir_name, output_dir_name = _read_path_dirs(resolved_target_dir / config_relative_file)
     result.sources_dir = sources_dir_name
     result.output_dir = output_dir_name
@@ -158,28 +191,73 @@ def scaffold_project(
     ):
         result.created_dirs.append(_create_directory(resolved_target_dir, relative))
 
-    # Render .gitignore from config paths (output_dir must be gitignored).
-    gitignore_dest = resolved_target_dir / ".gitignore"
-    gitignore_dest.write_text(_render_template(TEMPLATE_GITIGNORE, **render_vars), encoding="utf-8")
-    result.copied_files.append(gitignore_dest)
+    # Plan every file the scaffold may write. Each entry is (relative_path, writer).
+    # NOTES.md is always checked: under --bare the scaffold does not write it,
+    # but an existing user-owned NOTES.md still triggers a refusal. We split
+    # the two concerns: every planned write is checked + written; NOTES.md gets
+    # an additional check-only entry so --bare still guards the user's copy.
+    planned: list[tuple[str, Callable[[], object]]] = [
+        (
+            ".gitignore",
+            lambda: resolved_target_dir.joinpath(".gitignore").write_text(_render_template(TEMPLATE_GITIGNORE, **render_vars), encoding="utf-8"),
+        ),
+    ]
+    if not bare:
+        planned.append(
+            (
+                "README.md",
+                lambda: resolved_target_dir.joinpath("README.md").write_text(_render_template(TEMPLATE_README, **render_vars), encoding="utf-8"),
+            )
+        )
+        planned.append(
+            (
+                "NOTES.md",
+                lambda: _copy_template(TEMPLATE_NOTES, resolved_target_dir, "NOTES.md"),
+            )
+        )
+    planned.append(
+        (
+            "AGENTS.md",
+            lambda: resolved_target_dir.joinpath("AGENTS.md").write_text(_render_template(TEMPLATE_AGENTS, **render_vars), encoding="utf-8"),
+        )
+    )
 
+    # Add a check-only entry for NOTES.md even under --bare: the scaffold does
+    # not write it, but the refusal must still fire if the user already has a
+    # NOTES.md (otherwise --bare would silently let a scaffold destroy it).
+    notes_check_relative = "NOTES.md" if bare or not any(r == "NOTES.md" for r, _ in planned) else None
+
+    # Phase 1: check every planned write + the extra NOTES.md check. Collecting
+    # first and raising once is the only way the user sees every offender, not
+    # just the first.
+    checked: list[tuple[str, Path, Callable[[], object]]] = []
+    offenders: list[Path] = []
+    for relative, writer in planned:
+        dest = _check_rail_file_overwrite(resolved_target_dir, relative, files_this_run, force, result)
+        if dest is None:
+            offenders.append(resolved_target_dir / relative)
+        else:
+            checked.append((relative, dest, writer))
+    if notes_check_relative is not None:
+        dest = _check_rail_file_overwrite(resolved_target_dir, notes_check_relative, files_this_run, force, result)
+        if dest is None:
+            offenders.append(resolved_target_dir / notes_check_relative)
+    if offenders:
+        joined = ", ".join(repr(str(o)) for o in offenders)
+        msg = f"refusing to overwrite existing tracked file(s) in {resolved_target_dir}: {joined}. Use --force to overwrite."
+        raise ScaffoldError(msg)
+
+    # Phase 2: every planned write is now approved; execute in order.
+    for _relative, dest, writer in checked:
+        writer()
+        result.copied_files.append(dest)
+        files_this_run.add(dest)
+
+    # In --bare, NOTES.md and README.md are not scaffold-owned and not written
+    # this run. Surface that as a skipped-file entry, mirroring the pre-refactor
+    # contract that `knox init` reports what the run did *not* do.
     if bare:
         result.skipped_files.extend(AUTHORED_TEMPLATES)
-    else:
-        # NOTES.md is copied verbatim — it contains user-facing {{ user_notes }}
-        # guidance and must not be rendered by Jinja2.
-        _copy_template(TEMPLATE_NOTES, resolved_target_dir, "NOTES.md")
-        result.copied_files.append(resolved_target_dir / "NOTES.md")
-        # README.md is rendered with config paths.
-        readme_dest = resolved_target_dir / "README.md"
-        readme_dest.write_text(_render_template(TEMPLATE_README, **render_vars), encoding="utf-8")
-        result.copied_files.append(readme_dest)
-
-    # AGENTS.md is always rendered (even in bare mode) — agents need to know
-    # about OKF conformance and ACP mode regardless of user-facing docs.
-    agents_dest = resolved_target_dir / "AGENTS.md"
-    agents_dest.write_text(_render_template(TEMPLATE_AGENTS, **render_vars), encoding="utf-8")
-    result.copied_files.append(agents_dest)
 
     if git:
         try:
@@ -288,6 +366,36 @@ def _write_config(target_dir: Path, relative: str, config_file: Path | None = No
     else:
         destination.write_text(generate_scaffold_config(), encoding="utf-8")
         logger.info("Generated config at %s", destination)
+
+
+def _check_rail_file_overwrite(
+    target_dir: Path,
+    relative: str,
+    files_this_run: set[Path],
+    force: bool,
+    result: ScaffoldResult,
+) -> Path | None:
+    """Decide whether *target_dir / relative* may be written this run.
+
+    Returns the destination Path if it may be written (either the scaffold
+    already produced it in this call, or it does not exist yet, or force=True
+    accepts the clobber). Returns ``None`` if the file exists, is not
+    scaffold-owned, and force is off — in which case *target_dir / relative*
+    is *not* recorded in ``result.clobbered`` (the caller collects the
+    candidate for the final refusal and the destination stays untouched).
+
+    The caller is responsible for *all* the rail files: collecting the
+    candidates and raising a single error after the fact. This avoids a
+    short-circuit on the first offender (which would hide the others).
+    """
+    dest = target_dir / relative
+    if dest.exists() and dest not in files_this_run:
+        if force:
+            logger.warning("Scaffold is overwriting existing %r in %s", relative, target_dir)
+            result.clobbered.append(dest)
+        else:
+            return None
+    return dest
 
 
 def _initialise_git(target_dir: Path) -> None:

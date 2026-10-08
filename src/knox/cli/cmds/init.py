@@ -49,6 +49,11 @@ def init(
         get_console().print(f"  + {file.relative_to(result.target_dir)}")
     if result.skipped_files:
         get_console().print(f"  - skipped (--bare): {', '.join(result.skipped_files)}")
+    if result.clobbered:
+        get_err_console().print("--force overwrote the following tracked files (use git checkout to restore):")
+        for clobbered in result.clobbered:
+            get_err_console().print(f"    - {clobbered.relative_to(result.target_dir)}")
+
     if result.git_initialised:
         get_console().print("  + git init: initial commit created")
     get_console().print("")

@@ -13,6 +13,7 @@ from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
 from knox.scaffolding import (
     AUTHORED_TEMPLATES,
     PROJECT_MARKERS,
+    RAIL_FILES,
     ScaffoldError,
     find_existing_project,
     scaffold_project,
@@ -213,6 +214,80 @@ class TestScaffoldProject:
 
         assert (target / KNOX_DIR / CACHE_SUBDIR).is_dir()
         assert not any((target / KNOX_DIR / CACHE_SUBDIR).iterdir())
+
+    # Rail-file clobber guard (regression for knox-init clobbering tracked AGENTS.md / .gitignore / README.md).
+
+    def test_rail_files_refused_without_force(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir(parents=True, exist_ok=True)
+        sentinel = "# tracked repo content -- do not overwrite"
+        (target / ".gitignore").write_text(sentinel, encoding="utf-8")
+        (target / "AGENTS.md").write_text(sentinel, encoding="utf-8")
+        (target / "README.md").write_text(sentinel, encoding="utf-8")
+        (target / "README.md").write_text(sentinel, encoding="utf-8")
+        with pytest.raises(ScaffoldError) as exc_info:
+            scaffold_project(target)
+        msg = str(exc_info.value)
+        assert ".gitignore" in msg
+        assert "AGENTS.md" in msg
+        assert "README.md" in msg
+        assert "--force" in msg
+        # The originals must be untouched.
+        assert (target / ".gitignore").read_text(encoding="utf-8") == sentinel
+        assert (target / "AGENTS.md").read_text(encoding="utf-8") == sentinel
+        assert (target / "README.md").read_text(encoding="utf-8") == sentinel
+
+    def test_rail_files_overwritten_with_force(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir(parents=True, exist_ok=True)
+        sentinel = "# user content"
+        (target / ".gitignore").write_text(sentinel, encoding="utf-8")
+        (target / "AGENTS.md").write_text(sentinel, encoding="utf-8")
+        (target / "README.md").write_text(sentinel, encoding="utf-8")
+        result = scaffold_project(target, force=True)
+        # Scaffold content overwrote each one.
+        assert (target / ".gitignore").read_text(encoding="utf-8") != sentinel
+        assert (target / "AGENTS.md").read_text(encoding="utf-8") != sentinel
+        # Every clobbered rail file is reported.
+        clobbered_rel = {p.relative_to(target) for p in result.clobbered}
+        assert Path(".gitignore") in clobbered_rel
+        assert Path("AGENTS.md") in clobbered_rel
+        assert Path("README.md") in clobbered_rel
+
+    def test_partial_overwrite_records_only_existing(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir(parents=True, exist_ok=True)
+        sentinel = "# user content"
+        (target / "AGENTS.md").write_text(sentinel, encoding="utf-8")
+        (target / "README.md").write_text(sentinel, encoding="utf-8")
+        result = scaffold_project(target, force=True)
+        # Only the rail files that actually pre-existed are in clobbered.
+        # .gitignore is fresh (scaffold-owned); AGENTS.md and README.md are the
+        # two the user had, and both are recorded.
+        clobbered_rel = {p.relative_to(target) for p in result.clobbered}
+        assert clobbered_rel == {Path("AGENTS.md"), Path("README.md")}
+
+    def test_notes_md_refused_when_user_owned(self, tmp_path: Path) -> None:
+        target = tmp_path / "wiki"
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "NOTES.md").write_text("# user notes", encoding="utf-8")
+        with pytest.raises(ScaffoldError) as exc_info:
+            scaffold_project(target)
+        assert "NOTES.md" in str(exc_info.value)
+        assert (target / "NOTES.md").read_text(encoding="utf-8") == "# user notes"
+
+    def test_bare_does_not_count_notes_md_as_scaffold_owned(self, tmp_path: Path) -> None:
+        """With --bare, NOTES.md is not in files_this_run, so an existing NOTES.md must still be guarded."""
+        target = tmp_path / "wiki"
+        target.mkdir(parents=True, exist_ok=True)
+        (target / "NOTES.md").write_text("# user notes", encoding="utf-8")
+        with pytest.raises(ScaffoldError):
+            scaffold_project(target, bare=True)
+        assert (target / "NOTES.md").read_text(encoding="utf-8") == "# user notes"
+
+    def test_rail_files_constant_lists_three_owners(self) -> None:
+        """RAIL_FILES is the single source of truth for what counts as a tracked rail file."""
+        assert RAIL_FILES == (".gitignore", "AGENTS.md", "README.md")
 
 
 class TestPublicApi:

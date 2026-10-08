@@ -64,6 +64,39 @@ class TestInitCommand:
         result = runner.invoke(app, ["init", str(file)])
         assert result.exit_code == 1
 
+    def test_refuses_to_clobber_tracked_rail_files(self, tmp_path: Path) -> None:
+        """A pre-existing AGENTS.md / .gitignore / README.md is not a scaffold marker; `knox init` must refuse, not overwrite."""
+        target = tmp_path / "my-wiki"
+        target.mkdir()
+        sentinel = "# tracked repository file -- do not overwrite"
+        (target / ".gitignore").write_text(sentinel, encoding="utf-8")
+        (target / "AGENTS.md").write_text(sentinel, encoding="utf-8")
+        (target / "README.md").write_text(sentinel, encoding="utf-8")
+        result = runner.invoke(app, ["init", str(target)])
+        assert result.exit_code == 1
+        combined = result.stdout + (result.stderr or "")
+        # Every offender must be named in a single error message.
+        assert ".gitignore" in combined
+        assert "AGENTS.md" in combined
+        assert "README.md" in combined
+        assert "--force" in combined
+        # None of the originals were modified.
+        assert (target / ".gitignore").read_text(encoding="utf-8") == sentinel
+        assert (target / "AGENTS.md").read_text(encoding="utf-8") == sentinel
+        assert (target / "README.md").read_text(encoding="utf-8") == sentinel
+
+    def test_force_flag_clobbers_tracked_rail_files(self, tmp_path: Path) -> None:
+        """--force is the explicit, opt-in acknowledgement that tracked content will be overwritten."""
+        target = tmp_path / "my-wiki"
+        target.mkdir()
+        (target / "AGENTS.md").write_text("# user content", encoding="utf-8")
+        result = runner.invoke(app, ["init", "--force", str(target)])
+        assert result.exit_code == 0, result.stdout
+        combined = result.stdout + (result.stderr or "")
+        # Scaffold overwrites it and warns.
+        assert (target / "AGENTS.md").read_text(encoding="utf-8") != "# user content"
+        assert "AGENTS.md" in combined
+
     def test_git_flag_runs_git_init(self, tmp_path: Path) -> None:
         if not _git_available():
             pytest.skip("git not on PATH")
