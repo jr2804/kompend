@@ -22,8 +22,11 @@ import pytest
 from typer.testing import CliRunner
 
 from knox.cli.app import app
+from knox.core.config import resolve_config
 from knox.core.models import DocumentElement, ElementType, ParsedDocument
+from knox.core.pipeline.config import PipelineConfig
 from knox.mcp.tools.pipeline import wiki_ingest
+from knox.preprocessing.parsers import ParserBuildOptions
 from knox.preprocessing.parsers.base import BaseParser, FileExtension, ParserRouter
 
 _cli_runner = CliRunner()
@@ -97,6 +100,7 @@ def test_ingest_cli_passes_judge_options(tmp_path: Path, monkeypatch: pytest.Mon
     assert options.parsecraft_judge == "ollama"
     assert options.parsecraft_judge_model == "parable-tinyjev"
     assert options.parsecraft_preference == "quality"
+    _assert_full_options(options)
 
 
 def test_parse_cli_passes_judge_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -112,6 +116,7 @@ def test_parse_cli_passes_judge_options(tmp_path: Path, monkeypatch: pytest.Monk
     assert options.parsecraft_judge == "ollama"
     assert options.parsecraft_judge_model == "parable-tinyjev"
     assert options.parsecraft_preference == "speed"
+    _assert_full_options(options)
 
 
 def test_mcp_ingest_passes_judge_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -126,6 +131,23 @@ def test_mcp_ingest_passes_judge_options(tmp_path: Path, monkeypatch: pytest.Mon
     assert options.parsecraft_judge == "zen"
     assert options.parsecraft_judge_model == "some-model"
     assert options.parsecraft_preference == "balanced"
+    _assert_full_options(options)
+
+
+def test_pipeline_config_carries_config_derived_parser_options(tmp_path: Path) -> None:
+    """``build_pipeline`` reads ``config.parser_options``; it must be the
+    config-derived set, not the dataclass default.
+    """
+    base = _vault(tmp_path, parser_fallback=True, judge="ollama", judge_model="parable-tinyjev", preference="quality")
+    cfg = resolve_config(base_dir=base)
+
+    pc = PipelineConfig.from_resolved(cfg, source_dir=base / "sources", output_dir=base / "wiki", input_files=None)
+
+    assert pc.parser_options.parsecraft_judge == "ollama"
+    assert pc.parser_options.parsecraft_judge_model == "parable-tinyjev"
+    assert pc.parser_options.parsecraft_preference == "quality"
+    assert pc.parser_options.pdf_config == cfg.knox.compile.pdf
+    assert pc.parser_options.image_mode == cfg.knox.compile.image_mode
 
 
 def test_mcp_ingest_passes_parser_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -162,6 +184,18 @@ def test_parse_cli_falls_through_to_next_backend(tmp_path: Path, monkeypatch: py
     assert "1 element(s)" in result.output
 
 
+def _assert_full_options(options: ParserBuildOptions) -> None:
+    """Every site must hand the router the *whole* option set.
+
+    ``pdf_config`` is the field that actually drifted: ``knox ingest`` passed
+    ``images_dir`` alone, so it parsed with parser defaults while
+    ``knox compile`` parsed with ``[compile.pdf]`` — under one parse cache.
+    """
+    assert options.pdf_config is not None, "pdf_config must come from [compile.pdf]"
+    assert options.image_mode is not None
+    assert options.images_dir is not None
+
+
 def _vault(
     tmp_path: Path,
     *,
@@ -180,6 +214,9 @@ def _vault(
         lines.append(f'parsecraft_judge_model = "{judge_model}"')
     if preference is not None:
         lines.append(f'parsecraft_preference = "{preference}"')
+    # ``PipelineConfig.from_resolved`` refuses an empty default_model; set one
+    # so the pipeline-config test does not depend on a global config file.
+    lines += ["", "[compile.llm]", 'default_model = "ollama/test-model"']
     (base / ".knox" / "config.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (base / "sources" / "note.txt").write_text("hello", encoding="utf-8")
     return base

@@ -83,12 +83,7 @@ def wiki_ingest(
     images_dir = VaultPaths(base_dir).images_dir
     parser_name = cfg.knox.ingest.parser
     router = build_default_router(
-        ParserBuildOptions(
-            images_dir=images_dir,
-            parsecraft_judge=cfg.knox.ingest.parsecraft_judge,
-            parsecraft_judge_model=cfg.knox.ingest.parsecraft_judge_model,
-            parsecraft_preference=cfg.knox.ingest.parsecraft_preference,
-        ),
+        ParserBuildOptions.from_config(cfg, images_dir=images_dir),
         names=parser_name or "liteparse",
         fallback=cfg.knox.ingest.parser_fallback,
     )

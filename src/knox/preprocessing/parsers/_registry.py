@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from knox.core.config import PdfConfig
+from knox.core.config import PdfConfig, ResolvedConfig
 from knox.logging import get_logger
 from knox.preprocessing.parsers.base import (
     IMAGE_SCALE_DEFAULT,
@@ -89,6 +89,32 @@ class ParserBuildOptions:
     #: Ranking axis: `speed` | `balanced` | `quality`. Maps to
     #: parsecraft's `RoutingPreference` and threads through every judge call.
     parsecraft_preference: str = "balanced"
+
+    @classmethod
+    def from_config(cls, cfg: ResolvedConfig, *, images_dir: Path | None = None) -> ParserBuildOptions:
+        """Build the parser options implied by a resolved KNOX config.
+
+        The single construction point for every ingestion router the pipeline,
+        the CLI and the MCP server build. They all share one parse cache, and
+        that cache's key does not cover these options, so a site that built a
+        narrower set could serve a document produced under different settings:
+        ``knox ingest`` once passed only ``images_dir`` while ``knox compile``
+        also passed ``pdf_config`` and ``image_mode``.
+
+        ``images_scale`` is intentionally absent — it is not a config key, so
+        every caller takes the field default. ``images_dir`` is a parameter
+        because it derives from the vault root, which this function does not
+        receive.
+        """
+        knox = cfg.knox
+        return cls(
+            images_dir=images_dir,
+            image_mode=knox.compile.image_mode,
+            pdf_config=knox.compile.pdf,
+            parsecraft_judge=knox.ingest.parsecraft_judge,
+            parsecraft_judge_model=knox.ingest.parsecraft_judge_model,
+            parsecraft_preference=knox.ingest.parsecraft_preference,
+        )
 
 
 class ParserMetadata(TypedDict):

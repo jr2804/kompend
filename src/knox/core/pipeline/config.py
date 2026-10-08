@@ -32,6 +32,7 @@ from knox.core.config import (
 )
 from knox.core.config._configs import SearchConfig
 from knox.core.paths import VaultPaths
+from knox.preprocessing.parsers._registry import ParserBuildOptions
 
 __all__ = [
     "Compiler",
@@ -171,6 +172,12 @@ class PipelineConfig:
     parsecraft_judge: str = "none"  # judge tier for the parsecraft backend: none|ollama|zen|typesafe-ai
     parsecraft_judge_model: str = ""  # provider-specific model token (e.g. parable-tinyjev for ollama)
     parsecraft_preference: str = "balanced"  # judge ranking axis: speed|balanced|quality
+    #: Parser-construction inputs, built by :meth:`ParserBuildOptions.from_config`
+    #: in :meth:`from_resolved`. ``build_pipeline`` reads this rather than
+    #: reassembling the fields, so the pipeline, the CLI and the MCP server all
+    #: hand the router an identical option set — they share one parse cache
+    #: whose key does not cover these fields.
+    parser_options: ParserBuildOptions = field(default_factory=ParserBuildOptions)
     source_tags: list[str] = field(default_factory=list)  # CLI-provided source tags
     search: SearchConfig = field(default_factory=SearchConfig)  # search config (contextual enrichment gate lives here)
     attachments_ingest_adopted: bool = False  # attachments.ingest_adopted: global gate — manifest flag AND this gate decides ingestion
@@ -253,7 +260,7 @@ class PipelineConfig:
             {name: dict(section) for name, section in providers_raw.items() if isinstance(section, dict)} if isinstance(providers_raw, dict) else {}
         )
 
-        return cls(
+        pipeline_config = cls(
             source_dir=source_dir,
             output_dir=output_dir,
             image_mode=ImageMode(knox.compile.image_mode),
@@ -294,6 +301,10 @@ class PipelineConfig:
             attachments_ingest_adopted=bool(knox.attachments.ingest_adopted),
             providers=providers,
         )
+        # Assigned after construction because ``paths`` needs a bound instance;
+        # re-deriving the vault layout here would duplicate it.
+        pipeline_config.parser_options = ParserBuildOptions.from_config(cfg, images_dir=pipeline_config.paths.images_dir)
+        return pipeline_config
 
     # Sub-configs (additive for backward compatibility)
     budget: BudgetConfig = field(default_factory=BudgetConfig)

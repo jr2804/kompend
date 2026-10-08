@@ -22,7 +22,7 @@ from knox.core.pipeline.stages._pipeline import WikiPipeline
 from knox.llm.context_window import discover_context_window
 from knox.logging import get_logger
 from knox.output.base import BaseOutputWriter
-from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
+from knox.preprocessing.parsers._registry import build_default_router
 from knox.resolution.base import BaseResolver
 
 logger = get_logger(__name__)
@@ -55,15 +55,7 @@ def build_pipeline(
         raise ValueError(msg)
 
     router = build_default_router(
-        ParserBuildOptions(
-            images_dir=config.paths.images_dir,
-            image_mode=config.image_mode,
-            images_scale=config.images_scale,
-            pdf_config=config.pdf,
-            parsecraft_judge=config.parsecraft_judge,
-            parsecraft_judge_model=config.parsecraft_judge_model,
-            parsecraft_preference=config.parsecraft_preference,
-        ),
+        config.parser_options,
         names=config.parser,
         fallback=config.parser_fallback,
     )
