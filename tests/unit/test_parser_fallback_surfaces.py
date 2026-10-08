@@ -4,6 +4,13 @@ Regression: `knox parse`, `knox ingest`, and MCP `wiki_ingest` built a router
 without passing the config flag, so `parser_fallback = false` silently didn't
 apply. `knox parse` additionally bypassed fallback by calling ``route().parse()``
 (single backend) instead of ``router.parse()`` (fallback-aware chain).
+
+Same failure mode, second flag: the ``[ingest] parsecraft_*`` judge keys must
+reach the same sites. Missing them left `knox ingest`/`knox parse` routing by
+the deterministic rule table while `knox compile` used the configured judge —
+and because the parsecraft backend folds the judge into its
+``cache_identity()``, the two paths hashed to different parser fingerprints and
+invalidated each other's parse cache on every alternate run.
 """
 
 from __future__ import annotations
@@ -78,6 +85,49 @@ def test_ingest_cli_passes_parser_fallback(tmp_path: Path, monkeypatch: pytest.M
     assert captured.get("fallback") is False
 
 
+def test_ingest_cli_passes_judge_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    base = _vault(tmp_path, parser_fallback=True, judge="ollama", judge_model="parable-tinyjev", preference="quality")
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline.build_default_router", _capturing_factory(captured))
+
+    with pytest.raises(_Captured):
+        _cli_runner.invoke(app, ["--wiki-dir", str(base), "ingest"], catch_exceptions=False)
+
+    options = captured["args"][0]
+    assert options.parsecraft_judge == "ollama"
+    assert options.parsecraft_judge_model == "parable-tinyjev"
+    assert options.parsecraft_preference == "quality"
+
+
+def test_parse_cli_passes_judge_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    base = _vault(tmp_path, parser_fallback=True, judge="ollama", judge_model="parable-tinyjev", preference="speed")
+    doc = base / "sources" / "note.txt"
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline.build_default_router", _capturing_factory(captured))
+
+    with pytest.raises(_Captured):
+        _cli_runner.invoke(app, ["--wiki-dir", str(base), "parse", str(doc)], catch_exceptions=False)
+
+    options = captured["args"][0]
+    assert options.parsecraft_judge == "ollama"
+    assert options.parsecraft_judge_model == "parable-tinyjev"
+    assert options.parsecraft_preference == "speed"
+
+
+def test_mcp_ingest_passes_judge_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    base = _vault(tmp_path, parser_fallback=True, judge="zen", judge_model="some-model", preference="balanced")
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr("knox.mcp.tools.pipeline.build_default_router", _capturing_factory(captured))
+
+    with pytest.raises(_Captured):
+        wiki_ingest(wiki_dir=str(base))
+
+    options = captured["args"][0]
+    assert options.parsecraft_judge == "zen"
+    assert options.parsecraft_judge_model == "some-model"
+    assert options.parsecraft_preference == "balanced"
+
+
 def test_mcp_ingest_passes_parser_fallback(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     base = _vault(tmp_path, parser_fallback=False)
     captured: dict[str, Any] = {}
@@ -112,11 +162,25 @@ def test_parse_cli_falls_through_to_next_backend(tmp_path: Path, monkeypatch: py
     assert "1 element(s)" in result.output
 
 
-def _vault(tmp_path: Path, *, parser_fallback: bool) -> Path:
+def _vault(
+    tmp_path: Path,
+    *,
+    parser_fallback: bool,
+    judge: str | None = None,
+    judge_model: str | None = None,
+    preference: str | None = None,
+) -> Path:
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
     (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text(f"[ingest]\nparser_fallback = {str(parser_fallback).lower()}\n", encoding="utf-8")
+    lines = ["[ingest]", f"parser_fallback = {str(parser_fallback).lower()}"]
+    if judge is not None:
+        lines.append(f'parsecraft_judge = "{judge}"')
+    if judge_model is not None:
+        lines.append(f'parsecraft_judge_model = "{judge_model}"')
+    if preference is not None:
+        lines.append(f'parsecraft_preference = "{preference}"')
+    (base / ".knox" / "config.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (base / "sources" / "note.txt").write_text("hello", encoding="utf-8")
     return base
 

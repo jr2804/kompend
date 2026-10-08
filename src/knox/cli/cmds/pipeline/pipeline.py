@@ -104,7 +104,16 @@ def parse_cmd(
     )
     vp = vault_paths_from_ctx(ctx, require_vault=False)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
-    router: ParserRouter = build_default_router(names=parser or "liteparse", fallback=cfg.knox.ingest.parser_fallback)
+    router: ParserRouter = build_default_router(
+        ParserBuildOptions(
+            images_dir=vp.images_dir,
+            parsecraft_judge=cfg.knox.ingest.parsecraft_judge,
+            parsecraft_judge_model=cfg.knox.ingest.parsecraft_judge_model,
+            parsecraft_preference=cfg.knox.ingest.parsecraft_preference,
+        ),
+        names=parser or "liteparse",
+        fallback=cfg.knox.ingest.parser_fallback,
+    )
     for path in resolved:
         try:
             doc = router.parse(path)
@@ -358,8 +367,17 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     get_console().print(f"Ingesting {len(all_input_files)} document(s)")
 
     images_dir = VaultPaths(base_dir).images_dir
-    parser_name = cfg.knox.ingest.parser
-    router: ParserRouter = build_default_router(ParserBuildOptions(images_dir=images_dir), names=parser_name, fallback=cfg.knox.ingest.parser_fallback)
+    ingest_cfg = cfg.knox.ingest
+    router: ParserRouter = build_default_router(
+        ParserBuildOptions(
+            images_dir=images_dir,
+            parsecraft_judge=ingest_cfg.parsecraft_judge,
+            parsecraft_judge_model=ingest_cfg.parsecraft_judge_model,
+            parsecraft_preference=ingest_cfg.parsecraft_preference,
+        ),
+        names=ingest_cfg.parser,
+        fallback=ingest_cfg.parser_fallback,
+    )
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),
         force_progress=show_progress,

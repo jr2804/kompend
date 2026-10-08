@@ -455,6 +455,17 @@ boundary, never exit codes.
 - Adapter calls `execute()` **serially**, matching parsecraft's 8 GB one-
   instance discipline (`pipeline/AGENTS.md`). KNOX-level parallelism across
   documents is preserved (the existing parse worker pool is unchanged).
+- **The judge can only rank candidates the environment probe admitted.**
+  parsecraft 2026.10.1 detects installed backends through a declared map
+  (`parsecraft/environment/probe.py: EXTRA_IMPORTS`) whose
+  `optional_dependency_group` value it does not list is treated as *not
+  installed* — `extra_present("docling")` returns `False` even when the
+  `docling` module resolves, because the map has no `"docling"` entry (nor
+  `"pandoc"`). With docling filtered out, a PDF has exactly one candidate
+  (`liteparse`) and the judge has nothing to choose, so `parsecraft_judge`
+  changes nothing. Confirm the candidate set before reading anything into a
+  judge run: an empty `metadata.degraded_pages` and an unchanged
+  `metadata.backends` are expected, not a regression.
 
 ## LiteParseParser: Fast PDF/Office Parsing
 
