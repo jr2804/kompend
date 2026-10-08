@@ -113,6 +113,17 @@ class BaseParser(ABC):
         return source_file.suffix.lower() in self.supported_extensions
 
 
+def _cache_identity(parser: object) -> str:
+    """Optional per-backend identity hook for :meth:`ParserRouter.fingerprint`.
+
+    Returns the backend's own ``cache_identity()`` when it defines one, else an
+    empty string so the fingerprint stays unchanged for every backend that
+    carries no routing configuration of its own.
+    """
+    identity = getattr(parser, "cache_identity", None)
+    return str(identity()) if callable(identity) else ""
+
+
 class ParserRouter:
     """Auto-selects the right parser for each file type.
 
@@ -145,16 +156,26 @@ class ParserRouter:
     def fingerprint(self) -> str:
         """Stable identity of the configured parser chain.
 
-        The ordered backend class names, the text fallback, and the
-        chain-fallback policy identify *which* backend produced a document. The
-        parse cache and chunk cache key on this so that switching the parser
-        chain (``[ingest] parser``) or the fallback policy
-        (``[ingest] parser_fallback``) invalidates downstream caches instead of
-        silently reusing output produced under the old configuration.
+        The ordered backend class names, the text fallback, the chain-fallback
+        policy, and any per-backend :meth:`cache_identity` identify *which*
+        backend — with which routing inputs — produced a document. The parse
+        cache and chunk cache key on this so that switching the parser chain
+        (``[ingest] parser``), the fallback policy (``[ingest] parser_fallback``),
+        or a backend's own routing configuration (the parsecraft judge tier)
+        invalidates downstream caches instead of silently reusing output
+        produced under the old configuration.
         """
         names = [type(parser).__name__ for parser in self._parsers]
         fallback = type(self._text_fallback).__name__ if self._text_fallback is not None else ""
         blob = "|".join([*names, f"text_fallback:{fallback}", f"chain_retry:{int(self._fallback)}"])
+        # A backend may carry routing inputs that change its output without
+        # changing its class — the parsecraft judge tier is the first such case.
+        # Duck-typed on purpose: ``ParsecraftParser`` deliberately is not a
+        # ``BaseParser`` subclass, and the router only needs the structural
+        # surface (``can_parse`` / ``parse``) plus this optional hook.
+        identities = [identity for parser in self._parsers if (identity := _cache_identity(parser))]
+        if identities:
+            blob += "|" + "|".join(identities)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
     def route(self, source_file: Path) -> BaseParser | None:

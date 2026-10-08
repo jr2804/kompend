@@ -169,6 +169,19 @@ class ParsecraftParser:
             },
         )
 
+    def cache_identity(self) -> str:
+        """Routing inputs that change this backend's output without changing its class.
+
+        The router folds this into :meth:`ParserRouter.fingerprint`, so the parse
+        cache invalidates when the judge tier changes rather than silently
+        serving pages routed under the previous configuration. Returns an empty
+        string when the deterministic rule table is in use — the default
+        configuration's cache key must not shift.
+        """
+        if self._judge_name in ("", "none"):
+            return ""
+        return f"parsecraft_judge:{self._judge_name}/{self._judge_model}:{self._judge_preference}"
+
     def _execute_with_judge(
         self,
         analysis: AnalysisResult,

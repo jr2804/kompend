@@ -43,10 +43,18 @@ the failure propagates). The parse cache keys on it, so flipping the flag
 invalidates instead of reusing output produced under the other policy.
 
 `ParserRouter.fingerprint()` returns a hash of the ordered backend class
-names plus the text fallback and the fallback policy — the identity of the
-parser chain. The parse cache and chunk cache key on it, so switching
-`ingest.parser` or `ingest.parser_fallback` re-parses and
-re-chunks instead of silently reusing output from the previous backend.
+names plus the text fallback, the fallback policy, and any per-backend
+`cache_identity()` — the identity of the parser chain *with its routing
+inputs*. The parse cache and chunk cache key on it, so switching
+`ingest.parser`, `ingest.parser_fallback`, or a backend's own routing
+configuration (`ingest.parsecraft_judge` / `_model` / `_preference`) re-parses
+and re-chunks instead of silently reusing output from the previous setup.
+
+A backend that carries routing inputs contributes them by defining
+`cache_identity()`. The router looks the method up structurally (the
+parsecraft adapter deliberately is not a `BaseParser`), and a backend without
+the hook contributes nothing — an empty identity keeps existing cache keys
+byte-identical, so adding the hook never invalidates a cache by itself.
 
 The canonical file-extension enum (`FileExtension`, in `base.py`) is the
 single source of truth for *which extensions exist*. Each parser declares its

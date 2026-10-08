@@ -331,6 +331,35 @@ class TestJudgeWiring:
             parser._execute_with_judge(object(), object(), object(), object())
         assert calls == 1
 
+    def test_judge_config_changes_the_cache_fingerprint(self) -> None:
+        """Switching the judge must invalidate the parse cache, not silently
+        reuse pages routed under the previous configuration.
+        """
+        adapter = _adapter()
+        opts = registry_module.ParserBuildOptions
+        plain = registry_module.build_default_router(opts(), names="parsecraft")
+        judged = registry_module.build_default_router(
+            opts(parsecraft_judge="ollama", parsecraft_judge_model="parable-tinyjev"),
+            names="parsecraft",
+        )
+        other_pref = registry_module.build_default_router(
+            opts(parsecraft_judge="ollama", parsecraft_judge_model="parable-tinyjev", parsecraft_preference="quality"),
+            names="parsecraft",
+        )
+        other_model = registry_module.build_default_router(
+            opts(parsecraft_judge="ollama", parsecraft_judge_model="tev1"),
+            names="parsecraft",
+        )
+
+        assert plain.fingerprint() != judged.fingerprint()
+        assert judged.fingerprint() != other_pref.fingerprint()
+        assert judged.fingerprint() != other_model.fingerprint()
+        # The default configuration's key must not shift: no judge, no identity,
+        # so two separately built default routers hash identically.
+        assert adapter.ParsecraftParser().cache_identity() == ""
+        plain_again = registry_module.build_default_router(opts(), names="parsecraft")
+        assert plain_again.fingerprint() == plain.fingerprint()
+
     def test_build_options_carry_the_judge_config(self) -> None:
         """The `[ingest]` routing keys reach the backend through ParserBuildOptions."""
         adapter = _adapter()
