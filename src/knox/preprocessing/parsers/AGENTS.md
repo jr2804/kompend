@@ -19,36 +19,36 @@ markdown.py        markdown_to_elements() — THE Markdown→element converter u
                    are the inverse pair used for rumdl normalisation
 _registry.py       ParserBuildOptions, PARSER_BACKENDS, register_backend/get_backend,
                    build_default_router() — the single factory for a ready-to-use router
-docling_parser.py  DoclingParser  (default backend; supported_extensions owned by parser)
-pandoc_parser.py   PandocParser   (legacy formats + LaTeX + binaryornot text fallback;
-                                   _READER_FOR owned by parser, not the enum)
-liteparse_parser.py LiteParseParser (fast Rust-core parser; no figure enrichment)
+parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routing is
+                   parsecraft's, knox keeps none of its own
+marker_parser.py   MarkerParser  (manual install: high-accuracy PDF)
+mineru_parser.py   MinerUParser  (manual install: layout-aware PDF/Office + OCR)
+web_parser.py      WebPageParser (trafilatura HTML)
 ```
 
-`build_pipeline` builds a `ParserRouter` from `config.parser`
-(`ingest.parser` config key; `--parser` CLI flag on `ingest`/`parse`).
-`config.parser` is a comma-separated priority list (e.g. `"liteparse,docling"`):
-backends are registered in that order and the first one whose
-:meth:`BaseParser.can_parse` matches a file wins. `pandoc` is always
-appended last (legacy formats + LaTeX + universal text fallback), so formats
-no listed backend handles never regress.
+`build_pipeline` builds a `ParserRouter` from `config.parser` (`ingest.parser`
+config key; `--parser` CLI flag on `ingest`/`parse`). Exactly **one** backend is
+registered — `DEFAULT_PARSER`, parsecraft, unless the operator names another.
+parsecraft routes each page across its own sub-backends, so knox keeps no
+chain, no ordering and no hand-off between backends; a second level here would
+compete with parsecraft's routing rather than complement it.
 
-With `ingest.parser_fallback` (default **true**) a backend that raises during
-:meth:`parse` hands off to the *next* configured backend that also claims the
-file, logging a WARNING naming the file, the failed backend, the error, and the
-backend that succeeded. This is chain fallback *between configured backends* —
-distinct from the *text* fallback above, which applies only to files no backend
-claims. `parser_fallback = false` restores one-shot routing (first match only,
-the failure propagates). The parse cache keys on it, so flipping the flag
-invalidates instead of reusing output produced under the other policy.
+`build_default_router` raises for an unknown name, and for a known backend
+whose optional dependency is missing (naming the install command). A vault
+whose configured parser is absent must fail loudly instead of starting with an
+empty router.
 
-`ParserRouter.fingerprint()` returns a hash of the ordered backend class
-names plus the text fallback, the fallback policy, and any per-backend
-`cache_identity()` — the identity of the parser chain *with its routing
-inputs*. The parse cache and chunk cache key on it, so switching
-`ingest.parser`, `ingest.parser_fallback`, or a backend's own routing
-configuration (`ingest.parsecraft_judge` / `_model` / `_preference`) re-parses
-and re-chunks instead of silently reusing output from the previous setup.
+`get_all_extensions(names)` takes the backend names to union suffixes for.
+Discovery passes `[config.parser]`, so a vault ingests exactly what its backend
+can read — parsecraft's native-text backend reads `.c/.h/.py/…`, a PDF-only
+backend does not.
+
+`ParserRouter.fingerprint()` returns a hash of the registered backend class
+names plus any per-backend `cache_identity()` — the identity of the parser
+*with its routing inputs*. The parse cache and chunk cache key on it, so
+switching `ingest.parser` or a backend's own routing configuration
+(`ingest.parsecraft_judge` / `_model` / `_preference`) re-parses and re-chunks
+instead of silently reusing output from the previous setup.
 
 A backend that carries routing inputs contributes them by defining
 `cache_identity()`. The router looks the method up structurally (the
@@ -149,9 +149,11 @@ native representation and stay on. OCR follows the same rule through
    `register_backend("<name>", _factory, parser_cls=<Parser>)`.
 3. Import the class in `parsers/__init__.py` and add it to `__all__` (this
    import is what triggers registration).
-4. Install the dependency as a **regular** dep (`uv add <pkg>`), never optional.
-   No `try/except ImportError` guards — core deps are unconditional (see
-   `src/knox/AGENTS.md`).
+4. Declare the dependency as an **optional** extra or a manual install. No
+   parser backend may be a main dependency — parsecraft is the ingestion path,
+   and the backends it drives arrive transitively through it. A backend whose
+   module import fails stays unregistered (`_ensure_backend`), and selecting it
+   then raises with its install hint.
 5. Add tests to `tests/unit/test_parser_registry.py`.
 
 ### `figure_enrichment` is informational, NOT a hard VLM skip

@@ -26,7 +26,7 @@ def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     Excludes the URL list file — it is processed via
     ``--url-file``, not a document to parse.
     """
-    extensions = get_all_extensions()
+    extensions = get_all_extensions([pipeline.config.parser])
     sources = []
     for f in pipeline.config.source_dir.rglob("*"):
         if _STATE_DIR in f.parts:

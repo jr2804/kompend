@@ -54,11 +54,7 @@ def build_pipeline(
         msg = f"Unknown output format {config.output.format!r}. Available: {available}"
         raise ValueError(msg)
 
-    router = build_default_router(
-        config.parser_options,
-        names=config.parser,
-        fallback=config.parser_fallback,
-    )
+    router = build_default_router(config.parser_options, name=config.parser)
 
     # T0 (index) and T1 (parse) run without an LLM — ``knox ingest``
     # stops here. T2 (chunk) and beyond need the LLM for context-window

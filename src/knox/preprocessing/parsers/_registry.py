@@ -11,13 +11,13 @@ Used by ``knox list-parsers``, ``ParserRouter`` discovery, and
 from __future__ import annotations
 
 import importlib
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
 from knox.core.config import PdfConfig, ResolvedConfig
-from knox.logging import get_logger
+from knox.core.config.keys import DEFAULT_PARSER
 from knox.preprocessing.parsers.base import (
     IMAGE_SCALE_DEFAULT,
     BaseParser,
@@ -31,13 +31,10 @@ PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
 # when the backend's optional dependency is not installed. Each entry maps to
 # a human-readable description shown in error messages.
 KNOWN_BACKENDS: dict[str, str] = {
-    "docling": "high-accuracy PDF/EPUB/HTML parser (install: uv sync --extra docling)",
-    "glm-ocr": "GLM-OCR image-based OCR for PNG/JPG/TIFF/BMP (install: uv pip install glmocr — conflicts with marker on pillow)",
-    "liteparse": "fast PDF/office parser (installed by default)",
-    "marker": "Marker high-accuracy PDF parser (install: uv pip install marker-pdf — conflicts with glmocr on pillow)",
+    "marker": "Marker high-accuracy PDF parser (install: uv pip install marker-pdf)",
     "mineru": "layout-aware PDF/Office parser with OCR (install: uv pip install mineru)",
-    "pandoc": "legacy text formats — RST, LaTeX, ODT (install: uv sync --extra pandoc)",
-    "web": "trafilatura HTML parser for web pages (installed by default)",
+    "parsecraft": "per-page routing across docling, liteparse, pandoc, native and OCR backends (install: uv sync --extra parsecraft)",
+    "web": "trafilatura HTML parser for web pages",
 }
 
 # Backend name → module path. The backend module's ``register_backend`` call
@@ -46,22 +43,11 @@ KNOWN_BACKENDS: dict[str, str] = {
 # (from ``build_default_router`` / ``get_backend`` / ``get_all_extensions`` /
 # ``get_registered_parsers``) — never at CLI ``--help`` import time.
 _BACKEND_MODULES: dict[str, str] = {
-    "docling": "knox.preprocessing.parsers.docling_parser",
-    "glm-ocr": "knox.preprocessing.parsers.glm_ocr_parser",
-    "liteparse": "knox.preprocessing.parsers.liteparse_parser",
     "marker": "knox.preprocessing.parsers.marker_parser",
     "mineru": "knox.preprocessing.parsers.mineru_parser",
-    "pandoc": "knox.preprocessing.parsers.pandoc_parser",
-    "web": "knox.preprocessing.parsers.web_parser",
-    # parsecraft is deliberately NOT in KNOWN_BACKENDS: KNOWN_BACKENDS feeds
-    # get_all_extensions(), and advertising parsecraft's 31-suffix text family
-    # would broaden default vault discovery (.c/.h/.py/... become ingestible)
-    # as a silent side effect. Explicit selection still works:
-    # ``ingest.parser = "parsecraft"`` loads this module and self-registers.
     "parsecraft": "knox.preprocessing.parsers.parsecraft_parser",
+    "web": "knox.preprocessing.parsers.web_parser",
 }
-
-logger = get_logger(__name__)
 
 
 # Metadata powering ``knox list-parsers`` (name/type/extensions/figure_enrichment).
@@ -159,13 +145,20 @@ def get_registered_parsers() -> list[ParserMetadata]:
     return list(_registry.values())
 
 
-def get_all_extensions() -> set[str]:
-    """Return the union of all registered parsers' supported extensions."""
-    _ensure_backends(KNOWN_BACKENDS)
+def get_all_extensions(names: Iterable[str]) -> set[str]:
+    """Union of the suffixes the named backends can ingest.
+
+    Discovery follows the backend actually configured (``[ingest] parser``),
+    not every name the registry knows: a vault should only ingest what its
+    parser can read. Unknown or uninstalled names contribute nothing.
+    """
+    _ensure_backends(names)
     extensions: set[str] = set()
-    for entry in _registry.values():
-        for ext in entry.get("extensions", []):
-            extensions.add(ext.lower())
+    for name in names:
+        entry = _registry.get(name)
+        if entry is None:
+            continue
+        extensions.update(ext.lower() for ext in entry.get("extensions", []))
     return extensions
 
 
@@ -189,68 +182,37 @@ def _register(
 def build_default_router(
     options: ParserBuildOptions | None = None,
     *,
-    names: str | Sequence[str] = "liteparse",
-    fallback: bool = True,
+    name: str = DEFAULT_PARSER,
 ) -> ParserRouter:
-    """Construct a :class:`ParserRouter` wired with an ordered backend chain.
+    """Construct a :class:`ParserRouter` wired with the single ingestion backend.
 
-    Backends are registered in the given priority order; ``pandoc`` is always
-    appended last (when not already listed) and set as the universal
-    binaryornot text fallback. The first backend whose
-    :meth:`BaseParser.can_parse` matches a file wins, so list backends
-    fastest-first while including every backend whose formats you need — e.g.
-    ``"liteparse,docling"`` prefers the fast liteparse for PDF/DOCX yet keeps
-    docling for HTML/EPUB/TEX/MD/CSV that liteparse cannot parse.
+    Exactly one backend is registered — the one named by ``[ingest] parser``.
+    parsecraft performs its own per-page routing across its sub-backends, so
+    knox keeps no second, competing level of chain ordering or hand-off.
 
     Args:
-        options: Build context (image mode/dir/scale, PDF config). Defaults to
+        options: Build context handed to the backend factory. Defaults to
             :class:`ParserBuildOptions` when ``None``.
-        names: Ordered backend names — a comma-separated string
-            (``"liteparse,docling"``) or a sequence. A single name
-            (``"docling"``) is accepted for backward compatibility.
-        fallback: When ``True`` (default), a backend that fails during parsing
-            hands off to the next backend in *names* that claims the file
-            (``[ingest] parser_fallback``). When ``False``, the first matching
-            backend runs once and any failure propagates.
+        name: Backend name.
+
+    Raises:
+        ValueError: *name* is unknown, or a known backend whose optional
+            dependency is not installed. The message names the install command
+            — a vault whose configured parser is missing must fail loudly, not
+            start with an empty router.
     """
     if options is None:
         options = ParserBuildOptions()
 
-    ordered = _normalize_backends(names)
-    # Load the requested backends (and the always-on pandoc fallback) before
-    # checking availability, so installed backends self-register on demand.
-    _ensure_backends(set(ordered) | {"pandoc"})
-    # Distinguish unknown backend names (typos) from known-but-uninstalled
-    # optional backends. Unknown names raise immediately; uninstalled backends
-    # are skipped with a warning so a partial install still works.
-    available = set(PARSER_BACKENDS)
-    for n in ordered:
-        if n not in KNOWN_BACKENDS and n not in available:
-            raise ValueError(
-                f"Unknown parser backend {n!r}. Known: {', '.join(sorted(KNOWN_BACKENDS))}.",
-            )
-    skipped = [n for n in ordered if n not in available]
-    for n in skipped:
-        hint = KNOWN_BACKENDS.get(n, "unknown backend")
-        logger.warning(
-            "Parser backend %r is not installed; skipping. (%s)",
-            n,
-            hint,
-        )
-    installed_order = [n for n in ordered if n in available]
+    _ensure_backend(name)
+    if name not in PARSER_BACKENDS:
+        hint = KNOWN_BACKENDS.get(name)
+        if hint is None:
+            raise ValueError(f"Unknown parser backend {name!r}. Known: {', '.join(sorted(KNOWN_BACKENDS))}.")
+        raise ValueError(f"Parser backend {name!r} is not installed. {hint}")
 
-    router = ParserRouter(fallback=fallback)
-    if installed_order:
-        for backend_name in installed_order:
-            router.register(get_backend(backend_name)(options))
-
-    # Pandoc is always present: legacy-format parser + universal text fallback.
-    if "pandoc" in available:
-        pandoc = get_backend("pandoc")(options)
-        if "pandoc" not in installed_order:
-            router.register(pandoc)
-        router.set_text_fallback(pandoc)
-
+    router = ParserRouter()
+    router.register(get_backend(name)(options))
     return router
 
 
@@ -288,21 +250,3 @@ def _ensure_backend(name: str) -> None:
         importlib.import_module(module_name)
     except ImportError:  # pragma: no cover - optional dependency not installed
         return
-
-
-def _normalize_backends(names: str | Sequence[str]) -> list[str]:
-    """Normalize a backend spec into a deduplicated, order-preserving list.
-
-    Accepts a comma-separated string (``"liteparse,docling"``) or a sequence.
-    Whitespace is trimmed, blanks dropped, duplicates removed. Falls back to
-    ``["docling"]`` when nothing remains.
-    """
-    raw: Sequence[str] = names.split(",") if isinstance(names, str) else names
-    seen: set[str] = set()
-    result: list[str] = []
-    for entry in raw:
-        cleaned = entry.strip()
-        if cleaned and cleaned not in seen:
-            seen.add(cleaned)
-            result.append(cleaned)
-    return result or ["liteparse"]

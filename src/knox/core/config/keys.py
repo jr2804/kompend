@@ -24,7 +24,11 @@ PATHS_STATE_DIR: Final[str] = "paths.state_dir"
 
 # ── ingest section ──
 INGEST_PARSER: Final[str] = "ingest.parser"
-INGEST_PARSER_FALLBACK: Final[str] = "ingest.parser_fallback"
+
+#: The ingestion backend knox ships with. Single source for the config-schema
+#: default, the ``PipelineConfig`` default, the registry factory default and
+#: discovery — a second literal would let them disagree silently.
+DEFAULT_PARSER: Final[str] = "parsecraft"
 INGEST_PARSECRAFT_JUDGE: Final[str] = "ingest.parsecraft_judge"
 INGEST_PARSECRAFT_JUDGE_MODEL: Final[str] = "ingest.parsecraft_judge_model"
 INGEST_PARSECRAFT_PREFERENCE: Final[str] = "ingest.parsecraft_preference"

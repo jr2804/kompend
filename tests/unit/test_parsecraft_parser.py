@@ -20,7 +20,7 @@ import json
 import os
 import subprocess
 import sys
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -163,19 +163,24 @@ class TestRegistryContract:
         assert can_parse(Path("code.py"))
         assert not can_parse(Path("archive.xyz123"))
 
-    def test_default_discovery_not_broadened(self, tmp_path: Path) -> None:
-        """Phase 1's byte-identical guarantee: a default KNOX run never loads
-        the parsecraft module, so its 31-suffix text family must not enter
-        vault discovery. Verified in a fresh interpreter — importing this test
-        module's adapter would self-register parsecraft and defeat the check.
+    def test_default_discovery_follows_the_default_backend(self, tmp_path: Path) -> None:
+        """A default KNOX run discovers the default backend's suffixes.
+
+        This test's earlier form pinned the opposite policy: parsecraft was
+        kept out of ``KNOWN_BACKENDS`` so its text family could not widen
+        discovery. That exclusion existed only because discovery unioned every
+        *selectable* backend; with one configured backend there is nothing to
+        exclude, and a vault configured for parsecraft can ingest source files.
+        Verified in a fresh interpreter, so it also covers the lazy
+        ``_ensure_backend`` import path.
         """
-        assert "parsecraft" not in KNOWN_BACKENDS
+        assert "parsecraft" in KNOWN_BACKENDS
 
         repo_root = Path(__file__).parents[2]
         probe = (
             "from knox.preprocessing.parsers._registry import get_all_extensions; "
-            "ext = get_all_extensions(); "
-            "print(all(s not in ext for s in ('.c', '.h', '.py', '.log', '.cfg')))"
+            "ext = get_all_extensions(['parsecraft']); "
+            "print(all(s in ext for s in ('.c', '.h', '.py', '.txt', '.pdf')))"
         )
         env = {**os.environ, "PYTHONPATH": str(repo_root / "src")}
         result = subprocess.run(  # noqa: S603 — fixed argv, probe string is a literal
@@ -337,18 +342,18 @@ class TestJudgeWiring:
         """
         adapter = _adapter()
         opts = registry_module.ParserBuildOptions
-        plain = registry_module.build_default_router(opts(), names="parsecraft")
+        plain = registry_module.build_default_router(opts(), name="parsecraft")
         judged = registry_module.build_default_router(
             opts(parsecraft_judge="ollama", parsecraft_judge_model="parable-tinyjev"),
-            names="parsecraft",
+            name="parsecraft",
         )
         other_pref = registry_module.build_default_router(
             opts(parsecraft_judge="ollama", parsecraft_judge_model="parable-tinyjev", parsecraft_preference="quality"),
-            names="parsecraft",
+            name="parsecraft",
         )
         other_model = registry_module.build_default_router(
             opts(parsecraft_judge="ollama", parsecraft_judge_model="tev1"),
-            names="parsecraft",
+            name="parsecraft",
         )
 
         assert plain.fingerprint() != judged.fingerprint()
@@ -357,7 +362,7 @@ class TestJudgeWiring:
         # The default configuration's key must not shift: no judge, no identity,
         # so two separately built default routers hash identically.
         assert adapter.ParsecraftParser().cache_identity() == ""
-        plain_again = registry_module.build_default_router(opts(), names="parsecraft")
+        plain_again = registry_module.build_default_router(opts(), name="parsecraft")
         assert plain_again.fingerprint() == plain.fingerprint()
 
     def test_build_options_carry_the_judge_config(self) -> None:
@@ -369,7 +374,7 @@ class TestJudgeWiring:
                 parsecraft_judge_model="parable-tinyjev",
                 parsecraft_preference="quality",
             ),
-            names="parsecraft",
+            name="parsecraft",
         )
         backend: Any = next(p for p in router._parsers if type(p).__name__ == "ParsecraftParser")  # noqa: SLF001 — parser identity is the contract
         assert backend._judge_name == "ollama"
@@ -438,23 +443,6 @@ def _exhausted_page(number: int) -> PageResult:
 
 
 # ── Fixtures ─────────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _unregister_parsecraft_metadata() -> Iterator[None]:
-    """Drop parsecraft from the discovery-metadata registry after each test.
-
-    ``register_backend`` feeds two structures: ``PARSER_BACKENDS`` (router
-    factories — kept, harmless) and the ``_registry`` metadata that
-    ``get_all_extensions()`` reads. Leaving the metadata in place broadens
-    discovery (.py/.toml/... become "supported") and breaks exact-count
-    discovery tests running later in the same process — and with parsecraft
-    registered, KNOX's own managed ``.knox/rumdl.toml`` would be discovered as
-    a source. Default KNOX never loads the adapter module, so production
-    discovery is unaffected either way.
-    """
-    yield
-    registry_module._registry.pop("parsecraft", None)
 
 
 @pytest.fixture

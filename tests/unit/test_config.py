@@ -342,7 +342,7 @@ class TestResolveConfig:
 
     def test_ingest_parser_default(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
-        assert resolve_config().get("ingest.parser") == "liteparse"
+        assert resolve_config().get("ingest.parser") == "parsecraft"
 
     def test_ingest_parser_env_override(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)

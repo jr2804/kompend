@@ -24,36 +24,23 @@ file = "NOTES.md"
 
 # ── Ingestion settings ──────────────────────────────────────────────────
 # Backend(s) used to parse source documents into structured elements.
-# A single name ("liteparse") or a comma-separated priority list
-# ("liteparse,docling,web") — the first backend supporting a file's format wins.
-# Installed by default:
-#   liteparse — fast PDF/office parser (default)
-#   web       — trafilatura HTML parser
-# Optional backends (install as extras):
-#   docling   — high-accuracy PDF/EPUB/HTML fallback (uv add knox[docling])
-#   pandoc    — legacy text formats (RST, LaTeX, ODT, …; uv add knox[pandoc])
-#   parsecraft — external document-intelligence pipeline: per-page routing
-#               across native + OCR backends, Python >=3.13, pinned release
+# One name only. parsecraft routes each page across its own sub-backends, so
+# there is no knox-side chain to order or fall back through.
+#   web       — trafilatura HTML parser, for HTML pages only
+#   parsecraft — default. External document-intelligence pipeline: per-page
+#               routing across native + OCR backends
 #               (uv add knox[parsecraft]; see docs/guides/document-extraction.md)
 # Manual install (conflicting transitive deps — not extras):
 #   marker    — deep-learning PDF/office/HTML (uv pip install marker-pdf)
 #   glm-ocr   — multimodal OCR for images and PDFs (uv pip install glmocr)
 #   mineru    — layout-aware PDF/Office parser with OCR (uv pip install mineru)
-# Uninstalled backends are skipped with a warning; unknown names raise ValueError.
+# A known name whose optional dependency is missing raises with its install
+# command; an unknown name raises.
 # Run `knox doctor` to list available backends.
 # CLI: --parser | Env: KNOX_INGEST_PARSER
 
 [ingest]
-# parser = "liteparse,docling,web"
-
-# Chain fallback between the configured backends: when the first backend that
-# claims a file fails, the next configured backend that also claims it is
-# tried, with a WARNING naming the file, the failure, and the backend that
-# succeeded. Distinct from the text fallback (pandoc as the last resort for
-# unclaimed plain-text files). Set false for one-shot routing (first match
-# only, failure propagates).
-# Env: KNOX_INGEST_PARSER_FALLBACK
-# parser_fallback = true
+# parser = "parsecraft"
 
 # ── parsecraft judge tier (only used when parser = "parsecraft") ────────
 # parsecraft routes each page across its own backends. With the judge

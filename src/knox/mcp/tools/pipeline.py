@@ -84,8 +84,7 @@ def wiki_ingest(
     parser_name = cfg.knox.ingest.parser
     router = build_default_router(
         ParserBuildOptions.from_config(cfg, images_dir=images_dir),
-        names=parser_name or "liteparse",
-        fallback=cfg.knox.ingest.parser_fallback,
+        name=parser_name,
     )
 
     try:

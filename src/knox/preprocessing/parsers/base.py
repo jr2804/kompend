@@ -8,10 +8,7 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
 
-from binaryornot.check import is_binary
-
 from knox.core.models import ParsedDocument
-from knox.logging import get_logger
 from knox.types import JSONValue
 
 # Parser-layer image-resolution defaults. Lives here (the neutral parser base)
@@ -26,8 +23,6 @@ IMAGE_SCALE_DEFAULT: float = DPI_DEFAULT / 72.0  # ≈ 200 DPI for image extract
 # not allowed``. Scrub them once at the router boundary — every parser output
 # passes through here.
 _SURROGATE_RE = re.compile("[\ud800-\udfff]")
-
-logger = get_logger(__name__)
 
 
 class FileExtension(StrEnum):
@@ -125,23 +120,17 @@ def _cache_identity(parser: object) -> str:
 
 
 class ParserRouter:
-    """Auto-selects the right parser for each file type.
+    """Dispatches each file to the one registered backend that claims it.
 
-    When no registered parser matches a file's extension, a last-resort
-    check using :func:`binaryornot.check.is_binary` determines whether
-    the file is plain text.  If it is, the *text_fallback* parser
-    (typically :class:`PandocParser`) is used.
-
-    With ``fallback`` enabled (the default), a backend that raises during
-    :meth:`parse` hands off to the *next* backend in the configured order that
-    claims the file — distinct from the text fallback above, which only applies
-    to files no backend claims. See :meth:`parse`.
+    Exactly one parser is registered (see :func:`build_default_router`): the
+    ingestion backend named by ``[ingest] parser``. There is no ordered chain
+    and no hand-off between backends — parsecraft performs its own per-page
+    routing internally, so a second knox-side level of fallback would only
+    duplicate it.
     """
 
-    def __init__(self, *, fallback: bool = True) -> None:
+    def __init__(self) -> None:
         self._parsers: list[BaseParser] = []
-        self._text_fallback: BaseParser | None = None
-        self._fallback = fallback
 
     def __len__(self) -> int:
         return len(self._parsers)
@@ -149,25 +138,18 @@ class ParserRouter:
     def register(self, parser: BaseParser) -> None:
         self._parsers.append(parser)
 
-    def set_text_fallback(self, parser: BaseParser) -> None:
-        """Set a fallback parser for text files detected by binaryornot."""
-        self._text_fallback = parser
-
     def fingerprint(self) -> str:
-        """Stable identity of the configured parser chain.
+        """Stable identity of the configured parser.
 
-        The ordered backend class names, the text fallback, the chain-fallback
-        policy, and any per-backend :meth:`cache_identity` identify *which*
-        backend — with which routing inputs — produced a document. The parse
-        cache and chunk cache key on this so that switching the parser chain
-        (``[ingest] parser``), the fallback policy (``[ingest] parser_fallback``),
-        or a backend's own routing configuration (the parsecraft judge tier)
-        invalidates downstream caches instead of silently reusing output
-        produced under the old configuration.
+        The backend class name plus any per-backend :meth:`cache_identity`
+        identify *which* backend — with which routing inputs — produced a
+        document. The parse cache and chunk cache key on this so that switching
+        the backend (``[ingest] parser``) or a backend's own routing
+        configuration (the parsecraft judge tier) invalidates downstream caches
+        instead of silently reusing output produced under the old configuration.
         """
         names = [type(parser).__name__ for parser in self._parsers]
-        fallback = type(self._text_fallback).__name__ if self._text_fallback is not None else ""
-        blob = "|".join([*names, f"text_fallback:{fallback}", f"chain_retry:{int(self._fallback)}"])
+        blob = "|".join(names)
         # A backend may carry routing inputs that change its output without
         # changing its class — the parsecraft judge tier is the first such case.
         # Duck-typed on purpose: ``ParsecraftParser`` deliberately is not a
@@ -179,61 +161,15 @@ class ParserRouter:
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
     def route(self, source_file: Path) -> BaseParser | None:
-        """Return the first backend that claims *source_file* (or ``None``).
-
-        Single-backend lookup for callers that parse the result themselves;
-        :meth:`parse` is the fallback-aware entry point.
-        """
-        candidates = self._candidates(source_file)
-        return candidates[0] if candidates else None
+        """Return the backend that claims *source_file*, or ``None``."""
+        return next((parser for parser in self._parsers if parser.can_parse(source_file)), None)
 
     def parse(self, source_file: Path) -> ParsedDocument:
-        """Parse *source_file*, falling through to later backends on failure.
-
-        With ``fallback`` enabled, a backend that raises hands off to the next
-        candidate in the configured order, and the successful attempt is logged
-        at WARNING (naming the file, each failed backend with its error, and the
-        backend that succeeded) so a degraded parse is never silent. With it
-        disabled, the first candidate runs once and any exception propagates —
-        the pre-fallback behaviour.
-        """
-        candidates = self._candidates(source_file)
-        if not candidates:
+        """Parse *source_file* with the backend that claims it."""
+        parser = self.route(source_file)
+        if parser is None:
             raise ValueError(f"No parser found for {source_file}")
-        if not self._fallback:
-            return scrub_document(candidates[0].parse(source_file))
-
-        failures: list[tuple[str, Exception]] = []
-        for parser in candidates:
-            try:
-                document = scrub_document(parser.parse(source_file))
-            except Exception as exc:  # noqa: BLE001 — fallback deliberately absorbs any parse failure
-                failures.append((type(parser).__name__, exc))
-                continue
-            if failures:
-                logger.warning(
-                    "Parser fallback on %s — %s — %s succeeded",
-                    source_file,
-                    "; ".join(f"{name}: {error}" for name, error in failures),
-                    type(parser).__name__,
-                )
-            return document
-
-        raise ValueError(
-            f"Every parser failed for {source_file} — " + "; ".join(f"{name}: {error}" for name, error in failures),
-        )
-
-    def _candidates(self, source_file: Path) -> list[BaseParser]:
-        """Every backend that claims *source_file*, in configured order.
-
-        The binaryornot text fallback is appended **last** when no registered
-        backend claims the file, exactly as one-shot routing did — so it is
-        never a retry target, and a file claimed by a backend never reaches it.
-        """
-        candidates = [parser for parser in self._parsers if parser.can_parse(source_file)]
-        if not candidates and self._text_fallback is not None and not is_binary(str(source_file)):
-            candidates.append(self._text_fallback)
-        return candidates
+        return scrub_document(parser.parse(source_file))
 
 
 def scrub_document(doc: ParsedDocument) -> ParsedDocument:

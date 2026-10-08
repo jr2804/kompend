@@ -18,7 +18,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from knox.core.config.keys import MANDATORY_KINDS, EnvVar
+from knox.core.config.keys import DEFAULT_PARSER, MANDATORY_KINDS, EnvVar
 from knox.core.paths import CACHE_DIR, KNOX_DIR
 
 
@@ -533,17 +533,7 @@ class NotesConfig(_KnoxBaseModel):
 
 
 class IngestConfig(_KnoxBaseModel):
-    parser: str = Field(default="liteparse", validation_alias=EnvVar.INGEST_PARSER)
-    parser_fallback: bool = Field(
-        default=True,
-        validation_alias=EnvVar.INGEST_PARSER_FALLBACK,
-        description=(
-            "Parse-tier chain fallback *between configured backends* — a backend that fails "
-            "hands off to the next backend in `[ingest] parser` that claims the file. "
-            "Distinct from the *text* fallback (pandoc filling in at the end of the chain "
-            "for unclaimed plain-text files)."
-        ),
-    )
+    parser: str = Field(default=DEFAULT_PARSER, validation_alias=EnvVar.INGEST_PARSER)
     parsecraft_judge: Literal["none", "ollama", "zen", "typesafe-ai"] = Field(
         default="none",
         validation_alias=EnvVar.INGEST_PARSECRAFT_JUDGE,

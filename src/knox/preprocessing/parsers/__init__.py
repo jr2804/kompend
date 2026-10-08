@@ -31,7 +31,5 @@ from knox.preprocessing.parsers.base import ParserRouter as ParserRouter
 
 __getattr__, __dir__, __all__ = lazy.attach(
     __name__,
-    submod_attrs={
-        "docling_parser": ["DoclingParser"],
-    },
+    submod_attrs={},
 )

@@ -19,7 +19,6 @@ from knox.core.models.enums import ElementType
 from knox.preprocessing.parsers._registry import (
     PARSER_BACKENDS,
     ParserBuildOptions,
-    _normalize_backends,
     build_default_router,
     get_all_extensions,
     get_backend,
@@ -39,11 +38,9 @@ class TestWebPageParser:
     def test_web_backend_registered(self) -> None:
         assert "web" in get_registered_parsers()[0]["name"] or any(p["name"] == "web" for p in get_registered_parsers())
 
-    def test_web_routes_html_before_docling(self) -> None:
-        router = build_default_router(names="web,liteparse,docling")
+    def test_web_backend_routes_html(self) -> None:
+        router = build_default_router(name="web")
         assert isinstance(router.route(Path("page.html")), WebPageParser)
-        # PDF still goes to liteparse.
-        assert isinstance(router.route(Path("paper.pdf")), LiteParseParser)
 
     def test_web_parser_clean_text_from_html(self, tmp_path: Path) -> None:
         """WebPageParser extracts clean text, not raw HTML tags."""
@@ -104,24 +101,31 @@ def test_parser_build_options_defaults() -> None:
     [
         ("docling", DoclingParser),
         ("liteparse", LiteParseParser),
+        ("web", WebPageParser),
     ],
 )
-def test_build_default_router_selects_primary(name: str, expected_cls: type[BaseParser]) -> None:
-    router = build_default_router(names=name)
-    # build_default_router registers the primary first, then the pandoc fallback.
+def test_build_default_router_registers_exactly_the_named_backend(name: str, expected_cls: type[BaseParser]) -> None:
+    """One backend, no chain: knox keeps no second level of hand-off."""
+    router = build_default_router(name=name)
+    assert len(router) == 1
     assert isinstance(router._parsers[0], expected_cls)
-    assert any(isinstance(p, PandocParser) for p in router._parsers)
 
 
-def test_build_default_router_pandoc_fallback_routes_txt() -> None:
-    router = build_default_router()
-    routed = router.route(Path("notes.txt"))
-    assert isinstance(routed, PandocParser)
+def test_build_default_router_rejects_a_chain() -> None:
+    """The comma-separated backend chain is gone; a chain name is just unknown."""
+    with pytest.raises(ValueError, match="Unknown parser backend"):
+        build_default_router(name="liteparse,docling")
+
+
+def test_build_default_router_missing_extra_is_loud() -> None:
+    """A configured backend that is not installed fails with the install hint."""
+    with pytest.raises(ValueError, match="is not installed"):
+        build_default_router(name="mineru")
 
 
 def test_build_default_router_options_forwarded(tmp_path: Path) -> None:
     opts = ParserBuildOptions(images_dir=tmp_path, image_mode="base64", images_scale=100.0)
-    router = build_default_router(opts, names="docling")
+    router = build_default_router(opts, name="docling")
     docling = router._parsers[0]
     assert isinstance(docling, DoclingParser)
     assert docling.images_dir == tmp_path
@@ -155,42 +159,19 @@ def test_figure_enrichment_metadata_matches_class_attr() -> None:
     assert by_name["pandoc"]["figure_enrichment"] is PandocParser.figure_enrichment
 
 
-def test_get_all_extensions_covers_known_suffixes() -> None:
-    extensions = get_all_extensions()
-    assert ".pdf" in extensions
-    assert ".docx" in extensions
-
-
-def test_normalize_backends_accepts_string_and_sequence() -> None:
-    assert _normalize_backends("liteparse,docling") == ["liteparse", "docling"]
-    assert _normalize_backends(" docling ,, liteparse ") == ["docling", "liteparse"]
-    assert _normalize_backends(["liteparse", "docling"]) == ["liteparse", "docling"]
-    # duplicates removed, order preserved
-    assert _normalize_backends("liteparse,liteparse,docling") == ["liteparse", "docling"]
-    # blanks/empty fall back to liteparse
-    assert _normalize_backends("") == ["liteparse"]
-    assert _normalize_backends(",,,") == ["liteparse"]
-
-
-def test_build_default_router_priority_order_routes_by_format() -> None:
-    """A priority list routes each format to the first backend that supports it."""
-    router = build_default_router(names="liteparse,docling")
-    # liteparse is listed first and supports PDF → it wins over docling.
-    assert isinstance(router.route(Path("paper.pdf")), LiteParseParser)
-    # liteparse has no HTML/TEX → docling (next in the chain) handles them.
-    assert isinstance(router.route(Path("page.html")), DoclingParser)
-    assert isinstance(router.route(Path("report.tex")), DoclingParser)
-    # legacy .doc is read via LibreOffice by liteparse (listed first) — pandoc cannot.
-    assert isinstance(router.route(Path("legacy.doc")), LiteParseParser)
-
-
-def test_build_default_router_always_appends_pandoc() -> None:
-    """Pandoc is auto-appended even when not listed, so legacy formats don't regress."""
-    router = build_default_router(names="liteparse")
-    # legacy .doc goes to liteparse (LibreOffice conversion); .odt to pandoc.
-    assert isinstance(router.route(Path("legacy.doc")), LiteParseParser)
-    assert isinstance(router.route(Path("legacy.odt")), PandocParser)
-    assert any(isinstance(p, PandocParser) for p in router._parsers)
+def test_get_all_extensions_follows_the_named_backend() -> None:
+    """Discovery is the named backend's suffix set, not the union of every
+    backend the registry knows — a vault should only ingest what its parser can
+    actually read.
+    """
+    parsecraft = get_all_extensions(["parsecraft"])
+    assert ".pdf" in parsecraft
+    assert ".docx" in parsecraft
+    # parsecraft reads source files as plain text through its native-text
+    # backend, so a vault configured for it can ingest code.
+    assert ".c" in parsecraft
+    # A backend with no text-family support contributes none of them.
+    assert ".c" not in get_all_extensions(["marker"])
 
 
 def test_scrub_document_replaces_lone_surrogates() -> None:

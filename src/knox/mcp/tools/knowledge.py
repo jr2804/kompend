@@ -28,7 +28,7 @@ from knox.core.pipeline.orchestrator import build_pipeline
 from knox.core.text.matching import SemanticMatcher
 from knox.core.utils.dicts import as_int
 from knox.logging import get_logger
-from knox.preprocessing.parsers import ParserBuildOptions, ParserRouter, get_backend
+from knox.preprocessing.parsers import build_default_router
 from knox.rag.zvec_store import make_provider
 
 logger = get_logger(__name__)
@@ -40,12 +40,10 @@ def parse_document(file: str) -> dict[str, Any]:
     if not doc_file.exists():
         return {"status": "error", "message": f"File not found: {file}"}
 
-    router = ParserRouter()
     try:
-        docling_factory = get_backend("docling")
-        router.register(docling_factory(ParserBuildOptions()))
-    except Exception as exc:
-        logger.warning("DoclingParser not available: %s", exc, exc_info=True)
+        router = build_default_router()
+    except ValueError as exc:
+        return {"status": "error", "message": str(exc)}
 
     try:
         doc = router.parse(doc_file)

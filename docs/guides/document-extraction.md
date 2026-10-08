@@ -125,45 +125,27 @@ accurate, which makes it the right default for most ingest workloads. It covers
 PDF, DOCX, DOC, PPTX, and XLSX out of the box.
 
 For the highest possible fidelity, install **Docling** (an optional extra) and
-put it ahead of `liteparse` in the `parser` priority list:
+Select the backend with a single name:
 
 ```toml
 [ingest]
-parser = "docling,liteparse,web"
+parser = "parsecraft"
 ```
 
-### Fallback between backends
+### One backend, no chain
 
-When the first backend that claims a file **fails**, knox tries the next
-backend in the configured order that also claims it, and logs a `WARNING`
-naming the file, the failed backend, the error, and the backend that
-succeeded. This is `parser_fallback` — parse-tier chain fallback *between
-configured backends*. It is distinct from the *text* fallback, which is pandoc
-filling in at the end of the chain for unclaimed plain-text files.
+There is no comma-separated list and no `parser_fallback`. parsecraft performs
+its own per-page routing across its registered sub-backends (native, docling,
+liteparse, pandoc, OCR), and produces one `ParsedDocument` per source however
+many internal passes fired. Degraded pages (parsecraft downgraded an OCR route
+to native text) surface as KNOX metadata (`degraded_pages`), so the choice stays
+visible after the parse.
 
-```toml
-[ingest]
-parser = "docling,liteparse,web"
-parser_fallback = true   # default; false = first match only, failure propagates
-```
-
-This is on by default and matters most for formats claimed by more than one
-backend: `.doc` is claimed by both `docling` and `liteparse`, so with `docling`
-first and its LibreOffice conversion failing, `liteparse` now produces the
-document instead of the file being skipped. The parse and chunk caches key on
-the fallback flag, so flipping it re-parses rather than reusing output produced
-under the other policy.
-
-#### Fallback inside parsecraft
-
-When `parsecraft` is the active backend for a file, the
-KNOX-level `parser_fallback` chain does **not** step inside parsecraft — a
-file routed to parsecraft stays inside parsecraft for that run. parsecraft
-runs its own per-page routing and fallback passes between its registered
-backends (native, OCR, LiteParse); the result is one `ParsedDocument` per
-source regardless of how many internal passes fired. Degraded pages
-(parsecraft downgraded an OCR route to native text) are surfaced as KNOX
-metadata (`degraded_pages`) so the choice is visible after the parse.
+A second knox-side level of ordering and hand-off would compete with that
+routing rather than complement it, so knox keeps none. An unknown backend name
+raises; a known backend whose optional dependency is missing raises with its
+install command — a vault whose configured parser is absent fails loudly
+instead of parsing nothing.
 
 ## Backend Comparison: Strengths and Weaknesses
 
@@ -329,13 +311,12 @@ surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
 
 ### What selecting parsecraft does
 
-Set `ingest.parser = "parsecraft"` (or `"parsecraft,<fallback>"`) to route
-matching files through parsecraft's full pipeline:
+Set `ingest.parser = "parsecraft"` to route every file it claims through
+parsecraft's full pipeline:
 
 ```toml
 [ingest]
-parser = "parsecraft"           # everything parsecraft claims routes to it
-parser_fallback = true          # KNOX-level fallback to the next backend if parsecraft itself fails
+parser = "parsecraft"   # the ingestion backend; no chain, no fallback list
 ```
 
 The adapter calls `pipeline.execute()` — analyze → `plan_route` → per-range
@@ -348,30 +329,26 @@ other backend's.
 ### Formats parsecraft claims
 
 parsecraft speaks MIME (`text/plain`, `application/pdf`, `image/jpeg`, …);
-KNOX discovers files by extension. The adapter consumes parsecraft's
-classifier (`media_type_for(path)`) for the MIME mapping and derives
-KNOX's ingestion set from `BackendRegistry.supported_formats()`. Selecting
-parsecraft broadens the set of extensions KNOX will treat as ingestible in
-that run to parsecraft's 31-suffix text family — `.txt`, `.text`, `.log`,
-`.rst`, `.ini`, `.cfg`, `.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`,
-`.sh`, `.tex`, plus the usual PDF/HTML/image set. KNOX's own text-extension
-table stays authoritative for plain-text formats, and `.knox/` is excluded
-from source discovery regardless of claimed formats — state artifacts like
-`.knox/rumdl.toml` are never ingested even when parsecraft claims `.toml`.
+KNOX discovers files by extension, and asks the configured backend which
+suffixes it handles (`get_all_extensions([config.parser])`). With parsecraft
+that is its 31-suffix table — `.txt`, `.text`, `.log`, `.rst`, `.ini`, `.cfg`,
+`.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.sh`, `.tex`, plus the
+usual PDF/HTML/image set — so a parsecraft vault can ingest source files. A
+PDF-only backend would contribute no text suffixes at all. `.knox/` is excluded
+from source discovery regardless of claimed formats: state artifacts like
+`.knox/rumdl.toml` are never ingested even though parsecraft claims `.toml`.
 
 ### Fallback interaction
 
-`ingest.parser_fallback` is the KNOX-level chain between *configured backends*.
-When parsecraft is the active backend for a file, that chain does **not**
-step inside parsecraft — a file routed to parsecraft stays inside parsecraft
-for that run. parsecraft runs its own per-page routing and fallback passes
-between its registered sub-backends (native text/markdown/html/pdf, OCR
-backends, LiteParse); the result is one `ParsedDocument` per source regardless
-of how many internal passes fired.
+There is no KNOX-level chain. One backend is configured, and parsecraft runs
+its own per-page routing and fallback passes between its registered
+sub-backends (native text/markdown/html/pdf, OCR backends, LiteParse); the
+result is one `ParsedDocument` per source regardless of how many internal
+passes fired.
 
 If parsecraft exhausts every pass on a page, the adapter raises
-`ParsecraftParseError` carrying the per-page cause — KNOX then falls through
-to the next KNOX-configured backend (when `parser_fallback = true`).
+`ParsecraftParseError` carrying the per-page cause, and the parse fails — there
+is no second backend behind it to fall through to.
 
 ### Diagnostics carried into KNOX metadata
 

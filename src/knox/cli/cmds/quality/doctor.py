@@ -26,7 +26,7 @@ from knox.llm.context_window import discover_context_window
 from knox.llm.models import build_model, is_known_provider, resolve_vlm_model
 from knox.llm.usage import UsageTracker, tokens_per_second
 from knox.logging import get_console, get_logger
-from knox.preprocessing.parsers import build_default_router
+from knox.preprocessing.parsers._registry import get_registered_parsers
 from knox.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
 from knox.types import JSON
 
@@ -178,11 +178,9 @@ def _check_output_dir(output_dir: Path | None) -> CheckResult:
 
 
 def _check_parsers() -> CheckResult:
-    """Check parser availability via the shared registry factory."""
+    """Check parser availability via the shared registry."""
     name = "parsers"
-
-    router = build_default_router()
-    return CheckResult(name, True, f"{len(router)} parser(s) registered")
+    return CheckResult(name, True, f"{len(get_registered_parsers())} parser(s) registered")
 
 
 def _check_context_window(

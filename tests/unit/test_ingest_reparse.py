@@ -133,16 +133,9 @@ def test_fingerprint_is_stable() -> None:
     assert _router_of("Alpha").fingerprint() == _router_of("Alpha").fingerprint()
 
 
-def test_fingerprint_changes_with_parser_chain() -> None:
+def test_fingerprint_changes_with_the_registered_parser() -> None:
     assert _router_of("Alpha").fingerprint() != _router_of("Beta").fingerprint()
-    assert _router_of("Alpha", "Beta").fingerprint() != _router_of("Beta", "Alpha").fingerprint()
-
-
-def test_fingerprint_changes_with_fallback() -> None:
-    a = _router_of("Alpha")
-    b = _router_of("Alpha")
-    b.set_text_fallback(type("OtherFallback", (_StubParser,), {})())
-    assert a.fingerprint() != b.fingerprint()
+    assert _router_of("Alpha").fingerprint() != _router_of("Alpha", "Beta").fingerprint()
 
 
 # ── Cache-currency checks ──────────────────────────────────────────────
@@ -319,7 +312,6 @@ def _router_of(*parser_names: str) -> ParserRouter:
     router = ParserRouter()
     for name in parser_names:
         router.register(type(name, (_StubParser,), {})())
-    router.set_text_fallback(_StubParser())
     return router
 
 

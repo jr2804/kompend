@@ -106,8 +106,7 @@ def parse_cmd(
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     router: ParserRouter = build_default_router(
         ParserBuildOptions.from_config(cfg, images_dir=vp.images_dir),
-        names=parser or "liteparse",
-        fallback=cfg.knox.ingest.parser_fallback,
+        name=parser or cfg.knox.ingest.parser,
     )
     for path in resolved:
         try:
@@ -202,7 +201,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
 
-    source_extensions = get_all_extensions()
+    source_extensions = get_all_extensions([cfg.knox.ingest.parser])
     source_files = [f for f in sources_dir.rglob("*") if f.suffix.lower() in source_extensions]
     if not source_files:
         get_err_console().print(f"No supported files found in {sources_dir}.")
@@ -365,8 +364,7 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     ingest_cfg = cfg.knox.ingest
     router: ParserRouter = build_default_router(
         ParserBuildOptions.from_config(cfg, images_dir=images_dir),
-        names=ingest_cfg.parser,
-        fallback=ingest_cfg.parser_fallback,
+        name=ingest_cfg.parser,
     )
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),

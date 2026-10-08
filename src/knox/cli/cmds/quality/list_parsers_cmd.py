@@ -8,7 +8,7 @@ import sys
 from knox.cli.app import app
 from knox.cli.args import JsonOutput
 from knox.logging import get_console
-from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
+from knox.preprocessing.parsers._registry import get_registered_parsers
 
 
 @app.command(name="list-parsers")
@@ -16,8 +16,6 @@ def list_parsers_cmd(
     json_output: JsonOutput = False,
 ) -> None:
     """List all registered parsers (built-in + external + HTTP)."""
-    build_default_router()
-
     parsers = get_registered_parsers()
 
     if json_output:

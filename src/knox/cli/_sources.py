@@ -20,7 +20,7 @@ from knox.cli._sources_io import (
 )
 from knox.core.verbosity import is_verbose
 from knox.logging import get_logger
-from knox.preprocessing.parsers._registry import get_all_extensions
+from knox.preprocessing.parsers._registry import DEFAULT_PARSER, get_all_extensions
 from knox.preprocessing.parsers.base import FileExtension
 
 __all__ = [
@@ -215,15 +215,15 @@ def _scan_dir(
 # ── Extension helpers ───────────────────────────────────────────────────
 
 
-def get_supported_extensions() -> set[str]:
-    """Return the set of supported file extensions.
+def get_supported_extensions(parser: str = DEFAULT_PARSER) -> set[str]:
+    """Return the set of file extensions this vault can ingest.
 
-    Merges the canonical FileExtension enum with any extensions
-    registered by external parsers.
+    Merges the canonical FileExtension enum with the suffixes the configured
+    ingestion backend declares.
     """
     extensions: set[str] = set(FileExtension)
     try:
-        extensions.update(get_all_extensions())
+        extensions.update(get_all_extensions([parser]))
     except Exception as exc:
         logger.debug("Could not load external parser extensions: %s", exc, exc_info=is_verbose())
     return extensions

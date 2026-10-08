@@ -30,7 +30,7 @@ from knox.lint.remediation import remediate, remediation_to_text
 from knox.lint.runner import report_to_text
 from knox.logging import get_logger
 from knox.output.renderer import format_output
-from knox.preprocessing.parsers._registry import build_default_router, get_registered_parsers
+from knox.preprocessing.parsers._registry import get_registered_parsers
 from knox.review import ReviewQueue
 
 logger = get_logger(__name__)
@@ -533,7 +533,6 @@ def list_parsers(
     json_output: bool = False,
 ) -> dict[str, Any]:
     """List all registered parsers (built-in + external + HTTP)."""
-    build_default_router()
     parsers = get_registered_parsers()
 
     if json_output:
