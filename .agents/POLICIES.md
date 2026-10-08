@@ -17,7 +17,7 @@ Correctness · Evidence · Safety · Minimal changes · Consistency · Performan
 - NEVER delete or move files without explicit instruction.
 - NEVER modify `.gitignore`, `pyproject.toml`, `ruff.toml`, or CI config, and add
   no new dependency, without explicit instruction.
-- NEVER create temp files in the project root — use a dedicated temp dir.
+- NEVER create temp files outside `tmp/` (gitignored) — never `_tmp_*.py` at the root.
 
 ## Change constraints
 
