@@ -103,7 +103,7 @@ pandoc = [
 # published release the adapter was written against; re-pinning is a reviewed
 # event (see .agents/plans/parsecraft-integration.md).
 parsecraft = [
-    "parsecraft==2026.10.1",
+    "parsecraft>=2026.10.1",
 ]
 
 #: Judge-tier routing via the System One wire. Requires a local ollama
@@ -113,7 +113,7 @@ parsecraft = [
 #: `[ingest] parsecraft_preference`; omitting both leaves the deterministic
 #: rule table in place.
 systemone = [
-    "parsecraft[systemone]==2026.10.1",
+    "parsecraft[systemone]>=2026.10.1",
 ]
 
 otel = [
