@@ -2,7 +2,8 @@
 
 Backends self-register at import time via ``register_backend``; importing the
 ``knox.preprocessing.parsers`` package (done by the imports below) triggers
-registration before any assertion runs.
+registration before any assertion runs. Exactly one backend is registered per
+router.
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from knox.core.models import ParsedDocument
 from knox.core.models.elements import DocumentElement
 from knox.core.models.enums import ElementType
 from knox.preprocessing.parsers._registry import (
-    PARSER_BACKENDS,
+    KNOWN_BACKENDS,
     ParserBuildOptions,
     build_default_router,
     get_all_extensions,
@@ -25,18 +26,16 @@ from knox.preprocessing.parsers._registry import (
     get_registered_parsers,
     register_backend,
 )
-from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, FileExtension, ParserRouter, scrub_document
-from knox.preprocessing.parsers.docling_parser import DoclingParser
-from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
-from knox.preprocessing.parsers.pandoc_parser import PandocParser
+from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, ParserRouter, scrub_document
+from knox.preprocessing.parsers.parsecraft_parser import ParsecraftParser
 from knox.preprocessing.parsers.web_parser import WebPageParser
 
 
 class TestWebPageParser:
-    """knox-4sq5: WebPageParser registered as 'web' backend, handles .html."""
+    """WebPageParser registered as the 'web' backend, handles .html."""
 
     def test_web_backend_registered(self) -> None:
-        assert "web" in get_registered_parsers()[0]["name"] or any(p["name"] == "web" for p in get_registered_parsers())
+        assert any(p["name"] == "web" for p in get_registered_parsers())
 
     def test_web_backend_routes_html(self) -> None:
         router = build_default_router(name="web")
@@ -55,32 +54,36 @@ class TestWebPageParser:
         assert isinstance(doc, ParsedDocument)
         assert doc.source_file == html_file
         all_text = " ".join(e.content for e in doc.elements if isinstance(e.content, str))
-        assert "Attention Mechanisms" in all_text or "attention" in all_text.lower()
-        assert "<html>" not in all_text
-        assert "<p>" not in all_text
+        assert "Attention Mechanisms" in all_text
+        assert "<h1>" not in all_text
 
-    def test_web_parser_can_parse_html_only(self, tmp_path: Path) -> None:
+    def test_web_parser_can_parse_html_only(self) -> None:
         parser = WebPageParser()
         assert parser.can_parse(Path("page.html"))
         assert parser.can_parse(Path("page.HTML"))
         assert not parser.can_parse(Path("paper.pdf"))
 
 
-def test_builtin_backends_registered() -> None:
-    assert {"docling", "liteparse", "pandoc"}.issubset(PARSER_BACKENDS)
+def test_known_backends_are_the_surviving_set() -> None:
+    """The registry ships no duplicate of a parsecraft capability.
+
+    docling, liteparse, pandoc and glm-ocr were removed once parsecraft
+    provided them. marker, mineru and web stay until their parsecraft beads
+    land (pc-u4g / pc-gv8 / pc-axb).
+    """
+    assert set(KNOWN_BACKENDS) == {"marker", "mineru", "parsecraft", "web"}
 
 
 @pytest.mark.parametrize(
-    ("name", "expected_cls"),
+    ("name", "expected_cls_name"),
     [
-        ("docling", DoclingParser),
-        ("liteparse", LiteParseParser),
-        ("pandoc", PandocParser),
+        ("parsecraft", "ParsecraftParser"),
+        ("web", "WebPageParser"),
     ],
 )
-def test_get_backend_factory_builds_expected_class(name: str, expected_cls: type[BaseParser]) -> None:
+def test_get_backend_factory_builds_expected_class(name: str, expected_cls_name: str) -> None:
     parser = get_backend(name)(ParserBuildOptions())
-    assert isinstance(parser, expected_cls)
+    assert type(parser).__name__ == expected_cls_name
 
 
 def test_get_backend_unknown_raises_value_error() -> None:
@@ -99,16 +102,15 @@ def test_parser_build_options_defaults() -> None:
 @pytest.mark.parametrize(
     ("name", "expected_cls"),
     [
-        ("docling", DoclingParser),
-        ("liteparse", LiteParseParser),
+        ("parsecraft", ParsecraftParser),
         ("web", WebPageParser),
     ],
 )
-def test_build_default_router_registers_exactly_the_named_backend(name: str, expected_cls: type[BaseParser]) -> None:
+def test_build_default_router_registers_exactly_the_named_backend(name: str, expected_cls: type) -> None:
     """One backend, no chain: knox keeps no second level of hand-off."""
     router = build_default_router(name=name)
     assert len(router) == 1
-    assert isinstance(router._parsers[0], expected_cls)
+    assert isinstance(router._parsers[0], expected_cls)  # noqa: SLF001 — parser identity is the contract
 
 
 def test_build_default_router_rejects_a_chain() -> None:
@@ -121,16 +123,6 @@ def test_build_default_router_missing_extra_is_loud() -> None:
     """A configured backend that is not installed fails with the install hint."""
     with pytest.raises(ValueError, match="is not installed"):
         build_default_router(name="mineru")
-
-
-def test_build_default_router_options_forwarded(tmp_path: Path) -> None:
-    opts = ParserBuildOptions(images_dir=tmp_path, image_mode="base64", images_scale=100.0)
-    router = build_default_router(opts, name="docling")
-    docling = router._parsers[0]
-    assert isinstance(docling, DoclingParser)
-    assert docling.images_dir == tmp_path
-    assert docling.image_mode == "base64"
-    assert docling.images_scale == 100.0
 
 
 def test_register_backend_populates_metadata() -> None:
@@ -154,9 +146,8 @@ def _dummy_cls() -> type[BaseParser]:
 
 def test_figure_enrichment_metadata_matches_class_attr() -> None:
     by_name = {entry["name"]: entry for entry in get_registered_parsers()}
-    assert by_name["docling"]["figure_enrichment"] is DoclingParser.figure_enrichment
-    assert by_name["liteparse"]["figure_enrichment"] is LiteParseParser.figure_enrichment
-    assert by_name["pandoc"]["figure_enrichment"] is PandocParser.figure_enrichment
+    assert by_name["parsecraft"]["figure_enrichment"] is ParsecraftParser.figure_enrichment
+    assert by_name["web"]["figure_enrichment"] is WebPageParser.figure_enrichment
 
 
 def test_get_all_extensions_follows_the_named_backend() -> None:
@@ -184,24 +175,6 @@ def test_scrub_document_replaces_lone_surrogates() -> None:
     assert doc.metadata == {"nested": {"v": "x\ufffd"}}
     # The whole document must now be strictly UTF-8 encodable.
     json.dumps(asdict(doc), ensure_ascii=False, default=str).encode("utf-8")
-
-
-def test_resolve_format_unknown_text_falls_back_to_markdown() -> None:
-    """PandocParser._READER_FOR is the SSOT for extension→pandoc-reader mapping.
-
-    FileExtension is the SSOT for *which* extensions exist (enum members);
-    each parser owns the metadata that's specific to it. Unknown text
-    extensions fall back to FileExtension.TXT → ``"markdown"`` at parse
-    time, never ``""`` (pypandoc would infer the reader from the file
-    extension and crash on extensions it cannot read, e.g. ``.c``, ``.ltx``).
-    """
-    readers = PandocParser._READER_FOR
-    assert readers[FileExtension.TXT] == "markdown"
-    assert readers[FileExtension.MD] == "markdown"
-    assert readers[FileExtension.TEX] == "latex"
-    assert readers[FileExtension.LTX] == "latex"
-    assert readers[FileExtension.DOCX] == "docx"
-    assert readers[FileExtension.ADOC] == "asciidoc"
 
 
 def test_router_parse_scrubs_parser_output(tmp_path: Path) -> None:

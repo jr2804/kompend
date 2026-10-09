@@ -35,44 +35,31 @@ from knox.chunking import HierarchicalChunker
 from knox.compilation.graph import GraphCompiler
 from knox.core.models import ParsedDocument, ResolvedChunk
 from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from knox.preprocessing.parsers import build_default_router
 from knox.preprocessing.parsers.base import BaseParser
-from knox.preprocessing.parsers.docling_parser import DoclingParser
-from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 
 #: Number of smallest PDFs to use as the corpus sample. Kept low so the
-#: suite stays under 30 seconds even with Docling as a fallback.
+#: suite stays under 30 seconds.
 _CORPUS_SAMPLE_SIZE = 3
 
 logger = logging.getLogger(__name__)
 
 
-def _liteparse_available() -> bool:
-    """LiteParse (Rust-core) is the fast default for tests."""
+def _parser_available() -> bool:
+    """The configured ingestion backend resolves and is installed."""
     try:
-        LiteParseParser(ocr_enabled=False)
-        return True
+        build_default_router()
     except Exception:
         return False
+    return True
 
 
-def _docling_available() -> bool:
-    """Docling is the slow fallback — only used when LiteParse is missing."""
-    try:
-        DoclingParser(extract_images=False)
-        return True
-    except Exception:
-        return False
-
-
-#: Pick the fastest available parser up-front so every test gets the same
-#: backend (no surprise fallback mid-run).
-_TEST_PARSER_CLS: type[BaseParser] | None = LiteParseParser if _liteparse_available() else (DoclingParser if _docling_available() else None)
-_PARSER_OK = _TEST_PARSER_CLS is not None
+_PARSER_OK = _parser_available()
 
 
 _skip_no_parser = pytest.mark.skipif(
     not _PARSER_OK,
-    reason="No PDF parser backend (LiteParseParser or DoclingParser) installed",
+    reason="No PDF parser backend installed",
 )
 
 
@@ -181,10 +168,8 @@ def parsed_docs_sample(source_pdfs_sample: list[Path]) -> dict[Path, ParsedDocum
 
 
 def _make_parser() -> BaseParser:
-    """Construct a parser instance. All kwargs work for both backends."""
-    if _TEST_PARSER_CLS is LiteParseParser:
-        return LiteParseParser(ocr_enabled=False)
-    return DoclingParser(extract_images=False)
+    """Construct the ingestion parser via its normal factory."""
+    return build_default_router().route(Path("sample.pdf"))
 
 
 @pytest.fixture(scope="session")

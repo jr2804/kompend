@@ -33,7 +33,6 @@ from knox.preprocessing.downloaders.url_resolver import (
     UrlResolverChain,
 )
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
-from knox.preprocessing.parsers.pandoc_parser import PandocParser
 from knox.preprocessing.parsers.web_parser import WebPageParser
 
 ARXIV_PAPER_ID = "2405.17364"
@@ -187,11 +186,10 @@ def test_arxiv_source_tex_parses_with_pandoc(tmp_path: Path) -> None:
     assert extracted is not None
     assert extracted.suffix.lower() == ".tex"
 
-    # Use pandoc-only router to test PandocParser specifically.
-    # (docling also handles .tex and wins when listed first)
-    router = build_default_router(options=ParserBuildOptions(), names="pandoc")
+    # Route through the configured backend; parsecraft drives pandoc for .tex.
+    router = build_default_router(name="parsecraft")
     parser = router.route(extracted)
-    assert isinstance(parser, PandocParser), f"Expected PandocParser for .tex with pandoc-only router, got {type(parser).__name__}"
+    assert parser is not None, "Expected a backend for .tex, got none"
 
     doc = parser.parse(extracted)
     assert isinstance(doc, ParsedDocument)

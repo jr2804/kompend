@@ -34,7 +34,7 @@ from knox.core.models import (
 from knox.core.models.structured import structured_to_text
 from knox.core.resolution.entity_registry import EntityRegistry
 from knox.core.resolution.xref_checker import CrossReferenceChecker
-from knox.preprocessing.parsers.docling_parser import DoclingParser
+from knox.preprocessing.parsers import build_default_router
 from knox.search.adaptive_retriever import AdaptiveRetriever
 from knox.search.budget import ContextBudgetManager, RetrievalMode
 from tests.fixtures.documents import make_test_doc
@@ -431,9 +431,11 @@ class TestWikiNodeHierarchy:
         if not source_pdfs:
             pytest.skip("No PDFs in tests/data/sources/")
         try:
-            parser = DoclingParser(extract_images=False)
+            parser = build_default_router().route(source_pdfs[0])
         except Exception:
-            pytest.skip("DoclingParser not available")
+            pytest.skip("No PDF parser backend installed")
+        if parser is None:
+            pytest.skip("The configured backend does not claim .pdf")
         doc = parser.parse(source_pdfs[0])
         chunker = HierarchicalChunker(max_tokens=512)
         tree = chunker.chunk(doc)

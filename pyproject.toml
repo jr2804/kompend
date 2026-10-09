@@ -66,7 +66,6 @@ dependencies = [
     "summarization-pydantic-ai>=0.1.10",
     "aenum>=3.1.17",
     "lazy-loader",
-    "liteparse>=2.4.0,<2.15",  # 2.13.x shipped no cp313+ wheels; 2.14 ships them
     "trafilatura>=2.0.0",
     "rapidfuzz>=3.14.6",
     "charset-normalizer>=3.5.1",
@@ -77,33 +76,12 @@ knox = "knox.cli.app:main"
 
 [project.optional-dependencies]
 
-docling = [
-    "docling-slim[format-pdf,format-office,cli,convert-core,extract-core,format-markdown,feat-ocr-rapidocr]>=2.97.0",
-    "docling-ibm-models>=3.13.3",
-    "pypdfium2>=5.10.1",
-    "opencv-python-headless>=4.13.0.92",
-    "onnxruntime>=1.26.0",
-    # OCR engine for scanned PDFs. Without one, docling's ``do_ocr`` silently
-    # raises "No OCR engine found" and scanned pages yield no text. rapidocr
-    # is the only OCR extra in docling-slim that needs no system Tesseract
-    # install (feat-ocr-rapidocr, selected above).
-    #
-    # Formula enrichment loads CodeFormulaV2 through transformers with a
-    # device_map, which hard-requires accelerate. Without it every PDF parse
-    # raises while pdf.formula_enrichment is on (it defaults on; code_enrichment
-    # defaults off and needs the same model).
-    "accelerate>=1.0.0",
-]
-
-pandoc = [
-    "pypandoc[tinytex]>=1.17",
-]
-
-# External document-intelligence pipeline (parsecraft adapter). Pinned to the
-# published release the adapter was written against; re-pinning is a reviewed
-# event (see .agents/plans/parsecraft-integration.md).
+# External document-intelligence pipeline (parsecraft adapter). The ingestion
+# path: it drives docling, liteparse, pandoc, its native backends and its OCR
+# backends internally, so those are never knox dependencies — they arrive
+# transitively through this extra.
 parsecraft = [
-    "parsecraft>=2026.10.1",
+    "parsecraft[liteparse,pdf-lite,docling,pandoc]>=2026.10.1",
 ]
 
 #: Judge-tier routing via the System One wire. Requires a local ollama
@@ -121,18 +99,10 @@ otel = [
     "opentelemetry-exporter-otlp>=1.28.0",
 ]
 
-# The original plan was to offer further advanced parser backends as optional dependencies,
-# but they conflict on transitive dependencies (pillow, transformers, etc.) and
-# cannot be locked. So for now, we just provide a single default parser
-# backend (liteparse) and let users install alternatives manually if needed.
-#
-# Implemented options are:
-# - marker-pdf
-# - glmocr
-# - mineru (conflict on pillow, marker needs <11, glmocr needs >=12).
-#
-# Manually if needed:
-#   uv pip install marker-pdf   # or glmocr, mineru
+# Backends not covered by parsecraft yet, installed manually (they conflict on
+# transitive deps such as pillow, so they cannot be locked as extras):
+#   uv pip install marker-pdf   # or mineru
+# Each is removed as its parsecraft equivalent ships.
 
 
 [dependency-groups]

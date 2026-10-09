@@ -6,9 +6,10 @@
 ## Purpose
 
 Pluggable ingestion backends. Each backend is a `BaseParser` subclass plus a
-factory that builds an instance from `ParserBuildOptions`. Backends self-register
-at import time via `register_backend` (same shape as the zvec/embedding provider factories);
-importing the `knox.preprocessing.parsers` package triggers registration.
+factory that builds an instance from `ParserBuildOptions`. Backends
+self-register at import time via `register_backend`; a backend's module is
+imported on demand (`_ensure_backend`), never at package-import time, so CLI
+`--help` stays free of the heavy optional dependencies.
 
 ## Architecture
 
@@ -17,7 +18,7 @@ base.py            BaseParser, FileExtension (extensions only), ParserRouter, DP
 markdown.py        markdown_to_elements() — THE Markdown→element converter used by every
                    markdown-producing backend; element_to_markdown()/markdown_to_element()
                    are the inverse pair used for rumdl normalisation
-_registry.py       ParserBuildOptions, PARSER_BACKENDS, register_backend/get_backend,
+_registry.py       ParserBuildOptions, PARSER_BACKENDS, KNOWN_BACKENDS, register_backend/get_backend,
                    build_default_router() — the single factory for a ready-to-use router
 parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routing is
                    parsecraft's, knox keeps none of its own
@@ -29,81 +30,56 @@ web_parser.py      WebPageParser (trafilatura HTML)
 `build_pipeline` builds a `ParserRouter` from `config.parser` (`ingest.parser`
 config key; `--parser` CLI flag on `ingest`/`parse`). Exactly **one** backend is
 registered — `DEFAULT_PARSER`, parsecraft, unless the operator names another.
-parsecraft routes each page across its own sub-backends, so knox keeps no
-chain, no ordering and no hand-off between backends; a second level here would
-compete with parsecraft's routing rather than complement it.
+parsecraft routes each page across its own sub-backends, so knox keeps no chain,
+no ordering and no hand-off between backends.
 
-`build_default_router` raises for an unknown name, and for a known backend
-whose optional dependency is missing (naming the install command). A vault
-whose configured parser is absent must fail loudly instead of starting with an
-empty router.
+`build_default_router` raises for an unknown name, and for a known backend whose
+optional dependency is missing (naming the install command). A vault whose
+configured parser is absent must fail loudly instead of starting with an empty
+router.
 
 `get_all_extensions(names)` takes the backend names to union suffixes for.
 Discovery passes `[config.parser]`, so a vault ingests exactly what its backend
 can read — parsecraft's native-text backend reads `.c/.h/.py/…`, a PDF-only
 backend does not.
 
-`ParserRouter.fingerprint()` returns a hash of the registered backend class
-names plus any per-backend `cache_identity()` — the identity of the parser
-*with its routing inputs*. The parse cache and chunk cache key on it, so
-switching `ingest.parser` or a backend's own routing configuration
-(`ingest.parsecraft_judge` / `_model` / `_preference`) re-parses and re-chunks
-instead of silently reusing output from the previous setup.
-
-A backend that carries routing inputs contributes them by defining
-`cache_identity()`. The router looks the method up structurally (the
-parsecraft adapter deliberately is not a `BaseParser`), and a backend without
-the hook contributes nothing — an empty identity keeps existing cache keys
-byte-identical, so adding the hook never invalidates a cache by itself.
-
-The canonical file-extension enum (`FileExtension`, in `base.py`) is the
-single source of truth for *which extensions exist*. Each parser declares its
-own `supported_extensions` set and owns any parser-specific metadata — e.g.
-`PandocParser._READER_FOR` maps extensions to pandoc reader names without
-coupling the enum to pandoc terminology.
+`ParserRouter.fingerprint()` hashes the registered backend class names plus any
+per-backend `cache_identity()` — the identity of the parser *with its routing
+inputs*. The parse and chunk caches key on it, so switching `ingest.parser` or a
+backend's own routing configuration (`ingest.parsecraft_judge` / `_model` /
+`_preference`) re-parses instead of silently reusing the previous setup. A
+backend that carries routing inputs defines `cache_identity()`; the router looks
+it up structurally (the parsecraft adapter deliberately is not a `BaseParser`),
+and an absent hook contributes an empty identity, so adding one never invalidates
+a cache by itself.
 
 ## Rules
 
-### Pandoc backend — lazy binary, on-demand download
+### One backend, ever
 
-`PandocParser` depends on `pypandoc` (NOT the `pandoc` PyPI package). The
-legacy `pandoc` package launched the pandoc binary at *import time*
-(`pandoc.configure(auto=True)` in `pandoc.types`), which crashed CLI startup
-on misconfigured systems (e.g. a mise shim that isn't a valid Win32 exe →
-`WinError 193`) and added startup latency even when pandoc wasn't used.
-
-`pypandoc` defers binary resolution to the first conversion call and never
-touches the binary at import. `parse()` calls `_ensure_pandoc_available()`
-once per process: a fast no-op when pandoc is on PATH, or an on-demand
-download (`pypandoc.ensure_pandoc_installed()`) when it's missing. The JSON
-AST (`pypandoc.convert_file(path, 'json')`) replaces the legacy typed-AST —
-blocks are classified by their `"t"` tag string instead of `isinstance`.
-
-Input reader resolution never returns `""`: `FileExtension.pandoc_format`
-maps each known extension to an explicit pandoc reader
-(`_PANDOC_READERS` in `base.py`), and `_resolve_format` falls back to
-`"markdown"` for unknown text files (source code, arbitrary suffixes) so any
-non-binary file is parsed like `.txt`. Returning `""` made pypandoc infer
-the reader from the file extension and crash on extensions it cannot read
-(`.c`, `.log`, `.yaml`, `.ltx`, …).
+A second knox-side backend competes with parsecraft's own per-page routing
+rather than complementing it. Add capabilities to parsecraft, not to knox. The
+knox-side backends that duplicated it (`docling`, `liteparse`, `pandoc`,
+`glm-ocr`) were deleted; `marker`, `mineru` and `web` are placeholders until
+their parsecraft equivalents land (beads pc-u4g / pc-gv8 / pc-axb), and each is
+removed at that point. Extraction-pass defaults now live in parsecraft.
 
 ### Registration — cycle avoidance
 
-`_registry.py` imports **no parser class** (that would cycle). Each parser
-module imports `register_backend, ParserBuildOptions` from `_registry` and calls
-`register_backend(...)` at module level. Importing `parsers/__init__.py` (which
-imports every parser module) fires all registrations before any
-`build_default_router` call. Re-export `build_default_router` only after the
-parser imports so backends are registered first.
+`_registry.py` imports **no parser class** (that would cycle). Each parser module
+imports `register_backend, ParserBuildOptions` from `_registry` and calls
+`register_backend(...)` at module level. `_ensure_backend` imports the module on
+demand, so a backend whose optional dependency is missing simply stays
+unregistered — and selecting it then raises with its install hint.
 
 ### One Markdown converter — no per-backend copies
 
-Any backend that produces Markdown (liteparse, marker, mineru, glmocr, web)
-MUST route it through `markdown.py:markdown_to_elements()`. Do not add a local
+Any backend that produces Markdown MUST route it through
+`markdown.py:markdown_to_elements()`. Do not add a local
 `_markdown_to_elements` / `_parse_table` / `_build_image_element` — those were
-duplicated across four modules and drifted: every copy recognised only
-headings, images, tables and paragraphs, so `$$…$$` equations, fenced code and
-list items were silently folded into `TEXT`.
+duplicated across four modules and drifted: every copy recognised only headings,
+images, tables and paragraphs, so `$$…$$` equations, fenced code and list items
+were silently folded into `TEXT`.
 
 Backend-specific behaviour belongs in a single `resolve_image` callback passed
 via `MarkdownContext` (ref → bytes). That is the *only* part of the walk that
@@ -112,60 +88,35 @@ legitimately differs between backends.
 ### Parse-time markdown normalisation (rumdl)
 
 After parsing, `knox.core.text.rumdl.normalize_element_markdown()` rewrites
-markdown element contents through **one batched `rumdl` call per document**,
-so cached content is canonical and backend formatting differences are levelled
-at the part level. Called from the parse tier, `ingest_documents`, and text
-attachments. Content-only: page/reading-order/metadata are preserved; tables
-and images are skipped. Best-effort — failure keeps the original content.
-
-### Full capability by default
-
-A backend's `parse()` must enable that backend's full extraction capability by
-default (figures, tables, formulas, code). Leaving a capability off because it
-costs time is a silent data-loss bug — the user cannot tell an empty result
-from a document that has no such content. Docling's `PdfPipelineOptions` is
-the cautionary example: passing only picture options let docling's own
-`do_formula_enrichment=False` / `do_code_enrichment=False` defaults win, so
-every equation was dropped. Expose a `[compile.pdf]` knob to turn a pass off
-and default it on.
-
-The one exception is a pass that only *re-derives* content the format already
-carries. Docling's `do_code_enrichment` runs CodeFormulaV2 over every
-`CodeItem` to re-OCR it; a born-digital PDF's code is already correct in its
-text layer, so the pass is pure cost (~140 s per code block on CPU — measured
-9 blocks adding ~1250 s to a 16-page range, and >25 min for one code-heavy
-manual). `code_enrichment` therefore defaults `False`. Tables
-(`table_structure`) and equations (`formula_enrichment`) have no equivalent
-native representation and stay on. OCR follows the same rule through
-`ocr = "auto"`: it runs only when the PDF has no text layer.
+markdown element contents through **one batched `rumdl` call per document**, so
+cached content is canonical and backend formatting differences are levelled at
+the part level. Called from the parse tier, `ingest_documents`, and text
+attachments. Content-only: page/reading-order/metadata are preserved; tables and
+images are skipped. Best-effort — failure keeps the original content.
 
 ### Adding a backend
 
-1. Create a module `preprocessing/parsers/<name>_parser.py` with a
-   `BaseParser` subclass. Set `supported_extensions` (a set of `FileExtension`)
-   and `figure_enrichment` (capability flag, see below).
-2. Append a module-level `_factory(options: ParserBuildOptions) -> <Parser>`
-   that maps `ParserBuildOptions` → constructor kwargs, then
-   `register_backend("<name>", _factory, parser_cls=<Parser>)`.
-3. Import the class in `parsers/__init__.py` and add it to `__all__` (this
-   import is what triggers registration).
-4. Declare the dependency as an **optional** extra or a manual install. No
+Only when parsecraft cannot host the capability.
+
+1. Create `preprocessing/parsers/<name>_parser.py` with a `BaseParser`
+   subclass. Set `supported_extensions` (a set of `FileExtension`) and
+   `figure_enrichment` (capability flag, see below).
+2. Add a module-level `_factory(options: ParserBuildOptions) -> <Parser>`, call
+   `register_backend("<name>", _factory, parser_cls=<Parser>)`, and add the name
+   to `KNOWN_BACKENDS` / `_BACKEND_MODULES` in `_registry.py`.
+3. Declare the dependency as an **optional** extra or a manual install. No
    parser backend may be a main dependency — parsecraft is the ingestion path,
-   and the backends it drives arrive transitively through it. A backend whose
-   module import fails stays unregistered (`_ensure_backend`), and selecting it
-   then raises with its install hint.
-5. Add tests to `tests/unit/test_parser_registry.py`.
+   and the backends it drives arrive transitively through it.
+4. Add tests to `tests/unit/test_parser_registry.py`.
 
 ### `figure_enrichment` is informational, NOT a hard VLM skip
 
 `BaseParser.figure_enrichment: bool` advertises whether a backend emits figure
-descriptions. It is shown in `knox list-parsers` and metadata only.
-`VLMEnricher` (Tier 2) **always** runs when `compile.llm.vlm_model` is set and
-does **per-figure** bypass instead: a figure carrying
-`chunk.metadata["description"]` (set by an enriching backend) is attached as an
-`image_description` entity and skipped; figures the backend missed are still
-VLM-captioned. Backends that do not enrich (Docling, LiteParse, Pandoc) leave
-`figure_enrichment=False`; VLM captions all their figures.
+descriptions. It is shown in `knox list-parsers` and metadata only. `VLMEnricher`
+(Tier 2) **always** runs when `compile.llm.vlm_model` is set and does
+**per-figure** bypass instead: a figure carrying `chunk.metadata["description"]`
+(set by an enriching backend) is attached as an `image_description` entity and
+skipped; figures the backend missed are still VLM-captioned.
 
 ### Parser output contract
 
@@ -175,29 +126,7 @@ Image elements set `metadata["image_file"]` (file mode) or
 description to `metadata["description"]`, which flows via `extractors.py` →
 `StructuredFigure.description` and via `hierarchical.py` → `chunk.metadata`.
 
-### Full-capability default
-
-Parsers MUST request *every* extraction pass the backend exposes by default:
-turning them on is the contract, turning them off needs a config key.
-Disabling silently drops content from the wiki and the user has no signal.
-
-- **LiteParseParser**: `extract_images=True` is set explicitly; `image_mode`
-  controls embedding. Figure refs are normalized via `_ref_to_id`, which
-  strips both the new (`img_`) and legacy (`image_`) liteparse prefixes; a
-  missing prefix slipped past and dropped every figure (bug #1410).
-- **DoclingParser**: `PdfPipelineOptions` builds from `[compile.pdf]`
-  (`PdfConfig`): `do_table_structure` and `do_formula_enrichment` (default
-  `True`), `do_code_enrichment` (default `False` — see "Full capability by
-  default"), `do_ocr` resolved by a text-layer probe (`PdfOcrMode.AUTO`),
-  `table_mode` (TableFormer `accurate`/`fast`), and
-  `accelerator_options.num_threads` (`0` = all usable cores; Docling otherwise
-  hard-defaults to 4 regardless of host). The `image_mode="none"` branch still
-  passes enrichment so equations survive even when the user opts out of picture
-  extraction.
-- Formula/code enrichment hard-requires `accelerate`; it is a regular `docling`
-  extra in `pyproject.toml`.
-
 ## Verification
 
-- `uv run pytest tests/unit/test_parser_registry.py tests/unit/test_parser_capabilities.py tests/unit/test_pdf_chunking.py -x`
+- `uv run pytest tests/unit/test_parser_registry.py tests/unit/test_parser_options_surfaces.py tests/unit/test_parsecraft_parser.py -x`
 - `uv run python -c "from knox.preprocessing.parsers._registry import PARSER_BACKENDS; print(sorted(PARSER_BACKENDS))"` — registration fires without error

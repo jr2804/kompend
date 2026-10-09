@@ -16,7 +16,6 @@ from knox.core.pipeline.config import Compiler, ImageMode, PipelineConfig
 from knox.core.pipeline.orchestrator import build_pipeline
 from knox.core.pipeline.stages._resolve import resolve_chunks
 from knox.llm.context_window import ContextSource, ContextWindow
-from knox.preprocessing.parsers.liteparse_parser import LiteParseParser
 from knox.resolution.base import BaseResolver
 from knox.resolution.chain import ResolverChain
 
@@ -45,14 +44,16 @@ def test_cli_overrides_include_parser() -> None:
 def test_build_pipeline_uses_configured_parser(tmp_path: Path) -> None:
     """build_pipeline wires the backend named by ``config.parser`` into the router."""
     config = _make_config(tmp_path, vlm_model="")
-    config.parser = "liteparse"
     with patch(
         "knox.core.pipeline.stages._factory.discover_context_window",
         return_value=ContextWindow(max_input=128000, max_output=32768, source=ContextSource.FALLBACK),
     ):
         pipeline = build_pipeline(config)
     assert pipeline.router is not None
-    assert isinstance(pipeline.router.route(Path("a.pdf")), LiteParseParser)
+    # The default backend is parsecraft, which claims PDFs through its own
+    # native/docling/liteparse sub-backends.
+    assert pipeline.router.route(Path("a.pdf")) is not None
+    assert type(pipeline.router.route(Path("a.pdf"))).__name__ == "ParsecraftParser"
 
 
 def test_build_pipeline_unknown_parser_raises(tmp_path: Path) -> None:
