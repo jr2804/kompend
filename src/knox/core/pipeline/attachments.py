@@ -100,9 +100,11 @@ def ingest_attachment(
             return None
         return _caption_image(att_file, att, vlm_captioner)
 
-    # Non-image attachments: any non-binary file is text. The parser router's
-    # binaryornot text fallback (pandoc) handles arbitrary text extensions —
-    # .c/.h/.cpp, source code, unknown suffixes — like .txt.
+    # Non-image attachments: any non-binary file is text. The configured backend
+    # is what decides which text extensions it claims — parsecraft's native-text
+    # backend covers the whole text family (.c/.h/.cpp, source code, unknown
+    # suffixes). A non-binary attachment whose extension the backend does not
+    # claim raises in the router and is skipped by the handler below.
     if is_binary(str(att_file)):
         logger.warning("Unsupported attachment type '%s', skipping: %s", ext, att.filename)
         return None
