@@ -49,8 +49,8 @@ class ChunkTree:
 
 ## StructuredData Types
 
-DoclingParser already produces structured data (table grids as `list[list[str]]`,
-LaTeX for formulas, image captions). The extractors in Phase 2 are
+The parsecraft backend already produces structured data (table grids as
+`list[list[str]]`, LaTeX for formulas, image captions). The extractors in Phase 2 are
 **representation converters** — they transform already-parsed content from raw
 text/grids into typed records, preserving structure that was previously
 destroyed by stringification during chunking.

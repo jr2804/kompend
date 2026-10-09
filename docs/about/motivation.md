@@ -51,7 +51,8 @@ compilation is built on garbage extraction, no LLM — local or frontier —
 can fix it.
 
 That is why KNOX uses structure-preserving parsing
-([Docling](https://github.com/docling-project/docling)) as its foundation:
+([parsecraft](https://pypi.org/project/parsecraft/), which routes each page
+across docling, LiteParse, pandoc and native backends) as its foundation:
 documents are parsed into a rich, typed intermediate representation that
 keeps headings, tables, figures, equations, and code blocks intact before
 anything is chunked, resolved, or compiled. Chunking never splits atomic

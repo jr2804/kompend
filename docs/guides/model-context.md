@@ -265,7 +265,7 @@ default_model = "ollama/llama3.1"
 [compile.budget]
 # Smaller chunks for finer retrieval granularity.
 chunk_size_min = 2048
-chunk_size_max = 26214      # 32K context × 80% reserve
+chunk_size_max = 24576      # 32K context − 8192 reserve_tokens
 # Lower concept-page generation to reduce LLM calls.
 max_concept_pages = 20
 # Tighter output budgets — small models work better with focused prompts.
@@ -281,7 +281,7 @@ cost-sensitive projects, rapid prototyping.
 ```toml
 [compile.llm]
 default_model = "openai/gpt-4o"
-# litellm auto-detects 128K context.
+# models.dev auto-detects 128K context.
 fallback_chain = ["anthropic/claude-3.5-sonnet"]
 
 [compile.budget]
@@ -298,7 +298,7 @@ quality-to-cost ratio.
 ```toml
 [compile.llm]
 default_model = "gemini/gemini-1.5-pro"
-# litellm reports 1M; KNOX clamps chunks to chunk_size_max=131072.
+# the catalog reports 1M; KNOX clamps chunks to chunk_size_max=131072.
 fallback_chain = ["anthropic/claude-3.5-sonnet", "openai/gpt-4o"]
 
 [compile.budget]
@@ -381,7 +381,7 @@ The primary model is tried first. If it fails with transient errors
 
 | Concern | KNOX handles it? | How |
 |---------|------------------|-----|
-| Input always fits context | Yes | Auto-detect + clamp + 20% reserve |
+| Input always fits context | Yes | Auto-detect + clamp + 8% safety margin (min 512 tokens) |
 | Chunk boundaries are natural | Yes | Paragraph → line → sentence → token rules |
 | Atomic elements preserved | Yes | Tables/images/formulas/code never split |
 | Output quality | **No — model-dependent** | Choose models by tier importance |

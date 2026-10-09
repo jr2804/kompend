@@ -46,7 +46,7 @@ For sparse or ambiguous queries, generates a hypothetical ideal answer passage v
 Always active. Combines four retrieval methods via RRF:
 
 - **FTS** — Full-text search over compiled wiki pages (SQLite FTS5)
-- **Vector** — Semantic search via zvec (sentence-transformers or LiteLLM embeddings)
+- **Vector** — Semantic search via zvec (pydantic-ai embedders: `<provider>:<model>`, e.g. `ollama:granite-embedding:278m`)
 - **Token-overlap** — Simple token intersection for fallback
 - **Raw sources** — BM25 search over original source files
 

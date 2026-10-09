@@ -14,7 +14,7 @@ flowchart TD
     classDef storage fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
 
     SRC[Raw Sources<br/>PDF / DOCX / PPTX / EPUB / MD / TXT / URLs]
-    T1[Tier 1<br/>Pre-Processing<br/>Docling / Pandoc / Web Crawler]
+    T1[Tier 1<br/>Pre-Processing<br/>parsecraft / web / downloaders]
     T2[Tier 2<br/>Chunking<br/>Hierarchical ChunkTree]
     T3[Tier 3<br/>Resolution<br/>EntityRegistry + VLMEnricher]
     T4[Tier 4<br/>Compilation<br/>Graph / TwoPhase / WiCER]
@@ -181,10 +181,10 @@ Flattening a 50-row comparison table to markdown destroys queryability. KNOX sto
 
 ### 3. Model-Aware
 
-litellm provides provider abstraction, but KNOX goes further:
+Model strings (`provider/model`) resolve through pydantic-ai, and KNOX goes further:
 
 - Auto-detect context window from model metadata
-- Reserve budget for system prompts (20%)
+- Hold back a safety margin for system prompts (8% of the window, minimum 512 tokens)
 - Cheap local model for pre-processing (chunking heuristics)
 - Expensive/remote model only for WiCER compilation
 - Fallback chain: local → remote → error
@@ -263,7 +263,7 @@ Optional extras:
 
 ```text
 source.pdf
-    → Tier 1: DoclingParser.parse() → ParsedDocument (structured JSON)
+    → Tier 1: ParsecraftParser.parse() → ParsedDocument (structured JSON)
     → Tier 2: HierarchicalChunker.chunk() → ChunkTree (hierarchical)
     → Tier 3: EntityRegistry.scan_tree() + VLMEnricher.enrich()
     → Tier 4: TwoPhaseCompiler.compile(resolved, trees=all_trees) → compiled_wiki.json
@@ -276,7 +276,6 @@ source.pdf
 - WiCER paper (arXiv:2605.07068v1): <https://arxiv.org/pdf/2605.07068v1>
 - Docling: <https://github.com/docling-project/docling>
 - Chonkie: <https://github.com/feyninc/chonkie>
-- litellm: <https://github.com/BerriAI/litellm>
 
 ## See also
 

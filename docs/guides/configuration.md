@@ -26,7 +26,7 @@ All environment variables use the `KNOX_` prefix and map to dotted config keys:
 | `KNOX_SOURCES_DIR` | `paths.sources_dir` |
 | `KNOX_OUTPUT_DIR` | `paths.output_dir` |
 | `KNOX_NOTES_FILE` | `notes.file` |
-| `KNOX_LLM_MODEL` | `compile.llm.default_model` |
+| `KNOX_LLM_DEFAULT_MODEL` | `compile.llm.default_model` |
 | `KNOX_VLM_MODEL` | `compile.llm.vlm_model` |
 | `KNOX_SEARCH_EXPANSION_ENABLED` | `search.expansion.enabled` |
 | `KNOX_SEARCH_EXPANSION_VARIANTS` | `search.expansion.variants` |
@@ -163,7 +163,7 @@ The main configuration sections:
 | `[compile]` | Compile settings: format, chunk size, image mode, workers |
 | `[compile.budget]` | Token budget settings (see [Model Context Adaptation](model-context.md) for full reference) |
 | `[compile.llm]` | LLM model, provider, fallback chain, role models |
-| `[compile.embedding]` | Embedding model for vector index (`litellm:` prefix or sentence-transformers name; `null` disables) |
+| `[compile.embedding]` | Embedding model for the vector index (`<provider>:<model>`, e.g. `ollama:granite-embedding:278m`; empty disables) |
 | `[compile.memory]` | Memory lifecycle (confidence decay, tiers) |
 | `[providers.<id>]` | User-defined OpenAI-compatible endpoints (self-hosted llama.cpp, vLLM, TGI). See [LLM Configuration](llm-config.md#user-defined-providers) |
 | `[export]` | `knox sources export` placement of extracted data (`annotations` / `summary`: `off` \| `inline` \| `asset`) |

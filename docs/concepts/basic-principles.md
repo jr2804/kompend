@@ -186,10 +186,10 @@ See [`architecture.md`](../architecture/index.md#2-structure-preserving) for det
 
 ### 3. Model-Aware
 
-litellm provides provider abstraction, but KNOX goes further:
+Model strings (`provider/model`) resolve through pydantic-ai, and KNOX goes further:
 
 - Auto-detect context window from model metadata
-- Reserve budget for system prompts (20%)
+- Hold back a safety margin for system prompts (8% of the window, minimum 512 tokens)
 - Cheap local model for pre-processing
 - Expensive/remote model only for WiCER compilation
 - Fallback chain: local → remote → error

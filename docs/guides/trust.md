@@ -117,8 +117,9 @@ substring fallback is conservative — it marks many claims as
 unsupported.
 
 **Q: Can I use a different LLM for verification?**
-A: Yes — set `KNOX_LLM_MODEL` in the environment. The verifier uses
-`litellm.completion` with whatever model you configure.
+A: Yes — set `KNOX_LLM_DEFAULT_MODEL`, or give the `verify` role its own model
+in `[compile.llm.role_models]`. The verifier runs through KNOX's configured
+pydantic-ai agent like every other LLM step.
 
 **Q: What happens to private pages in the vector index?**
 A: Private pages are indexed but tagged with `private: true` in

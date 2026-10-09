@@ -47,10 +47,10 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 
 ### KNOX Strategy
 
-- **Primary:** Docling (MIT, 60.7k stars, integrated with KNOX as Tier 1 parser)
-- **Alternative:** opendataloader-pdf (best benchmark, hybrid AI) — can be swapped via `BaseParser` interface
+- **Primary:** parsecraft — routes each page across its own sub-backends (native, LiteParse, docling, pandoc, OCR); see [Document Extraction](../guides/document-extraction.md)
+- **Alternative:** opendataloader-pdf (best standalone benchmark, hybrid AI) — rejected for KNOX on Java and sidecar-server grounds; see [Document Extraction](../guides/document-extraction.md#investigated-and-rejected-opendataloader-pdfhybrid)
 - **Legacy .doc:** Oxide Office (<https://office.oxide.fyi/>)
-- **Images:** GLM-OCR for local VLM, Mistral OCR for best quality (paid)
+- **Images/OCR:** parsecraft's `ocr-*` extras locally, Mistral OCR (paid) for best quality
 
 ## Chunking Libraries
 
@@ -93,7 +93,7 @@ No custom GUI. Use **open-webui/open-webui** as the query/work interface. KNOX e
 | **llmwiki serve** (atomicstrata) | `wiki_compile`, `get_context_pack`, `wiki_query` | Competitor + reference |
 | **Tencent/WeKnora** | Enterprise RAG + reasoning + wiki | Competitor + reference |
 | **KnowledgeBaseMCP** | 9 tools, PDF/DOCX/PPTX/XLSX | Alternative parser integration point |
-| **Docling MCP** (IBM) | Document → markdown via MCP | Primary parser's native MCP |
+| **Docling MCP** (IBM) | Document → markdown via MCP | Sub-backend's native MCP |
 | **MinerU-Document-Explorer** | 15 tools, 3 groups | Alternative parser + tools |
 | **PageIndex MCP** (VectifyAI) | Vectorless RAG via MCP | Sidecar integration point |
 

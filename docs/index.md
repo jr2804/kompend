@@ -43,7 +43,7 @@ knox query "what is the main result?"
 
 ### Key Features
 
-- **Parser-agnostic** — 14 formats via Docling + 4 legacy/text formats via Pandoc + binaryornot text fallback. [See full breakdown](guides/document-extraction.md)
+- **Parser-agnostic** — one configured backend per vault; parsecraft routes each page across its own sub-backends (native, LiteParse, docling, pandoc, OCR) and claims 31 suffixes. [See full breakdown](guides/document-extraction.md)
 - **Hybrid chunking** — Atomic elements + recursive token-aware splitting
 - **VLM enrichment** — Image/figure captioning via vision-language models (`--vlm-model`)
 - **Typed knowledge graph** — Entity relations with confidence (`uses`, `depends_on`, `contradicts`, …)

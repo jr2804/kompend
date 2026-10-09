@@ -24,7 +24,7 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 ### Decision: Python backend with uv
 
 **Date:** Jun 5, 2026  
-**Context:** Need fast iteration, rich ML/NLP ecosystem, easy agent integration. Go (sage-wiki) is fast but lacks Docling/pandas/litellm. Rust is too slow for prototyping.  
+**Context:** Need fast iteration, rich ML/NLP ecosystem, easy agent integration. Go (sage-wiki) is fast but lacks the Python ML/NLP ecosystem (docling, pydantic-ai). Rust is too slow for prototyping.  
 **Decision:** Python 3.12+, uv for packaging, mise for task running.
 **Consequences:** Cannot produce a single static binary. Distribution via PyPI + `uv pip install`.
 
@@ -67,19 +67,19 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 
 ## Parsing
 
-### Decision: Docling as primary PDF parser
+### Decision: parsecraft as the ingestion backend
 
-**Date:** Jun 5, 2026  
-**Context:** Benchmark winner is opendataloader-pdf (0.907), but Docling (0.882) has better ecosystem (MCP server, IBM backing, Python-native).  
-**Decision:** Docling as primary. opendataloader-pdf as alternative via `BaseParser` swap.
-**Consequences:** Slightly lower benchmark scores. But easier integration, broader format support, active development.
+**Date:** Oct 9, 2026  
+**Context:** Benchmark winner is opendataloader-pdf (0.907), but a single engine per corpus cannot serve a born-digital page and a scanned, table-heavy page in the same document — and knox-side adapters for docling, liteparse and pandoc duplicated what parsecraft already does.  
+**Decision:** `[ingest] parser` names one backend, default `parsecraft`, which routes each page across its own sub-backends (native, LiteParse, docling, pandoc, OCR). `knox[parsecraft]` carries the sub-backends; `knox[systemone]` adds the judge tier.
+**Consequences:** Routing, fallback and OCR escalation are parsecraft's to decide; the knox-side docling/liteparse/pandoc/glm-ocr adapters are deleted. One external dependency pinned to a parsecraft release.
 
 ### Decision: Format-native parsing, not PDF-first
 
 **Date:** Jun 6, 2026  
 **Context:** "Convert anything to PDF first" simplifies the pipeline but loses native structure from DOCX/XLSX.  
-**Decision:** Route by format: PDF→Docling, DOCX→Docling/pandoc, XLSX→pandas, PPTX→pandoc. Keep native structure where possible.
-**Consequences:** More parser modules to maintain. But tables from XLSX retain formulas; DOCX styles map to headings.
+**Decision:** Route by page type rather than flattening to PDF: parsecraft sends each page to a sub-backend that preserves its native structure (PDF text layer or OCR, DOCX styles → headings, XLSX → tables).
+**Consequences:** Structure survives from the source format. The split happens per page inside parsecraft, so knox carries no per-format parser modules.
 
 ### Decision: Image extraction mode configurable
 
@@ -97,12 +97,12 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 **Decision:** Tables, figures, equations, code blocks are atomic — never split. Only text sections get chunked.
 **Consequences:** Some chunks may exceed token budget if a table is very large. Use `TableChunker` for row-wise splitting in that case.
 
-### Decision: Model token limit auto-detection via litellm
+### Decision: Model token limit auto-detection
 
 **Date:** Jun 6, 2026  
 **Context:** Different models have different context windows (4K, 8K, 32K, 128K, 1M). Manual configuration is error-prone.  
-**Decision:** Use litellm's model metadata to auto-detect context window. Reserve 20% for system prompts.
-**Consequences:** Requires litellm to have metadata for the model. Edge cases: unknown models fall back to 32K default.
+**Decision:** Auto-detect the context window — provider override, then Ollama's own report, then the models.dev catalog — instead of a hand-set value. Hold back a safety margin for system prompts (8% of the window, minimum 512 tokens).
+**Consequences:** Depends on the provider or catalog reporting the model. An unknown model falls back to the configured `fallback_max_input`/`fallback_max_output` (32K/4K by default); with neither set, discovery raises instead of guessing.
 
 ## Resolution
 
@@ -122,12 +122,12 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 
 ## Compilation
 
-### Decision: litellm for provider abstraction
+### Decision: pydantic-ai for provider abstraction
 
 **Date:** Jun 5, 2026  
 **Context:** Need to support Ollama (local), OpenRouter, DeepSeek, Anthropic, OpenAI without hard-coding each.  
-**Decision:** litellm. Single API, all providers.
-**Consequences:** Adds dependency. But eliminates provider-specific code.
+**Decision:** pydantic-ai — one `provider/model` string per backend, translated to native provider models (`knox.llm.models.build_model`). Custom OpenAI-compatible endpoints are declared under `[providers.<id>]`.
+**Consequences:** One dependency in the LLM path; provider-specific code is confined to model construction. A custom endpoint needs a `[providers.<id>]` entry rather than a model-string convention alone.
 
 ### Decision: Local-first model strategy
 

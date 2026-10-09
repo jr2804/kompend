@@ -18,22 +18,20 @@ flowchart LR
     classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
     classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 
-    PDF[PDF] --> Docling[DoclingParser]
-    DOCX[DOCX] --> Docling
-    DOCX2[DOCX] --> Pandoc[PandocParser]
-    PPTX[PPTX] --> Pandoc
-    EPUB[EPUB] --> Pandoc
-    MD[Markdown] --> Pandoc
+    PDF[PDF / DOCX / PPTX / XLSX / EPUB] --> Parser[ParsecraftParser<br>per-page routing]
+    TXT[Text / Markdown] --> Parser
+    IMG[Images] --> Parser
+    HTML[HTML] --> Web[WebPageParser]
     URL[URL] --> HTTP[HTTPDownloader]
     URL2[Web URL] --> Crawler[WebCrawler]
 
-    Docling --> PD[ParsedDocument]
-    Pandoc --> PD
+    Parser --> PD[ParsedDocument]
+    Web --> PD
     HTTP --> PD
     Crawler --> PD
 
-    class PDF,DOCX,DOCX2,PPTX,EPUB,MD,URL,URL2 source
-    class Docling,Pandoc,HTTP,Crawler process
+    class PDF,TXT,IMG,HTML,URL,URL2 source
+    class Parser,Web,HTTP,Crawler process
     class PD output
 ```
 
@@ -42,9 +40,9 @@ flowchart LR
 | Class | File | Purpose |
 |-------|------|---------|
 | `BaseParser` | `parsers/base.py` | Abstract interface: `parse(path) → ParsedDocument` |
-| `DoclingParser` | `parsers/docling_parser.py` | Primary PDF/DOCX parser (IBM Docling, MIT) |
-| `PdfPlumberParser` | `parsers/pdfplumber_parser.py` | Fallback PDF parser |
-| `PandocParser` | `parsers/pandoc_parser.py` | DOCX/PPTX/EPUB/MD/HTML/ODT/RST/RTX/TEX |
+| `ParsecraftParser` | `parsers/parsecraft_parser.py` | Default backend; per-page routing across its sub-backends |
+| `WebPageParser` | `parsers/web_parser.py` | HTML via trafilatura |
+| `MarkerParser` / `MinerUParser` | `parsers/marker_parser.py`, `parsers/mineru_parser.py` | Optional backends, installed manually |
 | `HTTPDownloader` | `downloaders/http.py` | Direct file URLs |
 | `WebCrawler` | `downloaders/crawler.py` | Web pages via crawl4ai |
 | `ParserRouter` | `parsers/_registry.py` | Extension-based dispatch |

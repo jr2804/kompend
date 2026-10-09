@@ -234,11 +234,12 @@ knox compile                # re-chunks from the new parser output
 knox ingest --no-cache
 ```
 
-`ingest.parser` accepts the names of any installed parser backend.
-External backends install as package extras — `uv add knox[docling]`,
-`uv add knox[pandoc]`, or `uv add knox[parsecraft]` (pinned to
-`parsecraft==2026.9.26`, Python ≥3.13). Selecting `parsecraft` routes
-matching files through parsecraft's full pipeline; see
+`ingest.parser` names exactly one installed parser backend: `parsecraft`
+(the default — `uv add knox[parsecraft]`, Python ≥3.13), `web` (core), or a
+manually installed `marker`/`mineru`. An unknown name raises, and a known
+backend whose dependency is missing raises with its install command.
+Selecting `parsecraft` routes matching files through parsecraft's full
+pipeline; see
 [ParsecraftParser](document-extraction.md#parsecraftparser-external-adapter)
 for the fallback interaction and the diagnostics parsecraft carries into
 KNOX metadata.
@@ -304,7 +305,7 @@ Checks performed:
 3. **Parsers** — all registered parser dependencies load correctly
 4. **Git repository** — check if inside a git repo
 5. **Disk space** — warn if < 500 MB free
-6. **LLM context window** — auto-discovered size and source (litellm, Ollama, models.dev, or fallback)
+6. **LLM context window** — auto-discovered size and source (provider override, Ollama, models.dev, or fallback)
 7. **VLM context window** — same for the configured VLM model
 8. **Budget consistency** — validates that `gen_output_max` and `extract_output_max` fit within the context window, and that sufficient input budget remains after reserving output tokens
 9. **LLM connectivity** — quick ping to configured LLM
@@ -587,7 +588,7 @@ All environment variables use the `KNOX_` prefix and map to dotted config keys.
 | `KNOX_SOURCES_DIR` | `paths.sources_dir` | Sources directory (relative to wiki_dir) |
 | `KNOX_OUTPUT_DIR` | `paths.output_dir` | Output directory (relative to wiki_dir) |
 | `KNOX_RECURSIVE` | `compile.recursive` | Default recursive mode (true/false) |
-| `KNOX_LLM_MODEL` | `compile.llm.default_model` | Default LLM model |
+| `KNOX_LLM_DEFAULT_MODEL` | `compile.llm.default_model` | Default LLM model |
 | `KNOX_VLM_MODEL` | `compile.llm.vlm_model` | Vision model for image captioning |
 | `KNOX_NOTES_FILE` | `notes.file` | User notes filename |
 | `KNOX_RESOLVE_RELATIONS` | `compile.resolve_relations` | Enable typed relation extraction |

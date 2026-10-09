@@ -238,32 +238,20 @@ A: `knox compile *.pdf --list-tiers` outputs JSON.
 
 ## Q: Ingest hangs or crashes on large scanned PDFs
 
-Large scanned PDFs (50+ pages) can exhaust memory during OCR
-processing — Docling's RapidOCR backend loads ONNX models that
-allocate gigabytes of RAM for batch inference. Symptoms include
-unresponsive process, `std::bad_alloc` errors, or extremely slow
+Memory pressure on huge scanned PDFs comes from the OCR backend parsecraft
+escalates to: its ONNX/VLM models allocate gigabytes during batch inference.
+Symptoms include an unresponsive process, `std::bad_alloc`, or extremely slow
 ingest.
 
-Mitigations (in order of effectiveness):
+Knox hands one document at a time to parsecraft and exposes no per-backend
+batch knobs, so the levers are:
 
-1. **Chunk by page range** — process the PDF in segments of 20–30
-   pages using `page_range`, then merge results. This bounds peak
-   memory per conversion call.
+1. **Keep ingest sequential** — `knox ingest --workers 1` (the default) keeps a
+   single document in flight so peak memory stays bounded per file.
+2. **Isolate the document** — `knox ingest big-scan.pdf` parses only that file,
+   so a failure does not take the rest of the corpus with it.
+3. **Trim the candidate set** — uninstalling an unused `parsecraft[ocr-*]` extra
+   removes that backend and its model weights from the routing candidates.
 
-2. **Reduce batch sizes** — Docling's pipeline options accept
-   `ocr_batch_size`, `layout_batch_size`, and `table_batch_size`.
-   Lower values (e.g. 2) trade throughput for memory.
-
-3. **Disable enrichment** — set `generate_parsed_pages=False`,
-   `do_formula_enrichment=False`, `do_code_enrichment=False` in the
-   Docling pipeline options to skip optional heavy passes.
-
-4. **Subprocess isolation** — run each large PDF in a separate OS
-   process so the kernel reclaims all memory on exit. This is the
-   most reliable fix for ONNX OOM.
-
-5. **Lighter backend** — use `PyPdfiumDocumentBackend` instead of the
-   default Docling backend when full OCR is not needed.
-
-For configuration details and implementation tracking, see beads
-issue `knox-oc2n`.
+Routing and the OCR memory budget live in parsecraft. If one document still
+exhausts memory, the fix belongs there rather than in knox configuration.

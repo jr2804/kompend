@@ -11,50 +11,49 @@ See also:
 - [Pipeline Tiers](../concepts/pipeline-tiers.md) — Per-tier component reference
 - [LLM Configuration](llm-config.md) — Provider setup and model selection
 
-## Optional Parser Backends
+## Parser Backends
 
-Installed by default:
+`[ingest] parser` names exactly one backend.
 
-- `liteparse` — the default PDF/office parser
-- `web` — trafilatura HTML parser
+- `parsecraft` — the default. An external document-intelligence pipeline that
+  routes each page across its own sub-backends (native text/markdown/HTML/PDF,
+  LiteParse, docling, pandoc, OCR extras) and returns one document per source.
+  It ships as the `parsecraft` extra, which pulls the sub-backends that make it
+  useful: `uv add knox[parsecraft]`.
+- `web` — trafilatura HTML parser, installed with the core package.
 
-Additional backends install as package extras:
-
-```bash
-uv add knox[docling]        # high-accuracy PDF/EPUB/HTML (recommended for complex layouts)
-uv add knox[pandoc]         # legacy text formats (RST, LaTeX, ODT, EPUB, TEX)
-uv add knox[parsecraft]     # external document-intelligence pipeline (Python ≥3.13)
-uv add knox[systemone]     # adds the System One judge (ollama/zen/typesafe-ai) on top of parsecraft
-```
-
-Or several at once:
-
-```bash
-uv add knox[docling,pandoc,parsecraft]
-```
-
-> **parsecraft** is an optional external adapter pinned to `==2026.10.1` and requires Python ≥3.13. KNOX consumes parsecraft's public API only — see [ParsecraftParser](#parsecraftparser-external-adapter) below.
-
-For `pip` users: `pip install knox[docling,pandoc]`.
-
-A few backends cannot ship as extras because their transitive dependencies
-conflict (pillow, transformers, ONNX) and cannot be locked. Install them
-manually:
+Two further backends exist but cannot be locked extras — their transitive
+dependencies conflict (pillow, transformers, ONNX) with knox's LLM stack.
+Install them manually:
 
 ```bash
 uv pip install marker-pdf   # deep-learning PDF/office/HTML
-uv pip install glmocr       # multimodal OCR for images and PDFs
 uv pip install mineru       # layout-aware PDF/Office with OCR (torch, ONNX)
 ```
 
-List currently available backends with `knox list-parsers`. Uninstalled
-backends configured in `parser` are silently skipped (with a warning).
+Then select the one you want:
 
-> **Installing them into a knox project:** run the `uv pip install` commands
-> above *outside* the project's resolved environment (a separate venv or a
+```toml
+[ingest]
+parser = "parsecraft"   # or "web" | "marker" | "mineru"
+```
+
+`knox list-parsers` shows which backends are installed and the formats each
+claims. An unknown name raises; a known backend whose optional dependency is
+missing raises with its install command, so a vault configured against an
+absent parser fails loudly instead of parsing nothing.
+
+The judge tier needs the `systemone` extra on top of parsecraft:
+
+```bash
+uv add knox[systemone]
+```
+
+> **Installing marker/mineru into a knox project:** run the `uv pip install`
+> commands *outside* the project's resolved environment (a separate venv or a
 > container), then point knox at that environment. They cannot be added to the
 > project's dependency graph without regressing the core LLM stack — see
-> below.
+> [Why `marker` cannot be a locked extra](#why-marker-cannot-be-a-locked-extra).
 
 ### Why `marker` cannot be a locked extra
 
@@ -83,49 +82,41 @@ default `pydantic-ai-slim[anthropic,openai]`) is **empty** — verified with
 `uv pip install "anthropic>=1.8.0,<1"` and the same for `openai`. Relaxing
 our own `opencv-python-headless`/`pypdfium2` floors doesn't help: those
 remove two conflicts and leave the two that make a resolution impossible.
-`mineru` and `glmocr` install cleanly and remain the two usable manual
-backends.
+`mineru` installs cleanly and remains the usable manual backend; `marker` is
+usable only if the downgrades above are acceptable.
 
 ## Supported Formats
 
-> **Default coverage:** `liteparse` handles `.pdf`, `.docx`, `.pptx`, and
-> `.xlsx`. The remaining formats below require `docling` or `pandoc` (extras)
-> or `web` (trafilatura, default for HTML).
+Discovery follows the configured backend: knox asks `[ingest] parser` which
+suffixes it claims (`get_all_extensions([config.parser])`) and scans the source
+directory for exactly those. With the default backend that is parsecraft's
+31-suffix table. `.knox/` is excluded regardless of claimed formats, so state
+artifacts such as `.knox/rumdl.toml` are never ingested even though parsecraft
+claims `.toml`.
 
-| Format | Parser | Notes |
-|--------|--------|-------|
-| `.pdf` | LiteParseParser / DoclingParser | LiteParse fast (default); docling higher accuracy, incl. tables, images, headings |
-| `.docx` | LiteParseParser / DoclingParser | LiteParse fast (default); docling higher accuracy |
-| `.pptx` | LiteParseParser / DoclingParser | LiteParse fast (default); docling higher accuracy |
-| `.html` | WebPageParser / DoclingParser | Trafilatura HTML→Markdown (default); docling alternative |
-| `.md`, `.markdown` | DoclingParser | Markdown via docling |
-| `.epub` | DoclingParser | E-book format via docling |
-| `.tex`, `.ltx` | DoclingParser | LaTeX via docling |
-| `.csv` | DoclingParser | Tabular data via docling |
-| `.xlsx` | LiteParseParser / DoclingParser | LiteParse fast (default); docling higher accuracy |
-| `.adoc` | DoclingParser | AsciiDoc via docling |
-| `.eml`, `.msg` | DoclingParser | Email via docling |
-| `.doc` | LiteParseParser / DoclingParser | Legacy Word — converted via LibreOffice (requires a local install) |
-| `.odt` | PandocParser | OpenDocument text |
-| `.rst` | PandocParser | reStructuredText |
-| `.rtf` | PandocParser | Rich Text Format |
-| `.txt` | PandocParser / ParsecraftParser | Plain text, treated as markdown |
-| `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.sh`, `.tex`, `.rst`, `.ini`, `.cfg`, `.toml`, `.log`, `.text` | ParsecraftParser | Plain-text source family, routed through parsecraft's text backend when `parsecraft` is selected |
+| Format | Handled by | Notes |
+|--------|------------|-------|
+| `.pdf` | `parsecraft` | Routed per page across its sub-backends; scanned pages escalate to an OCR backend when one is installed |
+| `.docx`, `.pptx`, `.xlsx` | `parsecraft` | Office formats via its sub-backends |
+| `.epub`, `.odt`, `.rtf` | `parsecraft` | E-book and legacy text containers |
+| `.md`, `.markdown`, `.html`, `.htm` | `parsecraft` | Native text and markup backends |
+| `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff` | `parsecraft` | Images; content comes from an OCR/VLM sub-backend when installed |
+| `.txt`, `.text`, `.log`, `.rst`, `.ini`, `.cfg`, `.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.sh`, `.tex` | `parsecraft` | Plain-text source family |
+| `.html` | `web` | Trafilatura reader; the only suffix `web` claims |
 
-Unknown file extensions are checked with
-[`binaryornot`](https://github.com/binaryornot/binaryornot). If the file
-is determined to be plain text, it is fed to `PandocParser` as a last
-resort. Truly binary files with unknown extensions are skipped.
+`marker` and `mineru`, when installed and selected, claim their own sets.
+`knox list-parsers` prints the live extension list per installed backend. A
+file whose suffix no installed backend claims is never picked up by discovery.
 
 ## Parser Strategy: Speed vs. Accuracy
 
-KNOX ships **LiteParse** as the default parser. LiteParse is built on a fast
-Rust core: it is much faster than Docling while being only slightly less
-accurate, which makes it the right default for most ingest workloads. It covers
-PDF, DOCX, DOC, PPTX, and XLSX out of the box.
+parsecraft is the default backend, and it does not pick one engine for a whole
+corpus: it analyses each page and routes it, so a born-digital text page stays
+on the cheap native/LiteParse path while a scanned or table-heavy page in the
+same document can escalate to a stronger backend. The speed/accuracy trade-off
+is decided per page rather than per configuration.
 
-For the highest possible fidelity, install **Docling** (an optional extra) and
-Select the backend with a single name:
+`[ingest] parser` selects the single backend knox hands files to:
 
 ```toml
 [ingest]
@@ -159,55 +150,32 @@ that content in their Markdown, but knox previously discarded it (see
 
 | Backend | Figures | Tables | Equations (LaTeX) | Code blocks | OCR engine | Speed |
 |---------|---------|--------|-------------------|-------------|------------|-------|
-| `liteparse` (default) | yes | yes¹ | **no** | — | Tesseract | fastest |
-| `docling` | yes | yes | yes² | yes | RapidOCR | slow |
+| `parsecraft` | yes | yes | yes | yes | per page, when an OCR sub-backend is installed | medium |
 | `marker` | yes | yes | yes | yes | block OCR | medium (GPU-friendly) |
 | `mineru` | yes | yes | yes | yes | layout + OCR | medium–slow |
-| `glmocr` | yes (crops) | yes | yes | yes | VLM (cloud/self-host) | network-bound |
-| `parsecraft` | yes | yes | yes | yes | per-backend | medium |
-| `pandoc` | no | yes | yes | yes | no | fastest (no ML) |
 | `web` (trafilatura) | no | yes | n/a | yes | no | fastest |
 
-¹ GFM tables only — column detection degrades on multi-column layouts, where
-contiguous text can be mis-detected as one very wide table row.
-² Formula recognition needs `accelerate` (bundled with the `docling`
-extra) and downloads the CodeFormulaV2 model on first use (~4 min on CPU).
-`formula_enrichment` defaults on because equations have no native text-layer
-representation. `code_enrichment` defaults **off**: the same VLM re-OCRs
-every code block (~140 s each on CPU) even though a born-digital PDF already
-carries correct code as text. See
-[Docling performance](#docling-performance).
+`parsecraft`'s row is the union of its sub-backends: which of figures, tables,
+equations and OCR it can actually produce depends on the extras present.
 
 ### Where each backend wins
 
 | Backend | Strong points | Weak points |
 |---------|---------------|-------------|
-| `liteparse` | Fastest by a wide margin (Rust core, no Python ML stack); native PDF via PDFium; office formats via an external LibreOffice install; figures extracted with real bytes; the right default for high-volume, born-digital text. | **No equation support at all** — its Markdown never contains `$$`, so no FORMULA element can ever be produced. Table detection is layout-blind and can produce garbage rows on multi-column pages. No internal captioning (every figure needs the VLM pass). |
-| `docling` | Broadest format coverage (20+, incl. email/EPUB/AsciiDoc); the only backend here that is a single locked extra with no manual install; structure-preserving headings/lists/figures; table structure + formula + code enrichment all available and on by default; RapidOCR handles scanned pages with no GPU. | Slowest of the local backends (ML models per document); table accuracy good but not best-in-class for complex borderless tables; no bounding-box/page-layout coordinates exposed; first parse downloads models. |
-| `marker` | Highest reported benchmark accuracy of the local backends; equations and tables as first-class output; device-aware modes; optional LLM processors for extra quality when an LLM service is configured. | Cannot be a locked extra — its own `anthropic<1` / `openai<3` caps contradict `pydantic-ai`'s `anthropic>=1.8.0` / `openai>=3.8.0` (see [above](#why-marker-cannot-be-a-locked-extra)); model download + GPU strongly preferred; slowest on CPU; internal figure captions only via the opt-in LLM path. |
-| `mineru` | Layout-aware with selectable backends (`pipeline` OCR + layout, `vlm`, `hybrid`); `formula_enable`/`table_enable` on by default; parse-method control (`auto`/`ocr`/`txt`) lets you force or skip OCR per corpus. | Cannot be a locked extra; heavy install (torch + ONNX); its Markdown carries no page markers, so `page_count` is reported as unknown (`0`); slower than docling on typical corpora. |
-| `glmocr` | Strong on image-only and raster content (photos, scans, screenshots) via a multimodal VLM; emits a structured per-element JSON (labels + bounding boxes) rather than a flat Markdown blob; no local model, so CPU-only hosts work. | Needs `ZHIPU_API_KEY` (cloud) or a running self-hosted endpoint; network latency per page; cannot be a locked extra; per-element page attribution is fixed to page 1 in the crop path. |
-| `pandoc` | No ML, no model downloads; excellent for legacy text formats (RST, LaTeX, ODT, EPUB, TEX) and any text file without a dedicated parser; equation and code passthrough from LaTeX sources. | No figures, no OCR, no layout analysis — it re-renders whatever the source format already encodes; the binary is downloaded on first use. |
+| `parsecraft` | Per-page routing instead of one engine per corpus: a born-digital page stays on the cheap native/LiteParse path while a scanned or table-heavy page in the same file escalates. Inherits selective OCR, per-page fallback passes and route-degradation metadata. | Adds an external dependency with a minimum parsecraft release; routing is parsecraft's to decide and knox cannot intervene mid-pipeline. On parsecraft 2026.10.1 the candidate set is narrowed by its own installed-extra probe (see [Limitations](#limitations)). |
+| `marker` | Highest reported benchmark accuracy of the selectable backends; equations and tables as first-class output; device-aware modes; optional LLM processors for extra quality when an LLM service is configured. | Cannot be a locked extra — its own `anthropic<1` / `openai<3` caps contradict `pydantic-ai`'s `anthropic>=1.8.0` / `openai>=3.8.0` (see [above](#why-marker-cannot-be-a-locked-extra)); model download + GPU strongly preferred; slowest on CPU; internal figure captions only via the opt-in LLM path. |
+| `mineru` | Layout-aware with selectable backends (`pipeline` OCR + layout, `vlm`, `hybrid`); `formula_enable`/`table_enable` on by default; parse-method control (`auto`/`ocr`/`txt`) lets you force or skip OCR per corpus. | Cannot be a locked extra; heavy install (torch + ONNX); its Markdown carries no page markers, so `page_count` is reported as unknown (`0`). |
 | `web` (trafilatura) | Purpose-built HTML reader: strips chrome/nav/boilerplate and returns clean GFM (headings, lists, tables, links, code) much faster than a PDF parser on HTML. | HTML only; no figures (image refs are dropped — knox's web parser has no image resolver), no OCR, no equations. |
 
 ### Choosing
 
-- **Default/high volume, born-digital text:** `liteparse`. Accept that equations
-  and multi-column tables will be poor.
-- **Equations, formulas, or technical PDFs:** `docling` (locked, no manual
-  install, formula enrichment on by default) or `marker` (higher accuracy, needs
-  a manual install and preferably a GPU).
-- **Scanned or image-only documents:** `docling` (RapidOCR) or `mineru`
-  (`parse_method = "ocr"`); `glmocr` if a VLM endpoint is acceptable.
-- **Legacy text formats:** `pandoc`.
+- **Default:** `parsecraft` — per-page routing covers text-native, office and
+  scanned documents with one configuration.
+- **Highest local accuracy on hard layouts:** `marker` (manual install, GPU
+  preferred).
+- **Image-only or OCR-heavy corpora:** `parsecraft` with an OCR sub-backend
+  installed, or `mineru` (`parse_method = "ocr"`).
 - **Web pages:** `web`.
-
-Chain them — first matching backend per file wins:
-
-```toml
-[ingest]
-parser = "docling,mineru,liteparse,pandoc,web"
-```
 
 ## Part-level markdown normalisation
 
@@ -231,67 +199,6 @@ images are skipped (their representation is already canonical).
 This is best-effort: if `rumdl` is not installed or the batch cannot be split
 back losslessly, the original content is kept.
 
-## Docling
-
-[Docling](https://github.com/docling-project/docling) (MIT license) is KNOX's
-highest-accuracy document parser. It is a pure-Python library (with C++
-acceleration) that requires no external runtimes or sidecar processes. Install
-it with `uv add knox[docling]`.
-
-## Strengths
-
-- Supports 20+ input formats (PDF, DOCX, PPTX, HTML, MD, EPUB, LaTeX,
-  CSV, XLSX, AsciiDoc, email, and more).
-- Structure-preserving output with heading hierarchy, tables, lists,
-  formulas, and image references.
-- Handles scanned PDFs via built-in OCR (RapidOCR).
-- No GPU required.
-- Active development, MIT license.
-
-## Limitations
-
-- Bounding-box / page-layout coordinates are not exposed (docling targets
-  content structure, not visual layout).
-- Does not produce Tagged PDF or PDF/UA output.
-- Table extraction accuracy is good but not best-in-class for complex
-  borderless tables.
-
-## Docling performance
-
-Docling's default pipeline is tuned for accuracy, not throughput, and two of
-its defaults are pathological on born-digital PDFs. KNOX overrides both from
-`[compile.pdf]`:
-
-| Knob | Default | Why |
-|------|---------|-----|
-| `ocr` | `"auto"` | Skips the RapidOCR pass when the PDF already has a text layer. Measured **2.1× faster** with byte-identical output on a born-digital manual. `"always"`/`"never"` force it. |
-| `code_enrichment` | `false` | CodeFormulaV2 re-OCRs every code block (~140 s each on CPU). Born-digital code is already in the text layer, so this is pure cost. Measured **45×** on a 16-page code-heavy range. |
-| `num_threads` | `0` (all cores) | Docling hard-defaults to 4 threads regardless of host. |
-| `table_mode` | `"accurate"` | TableFormer cell-matching; `"fast"` drops cell detail for speed. |
-
-On one 113-page POLQA OEM manual these defaults took the parse from **>25 min
-to ~3.5 min** (206 s) with code, formula and table elements intact.
-`max_pages_before_chunking`/`page_chunk_size` bound memory by parsing large
-PDFs in page-range segments.
-
-## PandocParser: Legacy Format Support
-
-[Pandoc](https://pandoc.org/) (the Python `pandoc` package) handles formats
-that docling does not support: OpenDocument (`.odt`), reStructuredText
-(`.rst`), LaTeX (`.tex`, `.ltx`), and Rich Text Format (`.rtf`). It also
-handles plain text files (`.txt`) and serves as the binaryornot text
-fallback. Legacy binary Word (`.doc`) is **not** pandoc's job — pandoc has
-no reader for the OLE container format; LiteParse and Docling read `.doc`
-via LibreOffice instead. knox locates LibreOffice itself — `PATH` first, then
-the conventional Windows (`%PROGRAMFILES%\LibreOffice\program\soffice.exe`) and
-macOS install locations — and sets Docling's `DOCLING_LIBREOFFICE_CMD` only
-when it is unset, so no per-project setup step is needed. An explicit
-`DOCLING_LIBREOFFICE_CMD` always wins.
-
-PandocParser is registered **after** DoclingParser in the parser router, so
-docling always wins for formats both support (e.g. `.docx` is handled by
-docling, not pandoc).
-
 ## ParsecraftParser: External Adapter
 
 [Parsecraft](https://pypi.org/project/parsecraft/) is an external
@@ -301,11 +208,11 @@ and maps parsecraft's intermediate representation onto KNOX's element model.
 Install it as an optional extra:
 
 ```bash
-uv add knox[parsecraft]    # pinned to parsecraft==2026.9.26 (Python ≥3.13)
+uv add knox[parsecraft]    # carries parsecraft>=2026.10.1 (Python ≥3.13)
 ```
 
-The extra is pinned to a specific release; re-pinning is a reviewed event (see
-`.agents/plans/parsecraft-integration.md`). KNOX never imports parsecraft
+The extra carries a minimum parsecraft release; raising it is a reviewed event
+(see `.agents/plans/parsecraft-integration.md`). KNOX never imports parsecraft
 internals, private modules, or test helpers — only the documented public
 surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
 
@@ -352,7 +259,7 @@ is no second backend behind it to fall through to.
 
 ### Diagnostics carried into KNOX metadata
 
-Three classes of parsecraft signal survive the parse into `.knox/knox.db`:
+Four classes of parsecraft signal survive the parse into `.knox/knox.db`:
 
 - `metadata.parser` — `"parsecraft"`.
 - `metadata.backends` — comma-separated list of parsecraft sub-backends that
@@ -389,7 +296,7 @@ parsecraft_preference = "balanced"     # speed | balanced | quality
   by the daemon with `400 … does not support decision`. Use the bare ollama
   name without the `:tag` suffix (`parable-tinyjev`, not
   `parable-tinyjev:latest`): the SDK reads the suffix as a variant token and
-  refuses it. `uv sync --extra systemone` provides the SDK.
+  refuses it. `uv add knox[systemone]` provides the SDK.
 - **`zen`** (`OPENCODE_API_KEY`) and **`typesafe-ai`** (`TYPESAFE_API_KEY`) are
   the cloud choices; the credential is read from the environment only.
 - **`parsecraft_preference`** is the tiebreak axis among candidates that pass
@@ -425,8 +332,8 @@ boundary, never exit codes.
 
 ### Limitations
 
-- Adds an external dependency pinned to a specific parsecraft release;
-  upgrading parsecraft is a coordinated event, not a silent update.
+- Adds an external dependency with a minimum parsecraft release; upgrading
+  parsecraft is a coordinated event, not a silent update.
 - Per-page routing and fallback are entirely parsecraft's responsibility —
   KNOX cannot intervene mid-pipeline.
 - Adapter calls `execute()` **serially**, matching parsecraft's 8 GB one-
@@ -443,16 +350,6 @@ boundary, never exit codes.
   changes nothing. Confirm the candidate set before reading anything into a
   judge run: an empty `metadata.degraded_pages` and an unchanged
   `metadata.backends` are expected, not a regression.
-
-## LiteParseParser: Fast PDF/Office Parsing
-
-[LiteParse](https://github.com/run-llama/liteparse) (Rust-core, Apache 2.0) is
-the recommended backend for PDF and Office formats when speed matters more than
-layout-structure accuracy. It reconstructs documents to Markdown with embedded
-image bytes but has no LLM captioning of its own, so every extracted figure
-flows through `VLMEnricher`.
-
-Configure via the priority list: `parser = "web,liteparse,docling"`.
 
 ## MinerUParser: Layout-Aware PDF/Office Parsing
 
@@ -476,7 +373,7 @@ MinerU requires heavy dependencies (torch, transformers, ONNX models). It is
 uv pip install mineru
 ```
 
-Then enable it in the priority list: `parser = "web,mineru,docling"`.
+Then select it: `parser = "mineru"`.
 
 ## Investigated and Rejected: opendataloader-pdf[hybrid]
 
@@ -492,13 +389,13 @@ better accuracy than the purely local mode.
 
 Despite the accuracy advantage, operational concerns outweigh the benefit:
 
-## 1. Java 11+ runtime requirement
+### 1. Java 11+ runtime requirement
 
 The package is 85.9% Java. Every KNOX user would need a JDK installed and
 `JAVA_HOME` configured — a serious friction point for a project that is
 otherwise pure Python.
 
-## 2. Separate hybrid-mode server
+### 2. Separate hybrid-mode server
 
 Hybrid mode requires a background process:
 
@@ -509,23 +406,23 @@ opendataloader-pdf-hybrid --port 5002
 KNOX would need to spawn, monitor, and shut down this server — error-prone
 on Windows, and a crash would cause silent parse failures.
 
-## 3. JVM-per-call overhead
+### 3. JVM-per-call overhead
 
 Each `convert()` invocation spawns a new JVM process. When ingesting
 dozens of documents, this adds seconds of overhead per file.
 
-## 4. PDF-only
+### 4. PDF-only
 
 opendataloader handles only PDF. KNOX needs multi-format support
 (DOCX, PPTX, HTML, MD, EPUB, etc.) — all handled natively by docling.
 
-## 5. Different data model
+### 5. Different data model
 
 opendataloader's JSON output is page-oriented with bounding boxes.
 Docling's model is content-oriented (document tree). Supporting both
 would require a second adapter layer, increasing maintenance surface.
 
-## 6. Marginal real-world gain
+### 6. Marginal real-world gain
 
 The benchmark gap (0.907 vs 0.882) is 2.8%. Docling actually beats
 opendataloader on heading accuracy (0.824 vs 0.821). For KNOX's use
@@ -541,82 +438,13 @@ operational complexity (Java, sidecar server, JVM overhead) means this
 should only be done when there is clear evidence of content loss, not
 based on benchmarks alone.
 
-## GlmOcrParser: Multimodal OCR for Images and PDFs
-
-[GLM-OCR](https://github.com/zai-org/GLM-OCR) (Zhipu AI, 0.9B params) is a
-lightweight multimodal OCR model. It accepts raster images (PNG, JPG, TIFF,
-BMP, GIF, WEBP) and PDFs (rendered to images internally), returning
-structured elements labelled `text`, `title`, `table`, `formula`, and
-`figure` — which map directly onto KNOX `DocumentElement` types.
-
-Two execution modes:
-
-- **Cloud** (default): calls Zhipu MaaS. Requires `ZHIPU_API_KEY` env var.
-  No local GPU needed.
-- **Self-hosted**: set `mode="selfhosted"` and point `api_url` at a vLLM /
-  SGLang / Ollama endpoint.
-
-The `glmocr` package is an optional dependency:
-
-```bash
-uv pip install glmocr
-```
-
-GLM-OCR does no internal captioning (`figure_enrichment=False`); every
-extracted figure still flows through `VLMEnricher`.
-
-### Strengths
-
-- OmniDocBench V1.5: 94.62 — top accuracy at launch
-- Apache 2.0 (code) + MIT (weights) — very permissive
-- Cloud API mode needs no GPU at all
-- Rich structured output (label + bbox per element)
-
-### Limitations
-
-- Image-based only — no native DOCX/PPTX/XLSX support
-- PDF handling requires rasterising to images first
-- Newer project (Feb 2026, limited release history)
-
-## Binaryornot Text Fallback
-
-When a file's extension is not recognised by any registered parser,
-[`binaryornot`](https://github.com/binaryornot/binaryornot) checks whether
-the file contains binary data. If it is text, the file is routed to
-`PandocParser` as a last-resort parser. This handles edge cases like
-extensionless files or files with unusual extensions that happen to be
-plain text.
-
-## Optional Parser Frontends
-
-KNOX ships with **LiteParse** and **web** (trafilatura) as the default
-parsers (always installed). Additional parser backends install as extras or
-manually:
-
-```bash
-uv add knox[docling]        # high-accuracy PDF/office (Docling)
-uv add knox[pandoc]         # legacy formats (.odt, .tex, .rtf, .rst)
-uv pip install marker-pdf   # deep-learning PDF/office/HTML (Marker, highest benchmark accuracy)
-```
-
-Configure the parser order in `knox.toml` under `[ingest]`:
-
-```toml
-[ingest]
-# Comma-separated list; first matching backend per file wins.
-parser = "liteparse,docling,pandoc"
-```
-
-Backends that are known but not installed are silently skipped (with a
-warning); unknown names raise `ValueError`.
-
 ## Marker Parser
 
 [Marker](https://github.com/datalab-to/marker) (Apache-2.0) is a deep-learning
 document converter that renders PDF, DOCX, PPTX, XLSX, EPUB, and HTML into
 Markdown with structured tables, equations, and extracted figures. It reports
-the highest benchmark accuracy among KNOX-supported parsers (95.67 heuristic
-accuracy vs docling 86.7).
+the highest benchmark accuracy among the backends KNOX can select directly
+(95.67 heuristic accuracy).
 
 Two conversion modes (configured via `mode`):
 
@@ -633,19 +461,6 @@ uv pip install marker-pdf
 
 Marker has no internal figure captioning, so `figure_enrichment` is `False`
 and every extracted figure still flows through `VLMEnricher`.
-
-## Previously Removed Parsers
-
-- **PdfPlumberParser** (pdfplumber) — docling covers `.pdf` first in the
-  router, making this fallback unreachable in practice. PdfPlumber was
-  not used for any other purpose (page counting, title extraction, etc.).
-- **VLMParser** — standalone image parser for `.png`/`.jpg`/etc. Never
-  wired into any router. Image content embedded in PDFs is handled by
-  docling's own image extraction; standalone images lack the VLM client
-  needed for captioning at Tier 1.
-- **ExternalParser / HTTPParser** — framework for delegating parsing to
-  CLI tools or HTTP endpoints. Never wired into any config path and
-  lacked documentation.
 
 ## See also
 

@@ -161,7 +161,6 @@ These are managed by upstream libraries and listed here for reference:
 |------|------|-----------|
 | `~/.cache/huggingface/` | sentence-transformers models (≈1 GB each) | HuggingFace Hub |
 | `~/.cache/docling/` | Docling model files (≈500 MB) | Docling |
-| `~/.cache/litellm/` | LiteLLM cache (if enabled) | LiteLLM |
 | `~/.cache/pip/` | Python packages | pip |
 
 KNOX does not control, configure, or clean these. Users manage them through
