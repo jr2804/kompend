@@ -61,7 +61,7 @@ Every LLM call routes through PydanticAI agents in `src/knox/agents/`.
 | `src/knox/agents/` | PydanticAI agents for every LLM call |
 | `src/knox/llm/` | LLM client, provider registration, failover |
 | `src/knox/cli/` | Typer-based CLI (thin shell over core) |
-| `src/knox/preprocessing/` | Parsers (Docling, Pandoc, LiteParse, Web) |
+| `src/knox/preprocessing/` | Parsers (parsecraft adapter, marker, mineru, web) |
 | `src/knox/compilation/` | Tier 4: extraction, generation, WiCER, output |
 | `src/knox/search/` | Hybrid search: FTS + vector + RRF |
 | `src/knox/memory/` | Memory lifecycle: working → episodic → semantic → procedural |

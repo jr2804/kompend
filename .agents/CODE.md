@@ -46,7 +46,7 @@ before committing — see `CHECKS.md`.
   annotations) — hard errors, no `# noqa`. For non-ruff scanner false positives
   (vibecheck, sloppylint, aislop) use that tool's own directive, so each
   suppression names the scanner it targets.
-- **Heavy optional dependencies stay lazy** (docling, torch, transformers,
+- **Heavy optional dependencies stay lazy** (parsecraft, torch, transformers,
   datasketch, scipy, crawl4ai, pydantic-ai, MCP SDK, zvec) so CLI startup stays
   fast. Package level: `lazy.attach(__name__, submod_attrs={...})`. Function
   level: the registry factory (`get_backend()`), never a module-scope import.

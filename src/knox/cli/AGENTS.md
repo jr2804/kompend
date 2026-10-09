@@ -33,7 +33,7 @@ Command modules are NOT imported eagerly at startup. `app.py` maintains a
 `_LAZY_MODULES` dict mapping command names to `(module_name, attribute_name)`.
 Only the module for the invoked command is imported (or all for `--help`).
 
-**Why:** eager imports pulled heavy deps (pydantic-ai, docling, MCP SDK)
+**Why:** eager imports pulled heavy deps (pydantic-ai, parsecraft, MCP SDK)
 into every `knox` invocation. With lazy registration, `knox --version` takes
 ~1.5s instead of ~23s.
 
@@ -168,7 +168,7 @@ repeatedly. Break the cycle with this diagnostic order:
    timer means the UI thread died (a different bug).
 3. **Then conclude: the bar is correct, the *work* is slow.** 0% with a
    correct total + advancing timer = the first unit is still running. A
-   single VLM/LLM call that hangs until timeout (e.g. `glm-ocr` looping
+   single VLM/LLM call that hangs until timeout (a parser or model looping
    on a degenerate token) will pin the bar at 0% for the full timeout
    duration × retry count.
 
