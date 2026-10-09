@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TypedDict
 
-from knox.core.config import PdfConfig, ResolvedConfig
+from knox.core.config import ResolvedConfig
 from knox.core.config.keys import DEFAULT_PARSER
 from knox.preprocessing.parsers.base import (
     IMAGE_SCALE_DEFAULT,
@@ -64,7 +64,6 @@ class ParserBuildOptions:
     images_dir: Path | None = None
     image_mode: str = "file"
     images_scale: float = IMAGE_SCALE_DEFAULT
-    pdf_config: PdfConfig | None = None
     #: Judge-tier routing for the parsecraft backend. `none` leaves the
     #: deterministic rule table in place. Any non-`none` value is the SDK
     #: provider name (`ollama`, `zen`, `typesafe-ai`).
@@ -85,18 +84,16 @@ class ParserBuildOptions:
         that cache's key does not cover these options, so a site that built a
         narrower set could serve a document produced under different settings:
         ``knox ingest`` once passed only ``images_dir`` while ``knox compile``
-        also passed ``pdf_config`` and ``image_mode``.
+        also passed the config-derived ``image_mode``.
 
-        ``images_scale`` is intentionally absent — it is not a config key, so
-        every caller takes the field default. ``images_dir`` is a parameter
-        because it derives from the vault root, which this function does not
-        receive.
+        ``images_scale`` is not a config key, so every caller takes the field
+        default. ``images_dir`` is a parameter because it derives from the vault
+        root, which this method does not receive.
         """
         knox = cfg.knox
         return cls(
             images_dir=images_dir,
             image_mode=knox.compile.image_mode,
-            pdf_config=knox.compile.pdf,
             parsecraft_judge=knox.ingest.parsecraft_judge,
             parsecraft_judge_model=knox.ingest.parsecraft_judge_model,
             parsecraft_preference=knox.ingest.parsecraft_preference,

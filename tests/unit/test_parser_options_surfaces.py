@@ -9,9 +9,9 @@ Three rounds of the same failure mode:
    paths hashed to *different* parser fingerprints and invalidated each other's
    parse cache on every alternate run.
 3. ``knox ingest`` passed ``images_dir`` alone while ``knox compile`` also
-   passed ``pdf_config`` and ``image_mode``, so the two could serve each other
-   parses produced under different ``[compile.pdf]`` settings — the parse-cache
-   key covers none of those fields.
+   passed the config-derived ``image_mode``, so the two could serve each other
+   parses produced under different settings — the parse-cache key covers none
+   of those fields.
 
 ``ParserBuildOptions.from_config()`` is now the single construction point. These
 tests capture the options at each site and assert the whole set arrives, so a
@@ -114,11 +114,10 @@ def test_pipeline_config_builds_the_same_options_as_the_cli(tmp_path: Path) -> N
 def _assert_full_options(options: ParserBuildOptions) -> None:
     """Every site must hand the router the *whole* option set.
 
-    ``pdf_config`` is the field that actually drifted: ``knox ingest`` passed
-    ``images_dir`` alone, so it parsed with parser defaults while
-    ``knox compile`` parsed with ``[compile.pdf]`` — under one parse cache.
+    ``image_mode`` is the field that drifts if a site assembles the options by
+    hand: it is the config-derived value every parsing site must agree on, and
+    the parse-cache key does not cover it.
     """
-    assert options.pdf_config is not None, "pdf_config must come from [compile.pdf]"
     assert options.image_mode is not None
     assert options.images_dir is not None
 

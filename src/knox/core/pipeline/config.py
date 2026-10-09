@@ -27,7 +27,6 @@ from knox.core.config import (
     LLMConfig,
     OutputConfig,
     OutputFormat,
-    PdfConfig,
     ResolvedConfig,
 )
 from knox.core.config._configs import SearchConfig
@@ -241,7 +240,6 @@ class PipelineConfig:
 
         output_config = OutputConfig(**_kwargs_for(OutputConfig, "compile.output"))
         embedding_config = EmbeddingConfig(**_kwargs_for(EmbeddingConfig, "compile.embedding"))
-        pdf_config = PdfConfig(**_kwargs_for(PdfConfig, "compile.pdf"))
         display_config = DisplayConfig(**_kwargs_for(DisplayConfig, "display"))
 
         # Resolve notes file path relative to wiki_dir
@@ -292,7 +290,6 @@ class PipelineConfig:
             search=SearchConfig(**_kwargs_for(SearchConfig, "search")),
             output=output_config,
             embedding=embedding_config,
-            pdf=pdf_config,
             display=display_config,
             skills={name: skill.instructions for name, skill in knox.compile.skills.items()},
             extraction_categories=dict(knox.compile.extraction.categories),
@@ -308,7 +305,6 @@ class PipelineConfig:
     # Sub-configs (additive for backward compatibility)
     budget: BudgetConfig = field(default_factory=BudgetConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
-    pdf: PdfConfig = field(default_factory=PdfConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
 
 

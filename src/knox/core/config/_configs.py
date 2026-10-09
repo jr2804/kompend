@@ -5,7 +5,7 @@ default, and optional env-var alias in one declaration. ``DEFAULTS`` and
 ``_ENV_MAP`` in ``_core.py`` are auto-generated from these models.
 
 The six sub-configs used by ``PipelineConfig`` (``LLMConfig``, ``BudgetConfig``,
-``OutputConfig``, ``EmbeddingConfig``, ``PdfConfig``, ``OrganizeConfig``) double
+``OutputConfig``, ``EmbeddingConfig``, ``OrganizeConfig``) double
 as runtime types — they are constructed in ``from_resolved()`` and held as
 fields on ``PipelineConfig``.
 """
@@ -129,34 +129,6 @@ class OutputFormat(StrEnum):
     MARKDOWN = "markdown"
     JSON = "json"
     TYPST = "typst"
-
-
-class PdfOcrMode(StrEnum):
-    """Whether Docling runs its OCR pass on a PDF.
-
-    - ``AUTO``: run OCR only when the document has no usable text layer
-      (scanned/image-only PDFs). Born-digital PDFs skip the pass entirely,
-      which is both faster and content-identical because OCR adds nothing
-      when every sampled page already carries extractable text.
-    - ``ALWAYS``: force OCR even on born-digital PDFs.
-    - ``NEVER``: never run OCR.
-    """
-
-    AUTO = "auto"
-    ALWAYS = "always"
-    NEVER = "never"
-
-
-class PdfTableMode(StrEnum):
-    """TableFormer recognition mode for PDF tables (Docling ``TableStructureOptions``).
-
-    - ``ACCURATE``: cell-matching on — slower, highest table fidelity (default).
-    - ``FAST``: cell-matching off — faster, but loses some cell detail and can
-      drop text inside detected table regions.
-    """
-
-    ACCURATE = "accurate"
-    FAST = "fast"
 
 
 class Verbosity(StrEnum):
@@ -309,46 +281,6 @@ class EmbeddingConfig(_KnoxBaseModel):
 
     model: str = Field(default="")
     batch_size: int = Field(default=10, validation_alias=EnvVar.EMBEDDING_BATCH_SIZE)
-
-
-class PdfConfig(_KnoxBaseModel):
-    """Configuration for PDF parsing.
-
-    *chunking* keeps per-doc memory bounded on large PDFs by splitting above
-    ``max_pages_before_chunking`` into sequential page-range segments.
-
-    *enrichment* flags turn on Docling's recovery passes. ``table_structure``
-    and ``formula_enrichment`` default ``True``: dropping them silently loses
-    tables or equations from every parsed PDF and the resulting wiki is what
-    knox compiled.
-
-    ``code_enrichment`` defaults ``False`` — it is the one pass whose native
-    representation is already present. Docling's CodeFormulaV2 VLM re-OCRs
-    every ``CodeItem``, but a born-digital PDF already carries correct code in
-    its text layer, and the pass costs ~140 s per code block on CPU (measured:
-    9 code blocks added ~1250 s to a 16-page range, i.e. >30 min for a
-    code-heavy manual). Disabling it changes nothing for text-layer code; enable
-    it only when code renders as images that OCR handles poorly.
-
-    ``ocr`` is not an enrichment flag: OCR only recovers text a born-digital
-    PDF already carries in its text layer, so ``AUTO`` skips it there and
-    reserves it for scans. ``num_threads`` (0 = all cores) and ``table_mode``
-    are the CPU-throughput knobs; Docling otherwise defaults to 4 threads.
-    """
-
-    max_pages_before_chunking: int = Field(default=50, validation_alias=EnvVar.PDF_MAX_PAGES_BEFORE_CHUNKING)
-    page_chunk_size: int = Field(default=30, validation_alias=EnvVar.PDF_PAGE_CHUNK_SIZE)
-    table_structure: bool = Field(default=True, validation_alias=EnvVar.PDF_TABLE_STRUCTURE)
-    table_mode: PdfTableMode = Field(default=PdfTableMode.ACCURATE, validation_alias=EnvVar.PDF_TABLE_MODE)
-    formula_enrichment: bool = Field(default=True, validation_alias=EnvVar.PDF_FORMULA_ENRICHMENT)
-    code_enrichment: bool = Field(default=False, validation_alias=EnvVar.PDF_CODE_ENRICHMENT)
-    ocr: PdfOcrMode = Field(default=PdfOcrMode.AUTO, validation_alias=EnvVar.PDF_OCR)
-    ocr_min_text_chars_per_page: int = Field(
-        default=50,
-        ge=1,
-        validation_alias=EnvVar.PDF_OCR_MIN_TEXT_CHARS_PER_PAGE,
-    )
-    num_threads: int = Field(default=0, ge=0, validation_alias=EnvVar.PDF_NUM_THREADS)
 
 
 # ── Other section configs ────────────────────────────────────────────────
@@ -709,17 +641,6 @@ class CompileConfig(_KnoxBaseModel):
     budget: BudgetConfig = Field(default_factory=BudgetConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
-    pdf: PdfConfig = Field(
-        default_factory=PdfConfig,
-        description=(
-            "PDF parsing knobs. ``max_pages_before_chunking`` bounds memory "
-            "on large PDFs; ``table_structure``/``formula_enrichment`` default "
-            "to true and ``code_enrichment`` to false (see PdfConfig). "
-            "``ocr`` defaults to ``auto``; ``num_threads``/``table_mode`` "
-            "control CPU throughput. "
-            "See PdfConfig."
-        ),
-    )
     extraction: ExtractionConfig = Field(default_factory=ExtractionConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     skills: dict[str, SkillConfig] = Field(default_factory=dict)

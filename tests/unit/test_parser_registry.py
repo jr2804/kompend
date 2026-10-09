@@ -96,7 +96,6 @@ def test_parser_build_options_defaults() -> None:
     assert opts.images_dir is None
     assert opts.image_mode == "file"
     assert opts.images_scale == IMAGE_SCALE_DEFAULT
-    assert opts.pdf_config is None
 
 
 @pytest.mark.parametrize(

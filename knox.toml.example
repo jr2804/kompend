@@ -526,42 +526,6 @@ enable = false                    # on/off switch
 # (rumdl fmt), the `rumdl` lint rule (check/fix), and `knox lint format`.
 # rumdl_config = ".knox/rumdl.toml"
 
-# ── PDF processing settings ─────────────────────────────────────────────
-# Large scanned PDFs can exhaust memory during OCR. When a PDF exceeds
-# max_pages_before_chunking, Docling processes it in page-range segments
-# and unloads the backend between segments to reclaim ONNX/OCR memory.
-
-[compile.pdf]
-# Disable chunking by setting to 0
-# max_pages_before_chunking = 50
-# page_chunk_size = 30
-
-# Docling extraction passes. table_structure and formula_enrichment default
-# to true — turning one off drops that content type from every parsed PDF.
-# Formula enrichment loads the CodeFormulaV2 model on first use (one-time
-# download; ~4 min first parse on CPU).
-#
-# code_enrichment defaults to FALSE: the CodeFormulaV2 VLM re-OCRs every code
-# block (~140 s each on CPU), but born-digital PDFs already carry correct code
-# in their text layer, so enabling it only adds time. Enable only when code
-# renders as images that OCR handles poorly.
-# table_structure = true
-# table_mode = "accurate"       # accurate | fast (fast = no cell matching)
-# formula_enrichment = true
-# code_enrichment = false
-
-# OCR pass. "auto" runs it only when the PDF has no usable text layer
-# (scanned/image-only); born-digital PDFs skip it, which is faster and
-# content-identical. "always"/"never" force the decision. A page counts as
-# having a text layer when it carries at least ocr_min_text_chars_per_page
-# extractable characters; one page below the threshold keeps OCR on.
-# ocr = "auto"
-# ocr_min_text_chars_per_page = 50
-
-# CPU threads for Docling model inference. 0 = all usable cores; Docling's
-# own default is 4 regardless of how many cores the host has.
-# num_threads = 0
-
 # ── Dedup settings ────────────────────────────────────────────────────────
 # Content-level duplicate detection for ingested sources. When enabled, each
 # parsed document is compared against all previously ingested documents using

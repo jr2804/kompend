@@ -69,8 +69,23 @@ ENV_MAP: dict[str, str] = _build_env_map()
 # upgrade; ``knox config check`` reports them as deprecations.
 REMOVED_KEYS: dict[str, list[str]] = {
     "compile.budget": ["concepts_per_batch"],
-    "compile.pdf": ["page_chunk_overlap"],
     "compile.llm": ["role_models"],
+    # The whole [compile.pdf] section. It configured the knox-owned docling and
+    # liteparse backends, which parsecraft supersedes; nothing reads it now.
+    # The keys are listed individually so an older vault is stripped with a
+    # deprecation warning instead of rejected by the strict schema.
+    "compile.pdf": [
+        "max_pages_before_chunking",
+        "page_chunk_overlap",
+        "page_chunk_size",
+        "table_structure",
+        "table_mode",
+        "formula_enrichment",
+        "code_enrichment",
+        "ocr",
+        "ocr_min_text_chars_per_page",
+        "num_threads",
+    ],
 }
 
 # Deprecated config keys → their canonical replacement.  The single source of
