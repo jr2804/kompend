@@ -186,11 +186,18 @@ def _strip_removed_keys(obj: dict[str, Any]) -> dict[str, Any]:
     Logs a warning for each stripped key so users can clean up their
     ``.knox/config.toml`` at their convenience. The canonical registry is
     ``REMOVED_KEYS`` in ``_schema.py``.
+
+    A section the stripping leaves empty is removed as well. ``KnoxConfig`` is
+    strict (``extra_forbidden``), so an empty TOML table left behind would fail
+    the whole vault — every knox command on it — which is worse than the key
+    being removed. ``generate.py`` applies the same rule when rendering a fresh
+    config.
     """
     for path, keys in REMOVED_KEYS.items():
         section = get_dot(obj, path)
         if not isinstance(section, dict):
             continue
+        stripped = False
         for key in keys:
             if key in section:
                 logger.warning(
@@ -199,7 +206,18 @@ def _strip_removed_keys(obj: dict[str, Any]) -> dict[str, Any]:
                     key,
                 )
                 del section[key]
+                stripped = True
+        if stripped and not section:
+            _del_dotted(obj, path)
     return obj
+
+
+def _del_dotted(obj: dict[str, Any], path: str) -> None:
+    """Delete the dotted *path* from *obj*, ignoring an absent parent or leaf."""
+    parent, _, leaf = path.rpartition(".")
+    container = get_dot(obj, parent) if parent else obj
+    if isinstance(container, dict):
+        container.pop(leaf, None)
 
 
 def _coerce_paths_to_str(obj: Any) -> Any:

@@ -33,6 +33,7 @@ from knox.core.config._core import (
 from knox.core.config.generate import extract_toml_keys, generate_scaffold_config, get_default_keys
 from knox.core.config.keys import PATHS_WIKI_DIR
 from knox.core.paths import KNOX_DIR
+from knox.core.pipeline.config import PipelineConfig
 from knox.types import JSONDict
 
 # ── Config generation ───────────────────────────────────────────────────
@@ -317,6 +318,59 @@ class TestResolveConfig:
         cfg = resolve_config()
         assert cfg.get("compile.llm.context_window") == 8192
         assert cfg.knox.compile.llm.context_window == 8192
+
+    def test_removed_compile_pdf_section_is_dropped_not_left_empty(self, tmp_path: Any, monkeypatch: Any, caplog: pytest.LogCaptureFixture) -> None:
+        """A whole removed *section* must not survive as an empty table.
+
+        `[compile.pdf]` configured the knox-owned docling/liteparse backends and
+        left the schema when they did. The resolver strips its keys, but the
+        emptied shell was left behind, and ``KnoxConfig`` is strict
+        (``extra_forbidden``) — so the vault failed to load at all and *every*
+        knox command on it errored. Removing a key must not brick the vault.
+        """
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text(
+            "[compile.pdf]\nmax_pages_before_chunking = 50\ntable_structure = true\n"
+            "\n[compile.llm]\ndefault_model = \"ollama/test-model\"\n",
+        )
+        (tmp_path / "sources").mkdir()
+        (tmp_path / "sources" / "a.md").write_text("hi\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        with caplog.at_level("WARNING"):
+            cfg = resolve_config()
+
+        assert "pdf" not in cfg.knox.compile.model_dump()
+        # Loud per-key warning, then no trace in the resolved config.
+        assert any("compile.pdf" in r.getMessage() for r in caplog.records)
+
+        # The vault must actually *load*. ``resolve_config`` is the lenient path;
+        # ``PipelineConfig.from_resolved`` is the strict one every command takes,
+        # and it is what an empty section used to break.
+        PipelineConfig.from_resolved(
+            cfg,
+            source_dir=tmp_path / "sources",
+            output_dir=tmp_path / "wiki",
+            input_files=None,
+        )
+
+    def test_parser_fallback_key_migrates_with_warning(self, tmp_path: Any, monkeypatch: Any, caplog: pytest.LogCaptureFixture) -> None:
+        """`[ingest] parser_fallback` left the schema with the single-backend change.
+
+        Without a ``REMOVED_KEYS`` entry it was an ``unknown config key`` ERROR
+        (exit 2) rather than a deprecation, so any vault that ever set the chain
+        flag failed `knox config check`.
+        """
+        config_file = tmp_path / "knox.toml"
+        config_file.write_text('[ingest]\nparser = "parsecraft"\nparser_fallback = true\n')
+        monkeypatch.chdir(tmp_path)
+
+        with caplog.at_level("WARNING"):
+            cfg = resolve_config()
+
+        assert cfg.get("ingest.parser") == "parsecraft"
+        assert not hasattr(cfg.knox.ingest, "parser_fallback")
+        assert any("ingest.parser_fallback" in r.getMessage() for r in caplog.records)
 
     def test_toml_string_values_stripped(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
