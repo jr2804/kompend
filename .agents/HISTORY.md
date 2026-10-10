@@ -35,6 +35,7 @@ from re-litigating settled questions.
 
 | Archived | Slug | What landed |
 | -------- | ---- | ----------- |
+| 2026-09-16 | `context-window-provider-overrides` | `[providers.<name>].context_window` now beats auto-discovery (step 1 of `discover_context_window`); `knox doctor` stops reporting override-only blocks of *known* providers as `missing base_url` while still erroring on unknown ids |
 | 2026-09-24 | `knox-0iv2-audit` | Read-only audit resolving a tracker-vs-code contradiction from the code; the reusable part is the method — dynamic-access sweep plus `git log -S "<Class>"` |
 | 2026-09-24 | `knox-storage-migration` | `.knox/` consolidated into one SQLite file (`core/store/`); clean cut, no migration code — `61147c5f`, `f6aee4c0`, `8aaf2eca` |
 | 2026-08-22 | `markdown-only-vault` | The wiki is represented by its generated markdown alone; `.knox/` is purely derived — `5d493119`, `51ea1111` |

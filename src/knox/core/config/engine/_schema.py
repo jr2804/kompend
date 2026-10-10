@@ -86,6 +86,10 @@ REMOVED_KEYS: dict[str, list[str]] = {
         "ocr_min_text_chars_per_page",
         "num_threads",
     ],
+    # `ingest.parser` became a single backend name, so the chain ordering it
+    # controlled no longer exists. Without this entry a vault that still carried
+    # the key got a hard `unknown config key` error instead of a deprecation.
+    "ingest": ["parser_fallback"],
 }
 
 # Deprecated config keys → their canonical replacement.  The single source of
