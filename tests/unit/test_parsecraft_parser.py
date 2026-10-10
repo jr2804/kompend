@@ -26,7 +26,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from parsecraft import pipeline
+
+pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
+
+from parsecraft import pipeline  # noqa: E402 — guarded by the importorskip above
 from parsecraft.ir.models import (
     ChunkKind,
     Diagnostic,
@@ -44,8 +47,6 @@ from parsecraft.routing.judge import BackendDescriptor
 from knox.core.models import ElementType
 from knox.preprocessing.parsers import _registry as registry_module
 from knox.preprocessing.parsers._registry import KNOWN_BACKENDS
-
-pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
 
 #: Resolved lazily via importlib: a static ``from ... import parsecraft_parser``
 #: would register the backend at collection time (pyreorder hoists function-level
