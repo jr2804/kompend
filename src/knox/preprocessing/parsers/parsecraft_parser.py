@@ -118,6 +118,10 @@ class ParsecraftParser:
         self._judge_name = parsecraft_judge
         self._judge_model = parsecraft_judge_model
         self._judge_preference = parsecraft_preference
+        #: Parsed once — every deterministic-path construction reuses it, so the
+        #: knob reaches the rule table even when no provider judge is configured
+        #: (parsecraft's ``DeterministicJudge`` tilts its VRAM tiebreak by it).
+        self._preference = _parse_preference(parsecraft_preference)
         self._judge: RoutingJudge | None = None
         self._judge_fallback: RoutingJudge | None = None  # DeterministicJudge after a real judge failed
         self._judge_degraded = False  # live judge dropped this run (warn once, no retry)
@@ -174,13 +178,31 @@ class ParsecraftParser:
 
         The router folds this into :meth:`ParserRouter.fingerprint`, so the parse
         cache invalidates when the judge tier changes rather than silently
-        serving pages routed under the previous configuration. Returns an empty
-        string when the deterministic rule table is in use — the default
-        configuration's cache key must not shift.
+        serving pages routed under the previous configuration. The deterministic
+        rule table honours the preference axis too (it tilts the VRAM tiebreak),
+        so a non-default ``parsecraft_preference`` must invalidate as well. The
+        balanced default deliberately keeps the empty identity: it is
+        behaviourally the table's neutral axis, and always emitting the
+        preference would re-invalidate every existing vault cache for no
+        behavioural change.
         """
         if self._judge_name in ("", "none"):
-            return ""
+            if self._preference is RoutingPreference.BALANCED:
+                return ""
+            return f"parsecraft_preference:{self._judge_preference}"
         return f"parsecraft_judge:{self._judge_name}/{self._judge_model}:{self._judge_preference}"
+
+    def _deterministic_judge(self) -> DeterministicJudge:
+        """The rule-table judge carrying the configured preference axis.
+
+        parsecraft's table takes the smallest declared ``estimated_vram_gb``
+        inside a family for SPEED *and* BALANCED (balanced is the neutral
+        default) and the largest for QUALITY; preference never reorders across
+        families. Speed-vs-balanced is therefore a configured value only,
+        never a routing difference — a three-way behavioural test cannot
+        exist, only a wiring test plus the speed/quality flip.
+        """
+        return DeterministicJudge(self._preference)
 
     def _execute_with_judge(
         self,
@@ -217,13 +239,13 @@ class ParsecraftParser:
             if self._judge_degraded or isinstance(judge, DeterministicJudge):
                 raise
             self._degrade_judge(exc)
-            fallback = self._judge_fallback if self._judge_fallback is not None else DeterministicJudge()
+            fallback = self._judge_fallback if self._judge_fallback is not None else self._deterministic_judge()
             return execute(analysis, registry, constraints, source, judge=fallback)
 
     def _degrade_judge(self, exc: BaseException) -> None:
         """Drop a live judge that failed at call time; warn once per run."""
         self._judge = None
-        self._judge_fallback = DeterministicJudge()
+        self._judge_fallback = self._deterministic_judge()
         self._judge_degraded = True
         logger.warning(
             "parsecraft judge %s/%s failed at call time (%s: %s); falling back to the deterministic rule table for the rest of this run.",
@@ -261,7 +283,7 @@ class ParsecraftParser:
         if self._judge_fallback is not None:
             return self._judge_fallback
         if self._judge_name in ("", "none"):
-            self._judge_fallback = DeterministicJudge()
+            self._judge_fallback = self._deterministic_judge()
             return self._judge_fallback
         if not self._judge_model:
             msg = (
@@ -270,7 +292,7 @@ class ParsecraftParser:
                 "to the SDK's model token for the configured provider."
             )
             logger.warning(msg)
-            self._judge_fallback = DeterministicJudge()
+            self._judge_fallback = self._deterministic_judge()
             return self._judge_fallback
         try:
             self._judge = resolve_judge(
@@ -288,7 +310,7 @@ class ParsecraftParser:
                 type(exc).__name__,
                 str(exc)[:_JUDGE_ERROR_EXCERPT_CHARS],
             )
-            self._judge_fallback = DeterministicJudge()
+            self._judge_fallback = self._deterministic_judge()
             return self._judge_fallback
         return self._judge
 

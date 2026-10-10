@@ -30,6 +30,7 @@ import pytest
 pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
 
 from parsecraft import pipeline  # noqa: E402 — guarded by the importorskip above
+from parsecraft.backends.protocol import BackendCapabilities  # noqa: E402 — guarded by the importorskip above
 from parsecraft.ir.models import (
     ChunkKind,
     Diagnostic,
@@ -43,6 +44,7 @@ from parsecraft.pipeline import MEDIA_TYPES
 from parsecraft.pipeline.models import PageGroup
 from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
+from parsecraft.routing.models import Intent  # noqa: E402 — guarded by the importorskip above
 
 from knox.core.models import ElementType
 from knox.preprocessing.parsers import _registry as registry_module
@@ -240,6 +242,22 @@ class _SentinelJudge:
         return names
 
 
+def _pdf_backend(name: str, vram: float) -> BackendDescriptor:
+    """A minimal native-PDF candidate whose only difference is declared VRAM."""
+    caps = BackendCapabilities(
+        supported_formats=["application/pdf"],
+        supports_page_ranges=True,
+        supports_multi_page=True,
+        gpu_requirement=0.0,
+        estimated_vram_gb=vram,
+        optional_dependency_group=None,
+        model_asset=None,
+        languages=(),
+        required_engine=None,
+    )
+    return BackendDescriptor(name=name, version="0.1.0", capabilities=caps)
+
+
 class TestJudgeWiring:
     """The judge tier is opt-in and must never turn a misconfiguration into a failed ingest.
 
@@ -297,6 +315,60 @@ class TestJudgeWiring:
         assert adapter._parse_preference("speed").value == "speed"
         assert adapter._parse_preference("quality").value == "quality"
         assert adapter._parse_preference("typo").value == "balanced"
+
+    def test_preference_reaches_the_deterministic_judge(self) -> None:
+        """The knob must be honoured on the no-judge path, not only via resolve_judge.
+
+        With the default ``parsecraft_judge = "none"`` every vault routes through
+        the rule table; a preference that only reaches provider judges is
+        silently inert for the default configuration.
+        """
+        adapter = _adapter()
+        for name in ("speed", "balanced", "quality"):
+            parser = adapter.ParsecraftParser(parsecraft_preference=name)
+            assert parser._get_judge()._preference is adapter.RoutingPreference(name)
+
+    def test_degraded_paths_keep_the_preference(self) -> None:
+        """Resolver failure and call-time degradation both build the rule-table
+        fallback with the configured axis, not the enum default.
+        """
+        adapter = _adapter()
+        unresolvable = adapter.ParsecraftParser(
+            parsecraft_judge="nosuchprovider", parsecraft_judge_model="m", parsecraft_preference="quality"
+        )
+        assert unresolvable._get_judge()._preference is adapter.RoutingPreference.QUALITY
+        degraded = adapter.ParsecraftParser(
+            parsecraft_judge="ollama", parsecraft_judge_model="m", parsecraft_preference="quality"
+        )
+        degraded._degrade_judge(RuntimeError("endpoint died"))
+        assert degraded._judge_fallback._preference is adapter.RoutingPreference.QUALITY
+
+    def test_quality_flips_the_rule_table_vram_tiebreak(self) -> None:
+        """Behavioural pin: same two candidates, opposite order under quality.
+
+        parsecraft's rule table orders SPEED and BALANCED identically (smallest
+        declared VRAM first — balanced is the neutral default) and flips for
+        QUALITY; preference never reorders across families. Speed-vs-balanced is
+        therefore distinguishable only as the configured value (the wiring test
+        above), not as routing behaviour.
+        """
+        adapter = _adapter()
+        small, big = _pdf_backend("small", 0.5), _pdf_backend("big", 8.0)
+        speed = adapter.ParsecraftParser(parsecraft_preference="speed")._get_judge()
+        quality = adapter.ParsecraftParser(parsecraft_preference="quality")._get_judge()
+        assert list(speed.rank(Intent.NATIVE, [small, big])) == ["small", "big"]
+        assert list(quality.rank(Intent.NATIVE, [small, big])) == ["big", "small"]
+
+    def test_cache_identity_tracks_a_non_default_preference(self) -> None:
+        """A non-default preference changes rule-table routing, so the parse
+        cache must invalidate; the balanced default keeps the empty identity so
+        existing caches survive the fix.
+        """
+        adapter = _adapter()
+        assert adapter.ParsecraftParser().cache_identity() == ""
+        assert adapter.ParsecraftParser(parsecraft_preference="balanced").cache_identity() == ""
+        assert adapter.ParsecraftParser(parsecraft_preference="speed").cache_identity() == "parsecraft_preference:speed"
+        assert adapter.ParsecraftParser(parsecraft_preference="quality").cache_identity() == "parsecraft_preference:quality"
 
     def test_call_time_failure_degrades_to_the_rule_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A judge that resolves but fails on its first ``rank`` must not fail the ingest."""
