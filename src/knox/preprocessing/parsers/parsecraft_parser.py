@@ -390,11 +390,16 @@ def _chunk_content(chunk: StructuredChunk) -> str:
 def _heading_level(chunk: StructuredChunk) -> int | None:
     """Heading depth for heading chunks.
 
-    parsecraft carries the level in metadata as a string (``"1"``, ``"2"``).
+    parsecraft carries the level in chunk metadata as a string (``"1"``,
+    ``"2"``). 2026.10.2 renamed the key to ``n_level`` (the native-markdown
+    adapter emits ``token.tag.removeprefix("h")``); ``heading_level`` is the
+    2026.10.1 name and is still read because the parsecraft extra's floor is
+    ``>=2026.10.1``. The docling path emits no level at all — a level is a
+    native-adapter fact, not an IR-wide guarantee.
     """
     if chunk.kind != "heading":
         return None
-    level = chunk.metadata.get("heading_level")
+    level = chunk.metadata.get("n_level") or chunk.metadata.get("heading_level")
     if level is None:
         return None
     try:
