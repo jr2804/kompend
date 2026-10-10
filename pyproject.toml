@@ -66,7 +66,6 @@ dependencies = [
     "summarization-pydantic-ai>=0.1.10",
     "aenum>=3.1.17",
     "lazy-loader",
-    "trafilatura>=2.0.0",
     "rapidfuzz>=3.14.6",
     "charset-normalizer>=3.5.1",
 ]
@@ -77,11 +76,14 @@ knox = "knox.cli.app:main"
 [project.optional-dependencies]
 
 # External document-intelligence pipeline (parsecraft adapter). The ingestion
-# path: it drives docling, liteparse, pandoc, its native backends and its OCR
-# backends internally, so those are never knox dependencies — they arrive
-# transitively through this extra.
+# path: it drives docling, liteparse, pandoc, trafilatura, its native backends
+# and its OCR backends internally, so those are never knox dependencies — they
+# arrive transitively through this extra. `trafilatura` is here because knox no
+# longer imports it (the web parser that did is deleted); it is listed so
+# parsecraft's HTML sub-backend stays eligible, which is the only reason it
+# would otherwise be a main dependency.
 parsecraft = [
-    "parsecraft[liteparse,pdf-lite,docling,pandoc]>=2026.10.1",
+    "parsecraft[liteparse,pdf-lite,docling,pandoc,trafilatura]>=2026.10.1",
 ]
 
 #: Judge-tier routing via the System One wire. Requires a local ollama
