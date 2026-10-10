@@ -35,7 +35,7 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 | **opendataloader-pdf** | 22.9k | Apache 2.0 | **0.907 (#1)** | 60+ p/s | Yes | Yes | Partial |
 | **Docling** (IBM) | 60.7k | MIT | 0.882 | 0.76 s/p | No | Yes | Yes |
 | **Marker** (VikParuchuri) | 35.7k | GPL-3.0 | 0.861 | 53 s/p | Yes | Yes | No |
-| **MinerU** (opendatalab) | 65.7k | AGPL-3.0 | 0.831 | 5.96 s/p | Yes | Yes | Yes (15 tools) |
+| **MinerU** (opendatalab) | 65.7k | MinerU OSL (Apache-2.0 + MAU/revenue limits) | 0.831 | 5.96 s/p | Yes | Yes | Yes (15 tools) |
 | **PyMuPDF4LLM** | ~5k | AGPL | 0.732 | 0.09 s/p | No | Partial | No |
 | **markitdown** (Microsoft) | ~10k | MIT | 0.589 | 0.11 s/p | No | Basic | No |
 | **GROBID** | ~3k | Apache 2.0 | N/A (XML/TEI) | N/A | No | Yes (Scientific) | No |

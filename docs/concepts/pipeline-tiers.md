@@ -19,19 +19,17 @@ flowchart LR
     classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
 
     PDF[PDF / DOCX / PPTX / XLSX / EPUB] --> Parser[ParsecraftParser<br>per-page routing]
-    TXT[Text / Markdown] --> Parser
+    TXT[Text / Markdown / HTML] --> Parser
     IMG[Images] --> Parser
-    HTML[HTML] --> Web[WebPageParser]
     URL[URL] --> HTTP[HTTPDownloader]
     URL2[Web URL] --> Crawler[WebCrawler]
 
     Parser --> PD[ParsedDocument]
-    Web --> PD
     HTTP --> PD
     Crawler --> PD
 
-    class PDF,TXT,IMG,HTML,URL,URL2 source
-    class Parser,Web,HTTP,Crawler process
+    class PDF,TXT,IMG,URL,URL2 source
+    class Parser,HTTP,Crawler process
     class PD output
 ```
 
@@ -40,9 +38,7 @@ flowchart LR
 | Class | File | Purpose |
 |-------|------|---------|
 | `BaseParser` | `parsers/base.py` | Abstract interface: `parse(path) → ParsedDocument` |
-| `ParsecraftParser` | `parsers/parsecraft_parser.py` | Default backend; per-page routing across its sub-backends |
-| `WebPageParser` | `parsers/web_parser.py` | HTML via trafilatura |
-| `MarkerParser` / `MinerUParser` | `parsers/marker_parser.py`, `parsers/mineru_parser.py` | Optional backends, installed manually |
+| `ParsecraftParser` | `parsers/parsecraft_parser.py` | The one backend; per-page routing across parsecraft's sub-backends |
 | `HTTPDownloader` | `downloaders/http.py` | Direct file URLs |
 | `WebCrawler` | `downloaders/crawler.py` | Web pages via crawl4ai |
 | `ParserRouter` | `parsers/_registry.py` | Extension-based dispatch |

@@ -234,12 +234,12 @@ knox compile                # re-chunks from the new parser output
 knox ingest --no-cache
 ```
 
-`ingest.parser` names exactly one installed parser backend: `parsecraft`
-(the default — `uv add knox[parsecraft]`, Python ≥3.13), `web` (core), or a
-manually installed `marker`/`mineru`. An unknown name raises, and a known
-backend whose dependency is missing raises with its install command.
-Selecting `parsecraft` routes matching files through parsecraft's full
-pipeline; see
+`ingest.parser` names exactly one parser backend: `parsecraft` (the default
+— `uv add knox[parsecraft]`, Python ≥3.13). An unknown name raises, so a
+vault configured against a nonexistent backend fails loudly. `knox[mineru]`
+adds MinerU as a parsecraft sub-backend, `knox[systemone]` adds the judge
+tier, and marker is parsecraft's bring-your-own dependency. Selecting
+`parsecraft` routes matching files through parsecraft's full pipeline; see
 [ParsecraftParser](document-extraction.md#parsecraftparser-external-adapter)
 for the fallback interaction and the diagnostics parsecraft carries into
 KNOX metadata.

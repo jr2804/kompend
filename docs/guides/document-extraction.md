@@ -13,35 +13,33 @@ See also:
 
 ## Parser Backends
 
-`[ingest] parser` names exactly one backend.
+`[ingest] parser` names exactly one backend: `parsecraft`, the default.
 
-- `parsecraft` — the default. An external document-intelligence pipeline that
-  routes each page across its own sub-backends (native text/markdown/HTML/PDF,
-  LiteParse, docling, pandoc, OCR extras) and returns one document per source.
-  It ships as the `parsecraft` extra, which pulls the sub-backends that make it
+- `parsecraft` — an external document-intelligence pipeline that routes each
+  page across its own sub-backends (native text/markdown/HTML/PDF, LiteParse,
+  docling, pandoc, OCR extras) and returns one document per source. It ships
+  as the `parsecraft` extra, which pulls the sub-backends that make it
   useful: `uv add knox[parsecraft]`.
-- `web` — trafilatura HTML parser, installed with the core package.
-
-Two further backends exist but cannot be locked extras — their transitive
-dependencies conflict (pillow, transformers, ONNX) with knox's LLM stack.
-Install them manually:
-
-```bash
-uv pip install marker-pdf   # deep-learning PDF/office/HTML
-uv pip install mineru       # layout-aware PDF/Office with OCR (torch, ONNX)
-```
-
-Then select the one you want:
 
 ```toml
 [ingest]
-parser = "parsecraft"   # or "web" | "marker" | "mineru"
+parser = "parsecraft"   # the only knox backend
 ```
 
-`knox list-parsers` shows which backends are installed and the formats each
-claims. An unknown name raises; a known backend whose optional dependency is
-missing raises with its install command, so a vault configured against an
-absent parser fails loudly instead of parsing nothing.
+`knox list-parsers` shows the backend and the formats it claims. An unknown
+name raises, so a vault configured against a backend that does not exist
+fails loudly instead of parsing nothing.
+
+Two opt-in extensions ride on top of parsecraft rather than being knox
+backends:
+
+- **`knox[mineru]`** — adds MinerU 4.x as a parsecraft sub-backend
+  (`parsecraft[mineru]>=2026.10.2`), eligible for layout-heavy and OCR
+  pages. The extra opts into MinerU's own licence terms — read the note in
+  `pyproject.toml` before using it commercially.
+- **marker (bring-your-own)** — `marker-pdf` cannot be locked or pinned by
+  knox at all (see [below](#why-marker-cannot-be-a-locked-extra)); install
+  it yourself and parsecraft counts it among its routing candidates.
 
 The judge tier needs the `systemone` extra on top of parsecraft:
 
@@ -49,48 +47,25 @@ The judge tier needs the `systemone` extra on top of parsecraft:
 uv add knox[systemone]
 ```
 
-> **Installing marker/mineru into a knox project:** run the `uv pip install`
-> commands *outside* the project's resolved environment (a separate venv or a
-> container), then point knox at that environment. They cannot be added to the
-> project's dependency graph without regressing the core LLM stack — see
-> [Why `marker` cannot be a locked extra](#why-marker-cannot-be-a-locked-extra).
-
 ### Why `marker` cannot be a locked extra
 
-Measured against the current lock, `marker-pdf` 2.0.0 resolves only by
-downgrading eight packages, five of them backwards past what knox's LLM stack
-requires:
+Measured fresh (knox-3, 2026-10-10) against the current lock: the tight pin
+`marker-pdf>=1.10.2,<2` **hard-fails** — `marker-pdf` 1.10.2 pins
+`anthropic>=0.46,<0.47` while `pydantic-ai` 2.31.1 needs `anthropic>=0.108`,
+and the two ranges do not overlap. Dropping the upper bound only makes it
+"resolve" by downgrading `anthropic` 1.13.0 → 0.125.0 and `pillow`
+12.3.0 → 10.4.0 — silently regressing knox's LLM stack.
 
-| Package | knox | marker forces | Declared by | Movable? |
-|---------|------|---------------|-------------|----------|
-| `anthropic` | 1.8.0 | **<1** | `marker-pdf` | ❌ |
-| `openai` | 3.19.0 | **<3** | `marker-pdf` | ❌ |
-| `pillow` | 12.3.0 | `<11` | `marker-pdf` | ✅ |
-| `opencv-python-headless` | 5.0.0.93 | `==4.11.0.86` | `surya-ocr` | ✅ relax our floor |
-| `pypdfium2` | 5.13.0 | `==5.10.1` | `pdftext` | ✅ above our floor |
-| `filelock` | 4.0.1 | `<4` | `surya-ocr` | ✅ |
-| `pydantic-ai` | 2.48.0 | 2.31.1 | consequence of `anthropic<1` | ❌ |
-| `pydantic-ai-harness` | 0.34.0 | 0.24.0 | consequence of `anthropic<1` | ❌ |
-
-`surya-ocr` and `pdftext` are listed in marker's own `pyproject.toml`, so this
-is one hop away, not transitive.
-
-The two unmovable conflicts are `marker-pdf` itself: `anthropic>=0.69.0,<1`
-and `openai>=2.2.0,<3`. Their intersection with `pydantic-ai`'s
-`anthropic>=1.8.0` and `openai>=3.8.0` (declared in `pydantic-ai`'s own
-default `pydantic-ai-slim[anthropic,openai]`) is **empty** — verified with
-`uv pip install "anthropic>=1.8.0,<1"` and the same for `openai`. Relaxing
-our own `opencv-python-headless`/`pypdfium2` floors doesn't help: those
-remove two conflicts and leave the two that make a resolution impossible.
-`mineru` installs cleanly and remains the usable manual backend; `marker` is
-usable only if the downgrades above are acceptable.
+That is the substantive reason the marker backend was deleted rather than
+kept behind an extra (ADR-0006): knox cannot own the `marker-pdf` pin, so
+marker is parsecraft's **bring-your-own** sub-backend.
 
 ## Supported Formats
 
 Discovery follows the configured backend: knox asks `[ingest] parser` which
 suffixes it claims (`get_all_extensions([config.parser])`) and scans the source
 directory for exactly those. With the default backend that is parsecraft's
-31-suffix table. `.knox/` is excluded regardless of claimed formats, so state
+32-suffix table. `.knox/` is excluded regardless of claimed formats, so state
 artifacts such as `.knox/rumdl.toml` are never ingested even though parsecraft
 claims `.toml`.
 
@@ -101,12 +76,12 @@ claims `.toml`.
 | `.epub`, `.odt`, `.rtf` | `parsecraft` | E-book and legacy text containers |
 | `.md`, `.markdown`, `.html`, `.htm` | `parsecraft` | Native text and markup backends |
 | `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff` | `parsecraft` | Images; content comes from an OCR/VLM sub-backend when installed |
-| `.txt`, `.text`, `.log`, `.rst`, `.ini`, `.cfg`, `.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.sh`, `.tex` | `parsecraft` | Plain-text source family |
-| `.html` | `web` | Trafilatura reader; the only suffix `web` claims |
+| `.txt`, `.text`, `.log`, `.rst`, `.ini`, `.cfg`, `.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.m`, `.sh`, `.tex` | `parsecraft` | Plain-text source family |
 
-`marker` and `mineru`, when installed and selected, claim their own sets.
-`knox list-parsers` prints the live extension list per installed backend. A
-file whose suffix no installed backend claims is never picked up by discovery.
+`.html`/`.htm` are handled by parsecraft's own native/trafilatura backends —
+there is no separate web parser. `knox list-parsers` prints the live
+extension list. A file whose suffix the backend does not claim is never
+picked up by discovery.
 
 ## Parser Strategy: Speed vs. Accuracy
 
@@ -138,44 +113,30 @@ raises; a known backend whose optional dependency is missing raises with its
 install command — a vault whose configured parser is absent fails loudly
 instead of parsing nothing.
 
-## Backend Comparison: Strengths and Weaknesses
+## Sub-Backends: what parsecraft routes between
 
-> Capabilities below reflect what each backend **actually emits into the
-tier-1 element model** through knox's shared Markdown converter, not just what
-the upstream project advertises. Backends that mark a capability "—" produce
-that content in their Markdown, but knox previously discarded it (see
-[Part-level markdown normalisation](#part-level-markdown-normalisation)).
+There is one selectable backend; the comparison that matters is between
+parsecraft's sub-backends, and the extras decide which are present:
 
-### Capabilities at a glance
-
-| Backend | Figures | Tables | Equations (LaTeX) | Code blocks | OCR engine | Speed |
-|---------|---------|--------|-------------------|-------------|------------|-------|
-| `parsecraft` | yes | yes | yes | yes | per page, when an OCR sub-backend is installed | medium |
-| `marker` | yes | yes | yes | yes | block OCR | medium (GPU-friendly) |
-| `mineru` | yes | yes | yes | yes | layout + OCR | medium–slow |
-| `web` (trafilatura) | no | yes | n/a | yes | no | fastest |
-
-`parsecraft`'s row is the union of its sub-backends: which of figures, tables,
-equations and OCR it can actually produce depends on the extras present.
-
-### Where each backend wins
-
-| Backend | Strong points | Weak points |
-|---------|---------------|-------------|
-| `parsecraft` | Per-page routing instead of one engine per corpus: a born-digital page stays on the cheap native/LiteParse path while a scanned or table-heavy page in the same file escalates. Inherits selective OCR, per-page fallback passes and route-degradation metadata. | Adds an external dependency with a minimum parsecraft release; routing is parsecraft's to decide and knox cannot intervene mid-pipeline. On parsecraft 2026.10.1 the candidate set is narrowed by its own installed-extra probe (see [Limitations](#limitations)). |
-| `marker` | Highest reported benchmark accuracy of the selectable backends; equations and tables as first-class output; device-aware modes; optional LLM processors for extra quality when an LLM service is configured. | Cannot be a locked extra — its own `anthropic<1` / `openai<3` caps contradict `pydantic-ai`'s `anthropic>=1.8.0` / `openai>=3.8.0` (see [above](#why-marker-cannot-be-a-locked-extra)); model download + GPU strongly preferred; slowest on CPU; internal figure captions only via the opt-in LLM path. |
-| `mineru` | Layout-aware with selectable backends (`pipeline` OCR + layout, `vlm`, `hybrid`); `formula_enable`/`table_enable` on by default; parse-method control (`auto`/`ocr`/`txt`) lets you force or skip OCR per corpus. | Cannot be a locked extra; heavy install (torch + ONNX); its Markdown carries no page markers, so `page_count` is reported as unknown (`0`). |
-| `web` (trafilatura) | Purpose-built HTML reader: strips chrome/nav/boilerplate and returns clean GFM (headings, lists, tables, links, code) much faster than a PDF parser on HTML. | HTML only; no figures (image refs are dropped — knox's web parser has no image resolver), no OCR, no equations. |
+| Sub-backend | What it wins | Arrives via |
+|------------|--------------|-------------|
+| native (text/markdown/HTML) | The fast path for born-digital content | core parsecraft |
+| LiteParse | Default PDF engine | `knox[parsecraft]` |
+| docling | Structure-heavy pages: equations, tables, complex layouts | `knox[parsecraft]` |
+| pandoc | Legacy containers (EPub, ODT, RTF) | `knox[parsecraft]` |
+| OCR backends | Scanned pages (per-page escalation) | `parsecraft[ocr-*]` extras |
+| mineru | Layout-aware PDF/Office with OCR | `knox[mineru]` |
+| marker | Highest reported benchmark accuracy | bring-your-own install |
 
 ### Choosing
 
-- **Default:** `parsecraft` — per-page routing covers text-native, office and
-  scanned documents with one configuration.
-- **Highest local accuracy on hard layouts:** `marker` (manual install, GPU
-  preferred).
-- **Image-only or OCR-heavy corpora:** `parsecraft` with an OCR sub-backend
-  installed, or `mineru` (`parse_method = "ocr"`).
-- **Web pages:** `web`.
+- **Default:** `knox[parsecraft]` covers text, office, PDF and container
+  formats with per-page routing.
+- **Layout-heavy or scanned corpora:** add `knox[mineru]` or a
+  `parsecraft[ocr-*]` extra.
+- **Maximum accuracy on hard layouts:** install `marker-pdf` yourself
+  (GPU preferred) — knox cannot pin it (see
+  [Why `marker` cannot be a locked extra](#why-marker-cannot-be-a-locked-extra)).
 
 ## Part-level markdown normalisation
 
@@ -186,8 +147,8 @@ tier-1 elements. It recognises headings, images, tables, **equations** (`$$…$$
 
 Before that consolidation each backend had its own copy of the walk, and all of
 them recognised only headings, images, tables and paragraphs — so equations,
-code and list items from backends that *do* emit them (marker, mineru) were
-folded into `TEXT` and reached the chunker as prose.
+code and list items from sub-backends that *do* emit them (docling, marker,
+mineru) were folded into `TEXT` and reached the chunker as prose.
 
 After conversion, each document's markdown-bearing elements are normalised
 through `rumdl` in **one batched call per document**, at parse time — so the
@@ -238,8 +199,8 @@ other backend's.
 parsecraft speaks MIME (`text/plain`, `application/pdf`, `image/jpeg`, …);
 KNOX discovers files by extension, and asks the configured backend which
 suffixes it handles (`get_all_extensions([config.parser])`). With parsecraft
-that is its 31-suffix table — `.txt`, `.text`, `.log`, `.rst`, `.ini`, `.cfg`,
-`.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.sh`, `.tex`, plus the
+that is its 32-suffix table — `.txt`, `.text`, `.log`, `.rst`, `.ini`, `.cfg`,
+`.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.m`, `.sh`, `.tex`, plus the
 usual PDF/HTML/image set — so a parsecraft vault can ingest source files. A
 PDF-only backend would contribute no text suffixes at all. `.knox/` is excluded
 from source discovery regardless of claimed formats: state artifacts like
@@ -339,41 +300,6 @@ boundary, never exit codes.
 - Adapter calls `execute()` **serially**, matching parsecraft's 8 GB one-
   instance discipline (`pipeline/AGENTS.md`). KNOX-level parallelism across
   documents is preserved (the existing parse worker pool is unchanged).
-- **The judge can only rank candidates the environment probe admitted.**
-  parsecraft 2026.10.1 detects installed backends through a declared map
-  (`parsecraft/environment/probe.py: EXTRA_IMPORTS`) whose
-  `optional_dependency_group` value it does not list is treated as *not
-  installed* — `extra_present("docling")` returns `False` even when the
-  `docling` module resolves, because the map has no `"docling"` entry (nor
-  `"pandoc"`). With docling filtered out, a PDF has exactly one candidate
-  (`liteparse`) and the judge has nothing to choose, so `parsecraft_judge`
-  changes nothing. Confirm the candidate set before reading anything into a
-  judge run: an empty `metadata.degraded_pages` and an unchanged
-  `metadata.backends` are expected, not a regression.
-
-## MinerUParser: Layout-Aware PDF/Office Parsing
-
-[MinerU](https://github.com/opendatalab/MinerU) (Apache 2.0) is a
-high-accuracy document parser with three selectable backends:
-
-- **pipeline** (default) — traditional OCR + layout-detection model.
-- **vlm** — vision-language model backend (needs `mineru-vl-utils` + GPU server).
-- **hybrid** — pipeline for text-heavy pages, VLM for complex layouts.
-
-MinerU handles PDF, DOCX, PPTX, and XLSX. It has no internal figure
-captioning, so `figure_enrichment` is `False` and every figure flows through
-`VLMEnricher`. The parser drives MinerU's `do_parse` API, which converts a
-source file to Markdown (with extracted images), then walks the Markdown into
-KNOX `DocumentElement` values.
-
-MinerU requires heavy dependencies (torch, transformers, ONNX models). It is
-**not** installed by default — install it manually:
-
-```bash
-uv pip install mineru
-```
-
-Then select it: `parser = "mineru"`.
 
 ## Investigated and Rejected: opendataloader-pdf[hybrid]
 
@@ -437,30 +363,6 @@ version could add opendataloader as an optional PDF backend — but the
 operational complexity (Java, sidecar server, JVM overhead) means this
 should only be done when there is clear evidence of content loss, not
 based on benchmarks alone.
-
-## Marker Parser
-
-[Marker](https://github.com/datalab-to/marker) (Apache-2.0) is a deep-learning
-document converter that renders PDF, DOCX, PPTX, XLSX, EPUB, and HTML into
-Markdown with structured tables, equations, and extracted figures. It reports
-the highest benchmark accuracy among the backends KNOX can select directly
-(95.67 heuristic accuracy).
-
-Two conversion modes (configured via `mode`):
-
-| Mode | Use case |
-|------|----------|
-| `fast` | CPU/MPS — lightweight detectors, block-OCRs garbled content only |
-| `balanced` | CUDA GPU — full VLM layout model + full-page OCR |
-
-Install:
-
-```bash
-uv pip install marker-pdf
-```
-
-Marker has no internal figure captioning, so `figure_enrichment` is `False`
-and every extracted figure still flows through `VLMEnricher`.
 
 ## See also
 

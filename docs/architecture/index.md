@@ -14,7 +14,7 @@ flowchart TD
     classDef storage fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
 
     SRC[Raw Sources<br/>PDF / DOCX / PPTX / EPUB / MD / TXT / URLs]
-    T1[Tier 1<br/>Pre-Processing<br/>parsecraft / web / downloaders]
+    T1[Tier 1<br/>Pre-Processing<br/>parsecraft / downloaders]
     T2[Tier 2<br/>Chunking<br/>Hierarchical ChunkTree]
     T3[Tier 3<br/>Resolution<br/>EntityRegistry + VLMEnricher]
     T4[Tier 4<br/>Compilation<br/>Graph / TwoPhase / WiCER]
