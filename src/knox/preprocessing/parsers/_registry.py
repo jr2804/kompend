@@ -31,7 +31,6 @@ PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
 # when the backend's optional dependency is not installed. Each entry maps to
 # a human-readable description shown in error messages.
 KNOWN_BACKENDS: dict[str, str] = {
-    "mineru": "layout-aware PDF/Office parser with OCR (install: uv pip install mineru)",
     "parsecraft": "per-page routing across docling, liteparse, pandoc, native and OCR backends (install: uv sync --extra parsecraft)",
 }
 
@@ -41,7 +40,6 @@ KNOWN_BACKENDS: dict[str, str] = {
 # (from ``build_default_router`` / ``get_backend`` / ``get_all_extensions`` /
 # ``get_registered_parsers``) — never at CLI ``--help`` import time.
 _BACKEND_MODULES: dict[str, str] = {
-    "mineru": "knox.preprocessing.parsers.mineru_parser",
     "parsecraft": "knox.preprocessing.parsers.parsecraft_parser",
 }
 

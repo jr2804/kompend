@@ -94,15 +94,27 @@ systemone = [
     "parsecraft[systemone]>=2026.10.1",
 ]
 
+#: parsecraft[mineru] installs the MinerU 4.x stack: code under the MinerU Open
+#: Source License (Apache-2.0 PLUS commercial-use thresholds >100M MAU /
+#: >USD 20M revenue, attribution duty, termination-without-notice); the default
+#: VLM checkpoint weights are Apache-2.0; the Windows-default llama.cpp GGUF
+#: engine and the ONNX kit are licence-undeclared upstream. Installing the extra
+#: is the opt-in (ADR-0007). Weights are downloaded by MinerU itself at first
+#: conversion — parsecraft never fetches them.
+mineru = [
+    "parsecraft[mineru]>=2026.10.2",
+]
+
 otel = [
     "opentelemetry-sdk>=1.28.0",
     "opentelemetry-exporter-otlp>=1.28.0",
 ]
 
-# Backends not covered by parsecraft yet, installed manually (they conflict on
-# transitive deps such as pillow, so they cannot be locked as extras):
-#   uv pip install marker-pdf   # or mineru
-# Each is removed as its parsecraft equivalent ships.
+# marker-pdf is parsecraft's bring-your-own dependency (ADR-0006): the marker
+# backend detects a manual install by import. No release can be locked here —
+# 1.x pins anthropic<0.47 against pydantic-ai's >=0.108, and 2.0.0 resolves
+# only by downgrading anthropic and pillow graph-wide. Manual install only:
+#   uv pip install marker-pdf
 
 
 [dependency-groups]

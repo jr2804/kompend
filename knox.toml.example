@@ -29,12 +29,13 @@ file = "NOTES.md"
 #   parsecraft — default. External document-intelligence pipeline: per-page
 #               routing across native + OCR backends
 #               (uv add knox[parsecraft]; see docs/guides/document-extraction.md)
+#   knox[mineru] adds the MinerU 4.x engine via parsecraft[mineru] — licence
+#               opt-in (ADR-0007), see docs/guides/document-extraction.md
 # Manual install (conflicting transitive deps — not extras):
 #   marker    — deep-learning PDF engine for parsecraft (uv pip install
 #                marker-pdf): bring-your-own, detected by import (ADR-0006).
 #                PDF pages only — office/HTML/image sources route through
 #                parsecraft's other backends either way.
-#   mineru    — layout-aware PDF/Office parser with OCR (uv pip install mineru)
 # A known name whose optional dependency is missing raises with its install
 # command; an unknown name raises.
 # Run `knox doctor` to list available backends.

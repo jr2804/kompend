@@ -12,9 +12,11 @@ Two public surfaces:
   replaces undecodable bytes with U+FFFD on detection.
 
 - :func:`normalize_to_utf8_path` — returns a :class:`pathlib.Path`
-  pointing at a UTF-8 sibling of the original file for parsers that
-  shell out to a binary expecting a file (pandoc, docling, marker,
-  liteparse). Materializes a tempfile in the cache only when detection
+  pointing at a UTF-8 sibling of the original file for pipeline stages that
+  hand text-family sources to the parser (the knox-side binary-expecting
+  parsers — pandoc, docling, marker, liteparse — are gone; parsecraft
+  normalizes internally, but non-UTF-8 text sources still get a UTF-8 path
+  before parse). Materializes a tempfile in the cache only when detection
   says non-UTF-8; UTF-8-clean files pass through unchanged.
 
 Detection uses :mod:`charset-normalizer`. The dependency is declared as

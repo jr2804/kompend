@@ -15,14 +15,13 @@ imported on demand (`_ensure_backend`), never at package-import time, so CLI
 
 ```text
 base.py            BaseParser, FileExtension (extensions only), ParserRouter, DPI/IMAGE_SCALE constants
-markdown.py        markdown_to_elements() — THE Markdown→element converter used by every
-                   markdown-producing backend; element_to_markdown()/markdown_to_element()
-                   are the inverse pair used for rumdl normalisation
+markdown.py        element_to_markdown()/markdown_to_element() — the wrap/unwrap pair used for
+                   rumdl whole-part normalisation; no Markdown→element converter lives here
+                   anymore (parsecraft maps its IR directly)
 _registry.py       ParserBuildOptions, PARSER_BACKENDS, KNOWN_BACKENDS, register_backend/get_backend,
                    build_default_router() — the single factory for a ready-to-use router
 parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routing is
                    parsecraft's, knox keeps none of its own
-mineru_parser.py   MinerUParser  (manual install: layout-aware PDF/Office + OCR)
 ```
 
 `build_pipeline` builds a `ParserRouter` from `config.parser` (`ingest.parser`
@@ -58,13 +57,14 @@ a cache by itself.
 A second knox-side backend competes with parsecraft's own per-page routing
 rather than complementing it. Add capabilities to parsecraft, not to knox. The
 knox-side backends that duplicated it (`docling`, `liteparse`, `pandoc`,
-`glm-ocr`, `web`, `marker`) were deleted — marker went the bring-your-own
-route: parsecraft's marker backend detects a manual `marker-pdf` install by
-import (ADR-0006). No marker-pdf release can enter knox's graph — 1.x pins
-anthropic<0.47 against pydantic-ai's ≥0.108, and 2.0.0 resolves only by
-downgrading anthropic and pillow graph-wide — so the engine stays a manual
-install. `mineru` remains until knox declares `parsecraft[mineru]` (bead
-pc-gv8). Extraction-pass defaults now live in parsecraft.
+`glm-ocr`, `web`, `marker`, `mineru`) are all deleted. Two engines stay
+reachable without knox backends: `marker` is bring-your-own — parsecraft's
+marker backend detects a manual `marker-pdf` install by import (ADR-0006; no
+marker-pdf release can enter knox's graph: 1.x pins anthropic<0.47 against
+pydantic-ai's ≥0.108, and 2.0.0 resolves only by downgrading anthropic and
+pillow graph-wide) — and `mineru` enters through knox's `parsecraft[mineru]`
+extra (licence opt-in, ADR-0007 — see the comment in `pyproject.toml`).
+Extraction-pass defaults now live in parsecraft.
 
 ### Registration — cycle avoidance
 
@@ -74,18 +74,17 @@ imports `register_backend, ParserBuildOptions` from `_registry` and calls
 demand, so a backend whose optional dependency is missing simply stays
 unregistered — and selecting it then raises with its install hint.
 
-### One Markdown converter — no per-backend copies
+### No per-backend Markdown converters
 
-Any backend that produces Markdown MUST route it through
-`markdown.py:markdown_to_elements()`. Do not add a local
-`_markdown_to_elements` / `_parse_table` / `_build_image_element` — those were
-duplicated across four modules and drifted: every copy recognised only headings,
-images, tables and paragraphs, so `$$…$$` equations, fenced code and list items
-were silently folded into `TEXT`.
-
-Backend-specific behaviour belongs in a single `resolve_image` callback passed
-via `MarkdownContext` (ref → bytes). That is the *only* part of the walk that
-legitimately differs between backends.
+A backend that produces Markdown MUST NOT walk it with a local converter.
+The per-backend copies this project once carried (each recognising only
+headings, images, tables and paragraphs — `$$…$$` equations, fenced code and
+list items silently folded into `TEXT`) are the cautionary tale; the shared
+converter that replaced them (`markdown_to_elements` + `MarkdownContext`)
+was deleted together with the last knox-side markdown backend. parsecraft
+maps its IR to elements directly. If a future backend emits Markdown, the
+walk belongs in `markdown.py` beside the shared patterns — never next to the
+SDK call.
 
 ### Parse-time markdown normalisation (rumdl)
 

@@ -18,6 +18,7 @@ from knox.core.models import ParsedDocument
 from knox.core.models.elements import DocumentElement
 from knox.core.models.enums import ElementType
 from knox.preprocessing.parsers._registry import (
+    _BACKEND_MODULES,
     KNOWN_BACKENDS,
     ParserBuildOptions,
     build_default_router,
@@ -26,7 +27,7 @@ from knox.preprocessing.parsers._registry import (
     get_registered_parsers,
     register_backend,
 )
-from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, ParserRouter, scrub_document
+from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, FileExtension, ParserRouter, scrub_document
 from knox.preprocessing.parsers.parsecraft_parser import ParsecraftParser
 
 
@@ -35,14 +36,13 @@ def test_known_backends_are_the_surviving_set() -> None:
 
     docling, liteparse, pandoc and glm-ocr were removed once parsecraft
     provided them; web followed when parsecraft's trafilatura backend landed
-    (pc-axb). marker went the bring-your-own route: parsecraft's marker
-    backend detects a manual marker-pdf install by import (ADR-0006), and
-    no marker-pdf release can be locked in knox's graph (1.x collides with
-    pydantic-ai's anthropic pin; 2.0.0 forces graph-wide downgrades), so
-    there is no knox-side duplicate to keep.
-    mineru stays until knox declares the parsecraft[mineru] extra.
+    (pc-axb); mineru went when knox declared the parsecraft[mineru] extra.
+    marker stays a bring-your-own engine, never a knox backend: parsecraft's
+    marker backend detects a manual marker-pdf install by import (ADR-0006),
+    and no marker-pdf release can be locked in knox's graph (1.x collides
+    with pydantic-ai's anthropic pin; 2.0.0 forces graph-wide downgrades).
     """
-    assert set(KNOWN_BACKENDS) == {"mineru", "parsecraft"}
+    assert set(KNOWN_BACKENDS) == {"parsecraft"}
 
 
 @pytest.mark.parametrize(
@@ -87,10 +87,15 @@ def test_build_default_router_rejects_a_chain() -> None:
         build_default_router(name="liteparse,docling")
 
 
-def test_build_default_router_missing_extra_is_loud() -> None:
+def test_build_default_router_missing_extra_is_loud(monkeypatch: pytest.MonkeyPatch) -> None:
     """A configured backend that is not installed fails with the install hint."""
+    # No real known-but-uninstalled backend ships anymore, so fake one: a
+    # KNOWN_BACKENDS entry whose module cannot import stays unregistered and
+    # must raise with its hint instead of starting an empty router.
+    monkeypatch.setitem(KNOWN_BACKENDS, "_uninstalled", "Uninstalled demo parser (install: uv pip install demo-parser)")
+    monkeypatch.setitem(_BACKEND_MODULES, "_uninstalled", "knox.preprocessing.parsers.not_a_module")
     with pytest.raises(ValueError, match="is not installed"):
-        build_default_router(name="mineru")
+        build_default_router(name="_uninstalled")
 
 
 def test_register_backend_populates_metadata() -> None:
@@ -128,9 +133,17 @@ def test_get_all_extensions_follows_the_named_backend() -> None:
     # parsecraft reads source files as plain text through its native-text
     # backend, so a vault configured for it can ingest code.
     assert ".c" in parsecraft
-    # A known-but-uninstalled backend (mineru is not in this venv) and an
-    # uninstalled-or-unknown name contribute nothing.
-    assert ".c" not in get_all_extensions(["mineru"])
+    # A backend with no text-family support contributes none of them.
+
+    class _PdfOnly(BaseParser):
+        supported_extensions = {FileExtension.PDF}
+        figure_enrichment = False
+
+        def parse(self, source_file: Path) -> ParsedDocument:
+            raise NotImplementedError
+
+    register_backend("_test_pdf_only", lambda _opts: _PdfOnly(), parser_cls=_PdfOnly)
+    assert get_all_extensions(["_test_pdf_only"]) == {".pdf"}
 
 
 def test_scrub_document_replaces_lone_surrogates() -> None:
