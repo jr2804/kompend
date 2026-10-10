@@ -132,8 +132,8 @@ class ArxivHtmlResolver(BaseUrlResolver):
     The HTML version of arXiv papers is served directly from
     ``arxiv.org/html/`` and is readable without JavaScript.  We force
     ``prefer_http=True`` so the URL is fetched with :class:`HTTPDownloader`
-    instead of the browser-based ``WebCrawler``, then routed to
-    :class:`WebPageParser` (trafilatura) via its ``.html`` extension.
+    instead of the browser-based ``WebCrawler``; the parsecraft backend then
+    reads it (trafilatura upstream) via its ``.html`` extension.
     """
 
     _ARXIV_HTML_RE = re.compile(

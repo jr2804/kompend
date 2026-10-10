@@ -8,7 +8,7 @@ being mojibake-decoded in one place and silently replaced in another.
 Two public surfaces:
 
 - :func:`read_text_auto` — returns ``str`` for in-process consumers
-  (web_parser, capture, the attach-ment parse path). Drops the BOM and
+  (capture, the attach-ment parse path). Drops the BOM and
   replaces undecodable bytes with U+FFFD on detection.
 
 - :func:`normalize_to_utf8_path` — returns a :class:`pathlib.Path`

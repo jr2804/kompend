@@ -34,7 +34,6 @@ KNOWN_BACKENDS: dict[str, str] = {
     "marker": "Marker high-accuracy PDF parser (install: uv pip install marker-pdf)",
     "mineru": "layout-aware PDF/Office parser with OCR (install: uv pip install mineru)",
     "parsecraft": "per-page routing across docling, liteparse, pandoc, native and OCR backends (install: uv sync --extra parsecraft)",
-    "web": "trafilatura HTML parser for web pages",
 }
 
 # Backend name → module path. The backend module's ``register_backend`` call
@@ -46,7 +45,6 @@ _BACKEND_MODULES: dict[str, str] = {
     "marker": "knox.preprocessing.parsers.marker_parser",
     "mineru": "knox.preprocessing.parsers.mineru_parser",
     "parsecraft": "knox.preprocessing.parsers.parsecraft_parser",
-    "web": "knox.preprocessing.parsers.web_parser",
 }
 
 

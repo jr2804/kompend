@@ -4,7 +4,7 @@ Tests three download-and-parse paths against arXiv paper 2405.17364
 ("Attention Mechanisms: A Survey"):
 
   1. PDF via ArxivPdfResolver  (arxiv.org/abs/...)  -> liteparse/docling
-  2. HTML via ArxivHtmlResolver (arxiv.org/html/...) -> WebPageParser (trafilatura)
+  2. HTML via ArxivHtmlResolver (arxiv.org/html/...) -> parsecraft (trafilatura upstream)
   3. LaTeX source via ArxivSourceResolver (arxiv.org/src/...) -> _extract_archive -> PandocParser
 
 All three are skipped when:
@@ -33,7 +33,7 @@ from knox.preprocessing.downloaders.url_resolver import (
     UrlResolverChain,
 )
 from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
-from knox.preprocessing.parsers.web_parser import WebPageParser
+from knox.preprocessing.parsers.parsecraft_parser import ParsecraftParser
 
 ARXIV_PAPER_ID = "2405.17364"
 ARXIV_PDF_URL = f"https://arxiv.org/abs/{ARXIV_PAPER_ID}"
@@ -76,7 +76,7 @@ def test_arxiv_pdf_resolver_rewrites_url(tmp_path: Path) -> None:
 
 @requires_network
 def test_arxiv_pdf_downloads_and_parses(tmp_path: Path) -> None:
-    """ArxivPdfResolver + HTTPDownloader + liteparse produces a ParsedDocument."""
+    """ArxivPdfResolver + HTTPDownloader + parsecraft produces a ParsedDocument."""
     chain = UrlResolverChain()
     resolved = chain.resolve(ARXIV_PDF_URL)
     assert resolved.download_url != ARXIV_PDF_URL, "URL should be rewritten to PDF"
@@ -86,7 +86,7 @@ def test_arxiv_pdf_downloads_and_parses(tmp_path: Path) -> None:
     assert pdf_file is not None, "PDF download failed"
     assert pdf_file.suffix.lower() == ".pdf", f"Expected .pdf, got {pdf_file.suffix}"
 
-    router = build_default_router(options=ParserBuildOptions(), names="liteparse,docling")
+    router = build_default_router(options=ParserBuildOptions())
     parser = router.route(pdf_file)
     assert parser is not None
     doc = parser.parse(pdf_file)
@@ -112,8 +112,8 @@ def test_arxiv_html_resolver_flags_prefer_http(tmp_path: Path) -> None:
 
 
 @requires_network
-def test_arxiv_html_downloads_as_html_and_parses_with_trafilatura(tmp_path: Path) -> None:
-    """ArxivHtmlResolver + HTTPDownloader + WebPageParser produces clean text."""
+def test_arxiv_html_downloads_and_parses_via_parsecraft(tmp_path: Path) -> None:
+    """ArxivHtmlResolver + HTTPDownloader + parsecraft produces clean text."""
     chain = UrlResolverChain()
     resolved = chain.resolve(ARXIV_HTML_URL)
     assert resolved.prefer_http is True, "ArxivHtmlResolver should set prefer_http"
@@ -123,9 +123,9 @@ def test_arxiv_html_downloads_as_html_and_parses_with_trafilatura(tmp_path: Path
     assert html_file is not None, "HTML download failed"
     assert html_file.suffix.lower() in {".html", ".htm"}, f"Expected .html, got {html_file}"
 
-    router = build_default_router(options=ParserBuildOptions(), names="web,liteparse,docling")
+    router = build_default_router(options=ParserBuildOptions())
     parser = router.route(html_file)
-    assert isinstance(parser, WebPageParser), f"Expected WebPageParser for .html, got {type(parser).__name__}"
+    assert isinstance(parser, ParsecraftParser), f"Expected ParsecraftParser for .html, got {type(parser).__name__}"
 
     doc = parser.parse(html_file)
     assert isinstance(doc, ParsedDocument)

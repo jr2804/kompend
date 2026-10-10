@@ -26,7 +26,6 @@ file = "NOTES.md"
 # Backend(s) used to parse source documents into structured elements.
 # One name only. parsecraft routes each page across its own sub-backends, so
 # there is no knox-side chain to order or fall back through.
-#   web       — trafilatura HTML parser, for HTML pages only
 #   parsecraft — default. External document-intelligence pipeline: per-page
 #               routing across native + OCR backends
 #               (uv add knox[parsecraft]; see docs/guides/document-extraction.md)

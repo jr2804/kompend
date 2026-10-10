@@ -28,57 +28,23 @@ from knox.preprocessing.parsers._registry import (
 )
 from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, ParserRouter, scrub_document
 from knox.preprocessing.parsers.parsecraft_parser import ParsecraftParser
-from knox.preprocessing.parsers.web_parser import WebPageParser
-
-
-class TestWebPageParser:
-    """WebPageParser registered as the 'web' backend, handles .html."""
-
-    def test_web_backend_registered(self) -> None:
-        assert any(p["name"] == "web" for p in get_registered_parsers())
-
-    def test_web_backend_routes_html(self) -> None:
-        router = build_default_router(name="web")
-        assert isinstance(router.route(Path("page.html")), WebPageParser)
-
-    def test_web_parser_clean_text_from_html(self, tmp_path: Path) -> None:
-        """WebPageParser extracts clean text, not raw HTML tags."""
-        html_file = tmp_path / "test.html"
-        html_file.write_text(
-            "<html><body><h1>Attention Mechanisms</h1><p>Self-attention allows models to relate positions.</p></body></html>",
-            encoding="utf-8",
-        )
-
-        parser = WebPageParser()
-        doc = parser.parse(html_file)
-        assert isinstance(doc, ParsedDocument)
-        assert doc.source_file == html_file
-        all_text = " ".join(e.content for e in doc.elements if isinstance(e.content, str))
-        assert "Attention Mechanisms" in all_text
-        assert "<h1>" not in all_text
-
-    def test_web_parser_can_parse_html_only(self) -> None:
-        parser = WebPageParser()
-        assert parser.can_parse(Path("page.html"))
-        assert parser.can_parse(Path("page.HTML"))
-        assert not parser.can_parse(Path("paper.pdf"))
 
 
 def test_known_backends_are_the_surviving_set() -> None:
     """The registry ships no duplicate of a parsecraft capability.
 
     docling, liteparse, pandoc and glm-ocr were removed once parsecraft
-    provided them. marker, mineru and web stay until their parsecraft beads
-    land (pc-u4g / pc-gv8 / pc-axb).
+    provided them; web followed when parsecraft's trafilatura backend landed
+    (pc-axb). marker and mineru stay until knox declares their parsecraft
+    extras (pc-u4g / pc-gv8).
     """
-    assert set(KNOWN_BACKENDS) == {"marker", "mineru", "parsecraft", "web"}
+    assert set(KNOWN_BACKENDS) == {"marker", "mineru", "parsecraft"}
 
 
 @pytest.mark.parametrize(
     ("name", "expected_cls_name"),
     [
         ("parsecraft", "ParsecraftParser"),
-        ("web", "WebPageParser"),
     ],
 )
 def test_get_backend_factory_builds_expected_class(name: str, expected_cls_name: str) -> None:
@@ -102,7 +68,6 @@ def test_parser_build_options_defaults() -> None:
     ("name", "expected_cls"),
     [
         ("parsecraft", ParsecraftParser),
-        ("web", WebPageParser),
     ],
 )
 def test_build_default_router_registers_exactly_the_named_backend(name: str, expected_cls: type) -> None:
@@ -146,7 +111,6 @@ def _dummy_cls() -> type[BaseParser]:
 def test_figure_enrichment_metadata_matches_class_attr() -> None:
     by_name = {entry["name"]: entry for entry in get_registered_parsers()}
     assert by_name["parsecraft"]["figure_enrichment"] is ParsecraftParser.figure_enrichment
-    assert by_name["web"]["figure_enrichment"] is WebPageParser.figure_enrichment
 
 
 def test_get_all_extensions_follows_the_named_backend() -> None:

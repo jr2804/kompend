@@ -24,7 +24,6 @@ parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routi
                    parsecraft's, knox keeps none of its own
 marker_parser.py   MarkerParser  (manual install: high-accuracy PDF)
 mineru_parser.py   MinerUParser  (manual install: layout-aware PDF/Office + OCR)
-web_parser.py      WebPageParser (trafilatura HTML)
 ```
 
 `build_pipeline` builds a `ParserRouter` from `config.parser` (`ingest.parser`
@@ -60,8 +59,8 @@ a cache by itself.
 A second knox-side backend competes with parsecraft's own per-page routing
 rather than complementing it. Add capabilities to parsecraft, not to knox. The
 knox-side backends that duplicated it (`docling`, `liteparse`, `pandoc`,
-`glm-ocr`) were deleted; `marker`, `mineru` and `web` are placeholders until
-their parsecraft equivalents land (beads pc-u4g / pc-gv8 / pc-axb), and each is
+`glm-ocr`, `web`) were deleted; `marker` and `mineru` are placeholders until
+knox declares their parsecraft extras (beads pc-u4g / pc-gv8), and each is
 removed at that point. Extraction-pass defaults now live in parsecraft.
 
 ### Registration — cycle avoidance
