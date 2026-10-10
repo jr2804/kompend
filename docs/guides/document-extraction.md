@@ -260,10 +260,14 @@ parsecraft_preference = "balanced"     # speed | balanced | quality
   refuses it. `uv add knox[systemone]` provides the SDK.
 - **`zen`** (`OPENCODE_API_KEY`) and **`typesafe-ai`** (`TYPESAFE_API_KEY`) are
   the cloud choices; the credential is read from the environment only.
-- **`parsecraft_preference`** is the tiebreak axis among candidates that pass
-  the constraint check — `speed` prefers the cheapest eligible backend,
-  `quality` the strongest, `balanced` (default) capability bounded by the
-  host budget.
+- **`parsecraft_preference`** is the tiebreak axis *inside* a backend family,
+  after the hard constraints (format, GPU/VRAM budget, installed extras) have
+  admitted the candidates. `speed` and `balanced` coincide by design — both
+  take the candidate with the smallest `estimated_vram_gb` — while `quality`
+  inverts the tiebreak to the strongest. Two routing outcomes, not three. The
+  axis applies with or without a provider judge: parsecraft's own
+  `resolve_judge(None, preference=…)` constructs the deterministic judge with
+  it, and knox passes it through on the no-judge path too.
 
 A judge never turns a routing problem into a failed ingest: an unresolvable
 provider or missing credential degrades to the rule table at resolution time,
