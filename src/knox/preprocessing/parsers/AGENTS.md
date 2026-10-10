@@ -22,7 +22,6 @@ _registry.py       ParserBuildOptions, PARSER_BACKENDS, KNOWN_BACKENDS, register
                    build_default_router() — the single factory for a ready-to-use router
 parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routing is
                    parsecraft's, knox keeps none of its own
-marker_parser.py   MarkerParser  (manual install: high-accuracy PDF)
 mineru_parser.py   MinerUParser  (manual install: layout-aware PDF/Office + OCR)
 ```
 
@@ -59,9 +58,13 @@ a cache by itself.
 A second knox-side backend competes with parsecraft's own per-page routing
 rather than complementing it. Add capabilities to parsecraft, not to knox. The
 knox-side backends that duplicated it (`docling`, `liteparse`, `pandoc`,
-`glm-ocr`, `web`) were deleted; `marker` and `mineru` are placeholders until
-knox declares their parsecraft extras (beads pc-u4g / pc-gv8), and each is
-removed at that point. Extraction-pass defaults now live in parsecraft.
+`glm-ocr`, `web`, `marker`) were deleted — marker went the bring-your-own
+route: parsecraft's marker backend detects a manual `marker-pdf` install by
+import (ADR-0006). No marker-pdf release can enter knox's graph — 1.x pins
+anthropic<0.47 against pydantic-ai's ≥0.108, and 2.0.0 resolves only by
+downgrading anthropic and pillow graph-wide — so the engine stays a manual
+install. `mineru` remains until knox declares `parsecraft[mineru]` (bead
+pc-gv8). Extraction-pass defaults now live in parsecraft.
 
 ### Registration — cycle avoidance
 

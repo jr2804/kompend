@@ -30,8 +30,10 @@ file = "NOTES.md"
 #               routing across native + OCR backends
 #               (uv add knox[parsecraft]; see docs/guides/document-extraction.md)
 # Manual install (conflicting transitive deps — not extras):
-#   marker    — deep-learning PDF/office/HTML (uv pip install marker-pdf)
-#   glm-ocr   — multimodal OCR for images and PDFs (uv pip install glmocr)
+#   marker    — deep-learning PDF engine for parsecraft (uv pip install
+#                marker-pdf): bring-your-own, detected by import (ADR-0006).
+#                PDF pages only — office/HTML/image sources route through
+#                parsecraft's other backends either way.
 #   mineru    — layout-aware PDF/Office parser with OCR (uv pip install mineru)
 # A known name whose optional dependency is missing raises with its install
 # command; an unknown name raises.

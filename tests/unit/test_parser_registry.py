@@ -35,10 +35,14 @@ def test_known_backends_are_the_surviving_set() -> None:
 
     docling, liteparse, pandoc and glm-ocr were removed once parsecraft
     provided them; web followed when parsecraft's trafilatura backend landed
-    (pc-axb). marker and mineru stay until knox declares their parsecraft
-    extras (pc-u4g / pc-gv8).
+    (pc-axb). marker went the bring-your-own route: parsecraft's marker
+    backend detects a manual marker-pdf install by import (ADR-0006), and
+    no marker-pdf release can be locked in knox's graph (1.x collides with
+    pydantic-ai's anthropic pin; 2.0.0 forces graph-wide downgrades), so
+    there is no knox-side duplicate to keep.
+    mineru stays until knox declares the parsecraft[mineru] extra.
     """
-    assert set(KNOWN_BACKENDS) == {"marker", "mineru", "parsecraft"}
+    assert set(KNOWN_BACKENDS) == {"mineru", "parsecraft"}
 
 
 @pytest.mark.parametrize(
@@ -124,8 +128,9 @@ def test_get_all_extensions_follows_the_named_backend() -> None:
     # parsecraft reads source files as plain text through its native-text
     # backend, so a vault configured for it can ingest code.
     assert ".c" in parsecraft
-    # A backend with no text-family support contributes none of them.
-    assert ".c" not in get_all_extensions(["marker"])
+    # A known-but-uninstalled backend (mineru is not in this venv) and an
+    # uninstalled-or-unknown name contribute nothing.
+    assert ".c" not in get_all_extensions(["mineru"])
 
 
 def test_scrub_document_replaces_lone_surrogates() -> None:
