@@ -143,7 +143,20 @@ class ParsecraftParser:
         # hundreds of vault files must not mean hundreds of subprocess spawns.
         if self._environment is None:
             self._environment = probe_environment()
-        constraints = constraints_from_environment(self._environment, formats={media_type})
+        # ``max_passes`` caps ``PageRoute.candidates`` (planner keeps the ranked
+        # order up to it). parsecraft's default of 1 means one attempt with no
+        # fallback entry, so a backend that is missing, broken or excluded by the
+        # GPU gate fails the document. Upstream chose 1 to fail loud, which is the
+        # honest library default. knox's policy is the opposite — a wiki build is
+        # best-effort extraction and prefers a degraded parse to a failed one —
+        # so pass 3 explicitly rather than reimplementing fallback outside the
+        # API. pc-1's ruling (2026-10-11): upstream keeps 1; this is a caller's
+        # policy value, not a fork.
+        constraints = constraints_from_environment(
+            self._environment,
+            formats={media_type},
+            max_passes=3,
+        )
 
         source = SourceDocument(uri=source_file.resolve().as_uri())
         analysis = analyze_source(
