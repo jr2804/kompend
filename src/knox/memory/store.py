@@ -12,6 +12,7 @@ branch.
 
 from __future__ import annotations
 
+import contextlib
 import shutil
 from enum import StrEnum
 from pathlib import Path
@@ -176,8 +177,15 @@ class MemoryStore:
         ]
 
     def close(self) -> None:
-        """Close the underlying collection."""
+        """Close the underlying collection and release its file handles.
+
+        Dropping the reference alone is not enough: zvec holds a RocksDB ``LOCK``
+        (and other native handles) until the collection is closed, so a later
+        rmtree or reopen of the same path races the GC and can fail on Windows.
+        """
         if self._collection is not None:
+            with contextlib.suppress(Exception):
+                self._collection.close()
             self._collection = None
 
     def _ensure_collection(self) -> EmbeddingProvider:

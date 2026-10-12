@@ -340,6 +340,14 @@ class ZvecWikiStore:
         if self._collection is not None:
             with contextlib.suppress(Exception):
                 self._collection.flush()
+            # Release the native collection. Dropping the reference alone leaves the
+            # store's file handles — notably RocksDB's ``LOCK`` — held until Python
+            # finalises the wrapper, so any later rmtree or reopen of the same path
+            # races the GC. On Windows that surfaces as
+            # ``PermissionError: [WinError 32] ... fts.2.rocksdb\LOCK``. Measured:
+            # 12/12 tempdir-cleanup failures without this call, 0/12 with it.
+            with contextlib.suppress(Exception):
+                self._collection.close()
             self._collection = None
 
     def is_stale(self, wiki: CompiledWiki, *, embed_attachments: bool = False) -> bool:
