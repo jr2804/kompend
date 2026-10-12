@@ -84,10 +84,17 @@ knox = "knox.cli.app:main"
 # became `web` (same engine — httpx + trafilatura), and `pdf-lite` is gone with
 # `pdf` in its slot. `pdf` is PyMuPDF, AGPL-3.0-or-commercial — NOT the pypdf
 # that `pdf-lite` was — so naming it would add an AGPL obligation inside a
-# rename. It is deliberately omitted and costs nothing knox uses: in 2026.10.3
-# `native-pdf` declares no optional group, so it is base-install and needs no
-# extra, and the `trafilatura` backend is satisfied by `web`. Name `pdf` only if
-# some future parsecraft backend actually gates on it.
+# rename. It is deliberately omitted and costs nothing knox uses: the PDF backend
+# that uses it declares no optional group in 2026.10.3, so it is base-install and
+# needs no extra, and the `trafilatura` backend is satisfied by `web`. Name `pdf`
+# only if some future parsecraft backend actually gates on it.
+#
+# That backend is renamed `native-pdf` -> `pymupdf` in the parsecraft release after
+# 2026.10.3, which also makes it host-fact-aware: demoted out of the dependency-free
+# tier where `[pdf]` is absent, so an installed parser leads directly instead of a
+# failed `pymupdf` attempt preceding every PDF. knox needs no change for either — the
+# string appears nowhere in knox's code, only in comments and in one fake-descriptor
+# docstring in tests.
 #
 # WARNING: uv SILENTLY IGNORES an unknown extra — a stale name here installs
 # nothing rather than failing, which is how `systemone`, `pdf-lite` and

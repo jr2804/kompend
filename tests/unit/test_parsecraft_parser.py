@@ -464,7 +464,12 @@ class TestJudgeWiring:
 
 
 def _pdf_backend(name: str, vram: float) -> BackendDescriptor:
-    """A minimal native-PDF candidate whose only difference is declared VRAM."""
+    """A minimal PDF candidate whose only difference is declared VRAM.
+
+    Deliberately a fake descriptor, not a real parsecraft backend, so the test does
+    not depend on any backend's name — the rename `native-pdf` -> `pymupdf` in the
+    release after 2026.10.3 must not reach it.
+    """
     caps = BackendCapabilities(
         supported_formats=["application/pdf"],
         supports_page_ranges=True,
