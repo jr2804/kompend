@@ -110,10 +110,13 @@ class TestMarkdownFidelity:
         tables = [e for e in doc.elements if e.type is ElementType.TABLE]
         assert len(tables) == 1
         content = str(tables[0].content)
-        # 2026.10.2 renders tables pipe-aligned. Alignment is a rendering
-        # change; the contract is that the cell values survive it.
-        assert "|   A |   B |" in content
-        assert "|   1 |   2 |" in content
+        # 2026.10.3 routes `.md` to `native-markdown` (the 2026.10.3 NATIVE
+        # family-rank contract moved the leader back from `docling`); the
+        # native-markdown backend emits the compact GFM table, not the
+        # pipe-aligned `2026.10.2 docling` form. The contract is that the
+        # cell values survive whatever the active renderer produces.
+        assert "| A | B |" in content
+        assert "| 1 | 2 |" in content
 
     def test_metadata_json_serializable(self, parser: Any, markdown_file: Path) -> None:
         """Element metadata goes into the parse cache as JSON; a StrEnum leaking
@@ -126,10 +129,12 @@ class TestMarkdownFidelity:
     def test_provenance_records_backend(self, parser: Any, markdown_file: Path) -> None:
         doc = parser.parse(markdown_file)  # type: ignore[attr-defined]
         assert doc.metadata["parser"] == "parsecraft"
-        # 2026.10.2's EXTRA_IMPORTS admits docling on hosts with the parsecraft
-        # extra, and the deterministic table ranks the native-capable docling
-        # ahead of native-markdown for markdown — do not "fix" this back.
-        assert doc.metadata["backends"] == "docling"
+        # 2026.10.3 routes `.md` to `native-markdown` via the NATIVE
+        # family-rank contract (the leader moved back from `docling` to
+        # `native-markdown` between 2026.10.2 and 2026.10.3; both candidates
+        # declare `est_vram=None` so the tiebreak is family rank, not
+        # strength). Do not "fix" this back to `docling`.
+        assert doc.metadata["backends"] == "native-markdown"
 
 
 # ── Failure shapes ───────────────────────────────────────────────────────
