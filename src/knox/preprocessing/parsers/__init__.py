@@ -1,11 +1,12 @@
 """KNOX document parsers.
 
-Exactly one backend is registered per router — the one named by
-``[ingest] parser``, which is ``DEFAULT_PARSER`` (parsecraft) unless the
-operator names another. A backend's ``register_backend`` call runs on demand
-(see ``_registry._ensure_backend``) when a router is built, the parser list is
-queried, or its extensions are requested — never at package import time. That
-keeps CLI ``--help`` and unrelated command startup free of heavy optional
+Exactly one backend is registered: parsecraft, the ingestion pipeline
+(``DEFAULT_PARSER``). There is no config key selecting it — parsecraft routes
+each page across its own sub-backends internally, so there is nothing left for a
+knox-side selector to choose between. A backend's ``register_backend`` call runs
+on demand (see ``_registry._ensure_backend``) when a router is built, the parser
+list is queried, or its extensions are requested — never at package import time.
+That keeps CLI ``--help`` and unrelated command startup free of heavy optional
 dependencies.
 
 ``build_default_router`` raises when the named backend is unknown, or when a

@@ -23,11 +23,11 @@ PATHS_OUTPUT_DIR: Final[str] = "paths.output_dir"
 PATHS_STATE_DIR: Final[str] = "paths.state_dir"
 
 # ── ingest section ──
-INGEST_PARSER: Final[str] = "ingest.parser"
 
-#: The ingestion backend knox ships with. Single source for the config-schema
-#: default, the ``PipelineConfig`` default, the registry factory default and
-#: discovery — a second literal would let them disagree silently.
+#: The one ingestion backend knox ships with. Single source for the registry
+#: factory default and discovery — a second literal would let them disagree
+#: silently. There is no config key for this: parsecraft routes internally, so
+#: there is nothing left for a selector to select between.
 DEFAULT_PARSER: Final[str] = "parsecraft"
 INGEST_PARSECRAFT_JUDGE: Final[str] = "ingest.parsecraft_judge"
 INGEST_PARSECRAFT_JUDGE_MODEL: Final[str] = "ingest.parsecraft_judge_model"

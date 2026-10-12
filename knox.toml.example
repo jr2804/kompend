@@ -23,26 +23,21 @@ state_dir = ".knox"
 file = "NOTES.md"
 
 # ── Ingestion settings ──────────────────────────────────────────────────
-# Backend(s) used to parse source documents into structured elements.
-# One name only. parsecraft routes each page across its own sub-backends, so
-# there is no knox-side chain to order or fall back through.
-#   parsecraft — default. External document-intelligence pipeline: per-page
-#               routing across native + OCR backends
-#               (uv add knox[parsecraft]; see docs/guides/document-extraction.md)
-#   knox[mineru] adds the MinerU 4.x engine via parsecraft[mineru] — licence
-#               opt-in (ADR-0007), see docs/guides/document-extraction.md
-# Manual install (conflicting transitive deps — not extras):
-#   marker    — deep-learning PDF engine for parsecraft (uv pip install
-#                marker-pdf): bring-your-own, detected by import (ADR-0006).
-#                PDF pages only — office/HTML/image sources route through
-#                parsecraft's other backends either way.
-# A known name whose optional dependency is missing raises with its install
-# command; an unknown name raises.
-# Run `knox doctor` to list available backends.
-# CLI: --parser | Env: KNOX_INGEST_PARSER
+# There is no parser selector. parsecraft is the ingestion pipeline: it routes
+# each page across its own sub-backends (native, docling, liteparse, pandoc, OCR)
+# and is the only parser path knox has. What remains configurable below is
+# parsecraft's own parameters, passed through unchanged.
+#
+#   uv add knox[parsecraft]      — the pipeline itself
+#   uv add knox[mineru]          — adds the MinerU 4.x engine via
+#                                  parsecraft[mineru]; licence opt-in (ADR-0007)
+#   uv pip install marker-pdf    — bring-your-own PDF engine, detected by import
+#                                  (ADR-0006); PDF pages only
+#
+# See docs/guides/document-extraction.md, and `knox list-parsers` for the
+# sub-backends in use.
 
 [ingest]
-# parser = "parsecraft"
 
 # ── parsecraft judge tier (only used when parser = "parsecraft") ────────
 # parsecraft routes each page across its own backends. With the judge

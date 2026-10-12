@@ -30,7 +30,6 @@ from knox.core.config import (
     ResolvedConfig,
 )
 from knox.core.config._configs import SearchConfig
-from knox.core.config.keys import DEFAULT_PARSER
 from knox.core.paths import VaultPaths
 from knox.preprocessing.parsers._registry import ParserBuildOptions
 
@@ -166,8 +165,7 @@ class PipelineConfig:
     memory_half_life_days: float = 90.0  # Retention half-life in days
     memory_decay_threshold: float = 0.3  # Retention below this = stale
     notes_file: Path | None = None  # User notes file path (None = no notes)
-    images_scale: float = 200.0 / 72.0  # Docling image resolution multiplier (200 DPI base)
-    parser: str = DEFAULT_PARSER  # ingestion backend name (see PARSER_BACKENDS)
+    images_scale: float = 200.0 / 72.0  # Image resolution multiplier (200 DPI base)
     parsecraft_judge: str = "none"  # judge tier for the parsecraft backend: none|ollama|zen|typesafe-ai
     parsecraft_judge_model: str = ""  # provider-specific model token (e.g. parable-tinyjev for ollama)
     parsecraft_preference: str = "balanced"  # judge ranking axis: speed|balanced|quality
@@ -277,7 +275,6 @@ class PipelineConfig:
             respect_gitignore=knox.compile.respect_gitignore,
             compiler=Compiler(knox.compile.compiler),
             privacy_filter=knox.trust.privacy_filter,
-            parser=knox.ingest.parser,
             parsecraft_judge=knox.ingest.parsecraft_judge,
             parsecraft_judge_model=knox.ingest.parsecraft_judge_model,
             parsecraft_preference=knox.ingest.parsecraft_preference,

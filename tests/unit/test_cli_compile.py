@@ -36,13 +36,11 @@ def test_cli_overrides_include_vlm_model() -> None:
     assert overrides["compile.llm.vlm_model"] == "openai/gpt-4o"
 
 
-def test_cli_overrides_include_parser() -> None:
-    overrides = _build_cli_overrides(parser="liteparse")
-    assert overrides["ingest.parser"] == "liteparse"
+def test_build_pipeline_wires_the_parsecraft_router(tmp_path: Path) -> None:
+    """build_pipeline wires the parsecraft router from the config options.
 
-
-def test_build_pipeline_uses_configured_parser(tmp_path: Path) -> None:
-    """build_pipeline wires the backend named by ``config.parser`` into the router."""
+    There is no backend selector any more: parsecraft is the only parser path.
+    """
     config = _make_config(tmp_path, vlm_model="")
     with patch(
         "knox.core.pipeline.stages._factory.discover_context_window",
@@ -54,14 +52,6 @@ def test_build_pipeline_uses_configured_parser(tmp_path: Path) -> None:
     # native/docling/liteparse sub-backends.
     assert pipeline.router.route(Path("a.pdf")) is not None
     assert type(pipeline.router.route(Path("a.pdf"))).__name__ == "ParsecraftParser"
-
-
-def test_build_pipeline_unknown_parser_raises(tmp_path: Path) -> None:
-    """An unknown backend name propagates a ValueError from get_backend."""
-    config = _make_config(tmp_path, vlm_model="")
-    config.parser = "no-such-backend"
-    with pytest.raises(ValueError, match="Unknown parser backend"):
-        build_pipeline(config)
 
 
 def test_build_pipeline_adds_vlm_enricher_when_configured(tmp_path: Path) -> None:

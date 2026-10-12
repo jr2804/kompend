@@ -48,7 +48,6 @@ from knox.cli.args import (
     NoPrivacy,
     OnlineUrls,
     ParseFiles,
-    Parser,
     PrintElements,
     Private,
     Progress,
@@ -67,6 +66,7 @@ from knox.cli.args import (
 from knox.core.config import DEFAULTS, coerce_config_value, resolve_config, validate_config_key
 from knox.core.config._configs import LintConfig
 from knox.core.config.keys import (
+    DEFAULT_PARSER,
     DISPLAY_CLI_ELEMENT_CHARS,
 )
 from knox.core.models import MetadataField, WikiField, load_cached_wiki, load_wiki_from_files
@@ -91,7 +91,6 @@ def parse_cmd(
     files: ParseFiles,
     recursive: bool = False,
     print_elements: PrintElements = False,
-    parser: Parser = None,
 ) -> None:
     """Parse documents and show their structure.
 
@@ -106,7 +105,6 @@ def parse_cmd(
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     router: ParserRouter = build_default_router(
         ParserBuildOptions.from_config(cfg, images_dir=vp.images_dir),
-        name=parser or cfg.knox.ingest.parser,
     )
     for path in resolved:
         try:
@@ -201,7 +199,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
 
-    source_extensions = get_all_extensions([cfg.knox.ingest.parser])
+    source_extensions = get_all_extensions([DEFAULT_PARSER])
     source_files = [f for f in sources_dir.rglob("*") if f.suffix.lower() in source_extensions]
     if not source_files:
         get_err_console().print(f"No supported files found in {sources_dir}.")
@@ -313,7 +311,6 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     workers: Workers = 1,
     in_place: InPlaceFlag = None,
     show_progress: Progress = None,
-    parser: Parser = None,
     cli_set: CliSet = None,
     tags: SourceTags = None,
     attrs: SourceAttrs = None,
@@ -337,7 +334,6 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
         workers=workers,
         in_place_sources=in_place,
         no_user_tracking=no_user_tracking,
-        parser=parser,
         cli_set=parse_cli_set(cli_set),
     )
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
@@ -361,10 +357,8 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     get_console().print(f"Ingesting {len(all_input_files)} document(s)")
 
     images_dir = VaultPaths(base_dir).images_dir
-    ingest_cfg = cfg.knox.ingest
     router: ParserRouter = build_default_router(
         ParserBuildOptions.from_config(cfg, images_dir=images_dir),
-        name=ingest_cfg.parser,
     )
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),

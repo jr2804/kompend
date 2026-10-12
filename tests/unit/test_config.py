@@ -368,9 +368,10 @@ class TestResolveConfig:
         with caplog.at_level("WARNING"):
             cfg = resolve_config()
 
-        assert cfg.get("ingest.parser") == "parsecraft"
+        # Both retired keys are stripped, and both say so.
+        assert "parser" not in cfg.knox.ingest.model_dump()
         assert not hasattr(cfg.knox.ingest, "parser_fallback")
-        assert any("ingest.parser_fallback" in r.getMessage() for r in caplog.records)
+        assert any("ingest.parser" in r.getMessage() for r in caplog.records)
 
     def test_toml_string_values_stripped(self, tmp_path: Any, monkeypatch: Any) -> None:
         config_file = tmp_path / "knox.toml"
@@ -394,19 +395,17 @@ class TestResolveConfig:
 
         assert resolve_config(cli_overrides={"compile.llm.vlm_model": "anthropic/claude-sonnet"}).get("compile.llm.vlm_model") == "anthropic/claude-sonnet"
 
-    def test_ingest_parser_default(self, tmp_path: Any, monkeypatch: Any) -> None:
-        monkeypatch.chdir(tmp_path)
-        assert resolve_config().get("ingest.parser") == "parsecraft"
+    def test_ingest_parser_keys_are_retired(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """`[ingest] parser` and its `parser_fallback` companion are gone.
 
-    def test_ingest_parser_env_override(self, tmp_path: Any, monkeypatch: Any) -> None:
+        parsecraft is the only parser path and routes internally, so a selector
+        has nothing left to select between. Both keys are retired rather than
+        rejected: an older vault must keep working, with a deprecation warning
+        naming each one.
+        """
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_INGEST_PARSER", "liteparse")
-        assert resolve_config().get("ingest.parser") == "liteparse"
-
-    def test_ingest_parser_cli_override(self, tmp_path: Any, monkeypatch: Any) -> None:
-        monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_INGEST_PARSER", "liteparse")
-        assert resolve_config(cli_overrides={"ingest.parser": "docling"}).get("ingest.parser") == "docling"
+        assert resolve_config().get("ingest.parser") is None
+        assert "parser" not in resolve_config().knox.ingest.model_dump()
 
     def test_memory_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)

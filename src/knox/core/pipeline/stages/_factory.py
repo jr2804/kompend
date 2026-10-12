@@ -34,8 +34,7 @@ def build_pipeline(
     """Shared factory used by both CLI and MCP.
 
     Constructs a WikiPipeline with default components:
-    - Parser chain selected by ``config.parser`` (comma-separated backend names;
-      default ``"liteparse"``; first matching backend per file wins)
+    - The parsecraft parser, wired from ``config.parser_options``
     - HierarchicalChunker
     - Compiler selected by ``config.compiler``:
       - ``"graph"``: TwoPhaseCompiler wrapping GraphCompiler (default)
@@ -54,7 +53,7 @@ def build_pipeline(
         msg = f"Unknown output format {config.output.format!r}. Available: {available}"
         raise ValueError(msg)
 
-    router = build_default_router(config.parser_options, name=config.parser)
+    router = build_default_router(config.parser_options)
 
     # T0 (index) and T1 (parse) run without an LLM — ``knox ingest``
     # stops here. T2 (chunk) and beyond need the LLM for context-window

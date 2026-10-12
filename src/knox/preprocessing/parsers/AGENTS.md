@@ -24,31 +24,31 @@ parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routi
                    parsecraft's, knox keeps none of its own
 ```
 
-`build_pipeline` builds a `ParserRouter` from `config.parser` (`ingest.parser`
-config key; `--parser` CLI flag on `ingest`/`parse`). Exactly **one** backend is
-registered — `DEFAULT_PARSER`, parsecraft, unless the operator names another.
-parsecraft routes each page across its own sub-backends, so knox keeps no chain,
-no ordering and no hand-off between backends.
+`build_pipeline` builds a `ParserRouter` from `config.parser_options`. Exactly
+**one** backend is registered, `DEFAULT_PARSER` (parsecraft). There is no config
+key and no CLI flag selecting a backend: parsecraft routes each page across its
+own sub-backends, so a knox-side selector would have nothing to choose between.
+knox keeps no chain, no ordering and no hand-off.
 
 `build_default_router` raises for an unknown name, and for a known backend whose
-optional dependency is missing (naming the install command). A vault whose
-configured parser is absent must fail loudly instead of starting with an empty
-router.
+optional dependency is missing (naming the install command). A vault whose parser
+is absent must fail loudly instead of starting with an empty router. The `name`
+parameter still exists as registry API — the tests pin it — but no caller passes
+it.
 
 `get_all_extensions(names)` takes the backend names to union suffixes for.
-Discovery passes `[config.parser]`, so a vault ingests exactly what its backend
-can read — parsecraft's native-text backend reads `.c/.h/.py/…`, a PDF-only
-backend does not.
+Discovery passes `[DEFAULT_PARSER]`, so a vault ingests exactly what its parser can
+read — parsecraft's native-text backend reads `.c/.h/.py/…`.
 
 `ParserRouter.fingerprint()` hashes the registered backend class names plus any
 per-backend `cache_identity()` — the identity of the parser *with its routing
-inputs*. The parse and chunk caches key on it, so switching `ingest.parser` or a
-backend's own routing configuration (`ingest.parsecraft_judge` / `_model` /
-`_preference`) re-parses instead of silently reusing the previous setup. A
-backend that carries routing inputs defines `cache_identity()`; the router looks
-it up structurally (the parsecraft adapter deliberately is not a `BaseParser`),
-and an absent hook contributes an empty identity, so adding one never invalidates
-a cache by itself.
+inputs*. The parse and chunk caches key on it, so changing a backend's own
+routing configuration (`ingest.parsecraft_judge` / `_model` / `_preference`, or
+the `max_passes` the adapter passes) re-parses instead of silently reusing the
+previous setup. A backend that carries routing inputs defines `cache_identity()`;
+the router looks it up structurally (the parsecraft adapter deliberately is not a
+`BaseParser`), and an absent hook contributes an empty identity, so adding one
+never invalidates a cache by itself.
 
 ## Rules
 

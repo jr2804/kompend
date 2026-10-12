@@ -86,10 +86,11 @@ REMOVED_KEYS: dict[str, list[str]] = {
         "ocr_min_text_chars_per_page",
         "num_threads",
     ],
-    # `ingest.parser` became a single backend name, so the chain ordering it
-    # controlled no longer exists. Without this entry a vault that still carried
-    # the key got a hard `unknown config key` error instead of a deprecation.
-    "ingest": ["parser_fallback"],
+    # `[ingest] parser` selected among knox's own parser backends. All of those
+    # are deleted — parsecraft is the only backend and routes internally — so the
+    # selector had nothing left to select between. `parser_fallback` was its chain
+    # companion and went when the key became single-valued.
+    "ingest": ["parser", "parser_fallback"],
 }
 
 # Deprecated config keys → their canonical replacement.  The single source of

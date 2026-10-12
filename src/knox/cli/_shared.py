@@ -34,7 +34,6 @@ from knox.core.config.keys import (
     COMPILE_SYNTHESIZE,
     COMPILE_VERIFY,
     COMPILE_WORKERS,
-    INGEST_PARSER,
     PATHS_WIKI_DIR,
     SEARCH_SYNTHESIS_VERBOSITY,
     TRUST_PRIVACY_FILTER,
@@ -98,7 +97,6 @@ def build_cli_overrides(
     embed_model: str | None = None,
     in_place_sources: bool | None = None,
     no_user_tracking: bool | None = None,
-    parser: str | None = None,
     synthesis_verbosity: str | None = None,
     cli_set: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -121,7 +119,6 @@ def build_cli_overrides(
         (COMPILE_LLM_DEFAULT_MODEL, llm_default_model),
         (COMPILE_LLM_VLM_MODEL, vlm_model),
         (COMPILE_EMBEDDING_MODEL, embed_model),
-        (INGEST_PARSER, parser),
         (SEARCH_SYNTHESIS_VERBOSITY, synthesis_verbosity),
     ]
     for key, val in _simple:

@@ -60,7 +60,9 @@ def test_ingest_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: p
     assert options.parsecraft_judge == "ollama"
     assert options.parsecraft_judge_model == "parable-tinyjev"
     assert options.parsecraft_preference == "quality"
-    assert captured["name"] == "parsecraft"
+    # No backend is named any more: parsecraft is the only parser path, so the
+    # router takes the registry default and every site passes options only.
+    assert "name" not in captured
     _assert_full_options(options)
 
 
@@ -77,8 +79,7 @@ def test_parse_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: py
     assert options.parsecraft_judge == "ollama"
     assert options.parsecraft_judge_model == "parable-tinyjev"
     assert options.parsecraft_preference == "speed"
-    # Without --parser the configured backend is used, not a hardcoded default.
-    assert captured["name"] == "parsecraft"
+    assert "name" not in captured
     _assert_full_options(options)
 
 
@@ -94,7 +95,7 @@ def test_mcp_ingest_passes_the_configured_options(tmp_path: Path, monkeypatch: p
     assert options.parsecraft_judge == "zen"
     assert options.parsecraft_judge_model == "some-model"
     assert options.parsecraft_preference == "balanced"
-    assert captured["name"] == "parsecraft"
+    assert "name" not in captured
     _assert_full_options(options)
 
 

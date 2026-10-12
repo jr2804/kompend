@@ -61,7 +61,6 @@ def wiki_ingest(
         no_cache=no_cache,
         workers=workers,
         in_place_sources=in_place,
-        parser=parser,
     )
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file)
     sources_dir = vp.sources_dir
@@ -81,11 +80,7 @@ def wiki_ingest(
         return {"status": "error", "message": f"No supported files found in {sources_dir}."}
 
     images_dir = VaultPaths(base_dir).images_dir
-    parser_name = cfg.knox.ingest.parser
-    router = build_default_router(
-        ParserBuildOptions.from_config(cfg, images_dir=images_dir),
-        name=parser_name,
-    )
+    router = build_default_router(ParserBuildOptions.from_config(cfg, images_dir=images_dir))
 
     try:
         ingest_start = time.monotonic()

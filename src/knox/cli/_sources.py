@@ -215,15 +215,15 @@ def _scan_dir(
 # ── Extension helpers ───────────────────────────────────────────────────
 
 
-def get_supported_extensions(parser: str = DEFAULT_PARSER) -> set[str]:
+def get_supported_extensions() -> set[str]:
     """Return the set of file extensions this vault can ingest.
 
-    Merges the canonical FileExtension enum with the suffixes the configured
-    ingestion backend declares.
+    Merges the canonical FileExtension enum with the suffixes the ingestion
+    backend declares.
     """
     extensions: set[str] = set(FileExtension)
     try:
-        extensions.update(get_all_extensions([parser]))
+        extensions.update(get_all_extensions([DEFAULT_PARSER]))
     except Exception as exc:
         logger.debug("Could not load external parser extensions: %s", exc, exc_info=is_verbose())
     return extensions

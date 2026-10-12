@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from knox.core.config.keys import DEFAULT_PARSER
 from knox.core.pipeline.config import Tier
 from knox.core.pipeline.runtime import PipelineRuntime
 from knox.preprocessing.parsers._registry import get_all_extensions
@@ -26,7 +27,7 @@ def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     Excludes the URL list file — it is processed via
     ``--url-file``, not a document to parse.
     """
-    extensions = get_all_extensions([pipeline.config.parser])
+    extensions = get_all_extensions([DEFAULT_PARSER])
     sources = []
     for f in pipeline.config.source_dir.rglob("*"):
         if _STATE_DIR in f.parts:
