@@ -23,6 +23,7 @@ import json
 import re
 import shutil
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -53,14 +54,29 @@ _ASSET_ID_HASH_LEN = 6
 
 _IMAGE_PLACEHOLDER = re.compile(r"^\[Image:?\s*(.*)\]$")
 
-_MIME_BY_SUFFIX: dict[str, str] = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".bmp": "image/bmp",
-    ".svg": "image/svg+xml",
+#: Image extensions the exporter recognises. Keys are a :class:`StrEnum` so
+#: the table is keyed by typed members; lookups still match bare suffix
+#: strings because ``StrEnum`` is-a ``str``. Includes ``.svg`` because
+#: embedded SVG figures are part of the export contract (the VLM agent's
+#: narrower set lives in :data:`knox.agents.vlm._MIME_BY_EXT`).
+class _ImageExt(StrEnum):
+    PNG = ".png"
+    JPG = ".jpg"
+    JPEG = ".jpeg"
+    GIF = ".gif"
+    WEBP = ".webp"
+    BMP = ".bmp"
+    SVG = ".svg"
+
+
+_MIME_BY_SUFFIX: dict[_ImageExt, str] = {
+    _ImageExt.PNG: "image/png",
+    _ImageExt.JPG: "image/jpeg",
+    _ImageExt.JPEG: "image/jpeg",
+    _ImageExt.GIF: "image/gif",
+    _ImageExt.WEBP: "image/webp",
+    _ImageExt.BMP: "image/bmp",
+    _ImageExt.SVG: "image/svg+xml",
 }
 
 logger = get_logger(__name__)

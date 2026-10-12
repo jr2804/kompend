@@ -26,6 +26,7 @@ Failover is handled by wrapping multiple :class:`KnoxModel` instances in
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import cast
 
 from pydantic import BaseModel
@@ -42,16 +43,29 @@ from knox.llm.postprocess import default_pipeline
 from knox.llm.usage import UsageTracker
 from knox.logging import get_logger
 
+
 # KNOX config ``reasoning_effort`` string → pydantic-ai unified ``thinking``.
 # ``none`` disables thinking entirely (``False``); the five named levels map
-# to the corresponding ``ThinkingLevel`` literals.
-_EFFORT_TO_THINKING: dict[str, ThinkingLevel] = {
-    "none": False,
-    "minimal": "minimal",
-    "low": "low",
-    "medium": "medium",
-    "high": "high",
-    "xhigh": "xhigh",
+# to the corresponding ``ThinkingLevel`` literals. Keys are a :class:`StrEnum`
+# so a typo'd config value (or upstream literal change) fails at the lookup
+# site instead of silently returning ``None`` and falling through to the
+# default branch.
+class _EffortName(StrEnum):
+    NONE = "none"
+    MINIMAL = "minimal"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+
+
+_EFFORT_TO_THINKING: dict[_EffortName, ThinkingLevel] = {
+    _EffortName.NONE: False,
+    _EffortName.MINIMAL: "minimal",
+    _EffortName.LOW: "low",
+    _EffortName.MEDIUM: "medium",
+    _EffortName.HIGH: "high",
+    _EffortName.XHIGH: "xhigh",
 }
 
 

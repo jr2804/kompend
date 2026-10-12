@@ -12,6 +12,7 @@ root cause of VLM timeouts and reasoning-polluted captions.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -23,13 +24,30 @@ from knox.llm.debug import save_debug_prompt
 from knox.llm.format import strip_reasoning
 from knox.logging import get_logger
 
-_MIME_BY_EXT: dict[str, str] = {
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".gif": "image/gif",
-    ".webp": "image/webp",
-    ".bmp": "image/bmp",
+
+#: Image extensions the VLM agent recognises. Keys are a :class:`StrEnum` so
+#: the table is keyed by typed members; lookups still match bare suffix
+#: strings because ``StrEnum`` is-a ``str``. Excludes ``.svg`` because
+#: pydantic-ai's :class:`ImageMediaType` only accepts the raster MIME set
+#: (jpeg/png/gif/webp) — ``.bmp`` is intentionally kept here even though
+#: pydantic-ai rejects it: the lookup falls through to ``_DEFAULT_MEDIA_TYPE``
+#: (``image/png``) before pydantic-ai ever sees the value.
+class _ImageExt(StrEnum):
+    PNG = ".png"
+    JPG = ".jpg"
+    JPEG = ".jpeg"
+    GIF = ".gif"
+    WEBP = ".webp"
+    BMP = ".bmp"
+
+
+_MIME_BY_EXT: dict[_ImageExt, str] = {
+    _ImageExt.PNG: "image/png",
+    _ImageExt.JPG: "image/jpeg",
+    _ImageExt.JPEG: "image/jpeg",
+    _ImageExt.GIF: "image/gif",
+    _ImageExt.WEBP: "image/webp",
+    _ImageExt.BMP: "image/bmp",
 }
 
 # pydantic-ai requires a concrete ImageMediaType; this fallback covers the

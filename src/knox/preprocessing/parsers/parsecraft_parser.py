@@ -33,7 +33,7 @@ from parsecraft.environment import (
     constraints_from_environment,
     probe_environment,
 )
-from parsecraft.ir.models import DocumentResult, StructuredChunk
+from parsecraft.ir.models import ChunkKind, DocumentResult, StructuredChunk
 from parsecraft.pipeline import (
     ALL_PASSES_FAILED_CODE,
     MEDIA_TYPES,
@@ -59,20 +59,22 @@ from knox.preprocessing.parsers._registry import (
 
 #: parsecraft chunk kind → KNOX element type. Kinds without a KNOX equivalent
 #: (header/footer/quote/unknown/caption) map to TEXT — they carry content and
-#: dropping them would lose data.
-_CHUNK_KIND_TO_ELEMENT: dict[str, ElementType] = {
-    "heading": ElementType.HEADING,
-    "paragraph": ElementType.TEXT,
-    "list": ElementType.LIST_ITEM,
-    "table": ElementType.TABLE,
-    "formula": ElementType.FORMULA,
-    "code": ElementType.CODE,
-    "figure": ElementType.IMAGE,
-    "caption": ElementType.TEXT,
-    "header": ElementType.TEXT,
-    "footer": ElementType.TEXT,
-    "quote": ElementType.TEXT,
-    "unknown": ElementType.TEXT,
+#: dropping them would lose data. Keys are :class:`parsecraft.ir.models.ChunkKind`
+#: members, not bare strings, so a chunk-kind rename upstream surfaces as a
+#: type error here instead of a silent ``.get()`` miss.
+_CHUNK_KIND_TO_ELEMENT: dict[ChunkKind, ElementType] = {
+    ChunkKind.HEADING: ElementType.HEADING,
+    ChunkKind.PARAGRAPH: ElementType.TEXT,
+    ChunkKind.LIST: ElementType.LIST_ITEM,
+    ChunkKind.TABLE: ElementType.TABLE,
+    ChunkKind.FORMULA: ElementType.FORMULA,
+    ChunkKind.CODE: ElementType.CODE,
+    ChunkKind.FIGURE: ElementType.IMAGE,
+    ChunkKind.CAPTION: ElementType.TEXT,
+    ChunkKind.HEADER: ElementType.TEXT,
+    ChunkKind.FOOTER: ElementType.TEXT,
+    ChunkKind.QUOTE: ElementType.TEXT,
+    ChunkKind.UNKNOWN: ElementType.TEXT,
 }
 
 

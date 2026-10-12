@@ -40,16 +40,6 @@ DEFAULT_DECAY_THRESHOLD = 0.3
 
 _CONFIDENCE_BOOST = 0.15
 
-_TIER_PROMOTION_COUNT: dict[str, int] = {
-    "working": 2,
-    "episodic": 5,
-    "semantic": 10,
-}
-
-_TIER_ORDER: list[str] = ["working", "episodic", "semantic", "procedural"]
-
-logger = get_logger(__name__)
-
 
 class MemoryTier(StrEnum):
     """Memory consolidation tiers, ordered by increasing permanence."""
@@ -58,6 +48,22 @@ class MemoryTier(StrEnum):
     EPISODIC = "episodic"
     SEMANTIC = "semantic"
     PROCEDURAL = "procedural"
+
+
+_TIER_PROMOTION_COUNT: dict[MemoryTier, int] = {
+    MemoryTier.WORKING: 2,
+    MemoryTier.EPISODIC: 5,
+    MemoryTier.SEMANTIC: 10,
+}
+
+_TIER_ORDER: list[MemoryTier] = [
+    MemoryTier.WORKING,
+    MemoryTier.EPISODIC,
+    MemoryTier.SEMANTIC,
+    MemoryTier.PROCEDURAL,
+]
+
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -297,9 +303,9 @@ def _parse_iso(ts: str) -> datetime:
         return now_local()
 
 
-def promote_tier(current: str, review_count: int) -> str:
+def promote_tier(current: str, review_count: int) -> MemoryTier:
     """Return the tier a node should have given its review count."""
-    tier = current
+    tier: MemoryTier = MemoryTier(current)
     while tier in _TIER_PROMOTION_COUNT and review_count >= _TIER_PROMOTION_COUNT[tier]:
         idx = _TIER_ORDER.index(tier)
         if idx + 1 < len(_TIER_ORDER):

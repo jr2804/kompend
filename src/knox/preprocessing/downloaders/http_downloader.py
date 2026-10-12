@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import urllib.error
 import urllib.request
+from enum import StrEnum
 from http.client import HTTPResponse
 from pathlib import Path
 from urllib.parse import urlparse
@@ -17,23 +18,45 @@ _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHT
 
 # Content-Type → extension mapping for downloaded files whose URL
 # has no recognizable extension (e.g. .aspx, no extension at all).
-_CONTENT_TYPE_EXT: dict[str, str] = {
-    "text/html": ".html",
-    "text/plain": ".txt",
-    "application/pdf": ".pdf",
-    "application/msword": ".doc",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-    "application/epub+zip": ".epub",
-    "application/x-tar": ".tar.gz",
-    "application/gzip": ".tar.gz",
-    "application/x-gzip": ".tar.gz",
-    "application/x-eprint-tar": ".tar.gz",
-    "application/x-bzip2": ".tar.bz2",
-    "application/x-xz": ".tar.xz",
-    "application/x-rar-compressed": ".rar",
-    "application/vnd.rar": ".rar",
-    "application/x-7z-compressed": ".7z",
-    "application/zip": ".zip",
+# Keys are a :class:`StrEnum` so a typo'd Content-Type (e.g. an IANA
+# rename or a server-mangled string) surfaces as a ``.get()`` miss
+# instead of silently producing ``None`` and routing the file as ``.bin``.
+class _ContentType(StrEnum):
+    HTML = "text/html"
+    PLAIN = "text/plain"
+    PDF = "application/pdf"
+    MS_WORD = "application/msword"
+    DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    EPUB = "application/epub+zip"
+    X_TAR = "application/x-tar"
+    GZIP = "application/gzip"
+    X_GZIP = "application/x-gzip"
+    X_EPRINT_TAR = "application/x-eprint-tar"
+    X_BZIP2 = "application/x-bzip2"
+    X_XZ = "application/x-xz"
+    X_RAR_COMPRESSED = "application/x-rar-compressed"
+    VND_RAR = "application/vnd.rar"
+    X_7Z_COMPRESSED = "application/x-7z-compressed"
+    ZIP = "application/zip"
+
+
+_CONTENT_TYPE_EXT: dict[_ContentType, str] = {
+    _ContentType.HTML: ".html",
+    _ContentType.PLAIN: ".txt",
+    _ContentType.PDF: ".pdf",
+    _ContentType.MS_WORD: ".doc",
+    _ContentType.DOCX: ".docx",
+    _ContentType.EPUB: ".epub",
+    _ContentType.X_TAR: ".tar.gz",
+    _ContentType.GZIP: ".tar.gz",
+    _ContentType.X_GZIP: ".tar.gz",
+    _ContentType.X_EPRINT_TAR: ".tar.gz",
+    _ContentType.X_BZIP2: ".tar.bz2",
+    _ContentType.X_XZ: ".tar.xz",
+    _ContentType.X_RAR_COMPRESSED: ".rar",
+    _ContentType.VND_RAR: ".rar",
+    _ContentType.X_7Z_COMPRESSED: ".7z",
+    _ContentType.ZIP: ".zip",
 }
 
 # FileExtension values the pipeline already recognizes.
