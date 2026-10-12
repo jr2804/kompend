@@ -430,9 +430,7 @@ class TestDedupOrchestrator:
         probe embed is issued and the test does not need a live embedding
         service.
         """
-        provider = PydanticAIEmbeddingProvider(
-            model_string="ollama:granite-embedding:278m", dim=384
-        )
+        provider = PydanticAIEmbeddingProvider(model_string="ollama:granite-embedding:278m", dim=384)
         # Simulate a provider error (as would happen with a misconfigured model)
         with (
             patch(

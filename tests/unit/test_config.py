@@ -330,8 +330,7 @@ class TestResolveConfig:
         """
         config_file = tmp_path / "knox.toml"
         config_file.write_text(
-            "[compile.pdf]\nmax_pages_before_chunking = 50\ntable_structure = true\n"
-            "\n[compile.llm]\ndefault_model = \"ollama/test-model\"\n",
+            '[compile.pdf]\nmax_pages_before_chunking = 50\ntable_structure = true\n\n[compile.llm]\ndefault_model = "ollama/test-model"\n',
         )
         (tmp_path / "sources").mkdir()
         (tmp_path / "sources" / "a.md").write_text("hi\n", encoding="utf-8")

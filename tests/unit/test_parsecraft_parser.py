@@ -242,22 +242,6 @@ class _SentinelJudge:
         return names
 
 
-def _pdf_backend(name: str, vram: float) -> BackendDescriptor:
-    """A minimal native-PDF candidate whose only difference is declared VRAM."""
-    caps = BackendCapabilities(
-        supported_formats=["application/pdf"],
-        supports_page_ranges=True,
-        supports_multi_page=True,
-        gpu_requirement=0.0,
-        estimated_vram_gb=vram,
-        optional_dependency_group=None,
-        model_asset=None,
-        languages=(),
-        required_engine=None,
-    )
-    return BackendDescriptor(name=name, version="0.1.0", capabilities=caps)
-
-
 class TestJudgeWiring:
     """The judge tier is opt-in and must never turn a misconfiguration into a failed ingest.
 
@@ -333,13 +317,9 @@ class TestJudgeWiring:
         fallback with the configured axis, not the enum default.
         """
         adapter = _adapter()
-        unresolvable = adapter.ParsecraftParser(
-            parsecraft_judge="nosuchprovider", parsecraft_judge_model="m", parsecraft_preference="quality"
-        )
+        unresolvable = adapter.ParsecraftParser(parsecraft_judge="nosuchprovider", parsecraft_judge_model="m", parsecraft_preference="quality")
         assert unresolvable._get_judge()._preference is adapter.RoutingPreference.QUALITY
-        degraded = adapter.ParsecraftParser(
-            parsecraft_judge="ollama", parsecraft_judge_model="m", parsecraft_preference="quality"
-        )
+        degraded = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="m", parsecraft_preference="quality")
         degraded._degrade_judge(RuntimeError("endpoint died"))
         assert degraded._judge_fallback._preference is adapter.RoutingPreference.QUALITY
 
@@ -476,6 +456,22 @@ class TestJudgeWiring:
         assert backend._judge_model == "parable-tinyjev"
         assert backend._judge_preference == "quality"
         assert adapter.ParsecraftParser()._judge_name == "none"
+
+
+def _pdf_backend(name: str, vram: float) -> BackendDescriptor:
+    """A minimal native-PDF candidate whose only difference is declared VRAM."""
+    caps = BackendCapabilities(
+        supported_formats=["application/pdf"],
+        supports_page_ranges=True,
+        supports_multi_page=True,
+        gpu_requirement=0.0,
+        estimated_vram_gb=vram,
+        optional_dependency_group=None,
+        model_asset=None,
+        languages=(),
+        required_engine=None,
+    )
+    return BackendDescriptor(name=name, version="0.1.0", capabilities=caps)
 
 
 def _map(document: DocumentResult, name: str = "d.txt") -> list:

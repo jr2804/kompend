@@ -75,13 +75,13 @@ _CHUNK_KIND_TO_ELEMENT: dict[str, ElementType] = {
     "unknown": ElementType.TEXT,
 }
 
-logger = get_logger(__name__)
-
 
 #: Characters of a judge/SDK error message kept in a log line. The SDK wraps
 #: provider errors with the full HTTP exchange; the first clause names the
 #: cause and the rest is noise in a per-file warning.
 _JUDGE_ERROR_EXCERPT_CHARS = 160
+
+logger = get_logger(__name__)
 
 
 class ParsecraftParser:
@@ -328,19 +328,6 @@ class ParsecraftParser:
         return self._judge
 
 
-def _parse_preference(name: str) -> RoutingPreference:
-    """Map a config string to parsecraft's ``RoutingPreference``.
-
-    Accepts the same lowercase set the config validates against; an
-    unrecognised value falls through to BALANCED, never errors — a typo
-    in the config should not block a parse run.
-    """
-    try:
-        return RoutingPreference(name)
-    except ValueError:
-        return RoutingPreference.BALANCED
-
-
 class ParsecraftParseError(RuntimeError):
     """parsecraft produced no usable content for a source file.
 
@@ -361,6 +348,19 @@ class ParsecraftParseError(RuntimeError):
         degradations = [f"p{signal.page_number} {signal.name}: {signal.detail}" for signal in document.quality if signal.name.startswith("degraded-")]
         message = "; ".join(failures or degradations) or "all parsecraft passes failed"
         super().__init__(f"{source_file.name}: {message}")
+
+
+def _parse_preference(name: str) -> RoutingPreference:
+    """Map a config string to parsecraft's ``RoutingPreference``.
+
+    Accepts the same lowercase set the config validates against; an
+    unrecognised value falls through to BALANCED, never errors — a typo
+    in the config should not block a parse run.
+    """
+    try:
+        return RoutingPreference(name)
+    except ValueError:
+        return RoutingPreference.BALANCED
 
 
 def _map_document(document: DocumentResult, source_file: Path) -> list[DocumentElement]:

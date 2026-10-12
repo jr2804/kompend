@@ -108,17 +108,6 @@ class BaseParser(ABC):
         return source_file.suffix.lower() in self.supported_extensions
 
 
-def _cache_identity(parser: object) -> str:
-    """Optional per-backend identity hook for :meth:`ParserRouter.fingerprint`.
-
-    Returns the backend's own ``cache_identity()`` when it defines one, else an
-    empty string so the fingerprint stays unchanged for every backend that
-    carries no routing configuration of its own.
-    """
-    identity = getattr(parser, "cache_identity", None)
-    return str(identity()) if callable(identity) else ""
-
-
 class ParserRouter:
     """Dispatches each file to the one registered backend that claims it.
 
@@ -170,6 +159,17 @@ class ParserRouter:
         if parser is None:
             raise ValueError(f"No parser found for {source_file}")
         return scrub_document(parser.parse(source_file))
+
+
+def _cache_identity(parser: object) -> str:
+    """Optional per-backend identity hook for :meth:`ParserRouter.fingerprint`.
+
+    Returns the backend's own ``cache_identity()`` when it defines one, else an
+    empty string so the fingerprint stays unchanged for every backend that
+    carries no routing configuration of its own.
+    """
+    identity = getattr(parser, "cache_identity", None)
+    return str(identity()) if callable(identity) else ""
 
 
 def scrub_document(doc: ParsedDocument) -> ParsedDocument:

@@ -39,15 +39,6 @@ class _Captured(Exception):
     """Sentinel raised by the stubbed router factory to stop the command early."""
 
 
-def _capturing_factory(captured: dict[str, Any]) -> Any:
-    def _factory(*args: Any, **kwargs: Any) -> Any:
-        captured.update(kwargs)
-        captured["args"] = args
-        raise _Captured
-
-    return _factory
-
-
 def test_ingest_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     base = _vault(tmp_path, judge="ollama", judge_model="parable-tinyjev", preference="quality")
     captured: dict[str, Any] = {}
@@ -97,6 +88,15 @@ def test_mcp_ingest_passes_the_configured_options(tmp_path: Path, monkeypatch: p
     assert options.parsecraft_preference == "balanced"
     assert "name" not in captured
     _assert_full_options(options)
+
+
+def _capturing_factory(captured: dict[str, Any]) -> Any:
+    def _factory(*args: Any, **kwargs: Any) -> Any:
+        captured.update(kwargs)
+        captured["args"] = args
+        raise _Captured
+
+    return _factory
 
 
 def test_pipeline_config_builds_the_same_options_as_the_cli(tmp_path: Path) -> None:
