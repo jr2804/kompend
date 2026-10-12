@@ -8,9 +8,6 @@
 #
 # Usage: .\scripts\build-wiki.ps1 scripts\config-cloud.toml
 
-[ingest]
-parser = "web,liteparse,docling,pandoc"
-
 [compile]
 compiler = "wicer"
 
@@ -21,9 +18,9 @@ data_format = "ison"
 timeout = 300.0
 fallback_max_retries = 3
 reasoning_effort = "low"
-# Cap discovered context window (tokens). Set KNOX_CLOUD_CTX_CAP env var
-# to enable. When unset, auto-discovers from the model.
-# context_window_cap = "${KNOX_CLOUD_CTX_CAP}"
+# Cap the context window (tokens) for every model. Set KNOX_CLOUD_CTX_CAP to
+# enable; when unset it auto-discovers from the model.
+# context_window = "${KNOX_CLOUD_CTX_CAP}"
 
 [compile.embedding]
 model = "${KNOX_CLOUD_EMBEDDING}"

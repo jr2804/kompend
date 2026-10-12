@@ -8,9 +8,6 @@
 #
 # Usage: .\scripts\build-wiki.ps1 scripts\config-local.toml
 
-[ingest]
-parser = "web,liteparse,docling,pandoc"
-
 [compile]
 compiler = "wicer"
 
@@ -21,9 +18,9 @@ data_format = "ison"
 timeout = 600.0
 output_retries = 4
 reasoning_effort = "none"
-# Cap discovered context window (tokens). Set KNOX_LOCAL_CTX_CAP env var
-# to enable. When unset, auto-discovers from the model.
-context_window_cap = "${KNOX_LOCAL_CTX_CAP}"
+# Cap the context window (tokens) for every model. Set KNOX_LOCAL_CTX_CAP to
+# enable; when unset it auto-discovers from the model.
+context_window = "${KNOX_LOCAL_CTX_CAP}"
 
 [compile.embedding]
 model = "${KNOX_LOCAL_EMBEDDING}"
@@ -33,7 +30,6 @@ flavor = "obsidian"
 
 [compile.budget]
 wicer_max_iterations = 2
-concepts_per_batch = 1
 extract_output_max = 16384
 gen_output_max = 32768
 lint_output_max = 16384

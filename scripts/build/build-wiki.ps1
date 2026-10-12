@@ -4,13 +4,13 @@
 #   - Ollama running with models pulled (see config files for model list)
 #   - uv installed (https://docs.astral.sh/uv/)
 #
-# Usage:
-#   .\scripts\build-wiki.ps1 scripts\config-cloud.toml     # enterprise LLM (~1M ctx)
-#   .\scripts\build-wiki.ps1 scripts\config-local.toml      # local LLM (128K ctx)
-#   .\scripts\build-wiki.ps1 scripts\config-local.toml -LLMModel "ollama/llama3.2"
-#   .\scripts\build-wiki.ps1 scripts\config-cloud.toml -VLMModel "ollama-cloud/gemma4:cloud"
-#   .\scripts\build-wiki.ps1 scripts\config-local.toml -EmbedModel "ollama/granite-embedding:278m"
-#   .\scripts\build-wiki.ps1 scripts\config-cloud.toml -Preview
+# Usage (paths relative to the repo root):
+#   .\scripts\build\build-wiki.ps1 scripts\configs\config-cloud.toml     # enterprise LLM (~1M ctx)
+#   .\scripts\build\build-wiki.ps1 scripts\configs\config-local.toml     # local LLM (128K ctx)
+#   .\scripts\build\build-wiki.ps1 scripts\configs\config-local.toml -LLMModel "ollama/llama3.2"
+#   .\scripts\build\build-wiki.ps1 scripts\configs\config-cloud.toml -VLMModel "ollama-cloud/gemma4:cloud"
+#   .\scripts\build\build-wiki.ps1 scripts\configs\config-local.toml -EmbedModel "ollama:granite-embedding:278m"
+#   .\scripts\build\build-wiki.ps1 scripts\configs\config-cloud.toml -Preview
 #
 [CmdletBinding()]
 param(
@@ -33,7 +33,10 @@ $ErrorActionPreference = "Stop"
 
 # ------ Sync environment (ensure latest source is installed) ------------------------------------------------
 Write-Host "=== Syncing environment (uv sync) ===" -ForegroundColor Cyan
-$ProjectRoot = $PSScriptRoot | Split-Path -Parent
+# Two levels up: this file lives in scripts/build/, and every relative path in
+# this script (and `uv run`, which finds the project venv) is anchored at the
+# repo root. One level would land on scripts/.
+$ProjectRoot = $PSScriptRoot | Split-Path -Parent | Split-Path -Parent
 
 # Anchor cwd to the repo root so every relative path and `uv run` (which uses
 # the venv in $ProjectRoot) resolves correctly, regardless of where the script
@@ -72,16 +75,16 @@ $IsLocalConfig = $BaseName -like "*local*"
 if ($IsLocalConfig) {
     $env:KNOX_LOCAL_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KNOX_LOCAL_LLM        ?? "ollama/gemma4:e2b" }   else { $LLMModel }
     $env:KNOX_LOCAL_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KNOX_LOCAL_VLM        ?? "ollama/lmfm2.5" }     else { $VLMModel }
-    $env:KNOX_LOCAL_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_LOCAL_EMBEDDING  ?? "ollama/granite-embedding:278m" } else { $EmbedModel }
+    $env:KNOX_LOCAL_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_LOCAL_EMBEDDING  ?? "ollama:granite-embedding:278m" } else { $EmbedModel }
 } else {
     $env:KNOX_CLOUD_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KNOX_CLOUD_LLM        ?? "ollama-cloud/deepseek-v4-flash" }   else { $LLMModel }
     $env:KNOX_CLOUD_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KNOX_CLOUD_VLM        ?? "ollama-cloud/gemma4:31b" }         else { $VLMModel }
-    $env:KNOX_CLOUD_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_CLOUD_EMBEDDING  ?? "openai/text-embedding-3-large" }   else { $EmbedModel }
+    $env:KNOX_CLOUD_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_CLOUD_EMBEDDING  ?? "openai:text-embedding-3-large" }   else { $EmbedModel }
 }
 
 # Derive output directory name from config filename:
-#   scripts\config-cloud.toml  →  demo-wiki-cloud
-#   scripts\config-local.toml   →  demo-wiki-local
+#   scripts\configs\config-cloud.toml  →  demo-wiki-cloud
+#   scripts\configs\config-local.toml   →  demo-wiki-local
 $OutputName = $BaseName -replace "^config-", "demo-wiki-"
 # Relative to cwd ($ProjectRoot) — avoids backslash-mangling when passed to
 # native commands via `--wiki-dir`. knox resolves it against cwd.
