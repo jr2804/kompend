@@ -71,7 +71,7 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 
 **Date:** Oct 9, 2026  
 **Context:** Benchmark winner is opendataloader-pdf (0.907), but a single engine per corpus cannot serve a born-digital page and a scanned, table-heavy page in the same document — and knox-side adapters for docling, liteparse and pandoc duplicated what parsecraft already does.  
-**Decision:** `[ingest] parser` names one backend, default `parsecraft`, which routes each page across its own sub-backends (native, LiteParse, docling, pandoc, OCR). `knox[parsecraft]` carries the sub-backends; `knox[systemone]` adds the judge tier.
+**Decision:** parsecraft is the only parser path — the `[ingest] parser` selector was retired. The `[ingest]` block now holds only the parsecraft parameters (`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`), each mapping 1:1 onto a parsecraft parameter; the adapter hands every source to `pipeline.execute()`. `knox[parsecraft]` carries the sub-backends, `knox[systemone]` adds the judge tier, and `knox[mineru]` adds MinerU as a sub-backend.
 **Consequences:** Routing, fallback and OCR escalation are parsecraft's to decide; the knox-side docling/liteparse/pandoc/glm-ocr/web/marker/mineru adapters are deleted — mineru returns as the `knox[mineru]` sub-backend extra, marker is parsecraft's bring-your-own. One external dependency with a minimum parsecraft release.
 
 ### Decision: Format-native parsing, not PDF-first

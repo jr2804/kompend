@@ -13,7 +13,10 @@ See also:
 
 ## Parser Backends
 
-`[ingest] parser` names exactly one backend: `parsecraft`, the default.
+parsecraft is the only parser path; the selector is gone. The remaining
+`[ingest]` keys are the parsecraft parameters
+(`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference` —
+see [Judge tier](#judge-tier-model-assisted-per-page-routing)).
 
 - `parsecraft` — an external document-intelligence pipeline that routes each
   page across its own sub-backends (native text/markdown/HTML/PDF, LiteParse,
@@ -21,14 +24,7 @@ See also:
   as the `parsecraft` extra, which pulls the sub-backends that make it
   useful: `uv add knox[parsecraft]`.
 
-```toml
-[ingest]
-parser = "parsecraft"   # the only knox backend
-```
-
-`knox list-parsers` shows the backend and the formats it claims. An unknown
-name raises, so a vault configured against a backend that does not exist
-fails loudly instead of parsing nothing.
+`knox list-parsers` shows the backend and the formats it claims.
 
 Two opt-in extensions ride on top of parsecraft rather than being knox
 backends:
@@ -62,12 +58,11 @@ marker is parsecraft's **bring-your-own** sub-backend.
 
 ## Supported Formats
 
-Discovery follows the configured backend: knox asks `[ingest] parser` which
-suffixes it claims (`get_all_extensions([config.parser])`) and scans the source
-directory for exactly those. With the default backend that is parsecraft's
-32-suffix table. `.knox/` is excluded regardless of claimed formats, so state
-artifacts such as `.knox/rumdl.toml` are never ingested even though parsecraft
-claims `.toml`.
+Discovery takes the registry default (parsecraft) and asks it which suffixes
+it claims; the source directory is scanned for exactly those. parsecraft's
+current 32-suffix table is what a default `knox ingest` covers. `.knox/`
+is excluded regardless of claimed formats, so state artifacts such as
+`.knox/rumdl.toml` are never ingested even though parsecraft claims `.toml`.
 
 | Format | Handled by | Notes |
 |--------|------------|-------|
@@ -85,18 +80,12 @@ picked up by discovery.
 
 ## Parser Strategy: Speed vs. Accuracy
 
-parsecraft is the default backend, and it does not pick one engine for a whole
-corpus: it analyses each page and routes it, so a born-digital text page stays
-on the cheap native/LiteParse path while a scanned or table-heavy page in the
-same document can escalate to a stronger backend. The speed/accuracy trade-off
-is decided per page rather than per configuration.
-
-`[ingest] parser` selects the single backend knox hands files to:
-
-```toml
-[ingest]
-parser = "parsecraft"
-```
+parsecraft is the only parser path, and it does not pick one engine for a
+whole corpus: it analyses each page and routes it, so a born-digital text
+page stays on the cheap native/LiteParse path while a scanned or
+table-heavy page in the same document can escalate to a stronger backend.
+The speed/accuracy trade-off is decided per page rather than per
+configuration.
 
 ### One backend, no chain
 
@@ -177,15 +166,10 @@ The extra carries a minimum parsecraft release; raising it is a reviewed event
 internals, private modules, or test helpers — only the documented public
 surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
 
-### What selecting parsecraft does
+### What the parsecraft adapter does
 
-Set `ingest.parser = "parsecraft"` to route every file it claims through
-parsecraft's full pipeline:
-
-```toml
-[ingest]
-parser = "parsecraft"   # the ingestion backend; no chain, no fallback list
-```
+The adapter runs unconditionally; there is no backend selector to set. The
+remaining `[ingest]` knobs are the parsecraft parameters.
 
 The adapter calls `pipeline.execute()` — analyze → `plan_route` → per-range
 dispatch with fallback passes → aggregate `DocumentResult` — so routing,

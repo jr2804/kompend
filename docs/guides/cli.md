@@ -207,10 +207,10 @@ knox ingest paper.pdf --tag audio --tag standards --attr version=2
 knox ingest --url https://example.com/report.pdf --attr status=draft
 ```
 
-### Forced re-ingest (switching parser)
+### Forced re-ingest (parser setting change)
 
 `knox ingest --no-cache` forces a re-parse of every selected source. Two
-things make this safe and sufficient for switching `ingest.parser`:
+things make this safe and sufficient for a parser-related change:
 
 - **Tags and attributes are preserved.** `knox sources tag` / `attr add` write
   into the parse-cache entry; a re-parse carries them forward instead of
@@ -219,14 +219,18 @@ things make this safe and sufficient for switching `ingest.parser`:
 - **Attachments are untouched.** They live in the attachment manifest in
   `.knox/knox.db` and `attachments/<slug>/`; `ingest` never writes those.
 
-A parser change invalidates automatically: the parse cache records which
-parser chain produced each entry, and the chunk cache keys on the same
-fingerprint. So after editing `ingest.parser`, a plain `knox ingest`
-re-parses and the next `knox compile` re-chunks — no `--no-cache` needed.
-Use `--no-cache` only to force a re-parse when nothing changed.
+A parser-related change invalidates automatically: the parse cache keys
+on `ParserRouter.fingerprint()` and the chunk cache keys on the same
+fingerprint. The fingerprint folds in the `[ingest] parsecraft_*` keys
+(`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`)
+and the adapter's `max_passes`, so a change to any of those — and not to
+the backend name, which is no longer selectable — invalidates the cache.
+So after editing an `[ingest]` knob, a plain `knox ingest` re-parses and
+the next `knox compile` re-chunks; no `--no-cache` needed. Use `--no-cache`
+only to force a re-parse when nothing changed.
 
 ```bash
-# switch parser: edit ingest.parser, then
+# change a parser knob: edit [ingest] parsecraft_*, then
 knox ingest                 # re-parses the affected sources automatically
 knox compile                # re-chunks from the new parser output
 
@@ -234,12 +238,22 @@ knox compile                # re-chunks from the new parser output
 knox ingest --no-cache
 ```
 
-`ingest.parser` names exactly one parser backend: `parsecraft` (the default
-— `uv add knox[parsecraft]`, Python ≥3.13). An unknown name raises, so a
-vault configured against a nonexistent backend fails loudly. `knox[mineru]`
-adds MinerU as a parsecraft sub-backend, `knox[systemone]` adds the judge
-tier, and marker is parsecraft's bring-your-own dependency. Selecting
-`parsecraft` routes matching files through parsecraft's full pipeline; see
+The `[ingest]` block now holds only the parsecraft parameters; the
+backend selector was retired (the parser chain is parsecraft and only
+parsecraft, with per-page routing inside it). A vault that still sets
+the old `ingest.parser` key loads and is warned by `knox config check`;
+the key lives in `REMOVED_KEYS`. The live shape is:
+
+```toml
+[ingest]
+parsecraft_judge         = "none"        # none | ollama | zen | typesafe-ai
+parsecraft_judge_model   = ""            # model token for the configured provider
+parsecraft_preference    = "balanced"    # tiebreak: speed | balanced | quality (speed == balanced; quality inverts)
+```
+
+`knox[parsecraft]` adds parsecraft and its sub-backends; `knox[mineru]`
+adds MinerU as a parsecraft sub-backend; `knox[systemone]` adds the
+judge tier's SDK; marker is parsecraft's bring-your-own dependency. See
 [ParsecraftParser](document-extraction.md#parsecraftparser-external-adapter)
 for the fallback interaction and the diagnostics parsecraft carries into
 KNOX metadata.
