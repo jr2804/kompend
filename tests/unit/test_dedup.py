@@ -12,7 +12,7 @@ from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from knox.preprocessing.dedup.orchestrator import DedupOrchestrator
 from knox.preprocessing.dedup.store import DedupStore, StoreEntry
-from knox.rag.zvec_store import PydanticAIEmbeddingProvider
+from knox.rag.zvec_store import PydanticAIEmbeddingProvider, make_provider, to_pydantic_ai_embedding_string
 from knox.types import JSONDict
 from tests.conftest import DeterministicTestEmbeddingProvider
 
@@ -248,24 +248,22 @@ class TestDedupOrchestrator:
         results = orch.process_batch([("doc-1", "some text")])
         assert results["doc-1"].verdict == DedupVerdict.DIFFERENT
 
-    def test_provider_slash_format_translated_to_pydantic_ai_format(self, tmp_path: Path) -> None:
+    def test_provider_slash_format_translated_to_pydantic_ai_format(self) -> None:
         """Regression: ``provider/model`` must be translated to pydantic-ai's
         ``provider:model`` format so the Embedder can resolve the provider.
+
+        The translation is a pure string operation; the previous test went
+        through the full dedup orchestrator, which reads ``provider.dim`` and
+        silently depended on a live Ollama daemon. Assert both the translation
+        and the factory wiring (with a known ``dim`` shortcut, so no probe
+        embed is required) directly.
         """
-        orch = DedupOrchestrator(
-            tmp_path,
-            config={
-                "dedup.enabled": True,
-                "dedup.matchers": "embedding",
-                "dedup.model": "ollama/granite-embedding:278m",
-            },
-        )
-        matchers, _ = orch._build_matchers()  # noqa: SLF001 — introspect build
-        emb_matcher = next(m for m in matchers if m.name == "embedding")
-        assert isinstance(emb_matcher, EmbeddingMatcher)
-        assert isinstance(emb_matcher._provider, PydanticAIEmbeddingProvider)  # noqa: SLF001
-        # Slash format must be translated to pydantic-ai colon format
-        assert emb_matcher._provider._model_string == "ollama:granite-embedding:278m"  # noqa: SLF001
+        translated = to_pydantic_ai_embedding_string("ollama/granite-embedding:278m")
+        assert translated == "ollama:granite-embedding:278m"
+        provider = make_provider("ollama/granite-embedding:278m", dim=384)
+        assert isinstance(provider, PydanticAIEmbeddingProvider)
+        assert provider._model_string == "ollama:granite-embedding:278m"
+        assert provider.dim == 384
 
     def test_identical_docs_detected(self, tmp_path: Path) -> None:
         orch = DedupOrchestrator(
@@ -426,27 +424,37 @@ class TestDedupOrchestrator:
         """Embedding errors must propagate — not be swallowed silently.
 
         Regression for the provider-prefix bug and the try/except that
-        hid configuration errors.
+        hid configuration errors. The orchestrator reads ``provider.dim`` to
+        build the embedding matcher, so this test stubs ``make_provider`` (with
+        the ``dim`` shortcut set) BEFORE constructing the orchestrator — no
+        probe embed is issued and the test does not need a live embedding
+        service.
         """
-        orch = DedupOrchestrator(
-            tmp_path,
-            config={
-                "dedup.enabled": True,
-                "dedup.matchers": "embedding",
-                "dedup.model": "ollama/granite-embedding:278m",
-            },
+        provider = PydanticAIEmbeddingProvider(
+            model_string="ollama:granite-embedding:278m", dim=384
         )
-
         # Simulate a provider error (as would happen with a misconfigured model)
         with (
+            patch(
+                "knox.preprocessing.dedup.orchestrator.make_provider",
+                return_value=provider,
+            ),
             patch.object(
                 EmbeddingMatcher,
                 "fingerprint",
                 side_effect=RuntimeError("BadRequestError: LLM Provider NOT provided"),
             ),
-            pytest.raises(RuntimeError, match="BadRequestError"),
         ):
-            orch.fingerprint("doc-1", "some text")
+            orch = DedupOrchestrator(
+                tmp_path,
+                config={
+                    "dedup.enabled": True,
+                    "dedup.matchers": "embedding",
+                    "dedup.model": "ollama/granite-embedding:278m",
+                },
+            )
+            with pytest.raises(RuntimeError, match="BadRequestError"):
+                orch.fingerprint("doc-1", "some text")
 
 
 # ---------------------------------------------------------------------------

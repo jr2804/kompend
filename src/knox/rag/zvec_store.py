@@ -96,10 +96,13 @@ class PydanticAIEmbeddingProvider(EmbeddingProvider):
     :func:`knox.llm.models.build_model`.
     """
 
-    def __init__(self, model_string: str) -> None:
+    def __init__(self, model_string: str, *, dim: int | None = None) -> None:
         self._model_string = model_string
         self._embedder = build_embedder(model_string)
-        self._dim: int | None = None
+        #: Known vector dimensionality shortcut — set by callers (tests, factory
+        #: sites) that already know the dimension, so ``.dim`` does not need a
+        #: probe embed. ``None`` keeps the auto-detect path.
+        self._dim: int | None = dim
 
     @property
     def dim(self) -> int:
@@ -855,7 +858,7 @@ def make_provider(
     required — there is no fallback to a local embedding provider.
     """
     pydantic_ai_string = to_pydantic_ai_embedding_string(embedding_model)
-    return PydanticAIEmbeddingProvider(model_string=pydantic_ai_string)
+    return PydanticAIEmbeddingProvider(model_string=pydantic_ai_string, dim=dim)
 
 
 def to_pydantic_ai_embedding_string(embedding_model: str) -> str:

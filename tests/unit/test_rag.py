@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore, to_pydantic_ai_embedding_string
+from knox.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore, make_provider, to_pydantic_ai_embedding_string
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -196,6 +196,22 @@ class TestPydanticAIEmbeddingProvider:
         with patch.object(provider, "_embedder") as mock_embedder:
             mock_embedder.embed_documents_sync.return_value = mock_result
             assert provider.dim == 384
+
+    def test_dim_shortcut_skips_probe(self) -> None:
+        """A known ``dim`` makes ``.dim`` daemon-free — the probe embed must
+        not be issued when the caller already supplies the dimension.
+        """
+        provider = PydanticAIEmbeddingProvider(model_string="test:test-model", dim=768)
+        with patch.object(provider, "_embedder") as mock_embedder:
+            assert provider.dim == 768
+        mock_embedder.embed_documents_sync.assert_not_called()
+
+    def test_make_provider_forwards_dim_to_provider(self) -> None:
+        """``make_provider`` wires the ``dim`` shortcut through to the
+        underlying provider so factory callers can avoid the probe embed.
+        """
+        provider = make_provider("ollama:granite-embedding:278m", dim=384)
+        assert provider.dim == 384
 
 
 @pytest.fixture
