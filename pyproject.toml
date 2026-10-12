@@ -97,13 +97,25 @@ parsecraft = [
     "parsecraft[liteparse,docling,pandoc,web]>=2026.10.1",
 ]
 
-# The System One judge tier (`[ingest] parsecraft_judge` / `parsecraft_preference`)
-# has no knox extra: parsecraft 2026.10.3 removed `systemone`, and its judge code
-# no longer gates on it. The `ollama` and `zen` providers need no SDK at all;
-# `typesafe-ai` needs `typesafe-sdk`, which now arrives via `parsecraft[auto]`
-# (that extra also carries `pdf-inspector`). There is deliberately no knox extra
-# here — inventing one would pull pdf-inspector to get an SDK, and the default
-# judge is `none` anyway.
+#: Judge-tier routing (`[ingest] parsecraft_judge` / `parsecraft_preference`).
+#: parsecraft 2026.10.3 removed its own `systemone` extra and moved the SDK into
+#: `auto`. It is needed for **every** judge provider, not just the cloud ones:
+#: `parsecraft/providers/_jev.py` imports `typesafe_sdk` for `ollama`, `zen` and
+#: `typesafe-ai` alike ("all three endpoints share it"), and raises
+#: `JudgeProviderUnavailableError: judge provider 'ollama' unavailable` without
+#: it. So a locally-run Jev model needs this extra exactly as much as a hosted
+#: one does.
+#:
+#: `parsecraft[auto]` rather than a bare `typesafe-sdk` pin deliberately: parsecraft
+#: owns that floor, and duplicating it here would let the two drift. The extra also
+#: carries `pdf-inspector`, which knox does not use directly — accepted as the cost
+#: of not re-declaring another project's dependency.
+#:
+#: No knox extra is needed for `judge = "none"` (the default), which is why this
+#: is separate from the main `parsecraft` extra rather than folded into it.
+systemone = [
+    "parsecraft[auto]>=2026.10.1",
+]
 
 #: parsecraft[mineru] installs the MinerU 4.x stack: code under the MinerU Open
 #: Source License (Apache-2.0 PLUS commercial-use thresholds >100M MAU /
