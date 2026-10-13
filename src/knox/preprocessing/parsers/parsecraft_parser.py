@@ -24,6 +24,7 @@ Mapping summary:
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from parsecraft.backends import BackendRegistry, default_registry
@@ -140,11 +141,7 @@ class ParsecraftParser:
         """Parse *source_file* through parsecraft and map the IR to KNOX."""
         registry = self._registry if self._registry is not None else default_registry
         media_type = media_type_for(source_file)
-        # probe_environment shells out (nvidia-smi + find_spec sweep); the
-        # answer cannot change mid-process, so compute it once per instance —
-        # hundreds of vault files must not mean hundreds of subprocess spawns.
-        if self._environment is None:
-            self._environment = probe_environment()
+        self._ensure_environment()
         # ``max_passes`` caps ``PageRoute.candidates`` (planner keeps the ranked
         # order up to it). parsecraft's default of 1 means one attempt with no
         # fallback entry, so a backend that is missing, broken or excluded by the
@@ -188,24 +185,42 @@ class ParsecraftParser:
             },
         )
 
+    def _ensure_environment(self) -> EnvironmentInfo:
+        """Probe once per instance. ``probe_environment`` shells out, so this must
+        not run per file — hundreds of vault files must not mean hundreds of spawns.
+        """
+        if self._environment is None:
+            self._environment = probe_environment()
+        return self._environment
+
     def cache_identity(self) -> str:
         """Routing inputs that change this backend's output without changing its class.
 
-        The router folds this into :meth:`ParserRouter.fingerprint`, so the parse
-        cache invalidates when the judge tier changes rather than silently
-        serving pages routed under the previous configuration. The deterministic
-        rule table honours the preference axis too (it tilts the VRAM tiebreak),
-        so a non-default ``parsecraft_preference`` must invalidate as well. The
-        balanced default deliberately keeps the empty identity: it is
-        behaviourally the table's neutral axis, and always emitting the
-        preference would re-invalidate every existing vault cache for no
-        behavioural change.
+        Everything that decides which backend leads belongs here, because it changes
+        what the document is parsed into. Two of those are not knox's own config:
+
+        * the installed extra set — a user adding or removing a parsecraft extra
+          changes which backends are eligible;
+        * the parsecraft version — upstream changes routing without knox changing
+          anything (the NATIVE tier flip, and mineru's ``estimated_vram_gb`` moving
+          the lead from mineru to docling without touching eligibility).
+
+        The version earns its churn: a bump is rare, coincides with an upgrade, and
+        there is no way to know from here whether it changed what a backend
+        produces. A backend *rename* alone would not need it, but that is the only
+        case, and it is indistinguishable from this one at this boundary.
+
+        The no-judge, balanced-default case keeps an empty *routing* part: it is the
+        rule table's neutral axis, and emitting it would re-invalidate every vault
+        for no behavioural change.
         """
+        env = self._ensure_environment()
+        host = f"extras:{','.join(sorted(env.installed_extras))}|parsecraft:{_parsecraft_version()}"
         if self._judge_name in ("", "none"):
-            if self._preference is RoutingPreference.BALANCED:
-                return ""
-            return f"parsecraft_preference:{self._judge_preference}"
-        return f"parsecraft_judge:{self._judge_name}/{self._judge_model}:{self._judge_preference}"
+            routing = "" if self._preference is RoutingPreference.BALANCED else f"preference:{self._judge_preference}"
+        else:
+            routing = f"judge:{self._judge_name}/{self._judge_model}:{self._judge_preference}"
+        return f"{host}|{routing}"
 
     def _deterministic_judge(self) -> DeterministicJudge:
         """The rule-table judge carrying the configured preference axis.
@@ -350,6 +365,19 @@ class ParsecraftParseError(RuntimeError):
         degradations = [f"p{signal.page_number} {signal.name}: {signal.detail}" for signal in document.quality if signal.name.startswith("degraded-")]
         message = "; ".join(failures or degradations) or "all parsecraft passes failed"
         super().__init__(f"{source_file.name}: {message}")
+
+
+def _parsecraft_version() -> str:
+    """The installed parsecraft version, or `"unknown"`.
+
+    Part of the cache identity because upstream changes routing without knox
+    changing anything, and there is no way to tell from here whether that changed
+    what a backend produces.
+    """
+    try:
+        return version("parsecraft")
+    except PackageNotFoundError:  # pragma: no cover — parsecraft is an extra
+        return "unknown"
 
 
 def _parse_preference(name: str) -> RoutingPreference:
