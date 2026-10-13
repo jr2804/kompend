@@ -1,6 +1,6 @@
 # Document Extraction in kompend
 
-kompend ("eXtended documents") aims to parse a wide variety of document formats
+kompend aims to parse a wide variety of document formats
 into a structured, LLM-aware representation. This document explains which
 frameworks are used, why, and what was considered before settling on the
 current architecture.

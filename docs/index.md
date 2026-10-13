@@ -3,7 +3,7 @@
 
 # kompend
 
-## Knowledge Organizer for eXtended documents
+## Knowledge-Oriented Markdown Processing and ENtity Distillation
 
 A compiled LLM-wiki system for scientific and technical documents.
 Parse, chunk, resolve, and compile PDFs, DOCX, spreadsheets, and
