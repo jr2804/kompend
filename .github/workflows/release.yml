@@ -1,0 +1,189 @@
+# Auto-tag, build, and release every push to main.
+#
+# Creates a calendar version tag (YYYY.M.N) and publishes to PyPI via
+# trusted publishing (OIDC, no API token) and a GitHub release with the
+# built wheel + sdist + LLM-generated release notes.
+#
+# Calver scheme (preserved verbatim from .forgejo/workflows/release.yml so
+# tag numbering continues unbroken across the move):
+#   - format: YYYY.M.N   (e.g. 2026.10.3)
+#   - N is always present, starts at 1, resets each month
+#   - N is derived from the highest existing tag matching the current YYYY.M.
+#     If no tag exists for the current YYYY.M., the next release is YYYY.M.1.
+#   - the head commit message is checked for the literal string "[skip release]"
+#     to allow non-functional pushes (beads-sync, docs, etc.) to land without
+#     spinning a new calver tag.
+#
+# Prerequisites (one-time setup, done by the repository owner on GitHub):
+#   1. Enable GitHub Pages from "GitHub Actions" source (Settings -> Pages).
+#   2. Register a PyPI "pending publisher" at https://pypi.org/manage/account/publishing/
+#      with these EXACT values:
+#        owner:          jr2804
+#        repository:     kompend
+#        workflow filename: release.yml
+#        environment:    (leave blank)
+#   3. (Optional) Create a repository secret MISTRAL_API_KEY for the LLM
+#      release-notes step. Without it, the step falls back to a raw git log
+#      with the same markdown heading.
+#   4. Mirror the existing git history (including tags) to GitHub BEFORE the
+#      first run, otherwise the calver counter restarts at 1 instead of
+#      continuing the last Forgejo-era tag. `git push origin --all --tags`
+#      on the first push is enough.
+#
+# This job is the only thing that needs `id-token: write` and `contents: write`.
+# The publish step uses PyPI trusted publishing, so there is no PYPI_API_TOKEN
+# secret and no long-lived credential in the repository.
+
+name: Tag and Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  release:
+    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: write   # create and push the tag
+      id-token: write   # PyPI trusted publishing (OIDC)
+
+    steps:
+      # --- Checkout with full history so the calver step can inspect tags ---
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # --- Compute next calver version (YYYY.M.N) ---
+      #   N is always present, starts at 1, resets each month.
+      - name: Compute next version
+        id: version
+        run: |
+          ym=$(date +%Y.%-m)
+
+          max_n=$(
+            git tag -l "${ym}.*" \
+              | sed "s/^${ym}\.//" \
+              | sort -n \
+              | tail -1
+          )
+
+          next_n=$(( ${max_n:-0} + 1 ))
+          echo "version=${ym}.${next_n}" >> "$GITHUB_OUTPUT"
+
+          echo "Computed: $(grep ^version= "$GITHUB_OUTPUT" | cut -d= -f2)"
+
+      # --- Python toolchain + uv (the build backend) ---
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      # --- Create and push the tag ---
+      - name: Create and push tag
+        run: |
+          git config user.name  "kompend-release-bot"
+          git config user.email "bot@kompend.local"
+
+          ver="${{ steps.version.outputs.version }}"
+
+          git tag -a "$ver" -m "Release $ver"
+          git push origin "$ver"
+
+      # --- Build wheel + sdist ---
+      - name: Build
+        run: |
+          uv build
+
+      # --- Publish to PyPI via trusted publishing (OIDC) ---
+      #   No API token. The PyPI pending publisher must be registered with
+      #   workflow filename "release.yml" and the same owner/repo.
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          # skip-existing: true  # intentionally NOT set — a duplicate-version
+          # publish is a real error and should fail the job.
+
+      # --- Generate release notes via LLM (Mistral Codestral) ---
+      #   Falls back to a raw git log if MISTRAL_API_KEY is unset or the API
+      #   returns empty, so the release is never blocked on a missing secret.
+      - name: Generate release notes
+        id: notes
+        env:
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+        run: |
+          ver="${{ steps.version.outputs.version }}"
+
+          # Collect git log since last tag (or last 10 commits if first release)
+          last_tag=$(git tag -l --sort=-version:refname | head -2 | tail -1 || true)
+          if [ -n "$last_tag" ]; then
+            log=$(git log --oneline --no-decorate "${last_tag}..HEAD")
+          else
+            log=$(git log --oneline --no-decorate -10)
+          fi
+
+          # Fallback: raw git log with markdown formatting
+          fallback=$(printf '## KOMPEND %s\n\n### Changes since previous release\n\n```\n%s\n```' "$ver" "$log")
+
+          notes=""
+          if [ -n "$MISTRAL_API_KEY" ]; then
+            echo "Generating release notes via Mistral ..."
+
+            prompt=$(printf 'You generate concise, well-structured release notes from git commit logs. Follow these rules:\n- Group changes under headings: Features, Fixes, Maintenance, Documentation\n- Use bullet points with the scope prefix in parentheses, e.g. (parsers), (cli)\n- Be factual and precise. Do not add fluff or praise.\n- Output pure markdown, starting with "## KOMPEND %s" as the main heading.\n\nCommits:\n%s' "$ver" "$log")
+
+            response=$(curl -s https://api.mistral.ai/v1/chat/completions \
+              -H "Authorization: Bearer ${MISTRAL_API_KEY}" \
+              -H "Content-Type: application/json" \
+              -d "$(jq -n \
+                --arg prompt "$prompt" \
+                '{
+                  model: "mistral-small-latest",
+                  messages: [
+                    {role: "system", content: "You are a release notes generator. Output pure markdown, no extra commentary."},
+                    {role: "user", content: $prompt}
+                  ],
+                  max_tokens: 800,
+                  temperature: 0.3
+                }'
+              )")
+
+            notes=$(echo "$response" | jq -r '.choices[0].message.content // empty')
+
+            if [ -z "$notes" ]; then
+              echo "LLM returned empty response, using fallback"
+              echo "$response" | jq -c '.error // .' 2>/dev/null || true
+            fi
+          else
+            echo "MISTRAL_API_KEY not set, using git log fallback"
+          fi
+
+          body="${notes:-$fallback}"
+          echo "$body" > /tmp/release-body.md
+
+      # --- Create GitHub release and attach build artifacts ---
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          body_path: /tmp/release-body.md
+          files: |
+            dist/kompend-*.whl
+            dist/kompend-*.tar.gz
+          fail_on_unmatched_files: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

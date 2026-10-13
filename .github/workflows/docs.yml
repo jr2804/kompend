@@ -1,0 +1,82 @@
+# Build the mkdocs site and deploy to GitHub Pages.
+#
+# Triggers on every push to main (mirrors the release cadence) and on manual
+# dispatch for ad-hoc rebuilds.
+#
+# Prerequisites (one-time setup, done by the repository owner on GitHub):
+#   1. Enable GitHub Pages from "GitHub Actions" source (Settings -> Pages).
+#      The site will then be served at https://jr2804.github.io/kompend/.
+#   2. The repo must contain `docs/` and `mkdocs.yml` at the root (owned by
+#      knox-2; not this workflow's concern). If either is missing, the build
+#      step fails and no deploy happens.
+#
+# Assumptions:
+#   - Python 3.13 (matches pyproject's requires-python).
+#   - The mkdocs install set is `mkdocs` + `mkdocs-material`. If the project
+#     actually uses a different theme plugin or material-for-mkdocs extras,
+#     adjust the `pip install` line below to match `mkdocs.yml`'s declared
+#     theme. The workflow deliberately does not `pip install .[docs]` because
+#     no `docs` extra is declared in pyproject today.
+#   - `mkdocs build --strict` is used so broken cross-links fail the build
+#     rather than rendering as silent warnings.
+
+name: Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  # Only one Pages deploy in flight at a time; queue subsequent ones.
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: read
+      pages: write
+      id-token: write   # required by actions/deploy-pages
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Install mkdocs
+        run: |
+          uv pip install --system mkdocs mkdocs-material
+
+      - name: Build site
+        run: |
+          mkdocs build --strict
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        environment:
+          name: github-pages
+          url: ${{ steps.deployment.outputs.page_url }}
