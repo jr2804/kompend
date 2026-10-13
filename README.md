@@ -2,7 +2,7 @@
 
 <p align="center">
   <img src="./assets/readme/hero.svg" width="100%"
-       alt="kompend — Knowledge Organizer for eXtended documents: compile scattered documents into an interlinked, queryable wiki with any LLM">
+       alt="kompend — compile scattered documents into an interlinked, queryable wiki with any LLM">
 </p>
 
 kompend refuses to pick a side in the LLM-wiki space. Existing tools either

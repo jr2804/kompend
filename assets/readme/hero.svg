@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg"
      width="1200" height="340" viewBox="0 0 1200 340"
      role="img" aria-labelledby="hero-title hero-desc">
-  <title id="hero-title">kompend — Knowledge Organizer for eXtended documents</title>
+  <title id="hero-title">kompend — Knowledge-Oriented Markdown Processing and ENtity Distillation</title>
   <desc id="hero-desc">kompend compiles scattered technical documents (PDF, DOCX, web) into an interlinked, queryable wiki using any LLM. Title beside a knowledge-graph motif showing source documents transforming into linked wiki nodes.</desc>
 
   <defs>
@@ -24,7 +24,7 @@
     <!-- eyebrow -->
     <text x="0" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
           font-size="13" letter-spacing="3" fill="#2dd4bf" font-weight="600">
-      KNOWLEDGE ORGANIZER
+      KNOWLEDGE COMPILER
     </text>
     <text x="195" y="0" font-family="ui-monospace,SFMono-Regular,Menlo,monospace"
           font-size="13" letter-spacing="1" fill="#6b7a90">

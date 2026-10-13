@@ -33,7 +33,7 @@ verification in `CHECKS.md`.
 
 ### 1. What is kompend?
 
-kompend = Knowledge Organizer for eXtended documents. A parser-agnostic,
+kompend = Knowledge-Oriented Markdown Processing and ENtity Distillation. A parser-agnostic,
 structure-preserving, LLM-aware knowledge base compiler. 5-tier pipeline:
 Preprocessing → Chunking → Resolution → Compilation → Output.
 
