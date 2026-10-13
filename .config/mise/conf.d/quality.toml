@@ -1,6 +1,6 @@
 [tasks.test]
 description = "Run tests with coverage"
-run = "uv run pytest --cov=knox"
+run = "uv run pytest --cov=kompend"
 sources = ["src/**/*.py", "tests/**/*.py"]
 outputs = ["htmlcov/", ".coverage"]
 

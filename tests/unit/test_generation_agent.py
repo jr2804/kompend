@@ -6,9 +6,9 @@ generation deps and page-kind helpers. No LLM is contacted.
 
 from __future__ import annotations
 
-from knox.agents.generation import make_agentic_generation_agent
-from knox.compilation.flows.generation import _allowed_kind, _categories_block, _resolve_page_kind
-from knox.compilation.schema import GenerationPage
+from kompend.agents.generation import make_agentic_generation_agent
+from kompend.compilation.flows.generation import _allowed_kind, _categories_block, _resolve_page_kind
+from kompend.compilation.schema import GenerationPage
 
 
 class TestGenerationAgentConstruction:

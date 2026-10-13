@@ -1,4 +1,4 @@
-"""Tests for ``knox config check`` — diff a user TOML against schema defaults."""
+"""Tests for ``kompend config check`` — diff a user TOML against schema defaults."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli.app import app
-from knox.core.config import (
+from kompend.cli.app import app
+from kompend.core.config import (
     STATUS_DEPRECATED,
     STATUS_ERROR,
     STATUS_MODIFIED,
@@ -386,8 +386,8 @@ class TestConfigCheckCli:
         assert result.output.count("config check") == 2
 
     def test_no_args_discovers_project_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """`knox config check` with no paths uses the discovered project config."""
-        (tmp_path / "knox.toml").write_text(
+        """`kompend config check` with no paths uses the discovered project config."""
+        (tmp_path / "kompend.toml").write_text(
             "[compile]\nworkers = 8\n",
             encoding="utf-8",
         )
@@ -408,7 +408,7 @@ class TestConfigCheckCli:
         """`-w <vault>` with no paths checks that vault's config."""
         vault = tmp_path / "vault"
         vault.mkdir()
-        (vault / "knox.toml").write_text(
+        (vault / "kompend.toml").write_text(
             "[compile]\nworkers = 8\n",
             encoding="utf-8",
         )

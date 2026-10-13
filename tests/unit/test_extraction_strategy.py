@@ -15,26 +15,26 @@ from unittest.mock import MagicMock, patch
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
-from knox.compilation._two_phase_core import Extraction, chars_to_tokens, context_safety_tokens
-from knox.compilation.flows import extraction as ext_module
-from knox.compilation.flows.extraction import (
+from kompend.compilation._two_phase_core import Extraction, chars_to_tokens, context_safety_tokens
+from kompend.compilation.flows import extraction as ext_module
+from kompend.compilation.flows.extraction import (
     _compact_history_inplace,
     _estimate_history_tokens,
     _synthetic_history_response,
 )
-from knox.compilation.schema import Concept, Entity, ExtractionOutput
-from knox.compilation.two_phase import TwoPhaseCompiler
-from knox.core.cache.store import make_cache_key
-from knox.core.config._configs import (
+from kompend.compilation.schema import Concept, Entity, ExtractionOutput
+from kompend.compilation.two_phase import TwoPhaseCompiler
+from kompend.core.cache.store import make_cache_key
+from kompend.core.config._configs import (
     EmbeddingConfig,
     ExtractionStrategy,
     LLMConfig,
 )
-from knox.core.models.enums import CacheDeps
-from knox.core.pipeline.config import PipelineConfig
-from knox.core.utils.exceptions import LLMOutputError
-from knox.core.utils.tokens import estimate_tokens
-from knox.llm.context_window import ContextSource, ContextWindow
+from kompend.core.models.enums import CacheDeps
+from kompend.core.pipeline.config import PipelineConfig
+from kompend.core.utils.exceptions import LLMOutputError
+from kompend.core.utils.tokens import estimate_tokens
+from kompend.llm.context_window import ContextSource, ContextWindow
 from tests.conftest import make_tmp_vault
 
 # ── _batch_texts ─────────────────────────────────────────────────────────
@@ -117,11 +117,11 @@ class TestReduceExtractions:
         # Mock the agent to avoid LLM call
         mock_output = ExtractionOutput(
             summary="Full document summary.",
-            entities=[Entity(name="KNOX", type="System")],
+            entities=[Entity(name="KOMPEND", type="System")],
             concepts=[Concept(name="chunking", definition="splitting text")],
             tags=["ai", "docs"],
         )
-        with patch("knox.compilation.flows.extraction.ExtractionReduceAgent") as mock_agent_cls:
+        with patch("kompend.compilation.flows.extraction.ExtractionReduceAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.run.return_value = mock_output
             mock_agent_cls.return_value = mock_agent
@@ -131,7 +131,7 @@ class TestReduceExtractions:
             assert result.source == "doc.md"
             assert result.summary == "Full document summary."
             assert len(result.entities) == 1
-            assert result.entities[0].name == "KNOX"
+            assert result.entities[0].name == "KOMPEND"
             assert len(result.concepts) == 1
             assert result.tags == ["ai", "docs"]
 
@@ -142,7 +142,7 @@ class TestReduceExtractions:
             Extraction(source="doc.md", summary="B."),
         ]
 
-        with patch("knox.compilation.flows.extraction.ExtractionReduceAgent") as mock_agent_cls:
+        with patch("kompend.compilation.flows.extraction.ExtractionReduceAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.run.side_effect = LLMOutputError("boom")
             mock_agent_cls.return_value = mock_agent
@@ -388,7 +388,7 @@ def _make_compiler(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL
 
 def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> PipelineConfig:
     # Absolute vault root: a CWD-relative source_dir/output_dir would resolve the
-    # vault store against the process CWD and write .knox/ into the repo root.
+    # vault store against the process CWD and write .kompend/ into the repo root.
     vault = make_tmp_vault()
     return PipelineConfig(
         source_dir=vault / "sources",

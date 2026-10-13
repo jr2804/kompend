@@ -8,16 +8,16 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli._shared import build_cli_overrides as _build_cli_overrides
-from knox.cli.app import app
-from knox.core.config import EmbeddingConfig, LLMConfig, OutputConfig
-from knox.core.models import Chunk, ChunkNode, ChunkTree, ElementType, ResolvedChunk
-from knox.core.pipeline.config import Compiler, ImageMode, PipelineConfig
-from knox.core.pipeline.orchestrator import build_pipeline
-from knox.core.pipeline.stages._resolve import resolve_chunks
-from knox.llm.context_window import ContextSource, ContextWindow
-from knox.resolution.base import BaseResolver
-from knox.resolution.chain import ResolverChain
+from kompend.cli._shared import build_cli_overrides as _build_cli_overrides
+from kompend.cli.app import app
+from kompend.core.config import EmbeddingConfig, LLMConfig, OutputConfig
+from kompend.core.models import Chunk, ChunkNode, ChunkTree, ElementType, ResolvedChunk
+from kompend.core.pipeline.config import Compiler, ImageMode, PipelineConfig
+from kompend.core.pipeline.orchestrator import build_pipeline
+from kompend.core.pipeline.stages._resolve import resolve_chunks
+from kompend.llm.context_window import ContextSource, ContextWindow
+from kompend.resolution.base import BaseResolver
+from kompend.resolution.chain import ResolverChain
 
 
 class _OrderTrackingResolver(BaseResolver):
@@ -43,7 +43,7 @@ def test_build_pipeline_wires_the_parsecraft_router(tmp_path: Path) -> None:
     """
     config = _make_config(tmp_path, vlm_model="")
     with patch(
-        "knox.core.pipeline.stages._factory.discover_context_window",
+        "kompend.core.pipeline.stages._factory.discover_context_window",
         return_value=ContextWindow(max_input=128000, max_output=32768, source=ContextSource.FALLBACK),
     ):
         pipeline = build_pipeline(config)
@@ -175,18 +175,18 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
     sources = tmp_path / "sources"
     sources.mkdir()
     (sources / "note.md").write_text("# Test\ncontent")
-    knox_dir = tmp_path / ".knox"
-    knox_dir.mkdir()
-    (knox_dir / "config.toml").write_text("", encoding="utf-8")
+    kompend_dir = tmp_path / ".kompend"
+    kompend_dir.mkdir()
+    (kompend_dir / "config.toml").write_text("", encoding="utf-8")
 
     class _BoomPipeline:
         def run(self, progress_callback: object | None = None) -> None:
             raise RuntimeError("synthetic boom")
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "test-model")
-    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
-    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
+    monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
 
     runner = CliRunner()
     result = runner.invoke(app, ["compile"])

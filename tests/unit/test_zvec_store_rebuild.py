@@ -11,9 +11,9 @@ from pathlib import Path
 import pytest
 import zvec as _zvec
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.memory.store import MemoryStore
-from knox.rag.zvec_store import EmbeddingProvider, ZvecWikiStore
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.memory.store import MemoryStore
+from kompend.rag.zvec_store import EmbeddingProvider, ZvecWikiStore
 
 
 class StubProvider(EmbeddingProvider):
@@ -92,13 +92,13 @@ def test_wiki_store_prunes_stale_ids(tmp_path: Path) -> None:
 
 
 def test_wiki_store_rebuilds_on_field_mismatch(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
-    """When a stored collection predates a newer knox field, the store
+    """When a stored collection predates a newer kompend field, the store
     detects the mismatch and rebuilds rather than silently failing at
     insert time with ``attributes not found in collection schema``.
 
     The mismatch is simulated by creating the collection directly with a
     schema missing the ``attributes`` field (the real-world scenario: a
-    wiki compiled before that field was added to knox). zvec's STRING
+    wiki compiled before that field was added to kompend). zvec's STRING
     columns are immutable (add_column / drop_column only accept numeric
     types), so in-place migration is not possible — destroy+rebuild is the
     only correct path.
@@ -137,7 +137,7 @@ def test_wiki_store_rebuilds_on_obsolete_field(tmp_path: Path, caplog: pytest.Lo
     """
     db = tmp_path / "vectors"
     # Seed a collection with an extra numeric field (zvec accepts add_column
-    # for numeric types). Drop it later by running through knox which has a
+    # for numeric types). Drop it later by running through kompend which has a
     # different expected schema.
     seed_schema = _zvec.CollectionSchema(
         name="wiki",
@@ -232,7 +232,7 @@ def test_wiki_store_prunes_docs_missing_from_manifest(tmp_path: Path) -> None:
     )
     store.close()
 
-    ids = _manifest_ids(tmp_path / "knox.db")
+    ids = _manifest_ids(tmp_path / "kompend.db")
     assert "ghost" not in ids
 
     store = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(4))
@@ -245,7 +245,7 @@ def test_wiki_store_prunes_docs_missing_from_manifest(tmp_path: Path) -> None:
 
 
 def _manifest_ids(db_path: Path) -> list[str]:
-    """Indexed id set recorded by the last build (knox.db ``vector_manifest``)."""
+    """Indexed id set recorded by the last build (kompend.db ``vector_manifest``)."""
     with sqlite3.connect(db_path) as conn:
         row = conn.execute("SELECT ids FROM vector_manifest WHERE id = 1").fetchone()
     assert row is not None, "build_index must record a vector manifest row"

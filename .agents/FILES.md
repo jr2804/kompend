@@ -25,22 +25,22 @@ path as a property. This ensures consistent path construction across the codebas
 
 ---
 
-## Project-specific Files — KNOX
+## Project-specific Files — KOMPEND
 
 ### Path Constants — Single Source of Truth
 
-All on-disk artifact names are `Final[str]` constants in **`src/knox/core/paths.py`**.
+All on-disk artifact names are `Final[str]` constants in **`src/kompend/core/paths.py`**.
 
-**Rule:** `".knox"`, `"cache"`, `"config.toml"`, `"vectors"`, `"memory.db"`,
+**Rule:** `".kompend"`, `"cache"`, `"config.toml"`, `"vectors"`, `"memory.db"`,
 `"last_wiki.json"`, etc. must **never** appear as a literal in
-any `.py` file outside `paths.py`. Always import from `knox.core.paths`.
+any `.py` file outside `paths.py`. Always import from `kompend.core.paths`.
 
 | Constant | Value | Usage |
 |----------|-------|-------|
-| `KNOX_DIR` | `".knox"` | Root metadata directory |
-| `KNOX_DB_FILE` | `"knox.db"` | Single non-vector SQLite store (`.knox/knox.db`) |
-| `CACHE_SUBDIR` | `"cache"` | Cache component within `KNOX_DIR` |
-| `CACHE_DIR` | `".knox/cache"` | Full relative cache path (for DEFAULTS) |
+| `KOMP_DIR` | `".kompend"` | Root metadata directory |
+| `KOMP_DB_FILE` | `"kompend.db"` | Single non-vector SQLite store (`.kompend/kompend.db`) |
+| `CACHE_SUBDIR` | `"cache"` | Cache component within `KOMP_DIR` |
+| `CACHE_DIR` | `".kompend/cache"` | Full relative cache path (for DEFAULTS) |
 | `CONFIG_FILE` | `"config.toml"` | Project-local config |
 | `VECTORS_DIR` | `"vectors"` | Embedding vector store |
 | `VECTORS_MANIFEST_FILE` | `"vectors.manifest.json"` | Vector id sidecar (legacy — now the `vector_manifest` row) |
@@ -72,14 +72,14 @@ The project root directory is always called `base_dir`. Never use `target_dir`,
 `VaultPaths` (in `paths.py`) resolves concrete paths inside a vault:
 
 ```python
-from knox.core.paths import VaultPaths
+from kompend.core.paths import VaultPaths
 
 paths = VaultPaths(base_dir)
-paths.cache_dir  # base_dir/.knox/cache
-paths.compile_state_file  # base_dir/.knox/compile_state.json
-paths.wiki_cache_file  # base_dir/.knox/last_wiki.json
-paths.extract_dir  # base_dir/.knox/cache/extract (legacy — now extract cache layer in knox.db)
-paths.images_dir  # base_dir/.knox/cache/images
+paths.cache_dir  # base_dir/.kompend/cache
+paths.compile_state_file  # base_dir/.kompend/compile_state.json
+paths.wiki_cache_file  # base_dir/.kompend/last_wiki.json
+paths.extract_dir  # base_dir/.kompend/cache/extract (legacy — now extract cache layer in kompend.db)
+paths.images_dir  # base_dir/.kompend/cache/images
 ```
 
 | Context | Pattern |

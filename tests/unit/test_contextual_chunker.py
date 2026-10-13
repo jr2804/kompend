@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from knox.chunking.contextual import ContextualEnricher
-from knox.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
+from kompend.chunking.contextual import ContextualEnricher
+from kompend.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
 
 
 class TestCollectLeaves:

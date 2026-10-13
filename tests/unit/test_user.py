@@ -8,9 +8,9 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.config import ResolvedConfig, resolve_config
-from knox.core.config.keys import TRUST_USER_TRACKING
-from knox.core.trust.actor import get_current_user, resolve_actor
+from kompend.core.config import ResolvedConfig, resolve_config
+from kompend.core.config.keys import TRUST_USER_TRACKING
+from kompend.core.trust.actor import get_current_user, resolve_actor
 
 
 class TestGetCurrentUser:
@@ -32,7 +32,7 @@ class TestGetCurrentUser:
 
 class TestResolveActor:
     def test_returns_user_when_tracking_enabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("knox.core.trust.actor.get_current_user", lambda: "alice")
+        monkeypatch.setattr("kompend.core.trust.actor.get_current_user", lambda: "alice")
         cfg = ResolvedConfig(raw={"trust": {"user_tracking": True}})
         assert resolve_actor(cfg) == "alice"
 
@@ -50,12 +50,12 @@ class TestResolveActor:
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # Isolate from the real project knox.toml and clear KNOX_ env vars.
+        # Isolate from the real project kompend.toml and clear KOMP_ env vars.
         monkeypatch.chdir(tmp_path)
         for key in list(os.environ):
-            if key.startswith("KNOX_"):
+            if key.startswith("KOMP_"):
                 monkeypatch.delenv(key, raising=False)
-        monkeypatch.setenv("KNOX_USER_TRACKING", "false")
+        monkeypatch.setenv("KOMP_USER_TRACKING", "false")
         cfg = resolve_config()
         assert cfg.get(TRUST_USER_TRACKING) is False
         assert resolve_actor(cfg) == ""

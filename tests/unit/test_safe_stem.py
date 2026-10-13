@@ -1,7 +1,7 @@
 """Tests for ``safe_stem`` — single-source-of-truth filename stem extractor.
 
 Unlike :attr:`pathlib.Path.stem` (which mistakes any ``.xxx`` suffix for an
-extension), :func:`knox.core.paths.safe_stem` only strips extensions from a
+extension), :func:`kompend.core.paths.safe_stem` only strips extensions from a
 known safe set, preserving multi-dot ITU filenames like
 ``T-REC-P.10-201906-I!Amd1!PDF-E`` intact when no real extension follows.
 
@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.paths import safe_stem
+from kompend.core.paths import safe_stem
 
 
 @pytest.mark.parametrize(

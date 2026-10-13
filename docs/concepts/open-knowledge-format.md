@@ -1,6 +1,6 @@
 # Open Knowledge Format (OKF) v0.2
 
-KNOX produces **OKF v0.2**-compliant knowledge bundles by default. OKF is an
+KOMPEND produces **OKF v0.2**-compliant knowledge bundles by default. OKF is an
 open, human- and agent-friendly format for representing knowledge — a directory
 of markdown files with YAML frontmatter.
 
@@ -20,7 +20,7 @@ OKF is designed for **portability and interoperability**:
 
 ## Conformance
 
-KNOX meets all 3 hard requirements for OKF v0.2 conformance (§11):
+KOMPEND meets all 3 hard requirements for OKF v0.2 conformance (§11):
 
 1. **Every concept file** has parseable YAML frontmatter with a non-empty
    ``type`` field
@@ -33,7 +33,7 @@ v0.2 is a superset of v0.1 with two **breaking field migrations** (§13.1):
 
 | v0.1 | v0.2 | Notes |
 |------|------|-------|
-| ``timestamp`` | ``generated: {by, at}`` | ``by`` follows the §7 actor convention (``knox/<version>``) |
+| ``timestamp`` | ``generated: {by, at}`` | ``by`` follows the §7 actor convention (``kompend/<version>``) |
 | Body ``# Citations`` list | Structured ``sources`` objects + per-claim footnotes | Attribution via ``[^id]`` keyed to ``sources[].id`` (§5.1) |
 
 v0.2 consumers fall back to v0.1 fields gracefully (§3.1), so v0.1 bundles
@@ -41,7 +41,7 @@ remain *consumable*, but only the v0.2 fields above are *canonical*.
 
 ## Bundle Structure
 
-A KNOX wiki compiled with the default markdown output produces an OKF v0.2 bundle:
+A KOMPEND wiki compiled with the default markdown output produces an OKF v0.2 bundle:
 
 ```text
 wiki/
@@ -53,7 +53,7 @@ wiki/
 │   ├── python-fundamentals.md
 │   └── ...
 ├── entities/             ← entity pages (standards, organizations, products, people)
-└── write/                ← one-shot pages (knox write)
+└── write/                ← one-shot pages (kompend write)
     └── my-notes.md
 ```
 
@@ -61,7 +61,7 @@ wiki/
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| ``type`` | ✅ | OKF concept type (mapped from KNOX ``node_type``) |
+| ``type`` | ✅ | OKF concept type (mapped from KOMPEND ``node_type``) |
 | ``title`` | ✅ | Human-readable page title |
 | ``description`` | — | One-line summary (first line of content) |
 | ``tags`` | — | Cross-cutting **topic** tags (from compilation) |
@@ -69,13 +69,13 @@ wiki/
 | ``generated`` | ✅ | ``{by, at}`` — producer actor + ISO timestamp (§5.2) |
 | ``verified`` | — | List of ``{by, at}`` trust events; emitted when a verification pass runs (§5.2) |
 | ``sources`` | — | Structured provenance objects ``{id, resource, title, author}`` (§5.1) |
-| ``kind`` | — | KNOX extension: original KNOX node type |
-| ``source_files`` | — | KNOX extension: provenance filename stems |
-| ``attributes`` | — | KNOX extension: per-source key=value facts (``{version: "2", status: draft}``); values collected per contributing source, so a key may hold a list |
+| ``kind`` | — | KOMPEND extension: original KOMPEND node type |
+| ``source_files`` | — | KOMPEND extension: provenance filename stems |
+| ``attributes`` | — | KOMPEND extension: per-source key=value facts (``{version: "2", status: draft}``); values collected per contributing source, so a key may hold a list |
 
 !!! note "``tags`` vs ``source_files`` vs ``sources``"
     These are deliberately distinct to avoid the v0.1 overload:
-    **``tags``** = cross-cutting topics; **``source_files``** = KNOX extension
+    **``tags``** = cross-cutting topics; **``source_files``** = KOMPEND extension
     listing provenance filename stems; **``sources``** = OKF v0.2 structured
     provenance objects from the reference store. Source filenames never appear
     in ``tags`` or as bare strings in ``sources``.
@@ -88,7 +88,7 @@ OKF recommends **absolute** (bundle-relative) links starting with ``/`` (§6.1):
 See the [audio processing](/concepts/audio-processing.md) page for details.
 ```
 
-These are stable when documents move within their subdirectory. KNOX converts
+These are stable when documents move within their subdirectory. KOMPEND converts
 ``[[wikilinks]]`` to this format during compilation.
 
 ## Per-Claim Attribution
@@ -114,9 +114,9 @@ This technique improves SNR by 12 dB [^smith2026].
 The ``generated`` and ``verified`` fields record how content was produced and
 checked, enabling trust tiers (§5.3):
 
-- **``generated.by``** — always ``knox/<version>`` (the compiling agent)
+- **``generated.by``** — always ``kompend/<version>`` (the compiling agent)
 - **``verified``** — appended with a ``{by, at}`` event each time
-  ``knox compile --verify`` runs; absent when no verification pass has occurred
+  ``kompend compile --verify`` runs; absent when no verification pass has occurred
   (honest "unverified" tier)
 
 ## Index Page
@@ -145,7 +145,7 @@ okf_version: "0.2"
 - [Beerends 2013](/concepts/beerends-2013-summary.md) — Perceptual model foundations
 ```
 
-KNOX generates pages in the mandatory taxonomy — `Concept`, `Entity`
+KOMPEND generates pages in the mandatory taxonomy — `Concept`, `Entity`
 (named things: standards, bodies, products), `Summary` (per-source
 digests), `Comparison` ("X vs Y" evaluations) — plus any categories
 configured via `compile.extraction.categories`. The LLM assigns the

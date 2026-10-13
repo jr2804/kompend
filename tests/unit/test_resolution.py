@@ -1,4 +1,4 @@
-"""Tests for KNOX Tier 3 resolvers and enrichers.
+"""Tests for KOMPEND Tier 3 resolvers and enrichers.
 
 VLMEnricher now uses VlmAgent instead of LLMClient.
 """
@@ -10,9 +10,9 @@ from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
-from knox.agents.vlm import VlmAgent
-from knox.core.models import Chunk, ElementType, ResolvedChunk
-from knox.resolution import VLMEnricher
+from kompend.agents.vlm import VlmAgent
+from kompend.core.models import Chunk, ElementType, ResolvedChunk
+from kompend.resolution import VLMEnricher
 
 
 class TestVLMEnricher:
@@ -116,7 +116,7 @@ class TestVLMEnricherIntegration:
 
     def test_agent_run_sync_invoked_for_image(self, tmp_path: Path) -> None:
         """End-to-end: VlmAgent routes through the unified pydantic-ai agent
-        path (build_model + KnoxModel), not a direct pydantic-ai model call.
+        path (build_model + KompendModel), not a direct pydantic-ai model call.
         """
         png_file = tmp_path / "img.png"
         png_file.write_bytes(b"\x89PNG\r\n\x1a\n" + b"0" * 100)

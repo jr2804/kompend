@@ -1,15 +1,15 @@
 # Input Pipeline: capture, learn, distill, consolidate
 
-KNOX's **input pipeline** turns free-form notes, facts, and conversation
-snippets into *source material* that the next `knox compile` folds into the
+KOMPEND's **input pipeline** turns free-form notes, facts, and conversation
+snippets into *source material* that the next `kompend compile` folds into the
 wiki. Four commands work together:
 
 | Command | Writes to | What it does | LLM? |
 |---|---|---|---|
-| `knox capture "<text>"` | `sources/_captured/` | LLM-extracts **knowledge items** (decisions, discoveries, corrections, references, notes) from free text — one file per item | ✅ |
-| `knox learn "<fact>"` | `sources/_learned/` | Stores a fact **verbatim**, no LLM — one file | ❌ |
-| `knox distill` | `sources/_distilled/` | Groups captured/learned notes by tag and LLM-merges each group into one coherent page | ✅ |
-| `knox consolidate` | `sources/_archive/<kind>/` | Finds near-duplicate notes and archives the redundant ones | ⚙️ (embeddings optional) |
+| `kompend capture "<text>"` | `sources/_captured/` | LLM-extracts **knowledge items** (decisions, discoveries, corrections, references, notes) from free text — one file per item | ✅ |
+| `kompend learn "<fact>"` | `sources/_learned/` | Stores a fact **verbatim**, no LLM — one file | ❌ |
+| `kompend distill` | `sources/_distilled/` | Groups captured/learned notes by tag and LLM-merges each group into one coherent page | ✅ |
+| `kompend consolidate` | `sources/_archive/<kind>/` | Finds near-duplicate notes and archives the redundant ones | ⚙️ (embeddings optional) |
 
 All four operate **only** on the tool-managed input zones under `sources/`.
 Real source documents (PDFs, DOCX, standards) are never touched.
@@ -27,8 +27,8 @@ sources/
     └── distilled/
 ```
 
-Everything under these zones is a **source**: the next `knox compile` parses,
-chunks, and resolves it like any other document. `knox organize` never
+Everything under these zones is a **source**: the next `kompend compile` parses,
+chunks, and resolves it like any other document. `kompend organize` never
 flattens or relocates them.
 
 ## capture vs learn
@@ -75,8 +75,8 @@ Two behaviors keep repeated runs from piling up duplicates:
   to keep them in place.
 
 ```bash
-knox distill            # synthesize + archive originals
-knox distill --no-archive
+kompend distill            # synthesize + archive originals
+kompend distill --no-archive
 ```
 
 ## consolidate
@@ -88,31 +88,31 @@ configured. For each duplicate group the newest or longest note is kept; the
 rest are archived to `sources/_archive/<kind>/`.
 
 ```bash
-knox consolidate --dry-run   # preview what would be archived
-knox consolidate             # archive duplicates (default)
-knox consolidate --no-archive  # report only, keep everything
+kompend consolidate --dry-run   # preview what would be archived
+kompend consolidate             # archive duplicates (default)
+kompend consolidate --no-archive  # report only, keep everything
 ```
 
 ## The full flow
 
 ```mermaid
 graph LR
-    T[Free text / facts] --> C[knox capture]
-    T --> L[knox learn]
+    T[Free text / facts] --> C[kompend capture]
+    T --> L[kompend learn]
     C --> CAP[_captured/]
     L --> LEARN[_learned/]
-    CAP --> D[knox distill]
+    CAP --> D[kompend distill]
     LEARN --> D
     D --> DIS[_distilled/]
-    CAP --> CON[knox consolidate]
+    CAP --> CON[kompend consolidate]
     LEARN --> CON
     DIS --> CON
     CON --> ARC[_archive/]
-    DIS --> CO[knox compile]
+    DIS --> CO[kompend compile]
     CAP --> CO
     LEARN --> CO
     CO --> W[Wiki]
 ```
 
-Run `knox compile` after `distill`/`consolidate` to fold the results into
+Run `kompend compile` after `distill`/`consolidate` to fold the results into
 the compiled wiki.

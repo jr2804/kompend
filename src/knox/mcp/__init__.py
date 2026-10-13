@@ -1,1 +1,0 @@
-"""KNOX MCP server package."""

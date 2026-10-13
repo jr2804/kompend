@@ -3,7 +3,7 @@
 Covers:
 - ``ReferenceStore.unresolved_indices`` / ``update_reference``
 - ``resolve_unresolved_references`` flow (with a stub agent)
-- ``knox references fetch`` CLI wiring (offline, stubbed agent)
+- ``kompend references fetch`` CLI wiring (offline, stubbed agent)
 """
 
 from __future__ import annotations
@@ -14,16 +14,16 @@ import pytest
 from pydantic_ai.messages import ModelMessage
 from typer.testing import CliRunner
 
-from knox.agents.deps import PipelineAgentDeps
-from knox.cli.app import app
-from knox.cli.cmds.knowledge import references as references_cmd
-from knox.compilation.flows.references import resolve_unresolved_references
-from knox.core.models.references import (
+from kompend.agents.deps import PipelineAgentDeps
+from kompend.cli.app import app
+from kompend.cli.cmds.knowledge import references as references_cmd
+from kompend.compilation.flows.references import resolve_unresolved_references
+from kompend.core.models.references import (
     Author,
     Reference,
     ReferenceResolutionOutput,
 )
-from knox.core.pipeline.references import ReferenceStore
+from kompend.core.pipeline.references import ReferenceStore
 
 
 class _StubResolver:
@@ -122,12 +122,12 @@ class TestResolveUnresolvedFlow:
 class TestFetchCli:
     @pytest.fixture
     def project(self, tmp_path: Path) -> tuple[Path, ReferenceStore]:
-        knox_dir = tmp_path / ".knox"
-        knox_dir.mkdir(parents=True, exist_ok=True)
-        (knox_dir / "config.toml").write_text("", encoding="utf-8")
+        kompend_dir = tmp_path / ".kompend"
+        kompend_dir.mkdir(parents=True, exist_ok=True)
+        (kompend_dir / "config.toml").write_text("", encoding="utf-8")
         (tmp_path / "sources").mkdir(exist_ok=True)
         (tmp_path / "wiki").mkdir(exist_ok=True)
-        store = ReferenceStore(knox_dir / "references.json")
+        store = ReferenceStore(kompend_dir / "references.json")
         store.add_source(
             "sources/paper.pdf",
             [
@@ -139,9 +139,9 @@ class TestFetchCli:
         return tmp_path, store
 
     def test_no_references(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        knox_dir = tmp_path / ".knox"
-        knox_dir.mkdir(parents=True, exist_ok=True)
-        (knox_dir / "config.toml").write_text("", encoding="utf-8")
+        kompend_dir = tmp_path / ".kompend"
+        kompend_dir.mkdir(parents=True, exist_ok=True)
+        (kompend_dir / "config.toml").write_text("", encoding="utf-8")
         (tmp_path / "sources").mkdir(exist_ok=True)
         (tmp_path / "wiki").mkdir(exist_ok=True)
         monkeypatch.chdir(tmp_path)
@@ -162,7 +162,7 @@ class TestFetchCli:
     def test_no_model_configured(self, project: tuple[Path, ReferenceStore], monkeypatch: pytest.MonkeyPatch) -> None:
         tmp_path, _ = project
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "")
+        monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "")
         result = CliRunner().invoke(app, ["references", "fetch"])
         assert result.exit_code == 1
         assert "No LLM model configured" in result.output
@@ -170,7 +170,7 @@ class TestFetchCli:
     def test_fetch_resolves(self, project: tuple[Path, ReferenceStore], monkeypatch: pytest.MonkeyPatch) -> None:
         tmp_path, _ = project
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "fake/model")
+        monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "fake/model")
         monkeypatch.setattr(
             references_cmd,
             "ReferenceResolverAgent",
@@ -180,16 +180,16 @@ class TestFetchCli:
         assert result.exit_code == 0
         assert "Resolved 1 reference(s)" in result.output
         # Confirm the store on disk was updated.
-        store = ReferenceStore(tmp_path / ".knox" / "references.json")
+        store = ReferenceStore(tmp_path / ".kompend" / "references.json")
         refs = store.get_source("sources/paper.pdf")
         assert refs[0].doi == "10.1000/stub"
 
 
 @pytest.fixture
 def store_with_unresolved(tmp_path: Path) -> ReferenceStore:
-    knox_dir = tmp_path / ".knox"
-    knox_dir.mkdir(parents=True, exist_ok=True)
-    store = ReferenceStore(knox_dir / "references.json")
+    kompend_dir = tmp_path / ".kompend"
+    kompend_dir.mkdir(parents=True, exist_ok=True)
+    store = ReferenceStore(kompend_dir / "references.json")
     store.add_source(
         "sources/paper.pdf",
         [

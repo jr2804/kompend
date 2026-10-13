@@ -1,10 +1,10 @@
-"""Tests for the KNOX HierarchicalChunker."""
+"""Tests for the KOMPEND HierarchicalChunker."""
 
 from pathlib import Path
 from typing import TypeGuard
 
-from knox.chunking.hierarchical import HierarchicalChunker
-from knox.core.models import (
+from kompend.chunking.hierarchical import HierarchicalChunker
+from kompend.core.models import (
     Chunk,
     ChunkNode,
     ChunkStrategy,
@@ -16,7 +16,7 @@ from knox.core.models import (
     StructuredFigure,
     StructuredTable,
 )
-from knox.llm.context_window import ContextSource, ContextWindow
+from kompend.llm.context_window import ContextSource, ContextWindow
 
 
 class TestHierarchicalChunker:

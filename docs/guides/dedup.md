@@ -11,7 +11,7 @@ arXiv, a published version in conference proceedings, or a local copy in a
 different format. Binary SHA256 hashing cannot detect these duplicates because
 the bytes differ even when the content is identical.
 
-KNOX provides configurable, content-level duplicate detection that runs
+KOMPEND provides configurable, content-level duplicate detection that runs
 during the ingest phase, **after parsing but before chunking**. It compares
 parsed text content using two complementary methods, producing a verdict for
 each document.
@@ -31,8 +31,8 @@ download → parse → DEDUP → chunk → resolve → compile → output
    same batch. Comparisons are visible as a progress bar during ingestion:
    ``dedup 12/45``, where the total is ``N × M + N×(N−1)÷2``.
 4. A verdict is produced based on configurable thresholds.
-5. Fingerprints and verdicts are stored in ``.knox/dedup/fingerprints.json``.
-6. During the next ``knox compile``, the pipeline reads the store:
+5. Fingerprints and verdicts are stored in ``.kompend/dedup/fingerprints.json``.
+6. During the next ``kompend compile``, the pipeline reads the store:
    - **identical** documents are silently skipped — no chunking, no LLM calls
    - **similar** documents get a ``[!warning]`` callout with a link to the
      closest match injected into the compiled page
@@ -72,12 +72,12 @@ or **CLI arg** (when the ingest command supports it).
 
 | Variable | Overrides |
 |---|---|
-| `KNOX_DEDUP_ENABLED` | `dedup.enabled` |
-| `KNOX_DEDUP_THRESHOLD_IDENTICAL` | `dedup.threshold_identical` |
-| `KNOX_DEDUP_THRESHOLD_SIMILAR` | `dedup.threshold_similar` |
-| `KNOX_DEDUP_MODEL` | `dedup.model` |
-| `KNOX_DEDUP_MATCHERS` | `dedup.matchers` |
-| `KNOX_DEDUP_MINHASH_LSH_THRESHOLD` | `dedup.minhash_lsh_threshold` |
+| `KOMP_DEDUP_ENABLED` | `dedup.enabled` |
+| `KOMP_DEDUP_THRESHOLD_IDENTICAL` | `dedup.threshold_identical` |
+| `KOMP_DEDUP_THRESHOLD_SIMILAR` | `dedup.threshold_similar` |
+| `KOMP_DEDUP_MODEL` | `dedup.model` |
+| `KOMP_DEDUP_MATCHERS` | `dedup.matchers` |
+| `KOMP_DEDUP_MINHASH_LSH_THRESHOLD` | `dedup.minhash_lsh_threshold` |
 
 ## Matcher Details
 
@@ -154,7 +154,7 @@ would not confidently call them duplicates, the system should not either.
 ## Metadata
 
 After dedup runs, each document in the persistent store
-(`.knox/dedup/fingerprints.json`) has an entry like:
+(`.kompend/dedup/fingerprints.json`) has an entry like:
 
 ```json
 {

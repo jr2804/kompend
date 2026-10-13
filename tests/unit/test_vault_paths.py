@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.paths import VAULT_MARKERS, vault_paths
+from kompend.core.paths import VAULT_MARKERS, vault_paths
 
 
 class TestVaultPathsFailFast:
@@ -15,13 +15,13 @@ class TestVaultPathsFailFast:
 
         Silent operation on arbitrary directories masks misconfiguration.
         """
-        with pytest.raises(LookupError, match="not a KNOX vault root"):
+        with pytest.raises(LookupError, match="not a KOMPEND vault root"):
             vault_paths(tmp_path)
 
-    def test_accepts_vault_with_knox_config(self, tmp_path: Path) -> None:
-        knox_dir = tmp_path / ".knox"
-        knox_dir.mkdir()
-        (knox_dir / "config.toml").write_text("", encoding="utf-8")
+    def test_accepts_vault_with_kompend_config(self, tmp_path: Path) -> None:
+        kompend_dir = tmp_path / ".kompend"
+        kompend_dir.mkdir()
+        (kompend_dir / "config.toml").write_text("", encoding="utf-8")
         assert vault_paths(tmp_path).base_dir == tmp_path.resolve()
 
     def test_accepts_project_marker(self, tmp_path: Path) -> None:

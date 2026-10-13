@@ -1,6 +1,6 @@
 """Systemic guard for agent prompt templates and their tool wiring.
 
-Each :class:`KnoxAgentBase` subclass declares its prompt paths through the
+Each :class:`KompendAgentBase` subclass declares its prompt paths through the
 ``template_prefix``, ``template_name`` and ``system_template_name`` ClassVars.
 The base ``render_user_prompt`` / ``render_system_prompt`` build the path as
 ``template_prefix + <name>``; a prefix that does not match the template's
@@ -36,25 +36,25 @@ from collections.abc import Iterator
 import pytest
 from jinja2 import Environment, UndefinedError
 
-import knox.agents as agents_package
-from knox.agents.base import KnoxAgentBase
-from knox.core.templates import get_template_loader
+import kompend.agents as agents_package
+from kompend.agents.base import KompendAgentBase
+from kompend.core.templates import get_template_loader
 
 _TOOL_CALL_RE = re.compile(r"\b([a-z_][a-z0-9_]*)\(")
 _MODEL = "ollama/gpt-oss:20b"
-_BASE_RENDER_USER = KnoxAgentBase.render_user_prompt
-_BASE_RENDER_SYSTEM = KnoxAgentBase.render_system_prompt
+_BASE_RENDER_USER = KompendAgentBase.render_user_prompt
+_BASE_RENDER_SYSTEM = KompendAgentBase.render_system_prompt
 
 _loader = get_template_loader()
 
 
-def _iter_agent_classes() -> Iterator[type[KnoxAgentBase]]:
-    """Yield every KnoxAgentBase subclass defined inside ``knox.agents.*``."""
-    seen: set[type[KnoxAgentBase]] = set()
+def _iter_agent_classes() -> Iterator[type[KompendAgentBase]]:
+    """Yield every KompendAgentBase subclass defined inside ``kompend.agents.*``."""
+    seen: set[type[KompendAgentBase]] = set()
     for module_info in pkgutil.iter_modules(agents_package.__path__):
         module = importlib.import_module(f"{agents_package.__name__}.{module_info.name}")
         for _, obj in inspect.getmembers(module, inspect.isclass):
-            if obj is KnoxAgentBase or not issubclass(obj, KnoxAgentBase):
+            if obj is KompendAgentBase or not issubclass(obj, KompendAgentBase):
                 continue
             if obj.__module__ != module.__name__:
                 continue  # imported into this module, not defined here
@@ -63,11 +63,11 @@ def _iter_agent_classes() -> Iterator[type[KnoxAgentBase]]:
                 yield obj
 
 
-_AGENTS: list[type[KnoxAgentBase]] = sorted(_iter_agent_classes(), key=lambda cls: cls.__name__)
+_AGENTS: list[type[KompendAgentBase]] = sorted(_iter_agent_classes(), key=lambda cls: cls.__name__)
 
 
 @pytest.mark.parametrize("agent", _AGENTS, ids=lambda cls: cls.__name__)
-def test_declared_templates_resolve(agent: type[KnoxAgentBase]) -> None:
+def test_declared_templates_resolve(agent: type[KompendAgentBase]) -> None:
     user_template, system_template = _declared_templates(agent)
     declared = [path for path in (user_template, system_template) if path]
     if not declared:
@@ -77,7 +77,7 @@ def test_declared_templates_resolve(agent: type[KnoxAgentBase]) -> None:
 
 
 @pytest.mark.parametrize("agent", _AGENTS, ids=lambda cls: cls.__name__)
-def test_declared_templates_parse(agent: type[KnoxAgentBase]) -> None:
+def test_declared_templates_parse(agent: type[KompendAgentBase]) -> None:
     user_template, system_template = _declared_templates(agent)
     declared = [path for path in (user_template, system_template) if path]
     if not declared:
@@ -88,7 +88,7 @@ def test_declared_templates_parse(agent: type[KnoxAgentBase]) -> None:
 
 
 @pytest.mark.parametrize("agent", _AGENTS, ids=lambda cls: cls.__name__)
-def test_system_template_renders(agent: type[KnoxAgentBase]) -> None:
+def test_system_template_renders(agent: type[KompendAgentBase]) -> None:
     _, system_template = _declared_templates(agent)
     if not system_template:
         pytest.skip(f"{agent.__name__} declares no base-managed system template")
@@ -102,7 +102,7 @@ def test_system_template_renders(agent: type[KnoxAgentBase]) -> None:
 
 
 @pytest.mark.parametrize("agent", [cls for cls in _AGENTS if cls.__name__.startswith("Agentic")], ids=lambda cls: cls.__name__)
-def test_agentic_system_tools_match_registered(agent: type[KnoxAgentBase]) -> None:
+def test_agentic_system_tools_match_registered(agent: type[KompendAgentBase]) -> None:
     """The tools the system prompt names must be exactly the tools registered."""
     _, system_template = _declared_templates(agent)
     if not system_template:
@@ -113,7 +113,7 @@ def test_agentic_system_tools_match_registered(agent: type[KnoxAgentBase]) -> No
     assert declared == registered, f"{agent.__name__} system prompt declares {declared}, agent registers {registered}"
 
 
-def _declared_templates(agent: type[KnoxAgentBase]) -> tuple[str, str]:
+def _declared_templates(agent: type[KompendAgentBase]) -> tuple[str, str]:
     """Return base-managed ``(user_template, system_template)`` paths.
 
     Empty when the agent declares no template *or* overrides the render method
@@ -125,7 +125,7 @@ def _declared_templates(agent: type[KnoxAgentBase]) -> tuple[str, str]:
     return user_template, system_template
 
 
-def _build_agent_instance(agent: type[KnoxAgentBase]) -> KnoxAgentBase:
+def _build_agent_instance(agent: type[KompendAgentBase]) -> KompendAgentBase:
     """Construct an agent instance, preferring its ``make_*`` factory.
 
     Tools are attached by a factory (``tools=build_*_tools()``), so a direct
@@ -146,7 +146,7 @@ def _build_agent_instance(agent: type[KnoxAgentBase]) -> KnoxAgentBase:
     return agent(model_string=_MODEL)
 
 
-def _registered_tool_names(agent: KnoxAgentBase) -> list[str]:
+def _registered_tool_names(agent: KompendAgentBase) -> list[str]:
     """Tool names the built pydantic-ai agent actually registers."""
     return sorted(agent._build_agent()._function_toolset.tools.keys())  # noqa: SLF001
 

@@ -1,7 +1,7 @@
 """End-to-end CLI help tests — Typer must own the full command tree.
 
 Regression: a previous lazy-registration scheme sniffed ``sys.argv`` to
-decide which command modules to import, so ``knox -w <dir> --help``
+decide which command modules to import, so ``kompend -w <dir> --help``
 rendered help with an EMPTY Commands panel (``--help`` at position 0 was
 special-cased, but global flags legitimately precede it). The scheme was
 replaced by a Click-native lazy group: Typer handles help in every
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from knox.cli.app import _COMMAND_MODULES, _COMMAND_PANELS, _PANEL_ORDER, app
+from kompend.cli.app import _COMMAND_MODULES, _COMMAND_PANELS, _PANEL_ORDER, app
 
 runner = CliRunner()
 
@@ -28,7 +28,7 @@ class TestHelpEverywhere:
         assert "Build pipeline" in result.output
 
     def test_help_after_global_flag_lists_commands(self) -> None:
-        """``knox -w <dir> --help`` must show the same full help."""
+        """``kompend -w <dir> --help`` must show the same full help."""
         result = runner.invoke(app, ["-w", "d:/some/wiki", "--help"])
         assert result.exit_code == 0
         assert "compile" in result.output

@@ -1,10 +1,10 @@
 # config-local.toml — Local LLM demo overlay
 #
 # Only values that differ from DEFAULTS. Everything else is filled in
-# automatically by the config system (see knox.toml.example for full docs).
+# automatically by the config system (see kompend.toml.example for full docs).
 #
-# Required env vars: KNOX_LOCAL_LLM, KNOX_LOCAL_VLM, KNOX_LOCAL_EMBEDDING
-# Optional env vars: KNOX_LOCAL_CTX_CAP (caps context window + chunk size)
+# Required env vars: KOMP_LOCAL_LLM, KOMP_LOCAL_VLM, KOMP_LOCAL_EMBEDDING
+# Optional env vars: KOMP_LOCAL_CTX_CAP (caps context window + chunk size)
 #
 # Usage: .\scripts\build-wiki.ps1 scripts\config-local.toml
 
@@ -12,18 +12,18 @@
 compiler = "wicer"
 
 [compile.llm]
-default_model = "${KNOX_LOCAL_LLM}"
-vlm_model = "${KNOX_LOCAL_VLM}"
+default_model = "${KOMP_LOCAL_LLM}"
+vlm_model = "${KOMP_LOCAL_VLM}"
 data_format = "ison"
 timeout = 600.0
 output_retries = 4
 reasoning_effort = "none"
-# Cap the context window (tokens) for every model. Set KNOX_LOCAL_CTX_CAP to
+# Cap the context window (tokens) for every model. Set KOMP_LOCAL_CTX_CAP to
 # enable; when unset it auto-discovers from the model.
-context_window = "${KNOX_LOCAL_CTX_CAP}"
+context_window = "${KOMP_LOCAL_CTX_CAP}"
 
 [compile.embedding]
-model = "${KNOX_LOCAL_EMBEDDING}"
+model = "${KOMP_LOCAL_EMBEDDING}"
 
 [compile.output]
 flavor = "obsidian"
@@ -36,7 +36,7 @@ lint_output_max = 16384
 # chunk_size_max is left at its default (131072). The chunker already clamps
 # the effective chunk size to the discovered context window
 # (clamp(context_window - reserve, chunk_size_min, chunk_size_max)), so there
-# is no need to mirror KNOX_LOCAL_CTX_CAP here. Setting it to the env-var
+# is no need to mirror KOMP_LOCAL_CTX_CAP here. Setting it to the env-var
 # interpolation string would inject a string into an int field.
 
 [lint]

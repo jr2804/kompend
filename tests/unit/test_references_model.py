@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from knox.core.models.references import (
+from kompend.core.models.references import (
     Author,
     Reference,
     ReferenceExtractionOutput,
@@ -72,7 +72,7 @@ class TestReferenceToCsl:
         csl = ref.to_csl()
         assert csl == {"id": "x", "type": "book"}
 
-    def test_knox_fields_not_in_csl(self) -> None:
+    def test_kompend_fields_not_in_csl(self) -> None:
         ref = Reference(
             id="x",
             raw="[1] Some citation",

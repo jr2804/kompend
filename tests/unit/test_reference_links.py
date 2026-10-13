@@ -1,6 +1,6 @@
 """Tests for in-text citation → link rewriting (Phase 3).
 
-Covers ``knox.output.reference_links``:
+Covers ``kompend.output.reference_links``:
 - ``rewrite_citation_links`` — bracketed numeric, bracketed key, parenthetical author-year
 - ``rewrite_source_references`` — convenience wrapper
 - ``build_reference_key_index`` — key index construction
@@ -14,12 +14,12 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.core.models.references import Author, Reference
-from knox.core.pipeline.references import ReferenceStore
-from knox.output.markdown import MarkdownWriter
-from knox.output.markdown import MarkdownWriter as OkfWriter
-from knox.output.reference_links import (
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.references import Author, Reference
+from kompend.core.pipeline.references import ReferenceStore
+from kompend.output.markdown import MarkdownWriter
+from kompend.output.markdown import MarkdownWriter as OkfWriter
+from kompend.output.reference_links import (
     build_reference_key_index,
     format_bibliography_entry,
     rewrite_citation_links,
@@ -216,7 +216,7 @@ class TestFormatBibliographyEntry:
 class TestMarkdownWriterReferencesPage:
     def test_generates_references_md(self, tmp_path: Path) -> None:
         """MarkdownWriter should generate references.md when store has entries."""
-        ref_file = tmp_path / ".knox" / "references.json"
+        ref_file = tmp_path / ".kompend" / "references.json"
         ref_file.parent.mkdir(parents=True)
         store = ReferenceStore(ref_file)
         store.add_source("sources/paper.pdf", [_ref()])
@@ -236,7 +236,7 @@ class TestMarkdownWriterReferencesPage:
         """references.md is always generated — an empty store yields the
         two-section skeleton with placeholders, not a missing file.
         """
-        ref_file = tmp_path / ".knox" / "references.json"
+        ref_file = tmp_path / ".kompend" / "references.json"
         wiki = _make_wiki()
         output_dir = tmp_path / "wiki"
         writer = MarkdownWriter(vault_mode=True, references_file=ref_file)
@@ -262,7 +262,7 @@ class TestMarkdownWriterReferencesPage:
 class TestOkfWriterReferencesPage:
     def test_generates_references_md(self, tmp_path: Path) -> None:
         """OkfWriter should generate references.md with OKF frontmatter."""
-        ref_file = tmp_path / ".knox" / "references.json"
+        ref_file = tmp_path / ".kompend" / "references.json"
         ref_file.parent.mkdir(parents=True)
         store = ReferenceStore(ref_file)
         store.add_source("sources/paper.pdf", [_ref()])
@@ -280,7 +280,7 @@ class TestOkfWriterReferencesPage:
 
     def test_citation_rewritten_in_page(self, tmp_path: Path) -> None:
         """Citation [1] should be rewritten in the generated page."""
-        ref_file = tmp_path / ".knox" / "references.json"
+        ref_file = tmp_path / ".kompend" / "references.json"
         ref_file.parent.mkdir(parents=True)
         store = ReferenceStore(ref_file)
         store.add_source("sources/paper.pdf", [_ref()])

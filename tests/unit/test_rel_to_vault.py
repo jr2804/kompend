@@ -1,8 +1,8 @@
 """Tests for the ``rel_to_vault`` relativization helper and the
 ``check_persisted_paths`` enforcement scanner.
 
-These guard Antipattern 6 (``src/knox/AGENTS.md``): no absolute path may
-be persisted inside a ``.knox/`` artifact.
+These guard Antipattern 6 (``src/kompend/AGENTS.md``): no absolute path may
+be persisted inside a ``.kompend/`` artifact.
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from typing import Any
 
 import pytest
 
-from knox.core.paths import rel_to_vault
+from kompend.core.paths import rel_to_vault
 
 
 def _load_scanner() -> Any:
@@ -98,7 +98,7 @@ class TestLooksAbsolute:
 
     def test_windows_drive_caught(self) -> None:
         assert _SCANNER._looks_absolute("C:\\Users\\jan\\file.pdf")
-        assert _SCANNER._looks_absolute("D:/svn/AI/knox/sources/x.pdf")
+        assert _SCANNER._looks_absolute("D:/svn/AI/kompend/sources/x.pdf")
 
     def test_relative_path_spared(self) -> None:
         assert not _SCANNER._looks_absolute("sources/paper.pdf")
@@ -117,11 +117,11 @@ class TestLooksAbsolute:
 
 
 class TestScanVault:
-    """End-to-end scan of a fake ``.knox/`` tree."""
+    """End-to-end scan of a fake ``.kompend/`` tree."""
 
     def test_clean_vault_no_violations(self, tmp_path: Path) -> None:
         vault = self._make_vault(tmp_path)
-        (vault / ".knox" / "references.json").write_text(
+        (vault / ".kompend" / "references.json").write_text(
             json.dumps({"citing_source": "sources/paper.pdf"}),
             encoding="utf-8",
         )
@@ -129,18 +129,18 @@ class TestScanVault:
 
     def test_references_json_leak_detected(self, tmp_path: Path) -> None:
         vault = self._make_vault(tmp_path)
-        (vault / ".knox" / "references.json").write_text(
+        (vault / ".kompend" / "references.json").write_text(
             json.dumps({"citing_source": "/home/jan/vault/sources/paper.pdf"}),
             encoding="utf-8",
         )
         violations = _SCANNER.scan_vault(vault)
         assert len(violations) == 1
-        assert violations[0].file == ".knox/references.json"
+        assert violations[0].file == ".kompend/references.json"
         assert "citing_source" in violations[0].field_path
 
     def test_nested_leak_in_wiki_cache(self, tmp_path: Path) -> None:
         vault = self._make_vault(tmp_path)
-        (vault / ".knox" / "last_wiki.json").write_text(
+        (vault / ".kompend" / "last_wiki.json").write_text(
             json.dumps(
                 {
                     "nodes": [
@@ -156,7 +156,7 @@ class TestScanVault:
 
     def test_jsonl_leak_detected(self, tmp_path: Path) -> None:
         vault = self._make_vault(tmp_path)
-        (vault / ".knox" / "runs.jsonl").write_text(
+        (vault / ".kompend" / "runs.jsonl").write_text(
             json.dumps({"source": "/var/data/file.pdf"}) + "\n",
             encoding="utf-8",
         )
@@ -164,14 +164,14 @@ class TestScanVault:
         assert len(violations) == 1
         assert "L1" in violations[0].field_path
 
-    def test_missing_knox_dir_returns_empty(self, tmp_path: Path) -> None:
-        # No .knox folder at all.
+    def test_missing_kompend_dir_returns_empty(self, tmp_path: Path) -> None:
+        # No .kompend folder at all.
         assert _SCANNER.scan_vault(tmp_path) == []
 
     def test_binary_files_skipped(self, tmp_path: Path) -> None:
         vault = self._make_vault(tmp_path)
         # A .db file is not scanned even if it contains an absolute path.
-        (vault / ".knox" / "memory.db").write_bytes(b"/home/jan/leak.pdf")
+        (vault / ".kompend" / "memory.db").write_bytes(b"/home/jan/leak.pdf")
         assert _SCANNER.scan_vault(vault) == []
 
     def test_main_exits_nonzero_on_violation(
@@ -180,7 +180,7 @@ class TestScanVault:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         vault = self._make_vault(tmp_path)
-        (vault / ".knox" / "assets.json").write_text(
+        (vault / ".kompend" / "assets.json").write_text(
             json.dumps({"source": "/opt/vault/sources/x.pdf"}),
             encoding="utf-8",
         )
@@ -194,13 +194,13 @@ class TestScanVault:
         tmp_path: Path,
     ) -> None:
         vault = self._make_vault(tmp_path)
-        (vault / ".knox" / "assets.json").write_text(
+        (vault / ".kompend" / "assets.json").write_text(
             json.dumps({"source": "sources/x.pdf"}),
             encoding="utf-8",
         )
         assert _SCANNER.main(["--vault", str(vault)]) == 0
 
     def _make_vault(self, tmp_path: Path) -> Path:
-        knox = tmp_path / ".knox"
-        knox.mkdir()
+        kompend = tmp_path / ".kompend"
+        kompend.mkdir()
         return tmp_path

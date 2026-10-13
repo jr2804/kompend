@@ -1,5 +1,5 @@
 """Unit tests for the upstream transient-timeout retry heuristic in
-``knox.compilation.flows.generation``.
+``kompend.compilation.flows.generation``.
 
 The heuristic catches ``pydantic_ai.exceptions.ModelHTTPError`` whose
 ``status_code`` is below 500 and whose body contains ``"timed out"`` and
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from pydantic_ai.exceptions import ModelHTTPError
 
-from knox.compilation.flows.generation import (
+from kompend.compilation.flows.generation import (
     _UPSTREAM_TRANSIENT_BACKOFF_BASE,
     _UPSTREAM_TRANSIENT_MAX_RETRIES,
     _is_upstream_transient_timeout,

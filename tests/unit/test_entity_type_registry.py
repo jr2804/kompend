@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.pipeline.entity_types import EntityTypeRegistry
-from knox.core.store import vault_db_path
+from kompend.core.pipeline.entity_types import EntityTypeRegistry
+from kompend.core.store import vault_db_path
 
 
 def test_get_returns_none_for_missing_key(tmp_path: Path) -> None:

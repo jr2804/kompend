@@ -1,25 +1,25 @@
 # Editor Integration: ACP Agent
 
-KNOX can run as an **ACP (Agent Client Protocol) agent** that editors like
+KOMPEND can run as an **ACP (Agent Client Protocol) agent** that editors like
 opencode and Zed can connect to. This gives the editor's built-in AI agent
-access to KNOX's compilation, query, and capture capabilities without
+access to KOMPEND's compilation, query, and capture capabilities without
 sharing API keys — the editor injects the LLM endpoint via ``providers/set``.
 
 ## How it works
 
 ```text
-Editor ── ACP stdio ──→ knox agent
+Editor ── ACP stdio ──→ kompend agent
                           │
-                          ├── /knox compile  → wiki_compile tool
-                          ├── /knox query    → wiki_query tool
-                          ├── /knox capture  → wiki_capture tool
+                          ├── /kompend compile  → wiki_compile tool
+                          ├── /kompend query    → wiki_query tool
+                          ├── /kompend capture  → wiki_capture tool
                           └── free text      → conversational agent loop
 ```
 
-1. The editor starts ``knox agent`` as a subprocess
-2. KNOX advertises its capabilities (``providers/set``, slash commands)
+1. The editor starts ``kompend agent`` as a subprocess
+2. KOMPEND advertises its capabilities (``providers/set``, slash commands)
 3. The editor calls ``providers/set`` to inject the LLM endpoint
-4. The user types a prompt → KNOX routes it through a conversational agent
+4. The user types a prompt → KOMPEND routes it through a conversational agent
    that can call tools (compile, query, capture) as needed
 
 ## opencode integration
@@ -30,29 +30,29 @@ project-level ``.opencode.json``):
 ```json
 {
   "agents": {
-    "knox": {
+    "kompend": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/your/vault", "knox", "agent"],
+      "args": ["run", "--directory", "/path/to/your/vault", "kompend", "agent"],
       "cwd": "/path/to/your/vault"
     }
   }
 }
 ```
 
-Replace ``/path/to/your/vault`` with the path to your KNOX vault (the
-directory containing ``.knox/`` and ``sources/``).
+Replace ``/path/to/your/vault`` with the path to your KOMPEND vault (the
+directory containing ``.kompend/`` and ``sources/``).
 
 ### With MCP companion server
 
-To also expose KNOX's MCP tools to other AI agents in the editor, add
+To also expose KOMPEND's MCP tools to other AI agents in the editor, add
 ``--mcp-port``:
 
 ```json
 {
   "agents": {
-    "knox": {
+    "kompend": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/your/vault", "knox", "agent", "--mcp-port", "8000"],
+      "args": ["run", "--directory", "/path/to/your/vault", "kompend", "agent", "--mcp-port", "8000"],
       "cwd": "/path/to/your/vault"
     }
   }
@@ -66,9 +66,9 @@ Add to your Zed settings (``~/.config/zed/settings.json``):
 ```json
 {
   "agent_servers": {
-    "knox": {
+    "kompend": {
       "command": "uv",
-      "args": ["run", "--directory", "/path/to/your/vault", "knox", "agent"],
+      "args": ["run", "--directory", "/path/to/your/vault", "kompend", "agent"],
       "cwd": "/path/to/your/vault"
     }
   }
@@ -77,7 +77,7 @@ Add to your Zed settings (``~/.config/zed/settings.json``):
 
 ## Env-var fallback (no providers/set)
 
-If your editor does not support the ``providers/set`` ACP extension, KNOX
+If your editor does not support the ``providers/set`` ACP extension, KOMPEND
 falls back to its normal config precedence:
 
 1. Environment variables
@@ -87,9 +87,9 @@ falls back to its normal config precedence:
 Set these environment variables before starting the agent:
 
 ```bash
-export KNOX_LLM_DEFAULT_MODEL="ollama-cloud/deepseek-v4-flash"
-export KNOX_LLM_API_BASE="https://api.ollama.cloud/v1"
-export KNOX_LLM_API_KEY="sk-..."
+export KOMP_LLM_DEFAULT_MODEL="ollama-cloud/deepseek-v4-flash"
+export KOMP_LLM_API_BASE="https://api.ollama.cloud/v1"
+export KOMP_LLM_API_KEY="sk-..."
 ```
 
 Or configure them permanently in ``config.toml``:
@@ -105,29 +105,29 @@ Once connected, you can use these commands in the editor's chat:
 
 | Command | Description |
 |---------|-------------|
-| ``/knox compile`` | Compile sources into a wiki |
-| ``/knox query <question>`` | Query the compiled wiki |
-| ``/knox capture <note>`` | Capture a note into the knowledge base |
-| ``/knox status`` | Show vault health and cache stats |
-| ``/knox help`` | Show available commands |
+| ``/kompend compile`` | Compile sources into a wiki |
+| ``/kompend query <question>`` | Query the compiled wiki |
+| ``/kompend capture <note>`` | Capture a note into the knowledge base |
+| ``/kompend status`` | Show vault health and cache stats |
+| ``/kompend help`` | Show available commands |
 
 ## Selecting an agent
 
-KNOX ships with several built-in conversational agents. Use ``knox agents``
+KOMPEND ships with several built-in conversational agents. Use ``kompend agents``
 to manage them:
 
 ```bash
 # List available agents
-knox agents list
+kompend agents list
 
 # Set the active agent for compilation
-knox agents use compile compiler
+kompend agents use compile compiler
 
 # Install a custom agent
-knox agents install path/to/my-agent.toml
+kompend agents install path/to/my-agent.toml
 
 # Use an explicit agent file when starting the agent
-knox agent --agent-file path/to/my-agent.toml
+kompend agent --agent-file path/to/my-agent.toml
 ```
 
 ## Troubleshooting
@@ -135,16 +135,16 @@ knox agent --agent-file path/to/my-agent.toml
 **Agent doesn't start:**
 
 - Ensure ``uv`` is installed and on PATH
-- Ensure the vault directory exists and has a ``.knox/`` directory
-- Run ``knox doctor`` to check the vault health
+- Ensure the vault directory exists and has a ``.kompend/`` directory
+- Run ``kompend doctor`` to check the vault health
 
 **LLM not available:**
 
 - The editor must call ``providers/set`` with a valid LLM endpoint
-- Or set ``KNOX_LLM_DEFAULT_MODEL`` / ``KNOX_LLM_API_KEY`` env vars
-- Run ``knox doctor`` to verify LLM connectivity
+- Or set ``KOMP_LLM_DEFAULT_MODEL`` / ``KOMP_LLM_API_KEY`` env vars
+- Run ``kompend doctor`` to verify LLM connectivity
 
 **Slash commands not working:**
 
-- Ensure the prompt starts with ``/knox`` (with a space after ``knox``)
-- Check that the agent is running (``knox agent --help`` for options)
+- Ensure the prompt starts with ``/kompend`` (with a space after ``kompend``)
+- Check that the agent is running (``kompend agent --help`` for options)

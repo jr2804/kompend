@@ -1,0 +1,40 @@
+# Wiki
+
+This directory is a KOMPEND wiki project. Sources are read from
+`{{ sources_dir }}/`, the compiled wiki is written to `{{ output_dir }}/`, and
+runtime state lives in `.kompend/`.
+
+## Quickstart
+
+1. Drop source documents into `{{ sources_dir }}/`.
+2. Run `kompend compile` to build the wiki.
+3. Inspect the output in `{{ output_dir }}/`.
+
+## Configuration
+
+Project configuration lives in `.kompend/config.toml`. See
+[the configuration guide](https://kompend.readthedocs.io/guides/config.html)
+for the full reference, or browse the comments in the config file
+itself.
+
+To inspect or modify configuration values from the CLI:
+
+    kompend config list
+    kompend config get compile.chunk_size
+    kompend config set compile.chunk_size 1024
+
+## Layout
+
+| Path           | Purpose                                          |
+| -------------- | ------------------------------------------------ |
+| `{{ sources_dir }}/` | Input documents (PDF, DOCX, MD, …)               |
+| `{{ output_dir }}/`  | Compiled output (Markdown + Obsidian frontmatter)|
+| `.kompend/`       | Internal state (cache, config) — gitignored      |
+| `.kompend/config.toml` | Project configuration (created by `kompend init`) |
+| `NOTES.md`     | User-authored notes (read-only to KOMPEND)          |
+
+## Next steps
+
+- See the [KOMPEND documentation](https://kompend.readthedocs.io/) for
+  ingestion, compilation, and deployment guides.
+- Run `kompend doctor` to verify the environment.

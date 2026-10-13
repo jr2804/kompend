@@ -1,21 +1,21 @@
 # Model Context Adaptation
 
-KNOX is designed to work with any LLM — from a 4K-token local model running
+KOMPEND is designed to work with any LLM — from a 4K-token local model running
 on a laptop to a 1M-token frontier model behind an API. This guide explains
-how KNOX detects model capabilities, adapts its chunking and processing
+how KOMPEND detects model capabilities, adapts its chunking and processing
 strategy accordingly, and what tradeoffs you should expect when choosing
 between small/local and large/remote models.
 
-> **Honest summary:** KNOX enables any model to participate in the pipeline,
+> **Honest summary:** KOMPEND enables any model to participate in the pipeline,
 > but it does **not** equalize quality. A 7B local model will produce
 > noticeably lower-quality wiki pages than a frontier model. The adaptive
 > machinery ensures the *input* always fits — the *output quality* is yours
 > to control through model selection.
 
-## How KNOX Discovers the Context Window
+## How KOMPEND Discovers the Context Window
 
-At startup, [`discover_context_window()`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/context_window.py)
-in `knox.llm.context_window` resolves the model's real input and output token
+At startup, [`discover_context_window()`](https://github.com/jr2804/kompend/src/branch/main/src/kompend/llm/context_window.py)
+in `kompend.llm.context_window` resolves the model's real input and output token
 capacity through the chain below — the first tier that answers wins:
 
 ```mermaid
@@ -40,13 +40,13 @@ flowchart TD
 |------|--------|----------------|
 | 1 — User config | `context_window` in `[providers.<name>]`, or finer-grained in `[providers.<name>.models."<model>"]` | Self-hosted OpenAI-compatible endpoints (llama.cpp, vLLM, TGI); any provider you want to pin explicitly |
 | 2 — Ollama | most restrictive of `OLLAMA_CONTEXT_LENGTH`, the context the server actually loaded the model with (`ollama.ps()`), Modelfile `parameters.num_ctx`, and GGUF metadata (`ollama.show()`) | Local Ollama models |
-| 3 — models.dev | [models.dev](https://models.dev) catalog via `knox.llm.models.resolve_model_limits()` | Hosted models and custom-provider mirrors present in the catalog |
+| 3 — models.dev | [models.dev](https://models.dev) catalog via `kompend.llm.models.resolve_model_limits()` | Hosted models and custom-provider mirrors present in the catalog |
 | 4 — Fallback | `[compile.llm] fallback_max_input` / `fallback_max_output` | Models nothing else knows about |
 | — | none of the above | raises `LookupError` — an unresolved window usually means a wrong model name or an unreachable provider |
 
 Tiers 1–2 are used **as-is** — never clamped (except by the explicit cap).
 When several Ollama values exist the most restrictive wins: if GGUF metadata
-claims 128K but the server loaded the model with 65536 tokens, KNOX sizes
+claims 128K but the server loaded the model with 65536 tokens, KOMPEND sizes
 against 65536.
 
 You can enforce a hard ceiling with `compile.llm.context_window`:
@@ -66,7 +66,7 @@ and `[providers.<name>]`; a config still setting the old name keeps working
 ### The Sizing Formula
 
 Once the context window is known, the chunker
-([`knox.chunking.hierarchical.HierarchicalChunker`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/chunking/hierarchical.py))
+([`kompend.chunking.hierarchical.HierarchicalChunker`](https://github.com/jr2804/kompend/src/branch/main/src/kompend/chunking/hierarchical.py))
 computes the target chunk size:
 
 ```text
@@ -77,8 +77,8 @@ effective  = max(chunk_size_min, min(raw, chunk_size_max))
 | Parameter | Default | Env var | Meaning |
 |-----------|---------|---------|---------|
 | `reserve_tokens` | `8192` | — | Absolute headroom for system prompt + LLM output budget |
-| `chunk_size_min` | `2048` tokens | `KNOX_BUDGET_CHUNK_SIZE_MIN` | Safety floor — never produce smaller chunks |
-| `chunk_size_max` | `131072` tokens | `KNOX_BUDGET_CHUNK_SIZE_MAX` | Safety ceiling — never produce larger chunks |
+| `chunk_size_min` | `2048` tokens | `KOMP_BUDGET_CHUNK_SIZE_MIN` | Safety floor — never produce smaller chunks |
+| `chunk_size_max` | `131072` tokens | `KOMP_BUDGET_CHUNK_SIZE_MAX` | Safety ceiling — never produce larger chunks |
 
 > **Why absolute, not percentage?** A 20% ratio reserves 200K tokens on a
 > 1M-context model where the real overhead (system prompt + output budget)
@@ -91,7 +91,7 @@ effective  = max(chunk_size_min, min(raw, chunk_size_max))
 
 Every stage that sizes a request against the context window also holds back a
 safety margin, defined once as ``context_safety_tokens()`` in
-`knox.compilation._two_phase_core`:
+`kompend.compilation._two_phase_core`:
 
 ```text
 margin = max(512, 8% of the context window)
@@ -131,7 +131,7 @@ far too large for retrieval quality. The `chunk_size_max` rail prevents this.
 
 ### Splitting Strategy
 
-KNOX never blindly cuts text at a token boundary. The `HybridChunker` uses
+KOMPEND never blindly cuts text at a token boundary. The `HybridChunker` uses
 a custom `RecursiveRules` stack that respects document structure:
 
 ```mermaid
@@ -179,13 +179,13 @@ flowchart TD
 
 ## Small/Local vs Large/Remote: The Quality Tradeoff
 
-KNOX's adaptive sizing guarantees that **inputs always fit** the model's
+KOMPEND's adaptive sizing guarantees that **inputs always fit** the model's
 context window. But input fitting is only half the story — the other half
 is **output quality**, which is entirely model-dependent.
 
-### What KNOX Adapts Automatically
+### What KOMPEND Adapts Automatically
 
-| Aspect | How KNOX adapts |
+| Aspect | How KOMPEND adapts |
 |--------|-----------------|
 | Chunk size | `context_window − reserve_tokens`, clamped to rails |
 | Number of chunks | Inversely proportional to chunk size |
@@ -193,7 +193,7 @@ is **output quality**, which is entirely model-dependent.
 | Retrieval system-prompt reserve | 4 096 tokens absolute |
 | Retrieval response reserve | 4 096 tokens absolute |
 
-### What KNOX Does NOT Equalize
+### What KOMPEND Does NOT Equalize
 
 | Aspect | Small/local model | Large/remote model |
 |--------|-------------------|--------------------|
@@ -219,7 +219,7 @@ forced to split semantic units that belong together.
 
 ## Output Budget Reference
 
-KNOX uses **absolute** per-phase output token budgets. These cap how many
+KOMPEND uses **absolute** per-phase output token budgets. These cap how many
 tokens each LLM call is allowed to emit:
 
 ```text
@@ -228,9 +228,9 @@ max_tokens = *_output_max   # per-phase ceiling, scales the same on 8K or 1M mod
 
 | Phase | Max tokens | Env var |
 |-------|-----------|---------|
-| Extraction | 8 192 | `KNOX_BUDGET_EXTRACT_OUTPUT_MAX` |
-| Generation | 16 384 | `KNOX_BUDGET_GEN_OUTPUT_MAX` |
-| Overview | 4 096 | `KNOX_BUDGET_OVERVIEW_OUTPUT_MAX` |
+| Extraction | 8 192 | `KOMP_BUDGET_EXTRACT_OUTPUT_MAX` |
+| Generation | 16 384 | `KOMP_BUDGET_GEN_OUTPUT_MAX` |
+| Overview | 4 096 | `KOMP_BUDGET_OVERVIEW_OUTPUT_MAX` |
 | Verification | 4 096 | — (config only) |
 | Lint | 8 192 | — (config only) |
 | WiCER probe | 4 096 | — (config only) |
@@ -244,12 +244,12 @@ Beyond token budgets, `BudgetConfig` provides content-quality controls:
 
 | Field | Default | Env var | Purpose |
 |-------|---------|---------|---------|
-| `min_content_length` | `50` | `KNOX_BUDGET_MIN_CONTENT_LENGTH` | Min body characters for a wiki page (filters heading-only fragments) |
-| `min_concept_sources` | `2` | `KNOX_BUDGET_MIN_CONCEPT_SOURCES` | Min distinct sources for a cross-cutting concept page |
-| `max_concept_pages` | `50` | `KNOX_BUDGET_MAX_CONCEPT_PAGES` | Upper limit on generated concept pages |
-| `concepts_per_batch` | `8` | `KNOX_BUDGET_CONCEPTS_PER_BATCH` | Concepts extracted per LLM batch |
+| `min_content_length` | `50` | `KOMP_BUDGET_MIN_CONTENT_LENGTH` | Min body characters for a wiki page (filters heading-only fragments) |
+| `min_concept_sources` | `2` | `KOMP_BUDGET_MIN_CONCEPT_SOURCES` | Min distinct sources for a cross-cutting concept page |
+| `max_concept_pages` | `50` | `KOMP_BUDGET_MAX_CONCEPT_PAGES` | Upper limit on generated concept pages |
+| `concepts_per_batch` | `8` | `KOMP_BUDGET_CONCEPTS_PER_BATCH` | Concepts extracted per LLM batch |
 | `verify_min_ngram` | `3` | — (config only) | Min n-gram overlap for verification |
-| `wicer_max_iterations` | `3` | `KNOX_BUDGET_WICER_MAX_ITERATIONS` | Max compile-evaluate-refine loop iterations |
+| `wicer_max_iterations` | `3` | `KOMP_BUDGET_WICER_MAX_ITERATIONS` | Max compile-evaluate-refine loop iterations |
 
 ## Example Configurations
 
@@ -298,7 +298,7 @@ quality-to-cost ratio.
 ```toml
 [compile.llm]
 default_model = "gemini/gemini-1.5-pro"
-# the catalog reports 1M; KNOX clamps chunks to chunk_size_max=131072.
+# the catalog reports 1M; KOMPEND clamps chunks to chunk_size_max=131072.
 fallback_chain = ["anthropic/claude-3.5-sonnet", "openai/gpt-4o"]
 
 [compile.budget]
@@ -317,7 +317,7 @@ enterprise documentation projects where quality is the priority.
 
 ## Tier-Based Model Strategy
 
-KNOX's 5-tier pipeline has different model requirements per tier:
+KOMPEND's 5-tier pipeline has different model requirements per tier:
 
 ```mermaid
 flowchart TD
@@ -363,7 +363,7 @@ flowchart TD
 The fallback chain lets you define a quality cascade:
 
 ```bash
-knox compile sources/ \
+kompend compile sources/ \
   --llm-default-model anthropic/claude-3.5-sonnet \
   --llm-fallback-chain openai/gpt-4o \
   --llm-fallback-chain ollama/llama3.1
@@ -379,7 +379,7 @@ The primary model is tried first. If it fails with transient errors
 
 ## Summary
 
-| Concern | KNOX handles it? | How |
+| Concern | KOMPEND handles it? | How |
 |---------|------------------|-----|
 | Input always fits context | Yes | Auto-detect + clamp + 8% safety margin (min 512 tokens) |
 | Chunk boundaries are natural | Yes | Paragraph → line → sentence → token rules |
@@ -388,7 +388,7 @@ The primary model is tried first. If it fails with transient errors
 | Privacy | **User's choice** | Local Ollama vs remote API |
 | Cost optimization | **User's choice** | Fallback chain + budget config |
 
-KNOX ensures every model can *participate* in the pipeline. It does not
+KOMPEND ensures every model can *participate* in the pipeline. It does not
 promise every model will produce the *same output*. The adaptive machinery
 removes the mechanical barriers (context overflow, truncation, structural
 breakage); the intellectual quality of the resulting wiki is bounded by

@@ -5,10 +5,10 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import MagicMock, patch
 
-from knox.agents.query import QueryAgent
-from knox.core.models import CompiledWiki, WikiNode
-from knox.llm.context_window import ContextSource, ContextWindow
-from knox.search.retriever import HybridRetriever, extract_snippet, synthesize_results
+from kompend.agents.query import QueryAgent
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.llm.context_window import ContextSource, ContextWindow
+from kompend.search.retriever import HybridRetriever, extract_snippet, synthesize_results
 
 
 class TestExtractSnippet:
@@ -207,6 +207,6 @@ class TestSynthesizeVerbosity:
         fake = _FakeLLMClient()
         mock_agent = MagicMock()
         mock_agent.run = MagicMock(return_value=f"answer ({verbosity})")
-        with patch("knox.search.retriever.QueryAgent", return_value=mock_agent):
+        with patch("kompend.search.retriever.QueryAgent", return_value=mock_agent):
             result = synthesize_results("q", [], model=fake.default_model, verbosity=verbosity, max_tokens=max_tokens)
         return result, mock_agent

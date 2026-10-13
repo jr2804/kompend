@@ -1,23 +1,23 @@
 # Decision Log
 
-All architectural, tooling, and design decisions for KNOX. Each entry includes the decision, the context, and the rationale.
+All architectural, tooling, and design decisions for KOMPEND. Each entry includes the decision, the context, and the rationale.
 
 ## Naming
 
-### Decision: Project name is "KNOX"
+### Decision: Project name is "KOMPEND"
 
 **Date:** Jun 5, 2026  
 **Context:** Need a pronounceable, memorable name for the compiled LLM-wiki system. Must avoid collision with existing tools ("llm-wiki", "sage-wiki", "llmwiki" all taken).  
 **Options considered:**
 
-- KNOX (Knowledge Organizer for eXtended documents) — vault-like, strong
+- KOMPEND (Knowledge-Oriented Markdown Processing and ENtity Distillation) — concise, mnemonic
 - KITE (Knowledge Ingestion & Transformation Engine) — light, fast
 - WIKEN (Wiki Knowledge ENgine) — clear intent
 - KARBY (KARpathy Better knowledge sYstem) — playful nod
 - WISE (Wiki-Ingestion System for Enhanced documents) — professional
 
-**Decision:** KNOX. Short, pronounceable, implies a secure/organized knowledge vault.
-**Consequences:** Slug is `knox`, repo at `codeberg.org/jr2804/knox`.
+**Decision:** KOMPEND. Short, pronounceable, implies a secure/organized knowledge vault.
+**Consequences:** Slug is `kompend`, repo at `github.com/jr2804/kompend`.
 
 ## Stack
 
@@ -54,7 +54,7 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 ### Decision: Hybrid chunking (custom + Chonkie)
 
 **Date:** Jun 6, 2026  
-**Context:** Chonkie operates on text/markdown strings. KNOX's parser produces typed `DocumentElement` objects. Feeding typed objects into Chonkie means serialization → lossy.  
+**Context:** Chonkie operates on text/markdown strings. KOMPEND's parser produces typed `DocumentElement` objects. Feeding typed objects into Chonkie means serialization → lossy.  
 **Decision:** Custom structure-aware chunker for atomic elements (tables/figures/equations never split) + Chonkie for text-heavy sections.
 **Consequences:** Two code paths. Must maintain consistency between custom chunker and Chonkie token counting.
 
@@ -70,16 +70,16 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 ### Decision: parsecraft as the ingestion backend
 
 **Date:** Oct 9, 2026  
-**Context:** Benchmark winner is opendataloader-pdf (0.907), but a single engine per corpus cannot serve a born-digital page and a scanned, table-heavy page in the same document — and knox-side adapters for docling, liteparse and pandoc duplicated what parsecraft already does.  
-**Decision:** parsecraft is the only parser path — the `[ingest] parser` selector was retired. The `[ingest]` block now holds only the parsecraft parameters (`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`), each mapping 1:1 onto a parsecraft parameter; the adapter hands every source to `pipeline.execute()`. `knox[parsecraft]` carries the sub-backends, `knox[systemone]` adds the judge tier, and `knox[mineru]` adds MinerU as a sub-backend.
-**Consequences:** Routing, fallback and OCR escalation are parsecraft's to decide; the knox-side docling/liteparse/pandoc/glm-ocr/web/marker/mineru adapters are deleted — mineru returns as the `knox[mineru]` sub-backend extra, marker is parsecraft's bring-your-own. One external dependency with a minimum parsecraft release.
+**Context:** Benchmark winner is opendataloader-pdf (0.907), but a single engine per corpus cannot serve a born-digital page and a scanned, table-heavy page in the same document — and kompend-side adapters for docling, liteparse and pandoc duplicated what parsecraft already does.  
+**Decision:** parsecraft is the only parser path — the `[ingest] parser` selector was retired. The `[ingest]` block now holds only the parsecraft parameters (`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`), each mapping 1:1 onto a parsecraft parameter; the adapter hands every source to `pipeline.execute()`. `kompend[parsecraft]` carries the sub-backends, `kompend[systemone]` adds the judge tier, and `kompend[mineru]` adds MinerU as a sub-backend.
+**Consequences:** Routing, fallback and OCR escalation are parsecraft's to decide; the kompend-side docling/liteparse/pandoc/glm-ocr/web/marker/mineru adapters are deleted — mineru returns as the `kompend[mineru]` sub-backend extra, marker is parsecraft's bring-your-own. One external dependency with a minimum parsecraft release.
 
 ### Decision: Format-native parsing, not PDF-first
 
 **Date:** Jun 6, 2026  
 **Context:** "Convert anything to PDF first" simplifies the pipeline but loses native structure from DOCX/XLSX.  
 **Decision:** Route by page type rather than flattening to PDF: parsecraft sends each page to a sub-backend that preserves its native structure (PDF text layer or OCR, DOCX styles → headings, XLSX → tables).
-**Consequences:** Structure survives from the source format. The split happens per page inside parsecraft, so knox carries no per-format parser modules.
+**Consequences:** Structure survives from the source format. The split happens per page inside parsecraft, so kompend carries no per-format parser modules.
 
 ### Decision: Image extraction mode configurable
 
@@ -126,7 +126,7 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 
 **Date:** Jun 5, 2026  
 **Context:** Need to support Ollama (local), OpenRouter, DeepSeek, Anthropic, OpenAI without hard-coding each.  
-**Decision:** pydantic-ai — one `provider/model` string per backend, translated to native provider models (`knox.llm.models.build_model`). Custom OpenAI-compatible endpoints are declared under `[providers.<id>]`.
+**Decision:** pydantic-ai — one `provider/model` string per backend, translated to native provider models (`kompend.llm.models.build_model`). Custom OpenAI-compatible endpoints are declared under `[providers.<id>]`.
 **Consequences:** One dependency in the LLM path; provider-specific code is confined to model construction. A custom endpoint needs a `[providers.<id>]` entry rather than a model-string convention alone.
 
 ### Decision: Local-first model strategy
@@ -142,7 +142,7 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 
 **Date:** Jun 6, 2026  
 **Context:** Building a web UI is time-consuming and not core value. Existing tools (Open-WebUI) already solve this.  
-**Decision:** KNOX exposes CLI + MCP + Python SDK. Open-WebUI connects via API/MCP.
+**Decision:** KOMPEND exposes CLI + MCP + Python SDK. Open-WebUI connects via API/MCP.
 **Consequences:** Users who want a web UI need separate Open-WebUI install. But zero UI dev effort.
 
 ### Decision: Markdown + JSON dual output
@@ -165,8 +165,8 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 
 **Date:** Jun 5, 2026  
 **Context:** Hermes can call either MCP tools or CLI commands. Which is better?  
-**Decision:** Hermes skill calls CLI (`knox compile`, `knox parse`). Simpler, no MCP server required.
-**Consequences:** Hermes must have knox installed. But no separate MCP process to manage.
+**Decision:** Hermes skill calls CLI (`kompend compile`, `kompend parse`). Simpler, no MCP server required.
+**Consequences:** Hermes must have kompend installed. But no separate MCP process to manage.
 
 ## Testing
 
@@ -207,7 +207,7 @@ All architectural, tooling, and design decisions for KNOX. Each entry includes t
 - Same analytical pattern (fractal) applies at document and wiki levels.
 - 5-phase implementation: data structures (Phase 0) → chunker (Phase 1) → extraction + summaries (Phase 2) → entity registry + xref (Phase 3) → adaptive retrieval (Phase 4) → multi-resolution compilation (Phase 5).
 
-**Related:** knox-evmg, knox-ctwe, knox-hhf5, knox-rves, knox-96qo, knox-ne47
+**Related:** kompend-evmg, kompend-ctwe, kompend-hhf5, kompend-rves, kompend-96qo, kompend-ne47
 
 ## Extraction Retry & Failure Detection (2026-03)
 
@@ -277,8 +277,8 @@ flowchart LR
 **Date:** Sep 24, 2026
 
 **Context:** The "migrate all LLM-based actions to agentic multi-turn workflows"
-epic (`knox-0iv2`) proposed converting every LLM call into a tool-using agent.
-A read-only code audit (`.agents/history/2026-09-24-knox-0iv2-audit.md`) found
+epic (`kompend-0iv2`) proposed converting every LLM call into a tool-using agent.
+A read-only code audit (`.agents/history/2026-09-24-kompend-0iv2-audit.md`) found
 that several actions are single-shot by design, that proposed agentic variants
 were built but never wired (then removed, or reachable only from tests), and
 that two areas are satisfied by a different design. This entry records the
@@ -311,9 +311,9 @@ tool-using agent is more capable.
   planned agentic capture was never built.
 
 The legacy template `GenerationAgent` and its `generate_all_pages()` loop were
-removed in `knox-0iv2.12`. An `Agentic*` class file existing on disk is **not**
+removed in `kompend-0iv2.12`. An `Agentic*` class file existing on disk is **not**
 evidence that an agentic path is wired — wiring status is tracked in
-`knox-0iv2`.
+`kompend-0iv2`.
 
 **Consequences:**
 
@@ -323,4 +323,4 @@ evidence that an agentic path is wired — wiring status is tracked in
   on-demand fetching or cross-item synthesis in one session (remediation,
   verification, write, distill, generation, overview).
 
-**Related:** `knox-0iv2`, `knox-0iv2.7`, `knox-0iv2.8`, `knox-0iv2.9`, `knox-0iv2.11`, `knox-0iv2.13`, `knox-0iv2.14`
+**Related:** `kompend-0iv2`, `kompend-0iv2.7`, `kompend-0iv2.8`, `kompend-0iv2.9`, `kompend-0iv2.11`, `kompend-0iv2.13`, `kompend-0iv2.14`

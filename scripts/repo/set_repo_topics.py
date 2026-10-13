@@ -27,7 +27,7 @@ def main() -> None:
         sys.exit(1)
 
     # Call Forgejo API
-    url = "https://codeberg.org/api/v1/repos/jr2804/knox/topics"
+    url = "https://codeberg.org/api/v1/repos/jr2804/kompend/topics"
     data = json.dumps({"topics": keywords}).encode("utf-8")
     req = urllib.request.Request(url, data=data, method="PUT")
     req.add_header("Authorization", f"token {token}")

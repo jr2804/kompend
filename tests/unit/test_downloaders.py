@@ -1,4 +1,4 @@
-"""Tests for KNOX downloaders and duplicate detection."""
+"""Tests for KOMPEND downloaders and duplicate detection."""
 
 from __future__ import annotations
 
@@ -10,12 +10,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from knox.core.paths import DOWNLOADED_FILE, KNOX_DIR
-from knox.core.store import open_store, vault_db_path
-from knox.core.store.schema import DOWNLOADED_TABLE
-from knox.preprocessing.downloaders.crawler import WebCrawler
-from knox.preprocessing.downloaders.duplicate_detector import DuplicateDetector
-from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
+from kompend.core.paths import DOWNLOADED_FILE, KOMP_DIR
+from kompend.core.store import open_store, vault_db_path
+from kompend.core.store.schema import DOWNLOADED_TABLE
+from kompend.preprocessing.downloaders.crawler import WebCrawler
+from kompend.preprocessing.downloaders.duplicate_detector import DuplicateDetector
+from kompend.preprocessing.downloaders.http_downloader import HTTPDownloader
 
 # ---------------------------------------------------------------------------
 # HTTPDownloader
@@ -43,7 +43,7 @@ class TestHTTPDownloader:
 
     def test_download_same_url_twice_skips_second(self, tmp_path: Path) -> None:
         """When same URL is downloaded twice with detector, second is skipped."""
-        detector = DuplicateDetector(tmp_path / KNOX_DIR / DOWNLOADED_FILE)
+        detector = DuplicateDetector(tmp_path / KOMP_DIR / DOWNLOADED_FILE)
         downloader = HTTPDownloader(timeout=5, detector=detector)
 
         with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
@@ -58,7 +58,7 @@ class TestHTTPDownloader:
 
     def test_download_same_url_file_deleted_redownloads(self, tmp_path: Path) -> None:
         """When file was deleted but URL is known, re-download occurs."""
-        detector = DuplicateDetector(tmp_path / KNOX_DIR / DOWNLOADED_FILE)
+        detector = DuplicateDetector(tmp_path / KOMP_DIR / DOWNLOADED_FILE)
         downloader = HTTPDownloader(timeout=5, detector=detector)
 
         with patch("urllib.request.urlopen", return_value=self._mock_urlopen()):
@@ -273,7 +273,7 @@ class TestWebCrawler:
             return mock_result
 
         with patch(
-            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
+            "kompend.preprocessing.downloaders.crawler.AsyncWebCrawler",
         ) as mock_crawler_cls:
             mock_instance = MagicMock()
             mock_instance.arun.side_effect = _fake_arun
@@ -290,14 +290,14 @@ class TestWebCrawler:
         """When same URL is crawled twice with detector, second is skipped."""
         pytest.importorskip("crawl4ai")
 
-        detector = DuplicateDetector(tmp_path / KNOX_DIR / DOWNLOADED_FILE)
+        detector = DuplicateDetector(tmp_path / KOMP_DIR / DOWNLOADED_FILE)
         mock_result = MagicMock()
         mock_result.markdown = "# Hello\n\nThis is markdown."
 
         async def _fake_arun(_url: str) -> MagicMock:  # noqa: ANN401
             return mock_result
 
-        with patch("knox.preprocessing.downloaders.crawler.AsyncWebCrawler") as mock_crawler_cls:
+        with patch("kompend.preprocessing.downloaders.crawler.AsyncWebCrawler") as mock_crawler_cls:
             mock_instance = MagicMock()
             mock_instance.arun.side_effect = _fake_arun
             mock_crawler_cls.return_value.__aenter__.return_value = mock_instance
@@ -321,7 +321,7 @@ class TestWebCrawler:
             return mock_result
 
         with patch(
-            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
+            "kompend.preprocessing.downloaders.crawler.AsyncWebCrawler",
         ) as mock_crawler_cls:
             mock_instance = MagicMock()
             mock_instance.arun.side_effect = _fake_arun
@@ -343,7 +343,7 @@ class TestWebCrawler:
             return mock_result
 
         with patch(
-            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
+            "kompend.preprocessing.downloaders.crawler.AsyncWebCrawler",
         ) as mock_crawler_cls:
             mock_instance = MagicMock()
             mock_instance.arun.side_effect = _fake_arun
@@ -381,7 +381,7 @@ class TestWebCrawler:
                 return m
 
         with patch(
-            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
+            "kompend.preprocessing.downloaders.crawler.AsyncWebCrawler",
             _FakeAsyncWebCrawler,
         ):
             # undetected=False -> stealth fallback path
@@ -416,11 +416,11 @@ class TestWebCrawler:
 
         with (
             patch(
-                "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
+                "kompend.preprocessing.downloaders.crawler.AsyncWebCrawler",
                 _FakeAsyncWebCrawler,
             ),
             patch(
-                "knox.preprocessing.downloaders.crawler._detect_real_browser_channel",
+                "kompend.preprocessing.downloaders.crawler._detect_real_browser_channel",
                 return_value="msedge",
             ),
         ):
@@ -453,7 +453,7 @@ class TestWebCrawler:
                 return m
 
         with patch(
-            "knox.preprocessing.downloaders.crawler.AsyncWebCrawler",
+            "kompend.preprocessing.downloaders.crawler.AsyncWebCrawler",
             _FakeAsyncWebCrawler,
         ):
             # _detect_real_browser_channel returns None via autouse fixture
@@ -468,8 +468,8 @@ class TestWebCrawler:
         is present (stealth fallback) in every test, unless overridden.
         """
         with (
-            patch("knox.preprocessing.downloaders.crawler._chromium_available", return_value=True),
-            patch("knox.preprocessing.downloaders.crawler._detect_real_browser_channel", return_value=None),
+            patch("kompend.preprocessing.downloaders.crawler._chromium_available", return_value=True),
+            patch("kompend.preprocessing.downloaders.crawler._detect_real_browser_channel", return_value=None),
         ):
             yield
 
@@ -488,7 +488,7 @@ class TestDuplicateDetector:
 
         assert not detector.is_duplicate("https://example.com")
         # Clean cut: the legacy flat file is never written.
-        assert not (tmp_path / KNOX_DIR / DOWNLOADED_FILE).exists()
+        assert not (tmp_path / KOMP_DIR / DOWNLOADED_FILE).exists()
 
     def test_mark_and_check(self, tmp_path: Path) -> None:
         """Marking a URL makes it detectable as duplicate."""
@@ -522,7 +522,7 @@ class TestDuplicateDetector:
 
     def test_legacy_file_ignored(self, tmp_path: Path) -> None:
         """A leftover flat ``downloaded.json`` is not read (clean cut)."""
-        legacy = tmp_path / KNOX_DIR / DOWNLOADED_FILE
+        legacy = tmp_path / KOMP_DIR / DOWNLOADED_FILE
         legacy.parent.mkdir(parents=True, exist_ok=True)
         legacy.write_text('{"https://example.com/old": "oldhash"}', encoding="utf-8")
 
@@ -555,4 +555,4 @@ class TestDuplicateDetector:
 
     @staticmethod
     def _detector(tmp_path: Path) -> DuplicateDetector:
-        return DuplicateDetector(tmp_path / KNOX_DIR / DOWNLOADED_FILE)
+        return DuplicateDetector(tmp_path / KOMP_DIR / DOWNLOADED_FILE)

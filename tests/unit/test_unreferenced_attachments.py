@@ -10,19 +10,19 @@ precise:
 - auto-adoption registers writer copies in the manifest too (it cannot tell
   them from a manually dropped file), so "registered" does not mean "user
   file" — writer output is recognized by being byte-identical to an extracted
-  image in ``.knox/cache/images/``.
+  image in ``.kompend/cache/images/``.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.core.models.attachments import Attachment, AttachmentManifest
-from knox.core.paths import VaultPaths
-from knox.lint.base import LintRuleOutcome
-from knox.lint.runner import LintRunner
-from knox.lint.structural import UnreferencedAttachmentsRule, unreferenced_attachment_files
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.attachments import Attachment, AttachmentManifest
+from kompend.core.paths import VaultPaths
+from kompend.lint.base import LintRuleOutcome
+from kompend.lint.runner import LintRunner
+from kompend.lint.structural import UnreferencedAttachmentsRule, unreferenced_attachment_files
 
 _STEM = "report"
 

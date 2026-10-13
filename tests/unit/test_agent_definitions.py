@@ -8,13 +8,13 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from knox.acp.definitions import (
+from kompend.acp.definitions import (
     AgentDefinition,
     AgentLLMConfig,
     AgentPromptConfig,
     AgentTask,
 )
-from knox.acp.registry import AgentRegistry
+from kompend.acp.registry import AgentRegistry
 
 # ── AgentDefinition ────────────────────────────────────────────────────
 
@@ -148,7 +148,7 @@ class TestAgentRegistry:
 
     def test_vault_agent_overrides_builtin(self, tmp_path: Path) -> None:
         """Vault agent with same name as built-in overrides it."""
-        vault_agents = tmp_path / ".knox" / "agents"
+        vault_agents = tmp_path / ".kompend" / "agents"
         vault_agents.mkdir(parents=True)
         # Override generic with a custom prompt
         (vault_agents / "generic.toml").write_text(
@@ -169,7 +169,7 @@ class TestAgentRegistry:
 
     def test_vault_agent_added(self, tmp_path: Path) -> None:
         """Vault-only agent is discovered alongside built-in."""
-        vault_agents = tmp_path / ".knox" / "agents"
+        vault_agents = tmp_path / ".kompend" / "agents"
         vault_agents.mkdir(parents=True)
         (vault_agents / "researcher.toml").write_text(
             textwrap.dedent("""\
@@ -200,7 +200,7 @@ class TestAgentRegistry:
 
     def test_active_for_resolves_config(self, tmp_path: Path) -> None:
         """Config-specified agent is resolved."""
-        vault_agents = tmp_path / ".knox" / "agents"
+        vault_agents = tmp_path / ".kompend" / "agents"
         vault_agents.mkdir(parents=True)
         (vault_agents / "my-compiler.toml").write_text(
             textwrap.dedent("""\
@@ -228,7 +228,7 @@ class TestAgentRegistry:
 
     def test_list_by_task_groups_correctly(self, tmp_path: Path) -> None:
         """Agents are grouped by task."""
-        vault_agents = tmp_path / ".knox" / "agents"
+        vault_agents = tmp_path / ".kompend" / "agents"
         vault_agents.mkdir(parents=True)
         for task in ("compile", "query"):
             (vault_agents / f"{task}-1.toml").write_text(

@@ -1,12 +1,12 @@
-"""Tests for KNOX Query Memory layer."""
+"""Tests for KOMPEND Query Memory layer."""
 
 from pathlib import Path
 
 import pytest
 
-from knox.memory.lifecycle import MemoryStore as LifecycleStore
-from knox.memory.lifecycle import NodeState
-from knox.memory.store import MemoryEntry, MemoryField, MemoryStore
+from kompend.memory.lifecycle import MemoryStore as LifecycleStore
+from kompend.memory.lifecycle import NodeState
+from kompend.memory.store import MemoryEntry, MemoryField, MemoryStore
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -103,7 +103,7 @@ class TestUserTracking:
         """Regression: a second MemoryStore on the same path must not crash.
 
         Previously ``create_and_open`` raised on an existing path, so every
-        ``knox memory add`` after the first failed before writing the log.
+        ``kompend memory add`` after the first failed before writing the log.
         """
         s1 = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
         s1.add_entry(query="q1", answer="a1", memory_by="alice")
@@ -133,7 +133,7 @@ class TestLifecycleStore:
     """Memory lifecycle state persists to the vault store."""
 
     def test_save_load_roundtrip(self, temp_wiki_dir: Path) -> None:
-        store_file = temp_wiki_dir / ".knox" / "memory.json"
+        store_file = temp_wiki_dir / ".kompend" / "memory.json"
         original = LifecycleStore(
             states={
                 "n1": NodeState(node_id="n1", title="Alpha", confidence=0.8, tier="episodic", review_count=3),
@@ -154,7 +154,7 @@ class TestLifecycleStore:
         assert n2.is_superseded()
 
     def test_load_absent_store_is_empty(self, temp_wiki_dir: Path) -> None:
-        loaded = LifecycleStore.load(temp_wiki_dir / ".knox" / "memory.json")
+        loaded = LifecycleStore.load(temp_wiki_dir / ".kompend" / "memory.json")
         assert loaded.states == {}
 
 

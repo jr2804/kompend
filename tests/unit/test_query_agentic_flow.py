@@ -15,13 +15,13 @@ from typing import Any, cast
 import pytest
 from pydantic_ai import RunContext
 
-from knox.agents.types import QueryAgentDeps, QuerySearchProtocol
-from knox.cli._query_helpers import should_use_agentic
-from knox.compilation.query_tools import add_finding, read_page, search_wiki
-from knox.core.config import ResolvedConfig
-from knox.core.models import CompiledWiki, WikiNode
-from knox.search.filters import matches_attr_filter, matches_tag_filter
-from knox.search.retriever import KeywordRetriever, SearchResult, run_agentic_query
+from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
+from kompend.cli._query_helpers import should_use_agentic
+from kompend.compilation.query_tools import add_finding, read_page, search_wiki
+from kompend.core.config import ResolvedConfig
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.search.filters import matches_attr_filter, matches_tag_filter
+from kompend.search.retriever import KeywordRetriever, SearchResult, run_agentic_query
 
 
 @dataclass
@@ -135,7 +135,7 @@ def test_run_agentic_query_builds_deps_and_returns_answer(monkeypatch: pytest.Mo
         seen["model"] = model
         return _Agent()
 
-    monkeypatch.setattr("knox.search.retriever.make_agentic_query_agent", _factory)
+    monkeypatch.setattr("kompend.search.retriever.make_agentic_query_agent", _factory)
     answer = run_agentic_query(
         "What is P.863?",
         retriever=fake,
@@ -189,7 +189,7 @@ def test_agentic_gating_allows_filtered_queries() -> None:
 def _cfg(enabled: bool) -> ResolvedConfig:
     return cast(
         ResolvedConfig,
-        SimpleNamespace(knox=SimpleNamespace(search=SimpleNamespace(agentic=SimpleNamespace(enabled=enabled)))),
+        SimpleNamespace(kompend=SimpleNamespace(search=SimpleNamespace(agentic=SimpleNamespace(enabled=enabled)))),
     )
 
 

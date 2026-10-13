@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""Check parity between KNOX CLI commands and MCP server tools.
+"""Check parity between KOMPEND CLI commands and MCP server tools.
 
-This script verifies that every functional KNOX CLI command has a matching
+This script verifies that every functional KOMPEND CLI command has a matching
 MCP server tool so the same functionality is reachable over the MCP surface.
 
 Design notes
@@ -21,9 +21,9 @@ Design notes
 
 import sys
 
-from knox.cli.app import app as cli_app
-from knox.cli.app import register_all_commands
-from knox.mcp.server import server as mcp_server
+from kompend.cli.app import app as cli_app
+from kompend.cli.app import register_all_commands
+from kompend.mcp.server import server as mcp_server
 
 # CLI commands that intentionally have NO MCP tool equivalent.
 # These are server-bootstrap (mcp/serve) or interactive/lifecycle (agent/agents)
@@ -47,7 +47,7 @@ MCP_TO_CLI_ALIASES: dict[str, str] = {
 
 
 def main() -> int:
-    print("Checking KNOX CLI vs MCP Parity...")
+    print("Checking KOMPEND CLI vs MCP Parity...")
 
     cli_commands = get_cli_commands()
     mcp_tools = get_mcp_tools()

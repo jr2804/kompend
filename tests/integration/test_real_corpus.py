@@ -31,12 +31,12 @@ from pathlib import Path
 
 import pytest
 
-from knox.chunking import HierarchicalChunker
-from knox.compilation.graph import GraphCompiler
-from knox.core.models import ParsedDocument, ResolvedChunk
-from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
-from knox.preprocessing.parsers import build_default_router
-from knox.preprocessing.parsers.base import BaseParser
+from kompend.chunking import HierarchicalChunker
+from kompend.compilation.graph import GraphCompiler
+from kompend.core.models import ParsedDocument, ResolvedChunk
+from kompend.preprocessing.downloaders.http_downloader import HTTPDownloader
+from kompend.preprocessing.parsers import build_default_router
+from kompend.preprocessing.parsers.base import BaseParser
 
 #: Number of smallest PDFs to use as the corpus sample. Kept low so the
 #: suite stays under 30 seconds.
@@ -124,7 +124,7 @@ class TestURLDownload:
     @pytest.mark.skipif(not _PARSER_OK, reason="No PDF parser backend available")
     def test_download_first_url(self, test_urls: list[str], tmp_path: Path) -> None:
         """Download the first URL and verify the response is a non-empty file."""
-        pytest.importorskip("knox.preprocessing.downloaders.http_downloader")
+        pytest.importorskip("kompend.preprocessing.downloaders.http_downloader")
         assert len(test_urls) > 0
 
         downloader = HTTPDownloader(timeout=30)

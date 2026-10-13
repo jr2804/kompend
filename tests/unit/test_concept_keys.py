@@ -2,14 +2,14 @@
 
 Both the ``wicer`` (GraphCompiler) and TwoPhase backends must reject the
 same table/spreadsheet structural artifacts, so the logic lives in
-``knox.compilation.concept_keys`` and is exercised from here.
+``kompend.compilation.concept_keys`` and is exercised from here.
 """
 
 from __future__ import annotations
 
 import pytest
 
-from knox.compilation.concept_keys import (
+from kompend.compilation.concept_keys import (
     is_structural_concept,
     nearest_alias,
     normalize_concept_key,

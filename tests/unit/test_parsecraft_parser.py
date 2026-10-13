@@ -1,16 +1,16 @@
-"""Tests for the parsecraft adapter (``knox.preprocessing.parsers.parsecraft_parser``).
+"""Tests for the parsecraft adapter (``kompend.preprocessing.parsers.parsecraft_parser``).
 
-Fidelity contract: parsecraft IR → KNOX elements must preserve element kind,
+Fidelity contract: parsecraft IR → KOMPEND elements must preserve element kind,
 page numbers, reading order, heading levels, and table shape — and must NOT
 emit content when parsecraft genuinely produced none. The registry contract is
 also verified: parsecraft must NOT broaden default discovery (Phase 1's
 byte-identical guarantee), only explicit selection may.
 
 The adapter module is imported lazily inside each test/fixture: importing it
-triggers ``register_backend("parsecraft")`` (KNOX's module-level
+triggers ``register_backend("parsecraft")`` (KOMPEND's module-level
 self-registration convention), which broadens ``get_all_extensions()`` for the
 rest of the process and breaks exact-count discovery tests elsewhere in the
-suite. Default KNOX runs never import the module, so the guarantee holds there.
+suite. Default KOMPEND runs never import the module, so the guarantee holds there.
 """
 
 from __future__ import annotations
@@ -46,16 +46,16 @@ from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
 from parsecraft.routing.models import Intent  # noqa: E402 — guarded by the importorskip above
 
-from knox.core.models import ElementType
-from knox.preprocessing.parsers import _registry as registry_module
-from knox.preprocessing.parsers._registry import KNOWN_BACKENDS
+from kompend.core.models import ElementType
+from kompend.preprocessing.parsers import _registry as registry_module
+from kompend.preprocessing.parsers._registry import KNOWN_BACKENDS
 
 #: Resolved lazily via importlib: a static ``from ... import parsecraft_parser``
 #: would register the backend at collection time (pyreorder hoists function-level
 #: imports to module level — the TYPE_CHECKING incident, commit 010097d) and
 #: broaden ``get_all_extensions()`` for the rest of the test process.
 
-# ── Fidelity: IR → KNOX elements (live pipeline, native-markdown) ────────
+# ── Fidelity: IR → KOMPEND elements (live pipeline, native-markdown) ────────
 
 
 class TestMarkdownFidelity:
@@ -142,7 +142,7 @@ class TestMarkdownFidelity:
 
 class TestFailureShapes:
     def test_total_exhaustion_raises_never_emits_placeholders(self) -> None:
-        """All pages exhausted → KNOX parse failure, not empty content."""
+        """All pages exhausted → KOMPEND parse failure, not empty content."""
         adapter = _adapter()
         with pytest.raises(adapter.ParsecraftParseError, match="all candidates failed"):
             _map(_document([_exhausted_page(1)]))
@@ -194,7 +194,7 @@ class TestRegistryContract:
         assert not can_parse(Path("archive.xyz123"))
 
     def test_default_discovery_follows_the_default_backend(self, tmp_path: Path) -> None:
-        """A default KNOX run discovers the default backend's suffixes.
+        """A default KOMPEND run discovers the default backend's suffixes.
 
         This test's earlier form pinned the opposite policy: parsecraft was
         kept out of ``KNOWN_BACKENDS`` so its text family could not widen
@@ -208,7 +208,7 @@ class TestRegistryContract:
 
         repo_root = Path(__file__).parents[2]
         probe = (
-            "from knox.preprocessing.parsers._registry import get_all_extensions; "
+            "from kompend.preprocessing.parsers._registry import get_all_extensions; "
             "ext = get_all_extensions(['parsecraft']); "
             "print(all(s in ext for s in ('.c', '.h', '.py', '.txt', '.pdf')))"
         )
@@ -564,7 +564,7 @@ def parser() -> Any:
 
 def _adapter() -> Any:
     """Lazy accessor for the adapter module (see module docstring)."""
-    return importlib.import_module("knox.preprocessing.parsers.parsecraft_parser")
+    return importlib.import_module("kompend.preprocessing.parsers.parsecraft_parser")
 
 
 @pytest.fixture

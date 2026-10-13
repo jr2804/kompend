@@ -2,9 +2,9 @@
 
 Measures latency and throughput of the PydanticAI agent layer without
 contacting a real LLM. The underlying ``run_sync`` is mocked so the
-benchmark exercises the full KNOX wiring path:
+benchmark exercises the full KOMPEND wiring path:
 
-  Model string → build_model → KnoxModel → Agent construction →
+  Model string → build_model → KompendModel → Agent construction →
   Template render → run(deps) → result validation
 
 Reports:
@@ -31,22 +31,22 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from knox.agents.deps import PipelineAgentDeps, QueryDeps, ToolGenerationDeps
-from knox.compilation.schema import ExtractionOutput
+from kompend.agents.deps import PipelineAgentDeps, QueryDeps, ToolGenerationDeps
+from kompend.compilation.schema import ExtractionOutput
 
-# Agents to benchmark — each is a KnoxAgentBase subclass
+# Agents to benchmark — each is a KompendAgentBase subclass
 _AGENT_SPECS: list[tuple[str, str, str, str, bool]] = [
     # (label, module_name, class_name, template_dir, is_query_agent)
-    ("extraction", "knox.agents.extraction", "ExtractionAgent", "compilation", False),
-    ("generation", "knox.agents.generation", "AgenticGenerationAgent", "compilation", False),
-    ("query", "knox.agents.query", "QueryAgent", "query", True),
+    ("extraction", "kompend.agents.extraction", "ExtractionAgent", "compilation", False),
+    ("generation", "kompend.agents.generation", "AgenticGenerationAgent", "compilation", False),
+    ("query", "kompend.agents.query", "QueryAgent", "query", True),
 ]
 
 pytestmark = pytest.mark.benchmark
 
 
 class TestAgentConstructionBenchmark:
-    """Benchmark: agent construction latency (model string → KnoxAgentBase instance)."""
+    """Benchmark: agent construction latency (model string → KompendAgentBase instance)."""
 
     @pytest.mark.parametrize(("label", "module_name", "cls_name", "_dir", "_is_query"), _AGENT_SPECS)
     def test_construction_latency(self, label: str, module_name: str, cls_name: str, _dir: str, _is_query: bool) -> None:

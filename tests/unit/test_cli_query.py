@@ -1,4 +1,4 @@
-"""Tests for `knox query` output-format encoding.
+"""Tests for `kompend query` output-format encoding.
 
 Covers the four LlmDataFormat outputs (text/json/toon/ison). Encoding logic
 is exercised directly so the test stays fast and deterministic (no LLM,
@@ -11,13 +11,13 @@ import json
 
 import toon_format as _toon
 
-from knox.cli.cmds.knowledge.query import (
+from kompend.cli.cmds.knowledge.query import (
     encode_raw_results,
     encode_structured,
     structured_answer,
 )
-from knox.core.config._configs import LlmDataFormat
-from knox.search.retriever import SearchResult, SynthesisResult
+from kompend.core.config._configs import LlmDataFormat
+from kompend.search.retriever import SearchResult, SynthesisResult
 
 
 class TestStructuredAnswer:

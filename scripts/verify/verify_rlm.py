@@ -13,7 +13,7 @@ Not collected by pytest — tests/AGENTS.md forbids real LLM calls in any
 test. Run manually:
 
     uv run python scripts/verify/verify_rlm.py            # default model
-    KNOX_TEST_RLM_MODEL=gemma4:e2b uv run python scripts/verify/verify_rlm.py
+    KOMP_TEST_RLM_MODEL=gemma4:e2b uv run python scripts/verify/verify_rlm.py
 
 Exits 0 (SKIP) when Ollama or the model is unavailable; non-zero on
 verification failure.
@@ -26,11 +26,11 @@ import os
 import sys
 import urllib.request
 
-from knox.agents.deps import QueryDeps
-from knox.agents.query import QueryAgent
-from knox.core.config._configs import RlmConfig
+from kompend.agents.deps import QueryDeps
+from kompend.agents.query import QueryAgent
+from kompend.core.config._configs import RlmConfig
 
-MODEL = os.environ.get("KNOX_TEST_RLM_MODEL", "hf.co/unsloth/Qwen3.5-2B-MTP-GGUF:UD-Q8_K_XL")
+MODEL = os.environ.get("KOMP_TEST_RLM_MODEL", "hf.co/unsloth/Qwen3.5-2B-MTP-GGUF:UD-Q8_K_XL")
 #: Verified on this machine: LFM2.5-8B-A1B ignored the tool, gemma4:e2b
 #: emits code as text instead of a tool call, Qwen3.5-4B is too slow.
 #: Qwen3.5-2B-MTP calls execute_code and answers correctly (~9 min total).

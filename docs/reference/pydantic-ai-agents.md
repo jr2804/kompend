@@ -1,7 +1,7 @@
 # PydanticAI Agents & Skills
 
-Every LLM call in KNOX routes through a **PydanticAI agent** in
-`knox.agents.*`. Agents come in two shapes:
+Every LLM call in KOMPEND routes through a **PydanticAI agent** in
+`kompend.agents.*`. Agents come in two shapes:
 
 - **Single-shot** — one structured-output call that returns a typed Pydantic
   model.
@@ -26,10 +26,10 @@ This guide covers:
 
 ### Base class
 
-All agents inherit from `KnoxAgentBase[ResultT, DepsT]` — a KNOX wrapper around
+All agents inherit from `KompendAgentBase[ResultT, DepsT]` — a KOMPEND wrapper around
 `pydantic_ai.Agent` that adds:
 
-- **Model bridge** — builds a [`KnoxModel`](#knoxmodel) from a
+- **Model bridge** — builds a [`KompendModel`](#kompendmodel) from a
   `provider/model` string.
 - **Typed result and deps** — the two generic parameters supply the output
   schema (`ResultT`) and the run context dataclass (`DepsT`). They are resolved
@@ -70,13 +70,13 @@ result = agent.run(PipelineAgentDeps(text=chunk, source_id=stem))
 
 A class file existing is **not** evidence that it is wired: several agents are
 implemented but have no production construction site. The inventory below
-marks this explicitly, and wiring status is tracked in the epic `knox-0iv2`.
+marks this explicitly, and wiring status is tracked in the epic `kompend-0iv2`.
 
 ---
 
 ## Agent inventory
 
-> `Output` / `Deps` are the `KnoxAgentBase` generic parameters. `Template role`
+> `Output` / `Deps` are the `KompendAgentBase` generic parameters. `Template role`
 > is the `role:` value declared in the agent's prompt frontmatter. `Status` is
 > from a call-site scan: **wired** = a production construction site exists,
 > **not wired** = class/factory exists but production never constructs it,
@@ -140,12 +140,12 @@ production path constructs them. Do not describe them as live pipeline stages.
 | `WikiIndexAgent` | `dict[str, Any]` | `PipelineAgentDeps` | No construction site; superseded by `AgenticOverviewAgent`. |
 
 The legacy template `GenerationAgent` (and its `generate_all_pages()` loop) were
-removed in `knox-0iv2.12`.
+removed in `kompend-0iv2.12`.
 
-### KnoxModel
+### KompendModel
 
-`KnoxModel` is a thin delegate that wraps any native pydantic-ai `Model`
-and adds KNOX-specific concerns:
+`KompendModel` is a thin delegate that wraps any native pydantic-ai `Model`
+and adds KOMPEND-specific concerns:
 
 - **Reasoning effort mapping** — `_merge_reasoning()` translates the
   config string (`"none"`, `"low"`, `"medium"`, `"high"`, …) into the
@@ -201,7 +201,7 @@ instructions = '''
 |------|----------|
 | Domain terminology, abbreviations, style rules | **Skill** (`compile.skills`) |
 | Change what the LLM is asked to do | **Template** (Jinja2 `.md.j2`) |
-| Change the output schema | **Output type** (`KnoxAgentBase` generic parameter) |
+| Change the output schema | **Output type** (`KompendAgentBase` generic parameter) |
 | Change which model is used | **`default_model`** (per-role overrides are not yet applied) |
 
 Skills are additive — they augment the system prompt without replacing
@@ -225,26 +225,26 @@ Agentic agents run a multi-turn loop over pydantic-ai tools. Two mechanisms:
   these in addition to `tools=`.
 
 Attaching external **MCP servers** to an agent is still future work:
-`KnoxAgentBase._build_agent()` is where pydantic-ai tool/capability servers
+`KompendAgentBase._build_agent()` is where pydantic-ai tool/capability servers
 would be registered, and pipeline callers would need no change.
 
 ---
 
 ## Writing a new agent
 
-1. **Create the agent class** in `src/knox/agents/<name>.py`. The result and
+1. **Create the agent class** in `src/kompend/agents/<name>.py`. The result and
    deps types are the generic parameters — do **not** declare a `result_type`
    attribute:
 
 ```python
 from typing import ClassVar
 
-from knox.agents.base import KnoxAgentBase
-from knox.agents.deps import PipelineAgentDeps
-from knox.compilation.schema import MyOutput  # or define a Pydantic model
+from kompend.agents.base import KompendAgentBase
+from kompend.agents.deps import PipelineAgentDeps
+from kompend.compilation.schema import MyOutput  # or define a Pydantic model
 
 
-class MyAgent(KnoxAgentBase[MyOutput, PipelineAgentDeps]):
+class MyAgent(KompendAgentBase[MyOutput, PipelineAgentDeps]):
     """One-line description of what this agent does."""
 
     template_prefix: ClassVar[str] = "compilation/"
@@ -252,7 +252,7 @@ class MyAgent(KnoxAgentBase[MyOutput, PipelineAgentDeps]):
     system_template_name: ClassVar[str] = "my_system.md.j2"
 ```
 
-2. **Create the Jinja2 templates** in `src/knox/templates/<prefix>/`:
+2. **Create the Jinja2 templates** in `src/kompend/templates/<prefix>/`:
 
    - `<name>_system.md.j2` — system prompt, with a `role:` in its frontmatter
    - `<name>_prompt.md.j2` — user prompt template (receives `deps`
@@ -266,7 +266,7 @@ class MyAgent(KnoxAgentBase[MyOutput, PipelineAgentDeps]):
    `make_agentic_<name>_agent` factory next to the class and call it from the
    CLI/MCP layer. There is no central registry.
 
-4. **Export** the agent from `src/knox/agents/__init__.py` if callers import it
+4. **Export** the agent from `src/kompend/agents/__init__.py` if callers import it
    from the package.
 
 See the [LLM Configuration guide](../guides/llm-config.md) for model

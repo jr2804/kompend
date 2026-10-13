@@ -14,8 +14,8 @@ import time
 
 import pytest
 
-from knox.chunking import HierarchicalChunker
-from knox.core.models import Chunk, ElementType, ParsedDocument
+from kompend.chunking import HierarchicalChunker
+from kompend.core.models import Chunk, ElementType, ParsedDocument
 from tests.fixtures.documents import make_test_doc
 
 pytestmark = pytest.mark.benchmark

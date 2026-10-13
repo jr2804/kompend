@@ -1,30 +1,30 @@
-# KNOX
+# KOMPEND
 
 <p align="center">
   <img src="./assets/readme/hero.svg" width="100%"
-       alt="KNOX — Knowledge Organizer for eXtended documents: compile scattered documents into an interlinked, queryable wiki with any LLM">
+       alt="KOMPEND — Knowledge Organizer for eXtended documents: compile scattered documents into an interlinked, queryable wiki with any LLM">
 </p>
 
-KNOX refuses to pick a side in the LLM-wiki space. Existing tools either
+KOMPEND refuses to pick a side in the LLM-wiki space. Existing tools either
 demand a frontier-model subscription **and** lock you into their stack, or
 insist everything run on an underpowered local model while lecturing you
-about _privacy_. KNOX is provider-agnostic, adapts to whatever LLM you have
+about _privacy_. KOMPEND is provider-agnostic, adapts to whatever LLM you have
 — from a local 8B model to a frontier API — and uses structure-preserving
 parsing so technical content (tables, equations, figures) survives
 extraction intact. [Read the full motivation →](docs/about/motivation.md)
 
 > **OKF v0.1 compliant** — produces [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundles by default.
-> **ACP agent** — implements the [Agent Client Protocol](https://agentclientprotocol.com) for credential-free LLM injection via `knox agent`.
+> **ACP agent** — implements the [Agent Client Protocol](https://agentclientprotocol.com) for credential-free LLM injection via `kompend agent`.
 > **PydanticAI-native** — every LLM call routes through typed agents with failover chains; [models.dev](https://models.dev) catalog resolves any provider.
 
 ## How it works
 
 <p align="center">
   <img src="./assets/readme/pipeline.svg" width="100%"
-       alt="KNOX 5-tier pipeline: Preprocessing → Chunking → Resolution → Compilation → Output">
+       alt="KOMPEND 5-tier pipeline: Preprocessing → Chunking → Resolution → Compilation → Output">
 </p>
 
-KNOX runs a 5-tier pipeline — each tier independently replaceable, with a
+KOMPEND runs a 5-tier pipeline — each tier independently replaceable, with a
 clear `Base` interface:
 
 | Tier                 | What it does                                                                                                                                                                 | Needs LLM? |
@@ -35,29 +35,29 @@ clear `Base` interface:
 | **T4 Compilation**   | Build an interlinked `CompiledWiki` graph. Two backends: `TwoPhaseCompiler` (default, extract→generate) and `WiCERCompiler` (iterative compile→evaluate→refine).             |     ✅     |
 | **T5 Output**        | Write OKF bundles (default), Markdown, JSON, or Typst. Optionally index for semantic search and synthesize an overview.                                                      |     ❌     |
 
-`knox ingest` stops at T1 — **no LLM, no cost**. `knox compile` runs T2–T5.
+`kompend ingest` stops at T1 — **no LLM, no cost**. `kompend compile` runs T2–T5.
 
 ## Quick start
 
 ```bash
-uv tool install knox
+uv tool install kompend
 
 # 1. Initialize a project
-knox init ./my-wiki && cd ./my-wiki
+kompend init ./my-wiki && cd ./my-wiki
 
 # 2. Ingest sources (T1 only — no LLM needed)
-knox ingest                              # everything in sources/
-knox ingest paper.pdf notes.docx *.xlsx  # explicit files
-knox ingest --url https://arxiv.org/pdf/2605.07068v1
+kompend ingest                              # everything in sources/
+kompend ingest paper.pdf notes.docx *.xlsx  # explicit files
+kompend ingest --url https://arxiv.org/pdf/2605.07068v1
 
 # 3. Compile the wiki (T2–T5 — needs an LLM)
-knox compile --set compile.llm.default_model=ollama/qwen3
+kompend compile --set compile.llm.default_model=ollama/qwen3
 
 # 4. Query it
-knox query "How does attention scale with sequence length?"
+kompend query "How does attention scale with sequence length?"
 ```
 
-> **Debugging tip:** `knox parse paper.pdf --elements` inspects one file's
+> **Debugging tip:** `kompend parse paper.pdf --elements` inspects one file's
 > extracted structure before ingesting the full corpus. If parsing looks
 > wrong, fix it first — the pipeline won't recover from bad extraction.
 
@@ -65,26 +65,26 @@ knox query "How does attention scale with sequence length?"
 
 | Command                                    | Purpose                                                   |
 | ------------------------------------------ | --------------------------------------------------------- |
-| `knox init [DIR]`                          | Scaffold a wiki project (`--bare`, `--force`, `--git`)    |
-| `knox ingest FILES...`                     | Parse sources into `.knox/cache/` (T0–1, no LLM)          |
-| `knox compile FILES...`                    | Full pipeline → interlinked wiki (T2–5, needs LLM)        |
-| `knox query "..."`                         | Ask a natural-language question against the wiki          |
-| `knox organize`                            | LLM-categorize `sources/` into a hierarchy and move files |
-| `knox parse FILES...`                      | Debug: parse documents and print structure (`--elements`) |
-| `knox doctor`                              | Validate dirs, parsers, LLM/VLM connectivity              |
-| `knox status`                              | Show source/article/word counts and last compile time     |
-| `knox config get/set/list/path`            | Inspect and edit configuration (5-layer precedence)       |
-| `knox lint run`                            | Lint wiki: 8 structural + 4 LLM rules (`--fix`, `--llm`)  |
-| `knox review list/approve/reject`          | Manage the review queue for compiled pages                |
-| `knox capture "..."` / `learn` / `distill` | Capture notes → synthesize into wiki pages                |
-| `knox write "TITLE"`                       | One-shot wiki page from a title + optional sources        |
-| `knox provenance [SLUG]`               | Trace a page to its source files                          |
-| `knox memory add/search/synthesize`        | Manage query memory and context synthesis                 |
-| `knox serve`                               | Start the web UI (`--host`, `--port`, `--open`)           |
-| `knox mcp`                                 | Start the MCP server (stdio, for AI clients)              |
-| `knox agent`                               | Start the ACP agent (editor integration)                  |
+| `kompend init [DIR]`                          | Scaffold a wiki project (`--bare`, `--force`, `--git`)    |
+| `kompend ingest FILES...`                     | Parse sources into `.kompend/cache/` (T0–1, no LLM)          |
+| `kompend compile FILES...`                    | Full pipeline → interlinked wiki (T2–5, needs LLM)        |
+| `kompend query "..."`                         | Ask a natural-language question against the wiki          |
+| `kompend organize`                            | LLM-categorize `sources/` into a hierarchy and move files |
+| `kompend parse FILES...`                      | Debug: parse documents and print structure (`--elements`) |
+| `kompend doctor`                              | Validate dirs, parsers, LLM/VLM connectivity              |
+| `kompend status`                              | Show source/article/word counts and last compile time     |
+| `kompend config get/set/list/path`            | Inspect and edit configuration (5-layer precedence)       |
+| `kompend lint run`                            | Lint wiki: 8 structural + 4 LLM rules (`--fix`, `--llm`)  |
+| `kompend review list/approve/reject`          | Manage the review queue for compiled pages                |
+| `kompend capture "..."` / `learn` / `distill` | Capture notes → synthesize into wiki pages                |
+| `kompend write "TITLE"`                       | One-shot wiki page from a title + optional sources        |
+| `kompend provenance [SLUG]`               | Trace a page to its source files                          |
+| `kompend memory add/search/synthesize`        | Manage query memory and context synthesis                 |
+| `kompend serve`                               | Start the web UI (`--host`, `--port`, `--open`)           |
+| `kompend mcp`                                 | Start the MCP server (stdio, for AI clients)              |
+| `kompend agent`                               | Start the ACP agent (editor integration)                  |
 
-Full option reference: `knox <command> --help`
+Full option reference: `kompend <command> --help`
 
 ## Key subsystems
 
@@ -95,11 +95,11 @@ Full option reference: `knox <command> --help`
 | **Review queue**     | Route compiled pages through approve/reject/lock before publishing.                                                                                       |
 | **MCP server**       | Stdio server exposing `parse_document`, `compile_wiki`, `wiki_capture`, `wiki_learn` to Claude Code, Cursor, etc.                                         |
 | **ACP agent**        | Agent Client Protocol server: editors inject LLM credentials via `providers/set` — no API keys in your config.                                            |
-| **Configuration**    | 5-layer precedence: CLI > env (`KNOX_*`) > project (`.knox/config.toml`, walks up) > global (`~/.config/knox/`) > defaults.                               |
+| **Configuration**    | 5-layer precedence: CLI > env (`KOMP_*`) > project (`.kompend/config.toml`, walks up) > global (`~/.config/kompend/`) > defaults.                               |
 
 ## LLM configuration
 
-KNOX uses `provider/model` strings resolved by `build_model()`:
+KOMPEND uses `provider/model` strings resolved by `build_model()`:
 
 1. **models.dev catalog** — custom providers with known API URLs (`claudinio/`, `opencode/`, `deepseek/`) construct OpenAI-compatible models.
 2. **pydantic-ai native** — standard providers (`ollama/`, `openai/`, `anthropic/`, `google/`) via `infer_model()`.
@@ -113,7 +113,7 @@ fallback_chain = ["openai/gpt-4o"]   # tried when the primary fails
 reasoning_effort = "none"             # tame over-thinking local models
 ```
 
-KNOX auto-detects each model's context window and sizes every call to fit.
+KOMPEND auto-detects each model's context window and sizes every call to fit.
 **Recommended: a model with ≥ 32K context** (16K is the functional floor;
 the generation stage reserves 16K output tokens). See the
 [LLM configuration guide](./docs/guides/llm-config.md#context-window-requirements)
@@ -128,26 +128,26 @@ See the [LLM configuration guide](./docs/guides/llm-config.md) for the full refe
 ## Development
 
 ```bash
-git clone <repo-url> && cd knox
+git clone <repo-url> && cd kompend
 uv sync                    # install deps
-uv run knox --help         # verify CLI
+uv run kompend --help         # verify CLI
 uv run pytest tests/       # run tests
 mise test                  # run all quality checks
 ```
 
-## Installing KNOX as a dependency
+## Installing KOMPEND as a dependency
 
-The name `knox` is taken on PyPI by an unrelated certificate-management tool,
-so KNOX is not published there. Add it as a git dependency with a
+The name `kompend` is taken on PyPI by an unrelated certificate-management tool,
+so KOMPEND is not published there. Add it as a git dependency with a
 `[tool.uv.sources]` override:
 
 ```toml
 [tool.uv.sources]
-knox = { git = "https://codeberg.org/jr2804/knox.git", branch = "main" }
+kompend = { git = "https://github.com/jr2804/kompend.git", branch = "main" }
 ```
 
-Then declare it normally (e.g. `"knox[all]"` for every parser backend), and
-`uv sync` / `uv add knox[all]` will pull the real KNOX from Codeberg.
+Then declare it normally (e.g. `"kompend[all]"` for every parser backend), and
+`uv sync` / `uv add kompend[all]` will pull the real KOMPEND from Codeberg.
 
 ## License
 

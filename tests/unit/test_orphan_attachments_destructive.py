@@ -1,6 +1,6 @@
 """Tests for the destructive-fix gate and slug-mismatch fix.
 
-Regression: p863 wiki roundup (2026-09-10) — ``knox attachments no-ingest
+Regression: p863 wiki roundup (2026-09-10) — ``kompend attachments no-ingest
 --all`` appeared to delete 248 attachment files. Root cause chain:
 
 1. ``OrphanAttachmentsRule.check()`` computed live source slugs from the
@@ -20,13 +20,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models.attachments import Attachment, AttachmentManifest
-from knox.core.models.wiki import CompiledWiki
-from knox.core.paths import attachment_slugs_for_source
-from knox.core.pipeline.state import SourceState, TierState, TierStateStore
-from knox.lint.base import LintResult, LintRuleOutcome
-from knox.lint.runner import LintRunner
-from knox.lint.structural import OrphanAttachmentsRule
+from kompend.core.models.attachments import Attachment, AttachmentManifest
+from kompend.core.models.wiki import CompiledWiki
+from kompend.core.paths import attachment_slugs_for_source
+from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
+from kompend.lint.base import LintResult, LintRuleOutcome
+from kompend.lint.runner import LintRunner
+from kompend.lint.structural import OrphanAttachmentsRule
 
 
 class TestAttachmentSlugsForSource:
@@ -116,12 +116,12 @@ class TestDestructiveGate:
 
 def _seed_compile_state(vault: Path) -> None:
     """Seed tier state via the store so the orphan rule's compile gate passes."""
-    store = TierStateStore(vault / ".knox" / "compile_state.json")
+    store = TierStateStore(vault / ".kompend" / "compile_state.json")
     store.save(TierState(entries={"report": SourceState(stem="report", source_file="sources/report.pdf", content_hash="h")}))
 
 
 def _seed_manifest(base_dir: Path, path: str) -> None:
-    manifest = AttachmentManifest(base_dir / ".knox" / "attachments.jsonl")
+    manifest = AttachmentManifest(base_dir / ".kompend" / "attachments.jsonl")
     manifest.append(Attachment(path=path, source="orphan-source", ingestible=True))
 
 

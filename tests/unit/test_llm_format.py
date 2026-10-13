@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from knox.llm.format import salvage_json
+from kompend.llm.format import salvage_json
 from tests.conftest import as_obj
 
 

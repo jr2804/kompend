@@ -1,8 +1,8 @@
 """Regression: lint consumers read the compiled wiki from the vault store.
 
-Previously ``run_full_lint_flow`` gated on ``.knox/last_wiki.json`` existing, and
+Previously ``run_full_lint_flow`` gated on ``.kompend/last_wiki.json`` existing, and
 ``_load_degree_map`` parsed that file — but nothing writes it since the store
-migration, so ``knox lint all`` raised "No compiled wiki found" even after a
+migration, so ``kompend lint all`` raised "No compiled wiki found" even after a
 successful compile, and the gap degree map was permanently empty. These tests
 seed a wiki snapshot through the real writer and assert the store path is used.
 """
@@ -14,18 +14,18 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.cache.wiki import write_wiki_cache
-from knox.core.models import CompiledWiki, WikiNode
-from knox.core.paths import VaultPaths
-from knox.lint.flow import run_full_lint_flow
-from knox.lint.gap_analysis import load_degree_map
+from kompend.core.cache.wiki import write_wiki_cache
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.paths import VaultPaths
+from kompend.lint.flow import run_full_lint_flow
+from kompend.lint.gap_analysis import load_degree_map
 
 
 def test_load_degree_map_reads_store_snapshot(tmp_path: Path) -> None:
     """The degree map is built from the store's compiled-wiki snapshot.
 
     Fails against the old file-based implementation, which returned ``None``
-    because ``.knox/last_wiki.json`` is never written.
+    because ``.kompend/last_wiki.json`` is never written.
     """
     _seed_wiki(tmp_path)
     assert load_degree_map(tmp_path) == {"a": 1, "b": 1}
@@ -40,8 +40,8 @@ def test_run_full_lint_flow_succeeds_on_seeded_store(tmp_path: Path, monkeypatch
     store holds a snapshot. Phases are stubbed so this tests the gate, not lint rules.
     """
     _seed_wiki(tmp_path)
-    monkeypatch.setattr("knox.lint.flow._make_lint_agent", lambda cfg: (None, None))
-    monkeypatch.setattr("knox.lint.flow._plan", lambda *args, **kwargs: [])
+    monkeypatch.setattr("kompend.lint.flow._make_lint_agent", lambda cfg: (None, None))
+    monkeypatch.setattr("kompend.lint.flow._plan", lambda *args, **kwargs: [])
     result = run_full_lint_flow(VaultPaths(tmp_path), types.SimpleNamespace(raw={}), show_progress=False, json_output=True)
     assert isinstance(result, dict)
 

@@ -1,4 +1,4 @@
-"""Tests for knox.llm.models.build_model() and resolve_model_limits()."""
+"""Tests for kompend.llm.models.build_model() and resolve_model_limits()."""
 
 from __future__ import annotations
 
@@ -12,9 +12,9 @@ from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 
-import knox.llm.models as mod
-from knox.core.config._configs import ProviderEndpoint
-from knox.llm.models import OLLAMA_CONTEXT_LENGTH_ENV, _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
+import kompend.llm.models as mod
+from kompend.core.config._configs import ProviderEndpoint
+from kompend.llm.models import OLLAMA_CONTEXT_LENGTH_ENV, _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
 
 # ── _split ─────────────────────────────────────────────────────────────
 
@@ -191,7 +191,7 @@ class TestResolveEnvRef:
 
 
 class TestBuildModelUserProvider:
-    """User-defined providers from [providers] in knox.toml."""
+    """User-defined providers from [providers] in kompend.toml."""
 
     def setup_method(self) -> None:
         set_user_providers(

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from knox.preprocessing.parsers.base import FileExtension
+from kompend.preprocessing.parsers.base import FileExtension
 
 _TEXT = {
     FileExtension.HTML,

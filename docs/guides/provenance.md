@@ -1,6 +1,6 @@
 # Page Provenance
 
-KNOX tracks which source files and line ranges each wiki page was compiled from.
+KOMPEND tracks which source files and line ranges each wiki page was compiled from.
 The `provenance` command shows a compiled page's source chunks — so you can
 verify where a claim or concept came from.
 
@@ -14,7 +14,7 @@ You need a page's slug to inspect it. Run `provenance` with no argument to list
 every page in the compiled wiki with its slug and source count:
 
 ```bash
-$ knox provenance
+$ kompend provenance
 
 3 page(s) in compiled wiki:
 
@@ -28,7 +28,7 @@ Copy any slug from the first column to inspect that page.
 ## Inspecting a page
 
 ```bash
-knox provenance <page-slug>... [--with-content] [--json]
+kompend provenance <page-slug>... [--with-content] [--json]
 ```
 
 Pass one slug to inspect a single page, or several to inspect multiple pages
@@ -37,7 +37,7 @@ at once (useful for agents and batch inspection):
 ### Single page
 
 ```bash
-$ knox provenance self-attention
+$ kompend provenance self-attention
 
 # self-attention
   Source: attention.pdf (lines 42-58)
@@ -48,7 +48,7 @@ $ knox provenance self-attention
 ### Multiple pages
 
 ```bash
-$ knox provenance self-attention bert
+$ kompend provenance self-attention bert
 
 # Self-Attention
   Source: attention.pdf (lines 42-58)
@@ -61,7 +61,7 @@ $ knox provenance self-attention bert
 ### With content snippets
 
 ```bash
-$ knox provenance self-attention --with-content
+$ kompend provenance self-attention --with-content
 
 # self-attention
   Source: attention.pdf (lines 42-58)
@@ -73,7 +73,7 @@ $ knox provenance self-attention --with-content
 ### Machine-readable output
 
 ```bash
-$ knox provenance self-attention --json
+$ kompend provenance self-attention --json
 {
   "page": "Self-Attention",
   "slug": "self-attention",
@@ -121,20 +121,20 @@ class WikiNode:
 
 ```bash
 # Compile with provenance tracking
-knox compile docs/ --provenance
+kompend compile docs/ --provenance
 
 # List pages, then inspect any one
-knox provenance
-knox provenance transformer
+kompend provenance
+kompend provenance transformer
 ```
 
 ### In scripts
 
 ```python
-from knox.core.models import CompiledWiki
+from kompend.core.models import CompiledWiki
 
 # Load the wiki
-wiki = CompiledWiki.load(".knox/last_wiki.json")
+wiki = CompiledWiki.load(".kompend/last_wiki.json")
 
 # Find a node
 for node in wiki.nodes:

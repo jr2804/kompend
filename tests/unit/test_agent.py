@@ -11,15 +11,15 @@ from unittest.mock import patch
 
 import pytest
 
-from knox.acp.provider_store import (
+from kompend.acp.provider_store import (
     LLM_PROVIDER_MAP,
     LlmApiType,
     ProviderConfig,
     ProviderCredentials,
 )
-from knox.cli._pipeline_helpers import emit_json_done, make_json_progress_callback
-from knox.cli.cmds.agents import _agents_install, _agents_remove
-from knox.core.env import EnvVar
+from kompend.cli._pipeline_helpers import emit_json_done, make_json_progress_callback
+from kompend.cli.cmds.agents import _agents_install, _agents_remove
+from kompend.core.env import EnvVar
 
 
 class TestProviderConfig:
@@ -81,7 +81,7 @@ class TestProviderCredentials:
             headers={"Authorization": "Bearer sk-test"},
         )
         store.set(cfg)
-        # These names mirror provider_store's litellm env injection (KNOX_LLM_DEFAULT_MODEL is a config-map key).
+        # These names mirror provider_store's litellm env injection (KOMP_LLM_DEFAULT_MODEL is a config-map key).
         # No model on the provider → the pipeline's own default stays untouched.
         assert EnvVar.LLM_DEFAULT_MODEL not in os.environ
         assert os.environ.get(EnvVar.LLM_API_BASE) == "https://api.openai.com/v1"
@@ -164,7 +164,7 @@ class TestJsonProgressCallback:
 
 
 class TestAgentInstallRemove:
-    """knox agents install/remove CLI actions."""
+    """kompend agents install/remove CLI actions."""
 
     def test_install_valid_agent(self, tmp_path: Path) -> None:
         """Install a valid TOML agent into the vault."""
@@ -174,8 +174,8 @@ class TestAgentInstallRemove:
             encoding="utf-8",
         )
 
-        vault_dir = tmp_path / ".knox" / "agents"
-        with patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+        vault_dir = tmp_path / ".kompend" / "agents"
+        with patch("kompend.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
             _agents_install(str(agent_toml))
 
         assert (vault_dir / "my-agent.toml").exists()
@@ -185,32 +185,32 @@ class TestAgentInstallRemove:
         bad_toml = tmp_path / "bad.toml"
         bad_toml.write_text("invalid toml {{{{", encoding="utf-8")
 
-        with pytest.raises(RuntimeError), patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+        with pytest.raises(RuntimeError), patch("kompend.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
             _agents_install(str(bad_toml))
 
     def test_remove_existing_agent(self, tmp_path: Path) -> None:
         """Remove an installed agent from the vault."""
-        vault_dir = tmp_path / ".knox" / "agents"
+        vault_dir = tmp_path / ".kompend" / "agents"
         vault_dir.mkdir(parents=True)
         (vault_dir / "test-agent.toml").write_text(
             'name = "test-agent"\ndescription = "x"\ntask = "generic"\n\n[prompt]\nsystem = "x"\n',
             encoding="utf-8",
         )
 
-        with patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+        with patch("kompend.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
             _agents_remove("test-agent")
 
         assert not (vault_dir / "test-agent.toml").exists()
 
     def test_remove_nonexistent_raises(self, tmp_path: Path) -> None:
         """Removing a non-existent agent raises."""
-        with pytest.raises(RuntimeError), patch("knox.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+        with pytest.raises(RuntimeError), patch("kompend.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
             _agents_remove("nonexistent")
 
 
 @pytest.fixture(autouse=True)
 def _cleanup_env() -> Generator[None]:
-    """Clean up KNOX env vars set by tests."""
+    """Clean up KOMPEND env vars set by tests."""
     yield
     for key in (EnvVar.LLM_DEFAULT_MODEL, EnvVar.LLM_API_BASE, EnvVar.LLM_API_KEY):
         os.environ.pop(key, None)

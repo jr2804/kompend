@@ -1,4 +1,4 @@
-"""Unit tests for KNOX unified config system (Q23)."""
+"""Unit tests for KOMPEND unified config system (Q23)."""
 
 from __future__ import annotations
 
@@ -11,9 +11,9 @@ from typing import Any, cast
 import pytest
 from pydantic import ValidationError
 
-from knox.core.config import RlmConfig
-from knox.core.config._configs import ExtractionConfig, KnoxConfig, LLMConfig
-from knox.core.config._core import (
+from kompend.core.config import RlmConfig
+from kompend.core.config._configs import ExtractionConfig, KompendConfig, LLMConfig
+from kompend.core.config._core import (
     coerce_config_value,
     deep_merge,
     find_all_project_configs,
@@ -30,11 +30,11 @@ from knox.core.config._core import (
     set_dot,
     validate_config_key,
 )
-from knox.core.config.generate import extract_toml_keys, generate_scaffold_config, get_default_keys
-from knox.core.config.keys import PATHS_WIKI_DIR
-from knox.core.paths import KNOX_DIR
-from knox.core.pipeline.config import PipelineConfig
-from knox.types import JSONDict
+from kompend.core.config.generate import extract_toml_keys, generate_scaffold_config, get_default_keys
+from kompend.core.config.keys import PATHS_WIKI_DIR
+from kompend.core.paths import KOMP_DIR
+from kompend.core.pipeline.config import PipelineConfig
+from kompend.types import JSONDict
 
 # ── Config generation ───────────────────────────────────────────────────
 
@@ -129,50 +129,50 @@ class TestFlatKeys:
 
 class TestEnvVars:
     def test_no_vars_returns_empty(self) -> None:
-        # Unset all KNOX vars to ensure clean state
-        {k: v for k, v in os.environ.items() if not k.startswith("KNOX_")}
+        # Unset all KOMPEND vars to ensure clean state
+        {k: v for k, v in os.environ.items() if not k.startswith("KOMP_")}
         result = read_env_vars()
         # May still have values from the test environment, but should not crash
         assert isinstance(result, dict)
 
     def test_integer_coercion(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("KNOX_BUDGET_CHUNK_SIZE_MIN", "256")
+        monkeypatch.setenv("KOMP_BUDGET_CHUNK_SIZE_MIN", "256")
         result = read_env_vars()
         assert result["compile"]["budget"]["chunk_size_min"] == 256
 
     def test_boolean_coercion_true(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("KNOX_NO_CACHE", "true")
+        monkeypatch.setenv("KOMP_NO_CACHE", "true")
         result = read_env_vars()
         assert result["compile"]["no_cache"] is True
 
     def test_boolean_coercion_false(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("KNOX_FORCE", "false")
+        monkeypatch.setenv("KOMP_FORCE", "false")
         result = read_env_vars()
         assert result["compile"]["force"] is False
 
     def test_comma_list(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("KNOX_LLM_FALLBACK_CHAIN", "openai/gpt-4o, anthropic/claude")
+        monkeypatch.setenv("KOMP_LLM_FALLBACK_CHAIN", "openai/gpt-4o, anthropic/claude")
         result = read_env_vars()
         assert result["compile"]["llm"]["fallback_chain"] == ["openai/gpt-4o", "anthropic/claude"]
 
     def test_string_value(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "openai/gpt-4o")
+        monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "openai/gpt-4o")
         result = read_env_vars()
         assert result["compile"]["llm"]["default_model"] == "openai/gpt-4o"
 
     def test_string_value_stripped(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "  openai/gpt-4o  ")
+        monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "  openai/gpt-4o  ")
         result = read_env_vars()
         assert result["compile"]["llm"]["default_model"] == "openai/gpt-4o"
 
     def test_vlm_model_env(self, monkeypatch: Any) -> None:
-        monkeypatch.setenv("KNOX_VLM_MODEL", "openai/gpt-4o")
+        monkeypatch.setenv("KOMP_VLM_MODEL", "openai/gpt-4o")
         result = read_env_vars()
         assert result["compile"]["llm"]["vlm_model"] == "openai/gpt-4o"
 
     def test_user_tracking_env_false(self, monkeypatch: Any) -> None:
-        # knox-gsb5: KNOX_USER_TRACKING=false disables user tracking.
-        monkeypatch.setenv("KNOX_USER_TRACKING", "false")
+        # knox-gsb5: KOMP_USER_TRACKING=false disables user tracking.
+        monkeypatch.setenv("KOMP_USER_TRACKING", "false")
         result = read_env_vars()
         assert result["trust"]["user_tracking"] is False
 
@@ -186,13 +186,13 @@ class TestConfigDiscovery:
         assert result is None
 
     def test_find_project_config_finds_toml(self, tmp_path: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         result = find_project_config(start_dir=tmp_path)
         assert result == config_file
 
     def test_find_project_config_walks_up(self, tmp_path: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         subdir = tmp_path / "sub" / "dir"
         subdir.mkdir(parents=True)
@@ -205,7 +205,7 @@ class TestConfigDiscovery:
         assert result is None
 
     def test_find_global_config_finds_file(self, tmp_path: Any, monkeypatch: Any) -> None:
-        config_dir = tmp_path / "knox"
+        config_dir = tmp_path / "kompend"
         config_dir.mkdir()
         config_file = config_dir / "config.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 64\n")
@@ -227,7 +227,7 @@ class TestResolveConfig:
         assert cfg.get("compile.llm.vlm_model") is None
 
     def test_project_config_overrides_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
@@ -235,9 +235,9 @@ class TestResolveConfig:
         assert cfg.get("compile.output.format") == "markdown"  # still default
 
     def test_local_overlay_overrides_committed(self, tmp_path: Any, monkeypatch: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
-        local_file = tmp_path / "knox.local.toml"
+        local_file = tmp_path / "kompend.local.toml"
         local_file.write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
@@ -246,26 +246,26 @@ class TestResolveConfig:
 
     def test_local_overlay_alone_merges(self, tmp_path: Any, monkeypatch: Any) -> None:
         """Local-only keys surface even when the committed config exists."""
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
-        local_file = tmp_path / "knox.local.toml"
-        local_file.write_text('[providers.omniroute]\nbase_url = "https://x/v1"\napi_key = "${KNOX_PROVIDER_KEY}"\n')
+        local_file = tmp_path / "kompend.local.toml"
+        local_file.write_text('[providers.omniroute]\nbase_url = "https://x/v1"\napi_key = "${KOMP_PROVIDER_KEY}"\n')
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 128
-        assert cfg.get("providers.omniroute.api_key") == "${KNOX_PROVIDER_KEY}"
+        assert cfg.get("providers.omniroute.api_key") == "${KOMP_PROVIDER_KEY}"
 
     def test_env_overrides_project(self, tmp_path: Any, monkeypatch: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_BUDGET_CHUNK_SIZE_MIN", "64")
+        monkeypatch.setenv("KOMP_BUDGET_CHUNK_SIZE_MIN", "64")
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 64
 
     def test_cli_overrides_env(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_BUDGET_CHUNK_SIZE_MIN", "64")
+        monkeypatch.setenv("KOMP_BUDGET_CHUNK_SIZE_MIN", "64")
         cfg = resolve_config(cli_overrides={"compile.budget.chunk_size_min": 32})
         assert cfg.get("compile.budget.chunk_size_min") == 32
 
@@ -277,7 +277,7 @@ class TestResolveConfig:
 
     def test_deprecated_embed_attachments_migrates(self, tmp_path: Any, monkeypatch: Any) -> None:
         """Old search.embed_attachments migrates to attachments.embed with deprecation provenance."""
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[search]\nembed_attachments = true\n")
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
@@ -286,7 +286,7 @@ class TestResolveConfig:
 
     def test_new_embed_key_wins_over_old(self, tmp_path: Any, monkeypatch: Any) -> None:
         """Explicit attachments.embed is canonical — the old key does not override it."""
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[search]\nembed_attachments = true\n[attachments]\nembed = false\n")
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
@@ -297,9 +297,9 @@ class TestResolveConfig:
 
         The cap key left the schema, so a config still setting it must be
         migrated (value preserved, deprecation warned) rather than fail the
-        strict ``KnoxConfig`` validation.
+        strict ``KompendConfig`` validation.
         """
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.llm]\ncontext_window_cap = 65536\n")
         monkeypatch.chdir(tmp_path)
         with caplog.at_level("WARNING"):
@@ -308,27 +308,27 @@ class TestResolveConfig:
         assert "deprecated compile.llm.context_window_cap" in cfg.source_of("compile.llm.context_window").location
         assert any("context_window_cap" in r.getMessage() for r in caplog.records)
         # No ValidationError: the migrated key was dropped from the raw config.
-        assert cfg.knox.compile.llm.context_window == 65536
+        assert cfg.kompend.compile.llm.context_window == 65536
 
     def test_new_context_window_wins_over_cap(self, tmp_path: Any, monkeypatch: Any) -> None:
         """An explicit context_window is canonical — the old cap does not override it."""
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.llm]\ncontext_window_cap = 65536\ncontext_window = 8192\n")
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("compile.llm.context_window") == 8192
-        assert cfg.knox.compile.llm.context_window == 8192
+        assert cfg.kompend.compile.llm.context_window == 8192
 
     def test_removed_compile_pdf_section_is_dropped_not_left_empty(self, tmp_path: Any, monkeypatch: Any, caplog: pytest.LogCaptureFixture) -> None:
         """A whole removed *section* must not survive as an empty table.
 
-        `[compile.pdf]` configured the knox-owned docling/liteparse backends and
+        `[compile.pdf]` configured the kompend-owned docling/liteparse backends and
         left the schema when they did. The resolver strips its keys, but the
-        emptied shell was left behind, and ``KnoxConfig`` is strict
+        emptied shell was left behind, and ``KompendConfig`` is strict
         (``extra_forbidden``) — so the vault failed to load at all and *every*
-        knox command on it errored. Removing a key must not brick the vault.
+        kompend command on it errored. Removing a key must not brick the vault.
         """
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text(
             '[compile.pdf]\nmax_pages_before_chunking = 50\ntable_structure = true\n\n[compile.llm]\ndefault_model = "ollama/test-model"\n',
         )
@@ -339,7 +339,7 @@ class TestResolveConfig:
         with caplog.at_level("WARNING"):
             cfg = resolve_config()
 
-        assert "pdf" not in cfg.knox.compile.model_dump()
+        assert "pdf" not in cfg.kompend.compile.model_dump()
         # Loud per-key warning, then no trace in the resolved config.
         assert any("compile.pdf" in r.getMessage() for r in caplog.records)
 
@@ -358,9 +358,9 @@ class TestResolveConfig:
 
         Without a ``REMOVED_KEYS`` entry it was an ``unknown config key`` ERROR
         (exit 2) rather than a deprecation, so any vault that ever set the chain
-        flag failed `knox config check`.
+        flag failed `kompend config check`.
         """
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text('[ingest]\nparser = "parsecraft"\nparser_fallback = true\n')
         monkeypatch.chdir(tmp_path)
 
@@ -368,12 +368,12 @@ class TestResolveConfig:
             cfg = resolve_config()
 
         # Both retired keys are stripped, and both say so.
-        assert "parser" not in cfg.knox.ingest.model_dump()
-        assert not hasattr(cfg.knox.ingest, "parser_fallback")
+        assert "parser" not in cfg.kompend.ingest.model_dump()
+        assert not hasattr(cfg.kompend.ingest, "parser_fallback")
         assert any("ingest.parser" in r.getMessage() for r in caplog.records)
 
     def test_toml_string_values_stripped(self, tmp_path: Any, monkeypatch: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text(
             '[compile.llm]\ndefault_model = " openai/gpt-4o "\nvlm_model = "\\tollama/llava\\n"\nfallback_chain = [" openai/gpt-4o ", " anthropic/claude "]\n'
         )
@@ -384,12 +384,12 @@ class TestResolveConfig:
         assert cfg.get("compile.llm.fallback_chain") == ["openai/gpt-4o", "anthropic/claude"]
 
     def test_vlm_model_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text('[compile.llm]\nvlm_model = "ollama/llava"\n')
         monkeypatch.chdir(tmp_path)
         assert resolve_config().get("compile.llm.vlm_model") == "ollama/llava"
 
-        monkeypatch.setenv("KNOX_VLM_MODEL", "openai/gpt-4o")
+        monkeypatch.setenv("KOMP_VLM_MODEL", "openai/gpt-4o")
         assert resolve_config().get("compile.llm.vlm_model") == "openai/gpt-4o"
 
         assert resolve_config(cli_overrides={"compile.llm.vlm_model": "anthropic/claude-sonnet"}).get("compile.llm.vlm_model") == "anthropic/claude-sonnet"
@@ -404,7 +404,7 @@ class TestResolveConfig:
         """
         monkeypatch.chdir(tmp_path)
         assert resolve_config().get("ingest.parser") is None
-        assert "parser" not in resolve_config().knox.ingest.model_dump()
+        assert "parser" not in resolve_config().kompend.ingest.model_dump()
 
     def test_memory_config_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
@@ -413,25 +413,25 @@ class TestResolveConfig:
         assert cfg.get("compile.memory_half_life_days") == 90.0
         assert cfg.get("compile.memory_decay_threshold") == 0.3
 
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile]\nmemory_enabled = false\nmemory_half_life_days = 180.0\nmemory_decay_threshold = 0.2\n")
         cfg = resolve_config()
         assert cfg.get("compile.memory_enabled") is False
         assert cfg.get("compile.memory_half_life_days") == 180.0
         assert cfg.get("compile.memory_decay_threshold") == 0.2
 
-        monkeypatch.setenv("KNOX_MEMORY_HALF_LIFE_DAYS", "45.0")
-        monkeypatch.setenv("KNOX_MEMORY_DECAY_THRESHOLD", "0.1")
+        monkeypatch.setenv("KOMP_MEMORY_HALF_LIFE_DAYS", "45.0")
+        monkeypatch.setenv("KOMP_MEMORY_DECAY_THRESHOLD", "0.1")
         cfg = resolve_config()
         assert cfg.get("compile.memory_enabled") is False  # Still false from project config
         assert cfg.get("compile.memory_half_life_days") == 45.0
         assert cfg.get("compile.memory_decay_threshold") == 0.1
 
     def test_provenance_tracking(self, tmp_path: Any, monkeypatch: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_WORKERS", "4")
+        monkeypatch.setenv("KOMP_WORKERS", "4")
         cfg = resolve_config(cli_overrides={"compile.output.format": "json"})
 
         assert "project" in str(cfg.source_of("compile.budget.chunk_size_min"))
@@ -440,7 +440,7 @@ class TestResolveConfig:
         assert "default" in str(cfg.source_of("compile.image_mode"))
 
     def test_global_config_overrides_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
-        config_dir = tmp_path / "knox"
+        config_dir = tmp_path / "kompend"
         config_dir.mkdir()
         (config_dir / "config.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
@@ -453,14 +453,14 @@ class TestResolveConfig:
 
     def test_project_overrides_global(self, tmp_path: Any, monkeypatch: Any) -> None:
         # Global: budget chunk_size_min = 64
-        config_dir = tmp_path / "knox"
+        config_dir = tmp_path / "kompend"
         config_dir.mkdir()
         (config_dir / "config.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         # Project: budget chunk_size_min = 128
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
+        (project_dir / "kompend.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(project_dir)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 128
@@ -468,7 +468,7 @@ class TestResolveConfig:
     def test_llm_config_inherits_from_global(self, tmp_path: Any, monkeypatch: Any) -> None:
         """LLM settings in global config must be inherited when project omits them."""
         # Global: full LLM config
-        config_dir = tmp_path / "knox"
+        config_dir = tmp_path / "kompend"
         config_dir.mkdir()
         (config_dir / "config.toml").write_text(
             "[compile.llm]\n"
@@ -482,7 +482,7 @@ class TestResolveConfig:
         # Project: has [compile] but NO [compile.llm]
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 256\n")
+        (project_dir / "kompend.toml").write_text("[compile.budget]\nchunk_size_min = 256\n")
         monkeypatch.chdir(project_dir)
         cfg = resolve_config()
 
@@ -502,14 +502,14 @@ class TestResolveConfig:
 
     def test_project_llm_overrides_global_llm(self, tmp_path: Any, monkeypatch: Any) -> None:
         """Project-level LLM config overrides global LLM config."""
-        config_dir = tmp_path / "knox"
+        config_dir = tmp_path / "kompend"
         config_dir.mkdir()
         (config_dir / "config.toml").write_text('[compile.llm]\ndefault_model = "claude-sonnet-4-5"\ntimeout = 300.0\n')
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
         project_dir = tmp_path / "project"
         project_dir.mkdir()
-        (project_dir / "knox.toml").write_text('[compile.llm]\ndefault_model = "local-model"\n')
+        (project_dir / "kompend.toml").write_text('[compile.llm]\ndefault_model = "local-model"\n')
         monkeypatch.chdir(project_dir)
         cfg = resolve_config()
 
@@ -580,7 +580,7 @@ class TestHierarchicalConfig:
         assert find_all_project_configs(start_dir=tmp_path) == []
 
     def test_find_all_project_configs_single(self, tmp_path: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         result = find_all_project_configs(start_dir=tmp_path)
         assert result == [config_file]
@@ -590,29 +590,29 @@ class TestHierarchicalConfig:
         parent.mkdir()
         child = parent / "child"
         child.mkdir()
-        parent_file = parent / "knox.toml"
+        parent_file = parent / "kompend.toml"
         parent_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
-        child_file = child / "knox.toml"
+        child_file = child / "kompend.toml"
         child_file.write_text('[compile]\nformat = "json"\n')
         result = find_all_project_configs(start_dir=child)
         assert result == [child_file, parent_file]
 
-    def test_find_all_project_configs_prefers_dot_knox(self, tmp_path: Any) -> None:
-        dot_knox = tmp_path / KNOX_DIR
-        dot_knox.mkdir()
-        dot_knox_file = dot_knox / "config.toml"
-        dot_knox_file.write_text("[compile.budget]\nchunk_size_min = 64\n")
-        root_file = tmp_path / "knox.toml"
+    def test_find_all_project_configs_prefers_dot_kompend(self, tmp_path: Any) -> None:
+        dot_kompend = tmp_path / KOMP_DIR
+        dot_kompend.mkdir()
+        dot_kompend_file = dot_kompend / "config.toml"
+        dot_kompend_file.write_text("[compile.budget]\nchunk_size_min = 64\n")
+        root_file = tmp_path / "kompend.toml"
         root_file.write_text("[compile.budget]\nchunk_size_min = 128\n")
         result = find_all_project_configs(start_dir=tmp_path)
-        assert result == [dot_knox_file]
+        assert result == [dot_kompend_file]
 
     def test_hierarchy_inherits_parent(self, tmp_path: Any, monkeypatch: Any) -> None:
         parent = tmp_path / "parent"
         parent.mkdir()
         child = parent / "child"
         child.mkdir()
-        (parent / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
+        (parent / "kompend.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(child)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 128
@@ -622,8 +622,8 @@ class TestHierarchicalConfig:
         parent.mkdir()
         child = parent / "child"
         child.mkdir()
-        (parent / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
-        (child / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
+        (parent / "kompend.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
+        (child / "kompend.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.chdir(child)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 64
@@ -632,8 +632,8 @@ class TestHierarchicalConfig:
         # C1: --wiki-dir <vault> reads that vault's config, not cwd's.
         tmp_path = tmp_path.resolve()
         vault = tmp_path / "vault"
-        (vault / KNOX_DIR).mkdir(parents=True)
-        (vault / KNOX_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 777\n")
+        (vault / KOMP_DIR).mkdir(parents=True)
+        (vault / KOMP_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 777\n")
         foreign_cwd = tmp_path / "elsewhere"
         foreign_cwd.mkdir()
         monkeypatch.chdir(foreign_cwd)  # cwd has no config
@@ -642,26 +642,26 @@ class TestHierarchicalConfig:
         assert str(cfg.get(PATHS_WIKI_DIR)) == str(vault)
 
     def test_wiki_dir_env_redirects_config_discovery(self, tmp_path: Any, monkeypatch: Any) -> None:
-        # C1: KNOX_WIKI_DIR likewise redirects discovery.
+        # C1: KOMP_WIKI_DIR likewise redirects discovery.
         tmp_path = tmp_path.resolve()
         vault = tmp_path / "vault"
-        (vault / KNOX_DIR).mkdir(parents=True)
-        (vault / KNOX_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 999\n")
+        (vault / KOMP_DIR).mkdir(parents=True)
+        (vault / KOMP_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 999\n")
         foreign_cwd = tmp_path / "elsewhere"
         foreign_cwd.mkdir()
         monkeypatch.chdir(foreign_cwd)
-        monkeypatch.setenv("KNOX_WIKI_DIR", str(vault))
+        monkeypatch.setenv("KOMP_WIKI_DIR", str(vault))
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 999
 
     def test_base_dir_redirects_config_discovery(self, tmp_path: Any, monkeypatch: Any) -> None:
         # C1: the base_dir parameter (from --wiki-dir) must redirect discovery
         # even when cwd has no config. Regression: base_dir was ignored for
-        # discovery, so `knox doctor -w <vault>` from another cwd loaded nothing.
+        # discovery, so `kompend doctor -w <vault>` from another cwd loaded nothing.
         tmp_path = tmp_path.resolve()
         vault = tmp_path / "vault"
-        (vault / KNOX_DIR).mkdir(parents=True)
-        (vault / KNOX_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 555\n")
+        (vault / KOMP_DIR).mkdir(parents=True)
+        (vault / KOMP_DIR / "config.toml").write_text("[compile.budget]\nchunk_size_min = 555\n")
         foreign_cwd = tmp_path / "elsewhere"
         foreign_cwd.mkdir()
         monkeypatch.chdir(foreign_cwd)  # cwd has no config
@@ -674,9 +674,9 @@ class TestHierarchicalConfig:
         parent.mkdir()
         child = parent / "child"
         child.mkdir()
-        (parent / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
-        (child / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
-        monkeypatch.setenv("KNOX_BUDGET_CHUNK_SIZE_MIN", "32")
+        (parent / "kompend.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
+        (child / "kompend.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
+        monkeypatch.setenv("KOMP_BUDGET_CHUNK_SIZE_MIN", "32")
         monkeypatch.chdir(child)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 32
@@ -687,20 +687,20 @@ class TestHierarchicalConfig:
         parent.mkdir()
         child = parent / "child"
         child.mkdir()
-        parent_file = parent / "knox.toml"
+        parent_file = parent / "kompend.toml"
         parent_file.write_text("[compile.budget]\nchunk_size_min = 128\n[compile]\nworkers = 2\n")
-        child_file = child / "knox.toml"
+        child_file = child / "kompend.toml"
         child_file.write_text("[compile.budget]\nchunk_size_min = 64\n")
         monkeypatch.chdir(child)
         cfg = resolve_config()
         assert str(parent_file) in str(cfg.source_of("compile.workers"))
         assert str(child_file) in str(cfg.source_of("compile.budget.chunk_size_min"))
 
-    def test_hierarchy_dot_knox_overrides_knox_toml(self, tmp_path: Any, monkeypatch: Any) -> None:
-        dot_knox = tmp_path / KNOX_DIR
-        dot_knox.mkdir()
-        (dot_knox / "config.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
-        (tmp_path / "knox.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
+    def test_hierarchy_dot_kompend_overrides_kompend_toml(self, tmp_path: Any, monkeypatch: Any) -> None:
+        dot_kompend = tmp_path / KOMP_DIR
+        dot_kompend.mkdir()
+        (dot_kompend / "config.toml").write_text("[compile.budget]\nchunk_size_min = 64\n")
+        (tmp_path / "kompend.toml").write_text("[compile.budget]\nchunk_size_min = 128\n")
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 64
@@ -761,22 +761,22 @@ class TestCoerceConfigValue:
 
 
 class TestGetProjectConfigPath:
-    def test_returns_existing_knox_toml(self, tmp_path: Any) -> None:
-        config_file = tmp_path / "knox.toml"
+    def test_returns_existing_kompend_toml(self, tmp_path: Any) -> None:
+        config_file = tmp_path / "kompend.toml"
         config_file.write_text("")
         assert get_project_config_file(start_dir=tmp_path) == config_file
 
-    def test_prefers_dot_knox_config(self, tmp_path: Any) -> None:
-        dot_knox = tmp_path / KNOX_DIR
-        dot_knox.mkdir()
-        dot_knox_file = dot_knox / "config.toml"
-        dot_knox_file.write_text("")
-        (tmp_path / "knox.toml").write_text("")
-        assert get_project_config_file(start_dir=tmp_path) == dot_knox_file
+    def test_prefers_dot_kompend_config(self, tmp_path: Any) -> None:
+        dot_kompend = tmp_path / KOMP_DIR
+        dot_kompend.mkdir()
+        dot_kompend_file = dot_kompend / "config.toml"
+        dot_kompend_file.write_text("")
+        (tmp_path / "kompend.toml").write_text("")
+        assert get_project_config_file(start_dir=tmp_path) == dot_kompend_file
 
     def test_returns_path_without_creating_dir(self, tmp_path: Any) -> None:
         path = get_project_config_file(start_dir=tmp_path)
-        assert path == tmp_path / KNOX_DIR / "config.toml"
+        assert path == tmp_path / KOMP_DIR / "config.toml"
         assert not path.parent.exists()
 
 
@@ -784,7 +784,7 @@ class TestGetGlobalConfigPath:
     def test_uses_xdg_config_home(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
         path = get_global_config_file()
-        assert path == tmp_path / "knox" / "config.toml"
+        assert path == tmp_path / "kompend" / "config.toml"
 
     def test_creates_parent_dir(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
@@ -830,7 +830,7 @@ class TestSetConfigFileValue:
 class TestGenerateScaffoldConfig:
     def test_produces_valid_toml(self) -> None:
         text = generate_scaffold_config()
-        assert text.startswith("# KNOX configuration")
+        assert text.startswith("# KOMPEND configuration")
         data = tomllib.loads(text)
         assert "compile" in data
         assert "paths" in data
@@ -889,17 +889,17 @@ class TestExtractTomlKeys:
         assert "compile.output.format" in keys
 
 
-class TestKnoxDotExampleSync:
-    """knox.toml.example must document every key in DEFAULTS."""
+class TestKompendDotExampleSync:
+    """kompend.toml.example must document every key in DEFAULTS."""
 
     def test_example_covers_all_defaults(self) -> None:
-        example_file = _PROJECT_ROOT / "knox.toml.example"
+        example_file = _PROJECT_ROOT / "kompend.toml.example"
         if not example_file.exists():
-            pytest.skip("knox.toml.example not found")
+            pytest.skip("kompend.toml.example not found")
         text = example_file.read_text(encoding="utf-8")
         example_keys = extract_toml_keys(text)
         missing = get_default_keys() - example_keys
-        assert not missing, f"knox.toml.example is missing keys present in DEFAULTS: {sorted(missing)}"
+        assert not missing, f"kompend.toml.example is missing keys present in DEFAULTS: {sorted(missing)}"
 
 
 class TestExtractionCategories:
@@ -907,7 +907,7 @@ class TestExtractionCategories:
 
     def test_default_empty(self) -> None:
 
-        assert KnoxConfig().compile.extraction.categories == {}
+        assert KompendConfig().compile.extraction.categories == {}
 
     def test_rejects_mandatory_kind_shadowing(self) -> None:
 

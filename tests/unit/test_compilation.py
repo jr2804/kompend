@@ -1,4 +1,4 @@
-"""Tests for KNOX Tier 4 compilers — GraphCompiler and WiCERCompiler."""
+"""Tests for KOMPEND Tier 4 compilers — GraphCompiler and WiCERCompiler."""
 
 from __future__ import annotations
 
@@ -9,9 +9,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from knox.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
-from knox.compilation import GraphCompiler, WiCERCompiler
-from knox.compilation._two_phase_core import (
+from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
+from kompend.compilation import GraphCompiler, WiCERCompiler
+from kompend.compilation._two_phase_core import (
     _FAILURE_THRESHOLD_MIN,
     _SLUG_MAX_LENGTH,
     BatchFailureTracker,
@@ -20,8 +20,8 @@ from knox.compilation._two_phase_core import (
     _merge_node,
     slugify,
 )
-from knox.compilation.base import BaseCompiler
-from knox.compilation.schema import (
+from kompend.compilation.base import BaseCompiler
+from kompend.compilation.schema import (
     Concept,
     Entity,
     LLMOutputError,
@@ -29,11 +29,11 @@ from knox.compilation.schema import (
     WicerEvaluateOutput,
     WicerProbeOutput,
 )
-from knox.compilation.two_phase import TwoPhaseCompiler
-from knox.core.config import EmbeddingConfig, LLMConfig
-from knox.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
-from knox.core.pipeline.config import PipelineConfig
-from knox.llm.context_window import ContextSource, ContextWindow
+from kompend.compilation.two_phase import TwoPhaseCompiler
+from kompend.core.config import EmbeddingConfig, LLMConfig
+from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
+from kompend.core.pipeline.config import PipelineConfig
+from kompend.llm.context_window import ContextSource, ContextWindow
 from tests.conftest import make_tmp_vault
 
 # ===========================================================================
@@ -130,7 +130,7 @@ class TestGraphCompiler:
         chunks = _make_diverse_chunks()
         compiler = GraphCompiler("model")
         wiki = compiler.compile(chunks)
-        # All sections mention KNOX and WiCER — expect edges between them
+        # All sections mention KOMPEND and WiCER — expect edges between them
         assert len(wiki.edges) > 0
         # Each edge should have source, target, type, entity
         for edge in wiki.edges:
@@ -176,12 +176,12 @@ class TestGraphCompiler:
         assert wiki.edges == []
 
     def test_typed_relations_create_edges(self) -> None:
-        c1 = _chunk(text="KNOX overview.", heading="Overview", chunk_id="c1")
+        c1 = _chunk(text="KOMPEND overview.", heading="Overview", chunk_id="c1")
         c2 = _chunk(text="WiCER details.", heading="Methods", chunk_id="c2")
         rc1 = ResolvedChunk(
             chunk=c1,
-            entities=[{"name": "KNOX", "type": "project"}],
-            relations=[{"source": "KNOX", "target": "WiCER", "type": "uses", "confidence": 0.85}],
+            entities=[{"name": "KOMPEND", "type": "project"}],
+            relations=[{"source": "KOMPEND", "target": "WiCER", "type": "uses", "confidence": 0.85}],
         )
         rc2 = ResolvedChunk(
             chunk=c2,
@@ -196,11 +196,11 @@ class TestGraphCompiler:
         assert typed[0]["confidence"] == pytest.approx(0.85)
 
     def test_typed_relations_skip_missing_entities(self) -> None:
-        c1 = _chunk(text="KNOX overview.", heading="Overview", chunk_id="c1")
+        c1 = _chunk(text="KOMPEND overview.", heading="Overview", chunk_id="c1")
         rc1 = ResolvedChunk(
             chunk=c1,
-            entities=[{"name": "KNOX", "type": "project"}],
-            relations=[{"source": "KNOX", "target": "Missing", "type": "uses", "confidence": 0.9}],
+            entities=[{"name": "KOMPEND", "type": "project"}],
+            relations=[{"source": "KOMPEND", "target": "Missing", "type": "uses", "confidence": 0.9}],
         )
         compiler = GraphCompiler("model")
         wiki = compiler.compile([rc1])
@@ -220,14 +220,14 @@ class TestGraphCompiler:
         assert wiki.nodes[0].node_type == "comparison"
 
     def test_entity_kind_inferred_when_title_matches_entity(self) -> None:
-        c = _chunk(text="KNOX details.", heading="KNOX", chunk_id="c1")
-        rc = ResolvedChunk(chunk=c, entities=[{"name": "KNOX", "type": "project"}])
+        c = _chunk(text="KOMPEND details.", heading="KOMPEND", chunk_id="c1")
+        rc = ResolvedChunk(chunk=c, entities=[{"name": "KOMPEND", "type": "project"}])
         wiki = GraphCompiler("model").compile([rc])
         assert wiki.nodes[0].node_type == "entity"
 
     def test_concept_kind_default(self) -> None:
         c = _chunk(text="Some concept.", heading="Signal Theory", chunk_id="c1")
-        rc = ResolvedChunk(chunk=c, entities=[{"name": "KNOX", "type": "project"}])
+        rc = ResolvedChunk(chunk=c, entities=[{"name": "KOMPEND", "type": "project"}])
         wiki = GraphCompiler("model").compile([rc])
         assert wiki.nodes[0].node_type == "concept"
 
@@ -695,9 +695,9 @@ class TestWiCERCompilerUnavailable:
 
         # Seed pinned facts as a public-API caller would, so we exercise
         # the same flow the loop uses on iteration 1+.
-        wiki = compiler.compile(chunks, pinned_facts=["KNOX is a knowledge base project.", "WiCER is iterative."])
+        wiki = compiler.compile(chunks, pinned_facts=["KOMPEND is a knowledge base project.", "WiCER is iterative."])
 
-        assert rec.calls == [["KNOX is a knowledge base project.", "WiCER is iterative."]]
+        assert rec.calls == [["KOMPEND is a knowledge base project.", "WiCER is iterative."]]
         # No stray "Pinned Refinement Facts" node — refinement happens
         # via re-compile, not by appending to the wiki.
         assert all(n.id != "node_refinement_pinned_facts" for n in wiki.nodes)
@@ -770,14 +770,14 @@ class TestWiCERCompilerWithMock:
         """When the LLM agents return probes, they are used for evaluation."""
         mock_llm.probe.return_value = self._probe_output(
             [
-                {"question": "What is KNOX?", "answer": "A knowledge base project."},
+                {"question": "What is KOMPEND?", "answer": "A knowledge base project."},
                 {"question": "What is WiCER?", "answer": "An iterative compilation loop."},
             ]
         )
         mock_llm.evaluate.return_value = self._evaluate_output(
             [
                 {
-                    "question": "What is KNOX?",
+                    "question": "What is KOMPEND?",
                     "expected_answer": "A knowledge base project.",
                     "found_answer": "A knowledge base project.",
                     "correct": True,
@@ -806,11 +806,11 @@ class TestWiCERCompilerWithMock:
 
     def test_llm_evaluation_detects_failures(self, mock_llm: MagicMock) -> None:
         """When evaluation says probes fail, refinement happens."""
-        mock_llm.probe.return_value = self._probe_output([{"question": "What is KNOX?", "answer": "A knowledge base project."}])
+        mock_llm.probe.return_value = self._probe_output([{"question": "What is KOMPEND?", "answer": "A knowledge base project."}])
         mock_llm.evaluate.return_value = self._evaluate_output(
-            [{"question": "What is KNOX?", "expected_answer": "A knowledge base project.", "found_answer": "", "correct": False}]
+            [{"question": "What is KOMPEND?", "expected_answer": "A knowledge base project.", "found_answer": "", "correct": False}]
         )
-        mock_llm.diagnose.return_value = self._diagnose_output(["KNOX is a knowledge base project."])
+        mock_llm.diagnose.return_value = self._diagnose_output(["KOMPEND is a knowledge base project."])
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(
             source_dir=make_tmp_vault(),
@@ -856,9 +856,9 @@ class TestWiCERCompilerWithMock:
         config.budget.wicer_max_iterations = 2
         compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
         with (
-            patch("knox.compilation.wicer.WicerProbeAgent.run", side_effect=LLMOutputError("boom")),
-            patch("knox.compilation.wicer.WicerEvaluateAgent.run", side_effect=LLMOutputError("boom")),
-            patch("knox.compilation.wicer.WicerDiagnoseAgent.run", side_effect=LLMOutputError("boom")),
+            patch("kompend.compilation.wicer.WicerProbeAgent.run", side_effect=LLMOutputError("boom")),
+            patch("kompend.compilation.wicer.WicerEvaluateAgent.run", side_effect=LLMOutputError("boom")),
+            patch("kompend.compilation.wicer.WicerDiagnoseAgent.run", side_effect=LLMOutputError("boom")),
         ):
             wiki = compiler.compile(chunks)
         assert len(wiki.nodes) >= 1
@@ -941,7 +941,7 @@ class TestWiCERWithGraphCompiler:
         compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
         wiki = compiler.compile(chunks)
         assert len(wiki.nodes) == 4  # 4 sections
-        assert "KNOX" in str(wiki.edges)
+        assert "KOMPEND" in str(wiki.edges)
         assert wiki.metadata["chunk_count"] == 8
 
     def test_default_initializer(self) -> None:
@@ -1168,7 +1168,7 @@ class TestTwoPhaseConceptSalvage:
         failing_agent.run.side_effect = LLMOutputError("generation failed")
         with (
             patch.object(compiler, "extract", return_value=ext_set),
-            patch("knox.compilation.flows.generation.make_agentic_generation_agent", return_value=failing_agent),
+            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", return_value=failing_agent),
             pytest.raises(LLMOutputError, match=r"produced no page\(s\) for any of its 1 assigned concept\(s\)"),
         ):
             compiler.compile(chunks)
@@ -1292,13 +1292,13 @@ def _make_chunks(
     chunks: list[ResolvedChunk] = []
     for i in range(count):
         c = _chunk(
-            text=f"Content for chunk {i}. Entity reference to KNOX.",
+            text=f"Content for chunk {i}. Entity reference to KOMPEND.",
             heading=heading,
             chunk_id=f"chunk_{i:03d}",
         )
         rc = ResolvedChunk(
             chunk=c,
-            entities=[Entity(name="KNOX", type="PROJECT", context="knowledge base").model_dump()] if i == 0 else [],
+            entities=[Entity(name="KOMPEND", type="PROJECT", context="knowledge base").model_dump()] if i == 0 else [],
         )
         chunks.append(rc)
     return chunks
@@ -1316,7 +1316,10 @@ def _make_diverse_chunks() -> list[ResolvedChunk]:
             )
             rc = ResolvedChunk(
                 chunk=c,
-                entities=[{"name": "KNOX", "type": "PROJECT", "context": "knowledge base"}, {"name": "WiCER", "type": "METHOD", "context": "compilation loop"}],
+                entities=[
+                    {"name": "KOMPEND", "type": "PROJECT", "context": "knowledge base"},
+                    {"name": "WiCER", "type": "METHOD", "context": "compilation loop"},
+                ],
             )
             chunks.append(rc)
     return chunks

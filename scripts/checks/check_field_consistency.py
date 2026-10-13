@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Detect bare-string literals used as cross-file contract keys.
 
-Enforces src/knox/AGENTS.md §Antipatterns #5 (and the older Antipattern 5
+Enforces src/kompend/AGENTS.md §Antipatterns #5 (and the older Antipattern 5
 documentation in the root DOX): field-name strings that have a canonical
 StrEnum member must reference that member, not be re-typed by hand.
 
 The checker imports the configured StrEnums, collects their member *values*,
-then scans every ``.py`` file under ``src/knox/`` for bare string literals
+then scans every ``.py`` file under ``src/kompend/`` for bare string literals
 matching those values when used in a contract position:
 
   - as a dict literal key:        ``{"source": x}``
@@ -40,7 +40,7 @@ from pathlib import Path
 from _common import repo_root, require_scanned
 
 REPO_ROOT = repo_root()
-SRC_ROOT = REPO_ROOT / "src" / "knox"
+SRC_ROOT = REPO_ROOT / "src" / "kompend"
 
 # Each enforced enum is scoped to the modules that consume its contract.
 # A value-only match is a violation ONLY if the hit is in one of the enum's
@@ -56,15 +56,15 @@ _IMPORT_ALL: list[str] = []  # sentinel: apply repo-wide
 
 ENFORCED_ENUMS: list[tuple[str, str, list[str]]] = [
     # Cross-cutting node-metadata / wiki-serialization keys.
-    ("knox.core.models", "MetadataField", _IMPORT_ALL),
-    ("knox.core.models", "WikiField", _IMPORT_ALL),
+    ("kompend.core.models", "MetadataField", _IMPORT_ALL),
+    ("kompend.core.models", "WikiField", _IMPORT_ALL),
     # NOTE: ElementType and ChunkStrategy are tag VALUES, not field names.
     # They are out of scope here — enforcing them would mean flagging every
     # literal "text"/"table"/"code" as a string, which is noise. They belong
     # to a separate element-type-tagger concern.
     # Memory store contract — written and read only by memory subsystem.
     (
-        "knox.memory.store",
+        "kompend.memory.store",
         "MemoryField",
         ["memory/store.py", "memory/__init__.py", "cli/cmds/memory.py"],
     ),
@@ -72,7 +72,7 @@ ENFORCED_ENUMS: list[tuple[str, str, list[str]]] = [
     # Retrievers read hit dicts but also build unrelated dicts with "title" keys,
     # so consumer files are not policed.
     (
-        "knox.rag.zvec_store",
+        "kompend.rag.zvec_store",
         "ZvecField",
         ["rag/zvec_store.py", "rag/__init__.py"],
     ),
@@ -185,7 +185,7 @@ def main() -> int:
     parser.add_argument("--src", default=str(SRC_ROOT), help="Source root to scan.")
     args = parser.parse_args()
 
-    # Make knox importable for enum discovery.
+    # Make kompend importable for enum discovery.
     sys.path.insert(0, str(REPO_ROOT / "src"))
 
     enums = ENFORCED_ENUMS

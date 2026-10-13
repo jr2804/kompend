@@ -1,6 +1,6 @@
 # AGENTS.md — Code
 
-KNOX code policies: antipatterns, boundaries, error handling. Load when writing
+KOMPEND code policies: antipatterns, boundaries, error handling. Load when writing
 or reviewing code — production or tests.
 
 ## Python style
@@ -18,23 +18,23 @@ or conventions — it takes precedence over a conflicting habit or default.
 | `content[:200]` / `text[:4096]` | ❌ | Full content, or a batch size derived from config/model |
 | Config fallback duplicating a runtime provider value (`dim = 384`) | ❌ | Read it from the provider at runtime (`provider.dim`) |
 | Bare schema/field-name literals (`hit.get("source_file")`) | ❌ | `StrEnum` / `Final[str]` symbol imported at every site |
-| Hard-coded `"KNOX_*"` env-var literal (`os.environ.get("KNOX_WIKI_DIR")`, `envvar=`) | ❌ | `EnvVar` member from `knox.core.env` |
+| Hard-coded `"KOMP_*"` env-var literal (`os.environ.get("KOMP_WIKI_DIR")`, `envvar=`) | ❌ | `EnvVar` member from `kompend.core.env` |
 | Stable-shape dict without a schema (JSONL records, persisted entries — lint history, dedup store, graph edges, citations) | ❌ | `TypedDict` next to the owning model — types keys at zero runtime cost. Dataclasses only where the shape is also constructed/validated in code |
-| Absolute path in a `.knox/` artifact (`citing_source = str(path)`) | ❌ | Relativize at the persistence boundary (`rel_to_vault(path, base_dir)`) |
+| Absolute path in a `.kompend/` artifact (`citing_source = str(path)`) | ❌ | Relativize at the persistence boundary (`rel_to_vault(path, base_dir)`) |
 
 The first five are instances of the universal magic-number rule
-(see `POLICIES.md`); rows 6–9 are KNOX-specific. Two of them are enforced:
+(see `POLICIES.md`); rows 6–9 are KOMPEND-specific. Two of them are enforced:
 `scripts/checks/check_field_consistency.py` (bare contract keys) and
 `scripts/checks/check_antipatterns.py` (env-var literals, magic crops). Run both
 before committing — see `CHECKS.md`.
 
 ## Boundaries
 
-- **Every behaviour-affecting value is a config field** in a `_KnoxBaseModel`
+- **Every behaviour-affecting value is a config field** in a `_KompendBaseModel`
   (`LLMConfig`, `BudgetConfig`, …) with a `Field(validation_alias=...)`. This
   holds even when the default equals the current literal: the field is the
   single source of truth, and `DEFAULTS` is generated from the schema.
-- **No absolute paths in `.knox/` artifacts.** Paths in every persisted record
+- **No absolute paths in `.kompend/` artifacts.** Paths in every persisted record
   (provenance, references, assets, dedup, memory, search index, compile state,
   wiki cache) are vault-relative and POSIX-normalized. In-memory `Path` objects
   may be absolute; relativization happens at the persistence boundary.
@@ -50,7 +50,7 @@ before committing — see `CHECKS.md`.
   datasketch, scipy, crawl4ai, pydantic-ai, MCP SDK, zvec) so CLI startup stays
   fast. Package level: `lazy.attach(__name__, submod_attrs={...})`. Function
   level: the registry factory (`get_backend()`), never a module-scope import.
-  Canonical pattern: `src/knox/preprocessing/parsers/__init__.py`.
+  Canonical pattern: `src/kompend/preprocessing/parsers/__init__.py`.
 - **Temp files** go in `./tmp` (gitignored) or `tempfile.TemporaryDirectory()`.
 
 ## Error handling — prefer "let it burn"

@@ -1,4 +1,4 @@
-"""Unit tests for KNOX lint rules."""
+"""Unit tests for KOMPEND lint rules."""
 
 from __future__ import annotations
 
@@ -9,26 +9,26 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from knox.agents.lint import LintRuleAgent
-from knox.agents.remediate import AgenticRemediationAgent, RemediationAgent
-from knox.agents.types import RemediationDeps, RemediationPageResult
-from knox.compilation._two_phase_core import Extraction
-from knox.compilation.schema import Concept, Entity
-from knox.core.config.rumdl import _shipped_hash, resolve_rumdl_config
-from knox.core.models import CompiledWiki, WikiNode
-from knox.core.pipeline.state import SourceState, TierState, TierStateStore
-from knox.lint import _remediation_gaps as gaps_module
-from knox.lint.base import LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
-from knox.lint.history import entry_from_report, report_from_dict
-from knox.lint.llm_rules import (
+from kompend.agents.lint import LintRuleAgent
+from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
+from kompend.agents.types import RemediationDeps, RemediationPageResult
+from kompend.compilation._two_phase_core import Extraction
+from kompend.compilation.schema import Concept, Entity
+from kompend.core.config.rumdl import _shipped_hash, resolve_rumdl_config
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
+from kompend.lint import _remediation_gaps as gaps_module
+from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
+from kompend.lint.history import entry_from_report, report_from_dict
+from kompend.lint.llm_rules import (
     Contradiction,
     ContradictionOutput,
     CoverageGap,
     CoverageGapOutput,
 )
-from knox.lint.remediation import remediate
-from knox.lint.runner import LintRunner, _build_report, report_to_dict, report_to_json, report_to_text
-from knox.lint.structural import (
+from kompend.lint.remediation import remediate
+from kompend.lint.runner import LintRunner, _build_report, report_to_dict, report_to_json, report_to_text
+from kompend.lint.structural import (
     RULE_BY_NAME,
     STRUCTURAL_RULES,
     BrokenWikilinksRule,
@@ -36,7 +36,7 @@ from knox.lint.structural import (
     EmptyPageRule,
     HeadingSkipRule,
     ImageEmbedRule,
-    KnoxReferenceRule,
+    KompendReferenceRule,
     MissingFrontmatterRule,
     OrphanAttachmentsRule,
     OrphanPageRule,
@@ -229,21 +229,21 @@ class TestImageEmbedRule:
         assert "![[ok.png]]" in node.content
 
 
-class TestKnoxReferenceRule:
-    def test_detects_knox_links(self) -> None:
-        node = _make_node("n1", "Alpha", "See ![fig](.knox/cache/images/f.png) and [x](../../.knox/cache/y.json)")
+class TestKompendReferenceRule:
+    def test_detects_kompend_links(self) -> None:
+        node = _make_node("n1", "Alpha", "See ![fig](.kompend/cache/images/f.png) and [x](../../.kompend/cache/y.json)")
         wiki = _make_wiki([node])
-        rule = KnoxReferenceRule()
+        rule = KompendReferenceRule()
         results = rule.check(wiki)
         failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 2
-        assert all(r.rule == "knox-reference" for r in failures)
+        assert all(r.rule == "kompend-reference" for r in failures)
 
-    def test_detects_knox_image_metadata(self) -> None:
+    def test_detects_kompend_image_metadata(self) -> None:
         node = _make_node("n1", "Alpha", "Body")
-        node.metadata["images"] = [{"path": ".knox/cache/images/f.png", "caption": "", "element_type": "image"}]
+        node.metadata["images"] = [{"path": ".kompend/cache/images/f.png", "caption": "", "element_type": "image"}]
         wiki = _make_wiki([node])
-        rule = KnoxReferenceRule()
+        rule = KompendReferenceRule()
         failures = [r for r in rule.check(wiki) if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 1
         assert failures[0].details["target"].endswith("f.png")
@@ -251,7 +251,7 @@ class TestKnoxReferenceRule:
     def test_portable_links_pass(self) -> None:
         node = _make_node("n1", "Alpha", "![fig](../attachments/report/f.png) and [ Concepts](concepts/c.md)")
         wiki = _make_wiki([node])
-        rule = KnoxReferenceRule()
+        rule = KompendReferenceRule()
         results = rule.check(wiki)
         assert all(r.outcome == LintRuleOutcome.PASS for r in results)
 
@@ -747,7 +747,7 @@ class TestRumdlRule:
 
     def test_skips_when_rumdl_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         base = self._vault(tmp_path)
-        monkeypatch.setattr("knox.lint.structural.shutil.which", lambda _: None)
+        monkeypatch.setattr("kompend.lint.structural.shutil.which", lambda _: None)
         results = RumdlRule().check(_make_wiki([]), sources_dir=str(base / "sources"))
         assert all(r.outcome == LintRuleOutcome.SKIP for r in results)
 
@@ -776,7 +776,7 @@ class TestRumdlRule:
     def _vault(self, tmp_path: Path) -> Path:
         (tmp_path / "sources").mkdir()
         (tmp_path / "wiki").mkdir()
-        (tmp_path / ".knox").mkdir()
+        (tmp_path / ".kompend").mkdir()
         return tmp_path
 
 
@@ -817,7 +817,7 @@ class TestEdgeCases:
         expected = {
             "image-embed",
             "broken-wikilinks",
-            "knox-reference",
+            "kompend-reference",
             "missing-frontmatter",
             "orphan-page",
             "duplicate-title",
@@ -1292,13 +1292,13 @@ class TestCoverageGapSuppression:
 
 
 class TestRumdlConfigResolution:
-    """resolve_rumdl_config: default .knox/rumdl.toml, materialization, overrides."""
+    """resolve_rumdl_config: default .kompend/rumdl.toml, materialization, overrides."""
 
-    def test_default_materializes_knox_rumdl_toml(self, tmp_path: Path) -> None:
+    def test_default_materializes_kompend_rumdl_toml(self, tmp_path: Path) -> None:
 
         resolved = resolve_rumdl_config(tmp_path)
         assert resolved is not None
-        assert resolved == tmp_path / ".knox" / "rumdl.toml"
+        assert resolved == tmp_path / ".kompend" / "rumdl.toml"
         assert resolved.exists()
         content = resolved.read_text(encoding="utf-8")
         assert 'disable = ["MD013"]' in content
@@ -1306,14 +1306,14 @@ class TestRumdlConfigResolution:
 
     def test_existing_config_not_overwritten(self, tmp_path: Path) -> None:
         """A user-edited file WITH a current-hash marker is preserved as-is."""
-        target = tmp_path / ".knox" / "rumdl.toml"
+        target = tmp_path / ".kompend" / "rumdl.toml"
         target.parent.mkdir(parents=True)
         # A user-edited file that already has the current hash marker is
         # treated as up-to-date; the user section is preserved untouched.
         user_section = "[MD013]\nline_length = 999\n"
         current_hash = _shipped_hash()
         target.write_text(
-            f"# shipped default content\n# knox-managed: {current_hash}\n{user_section}",
+            f"# shipped default content\n# kompend-managed: {current_hash}\n{user_section}",
             encoding="utf-8",
         )
 
@@ -1328,7 +1328,7 @@ class TestRumdlConfigResolution:
 
     def test_relative_explicit_config_resolves_against_base_dir(self, tmp_path: Path) -> None:
 
-        assert resolve_rumdl_config(tmp_path, ".knox/rumdl.toml") == tmp_path / ".knox" / "rumdl.toml"
+        assert resolve_rumdl_config(tmp_path, ".kompend/rumdl.toml") == tmp_path / ".kompend" / "rumdl.toml"
 
 
 class TestOrphanAttachmentsRule:
@@ -1380,8 +1380,8 @@ class TestOrphanAttachmentsRule:
         base = tmp_path / "vault"
         (base / "sources").mkdir(parents=True)
         (base / "sources" / "report.pdf").write_bytes(b"%PDF fake")
-        (base / ".knox").mkdir()
-        store = TierStateStore(base / ".knox" / "compile_state.json")
+        (base / ".kompend").mkdir()
+        store = TierStateStore(base / ".kompend" / "compile_state.json")
         store.save(TierState(entries={"report": SourceState(stem="report", source_file="sources/report.pdf", content_hash="h")}))
         return base, str(base / "sources")
 

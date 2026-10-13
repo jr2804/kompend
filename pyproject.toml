@@ -1,7 +1,7 @@
 [project]
-name = "knox"
+name = "kompend"
 dynamic = ["version"]
-description = "Knowledge Organizer for eXtended documents"
+description = "Compile a document corpus into an interlinked, OKF-conformant markdown wiki"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.13"
@@ -71,7 +71,7 @@ dependencies = [
 ]
 
 [project.scripts]
-knox = "knox.cli.app:main"
+kompend = "kompend.cli.app:main"
 
 [project.optional-dependencies]
 
@@ -120,7 +120,7 @@ dev = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/knox"]
+packages = ["src/kompend"]
 
 [build-system]
 requires = ["hatchling", "uv-dynamic-versioning"]
@@ -146,7 +146,7 @@ markers = [
 ]
 
 [tool.pytest-cov]
-addopts = "--cov=knox --cov-report=term-missing --cov-report=html --cov-report=xml"
+addopts = "--cov=kompend --cov-report=term-missing --cov-report=html --cov-report=xml"
 fail_under = 50
 
 [tool.codespell]

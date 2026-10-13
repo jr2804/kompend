@@ -1,7 +1,7 @@
-"""Pytest configuration, fixtures, and shared narrowing helpers for KNOX tests.
+"""Pytest configuration, fixtures, and shared narrowing helpers for KOMPEND tests.
 
-``as_obj`` / ``as_list`` exist because KNOX's JSON types are precise recursive
-unions on purpose (see ``knox/types.py``): a payload read from LLM output, a
+``as_obj`` / ``as_list`` exist because KOMPEND's JSON types are precise recursive
+unions on purpose (see ``kompend/types.py``): a payload read from LLM output, a
 config file or a cache must be narrowed before use rather than silently
 propagating ``Any``. In tests the expected shape is known, so narrowing is an
 assertion — these helpers fail loudly if a payload is not what the test claims.
@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from knox.rag.zvec_store import EmbeddingProvider
+from kompend.rag.zvec_store import EmbeddingProvider
 
 _test_dir = Path(__file__).parent
 _data_dir = _test_dir / "data"
@@ -73,21 +73,21 @@ def make_tmp_vault() -> Path:
 
     Store-backed ``PipelineConfig``s must not carry a CWD-relative
     ``source_dir``/``output_dir`` — that would resolve the vault DB against the
-    process CWD and scatter ``.knox/`` state into the repository root.
+    process CWD and scatter ``.kompend/`` state into the repository root.
     """
-    return Path(tempfile.mkdtemp(prefix="knox-vault-"))
+    return Path(tempfile.mkdtemp(prefix="kompend-vault-"))
 
 
 @pytest.fixture(scope="session", autouse=True)
 def guard_repo_root_vault() -> Iterator[None]:
-    """Fail if the suite scatters ``.knox/`` state into the repository root.
+    """Fail if the suite scatters ``.kompend/`` state into the repository root.
 
     A store-backed config (or store) handed a CWD-relative path resolves its DB
-    against the process CWD and writes ``<repo>/.knox/knox.db``. That happened
+    against the process CWD and writes ``<repo>/.kompend/kompend.db``. That happened
     once (a ``PipelineConfig`` with ``source_dir=Path(".")``); this guard keeps
     it fixed. ``make_tmp_vault()`` is the correct root for any such config.
     """
-    stray = _test_dir.parent / ".knox"
+    stray = _test_dir.parent / ".kompend"
     pre_existing = stray.exists()
     yield
     if not pre_existing and stray.exists():

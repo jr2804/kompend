@@ -1,4 +1,4 @@
-"""Tests for ``knox attachments verify`` and ``knox attachments adopt``.
+"""Tests for ``kompend attachments verify`` and ``kompend attachments adopt``.
 
 ``verify`` is a read-only pre-compile check (no CompiledWiki required) that
 shares the orphan-slug logic with ``OrphanAttachmentsRule``. ``adopt`` runs the
@@ -12,13 +12,13 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli.app import app
-from knox.core.models.attachments import Attachment, AttachmentManifest
-from knox.core.models.wiki import CompiledWiki
-from knox.core.paths import VaultPaths
-from knox.core.pipeline.state import SourceState, TierState, TierStateStore
-from knox.lint.base import LintRuleOutcome
-from knox.lint.structural import OrphanAttachmentsRule, orphan_attachment_dirs
+from kompend.cli.app import app
+from kompend.core.models.attachments import Attachment, AttachmentManifest
+from kompend.core.models.wiki import CompiledWiki
+from kompend.core.paths import VaultPaths
+from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
+from kompend.lint.base import LintRuleOutcome
+from kompend.lint.structural import OrphanAttachmentsRule, orphan_attachment_dirs
 
 _cli_runner = CliRunner()
 
@@ -118,7 +118,7 @@ def test_adopt_registers_unregistered_files(tmp_path: Path, monkeypatch: pytest.
 def test_adopt_respects_ingest_adopted_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     base = _vault(tmp_path)
     _add_source(base)
-    (base / ".knox" / "config.toml").write_text("[attachments]\ningest_adopted = true\n", encoding="utf-8")
+    (base / ".kompend" / "config.toml").write_text("[attachments]\ningest_adopted = true\n", encoding="utf-8")
     f = base / "attachments" / "report" / "new.txt"
     f.parent.mkdir(parents=True)
     f.write_text("x", encoding="utf-8")
@@ -148,8 +148,8 @@ def test_adopt_ignores_tombstoned_paths(tmp_path: Path, monkeypatch: pytest.Monk
 def _vault(tmp_path: Path) -> Path:
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    (base / ".kompend").mkdir(parents=True)
+    (base / ".kompend" / "config.toml").write_text("", encoding="utf-8")
     return base
 
 

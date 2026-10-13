@@ -13,15 +13,15 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from knox.core.config._configs import ProviderEndpoint
-from knox.llm.context_window import (
+from kompend.core.config._configs import ProviderEndpoint
+from kompend.llm.context_window import (
     ContextSource,
     _coerce_context_window_cap,
     _split_model,
     discover_context_window,
 )
-from knox.llm.models import set_user_providers
-from knox.llm.user_providers import _user_providers
+from kompend.llm.models import set_user_providers
+from kompend.llm.user_providers import _user_providers
 
 
 class TestCoerceContextWindowCap:
@@ -38,7 +38,7 @@ class TestCoerceContextWindowCap:
 
     def test_unexpanded_env_placeholder_returns_none(self) -> None:
         # Unset env var leaves the literal ${VAR} placeholder.
-        assert _coerce_context_window_cap("${KNOX_LOCAL_CTX_CAP}") is None
+        assert _coerce_context_window_cap("${KOMP_LOCAL_CTX_CAP}") is None
 
     def test_empty_string_returns_none(self) -> None:
         assert _coerce_context_window_cap("") is None
@@ -83,7 +83,7 @@ class TestDiscoverContextWindowCap:
     def _patch_resolve(self) -> None:
         # Bypass network/catalog lookups; supply deterministic limits.
         patcher = patch(
-            "knox.llm.context_window.resolve_model_limits",
+            "kompend.llm.context_window.resolve_model_limits",
             return_value=(100000, 50000),
         )
         patcher.start()
@@ -234,7 +234,7 @@ class TestUserProviderOverrideBeatsDiscovery:
 
     def test_override_beats_ollama_probe(self) -> None:
         set_user_providers({"ollama": {"context_window": 65536}})
-        with patch("knox.llm.context_window._query_ollama_num_ctx", return_value=131072):
+        with patch("kompend.llm.context_window._query_ollama_num_ctx", return_value=131072):
             cw = discover_context_window("ollama/qwen3")
         assert cw.max_input == 65536
         assert cw.max_output == 65536
@@ -242,13 +242,13 @@ class TestUserProviderOverrideBeatsDiscovery:
 
     def test_override_beats_catalog(self) -> None:
         set_user_providers({"openai": {"context_window": 40000}})
-        with patch("knox.llm.context_window.resolve_model_limits", return_value=(200000, 100000)):
+        with patch("kompend.llm.context_window.resolve_model_limits", return_value=(200000, 100000)):
             cw = discover_context_window("openai/gpt-5.2")
         assert cw.max_input == 40000
         assert cw.source == ContextSource.USER_PROVIDER
 
     def test_no_override_still_uses_ollama_probe(self) -> None:
-        with patch("knox.llm.context_window._query_ollama_num_ctx", return_value=131072):
+        with patch("kompend.llm.context_window._query_ollama_num_ctx", return_value=131072):
             cw = discover_context_window("ollama/qwen3")
         assert cw.max_input == 131072
         assert cw.source == ContextSource.OLLAMA

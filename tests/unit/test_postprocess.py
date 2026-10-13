@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from knox.llm.postprocess import (
+from kompend.llm.postprocess import (
     ResponsePipeline,
     SurrogateScrubber,
     default_pipeline,

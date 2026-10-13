@@ -1,7 +1,7 @@
 """Cross-boundary tests for source metadata (parse-cache store).
 
 The tag/attribute readers and writers for sources were migrated from a
-``.knox/cache/<stem>-*.json`` glob (which nothing wrote) to the ``documents``
+``.kompend/cache/<stem>-*.json`` glob (which nothing wrote) to the ``documents``
 table of the single store. These tests pin the shared store path and, crucially,
 that a tag set through the **MCP** tool is visible to the **CLI** reader — the
 cross-boundary assertion that would have caught the silent no-op.
@@ -14,11 +14,11 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli.app import app as cli_app
-from knox.core import source_metadata
-from knox.core.pipeline.parse_cache import write_document
-from knox.core.store import vault_db_path
-from knox.mcp.tools.sources import sources_attr, sources_list, sources_tag, sources_untag
+from kompend.cli.app import app as cli_app
+from kompend.core import source_metadata
+from kompend.core.pipeline.parse_cache import write_document
+from kompend.core.store import vault_db_path
+from kompend.mcp.tools.sources import sources_attr, sources_list, sources_tag, sources_untag
 
 _SOURCE = "sources/doc.pdf"
 
@@ -31,12 +31,12 @@ _cli_runner = CliRunner()
 class TestSourceMetadataStore:
     def test_load_entries_keyed_by_source_file(self, tmp_path: Path) -> None:
         base = _seed_vault(tmp_path, ("doc-aaaaaaaa", _record()))
-        entries = source_metadata.load_source_entries(base / ".knox" / "cache")
+        entries = source_metadata.load_source_entries(base / ".kompend" / "cache")
         assert set(entries) == {_SOURCE}
 
     def test_apply_tag_round_trips_through_store(self, tmp_path: Path) -> None:
         base = _seed_vault(tmp_path, ("doc-aaaaaaaa", _record()))
-        cache_dir = base / ".knox" / "cache"
+        cache_dir = base / ".kompend" / "cache"
         change = source_metadata.apply_tag(cache_dir, _SOURCE, "deep-learning", add=True)
         assert change.changed is True
         assert source_metadata.source_tags(source_metadata.find_entry(cache_dir, _SOURCE) or {}) == ["deep-learning"]
@@ -44,11 +44,11 @@ class TestSourceMetadataStore:
     def test_apply_tag_missing_raises(self, tmp_path: Path) -> None:
         base = _seed_vault(tmp_path)
         with pytest.raises(LookupError):
-            source_metadata.apply_tag(base / ".knox" / "cache", _SOURCE, "x", add=True)
+            source_metadata.apply_tag(base / ".kompend" / "cache", _SOURCE, "x", add=True)
 
     def test_cached_text_and_none_for_uncached(self, tmp_path: Path) -> None:
         base = _seed_vault(tmp_path, ("doc-aaaaaaaa", _record()))
-        cache_dir = base / ".knox" / "cache"
+        cache_dir = base / ".kompend" / "cache"
         assert source_metadata.cached_text(cache_dir, "doc.pdf") == "cached body\n\n"
         assert source_metadata.cached_text(cache_dir, "absent.pdf") is None
 
@@ -64,8 +64,8 @@ class TestMcpToCliVisibility:
         assert result["status"] == "ok"
         assert result["changed"] is True
 
-        # CLI reader path: the same helper `knox sources list` uses.
-        entries = source_metadata.load_source_entries(base / ".knox" / "cache")
+        # CLI reader path: the same helper `kompend sources list` uses.
+        entries = source_metadata.load_source_entries(base / ".kompend" / "cache")
         assert source_metadata.source_tags(entries[_SOURCE]) == ["physics"]
 
     def test_mcp_list_reflects_the_tag(self, tmp_path: Path) -> None:
@@ -93,7 +93,7 @@ class TestMcpToCliVisibility:
         result = sources_attr(wiki_dir=str(base), file=_SOURCE, key_value="audience=expert")
         assert result["status"] == "ok"
 
-        entries = source_metadata.load_source_entries(base / ".knox" / "cache")
+        entries = source_metadata.load_source_entries(base / ".kompend" / "cache")
         assert source_metadata.source_attributes(entries[_SOURCE]) == {"audience": "expert"}
 
     def test_untag_removes_the_tag(self, tmp_path: Path) -> None:
@@ -101,7 +101,7 @@ class TestMcpToCliVisibility:
         sources_tag(wiki_dir=str(base), file=_SOURCE, tag="physics")
         sources_untag(wiki_dir=str(base), file=_SOURCE, tag="physics")
 
-        entries = source_metadata.load_source_entries(base / ".knox" / "cache")
+        entries = source_metadata.load_source_entries(base / ".kompend" / "cache")
         assert source_metadata.source_tags(entries[_SOURCE]) == []
 
 
@@ -111,21 +111,21 @@ class TestMcpToCliVisibility:
 class TestLegacyFileIgnored:
     def test_legacy_cache_dir_json_is_not_read(self, tmp_path: Path) -> None:
         base = _seed_vault(tmp_path)
-        legacy = base / ".knox" / "cache" / "doc-aaaaaaaa.json"
+        legacy = base / ".kompend" / "cache" / "doc-aaaaaaaa.json"
         legacy.parent.mkdir(parents=True, exist_ok=True)
         legacy.write_text('{"source_file": "sources/ghost.pdf", "metadata": {}}', encoding="utf-8")
 
-        entries = source_metadata.load_source_entries(base / ".knox" / "cache")
+        entries = source_metadata.load_source_entries(base / ".kompend" / "cache")
         assert entries == {}
 
 
 def _seed_vault(tmp_path: Path, *records: tuple[str, dict]) -> Path:
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    (base / ".kompend").mkdir(parents=True)
+    (base / ".kompend" / "config.toml").write_text("", encoding="utf-8")
     (base / "sources" / "doc.pdf").write_bytes(b"%PDF-1.4")
-    db_path = vault_db_path(base / ".knox" / "cache")
+    db_path = vault_db_path(base / ".kompend" / "cache")
     for key, data in records:
         write_document(db_path, key, data)
     return base

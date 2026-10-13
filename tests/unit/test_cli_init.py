@@ -1,4 +1,4 @@
-"""CLI integration tests for the ``knox init`` command."""
+"""CLI integration tests for the ``kompend init`` command."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli.app import app
-from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
+from kompend.cli.app import app
+from kompend.core.paths import CACHE_SUBDIR, KOMP_DIR
 
 runner = CliRunner()
 
@@ -20,7 +20,7 @@ class TestInitCommand:
         result = runner.invoke(app, ["init", str(target)])
         assert result.exit_code == 0, result.stdout
         assert (target / "sources").is_dir()
-        assert (target / KNOX_DIR / "config.toml").is_file()
+        assert (target / KOMP_DIR / "config.toml").is_file()
         assert "Created wiki project" in result.stdout
 
     def test_creates_in_cwd_when_no_target(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -28,7 +28,7 @@ class TestInitCommand:
         result = runner.invoke(app, ["init"])
         assert result.exit_code == 0
         assert (tmp_path / "sources").is_dir()
-        assert (tmp_path / KNOX_DIR / "config.toml").is_file()
+        assert (tmp_path / KOMP_DIR / "config.toml").is_file()
 
     def test_bare_flag_skips_authored_files(self, tmp_path: Path) -> None:
         target = tmp_path / "bare-wiki"
@@ -42,21 +42,21 @@ class TestInitCommand:
     def test_existing_project_exits_gracefully(self, tmp_path: Path) -> None:
         target = tmp_path / "existing"
         target.mkdir()
-        (target / "knox.toml").write_text("# existing", encoding="utf-8")
+        (target / "kompend.toml").write_text("# existing", encoding="utf-8")
         result = runner.invoke(app, ["init", str(target)])
         assert result.exit_code == 0
         combined = result.stdout + (result.stderr or "")
-        assert "existing KNOX project" in combined
+        assert "existing KOMPEND project" in combined
         assert "--force" in combined
 
     def test_force_flag_overwrites(self, tmp_path: Path) -> None:
         target = tmp_path / "force-wiki"
         target.mkdir()
-        (target / KNOX_DIR).mkdir()
-        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        (target / KOMP_DIR).mkdir()
+        (target / KOMP_DIR / "config.toml").write_text("# old", encoding="utf-8")
         result = runner.invoke(app, ["init", "--force", str(target)])
         assert result.exit_code == 0, result.stdout
-        assert (target / KNOX_DIR / "config.toml").read_text(encoding="utf-8") != "# old"
+        assert (target / KOMP_DIR / "config.toml").read_text(encoding="utf-8") != "# old"
 
     def test_target_is_file_fails(self, tmp_path: Path) -> None:
         file = tmp_path / "not-a-dir"
@@ -65,7 +65,7 @@ class TestInitCommand:
         assert result.exit_code == 1
 
     def test_refuses_to_clobber_tracked_rail_files(self, tmp_path: Path) -> None:
-        """A pre-existing AGENTS.md / .gitignore / README.md is not a scaffold marker; `knox init` must refuse, not overwrite."""
+        """A pre-existing AGENTS.md / .gitignore / README.md is not a scaffold marker; `kompend init` must refuse, not overwrite."""
         target = tmp_path / "my-wiki"
         target.mkdir()
         sentinel = "# tracked repository file -- do not overwrite"
@@ -117,9 +117,9 @@ class TestInitCommand:
     def test_keep_cache_preserves_cache(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / KNOX_DIR).mkdir()
-        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
-        cache_dir = target / KNOX_DIR / CACHE_SUBDIR
+        (target / KOMP_DIR).mkdir()
+        (target / KOMP_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        cache_dir = target / KOMP_DIR / CACHE_SUBDIR
         cache_dir.mkdir()
         (cache_dir / "doc.json").write_text("{}", encoding="utf-8")
         (target / "stale.md").write_text("old", encoding="utf-8")

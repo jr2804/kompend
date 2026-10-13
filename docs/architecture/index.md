@@ -1,8 +1,8 @@
-# KNOX Architecture
+# KOMPEND Architecture
 
 ## Design Philosophy
 
-KNOX decouples **parsing** from **compilation** and adds layers that existing frameworks skip: structure-aware chunking, multi-turn resolution, and a self-correcting compilation loop (WiCER). The architecture is tiered so each layer is independently replaceable.
+KOMPEND decouples **parsing** from **compilation** and adds layers that existing frameworks skip: structure-aware chunking, multi-turn resolution, and a self-correcting compilation loop (WiCER). The architecture is tiered so each layer is independently replaceable.
 
 ## 5-Tier Architecture
 
@@ -19,7 +19,7 @@ flowchart TD
     T3[Tier 3<br/>Resolution<br/>EntityRegistry + VLMEnricher]
     T4[Tier 4<br/>Compilation<br/>Graph / TwoPhase / WiCER]
     T5[Tier 5<br/>Output<br/>Markdown / JSON / Typst / MCP]
-    CACHE[Cache<br/>.knox/cache/]
+    CACHE[Cache<br/>.kompend/cache/]
     IDX[Index<br/>FTS + zvec vectors]
 
     SRC --> T1
@@ -173,15 +173,15 @@ class CompiledWiki:
 
 ### 1. Parser-Agnostic
 
-No parser is baked into KNOX's core. The `BaseParser` interface accepts raw documents and produces `ParsedDocument`. The `ParserRouter` selects by file extension and user preference. If a new parser emerges (`docu-sonic-9000`), add a module implementing `BaseParser()` — no other tier changes.
+No parser is baked into KOMPEND's core. The `BaseParser` interface accepts raw documents and produces `ParsedDocument`. The `ParserRouter` selects by file extension and user preference. If a new parser emerges (`docu-sonic-9000`), add a module implementing `BaseParser()` — no other tier changes.
 
 ### 2. Structure-Preserving
 
-Flattening a 50-row comparison table to markdown destroys queryability. KNOX stores tables as structured JSON (`list[list[str]]` with cell type annotations). Figures retain captions, bounding boxes, and extracted PNGs. Equations keep LaTeX source and image fallback.
+Flattening a 50-row comparison table to markdown destroys queryability. KOMPEND stores tables as structured JSON (`list[list[str]]` with cell type annotations). Figures retain captions, bounding boxes, and extracted PNGs. Equations keep LaTeX source and image fallback.
 
 ### 3. Model-Aware
 
-Model strings (`provider/model`) resolve through pydantic-ai, and KNOX goes further:
+Model strings (`provider/model`) resolve through pydantic-ai, and KOMPEND goes further:
 
 - Auto-detect context window from model metadata
 - Hold back a safety margin for system prompts (8% of the window, minimum 512 tokens)
@@ -193,7 +193,7 @@ Model strings (`provider/model`) resolve through pydantic-ai, and KNOX goes furt
 
 Three interfaces, same core:
 
-- **CLI:** `knox compile sources/ --output wiki/`
+- **CLI:** `kompend compile sources/ --output wiki/`
 - **Python SDK:** `pipeline.compile(sources=[Path("paper.pdf")])`
 - **MCP Server:** `wiki_parse`, `wiki_compile`, `wiki_capture`, `wiki_learn` tools for Hermes/Claude Code/Codex
 
@@ -209,11 +209,11 @@ Default: one-shot ingestion (fast). Opt-in per document: multi-turn resolution (
 
 ### 6. Multimodal
 
-Vision-capable LLMs analyze extracted figures during compilation. The `VLMEnricher` sends figure images + surrounding text + figure caption to a vision model. Output: searchable caption + classification ("architecture diagram", "performance graph", "workflow"). Figures become first-class wiki nodes. Enable with `--vlm-model` or `KNOX_VLM_MODEL`.
+Vision-capable LLMs analyze extracted figures during compilation. The `VLMEnricher` sends figure images + surrounding text + figure caption to a vision model. Output: searchable caption + classification ("architecture diagram", "performance graph", "workflow"). Figures become first-class wiki nodes. Enable with `--vlm-model` or `KOMP_VLM_MODEL`.
 
 ### 7. Iterative Compilation (WiCER)
 
-Inspired by [arXiv:2605.07068v1](https://arxiv.org/pdf/2605.07068v1). Blind compilation over-compresses 2–3× beyond targets. WiCER recovers 80% of lost quality in 1–2 iterations via probe Q&A and targeted diagnosis. KNOX's `WikiCompiler` implements the CEGAR-style loop: compile → evaluate → diagnose → refine.
+Inspired by [arXiv:2605.07068v1](https://arxiv.org/pdf/2605.07068v1). Blind compilation over-compresses 2–3× beyond targets. WiCER recovers 80% of lost quality in 1–2 iterations via probe Q&A and targeted diagnosis. KOMPEND's `WikiCompiler` implements the CEGAR-style loop: compile → evaluate → diagnose → refine.
 
 ### 8. Hierarchical Chunk Tree
 
@@ -230,22 +230,22 @@ zoom for retrieval.
 
 ### Hermes Agent
 
-KNOX provides an MCP server (`src/knox/mcp/server.py`) exposing `wiki_parse`, `wiki_compile`, `wiki_capture`, and `wiki_learn` tools. Hermes skills can call these tools directly. The CLI remains the source of truth — the MCP layer is a thin wrapper.
+KOMPEND provides an MCP server (`src/kompend/mcp/server.py`) exposing `wiki_parse`, `wiki_compile`, `wiki_capture`, and `wiki_learn` tools. Hermes skills can call these tools directly. The CLI remains the source of truth — the MCP layer is a thin wrapper.
 
 ### Open-WebUI
 
-No custom GUI. KNOX exposes a queryable JSON graph / SQLite database. Open-WebUI connects via API. This follows the user's explicit requirement to minimize UI overhead.
+No custom GUI. KOMPEND exposes a queryable JSON graph / SQLite database. Open-WebUI connects via API. This follows the user's explicit requirement to minimize UI overhead.
 
 ### Hybrid RAG
 
-`knox query` fuses multiple signals when an index has been built with `knox compile --index`:
+`kompend query` fuses multiple signals when an index has been built with `kompend compile --index`:
 
 - **FTS5** over compiled wiki pages
 - **zvec vector search** over chunk embeddings
 - **Token overlap** fallback
 - **BM25** over raw-source files for hybrid scope
 
-Results are combined with reciprocal rank fusion (RRF) so that each signal can rescue results the others miss. A sidecar zvec index is stored in `.knox/vectors/`; an FTS index is stored in `.knox/search.db`.
+Results are combined with reciprocal rank fusion (RRF) so that each signal can rescue results the others miss. A sidecar zvec index is stored in `.kompend/vectors/`; an FTS index is stored in `.kompend/search.db`.
 
 The `query` command supports a `--search-mode` (or `--scope`) option:
 
@@ -282,6 +282,6 @@ source.pdf
 | Document | Description |
 |---|---|
 | [Output architecture](output.md) | Output writers, DocumentRenderer, flavor system |
-| [Cache and state directory](cache.md) | `.knox/` layout, project-local vs global, cache lifecycle |
+| [Cache and state directory](cache.md) | `.kompend/` layout, project-local vs global, cache lifecycle |
 | [Decision log](decisions.md) | Architectural decisions and rationale |
 | [Chunk tree design](chunk-tree.md) | Hierarchical chunk tree, fractal analysis, scaling matrix |

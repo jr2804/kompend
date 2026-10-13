@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.cli._ignore import compile_patterns, filter_files, load_gitignore, matches_any
+from kompend.cli._ignore import compile_patterns, filter_files, load_gitignore, matches_any
 
 
 class TestCompilePatterns:

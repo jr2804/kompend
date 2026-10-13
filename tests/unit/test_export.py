@@ -1,4 +1,4 @@
-"""Tests for knox.core.pipeline.export (``knox sources export``)."""
+"""Tests for kompend.core.pipeline.export (``kompend sources export``)."""
 
 from __future__ import annotations
 
@@ -11,11 +11,11 @@ import pytest
 # ── --all bulk export ──────────────────────────────────────────────────
 from typer.testing import CliRunner  # noqa: E402
 
-from knox.cli.app import app as cli_app  # noqa: E402
-from knox.core.models.attachments import Attachment, AttachmentManifest
-from knox.core.models.enums import AssetKind
-from knox.core.pipeline.assets import AssetStore
-from knox.core.pipeline.export import (
+from kompend.cli.app import app as cli_app  # noqa: E402
+from kompend.core.models.attachments import Attachment, AttachmentManifest
+from kompend.core.models.enums import AssetKind
+from kompend.core.pipeline.assets import AssetStore
+from kompend.core.pipeline.export import (
     _asset_id,
     _element_from_dict,
     _structured_dict,
@@ -24,9 +24,9 @@ from knox.core.pipeline.export import (
     load_cache_entry,
     render_document_markdown,
 )
-from knox.core.pipeline.parse_cache import write_document
-from knox.core.store import vault_db_path
-from knox.mcp.tools.sources import sources_export as mcp_sources_export  # noqa: E402
+from kompend.core.pipeline.parse_cache import write_document
+from kompend.core.store import vault_db_path
+from kompend.mcp.tools.sources import sources_export as mcp_sources_export  # noqa: E402
 
 _cli_runner = CliRunner()
 
@@ -92,7 +92,7 @@ class TestImages:
         out = tmp_path / "out.md"
         export_source(
             base_dir=tmp_path,
-            cache_dir=tmp_path / ".knox" / "cache",
+            cache_dir=tmp_path / ".kompend" / "cache",
             source_id="doc",
             out_path=out,
             inline=False,
@@ -105,11 +105,11 @@ class TestImages:
         assert str(img) not in md  # no absolute path in output
 
     def test_relative_path_resolves_against_base_dir(self, tmp_path: Path) -> None:
-        img_dir = tmp_path / ".knox" / "cache" / "images"
+        img_dir = tmp_path / ".kompend" / "cache" / "images"
         img_dir.mkdir(parents=True)
         img = img_dir / "pic.png"
         img.write_bytes(b"\x89PNG\r\n\x1a\n")
-        data = _cache_data(_element("image", ".knox/cache/images/pic.png"))
+        data = _cache_data(_element("image", ".kompend/cache/images/pic.png"))
         md = _render(data, tmp_path)
         assert "out_assets/pic.png" in md
 
@@ -143,10 +143,10 @@ class TestImages:
 class TestLoadCacheEntry:
     def test_unknown_source_raises(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
-            load_cache_entry("nope", tmp_path / ".knox" / "cache")
+            load_cache_entry("nope", tmp_path / ".kompend" / "cache")
 
     def test_same_stem_exact_source_wins(self, tmp_path: Path) -> None:
-        cache_dir = tmp_path / ".knox" / "cache"
+        cache_dir = tmp_path / ".kompend" / "cache"
         cache_dir.mkdir(parents=True)
         db_path = vault_db_path(cache_dir)
         write_document(db_path, "doc-11111111", _cache_data(title="one", source_file="sources/other.pdf"))
@@ -162,11 +162,11 @@ class TestLoadCacheEntry:
 
 class TestAttachments:
     def test_attachments_table(self, tmp_path: Path) -> None:
-        knox_dir = tmp_path / ".knox"
-        att_dir = knox_dir / "attachments" / "doc"
+        kompend_dir = tmp_path / ".kompend"
+        att_dir = kompend_dir / "attachments" / "doc"
         att_dir.mkdir(parents=True)
         att_dir.joinpath("notes.txt").write_text("hi", encoding="utf-8")
-        manifest = AttachmentManifest(knox_dir / "attachments.jsonl")
+        manifest = AttachmentManifest(kompend_dir / "attachments.jsonl")
         manifest.append(
             Attachment(
                 path="doc/notes.txt",
@@ -232,7 +232,7 @@ class TestAnnotations:
         out = tmp_path / "out.md"
         export_source(
             base_dir=tmp_path,
-            cache_dir=tmp_path / ".knox" / "cache",
+            cache_dir=tmp_path / ".kompend" / "cache",
             source_id="doc",
             out_path=out,
             inline=False,
@@ -253,7 +253,7 @@ class TestAnnotations:
         out = tmp_path / "out.md"
         export_source(
             base_dir=tmp_path,
-            cache_dir=tmp_path / ".knox" / "cache",
+            cache_dir=tmp_path / ".kompend" / "cache",
             source_id="doc",
             out_path=out,
             inline=False,
@@ -367,7 +367,7 @@ def _cache_data(*elements: dict, title: str = "Doc Title", source_file: str = "s
 
 
 def _write_cache(tmp_path: Path, data: dict, stem: str = "doc") -> None:
-    cache_dir = tmp_path / ".knox" / "cache"
+    cache_dir = tmp_path / ".kompend" / "cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
     write_document(vault_db_path(cache_dir), f"{stem}-a1b2c3d4", data)
 
@@ -387,20 +387,20 @@ def _render(data: dict, tmp_path: Path, **kwargs: object) -> str:
 
 
 def _seed_asset_store(tmp_path: Path, record: dict) -> None:
-    store = AssetStore(tmp_path / ".knox" / "assets.json")
+    store = AssetStore(tmp_path / ".kompend" / "assets.json")
     store._data[record["id"]] = record  # noqa: SLF001
     store.save()
 
 
 def _seed_vault_with_cache(tmp_path: Path, *cache: dict) -> Path:
-    """Minimal vault: .knox/config.toml, sources/, cache entries per source."""
+    """Minimal vault: .kompend/config.toml, sources/, cache entries per source."""
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    (base / ".kompend").mkdir(parents=True)
+    (base / ".kompend" / "config.toml").write_text("", encoding="utf-8")
     for i, data in enumerate(cache):
         stem = Path(data["source_file"]).stem
-        cache_dir = base / ".knox" / "cache"
+        cache_dir = base / ".kompend" / "cache"
         cache_dir.mkdir(exist_ok=True)
         write_document(vault_db_path(cache_dir), f"{stem}-{i:08x}", data)
     return base

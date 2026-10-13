@@ -7,7 +7,7 @@ argv-walk that hand-stripped ``--wiki-dir``/``-w`` is gone).
 
 from __future__ import annotations
 
-from knox.core.reporting.runlog import _command_label
+from kompend.core.reporting.runlog import _command_label
 
 
 class TestCommandLabel:

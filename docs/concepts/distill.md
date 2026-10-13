@@ -17,13 +17,13 @@ graph LR
 
 ```bash
 # Capture: LLM extracts decisions, discoveries, corrections from text
-knox capture "We decided to use QKV projections with RoPE"
+kompend capture "We decided to use QKV projections with RoPE"
 
 # Learn: store a verbatim fact
-knox learn "The transformer uses d_model=512" --tag architecture
+kompend learn "The transformer uses d_model=512" --tag architecture
 
 # Distill: synthesize all captures into wiki source pages
-knox distill
+kompend distill
 ```
 
 ## How it works
@@ -32,7 +32,7 @@ knox distill
 2. Captures are grouped by their first tag.
 3. Each group is synthesized into a markdown source file via LLM (or a deterministic fallback if no LLM is available).
 4. Output is written to `sources/_distilled/` with frontmatter tracking the source captures.
-5. A subsequent `knox compile` integrates the distilled pages into the wiki.
+5. A subsequent `kompend compile` integrates the distilled pages into the wiki.
 
 ## Output format
 

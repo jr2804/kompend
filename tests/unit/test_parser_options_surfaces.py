@@ -8,7 +8,7 @@ Three rounds of the same failure mode:
    parsecraft backend folds the judge into its ``cache_identity()``, the two
    paths hashed to *different* parser fingerprints and invalidated each other's
    parse cache on every alternate run.
-3. ``knox ingest`` passed ``images_dir`` alone while ``knox compile`` also
+3. ``kompend ingest`` passed ``images_dir`` alone while ``kompend compile`` also
    passed the config-derived ``image_mode``, so the two could serve each other
    parses produced under different settings — the parse-cache key covers none
    of those fields.
@@ -26,11 +26,11 @@ from typing import Any
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli.app import app
-from knox.core.config import resolve_config
-from knox.core.pipeline.config import PipelineConfig
-from knox.mcp.tools.pipeline import wiki_ingest
-from knox.preprocessing.parsers import ParserBuildOptions
+from kompend.cli.app import app
+from kompend.core.config import resolve_config
+from kompend.core.pipeline.config import PipelineConfig
+from kompend.mcp.tools.pipeline import wiki_ingest
+from kompend.preprocessing.parsers import ParserBuildOptions
 
 _cli_runner = CliRunner()
 
@@ -42,7 +42,7 @@ class _Captured(Exception):
 def test_ingest_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     base = _vault(tmp_path, judge="ollama", judge_model="parable-tinyjev", preference="quality")
     captured: dict[str, Any] = {}
-    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline.build_default_router", _capturing_factory(captured))
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_default_router", _capturing_factory(captured))
 
     with pytest.raises(_Captured):
         _cli_runner.invoke(app, ["--wiki-dir", str(base), "ingest"], catch_exceptions=False)
@@ -61,7 +61,7 @@ def test_parse_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: py
     base = _vault(tmp_path, judge="ollama", judge_model="parable-tinyjev", preference="speed")
     doc = base / "sources" / "note.txt"
     captured: dict[str, Any] = {}
-    monkeypatch.setattr("knox.cli.cmds.pipeline.pipeline.build_default_router", _capturing_factory(captured))
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_default_router", _capturing_factory(captured))
 
     with pytest.raises(_Captured):
         _cli_runner.invoke(app, ["--wiki-dir", str(base), "parse", str(doc)], catch_exceptions=False)
@@ -77,7 +77,7 @@ def test_parse_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: py
 def test_mcp_ingest_passes_the_configured_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     base = _vault(tmp_path, judge="zen", judge_model="some-model", preference="balanced")
     captured: dict[str, Any] = {}
-    monkeypatch.setattr("knox.mcp.tools.pipeline.build_default_router", _capturing_factory(captured))
+    monkeypatch.setattr("kompend.mcp.tools.pipeline.build_default_router", _capturing_factory(captured))
 
     with pytest.raises(_Captured):
         wiki_ingest(wiki_dir=str(base))
@@ -132,7 +132,7 @@ def _vault(
 ) -> Path:
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
+    (base / ".kompend").mkdir(parents=True)
     lines = ["[ingest]"]
     if judge is not None:
         lines.append(f'parsecraft_judge = "{judge}"')
@@ -143,6 +143,6 @@ def _vault(
     # ``PipelineConfig.from_resolved`` refuses an empty default_model; set one
     # so the pipeline-config test does not depend on a global config file.
     lines += ["", "[compile.llm]", 'default_model = "ollama/test-model"']
-    (base / ".knox" / "config.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (base / ".kompend" / "config.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (base / "sources" / "note.txt").write_text("hello", encoding="utf-8")
     return base

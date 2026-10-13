@@ -1,4 +1,4 @@
-"""Tests for KNOX MCP server — FastMCP-based tools."""
+"""Tests for KOMPEND MCP server — FastMCP-based tools."""
 
 from __future__ import annotations
 
@@ -8,12 +8,12 @@ from unittest.mock import patch
 
 import pytest
 
-from knox.cli.app import app as cli_app
-from knox.cli.app import register_all_commands
-from knox.mcp.server import compile_wiki, parse_document
-from knox.mcp.server import server as mcp_server
-from knox.mcp.tools.config import config_check
-from knox.mcp.tools.query import query_wiki
+from kompend.cli.app import app as cli_app
+from kompend.cli.app import register_all_commands
+from kompend.mcp.server import compile_wiki, parse_document
+from kompend.mcp.server import server as mcp_server
+from kompend.mcp.tools.config import config_check
+from kompend.mcp.tools.query import query_wiki
 
 # ---------------------------------------------------------------------------
 # CLI ↔ MCP parity
@@ -57,7 +57,7 @@ class TestCompileWiki:
         assert "Unknown format" in result["message"]
 
     def test_vlm_model_passed_to_pipeline(self) -> None:
-        with patch.object(Path, "exists", return_value=True), patch("knox.mcp.tools.knowledge.build_pipeline") as mock_build:
+        with patch.object(Path, "exists", return_value=True), patch("kompend.mcp.tools.knowledge.build_pipeline") as mock_build:
             mock_pipeline = mock_build.return_value
             mock_pipeline.run.return_value = type(
                 "Wiki",
@@ -188,11 +188,11 @@ def _normalize_mcp(name: str) -> str:
     return name[len("wiki_") :] if name.startswith("wiki_") else name
 
 
-def test_query_wiki_works_without_knox_state(tmp_path: Path) -> None:
+def test_query_wiki_works_without_kompend_state(tmp_path: Path) -> None:
     """wiki_query searches markdown without a vector index — vault root required."""
     vault = tmp_path / "vault"
-    (vault / ".knox").mkdir(parents=True)
-    (vault / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    (vault / ".kompend").mkdir(parents=True)
+    (vault / ".kompend" / "config.toml").write_text("", encoding="utf-8")
     (vault / "wiki" / "concepts").mkdir(parents=True)
     (vault / "wiki" / "index.md").write_text("# Wiki Index\n", encoding="utf-8")
     (vault / "wiki" / "concepts" / "transformers.md").write_text(
@@ -201,15 +201,15 @@ def test_query_wiki_works_without_knox_state(tmp_path: Path) -> None:
     )
 
     # raw=True to skip the model requirement — this test validates that markup
-    # files can be loaded and searched without .knox/ vector state.
+    # files can be loaded and searched without .kompend/ vector state.
     result = query_wiki("transformers attention", wiki_dir=str(vault), raw=True)
 
     assert result["status"] == "ok"
-    assert result["results"], "keyword search must return hits without .knox/ state"
+    assert result["results"], "keyword search must return hits without .kompend/ state"
     assert any("transformers" in str(r.get("article_id", "")).lower() for r in result["results"])
 
 
 def test_query_wiki_errors_when_no_pages(tmp_path: Path) -> None:
     """Querying a non-vault dir fails fast (LookupError) before page loading."""
-    with pytest.raises(LookupError, match="not a KNOX vault root"):
+    with pytest.raises(LookupError, match="not a KOMPEND vault root"):
         query_wiki("anything", wiki_dir=str(tmp_path / "empty"))

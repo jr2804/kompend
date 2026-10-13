@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 
-from knox.cli._pipeline_helpers import write_wiki_cache
-from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
-from knox.core.paths import KNOX_DIR
-from knox.core.store import open_store, vault_db_path
+from kompend.cli._pipeline_helpers import write_wiki_cache
+from kompend.core.models import CompiledWiki, WikiNode, load_cached_wiki
+from kompend.core.paths import KOMP_DIR
+from kompend.core.store import open_store, vault_db_path
 
 
 class TestWriteWikiCache:
@@ -27,11 +27,11 @@ class TestWriteWikiCache:
         assert row["quality_score"] == 0.85
         assert row["iteration"] == 2
 
-    def test_creates_knox_dir(self, tmp_path: Any) -> None:
+    def test_creates_kompend_dir(self, tmp_path: Any) -> None:
         wiki = _make_wiki()
-        assert not (tmp_path / KNOX_DIR).exists()
+        assert not (tmp_path / KOMP_DIR).exists()
         write_wiki_cache(wiki, tmp_path)
-        assert (tmp_path / KNOX_DIR).exists()
+        assert (tmp_path / KOMP_DIR).exists()
 
     def test_overwrites_existing(self, tmp_path: Any) -> None:
         wiki1 = _make_wiki()
@@ -65,7 +65,7 @@ class TestLoadCachedWiki:
         assert loaded.iteration == 2
 
     def test_corrupt_payload_raises(self, tmp_path: Any) -> None:
-        # Per src/knox/AGENTS.md: a corrupt wiki snapshot is a bug, not a silent miss.
+        # Per src/kompend/AGENTS.md: a corrupt wiki snapshot is a bug, not a silent miss.
         # Missing -> None (caller prompts to compile); corrupt -> raises so the
         # real cause surfaces instead of a misleading "run compile first".
         db_path = vault_db_path(tmp_path)

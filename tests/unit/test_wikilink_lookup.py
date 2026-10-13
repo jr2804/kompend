@@ -14,9 +14,9 @@ behavior:
 
 from __future__ import annotations
 
-from knox.compilation.concept_keys import normalize_concept_key
-from knox.core.models import CompiledWiki, WikiNode
-from knox.lint.structural import BrokenWikilinksRule, Severity, _node_lookup_index
+from kompend.compilation.concept_keys import normalize_concept_key
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.lint.structural import BrokenWikilinksRule, Severity, _node_lookup_index
 
 
 class TestNodeLookupIndex:

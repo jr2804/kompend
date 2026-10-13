@@ -2,7 +2,7 @@
 
 Exercises the full ``parse → chunk → compile → write`` pipeline
 **without** any real LLM/VLM/embedding calls. We patch
-``knox.llm.models.build_model`` to return pydantic-ai's
+``kompend.llm.models.build_model`` to return pydantic-ai's
 :class:`~pydantic_ai.models.test.TestModel`, which produces valid structured
 output for every result type without any network or model load. Embedding is
 replaced by an in-process deterministic provider.
@@ -24,17 +24,17 @@ from pathlib import Path
 import pytest
 from pydantic_ai.models.test import TestModel
 
-import knox.llm.models as _llm_models
-from knox.chunking import HierarchicalChunker
-from knox.compilation.graph import GraphCompiler
-from knox.compilation.wicer import WiCERCompiler
-from knox.core.config import EmbeddingConfig, LLMConfig
-from knox.core.models import Chunk, ChunkTree, CompiledWiki, ResolvedChunk
-from knox.core.paths import KNOX_DIR, STATE_FILE
-from knox.core.pipeline.config import PipelineConfig
-from knox.core.pipeline.state import SourceState, TierState, TierStateStore
-from knox.output.json_writer import JsonWriter
-from knox.output.markdown import MarkdownWriter
+import kompend.llm.models as _llm_models
+from kompend.chunking import HierarchicalChunker
+from kompend.compilation.graph import GraphCompiler
+from kompend.compilation.wicer import WiCERCompiler
+from kompend.core.config import EmbeddingConfig, LLMConfig
+from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ResolvedChunk
+from kompend.core.paths import KOMP_DIR, STATE_FILE
+from kompend.core.pipeline.config import PipelineConfig
+from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
+from kompend.output.json_writer import JsonWriter
+from kompend.output.markdown import MarkdownWriter
 from tests.conftest import DeterministicTestEmbeddingProvider
 from tests.fixtures.documents import make_test_doc
 
@@ -205,7 +205,7 @@ def mock_embedding_provider() -> DeterministicTestEmbeddingProvider:
 
 def test_tier_state_round_trip(tmp_path: Path) -> None:
     """TierStateStore serializes and re-loads TierState correctly."""
-    store_file = tmp_path / KNOX_DIR / STATE_FILE
+    store_file = tmp_path / KOMP_DIR / STATE_FILE
     store = TierStateStore(store_file)
 
     state = TierState(
@@ -216,7 +216,7 @@ def test_tier_state_round_trip(tmp_path: Path) -> None:
                 content_hash="abc123",
                 current_tier=3,
                 last_compile="2025-01-01T00:00:00Z",
-                ingested_by="knox",
+                ingested_by="kompend",
             )
         }
     )

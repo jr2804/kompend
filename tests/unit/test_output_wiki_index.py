@@ -6,12 +6,12 @@ import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from knox.agents.types import OverviewDeps, OverviewPage
-from knox.agents.wiki_index import AgenticOverviewAgent
-from knox.core.models import CompiledWiki, WikiNode
-from knox.output.pages.index import _full_catalog, exported_sources_section, generate_index, sync_exported_sources_section, write_index
-from knox.output.pages.overview import generate_overview_agentic
-from knox.output.wiki_index import (
+from kompend.agents.types import OverviewDeps, OverviewPage
+from kompend.agents.wiki_index import AgenticOverviewAgent
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.output.pages.index import _full_catalog, exported_sources_section, generate_index, sync_exported_sources_section, write_index
+from kompend.output.pages.overview import generate_overview_agentic
+from kompend.output.wiki_index import (
     LogStage,
     append_log_entry,
     generate_log_entry,

@@ -1,4 +1,4 @@
-"""Unit tests for the ``knox organize`` LLM-based file categorisation."""
+"""Unit tests for the ``kompend organize`` LLM-based file categorisation."""
 
 from __future__ import annotations
 
@@ -9,27 +9,27 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from knox.agents.categorize import CategorizeAgent
-from knox.agents.categorize_models import CategoryNode as PydanticNode
-from knox.agents.categorize_models import CategoryTree as PydanticTree
-from knox.cli.app import app
-from knox.compilation._two_phase_core import Extraction
-from knox.core.cache import CacheStore
-from knox.core.cache.wiki import write_wiki_cache
-from knox.core.config import OrganizeConfig, resolve_config
-from knox.core.config.keys import (
+from kompend.agents.categorize import CategorizeAgent
+from kompend.agents.categorize_models import CategoryNode as PydanticNode
+from kompend.agents.categorize_models import CategoryTree as PydanticTree
+from kompend.cli.app import app
+from kompend.compilation._two_phase_core import Extraction
+from kompend.core.cache import CacheStore
+from kompend.core.cache.wiki import write_wiki_cache
+from kompend.core.config import OrganizeConfig, resolve_config
+from kompend.core.config.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
     ORGANIZE_MIN_FILES_PER_CATEGORY,
     ORGANIZE_MIN_SUBCATEGORIES,
 )
-from knox.core.models import CompiledWiki, WikiNode, load_cached_wiki
-from knox.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KNOX_DIR, ORGANIZE_REPORT_FILE
-from knox.core.pipeline.state import SourceState, TierState, TierStateStore
-from knox.core.store import open_store, vault_db_path
-from knox.core.store.schema import ORGANIZE_REPORTS_TABLE, PROVENANCE_TABLE
-from knox.core.text.slug import slugify
-from knox.organize import (
+from kompend.core.models import CompiledWiki, WikiNode, load_cached_wiki
+from kompend.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KOMP_DIR, ORGANIZE_REPORT_FILE
+from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
+from kompend.core.store import open_store, vault_db_path
+from kompend.core.store.schema import ORGANIZE_REPORTS_TABLE, PROVENANCE_TABLE
+from kompend.core.text.slug import slugify
+from kompend.organize import (
     CategoryNode,
     CategoryTree,
     OrganizeResult,
@@ -43,10 +43,10 @@ from knox.organize import (
     update_wiki_links,
     validate_tree,
 )
-from knox.organize.categorize import _tree_from_json
-from knox.organize.engine import resolve_organize_config
-from knox.organize.moves import FileMove
-from knox.provenance import annotate_wiki_with_provenance
+from kompend.organize.categorize import _tree_from_json
+from kompend.organize.engine import resolve_organize_config
+from kompend.organize.moves import FileMove
+from kompend.provenance import annotate_wiki_with_provenance
 
 # ── Slug helper ──────────────────────────────────────────────────────────
 
@@ -587,7 +587,7 @@ class TestUpdateWikiLinks:
         counts = update_wiki_links(tmp_path, wiki, remap)
 
         assert counts["provenance_files"] == 1
-        with open_store(tmp_path / KNOX_DIR / "knox.db") as conn:
+        with open_store(tmp_path / KOMP_DIR / "kompend.db") as conn:
             row = conn.execute(f"SELECT citations FROM {PROVENANCE_TABLE} WHERE node_id = ?", ("node",)).fetchone()  # noqa: S608 — table name from Final constant
         assert row is not None
         assert json.loads(row["citations"]) == ["[new.md:1-2]"]
@@ -613,7 +613,7 @@ class TestUpdateWikiLinks:
         assert loaded.nodes[0].metadata["source_file"] == "sources/new.md"
 
     def test_updates_tier_state(self, tmp_path: Path) -> None:
-        store = TierStateStore(tmp_path / KNOX_DIR / "compile_state.json")
+        store = TierStateStore(tmp_path / KOMP_DIR / "compile_state.json")
         store.save(TierState(entries={"a": SourceState(stem="a", source_file="sources/old.md", content_hash="h")}))
 
         wiki = tmp_path / "wiki"
@@ -768,7 +768,7 @@ class TestOrganizeConfig:
 
     def test_env_override(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
-        monkeypatch.setenv("KNOX_ORGANIZE_MAX_DEPTH", "2")
+        monkeypatch.setenv("KOMP_ORGANIZE_MAX_DEPTH", "2")
         cfg = resolve_config()
         assert cfg.get(ORGANIZE_MAX_DEPTH) == 2
 
@@ -820,7 +820,7 @@ def _fake_agent(payload: dict[str, Any] | None) -> CategorizeAgent:
 
 def _write_extraction(base_dir: Path, source: str, summary: str = "test summary") -> None:
     """Store an extraction in the ``extract`` cache layer (single store)."""
-    store = CacheStore(base_dir / KNOX_DIR / "cache", base_dir)
+    store = CacheStore(base_dir / KOMP_DIR / "cache", base_dir)
     store.set(
         "extract",
         {"source": source},

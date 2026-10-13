@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models.attachments import (
+from kompend.core.models.attachments import (
     IMAGE_EXTENSIONS,
     INGESTIBLE_EXTENSIONS,
     TEXT_EXTENSIONS,
@@ -211,7 +211,7 @@ def test_manifest_absent_store_reads_empty(tmp_path: Path) -> None:
 def test_tombstone_survives_new_manifest_instance(tmp_path: Path) -> None:
     """A removal is durable: a fresh manifest on the same store honours it.
 
-    The tombstone is the only record of an explicit ``knox attachments remove``.
+    The tombstone is the only record of an explicit ``kompend attachments remove``.
     If it did not survive the storage move, auto-adoption would silently
     re-adopt the removed file.
     """
@@ -266,7 +266,7 @@ def test_adopt_idempotent_and_respects_tombstone(tmp_path: Path) -> None:
     (slug_dir / "notes.txt").write_text("hello")
     (slug_dir / "removed.txt").write_text("gone")
 
-    manifest = AttachmentManifest(base / ".knox" / "attachments.jsonl")
+    manifest = AttachmentManifest(base / ".kompend" / "attachments.jsonl")
     manifest.append(Attachment(path="report/notes.txt", source="report", ingestible=True))
     manifest.append(Attachment(path="report/removed.txt", source="report"))
     manifest.remove("report/removed.txt")
@@ -326,7 +326,7 @@ def _make_vault(tmp_path: Path) -> Path:
 
 def _delete_store(base: Path) -> None:
     """Delete the vault store (and WAL sidecars) to simulate manifest loss."""
-    db = base / ".knox" / "knox.db"
+    db = base / ".kompend" / "kompend.db"
     for suffix in ("", "-wal", "-shm"):
         db.with_name(db.name + suffix).unlink(missing_ok=True)
 

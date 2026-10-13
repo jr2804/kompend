@@ -1,8 +1,8 @@
-# Multi-Level Caching in KNOX
+# Multi-Level Caching in KOMPEND
 
 ## Overview
 
-KNOX implements a multi-level, content-addressed caching system that makes the
+KOMPEND implements a multi-level, content-addressed caching system that makes the
 pipeline fully incremental: adding a single source file only re-processes the
 minimum necessary work. Every tier output is cached with full dependency tracking —
 if nothing changed, everything is skipped.
@@ -35,7 +35,7 @@ if nothing changed, everything is skipped.
 
 ### Layer 1: Parse Cache (Tier 1, *existing*)
 
-- **Location**: `.knox/cache/<sha256-prefix>.json`
+- **Location**: `.kompend/cache/<sha256-prefix>.json`
 - **Key**: SHA-256 of source file bytes + `image_mode`
 - **Deps**: none (file content is the input)
 - **Value**: `ParsedDocument` (JSON-serialized)
@@ -43,7 +43,7 @@ if nothing changed, everything is skipped.
 
 ### Layer 2: Chunk Cache (Tier 1, *new*)
 
-- **Location**: `.knox/cache/chunk/<sha256-key>.pkl`
+- **Location**: `.kompend/cache/chunk/<sha256-key>.pkl`
 - **Key**: `sha256(source_file_bytes)` + `chunk_size`
 - **Deps**: `{"source": <sha256>, "chunk_size": "<n>"}`
 - **Value**: `list[Chunk]`
@@ -52,7 +52,7 @@ if nothing changed, everything is skipped.
 
 ### Layer 3: Resolution Cache (Tier 2, *new*)
 
-- **Location**: `.knox/cache/resolve/<sha256-key>.pkl`
+- **Location**: `.kompend/cache/resolve/<sha256-key>.pkl`
 - **Key**: `sha256(chunk.text)` + `vlm_model`
 - **Deps**: `{"chunk_text": <sha256>, "vlm_model": "<model>"}`
 - **Value**: `ResolvedChunk`
@@ -61,7 +61,7 @@ if nothing changed, everything is skipped.
 
 ### Layer 4: Extraction Cache (Tier 3 Phase 1, *new*)
 
-- **Location**: `.knox/cache/extract/<sha256-key>.pkl`
+- **Location**: `.kompend/cache/extract/<sha256-key>.pkl`
 - **Key**: `sha256(source_text)` + `model` + `extract_budget`
 - **Deps**: `{"source_text": <sha256>, "model": "<model>", "extract_budget": "<n>"}`
 - **Value**: `Extraction` (summary, entities, concepts, tags)
@@ -70,7 +70,7 @@ if nothing changed, everything is skipped.
 
 ### Layer 5: Generation Cache (Tier 3 Phase 2, *new*)
 
-- **Location**: `.knox/cache/generate/<sha256-key>.pkl`
+- **Location**: `.kompend/cache/generate/<sha256-key>.pkl`
 - **Key**: `sha256(all_extractions)` + `model` + `gen_source_segment` + `concepts_per_batch`
 - **Deps**: `{"extractions": <sha256>, "model": "<model>", "gen_source_segment": "<n>", "concepts_per_batch": "<n>"}`
 - **Value**: `CompiledWiki` (nodes, edges, toc)
@@ -79,7 +79,7 @@ if nothing changed, everything is skipped.
 
 ### Layer 6: Overview Cache (post-compile, *new*)
 
-- **Location**: `.knox/cache/overview/<sha256-key>.pkl`
+- **Location**: `.kompend/cache/overview/<sha256-key>.pkl`
 - **Key**: `sha256(all_node_contents)` + `model` + `overview_budget`
 - **Deps**: `{"source_texts": <sha256>, "model": "<model>", "overview_budget": "<n>"}`
 - **Value**: `str` (the overview markdown)
@@ -108,11 +108,11 @@ This means:
 |---------|-----------|--------|
 | `--no-cache` | `PipelineConfig.no_cache` | Bypasses all cache reads (still writes) |
 | `--force` | `PipelineConfig.force` | Calls `CacheStore.invalidate()` at pipeline start, then re-processes everything |
-| Per-layer | `KNOX_CACHE_DISABLE=chunk,resolve` | Future — env var parsed after tier state work |
+| Per-layer | `KOMP_CACHE_DISABLE=chunk,resolve` | Future — env var parsed after tier state work |
 
 ## Tier State (Complementary)
 
-The `TierStateStore` (`.knox/compile_state.json`) tracks the highest
+The `TierStateStore` (`.kompend/compile_state.json`) tracks the highest
 completed tier per source file. It works alongside the CacheStore:
 
 - **Tier 1**: recorded after chunking
@@ -126,7 +126,7 @@ skipped without cache lookups.
 
 ## Implementation Details
 
-### CacheStore (`src/knox/core/cache_store.py`)
+### CacheStore (`src/kompend/core/cache_store.py`)
 
 ```python
 class CacheStore:
@@ -138,11 +138,11 @@ class CacheStore:
 
 - **Storage format**: Pickle files (`.pkl`) with atomic write-to-temp-then-rename
 - **Key derivation**: `sha256(json.dumps(deps, sort_keys=True))[:16]`
-- **Cache directory**: `.knox/cache/<layer>/<key>.pkl` (resolved via `VaultPaths.cache_dir`)
+- **Cache directory**: `.kompend/cache/<layer>/<key>.pkl` (resolved via `VaultPaths.cache_dir`)
 - **Thread safety**: Different keys → different files → no contention;
   atomic writes prevent partial reads
 
-### Make Cache Key (`src/knox/core/cache_store.py`)
+### Make Cache Key (`src/kompend/core/cache_store.py`)
 
 ```python
 def make_cache_key(deps: dict[str, str]) -> str:

@@ -1,0 +1,1 @@
+"""KOMPEND MCP server package."""

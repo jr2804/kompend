@@ -7,13 +7,13 @@ from unittest.mock import patch
 
 import pytest
 
-from knox.preprocessing.dedup.base import DedupVerdict, classify_score
-from knox.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
-from knox.preprocessing.dedup.minhash_matcher import MinhashMatcher
-from knox.preprocessing.dedup.orchestrator import DedupOrchestrator
-from knox.preprocessing.dedup.store import DedupStore, StoreEntry
-from knox.rag.zvec_store import PydanticAIEmbeddingProvider, make_provider, to_pydantic_ai_embedding_string
-from knox.types import JSONDict
+from kompend.preprocessing.dedup.base import DedupVerdict, classify_score
+from kompend.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
+from kompend.preprocessing.dedup.minhash_matcher import MinhashMatcher
+from kompend.preprocessing.dedup.orchestrator import DedupOrchestrator
+from kompend.preprocessing.dedup.store import DedupStore, StoreEntry
+from kompend.rag.zvec_store import PydanticAIEmbeddingProvider, make_provider, to_pydantic_ai_embedding_string
+from kompend.types import JSONDict
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 # ---------------------------------------------------------------------------
@@ -346,7 +346,7 @@ class TestDedupOrchestrator:
     def test_combined_matchers_max_score_used(self, tmp_path: Path) -> None:
         """When both matchers are active, max of both scores is used."""
         with patch(
-            "knox.preprocessing.dedup.orchestrator.make_provider",
+            "kompend.preprocessing.dedup.orchestrator.make_provider",
             return_value=DeterministicTestEmbeddingProvider(dim=384),
         ):
             orch = DedupOrchestrator(
@@ -434,7 +434,7 @@ class TestDedupOrchestrator:
         # Simulate a provider error (as would happen with a misconfigured model)
         with (
             patch(
-                "knox.preprocessing.dedup.orchestrator.make_provider",
+                "kompend.preprocessing.dedup.orchestrator.make_provider",
                 return_value=provider,
             ),
             patch.object(

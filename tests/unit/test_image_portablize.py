@@ -6,15 +6,15 @@ Covers the two writer-side regressions from the hearing-model vault:
   source (``Proc. DAGA``, ``J. Acoust. Soc. Am.``) created an ``attachments/``
   directory of its own, filled with copies of unrelated figures;
 - nothing stopped an image whose provenance matched no entry, which would have
-  left a ``.knox/`` link in a page (the markdown-only invariant forbids that).
+  left a ``.kompend/`` link in a page (the markdown-only invariant forbids that).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.output.markdown import MarkdownWriter
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.output.markdown import MarkdownWriter
 
 _SOURCE_A = "ECMA-418-2_4th_edition_june_2025.pdf"
 _SOURCE_B = "ISO226.pdf"
@@ -57,11 +57,11 @@ def test_page_embeds_relative_links_into_attachments(tmp_path: Path) -> None:
 
     page = (tmp_path / "wiki" / "concepts" / "page.md").read_text(encoding="utf-8")
     assert "../../attachments/ecma-418-2_4th_edition_june_2025/a_img_0.png" in page
-    assert ".knox/" not in page
+    assert ".kompend/" not in page
 
 
 def test_unattributable_image_is_dropped_not_linked(tmp_path: Path) -> None:
-    """No matching provenance entry → no image, no invented directory, no .knox link."""
+    """No matching provenance entry → no image, no invented directory, no .kompend link."""
     stray = _seed_image(tmp_path, "stray_img_0.png")
     wiki = _wiki(
         _node(
@@ -75,17 +75,17 @@ def test_unattributable_image_is_dropped_not_linked(tmp_path: Path) -> None:
 
     page = (tmp_path / "wiki" / "concepts" / "page.md").read_text(encoding="utf-8")
     assert "attachments/" not in page
-    assert ".knox/" not in page
+    assert ".kompend/" not in page
     assert not (tmp_path / "attachments").exists()
 
 
 def _seed_image(base_dir: Path, name: str) -> str:
     """Write a fake extracted figure where the parser would put it."""
-    images = base_dir / ".knox" / "cache" / "images"
+    images = base_dir / ".kompend" / "cache" / "images"
     images.mkdir(parents=True, exist_ok=True)
     path = images / name
     path.write_bytes(f"png:{name}".encode())
-    return f".knox/cache/images/{name}"
+    return f".kompend/cache/images/{name}"
 
 
 def _wiki(*nodes: WikiNode) -> CompiledWiki:

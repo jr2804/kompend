@@ -1,0 +1,95 @@
+# KOMPEND Vault — Agent Instructions
+
+This vault is a **KOMPEND** knowledge base. It produces **OKF v0.2** (Open Knowledge
+Format) bundles — a directory of markdown files with YAML frontmatter.
+
+## Quick Reference
+
+| Action | Command |
+|--------|---------|
+| Compile sources into wiki | `kompend compile` |
+| Ingest new documents | `kompend ingest <files>` |
+| Query the compiled wiki | `kompend query <question>` |
+| Capture knowledge from conversation | `kompend capture <text>` |
+| Store a fact verbatim | `kompend learn <text>` |
+| Check vault health | `kompend status` |
+| Start ACP agent (credential-free LLM) | `kompend agent` |
+| Start MCP server | `kompend mcp` |
+
+## OKF v0.2 Conformance
+
+- Every concept file has parseable YAML frontmatter with a non-empty `type` field
+- Trust fields: `generated: {by, at}` (supersedes v0.1 `timestamp`), `status`
+- Cross-links use absolute bundle-relative paths: `[Title](/concepts/title.md)`
+- Reserved filenames (`index.md`, `log.md`) follow OKF structure
+- Root `index.md` declares `okf_version: "0.2"`
+- `log.md` uses ISO 8601 date headings with bold action prefix
+- Per-claim attribution via footnotes `[^id]` keyed to structured `sources[].id`
+
+## ACP Agent Mode
+
+KOMPEND implements the Agent Client Protocol (ACP). To inject your LLM endpoint
+without sharing credentials, start KOMPEND as an ACP agent:
+
+```bash
+kompend agent
+```
+
+The editor calls `providers/set` to configure the LLM, then sends `/kompend <command>`
+slash commands. See `kompend agent --help` for details.
+
+## Directory Layout
+
+```
+.                       ← vault root
+├── index.md           ← vault-root hub → wiki catalog
+├── .kompend/              ← derived state ONLY (cache, vectors, search db, memory) — never required to read the wiki
+├── sources/            ← source documents (PDF, DOCX, markdown, URLs)
+│   ├── _captured/      ← knowledge items extracted from conversation
+│   └── _distilled/     ← LLM-synthesized wiki pages
+├── attachments/        ← durable media (per-source attachments + wiki-embedded images)
+├── exported/           ← full-source markdown exports (on demand, reference only)
+└── wiki/               ← compiled output (OKF v0.2 bundle)
+    ├── index.md        ← portable catalog — links EVERYTHING the wiki generates
+    ├── log.md          ← change log
+    ├── references.md   ← corpus sources + cited works not in corpus (always present)
+    ├── quality.md      ← claim verification summary (if a verify pass ran)
+    ├── summaries/      ← one page per ingested source (assets, citations, backlinks)
+    ├── entities/       ← entity pages (standards, organizations, products, people)
+    └── concepts/       ← concept/comparison pages
+```
+
+## No kompend available? Navigate the wiki yourself
+
+If you cannot use the kompend CLI or MCP (no install, no credentials, or the
+vault was shared without `.kompend/`), the wiki is still fully usable — it is
+complete in its markdown pages:
+
+1. **Entry point:** `wiki/index.md` — the portable catalog. It links every
+   generated page group plus `references.md`, `summaries/`, `quality.md`,
+   `log.md`.
+2. **Concepts:** `wiki/concepts/*.md` — one page per topic, with Related
+   sections, source-file provenance, and per-claim footnotes. Entity pages
+   live in `wiki/entities/*.md`.
+3. **Per-source detail:** `wiki/summaries/<source>.md` — asset inventory,
+   extracted citations, and backlinks to the concepts a source feeds.
+4. **Trust:** `wiki/quality.md` (when present) — per-page claim verification
+   table; concept frontmatter carries `verified_claims` / `quality_score`.
+5. **Media:** image embeds point into `attachments/` — they render in any
+   markdown viewer.
+
+Everything reachable from `wiki/index.md` is the complete knowledge surface;
+`.kompend/` is regenerable derived state and never needed for reading.
+
+## Configuration
+
+Config lives in `.kompend/config.toml`. Key settings:
+
+| Key | Default | Purpose |
+|-----|---------|---------|
+| `compile.llm.default_model` | `""` | LLM for compilation/querying (required) |
+| `compile.llm.vlm_model` | `""` | VLM for image captioning |
+| `compile.embedding.model` | `""` (opt-in) | Embedding model (`provider/model` or `provider:model`); empty disables vector indexing |
+| `compile.output.format` | `okf` | Output format |
+
+Set via `kompend config set <key> <value>` or env vars (`KOMP_LLM_DEFAULT_MODEL`).

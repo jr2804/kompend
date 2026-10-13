@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models import (
+from kompend.core.models import (
     Chunk,
     ChunkNode,
     ChunkTree,
@@ -14,7 +14,7 @@ from knox.core.models import (
     StructuredFigure,
     StructuredTable,
 )
-from knox.core.resolution.entity_registry import (
+from kompend.core.resolution.entity_registry import (
     EntityLocation,
     EntityRecord,
     EntityRegistry,

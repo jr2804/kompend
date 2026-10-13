@@ -7,11 +7,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from knox.core.models import DocumentElement, ElementType, ParsedDocument
-from knox.core.models.attachments import Attachment, AttachmentManifest
-from knox.core.paths import VaultPaths
-from knox.core.pipeline.attachments import ingest_attachment, iter_ingestible_attachments
-from knox.core.pipeline.stages._parse import _process_attachments
+from kompend.core.models import DocumentElement, ElementType, ParsedDocument
+from kompend.core.models.attachments import Attachment, AttachmentManifest
+from kompend.core.paths import VaultPaths
+from kompend.core.pipeline.attachments import ingest_attachment, iter_ingestible_attachments
+from kompend.core.pipeline.stages._parse import _process_attachments
 
 
 def test_iter_ingestible_attachments_empty_manifest(vault: VaultPaths) -> None:
@@ -186,5 +186,5 @@ def vault(tmp_path: Path) -> VaultPaths:
     """VaultPaths with sources/ and attachments/ directories."""
     (tmp_path / "sources").mkdir()
     (tmp_path / "attachments").mkdir()
-    (tmp_path / ".knox").mkdir()
+    (tmp_path / ".kompend").mkdir()
     return VaultPaths(tmp_path)

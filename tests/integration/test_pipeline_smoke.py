@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.chunking.hierarchical import HierarchicalChunker
-from knox.core.models import ChunkTree, DocumentElement, ElementType
+from kompend.chunking.hierarchical import HierarchicalChunker
+from kompend.core.models import ChunkTree, DocumentElement, ElementType
 from tests.fixtures.documents import make_test_doc
 
 

@@ -1,57 +1,57 @@
 # Configuration
 
-KNOX uses a layered configuration system. Values are resolved from multiple sources, with CLI flags taking the highest priority and built-in defaults the lowest.
+KOMPEND uses a layered configuration system. Values are resolved from multiple sources, with CLI flags taking the highest priority and built-in defaults the lowest.
 
 ## 5-Layer Precedence
 
 ```text
 1. CLI flags (--wiki-dir, --set, model swaps, ...)   ← highest
-2. Environment variables (KNOX_*)
-3. Project config (.knox/config.toml + knox.toml) — discovered from --wiki-dir when set
-4. Global config (~/.config/knox/config.toml)
+2. Environment variables (KOMP_*)
+3. Project config (.kompend/config.toml + kompend.toml) — discovered from --wiki-dir when set
+4. Global config (~/.config/kompend/config.toml)
 5. Built-in defaults                              ← lowest
 ```
 
 ### Layer 1: CLI flags
 
-Most options can be passed directly on the command line. See `knox <command> --help` for available flags.
+Most options can be passed directly on the command line. See `kompend <command> --help` for available flags.
 
 ### Layer 2: Environment variables
 
-All environment variables use the `KNOX_` prefix and map to dotted config keys:
+All environment variables use the `KOMP_` prefix and map to dotted config keys:
 
 | Variable | Config Key |
 |----------|------------|
-| `KNOX_WIKI_DIR` | `paths.wiki_dir` |
-| `KNOX_SOURCES_DIR` | `paths.sources_dir` |
-| `KNOX_OUTPUT_DIR` | `paths.output_dir` |
-| `KNOX_NOTES_FILE` | `notes.file` |
-| `KNOX_LLM_DEFAULT_MODEL` | `compile.llm.default_model` |
-| `KNOX_VLM_MODEL` | `compile.llm.vlm_model` |
-| `KNOX_SEARCH_EXPANSION_ENABLED` | `search.expansion.enabled` |
-| `KNOX_SEARCH_EXPANSION_VARIANTS` | `search.expansion.variants` |
-| `KNOX_SEARCH_CRAG_ENABLED` | `search.crag.enabled` |
-| `KNOX_SEARCH_CRAG_THRESHOLD` | `search.crag.threshold` |
-| `KNOX_SEARCH_RERANKER_ENABLED` | `search.reranker.enabled` |
-| `KNOX_SEARCH_RERANKER_MODEL` | `search.reranker.model` |
-| `KNOX_SEARCH_RERANKER_TOP_K` | `search.reranker.top_k` |
-| `KNOX_SEARCH_HYDE_ENABLED` | `search.hyde.enabled` |
-| `KNOX_SEARCH_CONTEXTUAL_ENABLED` | `search.contextual.enabled` |
-| `KNOX_SEARCH_CONTEXTUAL_MODEL` | `search.contextual.model` |
+| `KOMP_WIKI_DIR` | `paths.wiki_dir` |
+| `KOMP_SOURCES_DIR` | `paths.sources_dir` |
+| `KOMP_OUTPUT_DIR` | `paths.output_dir` |
+| `KOMP_NOTES_FILE` | `notes.file` |
+| `KOMP_LLM_DEFAULT_MODEL` | `compile.llm.default_model` |
+| `KOMP_VLM_MODEL` | `compile.llm.vlm_model` |
+| `KOMP_SEARCH_EXPANSION_ENABLED` | `search.expansion.enabled` |
+| `KOMP_SEARCH_EXPANSION_VARIANTS` | `search.expansion.variants` |
+| `KOMP_SEARCH_CRAG_ENABLED` | `search.crag.enabled` |
+| `KOMP_SEARCH_CRAG_THRESHOLD` | `search.crag.threshold` |
+| `KOMP_SEARCH_RERANKER_ENABLED` | `search.reranker.enabled` |
+| `KOMP_SEARCH_RERANKER_MODEL` | `search.reranker.model` |
+| `KOMP_SEARCH_RERANKER_TOP_K` | `search.reranker.top_k` |
+| `KOMP_SEARCH_HYDE_ENABLED` | `search.hyde.enabled` |
+| `KOMP_SEARCH_CONTEXTUAL_ENABLED` | `search.contextual.enabled` |
+| `KOMP_SEARCH_CONTEXTUAL_MODEL` | `search.contextual.model` |
 
 ### Layer 3: Project config (hierarchical)
 
-KNOX searches for project config files by walking up from the current directory to the filesystem root. Two filenames are recognized:
+KOMPEND searches for project config files by walking up from the current directory to the filesystem root. Two filenames are recognized:
 
-- **`.knox/config.toml`** — the primary project config (created by `knox init`)
-- **`knox.toml`** — legacy fallback, supported for backward compatibility
+- **`.kompend/config.toml`** — the primary project config (created by `kompend init`)
+- **`kompend.toml`** — legacy fallback, supported for backward compatibility
 
 Each committed config can be overlaid by a **local, gitignored twin** —
-`.knox/config.local.toml` next to `.knox/config.toml`, `knox.local.toml`
-next to `knox.toml` (mise-style, created by appending `.local` to the
+`.kompend/config.local.toml` next to `.kompend/config.toml`, `kompend.local.toml`
+next to `kompend.toml` (mise-style, created by appending `.local` to the
 filename). Local values win over the committed config in the same
 directory. Use it for machine-specific secrets like provider API keys;
-`knox init` ignores these files in the generated `.gitignore`.
+`kompend init` ignores these files in the generated `.gitignore`.
 
 If multiple files exist in the hierarchy, they are merged with **closest-to-CWD wins** semantics. Deep merge at the section level; individual keys are overwritten (lists replaced, not concatenated).
 
@@ -59,87 +59,87 @@ Example hierarchy:
 
 ```text
 /home/user/projects/monorepo/
-├── .knox/config.toml          ← parent config (shared defaults)
+├── .kompend/config.toml          ← parent config (shared defaults)
 └── packages/
     └── my-wiki/
-        └── .knox/config.toml  ← child config (overrides parent)
+        └── .kompend/config.toml  ← child config (overrides parent)
 ```
 
-Running `knox compile` from `my-wiki/` resolves both files; the child's keys win.
+Running `kompend compile` from `my-wiki/` resolves both files; the child's keys win.
 
 ### Layer 4: Global config
 
-A single global config file at `~/.config/knox/config.toml` (or `%APPDATA%\knox\config.toml` on Windows). Used for machine-wide defaults like LLM model selection.
+A single global config file at `~/.config/kompend/config.toml` (or `%APPDATA%\kompend\config.toml` on Windows). Used for machine-wide defaults like LLM model selection.
 
 ### Layer 5: Defaults
 
-Built-in defaults ship with the package. Inspect them via `knox config list`.
+Built-in defaults ship with the package. Inspect them via `kompend config list`.
 
 ## Managing Configuration
 
-### `knox config get`
+### `kompend config get`
 
 ```bash
-knox config get compile.output.format
-knox config get paths.wiki_dir
+kompend config get compile.output.format
+kompend config get paths.wiki_dir
 ```
 
 Prints the resolved value, respecting all 5 layers.
 
-### `knox config set`
+### `kompend config set`
 
 ```bash
-# Write to project config (.knox/config.toml)
-knox config set compile.output.format json
-knox config set compile.chunk_size 1024
+# Write to project config (.kompend/config.toml)
+kompend config set compile.output.format json
+kompend config set compile.chunk_size 1024
 
 # Write to global config
-knox config set --global compile.llm.default_model gpt-4o
+kompend config set --global compile.llm.default_model gpt-4o
 ```
 
 `set` validates keys against the schema, coerces types (int, float, bool, string, list), writes atomically, and creates a `.bak` backup before mutating.
 
-### `knox config list`
+### `kompend config list`
 
 ```bash
-knox config list
+kompend config list
 ```
 
 Prints all resolved keys with provenance — which file or source supplied each value.
 Provider `api_key` values are redacted (`***`) unless they are `${ENV_VAR}` references.
 
-### `knox config path`
+### `kompend config path`
 
 ```bash
-knox config path           # project config path
-knox config path --global  # global config path
+kompend config path           # project config path
+kompend config path --global  # global config path
 ```
 
-### `knox config check`
+### `kompend config check`
 
 Diff a TOML config file against the built-in schema defaults. Useful when
-upgrading knox or migrating between versions — the report lists every key
+upgrading kompend or migrating between versions — the report lists every key
 that differs from the shipped default plus any unknown keys or
 validation errors.
 
 ```bash
 # Discover the project config automatically.
-knox config check
+kompend config check
 
 # Use a specific vault's config.
-knox -w wiki config check
+kompend -w wiki config check
 
 # Explicit file — exits 0 clean, 1 if any modified, 2 if any errors.
-knox config check ./knox.toml
+kompend config check ./kompend.toml
 
 # Multiple files — merged (later wins); reports one combined diff.
-knox config check ./base.toml ./local.toml
+kompend config check ./base.toml ./local.toml
 
 # Independent per-file reports.
-knox config check ./base.toml ./local.toml --no-merge
+kompend config check ./base.toml ./local.toml --no-merge
 
 # Machine-readable JSON.
-knox config check --json
+kompend config check --json
 ```
 
 Status legend:
@@ -166,29 +166,29 @@ The main configuration sections:
 | `[compile.embedding]` | Embedding model for the vector index (`<provider>:<model>`, e.g. `ollama:granite-embedding:278m`; empty disables) |
 | `[compile.memory]` | Memory lifecycle (confidence decay, tiers) |
 | `[providers.<id>]` | User-defined OpenAI-compatible endpoints (self-hosted llama.cpp, vLLM, TGI). See [LLM Configuration](llm-config.md#user-defined-providers) |
-| `[export]` | `knox sources export` placement of extracted data (`annotations` / `summary`: `off` \| `inline` \| `asset`) |
+| `[export]` | `kompend sources export` placement of extracted data (`annotations` / `summary`: `off` \| `inline` \| `asset`) |
 | `[notes]` | User notes file configuration |
 | `[hooks]` | Event hook callbacks |
 
-The full annotated reference is available in the config template created by `knox init` at `.knox/config.toml`.
+The full annotated reference is available in the config template created by `kompend init` at `.kompend/config.toml`.
 
 ## Migration from `--sources-dir` / `--output-dir`
 
-In earlier versions, path flags were per-command (`knox compile --sources-dir X --output-dir Y`). These have been replaced by the global `--wiki-dir` flag.
+In earlier versions, path flags were per-command (`kompend compile --sources-dir X --output-dir Y`). These have been replaced by the global `--wiki-dir` flag.
 
 **Before:**
 
 ```bash
-knox compile --sources-dir ./my_docs --output-dir ./output
+kompend compile --sources-dir ./my_docs --output-dir ./output
 ```
 
 **After:**
 
 ```bash
 # Set the project root; sources/ and wiki/ are derived from it
-knox --wiki-dir ./my-project compile
+kompend --wiki-dir ./my-project compile
 
-# Or configure via .knox/config.toml
+# Or configure via .kompend/config.toml
 [paths]
 sources_dir = "my_docs"
 output_dir = "output"

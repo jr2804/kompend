@@ -16,9 +16,9 @@ from pathlib import Path
 
 import pytest
 
-from knox.chunking import HierarchicalChunker
-from knox.compilation.graph import GraphCompiler
-from knox.core.models import (
+from kompend.chunking import HierarchicalChunker
+from kompend.compilation.graph import GraphCompiler
+from kompend.core.models import (
     ChunkStrategy,
     ChunkTree,
     CompiledWiki,
@@ -31,12 +31,12 @@ from knox.core.models import (
     StructuredTable,
     WikiNode,
 )
-from knox.core.models.structured import structured_to_text
-from knox.core.resolution.entity_registry import EntityRegistry
-from knox.core.resolution.xref_checker import CrossReferenceChecker
-from knox.preprocessing.parsers import build_default_router
-from knox.search.adaptive_retriever import AdaptiveRetriever
-from knox.search.budget import ContextBudgetManager, RetrievalMode
+from kompend.core.models.structured import structured_to_text
+from kompend.core.resolution.entity_registry import EntityRegistry
+from kompend.core.resolution.xref_checker import CrossReferenceChecker
+from kompend.preprocessing.parsers import build_default_router
+from kompend.search.adaptive_retriever import AdaptiveRetriever
+from kompend.search.budget import ContextBudgetManager, RetrievalMode
 from tests.fixtures.documents import make_test_doc
 
 # ---------------------------------------------------------------------------

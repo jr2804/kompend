@@ -9,7 +9,7 @@ directories holding the same file set (401 MB) on the hearing-model vault.
 
 from __future__ import annotations
 
-from knox.core.models import ImageRef, image_source_key, images_for_provenance
+from kompend.core.models import ImageRef, image_source_key, images_for_provenance
 
 
 def test_key_normalizes_label_path_and_absolute_path() -> None:

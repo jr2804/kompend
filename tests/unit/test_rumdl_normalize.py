@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.models import DocumentElement, ElementType
-from knox.core.text.rumdl import (
+from kompend.core.models import DocumentElement, ElementType
+from kompend.core.text.rumdl import (
     _split_batch,
     format_markdown_text,
     normalize_element_markdown,
@@ -19,11 +19,11 @@ requires_rumdl = pytest.mark.skipif(not rumdl_available(), reason="rumdl binary 
 
 class TestSplitBatch:
     def test_splits_on_markers(self) -> None:
-        formatted = "<!--knox-part-0-->\n\nalpha\n\n<!--knox-part-1-->\n\nbeta\n"
+        formatted = "<!--kompend-part-0-->\n\nalpha\n\n<!--kompend-part-1-->\n\nbeta\n"
         assert _split_batch(formatted, expected=2) == ["\nalpha\n", "\nbeta"]
 
     def test_mismatched_count_returns_none(self) -> None:
-        formatted = "<!--knox-part-0-->\n\nalpha\n"
+        formatted = "<!--kompend-part-0-->\n\nalpha\n"
         assert _split_batch(formatted, expected=2) is None
 
     def test_no_markers_returns_none_when_expected(self) -> None:
@@ -87,15 +87,15 @@ class TestParseTierWiring:
     """The parse tier must call the normaliser so cached content is canonical."""
 
     def test_parse_source_normalises_elements(self) -> None:
-        source = Path("src/knox/core/pipeline/stages/_parse.py").read_text(encoding="utf-8")
+        source = Path("src/kompend/core/pipeline/stages/_parse.py").read_text(encoding="utf-8")
         assert "normalize_element_markdown(" in source
         # must be applied after relativisation, before the cache write
         assert source.index("normalize_element_markdown(") < source.index("_save_cache(pipeline, source_file, parsed)")
 
     def test_ingest_normalises_elements(self) -> None:
-        source = Path("src/knox/core/pipeline/ingest.py").read_text(encoding="utf-8")
+        source = Path("src/kompend/core/pipeline/ingest.py").read_text(encoding="utf-8")
         assert "normalize_element_markdown(" in source
 
     def test_attachments_normalise_elements(self) -> None:
-        source = Path("src/knox/core/pipeline/attachments.py").read_text(encoding="utf-8")
+        source = Path("src/kompend/core/pipeline/attachments.py").read_text(encoding="utf-8")
         assert "normalize_element_markdown(" in source

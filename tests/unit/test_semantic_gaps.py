@@ -1,13 +1,13 @@
 """Tests for the semantic-gap embedding-vector cache keying.
 
 Covers ``_load_vector_cache`` / ``_save_vector_cache`` in
-``knox.lint.semantic_gaps`` directly — no embedding provider is involved.
+``kompend.lint.semantic_gaps`` directly — no embedding provider is involved.
 The cache must be keyed by embedding model, so a model change is a full
 miss (stale cross-dimension vectors must never be compared).
 
 Also covers the contextual-context consumer: a chunk's
 ``contextual_context`` is prepended to the embedded text (shared helper
-``knox.core.text.embedding_text.embed_text``), and the cache key hashes
+``kompend.core.text.embedding_text.embed_text``), and the cache key hashes
 that *composed* text so enriched and un-enriched vectors never collide.
 """
 
@@ -19,12 +19,12 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.cache import CacheStore
-from knox.core.text.embedding_text import embed_text
-from knox.lint import semantic_gaps
-from knox.lint.semantic_gaps import _load_vector_cache, _save_vector_cache
-from knox.rag.zvec_store import EmbeddingProvider
-from knox.types import CacheValue
+from kompend.core.cache import CacheStore
+from kompend.core.text.embedding_text import embed_text
+from kompend.lint import semantic_gaps
+from kompend.lint.semantic_gaps import _load_vector_cache, _save_vector_cache
+from kompend.rag.zvec_store import EmbeddingProvider
+from kompend.types import CacheValue
 
 
 class TestVectorCacheKeying:
@@ -135,5 +135,5 @@ def _write_chunk_cache(base_dir: Path, *, text: str, context: str) -> None:
 
 
 def _gap_vectors(base_dir: Path) -> dict[str, list[float]]:
-    path = base_dir / ".knox" / "cache" / "gap_chunk_vectors.json"
+    path = base_dir / ".kompend" / "cache" / "gap_chunk_vectors.json"
     return json.loads(path.read_text(encoding="utf-8"))["vectors"]

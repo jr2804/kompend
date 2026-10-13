@@ -1,8 +1,8 @@
 """Tests for ``resolve_rumdl_config`` — vault-side config lifecycle.
 
-Materializes a fresh ``.knox/rumdl.toml`` from the shipped default on first
+Materializes a fresh ``.kompend/rumdl.toml`` from the shipped default on first
 use; refreshes stale copies (without a current hash marker) when the
-shipped default changes; preserves user edits below the ``# knox-managed``
+shipped default changes; preserves user edits below the ``# kompend-managed``
 marker.
 """
 
@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.config.rumdl import resolve_rumdl_config
-from knox.core.paths import RUMDL_CONFIG_FILE
+from kompend.core.config.rumdl import resolve_rumdl_config
+from kompend.core.paths import RUMDL_CONFIG_FILE
 
 
 def test_first_use_materializes_shipped_default(tmp_path: Path) -> None:
@@ -21,7 +21,7 @@ def test_first_use_materializes_shipped_default(tmp_path: Path) -> None:
     assert p is not None
     assert p.exists()
     text = p.read_text(encoding="utf-8")
-    assert "# knox-managed:" in text
+    assert "# kompend-managed:" in text
     assert "MD025" in text  # the shipped default disables MD025 via front-matter-title
 
 
@@ -46,7 +46,7 @@ def test_stale_file_is_refreshed(tmp_path: Path) -> None:
     assert p is not None
     text = p.read_text(encoding="utf-8")
     assert "MD025" in text  # refreshed config has the disable rule
-    assert "# knox-managed:" in text
+    assert "# kompend-managed:" in text
 
 
 def test_user_edits_below_marker_are_preserved(tmp_path: Path) -> None:
@@ -55,7 +55,7 @@ def test_user_edits_below_marker_are_preserved(tmp_path: Path) -> None:
     stale = tmp_path / RUMDL_CONFIG_FILE
     user_section = "[MD041]\nlevel = 2\n# my custom rule\n"
     stale.write_text(
-        "# shipped stuff\n# knox-managed: 5ff9d402824e9008\n" + user_section,
+        "# shipped stuff\n# kompend-managed: 5ff9d402824e9008\n" + user_section,
         encoding="utf-8",
     )
     p = resolve_rumdl_config(tmp_path)
@@ -66,7 +66,7 @@ def test_user_edits_below_marker_are_preserved(tmp_path: Path) -> None:
 
 
 def _seed_vault(vault: Path) -> None:
-    (vault / ".knox").mkdir(parents=True, exist_ok=True)
+    (vault / ".kompend").mkdir(parents=True, exist_ok=True)
 
 
 def test_explicit_config_path_wins(tmp_path: Path) -> None:

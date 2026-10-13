@@ -1,4 +1,4 @@
-"""Tests for per-LLM-call debug dumps (``KNOX_DEBUG_LLM_DIR``)."""
+"""Tests for per-LLM-call debug dumps (``KOMP_DEBUG_LLM_DIR``)."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.env import EnvVar
-from knox.llm.debug import save_debug_prompt
+from kompend.core.env import EnvVar
+from kompend.llm.debug import save_debug_prompt
 
 
 class _FakeAgent:

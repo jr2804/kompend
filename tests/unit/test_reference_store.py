@@ -6,9 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from knox.core.models.references import Author, Reference
-from knox.core.pipeline.references import ReferenceStore
-from knox.core.store import open_store, vault_db_path
+from kompend.core.models.references import Author, Reference
+from kompend.core.pipeline.references import ReferenceStore
+from kompend.core.store import open_store, vault_db_path
 
 # ---------------------------------------------------------------------------
 # Load / save round-trip

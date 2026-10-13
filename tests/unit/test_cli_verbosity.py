@@ -1,6 +1,6 @@
 """Tests for the global CLI verbosity toggle (quiet by default).
 
-``--verbose`` / ``KNOX_VERBOSE`` controls traceback visibility for both the
+``--verbose`` / ``KOMP_VERBOSE`` controls traceback visibility for both the
 recoverable path (a failed parse logs a one-line warning and continues) and the
 fatal path (``main()`` prints one line instead of a traceback).
 """
@@ -15,15 +15,15 @@ from unittest.mock import MagicMock
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli import app as app_module
-from knox.cli._shared import format_exception_for_cli
-from knox.cli.app import app
-from knox.core.pipeline.export import _load_asset_store
-from knox.core.pipeline.ingest import ingest_documents
-from knox.core.pipeline.runtime import PipelineRuntime
-from knox.core.pipeline.stages._parse import _parse_source
-from knox.core.verbosity import is_verbose, set_verbose
-from knox.preprocessing.parsers.base import ParserRouter
+from kompend.cli import app as app_module
+from kompend.cli._shared import format_exception_for_cli
+from kompend.cli.app import app
+from kompend.core.pipeline.export import _load_asset_store
+from kompend.core.pipeline.ingest import ingest_documents
+from kompend.core.pipeline.runtime import PipelineRuntime
+from kompend.core.pipeline.stages._parse import _parse_source
+from kompend.core.verbosity import is_verbose, set_verbose
+from kompend.preprocessing.parsers.base import ParserRouter
 
 _cli_runner = CliRunner()
 
@@ -104,14 +104,14 @@ def test_verbose_flag_accepted() -> None:
 
 
 def test_verbose_env_var_enables_it(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("KNOX_VERBOSE", "1")
+    monkeypatch.setenv("KOMP_VERBOSE", "1")
     result = _cli_runner.invoke(app, ["--version"])
     assert result.exit_code == 0, result.output
     assert is_verbose() is True
 
 
 def test_verbose_defaults_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("KNOX_VERBOSE", raising=False)
+    monkeypatch.delenv("KOMP_VERBOSE", raising=False)
     result = _cli_runner.invoke(app, ["--version"])
     assert result.exit_code == 0, result.output
     assert is_verbose() is False
@@ -146,8 +146,8 @@ def test_failed_parse_attaches_traceback_when_verbose(tmp_path: Path, caplog: py
 def _seed_vault(tmp_path: Path) -> Path:
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    (base / ".kompend").mkdir(parents=True)
+    (base / ".kompend" / "config.toml").write_text("", encoding="utf-8")
     return base
 
 
@@ -158,7 +158,7 @@ def _ingest_failing_parse(base: Path) -> Any:
 
 
 def test_main_fatal_is_one_line_without_verbose(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setenv("KNOX_LOGFIRE_DISABLED", "1")
+    monkeypatch.setenv("KOMP_LOGFIRE_DISABLED", "1")
     monkeypatch.setattr(app_module, "app", _raise_runtime_error)
     with pytest.raises(SystemExit) as exc_info:
         app_module.main()
@@ -169,7 +169,7 @@ def test_main_fatal_is_one_line_without_verbose(monkeypatch: pytest.MonkeyPatch,
 
 
 def test_main_fatal_is_traceback_with_verbose(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setenv("KNOX_LOGFIRE_DISABLED", "1")
+    monkeypatch.setenv("KOMP_LOGFIRE_DISABLED", "1")
     monkeypatch.setattr(app_module, "app", _raise_runtime_error)
     set_verbose(True)
     with pytest.raises(SystemExit) as exc_info:
@@ -195,7 +195,7 @@ def test_load_asset_store_default_message_carries_cause(tmp_path: Path, monkeypa
     def _boom(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("asset store kaput")
 
-    monkeypatch.setattr("knox.core.pipeline.export.AssetStore", _boom)
+    monkeypatch.setattr("kompend.core.pipeline.export.AssetStore", _boom)
     set_verbose(False)
     with caplog.at_level(logging.DEBUG):
         out = _load_asset_store(tmp_path)

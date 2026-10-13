@@ -14,19 +14,19 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from knox.compilation.asset_mention_rewriter import rewrite_asset_mentions
-from knox.compilation.asset_registry import AssetIdMap, assign_asset_ids
-from knox.compilation.asset_summarizer import summarize_asset
-from knox.core.models import ChunkNode, ChunkTree
-from knox.core.models.assets import AssetRecord
-from knox.core.models.enums import AssetField, AssetKind, StructuredField
-from knox.core.models.structured import (
+from kompend.compilation.asset_mention_rewriter import rewrite_asset_mentions
+from kompend.compilation.asset_registry import AssetIdMap, assign_asset_ids
+from kompend.compilation.asset_summarizer import summarize_asset
+from kompend.core.models import ChunkNode, ChunkTree
+from kompend.core.models.assets import AssetRecord
+from kompend.core.models.enums import AssetField, AssetKind, StructuredField
+from kompend.core.models.structured import (
     StructuredData,
     StructuredEquation,
     StructuredFigure,
     StructuredTable,
 )
-from knox.core.pipeline.assets import AssetStore
+from kompend.core.pipeline.assets import AssetStore
 
 # ═══════════════════════════════════════════════════════════════
 # AssetRecord

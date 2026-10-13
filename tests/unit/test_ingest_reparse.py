@@ -1,7 +1,7 @@
 """Regression: forced re-ingest must preserve user metadata, and a parser
 switch must invalidate both the parse cache and the chunk cache.
 
-Covers the ``knox ingest --no-cache`` / parser-change path:
+Covers the ``kompend ingest --no-cache`` / parser-change path:
 
 - :meth:`ParserRouter.fingerprint` — stable identity of the parser chain.
 - :func:`parse_cache_is_current` / :func:`cached_entry_is_current` — a stale
@@ -13,7 +13,7 @@ Covers the ``knox ingest --no-cache`` / parser-change path:
   fingerprint so a re-parse re-chunks on the next compile.
 
 Attachments are intentionally untouched: they live in
-``.knox/attachments.jsonl`` + ``attachments/<slug>/`` and ``ingest`` never
+``.kompend/attachments.jsonl`` + ``attachments/<slug>/`` and ``ingest`` never
 writes them.
 """
 
@@ -24,21 +24,21 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
 
-from knox.chunking.hierarchical import HierarchicalChunker
-from knox.core.cache.store import CacheStore
-from knox.core.models import ChunkTree, DocumentElement, ElementType, MetadataField, ParsedDocument
-from knox.core.pipeline.ingest import (
+from kompend.chunking.hierarchical import HierarchicalChunker
+from kompend.core.cache.store import CacheStore
+from kompend.core.models import ChunkTree, DocumentElement, ElementType, MetadataField, ParsedDocument
+from kompend.core.pipeline.ingest import (
     PARSE_CACHE_PARSER_KEY,
     ingest_documents,
     parse_cache_is_current,
     preserve_cached_metadata,
 )
-from knox.core.pipeline.parse_cache import cache_key, iter_documents, write_document
-from knox.core.pipeline.runtime import PipelineRuntime
-from knox.core.pipeline.stages._parse import _chunk_cache_deps, _process_single_source  # noqa: PLC2701
-from knox.core.pipeline.state import TierState, TierStateStore
-from knox.core.store import vault_db_path
-from knox.preprocessing.parsers.base import BaseParser, ParserRouter
+from kompend.core.pipeline.parse_cache import cache_key, iter_documents, write_document
+from kompend.core.pipeline.runtime import PipelineRuntime
+from kompend.core.pipeline.stages._parse import _chunk_cache_deps, _process_single_source  # noqa: PLC2701
+from kompend.core.pipeline.state import TierState, TierStateStore
+from kompend.core.store import vault_db_path
+from kompend.preprocessing.parsers.base import BaseParser, ParserRouter
 from tests.conftest import as_obj
 
 # ── Router fingerprint ─────────────────────────────────────────────────
@@ -115,8 +115,8 @@ class _StubRuntime:
         self.chunker = HierarchicalChunker(max_tokens=512)
         self.enricher = enricher
         self.state = TierState()
-        self.cache_store = CacheStore(base / ".knox" / "cache", base)
-        self.state_store = TierStateStore(base / ".knox" / "compile_state.json", base)
+        self.cache_store = CacheStore(base / ".kompend" / "cache", base)
+        self.state_store = TierStateStore(base / ".kompend" / "compile_state.json", base)
 
     def rel_file(self, file: Path) -> str:
         return str(file)
@@ -207,7 +207,7 @@ def test_parser_change_forces_reparse_and_preserves_metadata(tmp_path: Path) -> 
 
     ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), config=None)
 
-    # Simulate ``knox sources tag`` / ``attr`` writing into the cache entry.
+    # Simulate ``kompend sources tag`` / ``attr`` writing into the cache entry.
     key, entry = _cache_entry_with_key(base)
     entry["metadata"][MetadataField.TAGS] = ["audio"]
     entry["metadata"][MetadataField.ATTRIBUTES] = {"version": "2"}
@@ -258,21 +258,21 @@ def _cache_entry(base: Path) -> dict[str, Any]:
 
 
 def _cache_entry_with_key(base: Path) -> tuple[str, dict[str, Any]]:
-    db_path = vault_db_path(base / ".knox" / "cache")
+    db_path = vault_db_path(base / ".kompend" / "cache")
     records = list(iter_documents(db_path))
     assert records, "expected a parse-cache entry"
     return records[0]
 
 
 def _write_entry(base: Path, key: str, entry: dict[str, Any]) -> None:
-    write_document(vault_db_path(base / ".knox" / "cache"), key, entry)
+    write_document(vault_db_path(base / ".kompend" / "cache"), key, entry)
 
 
 def test_attachments_untouched_by_reingest(tmp_path: Path) -> None:
     """Re-ingest must not modify the attachment manifest."""
     base = _seed_vault(tmp_path)
     src = base / "sources" / "note.md"
-    manifest = base / ".knox" / "attachments.jsonl"
+    manifest = base / ".kompend" / "attachments.jsonl"
     manifest.write_text('{"filename": "diagram.png"}\n', encoding="utf-8")
     before = manifest.read_text(encoding="utf-8")
 
@@ -356,8 +356,8 @@ def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
 def _seed_vault(tmp_path: Path) -> Path:
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    (base / ".kompend").mkdir(parents=True)
+    (base / ".kompend" / "config.toml").write_text("", encoding="utf-8")
     (base / "sources" / "note.md").write_text("# Note\n", encoding="utf-8")
     return base
 

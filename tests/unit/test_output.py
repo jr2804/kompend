@@ -1,4 +1,4 @@
-"""Tests for KNOX output writers (Milestone 5)."""
+"""Tests for KOMPEND output writers (Milestone 5)."""
 
 # ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
 
@@ -9,20 +9,20 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.models import CompiledWiki, GraphEdge, TocEntry, WikiNode
-from knox.core.models.assets import AssetRecord
-from knox.core.models.enums import AssetKind
-from knox.core.models.references import Reference
-from knox.core.models.structured import StructuredFigure, StructuredTable
-from knox.core.paths import attachment_slug
-from knox.core.pipeline.assets import AssetStore
-from knox.core.pipeline.references import ReferenceStore
-from knox.core.store import open_store
-from knox.core.store.schema import VERIFICATION_TABLE
-from knox.output.json_writer import JsonWriter
-from knox.output.markdown import MarkdownWriter
-from knox.output.typst import TypstWriter
-from knox.output.vault import VaultWriter
+from kompend.core.models import CompiledWiki, GraphEdge, TocEntry, WikiNode
+from kompend.core.models.assets import AssetRecord
+from kompend.core.models.enums import AssetKind
+from kompend.core.models.references import Reference
+from kompend.core.models.structured import StructuredFigure, StructuredTable
+from kompend.core.paths import attachment_slug
+from kompend.core.pipeline.assets import AssetStore
+from kompend.core.pipeline.references import ReferenceStore
+from kompend.core.store import open_store
+from kompend.core.store.schema import VERIFICATION_TABLE
+from kompend.output.json_writer import JsonWriter
+from kompend.output.markdown import MarkdownWriter
+from kompend.output.typst import TypstWriter
+from kompend.output.vault import VaultWriter
 
 # ---------------------------------------------------------------------------
 # MarkdownWriter Tests
@@ -481,12 +481,12 @@ class TestTypstWriter:
 
 
 # ---------------------------------------------------------------------------
-# Copy-on-embed: wiki pages never reference .knox/ (WP3)
+# Copy-on-embed: wiki pages never reference .kompend/ (WP3)
 # ---------------------------------------------------------------------------
 class TestPortableImages:
-    def test_knox_image_copied_to_attachments(self, tmp_path: Path) -> None:
+    def test_kompend_image_copied_to_attachments(self, tmp_path: Path) -> None:
         base = tmp_path / "vault"
-        img_dir = base / ".knox" / "cache" / "images"
+        img_dir = base / ".kompend" / "cache" / "images"
         img_dir.mkdir(parents=True)
         img_file = img_dir / "report_img_1.png"
         img_file.write_bytes(b"png-bytes")
@@ -503,7 +503,7 @@ class TestPortableImages:
                         "provenance": ["sources/report.pdf"],
                         "images": [
                             {
-                                "path": ".knox/cache/images/report_img_1.png",
+                                "path": ".kompend/cache/images/report_img_1.png",
                                 "caption": "A figure",
                                 "element_type": "image",
                                 "source_file": "sources/report.pdf",
@@ -522,7 +522,7 @@ class TestPortableImages:
         copied = base / "attachments" / "report" / "report_img_1.png"
         assert copied.read_bytes() == b"png-bytes"
         assert "](../../attachments/report/report_img_1.png)" in page
-        assert ".knox" not in page
+        assert ".kompend" not in page
 
     def test_external_image_and_data_uri_pass_through(self, tmp_path: Path) -> None:
         base = tmp_path / "vault"
@@ -561,7 +561,7 @@ class TestPortableImages:
                     node_type="concept",
                     metadata={
                         "provenance": ["sources/report.pdf"],
-                        "images": [{"path": ".knox/cache/images/x.png", "caption": "", "element_type": "image"}],
+                        "images": [{"path": ".kompend/cache/images/x.png", "caption": "", "element_type": "image"}],
                     },
                 ),
             ],
@@ -570,7 +570,7 @@ class TestPortableImages:
         )
         writer = MarkdownWriter(vault_mode=True)
         docs = writer._wiki_to_documents(wiki)
-        assert ".knox/cache/images/x.png" in docs[0].body
+        assert ".kompend/cache/images/x.png" in docs[0].body
 
 
 # ---------------------------------------------------------------------------
@@ -605,7 +605,7 @@ class TestSourceSummaries:
     def test_summary_assets_grouped_title_pretty(self, tmp_path: Path) -> None:
         """Assets render as kind counts (+ figure captions); title is readable."""
         base = self._vault(tmp_path)
-        store = AssetStore(base / ".knox" / "assets.json")
+        store = AssetStore(base / ".kompend" / "assets.json")
         store.put(
             AssetRecord(
                 id="tab-aaa",
@@ -674,7 +674,7 @@ class TestSourceSummaries:
         assert not (out / "summaries").exists()
 
     def test_index_links_summaries_and_references(self, tmp_path: Path) -> None:
-        ref_file = tmp_path / ".knox" / "references.json"
+        ref_file = tmp_path / ".kompend" / "references.json"
         ref_file.parent.mkdir(parents=True)
         store = ReferenceStore(ref_file)
         store.save()
@@ -785,7 +785,7 @@ class TestQualityPage:
                 {"node_id": "concept-2", "verdict": "supported", "confidence": 1.0},
             ]
         )
-        db = base / ".knox" / "knox.db"
+        db = base / ".kompend" / "kompend.db"
         with open_store(db) as conn:
             conn.execute(
                 f"INSERT INTO {VERIFICATION_TABLE} (written_at, total, verified, unsupported, average_confidence, claims) VALUES (?, ?, ?, ?, ?, ?)",  # noqa: S608
@@ -810,7 +810,7 @@ class TestReferencesPage:
         sources_dir = tmp_path / "sources"
         sources_dir.mkdir()
         (sources_dir / "a.pdf").write_bytes(b"%PDF-")
-        ref_file = tmp_path / ".knox" / "references.json"
+        ref_file = tmp_path / ".kompend" / "references.json"
         ref_file.parent.mkdir()
         store = ReferenceStore(ref_file)
         store.add_source(

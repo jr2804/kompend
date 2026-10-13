@@ -61,10 +61,10 @@ $ConfigPath = $ConfigFile
 Write-Host "Using config: $ConfigPath" -ForegroundColor Cyan
 
 # ------ Default models (per-config env-var overrides) ------------------------------------------------
-# Config files use config-specific env vars (${KNOX_LOCAL_LLM}, ${KNOX_CLOUD_LLM}, etc.)
+# Config files use config-specific env vars (${KOMP_LOCAL_LLM}, ${KOMP_CLOUD_LLM}, etc.)
 # that are expanded at load time. The script sets the right set based on which
-# config file is in use. The env vars ${KNOX_LLM_DEFAULT_MODEL} / ${KNOX_VLM_MODEL}
-# / ${KNOX_EMBEDDING_MODEL} at the _ENV_MAP layer (Layer 2) still work as a generic
+# config file is in use. The env vars ${KOMP_LLM_DEFAULT_MODEL} / ${KOMP_VLM_MODEL}
+# / ${KOMP_EMBEDDING_MODEL} at the _ENV_MAP layer (Layer 2) still work as a generic
 # override, but the config-specific vars are the recommended approach.
 
 # Derive which config we are using
@@ -73,13 +73,13 @@ $IsLocalConfig = $BaseName -like "*local*"
 
 # Prefer script parameter > existing env var > script default
 if ($IsLocalConfig) {
-    $env:KNOX_LOCAL_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KNOX_LOCAL_LLM        ?? "ollama/gemma4:e2b" }   else { $LLMModel }
-    $env:KNOX_LOCAL_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KNOX_LOCAL_VLM        ?? "ollama/lmfm2.5" }     else { $VLMModel }
-    $env:KNOX_LOCAL_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_LOCAL_EMBEDDING  ?? "ollama:granite-embedding:278m" } else { $EmbedModel }
+    $env:KOMP_LOCAL_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KOMP_LOCAL_LLM        ?? "ollama/gemma4:e2b" }   else { $LLMModel }
+    $env:KOMP_LOCAL_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KOMP_LOCAL_VLM        ?? "ollama/lmfm2.5" }     else { $VLMModel }
+    $env:KOMP_LOCAL_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KOMP_LOCAL_EMBEDDING  ?? "ollama:granite-embedding:278m" } else { $EmbedModel }
 } else {
-    $env:KNOX_CLOUD_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KNOX_CLOUD_LLM        ?? "ollama-cloud/deepseek-v4-flash" }   else { $LLMModel }
-    $env:KNOX_CLOUD_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KNOX_CLOUD_VLM        ?? "ollama-cloud/gemma4:31b" }         else { $VLMModel }
-    $env:KNOX_CLOUD_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KNOX_CLOUD_EMBEDDING  ?? "openai:text-embedding-3-large" }   else { $EmbedModel }
+    $env:KOMP_CLOUD_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KOMP_CLOUD_LLM        ?? "ollama-cloud/deepseek-v4-flash" }   else { $LLMModel }
+    $env:KOMP_CLOUD_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KOMP_CLOUD_VLM        ?? "ollama-cloud/gemma4:31b" }         else { $VLMModel }
+    $env:KOMP_CLOUD_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KOMP_CLOUD_EMBEDDING  ?? "openai:text-embedding-3-large" }   else { $EmbedModel }
 }
 
 # Derive output directory name from config filename:
@@ -87,7 +87,7 @@ if ($IsLocalConfig) {
 #   scripts\configs\config-local.toml   →  demo-wiki-local
 $OutputName = $BaseName -replace "^config-", "demo-wiki-"
 # Relative to cwd ($ProjectRoot) — avoids backslash-mangling when passed to
-# native commands via `--wiki-dir`. knox resolves it against cwd.
+# native commands via `--wiki-dir`. kompend resolves it against cwd.
 $OutputPath = $OutputName
 
 Write-Host "  Output: $OutputPath" -ForegroundColor DarkGray
@@ -101,7 +101,7 @@ $Batch2Pdf = "tests/data/batch2/*.pdf"
 $Batch2Urls = "$Batch2Dir/urls.txt"
 
 # ------ Clean ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-# --force --keep-cache on knox init handles directory reset + cache
+# --force --keep-cache on kompend init handles directory reset + cache
 # preservation. The cache-skip logic in ingest already skips unchanged
 # files (hash-based). No manual cache clearing needed.
 
@@ -109,7 +109,7 @@ $Batch2Urls = "$Batch2Dir/urls.txt"
 Write-Host ""
 Write-Host "=== Stage 0: Initialize project ===" -ForegroundColor Cyan
 $InitArgs = @(
-    "uv", "run", "knox", "init",
+    "uv", "run", "kompend", "init",
     $OutputPath,
     "--bare",
     "--force",
@@ -124,7 +124,7 @@ Write-Host ""
 if (-not $Preview) {
     & $InitArgs[0] $InitArgs[1..($InitArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "knox init failed with exit code $LASTEXITCODE"
+        Write-Error "kompend init failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }
@@ -133,7 +133,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 1: Ingest (download + parse) ===" -ForegroundColor Cyan
 $IngestArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "ingest",
     $InputFiles,
@@ -142,7 +142,7 @@ $IngestArgs = @(
 
 # $Force no longer forces re-parse. The cache-skip logic in ingest
 # already skips unchanged files (hash-based). To force a full re-parse,
-# run: knox ingest --no-cache --wiki-dir <dir> manually before this script.
+# run: kompend ingest --no-cache --wiki-dir <dir> manually before this script.
 
 Write-Host ""
 Write-Host ($IngestArgs -join " ") -ForegroundColor DarkGray
@@ -151,7 +151,7 @@ Write-Host ""
 if (-not $Preview) {
     & $IngestArgs[0] $IngestArgs[1..($IngestArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "knox ingest failed with exit code $LASTEXITCODE"
+        Write-Error "kompend ingest failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }
@@ -160,7 +160,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 1b: Validate LLM provider ===" -ForegroundColor Cyan
 $DoctorArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "doctor",
     "--verbose"
@@ -172,7 +172,7 @@ Write-Host ""
 if (-not $Preview) {
     & $DoctorArgs[0] $DoctorArgs[1..($DoctorArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "knox doctor failed with exit code $LASTEXITCODE"
+        Write-Error "kompend doctor failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }
@@ -181,7 +181,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 2: Compile (index + chunk + resolve + compile + output) ===" -ForegroundColor Cyan
 $CompileArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "compile"
 )
@@ -193,7 +193,7 @@ Write-Host ""
 if (-not $Preview) {
     & $CompileArgs[0] $CompileArgs[1..($CompileArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "knox compile failed with exit code $LASTEXITCODE"
+        Write-Error "kompend compile failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }
@@ -203,7 +203,7 @@ Write-Host ""
 Write-Host "=== Stage 3: Ingest batch 2 (incremental sources) ===" -ForegroundColor Cyan
 
 $Ingest2Args = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "ingest",
     $Batch2Pdf,
@@ -217,7 +217,7 @@ Write-Host ""
 if (-not $Preview) {
     & $Ingest2Args[0] $Ingest2Args[1..($Ingest2Args.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "knox ingest (batch 2) failed with exit code $LASTEXITCODE"
+        Write-Error "kompend ingest (batch 2) failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }
@@ -226,7 +226,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 4: Re-compile (with batch 2 content) ===" -ForegroundColor Cyan
 $Compile2Args = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "compile"
 )
@@ -238,7 +238,7 @@ Write-Host ""
 if (-not $Preview) {
     & $Compile2Args[0] $Compile2Args[1..($Compile2Args.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "knox compile (batch 2) failed with exit code $LASTEXITCODE"
+        Write-Error "kompend compile (batch 2) failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }
@@ -247,7 +247,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 5: Running Linter (Structural + LLM rules) ===" -ForegroundColor Cyan
 $LintArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "lint", "run",
     "--llm",
@@ -268,7 +268,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 6: Gap Analysis (source recommendations) ===" -ForegroundColor Cyan
 $GapsArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "lint", "gaps"
 )
@@ -285,7 +285,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 7: Remediate (auto-fix + concept generation) ===" -ForegroundColor Cyan
 $RemediateArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "lint", "remediate"
 )
@@ -301,7 +301,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 8: Lint History (trend) ===" -ForegroundColor Cyan
 $HistoryArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "lint", "history",
     "--last", "5",
@@ -341,7 +341,7 @@ if ($DemoContent) {
     # learn
     if ($DemoContent.learn) {
         foreach ($item in $DemoContent.learn) {
-            $cmd = @("uv", "run", "knox", "--wiki-dir", $OutputPath, "learn", $item.text)
+            $cmd = @("uv", "run", "kompend", "--wiki-dir", $OutputPath, "learn", $item.text)
             if ($item.tags) {
                 foreach ($tag in $item.tags) {
                     $cmd += @("--tags", $tag)
@@ -353,7 +353,7 @@ if ($DemoContent) {
             if (-not $Preview) {
                 & $cmd[0] $cmd[1..($cmd.Length - 1)]
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "knox learn failed (exit $LASTEXITCODE) --- continuing"
+                    Write-Warning "kompend learn failed (exit $LASTEXITCODE) --- continuing"
                 }
             }
         }
@@ -362,14 +362,14 @@ if ($DemoContent) {
     # capture
     if ($DemoContent.capture) {
         foreach ($item in $DemoContent.capture) {
-            $cmd = @("uv", "run", "knox", "--wiki-dir", $OutputPath, "capture", $item.text)
+            $cmd = @("uv", "run", "kompend", "--wiki-dir", $OutputPath, "capture", $item.text)
             Write-Host ""
             Write-Host (Format-CmdDisplay $cmd) -ForegroundColor DarkGray
             Write-Host ""
             if (-not $Preview) {
                 & $cmd[0] $cmd[1..($cmd.Length - 1)]
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "knox capture failed (exit $LASTEXITCODE) --- continuing"
+                    Write-Warning "kompend capture failed (exit $LASTEXITCODE) --- continuing"
                 }
             }
         }
@@ -378,7 +378,7 @@ if ($DemoContent) {
     # write (resolves source filenames to paths in vault)
     if ($DemoContent.write) {
         foreach ($item in $DemoContent.write) {
-            $writeArgs = @("uv", "run", "knox", "--wiki-dir", $OutputPath, "write", $item.title)
+            $writeArgs = @("uv", "run", "kompend", "--wiki-dir", $OutputPath, "write", $item.title)
             $resolvedCount = 0
             if ($item.sources) {
                 foreach ($src in $item.sources) {
@@ -402,11 +402,11 @@ if ($DemoContent) {
                 if (-not $Preview) {
                     & $writeArgs[0] $writeArgs[1..($writeArgs.Length - 1)]
                     if ($LASTEXITCODE -ne 0) {
-                        Write-Warning "knox write failed (exit $LASTEXITCODE) --- continuing"
+                        Write-Warning "kompend write failed (exit $LASTEXITCODE) --- continuing"
                     }
                 }
             } else {
-                Write-Host "  Skipping 'knox write' --- no source files resolved" -ForegroundColor DarkGray
+                Write-Host "  Skipping 'kompend write' --- no source files resolved" -ForegroundColor DarkGray
             }
         }
     }
@@ -417,14 +417,14 @@ if ($DemoContent) {
         Write-Host "=== Stage 10: Query demo ===" -ForegroundColor Cyan
 
         foreach ($item in $DemoContent.query) {
-            $cmd = @("uv", "run", "knox", "--wiki-dir", $OutputPath, "query", $item.question)
+            $cmd = @("uv", "run", "kompend", "--wiki-dir", $OutputPath, "query", $item.question)
             Write-Host ""
             Write-Host (Format-CmdDisplay $cmd) -ForegroundColor DarkGray
             Write-Host ""
             if (-not $Preview) {
                 & $cmd[0] $cmd[1..($cmd.Length - 1)]
                 if ($LASTEXITCODE -ne 0) {
-                    Write-Warning "knox query failed (exit $LASTEXITCODE) --- continuing"
+                    Write-Warning "kompend query failed (exit $LASTEXITCODE) --- continuing"
                 }
             }
         }
@@ -436,7 +436,7 @@ Write-Host ""
 Write-Host "=== Stage 11: Status + Trace ===" -ForegroundColor Cyan
 
 $StatusArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "status"
 )
@@ -448,7 +448,7 @@ if (-not $Preview) {
 }
 
 $ProvenanceArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "provenance"
 )
@@ -463,7 +463,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 12: Organize (dry-run) ===" -ForegroundColor Cyan
 $OrganizeArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "organize",
     "--dry-run"
@@ -474,19 +474,19 @@ Write-Host ""
 if (-not $Preview) {
     & $OrganizeArgs[0] $OrganizeArgs[1..($OrganizeArgs.Length - 1)]
     if ($LASTEXITCODE -ne 0) {
-        Write-Warning "knox organize failed (exit $LASTEXITCODE) --- continuing"
+        Write-Warning "kompend organize failed (exit $LASTEXITCODE) --- continuing"
     }
 }
 
 # ------ Stage 13: Final Lint Check (score after all remediation + write) ----------
 # Re-runs the linter read-only (no --fix) so the post-remediation score is
 # visible, then re-prints history to show the improvement trend including
-# this final run. New pages from `knox write` / concept generation are
+# this final run. New pages from `kompend write` / concept generation are
 # re-evaluated here too.
 Write-Host ""
 Write-Host "=== Stage 13: Final Lint Check (post-remediation score) ===" -ForegroundColor Cyan
 $FinalLintArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "lint", "run",
     "--llm"
@@ -518,7 +518,7 @@ if (-not $Preview) {
 Write-Host ""
 Write-Host "=== Stage 14: Pipeline Log (regenerated report) ===" -ForegroundColor Cyan
 $LogArgs = @(
-    "uv", "run", "knox",
+    "uv", "run", "kompend",
     "--wiki-dir", $OutputPath,
     "log",
     "--last", "15"

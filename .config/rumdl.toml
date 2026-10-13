@@ -1,10 +1,10 @@
-# rumdl configuration file for KNOX
+# rumdl configuration file for KOMPEND
 
 [global]
-# Maximum allowed line length (KNOX docs have long URLs and tables)
+# Maximum allowed line length (KOMPEND docs have long URLs and tables)
 line-length = 320
 
-# Markdown flavor/dialect: knox targets Obsidian by default
+# Markdown flavor/dialect: kompend targets Obsidian by default
 flavor = "obsidian"
 
 [per-file-ignores]

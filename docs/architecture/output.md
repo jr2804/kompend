@@ -1,6 +1,6 @@
 # Output Architecture
 
-KNOX's output layer converts a compiled wiki into publishable documents.
+KOMPEND's output layer converts a compiled wiki into publishable documents.
 It is designed around three principles:
 
 1. **Flavor-agnostic intermediate model** — the `Document` dataclass carries content in canonical form
@@ -44,7 +44,7 @@ It is designed around three principles:
 
 ## Document model
 
-Defined in `src/knox/output/models.py`:
+Defined in `src/kompend/output/models.py`:
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -58,7 +58,7 @@ Defined in `src/knox/output/models.py`:
 
 ## DocumentRenderer
 
-Defined in `src/knox/output/renderer.py`.
+Defined in `src/kompend/output/renderer.py`.
 
 The renderer produces canonical Markdown (frontmatter `---` block + heading + body)
 and then optionally pipes through `rumdl fmt --flavor <FLAVOR>` for flavor-specific
@@ -90,7 +90,7 @@ with a warning logged.
 
 ## BaseOutputWriter
 
-Defined in `src/knox/output/base.py`.
+Defined in `src/kompend/output/base.py`.
 
 All output writers extend `BaseOutputWriter` and must implement `write(wiki, output_dir)`.
 The class provides a plugin registry:
@@ -109,7 +109,7 @@ writer_class = BaseOutputWriter.get("markdown")  # MarkdownWriter
 
 ## Flavor auto-detection
 
-When `compile.output.flavor` is not explicitly set, KNOX inspects the output directory:
+When `compile.output.flavor` is not explicitly set, KOMPEND inspects the output directory:
 
 | File/dir present | Flavor detected |
 |-----------------|----------------|

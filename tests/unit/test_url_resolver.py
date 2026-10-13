@@ -8,8 +8,8 @@ from pathlib import Path
 
 import py7zr
 
-from knox.cli._sources import extract_archive
-from knox.preprocessing.downloaders.url_resolver import (
+from kompend.cli._sources import extract_archive
+from kompend.preprocessing.downloaders.url_resolver import (
     ArxivHtmlResolver,
     ArxivPdfResolver,
     ArxivSourceResolver,

@@ -1,6 +1,6 @@
 # Memory Lifecycle
 
-KNOX tracks every wiki page through a four-tier memory lifecycle inspired by cognitive science models. Pages gain confidence over time, promote through consolidation tiers, and decay if not recompiled.
+KOMPEND tracks every wiki page through a four-tier memory lifecycle inspired by cognitive science models. Pages gain confidence over time, promote through consolidation tiers, and decay if not recompiled.
 
 ## Tiers
 
@@ -45,16 +45,16 @@ When a new compile produces a page with the same title but a different node ID (
 ## Configuration
 
 ```bash
-knox compile *.pdf --memory                  # enable (default)
-knox compile *.pdf --no-memory               # disable
+kompend compile *.pdf --memory                  # enable (default)
+kompend compile *.pdf --no-memory               # disable
 # Tuning (config-only):
-knox config set compile.memory_half_life_days 90     # decay speed
-knox config set compile.memory_decay_threshold 0.3
+kompend config set compile.memory_half_life_days 90     # decay speed
+kompend config set compile.memory_decay_threshold 0.3
 # ...or override one run:
-knox compile *.pdf --set compile.memory_half_life_days=90
+kompend compile *.pdf --set compile.memory_half_life_days=90
 ```
 
-State is persisted in the `memory_states` table of `base_dir/.knox/knox.db`.
+State is persisted in the `memory_states` table of `base_dir/.kompend/kompend.db`.
 
 ## See also
 

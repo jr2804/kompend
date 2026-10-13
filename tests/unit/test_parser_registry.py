@@ -1,7 +1,7 @@
 """Tests for the pluggable ingestion backend registry.
 
 Backends self-register at import time via ``register_backend``; importing the
-``knox.preprocessing.parsers`` package (done by the imports below) triggers
+``kompend.preprocessing.parsers`` package (done by the imports below) triggers
 registration before any assertion runs. Exactly one backend is registered per
 router.
 """
@@ -14,10 +14,10 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.models import ParsedDocument
-from knox.core.models.elements import DocumentElement
-from knox.core.models.enums import ElementType
-from knox.preprocessing.parsers._registry import (
+from kompend.core.models import ParsedDocument
+from kompend.core.models.elements import DocumentElement
+from kompend.core.models.enums import ElementType
+from kompend.preprocessing.parsers._registry import (
     _BACKEND_MODULES,
     KNOWN_BACKENDS,
     ParserBuildOptions,
@@ -27,8 +27,8 @@ from knox.preprocessing.parsers._registry import (
     get_registered_parsers,
     register_backend,
 )
-from knox.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, FileExtension, ParserRouter, scrub_document
-from knox.preprocessing.parsers.parsecraft_parser import ParsecraftParser
+from kompend.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, FileExtension, ParserRouter, scrub_document
+from kompend.preprocessing.parsers.parsecraft_parser import ParsecraftParser
 
 
 def test_known_backends_are_the_surviving_set() -> None:
@@ -36,10 +36,10 @@ def test_known_backends_are_the_surviving_set() -> None:
 
     docling, liteparse, pandoc and glm-ocr were removed once parsecraft
     provided them; web followed when parsecraft's trafilatura backend landed
-    (pc-axb); mineru went when knox declared the parsecraft[mineru] extra.
-    marker stays a bring-your-own engine, never a knox backend: parsecraft's
+    (pc-axb); mineru went when kompend declared the parsecraft[mineru] extra.
+    marker stays a bring-your-own engine, never a kompend backend: parsecraft's
     marker backend detects a manual marker-pdf install by import (ADR-0006),
-    and no marker-pdf release can be locked in knox's graph (1.x collides
+    and no marker-pdf release can be locked in kompend's graph (1.x collides
     with pydantic-ai's anthropic pin; 2.0.0 forces graph-wide downgrades).
     """
     assert set(KNOWN_BACKENDS) == {"parsecraft"}
@@ -75,7 +75,7 @@ def test_parser_build_options_defaults() -> None:
     ],
 )
 def test_build_default_router_registers_exactly_the_named_backend(name: str, expected_cls: type) -> None:
-    """One backend, no chain: knox keeps no second level of hand-off."""
+    """One backend, no chain: kompend keeps no second level of hand-off."""
     router = build_default_router(name=name)
     assert len(router) == 1
     assert isinstance(router._parsers[0], expected_cls)  # noqa: SLF001 — parser identity is the contract
@@ -93,7 +93,7 @@ def test_build_default_router_missing_extra_is_loud(monkeypatch: pytest.MonkeyPa
     # KNOWN_BACKENDS entry whose module cannot import stays unregistered and
     # must raise with its hint instead of starting an empty router.
     monkeypatch.setitem(KNOWN_BACKENDS, "_uninstalled", "Uninstalled demo parser (install: uv pip install demo-parser)")
-    monkeypatch.setitem(_BACKEND_MODULES, "_uninstalled", "knox.preprocessing.parsers.not_a_module")
+    monkeypatch.setitem(_BACKEND_MODULES, "_uninstalled", "kompend.preprocessing.parsers.not_a_module")
     with pytest.raises(ValueError, match="is not installed"):
         build_default_router(name="_uninstalled")
 

@@ -1,6 +1,6 @@
 # RAG Pipeline
 
-KNOX's query pipeline includes optional RAG enhancement techniques that improve retrieval quality. Each is a **plug-in step** — configurable via `knox.toml` under `[search]`, and all default to **disabled**.
+KOMPEND's query pipeline includes optional RAG enhancement techniques that improve retrieval quality. Each is a **plug-in step** — configurable via `kompend.toml` under `[search]`, and all default to **disabled**.
 
 ## Pipeline Flow
 
@@ -104,13 +104,13 @@ contextual.model = ""
 
 | Variable | Config Key | Description |
 |----------|------------|-------------|
-| `KNOX_SEARCH_EXPANSION_ENABLED` | `search.expansion.enabled` | Enable multi-query expansion |
-| `KNOX_SEARCH_EXPANSION_VARIANTS` | `search.expansion.variants` | Number of query variants |
-| `KNOX_SEARCH_CRAG_ENABLED` | `search.crag.enabled` | Enable CRAG relevance grading |
-| `KNOX_SEARCH_CRAG_THRESHOLD` | `search.crag.threshold` | CRAG relevance threshold |
-| `KNOX_SEARCH_RERANKER_ENABLED` | `search.reranker.enabled` | Enable neural re-ranker |
-| `KNOX_SEARCH_RERANKER_MODEL` | `search.reranker.model` | Cross-encoder model name |
-| `KNOX_SEARCH_RERANKER_TOP_K` | `search.reranker.top_k` | Candidates to re-rank |
-| `KNOX_SEARCH_HYDE_ENABLED` | `search.hyde.enabled` | Enable HyDE |
-| `KNOX_SEARCH_CONTEXTUAL_ENABLED` | `search.contextual.enabled` | Enable contextual retrieval |
-| `KNOX_SEARCH_CONTEXTUAL_MODEL` | `search.contextual.model` | LLM model for context generation |
+| `KOMP_SEARCH_EXPANSION_ENABLED` | `search.expansion.enabled` | Enable multi-query expansion |
+| `KOMP_SEARCH_EXPANSION_VARIANTS` | `search.expansion.variants` | Number of query variants |
+| `KOMP_SEARCH_CRAG_ENABLED` | `search.crag.enabled` | Enable CRAG relevance grading |
+| `KOMP_SEARCH_CRAG_THRESHOLD` | `search.crag.threshold` | CRAG relevance threshold |
+| `KOMP_SEARCH_RERANKER_ENABLED` | `search.reranker.enabled` | Enable neural re-ranker |
+| `KOMP_SEARCH_RERANKER_MODEL` | `search.reranker.model` | Cross-encoder model name |
+| `KOMP_SEARCH_RERANKER_TOP_K` | `search.reranker.top_k` | Candidates to re-rank |
+| `KOMP_SEARCH_HYDE_ENABLED` | `search.hyde.enabled` | Enable HyDE |
+| `KOMP_SEARCH_CONTEXTUAL_ENABLED` | `search.contextual.enabled` | Enable contextual retrieval |
+| `KOMP_SEARCH_CONTEXTUAL_MODEL` | `search.contextual.model` | LLM model for context generation |

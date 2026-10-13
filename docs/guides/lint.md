@@ -1,24 +1,24 @@
 # Lint Reference
 
-KNOX lint checks compiled wikis for structural and semantic quality issues.
+KOMPEND lint checks compiled wikis for structural and semantic quality issues.
 
 ## Quick Start
 
 ```bash
 # Run all structural + LLM-powered rules (LLM on by default)
-knox lint all
+kompend lint all
 
 # Structural rules only (no LLM calls)
-knox lint check            # deterministic rules only
+kompend lint check            # deterministic rules only
 
 # Auto-fix supported issues
-knox lint all --fix
+kompend lint all --fix
 
 # Run only specific rules
-knox lint check --rule broken-wikilinks --rule orphan-page
+kompend lint check --rule broken-wikilinks --rule orphan-page
 
 # Machine-readable output for CI
-knox lint all --json
+kompend lint all --json
 ```
 
 LLM-powered rules use `compile.llm.default_model`; with no model configured
@@ -26,34 +26,34 @@ they are skipped with a note (structural rules still run).
 
 ## Commands
 
-`knox lint` is a command group. Each lint phase is its own sub-command;
-`knox lint all` runs the whole pipeline in one flow with a single weighted
+`kompend lint` is a command group. Each lint phase is its own sub-command;
+`kompend lint all` runs the whole pipeline in one flow with a single weighted
 progress bar (deterministic steps weight 1/page, LLM steps 100/page).
 
 | Sub-command | Description | LLM | Fix |
 |------------|-------------|-----|-----|
-| `knox lint all` | Full pipeline: check → format → semantic → gaps → remediate, one progress bar | both | `--fix/--no-fix` (default on) |
-| `knox lint check` | Deterministic structural rules (broken-wikilinks, aliases, frontmatter, orphans, duplicates, stale, orphan-attachments, ...) | no | `--fix/--no-fix` (default on) |
-| `knox lint format` | rumdl formatting pass | no | `--check` for CI (exit 1 when changes needed) |
-| `knox lint semantic` | LLM rules: factual-consistency, clarity-score, coverage-gap, contradiction-detection | yes | report only |
-| `knox lint gaps` | Gap analysis + semantic source-coverage verification + weighted priorities | embeddings | `--fix` runs remediation |
-| `knox lint remediate` | LLM-generate missing pages from cached extractions | yes | writes pages (`--dry-run` to preview) |
-| `knox lint history` | Query past lint runs (scores, trends, details) | — | — |
-| `knox lint prune` | Remove old history entries | — | — |
+| `kompend lint all` | Full pipeline: check → format → semantic → gaps → remediate, one progress bar | both | `--fix/--no-fix` (default on) |
+| `kompend lint check` | Deterministic structural rules (broken-wikilinks, aliases, frontmatter, orphans, duplicates, stale, orphan-attachments, ...) | no | `--fix/--no-fix` (default on) |
+| `kompend lint format` | rumdl formatting pass | no | `--check` for CI (exit 1 when changes needed) |
+| `kompend lint semantic` | LLM rules: factual-consistency, clarity-score, coverage-gap, contradiction-detection | yes | report only |
+| `kompend lint gaps` | Gap analysis + semantic source-coverage verification + weighted priorities | embeddings | `--fix` runs remediation |
+| `kompend lint remediate` | LLM-generate missing pages from cached extractions | yes | writes pages (`--dry-run` to preview) |
+| `kompend lint history` | Query past lint runs (scores, trends, details) | — | — |
+| `kompend lint prune` | Remove old history entries | — | — |
 
-### `knox lint check`
+### `kompend lint check`
 
 ```bash
-knox lint check                  # structural rules, fix what's possible
-knox lint check --no-fix         # report only
-knox lint check --rule broken-wikilinks --rule orphan-page
+kompend lint check                  # structural rules, fix what's possible
+kompend lint check --no-fix         # report only
+kompend lint check --rule broken-wikilinks --rule orphan-page
 ```
 
-### `knox lint all`
+### `kompend lint all`
 
 ```bash
-knox lint all                    # check + format + semantic + gaps + remediate
-knox lint all --no-fix           # everything, but write nothing
+kompend lint all                    # check + format + semantic + gaps + remediate
+kompend lint all --no-fix           # everything, but write nothing
 ```
 
 LLM steps (`semantic`, `remediate`) are skipped gracefully with a note when
@@ -62,31 +62,31 @@ no model is configured. The model is `compile.lint.model`, falling back to
 
 ## Lint during compile
 
-`knox compile` runs lint automatically after the wiki is built. Two
+`kompend compile` runs lint automatically after the wiki is built. Two
 independent flags control what gets run (both default to on):
 
 | Flag | Env var | Effect |
 |------|---------|--------|
-| `--lint / --no-lint` | `KNOX_COMPILE_LINT` | Deterministic structural lint only |
-| `--lint-all / --no-lint-all` | `KNOX_COMPILE_LINT_ALL` | Full pipeline (deterministic + LLM + remediate); implies `--lint` |
+| `--lint / --no-lint` | `KOMP_COMPILE_LINT` | Deterministic structural lint only |
+| `--lint-all / --no-lint-all` | `KOMP_COMPILE_LINT_ALL` | Full pipeline (deterministic + LLM + remediate); implies `--lint` |
 
 `--no-lint` and `--no-lint-all` are identical — both disable any linting.
 Fixes are always applied when lint runs during compile (no `--no-fix`
 option; compile is meant to leave the wiki in a clean state).
-Disable per-run with `--no-lint-all`, or set `KNOX_COMPILE_LINT_ALL=0`
+Disable per-run with `--no-lint-all`, or set `KOMP_COMPILE_LINT_ALL=0`
 in the environment:
 
 ```bash
-knox compile ./sources --no-lint-all        # no lint at all
-KNOX_COMPILE_LINT=0 knox compile ./sources  # structural lint only (skips LLM steps)
+kompend compile ./sources --no-lint-all        # no lint at all
+KOMP_COMPILE_LINT=0 kompend compile ./sources  # structural lint only (skips LLM steps)
 ```
 
-### `knox lint history`
+### `kompend lint history`
 
 ```text
-knox lint history [OPTIONS]
+kompend lint history [OPTIONS]
 
-Show past lint runs from .knox/lint_history.jsonl.
+Show past lint runs from .kompend/lint_history.jsonl.
 
 Options:
   --last INT, -n     Show last N entries (default 10)
@@ -98,51 +98,51 @@ Examples:
 
 ```bash
 # Show last 10 lint runs
-knox lint history
+kompend lint history
 
 # Show only the most recent run
-knox lint history -n 1
+kompend lint history -n 1
 
 # Show score trend over time (Unicode sparkline)
-knox lint history --trend
+kompend lint history --trend
 
 # Machine-readable output for dashboards
-knox lint history --json
+kompend lint history --json
 ```
 
-### `knox lint gaps`
+### `kompend lint gaps`
 
 Analyze the latest lint run for knowledge gaps and recommend source
 material:
 
 ```bash
-knox lint gaps
+kompend lint gaps
 ```
 
 Gap recommendations cover missing topics, empty pages, isolated topics,
 coverage gaps, and unresolved contradictions. `gaps` only recommends —
 it never modifies the wiki.
 
-### `knox lint remediate`
+### `kompend lint remediate`
 
 Generate missing concept pages for coverage-gap findings:
 
 ```bash
-knox lint remediate           # generate pages (needs an LLM configured)
-knox lint remediate --dry-run # preview without writing
+kompend lint remediate           # generate pages (needs an LLM configured)
+kompend lint remediate --dry-run # preview without writing
 ```
 
 Coverage-gap findings are matched against cached phase-1 extractions;
 matched concepts get concept pages generated from that source material and
 written to the wiki output directory. Unmatched concepts are skipped — run
-`knox lint gaps` for recommendations on those.
+`kompend lint gaps` for recommendations on those.
 
-### `knox lint prune`
+### `kompend lint prune`
 
 ```text
-knox lint prune [OPTIONS]
+kompend lint prune [OPTIONS]
 
-Remove old entries from .knox/lint_history.jsonl.
+Remove old entries from .kompend/lint_history.jsonl.
 At least one of --keep-last or --max-age-days is required.
 
 Options:
@@ -154,26 +154,26 @@ Examples:
 
 ```bash
 # Keep only the last 50 runs
-knox lint prune --keep-last 50
+kompend lint prune --keep-last 50
 
 # Remove entries older than 90 days
-knox lint prune --max-age-days 90
+kompend lint prune --max-age-days 90
 
 # Combined: keep last 50 AND younger than 90 days
-knox lint prune --keep-last 50 --max-age-days 90
+kompend lint prune --keep-last 50 --max-age-days 90
 ```
 
-### `knox compile --lint` (see [the table above](#lint-during-compile) for the full flag/env-var matrix)
+### `kompend compile --lint` (see [the table above](#lint-during-compile) for the full flag/env-var matrix)
 
 The first section above is the canonical reference. This block shows the
-short flags on the `knox compile` command:
+short flags on the `kompend compile` command:
 
 ```bash
-knox compile ./sources                # --lint-all on (default): full pipeline incl. LLM
-knox compile ./sources --lint         # deterministic structural lint only
-knox compile ./sources --no-lint-all  # disable any linting
-KNOX_COMPILE_LINT=0 knox compile ./sources  # deterministic only
-KNOX_COMPILE_LINT_ALL=0 knox compile ./sources  # disable any linting via env
+kompend compile ./sources                # --lint-all on (default): full pipeline incl. LLM
+kompend compile ./sources --lint         # deterministic structural lint only
+kompend compile ./sources --no-lint-all  # disable any linting
+KOMP_COMPILE_LINT=0 kompend compile ./sources  # deterministic only
+KOMP_COMPILE_LINT_ALL=0 kompend compile ./sources  # disable any linting via env
 ```
 
 ## Structural Rules (11)
@@ -207,9 +207,9 @@ When `--fix` is passed:
 - Other rules: Cannot be auto-fixed (require manual editing or re-compilation)
 
 The `rumdl` rule checks every `*.md` file under the vault root — wiki output,
-index pages, and self-written notes — excluding `sources/`, `.knox/`, and
+index pages, and self-written notes — excluding `sources/`, `.kompend/`, and
 `attachments/`. Rule tuning comes from `compile.output.rumdl_config` in
-`knox.toml` (same key as render-time formatting); when unset, rumdl
+`kompend.toml` (same key as render-time formatting); when unset, rumdl
 auto-discovers a `.rumdl.toml` in the vault. The rule reports `SKIP` when
 rumdl is not installed.
 
@@ -234,19 +234,19 @@ The health score is computed as:
 health_score = 100 × (PASS results) / (total results)
 ```
 
-A perfect wiki scores 100%. `knox lint all` reports the score but does **not**
+A perfect wiki scores 100%. `kompend lint all` reports the score but does **not**
 gate on it — the exit code is 0 unless the run itself fails. To fail CI on a
 low score, parse the JSON output:
 
 ```bash
-knox lint all --json > lint-report.json
+kompend lint all --json > lint-report.json
 python -c "import json,sys; sys.exit(0 if json.load(open('lint-report.json'))['health_score']>=80 else 1)"
 ```
 
 ## JSON Output
 
 ```bash
-knox lint all --json
+kompend lint all --json
 ```
 
 Returns:
@@ -274,7 +274,7 @@ Returns:
 
 ## History
 
-Every `knox lint all` (or any lint sub-command) appends a structured entry to `.knox/lint_history.jsonl`. Each entry includes:
+Every `kompend lint all` (or any lint sub-command) appends a structured entry to `.kompend/lint_history.jsonl`. Each entry includes:
 
 | Field | Content |
 |-------|---------|
@@ -286,7 +286,7 @@ Every `knox lint all` (or any lint sub-command) appends a structured entry to `.
 | `wiki_meta` | Node count |
 | `report` | Full `LintReport` (health score, per-rule results) |
 
-Query with `knox lint history` (see above). Prune old entries with `knox lint prune`.
+Query with `kompend lint history` (see above). Prune old entries with `kompend lint prune`.
 
 ## CI Integration
 
@@ -295,8 +295,8 @@ Query with `knox lint history` (see above). Prune old entries with `knox lint pr
 ```yaml
 - name: Lint compiled wiki
   run: |
-    knox compile ./sources
-    knox lint all --json > lint-report.json
+    kompend compile ./sources
+    kompend lint all --json > lint-report.json
     python -c "import json,sys; sys.exit(0 if json.load(open('lint-report.json'))['health_score']>=80 else 1)"
 ```
 
@@ -305,14 +305,14 @@ Query with `knox lint history` (see above). Prune old entries with `knox lint pr
 ```yaml
 - repo: local
   hooks:
-    - id: knox-lint
-      name: knox lint
-      entry: knox lint all --json
+    - id: kompend-lint
+      name: kompend lint
+      entry: kompend lint all --json
       language: system
       pass_filenames: false
 ```
 
-The hook runs lint and writes JSON but, like `knox lint all` itself, exits 0
+The hook runs lint and writes JSON but, like `kompend lint all` itself, exits 0
 unless the run fails. To make a pre-commit hook gate on the score, wrap the
 JSON parse (see [Health Score](#health-score)) in a small script and point
 `entry` at it.
@@ -324,7 +324,7 @@ JSON parse (see [Health Score](#health-score)) in a small script and point
 Create a class that satisfies the `LintRule` protocol:
 
 ```python
-from knox.lint.base import LintResult, LintRuleOutcome
+from kompend.lint.base import LintResult, LintRuleOutcome
 
 
 class MyCustomRule:

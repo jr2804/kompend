@@ -1,7 +1,7 @@
 """Tests for wikilink alias learning + known-title prompt injection.
 
-Covers beads issues knox-2kai (alias learning) and knox-oumw (long-form
-wikilink prompts): :mod:`knox.compilation.flows.generation`.
+Covers beads issues kompend-2kai (alias learning) and kompend-oumw (long-form
+wikilink prompts): :mod:`kompend.compilation.flows.generation`.
 """
 
 from __future__ import annotations
@@ -10,14 +10,14 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-from knox.compilation._two_phase_core import TwoPhaseRuntime
-from knox.compilation.flows.generation import build_known_titles, learn_wikilink_aliases
-from knox.core.cache.wiki import write_wiki_cache
-from knox.core.models import CompiledWiki, WikiNode
-from knox.core.models.enums import MetadataField
-from knox.core.templates import get_template_loader
+from kompend.compilation._two_phase_core import TwoPhaseRuntime
+from kompend.compilation.flows.generation import build_known_titles, learn_wikilink_aliases
+from kompend.core.cache.wiki import write_wiki_cache
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import MetadataField
+from kompend.core.templates import get_template_loader
 
-# ── learn_wikilink_aliases (knox-2kai) ──────────────────────────────────
+# ── learn_wikilink_aliases (kompend-2kai) ──────────────────────────────────
 
 
 def test_learn_alias_from_substring_match() -> None:
@@ -84,7 +84,7 @@ def test_build_known_titles_merges_previous_aliases(tmp_path: Path) -> None:
         toc=[],
         metadata={MetadataField.WIKILINK_ALIASES: {"P.863": "Full-scale database (P.863 evaluation)"}},
     )
-    cache_dir = tmp_path / ".knox"
+    cache_dir = tmp_path / ".kompend"
     cache_dir.mkdir()
     write_wiki_cache(previous, tmp_path)
 
@@ -100,14 +100,14 @@ def test_build_known_titles_survives_missing_cache(tmp_path: Path) -> None:
     assert titles == ["POLQA"]
 
 
-# ── build_known_titles (knox-2kai + knox-oumw wiring) ───────────────────
+# ── build_known_titles (kompend-2kai + kompend-oumw wiring) ───────────────────
 
 
 def _fake_compiler(base_dir: Path) -> SimpleNamespace:
     return SimpleNamespace(_config=SimpleNamespace(paths=SimpleNamespace(base_dir=base_dir)))
 
 
-# ── Prompt template (knox-oumw) ─────────────────────────────────────────
+# ── Prompt template (kompend-oumw) ─────────────────────────────────────────
 
 
 def test_generation_prompt_renders_known_titles() -> None:

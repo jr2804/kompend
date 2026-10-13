@@ -31,14 +31,14 @@ outside their chosen stack. They aren't designed that way.
 
 **Blind spot № 1 — provider and tool agnosticism.**
 
-KNOX is not inherently *better* than any of these projects — it just refuses
+KOMPEND is not inherently *better* than any of these projects — it just refuses
 to pick a side. The same pipeline that runs on a laptop with an 8B local
 model can be pointed at a frontier LLM with a million tokens of context
 window, and it will make better use of whichever you give it. The compilation
 pipeline is provider-agnostic, tool-agnostic, and performance-adaptive:
 smaller models get crisper, more constrained tasks; larger models get the
 freedom to shine. You keep your editor, your CLI, your MCP client, your CI
-— KNOX is a library and a command, not a religion.
+— KOMPEND is a library and a command, not a religion.
 
 **Blind spot № 2 — document parsing quality.**
 
@@ -50,7 +50,7 @@ or table conversion drowns out the actual content. If your downstream
 compilation is built on garbage extraction, no LLM — local or frontier —
 can fix it.
 
-That is why KNOX uses structure-preserving parsing
+That is why KOMPEND uses structure-preserving parsing
 ([parsecraft](https://pypi.org/project/parsecraft/), which routes each page
 across docling, LiteParse, pandoc and native backends) as its foundation:
 documents are parsed into a rich, typed intermediate representation that
@@ -62,7 +62,7 @@ elements, and the compiler sees the actual structure — not the noise.
 
 If you're not picking sides, you shouldn't be picking single-path solutions
 either. Most tools plant a flag on *one* technique — usually vanilla RAG —
-and call it a day. KNOX applies and combines multiple approaches across
+and call it a day. KOMPEND applies and combines multiple approaches across
 every tier:
 
 - **Hybrid chunking** with atomic-element preservation — not naive paragraph
@@ -80,7 +80,7 @@ approach misses.
 
 ---
 
-*KNOX doesn't claim to be better. It claims to be more useful across a wider
+*KOMPEND doesn't claim to be better. It claims to be more useful across a wider
 range of realities — because no two users have the same hardware, the same
 budget, the same documents, or the same tolerance for being told they're
 holding it wrong.*

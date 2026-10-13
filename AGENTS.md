@@ -1,4 +1,4 @@
-# KNOX — AGENTS.md
+# KOMPEND — AGENTS.md
 
 **First time?** Read `.agents/ONBOARDING.md` (5 min).
 
@@ -125,7 +125,7 @@ explicitly asked.
 
 | Path | Scope |
 |------|-------|
-| `src/knox/AGENTS.md` | Python source — text-in-code rule, child index |
+| `src/kompend/AGENTS.md` | Python source — text-in-code rule, child index |
 | `tests/AGENTS.md` | Testing conventions, test antipatterns |
 
 ## Tool Usage

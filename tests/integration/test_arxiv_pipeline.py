@@ -23,17 +23,17 @@ from pathlib import Path
 
 import pytest
 
-from knox.cli._sources import extract_archive
-from knox.core.models import ParsedDocument
-from knox.preprocessing.downloaders.http_downloader import HTTPDownloader
-from knox.preprocessing.downloaders.url_resolver import (
+from kompend.cli._sources import extract_archive
+from kompend.core.models import ParsedDocument
+from kompend.preprocessing.downloaders.http_downloader import HTTPDownloader
+from kompend.preprocessing.downloaders.url_resolver import (
     ArxivHtmlResolver,
     ArxivPdfResolver,
     ArxivSourceResolver,
     UrlResolverChain,
 )
-from knox.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
-from knox.preprocessing.parsers.parsecraft_parser import ParsecraftParser
+from kompend.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
+from kompend.preprocessing.parsers.parsecraft_parser import ParsecraftParser
 
 ARXIV_PAPER_ID = "2405.17364"
 ARXIV_PDF_URL = f"https://arxiv.org/abs/{ARXIV_PAPER_ID}"

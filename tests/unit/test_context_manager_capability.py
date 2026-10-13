@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from pydantic_ai.models.test import TestModel
 
-from knox.agents.context_manager import (
-    KnoxContextManager,
+from kompend.agents.context_manager import (
+    KompendContextManager,
     _HardenedSummarizationProcessor,
 )
 
 
 def test_capability_builds_hardened_processor() -> None:
-    """KnoxContextManager swaps in the hardened summarization processor."""
-    cap = KnoxContextManager(
+    """KompendContextManager swaps in the hardened summarization processor."""
+    cap = KompendContextManager(
         max_tokens=200_000,
         compress_threshold=0.9,
         keep=("messages", 0),
@@ -36,7 +36,7 @@ def test_summarizer_agent_has_tool_retry_budget() -> None:
 
 
 def test_hardened_processor_preserves_threshold_and_keep() -> None:
-    cap = KnoxContextManager(
+    cap = KompendContextManager(
         max_tokens=100_000,
         compress_threshold=0.7,
         keep=("messages", 5),

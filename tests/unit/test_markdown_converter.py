@@ -5,14 +5,14 @@ kind and strips it again, so an external formatter (rumdl) can run over
 element contents without touching pages, reading order or metadata.
 
 The backend-neutral Markdown→element converter that used to live beside this
-pair (``markdown_to_elements``) went with the knox-side markdown-producing
+pair (``markdown_to_elements``) went with the kompend-side markdown-producing
 backends — parsecraft maps its IR to elements directly.
 """
 
 from __future__ import annotations
 
-from knox.core.models import DocumentElement, ElementType
-from knox.preprocessing.parsers.markdown import (
+from kompend.core.models import DocumentElement, ElementType
+from kompend.preprocessing.parsers.markdown import (
     FENCE_RE,
     HEADING_RE,
     LIST_ITEM_RE,

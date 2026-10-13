@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Test suites for the KNOX project. Governs how tests are structured, where they
+Test suites for the KOMPEND project. Governs how tests are structured, where they
 go, and what patterns are forbidden.
 
 ## Ownership
@@ -21,10 +21,10 @@ go, and what patterns are forbidden.
 
 ### File discovery — do NOT create new test files blindly
 
-- **Find the existing test file first.** Every module under `src/knox/` should
+- **Find the existing test file first.** Every module under `src/kompend/` should
   have a corresponding `tests/unit/test_<module>.py`. Never create a new test
   file before verifying the right one doesn't already exist.
-- If you are writing tests for `src/knox/foo.py`, the test file is
+- If you are writing tests for `src/kompend/foo.py`, the test file is
   `tests/unit/test_foo.py` (not `tests/unit/test_foo_fixes.py`,
   `test_foo_v2.py`, or any variant).
 - The only exception is when you are creating a **new module** that has no
@@ -45,17 +45,17 @@ They apply here too: no magic crops, no bare `except` to silence a failure.
    never classes inheriting from `TestCase`. Use `pytest.fixture` for setup.
 
 3. **No hard-coded paths in assertions.** Import path constants from
-   `knox.core.paths`. The string `".knox"` must never appear in test
+   `kompend.core.paths`. The string `".kompend"` must never appear in test
    assertions.
 
 4. **No real LLM/VLM/embedding calls in any test.** Mock external
    dependencies via `pytest.monkeypatch`. The canonical pattern is to
-   patch ``knox.llm.models.build_model`` to return pydantic-ai's
+   patch ``kompend.llm.models.build_model`` to return pydantic-ai's
    ``TestModel`` (which generates valid output for any result schema with
    no network or model load). Embedding must be replaced by an in-process
    provider (e.g. ``DeterministicTestEmbeddingProvider`` from
    ``tests/conftest.py``). For VLM, monkey-patch
-   ``knox.agents.vlm.VlmAgent.run`` or the relevant codepath. **No real
+   ``kompend.agents.vlm.VlmAgent.run`` or the relevant codepath. **No real
    LLM, VLM, or embedding call may reach an external engine from any
    test, ever.** This applies to integration tests too. See
    ``tests/integration/test_pipeline_mock.py`` for the canonical mock

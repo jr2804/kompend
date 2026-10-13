@@ -36,7 +36,7 @@ def main() -> None:
             flag = " ***"
         elif n_over:
             flag = " *"
-        label = "src/knox/" + d if d else "src/knox"
+        label = "src/kompend/" + d if d else "src/kompend"
         print(f"{label:<37} {nfiles:>5} {info['total']:>6} {info['net']:>6} {info['comments']:>6} {info['blanks']:>6}{flag}")
 
         for f in info["files"]:
@@ -71,15 +71,15 @@ def main() -> None:
         own_files = [f for f in info["files"] if not f["path"].endswith("__init__.py") and f["path"].replace("\\", "/").count("/") == depth]
         n = len(own_files)
         if n > 7:
-            label = f"src/knox/{d}/" if d else "src/knox/"
+            label = f"src/kompend/{d}/" if d else "src/kompend/"
             print(f"  {n:>3} files  {label}")
             for f in sorted(own_files, key=lambda x: -x["net"]):
                 print(f"         {f['net']:>6}  {f['path']}")
 
 
 def walk_src(base: str) -> dict:
-    """Walk Python files under src/knox, return results grouped by directory."""
-    src_dir = Path(base) / "src" / "knox"
+    """Walk Python files under src/kompend, return results grouped by directory."""
+    src_dir = Path(base) / "src" / "kompend"
     results: dict[str, dict] = {}
 
     for pyfile in sorted(src_dir.rglob("*.py")):

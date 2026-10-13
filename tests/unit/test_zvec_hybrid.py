@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 import zvec as _zvec
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import EmbeddingProvider, ZvecField, ZvecWikiStore
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.rag.zvec_store import EmbeddingProvider, ZvecField, ZvecWikiStore
 from tests.conftest import as_float
 
 

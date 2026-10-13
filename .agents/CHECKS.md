@@ -39,21 +39,21 @@ the waiver: it states why this site is legitimate.
 
 ---
 
-## Project-specific Checks — KNOX
+## Project-specific Checks — KOMPEND
 
 ### Verification
 
 - Run `ruff check` on changed Python files before committing
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
 - Run `uv run pytest tests/integration -x --timeout=30` for integration tests (no real-engine calls — must be fast)
-- Run `ty check src/knox` for type checking (mypy is not used)
+- Run `ty check src/kompend` for type checking (mypy is not used)
 - Run `uv run python scripts/checks/check_field_consistency.py` to catch hard-coded contract keys
 - Run `uv run python scripts/checks/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
-- Verify `knox.toml.example` stays in sync with `DEFAULTS` when adding config keys
-- After changing `src/knox/core/paths.py`, verify no hard-coded path strings
+- Verify `kompend.toml.example` stays in sync with `DEFAULTS` when adding config keys
+- After changing `src/kompend/core/paths.py`, verify no hard-coded path strings
   exist in other `.py` files
 - After changing CLI commands, MCP tools, config keys, or output format, check
-  `skills/knox/SKILL.md` for stale or missing info
+  `skills/kompend/SKILL.md` for stale or missing info
 - Run `uv run mkdocs build --strict` when changing documentation files
 
 ### New Code Checklist

@@ -1,7 +1,7 @@
 """Tests for ``OrphanAttachmentsRule.fix()`` — destructive auto-clean.
 
 Regression: p863 wiki roundup (2026-09-10) revealed 992 orphan-attachment
-findings that the linter only *reported*; ``knox compile --lint --fix`` did
+findings that the linter only *reported*; ``kompend compile --lint --fix`` did
 nothing. ``fix()`` deletes the file on disk + tombstones the manifest entry.
 """
 
@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models.attachments import Attachment, AttachmentManifest, adopt_orphan_attachments
-from knox.core.models.wiki import CompiledWiki
-from knox.lint.base import LintResult, LintRuleOutcome, Severity
-from knox.lint.structural import OrphanAttachmentsRule
+from kompend.core.models.attachments import Attachment, AttachmentManifest, adopt_orphan_attachments
+from kompend.core.models.wiki import CompiledWiki
+from kompend.lint.base import LintResult, LintRuleOutcome, Severity
+from kompend.lint.structural import OrphanAttachmentsRule
 
 
 def test_fix_removes_orphan_file_and_tombstones_manifest(tmp_path: Path) -> None:
@@ -42,7 +42,7 @@ def test_fix_removes_orphan_file_and_tombstones_manifest(tmp_path: Path) -> None
     assert "Deleted orphan attachment" in results[0].message
     assert not orphan.exists(), "orphan file should be gone"
     # read_all returns active entries; the tombstone is gone from there.
-    manifest = AttachmentManifest(vault / ".knox" / "attachments.jsonl")
+    manifest = AttachmentManifest(vault / ".kompend" / "attachments.jsonl")
     assert "orphan-source/old.c" not in manifest.read_all()
     # The tombstone exists under the manifest key (attachments-relative) — the
     # assertion that would have caught the vault-relative key mismatch.
@@ -124,12 +124,12 @@ def test_fix_tombstone_prevents_readoption(tmp_path: Path) -> None:
 
     adopted = adopt_orphan_attachments(vault)
     assert not any(a.path == "orphan-source/old.c" for a in adopted)
-    assert "orphan-source/old.c" in AttachmentManifest(vault / ".knox" / "attachments.jsonl").deleted_paths()
+    assert "orphan-source/old.c" in AttachmentManifest(vault / ".kompend" / "attachments.jsonl").deleted_paths()
 
 
 def _seed_manifest(base_dir: Path, path: str) -> None:
     """Write a minimal manifest so the rule can read + tombstone it."""
-    manifest = AttachmentManifest(base_dir / ".knox" / "attachments.jsonl")
+    manifest = AttachmentManifest(base_dir / ".kompend" / "attachments.jsonl")
     manifest.append(
         Attachment(
             path=path,

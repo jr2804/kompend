@@ -12,9 +12,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from knox.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
-from knox.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
-from knox.compilation.schema import (
+from kompend.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
+from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
+from kompend.compilation.schema import (
     WicerDiagnoseOutput,
     WicerEvalResult,
     WicerEvaluateOutput,

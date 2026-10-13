@@ -7,12 +7,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from knox.agents.deps import PipelineAgentDeps
-from knox.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
-from knox.core.models import CompiledWiki, WikiNode
-from knox.core.templates import get_template_loader
-from knox.search.pipeline import EnhancedRetriever
-from knox.search.retriever import SearchResult, SynthesisResult
+from kompend.agents.deps import PipelineAgentDeps
+from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.templates import get_template_loader
+from kompend.search.pipeline import EnhancedRetriever
+from kompend.search.retriever import SearchResult, SynthesisResult
 
 
 class TestFuseMultiQuery:
@@ -116,7 +116,7 @@ class TestSynthesize:
 
         results = [_search_result("alpha")]
         # Patch inner synthesizer to avoid full pipeline
-        with patch("knox.search.pipeline.synthesize_results") as mock_synth:
+        with patch("kompend.search.pipeline.synthesize_results") as mock_synth:
             mock_synth.return_value = SynthesisResult(
                 answer="the answer",
                 citations=[{"article": "alpha", "article_id": None, "source": None, "snippet": "", "score": 1.0}],

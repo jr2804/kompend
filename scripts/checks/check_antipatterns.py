@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AST-based antipattern scanner for KNOX.
+"""AST-based antipattern scanner for KOMPEND.
 
 Enforces rules that are hard to express in ruff but represent systemic
 LLM-coding mistakes observed in this codebase:
@@ -19,9 +19,9 @@ LLM-coding mistakes observed in this codebase:
   unless the source line also references a ``config.get(...)`` /
   ``DEFAULTS.get(...)`` / ``cfg.get(...)`` call. This is the
   "Antipattern 4" enforcement from the project AGENTS.md.
-- Hard-coded ``"KNOX_..."`` env-var literals in env-access positions
+- Hard-coded ``"KOMP_..."`` env-var literals in env-access positions
   (``os.environ``, ``envvar=``, ``validation_alias``, ``_set_env``) are
-  flagged. The single definition lives in ``knox/core/env.py`` (``EnvVar``);
+  flagged. The single definition lives in ``kompend/core/env.py`` (``EnvVar``);
   every consumer must reference a member. Docstring/help-text mentions are
   allowed (they document the real name, they don't read env vars).
 
@@ -47,7 +47,7 @@ from pathlib import Path
 from _common import repo_root, require_scanned
 
 REPO_ROOT = repo_root()
-SRC_ROOT = REPO_ROOT / "src" / "knox"
+SRC_ROOT = REPO_ROOT / "src" / "kompend"
 TESTS_ROOT = REPO_ROOT / "tests"
 
 # Banned-noqa rules. Each entry: the rule code that must NEVER appear in
@@ -81,12 +81,12 @@ _HASH_TRUNCATION_RE = re.compile(r"(?:hexdigest\s*\(\s*\)|\.hex)\s*\[:\s*\d+\s*\
 
 _LINE_PADDING_RE = re.compile(r"\bif\s+len\s*\(")
 
-# Env-var access mechanisms. A ``"KNOX_..."`` literal on a line with one of
+# Env-var access mechanisms. A ``"KOMP_..."`` literal on a line with one of
 # these reads/sets an env var and must reference an ``EnvVar`` member.
 _ENV_ACCESS_RE = re.compile(r"\b(?:os\.environ|envvar|validation_alias|_set_env|setenv\(|delenv\()\b")
-_KNOX_LITERAL_RE = re.compile(r'"KNOX_[A-Z_]+"')
+_KOMP_LITERAL_RE = re.compile(r'"KOMP_[A-Z_]+"')
 
-# The single allowed definition site for ``KNOX_*`` env-var names.
+# The single allowed definition site for ``KOMP_*`` env-var names.
 _ENV_MODULE = SRC_ROOT / "core" / "env.py"
 
 # Files where module-level state is a documented design choice (singleton
@@ -96,7 +96,7 @@ _GLOBAL_KEYWORD_ALLOWLIST: frozenset[str] = frozenset(
     {
         # PackRegistry singleton: lazy-initialised module-level state,
         # explicitly documented in the surrounding docstring.
-        "src/knox/packs/base.py",
+        "src/kompend/packs/base.py",
     }
 )
 
@@ -136,7 +136,7 @@ def main() -> int:
         "--src",
         action="append",
         default=[],
-        help="Source root to scan (repeatable). Default: src/knox + tests/unit.",
+        help="Source root to scan (repeatable). Default: src/kompend + tests/unit.",
     )
     args = parser.parse_args()
 
@@ -196,10 +196,10 @@ def scan_file(path: Path) -> list[Violation]:
 
 
 def scan_env_var_literals(path: Path, lines: list[str]) -> list[Violation]:
-    """Flag hard-coded ``KNOX_*`` literals in env-access positions.
+    """Flag hard-coded ``KOMP_*`` literals in env-access positions.
 
-    ``knox/core/env.py`` is the only place a ``KNOX_*`` env-var name may be
-    defined. Docstrings and Typer help text (``"Env: KNOX_WIKI_DIR."``) are
+    ``kompend/core/env.py`` is the only place a ``KOMP_*`` env-var name may be
+    defined. Docstrings and Typer help text (``"Env: KOMP_WIKI_DIR."``) are
     documentation, not env access — allowed.
     """
     if path == _ENV_MODULE:
@@ -208,14 +208,14 @@ def scan_env_var_literals(path: Path, lines: list[str]) -> list[Violation]:
     for i, line in enumerate(lines, start=1):
         if not _ENV_ACCESS_RE.search(line):
             continue
-        for m in _KNOX_LITERAL_RE.finditer(line):
+        for m in _KOMP_LITERAL_RE.finditer(line):
             out.append(
                 Violation(
                     path,
                     i,
                     m.start() + 1,
                     "ENV-VAR-LITERAL",
-                    f"hard-coded env var {m.group(0)} — use an EnvVar member from knox.core.env",
+                    f"hard-coded env var {m.group(0)} — use an EnvVar member from kompend.core.env",
                 )
             )
     return out

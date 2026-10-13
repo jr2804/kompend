@@ -64,9 +64,9 @@ ignore = [
 # PLR6301: test methods on pytest classes don't need self
 "tests/**/*.py" = ["S101", "PLR6301"]
 # Lazy __getattr__: __all__ names are resolved at runtime, not statically
-"src/knox/cli/cmds/__init__.py" = ["F822"]
+"src/kompend/cli/cmds/__init__.py" = ["F822"]
 # ACP Agent protocol methods need self for the protocol signature
-"src/knox/agent/knox_agent.py" = ["PLR6301"]
+"src/kompend/agent/kompend_agent.py" = ["PLR6301"]
 
 [lint.pylint]
 max-locals = 20
@@ -82,4 +82,4 @@ docstring-code-format = true
 docstring-code-line-length = 160
 
 [lint.isort]
-known-first-party = ["knox"]
+known-first-party = ["kompend"]

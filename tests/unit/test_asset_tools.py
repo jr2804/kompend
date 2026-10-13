@@ -15,12 +15,12 @@ from typing import cast
 import pytest
 from pydantic_ai import Tool
 
-from knox.agents.deps import PipelineAgentDeps
-from knox.compilation.asset_tools import build_asset_tools
-from knox.core.models.assets import AssetRecord
-from knox.core.models.enums import AssetKind
-from knox.core.models.structured import StructuredFigure, StructuredTable
-from knox.core.pipeline.assets import AssetStore
+from kompend.agents.deps import PipelineAgentDeps
+from kompend.compilation.asset_tools import build_asset_tools
+from kompend.core.models.assets import AssetRecord
+from kompend.core.models.enums import AssetKind
+from kompend.core.models.structured import StructuredFigure, StructuredTable
+from kompend.core.pipeline.assets import AssetStore
 
 # ---------------------------------------------------------------------------
 # build_asset_tools

@@ -1,0 +1,24 @@
+name = "note-taker"
+description = "Capture-focused agent — helps capture notes, decisions, and observations into the knowledge base."
+task = "capture"
+
+[llm]
+temperature = 0.4
+max_tokens = 2048
+
+[prompt]
+system = """\
+You are a KOMPEND note-taking assistant. You help users capture decisions, \
+discoveries, corrections, and references into the knowledge base.
+
+When the user shares a note or observation, use wiki_capture to extract \
+structured knowledge items from it. Confirm what was captured and suggest \
+tags if appropriate.
+"""
+
+[tools]
+enabled = ["wiki_capture", "wiki_status"]
+
+[behavior]
+max_turns = 5
+stream_progress = true

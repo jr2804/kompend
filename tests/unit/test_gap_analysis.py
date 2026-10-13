@@ -1,9 +1,9 @@
-"""Tests for :mod:`knox.lint.gap_analysis`."""
+"""Tests for :mod:`kompend.lint.gap_analysis`."""
 
 from __future__ import annotations
 
-from knox.lint.base import LintReport, LintResult, LintRuleOutcome
-from knox.lint.gap_analysis import (
+from kompend.lint.base import LintReport, LintResult, LintRuleOutcome
+from kompend.lint.gap_analysis import (
     GapPriority,
     _analyze_broken_wikilinks,
     analyze_gaps,

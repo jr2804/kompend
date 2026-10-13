@@ -1,8 +1,8 @@
-"""``knox attachments list`` reads the store, not the legacy JSONL.
+"""``kompend attachments list`` reads the store, not the legacy JSONL.
 
 Regression: the ``--all`` branch of ``list_attachments`` read
-``.knox/attachments.jsonl`` directly. The store migration stopped writing that
-file, so ``knox attachments list --all`` raised ``FileNotFoundError``.
+``.kompend/attachments.jsonl`` directly. The store migration stopped writing that
+file, so ``kompend attachments list --all`` raised ``FileNotFoundError``.
 """
 
 from __future__ import annotations
@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli.app import app
-from knox.core.models.attachments import Attachment, AttachmentManifest
-from knox.core.paths import VaultPaths
+from kompend.cli.app import app
+from kompend.core.models.attachments import Attachment, AttachmentManifest
+from kompend.core.paths import VaultPaths
 
 _cli_runner = CliRunner()
 
@@ -39,7 +39,7 @@ def test_list_without_all_excludes_tombstones(tmp_path: Path, monkeypatch: pytes
 
 
 def test_list_all_does_not_open_legacy_jsonl(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """The reader must not touch ``.knox/attachments.jsonl`` as a file."""
+    """The reader must not touch ``.kompend/attachments.jsonl`` as a file."""
     _seed(tmp_path)
     monkeypatch.chdir(tmp_path)
     legacy = VaultPaths(tmp_path).attachments_manifest_file
@@ -61,8 +61,8 @@ def test_list_all_does_not_open_legacy_jsonl(tmp_path: Path, monkeypatch: pytest
 def _seed(base: Path) -> AttachmentManifest:
     """Vault with a live row and a tombstoned row, both in the store."""
     (base / "sources").mkdir(parents=True, exist_ok=True)
-    (base / ".knox").mkdir(parents=True, exist_ok=True)
-    (base / ".knox" / "config.toml").write_text("", encoding="utf-8")
+    (base / ".kompend").mkdir(parents=True, exist_ok=True)
+    (base / ".kompend" / "config.toml").write_text("", encoding="utf-8")
     manifest = AttachmentManifest(VaultPaths(base).attachments_manifest_file)
     manifest.append(Attachment(path="doc/live.txt", source="doc", ingestible=True))
     manifest.append(Attachment(path="doc/gone.txt", source="doc", ingestible=True))

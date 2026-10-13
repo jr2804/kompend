@@ -1,4 +1,4 @@
-"""Unit tests for knox.lint.history — persistent lint history."""
+"""Unit tests for kompend.lint.history — persistent lint history."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from typing import Any
 
 import pytest
 
-from knox.lint.base import LintResult, LintRuleOutcome, Severity
-from knox.lint.history import (
+from kompend.lint.base import LintResult, LintRuleOutcome, Severity
+from kompend.lint.history import (
     LintEntry,
     entry_from_report,
     history_to_json,
@@ -19,7 +19,7 @@ from knox.lint.history import (
     prune_lint_history,
     save_lint_entry,
 )
-from knox.lint.runner import LintReport, _build_report, report_to_dict
+from kompend.lint.runner import LintReport, _build_report, report_to_dict
 
 
 class _StubConfig:
@@ -57,7 +57,7 @@ class TestSaveLoad:
 
     def test_save_creates_store(self, tmp_path: Path) -> None:
         save_lint_entry(_make_entry(), _hist(tmp_path))
-        assert (tmp_path / ".knox" / "knox.db").exists()
+        assert (tmp_path / ".kompend" / "kompend.db").exists()
 
     def test_load_missing_file_returns_empty(self, tmp_path: Path) -> None:
         loaded = load_lint_history(tmp_path / "nonexistent.jsonl")
@@ -229,12 +229,12 @@ class TestFormatting:
 
 
 def _hist(tmp_path: Path) -> Path:
-    """Return a ``.knox/lint_history.jsonl`` path the store resolver understands.
+    """Return a ``.kompend/lint_history.jsonl`` path the store resolver understands.
 
-    The path only locates the vault's ``knox.db``; lint history now lives in
+    The path only locates the vault's ``kompend.db``; lint history now lives in
     the ``lint_runs`` table, not in a file.
     """
-    return tmp_path / ".knox" / "lint_history.jsonl"
+    return tmp_path / ".kompend" / "lint_history.jsonl"
 
 
 def _make_entry(*, timestamp: str = "2025-01-01T00:00:00+00:00", score: float = 90.0) -> LintEntry:

@@ -12,16 +12,16 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
-from knox.agents.types import VerificationDeps, VerificationVerdict
-from knox.agents.verification import AgenticVerificationAgent
-from knox.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, normalize_concept_key
-from knox.compilation.flows.generation import (
+from kompend.agents.types import VerificationDeps, VerificationVerdict
+from kompend.agents.verification import AgenticVerificationAgent
+from kompend.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, normalize_concept_key
+from kompend.compilation.flows.generation import (
     _agentic_reserved_tokens,
     generate_all_pages_agentic,
     prepare_source_segments,
 )
-from knox.compilation.schema import Concept, Entity, GenerationOutput
-from knox.compilation.two_phase import (
+from kompend.compilation.schema import Concept, Entity, GenerationOutput
+from kompend.compilation.two_phase import (
     Extraction,
     ExtractionSet,
     TwoPhaseCompiler,
@@ -29,11 +29,11 @@ from knox.compilation.two_phase import (
     merge_similar_concepts,
     segment_sources,
 )
-from knox.core.config import EmbeddingConfig, LLMConfig
-from knox.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
-from knox.core.paths import KNOX_DIR, REVIEW_DIR, STATE_FILE
-from knox.core.pipeline.config import Tier
-from knox.core.pipeline.orchestrator import (
+from kompend.core.config import EmbeddingConfig, LLMConfig
+from kompend.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
+from kompend.core.paths import KOMP_DIR, REVIEW_DIR, STATE_FILE
+from kompend.core.pipeline.config import Tier
+from kompend.core.pipeline.orchestrator import (
     ALL_TIERS,
     TIER_CHUNK,
     TIER_COMPILE,
@@ -43,18 +43,18 @@ from knox.core.pipeline.orchestrator import (
     PipelineConfig,
     WikiPipeline,
 )
-from knox.core.pipeline.state import (
+from kompend.core.pipeline.state import (
     SourceState,
     TierState,
     TierStateStore,
     auto_promote_demote,
     classify_compile_status,
 )
-from knox.core.store import open_store
-from knox.core.store.schema import PRIVATE_PAGES_TABLE, PROVENANCE_TABLE, VERIFICATION_TABLE
-from knox.provenance import annotate_wiki_with_provenance
-from knox.review import ReviewQueue, ReviewStatus, slugify
-from knox.trust import (
+from kompend.core.store import open_store
+from kompend.core.store.schema import PRIVATE_PAGES_TABLE, PROVENANCE_TABLE, VERIFICATION_TABLE
+from kompend.provenance import annotate_wiki_with_provenance
+from kompend.review import ReviewQueue, ReviewStatus, slugify
+from kompend.trust import (
     LIFECYCLE_DRAFT,
     LIFECYCLE_STALE,
     LifecycleEntry,
@@ -65,7 +65,7 @@ from knox.trust import (
     mark_stale,
     mark_wiki_private,
 )
-from knox.verification import (
+from kompend.verification import (
     verify_node,
     verify_wiki,
 )
@@ -178,7 +178,7 @@ class TestTierStateStore:
         assert loaded.entries["doc1"].ingested_by == "bob"
 
     def test_legacy_state_file_is_not_read(self, tmp_path: Path) -> None:
-        # Clean-cut policy (B3): legacy .knox JSON is never read. A pre-existing
+        # Clean-cut policy (B3): legacy .kompend JSON is never read. A pre-existing
         # compile_state.json is ignored; the store is the single source.
         path = tmp_path / STATE_FILE
         path.write_text(
@@ -495,12 +495,12 @@ class TestExtractionData:
     def test_entity_index(self) -> None:
         ext = ExtractionSet(
             extractions=[
-                Extraction(source="a.pdf", entities=[Entity(name="KNOX", type="PROJECT")]),
-                Extraction(source="b.pdf", entities=[Entity(name="KNOX", type="PROJECT")]),
+                Extraction(source="a.pdf", entities=[Entity(name="KOMPEND", type="PROJECT")]),
+                Extraction(source="b.pdf", entities=[Entity(name="KOMPEND", type="PROJECT")]),
             ]
         )
         idx = ext.entity_index()
-        assert idx["KNOX"] == ["a.pdf", "b.pdf"]
+        assert idx["KOMPEND"] == ["a.pdf", "b.pdf"]
 
 
 class TestNormalizeConceptKey:
@@ -659,7 +659,7 @@ class TestMergeSimilarConcepts:
             {"name": "Posteriorgram", "sources": ["a.pdf"], "definitions": ["x"]},
             {"name": "Phoneme Posteriorgram", "sources": ["b.pdf"], "definitions": ["y"]},
         ]
-        with patch("knox.compilation.flows.assembly.make_provider") as mock_factory:
+        with patch("kompend.compilation.flows.assembly.make_provider") as mock_factory:
             mock_provider = mock_factory.return_value
             mock_provider.embed.side_effect = [
                 [1.0, 0.0, 0.0],  # "Posteriorgram"
@@ -683,7 +683,7 @@ class TestMergeSimilarConcepts:
             {"name": "Listening Effort", "sources": ["a.pdf"], "definitions": ["x"]},
             {"name": "Speech Intelligibility", "sources": ["b.pdf"], "definitions": ["y"]},
         ]
-        with patch("knox.compilation.flows.assembly.make_provider") as mock_factory:
+        with patch("kompend.compilation.flows.assembly.make_provider") as mock_factory:
             mock_provider = mock_factory.return_value
             mock_provider.embed.side_effect = [
                 [1.0, 0.0, 0.0],  # "Listening Effort"
@@ -879,7 +879,7 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch("knox.compilation.flows.extraction.try_pydanticai_extraction", side_effect=_validated_side_effect([None])):
+        with patch("kompend.compilation.flows.extraction.try_pydanticai_extraction", side_effect=_validated_side_effect([None])):
             wiki = compiler.compile(chunks)
         # Extraction failed → no concepts → generation has nothing → empty wiki
         assert wiki.metadata.get("generation_skipped") is True
@@ -911,7 +911,7 @@ class TestTwoPhaseCompiler:
             for i in range(n_sources)
         ]
         # Every extraction batch fails.
-        with patch("knox.compilation.flows.extraction.try_pydanticai_extraction", return_value=None):
+        with patch("kompend.compilation.flows.extraction.try_pydanticai_extraction", return_value=None):
             wiki = compiler.compile(chunks)
         # Threshold fired → flagged incomplete, failures recorded.
         assert wiki.metadata.get("compile_incomplete") is True
@@ -939,12 +939,12 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "knox.compilation.flows.extraction.try_pydanticai_extraction",
+            "kompend.compilation.flows.extraction.try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
                         "summary": "x",
-                        "entities": [{"name": "KNOX", "type": "PROJECT"}],
+                        "entities": [{"name": "KOMPEND", "type": "PROJECT"}],
                         "concepts": [{"name": "attention", "definition": "y"}],
                         "tags": ["ml"],
                     },
@@ -976,12 +976,12 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "knox.compilation.flows.extraction.try_pydanticai_extraction",
+            "kompend.compilation.flows.extraction.try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
                         "summary": "one two three four",
-                        "entities": [{"name": "KNOX", "type": "PROJECT"}],
+                        "entities": [{"name": "KOMPEND", "type": "PROJECT"}],
                         "concepts": [{"name": "attention", "definition": "y"}],
                         "tags": ["ml"],
                     },
@@ -1068,8 +1068,8 @@ class TestTwoPhaseCompiler:
             return agent
 
         with (
-            patch("knox.compilation.flows.extraction.try_pydanticai_extraction", side_effect=extract_side_effect),
-            patch("knox.compilation.flows.generation.make_agentic_generation_agent", side_effect=_fake_agent_factory),
+            patch("kompend.compilation.flows.extraction.try_pydanticai_extraction", side_effect=extract_side_effect),
+            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", side_effect=_fake_agent_factory),
         ):
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata
@@ -1197,7 +1197,7 @@ class TestAnnotateWikiWithProvenance:
         out = annotate_wiki_with_provenance(wiki, tmp_path)
         assert out.metadata["provenance_annotated"] is True
         assert out.nodes[0].metadata["citation_count"] == 1
-        with open_store(tmp_path / KNOX_DIR / "knox.db") as conn:
+        with open_store(tmp_path / KOMP_DIR / "kompend.db") as conn:
             row = conn.execute(f"SELECT title, citations FROM {PROVENANCE_TABLE} WHERE node_id = ?", ("n1",)).fetchone()
         assert row is not None
         assert row["title"] == "A"
@@ -1242,7 +1242,7 @@ class TestMarkWikiPrivate:
     def test_creates_private_index(self, tmp_path: Path) -> None:
         wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="x", node_type="section")])
         mark_wiki_private(wiki, tmp_path)
-        with open_store(tmp_path / KNOX_DIR / "knox.db") as conn:
+        with open_store(tmp_path / KOMP_DIR / "kompend.db") as conn:
             rows = {r["id"] for r in conn.execute(f"SELECT id FROM {PRIVATE_PAGES_TABLE}")}
         assert "n1" in rows
 
@@ -1335,7 +1335,7 @@ class TestVerificationUnavailable:
         )
         result = verify_wiki(wiki, tmp_path, agent=self._fake_client())
         assert result.total >= 1
-        with open_store(tmp_path / KNOX_DIR / "knox.db") as conn:
+        with open_store(tmp_path / KOMP_DIR / "kompend.db") as conn:
             row = conn.execute(f"SELECT total FROM {VERIFICATION_TABLE} ORDER BY id DESC LIMIT 1").fetchone()
         assert row is not None
         assert row["total"] == result.total

@@ -12,9 +12,9 @@ on key collision regardless of provider availability.
 
 from __future__ import annotations
 
-from knox.compilation._two_phase_core import upsert_node
-from knox.compilation.base import BaseCompiler
-from knox.core.models import WikiNode
+from kompend.compilation._two_phase_core import upsert_node
+from kompend.compilation.base import BaseCompiler
+from kompend.core.models import WikiNode
 
 
 class TestMergeByConceptKey:

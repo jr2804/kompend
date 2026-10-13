@@ -8,7 +8,7 @@ Three flags control how much you trust each compiled page:
 
 ## Privacy redaction
 
-KNOX scans compiled content for:
+KOMPEND scans compiled content for:
 
 - API keys (`sk-...`, `ghp_...`, `AKIA...`, `xoxb-...`)
 - PEM private keys
@@ -26,25 +26,25 @@ Mark generated pages as private so they don't appear in default search
 or query results:
 
 ```bash
-knox compile *.pdf --private
+kompend compile *.pdf --private
 ```
 
-This records a private-page index in `.knox/knox.db`. To include private
+This records a private-page index in `.kompend/kompend.db`. To include private
 pages in a query:
 
 ```bash
-knox query "topic" --include-private
+kompend query "topic" --include-private
 ```
 
 ## Grounding verification
 
 `--verify` runs an LLM-as-judge on every claim in the compiled wiki
-and records a report in the verification table of `.knox/knox.db`. It is **on by default**;
+and records a report in the verification table of `.kompend/kompend.db`. It is **on by default**;
 pass `--no-verify` to skip the cost:
 
 ```bash
-knox compile *.pdf            # verify runs by default
-knox compile *.pdf --no-verify
+kompend compile *.pdf            # verify runs by default
+kompend compile *.pdf --no-verify
 ```
 
 Each claim is given:
@@ -67,7 +67,7 @@ Verified 12/18 claims (avg confidence 0.74)
 
 Compiled pages are tracked through a memory lifecycle that models
 confidence decay, tier promotion, and supersession. The store lives
-in the `memory_states` table of `base_dir/.knox/knox.db` and is updated
+in the `memory_states` table of `base_dir/.kompend/kompend.db` and is updated
 automatically on each compile when `compile.memory_enabled` is `True` (the
 default).
 
@@ -117,10 +117,10 @@ substring fallback is conservative — it marks many claims as
 unsupported.
 
 **Q: Can I use a different LLM for verification?**
-A: Yes — set `KNOX_LLM_DEFAULT_MODEL`, or give the `verify` role its own model
-in `[compile.llm.role_models]`. The verifier runs through KNOX's configured
+A: Yes — set `KOMP_LLM_DEFAULT_MODEL`, or give the `verify` role its own model
+in `[compile.llm.role_models]`. The verifier runs through KOMPEND's configured
 pydantic-ai agent like every other LLM step.
 
 **Q: What happens to private pages in the vector index?**
 A: Private pages are indexed but tagged with `private: true` in
-metadata. The `knox query` command filters them out by default.
+metadata. The `kompend query` command filters them out by default.

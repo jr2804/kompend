@@ -1,6 +1,6 @@
 # Output Configuration Guide
 
-KNOX supports multiple output formats for the compiled wiki, controlled by the
+KOMPEND supports multiple output formats for the compiled wiki, controlled by the
 `compile.output.format` config key (default: ``markdown``).
 
 ## Markdown (OKF v0.2-compliant, default)
@@ -21,7 +21,7 @@ for the full field reference, trust signals, and the v0.1→v0.2 migration table
 - Trust fields: ``generated: {by, at}`` (supersedes v0.1 ``timestamp``),
   ``status`` (default ``stable``), optional ``verified``
 - ``tags`` = topic tags only; ``source_files`` = provenance filename stems
-  (KNOX extension); ``sources`` = §5.1 structured objects — never bare strings
+  (KOMPEND extension); ``sources`` = §5.1 structured objects — never bare strings
 - Cross-links are portable folder-relative markdown paths
   (``[Title](concepts/title.md)`` from the bundle root) — they render in
   Obsidian, GitHub, and any Markdown viewer
@@ -50,15 +50,15 @@ Select with ``compile.output.format = "typst"``. Single ``wiki.typ`` file.
 
 ## Formatting (rumdl)
 
-Compile runs `rumdl fmt` over the generated output, and `knox lint format`
+Compile runs `rumdl fmt` over the generated output, and `kompend lint format`
 re-runs it on demand (`--check` for CI). The per-vault rumdl config lives at
-`.knox/rumdl.toml` (auto-materialized from the shipped default) and can be
+`.kompend/rumdl.toml` (auto-materialized from the shipped default) and can be
 overridden via `compile.output.rumdl_config`.
 
 ## Flavor configuration
 
-KNOX supports multiple Markdown flavors for the legacy Markdown output via the
-``compile.output.flavor`` config key (set with ``knox config set compile.output.flavor <flavor>``
+KOMPEND supports multiple Markdown flavors for the legacy Markdown output via the
+``compile.output.flavor`` config key (set with ``kompend config set compile.output.flavor <flavor>``
 or override one run with ``--set compile.output.flavor=<flavor>``).
 
 | Key / flag | Description | Default |
@@ -71,22 +71,22 @@ or override one run with ``--set compile.output.flavor=<flavor>``).
 
 ```bash
 # OKF v0.2 bundle (default)
-knox compile
+kompend compile
 
 # Legacy Obsidian vault mode
-knox config set compile.output.format markdown
+kompend config set compile.output.format markdown
 
 # GitHub-flavored Markdown (legacy mode)
-knox config set compile.output.format markdown
-knox config set compile.output.flavor gfm
+kompend config set compile.output.format markdown
+kompend config set compile.output.flavor gfm
 
 # MkDocs site (with frontmatter field)
-knox config set compile.output.format markdown
-knox config set compile.output.flavor mkdocs
-knox config set compile.output.frontmatter '{language="en"}'
+kompend config set compile.output.format markdown
+kompend config set compile.output.flavor mkdocs
+kompend config set compile.output.frontmatter '{language="en"}'
 ```
 
-## Config file (`.knox/config.toml`)
+## Config file (`.kompend/config.toml`)
 
 The `output` section configures flavor, frontmatter defaults, and rumdl behavior:
 
@@ -99,7 +99,7 @@ rumdl_config = ".rumdl.toml"   # custom rumdl config (optional)
 
 ### Flavor auto-detection
 
-Without an explicit `compile.output.flavor`, KNOX inspects the output directory:
+Without an explicit `compile.output.flavor`, KOMPEND inspects the output directory:
 
 | Marker | Flavor | Use case |
 |--------|--------|----------|
@@ -127,20 +127,20 @@ Explicit `compile.output.flavor` always overrides auto-detection.
 
 ## Rumdl setup
 
-rumdl handles all flavor-specific transformations. It is installed alongside KNOX
-when using the `knox[rumdl]` optional dependency:
+rumdl handles all flavor-specific transformations. It is installed alongside KOMPEND
+when using the `kompend[rumdl]` optional dependency:
 
 ```bash
-uv tool install knox[rumdl]
+uv tool install kompend[rumdl]
 # or
-uv add knox[rumdl]
+uv add kompend[rumdl]
 ```
 
-If rumdl is not installed, KNOX falls back to raw canonical Markdown with a warning.
+If rumdl is not installed, KOMPEND falls back to raw canonical Markdown with a warning.
 
 ### Custom rumdl configuration
 
-The vault's rumdl config lives at `.knox/rumdl.toml` (auto-materialized from
+The vault's rumdl config lives at `.kompend/rumdl.toml` (auto-materialized from
 the shipped default on first use — edit that copy, it is never overwritten).
 Point `compile.output.rumdl_config` elsewhere to use a custom file:
 
@@ -156,7 +156,7 @@ allowed-elements = ["sup", "sub"]
 ```
 
 > **Note:** If a flavor you need is not supported, contribute upstream to
-> [rvben/rumdl](https://github.com/rvben/rumdl). KNOX never ships custom
+> [rvben/rumdl](https://github.com/rvben/rumdl). KOMPEND never ships custom
 > Markdown converters.
 
 ## Frontmatter
@@ -187,15 +187,15 @@ output:
 ### From config
 
 ```bash
-knox config set compile.output.frontmatter '{language="en", domain="ml"}'
+kompend config set compile.output.frontmatter '{language="en", domain="ml"}'
 # ...or for one run only:
-knox compile . --set compile.output.frontmatter='{language="en", domain="ml"}'
+kompend compile . --set compile.output.frontmatter='{language="en", domain="ml"}'
 ```
 
-### In `knox write`
+### In `kompend write`
 
 ```bash
-knox write "Transformer Architecture" --frontmatter language=en
+kompend write "Transformer Architecture" --frontmatter language=en
 ```
 
 Config defaults are merged first, then CLI flags override them.

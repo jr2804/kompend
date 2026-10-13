@@ -127,9 +127,9 @@ tokens, scaling depth based on the query and available budget.
 
 | Phase | Issue | What was built |
 |-------|-------|----------------|
-| 0 | knox-evmg | ChunkNode, ChunkTree, StructuredData data structures |
-| 1 | knox-ctwe | HierarchicalChunker replacing HybridChunker |
-| 2 | knox-hhf5 | Structured extractors + NodeSummarizer |
-| 3 | knox-rves | EntityRegistry + CrossReferenceChecker |
-| 4 | knox-96qo | ContextBudgetManager + AdaptiveRetriever |
-| 5 | knox-ne47 | Multi-resolution compilation from ChunkTree |
+| 0 | kompend-evmg | ChunkNode, ChunkTree, StructuredData data structures |
+| 1 | kompend-ctwe | HierarchicalChunker replacing HybridChunker |
+| 2 | kompend-hhf5 | Structured extractors + NodeSummarizer |
+| 3 | kompend-rves | EntityRegistry + CrossReferenceChecker |
+| 4 | kompend-96qo | ContextBudgetManager + AdaptiveRetriever |
+| 5 | kompend-ne47 | Multi-resolution compilation from ChunkTree |

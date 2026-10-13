@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from knox.cli._progress import PipelineProgress, _should_show_progress
+from kompend.cli._progress import PipelineProgress, _should_show_progress
 
 
 class TestShowProgress:

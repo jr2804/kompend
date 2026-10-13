@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from knox.compilation._two_phase_core import Extraction
-from knox.compilation.extraction_memory import ExtractionMemory
-from knox.compilation.schema import Concept, Entity
+from kompend.compilation._two_phase_core import Extraction
+from kompend.compilation.extraction_memory import ExtractionMemory
+from kompend.compilation.schema import Concept, Entity
 
 # ── ingest ────────────────────────────────────────────────────────────────
 

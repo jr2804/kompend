@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from knox.compilation.reference_excision import (
+from kompend.compilation.reference_excision import (
     excise_references,
     is_likely_reference_heading,
 )

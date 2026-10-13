@@ -8,8 +8,8 @@ from collections.abc import Iterator
 
 import pytest
 
-from knox.llm.usage import UsageTracker, tokens_per_second
-from knox.llm.user_providers import effective_workers, provider_max_connections, set_user_providers
+from kompend.llm.usage import UsageTracker, tokens_per_second
+from kompend.llm.user_providers import effective_workers, provider_max_connections, set_user_providers
 
 
 class TestTokensPerSecond:

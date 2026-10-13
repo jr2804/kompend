@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from knox.core.text.embedding_text import CONTEXT_SEPARATOR, embed_text
+from kompend.core.text.embedding_text import CONTEXT_SEPARATOR, embed_text
 
 
 class TestEmbedText:

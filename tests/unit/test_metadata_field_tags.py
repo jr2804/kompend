@@ -5,7 +5,7 @@ Ensures the canonical metadata key is consistent across the pipeline.
 
 from __future__ import annotations
 
-from knox.core.models.enums import MetadataField
+from kompend.core.models.enums import MetadataField
 
 
 class TestMetadataFieldTags:

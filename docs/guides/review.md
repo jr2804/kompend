@@ -4,7 +4,7 @@ Human-in-the-loop approval for compiled wiki pages.
 
 ## Storage layout
 
-Inside `.knox/review/`:
+Inside `.kompend/review/`:
 
 | File | Meaning |
 |------|---------|
@@ -20,30 +20,30 @@ Inside `.knox/review/`:
    them directly to the output directory:
 
    ```bash
-   knox compile *.pdf --review
+   kompend compile *.pdf --review
    ```
 
 2. Inspect the queue:
 
    ```bash
-   knox review list            # human-readable
-   knox review list --json     # machine-readable
+   kompend review list            # human-readable
+   kompend review list --json     # machine-readable
    ```
 
 3. Approve or reject:
 
    ```bash
-   knox review approve my-page
-   knox review approve --all
-   knox review reject my-page --reason "incomplete"
+   kompend review approve my-page
+   kompend review approve --all
+   kompend review reject my-page --reason "incomplete"
    ```
 
 4. (Optional) Lock approved pages so a future recompile cannot overwrite
    them:
 
    ```bash
-   knox review lock my-page
-   knox review unlock my-page
+   kompend review lock my-page
+   kompend review unlock my-page
    ```
 
 ## Bypassing the queue
@@ -51,7 +51,7 @@ Inside `.knox/review/`:
 For CI runs where you trust the output:
 
 ```bash
-knox compile *.pdf --review --bypass-review
+kompend compile *.pdf --review --bypass-review
 ```
 
 `--bypass-review` overrides `--review` and writes pages directly to the
@@ -61,24 +61,24 @@ output directory.
 
 ```bash
 # Get a JSON report
-knox review list --json > queue.json
+kompend review list --json > queue.json
 test "$(jq 'length' queue.json)" -eq 0  # fail if anything is pending
 ```
 
 ## FAQ
 
 **Q: Where are approved pages written?**
-A: They stay in `.knox/review/<slug>.approved.md`. The
+A: They stay in `.kompend/review/<slug>.approved.md`. The
 `MarkdownWriter` reads from there when rendering the final wiki.
 
 **Q: How do I batch-approve a CI run?**
-A: `knox review approve --all` then `knox compile --bypass-review`.
+A: `kompend review approve --all` then `kompend compile --bypass-review`.
 
 **Q: Can I edit a page before approving?**
-A: Yes — open `.knox/review/<slug>.md` in your editor, then
-`knox review approve <slug>`.
+A: Yes — open `.kompend/review/<slug>.md` in your editor, then
+`kompend review approve <slug>`.
 
 **Q: What happens when a locked page is re-compiled?**
 A: The compile writes the new page, but the locked page takes
-precedence during render. Unlock with `knox review unlock <slug>` to
+precedence during render. Unlock with `kompend review unlock <slug>` to
 accept the new version.

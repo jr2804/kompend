@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import VectorStoreLike
-from knox.search.adaptive_retriever import AdaptiveRetriever
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.rag.zvec_store import VectorStoreLike
+from kompend.search.adaptive_retriever import AdaptiveRetriever
 
 
 class _FakeVectorStore:

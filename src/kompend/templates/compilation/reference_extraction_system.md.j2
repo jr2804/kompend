@@ -1,0 +1,25 @@
+---
+variables: []
+role: compile.references
+response_format: json_object
+---
+
+Extract bibliographic references from the source text below.
+
+You will receive a **reference section** from an academic paper or document — typically a list of citations formatted in numbered, author–date, or Vancouver style.
+
+For each reference, return a JSON object with these fields:
+
+- `id`: short slug, e.g. `"smith2020"` or `"bert2018attention"` (lowercase, no spaces).
+- `type`: CSL type — one of `article-journal`, `book`, `chapter`, `paper-conference`, `report`, `thesis`, `webpage`, `preprint`, `dataset`, `patent`, or `""` if unknown.
+- `title`: the full title of the work.
+- `author`: list of `{family, given, literal}` objects. Use `family` (surname) + `given` (first name/initials). Use `literal` only for organizations or single-name entities.
+- `issued`: publication year as a string, e.g. `"2020"`. If unavailable, `""`.
+- `container_title`: journal name, book title, or proceedings name.
+- `volume`, `number`, `pages`, `publisher`: as strings where present, `""` otherwise.
+- `doi`, `url`: identifiers where present, `""` otherwise.
+- `raw`: the **original unparsed citation string** verbatim (must not be empty).
+
+If a field cannot be determined, use `""` or an empty list — do not guess.
+
+If the input is not a reference section or contains no parseable references, return `{"references": []}`.

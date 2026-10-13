@@ -1,11 +1,11 @@
-"""Tests for KNOX core data models."""
+"""Tests for KOMPEND core data models."""
 
 import json
 from pathlib import Path
 
 import pytest
 
-from knox.core.models import (
+from kompend.core.models import (
     CHUNK_TREE_CACHE_VERSION,
     Chunk,
     ChunkNode,

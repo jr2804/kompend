@@ -3,14 +3,14 @@
 
 # Pipeline Tiers
 
-KNOX follows a 5-tier pipeline. Each tier is independently replaceable,
+KOMPEND follows a 5-tier pipeline. Each tier is independently replaceable,
 testable, and has a clear `Base` interface.
 
 ## Tier 1: Preprocessing
 
 **Input:** Raw source files (PDF, DOCX, XLSX, PPTX, EPUB, MD, TXT, URLs)  
 **Output:** `ParsedDocument` with structured JSON sidecar  
-**Interface:** `BaseParser` in `src/knox/preprocessing/parsers/base.py`
+**Interface:** `BaseParser` in `src/kompend/preprocessing/parsers/base.py`
 
 ``` mermaid
 flowchart LR
@@ -47,7 +47,7 @@ flowchart LR
 
 **Input:** `ParsedDocument`  
 **Output:** `ChunkTree` (hierarchical tree of `ChunkNode` objects)  
-**Interface:** `BaseChunker` in `src/knox/chunking/base.py`
+**Interface:** `BaseChunker` in `src/kompend/chunking/base.py`
 
 ``` mermaid
 flowchart LR
@@ -74,7 +74,7 @@ flowchart LR
 
 **Input:** `list[ChunkTree]`  
 **Output:** `list[ResolvedChunk]` + `CrossReferenceResult`  
-**Interface:** `BaseResolver` in `src/knox/resolution/base.py`
+**Interface:** `BaseResolver` in `src/kompend/resolution/base.py`
 
 ``` mermaid
 flowchart LR
@@ -111,7 +111,7 @@ relations are inferred during compilation from shared entities.
 
 **Input:** `list[ResolvedChunk]`  
 **Output:** `CompiledWiki`  
-**Interface:** `BaseCompiler` in `src/knox/compilation/base.py`
+**Interface:** `BaseCompiler` in `src/kompend/compilation/base.py`
 
 ``` mermaid
 flowchart LR
@@ -148,7 +148,7 @@ See [WiCER Loop](wicer-loop.md) for a detailed walkthrough.
 
 **Input:** `CompiledWiki`  
 **Output:** Files on disk (OKF, Markdown, JSON, Typst)  
-**Interface:** `BaseOutputWriter` in `src/knox/output/base.py`
+**Interface:** `BaseOutputWriter` in `src/kompend/output/base.py`
 
 ``` mermaid
 flowchart LR
@@ -177,7 +177,7 @@ flowchart LR
 | Component | Location | Purpose |
 |-----------|----------|---------|
 | `PipelineConfig` | `core/pipeline.py` | Configuration dataclass for all tiers |
-| PydanticAI agents | `agents/*.py` | LLM calls route through `KnoxAgentBase` subclasses (Extraction, Generation, Query, WiCER, Doctor, Capture) wrapped via `KnoxModel`; failover via `FallbackModel`. See [LLM Configuration](../guides/llm-config.md) |
+| PydanticAI agents | `agents/*.py` | LLM calls route through `KompendAgentBase` subclasses (Extraction, Generation, Query, WiCER, Doctor, Capture) wrapped via `KompendModel`; failover via `FallbackModel`. See [LLM Configuration](../guides/llm-config.md) |
 | `TemplateLoader` | `core/template_loader.py` | Jinja2 template loading with override chain |
 | `LintRunner` | `lint/runner.py` | 8 structural + 4 LLM-powered lint rules |
 | `MCP Server` | `mcp/server.py` | stdio MCP tools for agent integration |

@@ -15,8 +15,8 @@ base_dir/
 │   └── report/           ← one subdir per source slug
 │       ├── photo.jpg
 │       └── data.csv
-└── .knox/
-    └── knox.db           ← single store (attachment manifest, with tombstones)
+└── .kompend/
+    └── kompend.db           ← single store (attachment manifest, with tombstones)
 ```
 
 **Slug convention**: `attachments/<source-slug>/`, where the slug is the source's
@@ -31,18 +31,18 @@ not embedded.
 
 ## Registering attachments
 
-Use `knox attachments add` (alias `knox att add`) to register a file:
+Use `kompend attachments add` (alias `kompend att add`) to register a file:
 
 ```bash
 # Register a photo for report.pdf (not ingested)
-knox attachments add report.pdf ./photo.jpg
+kompend attachments add report.pdf ./photo.jpg
 
 # Register and mark as ingestible (parsed at compile time)
-knox attachments add report.pdf ./notes.md --ingest
+kompend attachments add report.pdf ./notes.md --ingest
 
 # Override the global embed_attachments setting for this attachment
-knox attachments add report.pdf ./data.csv --ingest --embed
-knox attachments add report.pdf ./private.txt --ingest --no-embed
+kompend attachments add report.pdf ./data.csv --ingest --embed
+kompend attachments add report.pdf ./private.txt --ingest --no-embed
 ```
 
 **Flags:**
@@ -56,31 +56,31 @@ knox attachments add report.pdf ./private.txt --ingest --no-embed
 
 ```bash
 # List all attachments (or filter by source)
-knox attachments list
-knox attachments list --source report
+kompend attachments list
+kompend attachments list --source report
 
 # Remove an attachment (tombstone in manifest; file kept on disk)
-knox attachments remove report/photo.jpg
+kompend attachments remove report/photo.jpg
 
 # Read-only check: orphan dirs + manifest rows with no file on disk (no compile needed)
-knox attachments verify
+kompend attachments verify
 
 # Register orphaned files on disk (same adoption the compile hook runs; idempotent)
-knox attachments adopt
+kompend attachments adopt
 ```
 
-The manifest records one row per path in `.knox/knox.db`. Removing an attachment
+The manifest records one row per path in `.kompend/kompend.db`. Removing an attachment
 writes a tombstone row (the file stays on disk); re-adding the same path clears the
 tombstone (latest wins).
 
-`knox attachments verify` reports two findings separately — directories whose slug
+`kompend attachments verify` reports two findings separately — directories whose slug
 matches no source in `sources/`, and manifest rows whose file is missing on disk —
 and exits `1` when it finds any, `0` when clean. It is read-only and works before a
 compile, unlike the `orphan-attachments` lint rule (which needs a compiled wiki).
 
 ## Auto-adoption
 
-At compile start, KNOX scans `attachments/<slug>/` for files that have no
+At compile start, KOMPEND scans `attachments/<slug>/` for files that have no
 manifest entry and registers them automatically:
 
 - `ingestible` depends on `attachments.ingest_adopted` (default `false`):
@@ -91,10 +91,10 @@ manifest entry and registers them automatically:
 - Subdirectories whose slug matches no source in `sources/` are skipped —
   the `orphan-attachments` lint rule flags them instead.
 
-This makes recovery from a deleted `.knox/` lossless for attachments: the
+This makes recovery from a deleted `.kompend/` lossless for attachments: the
 files under `attachments/` are re-registered on the next compile. Run the same
-pass on demand with `knox attachments adopt` (idempotent); check the result
-before a compile with `knox attachments verify`.
+pass on demand with `kompend attachments adopt` (idempotent); check the result
+before a compile with `kompend attachments verify`.
 
 ## Configuration
 
@@ -106,7 +106,7 @@ embed = false           # include attachment content in the vector index
 
 `search.embed_attachments` is gone from the schema — it was renamed to
 `attachments.embed`. An existing config still setting the old name is migrated
-at resolve time with a deprecation warning (`knox config check` reports it as
+at resolve time with a deprecation warning (`kompend config check` reports it as
 deprecated, not as an unknown key); new configs use `[attachments] embed`.
 
 ## Ingestion rules
@@ -132,7 +132,7 @@ When `--ingest` is set on an attachment:
 
 ## Embedding (search/RAG)
 
-Set `attachments.embed = true` in `knox.toml` to include ingestible attachments
+Set `attachments.embed = true` in `kompend.toml` to include ingestible attachments
 in the vector index. Per-attachment `--embed` / `--no-embed` overrides take
 precedence.
 
@@ -161,7 +161,7 @@ Five MCP tools provide attachment access to agents:
 Attachments can be attached to captured or distilled inputs as well:
 
 ```bash
-knox attachments add _captured/quick-note.md ./screenshot.png --ingest
+kompend attachments add _captured/quick-note.md ./screenshot.png --ingest
 ```
 
 The source argument is the source slug (relative path with `/` → `_`).

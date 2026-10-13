@@ -1,11 +1,11 @@
-"""Portable wiki loading and keyword search (no .knox state)."""
+"""Portable wiki loading and keyword search (no .kompend state)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models import load_wiki_from_files
-from knox.search.retriever import KeywordRetriever
+from kompend.core.models import load_wiki_from_files
+from kompend.search.retriever import KeywordRetriever
 
 
 class TestLoadWikiFromFiles:

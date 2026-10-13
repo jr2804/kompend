@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from knox.compilation._checkpoints import (
+from kompend.compilation._checkpoints import (
     delete_gen_checkpoint,
     load_gen_checkpoint,
     save_gen_checkpoint,
 )
-from knox.core.config._configs import EmbeddingConfig, LLMConfig
-from knox.core.models import WikiNode
-from knox.core.pipeline.config import PipelineConfig
+from kompend.core.config._configs import EmbeddingConfig, LLMConfig
+from kompend.core.models import WikiNode
+from kompend.core.pipeline.config import PipelineConfig
 
 
 def test_round_trip_preserves_caller_progress(tmp_pipeline_config: PipelineConfig) -> None:

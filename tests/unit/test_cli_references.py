@@ -1,4 +1,4 @@
-"""Tests for ``knox references`` CLI command (Phase 4).
+"""Tests for ``kompend references`` CLI command (Phase 4).
 
 Covers:
 - ``references list`` — listing stored references
@@ -15,13 +15,13 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli.app import app
-from knox.core.models.references import Author, Reference
-from knox.core.pipeline.references import ReferenceStore
+from kompend.cli.app import app
+from kompend.core.models.references import Author, Reference
+from kompend.core.pipeline.references import ReferenceStore
 
 
 class TestReferencesList:
-    """Tests for ``knox references list``."""
+    """Tests for ``kompend references list``."""
 
     def test_list_all(self, project_with_refs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(project_with_refs)
@@ -47,7 +47,7 @@ class TestReferencesList:
 
 
 class TestReferencesExport:
-    """Tests for ``knox references export``."""
+    """Tests for ``kompend references export``."""
 
     def test_export_bibtex(self, project_with_refs: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.chdir(project_with_refs)
@@ -124,13 +124,13 @@ class TestReferencesHelp:
 @pytest.fixture
 def project_with_refs(tmp_path: Path) -> Path:
     """Create a minimal project directory with a references.json."""
-    knox_dir = tmp_path / ".knox"
-    knox_dir.mkdir(parents=True, exist_ok=True)
-    (knox_dir / "config.toml").write_text("", encoding="utf-8")
+    kompend_dir = tmp_path / ".kompend"
+    kompend_dir.mkdir(parents=True, exist_ok=True)
+    (kompend_dir / "config.toml").write_text("", encoding="utf-8")
     (tmp_path / "sources").mkdir(exist_ok=True)
     (tmp_path / "wiki").mkdir(exist_ok=True)
 
-    store = ReferenceStore(knox_dir / "references.json")
+    store = ReferenceStore(kompend_dir / "references.json")
     store.add_source(
         "sources/paper.pdf",
         [
@@ -166,9 +166,9 @@ def _make_ref(
 @pytest.fixture
 def empty_project(tmp_path: Path) -> Path:
     """Create a project dir without references.json."""
-    knox_dir = tmp_path / ".knox"
-    knox_dir.mkdir(parents=True, exist_ok=True)
-    (knox_dir / "config.toml").write_text("", encoding="utf-8")
+    kompend_dir = tmp_path / ".kompend"
+    kompend_dir.mkdir(parents=True, exist_ok=True)
+    (kompend_dir / "config.toml").write_text("", encoding="utf-8")
     (tmp_path / "sources").mkdir(exist_ok=True)
     (tmp_path / "wiki").mkdir(exist_ok=True)
     return tmp_path

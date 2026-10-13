@@ -1,4 +1,4 @@
-"""Tests for the KnoxAgent base class and model-name bridge."""
+"""Tests for the KompendAgent base class and model-name bridge."""
 
 from __future__ import annotations
 
@@ -9,34 +9,34 @@ import pytest
 from pydantic_ai import Agent
 from pydantic_ai_summarization import ContextManagerCapability, SlidingWindowCapability
 
-from knox.agents.base import KnoxAgentBase
-from knox.agents.deps import PipelineAgentDeps
-from knox.llm.usage import UsageTracker
+from kompend.agents.base import KompendAgentBase
+from kompend.agents.deps import PipelineAgentDeps
+from kompend.llm.usage import UsageTracker
 
 
-class TestKnoxAgentBaseContract:
-    def test_knox_agent_base_is_abstract(self) -> None:
-        """KnoxAgentBase requires a concrete subclass to be usable, but the base
+class TestKompendAgentBaseContract:
+    def test_kompend_agent_base_is_abstract(self) -> None:
+        """KompendAgentBase requires a concrete subclass to be usable, but the base
         class itself can be instantiated for testing because `_build_agent` now
         provides a default implementation.
         """
-        agent: KnoxAgentBase[Any, Any] = KnoxAgentBase(model_string="test/noop")
+        agent: KompendAgentBase[Any, Any] = KompendAgentBase(model_string="test/noop")
         assert agent.model_string == "test/noop"
 
-    def test_knox_agent_base_requires_build_agent(self) -> None:
+    def test_kompend_agent_base_requires_build_agent(self) -> None:
         """Subclasses may rely on the default _build_agent implementation."""
 
-        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+        class DefaultBuilder(KompendAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(model_string="test/noop")
         # Base class provides a default _build_agent; instantiation succeeds
         assert agent.model_string == "test/noop"
 
-    def test_knox_agent_base_stores_reasoning_effort(self) -> None:
+    def test_kompend_agent_base_stores_reasoning_effort(self) -> None:
         """reasoning_effort is stored and forwarded to model_string."""
 
-        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+        class DefaultBuilder(KompendAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(
@@ -45,10 +45,10 @@ class TestKnoxAgentBaseContract:
         )
         assert agent.reasoning_effort == "low"
 
-    def test_knox_agent_base_reasoning_effort_none_by_default(self) -> None:
+    def test_kompend_agent_base_reasoning_effort_none_by_default(self) -> None:
         """reasoning_effort defaults to None (use provider default)."""
 
-        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+        class DefaultBuilder(KompendAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(model_string="test/noop")
@@ -56,12 +56,12 @@ class TestKnoxAgentBaseContract:
 
 
 class TestSkillInjection:
-    """Skills passed to KnoxAgentBase are appended to the system prompt."""
+    """Skills passed to KompendAgentBase are appended to the system prompt."""
 
     def test_skills_appended_to_system_prompt(self) -> None:
         """Skills are rendered as '## Skill: <name>' sections."""
 
-        class _TestAgent(KnoxAgentBase[Any, Any]):
+        class _TestAgent(KompendAgentBase[Any, Any]):
             template_name: ClassVar[str] = "extraction_prompt.md.j2"
             system_template_name: ClassVar[str] = "extraction_system.md.j2"
             result_type: type[Any] = Any
@@ -94,7 +94,7 @@ class TestSkillInjection:
     def test_no_skills_empty_prompt(self) -> None:
         """Without skills, the system prompt is unchanged."""
 
-        class _TestAgent(KnoxAgentBase[Any, Any]):
+        class _TestAgent(KompendAgentBase[Any, Any]):
             template_name: ClassVar[str] = "extraction_prompt.md.j2"
             system_template_name: ClassVar[str] = "extraction_system.md.j2"
             result_type: type[Any] = Any
@@ -110,7 +110,7 @@ class TestSkillInjection:
 
 
 class TestContextManagerCapability:
-    """``context_manager`` preset resolution on KnoxAgentBase."""
+    """``context_manager`` preset resolution on KompendAgentBase."""
 
     def test_disabled_by_default_at_code_api(self) -> None:
         """Code-level default is False — no capability unless config opts in."""
@@ -167,8 +167,8 @@ class TestContextManagerCapability:
         assert agent.usage is None
 
     @staticmethod
-    def _agent(**kwargs: Any) -> KnoxAgentBase[Any, Any]:
-        class _A(KnoxAgentBase[Any, Any]):
+    def _agent(**kwargs: Any) -> KompendAgentBase[Any, Any]:
+        class _A(KompendAgentBase[Any, Any]):
             pass
 
         return _A(model_string="ollama/noop", **kwargs)

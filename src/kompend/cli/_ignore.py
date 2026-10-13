@@ -1,0 +1,132 @@
+"""Ignore pattern matching for KOMPEND source scanning.
+
+Supports ``.gitignore``-style glob patterns via ``pathspec``.
+Patterns can come from:
+- ``.kompend/config.yaml`` (``ignore:`` section)
+- ``.gitignore`` in the source directory (respect by default)
+- CLI ``--ignore`` flags
+"""
+
+from __future__ import annotations
+
+import fnmatch
+from pathlib import Path
+
+from kompend.core.verbosity import is_verbose
+from kompend.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+def compile_patterns(*pattern_lists: list[str] | None) -> list[str]:
+    """Combine multiple pattern lists into one deduplicated list."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for patterns in pattern_lists:
+        if not patterns:
+            continue
+        for p in patterns:
+            if p and p not in seen:
+                seen.add(p)
+                result.append(p)
+    return result
+
+
+def filter_files(
+    files: list[Path],
+    ignore_patterns: list[str] | None = None,
+    respect_gitignore: bool = True,
+    base_dir: Path | None = None,
+) -> list[Path]:
+    """Filter out files matching any ignore pattern."""
+    # CLI patterns override; config patterns are merged upstream in commands.py
+    all_patterns = list(ignore_patterns or [])
+
+    if respect_gitignore and base_dir:
+        gitignore_patterns = load_gitignore(base_dir)
+        all_patterns.extend(gitignore_patterns)
+
+    if not all_patterns:
+        return files
+
+    result: list[Path] = []
+    skipped = 0
+    for f in files:
+        if matches_any(f, all_patterns, base_dir=base_dir):
+            skipped += 1
+        else:
+            result.append(f)
+
+    if skipped:
+        logger.info("Skipped %d file(s) matching ignore patterns", skipped)
+
+    return result
+
+
+def matches_any(subject: Path, patterns: list[str], base_dir: Path | None = None) -> bool:
+    """Check if *subject* matches any of the given glob patterns.
+
+    Each pattern is tested against the path's name and, when possible, against
+    the path relative to *base_dir*.
+    """
+    if not patterns:
+        return False
+
+    # Compute relative path string (best-effort — may not be under base_dir)
+    try:
+        relative = subject.relative_to(base_dir) if base_dir else subject
+    except ValueError:
+        relative = subject
+    rel_str = str(relative).replace("\\", "/")
+    name = relative.name
+
+    for pattern in patterns:
+        p = pattern.replace("\\", "/")
+        if _glob_match(rel_str, p) or _glob_match(name, p):
+            return True
+        # ``**/`` prefix matches anywhere in the path tree.
+        if p.startswith("**/") and _match_doublestar(rel_str, p[3:]):
+            return True
+
+    return False
+
+
+def _match_doublestar(rel_str: str, suffix: str) -> bool:
+    """Match a ``**/`` pattern suffix against a relative path string."""
+    if _glob_match(rel_str, suffix) or rel_str.endswith(f"/{suffix}"):
+        return True
+    if suffix.endswith("/*"):
+        prefix = suffix[:-2]
+        return bool(prefix) and prefix in rel_str
+    return False
+
+
+def _glob_match(text: str, pattern: str) -> bool:
+    """Simple glob matching, used as fallback."""
+    return fnmatch.fnmatch(text, pattern)
+
+
+def load_gitignore(source_dir: Path) -> list[str]:
+    """Load patterns from ``.gitignore`` in *source_dir* (or its parents)."""
+    # Walk up from source_dir to find the nearest .gitignore (first wins).
+    current = source_dir.resolve()
+    for _ in range(10):  # limit depth
+        gitignore = current / ".gitignore"
+        if gitignore.exists():
+            return _read_gitignore_patterns(gitignore)
+        if current.parent == current:
+            break
+        current = current.parent
+    return []
+
+
+def _read_gitignore_patterns(gitignore_file: Path) -> list[str]:
+    """Parse one ``.gitignore`` file into a list of non-comment patterns."""
+    try:
+        text = gitignore_file.read_text(encoding="utf-8", errors="replace")
+    except Exception as exc:
+        logger.debug("Failed to read %s: %s", gitignore_file, exc, exc_info=is_verbose())
+        return []
+    patterns = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
+    logger.debug("Loaded %d patterns from %s", len(patterns), gitignore_file)
+    return patterns

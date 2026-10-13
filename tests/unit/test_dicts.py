@@ -1,14 +1,14 @@
-"""Tests for the dotted-key helpers in ``knox.core.utils.dicts``.
+"""Tests for the dotted-key helpers in ``kompend.core.utils.dicts``.
 
 ``resolve_dotted`` exists because ``get_dot`` cannot see a dict key that itself
-contains dots — the case that broke ``knox config check`` for provider model
+contains dots — the case that broke ``kompend config check`` for provider model
 names (``models."hf.co/qwen3.6"``). Only that helper is covered here; the
 others are exercised through the config engine.
 """
 
 from __future__ import annotations
 
-from knox.core.utils.dicts import resolve_dotted
+from kompend.core.utils.dicts import resolve_dotted
 
 
 def test_plain_path_matches_get_dot() -> None:

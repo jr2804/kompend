@@ -1,0 +1,333 @@
+"""5-layer config precedence: merge, resolve, and provenance tracking."""
+
+# ruff: noqa: I001
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from kompend.core.config.engine._env import read_env_vars
+from kompend.core.config.engine._loading import (
+    load_toml,
+    wiki_dir_for_discovery,
+    find_all_project_configs,
+    find_global_config,
+)
+from kompend.core.config.engine._schema import DEFAULTS, DEPRECATED_ALIASES, REMOVED_KEYS, flat_keys
+from kompend.core.paths import VaultPaths
+from kompend.core.config.keys import (
+    COMPILE_OUTPUT_DIR,
+    COMPILE_SOURCES_DIR,
+    PATHS_OUTPUT_DIR,
+    PATHS_SOURCES_DIR,
+    PATHS_WIKI_DIR,
+)
+from kompend.core.utils.dicts import deep_merge, del_dot, get_dot, nest_flat, set_dot
+from kompend.logging import get_logger
+from kompend.types import ConfigValue
+from kompend.llm.user_providers import set_user_providers
+from kompend.core.config._configs import KompendConfig
+
+logger = get_logger(__name__)
+
+
+@dataclass
+class ConfigSource:
+    """Tracks where each config value came from."""
+
+    path: str  # "default", "global", "project", "env", "cli"
+    location: str = ""  # file path or env var name
+
+    def __str__(self) -> str:
+        if self.location:
+            return f"{self.path} ({self.location})"
+        return self.path
+
+
+@dataclass
+class ResolvedConfig:
+    """Fully merged configuration with provenance tracking."""
+
+    raw: dict[str, Any] = field(default_factory=dict)
+    provenance: dict[str, ConfigSource] = field(default_factory=dict)
+    project_config_file: Path | None = None
+    project_config_paths: list[Path] = field(default_factory=list)
+    global_config_file: Path | None = None
+
+    def get(self, key: str, default: ConfigValue = None) -> ConfigValue:
+        """Get a dotted key from the resolved config."""
+        return get_dot(self.raw, key, default)
+
+    def source_of(self, key: str) -> ConfigSource:
+        """Return where a specific key's value came from for diagnostics."""
+        return self.provenance.get(key, ConfigSource("default"))
+
+    @property
+    def kompend(self) -> KompendConfig:
+        """Typed view of the resolved config.
+
+        Returns a validated :class:`KompendConfig` built from ``raw``. Lets callers
+        use attribute access (e.g. ``cfg.kompend.compile.llm.default_model``)
+        instead of importing dotted-key constants and looking up values
+        one-by-one with ``cfg.get(COMPILE_LLM_DEFAULT_MODEL)``.
+
+        Path values are coerced to strings before validation so they match
+        the schema's string-typed fields (the runtime `Path` objects in
+        ``raw`` are preserved for downstream code paths).
+
+        Mutable kwargs are passed by-reference (Pydantic deep-copies on
+        validation), so editing the returned object's nested fields is safe
+        and does not corrupt future lookups.
+        """
+        return KompendConfig.model_validate(_coerce_paths_to_str(_strip_removed_keys(self.raw)))
+
+    def flat(self) -> dict[str, Any]:
+        """Return a flat dotted-key dict of all values."""
+        result: dict[str, Any] = {}
+        for key in flat_keys(self.raw):
+            result[key] = get_dot(self.raw, key)
+        return result
+
+
+def resolve_config(
+    *,
+    cli_overrides: dict[str, Any] | None = None,
+    config_file: str | Path | None = None,
+    base_dir: Path | str | None = None,
+) -> ResolvedConfig:
+    """Build a fully resolved config by merging all 5 layers.
+
+    Parameters
+    ----------
+    cli_overrides:
+        Flat dotted-key dict of CLI-provided values.
+    config_file:
+        Explicit config file path (``--config`` flag).
+    base_dir:
+        Explicit vault root directory. Takes precedence over the
+        ``paths.wiki_dir`` key in any other layer. Prefer passing this
+        from a :class:`~kompend.core.paths.VaultPaths` instance.
+
+    Returns:
+    -------
+    ResolvedConfig
+        The merged config with provenance.
+    """
+    provenance: dict[str, ConfigSource] = {}
+
+    # Layer 5: defaults
+    result: dict[str, Any] = deep_merge({}, DEFAULTS)
+    for key in flat_keys(DEFAULTS):
+        provenance[key] = ConfigSource("default")
+
+    # Layer 4: global config
+    global_file = find_global_config()
+    if global_file is not None:
+        global_data = load_toml(global_file)
+        if global_data:
+            result = _apply_layer(result, global_data, provenance, ConfigSource("global", str(global_file)))
+
+    # Layer 3: project config
+    project_dir: Path | None = None
+    project_configs: list[Path] = []
+    if config_file is not None:
+        project_dir = Path(config_file)
+        if project_dir.is_file():
+            project_data = load_toml(project_dir)
+            if project_data:
+                result = _apply_layer(result, project_data, provenance, ConfigSource("project", str(project_dir)))
+        else:
+            logger.warning("Config file not found: %s", config_file)
+    else:
+        start_dir = wiki_dir_for_discovery(cli_overrides)
+        if base_dir is not None:
+            # base_dir (from --wiki-dir) selects the vault; discovery must walk
+            # from there, not from the CWD, or the vault's config is skipped.
+            start_dir = VaultPaths(base_dir).base_dir
+        project_configs = find_all_project_configs(start_dir)
+        if project_configs:
+            merged_project, project_provenance = _merge_project_configs(project_configs)
+            if merged_project:
+                result = deep_merge(result, merged_project)
+                provenance.update(project_provenance)
+
+    # Layer 2: env vars
+    env_data = read_env_vars()
+    if env_data:
+        result = _apply_layer(result, env_data, provenance, ConfigSource("env", "KOMP_*"))
+
+    # Layer 1: CLI overrides
+    cli = cli_overrides or {}
+    if base_dir is not None:
+        cli = {**cli, PATHS_WIKI_DIR: str(VaultPaths(base_dir).base_dir)}
+    if cli:
+        cli_nested = nest_flat(cli)
+        result = _apply_layer(result, cli_nested, provenance, ConfigSource("cli"))
+
+    _resolve_paths(result, provenance)
+    _resolve_deprecated_aliases(result, provenance)
+
+    set_user_providers(result.get("providers", {}))
+
+    return ResolvedConfig(
+        raw=result,
+        provenance=provenance,
+        project_config_file=project_configs[0] if project_configs else project_dir,
+        project_config_paths=project_configs,
+        global_config_file=global_file,
+    )
+
+
+def _strip_removed_keys(obj: dict[str, Any]) -> dict[str, Any]:
+    """Remove known-deprecated keys from the raw config dict.
+
+    Logs a warning for each stripped key so users can clean up their
+    ``.kompend/config.toml`` at their convenience. The canonical registry is
+    ``REMOVED_KEYS`` in ``_schema.py``.
+
+    A section the stripping leaves empty is removed as well. ``KompendConfig`` is
+    strict (``extra_forbidden``), so an empty TOML table left behind would fail
+    the whole vault — every kompend command on it — which is worse than the key
+    being removed. ``generate.py`` applies the same rule when rendering a fresh
+    config.
+    """
+    for path, keys in REMOVED_KEYS.items():
+        section = get_dot(obj, path)
+        if not isinstance(section, dict):
+            continue
+        stripped = False
+        for key in keys:
+            if key in section:
+                logger.warning(
+                    "Config key '%s.%s' has been removed and will be ignored. Please remove it from your .kompend/config.toml.",
+                    path,
+                    key,
+                )
+                del section[key]
+                stripped = True
+        if stripped and not section:
+            _del_dotted(obj, path)
+    return obj
+
+
+def _del_dotted(obj: dict[str, Any], path: str) -> None:
+    """Delete the dotted *path* from *obj*, ignoring an absent parent or leaf."""
+    parent, _, leaf = path.rpartition(".")
+    container = get_dot(obj, parent) if parent else obj
+    if isinstance(container, dict):
+        container.pop(leaf, None)
+
+
+def _coerce_paths_to_str(obj: Any) -> Any:
+    """Recursively convert ``Path`` values to ``str`` in a config dict.
+
+    The runtime config stores Path objects in ``paths.*`` for ergonomic
+    downstream use, but ``KompendConfig`` types those fields as strings to
+    match the TOML schema. Without this coercion, ``model_validate`` would
+    reject the resolved config.
+    """
+    if isinstance(obj, Path):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _coerce_paths_to_str(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_coerce_paths_to_str(v) for v in obj]
+    return obj
+
+
+# ── Layer application ────────────────────────────────────────────────────
+
+
+def _apply_layer(
+    result: dict[str, Any],
+    layer: dict[str, Any],
+    provenance: dict[str, ConfigSource],
+    source: ConfigSource,
+) -> dict[str, Any]:
+    """Merge *layer* into *result* and stamp provenance for its keys."""
+    merged = deep_merge(result, layer)
+    for key in flat_keys(layer):
+        if get_dot(layer, key) is not None:
+            provenance[key] = source
+    return merged
+
+
+def _merge_project_configs(
+    project_configs: list[Path],
+) -> tuple[dict[str, Any], dict[str, ConfigSource]]:
+    """Merge a project config hierarchy (farthest-to-closest) into one layer."""
+    merged: dict[str, Any] = {}
+    prov: dict[str, ConfigSource] = {}
+    for config_file in reversed(project_configs):  # closest wins
+        file_data = load_toml(config_file)
+        for key in flat_keys(file_data):
+            prov[key] = ConfigSource("project", str(config_file))
+        merged = deep_merge(merged, file_data)
+    return merged, prov
+
+
+def _resolve_deprecated_aliases(result: dict[str, Any], provenance: dict[str, ConfigSource]) -> None:
+    """Migrate deprecated config keys to their canonical replacements.
+
+    A deprecated key that is explicitly set (non-default) migrates its value
+    to the canonical key when the canonical key is still at its default, and
+    the provenance records the deprecation so ``kompend config check`` and the
+    resolved-config listing surface it.
+
+    The deprecated key is then dropped: the canonical key owns the value, and
+    a key that has left the schema would otherwise fail the strict
+    ``KompendConfig`` validation.  The registry is ``DEPRECATED_ALIASES``.
+    """
+    for old_key, new_key in DEPRECATED_ALIASES.items():
+        old_val = get_dot(result, old_key)
+        # A key still in the schema reports its default when unset; a key that
+        # has left it reports None.  Either way, only a non-default value is
+        # worth migrating — and an explicitly set canonical key always wins.
+        old_default = get_dot(DEFAULTS, old_key)
+        if old_val is not None and old_val != old_default and provenance.get(new_key, ConfigSource("default")).path == "default":
+            set_dot(result, new_key, old_val)
+            provenance[new_key] = ConfigSource(
+                provenance.get(old_key, ConfigSource("project")).path,
+                f"deprecated {old_key}",
+            )
+            logger.warning(
+                "Config key '%s' is deprecated — use '%s' instead. The value has been migrated; please update your config.",
+                old_key,
+                new_key,
+            )
+        del_dot(result, old_key)
+
+
+def _resolve_paths(
+    result: dict[str, Any],
+    provenance: dict[str, ConfigSource],
+) -> None:
+    """Normalize path values under ``paths``."""
+    paths = result.setdefault("paths", {})
+
+    # Backwards compatibility: old [compile] path keys migrate to [paths]
+    for old_key, new_key in (
+        (COMPILE_SOURCES_DIR, PATHS_SOURCES_DIR),
+        (COMPILE_OUTPUT_DIR, PATHS_OUTPUT_DIR),
+    ):
+        old_val = get_dot(result, old_key)
+        new_val = get_dot(result, new_key)
+        old_default = get_dot(DEFAULTS, old_key)
+        new_default = get_dot(DEFAULTS, new_key)
+        if old_val is not None and old_val != old_default and new_val == new_default:
+            set_dot(result, new_key, old_val)
+            provenance[new_key] = ConfigSource(
+                provenance.get(old_key, ConfigSource("project")).path,
+                f"deprecated {old_key}",
+            )
+
+    wiki_dir_raw = paths.get("wiki_dir")
+    vp = VaultPaths(wiki_dir_raw)
+    base_dir = vp.base_dir
+    paths["wiki_dir"] = base_dir
+    paths["sources_dir"] = vp.sources_dir
+    paths["output_dir"] = vp.output_dir
+    paths["cache_dir"] = vp.cache_dir
+    paths["state_dir"] = vp.kompend_dir

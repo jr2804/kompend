@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from knox.chunking.extractors import (
+from kompend.chunking.extractors import (
     extract_equation,
     extract_figure,
     extract_structured,
     extract_table,
 )
-from knox.core.models import (
+from kompend.core.models import (
     DocumentElement,
     ElementType,
     StructuredEquation,

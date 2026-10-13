@@ -1,4 +1,4 @@
-"""Unit tests for the knox.scaffolding package."""
+"""Unit tests for the kompend.scaffolding package."""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
-from knox.core.paths import CACHE_SUBDIR, KNOX_DIR
-from knox.scaffolding import (
+from kompend.core.paths import CACHE_SUBDIR, KOMP_DIR
+from kompend.scaffolding import (
     AUTHORED_TEMPLATES,
     PROJECT_MARKERS,
     RAIL_FILES,
@@ -26,15 +26,15 @@ class TestScaffoldProject:
         result = scaffold_project(target)
         assert (target / "sources").is_dir()
         assert (target / "wiki").is_dir()
-        assert (target / KNOX_DIR).is_dir()
-        assert (target / KNOX_DIR / CACHE_SUBDIR).is_dir()
+        assert (target / KOMP_DIR).is_dir()
+        assert (target / KOMP_DIR / CACHE_SUBDIR).is_dir()
         assert len(result.created_dirs) == 4
 
     def test_creates_config_file(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         scaffold_project(target)
-        assert (target / KNOX_DIR / "config.toml").is_file()
-        content = (target / KNOX_DIR / "config.toml").read_text(encoding="utf-8")
+        assert (target / KOMP_DIR / "config.toml").is_file()
+        content = (target / KOMP_DIR / "config.toml").read_text(encoding="utf-8")
         assert "[compile]" in content
         assert "compile.budget.chunk_size_min" not in content  # TOML sections used instead of dotted keys
 
@@ -45,7 +45,7 @@ class TestScaffoldProject:
         assert gitignore.is_file()
         content = gitignore.read_text(encoding="utf-8")
         assert "wiki/" in content
-        assert ".knox/cache/" in content
+        assert ".kompend/cache/" in content
 
     def test_renders_templates_with_custom_paths(self, tmp_path: Path) -> None:
         """Templates reflect config paths.sources_dir / output_dir, not defaults."""
@@ -83,7 +83,7 @@ class TestScaffoldProject:
         result = scaffold_project(target, bare=True)
         assert not (target / "NOTES.md").exists()
         assert not (target / "README.md").exists()
-        assert (target / KNOX_DIR / "config.toml").is_file()
+        assert (target / KOMP_DIR / "config.toml").is_file()
         assert (target / ".gitignore").is_file()
         assert set(result.skipped_files) == set(AUTHORED_TEMPLATES)
         assert len(result.copied_files) == 3  # config + gitignore + agents
@@ -95,26 +95,26 @@ class TestScaffoldProject:
         assert (target / "sources").is_dir()
         assert len(result.created_dirs) == 4
 
-    def test_existing_project_knox_toml_rejected_without_force(self, tmp_path: Path) -> None:
+    def test_existing_project_kompend_toml_rejected_without_force(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / "knox.toml").write_text("# existing", encoding="utf-8")
+        (target / "kompend.toml").write_text("# existing", encoding="utf-8")
         with pytest.raises(ScaffoldError, match="Existing project"):
             scaffold_project(target)
 
     def test_existing_project_config_toml_rejected_without_force(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / KNOX_DIR).mkdir()
-        (target / KNOX_DIR / "config.toml").write_text("# existing", encoding="utf-8")
+        (target / KOMP_DIR).mkdir()
+        (target / KOMP_DIR / "config.toml").write_text("# existing", encoding="utf-8")
         with pytest.raises(ScaffoldError, match="Existing project"):
             scaffold_project(target)
 
     def test_force_overwrites(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / KNOX_DIR).mkdir()
-        old_config = target / KNOX_DIR / "config.toml"
+        (target / KOMP_DIR).mkdir()
+        old_config = target / KOMP_DIR / "config.toml"
         old_config.write_text("# old", encoding="utf-8")
         scaffold_project(target, force=True)
         assert old_config.read_text(encoding="utf-8") != "# old"
@@ -148,7 +148,7 @@ class TestScaffoldProject:
     def test_git_init_propagates_error(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         with (
-            patch("knox.scaffolding._core.subprocess.run", side_effect=subprocess.CalledProcessError(1, "git", stderr=b"boom")),
+            patch("kompend.scaffolding._core.subprocess.run", side_effect=subprocess.CalledProcessError(1, "git", stderr=b"boom")),
             pytest.raises(ScaffoldError, match="git init failed"),
         ):
             scaffold_project(target, git=True)
@@ -156,9 +156,9 @@ class TestScaffoldProject:
     def test_keep_cache_preserves_cache_contents(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / KNOX_DIR).mkdir()
-        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
-        cache_dir = target / KNOX_DIR / CACHE_SUBDIR
+        (target / KOMP_DIR).mkdir()
+        (target / KOMP_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        cache_dir = target / KOMP_DIR / CACHE_SUBDIR
         cache_dir.mkdir()
         (cache_dir / "doc1.json").write_text("{}", encoding="utf-8")
         (cache_dir / "doc2.json").write_text("{}", encoding="utf-8")
@@ -171,10 +171,10 @@ class TestScaffoldProject:
     def test_keep_cache_removes_other_files(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / KNOX_DIR).mkdir()
-        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        (target / KOMP_DIR).mkdir()
+        (target / KOMP_DIR / "config.toml").write_text("# old", encoding="utf-8")
         (target / "stale_output.md").write_text("old wiki", encoding="utf-8")
-        cache_dir = target / KNOX_DIR / CACHE_SUBDIR
+        cache_dir = target / KOMP_DIR / CACHE_SUBDIR
         cache_dir.mkdir()
         (cache_dir / "doc1.json").write_text("{}", encoding="utf-8")
 
@@ -186,8 +186,8 @@ class TestScaffoldProject:
     def test_keep_cache_noop_without_force(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / KNOX_DIR).mkdir()
-        (target / KNOX_DIR / "config.toml").write_text("# existing", encoding="utf-8")
+        (target / KOMP_DIR).mkdir()
+        (target / KOMP_DIR / "config.toml").write_text("# existing", encoding="utf-8")
 
         with pytest.raises(ScaffoldError, match="Existing project"):
             scaffold_project(target, keep_cache=True)
@@ -195,27 +195,27 @@ class TestScaffoldProject:
     def test_keep_cache_no_existing_cache(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / KNOX_DIR).mkdir()
-        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        (target / KOMP_DIR).mkdir()
+        (target / KOMP_DIR / "config.toml").write_text("# old", encoding="utf-8")
 
         scaffold_project(target, force=True, keep_cache=True)
 
-        assert (target / KNOX_DIR / CACHE_SUBDIR).is_dir()
-        assert not any((target / KNOX_DIR / CACHE_SUBDIR).iterdir())
+        assert (target / KOMP_DIR / CACHE_SUBDIR).is_dir()
+        assert not any((target / KOMP_DIR / CACHE_SUBDIR).iterdir())
 
     def test_keep_cache_empty_cache_dir(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
         target.mkdir()
-        (target / KNOX_DIR).mkdir()
-        (target / KNOX_DIR / "config.toml").write_text("# old", encoding="utf-8")
-        (target / KNOX_DIR / CACHE_SUBDIR).mkdir()
+        (target / KOMP_DIR).mkdir()
+        (target / KOMP_DIR / "config.toml").write_text("# old", encoding="utf-8")
+        (target / KOMP_DIR / CACHE_SUBDIR).mkdir()
 
         scaffold_project(target, force=True, keep_cache=True)
 
-        assert (target / KNOX_DIR / CACHE_SUBDIR).is_dir()
-        assert not any((target / KNOX_DIR / CACHE_SUBDIR).iterdir())
+        assert (target / KOMP_DIR / CACHE_SUBDIR).is_dir()
+        assert not any((target / KOMP_DIR / CACHE_SUBDIR).iterdir())
 
-    # Rail-file clobber guard (regression for knox-init clobbering tracked AGENTS.md / .gitignore / README.md).
+    # Rail-file clobber guard (regression for kompend-init clobbering tracked AGENTS.md / .gitignore / README.md).
 
     def test_rail_files_refused_without_force(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
@@ -292,8 +292,8 @@ class TestScaffoldProject:
 
 class TestPublicApi:
     def test_project_markers_constant(self) -> None:
-        assert "knox.toml" in PROJECT_MARKERS
-        assert ".knox/config.toml" in PROJECT_MARKERS
+        assert "kompend.toml" in PROJECT_MARKERS
+        assert ".kompend/config.toml" in PROJECT_MARKERS
 
     def test_authored_templates_constant(self) -> None:
         assert "NOTES.md" in AUTHORED_TEMPLATES
@@ -301,14 +301,14 @@ class TestPublicApi:
     def test_find_existing_project_returns_none_for_empty_dir(self, tmp_path: Path) -> None:
         assert find_existing_project(tmp_path) is None
 
-    def test_find_existing_project_detects_knox_toml(self, tmp_path: Path) -> None:
-        marker = tmp_path / "knox.toml"
+    def test_find_existing_project_detects_kompend_toml(self, tmp_path: Path) -> None:
+        marker = tmp_path / "kompend.toml"
         marker.write_text("# existing", encoding="utf-8")
         assert find_existing_project(tmp_path) == marker
 
     def test_find_existing_project_detects_config_toml(self, tmp_path: Path) -> None:
-        (tmp_path / KNOX_DIR).mkdir()
-        marker = tmp_path / KNOX_DIR / "config.toml"
+        (tmp_path / KOMP_DIR).mkdir()
+        marker = tmp_path / KOMP_DIR / "config.toml"
         marker.write_text("# existing", encoding="utf-8")
         assert find_existing_project(tmp_path) == marker
         assert "README.md" in AUTHORED_TEMPLATES

@@ -1,4 +1,4 @@
-"""Tests for knox.llm.http_client — AsyncTenacityTransport and factory."""
+"""Tests for kompend.llm.http_client — AsyncTenacityTransport and factory."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock
 import httpx
 import pytest
 
-from knox.llm.http_client import (
+from kompend.llm.http_client import (
     RETRYABLE_STATUS_CODES,
     AsyncTenacityTransport,
     create_retrying_http_client,

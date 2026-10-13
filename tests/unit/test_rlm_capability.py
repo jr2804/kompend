@@ -1,4 +1,4 @@
-"""Tests for the RLM capability (code-exploration tools on KNOX agents)."""
+"""Tests for the RLM capability (code-exploration tools on KOMPEND agents)."""
 
 from __future__ import annotations
 
@@ -17,18 +17,18 @@ from pydantic_ai.models import Model, ModelRequestParameters
 from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.settings import ModelSettings
 
-from knox.agents.base import KnoxAgentBase
-from knox.agents.deps import PipelineAgentDeps, QueryDeps
-from knox.agents.extraction import ExtractionAgent
-from knox.agents.knox_model import KnoxModel
-from knox.agents.query import QueryAgent
-from knox.agents.rlm import (
+from kompend.agents.base import KompendAgentBase
+from kompend.agents.deps import PipelineAgentDeps, QueryDeps
+from kompend.agents.extraction import ExtractionAgent
+from kompend.agents.kompend_model import KompendModel
+from kompend.agents.query import QueryAgent
+from kompend.agents.rlm import (
     RLMCapability,
     build_rlm_instructions,
     cleanup_rlm_repls,
 )
-from knox.core.config import RlmConfig
-from knox.llm.usage import UsageTracker
+from kompend.core.config import RlmConfig
+from kompend.llm.usage import UsageTracker
 
 
 class ScriptedModel(Model):
@@ -86,11 +86,11 @@ class TextOnlyModel(Model):
         )
 
 
-class TestKnoxAgentRlmWiring:
+class TestKompendAgentRlmWiring:
     def test_rlm_disabled_by_default(self) -> None:
         """Rlm defaults to False: no capability, no usage limits, no tool."""
 
-        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+        class DefaultBuilder(KompendAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(model_string="ollama/llama3.1")
@@ -103,7 +103,7 @@ class TestKnoxAgentRlmWiring:
     def test_rlm_enabled_sets_usage_limits(self) -> None:
         """A group with enable=true attaches the capability and a budget."""
 
-        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+        class DefaultBuilder(KompendAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig(enable=True))
@@ -119,7 +119,7 @@ class TestKnoxAgentRlmWiring:
     def test_rlm_config_fields_apply(self) -> None:
         """A RlmConfig (compile.llm.rlm group) sets the execution budget."""
 
-        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+        class DefaultBuilder(KompendAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(
@@ -139,7 +139,7 @@ class TestKnoxAgentRlmWiring:
     def test_rlm_config_disabled_returns_none(self) -> None:
         """A RlmConfig with enable=False resolves to no capability."""
 
-        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+        class DefaultBuilder(KompendAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig())
@@ -197,17 +197,17 @@ class TestRlmCapabilityToolset:
 
 class TestRlmLlMQuery:
     def test_llm_query_routes_through_sub_model_and_tracks_usage(self) -> None:
-        """llm_query() calls the sub-model and records usage via KnoxModel."""
+        """llm_query() calls the sub-model and records usage via KompendModel."""
         usage = RequestUsage(input_tokens=7, output_tokens=3)
         main = ScriptedModel(code="print(llm_query('summarize'))", final="DONE")
         sub = TextOnlyModel("sub-answer", usage=usage)
         tracker = UsageTracker()
-        knox_sub = KnoxModel(sub, usage_tracker=tracker)
+        kompend_sub = KompendModel(sub, usage_tracker=tracker)
 
         agent = Agent(
             main,
             output_type=str,
-            capabilities=[RLMCapability(context_field="text", sub_model=knox_sub)],
+            capabilities=[RLMCapability(context_field="text", sub_model=kompend_sub)],
         )
         result = agent.run_sync(
             "analyze",
@@ -336,8 +336,8 @@ class TestRlmRecursion:
         assert "first-done" in returns
         assert "cycle" in returns
 
-    def test_recursion_usage_tracked_through_knox_model(self) -> None:
-        """Child agent runs through the (KnoxModel-wrapped) main model, so
+    def test_recursion_usage_tracked_through_kompend_model(self) -> None:
+        """Child agent runs through the (KompendModel-wrapped) main model, so
         every request in the tree lands in the usage tracker.
         """
         inner = QueuedModel(
@@ -348,11 +348,11 @@ class TestRlmRecursion:
             ]
         )
         tracker = UsageTracker()
-        knox = KnoxModel(inner, usage_tracker=tracker)
+        kompend = KompendModel(inner, usage_tracker=tracker)
         agent = Agent(
-            knox,
+            kompend,
             output_type=str,
-            capabilities=[RLMCapability(context_field="text", main_model=knox, depth=1)],
+            capabilities=[RLMCapability(context_field="text", main_model=kompend, depth=1)],
         )
         result = agent.run_sync("analyze", deps=PipelineAgentDeps(text="t", source_id="d"))
         assert result.output == "DONE"
@@ -403,7 +403,7 @@ class TestRlmConfigDefaults:
     def test_default_budget(self) -> None:
         """enable=true with no fields uses the default budget."""
 
-        class DefaultBuilder(KnoxAgentBase[Any, Any]):
+        class DefaultBuilder(KompendAgentBase[Any, Any]):
             pass
 
         agent = DefaultBuilder(model_string="ollama/llama3.1", rlm=RlmConfig(enable=True))

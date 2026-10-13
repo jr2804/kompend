@@ -1,11 +1,11 @@
 # LLM Configuration
 
-KNOX routes every LLM call through **PydanticAI agents** (`knox.agents.*`)
+KOMPEND routes every LLM call through **PydanticAI agents** (`kompend.agents.*`)
 so every pipeline stage — extraction, generation, query, WiCER, doctor,
 capture — gets the same retry, failover, and observability semantics.
 
 Under the hood, each agent wraps a native pydantic-ai Model built by
-[`knox.llm.models.build_model`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/models.py)
+[`kompend.llm.models.build_model`](https://github.com/jr2804/kompend/src/branch/main/src/kompend/llm/models.py)
 from a `provider/model` string. This guide covers:
 
 - Model strings and provider resolution
@@ -16,7 +16,7 @@ from a `provider/model` string. This guide covers:
 
 ## Model strings
 
-KNOX uses the `provider/model` convention everywhere (e.g.
+KOMPEND uses the `provider/model` convention everywhere (e.g.
 `ollama/qwen3`, `openai/gpt-4o`, `claudinio/claude-4`). `build_model()`
 resolves a string to a native pydantic-ai `Model` in three steps:
 
@@ -28,7 +28,7 @@ resolves a string to a native pydantic-ai `Model` in three steps:
    `deepseek`), an OpenAI-compatible `OpenAIChatModel` is constructed with
    the catalog-advertised endpoint.
 3. **User-defined providers** — any OpenAI-compatible endpoint declared under
-   `[providers.<name>]` in `knox.toml`. The name becomes the `provider/`
+   `[providers.<name>]` in `kompend.toml`. The name becomes the `provider/`
    prefix, e.g. `default_model = "my-llama/mistral-nemo"`. See below.
 
 If no path resolves, `build_model()` raises `ValueError`.
@@ -41,8 +41,8 @@ server, vLLM, text-generation-inference, an OpenAI-compatible mirror, or
 an API-proxy that exposes multiple protocols.
 
 **Recommended location:** define providers **globally** in
-`~/.config/knox/config.toml` — they carry credentials and are usually
-machine-wide, not per-vault. Per-vault definitions in `.knox/config.toml`
+`~/.config/kompend/config.toml` — they carry credentials and are usually
+machine-wide, not per-vault. Per-vault definitions in `.kompend/config.toml`
 work too.
 
 ```toml
@@ -83,16 +83,16 @@ including `default_model`, `fallback_chain`, and CLI overrides.
 max_connections = 2       # clip compile.workers to 2 for ollama models
 ```
 
-`max_connections` applies wherever KNOX creates parallel workers for a model
+`max_connections` applies wherever KOMPEND creates parallel workers for a model
 on that provider (parse today, and future parallel LLM stages) — a quiet way
 to rate-limit online APIs so tokens aren't burned faster than intended, or to
 stop two local GPU servers from starving each other under `compile.workers > 1`.
 
-`api_key` supports the same `${ENV_VAR}` interpolation KNOX uses elsewhere.
+`api_key` supports the same `${ENV_VAR}` interpolation KOMPEND uses elsewhere.
 A plain literal works too. Omit `api_key` entirely for keyless endpoints;
-KNOX sends a placeholder token because pydantic-ai/OpenAI SDK require one.
+KOMPEND sends a placeholder token because pydantic-ai/OpenAI SDK require one.
 
-**`api_type`** selects the wire protocol KNOX speaks to the endpoint:
+**`api_type`** selects the wire protocol KOMPEND speaks to the endpoint:
 
 - `openai-chat` — OpenAI Chat Completions (`/v1/chat/completions`); the
   default and what virtually every OpenAI-compatible server implements.
@@ -107,8 +107,8 @@ KNOX sends a placeholder token because pydantic-ai/OpenAI SDK require one.
 3. models.dev catalog
 4. `[compile.llm] fallback_max_input` (last resort)
 
-Set `context_window` so KNOX knows the model's token budget — without it,
-KNOX falls back to `fallback_max_input` from `[compile.llm]` (since
+Set `context_window` so KOMPEND knows the model's token budget — without it,
+KOMPEND falls back to `fallback_max_input` from `[compile.llm]` (since
 self-hosted endpoints are not in the models.dev catalog).
 
 > **Deprecated:** `context_window_cap` (provider level and
@@ -151,14 +151,14 @@ timeout = 120.0                      # per-call timeout in seconds
 A chain is an ordered list of models. The primary is tried first; each
 subsequent model is tried only when the previous one fails.
 
-Fallback is implemented by wrapping the primary and fallback `KnoxModel`
+Fallback is implemented by wrapping the primary and fallback `KompendModel`
 instances in `pydantic_ai.models.fallback.FallbackModel` at agent
 construction time.
 
 ### CLI
 
 ```bash
-knox compile \
+kompend compile \
   --llm-fallback-chain openai/gpt-4o \
   --llm-fallback-chain anthropic/claude-3-haiku-20240307 \
   --llm-fallback-chain ollama/llama3.2
@@ -170,8 +170,8 @@ single-model mode.
 ### Environment
 
 ```bash
-export KNOX_LLM_FALLBACK_CHAIN="openai/gpt-4o,anthropic/claude-3-haiku-20240307,ollama/llama3.2"
-export KNOX_LLM_FALLBACK_MAX_RETRIES=2
+export KOMP_LLM_FALLBACK_CHAIN="openai/gpt-4o,anthropic/claude-3-haiku-20240307,ollama/llama3.2"
+export KOMP_LLM_FALLBACK_MAX_RETRIES=2
 ```
 
 ### TOML
@@ -185,7 +185,7 @@ fallback_max_retries = 2
 
 ## Context window requirements
 
-KNOX auto-detects each model's context window (Ollama `num_ctx` →
+KOMPEND auto-detects each model's context window (Ollama `num_ctx` →
 [models.dev](https://models.dev) catalog → `fallback_max_input`) and sizes
 every LLM call to fit. So there is **no hard minimum** that the pipeline
 enforces — but a model that's too small produces tiny, low-quality chunks.
@@ -294,7 +294,7 @@ batch_failure_threshold_min = 2
 
 ### Pre-compilation check
 
-Run `knox doctor` before compiling to verify the configured model can
+Run `kompend doctor` before compiling to verify the configured model can
 produce structured JSON. The doctor command probes the model with a trivial
 request and reports pass/fail — catching the "empty string" failure mode
 before it wastes a full pipeline run.
@@ -315,7 +315,7 @@ models that tend to over-reason:
 reasoning_effort = "none"
 ```
 
-Set via `KNOX_LLM_REASONING_EFFORT`. Best-effort: providers that don't
+Set via `KOMP_LLM_REASONING_EFFORT`. Best-effort: providers that don't
 recognize the key ignore it.
 
 ## RLM (code-exploration mode)
@@ -350,7 +350,7 @@ skips cleanly when Ollama is unavailable).
 ## Token usage observability
 
 Every successful call feeds a shared
-[`UsageTracker`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/llm/usage.py)
+[`UsageTracker`](https://github.com/jr2804/kompend/src/branch/main/src/kompend/llm/usage.py)
 which accumulates token counts across the whole pipeline run:
 
 | Field               | Meaning                                            |
@@ -362,49 +362,49 @@ which accumulates token counts across the whole pipeline run:
 | `avg_ttft`          | Average time-to-first-token                        |
 
 After a compile run, the tracker's data is attached to the wiki's
-metadata for the [`knox log`](cli.md) command to render.
+metadata for the [`kompend log`](cli.md) command to render.
 
 ## Debug logging
 
-Set `KNOX_DEBUG_LLM_DIR` to a directory path to dump every LLM call
+Set `KOMP_DEBUG_LLM_DIR` to a directory path to dump every LLM call
 (message list + response) to disk for manual inspection:
 
 ```bash
-export KNOX_DEBUG_LLM_DIR=".knox/cache/debug"
+export KOMP_DEBUG_LLM_DIR=".kompend/cache/debug"
 ```
 
 ## OpenTelemetry tracing
 
-knox can emit [OpenTelemetry](https://opentelemetry.io) traces for its
+kompend can emit [OpenTelemetry](https://opentelemetry.io) traces for its
 pydantic-ai agent runs — including the agent run, every model request,
 and every tool call — so you can replay and inspect exactly what the
 compiler's agents did, including where a local/quantized model hits its
 retry ceiling or where the WiCER evaluate/probe steps diverge from the
 graph compiler.
 
-The SDKs are already shipped with knox (`opentelemetry-sdk` is an
+The SDKs are already shipped with kompend (`opentelemetry-sdk` is an
 optional `otel` extra). Enable tracing with two environment variables:
 
 ```bash
-export KNOX_OTEL_ENABLED=true
-export KNOX_OTEL_ENDPOINT="http://localhost:4318"   # your OTLP backend
+export KOMP_OTEL_ENABLED=true
+export KOMP_OTEL_ENDPOINT="http://localhost:4318"   # your OTLP backend
 ```
 
 Options:
 
-- `KNOX_OTEL_ENABLED` — `true`/`1`/`yes` turns tracing on. Unset or any
-  other value keeps knox fully uninstrumented (zero overhead). Default off.
-- `KNOX_OTEL_ENDPOINT` — OTLP HTTP endpoint. Default
+- `KOMP_OTEL_ENABLED` — `true`/`1`/`yes` turns tracing on. Unset or any
+  other value keeps kompend fully uninstrumented (zero overhead). Default off.
+- `KOMP_OTEL_ENDPOINT` — OTLP HTTP endpoint. Default
   `http://localhost:4318`. For local observability, use
   Arize Phoenix: ``http://localhost:6006``.
-- `KNOX_OTEL_SERVICE_NAME` — service label in the OTel UI (default `knox`).
-- `KNOX_OTEL_HEADERS` — optional `key=value` HTTP headers for the endpoint,
+- `KOMP_OTEL_SERVICE_NAME` — service label in the OTel UI (default `kompend`).
+- `KOMP_OTEL_HEADERS` — optional `key=value` HTTP headers for the endpoint,
   e.g. `Authorization=Bearer <token>`.
 
 Install the extra if it isn't present already:
 
 ```bash
-uv add knox[otel]
+uv add kompend[otel]
 # or, in this repo's editable install:
 uv sync --extra otel
 ```
@@ -413,8 +413,8 @@ uv sync --extra otel
 
 When an agent's LLM call fails (network error, empty content after
 retries, non-salvageable output), it raises
-[`LLMOutputError`](https://codeberg.org/jr2804/knox/src/branch/main/src/knox/core/utils/exceptions.py)
-from `knox.core.utils.exceptions`. Callers (pipeline, WiCER, lint)
+[`LLMOutputError`](https://github.com/jr2804/kompend/src/branch/main/src/kompend/core/utils/exceptions.py)
+from `kompend.core.utils.exceptions`. Callers (pipeline, WiCER, lint)
 surface this as a hard stop rather than silently skipping — a model that
 cannot produce usable output should abort cleanly so you can pick a
 different one.
@@ -423,7 +423,7 @@ different one.
 
 ### Why did the LLM call fail?
 
-Set `KNOX_DEBUG_LLM_DIR` and re-run. The dumped request/response files
+Set `KOMP_DEBUG_LLM_DIR` and re-run. The dumped request/response files
 show exactly what was sent and returned. Common causes: wrong provider
 prefix (check the [models.dev catalog](https://models.dev) for the
 exact name), missing API key env var, or a model too small to produce
@@ -438,5 +438,5 @@ failures, but there is no secondary model to fall back to.
 
 If the provider is in the [models.dev catalog](https://models.dev),
 just use its `provider/model` string and set the advertised API key env
-var. If it isn't in the catalog, KNOX cannot route to it — file an issue
+var. If it isn't in the catalog, KOMPEND cannot route to it — file an issue
 to get the provider added to models.dev upstream.

@@ -1,0 +1,203 @@
+"""VLM-based image caption enricher for KOMPEND Tier 3.
+
+Analyses IMAGE chunks and adds descriptive captions as entities. Each
+image is evaluated by the VLM for informativeness — logos, icons,
+decorative elements, and blank images are skipped automatically.
+All LLM calls go through the shared :class:`kompend.llm.LLMClient`.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from PIL import Image
+
+from kompend.agents.vlm import VlmAgent, VlmDeps
+from kompend.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
+from kompend.logging import get_logger
+from kompend.resolution.base import BaseResolver
+
+logger = get_logger(__name__)
+
+
+class VLMEnricher(BaseResolver):
+    """Enrich IMAGE chunks by producing textual captions via a VLM.
+
+    Routes the multimodal call through the shared LLM client so the
+    failover chain (Q12) and per-stage configuration (Q13) apply
+    consistently to vision models.
+
+    Implements :class:`BaseResolver` so it can participate in a
+    :class:`ResolverChain`. The :meth:`resolve` method wraps a bare
+    :class:`Chunk` into a :class:`ResolvedChunk` before enriching.
+    """
+
+    # VLM receives exactly: the image bytes + the textual context assembled
+    # by _build_context_hint (at most: section heading + original caption)
+    # + the instruction below. No other corpus context (sibling paragraphs,
+    # figure references, document overview) is passed — see kompend-q399.
+    _VLM_PROMPT_INSTRUCTION = (
+        "Describe this image in one sentence. If it is a logo, icon, decorative "
+        "element, background graphic, or contains no substantive information, "
+        "respond with just SKIP."
+    )
+
+    def __init__(
+        self,
+        agent: VlmAgent | None = None,
+        min_image_bytes: int = 2048,
+        min_image_dimension: int = 64,
+    ) -> None:
+        self._agent = agent
+        self._min_bytes = min_image_bytes
+        self._min_dim = min_image_dimension
+
+    def resolve(self, chunk: Chunk) -> ResolvedChunk:
+        """BaseResolver interface: wrap chunk then enrich."""
+        resolved = ResolvedChunk(chunk=chunk)
+        return self.enrich(resolved)
+
+    def enrich(self, resolved: ResolvedChunk) -> ResolvedChunk:  # noqa: PLR0911
+        """Add VLM-generated captions to IMAGE chunks. Never raises."""
+        if ElementType.IMAGE not in resolved.chunk.element_types:
+            return resolved
+
+        description = resolved.chunk.metadata.get(MetadataField.DESCRIPTION)
+        if description:
+            resolved.entities.append(
+                {
+                    "name": f"parser_caption_{resolved.chunk.id}",
+                    "type": "image_description",
+                    "context": str(description),
+                }
+            )
+            resolved.metadata["figure_enriched"] = True
+            return resolved
+
+        image_file = resolved.chunk.metadata.get(MetadataField.IMAGE_FILE) or resolved.metadata.get(MetadataField.IMAGE_FILE)
+
+        if not image_file:
+            logger.debug("No image_file in metadata for chunk %s — adding placeholder", resolved.chunk.id)
+            resolved.entities.append(
+                {
+                    "name": "vlm_placeholder",
+                    "type": "image_description",
+                    "context": "Image present — VLM caption not available (no image path)",
+                }
+            )
+            return resolved
+
+        context_hint = self._build_context_hint(resolved.chunk)
+
+        skip, reason = self._should_skip(image_file)
+        if skip:
+            logger.debug("VLM pre-filter skipping %s: %s", resolved.chunk.id, reason)
+            resolved.entities.append(
+                {
+                    "name": "vlm_filtered",
+                    "type": "image_description",
+                    "context": f"Image filtered (decorative/too small): {reason}",
+                }
+            )
+            resolved.metadata["vlm_filtered"] = True
+            return resolved
+
+        try:
+            caption = self._generate_caption(image_file, context_hint=context_hint)
+        except FileNotFoundError:
+            resolved.entities.append(
+                {
+                    "name": "vlm_error",
+                    "type": "image_description",
+                    "context": f"Image file not found: {image_file}",
+                }
+            )
+            return resolved
+        if caption is None:
+            resolved.entities.append(
+                {
+                    "name": "vlm_error",
+                    "type": "image_description",
+                    "context": "VLM caption generation failed",
+                }
+            )
+            return resolved
+
+        if caption.strip().upper().startswith("SKIP"):
+            resolved.entities.append(
+                {
+                    "name": "vlm_skipped",
+                    "type": "image_description",
+                    "context": caption,
+                }
+            )
+            resolved.metadata["vlm_skipped"] = True
+            return resolved
+        resolved.entities.append(
+            {
+                "name": f"vlm_caption_{resolved.chunk.id}",
+                "type": "image_description",
+                "context": caption,
+            }
+        )
+        resolved.metadata["vlm_enriched"] = True
+        return resolved
+
+    def _should_skip(self, image_file: str | Path) -> tuple[bool, str]:
+        """Cheap pre-filter: return (skip, reason) without calling the VLM.
+
+        Filters tiny/decorative images (logos, icons, spacers, bullets) via
+        file size and pixel dimensions. These are the bulk of extraction
+        noise and would otherwise each consume a slow VLM call.
+        """
+        p = Path(image_file)
+        if not p.is_file():
+            return True, "image file missing"
+        size = p.stat().st_size
+        if size < self._min_bytes:
+            return True, f"too small ({size} bytes < {self._min_bytes})"
+        try:
+            with Image.open(p) as img:
+                w, h = img.size
+        except Exception as exc:
+            logger.debug("Could not read dimensions for %s: %s — allowing VLM call", p, exc)
+            return False, ""
+        if w < self._min_dim or h < self._min_dim:
+            return True, f"too small ({w}×{h} < {self._min_dim}px)"
+        return False, ""
+
+    def _generate_caption(self, image_ref: str | Path, context_hint: str = "") -> str | None:
+        """Run the VLM on *image_ref* and return a text caption."""
+        if self._agent is None:
+            logger.debug("VLMEnricher has no agent — skipping caption for %s", image_ref)
+            return None
+
+        prompt = (f"[Context: {context_hint}] " if context_hint else "") + self._VLM_PROMPT_INSTRUCTION
+        deps = VlmDeps(prompt=prompt, image_file=str(image_ref), timeout=self._agent.timeout)
+        try:
+            return self._agent.run(deps)
+        except FileNotFoundError:
+            raise
+        except Exception as exc:
+            logger.warning("VLM caption failed for %s: %s", image_ref, exc)
+            return None
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _build_context_hint(chunk: Chunk) -> str:
+        """Assemble the textual context sent to the VLM alongside the image.
+
+        Returns ``"Section: <heading> | Caption: <caption>"`` with whichever
+        parts are present; ``""`` when neither is available.
+        """
+        parts: list[str] = []
+        heading = chunk.heading_context or ""
+        if heading:
+            parts.append(f"Section: {heading}")
+        caption = chunk.metadata.get("caption", "")
+        if caption:
+            parts.append(f"Caption: {caption}")
+        return " | ".join(parts)

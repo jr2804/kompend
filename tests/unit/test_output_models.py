@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.output.markdown import MarkdownWriter
-from knox.output.models import Document
-from knox.output.renderer import (
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.output.markdown import MarkdownWriter
+from kompend.output.models import Document
+from kompend.output.renderer import (
     DocumentRenderer,
     detect_flavor,
     render_frontmatter,

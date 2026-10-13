@@ -17,17 +17,17 @@ from typing import cast
 import pytest
 from pydantic_ai import RunContext
 
-from knox.agents.context_chunk_agentic import AgenticContextChunkAgent, make_agentic_context_chunk_agent
-from knox.agents.query_agentic import make_agentic_query_agent
-from knox.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
-from knox.agents.types import ContextChunkDeps, QueryAgentDeps
-from knox.chunking.contextual import ContextualEnricher
-from knox.compilation.query_tools import read_page, search_wiki
-from knox.core.config._configs import SearchConfig, SearchContextualConfig
-from knox.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
-from knox.core.pipeline.config import Compiler, EmbeddingConfig, LLMConfig, PipelineConfig
-from knox.core.pipeline.orchestrator import build_pipeline
-from knox.llm.context_window import ContextSource, ContextWindow
+from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent, make_agentic_context_chunk_agent
+from kompend.agents.query_agentic import make_agentic_query_agent
+from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
+from kompend.agents.types import ContextChunkDeps, QueryAgentDeps
+from kompend.chunking.contextual import ContextualEnricher
+from kompend.compilation.query_tools import read_page, search_wiki
+from kompend.core.config._configs import SearchConfig, SearchContextualConfig
+from kompend.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
+from kompend.core.pipeline.config import Compiler, EmbeddingConfig, LLMConfig, PipelineConfig
+from kompend.core.pipeline.orchestrator import build_pipeline
+from kompend.llm.context_window import ContextSource, ContextWindow
 from tests.conftest import make_tmp_vault
 
 # NOTE: system-prompt-tools == registered-tools is guarded centrally for every
@@ -84,7 +84,7 @@ class TestAgenticSummarizerAgentWiring:
         summary silently fell back to the extractive path (0iv2.6).
         """
         monkeypatch.setattr(
-            "knox.core.pipeline.stages._factory.discover_context_window",
+            "kompend.core.pipeline.stages._factory.discover_context_window",
             lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
         )
         config = PipelineConfig(
@@ -168,7 +168,7 @@ def test_build_pipeline_enricher_off_by_default(monkeypatch: pytest.MonkeyPatch)
     today's chunk-cache output is unchanged.
     """
     monkeypatch.setattr(
-        "knox.core.pipeline.stages._factory.discover_context_window",
+        "kompend.core.pipeline.stages._factory.discover_context_window",
         lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
     )
     config = PipelineConfig(
@@ -184,7 +184,7 @@ def test_build_pipeline_enricher_off_by_default(monkeypatch: pytest.MonkeyPatch)
 def test_build_pipeline_enricher_wired_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     """TASK-20: enabling the gate constructs a ContextualEnricher with an agent."""
     monkeypatch.setattr(
-        "knox.core.pipeline.stages._factory.discover_context_window",
+        "kompend.core.pipeline.stages._factory.discover_context_window",
         lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
     )
     config = PipelineConfig(

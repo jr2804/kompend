@@ -1,4 +1,4 @@
-"""Tests for KNOX Hybrid RAG — zvec vector store."""
+"""Tests for KOMPEND Hybrid RAG — zvec vector store."""
 
 import gc
 import shutil
@@ -7,8 +7,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore, make_provider, to_pydantic_ai_embedding_string
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore, make_provider, to_pydantic_ai_embedding_string
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)

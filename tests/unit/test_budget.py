@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from knox.core.models import WikiNode
-from knox.search.budget import ContextBudgetManager, RetrievalMode
+from kompend.core.models import WikiNode
+from kompend.search.budget import ContextBudgetManager, RetrievalMode
 
 
 class TestContextBudgetManager:

@@ -8,27 +8,27 @@ from unittest.mock import MagicMock, Mock
 
 import pytest
 
-from knox.agents.capture_models import CaptureOutput
-from knox.agents.deps import DistillDeps
-from knox.agents.distill import DistillAgent
-from knox.capture.capture import (
+from kompend.agents.capture_models import CaptureOutput
+from kompend.agents.deps import DistillDeps
+from kompend.agents.distill import DistillAgent
+from kompend.capture.capture import (
     _merge_tags,
     capture,
 )
-from knox.capture.consolidate import consolidate, find_duplicates
-from knox.capture.distill import (
+from kompend.capture.consolidate import consolidate, find_duplicates
+from kompend.capture.distill import (
     CapturedNote,
     _group_by_tag,
     _parse_frontmatter,
     distill,
 )
-from knox.capture.learn import learn
-from knox.cli.cmds.knowledge.capture import _build_references_section
-from knox.core.pipeline.ingest import extract_text_from_cached
-from knox.core.pipeline.parse_cache import write_document
-from knox.core.store import vault_db_path
-from knox.output.markdown import MarkdownWriter
-from knox.output.models import Document
+from kompend.capture.learn import learn
+from kompend.cli.cmds.knowledge.capture import _build_references_section
+from kompend.core.pipeline.ingest import extract_text_from_cached
+from kompend.core.pipeline.parse_cache import write_document
+from kompend.core.store import vault_db_path
+from kompend.output.markdown import MarkdownWriter
+from kompend.output.models import Document
 
 
 class TestParseFrontmatter:
@@ -208,7 +208,7 @@ class TestWriteCmd:
     def test_write_reads_cache_not_raw_bytes(self, tmp_path: Path) -> None:
         """When a parse-cache entry exists, write_cmd extracts clean text, not raw PDF bytes."""
         # Seed a parse-cache entry for a fake PDF into the store.
-        cache_dir = tmp_path / ".knox" / "cache"
+        cache_dir = tmp_path / ".kompend" / "cache"
         cache_dir.mkdir(parents=True)
         write_document(
             vault_db_path(cache_dir),
@@ -221,7 +221,7 @@ class TestWriteCmd:
         assert "%PDF" not in text
 
     def test_write_default_frontmatter(self, tmp_path: Path) -> None:
-        """Knox-rxod+zkfd: the write page carries kind, compiled_at, sources."""
+        """Kompend-rxod+zkfd: the write page carries kind, compiled_at, sources."""
         compiled_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         fm = {
             "title": "My Page",

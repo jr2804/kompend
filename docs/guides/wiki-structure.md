@@ -1,6 +1,6 @@
 # Wiki Structure
 
-Every compiled KNOX wiki comes with three auto-generated pages that serve as
+Every compiled KOMPEND wiki comes with three auto-generated pages that serve as
 the entry point, activity record, and thematic overview.
 
 ## index.md
@@ -121,7 +121,7 @@ project/
 │   ├── _captured/         # capture/learn output
 │   └── _distilled/        # distill output
 ├── attachments/           # Durable media — per-source attachments + images
-│                          # copied out of .knox for wiki page embeds;
+│                          # copied out of .kompend for wiki page embeds;
 │                          # each page embeds the figures of ITS sources
 ├── wiki/                  # Compiled wiki (default: wiki/, resolved from --wiki-dir)
 │   ├── index.md           # Portable catalog — links EVERYTHING the wiki generates
@@ -133,10 +133,10 @@ project/
 │   ├── concepts/…         # Concept/comparison pages, routed by kind
 │   ├── entities/…         # Entity pages (standards, orgs, products, people)
 │   └── *.md               # Root-level pages (overview, procedures, sections)
-├── exported/              # Full-source markdown exports — `knox sources export`
+├── exported/              # Full-source markdown exports — `kompend sources export`
 │                          # without OUTPUT lands here (on demand, reference only)
-└── .knox/                 # Derived state ONLY — never required to read the wiki
-    ├── knox.db            # Single non-vector store (tier state, caches, assets,
+└── .kompend/                 # Derived state ONLY — never required to read the wiki
+    ├── kompend.db            # Single non-vector store (tier state, caches, assets,
     │                      #   references, verification, memory, attachments, …)
     ├── cache/             # Extracted images + normalized copies (regenerable)
     ├── vectors/           # Vector store sidecar (if compile.index on — default)
@@ -145,18 +145,18 @@ project/
 
 ### Markdown-only invariant
 
-**The wiki is complete in its generated pages; `.knox/` is derived state.**
+**The wiki is complete in its generated pages; `.kompend/` is derived state.**
 
 Every fact an LLM needs is reachable by following markdown links from
 `wiki/index.md` (concepts, references, summaries, quality). Deleting
-`.knox/` loses only accelerators — the wiki still reads, renders, and
+`.kompend/` loses only accelerators — the wiki still reads, renders, and
 answers queries:
 
-- `knox query` / `wiki_query` (MCP) build the wiki from the generated
-  `wiki/*.md` files; no `.knox/` state is required.
+- `kompend query` / `wiki_query` (MCP) build the wiki from the generated
+  `wiki/*.md` files; no `.kompend/` state is required.
 - Without the optional vector sidecar, query falls back to keyword search
   over the same pages — same corpus, lower recall on paraphrase.
-- Wiki pages never reference `.knox/` (a structural lint rule enforces
+- Wiki pages never reference `.kompend/` (a structural lint rule enforces
   this); embedded images are copied into `attachments/<source-slug>/` at write
   time. A page embeds the figures of the sources its provenance names; the
   slug is derived from the image's own source, and an image that matches no
@@ -164,7 +164,7 @@ answers queries:
   any more are reported by the `unreferenced-attachments` rule and removed
   with `--fix-destructive`.
 
-`exported/` holds on-demand full-source dumps (`knox sources export`,
+`exported/` holds on-demand full-source dumps (`kompend sources export`,
 default target when OUTPUT is omitted). They are reference material,
 linked from the per-source summary page — never part of the compiled wiki.
 
@@ -184,7 +184,7 @@ land:
 Crossing the two would break the pipeline contract: a captured note in
 `wiki/` would never be compiled (`compile` scans `sources/`, not `wiki/`),
 and a written page in `sources/` would be pointlessly re-processed through
-parse → chunk → resolve → compile on every run. `knox organize` treats
+parse → chunk → resolve → compile on every run. `kompend organize` treats
 `_captured/` and `_distilled/` as protected tool-managed zones — it never
 flattens or relocates them.
 

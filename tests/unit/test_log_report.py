@@ -1,4 +1,4 @@
-"""Unit tests for the on-demand pipeline log report (``knox log``)."""
+"""Unit tests for the on-demand pipeline log report (``kompend log``)."""
 
 # ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
 
@@ -7,18 +7,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from knox.core.reporting.log import build_log_report
-from knox.core.store import open_store
-from knox.core.store.schema import LINT_RUNS_TABLE, RUNS_TABLE
+from kompend.core.reporting.log import build_log_report
+from kompend.core.store import open_store
+from kompend.core.store.schema import LINT_RUNS_TABLE, RUNS_TABLE
 
 
 class TestBuildLogReport:
     def test_empty_vault_returns_placeholder(self, tmp_path: Path) -> None:
         report = build_log_report(tmp_path, last_n=5)
-        assert "No compile" in report or "KNOX Log" in report
+        assert "No compile" in report or "KOMPEND Log" in report
 
     def test_runs_timeline_shows_completed_and_flags_dangling(self, tmp_path: Path) -> None:
-        state_dir = tmp_path / ".knox"
+        state_dir = tmp_path / ".kompend"
         _write_runs(
             state_dir,
             _make_run("aaa", "compile", status="ok")
@@ -33,7 +33,7 @@ class TestBuildLogReport:
         assert "never finished" in report
 
     def test_lint_trend_rendered(self, tmp_path: Path) -> None:
-        state_dir = tmp_path / ".knox"
+        state_dir = tmp_path / ".kompend"
         _write_lint(
             state_dir,
             [
@@ -48,7 +48,7 @@ class TestBuildLogReport:
 
 
 def _write_runs(state_dir: Path, events: list[dict]) -> None:
-    with open_store(state_dir / "knox.db") as conn:
+    with open_store(state_dir / "kompend.db") as conn:
         for ev in events:
             conn.execute(
                 f"INSERT INTO {RUNS_TABLE} (event, run_id, cmd, ts, status, duration_s, exit, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",  # noqa: S608
@@ -57,7 +57,7 @@ def _write_runs(state_dir: Path, events: list[dict]) -> None:
 
 
 def _write_lint(state_dir: Path, entries: list[dict]) -> None:
-    with open_store(state_dir / "knox.db") as conn:
+    with open_store(state_dir / "kompend.db") as conn:
         for e in entries:
             conn.execute(
                 f"INSERT INTO {LINT_RUNS_TABLE} (timestamp, duration_seconds, options, llm, config_snapshot, wiki_meta, report) VALUES (?, ?, ?, ?, ?, ?, ?)",  # noqa: S608

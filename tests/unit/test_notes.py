@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.config._core import resolve_config
-from knox.core.env import EnvVar
-from knox.core.pipeline.config import EmbeddingConfig, LLMConfig, PipelineConfig, Tier
-from knox.core.pipeline.orchestrator import WikiPipeline
-from knox.core.templates import TemplateLoader
+from kompend.core.config._core import resolve_config
+from kompend.core.env import EnvVar
+from kompend.core.pipeline.config import EmbeddingConfig, LLMConfig, PipelineConfig, Tier
+from kompend.core.pipeline.orchestrator import WikiPipeline
+from kompend.core.templates import TemplateLoader
 
 # ── Config key ──────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ class TestNotesConfig:
     def test_project_config_override(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
-        (tmp_path / "knox.toml").write_text('[notes]\nfile = "MY_NOTES.md"\n', encoding="utf-8")
+        (tmp_path / "kompend.toml").write_text('[notes]\nfile = "MY_NOTES.md"\n', encoding="utf-8")
         cfg = resolve_config()
         assert cfg.get("notes.file") == "MY_NOTES.md"
 
@@ -63,7 +63,7 @@ class TestNotesFileResolution:
     def test_notes_file_none_when_disabled(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
-        (tmp_path / "knox.toml").write_text('[notes]\nfile = ""\n', encoding="utf-8")
+        (tmp_path / "kompend.toml").write_text('[notes]\nfile = ""\n', encoding="utf-8")
         cfg = resolve_config(cli_overrides={"paths.wiki_dir": tmp_path})
         pc = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki")
         assert pc.notes_file is None
@@ -78,7 +78,7 @@ class TestNotesFileResolution:
 
     @pytest.fixture(autouse=True)
     def _set_default_model(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("KNOX_LLM_DEFAULT_MODEL", "test-model")
+        monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
 
 
 # ── TemplateLoader global context ───────────────────────────────────────
@@ -178,7 +178,7 @@ class TestExtractionCategoriesWiring:
         monkeypatch.chdir(tmp_path)
         monkeypatch.delenv(EnvVar.NOTES_FILE, raising=False)
         monkeypatch.setenv(EnvVar.LLM_DEFAULT_MODEL, "openai/gpt-4o")
-        (tmp_path / "knox.toml").write_text(
+        (tmp_path / "kompend.toml").write_text(
             '[compile.extraction.categories]\nprocedure = "how-to pages"\n',
             encoding="utf-8",
         )
@@ -197,7 +197,7 @@ class TestExtractionCategoriesWiring:
 
 def _make_project_templates(tmp_path: Path, templates: dict[str, str]) -> Path:
     """Create template files in the correct project structure."""
-    tpl_dir = tmp_path / "knox" / "templates"
+    tpl_dir = tmp_path / "kompend" / "templates"
     tpl_dir.mkdir(parents=True, exist_ok=True)
     for name, content in templates.items():
         (tpl_dir / name).write_text(content, encoding="utf-8")

@@ -1,4 +1,4 @@
-"""Unit tests for the single ``.knox/knox.db`` store foundation."""
+"""Unit tests for the single ``.kompend/kompend.db`` store foundation."""
 
 # ruff: noqa: S608 — test SQL is built from Final[str] table-name constants only.
 
@@ -10,9 +10,9 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.paths import VaultPaths
-from knox.core.store import SCHEMA_VERSION, TABLE_NAMES, connect, obsolete_artifacts, open_store
-from knox.core.store.schema import (
+from kompend.core.paths import VaultPaths
+from kompend.core.store import SCHEMA_VERSION, TABLE_NAMES, connect, obsolete_artifacts, open_store
+from kompend.core.store.schema import (
     BLOBS_TABLE,
     MEMORY_LOG_FTS_TABLE,
     MEMORY_LOG_TABLE,
@@ -168,7 +168,7 @@ def test_shared_connection_across_threads(tmp_path: Path) -> None:
 
 def test_obsolete_artifacts_finds_legacy_and_ignores_kept(tmp_path: Path) -> None:
     vault = VaultPaths(tmp_path)
-    vault.knox_dir.mkdir(parents=True)
+    vault.kompend_dir.mkdir(parents=True)
     vault.dedup_dir.mkdir(parents=True)
     vault.cache_dir.mkdir(parents=True)
     vault.vectors_dir.mkdir(parents=True)
@@ -196,9 +196,9 @@ def test_obsolete_artifacts_finds_legacy_and_ignores_kept(tmp_path: Path) -> Non
     vault.provenance_dir.mkdir(parents=True, exist_ok=True)
 
     # Things that must NOT be reported.
-    vault.knox_db_file.write_text("", encoding="utf-8")
+    vault.kompend_db_file.write_text("", encoding="utf-8")
     vault.config_file.write_text("", encoding="utf-8")
-    (vault.knox_dir / "rumdl.toml").write_text("", encoding="utf-8")
+    (vault.kompend_dir / "rumdl.toml").write_text("", encoding="utf-8")
     vault.memory_db_file.mkdir(parents=True, exist_ok=True)
 
     found = obsolete_artifacts(tmp_path)
@@ -209,7 +209,7 @@ def test_obsolete_artifacts_finds_legacy_and_ignores_kept(tmp_path: Path) -> Non
     assert vault.dedup_dir in found
     assert vault.cache_dir in found
     assert vault.provenance_dir in found
-    assert "knox.db" not in found_set
+    assert "kompend.db" not in found_set
     assert "config.toml" not in found_set
     assert "rumdl.toml" not in found_set
     assert "vectors" not in found_set
@@ -228,4 +228,4 @@ def test_schema_is_usable_without_fk_violations(tmp_path: Path) -> None:
 
 
 def _db_path(tmp_path: Path) -> Path:
-    return VaultPaths(tmp_path).knox_db_file
+    return VaultPaths(tmp_path).kompend_db_file

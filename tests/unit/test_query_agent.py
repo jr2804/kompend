@@ -11,8 +11,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from knox.agents.deps import QueryDeps
-from knox.agents.query import QueryAgent
+from kompend.agents.deps import QueryDeps
+from kompend.agents.query import QueryAgent
 
 
 class TestQueryAgentConstruction:

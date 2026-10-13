@@ -3,7 +3,7 @@
 
 # WiCER Loop
 
-WiCER (Wiki Iterative Compile-Evaluate-Refine) is KNOX's self-correcting
+WiCER (Wiki Iterative Compile-Evaluate-Refine) is KOMPEND's self-correcting
 compilation loop. Inspired by [arXiv:2605.07068v1](https://arxiv.org/pdf/2605.07068v1),
 it recovers quality lost during blind compilation through targeted diagnosis
 and refinement.
@@ -74,7 +74,7 @@ repeats until convergence (all probes score ≥ 3) or max iterations (default: 3
 
 ## Implementation
 
-The WiCER compiler lives in `src/knox/compilation/wicer.py`:
+The WiCER compiler lives in `src/kompend/compilation/wicer.py`:
 
 | Component | Method | Purpose |
 |-----------|--------|---------|
@@ -90,7 +90,7 @@ preservation constraint (see `compilation/generation_prompt.md.j2`).
 This matches Algorithm 1 of the paper: once a fact is pinned, the next
 compilation cannot lose it.
 
-`build_pipeline` (in `src/knox/core/pipeline.py`) wires WiCER's base
+`build_pipeline` (in `src/kompend/core/pipeline.py`) wires WiCER's base
 compiler to a `TwoPhaseCompiler` (extract → generate with provenance).
 The `GraphCompiler` is blind and produces raw heading-grouped chunk
 dumps; it cannot honor `pinned_facts` and is used only as the inner

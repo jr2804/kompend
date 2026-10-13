@@ -1,7 +1,7 @@
 ---
 ---
 
-# KNOX
+# KOMPEND
 
 ## Knowledge Organizer for eXtended documents
 
@@ -9,7 +9,7 @@ A compiled LLM-wiki system for scientific and technical documents.
 Parse, chunk, resolve, and compile PDFs, DOCX, spreadsheets, and
 web sources into an interlinked, queryable knowledge base.
 
-Unlike most tools in this space, KNOX is provider-agnostic, adapts
+Unlike most tools in this space, KOMPEND is provider-agnostic, adapts
 to whatever LLM you have — from a local 8B model to a frontier API —
 and uses structure-preserving parsing so technical content (tables,
 equations, figures) survives extraction intact. [Read why →](about/motivation.md)
@@ -18,7 +18,7 @@ equations, figures) survives extraction intact. [Read why →](about/motivation.
 
 ## 5-Tier Pipeline
 
-KNOX follows a parser-agnostic, structure-preserving pipeline:
+KOMPEND follows a parser-agnostic, structure-preserving pipeline:
 
 ``` mermaid
 graph LR
@@ -32,13 +32,13 @@ graph LR
 
 ```bash
 # Initialize a project
-knox init ./my-wiki && cd ./my-wiki
+kompend init ./my-wiki && cd ./my-wiki
 
 # Compile documents into a wiki
-knox compile *.pdf
+kompend compile *.pdf
 
 # Query the compiled wiki
-knox query "what is the main result?"
+kompend query "what is the main result?"
 ```
 
 ### Key Features
@@ -61,12 +61,12 @@ knox query "what is the main result?"
 
 ### Getting Started
 
-- [Motivation](about/motivation.md) — Why KNOX exists and what makes it different
+- [Motivation](about/motivation.md) — Why KOMPEND exists and what makes it different
 - [Getting Started](guides/cli.md) — CLI setup, compile/query examples
 - [Input Pipeline](guides/input-pipeline.md) — capture/learn/distill/consolidate: turning notes into wiki sources
-- [Initialization](guides/initialization.md) — `knox init` project scaffolding
-- [Configuration](guides/configuration.md) — 5-layer config system, `knox config` subcommands
-- [Basic Principles](concepts/basic-principles.md) — What KNOX does and why
+- [Initialization](guides/initialization.md) — `kompend init` project scaffolding
+- [Configuration](guides/configuration.md) — 5-layer config system, `kompend config` subcommands
+- [Basic Principles](concepts/basic-principles.md) — What KOMPEND does and why
 - [Document Extraction](guides/document-extraction.md) — Supported formats, parser selection, framework decisions
 
 ### Pipeline & Architecture
@@ -75,7 +75,7 @@ knox query "what is the main result?"
 - [Pipeline Tiers](concepts/pipeline-tiers.md) — Per-tier component reference
 - [Decision Log](architecture/decisions.md) — Architectural decisions and rationale
 - [Caching](reference/caching.md) — Multi-level content-addressed caching
-- [Cache Layout](architecture/cache.md) — `.knox/` directory layout
+- [Cache Layout](architecture/cache.md) — `.kompend/` directory layout
 - [Output Architecture](architecture/output.md) — Output writers, renderer, flavor system
 
 ### Compilation & Output
@@ -110,7 +110,7 @@ knox query "what is the main result?"
 
 - [MCP Server](architecture/index.md#4-agent-native) — Agent integration via MCP
 - [ACP Agent](integrations/acp-agent.md) — Editor integration via Agent Client Protocol
-- [Open-WebUI](integrations/open-webui.md) — Connecting KNOX with Open-WebUI
+- [Open-WebUI](integrations/open-webui.md) — Connecting KOMPEND with Open-WebUI
 - [Ecosystem](reference/ecosystem.md) — LLM-wiki tool survey
 
 ### Project & Community

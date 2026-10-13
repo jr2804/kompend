@@ -1,6 +1,6 @@
-"""Unit tests for the ``knox index`` CLI command.
+"""Unit tests for the ``kompend index`` CLI command.
 
-``knox index`` is a recovery command that rebuilds the zvec vector index
+``kompend index`` is a recovery command that rebuilds the zvec vector index
 from the compiled-wiki snapshot in the vault store. These tests mock the wiki
 loader and the index builder so no real embedding provider is required.
 """
@@ -13,22 +13,22 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from knox.cli.app import app
-from knox.core.models import CompiledWiki, WikiNode
+from kompend.cli.app import app
+from kompend.core.models import CompiledWiki, WikiNode
 
 runner = CliRunner()
 
 
 def test_index_rebuilds_vector_index(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Knox index loads cached wiki and rebuilds the vector index."""
+    """Kompend index loads cached wiki and rebuilds the vector index."""
     base = _setup_vault(tmp_path)
     monkeypatch.chdir(base)
 
     wiki = _make_wiki()
     with (
-        patch("knox.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=wiki) as mock_load,
-        patch("knox.cli.cmds.pipeline.pipeline.build_vector_index", return_value=1) as mock_build,
-        patch("knox.cli.cmds.pipeline.pipeline.write_wiki_cache") as mock_write,
+        patch("kompend.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=wiki) as mock_load,
+        patch("kompend.cli.cmds.pipeline.pipeline.build_vector_index", return_value=1) as mock_build,
+        patch("kompend.cli.cmds.pipeline.pipeline.write_wiki_cache") as mock_write,
     ):
         result = runner.invoke(app, ["index"])
 
@@ -48,11 +48,11 @@ def test_index_rebuilds_vector_index(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
 
 def test_index_no_wiki_exits_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Knox index errors when no compiled wiki is cached."""
+    """Kompend index errors when no compiled wiki is cached."""
     base = _setup_vault(tmp_path)
     monkeypatch.chdir(base)
 
-    with patch("knox.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=None):
+    with patch("kompend.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=None):
         result = runner.invoke(app, ["index"])
 
     assert result.exit_code == 1
@@ -68,8 +68,8 @@ def test_index_respects_embed_attachments_config(tmp_path: Path, monkeypatch: py
     """
     base = tmp_path / "wiki"
     (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text(
+    (base / ".kompend").mkdir(parents=True)
+    (base / ".kompend" / "config.toml").write_text(
         '[compile.embedding]\nmodel = "test-embed"\n[search]\nembed_attachments = true\n',
         encoding="utf-8",
     )
@@ -77,9 +77,9 @@ def test_index_respects_embed_attachments_config(tmp_path: Path, monkeypatch: py
 
     wiki = _make_wiki()
     with (
-        patch("knox.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=wiki),
-        patch("knox.cli.cmds.pipeline.pipeline.build_vector_index", return_value=5) as mock_build,
-        patch("knox.cli.cmds.pipeline.pipeline.write_wiki_cache"),
+        patch("kompend.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=wiki),
+        patch("kompend.cli.cmds.pipeline.pipeline.build_vector_index", return_value=5) as mock_build,
+        patch("kompend.cli.cmds.pipeline.pipeline.write_wiki_cache"),
     ):
         result = runner.invoke(app, ["index"])
 
@@ -88,7 +88,7 @@ def test_index_respects_embed_attachments_config(tmp_path: Path, monkeypatch: py
 
 
 def test_index_no_embedding_model_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Knox index errors when load_cached_wiki returns None (no wiki to index)."""
+    """Kompend index errors when load_cached_wiki returns None (no wiki to index)."""
     # The "no embedding model" guard is reachable only when config returns an
     # empty string for compile.embedding.model, which is now the default.
     # The primary error path is missing-wiki, covered above. This test instead
@@ -98,9 +98,9 @@ def test_index_no_embedding_model_errors(tmp_path: Path, monkeypatch: pytest.Mon
 
     wiki = _make_wiki()
     with (
-        patch("knox.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=wiki),
-        patch("knox.cli.cmds.pipeline.pipeline.build_vector_index", return_value=1) as mock_build,
-        patch("knox.cli.cmds.pipeline.pipeline.write_wiki_cache"),
+        patch("kompend.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=wiki),
+        patch("kompend.cli.cmds.pipeline.pipeline.build_vector_index", return_value=1) as mock_build,
+        patch("kompend.cli.cmds.pipeline.pipeline.write_wiki_cache"),
     ):
         result = runner.invoke(app, ["index", "--embed-model", "custom/model"])
 
@@ -117,6 +117,6 @@ def _setup_vault(tmp_path: Path) -> Path:
     """Create a minimal vault structure with a config and cached wiki marker."""
     base = tmp_path / "wiki"
     (base / "sources").mkdir(parents=True)
-    (base / ".knox").mkdir(parents=True)
-    (base / ".knox" / "config.toml").write_text('[compile.embedding]\nmodel = "test-embed"\n', encoding="utf-8")
+    (base / ".kompend").mkdir(parents=True)
+    (base / ".kompend" / "config.toml").write_text('[compile.embedding]\nmodel = "test-embed"\n', encoding="utf-8")
     return base

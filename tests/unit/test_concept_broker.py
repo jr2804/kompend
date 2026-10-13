@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from knox.compilation.concept_broker import ConceptBroker
-from knox.compilation.flows.generation import _format_uncovered_concepts
+from kompend.compilation.concept_broker import ConceptBroker
+from kompend.compilation.flows.generation import _format_uncovered_concepts
 
 
 def test_remaining_concepts_tracks_unassigned() -> None:

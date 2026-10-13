@@ -18,8 +18,8 @@ from typing import TypedDict
 
 import pytest
 
-from knox.core.models import CompiledWiki, WikiNode, load_wiki_from_files
-from knox.rag.zvec_store import (
+from kompend.core.models import CompiledWiki, WikiNode, load_wiki_from_files
+from kompend.rag.zvec_store import (
     _EMBED_TEXT_VERSION,
     ZvecWikiStore,
     _content_hash,
@@ -130,8 +130,8 @@ class TestManifestStaleness:
     def test_legacy_json_sidecar_is_ignored(self, zvec_db: Path) -> None:
         """A pre-migration vault's loose JSON manifest is never read.
 
-        Policy: ``knox.db`` holds all non-vector state. A ``vectors.manifest.json``
-        left by an older KNOX is dead weight (reported by ``knox doctor``) and
+        Policy: ``kompend.db`` holds all non-vector state. A ``vectors.manifest.json``
+        left by an older KOMPEND is dead weight (reported by ``kompend doctor``) and
         its store is rebuilt rather than trusted.
         """
         store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
@@ -236,7 +236,7 @@ def zvec_db(tmp_path: Path) -> Path:
 
 
 def _manifest_row(store: ZvecWikiStore) -> _ManifestRow:
-    """The vector manifest recorded by the last build (knox.db row)."""
+    """The vector manifest recorded by the last build (kompend.db row)."""
     with sqlite3.connect(store._manifest_db_path()) as conn:
         row = conn.execute("SELECT embed_version, ids, content_hashes FROM vector_manifest WHERE id = 1").fetchone()
     assert row is not None, "a build must record the vector manifest"

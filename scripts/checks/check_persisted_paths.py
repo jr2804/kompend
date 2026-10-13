@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-r"""Runtime scanner for absolute paths persisted in ``.knox/`` artifacts.
+r"""Runtime scanner for absolute paths persisted in ``.kompend/`` artifacts.
 
-Enforces Antipattern 6 from ``src/knox/AGENTS.md``: no absolute filesystem
-path may be stored in any artifact under the vault's ``.knox/`` folder.
+Enforces Antipattern 6 from ``src/kompend/AGENTS.md``: no absolute filesystem
+path may be stored in any artifact under the vault's ``.kompend/`` folder.
 Paths must be relative to the vault ``base_dir`` and POSIX-normalized so
 the vault stays relocatable.
 
-This scanner walks ``.knox/`` after a compile and reads every JSON/JSONL
+This scanner walks ``.kompend/`` after a compile and reads every JSON/JSONL
 file, flagging any string value that looks like an absolute path:
 
 - POSIX absolute: ``/home/user/...``
@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         "--vault",
         type=Path,
         default=None,
-        help="Vault directory (parent of .knox/). Defaults to cwd.",
+        help="Vault directory (parent of .kompend/). Defaults to cwd.",
     )
     parser.add_argument(
         "--json",
@@ -95,25 +95,25 @@ def main(argv: list[str] | None = None) -> int:
             print(violation.render())
 
     if violations:
-        print(f"\n{len(violations)} absolute-path leak(s) found in {vault}/.knox", file=sys.stderr)
+        print(f"\n{len(violations)} absolute-path leak(s) found in {vault}/.kompend", file=sys.stderr)
         return 1
     return 0
 
 
 def scan_vault(vault_dir: Path) -> list[Violation]:
-    """Scan *vault_dir*/.knox and return all absolute-path violations."""
-    knox_dir = vault_dir / ".knox"
-    if not knox_dir.is_dir():
+    """Scan *vault_dir*/.kompend and return all absolute-path violations."""
+    kompend_dir = vault_dir / ".kompend"
+    if not kompend_dir.is_dir():
         return []
     acc = _ScanAccumulator()
-    for artifact in _iter_artifacts(knox_dir):
+    for artifact in _iter_artifacts(kompend_dir):
         _scan_file(artifact, vault_dir, acc)
     return acc.violations
 
 
-def _iter_artifacts(knox_dir: Path) -> Iterator[Path]:
-    """Yield JSON/JSONL files under *knox_dir*, skipping binaries."""
-    for path in sorted(knox_dir.rglob("*")):
+def _iter_artifacts(kompend_dir: Path) -> Iterator[Path]:
+    """Yield JSON/JSONL files under *kompend_dir*, skipping binaries."""
+    for path in sorted(kompend_dir.rglob("*")):
         if not path.is_file():
             continue
         suffix = path.suffix.lower()
@@ -168,9 +168,9 @@ def _looks_absolute(value: str) -> bool:
 
 
 def _default_vault() -> Path:
-    """Best-effort default vault: cwd if it contains a .knox folder."""
+    """Best-effort default vault: cwd if it contains a .kompend folder."""
     cwd = Path.cwd()
-    return cwd if (cwd / ".knox").is_dir() else cwd
+    return cwd if (cwd / ".kompend").is_dir() else cwd
 
 
 if __name__ == "__main__":

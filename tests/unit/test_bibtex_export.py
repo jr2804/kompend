@@ -1,6 +1,6 @@
 """Tests for BibTeX export (Phase 4).
 
-Covers ``knox.output.bibtex``:
+Covers ``kompend.output.bibtex``:
 - ``reference_to_bibtex_entry`` — single entry formatting
 - ``references_to_bibtex`` — multi-entry document
 - CSL type → BibTeX entry-type mapping
@@ -10,8 +10,8 @@ Covers ``knox.output.bibtex``:
 
 from __future__ import annotations
 
-from knox.core.models.references import Author, Reference
-from knox.output.bibtex import reference_to_bibtex_entry, references_to_bibtex
+from kompend.core.models.references import Author, Reference
+from kompend.output.bibtex import reference_to_bibtex_entry, references_to_bibtex
 
 # ---------------------------------------------------------------------------
 # reference_to_bibtex_entry

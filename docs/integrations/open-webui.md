@@ -1,6 +1,6 @@
-# Connecting KNOX with Open-WebUI
+# Connecting KOMPEND with Open-WebUI
 
-KNOX has no custom GUI. It exposes a compiled knowledge base as machine-readable
+KOMPEND has no custom GUI. It exposes a compiled knowledge base as machine-readable
 files (JSON graph, markdown, Typst) and an MCP server for agent integration.
 Open-WebUI can consume both.
 
@@ -9,8 +9,8 @@ Open-WebUI can consume both.
 ### 1. Compile a wiki with vector index
 
 ```bash
-knox config set compile.output.format json
-knox compile ./sources
+kompend config set compile.output.format json
+kompend compile ./sources
 ```
 
 This produces:
@@ -29,10 +29,10 @@ Open-WebUI can ingest the compiled wiki as a knowledge source:
 
 ### 3. Use the MCP server
 
-KNOX ships with an MCP server that exposes `wiki_parse` and `wiki_compile` tools:
+KOMPEND ships with an MCP server that exposes `wiki_parse` and `wiki_compile` tools:
 
 ```bash
-knox compile ./sources --url https://example.com/doc.pdf
+kompend compile ./sources --url https://example.com/doc.pdf
 ```
 
 In Open-WebUI, configure an MCP connection:
@@ -40,8 +40,8 @@ In Open-WebUI, configure an MCP connection:
 ```json
 {
   "mcpServers": {
-    "knox": {
-      "command": "knox",
+    "kompend": {
+      "command": "kompend",
       "args": ["mcp"]
     }
   }
@@ -52,17 +52,17 @@ In Open-WebUI, configure an MCP connection:
 
 ```bash
 # Search compiled wiki with vector store
-knox query "performance"
+kompend query "performance"
 
 # Or search directly the JSON graph
 cat ./wiki/wiki.json | jq '.nodes[] | select(.title | test("performance"))'
 ```
 
-## Why Open-WebUI + KNOX?
+## Why Open-WebUI + KOMPEND?
 
 | Approach | When to use |
 |----------|-------------|
-| Direct CLI (`knox compile`, `knox query`) | Batch processing, cron jobs, scripts |
+| Direct CLI (`kompend compile`, `kompend query`) | Batch processing, cron jobs, scripts |
 | MCP server | Agent integration (Hermes, Claude Code, etc.) |
 | Open-WebUI + JSON graph | Chat interface with RAG over the compiled wiki |
 | zvec vector store | Semantic search without an external vector DB |
@@ -73,9 +73,9 @@ cat ./wiki/wiki.json | jq '.nodes[] | select(.title | test("performance"))'
 It stores vectors directly on disk — no server, no Docker, no API keys.
 
 ```python
-from knox.rag.zvec_store import ZvecWikiStore
+from kompend.rag.zvec_store import ZvecWikiStore
 
-store = ZvecWikiStore("./.knox/vectors")
+store = ZvecWikiStore("./.kompend/vectors")
 results = store.search("performance requirements", top_k=5)
 for r in results:
     print(f"[{r['score']:.2f}] {r['title']}: {r.get('content_preview')[:100]}")

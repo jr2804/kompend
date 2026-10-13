@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from knox.core.text.matching import (
+from kompend.core.text.matching import (
     DEFAULT_SIMILARITY_THRESHOLD,
     SemanticMatcher,
     best_match,

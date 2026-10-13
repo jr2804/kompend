@@ -29,17 +29,17 @@ from re-litigating settled questions.
 
 ---
 
-## Project-specific History — KNOX
+## Project-specific History — KOMPEND
 
 ### Archived plans — full detail in `.agents/history/`
 
 | Archived | Slug | What landed |
 | -------- | ---- | ----------- |
-| 2026-09-16 | `context-window-provider-overrides` | `[providers.<name>].context_window` now beats auto-discovery (step 1 of `discover_context_window`); `knox doctor` stops reporting override-only blocks of *known* providers as `missing base_url` while still erroring on unknown ids |
-| 2026-09-24 | `knox-0iv2-audit` | Read-only audit resolving a tracker-vs-code contradiction from the code; the reusable part is the method — dynamic-access sweep plus `git log -S "<Class>"` |
-| 2026-09-24 | `knox-storage-migration` | `.knox/` consolidated into one SQLite file (`core/store/`); clean cut, no migration code — `61147c5f`, `f6aee4c0`, `8aaf2eca` |
-| 2026-08-22 | `markdown-only-vault` | The wiki is represented by its generated markdown alone; `.knox/` is purely derived — `5d493119`, `51ea1111` |
-| 2026-08-16 | `source-export-md`, `category-extraction`, `rumdl-format-wiring` | `knox sources export` from the parse cache; configurable extraction categories; rumdl wiring for every markdown writer |
+| 2026-09-16 | `context-window-provider-overrides` | `[providers.<name>].context_window` now beats auto-discovery (step 1 of `discover_context_window`); `kompend doctor` stops reporting override-only blocks of *known* providers as `missing base_url` while still erroring on unknown ids |
+| 2026-09-24 | `kompend-0iv2-audit` | Read-only audit resolving a tracker-vs-code contradiction from the code; the reusable part is the method — dynamic-access sweep plus `git log -S "<Class>"` |
+| 2026-09-24 | `kompend-storage-migration` | `.kompend/` consolidated into one SQLite file (`core/store/`); clean cut, no migration code — `61147c5f`, `f6aee4c0`, `8aaf2eca` |
+| 2026-08-22 | `markdown-only-vault` | The wiki is represented by its generated markdown alone; `.kompend/` is purely derived — `5d493119`, `51ea1111` |
+| 2026-08-16 | `source-export-md`, `category-extraction`, `rumdl-format-wiring` | `kompend sources export` from the parse cache; configurable extraction categories; rumdl wiring for every markdown writer |
 | 2026-08-15 | `env-any-refactor`, `rlm-integration` | Typed config access replacing `Any`; the optional RLM code-exploration capability |
 | 2026-08-14 | `migration-plan`, `refactoring-plan` | `summarization-pydantic-ai` context management (`edb4d49`); super-module splits into `stages/`, `engine/`, `tools/`, `flows/`, `pages/` |
 
@@ -57,7 +57,7 @@ around a unified `build_model()` path. Removed.
 
 ### Why heavy imports are lazy-loaded (SPEC-0001)
 
-`knox --help` took ~80s because `register_all_commands()` imported every command
+`kompend --help` took ~80s because `register_all_commands()` imported every command
 module, each transitively pulling docling/torch/pydantic-ai/MCP. `lazy.attach()`
 in five package `__init__.py` files, plus the `get_backend()` factory for
 function-body-only classes, took it to 11s (−86%). No `_LAZY` dicts, no
@@ -74,17 +74,17 @@ dimension differs from the current model's.
 
 ### Why `_ENV_LIST_VARS` is schema-derived
 
-The hand-listed `KNOX_*` names drifted from the schema (splitting a `str` field
+The hand-listed `KOMP_*` names drifted from the schema (splitting a `str` field
 into a list, listing a dead var). It now derives from list-typed config-map
-fields. Separately, `KNOX_CHARS_PER_TOKEN` was a dead env var — the real alias is
-`KNOX_LLM_DEFAULT_CHARS_PER_TOKEN` and the value already flows via
+fields. Separately, `KOMP_CHARS_PER_TOKEN` was a dead env var — the real alias is
+`KOMP_LLM_DEFAULT_CHARS_PER_TOKEN` and the value already flows via
 `default_chars_per_token`.
 
 ### Lint remediation collapsed to page generation (2026-08-14)
 
 Three overlapping tiers became one: LLM-generate missing concept pages from
 cached extractions. Image-embed fixing moved into `run --fix` as the
-`image-embed` structural rule; recommendations live only in `knox lint gaps`;
+`image-embed` structural rule; recommendations live only in `kompend lint gaps`;
 `RemediationAction.tier` was removed. Same change added the `rumdl` structural
 rule (`rumdl check` JSON over the vault's markdown, sources never touched, files
 passed explicitly to bypass rumdl's ignore filtering).

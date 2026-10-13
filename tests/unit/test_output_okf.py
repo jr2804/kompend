@@ -8,15 +8,15 @@ from pathlib import Path
 import pytest
 import yaml
 
-from knox.core.models import CompiledWiki, GraphEdge, MetadataField, WikiNode
-from knox.core.models.assets import AssetRecord
-from knox.core.models.enums import AssetKind
-from knox.core.models.structured import StructuredFigure, StructuredTable
-from knox.core.pipeline.assets import AssetStore
-from knox.output.base import BaseOutputWriter
-from knox.output.markdown import MarkdownWriter as OkfWriter
-from knox.output.markdown import convert_wikilinks, rewrite_citations_to_footnotes
-from knox.output.models import OkfSource
+from kompend.core.models import CompiledWiki, GraphEdge, MetadataField, WikiNode
+from kompend.core.models.assets import AssetRecord
+from kompend.core.models.enums import AssetKind
+from kompend.core.models.structured import StructuredFigure, StructuredTable
+from kompend.core.pipeline.assets import AssetStore
+from kompend.output.base import BaseOutputWriter
+from kompend.output.markdown import MarkdownWriter as OkfWriter
+from kompend.output.markdown import convert_wikilinks, rewrite_citations_to_footnotes
+from kompend.output.models import OkfSource
 
 # ── Fixtures ────────────────────────────────────────────────────────────
 
@@ -145,7 +145,7 @@ def test_every_page_has_type_frontmatter(tmp_path: Path) -> None:
 
 
 def test_type_maps_from_node_type(tmp_path: Path) -> None:
-    """KNOX node_type values map to OKF type strings."""
+    """KOMPEND node_type values map to OKF type strings."""
     wiki = _make_wiki(
         [
             _make_node("c", "Concept", "x", node_type="concept"),
@@ -186,13 +186,13 @@ def test_okf_recommended_fields_present(tmp_path: Path) -> None:
     assert "generated" in fm
     assert "by" in fm["generated"]
     assert "at" in fm["generated"]
-    assert fm["generated"]["by"].startswith("knox/")
+    assert fm["generated"]["by"].startswith("kompend/")
 
 
 def test_tags_not_overloaded_with_source_files(tmp_path: Path) -> None:
     """OKF v0.2 §4.1: ``tags`` are topic tags, not provenance filename stems.
 
-    Source-filename provenance lives in the KNOX ``source_files`` extension,
+    Source-filename provenance lives in the KOMPEND ``source_files`` extension,
     freeing ``tags`` (and avoiding the ``sources`` shape collision of §5.1).
     """
     wiki = _make_wiki([_make_node("test", "Test", "Content.", provenance=["paper.pdf", "report.pdf"])])
@@ -235,8 +235,8 @@ def test_generated_actor_convention(tmp_path: Path) -> None:
     fm = _parse_frontmatter((tmp_path / "concepts" / "test.md").read_text())
     assert fm is not None
     by = fm["generated"]["by"]
-    # ``knox/<version>`` per §7 actor convention.
-    assert re.match(r"^knox/.+$", by), f"generated.by '{by}' not a §7 producer/version actor"
+    # ``kompend/<version>`` per §7 actor convention.
+    assert re.match(r"^kompend/.+$", by), f"generated.by '{by}' not a §7 producer/version actor"
 
 
 # ── Cross-link conformance (§6) ─────────────────────────────────────────

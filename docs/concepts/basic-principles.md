@@ -3,15 +3,15 @@
 
 # Basic Principles
 
-KNOX is a compiled LLM-wiki system for scientific and technical documents.
+KOMPEND is a compiled LLM-wiki system for scientific and technical documents.
 This page explains what problem it solves, what makes it different, and the
 core principles that guide its design.
 
-## What Problem Does KNOX Solve?
+## What Problem Does KOMPEND Solve?
 
 Raw documents (PDFs, DOCX, web pages) are not directly queryable by LLMs.
 Existing RAG pipelines flatten them to text, losing tables, figures, equations,
-and reading order. KNOX preserves structure through a 5-tier pipeline and
+and reading order. KOMPEND preserves structure through a 5-tier pipeline and
 compiles sources into an interlinked, queryable knowledge wiki.
 
 ``` mermaid
@@ -26,22 +26,22 @@ flowchart LR
 
 ## CLI Commands vs. Pipeline Tiers
 
-KNOX exposes the pipeline through discrete CLI commands. Each command runs a
+KOMPEND exposes the pipeline through discrete CLI commands. Each command runs a
 specific subset of tiers:
 
 ``` mermaid
 flowchart TB
-    subgraph Init["knox init"]
-        I1[Scaffold project<br>sources/ wiki/ .knox/]
+    subgraph Init["kompend init"]
+        I1[Scaffold project<br>sources/ wiki/ .kompend/]
     end
 
-    subgraph Ingest["knox ingest (no LLM)"]
+    subgraph Ingest["kompend ingest (no LLM)"]
         IG1[Tier 0: Download URLs]
         IG2[Tier 1: Parse all sources]
         IG1 --> IG2
     end
 
-    subgraph Compile["knox compile (needs LLM)"]
+    subgraph Compile["kompend compile (needs LLM)"]
         C1[Tier 2: Chunk<br>adaptive sizing from<br>LLM context window]
         C2[Tier 3: Resolve<br>relations + VLM]
         C3[Tier 4: Compile<br>extract + generate]
@@ -50,8 +50,8 @@ flowchart TB
     end
 
     subgraph Post["Post-compile"]
-        L1["knox lint<br>structural + LLM rules"]
-        Q1["knox query<br>semantic search"]
+        L1["kompend lint<br>structural + LLM rules"]
+        Q1["kompend query<br>semantic search"]
     end
 
     Init --> Ingest
@@ -61,12 +61,12 @@ flowchart TB
 
 | Command | Tiers | Needs LLM? | What it produces |
 |---------|-------|------------|------------------|
-| `knox init` | — | No | Empty project scaffold |
-| `knox parse` | 1 only | No | Structured JSON per file (debugging) |
-| `knox ingest` | 0–1 | **No** | Parsed documents cached in `.knox/cache/`; deterministic, no API costs |
-| `knox compile` | 2–5 | **Yes** | Compiled wiki pages on disk; chunking uses LLM context window for adaptive sizing |
-| `knox lint` | — | Optional | Quality report + auto-fixes |
-| `knox query` | — | Optional | Semantic search over indexed wiki |
+| `kompend init` | — | No | Empty project scaffold |
+| `kompend parse` | 1 only | No | Structured JSON per file (debugging) |
+| `kompend ingest` | 0–1 | **No** | Parsed documents cached in `.kompend/cache/`; deterministic, no API costs |
+| `kompend compile` | 2–5 | **Yes** | Compiled wiki pages on disk; chunking uses LLM context window for adaptive sizing |
+| `kompend lint` | — | Optional | Quality report + auto-fixes |
+| `kompend query` | — | Optional | Semantic search over indexed wiki |
 
 **The key boundary is between Tier 1 (parse) and Tier 2 (chunk).**
 Tiers 0–1 (download + parse) are deterministic — no LLM calls, no API
@@ -74,12 +74,12 @@ costs. Tier 2 and above (chunk, resolve, compile, output) require a
 configured LLM. Chunking needs the model's context window for adaptive
 sizing; resolution and compilation need the model for inference.
 
-`knox ingest` stops after Tier 1. It downloads URLs and parses every
-source into structured JSON cached in `.knox/cache/`. This is fast,
+`kompend ingest` stops after Tier 1. It downloads URLs and parses every
+source into structured JSON cached in `.kompend/cache/`. This is fast,
 free, and idempotent — you can re-run it anytime without LLM costs or
 API keys.
 
-`knox compile` picks up where ingest left off (or starts from scratch
+`kompend compile` picks up where ingest left off (or starts from scratch
 if you skip ingest). It runs Tiers 2–5: chunking (with adaptive sizing
 from the LLM's discovered context window), resolving relations,
 compiling pages, and writing output files. This is where the LLM work
@@ -116,7 +116,7 @@ sequenceDiagram
     W->>G: wiki/ (Obsidian vault)
 ```
 
-## KNOX vs. Flatten-and-RAG
+## KOMPEND vs. Flatten-and-RAG
 
 Most document pipelines treat PDFs and DOCX as text blobs: flatten to
 plain text, split at an arbitrary character count, embed, and vector-search.
@@ -124,7 +124,7 @@ This works for prose but destroys structured content — tables lose their
 rows and columns, figures lose captions, equations become unreadable glyphs,
 and cross-references vanish.
 
-KNOX takes a different approach: structure-preserving parsing keeps tables
+KOMPEND takes a different approach: structure-preserving parsing keeps tables
 as `list[list[str]]`, figures as captioned images, equations as LaTeX source.
 Hybrid chunking never splits atomic elements. Multi-turn resolution expands
 abbreviations and resolves cross-references before compilation turns everything
@@ -142,7 +142,7 @@ flowchart TB
         T5 --> T6["LLM Answer<br/><i>flat text, hallucinations, no citations</i>"]
     end
 
-    subgraph KNOX[KNOX Pipeline]
+    subgraph KOMPEND[KOMPEND Pipeline]
         direction TB
         K1["PDF"] --> K2["Structure-preserving parse<br/><i>tables, figures, equations as first-class objects</i>"]
         K2 --> K3["Hybrid chunking<br/><i>atomic elements never split; headings group content</i>"]
@@ -155,9 +155,9 @@ flowchart TB
 
 ### What changes in practice
 
-| Aspect | Flatten-and-RAG | KNOX |
+| Aspect | Flatten-and-RAG | KOMPEND |
 |--------|-----------------|------|
-| **Table query** | Flat text — LLM guesses cell values. | `knox query "compare latency figures"` returns the structured table with cell annotations. |
+| **Table query** | Flat text — LLM guesses cell values. | `kompend query "compare latency figures"` returns the structured table with cell annotations. |
 | **Figure access** | Blurry captionless gap in the text. | Captioned wiki nodes with VLM-enriched descriptions. Searchable. |
 | **Cross-refs** | "As shown in section 3.1" — meaningless after chunking. | Resolver expands every cross-ref into the target page slug. |
 | **Equations** | LaTeX becomes unreadable escape sequences. | Equations keep LaTeX source + rendered image. Query by concept or formula. |
@@ -168,7 +168,7 @@ flowchart TB
 
 ### 1. Parser-Agnostic
 
-No parser is baked into KNOX's core. The `BaseParser` interface accepts raw
+No parser is baked into KOMPEND's core. The `BaseParser` interface accepts raw
 documents and produces `ParsedDocument`. The `ParserRouter` selects by file
 extension and user preference. If a new parser emerges, add a module
 implementing `BaseParser` — no other tier changes.
@@ -177,7 +177,7 @@ See [`architecture.md`](../architecture/index.md#1-parser-agnostic) for details.
 
 ### 2. Structure-Preserving
 
-Flattening a 50-row comparison table to markdown destroys queryability. KNOX
+Flattening a 50-row comparison table to markdown destroys queryability. KOMPEND
 stores tables as structured JSON (`list[list[str]]` with cell type annotations).
 Figures retain captions, bounding boxes, and extracted PNGs. Equations keep
 LaTeX source and image fallback.
@@ -186,7 +186,7 @@ See [`architecture.md`](../architecture/index.md#2-structure-preserving) for det
 
 ### 3. Model-Aware
 
-Model strings (`provider/model`) resolve through pydantic-ai, and KNOX goes further:
+Model strings (`provider/model`) resolve through pydantic-ai, and KOMPEND goes further:
 
 - Auto-detect context window from model metadata
 - Hold back a safety margin for system prompts (8% of the window, minimum 512 tokens)
@@ -200,7 +200,7 @@ See [`architecture.md`](../architecture/index.md#3-model-aware) for details.
 
 Three interfaces, same core:
 
-- **CLI:** `knox compile sources/ --output wiki/`
+- **CLI:** `kompend compile sources/ --output wiki/`
 - **Python SDK:** `pipeline.compile(sources=[Path("paper.pdf")])`
 - **MCP Server:** tools for Hermes, Claude Code, Codex
 
@@ -249,11 +249,11 @@ See [`chunk-tree.md`](../architecture/chunk-tree.md) for details.
 
 ### 9. Markdown-Only Vault
 
-The wiki is complete in its generated pages; `.knox/` is derived state.
+The wiki is complete in its generated pages; `.kompend/` is derived state.
 Everything an LLM needs is reachable by following markdown links from
 `wiki/index.md` — concepts, references, per-source summaries, quality.
 Query builds the wiki from the `wiki/*.md` files themselves, so a vault
-shared without `.knox/` (e.g. a git repo excluding config and caches)
+shared without `.kompend/` (e.g. a git repo excluding config and caches)
 still answers questions; the vector sidecar only adds recall.
 
 See [`wiki-structure.md`](../guides/wiki-structure.md#markdown-only-invariant)

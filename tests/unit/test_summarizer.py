@@ -7,8 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from knox.chunking.summarizer import NodeSummarizer
-from knox.core.models import (
+from kompend.chunking.summarizer import NodeSummarizer
+from kompend.core.models import (
     Chunk,
     ChunkNode,
     ChunkStrategy,

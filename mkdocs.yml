@@ -1,8 +1,8 @@
-site_name: KNOX
-site_description: Knowledge Organizer for eXtended documents — a compiled LLM-wiki system
+site_name: kompend
+site_description: Kompend compiles scientific and technical documents into a queryable knowledge base — a 5-tier pipeline with structure-preserving parse, agent-assisted synthesis, and per-page provenance.
 site_author: Jan Reimes
 copyright: Copyright &copy; 2026 Jan Reimes — MIT License
-repo_url: https://codeberg.org/jr2804/knox
+repo_url: https://github.com/jr2804/kompend
 
 theme:
   name: material
@@ -87,11 +87,13 @@ nav:
     - Model Context Adaptation: guides/model-context.md
     - Observability: guides/observability.md
     - Output: guides/output.md
+    - Attachments: guides/attachments.md
     - Provenance: guides/provenance.md
     - Review: guides/review.md
     - Trust: guides/trust.md
     - Wiki Structure: guides/wiki-structure.md
     - Initialization: guides/initialization.md
+    - Input Pipeline: guides/input-pipeline.md
     - Query & Memory: guides/query-memory.md
     - Configuration: guides/configuration.md
     - Duplicate Detection: guides/dedup.md

@@ -9,7 +9,7 @@ the model is told it has tools and has none.
 
 from __future__ import annotations
 
-from knox.agents.distill_agentic import make_agentic_distill_agent
+from kompend.agents.distill_agentic import make_agentic_distill_agent
 
 # NOTE: system-prompt-tools == registered-tools is guarded centrally for every
 # agent in tests/unit/test_agent_templates.py; only the pinned tool list remains

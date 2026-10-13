@@ -1,4 +1,4 @@
-"""Unit tests for ``knox.core.text.encoding``.
+"""Unit tests for ``kompend.core.text.encoding``.
 
 Covers the two public surfaces:
 
@@ -21,7 +21,7 @@ from pathlib import Path
 
 import pytest
 
-from knox.core.text.encoding import (
+from kompend.core.text.encoding import (
     detect_and_decode,
     normalize_to_utf8_path,
     read_text_auto,

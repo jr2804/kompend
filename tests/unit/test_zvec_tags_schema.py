@@ -10,8 +10,8 @@ from pathlib import Path
 
 import zvec as _zvec
 
-from knox.core.models import CompiledWiki, WikiNode
-from knox.rag.zvec_store import EmbeddingProvider, ZvecField, ZvecWikiStore
+from kompend.core.models import CompiledWiki, WikiNode
+from kompend.rag.zvec_store import EmbeddingProvider, ZvecField, ZvecWikiStore
 
 
 class _StubProvider(EmbeddingProvider):

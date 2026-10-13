@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from knox.cli._sources import (
+from kompend.cli._sources import (
     _unique_file,
     ensure_in_sources,
     get_supported_extensions,
