@@ -1,7 +1,7 @@
 # DOX — kompend Python source tree
 
 <!-- on entry: loaded when agent enters src/kompend/ -->
-<!-- parent: ../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 

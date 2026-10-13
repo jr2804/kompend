@@ -1,7 +1,7 @@
 # DOX — kompend.acp
 
 <!-- on entry: loaded when agent enters src/kompend/acp -->
-<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
+<!-- parent: ../../../AGENTS.md | .agents/POLICIES.md, .agents/CODE.md, .agents/FILES.md, .agents/CHECKS.md -->
 
 ## Purpose
 
