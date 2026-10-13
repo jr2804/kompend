@@ -8,6 +8,7 @@ token plumbing entirely — no env var, no mise token lookup, no urllib.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 import tomllib
@@ -23,8 +24,15 @@ def main() -> None:
         print("error: no keywords found in pyproject.toml [project.keywords]")
         sys.exit(1)
 
-    result = subprocess.run(
-        ["gh", "api", "--method", "PUT", f"repos/{REPO}/topics", "--input", "-"],
+    # Absolute path rather than a bare name: a partial path is resolved through PATH,
+    # so whatever `gh` shadows first on the host would be executed.
+    gh = shutil.which("gh")
+    if gh is None:
+        print("error: gh not found on PATH")
+        sys.exit(1)
+
+    result = subprocess.run(  # noqa: S603 — fixed argv, no shell, no untrusted input
+        [gh, "api", "--method", "PUT", f"repos/{REPO}/topics", "--input", "-"],
         input=json.dumps({"names": keywords}),
         capture_output=True,
         text=True,
