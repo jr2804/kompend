@@ -1,4 +1,4 @@
-"""Tests for KOMPEND Tier 3 resolvers and enrichers.
+"""Tests for kompend Tier 3 resolvers and enrichers.
 
 VLMEnricher now uses VlmAgent instead of LLMClient.
 """

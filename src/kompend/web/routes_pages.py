@@ -1,4 +1,4 @@
-"""HTML page routes for the KOMPEND web server."""
+"""HTML page routes for the kompend web server."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ async def dashboard() -> str:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>KOMPEND Dashboard</title>
+<title>kompend Dashboard</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }}
@@ -53,7 +53,7 @@ async def dashboard() -> str:
 </head>
 <body>
 <nav>
-  <span class="brand">KOMPEND</span>
+  <span class="brand">kompend</span>
   <a href="/">Dashboard</a>
   <a href="/wiki">Wiki</a>
   <a href="/query">Query</a>
@@ -96,7 +96,7 @@ async def wiki_list() -> str:
     )
     return f"""<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>KOMPEND Wiki</title>
+<head><meta charset="UTF-8"><title>kompend Wiki</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, sans-serif; background: #f5f5f5; color: #333; }}
@@ -115,7 +115,7 @@ async def wiki_list() -> str:
 </head>
 <body>
 <nav>
-  <span class="brand">KOMPEND</span>
+  <span class="brand">kompend</span>
   <a href="/">Dashboard</a>
   <a href="/wiki">Wiki</a>
   <a href="/query">Query</a>
@@ -141,7 +141,7 @@ async def wiki_page(node_id: str) -> str:
     content = node.get("content", "")
     return f"""<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>{node.get("title", "")} - KOMPEND</title>
+<head><meta charset="UTF-8"><title>{node.get("title", "")} - kompend</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, sans-serif; background: #f5f5f5; color: #333; }}
@@ -154,7 +154,7 @@ async def wiki_page(node_id: str) -> str:
 </style>
 </head>
 <body>
-<nav><a href="/">KOMPEND</a><a href="/wiki">Wiki</a></nav>
+<nav><a href="/">kompend</a><a href="/wiki">Wiki</a></nav>
 <div class="container">
   <div class="content">
     <h1>{node.get("title", "")}</h1>
@@ -192,7 +192,7 @@ async def query_page(q: str = Query(default="")) -> str:
 
     return f"""<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>KOMPEND Query</title>
+<head><meta charset="UTF-8"><title>kompend Query</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, sans-serif; background: #f5f5f5; color: #333; }}
@@ -208,7 +208,7 @@ async def query_page(q: str = Query(default="")) -> str:
 </head>
 <body>
 <nav>
-  <span class="brand">KOMPEND</span>
+  <span class="brand">kompend</span>
   <a href="/">Dashboard</a>
   <a href="/wiki">Wiki</a>
   <a href="/query">Query</a>
@@ -236,7 +236,7 @@ async def force_graph() -> str:
     edges_json = json.dumps(list(wiki.get(WikiField.EDGES, [])))
     return f"""<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>KOMPEND Graph</title>
+<head><meta charset="UTF-8"><title>kompend Graph</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, sans-serif; background: #f5f5f5; color: #333; }}
@@ -250,7 +250,7 @@ async def force_graph() -> str:
 </head>
 <body>
 <nav>
-  <span class="brand">KOMPEND</span>
+  <span class="brand">kompend</span>
   <a href="/">Dashboard</a>
   <a href="/wiki">Wiki</a>
   <a href="/query">Query</a>
@@ -292,7 +292,7 @@ const sim = d3.forceSimulation(nodes).force("link", d3.forceLink(edges).id(d => 
 async def ingest_page() -> str:
     return """<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>KOMPEND Ingest</title>
+<head><meta charset="UTF-8"><title>kompend Ingest</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, sans-serif; background: #f5f5f5; color: #333; }
@@ -308,7 +308,7 @@ async def ingest_page() -> str:
 </head>
 <body>
 <nav>
-  <span class="brand">KOMPEND</span>
+  <span class="brand">kompend</span>
   <a href="/">Dashboard</a>
   <a href="/wiki">Wiki</a>
   <a href="/query">Query</a>
@@ -346,7 +346,7 @@ async def ingest_page() -> str:
 async def lint_page() -> str:
     return """<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>KOMPEND Lint</title>
+<head><meta charset="UTF-8"><title>kompend Lint</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: -apple-system, sans-serif; background: #f5f5f5; color: #333; }
@@ -359,7 +359,7 @@ async def lint_page() -> str:
 </head>
 <body>
 <nav>
-  <span class="brand">KOMPEND</span>
+  <span class="brand">kompend</span>
   <a href="/">Dashboard</a>
   <a href="/wiki">Wiki</a>
   <a href="/query">Query</a>
@@ -386,7 +386,7 @@ async def settings_page() -> str:
         config_content = config_file.read_text(encoding="utf-8")
     return f"""<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="UTF-8"><title>KOMPEND Settings</title>
+<head><meta charset="UTF-8"><title>kompend Settings</title>
 <style>
   * {{ margin: 0; padding: 0; box-sizing: border-box; }}
   body {{ font-family: -apple-system, sans-serif; background: #f5f5f5; color: #333; }}
@@ -400,7 +400,7 @@ async def settings_page() -> str:
 </head>
 <body>
 <nav>
-  <span class="brand">KOMPEND</span>
+  <span class="brand">kompend</span>
   <a href="/">Dashboard</a>
   <a href="/wiki">Wiki</a>
   <a href="/query">Query</a>

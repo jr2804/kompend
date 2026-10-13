@@ -3,7 +3,7 @@
 
 # Pipeline Tiers
 
-KOMPEND follows a 5-tier pipeline. Each tier is independently replaceable,
+kompend follows a 5-tier pipeline. Each tier is independently replaceable,
 testable, and has a clear `Base` interface.
 
 ## Tier 1: Preprocessing

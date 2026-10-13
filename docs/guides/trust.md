@@ -8,7 +8,7 @@ Three flags control how much you trust each compiled page:
 
 ## Privacy redaction
 
-KOMPEND scans compiled content for:
+kompend scans compiled content for:
 
 - API keys (`sk-...`, `ghp_...`, `AKIA...`, `xoxb-...`)
 - PEM private keys
@@ -118,7 +118,7 @@ unsupported.
 
 **Q: Can I use a different LLM for verification?**
 A: Yes — set `KOMP_LLM_DEFAULT_MODEL`, or give the `verify` role its own model
-in `[compile.llm.role_models]`. The verifier runs through KOMPEND's configured
+in `[compile.llm.role_models]`. The verifier runs through kompend's configured
 pydantic-ai agent like every other LLM step.
 
 **Q: What happens to private pages in the vector index?**

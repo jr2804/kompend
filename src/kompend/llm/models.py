@@ -1,6 +1,6 @@
 """Build native pydantic-ai Model instances and resolve model metadata.
 
-KOMPEND uses the ``provider/model`` convention (e.g. ``ollama/qwen3``,
+kompend uses the ``provider/model`` convention (e.g. ``ollama/qwen3``,
 ``openai/gpt-5.2``, ``claudinio/claude-4``). This module translates such
 a string into a native pydantic-ai :class:`~pydantic_ai.models.Model`.
 
@@ -174,7 +174,7 @@ def _vision_from_ollama(model_name: str) -> bool | None:
 
 
 def build_model(model_string: str) -> Model:
-    """Build a native pydantic-ai Model from a KOMPEND ``provider/model`` string."""
+    """Build a native pydantic-ai Model from a kompend ``provider/model`` string."""
     provider_id, model_name = _split(model_string)
 
     # 1. Native pydantic-ai provider?
@@ -289,7 +289,7 @@ def _build_native(provider_id: str, model_name: str) -> Model:
         raise _NotNativeProvider from exc
 
     # Ollama is a well-known local provider with no models-dev catalog entry
-    # and no built-in default base_url. Provide the local default so KOMPEND
+    # and no built-in default base_url. Provide the local default so kompend
     # works out of the box; OLLAMA_BASE_URL still wins when set.
     if provider_cls is OllamaProvider:
         return _build_ollama(model_name)

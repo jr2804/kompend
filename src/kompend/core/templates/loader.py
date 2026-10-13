@@ -1,4 +1,4 @@
-"""Layered Jinja2 template loader for KOMPEND.
+"""Layered Jinja2 template loader for kompend.
 
 Loads templates from three sources in precedence order:
 

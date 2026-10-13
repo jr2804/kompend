@@ -1,4 +1,4 @@
-"""Pydantic config models for KOMPEND.
+"""Pydantic config models for kompend.
 
 Single source of truth for the config schema: each field carries its type,
 default, and optional env-var alias in one declaration. ``DEFAULTS`` and

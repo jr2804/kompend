@@ -1,4 +1,4 @@
-"""Shared vault-writing algorithm for KOMPEND output writers.
+"""Shared vault-writing algorithm for kompend output writers.
 
 The vault layout — one ``.md`` file per wiki node, directory routing by kind,
 stale-file clearing, related-edge resolution, in-text citation rewriting, and
@@ -69,7 +69,7 @@ OKF_VERSION = "0.2"
 # ``<producer>/<version>`` for agents and tools.
 _GENERATED_BY = f"kompend/{_KOMP_VERSION or '0.0.0'}"
 
-# Map KOMPEND node_type values to OKF ``type`` values. OKF types are free-form
+# Map kompend node_type values to OKF ``type`` values. OKF types are free-form
 # strings (§4.1); these are descriptive and self-explanatory per the spec.
 KIND_TO_TYPE: dict[str, str] = {
     "concept": "Concept",
@@ -203,7 +203,7 @@ class VaultWriter(BaseOutputWriter):
 
     @staticmethod
     def okf_type(node_type: str | None) -> str:
-        """Map a KOMPEND node_type to an OKF type string."""
+        """Map a kompend node_type to an OKF type string."""
         if not node_type:
             return DEFAULT_TYPE
         return KIND_TO_TYPE.get(node_type, node_type.title() or DEFAULT_TYPE)
@@ -230,7 +230,7 @@ class VaultWriter(BaseOutputWriter):
         """Build the canonical OKF v0.2 frontmatter for a wiki node.
 
         The result is OKF §11-conformant (parseable YAML, non-empty ``type``)
-        and carries KOMPEND extensions permitted by OKF §4.1. Config
+        and carries kompend extensions permitted by OKF §4.1. Config
         ``frontmatter_defaults`` and per-node ``metadata['frontmatter']``
         overrides are merged in.
 
@@ -243,8 +243,8 @@ class VaultWriter(BaseOutputWriter):
           here under the reserved ``sources`` key (it would collide with the
           v0.2 object shape) — see the ``source_files`` extension below.
 
-        KOMPEND extensions (OKF §4.1 permits additional keys):
-        - ``kind`` — original KOMPEND node_type
+        kompend extensions (OKF §4.1 permits additional keys):
+        - ``kind`` — original kompend node_type
         - ``source_files`` — provenance filename stems (distinct from OKF
           ``sources`` to avoid shape collision; freed ``tags`` from this overload)
         """
@@ -299,7 +299,7 @@ class VaultWriter(BaseOutputWriter):
         if sources:
             frontmatter.setdefault("sources", sources)
 
-        # KOMPEND extensions (OKF §4.1 permits additional keys).
+        # kompend extensions (OKF §4.1 permits additional keys).
         frontmatter["kind"] = node.metadata.get("frontmatter", {}).get("kind", node.node_type or "page")
         if source_files:
             frontmatter["source_files"] = source_files

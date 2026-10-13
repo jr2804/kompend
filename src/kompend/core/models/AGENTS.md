@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Canonical data models and serialization contracts for the KOMPEND pipeline.
+Canonical data models and serialization contracts for the kompend pipeline.
 Every data structure that crosses a tier boundary or a file boundary is
 defined here. Import from the package root: `from kompend.core.models import Chunk`.
 

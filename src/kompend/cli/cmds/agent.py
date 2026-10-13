@@ -1,4 +1,4 @@
-"""ACP agent CLI — run KOMPEND as an ACP-compatible agent.
+"""ACP agent CLI — run kompend as an ACP-compatible agent.
 
 Usage::
 
@@ -6,7 +6,7 @@ Usage::
 
 Starts an ACP agent on stdio via ``pydantic-ai-harness``'s
 ``run_acp_stdio_sync``. The harness handles the ACP protocol, session
-management, streaming, tool approval, and cancellation. KOMPEND provides
+management, streaming, tool approval, and cancellation. kompend provides
 the agent, tools, and per-session configuration.
 
 Heavy imports (the harness ACP machinery, the MCP server factory) live
@@ -33,13 +33,13 @@ def agent_cmd(
     mcp_port: int | None = typer.Option(
         None,
         "--mcp-port",
-        help="Port for the MCP-over-HTTP companion server (e.g. 8000). When set, KOMPEND starts both the ACP agent and an MCP HTTP server.",
+        help="Port for the MCP-over-HTTP companion server (e.g. 8000). When set, kompend starts both the ACP agent and an MCP HTTP server.",
     ),
 ) -> None:
-    """Run KOMPEND as an ACP agent on stdio.
+    """Run kompend as an ACP agent on stdio.
 
     Serves a PydanticAI agent over the Agent Client Protocol using
-    ``pydantic-ai-harness``. The agent exposes KOMPEND tools (compile,
+    ``pydantic-ai-harness``. The agent exposes kompend tools (compile,
     query, capture, config) and resolves per-session configuration
     from the workspace the editor opened.
     """

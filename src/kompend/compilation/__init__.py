@@ -1,4 +1,4 @@
-"""KOMPEND compilation tier — knowledge graph construction and iterative refinement."""
+"""kompend compilation tier — knowledge graph construction and iterative refinement."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Programmatic cross-reference checker for KOMPEND Tier 3.
+"""Programmatic cross-reference checker for kompend Tier 3.
 
 Runs consistency checks at DATA level — no LLM needed. Results feed into
 Phase 5 compilation as consistency notes.

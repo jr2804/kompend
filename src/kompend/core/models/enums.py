@@ -1,4 +1,4 @@
-"""StrEnum contracts and element-type definitions for KOMPEND data models.
+"""StrEnum contracts and element-type definitions for kompend data models.
 
 Every dict key, discriminator, or schema column name that crosses a file
 boundary lives here as a ``StrEnum`` member — never as a bare literal.

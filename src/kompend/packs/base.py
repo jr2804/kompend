@@ -1,4 +1,4 @@
-"""Pack protocol and registry for KOMPEND contribution packs."""
+"""Pack protocol and registry for kompend contribution packs."""
 
 from __future__ import annotations
 

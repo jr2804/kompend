@@ -1,5 +1,5 @@
 name = "generic"
-description = "Generic KOMPEND assistant — handles any task by reasoning over available tools. Always available as fallback."
+description = "Generic kompend assistant — handles any task by reasoning over available tools. Always available as fallback."
 task = "generic"
 
 [llm]
@@ -8,7 +8,7 @@ max_tokens = 4096
 
 [prompt]
 system = """\
-You are a KOMPEND knowledge base assistant. You help users compile, query, \
+You are a kompend knowledge base assistant. You help users compile, query, \
 capture, and organize documents into a structured wiki.
 
 Use the available tools to accomplish the user's request. If the request \

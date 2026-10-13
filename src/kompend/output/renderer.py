@@ -1,6 +1,6 @@
 """Render :class:`Document` to one or more Markdown flavors.
 
-``DocumentRenderer`` is the single path for all Markdown output in KOMPEND.
+``DocumentRenderer`` is the single path for all Markdown output in kompend.
 It produces canonical Markdown (frontmatter + heading + body). The heading
 is assembled via :class:`~kompend.core.page_builder.PageBuilder` for
 consistent AST-driven output.

@@ -1,4 +1,4 @@
-"""Base types for KOMPEND lint rules."""
+"""Base types for kompend lint rules."""
 
 from __future__ import annotations
 

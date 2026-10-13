@@ -48,7 +48,7 @@ def build_toolset(
     base_dir: str | Path,
     enabled: list[str] | None = None,
 ) -> FunctionToolset[None]:
-    """Build a PydanticAI ``FunctionToolset`` with KOMPEND tools.
+    """Build a PydanticAI ``FunctionToolset`` with kompend tools.
 
     Each tool calls the corresponding MCP server function with ``base_dir``
     injected via closure. PydanticAI generates JSON schemas from the type

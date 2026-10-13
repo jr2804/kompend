@@ -1,7 +1,7 @@
-# rumdl configuration file for KOMPEND
+# rumdl configuration file for kompend
 
 [global]
-# Maximum allowed line length (KOMPEND docs have long URLs and tables)
+# Maximum allowed line length (kompend docs have long URLs and tables)
 line-length = 320
 
 # Markdown flavor/dialect: kompend targets Obsidian by default

@@ -1,4 +1,4 @@
-"""KOMPEND unified configuration system.
+"""kompend unified configuration system.
 
 5-layer precedence (highest wins):
 

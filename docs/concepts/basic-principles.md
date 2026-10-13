@@ -3,15 +3,15 @@
 
 # Basic Principles
 
-KOMPEND is a compiled LLM-wiki system for scientific and technical documents.
+kompend is a compiled LLM-wiki system for scientific and technical documents.
 This page explains what problem it solves, what makes it different, and the
 core principles that guide its design.
 
-## What Problem Does KOMPEND Solve?
+## What Problem Does kompend Solve?
 
 Raw documents (PDFs, DOCX, web pages) are not directly queryable by LLMs.
 Existing RAG pipelines flatten them to text, losing tables, figures, equations,
-and reading order. KOMPEND preserves structure through a 5-tier pipeline and
+and reading order. kompend preserves structure through a 5-tier pipeline and
 compiles sources into an interlinked, queryable knowledge wiki.
 
 ``` mermaid
@@ -26,7 +26,7 @@ flowchart LR
 
 ## CLI Commands vs. Pipeline Tiers
 
-KOMPEND exposes the pipeline through discrete CLI commands. Each command runs a
+kompend exposes the pipeline through discrete CLI commands. Each command runs a
 specific subset of tiers:
 
 ``` mermaid
@@ -116,7 +116,7 @@ sequenceDiagram
     W->>G: wiki/ (Obsidian vault)
 ```
 
-## KOMPEND vs. Flatten-and-RAG
+## kompend vs. Flatten-and-RAG
 
 Most document pipelines treat PDFs and DOCX as text blobs: flatten to
 plain text, split at an arbitrary character count, embed, and vector-search.
@@ -124,7 +124,7 @@ This works for prose but destroys structured content — tables lose their
 rows and columns, figures lose captions, equations become unreadable glyphs,
 and cross-references vanish.
 
-KOMPEND takes a different approach: structure-preserving parsing keeps tables
+kompend takes a different approach: structure-preserving parsing keeps tables
 as `list[list[str]]`, figures as captioned images, equations as LaTeX source.
 Hybrid chunking never splits atomic elements. Multi-turn resolution expands
 abbreviations and resolves cross-references before compilation turns everything
@@ -142,7 +142,7 @@ flowchart TB
         T5 --> T6["LLM Answer<br/><i>flat text, hallucinations, no citations</i>"]
     end
 
-    subgraph KOMPEND[KOMPEND Pipeline]
+    subgraph kompend[kompend Pipeline]
         direction TB
         K1["PDF"] --> K2["Structure-preserving parse<br/><i>tables, figures, equations as first-class objects</i>"]
         K2 --> K3["Hybrid chunking<br/><i>atomic elements never split; headings group content</i>"]
@@ -155,7 +155,7 @@ flowchart TB
 
 ### What changes in practice
 
-| Aspect | Flatten-and-RAG | KOMPEND |
+| Aspect | Flatten-and-RAG | kompend |
 |--------|-----------------|------|
 | **Table query** | Flat text — LLM guesses cell values. | `kompend query "compare latency figures"` returns the structured table with cell annotations. |
 | **Figure access** | Blurry captionless gap in the text. | Captioned wiki nodes with VLM-enriched descriptions. Searchable. |
@@ -168,7 +168,7 @@ flowchart TB
 
 ### 1. Parser-Agnostic
 
-No parser is baked into KOMPEND's core. The `BaseParser` interface accepts raw
+No parser is baked into kompend's core. The `BaseParser` interface accepts raw
 documents and produces `ParsedDocument`. The `ParserRouter` selects by file
 extension and user preference. If a new parser emerges, add a module
 implementing `BaseParser` — no other tier changes.
@@ -177,7 +177,7 @@ See [`architecture.md`](../architecture/index.md#1-parser-agnostic) for details.
 
 ### 2. Structure-Preserving
 
-Flattening a 50-row comparison table to markdown destroys queryability. KOMPEND
+Flattening a 50-row comparison table to markdown destroys queryability. kompend
 stores tables as structured JSON (`list[list[str]]` with cell type annotations).
 Figures retain captions, bounding boxes, and extracted PNGs. Equations keep
 LaTeX source and image fallback.
@@ -186,7 +186,7 @@ See [`architecture.md`](../architecture/index.md#2-structure-preserving) for det
 
 ### 3. Model-Aware
 
-Model strings (`provider/model`) resolve through pydantic-ai, and KOMPEND goes further:
+Model strings (`provider/model`) resolve through pydantic-ai, and kompend goes further:
 
 - Auto-detect context window from model metadata
 - Hold back a safety margin for system prompts (8% of the window, minimum 512 tokens)

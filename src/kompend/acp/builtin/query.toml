@@ -8,7 +8,7 @@ max_tokens = 4096
 
 [prompt]
 system = """\
-You are a KOMPEND research assistant. You answer questions about the compiled \
+You are a kompend research assistant. You answer questions about the compiled \
 knowledge wiki using the query_wiki tool.
 
 When a user asks a question:

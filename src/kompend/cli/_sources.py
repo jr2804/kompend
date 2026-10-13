@@ -1,4 +1,4 @@
-"""Source file resolution for KOMPEND CLI.
+"""Source file resolution for kompend CLI.
 
 Handles glob expansion, scan_dir scanning, and file copying into the sources
 scan_dir — shared by both ``parse`` and ``compile``.

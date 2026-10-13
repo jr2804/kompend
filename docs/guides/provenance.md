@@ -1,6 +1,6 @@
 # Page Provenance
 
-KOMPEND tracks which source files and line ranges each wiki page was compiled from.
+kompend tracks which source files and line ranges each wiki page was compiled from.
 The `provenance` command shows a compiled page's source chunks — so you can
 verify where a claim or concept came from.
 

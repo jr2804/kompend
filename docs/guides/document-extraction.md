@@ -1,6 +1,6 @@
-# Document Extraction in KOMPEND
+# Document Extraction in kompend
 
-KOMPEND ("eXtended documents") aims to parse a wide variety of document formats
+kompend ("eXtended documents") aims to parse a wide variety of document formats
 into a structured, LLM-aware representation. This document explains which
 frameworks are used, why, and what was considered before settling on the
 current architecture.
@@ -93,7 +93,7 @@ There is no comma-separated list and no `parser_fallback`. parsecraft performs
 its own per-page routing across its registered sub-backends (native, docling,
 liteparse, pandoc, OCR), and produces one `ParsedDocument` per source however
 many internal passes fired. Degraded pages (parsecraft downgraded an OCR route
-to native text) surface as KOMPEND metadata (`degraded_pages`), so the choice stays
+to native text) surface as kompend metadata (`degraded_pages`), so the choice stays
 visible after the parse.
 
 A second kompend-side level of ordering and hand-off would compete with that
@@ -152,9 +152,9 @@ back losslessly, the original content is kept.
 ## ParsecraftParser: External Adapter
 
 [Parsecraft](https://pypi.org/project/parsecraft/) is an external
-document-intelligence pipeline (public API only, separate project from KOMPEND).
-KOMPEND consumes it through a single adapter (`preprocessing/parsers/parsecraft_parser.py`)
-and maps parsecraft's intermediate representation onto KOMPEND's element model.
+document-intelligence pipeline (public API only, separate project from kompend).
+kompend consumes it through a single adapter (`preprocessing/parsers/parsecraft_parser.py`)
+and maps parsecraft's intermediate representation onto kompend's element model.
 Install it as an optional extra:
 
 ```bash
@@ -162,7 +162,7 @@ uv add kompend[parsecraft]    # carries parsecraft>=2026.10.1 (Python ≥3.13)
 ```
 
 The extra carries a minimum parsecraft release; raising it is a reviewed event
-(see `.agents/plans/parsecraft-integration.md`). KOMPEND never imports parsecraft
+(see `.agents/plans/parsecraft-integration.md`). kompend never imports parsecraft
 internals, private modules, or test helpers — only the documented public
 surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
 
@@ -174,14 +174,14 @@ remaining `[ingest]` knobs are the parsecraft parameters.
 The adapter calls `pipeline.execute()` — analyze → `plan_route` → per-range
 dispatch with fallback passes → aggregate `DocumentResult` — so routing,
 selective OCR escalation, and per-range fallback passes are inherited rather
-than reimplemented in KOMPEND. Figure enrichment is on (`figure_enrichment = True`)
+than reimplemented in kompend. Figure enrichment is on (`figure_enrichment = True`)
 and parsecraft's own figure extraction flows through `VLMEnricher` like every
 other backend's.
 
 ### Formats parsecraft claims
 
 parsecraft speaks MIME (`text/plain`, `application/pdf`, `image/jpeg`, …);
-KOMPEND discovers files by extension, and asks the configured backend which
+kompend discovers files by extension, and asks the configured backend which
 suffixes it handles (`get_all_extensions([config.parser])`). With parsecraft
 that is its 32-suffix table — `.txt`, `.text`, `.log`, `.rst`, `.ini`, `.cfg`,
 `.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.m`, `.sh`, `.tex`, plus the
@@ -192,7 +192,7 @@ from source discovery regardless of claimed formats: state artifacts like
 
 ### Fallback interaction
 
-There is no KOMPEND-level chain. One backend is configured, and parsecraft runs
+There is no kompend-level chain. One backend is configured, and parsecraft runs
 its own per-page routing and fallback passes between its registered
 sub-backends (native text/markdown/html/pdf, OCR backends, LiteParse); the
 result is one `ParsedDocument` per source regardless of how many internal
@@ -202,7 +202,7 @@ If parsecraft exhausts every pass on a page, the adapter raises
 `ParsecraftParseError` carrying the per-page cause, and the parse fails — there
 is no second backend behind it to fall through to.
 
-### Diagnostics carried into KOMPEND metadata
+### Diagnostics carried into kompend metadata
 
 Four classes of parsecraft signal survive the parse into `.kompend/kompend.db`:
 
@@ -264,18 +264,18 @@ settings.
 ### Error mapping
 
 parsecraft raises typed `AnalysisError` subclasses; the adapter maps them to
-KOMPEND behaviour:
+kompend behaviour:
 
-| parsecraft exception | KOMPEND behaviour |
+| parsecraft exception | kompend behaviour |
 |---|---|
 | `UnsupportedSourceError` | Input — skip the file with a warning naming the suffix |
 | `NoAnalyzerError` | Dependency/config — "install the matching extra" |
 | `DependencyUnavailableError` | Dependency/config — "install the named extra" |
 | `BackendError` (other) | Backend failure with cause preserved |
-| `RoutingError` | KOMPEND-side error with cause preserved |
+| `RoutingError` | kompend-side error with cause preserved |
 | Total exhaustion (`pipeline-all-passes-failed`) | `ParsecraftParseError` with per-page cause |
 
-Exit codes from the parsecraft CLI are **not** part of the contract — KOMPEND
+Exit codes from the parsecraft CLI are **not** part of the contract — kompend
 imports `parsecraft.pipeline` as a library, so typed exceptions cross the
 boundary, never exit codes.
 
@@ -284,9 +284,9 @@ boundary, never exit codes.
 - Adds an external dependency with a minimum parsecraft release; upgrading
   parsecraft is a coordinated event, not a silent update.
 - Per-page routing and fallback are entirely parsecraft's responsibility —
-  KOMPEND cannot intervene mid-pipeline.
+  kompend cannot intervene mid-pipeline.
 - Adapter calls `execute()` **serially**, matching parsecraft's 8 GB one-
-  instance discipline (`pipeline/AGENTS.md`). KOMPEND-level parallelism across
+  instance discipline (`pipeline/AGENTS.md`). kompend-level parallelism across
   documents is preserved (the existing parse worker pool is unchanged).
 
 ## Investigated and Rejected: opendataloader-pdf[hybrid]
@@ -305,7 +305,7 @@ Despite the accuracy advantage, operational concerns outweigh the benefit:
 
 ### 1. Java 11+ runtime requirement
 
-The package is 85.9% Java. Every KOMPEND user would need a JDK installed and
+The package is 85.9% Java. Every kompend user would need a JDK installed and
 `JAVA_HOME` configured — a serious friction point for a project that is
 otherwise pure Python.
 
@@ -317,7 +317,7 @@ Hybrid mode requires a background process:
 opendataloader-pdf-hybrid --port 5002
 ```
 
-KOMPEND would need to spawn, monitor, and shut down this server — error-prone
+kompend would need to spawn, monitor, and shut down this server — error-prone
 on Windows, and a crash would cause silent parse failures.
 
 ### 3. JVM-per-call overhead
@@ -327,7 +327,7 @@ dozens of documents, this adds seconds of overhead per file.
 
 ### 4. PDF-only
 
-opendataloader handles only PDF. KOMPEND needs multi-format support
+opendataloader handles only PDF. kompend needs multi-format support
 (DOCX, PPTX, HTML, MD, EPUB, etc.) — all handled natively by docling.
 
 ### 5. Different data model
@@ -339,7 +339,7 @@ would require a second adapter layer, increasing maintenance surface.
 ### 6. Marginal real-world gain
 
 The benchmark gap (0.907 vs 0.882) is 2.8%. Docling actually beats
-opendataloader on heading accuracy (0.824 vs 0.821). For KOMPEND's use
+opendataloader on heading accuracy (0.824 vs 0.821). For kompend's use
 case — extracting structured content for LLM consumption, not visual
 page layout — docling's accuracy is sufficient.
 

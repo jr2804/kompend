@@ -1,4 +1,4 @@
-"""Single source of truth for all KOMPEND path component names and vault paths.
+"""Single source of truth for all kompend path component names and vault paths.
 
 Path *names* are ``Final[str]`` constants (``KOMP_DIR``, ``CACHE_SUBDIR``, …).
 Resolved paths for a specific vault live in the :class:`VaultPaths` dataclass,
@@ -33,7 +33,7 @@ from typing import Final
 
 from kompend.core.env import EnvVar
 
-# ── Hidden KOMPEND artifacts folder ────────────────────────────────────────
+# ── Hidden kompend artifacts folder ────────────────────────────────────────
 KOMP_DIR: Final[str] = ".kompend"
 
 # ── Single non-vector store (SQLite) ────────────────────────────────────
@@ -55,7 +55,7 @@ PROTECTED_SOURCE_SUBDIRS: Final[frozenset[str]] = frozenset({CAPTURED_SUBDIR, LE
 CONFIG_FILE: Final[str] = "config.toml"
 KOMP_CONFIG_FILE: Final[str] = f"{KOMP_DIR}/{CONFIG_FILE}"
 PROJECT_CONFIG_FILE: Final[str] = "kompend.toml"
-#: Files that mark a directory as a KOMPEND vault root. Used by
+#: Files that mark a directory as a kompend vault root. Used by
 # :func:`vault_paths` to fail fast when pointed at a non-vault directory.
 VAULT_MARKERS: Final[tuple[str, ...]] = (PROJECT_CONFIG_FILE, KOMP_CONFIG_FILE)
 RUMDL_CONFIG_FILE: Final[str] = f"{KOMP_DIR}/rumdl.toml"
@@ -192,7 +192,7 @@ _SAFE_STEM_EXTENSIONS: Final[frozenset[str]] = frozenset(
 
 @dataclass(frozen=True)
 class VaultPaths:
-    """All resolved paths for a KOMPEND vault.
+    """All resolved paths for a kompend vault.
 
     Given a ``base_dir`` (the project root), every artifact path is available
     as a read-only property.  This eliminates the repeated
@@ -647,7 +647,7 @@ def vault_paths(wiki_dir: str | Path | None = None, *, require_vault: bool = Tru
 
     Args:
         wiki_dir: explicit vault root, or ``None`` for env/CWD resolution.
-        require_vault: fail fast when the resolved directory is not a KOMPEND
+        require_vault: fail fast when the resolved directory is not a kompend
             vault root. Only config-introspection paths (``kompend config get``)
             may opt out — they read defaults, not vault data.
 
@@ -665,7 +665,7 @@ def vault_paths(wiki_dir: str | Path | None = None, *, require_vault: bool = Tru
     base_dir = Path(wiki_dir).expanduser().resolve()
     if require_vault and not any((base_dir / marker).exists() for marker in VAULT_MARKERS):
         raise LookupError(
-            f"{base_dir} is not a KOMPEND vault root: no {VAULT_MARKERS[0]} or "
+            f"{base_dir} is not a kompend vault root: no {VAULT_MARKERS[0]} or "
             f"{VAULT_MARKERS[1]} found. Run 'kompend init' to create a vault, or "
             "point --wiki-dir at the directory containing .kompend/."
         )

@@ -69,7 +69,7 @@ class CacheStore:
 
     Cached values are serialized to JSON with explicit type tags for
     dataclasses, ``Path``, ``StrEnum``, ``bytes`` and ``tuple``.  This
-    avoids ``pickle`` entirely while preserving the KOMPEND model graph.
+    avoids ``pickle`` entirely while preserving the kompend model graph.
 
     Parameters
     ----------

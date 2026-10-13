@@ -5,7 +5,7 @@
 
 ## Purpose
 
-The CLI layer is a thin shell over the KOMPEND core library. It parses user input,
+The CLI layer is a thin shell over the kompend core library. It parses user input,
 calls the right core function, and formats the output. Nothing more.
 
 `kompend` must be usable as a Python library without importing `kompend.cli`.

@@ -1,6 +1,6 @@
 # Memory Lifecycle
 
-KOMPEND tracks every wiki page through a four-tier memory lifecycle inspired by cognitive science models. Pages gain confidence over time, promote through consolidation tiers, and decay if not recompiled.
+kompend tracks every wiki page through a four-tier memory lifecycle inspired by cognitive science models. Pages gain confidence over time, promote through consolidation tiers, and decay if not recompiled.
 
 ## Tiers
 

@@ -1,4 +1,4 @@
-"""KOMPEND chunking tier."""
+"""kompend chunking tier."""
 
 from kompend.chunking.extractors import extract_structured
 from kompend.chunking.hierarchical import HierarchicalChunker

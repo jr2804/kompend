@@ -19,7 +19,7 @@ from kompend.web.server import serve
 def mcp_cmd(
     wiki_dir: WikiDir = None,
 ) -> None:
-    """Start the KOMPEND MCP server over stdio transport.
+    """Start the kompend MCP server over stdio transport.
 
     Connects to Claude Code, Cursor, and other MCP-compatible clients.
     Uses the Prefect fastmcp framework (built on official mcp SDK 2.x)
@@ -39,7 +39,7 @@ def serve_cmd(
     port: ServePort = 8765,
     open_browser: ServeOpen = False,
 ) -> None:
-    """Start the KOMPEND web UI server.
+    """Start the kompend web UI server.
 
     Opens a browser-based dashboard for browsing, searching, and managing
     the compiled wiki. Binds to localhost by default.
@@ -48,7 +48,7 @@ def serve_cmd(
         kompend serve
         kompend serve --port 8080 --open
     """
-    get_console().print(f"Starting KOMPEND web UI at http://{host}:{port}")
+    get_console().print(f"Starting kompend web UI at http://{host}:{port}")
     if host != "127.0.0.1":
         get_err_console().print("Warning: Binding to non-localhost exposes the server to the network.")
 

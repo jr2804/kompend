@@ -134,7 +134,7 @@ class AgentRegistry:
                 description="Fallback generic agent (built-in failed to load)",
                 task=AgentTask.GENERIC,
                 llm=AgentLLMConfig(),
-                prompt=AgentPromptConfig(system="You are a KOMPEND assistant."),
+                prompt=AgentPromptConfig(system="You are a kompend assistant."),
             )
         return generic
 

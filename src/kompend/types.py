@@ -1,4 +1,4 @@
-"""Shared structural types for KOMPEND.
+"""Shared structural types for kompend.
 
 The JSON types are precise recursive unions — NOT ``Any`` aliases. Data
 read from LLM output, config files, caches, and stores is JSON-shaped and
@@ -16,7 +16,7 @@ from jinja2 import ChoiceLoader, Environment
 from pydantic import BaseModel
 
 # ── JSON types ────────────────────────────────────────────────────────
-# Recursive JSON value: every JSON payload in KOMPEND narrows to this.
+# Recursive JSON value: every JSON payload in kompend narrows to this.
 # (3.11-compatible spelling; PEP 695 ``type`` statements need 3.12)
 JSONValue = str | int | float | bool | None | list["JSONValue"] | dict[str, "JSONValue"]
 

@@ -1,4 +1,4 @@
-"""KOMPEND FastAPI web server — app setup and serve().
+"""kompend FastAPI web server — app setup and serve().
 
 HTML page routes live in :mod:`kompend.web.routes_pages`.
 API routes live in :mod:`kompend.web.routes_api`.
@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from kompend.web.routes_api import router as api_router
 from kompend.web.routes_pages import router as pages_router
 
-app = FastAPI(title="KOMPEND Web UI")
+app = FastAPI(title="kompend Web UI")
 app.include_router(pages_router)
 app.include_router(api_router)
 

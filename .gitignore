@@ -51,7 +51,7 @@ CLAUDE.md
 /output/
 site/
 
-# KOMPEND project config (copy from kompend.toml.example)
+# kompend project config (copy from kompend.toml.example)
 kompend.toml
 zensical.toml
 node_modules/

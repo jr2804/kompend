@@ -1,10 +1,10 @@
 # Decision Log
 
-All architectural, tooling, and design decisions for KOMPEND. Each entry includes the decision, the context, and the rationale.
+All architectural, tooling, and design decisions for kompend. Each entry includes the decision, the context, and the rationale.
 
 ## Naming
 
-### Decision: Project name is "KOMPEND"
+### Decision: Project name is "kompend"
 
 **Date:** Jun 5, 2026  
 **Context:** Need a pronounceable, memorable name for the compiled LLM-wiki system. Must avoid collision with existing tools ("llm-wiki", "sage-wiki", "llmwiki" all taken).  
@@ -16,7 +16,7 @@ All architectural, tooling, and design decisions for KOMPEND. Each entry include
 - KARBY (KARpathy Better knowledge sYstem) — playful nod
 - WISE (Wiki-Ingestion System for Enhanced documents) — professional
 
-**Decision:** KOMPEND. Short, pronounceable, implies a secure/organized knowledge vault.
+**Decision:** kompend. Short, pronounceable, implies a secure/organized knowledge vault.
 **Consequences:** Slug is `kompend`, repo at `github.com/jr2804/kompend`.
 
 ## Stack
@@ -54,7 +54,7 @@ All architectural, tooling, and design decisions for KOMPEND. Each entry include
 ### Decision: Hybrid chunking (custom + Chonkie)
 
 **Date:** Jun 6, 2026  
-**Context:** Chonkie operates on text/markdown strings. KOMPEND's parser produces typed `DocumentElement` objects. Feeding typed objects into Chonkie means serialization → lossy.  
+**Context:** Chonkie operates on text/markdown strings. kompend's parser produces typed `DocumentElement` objects. Feeding typed objects into Chonkie means serialization → lossy.  
 **Decision:** Custom structure-aware chunker for atomic elements (tables/figures/equations never split) + Chonkie for text-heavy sections.
 **Consequences:** Two code paths. Must maintain consistency between custom chunker and Chonkie token counting.
 
@@ -142,7 +142,7 @@ All architectural, tooling, and design decisions for KOMPEND. Each entry include
 
 **Date:** Jun 6, 2026  
 **Context:** Building a web UI is time-consuming and not core value. Existing tools (Open-WebUI) already solve this.  
-**Decision:** KOMPEND exposes CLI + MCP + Python SDK. Open-WebUI connects via API/MCP.
+**Decision:** kompend exposes CLI + MCP + Python SDK. Open-WebUI connects via API/MCP.
 **Consequences:** Users who want a web UI need separate Open-WebUI install. But zero UI dev effort.
 
 ### Decision: Markdown + JSON dual output

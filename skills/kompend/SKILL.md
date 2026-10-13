@@ -1,16 +1,16 @@
 ---
 name: kompend
 description: >-
-  KOMPEND (Knowledge Organizer for eXtended documents) — compile documents (PDF,
+  KOMPEND (Knowledge-Oriented Markdown Processing and ENtity Distillation) — compile documents (PDF,
   DOCX, HTML, Markdown, EPUB, images) into interlinked, queryable wikis with
   vector search and memory. Use when building knowledge bases, querying compiled
   wikis, capturing conversation knowledge, managing query memory, or automating
   wiki compilation.
 ---
 
-# KOMPEND — Knowledge Builder
+# kompend — Knowledge Builder
 
-KOMPEND turns source documents into a structured, interlinked wiki with
+kompend turns source documents into a structured, interlinked wiki with
 semantic search, memory, and provenance tracking. Exposes a **CLI** and an
 **MCP server**.
 
@@ -205,7 +205,7 @@ lint rule flags files whose slug matches no source.
 
 ### ACP Agent Mode
 
-KOMPEND implements the **Agent Client Protocol (ACP)** to let editors and AI agents
+kompend implements the **Agent Client Protocol (ACP)** to let editors and AI agents
 inject their LLM endpoint without sharing credentials. Run:
 
 ```bash
@@ -229,11 +229,11 @@ See `kompend agents list` for available agents.
 - `--agent-file <path>` — use an explicit TOML agent definition instead of the
   configured active agent
 - `--mcp-port <port>` — also start an MCP-over-HTTP server on the given port
-  so connected AI agents can call KOMPEND's MCP tools directly
+  so connected AI agents can call kompend's MCP tools directly
 
-**Why ACP instead of MCP sampling?** KOMPEND needs full Pydantic structured output
+**Why ACP instead of MCP sampling?** kompend needs full Pydantic structured output
 for compilation — MCP sampling is free-text only. With ACP `providers/set`,
-the editor configures KOMPEND's LLM endpoint at init time, and KOMPEND makes its own
+the editor configures kompend's LLM endpoint at init time, and kompend makes its own
 direct HTTP calls with the full litellm pipeline.
 
 **Slash commands:**
@@ -253,7 +253,7 @@ direct HTTP calls with the full litellm pipeline.
 3. `config.toml` `[compile.llm]`
 4. Built-in defaults
 
-This means even without an ACP client, KOMPEND falls back to env vars or config,
+This means even without an ACP client, kompend falls back to env vars or config,
 preserving `kompend compile` in terminal and `kompend mcp` for MCP-based agents.
 | `kompend serve` | Start web UI server (browser-based wiki viewer) |
 
@@ -308,7 +308,7 @@ All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": 
 
 ## Agent Workflows
 
-### Workflow 1: Onboard a user to KOMPEND
+### Workflow 1: Onboard a user to kompend
 
 ```text
 1. Call init_wiki(target=".", bare=False, git=True) to scaffold
@@ -388,7 +388,7 @@ an `Agentic*` class existing is not evidence that it is wired into a pipeline.
 
 ## Output Format
 
-KOMPEND produces **OKF v0.1** (Open Knowledge Format) bundles by default — an open,
+kompend produces **OKF v0.1** (Open Knowledge Format) bundles by default — an open,
 human- and agent-friendly format for representing knowledge as a directory of
 markdown files with YAML frontmatter. [Spec →](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 
@@ -404,10 +404,10 @@ title: "System Architecture"
 description: One-line summary of the page
 tags: [source-file-1, source-file-2]
 timestamp: "2026-07-10T12:00:00"
-kind: concept  # KOMPEND extension
-compiled_at: "2026-07-10"  # KOMPEND extension
-sources: [source-file-1.pdf]  # KOMPEND extension
-attributes:  # KOMPEND extension — per-source key=value facts (single value scalar, multiple values list)
+kind: concept  # kompend extension
+compiled_at: "2026-07-10"  # kompend extension
+sources: [source-file-1.pdf]  # kompend extension
+attributes:  # kompend extension — per-source key=value facts (single value scalar, multiple values list)
   version: "2"
   status: draft
 ---

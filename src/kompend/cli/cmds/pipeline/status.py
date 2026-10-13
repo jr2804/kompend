@@ -22,7 +22,7 @@ def collect_stats(
 ) -> dict:
     """Collect wiki statistics. Gracefully handles missing dirs."""
     stats: dict = {
-        "wiki_name": "KOMPEND Wiki",
+        "wiki_name": "kompend Wiki",
         "config_file": None,
         "sources": {"count": 0, "total_size_bytes": 0},
         "articles": {"count": 0, "total_words": 0},

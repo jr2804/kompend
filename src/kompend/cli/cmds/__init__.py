@@ -1,4 +1,4 @@
-"""Command modules for KOMPEND CLI.
+"""Command modules for kompend CLI.
 
 This package organizes CLI commands into three domain subpackages plus
 standalone modules:

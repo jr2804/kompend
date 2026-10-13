@@ -1,4 +1,4 @@
-"""Programmatic entity registry for KOMPEND Tier 3.
+"""Programmatic entity registry for kompend Tier 3.
 
 Accumulates entities across ChunkTrees using pattern-based extraction (no LLM).
 Deduplicates acronym/expanded-form pairs (e.g. ``SNR`` and

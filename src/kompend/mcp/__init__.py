@@ -1,1 +1,1 @@
-"""KOMPEND MCP server package."""
+"""kompend MCP server package."""

@@ -16,7 +16,7 @@ from kompend.scaffolding import TEMPLATE_NEXT_STEPS, ScaffoldError, find_existin
 logger = get_logger(__name__)
 
 
-@app.command(name="init", help="Scaffold a new KOMPEND wiki project.")
+@app.command(name="init", help="Scaffold a new kompend wiki project.")
 def init(
     target: InitTarget = ".",
     bare: InitBare = False,
@@ -32,7 +32,7 @@ def init(
         existing = find_existing_project(target_dir)
         if existing is not None:
             get_err_console().print(
-                f"warning: existing KOMPEND project detected at {existing}.\n  Use --force to overwrite (this wipes the current vault).",
+                f"warning: existing kompend project detected at {existing}.\n  Use --force to overwrite (this wipes the current vault).",
             )
             raise typer.Exit(code=0)
 

@@ -39,7 +39,7 @@ the waiver: it states why this site is legitimate.
 
 ---
 
-## Project-specific Checks — KOMPEND
+## Project-specific Checks — kompend
 
 ### Verification
 

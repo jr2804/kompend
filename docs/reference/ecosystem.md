@@ -21,7 +21,7 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 | **Tencent/WeKnora** | 15.9k | Go+TS | ✅ Docling+MinerU parser | ✅ Multi-KB, RBAC | **Excellent** | CLI + MCP + Web + RAG | ✅ **HIGH** |
 | **llmwikify** (PyPI) | NEW | Python | ⚠️ Agent-dependent | ✅ SQLite FTS5 | **Excellent** | CLI + MCP (20 tools) | ✅ **HIGH** |
 
-### Most Promising for KOMPEND's Use Case
+### Most Promising for kompend's Use Case
 
 1. **lucasastorian/llmwiki** — Mistral OCR gives best PDF quality. MCP native. Worth testing.
 2. **atomicstrata/llm-wiki-compiler** — Most polished MCP integration. Prompt budget for long docs.
@@ -45,23 +45,23 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 | **paper2llm** (lacerbi) | NEW | Python | Academic PDFs | N/A | No | Yes | No |
 | **file2md** (Pathwit) | 103 | MIT | 123 formats | Fast | No | Basic | No |
 
-### KOMPEND Strategy
+### kompend Strategy
 
 - **Primary:** parsecraft — routes each page across its own sub-backends (native, LiteParse, docling, pandoc, OCR); see [Document Extraction](../guides/document-extraction.md)
-- **Alternative:** opendataloader-pdf (best standalone benchmark, hybrid AI) — rejected for KOMPEND on Java and sidecar-server grounds; see [Document Extraction](../guides/document-extraction.md#investigated-and-rejected-opendataloader-pdfhybrid)
+- **Alternative:** opendataloader-pdf (best standalone benchmark, hybrid AI) — rejected for kompend on Java and sidecar-server grounds; see [Document Extraction](../guides/document-extraction.md#investigated-and-rejected-opendataloader-pdfhybrid)
 - **Legacy .doc:** Oxide Office (<https://office.oxide.fyi/>)
 - **Images/OCR:** parsecraft's `ocr-*` extras locally, Mistral OCR (paid) for best quality
 
 ## Chunking Libraries
 
-| Library | Chunkers | Focus | Stars | License | KOMPEND Fit |
+| Library | Chunkers | Focus | Stars | License | kompend Fit |
 |---|---|---|---|---|---|
 | **chonkie** | 11+ | Production RAG, multi-strategy | 4.1k+ | MIT | ✅ **Primary** |
 | **semchunk** | 1 core | Semantic hierarchical | Low | — | ⚠️ Single strategy |
 
 ### chonkie Detail
 
-| Chunker | Use Case | KOMPEND Application |
+| Chunker | Use Case | kompend Application |
 |---|---|---|
 | `RecursiveChunker` | Hierarchical splitting (para → sentence → word) | Long text sections > token budget |
 | `SemanticChunker` | Embedding-based topic boundaries | Multi-topic text sections |
@@ -71,7 +71,7 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 
 **Version:** v1.6.8 (Jun 1, 2026), SIMD-accelerated at 100+ GB/s, 45+ integrations.
 
-**KOMPEND approach:** Custom structure-aware chunker (headings → atomic elements) + Chonkie for text-heavy groups. See [architecture](../architecture/index.md) for full design.
+**kompend approach:** Custom structure-aware chunker (headings → atomic elements) + Chonkie for text-heavy groups. See [architecture](../architecture/index.md) for full design.
 
 ## Hybrid RAG Components (Sidecar)
 
@@ -83,11 +83,11 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 
 ### Open-WebUI (GUI)
 
-No custom GUI. Use **open-webui/open-webui** as the query/work interface. KOMPEND exposes API/MCP; Open-WebUI connects.
+No custom GUI. Use **open-webui/open-webui** as the query/work interface. kompend exposes API/MCP; Open-WebUI connects.
 
 ## MCP Servers in This Space
 
-| Server | Features | KOMPEND Relevance |
+| Server | Features | kompend Relevance |
 |---|---|---|
 | **kObsidian** (bezata) | 66 tools, filesystem-first vault | Inspiration for Hermes integration |
 | **llmwiki serve** (atomicstrata) | `wiki_compile`, `get_context_pack`, `wiki_query` | Competitor + reference |

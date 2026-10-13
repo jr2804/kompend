@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-"""Check parity between KOMPEND CLI commands and MCP server tools.
+"""Check parity between kompend CLI commands and MCP server tools.
 
-This script verifies that every functional KOMPEND CLI command has a matching
+This script verifies that every functional kompend CLI command has a matching
 MCP server tool so the same functionality is reachable over the MCP surface.
 
 Design notes
@@ -47,7 +47,7 @@ MCP_TO_CLI_ALIASES: dict[str, str] = {
 
 
 def main() -> int:
-    print("Checking KOMPEND CLI vs MCP Parity...")
+    print("Checking kompend CLI vs MCP Parity...")
 
     cli_commands = get_cli_commands()
     mcp_tools = get_mcp_tools()

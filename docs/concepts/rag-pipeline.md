@@ -1,6 +1,6 @@
 # RAG Pipeline
 
-KOMPEND's query pipeline includes optional RAG enhancement techniques that improve retrieval quality. Each is a **plug-in step** — configurable via `kompend.toml` under `[search]`, and all default to **disabled**.
+kompend's query pipeline includes optional RAG enhancement techniques that improve retrieval quality. Each is a **plug-in step** — configurable via `kompend.toml` under `[search]`, and all default to **disabled**.
 
 ## Pipeline Flow
 

@@ -1,4 +1,4 @@
-"""Unit tests for KOMPEND lint rules."""
+"""Unit tests for kompend lint rules."""
 
 from __future__ import annotations
 

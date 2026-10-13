@@ -1,7 +1,7 @@
 """Thread-safe LLM provider credential store for ACP providers/set.
 
 Stores the LLM endpoint configuration received via ACP ``providers/set``
-and reconfigures the pipeline's env-var-based resolution so KOMPEND uses the
+and reconfigures the pipeline's env-var-based resolution so kompend uses the
 configured endpoint.
 """
 
@@ -90,7 +90,7 @@ class ProviderCredentials:
     """Thread-safe store for the LLM endpoint configured via ACP ``providers/set``.
 
     When a provider is set, the pipeline's env-var-based resolution is reconfigured
-    so the KOMPEND pipeline uses the configured endpoint. When disabled, the
+    so the kompend pipeline uses the configured endpoint. When disabled, the
     fallback chain (env vars → config.toml → DEFAULTS) is restored.
     """
 

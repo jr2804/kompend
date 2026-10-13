@@ -1,6 +1,6 @@
 """Standalone tier-1 ingestion: parse sources and cache structured documents.
 
-This module performs only the parsing/caching tier (tier 1) of the KOMPEND
+This module performs only the parsing/caching tier (tier 1) of the kompend
 pipeline. It is used by ``kompend ingest`` so users can pre-populate the
 cache without running the full compile pipeline.
 """

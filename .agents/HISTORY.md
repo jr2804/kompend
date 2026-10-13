@@ -29,7 +29,7 @@ from re-litigating settled questions.
 
 ---
 
-## Project-specific History — KOMPEND
+## Project-specific History — kompend
 
 ### Archived plans — full detail in `.agents/history/`
 

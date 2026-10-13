@@ -1,4 +1,4 @@
-"""KOMPEND 5-tier pipeline orchestrator, config, state, and ingestion."""
+"""kompend 5-tier pipeline orchestrator, config, state, and ingestion."""
 
 from __future__ import annotations
 

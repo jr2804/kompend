@@ -15,7 +15,7 @@ TOML schema::
     max_tokens = 4096
 
     [prompt]
-    system = "You are a KOMPEND compilation assistant..."
+    system = "You are a kompend compilation assistant..."
 
     [tools]
     enabled = ["compile_wiki", "wiki_status"]  # null/omitted = all tools

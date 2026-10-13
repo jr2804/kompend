@@ -47,7 +47,7 @@ logger = get_logger(__name__)
 # Silence noisy third-party loggers that flood CLI output with
 # model-loading chatter, empty-OCR warnings, and full ONNX/docling
 # traceback boxes.  CRITICAL suppresses everything below — these
-# errors are not actionable by the user; KOMPEND logs its own parse
+# errors are not actionable by the user; kompend logs its own parse
 # failures at the appropriate level.
 logging.getLogger("docling").setLevel(logging.CRITICAL)
 logging.getLogger("RapidOCR").setLevel(logging.CRITICAL)

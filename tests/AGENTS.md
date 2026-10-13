@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Test suites for the KOMPEND project. Governs how tests are structured, where they
+Test suites for the kompend project. Governs how tests are structured, where they
 go, and what patterns are forbidden.
 
 ## Ownership

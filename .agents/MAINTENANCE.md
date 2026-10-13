@@ -30,7 +30,7 @@ How to keep `.agents/` files current.
 
 ---
 
-## Project-specific Maintenance — KOMPEND
+## Project-specific Maintenance — kompend
 
 ### File update triggers
 

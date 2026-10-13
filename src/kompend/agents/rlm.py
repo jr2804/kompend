@@ -1,11 +1,11 @@
-"""RLM (Recursive Language Model) capability — code exploration for KOMPEND agents.
+"""RLM (Recursive Language Model) capability — code exploration for kompend agents.
 
 Wraps the REPL toolset from ``pydantic-ai-rlm`` (vstorm-co) as a pydantic-ai
-:class:`AbstractCapability` so KOMPEND agents can explore large deps contexts
+:class:`AbstractCapability` so kompend agents can explore large deps contexts
 programmatically instead of packing everything into the prompt.
 
 The package's own ``create_rlm_toolset`` is typed for ``RLMDependencies``;
-KOMPEND agents use their own deps dataclasses (``QueryDeps``, ``ToolGenerationDeps``,
+kompend agents use their own deps dataclasses (``QueryDeps``, ``ToolGenerationDeps``,
 …). This module owns the thin tool glue: it reads the context from a
 configurable deps attribute and reuses the package's
 :class:`~pydantic_ai_rlm.repl.REPLEnvironment` for the sandbox, context
@@ -113,7 +113,7 @@ class _RLMRunGuard:
 
 
 class RLMCapability(AbstractCapability[Any]):
-    """Adds RLM code exploration to a KOMPEND agent.
+    """Adds RLM code exploration to a kompend agent.
 
     Supplies the ``execute_code`` tool (REPL sandbox with the deps context
     pre-loaded) and the RLM mode instructions. The sub-model, when set,

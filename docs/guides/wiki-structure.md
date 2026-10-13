@@ -1,6 +1,6 @@
 # Wiki Structure
 
-Every compiled KOMPEND wiki comes with three auto-generated pages that serve as
+Every compiled kompend wiki comes with three auto-generated pages that serve as
 the entry point, activity record, and thematic overview.
 
 ## index.md

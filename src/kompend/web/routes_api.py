@@ -1,4 +1,4 @@
-"""API routes for the KOMPEND web server."""
+"""API routes for the kompend web server."""
 
 from __future__ import annotations
 

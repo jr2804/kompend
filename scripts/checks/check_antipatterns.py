@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AST-based antipattern scanner for KOMPEND.
+"""AST-based antipattern scanner for kompend.
 
 Enforces rules that are hard to express in ruff but represent systemic
 LLM-coding mistakes observed in this codebase:

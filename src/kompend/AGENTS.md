@@ -5,14 +5,14 @@
 
 ## Purpose
 
-Coding conventions and quality standards for the KOMPEND Python source tree at
+Coding conventions and quality standards for the kompend Python source tree at
 `src/kompend/`. Governs how Python code is written and how human-readable text is
 handled. Code policies (antipatterns, boundaries, error handling) are universal
 and live in `.agents/CODE.md`.
 
 ## Ownership
 
-- `src/kompend/` — all KOMPEND Python source code
+- `src/kompend/` — all kompend Python source code
 - `src/kompend/templates/` — all LLM prompt and instruction templates
 - `src/kompend/packs/` — prompt packs (see `packs/AGENTS.md`)
 
@@ -52,7 +52,7 @@ alike. Two are enforced by script; run both before committing (see
 
 ### Output format — OKF v0.2
 
-KOMPEND emits **OKF v0.2** bundles by default; OKF is a compliance spec, not an
+kompend emits **OKF v0.2** bundles by default; OKF is a compliance spec, not an
 output format. Conformance rules (frontmatter, trust fields, provenance fields,
 portable cross-links, reserved filenames, page kinds, footnote attribution,
 permissive consumption) — **see `output/AGENTS.md`** and
@@ -115,7 +115,7 @@ Commands — see `.agents/CHECKS.md`. For this subtree the relevant ones are
 | `core/utils/` | Pure helpers, zero domain logic |
 | `lint/` | Structural + LLM lint rules, gap analysis, remediation |
 | `llm/` | Model construction, context-window discovery, formats, usage tracking |
-| `mcp/` | MCP server exposing KOMPEND operations as tools (fastmcp) |
+| `mcp/` | MCP server exposing kompend operations as tools (fastmcp) |
 | `memory/` | Query memory store and compile-time lifecycle |
 | `output/` | Tier 5 — OKF markdown/JSON/Typst writers, indexes, log |
 | `preprocessing/parsers/` | Pluggable ingestion backends and their registry |

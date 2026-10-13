@@ -1,6 +1,6 @@
 """Embedding-based content similarity matcher.
 
-Uses the configurable KOMPEND embedding provider (pydantic-ai ``Embedder``)
+Uses the configurable kompend embedding provider (pydantic-ai ``Embedder``)
 to compute document vectors, then compares via cosine similarity.
 """
 
@@ -22,7 +22,7 @@ class EmbeddingMatcher(ContentMatcher[list[float]]):
 
     Long documents are chunked and mean-pooled into a single vector.
 
-    Uses the existing KOMPEND ``EmbeddingProvider`` abstraction so that
+    Uses the existing kompend ``EmbeddingProvider`` abstraction so that
     any pydantic-ai embedding provider (local or remote) works transparently.
     """
 

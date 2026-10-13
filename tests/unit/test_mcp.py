@@ -1,4 +1,4 @@
-"""Tests for KOMPEND MCP server — FastMCP-based tools."""
+"""Tests for kompend MCP server — FastMCP-based tools."""
 
 from __future__ import annotations
 
@@ -211,5 +211,5 @@ def test_query_wiki_works_without_kompend_state(tmp_path: Path) -> None:
 
 def test_query_wiki_errors_when_no_pages(tmp_path: Path) -> None:
     """Querying a non-vault dir fails fast (LookupError) before page loading."""
-    with pytest.raises(LookupError, match="not a KOMPEND vault root"):
+    with pytest.raises(LookupError, match="not a kompend vault root"):
         query_wiki("anything", wiki_dir=str(tmp_path / "empty"))

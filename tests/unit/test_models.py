@@ -1,4 +1,4 @@
-"""Tests for KOMPEND core data models."""
+"""Tests for kompend core data models."""
 
 import json
 from pathlib import Path

@@ -1,6 +1,6 @@
 # Query Memory & Context Synthesis
 
-KOMPEND includes a lightweight, native memory layer that allows the system to learn from past interactions. This feature enables long-term context retention, ensuring that the wiki evolves to better match your specific needs, terminology, and preferences over time.
+kompend includes a lightweight, native memory layer that allows the system to learn from past interactions. This feature enables long-term context retention, ensuring that the wiki evolves to better match your specific needs, terminology, and preferences over time.
 
 ## Overview
 
@@ -36,7 +36,7 @@ kompend memory search "Ollama configuration" --top-k 3
 ```
 
 **Synthesize context:**
-Periodically, you can instruct KOMPEND to review recent memory entries and distill them into a living system context file. This file (`sources/_memory/system_context.md`) is automatically picked up during compilation and querying to guide the LLM's behavior.
+Periodically, you can instruct kompend to review recent memory entries and distill them into a living system context file. This file (`sources/_memory/system_context.md`) is automatically picked up during compilation and querying to guide the LLM's behavior.
 
 ```bash
 kompend memory synthesize --limit 20
@@ -46,7 +46,7 @@ kompend memory synthesize --limit 20
 
 ## MCP Server Integration
 
-For AI agents, the memory layer is fully exposed via the KOMPEND MCP server, allowing autonomous agents to build and leverage long-term context without shell access.
+For AI agents, the memory layer is fully exposed via the kompend MCP server, allowing autonomous agents to build and leverage long-term context without shell access.
 
 Available MCP tools:
 
@@ -63,7 +63,7 @@ Available MCP tools:
 
 ## Enhanced RAG Pipeline
 
-KOMPEND includes optional RAG enhancement techniques that improve retrieval quality.
+kompend includes optional RAG enhancement techniques that improve retrieval quality.
 Each is a plug-in step configurable via `kompend.toml` under `[search]`:
 
 | Feature | Config | Default | Description |

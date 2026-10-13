@@ -38,7 +38,7 @@ __all__ = [
     "write_wiki_snapshot_payload",
 ]
 
-# Frontmatter ``kind`` extension maps back to the KOMPEND node_type.
+# Frontmatter ``kind`` extension maps back to the kompend node_type.
 _KIND_TO_NODE_TYPE = {
     "Concept": "concept",
     "Entity": "entity",

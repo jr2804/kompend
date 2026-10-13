@@ -1,8 +1,8 @@
-"""parsecraft adapter — routes KOMPEND parsing through the external
+"""parsecraft adapter — routes kompend parsing through the external
 `parsecraft <https://pypi.org/project/parsecraft/>`_ document-intelligence
 pipeline.
 
-KOMPEND consumes parsecraft's **public API only** (``parsecraft.pipeline`` /
+kompend consumes parsecraft's **public API only** (``parsecraft.pipeline`` /
 ``parsecraft.backends`` / IR). The dependency is pinned and installed as a
 wheel — never the parsecraft checkout. See
 ``.agents/plans/parsecraft-integration.md`` for the integration contract and
@@ -10,15 +10,15 @@ the rationale for each mapping below.
 
 Mapping summary:
 
-- KOMPEND file → parsecraft MIME via ``media_type_for``; the MIME feeds
+- kompend file → parsecraft MIME via ``media_type_for``; the MIME feeds
   ``RoutingConstraints.formats`` and analyzer selection.
 - ``analyze_source`` → ``pipeline.execute`` → IR (``DocumentResult`` →
-  ``PageResult.blocks``) → KOMPEND ``ParsedDocument`` / ``DocumentElement``.
-- parsecraft's four error buckets → KOMPEND parse failures with the cause
+  ``PageResult.blocks``) → kompend ``ParsedDocument`` / ``DocumentElement``.
+- parsecraft's four error buckets → kompend parse failures with the cause
   preserved. Never emit placeholder pages as content: on total exhaustion
   parsecraft returns diagnostic-carrying pages, not text.
 - Route degradation (OCR → native) arrives as ``QualitySignal`` entries in
-  ``DocumentResult.quality`` and is forwarded as KOMPEND metadata so it survives
+  ``DocumentResult.quality`` and is forwarded as kompend metadata so it survives
   the parse cache.
 """
 
@@ -58,7 +58,7 @@ from kompend.preprocessing.parsers._registry import (
     register_backend,
 )
 
-#: parsecraft chunk kind → KOMPEND element type. Kinds without a KOMPEND equivalent
+#: parsecraft chunk kind → kompend element type. Kinds without a kompend equivalent
 #: (header/footer/quote/unknown/caption) map to TEXT — they carry content and
 #: dropping them would lose data. Keys are :class:`parsecraft.ir.models.ChunkKind`
 #: members, not bare strings, so a chunk-kind rename upstream surfaces as a
@@ -88,11 +88,11 @@ logger = get_logger(__name__)
 
 
 class ParsecraftParser:
-    """KOMPEND Tier-1 parser backed by the parsecraft pipeline.
+    """kompend Tier-1 parser backed by the parsecraft pipeline.
 
     Deliberately not a :class:`~kompend.preprocessing.parsers.base.BaseParser`
     subclass: it carries parsecraft-specific constructor state (the backend
-    registry) that the KOMPEND base has no business knowing about. The registry
+    registry) that the kompend base has no business knowing about. The registry
     binds it through an explicit factory, and ``supported_extensions`` /
     ``can_parse`` / ``parse`` satisfy the structural surface the router needs.
     """
@@ -138,7 +138,7 @@ class ParsecraftParser:
         return True
 
     def parse(self, source_file: Path) -> ParsedDocument:
-        """Parse *source_file* through parsecraft and map the IR to KOMPEND."""
+        """Parse *source_file* through parsecraft and map the IR to kompend."""
         registry = self._registry if self._registry is not None else default_registry
         media_type = media_type_for(source_file)
         self._ensure_environment()
@@ -394,7 +394,7 @@ def _parse_preference(name: str) -> RoutingPreference:
 
 
 def _map_document(document: DocumentResult, source_file: Path) -> list[DocumentElement]:
-    """Map parsecraft IR pages/chunks to KOMPEND elements, order + pages preserved.
+    """Map parsecraft IR pages/chunks to kompend elements, order + pages preserved.
 
     Raises :class:`ParsecraftParseError` when execution genuinely exhausted —
     discriminated by execution evidence, NOT by ``winner is None`` (a parsecraft
@@ -423,7 +423,7 @@ def _chunk_to_element(
     source_file: Path,
     reading_order: int,
 ) -> DocumentElement | None:
-    """One IR chunk → one KOMPEND element, or ``None`` when it carries no content."""
+    """One IR chunk → one kompend element, or ``None`` when it carries no content."""
     element_type = _CHUNK_KIND_TO_ELEMENT.get(chunk.kind, ElementType.TEXT)
     content = _chunk_content(chunk)
     if not content:
@@ -443,10 +443,10 @@ def _chunk_to_element(
 
 
 def _chunk_content(chunk: StructuredChunk) -> str:
-    """Chunk content in KOMPEND's element shape.
+    """Chunk content in kompend's element shape.
 
     Tables arrive as Markdown text: parsecraft's IR has no structured row
-    model yet (upstream gap), so KOMPEND consumes the Markdown table — its own
+    model yet (upstream gap), so kompend consumes the Markdown table — its own
     markdown converter restores the grid downstream.
     """
     return chunk.content if isinstance(chunk.content, str) else ""

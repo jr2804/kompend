@@ -1,6 +1,6 @@
 # Credits & Acknowledgements
 
-KOMPEND builds on ideas from the broader LLM Wiki ecosystem. The following
+kompend builds on ideas from the broader LLM Wiki ecosystem. The following
 open-source projects were investigated for patterns, approaches, and design
 decisions. Many thanks to their creators and contributors.
 
@@ -26,7 +26,7 @@ decisions. Many thanks to their creators and contributors.
 
 ### atomicstrata/llm-wiki-compiler
 
-| Idea | Description | KOMPEND Status |
+| Idea | Description | kompend Status |
 |------|------------|-------------|
 | **Two-phase compile** | Extract all entities/concepts first, then generate pages. Enables cross-source merging and order-independence. | **Planned (Q20/N3).** Core architecture decision. |
 | **Eval harness** | Production-grade health score: citation coverage, freshness, link integrity, style guide conformance. CI thresholds. | **Planned (N2).** Quality measurement from the start. |
@@ -38,7 +38,7 @@ decisions. Many thanks to their creators and contributors.
 
 ### NiharShrotri/llm-wiki
 
-| Idea | Description | KOMPEND Status |
+| Idea | Description | kompend Status |
 |------|------------|-------------|
 | **Web UI** | Full dashboard with drag-and-drop upload, live progress, D3 force-directed graph. Survives tab close and server restart. | **Planned (N5).** Significant but deferrable. |
 | **3-way query scope** | `Wiki` (thematic from compiled pages), `Raw` (exact lookups in original docs), `Hybrid` (both combined via RRF). | **Planned (N6).** Essential for query flexibility. |
@@ -50,20 +50,20 @@ decisions. Many thanks to their creators and contributors.
 
 ### tobi/qmd
 
-| Idea | Description | KOMPEND Status |
+| Idea | Description | kompend Status |
 |------|------------|-------------|
 | **MCP server with typed tools** | Exposes `query`, `get`, `multi_get`, `status` as MCP tools with structured input/output schemas. | **Reference for kompend-4jc.** Clean tool design pattern. |
 | **Hierarchical context metadata** | Collections/documents carry context tags returned alongside results. LLMs make better selection decisions. | **Planned (Q17 enhancement).** qmd's key differentiator. |
 | **Typed sub-queries** | `lex` (BM25), `vec` (vector), `hyde` (hypothetical answer) as separate query types, combined via RRF + reranking. | **Planned (Q25).** Cleaner than a single hybrid weight. |
 | **Progress callbacks** | `onProgress` for indexing and embedding operations. | **Planned (Q25 enhancement).** UX improvement for long ops. |
 | **Document body with line ranges** | `getDocumentBody(path, {fromLine, maxLines})` — retrieve specific lines. | **Related to N4.** Line-level retrieval for provenance. |
-| **All-local via node-llama-cpp** | BM25 + vector + reranker all run locally. No cloud. | **KOMPEND already local-first.** Validates the approach. |
+| **All-local via node-llama-cpp** | BM25 + vector + reranker all run locally. No cloud. | **kompend already local-first.** Validates the approach. |
 
 ### Tencent/WeKnora
 
-| Idea | Description | KOMPEND Status |
+| Idea | Description | kompend Status |
 |------|------------|-------------|
-| **Wiki Mode** | Agent-driven auto-generation of structured, interlinked markdown wiki from raw documents. Same core concept as KOMPEND. | **Already implemented.** Validates the approach. |
+| **Wiki Mode** | Agent-driven auto-generation of structured, interlinked markdown wiki from raw documents. Same core concept as kompend. | **Already implemented.** Validates the approach. |
 | **20+ LLM providers** | Including Ollama, plus per-model thinking-mode config. | **Planned (Q12+Q13).** Reference for provider matrix design. |
 | **Multiple retrieval strategies** | BM25 sparse / Dense / GraphRAG / parent-child / multi-dimensional indexing — selectable per KB. | **Planned (Q25).** Configurable retrieval is more flexible than single hybrid. |
 | **Parent-child chunking** | Hierarchical chunking (parent chunks with child passages). Improves retrieval context. | **Planned (Q25 enhancement).** Known RAG improvement. |
@@ -73,7 +73,7 @@ decisions. Many thanks to their creators and contributors.
 
 ### Pratiyush/llm-wiki
 
-| Idea | Description | KOMPEND Status |
+| Idea | Description | kompend Status |
 |------|------------|-------------|
 | **Session transcript ingestion** | Structured ingestion of Claude Code .jsonl, Codex CLI, Cursor session transcripts. Full adapter pattern with format detection. | **Not yet planned.** Richer than text snippets; captures full agent conversations. |
 | **16 lint rules** | 8 structural (broken links, missing metadata, orphan pages) + 8 LLM-powered (factual consistency, clarity, coherence). | **Planned (N1).** Reference for rule design. |
@@ -82,7 +82,7 @@ decisions. Many thanks to their creators and contributors.
 
 ### notebooklm-llm-wiki-flow (reallygood83)
 
-| Idea | Description | KOMPEND Status |
+| Idea | Description | kompend Status |
 |------|------------|-------------|
 | **NotebookLM integration** | Bridges NotebookLM output to LLM Wiki pipeline. Feed URLs/PDFs → NotebookLM → LLM Wiki → Obsidian. | **Under consideration.** Specific workflow bridge. |
 | **YAML workflow execution** | `run-from-yaml WORKFLOW.yaml` for repeatable, composable research workflows. | **Under consideration.** Useful for batch/scripted compilation. |
@@ -93,7 +93,7 @@ decisions. Many thanks to their creators and contributors.
 
 ### llm-wiki-pm (anh-chu)
 
-| Idea | Description | KOMPEND Status |
+| Idea | Description | kompend Status |
 |------|------------|-------------|
 | **Role packs** | PM, researcher, executive, founder personas that tune recall sensitivity, output format, and templates. | **Planned (Q24 enhancement).** Adds user-persona dimension to contribution packs. |
 | **Supersession** | When a page is superseded, inbound wikilinks auto-redirect to the new page. | **Planned (Q21 enhancement).** Trust + link management. |
@@ -121,7 +121,7 @@ Across all 11 investigated projects, the following patterns emerge:
 
 ### Adopted (in planned features)
 
-| Decision | Source | KOMPEND Issue |
+| Decision | Source | kompend Issue |
 |----------|--------|-----------|
 | Per-task LLM models (not one model for all stages) | sage-wiki, WeKnora | Q13 |
 | Config file with env-var/flags override chain | sage-wiki, notebooklm-flow | Q15 |
@@ -151,7 +151,7 @@ Across all 11 investigated projects, the following patterns emerge:
 | NotebookLM bridge pipeline | notebooklm-flow | Specific integration; low priority |
 | YAML workflow engine | notebooklm-flow | Useful for scripted batch compilation |
 | Supersession with auto-redirect | anh-chu | Depends on link management |
-| Worker subagents | anh-chu | KOMPEND isn't agent-based, but pattern is interesting |
+| Worker subagents | anh-chu | kompend isn't agent-based, but pattern is interesting |
 | Multi-source auto-sync (Notion, Feishu, etc.) | WeKnora | Enterprise feature; low priority |
 | Parent-child chunking | WeKnora | Improves retrieval context; medium priority |
 | Multi-LLM observability (Langfuse-style) | WeKnora | Pipeline tracing; medium priority |
@@ -167,7 +167,7 @@ Across all 11 investigated projects, the following patterns emerge:
 | Ignoring `reasoning` field in provider responses | sage-wiki (#85) | Handle reasoning in all provider parsers |
 | Full reset on restart (no incremental state) | sage-wiki (#88) | Persistent per-source completion in SQLite |
 | Reliance on external vector DB | 4/9 projects | Embedded vectors are simpler and reliable |
-| SaaS-first architecture | WeKnora | KOMPEND is local-first, library-first |
+| SaaS-first architecture | WeKnora | kompend is local-first, library-first |
 
 ---
 

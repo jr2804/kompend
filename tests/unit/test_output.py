@@ -1,4 +1,4 @@
-"""Tests for KOMPEND output writers (Milestone 5)."""
+"""Tests for kompend output writers (Milestone 5)."""
 
 # ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
 

@@ -1,4 +1,4 @@
-"""PydanticAI-based agents for the KOMPEND compilation pipeline.
+"""PydanticAI-based agents for the kompend compilation pipeline.
 
 This package (note: plural ``agents/``) is distinct from ``kompend/agent/``
 (singular), which implements the ACP protocol adapter for editors. The

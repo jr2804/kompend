@@ -1,4 +1,4 @@
-"""Tests for the RLM capability (code-exploration tools on KOMPEND agents)."""
+"""Tests for the RLM capability (code-exploration tools on kompend agents)."""
 
 from __future__ import annotations
 

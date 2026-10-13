@@ -1,4 +1,4 @@
-"""KOMPEND CLI argument types organized by command/domain.
+"""kompend CLI argument types organized by command/domain.
 
 This module re-exports all argument types from submodules to maintain
 backward compatibility with existing imports. Use specific submodule imports

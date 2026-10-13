@@ -29,11 +29,11 @@ verification in `CHECKS.md`.
 
 ---
 
-## Project-specific Onboarding — KOMPEND
+## Project-specific Onboarding — kompend
 
-### 1. What is KOMPEND?
+### 1. What is kompend?
 
-KOMPEND = Knowledge Organizer for eXtended documents. A parser-agnostic,
+kompend = Knowledge Organizer for eXtended documents. A parser-agnostic,
 structure-preserving, LLM-aware knowledge base compiler. 5-tier pipeline:
 Preprocessing → Chunking → Resolution → Compilation → Output.
 

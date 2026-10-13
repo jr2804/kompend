@@ -1,6 +1,6 @@
 # PydanticAI Agents & Skills
 
-Every LLM call in KOMPEND routes through a **PydanticAI agent** in
+Every LLM call in kompend routes through a **PydanticAI agent** in
 `kompend.agents.*`. Agents come in two shapes:
 
 - **Single-shot** — one structured-output call that returns a typed Pydantic
@@ -26,7 +26,7 @@ This guide covers:
 
 ### Base class
 
-All agents inherit from `KompendAgentBase[ResultT, DepsT]` — a KOMPEND wrapper around
+All agents inherit from `KompendAgentBase[ResultT, DepsT]` — a kompend wrapper around
 `pydantic_ai.Agent` that adds:
 
 - **Model bridge** — builds a [`KompendModel`](#kompendmodel) from a
@@ -145,7 +145,7 @@ removed in `kompend-0iv2.12`.
 ### KompendModel
 
 `KompendModel` is a thin delegate that wraps any native pydantic-ai `Model`
-and adds KOMPEND-specific concerns:
+and adds kompend-specific concerns:
 
 - **Reasoning effort mapping** — `_merge_reasoning()` translates the
   config string (`"none"`, `"low"`, `"medium"`, `"high"`, …) into the

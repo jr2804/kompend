@@ -1,4 +1,4 @@
-"""KOMPEND compile lint — structural and LLM-powered quality rules."""
+"""kompend compile lint — structural and LLM-powered quality rules."""
 
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, RemediationAction, RemediationStatus, Severity
 from kompend.lint.gap_analysis import GapRecommendation, analyze_gaps, gaps_to_text

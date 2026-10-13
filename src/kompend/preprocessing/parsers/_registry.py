@@ -71,7 +71,7 @@ class ParserBuildOptions:
 
     @classmethod
     def from_config(cls, cfg: ResolvedConfig, *, images_dir: Path | None = None) -> ParserBuildOptions:
-        """Build the parser options implied by a resolved KOMPEND config.
+        """Build the parser options implied by a resolved kompend config.
 
         The single construction point for every ingestion router the pipeline,
         the CLI and the MCP server build. They all share one parse cache, and

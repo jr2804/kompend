@@ -495,12 +495,12 @@ class TestExtractionData:
     def test_entity_index(self) -> None:
         ext = ExtractionSet(
             extractions=[
-                Extraction(source="a.pdf", entities=[Entity(name="KOMPEND", type="PROJECT")]),
-                Extraction(source="b.pdf", entities=[Entity(name="KOMPEND", type="PROJECT")]),
+                Extraction(source="a.pdf", entities=[Entity(name="kompend", type="PROJECT")]),
+                Extraction(source="b.pdf", entities=[Entity(name="kompend", type="PROJECT")]),
             ]
         )
         idx = ext.entity_index()
-        assert idx["KOMPEND"] == ["a.pdf", "b.pdf"]
+        assert idx["kompend"] == ["a.pdf", "b.pdf"]
 
 
 class TestNormalizeConceptKey:
@@ -944,7 +944,7 @@ class TestTwoPhaseCompiler:
                 [
                     {
                         "summary": "x",
-                        "entities": [{"name": "KOMPEND", "type": "PROJECT"}],
+                        "entities": [{"name": "kompend", "type": "PROJECT"}],
                         "concepts": [{"name": "attention", "definition": "y"}],
                         "tags": ["ml"],
                     },
@@ -981,7 +981,7 @@ class TestTwoPhaseCompiler:
                 [
                     {
                         "summary": "one two three four",
-                        "entities": [{"name": "KOMPEND", "type": "PROJECT"}],
+                        "entities": [{"name": "kompend", "type": "PROJECT"}],
                         "concepts": [{"name": "attention", "definition": "y"}],
                         "tags": ["ml"],
                     },

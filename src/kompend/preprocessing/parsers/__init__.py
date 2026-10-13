@@ -1,4 +1,4 @@
-"""KOMPEND document parsers.
+"""kompend document parsers.
 
 Exactly one backend is registered: parsecraft, the ingestion pipeline
 (``DEFAULT_PARSER``). There is no config key selecting it — parsecraft routes

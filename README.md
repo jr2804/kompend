@@ -1,14 +1,14 @@
-# KOMPEND
+# kompend
 
 <p align="center">
   <img src="./assets/readme/hero.svg" width="100%"
-       alt="KOMPEND — Knowledge Organizer for eXtended documents: compile scattered documents into an interlinked, queryable wiki with any LLM">
+       alt="kompend — Knowledge Organizer for eXtended documents: compile scattered documents into an interlinked, queryable wiki with any LLM">
 </p>
 
-KOMPEND refuses to pick a side in the LLM-wiki space. Existing tools either
+kompend refuses to pick a side in the LLM-wiki space. Existing tools either
 demand a frontier-model subscription **and** lock you into their stack, or
 insist everything run on an underpowered local model while lecturing you
-about _privacy_. KOMPEND is provider-agnostic, adapts to whatever LLM you have
+about _privacy_. kompend is provider-agnostic, adapts to whatever LLM you have
 — from a local 8B model to a frontier API — and uses structure-preserving
 parsing so technical content (tables, equations, figures) survives
 extraction intact. [Read the full motivation →](docs/about/motivation.md)
@@ -21,10 +21,10 @@ extraction intact. [Read the full motivation →](docs/about/motivation.md)
 
 <p align="center">
   <img src="./assets/readme/pipeline.svg" width="100%"
-       alt="KOMPEND 5-tier pipeline: Preprocessing → Chunking → Resolution → Compilation → Output">
+       alt="kompend 5-tier pipeline: Preprocessing → Chunking → Resolution → Compilation → Output">
 </p>
 
-KOMPEND runs a 5-tier pipeline — each tier independently replaceable, with a
+kompend runs a 5-tier pipeline — each tier independently replaceable, with a
 clear `Base` interface:
 
 | Tier                 | What it does                                                                                                                                                                 | Needs LLM? |
@@ -99,7 +99,7 @@ Full option reference: `kompend <command> --help`
 
 ## LLM configuration
 
-KOMPEND uses `provider/model` strings resolved by `build_model()`:
+kompend uses `provider/model` strings resolved by `build_model()`:
 
 1. **models.dev catalog** — custom providers with known API URLs (`claudinio/`, `opencode/`, `deepseek/`) construct OpenAI-compatible models.
 2. **pydantic-ai native** — standard providers (`ollama/`, `openai/`, `anthropic/`, `google/`) via `infer_model()`.
@@ -113,7 +113,7 @@ fallback_chain = ["openai/gpt-4o"]   # tried when the primary fails
 reasoning_effort = "none"             # tame over-thinking local models
 ```
 
-KOMPEND auto-detects each model's context window and sizes every call to fit.
+kompend auto-detects each model's context window and sizes every call to fit.
 **Recommended: a model with ≥ 32K context** (16K is the functional floor;
 the generation stage reserves 16K output tokens). See the
 [LLM configuration guide](./docs/guides/llm-config.md#context-window-requirements)
@@ -135,10 +135,10 @@ uv run pytest tests/       # run tests
 mise test                  # run all quality checks
 ```
 
-## Installing KOMPEND as a dependency
+## Installing kompend as a dependency
 
 The name `kompend` is taken on PyPI by an unrelated certificate-management tool,
-so KOMPEND is not published there. Add it as a git dependency with a
+so kompend is not published there. Add it as a git dependency with a
 `[tool.uv.sources]` override:
 
 ```toml
@@ -147,7 +147,7 @@ kompend = { git = "https://github.com/jr2804/kompend.git", branch = "main" }
 ```
 
 Then declare it normally (e.g. `"kompend[all]"` for every parser backend), and
-`uv sync` / `uv add kompend[all]` will pull the real KOMPEND from Codeberg.
+`uv sync` / `uv add kompend[all]` will pull the real kompend from Codeberg.
 
 ## License
 

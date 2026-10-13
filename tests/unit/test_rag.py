@@ -1,4 +1,4 @@
-"""Tests for KOMPEND Hybrid RAG — zvec vector store."""
+"""Tests for kompend Hybrid RAG — zvec vector store."""
 
 import gc
 import shutil

@@ -1,4 +1,4 @@
-"""KompendModel — thin wrapper adding KOMPEND concerns to any native pydantic-ai Model.
+"""KompendModel — thin wrapper adding kompend concerns to any native pydantic-ai Model.
 
 Wraps a native model returned by :func:`kompend.llm.models.build_model` and adds:
 
@@ -44,7 +44,7 @@ from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 
 
-# KOMPEND config ``reasoning_effort`` string → pydantic-ai unified ``thinking``.
+# kompend config ``reasoning_effort`` string → pydantic-ai unified ``thinking``.
 # ``none`` disables thinking entirely (``False``); the five named levels map
 # to the corresponding ``ThinkingLevel`` literals. Keys are a :class:`StrEnum`
 # so a typo'd config value (or upstream literal change) fails at the lookup
@@ -75,7 +75,7 @@ logger = get_logger(__name__)
 
 
 class KompendModel(Model):
-    """Wraps a native pydantic-ai Model with KOMPEND-specific concerns."""
+    """Wraps a native pydantic-ai Model with kompend-specific concerns."""
 
     def __init__(
         self,

@@ -1,4 +1,4 @@
-"""KompendAgent base class — KOMPEND-side wrapper around pydantic_ai.Agent.
+"""KompendAgent base class — kompend-side wrapper around pydantic_ai.Agent.
 
 Every concrete agent (extraction, generation, query, wicer) inherits
 from this base and supplies:
@@ -70,7 +70,7 @@ from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 from kompend.types import JSONDict, JSONValue
 
-#: Per-stage timeout floor. Agents in KOMPEND are synchronous single-turn;
+#: Per-stage timeout floor. Agents in kompend are synchronous single-turn;
 #: PydanticAI's run_sync is fast but provider-side latency can spike.
 _DEFAULT_TIMEOUT_SECONDS: float = 120.0
 
@@ -130,7 +130,7 @@ DepsT = TypeVar("DepsT", bound=AgentDeps)
 
 @dataclass
 class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
-    """KOMPEND-side wrapper around a PydanticAI agent.
+    """kompend-side wrapper around a PydanticAI agent.
 
     Subclasses MUST set:
 
@@ -430,7 +430,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         return agent
 
     def _build_top_level_model(self) -> Model:
-        """Build the model (with failover + KOMPEND wrapper) for the Agent."""
+        """Build the model (with failover + kompend wrapper) for the Agent."""
         primary = KompendModel(
             build_model(self.model_string),
             usage_tracker=self.usage_tracker,

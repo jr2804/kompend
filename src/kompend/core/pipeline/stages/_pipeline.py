@@ -68,7 +68,7 @@ ProgressCallback = Callable[[str, int, int, str], None]
 
 
 class WikiPipeline:
-    """Orchestrates the 5-tier KOMPEND pipeline."""
+    """Orchestrates the 5-tier kompend pipeline."""
 
     def __init__(
         self,
@@ -135,7 +135,7 @@ class WikiPipeline:
             get_template_loader().clear_global_context()
 
         logger.info(
-            "Starting KOMPEND pipeline (tiers %s→%s): %s",
+            "Starting kompend pipeline (tiers %s→%s): %s",
             self.config.start_at_tier.value,
             self.config.stop_at_tier.value,
             self.config.source_dir,
@@ -232,7 +232,7 @@ class WikiPipeline:
             )
 
         logger.info(
-            "KOMPEND pipeline complete: %s -> %s (%d nodes)",
+            "kompend pipeline complete: %s -> %s (%d nodes)",
             self.config.source_dir,
             self.config.output_dir,
             len(wiki.nodes),

@@ -1,4 +1,4 @@
-"""Leaf-node dependency types for KOMPEND PydanticAI agents.
+"""Leaf-node dependency types for kompend PydanticAI agents.
 
 These types are kept in a separate module to break circular imports
 between the agents package and the compilation pipeline.

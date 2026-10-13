@@ -131,7 +131,7 @@ class TestManifestStaleness:
         """A pre-migration vault's loose JSON manifest is never read.
 
         Policy: ``kompend.db`` holds all non-vector state. A ``vectors.manifest.json``
-        left by an older KOMPEND is dead weight (reported by ``kompend doctor``) and
+        left by an older kompend is dead weight (reported by ``kompend doctor``) and
         its store is rebuilt rather than trusted.
         """
         store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)

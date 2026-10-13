@@ -1,6 +1,6 @@
 """Local-timezone helpers for timestamps.
 
-All user-facing and logged timestamps in KOMPEND use the local system timezone
+All user-facing and logged timestamps in kompend use the local system timezone
 (read from the OS), not UTC. Centralise that here so every call site is
 consistent and the timezone source is a single knob.
 """

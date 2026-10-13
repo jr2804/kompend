@@ -7,7 +7,7 @@
 
 Centralize all CLI command definitions (`@app.command` functions) into domain-organized modules for improved discoverability and maintainability.
 
-Every command entry point lives here — commands are the only way users invoke KOMPEND. Organizing them by domain reduces cognitive load and makes it clear where to find implementation for a given feature.
+Every command entry point lives here — commands are the only way users invoke kompend. Organizing them by domain reduces cognitive load and makes it clear where to find implementation for a given feature.
 
 ## Ownership
 

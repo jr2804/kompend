@@ -210,7 +210,7 @@ class TestAgentInstallRemove:
 
 @pytest.fixture(autouse=True)
 def _cleanup_env() -> Generator[None]:
-    """Clean up KOMPEND env vars set by tests."""
+    """Clean up kompend env vars set by tests."""
     yield
     for key in (EnvVar.LLM_DEFAULT_MODEL, EnvVar.LLM_API_BASE, EnvVar.LLM_API_KEY):
         os.environ.pop(key, None)

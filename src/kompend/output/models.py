@@ -1,4 +1,4 @@
-"""Intermediate document model for KOMPEND output rendering.
+"""Intermediate document model for kompend output rendering.
 
 ``Document`` is a flavor-agnostic representation of a compiled wiki page.
 It is rendered to a specific Markdown flavor by :class:`DocumentRenderer`.

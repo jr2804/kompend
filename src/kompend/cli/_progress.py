@@ -1,4 +1,4 @@
-"""Rich progress bars for KOMPEND CLI operations.
+"""Rich progress bars for kompend CLI operations.
 
 Provides a single overall bar that is reset per pipeline phase (parse →
 resolve → compile → output).  No per-file sub-tasks are created, keeping

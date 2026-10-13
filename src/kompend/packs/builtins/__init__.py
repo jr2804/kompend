@@ -1,4 +1,4 @@
-"""Built-in contribution packs bundled with KOMPEND."""
+"""Built-in contribution packs bundled with kompend."""
 
 from kompend.packs.builtins.academic import academic_pack
 from kompend.packs.builtins.technical import technical_pack

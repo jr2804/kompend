@@ -1,4 +1,4 @@
-"""KOMPEND Hybrid RAG module — sidecar vector store for semantic search."""
+"""kompend Hybrid RAG module — sidecar vector store for semantic search."""
 
 from __future__ import annotations
 

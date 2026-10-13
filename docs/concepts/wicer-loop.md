@@ -3,7 +3,7 @@
 
 # WiCER Loop
 
-WiCER (Wiki Iterative Compile-Evaluate-Refine) is KOMPEND's self-correcting
+WiCER (Wiki Iterative Compile-Evaluate-Refine) is kompend's self-correcting
 compilation loop. Inspired by [arXiv:2605.07068v1](https://arxiv.org/pdf/2605.07068v1),
 it recovers quality lost during blind compilation through targeted diagnosis
 and refinement.

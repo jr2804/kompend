@@ -11,7 +11,7 @@ arXiv, a published version in conference proceedings, or a local copy in a
 different format. Binary SHA256 hashing cannot detect these duplicates because
 the bytes differ even when the content is identical.
 
-KOMPEND provides configurable, content-level duplicate detection that runs
+kompend provides configurable, content-level duplicate detection that runs
 during the ingest phase, **after parsing but before chunking**. It compares
 parsed text content using two complementary methods, producing a verdict for
 each document.

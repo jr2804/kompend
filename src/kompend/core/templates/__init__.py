@@ -1,4 +1,4 @@
-"""Layered Jinja2 template loading for KOMPEND."""
+"""Layered Jinja2 template loading for kompend."""
 
 from __future__ import annotations
 

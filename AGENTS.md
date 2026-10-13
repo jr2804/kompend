@@ -1,4 +1,4 @@
-# KOMPEND — AGENTS.md
+# kompend — AGENTS.md
 
 **First time?** Read `.agents/ONBOARDING.md` (5 min).
 

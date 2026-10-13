@@ -1,4 +1,4 @@
-"""Tests for KOMPEND downloaders and duplicate detection."""
+"""Tests for kompend downloaders and duplicate detection."""
 
 from __future__ import annotations
 

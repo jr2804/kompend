@@ -1,16 +1,16 @@
 """Tests for the parsecraft adapter (``kompend.preprocessing.parsers.parsecraft_parser``).
 
-Fidelity contract: parsecraft IR → KOMPEND elements must preserve element kind,
+Fidelity contract: parsecraft IR → kompend elements must preserve element kind,
 page numbers, reading order, heading levels, and table shape — and must NOT
 emit content when parsecraft genuinely produced none. The registry contract is
 also verified: parsecraft must NOT broaden default discovery (Phase 1's
 byte-identical guarantee), only explicit selection may.
 
 The adapter module is imported lazily inside each test/fixture: importing it
-triggers ``register_backend("parsecraft")`` (KOMPEND's module-level
+triggers ``register_backend("parsecraft")`` (kompend's module-level
 self-registration convention), which broadens ``get_all_extensions()`` for the
 rest of the process and breaks exact-count discovery tests elsewhere in the
-suite. Default KOMPEND runs never import the module, so the guarantee holds there.
+suite. Default kompend runs never import the module, so the guarantee holds there.
 """
 
 from __future__ import annotations
@@ -55,7 +55,7 @@ from kompend.preprocessing.parsers._registry import KNOWN_BACKENDS
 #: imports to module level — the TYPE_CHECKING incident, commit 010097d) and
 #: broaden ``get_all_extensions()`` for the rest of the test process.
 
-# ── Fidelity: IR → KOMPEND elements (live pipeline, native-markdown) ────────
+# ── Fidelity: IR → kompend elements (live pipeline, native-markdown) ────────
 
 
 class TestMarkdownFidelity:
@@ -142,7 +142,7 @@ class TestMarkdownFidelity:
 
 class TestFailureShapes:
     def test_total_exhaustion_raises_never_emits_placeholders(self) -> None:
-        """All pages exhausted → KOMPEND parse failure, not empty content."""
+        """All pages exhausted → kompend parse failure, not empty content."""
         adapter = _adapter()
         with pytest.raises(adapter.ParsecraftParseError, match="all candidates failed"):
             _map(_document([_exhausted_page(1)]))
@@ -194,7 +194,7 @@ class TestRegistryContract:
         assert not can_parse(Path("archive.xyz123"))
 
     def test_default_discovery_follows_the_default_backend(self, tmp_path: Path) -> None:
-        """A default KOMPEND run discovers the default backend's suffixes.
+        """A default kompend run discovers the default backend's suffixes.
 
         This test's earlier form pinned the opposite policy: parsecraft was
         kept out of ``KNOWN_BACKENDS`` so its text family could not widen

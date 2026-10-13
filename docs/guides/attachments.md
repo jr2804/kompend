@@ -80,7 +80,7 @@ compile, unlike the `orphan-attachments` lint rule (which needs a compiled wiki)
 
 ## Auto-adoption
 
-At compile start, KOMPEND scans `attachments/<slug>/` for files that have no
+At compile start, kompend scans `attachments/<slug>/` for files that have no
 manifest entry and registers them automatically:
 
 - `ingestible` depends on `attachments.ingest_adopted` (default `false`):

@@ -1,4 +1,4 @@
-"""ACP agent — KOMPEND as an ACP-compatible agent for credential-free LLM injection.
+"""ACP agent — kompend as an ACP-compatible agent for credential-free LLM injection.
 
 Heavy submodules (``harness_adapter`` → pydantic-ai + the MCP server chain) are
 imported lazily via ``lazy_loader``, so importing anything under ``kompend.acp.*``

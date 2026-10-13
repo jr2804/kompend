@@ -25,7 +25,7 @@ path as a property. This ensures consistent path construction across the codebas
 
 ---
 
-## Project-specific Files — KOMPEND
+## Project-specific Files — kompend
 
 ### Path Constants — Single Source of Truth
 

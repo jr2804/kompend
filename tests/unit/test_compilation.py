@@ -1,4 +1,4 @@
-"""Tests for KOMPEND Tier 4 compilers — GraphCompiler and WiCERCompiler."""
+"""Tests for kompend Tier 4 compilers — GraphCompiler and WiCERCompiler."""
 
 from __future__ import annotations
 
@@ -130,7 +130,7 @@ class TestGraphCompiler:
         chunks = _make_diverse_chunks()
         compiler = GraphCompiler("model")
         wiki = compiler.compile(chunks)
-        # All sections mention KOMPEND and WiCER — expect edges between them
+        # All sections mention kompend and WiCER — expect edges between them
         assert len(wiki.edges) > 0
         # Each edge should have source, target, type, entity
         for edge in wiki.edges:
@@ -176,12 +176,12 @@ class TestGraphCompiler:
         assert wiki.edges == []
 
     def test_typed_relations_create_edges(self) -> None:
-        c1 = _chunk(text="KOMPEND overview.", heading="Overview", chunk_id="c1")
+        c1 = _chunk(text="kompend overview.", heading="Overview", chunk_id="c1")
         c2 = _chunk(text="WiCER details.", heading="Methods", chunk_id="c2")
         rc1 = ResolvedChunk(
             chunk=c1,
-            entities=[{"name": "KOMPEND", "type": "project"}],
-            relations=[{"source": "KOMPEND", "target": "WiCER", "type": "uses", "confidence": 0.85}],
+            entities=[{"name": "kompend", "type": "project"}],
+            relations=[{"source": "kompend", "target": "WiCER", "type": "uses", "confidence": 0.85}],
         )
         rc2 = ResolvedChunk(
             chunk=c2,
@@ -196,11 +196,11 @@ class TestGraphCompiler:
         assert typed[0]["confidence"] == pytest.approx(0.85)
 
     def test_typed_relations_skip_missing_entities(self) -> None:
-        c1 = _chunk(text="KOMPEND overview.", heading="Overview", chunk_id="c1")
+        c1 = _chunk(text="kompend overview.", heading="Overview", chunk_id="c1")
         rc1 = ResolvedChunk(
             chunk=c1,
-            entities=[{"name": "KOMPEND", "type": "project"}],
-            relations=[{"source": "KOMPEND", "target": "Missing", "type": "uses", "confidence": 0.9}],
+            entities=[{"name": "kompend", "type": "project"}],
+            relations=[{"source": "kompend", "target": "Missing", "type": "uses", "confidence": 0.9}],
         )
         compiler = GraphCompiler("model")
         wiki = compiler.compile([rc1])
@@ -220,14 +220,14 @@ class TestGraphCompiler:
         assert wiki.nodes[0].node_type == "comparison"
 
     def test_entity_kind_inferred_when_title_matches_entity(self) -> None:
-        c = _chunk(text="KOMPEND details.", heading="KOMPEND", chunk_id="c1")
-        rc = ResolvedChunk(chunk=c, entities=[{"name": "KOMPEND", "type": "project"}])
+        c = _chunk(text="kompend details.", heading="kompend", chunk_id="c1")
+        rc = ResolvedChunk(chunk=c, entities=[{"name": "kompend", "type": "project"}])
         wiki = GraphCompiler("model").compile([rc])
         assert wiki.nodes[0].node_type == "entity"
 
     def test_concept_kind_default(self) -> None:
         c = _chunk(text="Some concept.", heading="Signal Theory", chunk_id="c1")
-        rc = ResolvedChunk(chunk=c, entities=[{"name": "KOMPEND", "type": "project"}])
+        rc = ResolvedChunk(chunk=c, entities=[{"name": "kompend", "type": "project"}])
         wiki = GraphCompiler("model").compile([rc])
         assert wiki.nodes[0].node_type == "concept"
 
@@ -695,9 +695,9 @@ class TestWiCERCompilerUnavailable:
 
         # Seed pinned facts as a public-API caller would, so we exercise
         # the same flow the loop uses on iteration 1+.
-        wiki = compiler.compile(chunks, pinned_facts=["KOMPEND is a knowledge base project.", "WiCER is iterative."])
+        wiki = compiler.compile(chunks, pinned_facts=["kompend is a knowledge base project.", "WiCER is iterative."])
 
-        assert rec.calls == [["KOMPEND is a knowledge base project.", "WiCER is iterative."]]
+        assert rec.calls == [["kompend is a knowledge base project.", "WiCER is iterative."]]
         # No stray "Pinned Refinement Facts" node — refinement happens
         # via re-compile, not by appending to the wiki.
         assert all(n.id != "node_refinement_pinned_facts" for n in wiki.nodes)
@@ -770,14 +770,14 @@ class TestWiCERCompilerWithMock:
         """When the LLM agents return probes, they are used for evaluation."""
         mock_llm.probe.return_value = self._probe_output(
             [
-                {"question": "What is KOMPEND?", "answer": "A knowledge base project."},
+                {"question": "What is kompend?", "answer": "A knowledge base project."},
                 {"question": "What is WiCER?", "answer": "An iterative compilation loop."},
             ]
         )
         mock_llm.evaluate.return_value = self._evaluate_output(
             [
                 {
-                    "question": "What is KOMPEND?",
+                    "question": "What is kompend?",
                     "expected_answer": "A knowledge base project.",
                     "found_answer": "A knowledge base project.",
                     "correct": True,
@@ -806,11 +806,11 @@ class TestWiCERCompilerWithMock:
 
     def test_llm_evaluation_detects_failures(self, mock_llm: MagicMock) -> None:
         """When evaluation says probes fail, refinement happens."""
-        mock_llm.probe.return_value = self._probe_output([{"question": "What is KOMPEND?", "answer": "A knowledge base project."}])
+        mock_llm.probe.return_value = self._probe_output([{"question": "What is kompend?", "answer": "A knowledge base project."}])
         mock_llm.evaluate.return_value = self._evaluate_output(
-            [{"question": "What is KOMPEND?", "expected_answer": "A knowledge base project.", "found_answer": "", "correct": False}]
+            [{"question": "What is kompend?", "expected_answer": "A knowledge base project.", "found_answer": "", "correct": False}]
         )
-        mock_llm.diagnose.return_value = self._diagnose_output(["KOMPEND is a knowledge base project."])
+        mock_llm.diagnose.return_value = self._diagnose_output(["kompend is a knowledge base project."])
         chunks = _make_chunks(count=1, heading="Test")
         config = PipelineConfig(
             source_dir=make_tmp_vault(),
@@ -941,7 +941,7 @@ class TestWiCERWithGraphCompiler:
         compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
         wiki = compiler.compile(chunks)
         assert len(wiki.nodes) == 4  # 4 sections
-        assert "KOMPEND" in str(wiki.edges)
+        assert "kompend" in str(wiki.edges)
         assert wiki.metadata["chunk_count"] == 8
 
     def test_default_initializer(self) -> None:
@@ -1292,13 +1292,13 @@ def _make_chunks(
     chunks: list[ResolvedChunk] = []
     for i in range(count):
         c = _chunk(
-            text=f"Content for chunk {i}. Entity reference to KOMPEND.",
+            text=f"Content for chunk {i}. Entity reference to kompend.",
             heading=heading,
             chunk_id=f"chunk_{i:03d}",
         )
         rc = ResolvedChunk(
             chunk=c,
-            entities=[Entity(name="KOMPEND", type="PROJECT", context="knowledge base").model_dump()] if i == 0 else [],
+            entities=[Entity(name="kompend", type="PROJECT", context="knowledge base").model_dump()] if i == 0 else [],
         )
         chunks.append(rc)
     return chunks
@@ -1317,7 +1317,7 @@ def _make_diverse_chunks() -> list[ResolvedChunk]:
             rc = ResolvedChunk(
                 chunk=c,
                 entities=[
-                    {"name": "KOMPEND", "type": "PROJECT", "context": "knowledge base"},
+                    {"name": "kompend", "type": "PROJECT", "context": "knowledge base"},
                     {"name": "WiCER", "type": "METHOD", "context": "compilation loop"},
                 ],
             )

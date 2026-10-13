@@ -1,4 +1,4 @@
-"""VLM-based image caption enricher for KOMPEND Tier 3.
+"""VLM-based image caption enricher for kompend Tier 3.
 
 Analyses IMAGE chunks and adds descriptive captions as entities. Each
 image is evaluated by the VLM for informativeness — logos, icons,

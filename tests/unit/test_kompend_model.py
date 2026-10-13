@@ -1,4 +1,4 @@
-"""Tests for KompendModel — the native-model wrapper with KOMPEND enhancements.
+"""Tests for KompendModel — the native-model wrapper with kompend enhancements.
 
 Verifies usage tracking, debug saving, and reasoning-effort passthrough.
 Salvage and retry enrichment are intentionally absent from KompendModel:

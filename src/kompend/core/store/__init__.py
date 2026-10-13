@@ -1,4 +1,4 @@
-"""Single non-vector store for a KOMPEND vault — one SQLite file (``.kompend/kompend.db``).
+"""Single non-vector store for a kompend vault — one SQLite file (``.kompend/kompend.db``).
 
 Public API:
 

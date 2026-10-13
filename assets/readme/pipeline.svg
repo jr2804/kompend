@@ -1,7 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg"
      width="1200" height="280" viewBox="0 0 1200 280"
      role="img" aria-labelledby="pipe-title pipe-desc">
-  <title id="pipe-title">KOMPEND 5-tier pipeline</title>
+  <title id="pipe-title">kompend 5-tier pipeline</title>
   <desc id="pipe-desc">Five sequential tiers — Preprocessing, Chunking, Resolution, Compilation, Output — showing what each tier produces. Tiers 2–4 require an LLM; tier 1 does not.</desc>
 
   <!-- background -->

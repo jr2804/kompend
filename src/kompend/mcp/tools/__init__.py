@@ -1,4 +1,4 @@
-"""KOMPEND MCP tools — each submodule groups tools by domain.
+"""kompend MCP tools — each submodule groups tools by domain.
 
 - :mod:`kompend.mcp.tools.knowledge` — compilation, parsing, capture, distill, write
 - :mod:`kompend.mcp.tools.query` — wiki query and status

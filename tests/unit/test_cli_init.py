@@ -46,7 +46,7 @@ class TestInitCommand:
         result = runner.invoke(app, ["init", str(target)])
         assert result.exit_code == 0
         combined = result.stdout + (result.stderr or "")
-        assert "existing KOMPEND project" in combined
+        assert "existing kompend project" in combined
         assert "--force" in combined
 
     def test_force_flag_overwrites(self, tmp_path: Path) -> None:

@@ -1,4 +1,4 @@
-"""KOMPEND MCP server — thin wrapper that registers all tools on fastmcp (Prefect).
+"""kompend MCP server — thin wrapper that registers all tools on fastmcp (Prefect).
 
 Tool implementations live in :mod:`kompend.mcp.tools`. The server uses the
 Prefect-maintained ``fastmcp`` framework (built on the official mcp SDK
@@ -70,11 +70,11 @@ from kompend.mcp.tools import (
 from kompend.mcp.tools._helpers import set_default_wiki_dir
 
 #: Module-level FastMCP instance for stdio transport.
-server = FastMCP("KOMPEND")
+server = FastMCP("kompend")
 
 
 def _register_all(srv: FastMCP) -> None:  # noqa: PLR0915 — one registration per tool; long by design
-    """Register every KOMPEND tool on a FastMCP instance."""
+    """Register every kompend tool on a FastMCP instance."""
     srv.tool(name="wiki_parse")(parse_document)
     srv.tool(name="wiki_compile")(compile_wiki)
     srv.tool(name="wiki_capture")(wiki_capture)
@@ -136,7 +136,7 @@ _register_all(server)
 
 
 def main(wiki_dir: str | None = None) -> None:
-    """Run the KOMPEND MCP server over stdio transport.
+    """Run the kompend MCP server over stdio transport.
 
     Parameters
     ----------
@@ -152,12 +152,12 @@ def main(wiki_dir: str | None = None) -> None:
 
 
 def create_mcp_server() -> FastMCP:
-    """Create a new FastMCP instance with all KOMPEND tools registered.
+    """Create a new FastMCP instance with all kompend tools registered.
 
     Used by both ``kompend mcp`` (stdio) and the ACP agent's companion mode
     (HTTP). The port is no longer a constructor argument (fastmcp 4.x) —
     it is passed to ``run_http_async(port=...)`` at the call site.
     """
-    srv = FastMCP("KOMPEND")
+    srv = FastMCP("kompend")
     _register_all(srv)
     return srv

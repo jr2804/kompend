@@ -1,6 +1,6 @@
 # Open Knowledge Format (OKF) v0.2
 
-KOMPEND produces **OKF v0.2**-compliant knowledge bundles by default. OKF is an
+kompend produces **OKF v0.2**-compliant knowledge bundles by default. OKF is an
 open, human- and agent-friendly format for representing knowledge — a directory
 of markdown files with YAML frontmatter.
 
@@ -20,7 +20,7 @@ OKF is designed for **portability and interoperability**:
 
 ## Conformance
 
-KOMPEND meets all 3 hard requirements for OKF v0.2 conformance (§11):
+kompend meets all 3 hard requirements for OKF v0.2 conformance (§11):
 
 1. **Every concept file** has parseable YAML frontmatter with a non-empty
    ``type`` field
@@ -41,7 +41,7 @@ remain *consumable*, but only the v0.2 fields above are *canonical*.
 
 ## Bundle Structure
 
-A KOMPEND wiki compiled with the default markdown output produces an OKF v0.2 bundle:
+A kompend wiki compiled with the default markdown output produces an OKF v0.2 bundle:
 
 ```text
 wiki/
@@ -61,7 +61,7 @@ wiki/
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| ``type`` | ✅ | OKF concept type (mapped from KOMPEND ``node_type``) |
+| ``type`` | ✅ | OKF concept type (mapped from kompend ``node_type``) |
 | ``title`` | ✅ | Human-readable page title |
 | ``description`` | — | One-line summary (first line of content) |
 | ``tags`` | — | Cross-cutting **topic** tags (from compilation) |
@@ -69,13 +69,13 @@ wiki/
 | ``generated`` | ✅ | ``{by, at}`` — producer actor + ISO timestamp (§5.2) |
 | ``verified`` | — | List of ``{by, at}`` trust events; emitted when a verification pass runs (§5.2) |
 | ``sources`` | — | Structured provenance objects ``{id, resource, title, author}`` (§5.1) |
-| ``kind`` | — | KOMPEND extension: original KOMPEND node type |
-| ``source_files`` | — | KOMPEND extension: provenance filename stems |
-| ``attributes`` | — | KOMPEND extension: per-source key=value facts (``{version: "2", status: draft}``); values collected per contributing source, so a key may hold a list |
+| ``kind`` | — | kompend extension: original kompend node type |
+| ``source_files`` | — | kompend extension: provenance filename stems |
+| ``attributes`` | — | kompend extension: per-source key=value facts (``{version: "2", status: draft}``); values collected per contributing source, so a key may hold a list |
 
 !!! note "``tags`` vs ``source_files`` vs ``sources``"
     These are deliberately distinct to avoid the v0.1 overload:
-    **``tags``** = cross-cutting topics; **``source_files``** = KOMPEND extension
+    **``tags``** = cross-cutting topics; **``source_files``** = kompend extension
     listing provenance filename stems; **``sources``** = OKF v0.2 structured
     provenance objects from the reference store. Source filenames never appear
     in ``tags`` or as bare strings in ``sources``.
@@ -88,7 +88,7 @@ OKF recommends **absolute** (bundle-relative) links starting with ``/`` (§6.1):
 See the [audio processing](/concepts/audio-processing.md) page for details.
 ```
 
-These are stable when documents move within their subdirectory. KOMPEND converts
+These are stable when documents move within their subdirectory. kompend converts
 ``[[wikilinks]]`` to this format during compilation.
 
 ## Per-Claim Attribution
@@ -145,7 +145,7 @@ okf_version: "0.2"
 - [Beerends 2013](/concepts/beerends-2013-summary.md) — Perceptual model foundations
 ```
 
-KOMPEND generates pages in the mandatory taxonomy — `Concept`, `Entity`
+kompend generates pages in the mandatory taxonomy — `Concept`, `Entity`
 (named things: standards, bodies, products), `Summary` (per-source
 digests), `Comparison` ("X vs Y" evaluations) — plus any categories
 configured via `compile.extraction.categories`. The LLM assigns the

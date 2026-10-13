@@ -37,7 +37,7 @@ The primary project configuration file. Contains all available settings with doc
 
 ### `NOTES.md`
 
-Free-form notes that are injected into LLM templates during compilation. KOMPEND never modifies this file — it is read-only from KOMPEND's perspective, preserving your voice. The filename is configurable via `notes.file` in config.
+Free-form notes that are injected into LLM templates during compilation. kompend never modifies this file — it is read-only from kompend's perspective, preserving your voice. The filename is configurable via `notes.file` in config.
 
 ### `README.md`
 

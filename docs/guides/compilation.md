@@ -1,6 +1,6 @@
 # Compilation Guide
 
-KOMPEND compiles documents into a knowledge wiki through a five-tier pipeline.
+kompend compiles documents into a knowledge wiki through a five-tier pipeline.
 This guide explains incremental compilation, compiler backends, prompt
 budgeting, and per-source state.
 
@@ -70,7 +70,7 @@ kompend compile *.pdf --set compile.compiler=graph
 
 ## Vision enrichment (VLM)
 
-When a vision-capable model is configured, KOMPEND can caption extracted images and figures during Tier 2 resolution:
+When a vision-capable model is configured, kompend can caption extracted images and figures during Tier 2 resolution:
 
 ```bash
 kompend compile *.pdf --vlm-model openai/gpt-4o
@@ -83,7 +83,7 @@ The VLM receives the extracted image plus surrounding context and produces a cap
 
 ## Typed knowledge-graph relations
 
-By default, KOMPEND links pages only by shared entity mentions (`entity_reference`). With relation extraction enabled, the resolver asks the LLM to identify typed relations between entities (e.g., `uses`, `depends_on`, `contradicts`, `caused`, `fixed`, `supersedes`) and attaches a confidence score:
+By default, kompend links pages only by shared entity mentions (`entity_reference`). With relation extraction enabled, the resolver asks the LLM to identify typed relations between entities (e.g., `uses`, `depends_on`, `contradicts`, `caused`, `fixed`, `supersedes`) and attaches a confidence score:
 
 ```bash
 kompend compile *.pdf --resolve-relations --relation-confidence-threshold 0.7
@@ -127,7 +127,7 @@ The kind is written to the page frontmatter (`kind: entity`) and included in the
 
 ## Memory lifecycle
 
-KOMPEND tracks every wiki page through a four-tier memory lifecycle with confidence scoring, supersession detection, and retention decay:
+kompend tracks every wiki page through a four-tier memory lifecycle with confidence scoring, supersession detection, and retention decay:
 
 ```mermaid
 graph LR
@@ -157,7 +157,7 @@ Memory state is persisted in the `memory_states` table of `base_dir/.kompend/kom
 
 ## Event hooks
 
-KOMPEND fires lifecycle events that user callbacks can observe. Hooks are registered in `kompend.toml` under `[hooks]` using a `module:attribute` syntax:
+kompend fires lifecycle events that user callbacks can observe. Hooks are registered in `kompend.toml` under `[hooks]` using a `module:attribute` syntax:
 
 ```toml
 [hooks]
@@ -205,7 +205,7 @@ kompend compile *.pdf --set compile.budget.gen_output_max=100000
 
 ## Per-source state
 
-KOMPEND persists a tier checkpoint for every source file in the `tier_state`
+kompend persists a tier checkpoint for every source file in the `tier_state`
 table of `.kompend/kompend.db` (stem, source file, content hash, current tier,
 last compile, search hits). Pass `--force` to force a full recompile.
 

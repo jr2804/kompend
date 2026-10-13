@@ -1,6 +1,6 @@
 # Input Pipeline: capture, learn, distill, consolidate
 
-KOMPEND's **input pipeline** turns free-form notes, facts, and conversation
+kompend's **input pipeline** turns free-form notes, facts, and conversation
 snippets into *source material* that the next `kompend compile` folds into the
 wiki. Four commands work together:
 

@@ -1,4 +1,4 @@
-"""Data models for the KOMPEND pipeline.
+"""Data models for the kompend pipeline.
 
 Public API re-exported from the split submodules. Import from
 ``kompend.core.models`` (the package root) — the submodule layout is an

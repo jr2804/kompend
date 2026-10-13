@@ -2,7 +2,7 @@
 
 Measures latency and throughput of the PydanticAI agent layer without
 contacting a real LLM. The underlying ``run_sync`` is mocked so the
-benchmark exercises the full KOMPEND wiring path:
+benchmark exercises the full kompend wiring path:
 
   Model string → build_model → KompendModel → Agent construction →
   Template render → run(deps) → result validation

@@ -1,4 +1,4 @@
-"""Tests for KOMPEND Query Memory layer."""
+"""Tests for kompend Query Memory layer."""
 
 from pathlib import Path
 

@@ -1,7 +1,7 @@
 """rumdl config resolution for a vault.
 
 `compile.output.rumdl_config` points at the per-vault rumdl config; when
-unset, KOMPEND defaults to ``<base_dir>/.kompend/rumdl.toml`` and materializes it
+unset, kompend defaults to ``<base_dir>/.kompend/rumdl.toml`` and materializes it
 from the shipped default on first use so users can edit it.
 
 When the on-disk copy is stale (its content hash no longer matches the

@@ -1,4 +1,4 @@
-"""Attachment (supplementary file) ingestion for the KOMPEND pipeline.
+"""Attachment (supplementary file) ingestion for the kompend pipeline.
 
 Attachments are user-registered files that belong to a source but are not
 ingested by default (photos, binaries, etc.). They are tracked

@@ -57,7 +57,7 @@ class Reference(BaseModel):
     Fields follow the CSL 1.0.2 variable names (mapped to snake_case)
     so the data round-trips through ``citeproc-py`` with minimal
     transformation. Extra ``raw``, ``citing_source``, and
-    ``in_text_keys`` fields are KOMPEND-specific metadata that do not
+    ``in_text_keys`` fields are kompend-specific metadata that do not
     belong in CSL output.
     """
 
@@ -75,13 +75,13 @@ class Reference(BaseModel):
     doi: str = ""
     url: str = ""
 
-    # ── KOMPEND-specific metadata ───────────────────────────────────────
+    # ── kompend-specific metadata ───────────────────────────────────────
     raw: str = ""  # original unparsed citation string
     citing_source: str = ""  # source file that cited this reference
     in_text_keys: list[str] = Field(default_factory=list)
 
     def to_csl(self) -> dict[str, Any]:
-        """Return a CSL-JSON-compatible dict (excludes KOMPEND-only fields)."""
+        """Return a CSL-JSON-compatible dict (excludes kompend-only fields)."""
         d: dict[str, Any] = {}
         if self.id:
             d["id"] = self.id

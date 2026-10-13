@@ -1,4 +1,4 @@
-"""Abstract base for KOMPEND downloaders."""
+"""Abstract base for kompend downloaders."""
 
 from __future__ import annotations
 

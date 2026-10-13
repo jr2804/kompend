@@ -1,6 +1,6 @@
 """Standard pydantic-ai-harness capability bundle for agentic agents.
 
-Agentic agents in KOMPEND share three harness capabilities:
+Agentic agents in kompend share three harness capabilities:
 
 - **Memory** — ``InMemoryStore``, fresh per run (no cross-session persistence).
   Lets the agent write/read a notebook across turns for long-running tasks.
@@ -31,7 +31,7 @@ from pydantic_ai_harness.memory import InMemoryStore, Memory
 class AgenticHarness:
     """Standard capability bundle for agentic (multi-turn tool) agents.
 
-    All defaults are tuned for the typical KOMPEND agentic agent. Call
+    All defaults are tuned for the typical kompend agentic agent. Call
     ``build_capabilities()`` to get a list ready for
     ``KompendAgentBase.extra_capabilities``.
 

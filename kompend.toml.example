@@ -1,4 +1,4 @@
-# KOMPEND configuration reference
+# kompend configuration reference
 # Copy to .kompend/config.toml or kompend.toml and adjust for your project.
 # Full docs: https://kompend.readthedocs.io/guides/config.html
 
@@ -225,7 +225,7 @@ respect_gitignore = true
 
 # ── Memory lifecycle ──────────────────────────────────────────────────────
 #
-# KOMPEND tracks a lifecycle state per wiki node across compiles:
+# kompend tracks a lifecycle state per wiki node across compiles:
 #   - confidence (evolves toward 1.0 with each re-compile)
 #   - tier (working → episodic → semantic → procedural)
 #   - supersession (old nodes replaced by same-title new nodes)

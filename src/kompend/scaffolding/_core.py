@@ -1,4 +1,4 @@
-"""Scaffolding utilities for KOMPEND wiki projects.
+"""Scaffolding utilities for kompend wiki projects.
 
 The :func:`scaffold_project` function creates the standard directory
 layout and copies template files for a new wiki project. It is
@@ -97,7 +97,7 @@ def scaffold_project(
     keep_cache: bool = False,
     config_file: str | Path | None = None,
 ) -> ScaffoldResult:
-    """Create a new KOMPEND wiki project in *target_dir*.
+    """Create a new kompend wiki project in *target_dir*.
 
     Parameters
     ----------
@@ -125,7 +125,7 @@ def scaffold_project(
         Optional path to a TOML config file to install as the vault's
         ``.kompend/config.toml`` instead of the generated default. Use this to
         seed a vault with a chosen LLM/budget/profile (e.g. a demo config).
-        The file is copied verbatim; it must be valid KOMPEND TOML.
+        The file is copied verbatim; it must be valid kompend TOML.
 
     Returns:
     -------

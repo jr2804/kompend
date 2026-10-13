@@ -1,6 +1,6 @@
 # Output Architecture
 
-KOMPEND's output layer converts a compiled wiki into publishable documents.
+kompend's output layer converts a compiled wiki into publishable documents.
 It is designed around three principles:
 
 1. **Flavor-agnostic intermediate model** — the `Document` dataclass carries content in canonical form
@@ -109,7 +109,7 @@ writer_class = BaseOutputWriter.get("markdown")  # MarkdownWriter
 
 ## Flavor auto-detection
 
-When `compile.output.flavor` is not explicitly set, KOMPEND inspects the output directory:
+When `compile.output.flavor` is not explicitly set, kompend inspects the output directory:
 
 | File/dir present | Flavor detected |
 |-----------------|----------------|

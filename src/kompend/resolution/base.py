@@ -1,4 +1,4 @@
-"""Abstract base for KOMPEND resolvers."""
+"""Abstract base for kompend resolvers."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from kompend.core.models import Chunk, ResolvedChunk
 
 
 class BaseResolver(ABC):
-    """Resolver interface for KOMPEND Tier 3."""
+    """Resolver interface for kompend Tier 3."""
 
     @abstractmethod
     def resolve(self, chunk: Chunk) -> ResolvedChunk:

@@ -1,6 +1,6 @@
 # Output Configuration Guide
 
-KOMPEND supports multiple output formats for the compiled wiki, controlled by the
+kompend supports multiple output formats for the compiled wiki, controlled by the
 `compile.output.format` config key (default: ``markdown``).
 
 ## Markdown (OKF v0.2-compliant, default)
@@ -21,7 +21,7 @@ for the full field reference, trust signals, and the v0.1→v0.2 migration table
 - Trust fields: ``generated: {by, at}`` (supersedes v0.1 ``timestamp``),
   ``status`` (default ``stable``), optional ``verified``
 - ``tags`` = topic tags only; ``source_files`` = provenance filename stems
-  (KOMPEND extension); ``sources`` = §5.1 structured objects — never bare strings
+  (kompend extension); ``sources`` = §5.1 structured objects — never bare strings
 - Cross-links are portable folder-relative markdown paths
   (``[Title](concepts/title.md)`` from the bundle root) — they render in
   Obsidian, GitHub, and any Markdown viewer
@@ -57,7 +57,7 @@ overridden via `compile.output.rumdl_config`.
 
 ## Flavor configuration
 
-KOMPEND supports multiple Markdown flavors for the legacy Markdown output via the
+kompend supports multiple Markdown flavors for the legacy Markdown output via the
 ``compile.output.flavor`` config key (set with ``kompend config set compile.output.flavor <flavor>``
 or override one run with ``--set compile.output.flavor=<flavor>``).
 
@@ -99,7 +99,7 @@ rumdl_config = ".rumdl.toml"   # custom rumdl config (optional)
 
 ### Flavor auto-detection
 
-Without an explicit `compile.output.flavor`, KOMPEND inspects the output directory:
+Without an explicit `compile.output.flavor`, kompend inspects the output directory:
 
 | Marker | Flavor | Use case |
 |--------|--------|----------|
@@ -127,7 +127,7 @@ Explicit `compile.output.flavor` always overrides auto-detection.
 
 ## Rumdl setup
 
-rumdl handles all flavor-specific transformations. It is installed alongside KOMPEND
+rumdl handles all flavor-specific transformations. It is installed alongside kompend
 when using the `kompend[rumdl]` optional dependency:
 
 ```bash
@@ -136,7 +136,7 @@ uv tool install kompend[rumdl]
 uv add kompend[rumdl]
 ```
 
-If rumdl is not installed, KOMPEND falls back to raw canonical Markdown with a warning.
+If rumdl is not installed, kompend falls back to raw canonical Markdown with a warning.
 
 ### Custom rumdl configuration
 
@@ -156,7 +156,7 @@ allowed-elements = ["sup", "sub"]
 ```
 
 > **Note:** If a flavor you need is not supported, contribute upstream to
-> [rvben/rumdl](https://github.com/rvben/rumdl). KOMPEND never ships custom
+> [rvben/rumdl](https://github.com/rvben/rumdl). kompend never ships custom
 > Markdown converters.
 
 ## Frontmatter

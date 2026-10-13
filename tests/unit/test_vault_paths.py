@@ -15,7 +15,7 @@ class TestVaultPathsFailFast:
 
         Silent operation on arbitrary directories masks misconfiguration.
         """
-        with pytest.raises(LookupError, match="not a KOMPEND vault root"):
+        with pytest.raises(LookupError, match="not a kompend vault root"):
             vault_paths(tmp_path)
 
     def test_accepts_vault_with_kompend_config(self, tmp_path: Path) -> None:

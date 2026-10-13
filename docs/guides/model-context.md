@@ -1,18 +1,18 @@
 # Model Context Adaptation
 
-KOMPEND is designed to work with any LLM — from a 4K-token local model running
+kompend is designed to work with any LLM — from a 4K-token local model running
 on a laptop to a 1M-token frontier model behind an API. This guide explains
-how KOMPEND detects model capabilities, adapts its chunking and processing
+how kompend detects model capabilities, adapts its chunking and processing
 strategy accordingly, and what tradeoffs you should expect when choosing
 between small/local and large/remote models.
 
-> **Honest summary:** KOMPEND enables any model to participate in the pipeline,
+> **Honest summary:** kompend enables any model to participate in the pipeline,
 > but it does **not** equalize quality. A 7B local model will produce
 > noticeably lower-quality wiki pages than a frontier model. The adaptive
 > machinery ensures the *input* always fits — the *output quality* is yours
 > to control through model selection.
 
-## How KOMPEND Discovers the Context Window
+## How kompend Discovers the Context Window
 
 At startup, [`discover_context_window()`](https://github.com/jr2804/kompend/src/branch/main/src/kompend/llm/context_window.py)
 in `kompend.llm.context_window` resolves the model's real input and output token
@@ -46,7 +46,7 @@ flowchart TD
 
 Tiers 1–2 are used **as-is** — never clamped (except by the explicit cap).
 When several Ollama values exist the most restrictive wins: if GGUF metadata
-claims 128K but the server loaded the model with 65536 tokens, KOMPEND sizes
+claims 128K but the server loaded the model with 65536 tokens, kompend sizes
 against 65536.
 
 You can enforce a hard ceiling with `compile.llm.context_window`:
@@ -131,7 +131,7 @@ far too large for retrieval quality. The `chunk_size_max` rail prevents this.
 
 ### Splitting Strategy
 
-KOMPEND never blindly cuts text at a token boundary. The `HybridChunker` uses
+kompend never blindly cuts text at a token boundary. The `HybridChunker` uses
 a custom `RecursiveRules` stack that respects document structure:
 
 ```mermaid
@@ -179,13 +179,13 @@ flowchart TD
 
 ## Small/Local vs Large/Remote: The Quality Tradeoff
 
-KOMPEND's adaptive sizing guarantees that **inputs always fit** the model's
+kompend's adaptive sizing guarantees that **inputs always fit** the model's
 context window. But input fitting is only half the story — the other half
 is **output quality**, which is entirely model-dependent.
 
-### What KOMPEND Adapts Automatically
+### What kompend Adapts Automatically
 
-| Aspect | How KOMPEND adapts |
+| Aspect | How kompend adapts |
 |--------|-----------------|
 | Chunk size | `context_window − reserve_tokens`, clamped to rails |
 | Number of chunks | Inversely proportional to chunk size |
@@ -193,7 +193,7 @@ is **output quality**, which is entirely model-dependent.
 | Retrieval system-prompt reserve | 4 096 tokens absolute |
 | Retrieval response reserve | 4 096 tokens absolute |
 
-### What KOMPEND Does NOT Equalize
+### What kompend Does NOT Equalize
 
 | Aspect | Small/local model | Large/remote model |
 |--------|-------------------|--------------------|
@@ -219,7 +219,7 @@ forced to split semantic units that belong together.
 
 ## Output Budget Reference
 
-KOMPEND uses **absolute** per-phase output token budgets. These cap how many
+kompend uses **absolute** per-phase output token budgets. These cap how many
 tokens each LLM call is allowed to emit:
 
 ```text
@@ -298,7 +298,7 @@ quality-to-cost ratio.
 ```toml
 [compile.llm]
 default_model = "gemini/gemini-1.5-pro"
-# the catalog reports 1M; KOMPEND clamps chunks to chunk_size_max=131072.
+# the catalog reports 1M; kompend clamps chunks to chunk_size_max=131072.
 fallback_chain = ["anthropic/claude-3.5-sonnet", "openai/gpt-4o"]
 
 [compile.budget]
@@ -317,7 +317,7 @@ enterprise documentation projects where quality is the priority.
 
 ## Tier-Based Model Strategy
 
-KOMPEND's 5-tier pipeline has different model requirements per tier:
+kompend's 5-tier pipeline has different model requirements per tier:
 
 ```mermaid
 flowchart TD
@@ -379,7 +379,7 @@ The primary model is tried first. If it fails with transient errors
 
 ## Summary
 
-| Concern | KOMPEND handles it? | How |
+| Concern | kompend handles it? | How |
 |---------|------------------|-----|
 | Input always fits context | Yes | Auto-detect + clamp + 8% safety margin (min 512 tokens) |
 | Chunk boundaries are natural | Yes | Paragraph → line → sentence → token rules |
@@ -388,7 +388,7 @@ The primary model is tried first. If it fails with transient errors
 | Privacy | **User's choice** | Local Ollama vs remote API |
 | Cost optimization | **User's choice** | Fallback chain + budget config |
 
-KOMPEND ensures every model can *participate* in the pipeline. It does not
+kompend ensures every model can *participate* in the pipeline. It does not
 promise every model will produce the *same output*. The adaptive machinery
 removes the mechanical barriers (context overflow, truncation, structural
 breakage); the intellectual quality of the resulting wiki is bounded by

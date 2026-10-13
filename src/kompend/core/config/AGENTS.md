@@ -5,7 +5,7 @@
 
 ## Purpose
 
-Configuration resolution engine for KOMPEND. Governs how config values are
+Configuration resolution engine for kompend. Governs how config values are
 discovered, merged, overridden, and accessed. All project configuration flows
 through this package — no other module reads config files or env vars directly.
 

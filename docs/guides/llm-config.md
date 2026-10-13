@@ -1,6 +1,6 @@
 # LLM Configuration
 
-KOMPEND routes every LLM call through **PydanticAI agents** (`kompend.agents.*`)
+kompend routes every LLM call through **PydanticAI agents** (`kompend.agents.*`)
 so every pipeline stage — extraction, generation, query, WiCER, doctor,
 capture — gets the same retry, failover, and observability semantics.
 
@@ -16,7 +16,7 @@ from a `provider/model` string. This guide covers:
 
 ## Model strings
 
-KOMPEND uses the `provider/model` convention everywhere (e.g.
+kompend uses the `provider/model` convention everywhere (e.g.
 `ollama/qwen3`, `openai/gpt-4o`, `claudinio/claude-4`). `build_model()`
 resolves a string to a native pydantic-ai `Model` in three steps:
 
@@ -83,16 +83,16 @@ including `default_model`, `fallback_chain`, and CLI overrides.
 max_connections = 2       # clip compile.workers to 2 for ollama models
 ```
 
-`max_connections` applies wherever KOMPEND creates parallel workers for a model
+`max_connections` applies wherever kompend creates parallel workers for a model
 on that provider (parse today, and future parallel LLM stages) — a quiet way
 to rate-limit online APIs so tokens aren't burned faster than intended, or to
 stop two local GPU servers from starving each other under `compile.workers > 1`.
 
-`api_key` supports the same `${ENV_VAR}` interpolation KOMPEND uses elsewhere.
+`api_key` supports the same `${ENV_VAR}` interpolation kompend uses elsewhere.
 A plain literal works too. Omit `api_key` entirely for keyless endpoints;
-KOMPEND sends a placeholder token because pydantic-ai/OpenAI SDK require one.
+kompend sends a placeholder token because pydantic-ai/OpenAI SDK require one.
 
-**`api_type`** selects the wire protocol KOMPEND speaks to the endpoint:
+**`api_type`** selects the wire protocol kompend speaks to the endpoint:
 
 - `openai-chat` — OpenAI Chat Completions (`/v1/chat/completions`); the
   default and what virtually every OpenAI-compatible server implements.
@@ -107,8 +107,8 @@ KOMPEND sends a placeholder token because pydantic-ai/OpenAI SDK require one.
 3. models.dev catalog
 4. `[compile.llm] fallback_max_input` (last resort)
 
-Set `context_window` so KOMPEND knows the model's token budget — without it,
-KOMPEND falls back to `fallback_max_input` from `[compile.llm]` (since
+Set `context_window` so kompend knows the model's token budget — without it,
+kompend falls back to `fallback_max_input` from `[compile.llm]` (since
 self-hosted endpoints are not in the models.dev catalog).
 
 > **Deprecated:** `context_window_cap` (provider level and
@@ -185,7 +185,7 @@ fallback_max_retries = 2
 
 ## Context window requirements
 
-KOMPEND auto-detects each model's context window (Ollama `num_ctx` →
+kompend auto-detects each model's context window (Ollama `num_ctx` →
 [models.dev](https://models.dev) catalog → `fallback_max_input`) and sizes
 every LLM call to fit. So there is **no hard minimum** that the pipeline
 enforces — but a model that's too small produces tiny, low-quality chunks.
@@ -438,5 +438,5 @@ failures, but there is no secondary model to fall back to.
 
 If the provider is in the [models.dev catalog](https://models.dev),
 just use its `provider/model` string and set the advertised API key env
-var. If it isn't in the catalog, KOMPEND cannot route to it — file an issue
+var. If it isn't in the catalog, kompend cannot route to it — file an issue
 to get the provider added to models.dev upstream.

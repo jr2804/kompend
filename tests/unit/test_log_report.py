@@ -15,7 +15,7 @@ from kompend.core.store.schema import LINT_RUNS_TABLE, RUNS_TABLE
 class TestBuildLogReport:
     def test_empty_vault_returns_placeholder(self, tmp_path: Path) -> None:
         report = build_log_report(tmp_path, last_n=5)
-        assert "No compile" in report or "KOMPEND Log" in report
+        assert "No compile" in report or "kompend Log" in report
 
     def test_runs_timeline_shows_completed_and_flags_dangling(self, tmp_path: Path) -> None:
         state_dir = tmp_path / ".kompend"

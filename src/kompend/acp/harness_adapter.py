@@ -1,10 +1,10 @@
 """Harness adapter — builds a PydanticAI Agent for ACP serving.
 
-Provides :func:`build_kompend_agent` (a generic agent with all KOMPEND tools) and
+Provides :func:`build_kompend_agent` (a generic agent with all kompend tools) and
 :func:`kompend_session_config` (a per-session factory that roots tools at the
 client's workspace and resolves the active agent definition).
 
-Used by :mod:`kompend.cli.cmds.agent` to serve KOMPEND over ACP via
+Used by :mod:`kompend.cli.cmds.agent` to serve kompend over ACP via
 ``run_acp_stdio_sync``.
 """
 
@@ -31,7 +31,7 @@ def build_kompend_agent() -> Agent[None, str]:
     """
     return Agent(
         "noop",
-        instructions="You are a KOMPEND knowledge base assistant.",
+        instructions="You are a kompend knowledge base assistant.",
         name="acp-session-agent",
     )
 

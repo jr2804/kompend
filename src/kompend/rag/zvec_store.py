@@ -1,7 +1,7 @@
 """zvec-based vector store for semantic search over compiled wikis.
 
 zvec is an embedded vector database (Alibaba, Apache 2.0) — in-process,
-no server required. This module wraps it as a sidecar for KOMPEND's compiled
+no server required. This module wraps it as a sidecar for kompend's compiled
 knowledge base.
 
 Embedding providers are pluggable via ``EmbeddingProvider``. The default
@@ -390,7 +390,7 @@ class ZvecWikiStore:
             return True
         if row is None:
             # No build recorded yet (fresh store, or a manifest left behind by an
-            # older KOMPEND as a loose JSON sidecar we deliberately do not read).
+            # older kompend as a loose JSON sidecar we deliberately do not read).
             return True
         if row["embed_version"] != _EMBED_TEXT_VERSION:
             logger.info(
@@ -870,7 +870,7 @@ def make_provider(
 
 
 def to_pydantic_ai_embedding_string(embedding_model: str) -> str:
-    """Translate a KOMPEND embedding-model config value to pydantic-ai format.
+    """Translate a kompend embedding-model config value to pydantic-ai format.
 
     Uses the same ``provider/model`` or ``provider:model`` convention as
     :func:`kompend.llm.models.build_model`. An explicit provider prefix is

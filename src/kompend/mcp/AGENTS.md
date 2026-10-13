@@ -5,7 +5,7 @@
 
 ## Purpose
 
-MCP (Model Context Protocol) server exposing KOMPEND compilation, query,
+MCP (Model Context Protocol) server exposing kompend compilation, query,
 memory, and configuration operations as MCP tools. Serves over stdio transport.
 
 Framework: Prefect-maintained ``fastmcp`` (built on official mcp SDK 2.x).

@@ -124,7 +124,7 @@ class TestDoctorWikiContext:
         monkeypatch.chdir(tmp_path)
         runner = CliRunner()
         result = runner.invoke(app, ["--wiki-dir", str(tmp_path), "doctor"])
-        assert "not a KOMPEND vault root" not in result.output
+        assert "not a kompend vault root" not in result.output
         assert "checks passed" in result.output
 
 
@@ -155,7 +155,7 @@ class TestCollectStats:
         print_status(stats, json_output=True)
         captured = capsys.readouterr()
         data = json.loads(captured.out)
-        assert data["wiki_name"] == "KOMPEND Wiki"
+        assert data["wiki_name"] == "kompend Wiki"
 
     def test_compile_status_not_initialized(self, tmp_path: Path) -> None:
         """No state_dir → not-initialized."""

@@ -1,6 +1,6 @@
 # Cache and State Directory
 
-KOMPEND stores derived data, pipeline state, and indexes inside a `.kompend/`
+kompend stores derived data, pipeline state, and indexes inside a `.kompend/`
 directory. This document describes what goes where, why, and the design
 rules for new caches.
 
@@ -65,7 +65,7 @@ deleted after a `compile --force`.
 | Path | Contents | Typical size | Scope | Created by |
 |------|----------|-------------|-------|-----------|
 | `kompend.db` | Single non-vector store: tier state, caches, compiled wiki, assets, references, provenance, memory, attachments, lint/run history (see above) | varies | Project-local | every pipeline stage / command |
-| `config.toml` | Project-level KOMPEND config | < 10 KB | Project-local | `kompend init` (installed from config file) |
+| `config.toml` | Project-level kompend config | < 10 KB | Project-local | `kompend init` (installed from config file) |
 | `rumdl.toml` | Markdown formatter config | < 10 KB | Project-local | materialized on first use |
 | `log.md` | Rendered run + lint trend report | < 100 KB | Project-local | `kompend log --write` |
 | `cache/images/` | Extracted images referenced by the wiki | varies | Project-local | Parser extraction tier |
@@ -83,7 +83,7 @@ deleted after a `compile --force`.
 
 ## Project-local vs. global: design rule
 
-**All KOMPEND caches are project-local and should stay that way.**
+**All kompend caches are project-local and should stay that way.**
 
 A cache belongs in `.kompend/` (at the project root, alongside `sources/` and `wiki/`) when:
 
@@ -99,8 +99,8 @@ Global caches (e.g. `~/.cache/kompend/`) would only make sense for:
 - **Parser binaries** — pandoc, external tools — managed by the OS package
   manager or pipx
 
-KOMPEND should **not** re-invent model or tool caching. The `.kompend/` directory
-is for KOMPEND-derived data only.
+kompend should **not** re-invent model or tool caching. The `.kompend/` directory
+is for kompend-derived data only.
 
 ## Cache lifecycle
 
@@ -108,7 +108,7 @@ is for KOMPEND-derived data only.
 
 `.kompend/` is created on demand during `kompend compile`. It is **not** versioned
 in git — the directory should be added to `.gitignore` (it is by default in
-the KOMPEND project template).
+the kompend project template).
 
 ### Invalidation
 
@@ -145,7 +145,7 @@ When adding a new subsystem that needs persistent state:
    under `<base_dir>/.kompend/<subsystem>/`.
 2. **Document it in the tables above** (this file).
 3. **Make it resilient to missing data** — if the store or cache directory is
-   deleted, KOMPEND should rebuild from source files, not crash.
+   deleted, kompend should rebuild from source files, not crash.
 4. **Never store source files or user data** — only derived/compiled data.
 5. **Use `PipelineConfig.paths`** (a `VaultPaths` instance) to resolve the
    path — e.g. `config.paths.kompend_db_file` or
@@ -153,7 +153,7 @@ When adding a new subsystem that needs persistent state:
    `base_dir`, use `VaultPaths(base_dir)`. Never construct `.kompend/` paths by
    hand from `output_dir`.
 
-## External caches (not managed by KOMPEND)
+## External caches (not managed by kompend)
 
 These are managed by upstream libraries and listed here for reference:
 
@@ -163,7 +163,7 @@ These are managed by upstream libraries and listed here for reference:
 | `~/.cache/docling/` | Docling model files (≈500 MB) | Docling |
 | `~/.cache/pip/` | Python packages | pip |
 
-KOMPEND does not control, configure, or clean these. Users manage them through
+kompend does not control, configure, or clean these. Users manage them through
 their respective tools (e.g. `huggingface-cli delete-model`, `pip cache purge`).
 
 ## Config file location

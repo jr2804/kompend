@@ -1,4 +1,4 @@
-"""View helpers for the KOMPEND web server — wiki loading and rendering."""
+"""View helpers for the kompend web server — wiki loading and rendering."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Abstract base for KOMPEND document parsers."""
+"""Abstract base for kompend document parsers."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ _SURROGATE_RE = re.compile("[\ud800-\udfff]")
 
 
 class FileExtension(StrEnum):
-    """Canonical file extensions supported by KOMPEND parsers."""
+    """Canonical file extensions supported by kompend parsers."""
 
     PDF = ".pdf"
     DOCX = ".docx"
@@ -88,7 +88,7 @@ _TEXT_EXTENSIONS: frozenset[FileExtension] = frozenset(
 
 
 class BaseParser(ABC):
-    """Parser-agnostic interface for KOMPEND Tier 1."""
+    """Parser-agnostic interface for kompend Tier 1."""
 
     supported_extensions: set[FileExtension] = set()
 

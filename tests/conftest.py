@@ -1,6 +1,6 @@
-"""Pytest configuration, fixtures, and shared narrowing helpers for KOMPEND tests.
+"""Pytest configuration, fixtures, and shared narrowing helpers for kompend tests.
 
-``as_obj`` / ``as_list`` exist because KOMPEND's JSON types are precise recursive
+``as_obj`` / ``as_list`` exist because kompend's JSON types are precise recursive
 unions on purpose (see ``kompend/types.py``): a payload read from LLM output, a
 config file or a cache must be narrowed before use rather than silently
 propagating ``Any``. In tests the expected shape is known, so narrowing is an

@@ -1,4 +1,4 @@
-"""Abstract base for KOMPEND compilers."""
+"""Abstract base for kompend compilers."""
 
 from __future__ import annotations
 
@@ -25,7 +25,7 @@ logger = get_logger(__name__)
 
 
 class BaseCompiler(ABC):
-    """Compiler interface for KOMPEND Tier 4."""
+    """Compiler interface for kompend Tier 4."""
 
     # Optional progress hook: ``(current, total, description)``. The pipeline
     # sets this before ``compile`` so the compiler can report real, countable

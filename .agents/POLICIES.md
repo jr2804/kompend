@@ -26,7 +26,7 @@ Correctness · Evidence · Safety · Minimal changes · Consistency · Performan
 
 ## Code quality
 
-Universal defaults. KOMPEND code policies — antipatterns, boundaries, error
+Universal defaults. kompend code policies — antipatterns, boundaries, error
 handling — live in `CODE.md`; project-specific standards in child AGENTS.md.
 
 - **SRP** — one reason to change per module/function. If a name needs "and",
@@ -94,7 +94,7 @@ Concise and specific. No filler, intros, or restated requirements. Answer direct
 questions directly. For review/debugging/analysis: findings with references,
 conclusion, approach, and caveats.
 
-## Project-specific Policies — KOMPEND
+## Project-specific Policies — kompend
 
 ### Implementation plans
 

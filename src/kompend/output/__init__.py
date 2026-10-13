@@ -1,4 +1,4 @@
-"""KOMPEND output tier.
+"""kompend output tier.
 
 Importing this package registers all built-in output writers
 with the :class:`BaseOutputWriter` registry.

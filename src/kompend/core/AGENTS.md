@@ -6,8 +6,8 @@
 ## Purpose
 
 Core data models, pipeline orchestration, configuration, caching, and shared
-utilities for the KOMPEND pipeline. This is the foundational layer that all
-other KOMPEND subsystems build on.
+utilities for the kompend pipeline. This is the foundational layer that all
+other kompend subsystems build on.
 
 ## Ownership
 

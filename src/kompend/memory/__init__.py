@@ -1,4 +1,4 @@
-"""KOMPEND Memory layer.
+"""kompend Memory layer.
 
 Two concerns live here:
 

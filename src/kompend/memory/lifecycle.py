@@ -324,7 +324,7 @@ def update_memory_for_compile(
 ) -> CompileReport:
     """Load, update, and persist the memory store for *wiki*.
 
-    The store is saved alongside other KOMPEND metadata (``.kompend/`` directory).
+    The store is saved alongside other kompend metadata (``.kompend/`` directory).
     """
     store_file = VaultPaths(base_dir).memory_store_file
     store = MemoryStore.load(store_file)

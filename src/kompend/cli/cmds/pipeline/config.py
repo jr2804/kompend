@@ -36,7 +36,7 @@ from kompend.types import JSON
 
 config_app = typer.Typer(
     name="config",
-    help="Inspect and edit KOMPEND configuration.",
+    help="Inspect and edit kompend configuration.",
     no_args_is_help=True,
 )
 app.add_typer(config_app)
@@ -90,7 +90,7 @@ def config_set(
         wiki_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
         path = get_project_config_file(start_dir=wiki_dir)
         if not path.exists():
-            get_err_console().print("error: not in a KOMPEND vault — run `kompend init` first or use `--global`")
+            get_err_console().print("error: not in a kompend vault — run `kompend init` first or use `--global`")
             raise typer.Exit(code=1)
 
     try:

@@ -34,7 +34,7 @@ builds the wiki index page and serves wiki page previews.
 
 ### OKF v0.2 conformance
 
-KOMPEND emits OKF v0.2 bundles; OKF is a **compliance spec**, not an output
+kompend emits OKF v0.2 bundles; OKF is a **compliance spec**, not an output
 format, and `compile.output.format` only offers real formats (`markdown`,
 `json`, `typst`). Spec: <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>.
 User-facing guide: `docs/concepts/open-knowledge-format.md`.
@@ -46,7 +46,7 @@ User-facing guide: `docs/concepts/open-knowledge-format.md`.
    convention `kompend/<version>`) supersedes the v0.1 `timestamp`. `verified` is
    emitted only when a verification pass ran; `status` defaults to `stable`.
 3. **Provenance fields are distinct** — `tags` is topic tags only (no filename
-   overload), `source_files` is the KOMPEND extension (provenance stems), `sources`
+   overload), `source_files` is the kompend extension (provenance stems), `sources`
    is OKF §5.1 structured objects `{id, resource, title, author}` from the
    reference store, never bare strings.
 4. **Reserved filenames** — `index.md` and `log.md` follow §8/§9. `log.md` is

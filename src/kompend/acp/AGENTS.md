@@ -5,9 +5,9 @@
 
 ## Purpose
 
-ACP (Agent Client Protocol) adapter — serve KOMPEND to editors and AI agents over
+ACP (Agent Client Protocol) adapter — serve kompend to editors and AI agents over
 stdio (`kompend agent`) with TOML-defined conversational agents. The client injects
-its own LLM endpoint through `providers/set`, so KOMPEND carries no credentials of
+its own LLM endpoint through `providers/set`, so kompend carries no credentials of
 its own. User-facing guide: `docs/integrations/acp-agent.md`.
 
 ## Ownership

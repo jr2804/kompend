@@ -46,7 +46,7 @@ def build_log_report(base_dir: Path, *, last_n: int = 25) -> str:
         A markdown string.
     """
     paths = VaultPaths(base_dir)
-    sections: list[str] = [f"# KOMPEND Log — {base_dir.name}", ""]
+    sections: list[str] = [f"# kompend Log — {base_dir.name}", ""]
 
     compile_section = _compile_section(base_dir)
     if compile_section:

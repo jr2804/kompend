@@ -1,4 +1,4 @@
-"""Ignore pattern matching for KOMPEND source scanning.
+"""Ignore pattern matching for kompend source scanning.
 
 Supports ``.gitignore``-style glob patterns via ``pathspec``.
 Patterns can come from:

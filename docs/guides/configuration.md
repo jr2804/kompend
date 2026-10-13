@@ -1,6 +1,6 @@
 # Configuration
 
-KOMPEND uses a layered configuration system. Values are resolved from multiple sources, with CLI flags taking the highest priority and built-in defaults the lowest.
+kompend uses a layered configuration system. Values are resolved from multiple sources, with CLI flags taking the highest priority and built-in defaults the lowest.
 
 ## 5-Layer Precedence
 
@@ -41,7 +41,7 @@ All environment variables use the `KOMP_` prefix and map to dotted config keys:
 
 ### Layer 3: Project config (hierarchical)
 
-KOMPEND searches for project config files by walking up from the current directory to the filesystem root. Two filenames are recognized:
+kompend searches for project config files by walking up from the current directory to the filesystem root. Two filenames are recognized:
 
 - **`.kompend/config.toml`** — the primary project config (created by `kompend init`)
 - **`kompend.toml`** — legacy fallback, supported for backward compatibility

@@ -1,6 +1,6 @@
-# Connecting KOMPEND with Open-WebUI
+# Connecting kompend with Open-WebUI
 
-KOMPEND has no custom GUI. It exposes a compiled knowledge base as machine-readable
+kompend has no custom GUI. It exposes a compiled knowledge base as machine-readable
 files (JSON graph, markdown, Typst) and an MCP server for agent integration.
 Open-WebUI can consume both.
 
@@ -29,7 +29,7 @@ Open-WebUI can ingest the compiled wiki as a knowledge source:
 
 ### 3. Use the MCP server
 
-KOMPEND ships with an MCP server that exposes `wiki_parse` and `wiki_compile` tools:
+kompend ships with an MCP server that exposes `wiki_parse` and `wiki_compile` tools:
 
 ```bash
 kompend compile ./sources --url https://example.com/doc.pdf
@@ -58,7 +58,7 @@ kompend query "performance"
 cat ./wiki/wiki.json | jq '.nodes[] | select(.title | test("performance"))'
 ```
 
-## Why Open-WebUI + KOMPEND?
+## Why Open-WebUI + kompend?
 
 | Approach | When to use |
 |----------|-------------|

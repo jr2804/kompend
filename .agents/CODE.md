@@ -1,6 +1,6 @@
 # AGENTS.md — Code
 
-KOMPEND code policies: antipatterns, boundaries, error handling. Load when writing
+kompend code policies: antipatterns, boundaries, error handling. Load when writing
 or reviewing code — production or tests.
 
 ## Python style
@@ -23,7 +23,7 @@ or conventions — it takes precedence over a conflicting habit or default.
 | Absolute path in a `.kompend/` artifact (`citing_source = str(path)`) | ❌ | Relativize at the persistence boundary (`rel_to_vault(path, base_dir)`) |
 
 The first five are instances of the universal magic-number rule
-(see `POLICIES.md`); rows 6–9 are KOMPEND-specific. Two of them are enforced:
+(see `POLICIES.md`); rows 6–9 are kompend-specific. Two of them are enforced:
 `scripts/checks/check_field_consistency.py` (bare contract keys) and
 `scripts/checks/check_antipatterns.py` (env-var literals, magic crops). Run both
 before committing — see `CHECKS.md`.

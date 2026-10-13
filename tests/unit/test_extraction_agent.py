@@ -2,7 +2,7 @@
 
 The agent wraps a PydanticAI Agent around the existing extraction
 prompt templates. We mock the underlying PydanticAI ``run_sync`` so the
-test never actually contacts an LLM — we only verify that the KOMPEND
+test never actually contacts an LLM — we only verify that the kompend
 side of the wiring (template rendering, result handling, error
 mapping) is correct.
 """
@@ -75,7 +75,7 @@ class TestExtractionAgentRun:
         The underlying PydanticAI Agent is replaced with a MagicMock to
         avoid provider-resolution at construction time. This means the
         ``_build_agent()`` path is never exercised in this test — we
-        only verify the KOMPEND-side wiring (prompt rendering, result
+        only verify the kompend-side wiring (prompt rendering, result
         handling, error mapping).
         """
         agent = ExtractionAgent(model_string="ollama/gpt-oss:20b")

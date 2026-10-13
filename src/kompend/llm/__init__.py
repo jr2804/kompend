@@ -1,4 +1,4 @@
-"""LLM utilities for KOMPEND.
+"""LLM utilities for kompend.
 
 Provides context window discovery, format utilities (JSON/TOML), model
 construction, and usage tracking. Business modules build models via

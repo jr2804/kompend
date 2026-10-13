@@ -1,4 +1,4 @@
-"""Per-LLM-call debug logging for KOMPEND agents.
+"""Per-LLM-call debug logging for kompend agents.
 
 When the ``KOMP_DEBUG_LLM_DIR`` environment variable is set, every LLM call
 is dumped to a timestamped JSON file containing the full message list, model

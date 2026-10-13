@@ -145,7 +145,7 @@ def test_every_page_has_type_frontmatter(tmp_path: Path) -> None:
 
 
 def test_type_maps_from_node_type(tmp_path: Path) -> None:
-    """KOMPEND node_type values map to OKF type strings."""
+    """Map kompend node_type values to OKF type strings."""
     wiki = _make_wiki(
         [
             _make_node("c", "Concept", "x", node_type="concept"),
@@ -192,7 +192,7 @@ def test_okf_recommended_fields_present(tmp_path: Path) -> None:
 def test_tags_not_overloaded_with_source_files(tmp_path: Path) -> None:
     """OKF v0.2 §4.1: ``tags`` are topic tags, not provenance filename stems.
 
-    Source-filename provenance lives in the KOMPEND ``source_files`` extension,
+    Source-filename provenance lives in the kompend ``source_files`` extension,
     freeing ``tags`` (and avoiding the ``sources`` shape collision of §5.1).
     """
     wiki = _make_wiki([_make_node("test", "Test", "Content.", provenance=["paper.pdf", "report.pdf"])])

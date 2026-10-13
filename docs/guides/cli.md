@@ -1,6 +1,6 @@
 # CLI Reference
 
-KOMPEND provides a Typer-based CLI with the following commands:
+kompend provides a Typer-based CLI with the following commands:
 
 | Command | Description |
 |---------|-------------|
@@ -256,7 +256,7 @@ adds MinerU as a parsecraft sub-backend; `kompend[systemone]` adds the
 judge tier's SDK; marker is parsecraft's bring-your-own dependency. See
 [ParsecraftParser](document-extraction.md#parsecraftparser-external-adapter)
 for the fallback interaction and the diagnostics parsecraft carries into
-KOMPEND metadata.
+kompend metadata.
 
 ## `kompend index`
 
@@ -571,7 +571,7 @@ kompend sources export sources/paper.pdf out.md
 ### `kompend sources export`
 
 The source is rebuilt from the Tier-1 parse cache in `.kompend/cache/`, so the
-result is a faithful markdown rendering of what KOMPEND ingested. Figures are
+result is a faithful markdown rendering of what kompend ingested. Figures are
 copied to `<output stem>_assets/` next to the output file by default, or
 embedded as data URIs with `--inline`. Attachments stay in the vault and are
 listed in an `## Attachments` table at the end with relative links.
@@ -612,7 +612,7 @@ All environment variables use the `KOMP_` prefix and map to dotted config keys.
 
 ## Agentic Mode
 
-KOMPEND uses **agentic multi-turn workflows** for LLM operations that benefit
+kompend uses **agentic multi-turn workflows** for LLM operations that benefit
 from on-demand fetching or cross-item synthesis in one session. Instead of a
 single-shot call per item, an agentic agent runs one session per task and
 iterates via tools — fetching data on demand, batching work, and synthesizing

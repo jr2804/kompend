@@ -167,7 +167,7 @@ def make_test_doc(
             type=ElementType.TEXT,
             content=(
                 "This test document demonstrates the structure-preserving capabilities of "
-                "the KOMPEND pipeline. It includes headings, body text, a table, a code block, "
+                "the kompend pipeline. It includes headings, body text, a table, a code block, "
                 "and an image element to verify that all element types are handled correctly "
                 "during chunking and downstream processing."
             ),

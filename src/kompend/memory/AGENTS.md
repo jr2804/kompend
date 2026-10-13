@@ -5,7 +5,7 @@
 
 ## Purpose
 
-KOMPEND memory layer. Two concerns:
+kompend memory layer. Two concerns:
 
 - **Query memory** (`store.py`): episodic storage of query/answer/feedback
   triples for semantic retrieval and long-term agent learning.

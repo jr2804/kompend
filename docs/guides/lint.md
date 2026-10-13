@@ -1,6 +1,6 @@
 # Lint Reference
 
-KOMPEND lint checks compiled wikis for structural and semantic quality issues.
+kompend lint checks compiled wikis for structural and semantic quality issues.
 
 ## Quick Start
 

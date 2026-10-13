@@ -1,4 +1,4 @@
-"""Pipeline orchestrator for the KOMPEND 5-tier architecture.
+"""Pipeline orchestrator for the kompend 5-tier architecture.
 
 Tier identifiers, tier descriptions, and :class:`PipelineConfig` live in
 :mod:`kompend.core.pipeline.config` so they can be shared with the CLI and

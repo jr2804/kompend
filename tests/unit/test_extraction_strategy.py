@@ -117,7 +117,7 @@ class TestReduceExtractions:
         # Mock the agent to avoid LLM call
         mock_output = ExtractionOutput(
             summary="Full document summary.",
-            entities=[Entity(name="KOMPEND", type="System")],
+            entities=[Entity(name="kompend", type="System")],
             concepts=[Concept(name="chunking", definition="splitting text")],
             tags=["ai", "docs"],
         )
@@ -131,7 +131,7 @@ class TestReduceExtractions:
             assert result.source == "doc.md"
             assert result.summary == "Full document summary."
             assert len(result.entities) == 1
-            assert result.entities[0].name == "KOMPEND"
+            assert result.entities[0].name == "kompend"
             assert len(result.concepts) == 1
             assert result.tags == ["ai", "docs"]
 

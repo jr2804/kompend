@@ -1,8 +1,8 @@
-# Multi-Level Caching in KOMPEND
+# Multi-Level Caching in kompend
 
 ## Overview
 
-KOMPEND implements a multi-level, content-addressed caching system that makes the
+kompend implements a multi-level, content-addressed caching system that makes the
 pipeline fully incremental: adding a single source file only re-processes the
 minimum necessary work. Every tier output is cached with full dependency tracking —
 if nothing changed, everything is skipped.

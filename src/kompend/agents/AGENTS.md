@@ -5,7 +5,7 @@
 
 ## Purpose
 
-PydanticAI-based agents for every LLM call in the KOMPEND pipeline. Each
+PydanticAI-based agents for every LLM call in the kompend pipeline. Each
 pipeline stage (extraction, generation, query, WiCER, capture, lint,
 search, verification, VLM, organize, doctor) is a single-turn
 structured-output agent that returns a typed Pydantic model. This package

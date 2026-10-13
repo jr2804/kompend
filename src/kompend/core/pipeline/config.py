@@ -56,7 +56,7 @@ class Compiler(StrEnum):
 
 
 class Tier(StrEnum):
-    """Identifiers for the KOMPEND 5-tier compilation pipeline.
+    """Identifiers for the kompend 5-tier compilation pipeline.
 
     Tiers are cumulative: running a higher tier first ensures the
     state of every lower tier is up to date.
@@ -119,7 +119,7 @@ class Tier(StrEnum):
 
 @dataclass
 class PipelineConfig:
-    """Configuration for the KOMPEND pipeline.
+    """Configuration for the kompend pipeline.
 
     This dataclass is the single shape consumed by :class:`WikiPipeline` and
     its factory :func:`build_pipeline`. Defaults are intentionally conservative

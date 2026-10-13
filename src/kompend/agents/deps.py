@@ -1,4 +1,4 @@
-"""Dependency types for KOMPEND PydanticAI agents.
+"""Dependency types for kompend PydanticAI agents.
 
 PydanticAI passes a typed ``Deps`` object to every tool call and into the
 system prompt template. The :class:`PipelineAgentDeps` carries the

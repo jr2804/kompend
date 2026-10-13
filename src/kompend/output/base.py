@@ -1,4 +1,4 @@
-"""Abstract base for KOMPEND output writers."""
+"""Abstract base for kompend output writers."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from kompend.core.models import CompiledWiki
 
 
 class BaseOutputWriter(ABC):
-    """Output writer interface for KOMPEND Tier 5.
+    """Output writer interface for kompend Tier 5.
 
     Subclasses must set ``name`` to a unique identifier used for
     registry lookup (e.g. ``"markdown"``, ``"json"``, ``"typst"``).

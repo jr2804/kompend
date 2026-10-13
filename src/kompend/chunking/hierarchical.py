@@ -1,4 +1,4 @@
-"""KOMPEND Hierarchical Chunker — builds a ChunkTree from a ParsedDocument.
+"""kompend Hierarchical Chunker — builds a ChunkTree from a ParsedDocument.
 
 Strategy:
 1. Walk elements in reading order, mirroring heading hierarchy into a tree.

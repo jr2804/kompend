@@ -1,8 +1,8 @@
-# KOMPEND Architecture
+# kompend Architecture
 
 ## Design Philosophy
 
-KOMPEND decouples **parsing** from **compilation** and adds layers that existing frameworks skip: structure-aware chunking, multi-turn resolution, and a self-correcting compilation loop (WiCER). The architecture is tiered so each layer is independently replaceable.
+kompend decouples **parsing** from **compilation** and adds layers that existing frameworks skip: structure-aware chunking, multi-turn resolution, and a self-correcting compilation loop (WiCER). The architecture is tiered so each layer is independently replaceable.
 
 ## 5-Tier Architecture
 
@@ -173,15 +173,15 @@ class CompiledWiki:
 
 ### 1. Parser-Agnostic
 
-No parser is baked into KOMPEND's core. The `BaseParser` interface accepts raw documents and produces `ParsedDocument`. The `ParserRouter` selects by file extension and user preference. If a new parser emerges (`docu-sonic-9000`), add a module implementing `BaseParser()` — no other tier changes.
+No parser is baked into kompend's core. The `BaseParser` interface accepts raw documents and produces `ParsedDocument`. The `ParserRouter` selects by file extension and user preference. If a new parser emerges (`docu-sonic-9000`), add a module implementing `BaseParser()` — no other tier changes.
 
 ### 2. Structure-Preserving
 
-Flattening a 50-row comparison table to markdown destroys queryability. KOMPEND stores tables as structured JSON (`list[list[str]]` with cell type annotations). Figures retain captions, bounding boxes, and extracted PNGs. Equations keep LaTeX source and image fallback.
+Flattening a 50-row comparison table to markdown destroys queryability. kompend stores tables as structured JSON (`list[list[str]]` with cell type annotations). Figures retain captions, bounding boxes, and extracted PNGs. Equations keep LaTeX source and image fallback.
 
 ### 3. Model-Aware
 
-Model strings (`provider/model`) resolve through pydantic-ai, and KOMPEND goes further:
+Model strings (`provider/model`) resolve through pydantic-ai, and kompend goes further:
 
 - Auto-detect context window from model metadata
 - Hold back a safety margin for system prompts (8% of the window, minimum 512 tokens)
@@ -213,7 +213,7 @@ Vision-capable LLMs analyze extracted figures during compilation. The `VLMEnrich
 
 ### 7. Iterative Compilation (WiCER)
 
-Inspired by [arXiv:2605.07068v1](https://arxiv.org/pdf/2605.07068v1). Blind compilation over-compresses 2–3× beyond targets. WiCER recovers 80% of lost quality in 1–2 iterations via probe Q&A and targeted diagnosis. KOMPEND's `WikiCompiler` implements the CEGAR-style loop: compile → evaluate → diagnose → refine.
+Inspired by [arXiv:2605.07068v1](https://arxiv.org/pdf/2605.07068v1). Blind compilation over-compresses 2–3× beyond targets. WiCER recovers 80% of lost quality in 1–2 iterations via probe Q&A and targeted diagnosis. kompend's `WikiCompiler` implements the CEGAR-style loop: compile → evaluate → diagnose → refine.
 
 ### 8. Hierarchical Chunk Tree
 
@@ -230,11 +230,11 @@ zoom for retrieval.
 
 ### Hermes Agent
 
-KOMPEND provides an MCP server (`src/kompend/mcp/server.py`) exposing `wiki_parse`, `wiki_compile`, `wiki_capture`, and `wiki_learn` tools. Hermes skills can call these tools directly. The CLI remains the source of truth — the MCP layer is a thin wrapper.
+kompend provides an MCP server (`src/kompend/mcp/server.py`) exposing `wiki_parse`, `wiki_compile`, `wiki_capture`, and `wiki_learn` tools. Hermes skills can call these tools directly. The CLI remains the source of truth — the MCP layer is a thin wrapper.
 
 ### Open-WebUI
 
-No custom GUI. KOMPEND exposes a queryable JSON graph / SQLite database. Open-WebUI connects via API. This follows the user's explicit requirement to minimize UI overhead.
+No custom GUI. kompend exposes a queryable JSON graph / SQLite database. Open-WebUI connects via API. This follows the user's explicit requirement to minimize UI overhead.
 
 ### Hybrid RAG
 

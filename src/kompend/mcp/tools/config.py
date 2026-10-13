@@ -29,7 +29,7 @@ def init_wiki(
     force: bool = False,
     git: bool = False,
 ) -> dict[str, Any]:
-    """Scaffold a new KOMPEND wiki project directory."""
+    """Scaffold a new kompend wiki project directory."""
     try:
         result = scaffold_project(Path(target), bare=bare, force=force, git=git)
         return {
@@ -78,7 +78,7 @@ def config_set(
     else:
         config_file = get_project_config_file()
         if not config_file.exists():
-            return {"status": "error", "message": "Not in a KOMPEND vault â€” run `kompend init` first or use `--global`"}
+            return {"status": "error", "message": "Not in a kompend vault â€” run `kompend init` first or use `--global`"}
     try:
         set_config_file_value(config_file, key, coerced)
         return {"status": "ok", "key": key, "value": coerced, "file": str(config_file)}

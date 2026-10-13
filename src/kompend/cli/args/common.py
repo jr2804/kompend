@@ -9,7 +9,7 @@ import typer
 from kompend.core.config.keys import EnvVar
 
 # Application name used for environment variable prefixes.
-APP_NAME_UPPERCASE = "KOMPEND"
+APP_NAME_UPPERCASE = "kompend"
 
 # ── Defaults ────────────────────────────────────────────────────────────
 

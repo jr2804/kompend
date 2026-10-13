@@ -2,7 +2,7 @@
 
 Re-export shim — actual implementations live in :mod:`kompend.output.pages`.
 
-KOMPEND generates three complementary pages after every compile:
+kompend generates three complementary pages after every compile:
 
 - ``index.md`` — Table of contents + wiki stats (:mod:`pages.index`)
 - ``log.md`` — Append-only activity journal (:mod:`pages.log`)

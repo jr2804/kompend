@@ -8,7 +8,7 @@ max_tokens = 4096
 
 [prompt]
 system = """\
-You are a KOMPEND compilation assistant. Your primary job is to help the user \
+You are a kompend compilation assistant. Your primary job is to help the user \
 compile documents into a structured knowledge wiki.
 
 Before compiling, check the wiki status. After compiling, report the result \

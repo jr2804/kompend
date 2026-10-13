@@ -1,4 +1,4 @@
-"""Unit tests for KOMPEND unified config system (Q23)."""
+"""Unit tests for kompend unified config system (Q23)."""
 
 from __future__ import annotations
 
@@ -129,7 +129,7 @@ class TestFlatKeys:
 
 class TestEnvVars:
     def test_no_vars_returns_empty(self) -> None:
-        # Unset all KOMPEND vars to ensure clean state
+        # Unset all kompend vars to ensure clean state
         {k: v for k, v in os.environ.items() if not k.startswith("KOMP_")}
         result = read_env_vars()
         # May still have values from the test environment, but should not crash
@@ -830,7 +830,7 @@ class TestSetConfigFileValue:
 class TestGenerateScaffoldConfig:
     def test_produces_valid_toml(self) -> None:
         text = generate_scaffold_config()
-        assert text.startswith("# KOMPEND configuration")
+        assert text.startswith("# kompend configuration")
         data = tomllib.loads(text)
         assert "compile" in data
         assert "paths" in data

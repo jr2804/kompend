@@ -1,4 +1,4 @@
-"""Tests for the KOMPEND HierarchicalChunker."""
+"""Tests for the kompend HierarchicalChunker."""
 
 from pathlib import Path
 from typing import TypeGuard

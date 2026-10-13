@@ -1,8 +1,8 @@
 # Editor Integration: ACP Agent
 
-KOMPEND can run as an **ACP (Agent Client Protocol) agent** that editors like
+kompend can run as an **ACP (Agent Client Protocol) agent** that editors like
 opencode and Zed can connect to. This gives the editor's built-in AI agent
-access to KOMPEND's compilation, query, and capture capabilities without
+access to kompend's compilation, query, and capture capabilities without
 sharing API keys — the editor injects the LLM endpoint via ``providers/set``.
 
 ## How it works
@@ -17,9 +17,9 @@ Editor ── ACP stdio ──→ kompend agent
 ```
 
 1. The editor starts ``kompend agent`` as a subprocess
-2. KOMPEND advertises its capabilities (``providers/set``, slash commands)
+2. kompend advertises its capabilities (``providers/set``, slash commands)
 3. The editor calls ``providers/set`` to inject the LLM endpoint
-4. The user types a prompt → KOMPEND routes it through a conversational agent
+4. The user types a prompt → kompend routes it through a conversational agent
    that can call tools (compile, query, capture) as needed
 
 ## opencode integration
@@ -39,12 +39,12 @@ project-level ``.opencode.json``):
 }
 ```
 
-Replace ``/path/to/your/vault`` with the path to your KOMPEND vault (the
+Replace ``/path/to/your/vault`` with the path to your kompend vault (the
 directory containing ``.kompend/`` and ``sources/``).
 
 ### With MCP companion server
 
-To also expose KOMPEND's MCP tools to other AI agents in the editor, add
+To also expose kompend's MCP tools to other AI agents in the editor, add
 ``--mcp-port``:
 
 ```json
@@ -77,7 +77,7 @@ Add to your Zed settings (``~/.config/zed/settings.json``):
 
 ## Env-var fallback (no providers/set)
 
-If your editor does not support the ``providers/set`` ACP extension, KOMPEND
+If your editor does not support the ``providers/set`` ACP extension, kompend
 falls back to its normal config precedence:
 
 1. Environment variables
@@ -113,7 +113,7 @@ Once connected, you can use these commands in the editor's chat:
 
 ## Selecting an agent
 
-KOMPEND ships with several built-in conversational agents. Use ``kompend agents``
+kompend ships with several built-in conversational agents. Use ``kompend agents``
 to manage them:
 
 ```bash

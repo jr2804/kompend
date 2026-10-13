@@ -9,7 +9,7 @@ from kompend.core.pipeline.config import Tier
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.preprocessing.parsers._registry import get_all_extensions
 
-#: KOMPEND's own state directory. Never a source, regardless of which extensions
+#: kompend's own state directory. Never a source, regardless of which extensions
 #: the registered parsers claim — with a broad-capability backend (e.g.
 #: parsecraft claiming ``.toml``), ``.kompend/rumdl.toml`` and cache artifacts
 #: would otherwise be discovered as sources in flat-layout vaults.
