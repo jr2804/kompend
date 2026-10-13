@@ -13,7 +13,7 @@ about _privacy_. kompend is provider-agnostic, adapts to whatever LLM you have
 parsing so technical content (tables, equations, figures) survives
 extraction intact. [Read the full motivation →](docs/about/motivation.md)
 
-> **OKF v0.1 compliant** — produces [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundles by default.
+> **OKF v0.2 compliant** — produces [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundles by default.
 > **ACP agent** — implements the [Agent Client Protocol](https://agentclientprotocol.com) for credential-free LLM injection via `kompend agent`.
 > **PydanticAI-native** — every LLM call routes through typed agents with failover chains; [models.dev](https://models.dev) catalog resolves any provider.
 
@@ -137,17 +137,15 @@ mise test                  # run all quality checks
 
 ## Installing kompend as a dependency
 
-The name `kompend` is taken on PyPI by an unrelated certificate-management tool,
-so kompend is not published there. Add it as a git dependency with a
-`[tool.uv.sources]` override:
+Install from PyPI:
 
-```toml
-[tool.uv.sources]
-kompend = { git = "https://github.com/jr2804/kompend.git", branch = "main" }
+```bash
+uv add kompend
+# or
+pip install kompend
 ```
 
-Then declare it normally (e.g. `"kompend[all]"` for every parser backend), and
-`uv sync` / `uv add kompend[all]` will pull the real kompend from Codeberg.
+The published package is [`kompend`](https://pypi.org/project/kompend/) (latest release tracks the latest `YYYY.M.N` tag; current is `2026.10.4`). Optional extras for parser backends and LLM providers are declared in the repository's `pyproject.toml` and resolve as `uv add "kompend[<extras>]"` or `pip install "kompend[<extras>]"`.
 
 ## License
 
