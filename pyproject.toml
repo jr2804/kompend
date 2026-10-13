@@ -75,62 +75,24 @@ knox = "knox.cli.app:main"
 
 [project.optional-dependencies]
 
-# External document-intelligence pipeline (parsecraft adapter). The ingestion
-# path: it drives docling, liteparse, pandoc, trafilatura, its native backends
-# and its OCR backends internally, so those are never knox dependencies — they
-# arrive transitively through this extra.
-#
-# Names track parsecraft 2026.10.3, which restructured its extras: `trafilatura`
-# became `web` (same engine — httpx + trafilatura), and `pdf-lite` is gone with
-# `pdf` in its slot. `pdf` is PyMuPDF, AGPL-3.0-or-commercial — NOT the pypdf
-# that `pdf-lite` was — so naming it would add an AGPL obligation inside a
-# rename. It is deliberately omitted and costs nothing knox uses: the PDF backend
-# that uses it declares no optional group in 2026.10.3, so it is base-install and
-# needs no extra, and the `trafilatura` backend is satisfied by `web`. Name `pdf`
-# only if some future parsecraft backend actually gates on it.
-#
-# That backend is renamed `native-pdf` -> `pymupdf` in the parsecraft release after
-# 2026.10.3, which also makes it host-fact-aware: demoted out of the dependency-free
-# tier where `[pdf]` is absent, so an installed parser leads directly instead of a
-# failed `pymupdf` attempt preceding every PDF. knox needs no change for either — the
-# string appears nowhere in knox's code, only in comments and in one fake-descriptor
-# docstring in tests.
-#
-# WARNING: uv SILENTLY IGNORES an unknown extra — a stale name here installs
-# nothing rather than failing, which is how `systemone`, `pdf-lite` and
-# `trafilatura` became no-ops after the 2026.10.3 upgrade. Re-check parsecraft's
-# `Provides-Extra` list whenever the parsecraft floor moves.
+# parsecraft drives docling, liteparse, pandoc, trafilatura, its builtin and OCR
+# backends internally; all of it arrives through this extra. `pdf` is omitted
+# deliberately — PyMuPDF is AGPL-3.0-or-commercial. uv ignores an unknown extra
+# silently, so re-check parsecraft's extras whenever the floor moves.
 parsecraft = [
     "parsecraft[liteparse,docling,pandoc,web]>=2026.10.1",
 ]
 
-#: Judge-tier routing (`[ingest] parsecraft_judge` / `parsecraft_preference`).
-#: parsecraft 2026.10.3 removed its own `systemone` extra and moved the SDK into
-#: `auto`. It is needed for **every** judge provider, not just the cloud ones:
-#: `parsecraft/providers/_jev.py` imports `typesafe_sdk` for `ollama`, `zen` and
-#: `typesafe-ai` alike ("all three endpoints share it"), and raises
-#: `JudgeProviderUnavailableError: judge provider 'ollama' unavailable` without
-#: it. So a locally-run Jev model needs this extra exactly as much as a hosted
-#: one does.
-#:
-#: `parsecraft[auto]` rather than a bare `typesafe-sdk` pin deliberately: parsecraft
-#: owns that floor, and duplicating it here would let the two drift. The extra also
-#: carries `pdf-inspector`, which knox does not use directly — accepted as the cost
-#: of not re-declaring another project's dependency.
-#:
-#: No knox extra is needed for `judge = "none"` (the default), which is why this
-#: is separate from the main `parsecraft` extra rather than folded into it.
+# Judge tier (`[ingest] parsecraft_judge`). Every provider — ollama, zen,
+# typesafe-ai — imports typesafe_sdk, which parsecraft carries in `auto`.
 systemone = [
     "parsecraft[auto]>=2026.10.1",
 ]
 
-#: parsecraft[mineru] installs the MinerU 4.x stack: code under the MinerU Open
-#: Source License (Apache-2.0 PLUS commercial-use thresholds >100M MAU /
-#: >USD 20M revenue, attribution duty, termination-without-notice); the default
-#: VLM checkpoint weights are Apache-2.0; the Windows-default llama.cpp GGUF
-#: engine and the ONNX kit are licence-undeclared upstream. Installing the extra
-#: is the opt-in (ADR-0007). Weights are downloaded by MinerU itself at first
-#: conversion — parsecraft never fetches them.
+# MinerU 4.x licence opt-in (ADR-0007): code is Apache-2.0 plus commercial-use
+# thresholds (>100M MAU / >USD 20M revenue), an attribution duty and termination
+# without notice; weights are Apache-2.0; the Windows-default GGUF engine and the
+# ONNX kit are licence-undeclared upstream. MinerU fetches weights at first use.
 mineru = [
     "parsecraft[mineru]>=2026.10.2",
 ]
@@ -140,11 +102,10 @@ otel = [
     "opentelemetry-exporter-otlp>=1.28.0",
 ]
 
-# marker-pdf is parsecraft's bring-your-own dependency (ADR-0006): the marker
-# backend detects a manual install by import. No release can be locked here —
-# 1.x pins anthropic<0.47 against pydantic-ai's >=0.108, and 2.0.0 resolves
-# only by downgrading anthropic and pillow graph-wide. Manual install only:
-#   uv pip install marker-pdf
+# marker-pdf is bring-your-own (ADR-0006): the backend detects a manual install by
+# import. No extra can be locked — 1.x pins anthropic<0.47 against pydantic-ai's
+# >=0.108, and 2.0.0 resolves only by downgrading anthropic and pillow graph-wide.
+# Manual only: uv pip install marker-pdf
 
 
 [dependency-groups]
