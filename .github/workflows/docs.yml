@@ -44,6 +44,12 @@ jobs:
       pages: write
       id-token: write   # required by actions/deploy-pages
 
+    # `environment` is a JOB key. On a step it is invalid YAML placement and the
+    # workflow fails to start at all — the run reported failure with zero jobs.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -77,6 +83,3 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
-        environment:
-          name: github-pages
-          url: ${{ steps.deployment.outputs.page_url }}
