@@ -251,9 +251,10 @@ parsecraft_judge_model   = ""            # model token for the configured provid
 parsecraft_preference    = "balanced"    # tiebreak: speed | balanced | quality (speed == balanced; quality inverts)
 ```
 
-`kompend[parsecraft]` adds parsecraft and its sub-backends; `kompend[mineru]`
-adds MinerU as a parsecraft sub-backend; `kompend[systemone]` adds the
-judge tier's SDK; marker is parsecraft's bring-your-own dependency. See
+`kompend[parsecraft]` adds parsecraft and its sub-backends — it also covers
+the judge tier's SDK, which needs no extra since parsecraft 2026.10.5;
+`kompend[mineru]` adds MinerU as a parsecraft sub-backend; marker is
+parsecraft's bring-your-own dependency. See
 [ParsecraftParser](document-extraction.md#parsecraftparser-external-adapter)
 for the fallback interaction and the diagnostics parsecraft carries into
 kompend metadata.

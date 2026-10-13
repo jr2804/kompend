@@ -50,7 +50,7 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 - **Primary:** parsecraft — routes each page across its own sub-backends (native, LiteParse, docling, pandoc, OCR); see [Document Extraction](../guides/document-extraction.md)
 - **Alternative:** opendataloader-pdf (best standalone benchmark, hybrid AI) — rejected for kompend on Java and sidecar-server grounds; see [Document Extraction](../guides/document-extraction.md#investigated-and-rejected-opendataloader-pdfhybrid)
 - **Legacy .doc:** Oxide Office (<https://office.oxide.fyi/>)
-- **Images/OCR:** parsecraft's `ocr-*` extras locally, Mistral OCR (paid) for best quality
+- **Images/OCR:** parsecraft's `ocr` extra locally, Mistral OCR (paid) for best quality
 
 ## Chunking Libraries
 

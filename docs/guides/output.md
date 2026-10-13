@@ -127,16 +127,12 @@ Explicit `compile.output.flavor` always overrides auto-detection.
 
 ## Rumdl setup
 
-rumdl handles all flavor-specific transformations. It is installed alongside kompend
-when using the `kompend[rumdl]` optional dependency:
+rumdl handles all flavor-specific transformations and ships as a base
+dependency of kompend (`rumdl>=0.2.9`) — installing kompend is all that is
+required.
 
-```bash
-uv tool install kompend[rumdl]
-# or
-uv add kompend[rumdl]
-```
-
-If rumdl is not installed, kompend falls back to raw canonical Markdown with a warning.
+If the `rumdl` binary is not on `PATH`, kompend falls back to raw canonical
+Markdown with a warning.
 
 ### Custom rumdl configuration
 

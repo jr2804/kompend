@@ -37,11 +37,11 @@ backends:
   kompend at all (see [below](#why-marker-cannot-be-a-locked-extra)); install
   it yourself and parsecraft counts it among its routing candidates.
 
-The judge tier needs the `systemone` extra on top of parsecraft:
-
-```bash
-uv add kompend[systemone]
-```
+The judge tier needs no extra: `typesafe-sdk` — shared by the `ollama`, `zen`
+and `typesafe-ai` providers — is base-install in parsecraft ≥ 2026.10.5, so the
+ordinary `uv add kompend[parsecraft]` covers it. The judge is enabled purely by
+config (`[ingest] parsecraft_judge`, `parsecraft_judge_model`,
+`parsecraft_preference`).
 
 ### Why `marker` cannot be a locked extra
 
@@ -109,11 +109,11 @@ parsecraft's sub-backends, and the extras decide which are present:
 
 | Sub-backend | What it wins | Arrives via |
 |------------|--------------|-------------|
-| native (text/markdown/HTML) | The fast path for born-digital content | core parsecraft |
+| native (text/markdown/HTML) | The fast path for born-digital content | core parsecraft (`web` extra for HTML) |
 | LiteParse | Default PDF engine | `kompend[parsecraft]` |
 | docling | Structure-heavy pages: equations, tables, complex layouts | `kompend[parsecraft]` |
 | pandoc | Legacy containers (EPub, ODT, RTF) | `kompend[parsecraft]` |
-| OCR backends | Scanned pages (per-page escalation) | `parsecraft[ocr-*]` extras |
+| OCR backends | Scanned pages (per-page escalation) | `parsecraft[ocr]` extra |
 | mineru | Layout-aware PDF/Office with OCR | `kompend[mineru]` |
 | marker | Highest reported benchmark accuracy | bring-your-own install |
 
@@ -121,8 +121,8 @@ parsecraft's sub-backends, and the extras decide which are present:
 
 - **Default:** `kompend[parsecraft]` covers text, office, PDF and container
   formats with per-page routing.
-- **Layout-heavy or scanned corpora:** add `kompend[mineru]` or a
-  `parsecraft[ocr-*]` extra.
+- **Layout-heavy or scanned corpora:** add `kompend[mineru]` or the
+  `parsecraft[ocr]` extra.
 - **Maximum accuracy on hard layouts:** install `marker-pdf` yourself
   (GPU preferred) — kompend cannot pin it (see
   [Why `marker` cannot be a locked extra](#why-marker-cannot-be-a-locked-extra)).
@@ -241,7 +241,8 @@ parsecraft_preference = "balanced"     # speed | balanced | quality
   by the daemon with `400 … does not support decision`. Use the bare ollama
   name without the `:tag` suffix (`parable-tinyjev`, not
   `parable-tinyjev:latest`): the SDK reads the suffix as a variant token and
-  refuses it. `uv add kompend[systemone]` provides the SDK.
+  refuses it. The SDK is base-install with parsecraft (≥ 2026.10.5), so no
+  extra is needed.
 - **`zen`** (`OPENCODE_API_KEY`) and **`typesafe-ai`** (`TYPESAFE_API_KEY`) are
   the cloud choices; the credential is read from the environment only.
 - **`parsecraft_preference`** is the tiebreak axis *inside* a backend family,
