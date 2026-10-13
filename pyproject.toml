@@ -76,18 +76,23 @@ kompend = "kompend.cli.app:main"
 [project.optional-dependencies]
 
 # parsecraft drives docling, liteparse, pandoc, trafilatura, its builtin and OCR
-# backends internally; all of it arrives through this extra. `pdf` is omitted
-# deliberately — PyMuPDF is AGPL-3.0-or-commercial. uv ignores an unknown extra
+# backends internally; the extras bring the ones that are not base-install. `pdf` is
+# omitted deliberately — PyMuPDF is AGPL-3.0-or-commercial. uv ignores an unknown extra
 # silently, so re-check parsecraft's extras whenever the floor moves.
+#
+# Floor is 2026.10.5, and it is load-bearing: that release moved `auto`, `liteparse`,
+# `pandoc` and `openpyxl` into the BASE install. Below it, naming only `[docling,web]`
+# would not bring liteparse or pandoc at all and the routing would silently lose both.
 parsecraft = [
-    "parsecraft[liteparse,docling,pandoc,web]>=2026.10.1",
+    "parsecraft[docling,web]>=2026.10.5",
 ]
 
-# Judge tier (`[ingest] parsecraft_judge`). Every provider — ollama, zen,
-# typesafe-ai — imports typesafe_sdk, which parsecraft carries in `auto`.
-systemone = [
-    "parsecraft[auto]>=2026.10.1",
-]
+# The judge tier (`[ingest] parsecraft_judge`) needs no extra. `typesafe-sdk` — shared
+# by the ollama, zen and typesafe-ai providers alike — is base-install from 2026.10.5,
+# as is the OCR-need classifier. The `systemone` extra that used to provide the SDK is
+# deliberately deleted rather than repointed: a knox extra wrapping one upstream extra
+# is a name to keep in sync forever for no benefit, and it silently became a no-op the
+# moment upstream moved the payload.
 
 # MinerU 4.x licence opt-in (ADR-0007): code is Apache-2.0 plus commercial-use
 # thresholds (>100M MAU / >USD 20M revenue), an attribution duty and termination
