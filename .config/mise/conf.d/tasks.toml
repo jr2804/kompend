@@ -4,7 +4,7 @@ description = "Install development dependencies"
 run = "uv sync -U --dev --all-extras" #  --all-groups
 
 [tasks.set-repo-topics]
-description = "Set repository topics on Codeberg from pyproject.toml keywords"
+description = "Set repository topics on GitHub from pyproject.toml keywords"
 run = "uv run scripts/repo/set_repo_topics.py"
 
 [tasks.check-field-consistency]
