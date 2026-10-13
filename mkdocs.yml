@@ -122,4 +122,7 @@ nav:
     - Motivation: about/motivation.md
     - Acknowledgements: about/acknowledgements.md
 
-# social icons omitted — Codeberg icon not in Material icon set
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/jr2804/kompend
