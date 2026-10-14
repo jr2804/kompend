@@ -68,6 +68,7 @@ dependencies = [
     "lazy-loader",
     "rapidfuzz>=3.14.6",
     "charset-normalizer>=3.5.1",
+    "parsecraft[docling,web]>=2026.10.5",
 ]
 
 [project.scripts]
@@ -75,42 +76,16 @@ kompend = "kompend.cli.app:main"
 
 [project.optional-dependencies]
 
-# parsecraft drives docling, liteparse, pandoc, trafilatura, its builtin and OCR
-# backends internally; the extras bring the ones that are not base-install. `pdf` is
-# omitted deliberately — PyMuPDF is AGPL-3.0-or-commercial. uv ignores an unknown extra
-# silently, so re-check parsecraft's extras whenever the floor moves.
-#
-# Floor is 2026.10.5, and it is load-bearing: that release moved `auto`, `liteparse`,
-# `pandoc` and `openpyxl` into the BASE install. Below it, naming only `[docling,web]`
-# would not bring liteparse or pandoc at all and the routing would silently lose both.
-parsecraft = [
-    "parsecraft[docling,web]>=2026.10.5",
-]
+# Only heavy ML OCR models and licence-gated backends stay opt-in.
+ocr = ["parsecraft[ocr]>=2026.10.5"]
+mineru = ["parsecraft[mineru]>=2026.10.2"]
+pdf = ["parsecraft[pdf]>=2026.10.5"]
 
-# The judge tier (`[ingest] parsecraft_judge`) needs no extra. `typesafe-sdk` — shared
-# by the ollama, zen and typesafe-ai providers alike — is base-install from 2026.10.5,
-# as is the OCR-need classifier. The `systemone` extra that used to provide the SDK is
-# deliberately deleted rather than repointed: a knox extra wrapping one upstream extra
-# is a name to keep in sync forever for no benefit, and it silently became a no-op the
-# moment upstream moved the payload.
-
-# MinerU 4.x licence opt-in (ADR-0007): code is Apache-2.0 plus commercial-use
-# thresholds (>100M MAU / >USD 20M revenue), an attribution duty and termination
-# without notice; weights are Apache-2.0; the Windows-default GGUF engine and the
-# ONNX kit are licence-undeclared upstream. MinerU fetches weights at first use.
-mineru = [
-    "parsecraft[mineru]>=2026.10.2",
-]
-
+# marker-pdf is bring-your-own: uv pip install marker-pdf
 otel = [
     "opentelemetry-sdk>=1.28.0",
     "opentelemetry-exporter-otlp>=1.28.0",
 ]
-
-# marker-pdf is bring-your-own (ADR-0006): the backend detects a manual install by
-# import. No extra can be locked — 1.x pins anthropic<0.47 against pydantic-ai's
-# >=0.108, and 2.0.0 resolves only by downgrading anthropic and pillow graph-wide.
-# Manual only: uv pip install marker-pdf
 
 
 [dependency-groups]

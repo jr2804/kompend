@@ -31,7 +31,7 @@ PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
 # when the backend's optional dependency is not installed. Each entry maps to
 # a human-readable description shown in error messages.
 KNOWN_BACKENDS: dict[str, str] = {
-    "parsecraft": "per-page routing across docling, liteparse, pandoc, native and OCR backends (install: uv sync --extra parsecraft)",
+    "parsecraft": "per-page routing across docling, liteparse, pandoc, native and OCR backends",
 }
 
 # Backend name → module path. The backend module's ``register_backend`` call
