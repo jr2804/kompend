@@ -251,8 +251,8 @@ parsecraft_judge_model   = ""            # model token for the configured provid
 parsecraft_preference    = "balanced"    # tiebreak: speed | balanced | quality (speed == balanced; quality inverts)
 ```
 
-`kompend[parsecraft]` adds parsecraft and its sub-backends — it also covers
-the judge tier's SDK, which needs no extra since parsecraft 2026.10.5;
+parsecraft is a core dependency — stock kompend already has it, its
+sub-backends and the judge tier's SDK (no extra since parsecraft 2026.10.5);
 `kompend[mineru]` adds MinerU as a parsecraft sub-backend; marker is
 parsecraft's bring-your-own dependency. See
 [ParsecraftParser](document-extraction.md#parsecraftparser-external-adapter)
@@ -374,9 +374,8 @@ Displays:
 ## `kompend list-parsers`
 
 List all registered parsers (built-in, external, and HTTP). External
-backends appear only when their package extra is installed — `parsecraft`
-shows up after `uv add kompend[parsecraft]`, and is otherwise absent (not an
-error, just not registered).
+backends appear only when their package is installed — `parsecraft` is a
+core dependency and shows up in a stock install.
 
 ```text
 kompend list-parsers [OPTIONS]

@@ -19,10 +19,10 @@ parsecraft is the only parser path; the selector is gone. The remaining
 see [Judge tier](#judge-tier-model-assisted-per-page-routing)).
 
 - `parsecraft` — an external document-intelligence pipeline that routes each
-  page across its own sub-backends (native text/markdown/HTML/PDF, LiteParse,
-  docling, pandoc, OCR extras) and returns one document per source. It ships
-  as the `parsecraft` extra, which pulls the sub-backends that make it
-  useful: `uv add kompend[parsecraft]`.
+  page across its own sub-backends (native text/markdown/HTML, LiteParse,
+  docling, pandoc, OCR extras) and returns one document per source. It is a
+  **core dependency** of kompend, together with its `docling` and `web`
+  sub-backends, so installing kompend installs it.
 
 `kompend list-parsers` shows the backend and the formats it claims.
 
@@ -38,9 +38,9 @@ backends:
   it yourself and parsecraft counts it among its routing candidates.
 
 The judge tier needs no extra: `typesafe-sdk` — shared by the `ollama`, `zen`
-and `typesafe-ai` providers — is base-install in parsecraft ≥ 2026.10.5, so the
-ordinary `uv add kompend[parsecraft]` covers it. The judge is enabled purely by
-config (`[ingest] parsecraft_judge`, `parsecraft_judge_model`,
+and `typesafe-ai` providers — is base-install in parsecraft ≥ 2026.10.5, so it
+arrives with kompend itself. The judge is enabled purely by config
+(`[ingest] parsecraft_judge`, `parsecraft_judge_model`,
 `parsecraft_preference`).
 
 ### Why `marker` cannot be a locked extra
@@ -109,20 +109,24 @@ parsecraft's sub-backends, and the extras decide which are present:
 
 | Sub-backend | What it wins | Arrives via |
 |------------|--------------|-------------|
-| native (text/markdown/HTML) | The fast path for born-digital content | core parsecraft (`web` extra for HTML) |
-| LiteParse | Default PDF engine | `kompend[parsecraft]` |
-| docling | Structure-heavy pages: equations, tables, complex layouts | `kompend[parsecraft]` |
-| pandoc | Legacy containers (EPub, ODT, RTF) | `kompend[parsecraft]` |
-| OCR backends | Scanned pages (per-page escalation) | `parsecraft[ocr]` extra |
+| native (text/markdown/HTML) | The fast path for born-digital content | core (`web` for HTML) |
+| LiteParse | Default PDF engine | core |
+| docling | Structure-heavy pages: equations, tables, complex layouts | core |
+| pandoc | Legacy containers (EPub, ODT, RTF) | core |
+| PyMuPDF | Light PDF text extraction (AGPL — see below) | `kompend[pymupdf]` |
+| OCR models | Scanned pages (per-page escalation) | `kompend[ocr]` |
 | mineru | Layout-aware PDF/Office with OCR | `kompend[mineru]` |
+| PyMuPDF + MinerU | Both PDF engines in one extra | `kompend[pdf-full]` |
 | marker | Highest reported benchmark accuracy | bring-your-own install |
 
 ### Choosing
 
-- **Default:** `kompend[parsecraft]` covers text, office, PDF and container
-  formats with per-page routing.
-- **Layout-heavy or scanned corpora:** add `kompend[mineru]` or the
-  `parsecraft[ocr]` extra.
+- **Default:** stock kompend covers text, office, PDF and container formats
+  with per-page routing.
+- **Layout-heavy or scanned corpora:** add `kompend[mineru]`, or
+  `kompend[ocr]` for the OCR model stack.
+- **An AGPL PDF engine:** `kompend[pymupdf]` adds PyMuPDF (AGPL-3.0 or
+  commercial); `kompend[pdf-full]` adds it alongside MinerU.
 - **Maximum accuracy on hard layouts:** install `marker-pdf` yourself
   (GPU preferred) — kompend cannot pin it (see
   [Why `marker` cannot be a locked extra](#why-marker-cannot-be-a-locked-extra)).
@@ -155,13 +159,15 @@ back losslessly, the original content is kept.
 document-intelligence pipeline (public API only, separate project from kompend).
 kompend consumes it through a single adapter (`preprocessing/parsers/parsecraft_parser.py`)
 and maps parsecraft's intermediate representation onto kompend's element model.
-Install it as an optional extra:
+It is a core dependency, so installing kompend is all that is required:
 
 ```bash
-uv add kompend[parsecraft]    # carries parsecraft>=2026.10.1 (Python ≥3.13)
+uv add kompend    # pulls parsecraft[docling,web]>=2026.10.5
 ```
 
-The extra carries a minimum parsecraft release; raising it is a reviewed event
+The floor is load-bearing: 2026.10.5 moved `auto`, `liteparse`, `pandoc` and
+`openpyxl` into parsecraft's base install, and 2026.10.6 split the old `pdf`
+extra into `pymupdf` and `pdf-full`. Raising either is a reviewed event
 (see `.agents/plans/parsecraft-integration.md`). kompend never imports parsecraft
 internals, private modules, or test helpers — only the documented public
 surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).

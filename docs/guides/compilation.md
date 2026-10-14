@@ -250,7 +250,7 @@ batch knobs, so the levers are:
    single document in flight so peak memory stays bounded per file.
 2. **Isolate the document** — `kompend ingest big-scan.pdf` parses only that file,
    so a failure does not take the rest of the corpus with it.
-3. **Trim the candidate set** — uninstalling the unused `parsecraft[ocr]` extra
+3. **Trim the candidate set** — uninstalling the unused `kompend[ocr]` extra
    removes that backend and its model weights from the routing candidates.
 
 Routing and the OCR memory budget live in parsecraft. If one document still
