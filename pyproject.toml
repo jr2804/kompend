@@ -6,11 +6,12 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.13"
 authors = [
-    { name = "Jan Reimes", email = "jan@reimes.de" }
+    { name = "Jan Reimes", email = "github@jan-reimes.de" }
 ]
 classifiers = [
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Text Processing :: Markup",
     "Topic :: Database :: Front-Ends",
@@ -76,10 +77,11 @@ kompend = "kompend.cli.app:main"
 
 [project.optional-dependencies]
 
-# Only heavy ML OCR models and licence-gated backends stay opt-in.
+# Only heavy ML OCR models and licence-gated backends (pymupdf, mineru) stay opt-in.
 ocr = ["parsecraft[ocr]>=2026.10.5"]
 mineru = ["parsecraft[mineru]>=2026.10.2"]
-pdf = ["parsecraft[pdf]>=2026.10.5"]
+pymupdf = ["parsecraft[pymupdf]>=2026.10.6"]
+pdf-full = ["parsecraft[pdf-full]>=2026.10.6"]  # pymupdf + mineru
 
 # marker-pdf is bring-your-own: uv pip install marker-pdf
 otel = [
