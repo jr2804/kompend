@@ -131,6 +131,28 @@ def salvage_json(
     if parsed == "":
         return None
 
+    # Post-fix 2 onward share one guard. On Python 3.13 the deeply-nested
+    # tripwire is json_repair's recursive parser (caught above); on 3.14+ stdlib
+    # json parses arbitrary nesting without Python recursion, so pathological
+    # input survives the parse and instead trips the Python-recursive cleanup
+    # walks. The contract is unchanged: degrade to None like a parse failure.
+    try:
+        return _finalize_salvage(parsed, schema, unwrap_list)
+    except RecursionError:
+        logging.getLogger(__name__).debug("salvage_json cleanup hit recursion limit on pathological nesting")
+        return None
+
+
+def _finalize_salvage(
+    parsed: JSON,
+    schema: type[BaseModel] | dict[str, object] | None,
+    unwrap_list: bool,
+) -> JSON | None:
+    """Post-parse shaping of a successful schema-less repair.
+
+    Everything here walks the parsed structure recursively, which is why the
+    caller wraps it in the RecursionError guard alongside the parsers.
+    """
     # Post-fix 2: Coerce list-of-dicts to dict when schema expects an object.
     # Small models sometimes return [{"summary": "..."}, {"entities": []}]
     # instead of {"summary": "...", "entities": []}.  json_repair schema mode

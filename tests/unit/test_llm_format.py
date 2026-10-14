@@ -79,7 +79,10 @@ class TestSalvageRecursionGuard:
         (None -> PermanentError -> skip) instead of propagating up through
         complete() and crashing the whole compile.
         """
-        deep = "[" * 5000 + "]" * 5000  # trips json's parser on CPython 3.13
+        # 3.13: trips stdlib json's recursive parser. 3.14+ parses this fine
+        # (the C scanner is not Python-recursive), so the tripwire moves to
+        # the cleanup walk — salvage_json must absorb it either way.
+        deep = "[" * 5000 + "]" * 5000
         # Contract: never leak RecursionError. None if json tripped (caught),
         # the structure if json handled it — either is fine, the point is no crash.
         result = salvage_json(deep)
