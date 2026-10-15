@@ -30,6 +30,7 @@ import pytest
 pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
 
 from parsecraft import pipeline  # noqa: E402 — guarded by the importorskip above
+from parsecraft.backends import default_registry  # noqa: E402 — guarded by the importorskip above
 from parsecraft.backends.protocol import BackendCapabilities  # noqa: E402 — guarded by the importorskip above
 from parsecraft.ir.models import (
     ChunkKind,
@@ -643,17 +644,6 @@ class TestStructuredRows:
     boundary so nothing downstream has to know about the tuple shape.
     """
 
-    @staticmethod
-    def _chunk(**overrides: Any) -> Any:
-        defaults: dict[str, Any] = {
-            "id": "c1",
-            "kind": ChunkKind.TABLE,
-            "content": "| A | B |",
-            "page_number": 1,
-            "reading_order": 0,
-        }
-        return StructuredChunk(**{**defaults, **overrides})
-
     def test_rows_convert_to_nested_lists(self) -> None:
         adapter = _adapter()
         chunk = self._chunk(rows=(("A", "B"), ("1", "2")))
@@ -675,6 +665,17 @@ class TestStructuredRows:
         adapter = _adapter()
         chunk = self._chunk(content="", rows=())
         assert not adapter._chunk_content(chunk)
+
+    @staticmethod
+    def _chunk(**overrides: Any) -> Any:
+        defaults: dict[str, Any] = {
+            "id": "c1",
+            "kind": ChunkKind.TABLE,
+            "content": "| A | B |",
+            "page_number": 1,
+            "reading_order": 0,
+        }
+        return StructuredChunk(**{**defaults, **overrides})
 
 
 class TestBackendOptions:
@@ -760,6 +761,108 @@ class TestEnginesWiring:
         assert seen[-1] is None
         adapter.ParsecraftParser(parsecraft_engines=["mineru"]).parse(markdown_file)
         assert seen[-1] == ("mineru",)
+
+
+class TestBackendOverride:
+    """``[ingest] parsecraft_preferred_backend`` / ``_only_backend``.
+
+    parsecraft owns routing, so these pass a single preference or pin through
+    to its own parameters — they are not a kompend-side routing list.
+    """
+
+    def test_unset_leaves_both_none(self) -> None:
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser()
+        assert parser._preferred_backend is None
+        assert parser._only_backend is None
+        assert _routing_part(parser) == ""
+
+    def test_unknown_backend_names_the_registered_set(self) -> None:
+        adapter = _adapter()
+        known = {descriptor.name for descriptor in default_registry.list_backends()}
+        with pytest.raises(ValueError, match="unknown parsecraft backend 'not-a-backend'"):
+            adapter.ParsecraftParser(parsecraft_preferred_backend="not-a-backend")
+        with pytest.raises(ValueError, match="unknown parsecraft backend") as caught:
+            adapter.ParsecraftParser(parsecraft_only_backend="also-not-a-backend")
+        for name in known:
+            assert name in str(caught.value)
+
+    def test_registered_names_are_accepted(self) -> None:
+        adapter = _adapter()
+        chosen = self._a_backend()
+        assert adapter.ParsecraftParser(parsecraft_preferred_backend=chosen)._preferred_backend == chosen
+        assert adapter.ParsecraftParser(parsecraft_only_backend=chosen)._only_backend == chosen
+
+    def test_each_names_its_own_cache_segment(self) -> None:
+        adapter = _adapter()
+        chosen = self._a_backend()
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_preferred_backend=chosen)) == f"preferred_backend:{chosen}"
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_only_backend=chosen)) == f"only_backend:{chosen}"
+
+    def test_overrides_reach_the_constraints(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        adapter = _adapter()
+        chosen = self._a_backend()
+        seen: dict[str, object] = {}
+        real = adapter.constraints_from_environment
+
+        def spy(environment: object, **kwargs: Any) -> Any:
+            seen.update(kwargs)
+            return real(environment, **kwargs)
+
+        monkeypatch.setattr(adapter, "constraints_from_environment", spy)
+        parser.parse(markdown_file)
+        assert seen.get("preferred_backend") is None
+        assert seen.get("only_backend") is None
+        adapter.ParsecraftParser(parsecraft_preferred_backend=chosen, parsecraft_only_backend=chosen).parse(markdown_file)
+        assert seen["preferred_backend"] == chosen
+        assert seen["only_backend"] == chosen
+
+    @staticmethod
+    def _a_backend() -> str:
+        return default_registry.list_backends()[0].name
+
+
+class TestIgnoredBackendOptions:
+    """A per-backend option that never ran must not fail silently.
+
+    parsecraft degrades to the backends that are left, so an unusable option
+    yields a *smaller* document rather than an error — the symptom is a
+    shortfall with nothing in ``quality_signals`` or ``degraded_pages``. The
+    adapter logs the mismatch so the cause is attributable to the config.
+    """
+
+    def test_no_log_when_options_were_honoured(self, parser: Any, markdown_file: Path, caplog: pytest.LogCaptureFixture) -> None:
+        parser.parse(markdown_file)
+        assert not [r for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
+
+    def test_warns_when_the_named_backend_never_ran(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The upstream degradation path: the option's backend fails and another
+        backend serves the document instead, so the option had no effect.
+        """
+        adapter = _adapter()
+        monkeypatch.setattr(adapter, "_winning_backends", lambda groups: "pdf-inspector")
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            adapter.ParsecraftParser(parsecraft_extract_vector_graphics=True).parse(markdown_file)
+        messages = [r.getMessage() for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
+        assert len(messages) == 1, messages
+        assert "liteparse" in messages[0]
+        assert "pdf-inspector" in messages[0]
+
+    def test_silent_for_a_default_run(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        adapter = _adapter()
+        adapter.ParsecraftParser().parse(markdown_file)
+        assert not [r for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
 
 
 def _pdf_backend(name: str, vram: float) -> BackendDescriptor:

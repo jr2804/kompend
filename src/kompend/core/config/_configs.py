@@ -596,6 +596,27 @@ class IngestConfig(_KompendBaseModel):
             "another backend serves."
         ),
     )
+    parsecraft_preferred_backend: str | None = Field(
+        default=None,
+        validation_alias=EnvVar.INGEST_PARSECRAFT_PREFERRED_BACKEND,
+        description=(
+            "Rank a backend first where it is eligible (parsecraft's `preferred_backend`) — a preference, "
+            "never a guarantee: a page the named backend cannot serve still falls back. Use it to pin a "
+            "layout-aware backend for a table-heavy corpus, or to route around a defect in the leading "
+            "backend without uninstalling anything. Unknown names are a usage error naming the registered "
+            "backends; the value is part of the parse-cache fingerprint."
+        ),
+    )
+    parsecraft_only_backend: str | None = Field(
+        default=None,
+        validation_alias=EnvVar.INGEST_PARSECRAFT_ONLY_BACKEND,
+        description=(
+            "Use only this backend — a hard pin (parsecraft's `only_backend`), unlike "
+            "`parsecraft_preferred_backend`. Pages it cannot *cover* fail loudly instead of silently "
+            "falling back; a blank page still degrades, because coverage and content are different "
+            "things. The value is part of the parse-cache fingerprint."
+        ),
+    )
 
 
 class DownloaderConfig(_KompendBaseModel):

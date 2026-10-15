@@ -118,17 +118,29 @@ def test_pipeline_config_builds_the_same_options_as_the_cli(tmp_path: Path) -> N
     """``build_pipeline`` reads ``config.parser_options``; it must be the
     config-derived set — the same one the CLI and MCP sites build directly.
     """
-    base = _vault(tmp_path, judge="ollama", judge_model="parable-tinyjev", preference="quality", effort="high")
+    base = _vault(
+        tmp_path,
+        judge="ollama",
+        judge_model="parable-tinyjev",
+        preference="quality",
+        effort="high",
+        allow_ocr=False,
+        engines='"mineru", "marker"',
+        vector_graphics=True,
+        preferred_backend="liteparse",
+    )
     cfg = resolve_config(base_dir=base)
 
     pc = PipelineConfig.from_resolved(cfg, source_dir=base / "sources", output_dir=base / "wiki", input_files=None)
 
     assert pc.parser_options == ParserBuildOptions.from_config(cfg, images_dir=pc.paths.images_dir)
     _assert_full_options(pc.parser_options)
-    # The effort knob round-trips through PipelineConfig.from_resolved →
-    # ParserBuildOptions.from_config, so ``build_pipeline`` reads the same
-    # value the CLI/MCP tools did and the parse cache is uniformly keyed.
     assert pc.parser_options.parsecraft_effort == "high"
+    assert pc.parser_options.parsecraft_allow_ocr is False
+    assert pc.parser_options.parsecraft_engines == ["mineru", "marker"]
+    assert pc.parser_options.parsecraft_extract_vector_graphics is True
+    assert pc.parser_options.parsecraft_preferred_backend == "liteparse"
+    assert pc.parser_options.parsecraft_only_backend is None
 
 
 def _assert_full_options(options: ParserBuildOptions) -> None:
@@ -152,6 +164,8 @@ def _vault(
     allow_ocr: bool | None = None,
     engines: str | None = None,
     vector_graphics: bool | None = None,
+    preferred_backend: str | None = None,
+    only_backend: str | None = None,
 ) -> Path:
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
@@ -171,6 +185,10 @@ def _vault(
         lines.append(f"parsecraft_engines = [{engines}]")
     if vector_graphics is not None:
         lines.append(f"parsecraft_extract_vector_graphics = {str(vector_graphics).lower()}")
+    if preferred_backend is not None:
+        lines.append(f'parsecraft_preferred_backend = "{preferred_backend}"')
+    if only_backend is not None:
+        lines.append(f'parsecraft_only_backend = "{only_backend}"')
     # ``PipelineConfig.from_resolved`` refuses an empty default_model; set one
     # so the pipeline-config test does not depend on a global config file.
     lines += ["", "[compile.llm]", 'default_model = "ollama/test-model"']

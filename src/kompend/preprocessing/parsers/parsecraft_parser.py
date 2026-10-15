@@ -115,6 +115,8 @@ class ParsecraftParser:
         parsecraft_allow_ocr: bool | None = None,
         parsecraft_engines: list[str] | None = None,
         parsecraft_extract_vector_graphics: bool | None = None,
+        parsecraft_preferred_backend: str | None = None,
+        parsecraft_only_backend: str | None = None,
     ) -> None:
         self._registry = registry
         self._environment: EnvironmentInfo | None = None
@@ -136,6 +138,8 @@ class ParsecraftParser:
         self._allow_ocr = parsecraft_allow_ocr
         self._engines: tuple[str, ...] = tuple(parsecraft_engines or ())
         self._extract_vector_graphics = parsecraft_extract_vector_graphics
+        self._preferred_backend = _parse_backend_name(parsecraft_preferred_backend)
+        self._only_backend = _parse_backend_name(parsecraft_only_backend)
         #: Parsed once — every deterministic-path construction reuses it, so the
         #: knob reaches the rule table even when no provider judge is configured
         #: (parsecraft's ``DeterministicJudge`` tilts its VRAM tiebreak by it).
@@ -174,6 +178,8 @@ class ParsecraftParser:
             allow_ocr=self._allow_ocr,
             engines=self._engines or None,
             backend_options=self._backend_options(),
+            preferred_backend=self._preferred_backend,
+            only_backend=self._only_backend,
         )
 
         source = SourceDocument(uri=source_file.resolve().as_uri())
@@ -187,6 +193,7 @@ class ParsecraftParser:
 
         document = result.document
         elements = _map_document(document, source_file)
+        self._warn_on_ignored_backend_options(_winning_backends(result.groups), elements)
 
         return ParsedDocument(
             source_file=source_file,
@@ -245,6 +252,10 @@ class ParsecraftParser:
             parts.append(f"engines:{','.join(sorted(self._engines))}")
         if self._extract_vector_graphics is not None:
             parts.append(f"vector_graphics:{'on' if self._extract_vector_graphics else 'off'}")
+        if self._preferred_backend is not None:
+            parts.append(f"preferred_backend:{self._preferred_backend}")
+        if self._only_backend is not None:
+            parts.append(f"only_backend:{self._only_backend}")
         routing = "|".join(parts)
         return f"{host}|{routing}"
 
@@ -263,6 +274,36 @@ class ParsecraftParser:
         if self._extract_vector_graphics is not None:
             options.setdefault("liteparse", {})["extract_vector_graphics"] = self._extract_vector_graphics
         return options
+
+    def _warn_on_ignored_backend_options(self, winners: str, elements: list[DocumentElement]) -> None:
+        """Log loudly when a per-backend option never reached its backend.
+
+        A backend option is only honoured by the backend it names, so when that
+        backend is absent from the document's winners the option did nothing.
+        That is not a failure to hide: parsecraft degrades to whatever backend
+        is left, so an unusable option produces a *smaller* document rather than
+        an error, and the only symptom is a shortfall nobody attributes to the
+        config. The comparison names the backends involved so the message is a
+        diagnosis rather than a reprimand.
+        """
+        requested = self._backend_options()
+        if not requested:
+            return
+        executed = {name.strip() for name in winners.split(",") if name.strip()}
+        ignored = sorted(name for name in requested if name not in executed)
+        if not ignored:
+            return
+        logger.warning(
+            "parsecraft ignored the configured backend option(s) %s: no page was served by %s "
+            "(document came from %s%s). The named backend never ran, so the option had no effect "
+            "and the document may be smaller than expected — upstream parsecraft degrades to the "
+            "backends that are left instead of failing. Check that the backend is installed and "
+            "eligible for this source.",
+            {name: list(requested[name]) for name in ignored},
+            ", ".join(ignored),
+            winners or "no backend",
+            f" ({len(elements)} elements)" if elements else "",
+        )
 
     def _ensure_environment(self) -> EnvironmentInfo:
         """Probe once per instance. ``probe_environment`` shells out, so this must
@@ -557,6 +598,29 @@ def _heading_level(chunk: StructuredChunk) -> int | None:
         return None
 
 
+def _parse_backend_name(name: str | None) -> str | None:
+    """Validate a backend override against parsecraft's registered backends.
+
+    parsecraft raises its own usage error for an unknown name, but only once the
+    source is opened — a typo would surface as a failed run rather than a bad
+    config. Validating here keeps the failure at the router boundary and names
+    what is actually available. kompend's ``KNOWN_BACKENDS`` is *not* the source
+    of truth here: it holds kompend's own parser adapters (exactly one, the
+    parsecraft adapter), not parsecraft's sub-backends.
+
+    ``None`` passes through untouched.
+    """
+    if name is None:
+        return None
+    # ``list_backends()`` yields descriptors, not names. Comparing a bare string
+    # against a list of descriptors would reject every valid backend.
+    known = {descriptor.name for descriptor in default_registry.list_backends()}
+    if name not in known:
+        msg = f"unknown parsecraft backend {name!r}; expected one of: {', '.join(sorted(known))}"
+        raise ValueError(msg)
+    return name
+
+
 def _winning_backends(groups: list[PageGroup]) -> str:
     """Comma-separated backends that won page groups — parse provenance."""
     names = {group.winner for group in groups if group.winner is not None}
@@ -579,6 +643,8 @@ def _factory(options: ParserBuildOptions) -> ParsecraftParser:
         parsecraft_allow_ocr=options.parsecraft_allow_ocr,
         parsecraft_engines=options.parsecraft_engines,
         parsecraft_extract_vector_graphics=options.parsecraft_extract_vector_graphics,
+        parsecraft_preferred_backend=options.parsecraft_preferred_backend,
+        parsecraft_only_backend=options.parsecraft_only_backend,
     )
 
 

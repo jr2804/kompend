@@ -83,6 +83,10 @@ class ParserBuildOptions:
     #: Whether liteparse recovers table structure from a page's vector graphics.
     #: `None` leaves the backend option unset.
     parsecraft_extract_vector_graphics: bool | None = None
+    #: Backend ranked first where eligible; a preference, never a guarantee.
+    parsecraft_preferred_backend: str | None = None
+    #: Backend used exclusively; a hard pin, unreachable pages fail loudly.
+    parsecraft_only_backend: str | None = None
 
     @classmethod
     def from_config(cls, cfg: ResolvedConfig, *, images_dir: Path | None = None) -> ParserBuildOptions:
@@ -110,6 +114,8 @@ class ParserBuildOptions:
             parsecraft_allow_ocr=kompend.ingest.parsecraft_allow_ocr,
             parsecraft_engines=list(kompend.ingest.parsecraft_engines),
             parsecraft_extract_vector_graphics=kompend.ingest.parsecraft_extract_vector_graphics,
+            parsecraft_preferred_backend=kompend.ingest.parsecraft_preferred_backend,
+            parsecraft_only_backend=kompend.ingest.parsecraft_only_backend,
         )
 
 
