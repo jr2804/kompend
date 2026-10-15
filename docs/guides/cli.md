@@ -222,8 +222,8 @@ things make this safe and sufficient for a parser-related change:
 A parser-related change invalidates automatically: the parse cache keys
 on `ParserRouter.fingerprint()` and the chunk cache keys on the same
 fingerprint. The fingerprint folds in the `[ingest] parsecraft_*` keys
-(`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`)
-and the adapter's `max_passes`, so a change to any of those — and not to
+(`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`,
+`parsecraft_effort`, `parsecraft_allow_ocr`) and the adapter's `max_passes`, so a change to any of those — and not to
 the backend name, which is no longer selectable — invalidates the cache.
 So after editing an `[ingest]` knob, a plain `kompend ingest` re-parses and
 the next `kompend compile` re-chunks; no `--no-cache` needed. Use `--no-cache`
@@ -249,6 +249,8 @@ the key lives in `REMOVED_KEYS`. The live shape is:
 parsecraft_judge         = "none"        # none | ollama | zen | typesafe-ai
 parsecraft_judge_model   = ""            # model token for the configured provider
 parsecraft_preference    = "balanced"    # tiebreak: speed | balanced | quality (speed == balanced; quality inverts)
+parsecraft_effort        = "flash"       # MinerU effort: flash | medium | high | xhigh
+# parsecraft_allow_ocr   = false       # optional; unset derives from OCR extras/engine, false bans OCR
 ```
 
 parsecraft is a core dependency — stock kompend already has it, its

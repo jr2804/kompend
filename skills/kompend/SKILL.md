@@ -444,7 +444,11 @@ Key config keys:
 | `compile.output.format` | `okf` | Output format (okf, markdown, json, typst) |
 | `compile.compiler` | `graph` | Compiler backend (graph, wicer) |
 | `compile.workers` | `1` | Parallel worker count |
-| `ingest.parser` | `liteparse` | Ingestion backend, or comma-separated priority list (liteparse, docling, pandoc, parsecraft, …; first match wins). Backends install via `uv sync --extra docling/pandoc/parsecraft` (parsecraft pinned to `==2026.9.26`, Python ≥3.13) or manually `uv pip install marker-pdf/glmocr/mineru` (pillow conflicts prevent extras) |
+| `ingest.parsecraft_judge` | `none` | Judge tier for per-page routing (`none`, `ollama`, `zen`, `typesafe-ai`); with `none` parsecraft uses its deterministic rule table |
+| `ingest.parsecraft_judge_model` | `""` | Model token for the configured judge provider |
+| `ingest.parsecraft_preference` | `balanced` | Tiebreak axis inside a backend family (`speed`, `balanced`, `quality`; speed == balanced, quality inverts) |
+| `ingest.parsecraft_effort` | `flash` | MinerU sub-backend effort (`flash`, `medium`, `high`, `xhigh`); `high`/`xhigh` engage the VLM path for equations/tables/figures. Effective once parsecraft accepts per-backend options |
+| `ingest.parsecraft_allow_ocr` | unset = derive | Whether parsecraft may lead a page with an OCR sub-backend: unset derives from `ocr-*` extras / usable engines, `false` bans OCR, `true` permits regardless. Effective immediately |
 | `compile.memory_enabled` | `true` | Enable memory store |
 | `dedup.enabled` | `false` | Enable deduplication |
 | `trust.privacy_filter` | `true` | Filter PII from queries |

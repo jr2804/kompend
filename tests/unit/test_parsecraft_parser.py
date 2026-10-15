@@ -463,6 +463,170 @@ class TestJudgeWiring:
         assert adapter.ParsecraftParser()._judge_name == "none"
 
 
+class TestEffortWiring:
+    """``[ingest] parsecraft_effort`` is read, validated and fingerprinted here.
+
+    Until parsecraft's executor threads ``BackendConfig.options`` through
+    ``RoutingConstraints.backend_options``, the value is *configured-but-inert*:
+    validated by the schema, surfaced in the cache key, stored on the adapter,
+    but not yet reaching mineru's ``_effort()`` validator. The tests below pin
+    the kompend-side half of that contract so a vault operator flipping the knob
+    sees a real parse-cache invalidation and a real ``ValueError`` on a typo —
+    never a silent fall-back to ``flash``.
+    """
+
+    def test_default_effort_keeps_empty_routing_part(self) -> None:
+        adapter = _adapter()
+        assert _routing_part(adapter.ParsecraftParser()) == ""
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_effort="flash")) == ""
+
+    def test_non_default_effort_appends_an_effort_segment(self) -> None:
+        adapter = _adapter()
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_effort="medium")) == "effort:medium"
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_effort="high")) == "effort:high"
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_effort="xhigh")) == "effort:xhigh"
+
+    def test_effort_invalid_raises_value_error(self) -> None:
+        """A typo in effort must NOT silently fall back to ``flash`` — that would
+        strip a vault of the VLM recovery its user configured. See
+        ``_parse_effort`` for the rationale (mirrors parsecraft's own loud
+        validator at ``backends/mineru/_impl.py``).
+        """
+        adapter = _adapter()
+        with pytest.raises(ValueError, match="unknown parsecraft effort"):
+            adapter.ParsecraftParser(parsecraft_effort="hgih")
+        with pytest.raises(ValueError, match="unknown parsecraft effort"):
+            adapter.ParsecraftParser(parsecraft_effort="hi")
+        with pytest.raises(ValueError, match="unknown parsecraft effort"):
+            adapter._parse_effort("flashy")
+
+    def test_effort_composes_with_preference(self) -> None:
+        """When two routing inputs are non-default they coexist as separate
+        segments joined by ``|``, so the cache key reflects the combination.
+        """
+        adapter = _adapter()
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="quality", parsecraft_effort="high")) == "preference:quality|effort:high"
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="speed", parsecraft_effort="xhigh")) == "preference:speed|effort:xhigh"
+
+    def test_effort_composes_with_a_live_judge(self) -> None:
+        """Effort is an independent segment regardless of judge tier — the
+        judge segment already encodes the preference axis, so effort slots in
+        *after* the judge tag without colliding.
+        """
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser(
+            parsecraft_judge="ollama",
+            parsecraft_judge_model="parable-tinyjev",
+            parsecraft_preference="quality",
+            parsecraft_effort="high",
+        )
+        assert _routing_part(parser) == "judge:ollama/parable-tinyjev:quality|effort:high"
+
+    def test_effort_changes_the_router_fingerprint(self) -> None:
+        """The cache must invalidate when the operator flips effort, or a parse
+        produced at ``flash`` would silently serve under a future ``high`` request.
+        """
+        opts = registry_module.ParserBuildOptions
+        flash = registry_module.build_default_router(opts(parsecraft_effort="flash"), name="parsecraft")
+        high = registry_module.build_default_router(opts(parsecraft_effort="high"), name="parsecraft")
+        xhigh = registry_module.build_default_router(opts(parsecraft_effort="xhigh"), name="parsecraft")
+        assert flash.fingerprint() != high.fingerprint()
+        assert high.fingerprint() != xhigh.fingerprint()
+        # Two separately built flash routers still hash identically — the
+        # neutral ``flash`` axis must not split the cache.
+        flash_again = registry_module.build_default_router(opts(parsecraft_effort="flash"), name="parsecraft")
+        assert flash_again.fingerprint() == flash.fingerprint()
+        # And the default (no effort set) matches an explicitly-flash router.
+        default = registry_module.build_default_router(opts(), name="parsecraft")
+        assert default.fingerprint() == flash.fingerprint()
+
+    def test_build_options_carry_the_effort_config(self) -> None:
+        """Round-trip: ``ParserBuildOptions(parsecraft_effort=...)`` lands on the
+        ``ParsecraftParser._effort`` attribute via ``_factory``. A typo at the
+        factory boundary is caught by ``_parse_effort``, mirroring the schema's
+        ``Literal`` validation one layer up.
+        """
+        adapter = _adapter()
+        router = registry_module.build_default_router(
+            registry_module.ParserBuildOptions(parsecraft_effort="xhigh"),
+            name="parsecraft",
+        )
+        backend: Any = next(p for p in router._parsers if type(p).__name__ == "ParsecraftParser")  # noqa: SLF001 — parser identity is the contract
+        assert backend._effort == "xhigh"
+        # Default value at the dataclass level matches the schema default.
+        default_backend = adapter.ParsecraftParser()
+        assert default_backend._effort == "flash"
+        with pytest.raises(ValueError, match="unknown parsecraft effort"):
+            adapter.ParsecraftParser(parsecraft_effort="ULTRA")
+
+
+class TestOcrWiring:
+    """``[ingest] parsecraft_allow_ocr`` is read, fingerprinted and forwarded.
+
+    Unlike ``parsecraft_effort`` this one acts immediately: the adapter passes
+    it straight into ``constraints_from_environment``, whose ``allow_ocr`` input
+    the planner already honours. So the wiring is exercised end-to-end, not just
+    stored.
+    """
+
+    def test_unset_keeps_empty_routing_part(self) -> None:
+        adapter = _adapter()
+        assert adapter.ParsecraftParser()._allow_ocr is None
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_allow_ocr=None)) == ""
+
+    def test_explicit_values_add_an_ocr_segment(self) -> None:
+        adapter = _adapter()
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_allow_ocr=True)) == "ocr:on"
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_allow_ocr=False)) == "ocr:off"
+
+    def test_ocr_composes_with_effort_and_preference(self) -> None:
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser(parsecraft_preference="quality", parsecraft_effort="high", parsecraft_allow_ocr=False)
+        assert _routing_part(parser) == "preference:quality|effort:high|ocr:off"
+
+    def test_allow_ocr_changes_the_router_fingerprint(self) -> None:
+        """Flipping OCR permission changes which backend may lead, so the parse
+        cache must invalidate — while the unset default keeps existing caches.
+        """
+        opts = registry_module.ParserBuildOptions
+        unset = registry_module.build_default_router(opts(), name="parsecraft")
+        off = registry_module.build_default_router(opts(parsecraft_allow_ocr=False), name="parsecraft")
+        on = registry_module.build_default_router(opts(parsecraft_allow_ocr=True), name="parsecraft")
+        assert unset.fingerprint() != off.fingerprint()
+        assert off.fingerprint() != on.fingerprint()
+        unset_again = registry_module.build_default_router(opts(), name="parsecraft")
+        assert unset_again.fingerprint() == unset.fingerprint()
+
+    def test_build_options_carry_the_allow_ocr_config(self) -> None:
+        adapter = _adapter()
+        router = registry_module.build_default_router(
+            registry_module.ParserBuildOptions(parsecraft_allow_ocr=False),
+            name="parsecraft",
+        )
+        backend: Any = next(p for p in router._parsers if type(p).__name__ == "ParsecraftParser")  # noqa: SLF001 — parser identity is the contract
+        assert backend._allow_ocr is False
+        assert adapter.ParsecraftParser()._allow_ocr is None
+
+    def test_parse_forwards_allow_ocr_to_the_planner(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The value must reach ``constraints_from_environment`` — this is the
+        knob that acts immediately, so a stored-but-unforwarded regression would
+        be silent otherwise.
+        """
+        adapter = _adapter()
+        seen: list[bool | None] = []
+        real = adapter.constraints_from_environment
+
+        def spy(environment: object, **kwargs: Any) -> Any:
+            seen.append(kwargs["allow_ocr"])
+            return real(environment, **kwargs)
+
+        monkeypatch.setattr(adapter, "constraints_from_environment", spy)
+        parser.parse(markdown_file)
+        assert seen[-1] is None
+        adapter.ParsecraftParser(parsecraft_allow_ocr=False).parse(markdown_file)
+        assert seen[-1] is False
+
+
 def _pdf_backend(name: str, vram: float) -> BackendDescriptor:
     """A minimal PDF candidate whose only difference is declared VRAM.
 
@@ -489,9 +653,14 @@ def _routing_part(parser: Any) -> str:
 
     The whole identity also carries the host's installed extra set, which differs
     per machine and would make exact-string assertions host-dependent. The routing
-    half is the part these tests are about.
+    half is the part these tests are about. Splitting on the host/routing boundary
+    only (the second ``|``) keeps multi-segment routing keys — ``preference:..|effort:..``
+    — intact for assertions, where ``rsplit('|', 1)[1]`` would have stripped the
+    leading ``preference:..`` off and made the composition tests falsely green.
     """
-    return parser.cache_identity().rsplit("|", 1)[1]
+    identity = parser.cache_identity()
+    parts = identity.split("|", 2)
+    return parts[2] if len(parts) >= 3 else ""
 
 
 def _map(document: DocumentResult, name: str = "d.txt") -> list:

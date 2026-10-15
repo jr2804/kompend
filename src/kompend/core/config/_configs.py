@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -68,6 +68,19 @@ class ImageMode(StrEnum):
 
     FILE = "file"
     BASE64 = "base64"
+
+
+class LlmApiType(StrEnum):
+    """Wire protocol the LLM endpoint speaks.
+
+    - ``openai-chat``: ``/v1/chat/completions`` (legacy chat completions).
+    - ``openai-responses``: ``/v1/responses`` (OpenAI's structured-responses API).
+    - ``anthropic``: ``/v1/messages`` (Anthropic Messages API).
+    """
+
+    OPENAI_CHAT = "openai-chat"
+    OPENAI_RESPONSES = "openai-responses"
+    ANTHROPIC = "anthropic"
 
 
 class LlmDataFormat(StrEnum):
@@ -129,6 +142,47 @@ class OutputFormat(StrEnum):
     MARKDOWN = "markdown"
     JSON = "json"
     TYPST = "typst"
+
+
+class ParsecraftEffort(StrEnum):
+    """Conversion effort for the MinerU sub-backend.
+
+    Maps to parsecraft's ``effort`` option. ``flash`` is the verified default
+    (text PDFs, weight-free CPU work); ``high`` and ``xhigh`` engage the VLM path
+    and load MinerU's checkpoint.
+    """
+
+    FLASH = "flash"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+
+
+class ParsecraftJudge(StrEnum):
+    """Judge-tier routing for the parsecraft backend.
+
+    - ``none`` (default): the deterministic rule table; fast, no model call.
+    - ``ollama``: local ollama daemon, needs a decision-capable model.
+    - ``zen`` / ``typesafe-ai``: cloud providers, credentialed via env.
+    """
+
+    NONE = "none"
+    OLLAMA = "ollama"
+    ZEN = "zen"
+    TYPESAFE_AI = "typesafe-ai"
+
+
+class ParsecraftPreference(StrEnum):
+    """Tiebreak axis when several candidates tie on the constraint check.
+
+    Maps directly to parsecraft's ``RoutingPreference``: ``speed`` favours the
+    cheapest eligible backend, ``quality`` the strongest, ``balanced`` the
+    default tiebreak.
+    """
+
+    SPEED = "speed"
+    BALANCED = "balanced"
+    QUALITY = "quality"
 
 
 class Verbosity(StrEnum):
@@ -465,8 +519,8 @@ class NotesConfig(_KompendBaseModel):
 
 
 class IngestConfig(_KompendBaseModel):
-    parsecraft_judge: Literal["none", "ollama", "zen", "typesafe-ai"] = Field(
-        default="none",
+    parsecraft_judge: ParsecraftJudge = Field(
+        default=ParsecraftJudge.NONE,
         validation_alias=EnvVar.INGEST_PARSECRAFT_JUDGE,
         description=(
             "Judge-tier routing for the parsecraft backend. `none` (default) leaves the "
@@ -488,14 +542,41 @@ class IngestConfig(_KompendBaseModel):
             "is a misconfiguration, not a sensible default."
         ),
     )
-    parsecraft_preference: Literal["speed", "balanced", "quality"] = Field(
-        default="balanced",
+    parsecraft_preference: ParsecraftPreference = Field(
+        default=ParsecraftPreference.BALANCED,
         validation_alias=EnvVar.INGEST_PARSECRAFT_PREFERENCE,
         description=(
             "Ranking axis the judge applies when several candidates tie on the constraint check. "
             "Maps directly to parsecraft's `RoutingPreference`: `speed` favours lower-VRAM backends "
             "(~native-fast first), `quality` favours the highest-VRAM strong backend, `balanced` is the "
             "default tiebreak — a per-page intent re-ranks over the eligible candidates regardless."
+        ),
+    )
+    parsecraft_effort: ParsecraftEffort = Field(
+        default=ParsecraftEffort.FLASH,
+        validation_alias=EnvVar.INGEST_PARSECRAFT_EFFORT,
+        description=(
+            "Conversion effort for the MinerU sub-backend. Maps to parsecraft's `effort` option, "
+            "validated against ('flash', 'medium', 'high', 'xhigh') in `parsecraft.backends.mineru._impl`. "
+            "`flash` is the verified default (text PDFs, weight-free CPU work). `high` and `xhigh` engage "
+            "the VLM path and emit equations, tables and figure captions at markedly higher recovery; "
+            "they also load MinerU's VLM checkpoint and want a GPU. The value is read and validated by "
+            "the schema, included in the parse cache fingerprint, and forwarded to the adapter — but "
+            "until parsecraft's executor threads `BackendConfig.options` through "
+            "`RoutingConstraints.backend_options`, it is *configured but inert*. Once that lands, the "
+            "value reaches mineru's `effort=` validator and the cache key flips, so the user re-parses "
+            "under the new effort automatically."
+        ),
+    )
+    parsecraft_allow_ocr: bool | None = Field(
+        default=None,
+        validation_alias=EnvVar.INGEST_PARSECRAFT_ALLOW_OCR,
+        description=(
+            "Whether parsecraft may route a page to an OCR sub-backend. Unset (`None`) keeps parsecraft's own "
+            "derivation: OCR is permitted when an `ocr-*` extra is installed OR the host has a usable OCR engine. "
+            "Set `false` to ban OCR outright — an all-native corpus should, since a blank or faint page otherwise "
+            "pays a full GPU VLM pass — or `true` to permit it regardless of the derivation. The value is part "
+            "of the parse-cache fingerprint, so changing it re-parses."
         ),
     )
 
@@ -572,8 +653,8 @@ class ProviderEndpoint(_KompendBaseModel):
         description="Provider base URL (e.g. http://localhost:8081/v1). None = override-only block for an integrated provider",
     )
     api_key: str | None = Field(default=None, description="API key or env var reference like ${VAR_NAME}")
-    api_type: Literal["openai-chat", "openai-responses", "anthropic"] = Field(
-        default="openai-chat",
+    api_type: LlmApiType = Field(
+        default=LlmApiType.OPENAI_CHAT,
         description="Wire protocol the endpoint speaks: openai-chat (/v1/chat/completions), openai-responses (/v1/responses), or anthropic (/v1/messages)",
     )
     context_window: int | None = Field(

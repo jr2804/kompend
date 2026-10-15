@@ -66,6 +66,13 @@ def test_parser_build_options_defaults() -> None:
     assert opts.images_dir is None
     assert opts.image_mode == "file"
     assert opts.images_scale == IMAGE_SCALE_DEFAULT
+    # The four [ingest].parsecraft_* knobs all carry schema-driven defaults so
+    # a brand-new parser behaves identically with or without `from_config`.
+    assert opts.parsecraft_judge == "none"
+    assert opts.parsecraft_judge_model == ""
+    assert opts.parsecraft_preference == "balanced"
+    assert opts.parsecraft_effort == "flash"
+    assert opts.parsecraft_allow_ocr is None
 
 
 @pytest.mark.parametrize(

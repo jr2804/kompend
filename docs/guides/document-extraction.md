@@ -15,7 +15,8 @@ See also:
 
 parsecraft is the only parser path; the selector is gone. The remaining
 `[ingest]` keys are the parsecraft parameters
-(`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference` —
+(`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`,
+`parsecraft_effort`, `parsecraft_allow_ocr` —
 see [Judge tier](#judge-tier-model-assisted-per-page-routing)).
 
 - `parsecraft` — an external document-intelligence pipeline that routes each
@@ -41,7 +42,7 @@ The judge tier needs no extra: `typesafe-sdk` — shared by the `ollama`, `zen`
 and `typesafe-ai` providers — is base-install in parsecraft ≥ 2026.10.5, so it
 arrives with kompend itself. The judge is enabled purely by config
 (`[ingest] parsecraft_judge`, `parsecraft_judge_model`,
-`parsecraft_preference`).
+`parsecraft_preference`, `parsecraft_effort`, `parsecraft_allow_ocr`).
 
 ### Why `marker` cannot be a locked extra
 
@@ -234,10 +235,11 @@ decided per page instead of per configuration.
 
 ```toml
 [ingest]
-parser = "parsecraft"
 parsecraft_judge = "ollama"            # none | ollama | zen | typesafe-ai
 parsecraft_judge_model = "parable-tinyjev"
 parsecraft_preference = "balanced"     # speed | balanced | quality
+parsecraft_effort = "flash"            # flash | medium | high | xhigh (MinerU sub-backend)
+# parsecraft_allow_ocr = false         # unset = derive from extras/engine; false bans OCR
 ```
 
 - **`ollama`** is the offline choice: it talks to your local daemon
@@ -259,6 +261,23 @@ parsecraft_preference = "balanced"     # speed | balanced | quality
   axis applies with or without a provider judge: parsecraft's own
   `resolve_judge(None, preference=…)` constructs the deterministic judge with
   it, and kompend passes it through on the no-judge path too.
+- **`parsecraft_effort`** picks the MinerU sub-backend's conversion effort
+  (`flash` | `medium` | `high` | `xhigh`, default `flash`). `flash` is the
+  weight-free CPU path for text PDFs; `high` and `xhigh` engage MinerU's VLM
+  path and recover equations, tables and figure captions `flash` omits, at the
+  cost of loading the VLM checkpoint. The key is schema-validated and folds
+  into the parse-cache fingerprint (a change re-parses). It takes effect at the
+  backend once parsecraft's executor accepts per-backend options (upstream
+  change pending); until then a non-`flash` value is stored and fingerprinted
+  but does not alter the conversion.
+- **`parsecraft_allow_ocr`** overrides whether parsecraft may route a page to an
+  OCR sub-backend. Unset, parsecraft derives it: OCR is permitted when an
+  `ocr-*` extra is installed **or** the host has a usable OCR engine. Set
+  `false` to ban OCR outright — an all-native corpus should, because a blank or
+  faint page otherwise pays a full GPU VLM pass — or `true` to permit it
+  regardless of the derivation. The value is part of the parse-cache
+  fingerprint, and unlike `parsecraft_effort` it reaches the planner
+  immediately.
 
 A judge never turns a routing problem into a failed ingest: an unresolvable
 provider or missing credential degrades to the rule table at resolution time,

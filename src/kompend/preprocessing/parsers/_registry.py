@@ -68,6 +68,18 @@ class ParserBuildOptions:
     #: Ranking axis: `speed` | `balanced` | `quality`. Maps to
     #: parsecraft's `RoutingPreference` and threads through every judge call.
     parsecraft_preference: str = "balanced"
+    #: MinerU conversion effort: `flash` | `medium` | `high` | `xhigh`. Maps to
+    #: parsecraft's `BackendConfig.options["effort"]`. Configured and validated
+    #: by the schema; it reaches the mineru backend only once parsecraft's
+    #: executor threads `BackendConfig.options` through
+    #: `RoutingConstraints.backend_options`. Until then the value still flips
+    #: the parse cache fingerprint on change, so a vault switching effort
+    #: re-parses once the upstream lands.
+    parsecraft_effort: str = "flash"
+    #: Whether parsecraft may lead a page with an OCR sub-backend. `None`
+    #: (default) keeps parsecraft's own derivation from the installed extras and
+    #: the host's usable engines; `False` bans OCR, `True` permits it.
+    parsecraft_allow_ocr: bool | None = None
 
     @classmethod
     def from_config(cls, cfg: ResolvedConfig, *, images_dir: Path | None = None) -> ParserBuildOptions:
@@ -88,9 +100,11 @@ class ParserBuildOptions:
         return cls(
             images_dir=images_dir,
             image_mode=kompend.compile.image_mode,
-            parsecraft_judge=kompend.ingest.parsecraft_judge,
+            parsecraft_judge=kompend.ingest.parsecraft_judge.value,
             parsecraft_judge_model=kompend.ingest.parsecraft_judge_model,
-            parsecraft_preference=kompend.ingest.parsecraft_preference,
+            parsecraft_preference=kompend.ingest.parsecraft_preference.value,
+            parsecraft_effort=kompend.ingest.parsecraft_effort.value,
+            parsecraft_allow_ocr=kompend.ingest.parsecraft_allow_ocr,
         )
 
 

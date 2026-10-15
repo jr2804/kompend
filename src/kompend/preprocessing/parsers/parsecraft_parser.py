@@ -51,6 +51,7 @@ from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from parsecraft.routing.judge_providers import JudgeError, resolve_judge
 from parsecraft.routing.models import RoutingPreference
 
+from kompend.core.config._configs import ParsecraftEffort
 from kompend.core.models import DocumentElement, ElementType, ParsedDocument
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers._registry import (
@@ -110,17 +111,27 @@ class ParsecraftParser:
         parsecraft_judge: str = "none",
         parsecraft_judge_model: str = "",
         parsecraft_preference: str = "balanced",
+        parsecraft_effort: str = "flash",
+        parsecraft_allow_ocr: bool | None = None,
     ) -> None:
         self._registry = registry
         self._environment: EnvironmentInfo | None = None
-        #: Routing inputs — the same three keys the config exposes under
+        #: Routing inputs — the same five keys the config exposes under
         #: ``[ingest] parsecraft_*``. ``"none"`` keeps the deterministic rule
-        #: table; any other value resolves to a real :class:`RoutingJudge` once
-        #: ``parse()`` runs (and only then, so a misconfigured provider never
-        #: costs anything at CLI ``--help`` time).
+        #: table; any other judge value resolves to a real :class:`RoutingJudge`
+        #: once ``parse()`` runs (and only then, so a misconfigured provider
+        #: never costs anything at CLI ``--help`` time). ``parsecraft_effort``
+        #: reaches the mineru backend only once parsecraft's executor threads
+        #: ``BackendConfig.options`` through ``RoutingConstraints.backend_options``.
+        #: Both ``parsecraft_effort`` and ``parsecraft_allow_ocr`` are read,
+        #: validated and fingerprinted here so the cache invalidates the moment
+        #: either changes; ``parsecraft_allow_ocr`` additionally reaches
+        #: parsecraft's planner immediately (it is a plain constraint input).
         self._judge_name = parsecraft_judge
         self._judge_model = parsecraft_judge_model
         self._judge_preference = parsecraft_preference
+        self._effort = _parse_effort(parsecraft_effort)
+        self._allow_ocr = parsecraft_allow_ocr
         #: Parsed once — every deterministic-path construction reuses it, so the
         #: knob reaches the rule table even when no provider judge is configured
         #: (parsecraft's ``DeterministicJudge`` tilts its VRAM tiebreak by it).
@@ -142,6 +153,7 @@ class ParsecraftParser:
         registry = self._registry if self._registry is not None else default_registry
         media_type = media_type_for(source_file)
         self._ensure_environment()
+        assert self._environment is not None  # noqa: S101 — ty cannot narrow through _ensure_environment
         # ``max_passes`` caps ``PageRoute.candidates`` (planner keeps the ranked
         # order up to it). parsecraft's default of 1 means one attempt with no
         # fallback entry, so a backend that is missing, broken or excluded by the
@@ -155,6 +167,7 @@ class ParsecraftParser:
             self._environment,
             formats={media_type},
             max_passes=3,
+            allow_ocr=self._allow_ocr,
         )
 
         source = SourceDocument(uri=source_file.resolve().as_uri())
@@ -185,14 +198,6 @@ class ParsecraftParser:
             },
         )
 
-    def _ensure_environment(self) -> EnvironmentInfo:
-        """Probe once per instance. ``probe_environment`` shells out, so this must
-        not run per file — hundreds of vault files must not mean hundreds of spawns.
-        """
-        if self._environment is None:
-            self._environment = probe_environment()
-        return self._environment
-
     def cache_identity(self) -> str:
         """Routing inputs that change this backend's output without changing its class.
 
@@ -216,11 +221,30 @@ class ParsecraftParser:
         """
         env = self._ensure_environment()
         host = f"extras:{','.join(sorted(env.installed_extras))}|parsecraft:{_parsecraft_version()}"
-        if self._judge_name in ("", "none"):
-            routing = "" if self._preference is RoutingPreference.BALANCED else f"preference:{self._judge_preference}"
-        else:
-            routing = f"judge:{self._judge_name}/{self._judge_model}:{self._judge_preference}"
+        # Routing segments: judge (when configured) or preference (when non-default),
+        # plus independent `effort:` and `ocr:` segments when the user set them.
+        # Joining with `|` keeps each lever its own slot so the cache key flips when
+        # any of them changes, but stays stable for the all-default combination —
+        # the leading empty join renders as `""`, not `"|"`.
+        parts: list[str] = []
+        if self._judge_name not in ("", "none"):
+            parts.append(f"judge:{self._judge_name}/{self._judge_model}:{self._judge_preference}")
+        elif self._preference is not RoutingPreference.BALANCED:
+            parts.append(f"preference:{self._judge_preference}")
+        if self._effort != "flash":
+            parts.append(f"effort:{self._effort}")
+        if self._allow_ocr is not None:
+            parts.append("ocr:on" if self._allow_ocr else "ocr:off")
+        routing = "|".join(parts)
         return f"{host}|{routing}"
+
+    def _ensure_environment(self) -> EnvironmentInfo:
+        """Probe once per instance. ``probe_environment`` shells out, so this must
+        not run per file — hundreds of vault files must not mean hundreds of spawns.
+        """
+        if self._environment is None:
+            self._environment = probe_environment()
+        return self._environment
 
     def _deterministic_judge(self) -> DeterministicJudge:
         """The rule-table judge carrying the configured preference axis.
@@ -393,6 +417,32 @@ def _parse_preference(name: str) -> RoutingPreference:
         return RoutingPreference.BALANCED
 
 
+def _parse_effort(name: str) -> str:
+    """Map a config string to a verified mineru effort value.
+
+    The :class:`ParsecraftEffort` enum on the schema already rejects unknown
+    values at parse time; the runtime check here is a defensive second pass.
+    A silent fall-back to ``"flash"`` would strip a vault of the VLM recovery
+    its user configured (high/xhigh load the mineru checkpoint and emit
+    equations/tables/figures that flash omits), so an unrecognised value
+    raises rather than degrades. Mirrors the parsecraft-side validator in
+    ``parsecraft.backends.mineru._impl``.
+    """
+    accepted = _accepted_effort_values()
+    if name not in accepted:
+        msg = f"unknown parsecraft effort {name!r}; expected one of: {', '.join(sorted(accepted))}"
+        raise ValueError(msg)
+    return name
+
+
+#: Single source of truth for accepted effort values: the :class:`ParsecraftEffort`
+#: enum (the schema already validates; this is a defensive second pass so a
+#: call that bypasses the config layer still raises rather than silently passing
+#: an unrecognised string down to mineru).
+def _accepted_effort_values() -> frozenset[str]:
+    return frozenset(member.value for member in ParsecraftEffort)
+
+
 def _map_document(document: DocumentResult, source_file: Path) -> list[DocumentElement]:
     """Map parsecraft IR pages/chunks to kompend elements, order + pages preserved.
 
@@ -482,15 +532,17 @@ def _winning_backends(groups: list[PageGroup]) -> str:
 def _factory(options: ParserBuildOptions) -> ParsecraftParser:
     """Build a parsecraft backend instance from the resolved build options.
 
-    The judge tier is wired through here so the config-level ``[ingest]``
-    routing inputs land on the parser without leaking into the router —
-    the factory is the single point where ``ParserBuildOptions`` meets a
-    backend-specific constructor.
+    The judge tier, effort and OCR permission are wired through here so the
+    config-level ``[ingest]`` routing inputs land on the parser without leaking
+    into the router — the factory is the single point where ``ParserBuildOptions``
+    meets a backend-specific constructor.
     """
     return ParsecraftParser(
         parsecraft_judge=options.parsecraft_judge,
         parsecraft_judge_model=options.parsecraft_judge_model,
         parsecraft_preference=options.parsecraft_preference,
+        parsecraft_effort=options.parsecraft_effort,
+        parsecraft_allow_ocr=options.parsecraft_allow_ocr,
     )
 
 

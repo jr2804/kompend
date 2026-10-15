@@ -71,6 +71,31 @@ file = "NOTES.md"
 #   quality  — prefer the strongest eligible backend
 # Env: KOMP_INGEST_PARSECRAFT_PREFERENCE
 # parsecraft_preference = "balanced"
+#
+# MinerU conversion effort. The validated set mirrors parsecraft's own
+# `BackendConfig.options["effort"]` choices:
+#   flash    — verified default; weight-free CPU work on text PDFs.
+#   medium   — intermediate; loads parts of the MinerU pipeline.
+#   high     — VLM path; emits equations, tables and figure captions that
+#              `flash` skips. Loads MinerU's VLM checkpoint (~1.2B params).
+#   xhigh    — VLM path at the highest quality setting.
+# `flash` is the schema default. The value is read, validated and fingerprinted
+# at construction; it reaches the mineru backend only once parsecraft's executor
+# routes `BackendConfig.options` through `RoutingConstraints.backend_options`.
+# Until then it flips the parse cache key on every change but is otherwise
+# configured-but-inert.
+# Env: KOMP_INGEST_PARSECRAFT_EFFORT
+# parsecraft_effort = "flash"
+#
+# Whether parsecraft may route a page to an OCR sub-backend.
+#   unset (default) — parsecraft derives it: OCR is permitted when an `ocr-*`
+#                     extra is installed OR the host has a usable OCR engine.
+#   false           — ban OCR outright. An all-native corpus should: a blank
+#                     or faint page otherwise pays a full GPU VLM pass.
+#   true            — permit OCR regardless of the derivation.
+# The value is part of the parse-cache fingerprint, so changing it re-parses.
+# Env: KOMP_INGEST_PARSECRAFT_ALLOW_OCR
+# parsecraft_allow_ocr = false
 
 # ── Downloader settings ─────────────────────────────────────────────────
 # Controls how URLs are fetched. URLs whose path looks like HTML (no
