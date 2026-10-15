@@ -111,6 +111,22 @@ file = "NOTES.md"
 # another backend serves.
 # Env: KOMP_INGEST_PARSECRAFT_EXTRACT_VECTOR_GRAPHICS
 # parsecraft_extract_vector_graphics = true
+#
+# Backend override — rank one backend first where it is eligible, or pin the
+# document to one exclusively. parsecraft owns routing; this passes a single
+# preference or pin through to it rather than rebuilding a routing list.
+#   preferred_backend — a preference, never a guarantee: a page the named
+#                       backend cannot serve still falls back.
+#   only_backend      — a hard pin: pages it cannot *cover* fail loudly; a
+#                       blank page still degrades (coverage ≠ content).
+# Names are validated against parsecraft's registered backends at config load,
+# and both are part of the parse-cache fingerprint. Useful to pin a
+# layout-aware backend for a table-heavy corpus, or to route around a defect
+# in the leading backend without uninstalling anything.
+# Env: KOMP_INGEST_PARSECRAFT_PREFERRED_BACKEND
+# parsecraft_preferred_backend = "mineru"
+# Env: KOMP_INGEST_PARSECRAFT_ONLY_BACKEND
+# parsecraft_only_backend = "mineru"
 
 # ── Downloader settings ─────────────────────────────────────────────────
 # Controls how URLs are fetched. URLs whose path looks like HTML (no

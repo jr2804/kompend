@@ -224,7 +224,8 @@ on `ParserRouter.fingerprint()` and the chunk cache keys on the same
 fingerprint. The fingerprint folds in the `[ingest] parsecraft_*` keys
 (`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`,
 `parsecraft_effort`, `parsecraft_allow_ocr`, `parsecraft_engines`,
-`parsecraft_extract_vector_graphics`) and the adapter's `max_passes`, so a change to any of those — and not to
+`parsecraft_extract_vector_graphics`, `parsecraft_preferred_backend`,
+`parsecraft_only_backend`) and the adapter's `max_passes`, so a change to any of those — and not to
 the backend name, which is no longer selectable — invalidates the cache.
 So after editing an `[ingest]` knob, a plain `kompend ingest` re-parses and
 the next `kompend compile` re-chunks; no `--no-cache` needed. Use `--no-cache`
@@ -254,6 +255,8 @@ parsecraft_effort        = "flash"       # MinerU effort: flash | medium | high 
 # parsecraft_allow_ocr   = false       # optional; unset derives from OCR extras/engine, false bans OCR
 # parsecraft_engines      = ["mineru"]  # optional; empty keeps the probed engine set
 # parsecraft_extract_vector_graphics = true  # optional; recover table grids from vector records
+# parsecraft_preferred_backend = "mineru"   # optional; rank first where eligible
+# parsecraft_only_backend = "mineru"        # optional; hard pin, uncovered pages fail loudly
 ```
 
 parsecraft is a core dependency — stock kompend already has it, its

@@ -17,7 +17,8 @@ parsecraft is the only parser path; the selector is gone. The remaining
 `[ingest]` keys are the parsecraft parameters
 (`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`,
 `parsecraft_effort`, `parsecraft_allow_ocr`, `parsecraft_engines`,
-`parsecraft_extract_vector_graphics` —
+`parsecraft_extract_vector_graphics`, `parsecraft_preferred_backend`,
+`parsecraft_only_backend` —
 see [Judge tier](#judge-tier-model-assisted-per-page-routing)).
 
 - `parsecraft` — an external document-intelligence pipeline that routes each
@@ -44,7 +45,8 @@ and `typesafe-ai` providers — is base-install in parsecraft ≥ 2026.10.5, so 
 arrives with kompend itself. The judge is enabled purely by config
 (`[ingest] parsecraft_judge`, `parsecraft_judge_model`,
 `parsecraft_preference`, `parsecraft_effort`, `parsecraft_allow_ocr`,
-`parsecraft_engines`, `parsecraft_extract_vector_graphics`).
+`parsecraft_engines`, `parsecraft_extract_vector_graphics`,
+`parsecraft_preferred_backend`, `parsecraft_only_backend`).
 
 ### Why `marker` cannot be a locked extra
 
@@ -280,6 +282,19 @@ parsecraft_effort = "flash"            # flash | medium | high | xhigh (MinerU s
   faint page otherwise pays a full GPU VLM pass — or `true` to permit it
   regardless of the derivation. The value is part of the parse-cache
   fingerprint, and it reaches the planner immediately.
+- **`parsecraft_preferred_backend`** ranks one backend first where it is
+  eligible — a preference, never a guarantee: a page the named backend cannot
+  serve still falls back. **`parsecraft_only_backend`** is the hard pin: pages
+  the named backend cannot *cover* fail loudly instead of silently falling
+  back, while a blank page still degrades (coverage and content are different
+  things). Both are validated against parsecraft's registered backends at
+  config load and fold into the parse-cache fingerprint.
+
+  First-parse warmup: the first document after flipping to a heavier backend
+  pays the backend's own one-time cost — model checkpoint load, and download
+  where the weights are not cached — which can be tens of seconds per page.
+  That is warmup, not steady state; subsequent documents run at the backend's
+  normal per-page cost. Judge the setting by the second run, not the first.
 - **`parsecraft_engines`** restricts the external engines parsecraft may use,
   overriding the probed set. Empty (the default) keeps the probe's answer.
   Names are parsecraft's own engine ids and the env form is a comma-separated
