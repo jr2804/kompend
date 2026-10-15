@@ -34,6 +34,8 @@ INGEST_PARSECRAFT_JUDGE_MODEL: Final[str] = "ingest.parsecraft_judge_model"
 INGEST_PARSECRAFT_PREFERENCE: Final[str] = "ingest.parsecraft_preference"
 INGEST_PARSECRAFT_EFFORT: Final[str] = "ingest.parsecraft_effort"
 INGEST_PARSECRAFT_ALLOW_OCR: Final[str] = "ingest.parsecraft_allow_ocr"
+INGEST_PARSECRAFT_ENGINES: Final[str] = "ingest.parsecraft_engines"
+INGEST_PARSECRAFT_EXTRACT_VECTOR_GRAPHICS: Final[str] = "ingest.parsecraft_extract_vector_graphics"
 
 # ── downloader section ──
 DOWNLOADER_UNDETECTED: Final[str] = "downloader.undetected"

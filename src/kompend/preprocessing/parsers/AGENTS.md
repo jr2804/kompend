@@ -43,7 +43,7 @@ read — parsecraft's native-text backend reads `.c/.h/.py/…`.
 `ParserRouter.fingerprint()` hashes the registered backend class names plus any
 per-backend `cache_identity()` — the identity of the parser *with its routing
 inputs*. The parse and chunk caches key on it, so changing a backend's own
-routing configuration (`ingest.parsecraft_judge` / `_model` / `_preference` / `_effort` / `_allow_ocr`, or
+routing configuration (`ingest.parsecraft_judge` / `_model` / `_preference` / `_effort` / `_allow_ocr` / `_engines` / `_extract_vector_graphics`, or
 the `max_passes` the adapter passes) re-parses instead of silently reusing the
 previous setup. A backend that carries routing inputs defines `cache_identity()`;
 the router looks it up structurally (the parsecraft adapter deliberately is not a

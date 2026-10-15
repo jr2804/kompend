@@ -40,7 +40,16 @@ class _Captured(Exception):
 
 
 def test_ingest_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    base = _vault(tmp_path, judge="ollama", judge_model="parable-tinyjev", preference="quality", effort="high", allow_ocr=False)
+    base = _vault(
+        tmp_path,
+        judge="ollama",
+        judge_model="parable-tinyjev",
+        preference="quality",
+        effort="high",
+        allow_ocr=False,
+        engines='"mineru", "marker"',
+        vector_graphics=True,
+    )
     captured: dict[str, Any] = {}
     monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_default_router", _capturing_factory(captured))
 
@@ -53,6 +62,8 @@ def test_ingest_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: p
     assert options.parsecraft_preference == "quality"
     assert options.parsecraft_effort == "high"
     assert options.parsecraft_allow_ocr is False
+    assert options.parsecraft_engines == ["mineru", "marker"]
+    assert options.parsecraft_extract_vector_graphics is True
     # No backend is named any more: parsecraft is the only parser path, so the
     # router takes the registry default and every site passes options only.
     assert "name" not in captured
@@ -139,6 +150,8 @@ def _vault(
     preference: str | None = None,
     effort: str | None = None,
     allow_ocr: bool | None = None,
+    engines: str | None = None,
+    vector_graphics: bool | None = None,
 ) -> Path:
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
@@ -154,6 +167,10 @@ def _vault(
         lines.append(f'parsecraft_effort = "{effort}"')
     if allow_ocr is not None:
         lines.append(f"parsecraft_allow_ocr = {str(allow_ocr).lower()}")
+    if engines is not None:
+        lines.append(f"parsecraft_engines = [{engines}]")
+    if vector_graphics is not None:
+        lines.append(f"parsecraft_extract_vector_graphics = {str(vector_graphics).lower()}")
     # ``PipelineConfig.from_resolved`` refuses an empty default_model; set one
     # so the pipeline-config test does not depend on a global config file.
     lines += ["", "[compile.llm]", 'default_model = "ollama/test-model"']

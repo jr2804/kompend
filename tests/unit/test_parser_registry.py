@@ -73,6 +73,8 @@ def test_parser_build_options_defaults() -> None:
     assert opts.parsecraft_preference == "balanced"
     assert opts.parsecraft_effort == "flash"
     assert opts.parsecraft_allow_ocr is None
+    assert opts.parsecraft_engines == []
+    assert opts.parsecraft_extract_vector_graphics is None
 
 
 @pytest.mark.parametrize(

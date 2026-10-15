@@ -449,6 +449,8 @@ Key config keys:
 | `ingest.parsecraft_preference` | `balanced` | Tiebreak axis inside a backend family (`speed`, `balanced`, `quality`; speed == balanced, quality inverts) |
 | `ingest.parsecraft_effort` | `flash` | MinerU sub-backend effort (`flash`, `medium`, `high`, `xhigh`); `high`/`xhigh` engage the VLM path for equations/tables/figures. Effective once parsecraft accepts per-backend options |
 | `ingest.parsecraft_allow_ocr` | unset = derive | Whether parsecraft may lead a page with an OCR sub-backend: unset derives from `ocr-*` extras / usable engines, `false` bans OCR, `true` permits regardless. Effective immediately |
+| `ingest.parsecraft_engines` | `[]` | Restrict the external engines parsecraft may use (parsecraft engine ids); empty keeps the probed set. Env form is comma-separated |
+| `ingest.parsecraft_extract_vector_graphics` | unset | Ask liteparse to recover table grids from a page's vector records, so a TABLE element carries `list[list[str]]` instead of Markdown |
 | `compile.memory_enabled` | `true` | Enable memory store |
 | `dedup.enabled` | `false` | Enable deduplication |
 | `trust.privacy_filter` | `true` | Filter PII from queries |

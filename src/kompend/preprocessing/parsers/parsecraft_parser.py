@@ -113,6 +113,8 @@ class ParsecraftParser:
         parsecraft_preference: str = "balanced",
         parsecraft_effort: str = "flash",
         parsecraft_allow_ocr: bool | None = None,
+        parsecraft_engines: list[str] | None = None,
+        parsecraft_extract_vector_graphics: bool | None = None,
     ) -> None:
         self._registry = registry
         self._environment: EnvironmentInfo | None = None
@@ -132,6 +134,8 @@ class ParsecraftParser:
         self._judge_preference = parsecraft_preference
         self._effort = _parse_effort(parsecraft_effort)
         self._allow_ocr = parsecraft_allow_ocr
+        self._engines: tuple[str, ...] = tuple(parsecraft_engines or ())
+        self._extract_vector_graphics = parsecraft_extract_vector_graphics
         #: Parsed once — every deterministic-path construction reuses it, so the
         #: knob reaches the rule table even when no provider judge is configured
         #: (parsecraft's ``DeterministicJudge`` tilts its VRAM tiebreak by it).
@@ -168,6 +172,8 @@ class ParsecraftParser:
             formats={media_type},
             max_passes=3,
             allow_ocr=self._allow_ocr,
+            engines=self._engines or None,
+            backend_options=self._backend_options(),
         )
 
         source = SourceDocument(uri=source_file.resolve().as_uri())
@@ -235,8 +241,28 @@ class ParsecraftParser:
             parts.append(f"effort:{self._effort}")
         if self._allow_ocr is not None:
             parts.append("ocr:on" if self._allow_ocr else "ocr:off")
+        if self._engines:
+            parts.append(f"engines:{','.join(sorted(self._engines))}")
+        if self._extract_vector_graphics is not None:
+            parts.append(f"vector_graphics:{'on' if self._extract_vector_graphics else 'off'}")
         routing = "|".join(parts)
         return f"{host}|{routing}"
+
+    def _backend_options(self) -> dict[str, dict[str, str | int | float | bool]]:
+        """Per-backend constructor options for parsecraft, or ``{}`` when all default.
+
+        Only non-default values are injected: parsecraft hashes this dict verbatim
+        into the conversion-cache key, so passing ``effort="flash"`` would key
+        differently from passing nothing and churn every existing vault's
+        conversion cache on upgrade. The same reasoning covers
+        ``extract_vector_graphics``, whose backend default is unset.
+        """
+        options: dict[str, dict[str, str | int | float | bool]] = {}
+        if self._effort != ParsecraftEffort.FLASH.value:
+            options.setdefault("mineru", {})["effort"] = self._effort
+        if self._extract_vector_graphics is not None:
+            options.setdefault("liteparse", {})["extract_vector_graphics"] = self._extract_vector_graphics
+        return options
 
     def _ensure_environment(self) -> EnvironmentInfo:
         """Probe once per instance. ``probe_environment`` shells out, so this must
@@ -492,13 +518,21 @@ def _chunk_to_element(
     )
 
 
-def _chunk_content(chunk: StructuredChunk) -> str:
+def _chunk_content(chunk: StructuredChunk) -> str | list[list[str]]:
     """Chunk content in kompend's element shape.
 
     Tables arrive as Markdown text: parsecraft's IR has no structured row
     model yet (upstream gap), so kompend consumes the Markdown table — its own
     markdown converter restores the grid downstream.
+
+    When parsecraft *did* populate ``StructuredChunk.rows`` from a page's
+    vector graphics (liteparse, opt-in via the ``extract_vector_graphics``
+    backend option), the IR hands rows over as a tuple of tuples while a TABLE
+    element takes ``list[list[str]]`` — that boundary conversion happens here
+    and takes precedence over the Markdown form.
     """
+    if chunk.rows is not None:
+        return [list(row) for row in chunk.rows]
     return chunk.content if isinstance(chunk.content, str) else ""
 
 
@@ -532,10 +566,10 @@ def _winning_backends(groups: list[PageGroup]) -> str:
 def _factory(options: ParserBuildOptions) -> ParsecraftParser:
     """Build a parsecraft backend instance from the resolved build options.
 
-    The judge tier, effort and OCR permission are wired through here so the
-    config-level ``[ingest]`` routing inputs land on the parser without leaking
-    into the router — the factory is the single point where ``ParserBuildOptions``
-    meets a backend-specific constructor.
+    The judge tier, effort, OCR permission and backend options are wired
+    through here so the config-level ``[ingest]`` routing inputs land on the
+    parser without leaking into the router — the factory is the single point
+    where ``ParserBuildOptions`` meets a backend-specific constructor.
     """
     return ParsecraftParser(
         parsecraft_judge=options.parsecraft_judge,
@@ -543,6 +577,8 @@ def _factory(options: ParserBuildOptions) -> ParsecraftParser:
         parsecraft_preference=options.parsecraft_preference,
         parsecraft_effort=options.parsecraft_effort,
         parsecraft_allow_ocr=options.parsecraft_allow_ocr,
+        parsecraft_engines=options.parsecraft_engines,
+        parsecraft_extract_vector_graphics=options.parsecraft_extract_vector_graphics,
     )
 
 

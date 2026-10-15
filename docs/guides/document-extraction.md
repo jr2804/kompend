@@ -16,7 +16,8 @@ See also:
 parsecraft is the only parser path; the selector is gone. The remaining
 `[ingest]` keys are the parsecraft parameters
 (`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`,
-`parsecraft_effort`, `parsecraft_allow_ocr` —
+`parsecraft_effort`, `parsecraft_allow_ocr`, `parsecraft_engines`,
+`parsecraft_extract_vector_graphics` —
 see [Judge tier](#judge-tier-model-assisted-per-page-routing)).
 
 - `parsecraft` — an external document-intelligence pipeline that routes each
@@ -42,7 +43,8 @@ The judge tier needs no extra: `typesafe-sdk` — shared by the `ollama`, `zen`
 and `typesafe-ai` providers — is base-install in parsecraft ≥ 2026.10.5, so it
 arrives with kompend itself. The judge is enabled purely by config
 (`[ingest] parsecraft_judge`, `parsecraft_judge_model`,
-`parsecraft_preference`, `parsecraft_effort`, `parsecraft_allow_ocr`).
+`parsecraft_preference`, `parsecraft_effort`, `parsecraft_allow_ocr`,
+`parsecraft_engines`, `parsecraft_extract_vector_graphics`).
 
 ### Why `marker` cannot be a locked extra
 
@@ -240,6 +242,8 @@ parsecraft_judge_model = "parable-tinyjev"
 parsecraft_preference = "balanced"     # speed | balanced | quality
 parsecraft_effort = "flash"            # flash | medium | high | xhigh (MinerU sub-backend)
 # parsecraft_allow_ocr = false         # unset = derive from extras/engine; false bans OCR
+# parsecraft_engines = ["mineru"]      # empty = keep the probed engine set
+# parsecraft_extract_vector_graphics = true  # recover table grids from vector records
 ```
 
 - **`ollama`** is the offline choice: it talks to your local daemon
@@ -266,18 +270,28 @@ parsecraft_effort = "flash"            # flash | medium | high | xhigh (MinerU s
   weight-free CPU path for text PDFs; `high` and `xhigh` engage MinerU's VLM
   path and recover equations, tables and figure captions `flash` omits, at the
   cost of loading the VLM checkpoint. The key is schema-validated and folds
-  into the parse-cache fingerprint (a change re-parses). It takes effect at the
-  backend once parsecraft's executor accepts per-backend options (upstream
-  change pending); until then a non-`flash` value is stored and fingerprinted
-  but does not alter the conversion.
+  into the parse-cache fingerprint (a change re-parses). It reaches the backend
+  as a per-backend constructor option, injected only when non-default so an
+  explicit `flash` does not churn the conversion cache.
 - **`parsecraft_allow_ocr`** overrides whether parsecraft may route a page to an
   OCR sub-backend. Unset, parsecraft derives it: OCR is permitted when an
   `ocr-*` extra is installed **or** the host has a usable OCR engine. Set
   `false` to ban OCR outright — an all-native corpus should, because a blank or
   faint page otherwise pays a full GPU VLM pass — or `true` to permit it
   regardless of the derivation. The value is part of the parse-cache
-  fingerprint, and unlike `parsecraft_effort` it reaches the planner
-  immediately.
+  fingerprint, and it reaches the planner immediately.
+- **`parsecraft_engines`** restricts the external engines parsecraft may use,
+  overriding the probed set. Empty (the default) keeps the probe's answer.
+  Names are parsecraft's own engine ids and the env form is a comma-separated
+  list — this is open capability data, not a closed value domain, so it is a
+  list of strings rather than an enum. Part of the parse-cache fingerprint.
+- **`parsecraft_extract_vector_graphics`** asks the liteparse backend to recover
+  table structure from a page's vector graphics. With it on, parsecraft
+  populates `StructuredChunk.rows` and a table arrives as structured
+  `list[list[str]]` instead of a Markdown grid; without it, tables stay
+  Markdown and the markdown converter rebuilds the grid downstream. A page with
+  no vector records still yields no table, and the option is inert on pages
+  another backend serves.
 
 A judge never turns a routing problem into a failed ingest: an unresolvable
 provider or missing credential degrades to the rule table at resolution time,

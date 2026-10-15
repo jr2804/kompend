@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypedDict
 
@@ -69,17 +69,20 @@ class ParserBuildOptions:
     #: parsecraft's `RoutingPreference` and threads through every judge call.
     parsecraft_preference: str = "balanced"
     #: MinerU conversion effort: `flash` | `medium` | `high` | `xhigh`. Maps to
-    #: parsecraft's `BackendConfig.options["effort"]`. Configured and validated
-    #: by the schema; it reaches the mineru backend only once parsecraft's
-    #: executor threads `BackendConfig.options` through
-    #: `RoutingConstraints.backend_options`. Until then the value still flips
-    #: the parse cache fingerprint on change, so a vault switching effort
-    #: re-parses once the upstream lands.
+    #: parsecraft's `BackendConfig.options["effort"]` and is injected only when
+    #: non-default, because parsecraft hashes the options dict verbatim into the
+    #: conversion cache key.
     parsecraft_effort: str = "flash"
     #: Whether parsecraft may lead a page with an OCR sub-backend. `None`
     #: (default) keeps parsecraft's own derivation from the installed extras and
     #: the host's usable engines; `False` bans OCR, `True` permits it.
     parsecraft_allow_ocr: bool | None = None
+    #: External engines parsecraft may use, overriding the probed set. Empty
+    #: keeps the probe's answer.
+    parsecraft_engines: list[str] = field(default_factory=list)
+    #: Whether liteparse recovers table structure from a page's vector graphics.
+    #: `None` leaves the backend option unset.
+    parsecraft_extract_vector_graphics: bool | None = None
 
     @classmethod
     def from_config(cls, cfg: ResolvedConfig, *, images_dir: Path | None = None) -> ParserBuildOptions:
@@ -105,6 +108,8 @@ class ParserBuildOptions:
             parsecraft_preference=kompend.ingest.parsecraft_preference.value,
             parsecraft_effort=kompend.ingest.parsecraft_effort.value,
             parsecraft_allow_ocr=kompend.ingest.parsecraft_allow_ocr,
+            parsecraft_engines=list(kompend.ingest.parsecraft_engines),
+            parsecraft_extract_vector_graphics=kompend.ingest.parsecraft_extract_vector_graphics,
         )
 
 

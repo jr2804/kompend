@@ -96,6 +96,21 @@ file = "NOTES.md"
 # The value is part of the parse-cache fingerprint, so changing it re-parses.
 # Env: KOMP_INGEST_PARSECRAFT_ALLOW_OCR
 # parsecraft_allow_ocr = false
+#
+# Restrict the external engines parsecraft may use, overriding the probed
+# set. Empty (the default) keeps the probe's answer. Names are parsecraft's
+# own engine ids — open capability data, so a list of strings rather than a
+# closed enum. The env form is a comma-separated list.
+# Env: KOMP_INGEST_PARSECRAFT_ENGINES
+# parsecraft_engines = ["mineru", "marker"]
+#
+# Ask liteparse to recover table structure from a page's vector graphics.
+# With it on, parsecraft populates StructuredChunk.rows and a table arrives
+# as structured list[list[str]] instead of a Markdown grid. A page with no
+# vector records still yields no table, and the option is inert on pages
+# another backend serves.
+# Env: KOMP_INGEST_PARSECRAFT_EXTRACT_VECTOR_GRAPHICS
+# parsecraft_extract_vector_graphics = true
 
 # ── Downloader settings ─────────────────────────────────────────────────
 # Controls how URLs are fetched. URLs whose path looks like HTML (no

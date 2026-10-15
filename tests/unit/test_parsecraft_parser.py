@@ -106,17 +106,25 @@ class TestMarkdownFidelity:
         assert "x = 1" in str(code[0].content)
 
     def test_table_content_preserved(self, parser: Any, markdown_file: Path) -> None:
+        """The contract is that the cell values survive whatever the active
+        renderer produces.
+
+        Which backend serves a ``.md`` page is parsecraft's decision and has
+        moved across releases (2026.10.3 returned the NATIVE leader to
+        native-markdown; 2026.10.7 populates ``StructuredChunk.rows`` for
+        tables), so the element may carry the grid either as structured
+        ``list[list[str]]`` or as a Markdown table. Both are acceptable;
+        losing a cell is not.
+        """
         doc = parser.parse(markdown_file)  # type: ignore[attr-defined]
         tables = [e for e in doc.elements if e.type is ElementType.TABLE]
         assert len(tables) == 1
-        content = str(tables[0].content)
-        # 2026.10.3 routes `.md` to `native-markdown` (the 2026.10.3 NATIVE
-        # family-rank contract moved the leader back from `docling`); the
-        # native-markdown backend emits the compact GFM table, not the
-        # pipe-aligned `2026.10.2 docling` form. The contract is that the
-        # cell values survive whatever the active renderer produces.
-        assert "| A | B |" in content
-        assert "| 1 | 2 |" in content
+        content = tables[0].content
+        if isinstance(content, list):
+            assert content == [["A", "B"], ["1", "2"]]
+        else:
+            assert "| A | B |" in content
+            assert "| 1 | 2 |" in content
 
     def test_metadata_json_serializable(self, parser: Any, markdown_file: Path) -> None:
         """Element metadata goes into the parse cache as JSON; a StrEnum leaking
@@ -625,6 +633,133 @@ class TestOcrWiring:
         assert seen[-1] is None
         adapter.ParsecraftParser(parsecraft_allow_ocr=False).parse(markdown_file)
         assert seen[-1] is False
+
+
+class TestStructuredRows:
+    """``StructuredChunk.rows`` (tuple of tuples) → a TABLE's ``list[list[str]]``.
+
+    parsecraft carries a recovered grid as a tuple of tuples while komend's
+    element carries ``list[list[str]]``; the conversion lives at the IR
+    boundary so nothing downstream has to know about the tuple shape.
+    """
+
+    @staticmethod
+    def _chunk(**overrides: Any) -> Any:
+        defaults: dict[str, Any] = {
+            "id": "c1",
+            "kind": ChunkKind.TABLE,
+            "content": "| A | B |",
+            "page_number": 1,
+            "reading_order": 0,
+        }
+        return StructuredChunk(**{**defaults, **overrides})
+
+    def test_rows_convert_to_nested_lists(self) -> None:
+        adapter = _adapter()
+        chunk = self._chunk(rows=(("A", "B"), ("1", "2")))
+        assert adapter._chunk_content(chunk) == [["A", "B"], ["1", "2"]]
+
+    def test_rows_win_over_markdown_content(self) -> None:
+        adapter = _adapter()
+        chunk = self._chunk(content="| ignored |", rows=(("A",),))
+        assert adapter._chunk_content(chunk) == [["A"]]
+
+    def test_absent_rows_fall_back_to_markdown(self) -> None:
+        adapter = _adapter()
+        assert adapter._chunk_content(self._chunk()) == "| A | B |"
+
+    def test_empty_rows_do_not_become_an_empty_table(self) -> None:
+        """An empty grid carries no content, so the element is dropped rather
+        than emitted as an empty TABLE.
+        """
+        adapter = _adapter()
+        chunk = self._chunk(content="", rows=())
+        assert not adapter._chunk_content(chunk)
+
+
+class TestBackendOptions:
+    """Per-backend options reach parsecraft, injected only when non-default.
+
+    parsecraft hashes the options dict verbatim into the conversion-cache key,
+    so an explicit default keys differently from nothing — injecting defaults
+    would churn every existing vault's conversion cache on upgrade.
+    """
+
+    def test_no_options_when_everything_is_default(self) -> None:
+        adapter = _adapter()
+        assert adapter.ParsecraftParser()._backend_options() == {}
+
+    def test_effort_injected_only_when_non_default(self) -> None:
+        adapter = _adapter()
+        assert adapter.ParsecraftParser(parsecraft_effort="flash")._backend_options() == {}
+        assert adapter.ParsecraftParser(parsecraft_effort="high")._backend_options() == {"mineru": {"effort": "high"}}
+
+    def test_vector_graphics_injected_when_set(self) -> None:
+        adapter = _adapter()
+        assert adapter.ParsecraftParser()._backend_options() == {}
+        on = adapter.ParsecraftParser(parsecraft_extract_vector_graphics=True)._backend_options()
+        assert on == {"liteparse": {"extract_vector_graphics": True}}
+        off = adapter.ParsecraftParser(parsecraft_extract_vector_graphics=False)._backend_options()
+        assert off == {"liteparse": {"extract_vector_graphics": False}}
+
+    def test_both_land_in_one_dict(self) -> None:
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser(parsecraft_effort="xhigh", parsecraft_extract_vector_graphics=True)
+        assert parser._backend_options() == {
+            "mineru": {"effort": "xhigh"},
+            "liteparse": {"extract_vector_graphics": True},
+        }
+
+    def test_options_reach_the_constraints(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """End-to-end: the built dict must be handed to ``constraints_from_environment``."""
+        adapter = _adapter()
+        seen: list[object] = []
+        real = adapter.constraints_from_environment
+
+        def spy(environment: object, **kwargs: Any) -> Any:
+            seen.append(kwargs.get("backend_options"))
+            return real(environment, **kwargs)
+
+        monkeypatch.setattr(adapter, "constraints_from_environment", spy)
+        parser.parse(markdown_file)
+        assert seen[-1] == {}
+        adapter.ParsecraftParser(parsecraft_effort="high").parse(markdown_file)
+        assert seen[-1] == {"mineru": {"effort": "high"}}
+
+
+class TestEnginesWiring:
+    """``[ingest] parsecraft_engines`` overrides the probed engine set."""
+
+    def test_unset_keeps_the_probe_and_empty_key(self) -> None:
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser()
+        assert parser._engines == ()
+        assert _routing_part(parser) == ""
+
+    def test_names_appear_in_the_cache_key_sorted(self) -> None:
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser(parsecraft_engines=["mineru", "marker"])
+        assert _routing_part(parser) == "engines:marker,mineru"
+
+    def test_vector_graphics_segment_only_when_set(self) -> None:
+        adapter = _adapter()
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_extract_vector_graphics=True)) == "vector_graphics:on"
+        assert _routing_part(adapter.ParsecraftParser(parsecraft_extract_vector_graphics=False)) == "vector_graphics:off"
+
+    def test_engines_reach_the_constraints(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        adapter = _adapter()
+        seen: list[object] = []
+        real = adapter.constraints_from_environment
+
+        def spy(environment: object, **kwargs: Any) -> Any:
+            seen.append(kwargs.get("engines"))
+            return real(environment, **kwargs)
+
+        monkeypatch.setattr(adapter, "constraints_from_environment", spy)
+        parser.parse(markdown_file)
+        assert seen[-1] is None
+        adapter.ParsecraftParser(parsecraft_engines=["mineru"]).parse(markdown_file)
+        assert seen[-1] == ("mineru",)
 
 
 def _pdf_backend(name: str, vram: float) -> BackendDescriptor:

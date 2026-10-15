@@ -556,16 +556,12 @@ class IngestConfig(_KompendBaseModel):
         default=ParsecraftEffort.FLASH,
         validation_alias=EnvVar.INGEST_PARSECRAFT_EFFORT,
         description=(
-            "Conversion effort for the MinerU sub-backend. Maps to parsecraft's `effort` option, "
-            "validated against ('flash', 'medium', 'high', 'xhigh') in `parsecraft.backends.mineru._impl`. "
-            "`flash` is the verified default (text PDFs, weight-free CPU work). `high` and `xhigh` engage "
-            "the VLM path and emit equations, tables and figure captions at markedly higher recovery; "
-            "they also load MinerU's VLM checkpoint and want a GPU. The value is read and validated by "
-            "the schema, included in the parse cache fingerprint, and forwarded to the adapter — but "
-            "until parsecraft's executor threads `BackendConfig.options` through "
-            "`RoutingConstraints.backend_options`, it is *configured but inert*. Once that lands, the "
-            "value reaches mineru's `effort=` validator and the cache key flips, so the user re-parses "
-            "under the new effort automatically."
+            "Conversion effort for the MinerU sub-backend. Maps to parsecraft's `effort` backend option "
+            "(`MineruEffort`). `flash` is the verified default (text PDFs, weight-free CPU work). `high` "
+            "and `xhigh` engage the VLM path and emit equations, tables and figure captions at markedly "
+            "higher recovery; they also load MinerU's VLM checkpoint and want a GPU. The value is forwarded "
+            "to parsecraft as a per-backend constructor option and injected only when non-default, so an "
+            "explicit `flash` does not churn the conversion cache."
         ),
     )
     parsecraft_allow_ocr: bool | None = Field(
@@ -577,6 +573,27 @@ class IngestConfig(_KompendBaseModel):
             "Set `false` to ban OCR outright — an all-native corpus should, since a blank or faint page otherwise "
             "pays a full GPU VLM pass — or `true` to permit it regardless of the derivation. The value is part "
             "of the parse-cache fingerprint, so changing it re-parses."
+        ),
+    )
+    parsecraft_engines: list[str] = Field(
+        default_factory=list,
+        validation_alias=EnvVar.INGEST_PARSECRAFT_ENGINES,
+        description=(
+            "Restrict the external engines parsecraft may use, overriding the probed set. Empty (the default) "
+            "keeps the probe's answer. Names are parsecraft's own engine ids (`marker`, `mineru`, …) — open "
+            "capability data, so they are not a closed value domain here; the env form is a comma-separated "
+            "list. The value is part of the parse-cache fingerprint, so changing it re-parses."
+        ),
+    )
+    parsecraft_extract_vector_graphics: bool | None = Field(
+        default=None,
+        validation_alias=EnvVar.INGEST_PARSECRAFT_EXTRACT_VECTOR_GRAPHICS,
+        description=(
+            "Ask the liteparse backend to recover table structure from a page's vector graphics. Unset "
+            "(`None`) leaves the option unset; `true` enables the pass, which populates "
+            "`StructuredChunk.rows` so a table reaches kompend as `list[list[str]]` instead of Markdown. "
+            "Pages without vector records still yield no TABLE chunks, and the option is inert on pages "
+            "another backend serves."
         ),
     )
 
