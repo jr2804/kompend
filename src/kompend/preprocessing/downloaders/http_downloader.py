@@ -16,6 +16,7 @@ from kompend.preprocessing.downloaders.duplicate_detector import DuplicateDetect
 
 _USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
+
 # Content-Type → extension mapping for downloaded files whose URL
 # has no recognizable extension (e.g. .aspx, no extension at all).
 # Keys are a :class:`StrEnum` so a typo'd Content-Type (e.g. an IANA

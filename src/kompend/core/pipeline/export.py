@@ -54,6 +54,7 @@ _ASSET_ID_HASH_LEN = 6
 
 _IMAGE_PLACEHOLDER = re.compile(r"^\[Image:?\s*(.*)\]$")
 
+
 #: Image extensions the exporter recognises. Keys are a :class:`StrEnum` so
 #: the table is keyed by typed members; lookups still match bare suffix
 #: strings because ``StrEnum`` is-a ``str``. Includes ``.svg`` because

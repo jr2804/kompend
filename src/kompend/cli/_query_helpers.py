@@ -174,10 +174,7 @@ def handle_enhanced_search(  # noqa: PLR0917
     enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model)
 
     has_enhanced = (
-        cfg.kompend.search.expansion.enabled
-        or cfg.kompend.search.crag.enabled
-        or cfg.kompend.search.reranker.enabled
-        or cfg.kompend.search.hyde.enabled
+        cfg.kompend.search.expansion.enabled or cfg.kompend.search.crag.enabled or cfg.kompend.search.reranker.enabled or cfg.kompend.search.hyde.enabled
     )
 
     if has_enhanced:
