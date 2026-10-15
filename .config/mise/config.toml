@@ -16,22 +16,13 @@ bun = "latest"
 ripgrep = "latest"
 "github:peteretelej/tree" = { version = "latest", rename_exe = "tree-cli" }
 "npm:@jkudish/jev-mcp" = "latest"
-"pypi:sloppylint" = "latest"
-"pypi:ai-slop-detector" = "latest"
-"npm:@yuvrajangadsingh/vibecheck" = "latest"
-"npm:aislop" = "latest"
-"github:djinn-soul/CytoScnPy" = "latest"
-"github:ChuprinaDaria/Vibecode-Cleaner-Fartrun" = "latest"
-"github:yoanbernabeu/grepai" = "latest"
+
 "npm:@colbymchenry/codegraph" = "latest"
-"pypi:repowise" = "latest"
 "github:1broseidon/ketch" = "latest"
-"github:AlmogBaku/debug-skill" = "latest"
-"github:rtk-ai/rtk" = "latest"
+
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
 "pypi:beads-mcp" = "latest"
-"pypi:hound-mcp" = "latest"
 
 [settings.npm]
 package_manager = "bun"
