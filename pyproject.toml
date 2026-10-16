@@ -69,7 +69,7 @@ dependencies = [
     "lazy-loader",
     "rapidfuzz>=3.14.6",
     "charset-normalizer>=3.5.1",
-    "parsecraft[docling,web]>=2026.10.8",
+    "parsecraft[docling,web]>=2026.10.11",
 ]
 
 [project.scripts]
@@ -78,10 +78,10 @@ kompend = "kompend.cli.app:main"
 [project.optional-dependencies]
 
 # Only heavy ML OCR models and licence-gated backends (pymupdf, mineru) stay opt-in.
-ocr = ["parsecraft[ocr]>=2026.10.8"]
-mineru = ["parsecraft[mineru]>=2026.10.8"]
+ocr = ["parsecraft[ocr]>=2026.10.11"]
+mineru = ["parsecraft[mineru]>=2026.10.11"]
 pymupdf = ["parsecraft[pymupdf]>=2026.10.8"]
-pdf-full = ["parsecraft[pdf-full]>=2026.10.8"]  # pymupdf + mineru
+pdf-full = ["parsecraft[pdf-full]>=2026.10.11"]  # pymupdf + mineru
 
 # marker-pdf is bring-your-own: uv pip install marker-pdf
 otel = [
