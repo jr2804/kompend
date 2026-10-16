@@ -22,9 +22,11 @@
 #        repository:     kompend
 #        workflow filename: release.yml
 #        environment:    (leave blank)
-#   3. (Optional) Create a repository secret MISTRAL_API_KEY for the LLM
-#      release-notes step. Without it, the step falls back to a raw git log
-#      with the same markdown heading.
+#   3. (Optional) For LLM release notes, set a repository VARIABLE
+#      OPENROUTER_MODEL (e.g. openrouter/free) and a repository secret
+#      OPENROUTER_API_KEY. There is deliberately no built-in default model:
+#      leaving the variable unset keeps the step off, and the release body is
+#      then the deterministic commit list.
 #   4. Mirror the existing git history (including tags) to GitHub BEFORE the
 #      first run, otherwise the calver counter restarts at 1 instead of
 #      continuing the last Forgejo-era tag. `git push origin --all --tags`
@@ -123,61 +125,102 @@ jobs:
           # skip-existing: true  # intentionally NOT set — a duplicate-version
           # publish is a real error and should fail the job.
 
-      # --- Generate release notes via LLM (Mistral Codestral) ---
-      #   Falls back to a raw git log if MISTRAL_API_KEY is unset or the API
-      #   returns empty, so the release is never blocked on a missing secret.
+      # --- Generate release notes (LLM-summarised, deterministic fallback) ---
+      #   Cosmetic only. The deterministic commit list is written FIRST, so a
+      #   missing key, an unreachable API or a bad summary can never block the
+      #   release; a successful summary overwrites it. `continue-on-error` keeps
+      #   the job, and the release that follows it, intact if the call fails.
+      #
+      #   Configured entirely by the operator, with NO built-in default model:
+      #     secret   OPENROUTER_API_KEY  - the credential
+      #     variable OPENROUTER_MODEL    - model id to call (e.g. openrouter/free)
+      #   An unset variable means "keep this step off", not "pick a model for me".
       - name: Generate release notes
         id: notes
+        continue-on-error: true
         env:
-          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          OPENROUTER_MODEL: ${{ vars.OPENROUTER_MODEL }}
         run: |
+          set -euo pipefail
           ver="${{ steps.version.outputs.version }}"
 
-          # Collect git log since last tag (or last 10 commits if first release)
+          # Commits since the previous release tag (last 10 on a first release).
           last_tag=$(git tag -l --sort=-version:refname | head -2 | tail -1 || true)
           if [ -n "$last_tag" ]; then
-            log=$(git log --oneline --no-decorate "${last_tag}..HEAD")
+            range="${last_tag}..HEAD"
           else
-            log=$(git log --oneline --no-decorate -10)
+            range="HEAD"
+          fi
+          git log "$range" --oneline --no-decorate | head -n 120 > /tmp/commits.txt
+
+          # Deterministic body first, so the release body always exists.
+          {
+            printf '## kompend %s\n\n### Changes since previous release\n\n<details><summary>Commit list</summary>\n\n```\n' "$ver"
+            cat /tmp/commits.txt
+            printf '```\n\n</details>\n'
+          } > /tmp/release-body.md
+
+          if [ -z "${OPENROUTER_MODEL:-}" ]; then
+            echo "::notice::OPENROUTER_MODEL unset; release notes are the commit list"
+            exit 0
+          fi
+          if [ -z "${OPENROUTER_API_KEY:-}" ]; then
+            echo "::notice::OPENROUTER_MODEL is set but OPENROUTER_API_KEY is not; release notes are the commit list"
+            exit 0
           fi
 
-          # Fallback: raw git log with markdown formatting
-          fallback=$(printf '## kompend %s\n\n### Changes since previous release\n\n```\n%s\n```' "$ver" "$log")
+          {
+            printf 'Write concise, user-facing release notes as Markdown for the\n'
+            printf 'Python package kompend, which compiles a document corpus into an\n'
+            printf 'interlinked, OKF-conformant markdown wiki.\n'
+            printf 'Rules: use ONLY facts from the commit list below - never invent\n'
+            printf 'features, numbers or issue references; group under short Markdown\n'
+            printf 'headings (Features, Fixes, Documentation, Maintenance); prefix each\n'
+            printf 'bullet with its scope in parentheses, e.g. (parsers), (cli); no\n'
+            printf 'preamble, no closing remark, no praise. Begin with the heading\n'
+            printf '"## kompend %s".\n' "$ver"
+            printf 'Commit list:\n'
+            cat /tmp/commits.txt
+          } > /tmp/prompt.txt
 
-          notes=""
-          if [ -n "$MISTRAL_API_KEY" ]; then
-            echo "Generating release notes via Mistral ..."
+          python3 - <<'PY' > /tmp/ai-notes.md
+          import json, os, urllib.error, urllib.request
 
-            prompt=$(printf 'You generate concise, well-structured release notes from git commit logs. Follow these rules:\n- Group changes under headings: Features, Fixes, Maintenance, Documentation\n- Use bullet points with the scope prefix in parentheses, e.g. (parsers), (cli)\n- Be factual and precise. Do not add fluff or praise.\n- Output pure markdown, starting with "## kompend %s" as the main heading.\n\nCommits:\n%s' "$ver" "$log")
+          request = urllib.request.Request(
+              "https://openrouter.ai/api/v1/chat/completions",
+              data=json.dumps({
+                  "model": os.environ["OPENROUTER_MODEL"],
+                  "messages": [{"role": "user", "content": open("/tmp/prompt.txt", encoding="utf-8").read()}],
+              }).encode(),
+              headers={
+                  "Authorization": f"Bearer {os.environ['OPENROUTER_API_KEY']}",
+                  "Content-Type": "application/json",
+              },
+          )
+          try:
+              with urllib.request.urlopen(request, timeout=120) as response:
+                  payload = json.load(response)
+          except urllib.error.HTTPError as exc:
+              # Surface the API's own message (bad model slug, key limit, ...);
+              # a bare "HTTP Error 404" is undiagnosable in the job log.
+              detail = exc.read().decode("utf-8", "replace")[:500]
+              raise SystemExit(f"OpenRouter returned {exc.code}: {detail}") from exc
+          print(payload["choices"][0]["message"]["content"])
+          PY
 
-            response=$(curl -s https://api.mistral.ai/v1/chat/completions \
-              -H "Authorization: Bearer ${MISTRAL_API_KEY}" \
-              -H "Content-Type: application/json" \
-              -d "$(jq -n \
-                --arg prompt "$prompt" \
-                '{
-                  model: "mistral-small-latest",
-                  messages: [
-                    {role: "system", content: "You are a release notes generator. Output pure markdown, no extra commentary."},
-                    {role: "user", content: $prompt}
-                  ],
-                  max_tokens: 800,
-                  temperature: 0.3
-                }'
-              )")
-
-            notes=$(echo "$response" | jq -r '.choices[0].message.content // empty')
-
-            if [ -z "$notes" ]; then
-              echo "LLM returned empty response, using fallback"
-              echo "$response" | jq -c '.error // .' 2>/dev/null || true
-            fi
+          if [ -s /tmp/ai-notes.md ]; then
+            {
+              cat /tmp/ai-notes.md
+              printf '\n<details><summary>Full commit list</summary>\n\n```\n'
+              cat /tmp/commits.txt
+              printf '```\n\n</details>\n'
+            } > /tmp/release-body.md
           else
-            echo "MISTRAL_API_KEY not set, using git log fallback"
+            echo "::warning::OpenRouter returned an empty summary; keeping the commit list"
           fi
 
-          body="${notes:-$fallback}"
-          echo "$body" > /tmp/release-body.md
+          rm -f /tmp/commits.txt /tmp/prompt.txt
 
       # --- Create GitHub release and attach build artifacts ---
       - name: Create GitHub release
