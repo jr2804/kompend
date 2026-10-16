@@ -169,7 +169,11 @@ def parsed_docs_sample(source_pdfs_sample: list[Path]) -> dict[Path, ParsedDocum
 
 def _make_parser() -> BaseParser:
     """Construct the ingestion parser via its normal factory."""
-    return build_default_router().route(Path("sample.pdf"))
+    parser = build_default_router().route(Path("sample.pdf"))
+    if parser is None:
+        msg = "no installed parser handles .pdf; install an extraction extra to run the corpus tests"
+        raise RuntimeError(msg)
+    return parser
 
 
 @pytest.fixture(scope="session")

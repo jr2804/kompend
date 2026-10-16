@@ -1,7 +1,7 @@
 """Tests for the kompend HierarchicalChunker."""
 
 from pathlib import Path
-from typing import TypeGuard
+from typing import Protocol, TypeGuard
 
 from kompend.chunking.hierarchical import HierarchicalChunker
 from kompend.core.models import (
@@ -357,10 +357,18 @@ class TestContextWindowClamp:
         assert chunker._effective_max == 819
 
 
-class _TextLeaf(ChunkNode):
-    """Leaf whose ``chunk`` is guaranteed present (see ``_is_text_leaf``)."""
+class _TextLeaf(Protocol):
+    """A leaf node whose ``chunk`` is present (see ``_is_text_leaf``).
+
+    A Protocol rather than a ``ChunkNode`` subclass: narrowing a mutable field in
+    a subclass is unsound, since the wider ``Chunk | None`` could still be
+    written through the base class, and ty rejects it as an invalid override. The
+    guard is what establishes the narrowing, so it only needs to describe the
+    surface the tests read.
+    """
 
     chunk: Chunk
+    heading_chain: tuple[str, ...]
 
 
 def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDocument:

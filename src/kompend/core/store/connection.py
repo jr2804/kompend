@@ -24,7 +24,7 @@ files are simply not read. See :mod:`kompend.core.store.legacy` for detection on
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -37,7 +37,7 @@ logger = get_logger(__name__)
 
 
 @contextmanager
-def open_store(db_path: Path) -> Iterator[sqlite3.Connection]:
+def open_store(db_path: Path) -> Generator[sqlite3.Connection]:
     """Context manager: open, ensure the schema, commit on success, close.
 
     On entry a missing database is created and a version mismatch triggers a

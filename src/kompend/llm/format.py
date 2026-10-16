@@ -123,9 +123,15 @@ def salvage_json(
 
     # Fallback: schema-less repair.
     try:
-        parsed = json_repair.loads(content)
+        loaded = json_repair.loads(content)
     except (json.JSONDecodeError, RecursionError):
         return None
+    # json_repair types its result as the repaired object OR
+    # ``(object, repair_log)``; the pair is returned only when ``logging=True``,
+    # which is never passed here. Its stub unions the two shapes rather than
+    # overloading on the flag, so discriminate the declared union instead of
+    # widening _finalize_salvage's parameter.
+    parsed: JSON = loaded[0] if isinstance(loaded, tuple) else loaded
     # json_repair returns "" for prose-only input; normalize to None so
     # callers' `is None` checks behave as before.
     if parsed == "":
