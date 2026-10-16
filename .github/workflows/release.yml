@@ -41,6 +41,10 @@ name: Tag and Release
 on:
   push:
     branches: [main]
+  # Manual re-trigger. A push whose head commit carries "[skip release]" is
+  # skipped by the job guard below, and its predecessors may still need a
+  # release that nothing else can cut. Dispatching runs the job directly.
+  workflow_dispatch:
 
 permissions: {}
 
@@ -60,7 +64,10 @@ defaults:
 
 jobs:
   release:
-    if: ${{ !contains(github.event.head_commit.message, '[skip release]') }}
+    # workflow_dispatch carries no head commit, so the marker cannot apply to it.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      !contains(github.event.head_commit.message, '[skip release]')
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
