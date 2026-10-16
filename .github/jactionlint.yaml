@@ -1,0 +1,18 @@
+# jactionlint configuration.
+#
+# The tool itself tracks `latest` (project rule: progressive, never pinned), so
+# this file is where rule CHOICES live - the same curation we already do for
+# ruff and codespell. Everything else stays at the `default` profile.
+
+profile: default
+
+rules:
+  # Design opinion, deliberately declined with a reason:
+  #
+  # superfluous-actions wants softprops/action-gh-release replaced by
+  # `gh release create`. The softprops step is the release path this project has
+  # actually exercised, and swapping it is an unverifiable change to the one
+  # place where a mistake costs a tag rather than a rebuild. The action is
+  # SHA-pinned in release.yml, which closes the tag-mutation risk the rule's
+  # security group cares about. Revisit alongside any release-pipeline rework.
+  superfluous-actions: off

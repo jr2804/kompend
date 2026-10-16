@@ -9,6 +9,7 @@ description = "Run all quality checks"
 depends = [
   "test",
   "lint",
+  "lint-actions",
   "spell",
   "format",
   "format-md",
