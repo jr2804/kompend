@@ -137,6 +137,12 @@ def coerce_config_value(value: str, key: str) -> ConfigValue:
     ann = field_info.annotation
     if get_origin(ann) is list:
         return [v.strip() for v in value.split(",") if v.strip()]
+    if ann is None:
+        # A known key always carries an annotation, so reaching here means the
+        # schema is malformed. Coercing against no type would silently accept
+        # anything, which is the failure this function exists to prevent, so
+        # name the key instead.
+        raise ValueError(f"config key {key!r} has no annotation to coerce {value!r} against")
 
     try:
         return TypeAdapter(ann).validate_python(value)
