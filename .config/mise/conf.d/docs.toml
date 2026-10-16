@@ -1,3 +1,9 @@
+[tasks.docs]
+description = "Build the documentation site (mkdocs, strict)"
+# `python -m mkdocs` rather than `uv run mkdocs`: the console-script trampoline
+# fails on Windows with "failed to canonicalize script path".
+run = "uv run python -m mkdocs build --strict"
+
 [tasks.docs-vitepress]
 description = "Build documentation with VitePress"
 run = ["vitepress build docs"]
