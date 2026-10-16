@@ -2,6 +2,13 @@
 description = "Run linter (ruff)"
 run = 'ruff check src/ tests/ scripts/ --fix --unsafe-fixes'
 
+[tasks.lint-actions]
+description = "Lint GitHub Actions workflows (jactionlint)"
+# No argument on purpose: with none, jactionlint checks the repository - every
+# workflow under .github/workflows, any composite action, dependabot config and
+# the Actions lock file. Passing a directory does not work.
+run = "jactionlint"
+
 [tasks.typecheck]
 description = "Run type checker (ty)"
 run = 'ty check src/ tests/ scripts/'

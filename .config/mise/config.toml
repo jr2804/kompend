@@ -11,6 +11,9 @@ bun = "latest"
 "rumdl" = "latest"
 "pypi:pyreorder" = "latest"
 "pypi:codespell" = "latest"
+# Static checker for .github/workflows/*.yml. The fork, not rhysd/actionlint:
+# same rules, newer line (2.x vs 1.7.x) and actively released.
+"github:jdx/jactionlint" = "latest"
 
 # CLI tools rg and tree-cli -> use `rg --files | tree-cli --fromfile` to get a nice tree view of the project files
 ripgrep = "latest"
