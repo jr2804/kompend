@@ -193,7 +193,7 @@ class ParsecraftParser:
 
         document = result.document
         elements = _map_document(document, source_file)
-        self._warn_on_ignored_backend_options(_winning_backends(result.groups), elements)
+        self._warn_on_ignored_backend_options(_winning_backends(result.groups), media_type, elements)
 
         return ParsedDocument(
             source_file=source_file,
@@ -275,22 +275,27 @@ class ParsecraftParser:
             options.setdefault("liteparse", {})["extract_vector_graphics"] = self._extract_vector_graphics
         return options
 
-    def _warn_on_ignored_backend_options(self, winners: str, elements: list[DocumentElement]) -> None:
+    def _warn_on_ignored_backend_options(self, winners: str, media_type: str, elements: list[DocumentElement]) -> None:
         """Log loudly when a per-backend option never reached its backend.
 
         A backend option is only honoured by the backend it names, so when that
         backend is absent from the document's winners the option did nothing.
-        That is not a failure to hide: parsecraft degrades to whatever backend
-        is left, so an unusable option produces a *smaller* document rather than
-        an error, and the only symptom is a shortfall nobody attributes to the
-        config. The comparison names the backends involved so the message is a
-        diagnosis rather than a reprimand.
+        That is not a failure to hide: parsecraft degrades to whatever backend is
+        left, so an unusable option produces a *smaller* document rather than an
+        error, and the only symptom is a shortfall nobody attributes to the
+        config.
+
+        The warning is scoped to backends that could have served this format: a
+        ``.md`` source never reaching mineru is the configured behaviour, not a
+        misconfiguration, and warning on it would bury the case that matters in
+        per-file noise. A backend that *can* read the format but did not run is
+        the signal.
         """
         requested = self._backend_options()
         if not requested:
             return
         executed = {name.strip() for name in winners.split(",") if name.strip()}
-        ignored = sorted(name for name in requested if name not in executed)
+        ignored = sorted(name for name in requested if name not in executed and _serves_format(name, media_type))
         if not ignored:
             return
         logger.warning(
@@ -596,6 +601,18 @@ def _heading_level(chunk: StructuredChunk) -> int | None:
         return int(level)
     except ValueError:
         return None
+
+
+def _serves_format(backend_name: str, media_type: str) -> bool:
+    """Whether a registered backend declares support for this media type.
+
+    Used to keep the ignored-option warning actionable: a backend that cannot
+    read the format was never going to run, so its silence is expected.
+    """
+    for descriptor in default_registry.list_backends():
+        if descriptor.name == backend_name:
+            return media_type in descriptor.capabilities.supported_formats
+    return False
 
 
 def _parse_backend_name(name: str | None) -> str | None:

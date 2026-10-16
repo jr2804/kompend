@@ -828,31 +828,53 @@ class TestIgnoredBackendOptions:
     parsecraft degrades to the backends that are left, so an unusable option
     yields a *smaller* document rather than an error — the symptom is a
     shortfall with nothing in ``quality_signals`` or ``degraded_pages``. The
-    adapter logs the mismatch so the cause is attributable to the config.
+    adapter logs the mismatch so the cause is attributable to the config, but
+    only for backends that could have read the source: warning on a format a
+    backend cannot serve would drown the signal in per-file noise.
     """
 
     def test_no_log_when_options_were_honoured(self, parser: Any, markdown_file: Path, caplog: pytest.LogCaptureFixture) -> None:
         parser.parse(markdown_file)
         assert not [r for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
 
-    def test_warns_when_the_named_backend_never_ran(
+    def test_warns_when_the_named_backend_serves_the_format_but_never_ran(
         self,
         parser: Any,
         markdown_file: Path,
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,
     ) -> None:
-        """The upstream degradation path: the option's backend fails and another
-        backend serves the document instead, so the option had no effect.
+        """The upstream degradation path: the option's backend could have read
+        this source but another backend served it instead, so the option had no
+        effect.
         """
         adapter = _adapter()
         monkeypatch.setattr(adapter, "_winning_backends", lambda groups: "pdf-inspector")
+        monkeypatch.setattr(adapter, "_serves_format", lambda name, media_type: True)
         with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
             adapter.ParsecraftParser(parsecraft_extract_vector_graphics=True).parse(markdown_file)
         messages = [r.getMessage() for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
         assert len(messages) == 1, messages
         assert "liteparse" in messages[0]
         assert "pdf-inspector" in messages[0]
+
+    def test_silent_when_the_named_backend_cannot_serve_the_format(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A ``.md`` source never reaching liteparse is the configured behaviour,
+        not a misconfiguration — warning on it would bury the case that matters.
+        """
+        adapter = _adapter()
+        # The real ``_serves_format``: liteparse declares pdf/image, not markdown.
+        assert not adapter._serves_format("liteparse", "text/markdown")
+        monkeypatch.setattr(adapter, "_winning_backends", lambda groups: "native-markdown")
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            adapter.ParsecraftParser(parsecraft_extract_vector_graphics=True).parse(markdown_file)
+        assert not [r for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
 
     def test_silent_for_a_default_run(
         self,
