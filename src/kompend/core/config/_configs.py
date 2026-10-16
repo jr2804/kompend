@@ -617,6 +617,24 @@ class IngestConfig(_KompendBaseModel):
             "things. The value is part of the parse-cache fingerprint."
         ),
     )
+    #: Per-backend constructor options (`{backend: {key: value}}`) forwarded to
+    #: parsecraft's `RoutingConstraints.backend_options`. Only non-default values
+    #: are injected, since parsecraft hashes the dict verbatim into the
+    #: conversion-cache key. Keys must be registered backend names
+    #: (`mineru`, `liteparse`, `marker`, ...); values must be `str | int | float | bool`.
+    parsecraft_backend_options: dict[str, dict[str, str | int | float | bool]] = Field(
+        default_factory=dict,
+        validation_alias=EnvVar.INGEST_PARSECRAFT_BACKEND_OPTIONS,
+        description=(
+            "Per-backend options (`{backend_name: {option_key: option_value}}`) forwarded to parsecraft's "
+            "`RoutingConstraints.backend_options`. Only non-default values are injected, so an empty dict "
+            "(`{}`) produces no `backend_options:` routing segment and the conversion cache stays stable. "
+            "Example: ``{\"mineru\": {\"effort\": \"high\"}, \"liteparse\": {\"extract_vector_graphics\": true}}``. "
+            "Keys must match parsecraft's registered backends; unknown backend names are a usage error at "
+            "dispatch time. Values are coerced by the adapter's option-coercion site: `str -> bool` (real bools "
+            "pass through unchanged), numeric strings -> int/float."
+        ),
+    )
 
 
 class DownloaderConfig(_KompendBaseModel):

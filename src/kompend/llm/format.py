@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any
+from typing import Any, cast
 
 import ison_parser as _ison
 import json_repair
@@ -137,13 +137,17 @@ def salvage_json(
     if parsed == "":
         return None
 
-    # Post-fix 2 onward share one guard. On Python 3.13 the deeply-nested
-    # tripwire is json_repair's recursive parser (caught above); on 3.14+ stdlib
-    # json parses arbitrary nesting without Python recursion, so pathological
-    # input survives the parse and instead trips the Python-recursive cleanup
-    # walks. The contract is unchanged: degrade to None like a parse failure.
+    # json_repair 0.64.0 types json_repair.loads() as the repaired object OR a
+    # tuple (object, list[dict]) when `logging=True`, but this caller never
+    # passes `logging=True`. The stub unions both shapes rather than overloading
+    # on the flag, so the precise `JSON` type for the clean non-tuple case is
+    # enforced at the boundary.
     try:
-        return _finalize_salvage(parsed, schema, unwrap_list)
+        loaded: JSON = cast(JSON, parsed)
+    except Exception:
+        loaded = parsed  # defensive; never expected to fail
+    try:
+        return _finalize_salvage(loaded, schema, unwrap_list)
     except RecursionError:
         logging.getLogger(__name__).debug("salvage_json cleanup hit recursion limit on pathological nesting")
         return None
