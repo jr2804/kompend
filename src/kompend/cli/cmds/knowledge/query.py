@@ -44,11 +44,11 @@ from kompend.cli.args import (
     QueryText,
     QueryTopK,
     QueryVerbosity,
+    SearchMode,
     SourceAttrs,
     SourceTags,
     WikiDir,
 )
-from kompend.cli.args.query import SearchMode
 from kompend.core.config import LLMConfig, resolve_config
 from kompend.core.config._configs import LlmDataFormat
 from kompend.core.models import load_wiki_from_files

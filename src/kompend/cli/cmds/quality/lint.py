@@ -31,11 +31,13 @@ from kompend.cli.args import (
     LintFix,
     LintFixDestructive,
     LintFormatCheck,
+    LintGapsFix,
     LintHistoryLast,
     LintHistoryTrend,
     LintPruneAgeDays,
     LintPruneKeep,
     LintRule,
+    LintSemantic,
 )
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LintConfig
@@ -353,12 +355,8 @@ def lint_prune(
 def lint_gaps(
     ctx: typer.Context,
     json_output: JsonOutput = False,
-    semantic: bool = typer.Option(
-        True,
-        "--semantic/--no-semantic",
-        help="Verify missing topics against source chunks via the embedding model (needs compile.embedding.model).",
-    ),
-    fix: bool = typer.Option(False, "--fix", help="Generate pages for source-covered missing topics (same as lint remediate)."),
+    semantic: LintSemantic = True,
+    fix: LintGapsFix = False,
     config: ConfigPath = None,
 ) -> None:
     """Analyze the latest lint run to identify missing knowledge and recommend sources.

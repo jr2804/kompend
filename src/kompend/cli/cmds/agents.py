@@ -17,6 +17,7 @@ import typer
 from kompend.acp.definitions import AgentDefinition, AgentTask
 from kompend.acp.registry import AgentRegistry
 from kompend.cli.app import app
+from kompend.cli.args.serving import AgentsAction, AgentsName, AgentsTask
 from kompend.core.config import resolve_config, validate_config_key
 from kompend.core.config._core import set_config_file_value
 from kompend.core.config.keys import (
@@ -40,9 +41,9 @@ logger = get_logger(__name__)
 
 @app.command(name="agents")
 def agents_cmd(
-    action: str = typer.Argument(help="Action: list, use, validate, install, or remove"),
-    task: str | None = typer.Argument(None, help="Task name (for 'use'): compile, query, capture, organize"),
-    name: str | None = typer.Argument(None, help="Agent name (for 'use') or file path (for 'validate')"),
+    action: AgentsAction,
+    task: AgentsTask = None,
+    name: AgentsName = None,
 ) -> None:
     """Manage TOML-defined conversational agents."""
     if action == "list":

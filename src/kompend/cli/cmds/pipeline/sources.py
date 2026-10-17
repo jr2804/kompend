@@ -16,17 +16,18 @@ the next ``kompend compile``.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Any
 
 import typer
 from rich.markup import escape
 
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.app import app
-from kompend.cli.args.other import (
+from kompend.cli.args import (
     ExportAll,
     ExportAnnotations,
     ExportInline,
+    ExportSourceId,
     ExportSummary,
     SourceTags,
 )
@@ -189,7 +190,7 @@ def sources_attr_rm(
 @sources_app.command("export", help="Export an ingested source as clean markdown.")
 def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     ctx: typer.Context,
-    source_id: Annotated[str, typer.Argument()] = "",
+    source_id: ExportSourceId = "",
     export_all: ExportAll = False,
     output: str = "",
     inline: ExportInline = False,

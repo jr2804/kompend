@@ -16,6 +16,7 @@ import typer
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.app import app
 from kompend.cli.args import ConfigPath
+from kompend.cli.args.quality import LogLast, LogWrite
 from kompend.core.config import resolve_config
 from kompend.core.reporting.log import build_log_report
 from kompend.logging import get_console
@@ -24,17 +25,8 @@ from kompend.logging import get_console
 @app.command(name="log")
 def log_cmd(
     ctx: typer.Context,
-    last: int = typer.Option(
-        25,
-        "--last",
-        "-n",
-        help="Maximum number of command/lint entries to include.",
-    ),
-    write: bool = typer.Option(
-        False,
-        "--write",
-        help="Write the report to .kompend/log.md instead of printing it.",
-    ),
+    last: LogLast = 25,
+    write: LogWrite = False,
     config: ConfigPath = None,
 ) -> None:
     """Regenerate the pipeline log from structured stores (no LLM calls).

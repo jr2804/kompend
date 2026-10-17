@@ -34,3 +34,28 @@ ServeOpen = Annotated[
         help="Open the web UI in the default browser automatically.",
     ),
 ]
+
+# ── ACP agent / agents commands ─────────────────────────────────────────
+
+AgentMcpPort = Annotated[
+    int | None,
+    typer.Option(
+        "--mcp-port",
+        help="Port for the MCP-over-HTTP companion server (e.g. 8000). When set, kompend starts both the ACP agent and an MCP HTTP server.",
+    ),
+]
+
+AgentsAction = Annotated[
+    str,
+    typer.Argument(help="Action: list, use, validate, install, or remove"),
+]
+
+AgentsTask = Annotated[
+    str | None,
+    typer.Argument(help="Task name (for 'use'): compile, query, capture, organize"),
+]
+
+AgentsName = Annotated[
+    str | None,
+    typer.Argument(help="Agent name (for 'use') or file path (for 'validate')"),
+]

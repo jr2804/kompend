@@ -19,22 +19,18 @@ from __future__ import annotations
 import asyncio
 import contextlib
 
-import typer
 from pydantic_ai import Agent
 from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
 
 from kompend.acp import build_kompend_agent, kompend_session_config
 from kompend.cli.app import app
+from kompend.cli.args.serving import AgentMcpPort
 from kompend.mcp.server import create_mcp_server
 
 
 @app.command(name="agent")
 def agent_cmd(
-    mcp_port: int | None = typer.Option(
-        None,
-        "--mcp-port",
-        help="Port for the MCP-over-HTTP companion server (e.g. 8000). When set, kompend starts both the ACP agent and an MCP HTTP server.",
-    ),
+    mcp_port: AgentMcpPort = None,
 ) -> None:
     """Run kompend as an ACP agent on stdio.
 

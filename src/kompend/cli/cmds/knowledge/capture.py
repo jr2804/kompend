@@ -19,7 +19,19 @@ from kompend.capture.learn import learn
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli._sources import resolve_files
 from kompend.cli.app import app
-from kompend.cli.args import CaptureText, Frontmatter, LearnText, SourceAttrs, SourceTags
+from kompend.cli.args import (
+    WRITE_SOURCES_DEFAULT,
+    CaptureText,
+    ConsolidateDryRun,
+    ConsolidateNoArchive,
+    DistillNoArchive,
+    Frontmatter,
+    LearnText,
+    SourceAttrs,
+    SourceTags,
+    WritePageTitle,
+    WriteSourceFiles,
+)
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
 from kompend.core.models import MetadataField, load_cached_wiki
@@ -132,8 +144,8 @@ def _parse_attrs(attr: list[str] | None) -> dict[str, str]:
 @app.command(name="consolidate")
 def consolidate_cmd(
     ctx: typer.Context,
-    dry_run: bool = typer.Option(False, "--dry-run", help="Report duplicate groups without moving anything."),
-    no_archive: bool = typer.Option(False, "--no-archive", help="Keep duplicate notes in place (report only)."),
+    dry_run: ConsolidateDryRun = False,
+    no_archive: ConsolidateNoArchive = False,
 ) -> None:
     """Find and archive redundant captured/learned/distilled notes.
 
@@ -175,11 +187,7 @@ def consolidate_cmd(
 @app.command(name="distill")
 def distill_cmd(
     ctx: typer.Context,
-    no_archive: bool = typer.Option(
-        False,
-        "--no-archive",
-        help="Keep the source notes in place after distilling (default: archive them to sources/_archive/).",
-    ),
+    no_archive: DistillNoArchive = False,
 ) -> None:
     """Merge captured notes into coherent wiki pages via LLM.
 
@@ -230,8 +238,8 @@ def distill_cmd(
 @app.command(name="write")
 def write_cmd(
     ctx: typer.Context,
-    page_title: str = typer.Argument(..., help="Title of the page to create."),
-    source: list[str] = typer.Option([], "--source", "-s", help="Source file(s) to include (repeatable)."),  # noqa: B008
+    page_title: WritePageTitle,
+    source: WriteSourceFiles = WRITE_SOURCES_DEFAULT,
     frontmatter: Frontmatter = None,
 ) -> None:
     """Create a wiki page synthesising content from one or more sources.

@@ -22,6 +22,17 @@ from binaryornot.check import is_binary
 
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.app import app as main_app
+from kompend.cli.args import (
+    AttachmentAll,
+    AttachmentEmbed,
+    AttachmentFile,
+    AttachmentIngestible,
+    AttachmentListAll,
+    AttachmentListSource,
+    AttachmentPath,
+    AttachmentPathOptional,
+    AttachmentSource,
+)
 from kompend.core.config import resolve_config
 from kompend.core.models.attachments import (
     IMAGE_EXTENSIONS,
@@ -45,10 +56,10 @@ main_app.add_typer(attachments_app, name="att")
 @attachments_app.command("add")
 def add_attachment(
     ctx: typer.Context,
-    source: str = typer.Argument(help="Source file name or relative path (e.g., 'report.pdf')."),  # noqa: B008
-    attachment_file: Path = typer.Argument(help="Path to the attachment file to register."),  # noqa: B008
-    ingest: bool = typer.Option(False, "--ingest", help="Mark attachment as ingestible (processed during compile)."),  # noqa: B008
-    embed: bool | None = typer.Option(None, "--embed/--no-embed", help="Override global embed_attachments setting for this attachment."),  # noqa: B008
+    source: AttachmentSource,
+    attachment_file: AttachmentFile,
+    ingest: AttachmentIngestible = False,
+    embed: AttachmentEmbed = None,
 ) -> None:
     """Register an attachment for a source.
 
@@ -118,7 +129,7 @@ def add_attachment(
 @attachments_app.command("remove")
 def remove_attachment(
     ctx: typer.Context,
-    attachment_file: str = typer.Argument(help="Attachment relative path (e.g., 'report/photo.jpg') or just filename."),
+    attachment_file: AttachmentPath,
 ) -> None:
     """Remove (tombstone) a registered attachment.
 
@@ -159,8 +170,8 @@ def remove_attachment(
 @attachments_app.command("ingest")
 def ingest_attachment(
     ctx: typer.Context,
-    attachment_file: str = typer.Argument(None, help="Attachment relative path (e.g., 'report/photo.jpg') or just filename. Omit with --all."),  # noqa: B008
-    all_attachments: bool = typer.Option(False, "--all", help="Apply to every registered attachment."),  # noqa: B008
+    attachment_file: AttachmentPathOptional = None,
+    all_attachments: AttachmentAll = False,
 ) -> None:
     """Mark attachment(s) as ingestible (processed during compile).
 
@@ -178,8 +189,8 @@ def ingest_attachment(
 @attachments_app.command("no-ingest")
 def no_ingest_attachment(
     ctx: typer.Context,
-    attachment_file: str = typer.Argument(None, help="Attachment relative path (e.g., 'report/photo.jpg') or just filename. Omit with --all."),  # noqa: B008
-    all_attachments: bool = typer.Option(False, "--all", help="Apply to every registered attachment."),  # noqa: B008
+    attachment_file: AttachmentPathOptional = None,
+    all_attachments: AttachmentAll = False,
 ) -> None:
     """Mark attachment(s) as NOT ingestible (skipped during compile).
 
@@ -237,8 +248,8 @@ def _set_ingestible(ctx: typer.Context, attachment_file: str | None, all_attachm
 @attachments_app.command("list")
 def list_attachments(
     ctx: typer.Context,
-    source: str | None = typer.Option(None, "--source", "-s", help="Filter by source name."),
-    show_all: bool = typer.Option(False, "--all", "-a", help="Include deleted entries."),
+    source: AttachmentListSource = None,
+    show_all: AttachmentListAll = False,
 ) -> None:
     """List registered attachments."""
     vp = vault_paths_from_ctx(ctx)

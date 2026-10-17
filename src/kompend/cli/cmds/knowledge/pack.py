@@ -5,6 +5,7 @@ from __future__ import annotations
 import typer
 
 from kompend.cli.app import app
+from kompend.cli.args import PackName
 from kompend.logging import get_console, get_err_console
 from kompend.packs.base import get_registry
 from kompend.packs.builtins import academic_pack, technical_pack
@@ -28,7 +29,7 @@ def pack_list_cmd() -> None:
 
 @app.command(name="pack-install")
 def pack_install_cmd(
-    name: str = typer.Argument(..., help="Pack name to install (e.g. 'academic')."),
+    name: PackName,
 ) -> None:
     """Install a built-in contribution pack.
 

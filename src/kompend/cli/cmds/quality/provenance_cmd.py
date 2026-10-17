@@ -15,6 +15,7 @@ import typer
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.app import app
 from kompend.cli.args import JsonOutput
+from kompend.cli.args.quality import ProvenanceSlugs, ProvenanceWithContent
 from kompend.core.config import resolve_config
 from kompend.core.models import MetadataField, WikiNode, load_cached_wiki
 from kompend.logging import get_console, get_err_console
@@ -23,8 +24,8 @@ from kompend.logging import get_console, get_err_console
 @app.command(name="provenance")
 def provenance_cmd(
     ctx: typer.Context,
-    page_slugs: list[str] = typer.Argument(None, help="Page slug(s) or title(s) to trace. Omit to list all pages with their slugs."),  # noqa: B008
-    with_content: bool = typer.Option(False, "--with-content", help="Show cited content snippets."),
+    page_slugs: ProvenanceSlugs = None,
+    with_content: ProvenanceWithContent = False,
     json_output: JsonOutput = False,
 ) -> None:
     """Trace compiled wiki page(s) back to their source chunks.

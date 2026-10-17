@@ -45,22 +45,49 @@ from .compile import (
 )
 
 # Config command
-from .config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
+from .config import (
+    ConfigCheckPaths,
+    ConfigGlobalOpt,
+    ConfigKeyArg,
+    ConfigNoMerge,
+    ConfigValueArg,
+)
 
 # Init command
 from .init import InitBare, InitConfig, InitForce, InitGit, InitKeepCache, InitTarget
 
 # Knowledge commands (attachments, references, capture, pack, organize, agents)
 from .knowledge import (
+    WRITE_SOURCES_DEFAULT,
+    AttachmentAll,
+    AttachmentEmbed,
+    AttachmentFile,
+    AttachmentIngestible,
+    AttachmentListAll,
+    AttachmentListSource,
+    AttachmentPath,
+    AttachmentPathOptional,
+    AttachmentSource,
     CaptureText,
+    ConsolidateDryRun,
+    ConsolidateNoArchive,
+    DistillNoArchive,
     IngestTarget,
     LearnText,
     OrganizeCollapseSingle,
     OrganizeDryRun,
     OrganizeMaxDepth,
     OrganizeMinSubcategories,
+    PackName,
+    ReferencesExportOutput,
+    ReferencesExportSource,
+    ReferencesFetchDryRun,
+    ReferencesFetchSource,
+    ReferencesListSource,
     SourceAttrs,
     SourceTags,
+    WritePageTitle,
+    WriteSourceFiles,
 )
 
 # Memory command
@@ -78,8 +105,10 @@ from .pipeline import (
     ExportAll,
     ExportAnnotations,
     ExportInline,
+    ExportSourceId,
     ExportSummary,
     ForceTier,
+    IngestFiles,
     InPlaceFlag,
     JsonProgress,
     ListTiers,
@@ -96,16 +125,26 @@ from .quality import (
     LintFix,
     LintFixDestructive,
     LintFormatCheck,
+    LintGapsFix,
     LintHistoryLast,
     LintHistoryTrend,
     LintLlm,
     LintPruneAgeDays,
     LintPruneKeep,
     LintRule,
+    LintSemantic,
+    LogLast,
+    LogWrite,
     NoPrivacy,
     Private,
     Provenance,
+    ProvenanceSlugs,
+    ProvenanceWithContent,
+    ReviewAction,
+    ReviewAll,
     ReviewMode,
+    ReviewReason,
+    ReviewSlug,
     Verify,
 )
 
@@ -124,13 +163,35 @@ from .query import (
 )
 
 # Serving commands (serve, mcp, agent)
-from .serving import ServeHost, ServeOpen, ServePort
+from .serving import (
+    AgentMcpPort,
+    AgentsAction,
+    AgentsName,
+    AgentsTask,
+    ServeHost,
+    ServeOpen,
+    ServePort,
+)
 
 __all__ = [
     # Common
     "APP_NAME_UPPERCASE",
     "DEFAULT_LLM_FALLBACK_MAX_RETRIES",
     "DEFAULT_START_AT_TIER",
+    "WRITE_SOURCES_DEFAULT",
+    "AgentMcpPort",
+    "AgentsAction",
+    "AgentsName",
+    "AgentsTask",
+    "AttachmentAll",
+    "AttachmentEmbed",
+    "AttachmentFile",
+    "AttachmentIngestible",
+    "AttachmentListAll",
+    "AttachmentListSource",
+    "AttachmentPath",
+    "AttachmentPathOptional",
+    "AttachmentSource",
     # Other
     "BypassReview",
     # Knowledge
@@ -140,21 +201,28 @@ __all__ = [
     "CompileLint",
     "CompileLintAll",
     # Config
+    "ConfigCheckPaths",
     "ConfigGlobalOpt",
     "ConfigKeyArg",
+    "ConfigNoMerge",
     "ConfigPath",
     "ConfigValueArg",
+    "ConsolidateDryRun",
+    "ConsolidateNoArchive",
+    "DistillNoArchive",
     "EmbedModel",
     # Pipeline
     "ExportAll",
     "ExportAnnotations",
     "ExportInline",
+    "ExportSourceId",
     "ExportSummary",
     "ForceTier",
     "Frontmatter",
     "Ignore",
     "InPlaceFlag",
     "IndexStore",
+    "IngestFiles",
     "IngestTarget",
     # Init
     "InitBare",
@@ -170,16 +238,20 @@ __all__ = [
     "LintFix",
     "LintFixDestructive",
     "LintFormatCheck",
+    "LintGapsFix",
     "LintHistoryLast",
     "LintHistoryTrend",
     "LintLlm",
     "LintPruneAgeDays",
     "LintPruneKeep",
     "LintRule",
+    "LintSemantic",
     "ListTiers",
     "LlmDefaultModel",
     "LlmFallbackChain",
     "LlmFallbackMaxRetries",
+    "LogLast",
+    "LogWrite",
     # Memory
     "MemoryAnswer",
     "MemoryEnabled",
@@ -195,11 +267,14 @@ __all__ = [
     "OrganizeDryRun",
     "OrganizeMaxDepth",
     "OrganizeMinSubcategories",
+    "PackName",
     "ParseFiles",
     "PrintElements",
     "Private",
     "Progress",
     "Provenance",
+    "ProvenanceSlugs",
+    "ProvenanceWithContent",
     # Query
     "QueryAdaptive",
     "QueryFormatOption",
@@ -211,8 +286,17 @@ __all__ = [
     "QueryTopK",
     "QueryVerbosity",
     "Recursive",
+    "ReferencesExportOutput",
+    "ReferencesExportSource",
+    "ReferencesFetchDryRun",
+    "ReferencesFetchSource",
+    "ReferencesListSource",
+    "ReviewAction",
+    "ReviewAll",
     # Serving
     "ReviewMode",
+    "ReviewReason",
+    "ReviewSlug",
     "SearchMode",
     "ServeHost",
     "ServeOpen",
@@ -228,4 +312,6 @@ __all__ = [
     "VlmModel",
     "WikiDir",
     "Workers",
+    "WritePageTitle",
+    "WriteSourceFiles",
 ]

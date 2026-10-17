@@ -112,6 +112,22 @@ ExportSummary = Annotated[
     ),
 ]
 
+# ── ingest / sources commands ──────────────────────────────────────────
+
+IngestFiles = Annotated[
+    list[str] | None,
+    typer.Argument(
+        help=(
+            "Files, glob patterns, or directories to ingest. If omitted, all supported files in the wiki sources dir are scanned."
+        ),
+    ),
+]
+
+ExportSourceId = Annotated[
+    str,
+    typer.Argument(),
+]
+
 
 MemoryEnabled = Annotated[
     bool | None,

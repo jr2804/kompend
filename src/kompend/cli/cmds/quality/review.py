@@ -4,13 +4,18 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Annotated
 
 import typer
 
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.app import app
 from kompend.cli.args import JsonOutput
+from kompend.cli.args.quality import (
+    ReviewAction,
+    ReviewAll,
+    ReviewReason,
+    ReviewSlug,
+)
 from kompend.core.config import resolve_config
 from kompend.core.paths import REVIEW_DIR
 from kompend.logging import get_console, get_err_console
@@ -20,22 +25,10 @@ from kompend.review import ReviewQueue
 @app.command(name="review")
 def review_cmd(
     ctx: typer.Context,
-    action: Annotated[
-        str,
-        typer.Argument(help="Action: list | approve | reject | lock | unlock"),
-    ],
-    slug: Annotated[
-        str | None,
-        typer.Argument(help="Page slug (required for approve/reject/lock/unlock)."),
-    ] = None,
-    reason: Annotated[
-        str | None,
-        typer.Option("--reason", help="Rejection reason (for 'reject')."),
-    ] = None,
-    approve_all: Annotated[
-        bool,
-        typer.Option("--all", help="Approve every pending page."),
-    ] = False,
+    action: ReviewAction,
+    slug: ReviewSlug = None,
+    reason: ReviewReason = None,
+    approve_all: ReviewAll = False,
     json_output: JsonOutput = False,
 ) -> None:
     """Manage the review queue for compiled pages."""

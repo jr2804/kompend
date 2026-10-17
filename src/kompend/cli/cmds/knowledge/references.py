@@ -9,13 +9,19 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Annotated
 
 import typer
 
 from kompend.agents.reference_resolver import ReferenceResolverAgent
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.app import app
+from kompend.cli.args import (
+    ReferencesExportOutput,
+    ReferencesExportSource,
+    ReferencesFetchDryRun,
+    ReferencesFetchSource,
+    ReferencesListSource,
+)
 from kompend.compilation.flows.references import resolve_unresolved_references
 from kompend.core.config import resolve_config
 from kompend.core.models.references import SHORT_LABEL_TITLE_MAX
@@ -36,10 +42,7 @@ app.add_typer(references_app)
 @references_app.command("list", help="List all extracted references.")
 def references_list(
     ctx: typer.Context,
-    source: Annotated[
-        str | None,
-        typer.Option("--source", "-s", help="Filter to references from this source file."),
-    ] = None,
+    source: ReferencesListSource = None,
 ) -> None:
     """List all references (or those from a specific source)."""
     store = _resolve_ref_store(ctx)
@@ -74,14 +77,8 @@ def references_list(
 @references_app.command("export", help="Export references to BibTeX (.bib) or CSL JSON (.json).")
 def references_export(
     ctx: typer.Context,
-    output: Annotated[
-        Path,
-        typer.Option("--output", "-o", help="Output file path. Default: references.bib"),
-    ] = Path("references.bib"),
-    source: Annotated[
-        str | None,
-        typer.Option("--source", "-s", help="Export only references from this source."),
-    ] = None,
+    output: ReferencesExportOutput = Path("references.bib"),
+    source: ReferencesExportSource = None,
 ) -> None:
     """Export references to ``.bib`` (BibTeX) or ``.json`` (CSL JSON).
 
@@ -133,14 +130,8 @@ def _resolve_ref_store(ctx: typer.Context) -> ReferenceStore | None:
 )
 def references_fetch(
     ctx: typer.Context,
-    source: Annotated[
-        str | None,
-        typer.Option("--source", "-s", help="Only resolve references from this source file."),
-    ] = None,
-    dry_run: Annotated[
-        bool,
-        typer.Option("--dry-run", "-n", help="Resolve but do not save results to disk."),
-    ] = False,
+    source: ReferencesFetchSource = None,
+    dry_run: ReferencesFetchDryRun = False,
 ) -> None:
     """Resolve missing DOIs/URLs for references that lack them.
 

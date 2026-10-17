@@ -6,7 +6,7 @@ import json
 import sys
 import time
 import traceback
-from typing import Annotated, Any
+from typing import Any
 
 import typer
 
@@ -37,6 +37,7 @@ from kompend.cli.args import (
     ForceTier,
     Ignore,
     IndexStore,
+    IngestFiles,
     InPlaceFlag,
     JsonProgress,
     ListTiers,
@@ -298,10 +299,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
 @app.command(name="ingest")
 def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     ctx: typer.Context,
-    files: Annotated[
-        list[str] | None,
-        typer.Argument(help="Files, glob patterns, or directories to ingest. If omitted, all supported files in the wiki sources dir are scanned."),
-    ] = None,
+    files: IngestFiles = None,
     config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,

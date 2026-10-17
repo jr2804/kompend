@@ -96,6 +96,22 @@ LintFormatCheck = Annotated[
     ),
 ]
 
+LintSemantic = Annotated[
+    bool,
+    typer.Option(
+        "--semantic/--no-semantic",
+        help="Verify missing topics against source chunks via the embedding model (needs compile.embedding.model).",
+    ),
+]
+
+LintGapsFix = Annotated[
+    bool,
+    typer.Option(
+        "--fix",
+        help="Generate pages for source-covered missing topics (same as lint remediate).",
+    ),
+]
+
 # ── N8 review queue ─────────────────────────────────────────────────────
 
 ReviewMode = Annotated[
@@ -114,6 +130,26 @@ BypassReview = Annotated[
         help="Skip review entirely (overrides --review).",
         rich_help_panel="Output",
     ),
+]
+
+ReviewAction = Annotated[
+    str,
+    typer.Argument(help="Action: list | approve | reject | lock | unlock"),
+]
+
+ReviewSlug = Annotated[
+    str | None,
+    typer.Argument(help="Page slug (required for approve/reject/lock/unlock)."),
+]
+
+ReviewReason = Annotated[
+    str | None,
+    typer.Option("--reason", help="Rejection reason (for 'reject')."),
+]
+
+ReviewAll = Annotated[
+    bool,
+    typer.Option("--all", help="Approve every pending page."),
 ]
 
 
@@ -152,5 +188,36 @@ Verify = Annotated[
         "--verify/--no-verify",
         help="Run grounding verification on each claim. Default: on; --no-verify skips.",
         rich_help_panel="Output",
+    ),
+]
+
+ProvenanceSlugs = Annotated[
+    list[str] | None,
+    typer.Argument(
+        help="Page slug(s) or title(s) to trace. Omit to list all pages with their slugs."
+    ),
+]
+
+ProvenanceWithContent = Annotated[
+    bool,
+    typer.Option("--with-content", help="Show cited content snippets."),
+]
+
+# ── log command ─────────────────────────────────────────────────────────
+
+LogLast = Annotated[
+    int,
+    typer.Option(
+        "--last",
+        "-n",
+        help="Maximum number of command/lint entries to include.",
+    ),
+]
+
+LogWrite = Annotated[
+    bool,
+    typer.Option(
+        "--write",
+        help="Write the report to .kompend/log.md instead of printing it.",
     ),
 ]

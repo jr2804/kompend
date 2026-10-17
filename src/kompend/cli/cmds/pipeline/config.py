@@ -5,14 +5,19 @@ from __future__ import annotations
 import json
 import re
 import sys
-from pathlib import Path
 
 import typer
 
 from kompend.cli._shared import vault_paths_from_ctx
 from kompend.cli.app import app
 from kompend.cli.args.common import JsonOutput
-from kompend.cli.args.config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
+from kompend.cli.args.config import (
+    ConfigCheckPaths,
+    ConfigGlobalOpt,
+    ConfigKeyArg,
+    ConfigNoMerge,
+    ConfigValueArg,
+)
 from kompend.core.config import (
     STATUS_DEPRECATED,
     STATUS_ERROR,
@@ -135,16 +140,9 @@ def config_file(
 )
 def config_check(
     ctx: typer.Context,
-    paths: list[Path] | None = typer.Argument(  # noqa: B008
-        None,
-        help="TOML files to diff. Omit to check the discovered project config. Multiple files merge (later wins); use --no-merge for per-file reports.",
-    ),
+    paths: ConfigCheckPaths = None,
     json_output: JsonOutput = False,
-    no_merge: bool = typer.Option(  # noqa: B008
-        False,
-        "--no-merge",
-        help="Report on each file independently instead of merging them.",
-    ),
+    no_merge: ConfigNoMerge = False,
 ) -> None:
     """Show which keys are defaults, modified, or invalid for each file.
 
