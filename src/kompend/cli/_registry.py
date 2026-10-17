@@ -96,6 +96,20 @@ class CommandName(StrEnum):
     WRITE = "write"
 
 
+class OnDemandModule(StrEnum):
+    """Import path of a module the CLI loads only when it is needed.
+
+    Unlike :class:`CommandModule`, importing one of these registers no command —
+    they exist because their cost is real and their work is occasional. The
+    telemetry module is the case that motivated this: importing ``logfire``
+    costs roughly 700 ms and pulls in ``requests``, so ``kompend --version``,
+    ``--help`` and every in-process import of the CLI used to pay for telemetry
+    none of them emit.
+    """
+
+    TELEMETRY = "kompend.telemetry"
+
+
 @dataclass(frozen=True, slots=True)
 class CommandSpec:
     """Where a command lives and where help lists it."""

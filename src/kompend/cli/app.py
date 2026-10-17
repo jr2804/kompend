@@ -10,18 +10,15 @@ from __future__ import annotations
 
 import contextlib
 import importlib
-import os
 import sys
 from importlib.metadata import version
 
-import logfire
 import typer
 
 from kompend.cli._group import LazyGroup
-from kompend.cli._registry import COMMANDS
+from kompend.cli._registry import COMMANDS, OnDemandModule
 from kompend.cli._shared import format_exception_for_cli
 from kompend.cli.args import NoUserTracking, Verbose, Version, WikiDir
-from kompend.core.config.keys import EnvVar
 from kompend.core.reporting.runlog import RunHandle, log_run_end, log_run_start
 from kompend.core.verbosity import is_verbose, set_verbose
 from kompend.logging import configure_logging, get_console
@@ -106,28 +103,16 @@ def main() -> None:
 # We point at "kompend" + "staging" so traces land in the starter project on
 # logfire-eu. Respects KOMP_LOGFIRE_DISABLED and LOGFIRE_TOKEN.
 def _configure_logfire() -> None:
-    """Enable Logfire instrumentation once per process (called from main())."""
-    if os.environ.get(EnvVar.LOGFIRE_DISABLED, "").strip().lower() in ("1", "true", "yes"):
-        return
-    # logfire fans telemetry out to standard OTLP exporters when the ambient
-    # OTEL_EXPORTER_OTLP_ENDPOINT env var is set (logfire config.py:1469).
-    # Each signal (traces/metrics/logs) has its own switch, all defaulting to
-    # enabled. A stale collector endpoint from unrelated shell tooling
-    # (e.g. Copilot's local collector, injected per-window into VS Code
-    # terminals — never on disk) then receives kompend telemetry and retries
-    # against a dead port. kompend has its own collector path
-    # (agents/instrument.py, gated on KOMP_OTEL_ENABLED), so ambient OTel vars
-    # must not divert logfire telemetry. setdefault keeps the escape hatch:
-    # OTEL_TRACES_EXPORTER=otlp (etc.) explicitly re-enables fan-through.
-    os.environ.setdefault("OTEL_TRACES_EXPORTER", "none")
-    os.environ.setdefault("OTEL_METRICS_EXPORTER", "none")
-    os.environ.setdefault("OTEL_LOGS_EXPORTER", "none")
-    logfire.configure(
-        service_name="kompend",
-        environment="staging",
-        send_to_logfire="if-token-present",
-    )
-    logfire.instrument_pydantic_ai()
+    """Enable Logfire instrumentation once per process (called from main()).
+
+    kompend.telemetry owns ``import logfire`` (~700 ms, and it pulls in
+    requests) and is loaded here on demand, the same way the lazy command group
+    loads command modules. The alternative - importing it at module scope - made
+    every in-process import of this module, including ``kompend --version``,
+    ``--help`` and the whole test suite, pay for telemetry none of them emit.
+    """
+    telemetry = importlib.import_module(OnDemandModule.TELEMETRY.value)
+    telemetry.configure_logfire()
 
 
 def _extract_handle() -> RunHandle | None:
