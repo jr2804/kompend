@@ -321,12 +321,6 @@ class TestOkfFrontmatter:
     otherwise tell a pre-migration note from a conformant one.
     """
 
-    @staticmethod
-    def _meta(path: Path) -> dict:
-        content = path.read_text(encoding="utf-8")
-        assert content.startswith("---\n")
-        return yaml.safe_load(content[4:].split("\n---\n", 1)[0])
-
     def test_learn_declares_okf_version(self, tmp_path: Path) -> None:
         meta = self._meta(learn("A fact worth keeping.", sources_dir=tmp_path))
         assert meta["okf_version"] == "0.2"
@@ -366,6 +360,12 @@ class TestOkfFrontmatter:
         assert "okf_version" not in meta
         assert meta["tags"] == ["legacy"]
         assert meta["captured_at"] == "20260101T000000"
+
+    @staticmethod
+    def _meta(path: Path) -> dict:
+        content = path.read_text(encoding="utf-8")
+        assert content.startswith("---\n")
+        return yaml.safe_load(content[4:].split("\n---\n", 1)[0])
 
 
 class TestDistillUpdateAndArchive:

@@ -9,6 +9,10 @@ from typing import Annotated
 
 import typer
 
+#: Default for ``write --source``: an empty list, named so the alias default
+#: is not a bare mutable literal in a signature (B006).
+WRITE_SOURCES_DEFAULT: list[str] = []
+
 # ── `organize` command surface ──────────────────────────────────────────
 
 OrganizeMaxDepth = Annotated[
@@ -184,10 +188,6 @@ WritePageTitle = Annotated[
     str,
     typer.Argument(help="Title of the page to create."),
 ]
-
-#: Default for ``write --source``: an empty list, named so the alias default
-#: is not a bare mutable literal in a signature (B006).
-WRITE_SOURCES_DEFAULT: list[str] = []
 
 WriteSourceFiles = Annotated[
     list[str],

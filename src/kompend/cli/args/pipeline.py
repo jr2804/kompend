@@ -117,9 +117,7 @@ ExportSummary = Annotated[
 IngestFiles = Annotated[
     list[str] | None,
     typer.Argument(
-        help=(
-            "Files, glob patterns, or directories to ingest. If omitted, all supported files in the wiki sources dir are scanned."
-        ),
+        help=("Files, glob patterns, or directories to ingest. If omitted, all supported files in the wiki sources dir are scanned."),
     ),
 ]
 

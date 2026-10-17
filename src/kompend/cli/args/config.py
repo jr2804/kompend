@@ -34,9 +34,7 @@ ConfigGlobalOpt = Annotated[
 ConfigCheckPaths = Annotated[
     list[Path] | None,
     typer.Argument(
-        help=(
-            "TOML files to diff. Omit to check the discovered project config. Multiple files merge (later wins); use --no-merge for per-file reports."
-        ),
+        help=("TOML files to diff. Omit to check the discovered project config. Multiple files merge (later wins); use --no-merge for per-file reports."),
     ),
 ]
 

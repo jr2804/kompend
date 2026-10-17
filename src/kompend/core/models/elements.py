@@ -16,6 +16,32 @@ __all__ = ["DocumentElement", "ParsedDocument", "element_text"]
 BINARY_PLACEHOLDER = "[binary content: {size} bytes, not text]"
 
 
+@dataclass
+class DocumentElement:
+    """A single element from a parsed document (text, heading, table, etc.)."""
+
+    type: ElementType
+    content: str | list[list[str]] | bytes
+    page: int | None = None
+    reading_order: int | None = None
+    heading_level: int | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    source_file: Path | None = None
+
+
+@dataclass
+class ParsedDocument:
+    """Output of Tier 1: Preprocessing."""
+
+    source_file: Path
+    elements: list[DocumentElement]
+    title: str = ""
+    author: str = ""
+    language: str = "en"
+    page_count: int = 0
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
 def element_text(content: str | list[list[str]] | bytes) -> str:
     """Project element content onto plain text.
 
@@ -41,29 +67,3 @@ def element_text(content: str | list[list[str]] | bytes) -> str:
     # list[list[str]] - a table. Rendered as rows so cell values stay
     # embeddable rather than collapsing into a Python list repr.
     return "\n".join(" | ".join(cell for cell in row) for row in content)
-
-
-@dataclass
-class DocumentElement:
-    """A single element from a parsed document (text, heading, table, etc.)."""
-
-    type: ElementType
-    content: str | list[list[str]] | bytes
-    page: int | None = None
-    reading_order: int | None = None
-    heading_level: int | None = None
-    metadata: dict[str, Any] = field(default_factory=dict)
-    source_file: Path | None = None
-
-
-@dataclass
-class ParsedDocument:
-    """Output of Tier 1: Preprocessing."""
-
-    source_file: Path
-    elements: list[DocumentElement]
-    title: str = ""
-    author: str = ""
-    language: str = "en"
-    page_count: int = 0
-    metadata: dict[str, Any] = field(default_factory=dict)

@@ -193,9 +193,7 @@ Verify = Annotated[
 
 ProvenanceSlugs = Annotated[
     list[str] | None,
-    typer.Argument(
-        help="Page slug(s) or title(s) to trace. Omit to list all pages with their slugs."
-    ),
+    typer.Argument(help="Page slug(s) or title(s) to trace. Omit to list all pages with their slugs."),
 ]
 
 ProvenanceWithContent = Annotated[
