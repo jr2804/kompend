@@ -32,6 +32,7 @@ from pydantic_ai.embeddings import infer_embedding_model
 from pydantic_ai.providers.ollama import OllamaProvider
 
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
+from kompend.core.models.elements import element_text
 from kompend.core.paths import KOMP_DB_FILE, rel_to_vault
 from kompend.core.store import open_store
 from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
@@ -46,7 +47,10 @@ _ZVEC_MAX_ID_LEN = 64
 _ZVEC_COLLECTION_NAME = "kompend_wiki"
 
 
-_EMBED_TEXT_VERSION = 2
+# 3: content is projected through element_text, so a non-prose node embeds
+# differently than it did when the composition passed node.content straight
+# through. Bumped so existing indexes rebuild instead of serving pre-change vectors.
+_EMBED_TEXT_VERSION = 3
 
 logger = get_logger(__name__)
 
@@ -691,11 +695,19 @@ def _embed_text(node: WikiNode) -> str:
     frontmatter. Leaving it out made the vector path weigh different evidence
     than the written summary. A node with no prose (empty content, or headings
     only) embeds as ``title`` plus a newline plus ``content``, as before.
+
+    Content is passed through :func:`element_text`, the canonical projection
+    for the ``str | list[list[str]] | bytes`` union that element content is
+    declared as. A node whose content is not prose — a table kept structured, an
+    asset payload — reaches the embedder as renderable text instead of whatever
+    ``str()`` would produce for it. Node content is typed ``str``, so this is
+    the tier that guarantees the contract rather than assuming it upstream.
     """
     description = node.description
+    body = element_text(node.content)
     if description:
-        return f"{node.title}\n{description}\n{node.content}"
-    return f"{node.title}\n{node.content}"
+        return f"{node.title}\n{description}\n{body}"
+    return f"{node.title}\n{body}"
 
 
 def indexable_nodes(wiki: CompiledWiki, *, embed_attachments: bool = False) -> list[WikiNode]:

@@ -46,6 +46,28 @@ class TestEmbedTextComposition:
     def test_empty_content_falls_back_to_title(self) -> None:
         assert _embed_text(_node("a", content="")) == "T\n"
 
+    def test_binary_content_never_reaches_the_embedder_as_a_repr(self) -> None:
+        """A payload that is not text must not embed as a bytes repr.
+
+        Node content is declared ``str``, so a non-text payload used to arrive
+        already stringified by an upstream ``str()`` - invisibly, because the
+        declared type made it look handled.
+        """
+        payload = b"\x89PNG\r\n\x1a\n" + bytes(2048)
+        node = replace(_node("a", content="placeholder"), content=payload)  # type: ignore[arg-type]
+        embedded = _embed_text(node)
+        assert "b'" not in embedded
+        assert "x89" not in embedded
+        assert "binary content" in embedded
+        assert str(len(payload)) in embedded
+
+    def test_structured_table_content_embeds_as_rows(self) -> None:
+        node = replace(_node("a", content="placeholder"), content=[["Rate", "Value"], ["1", "2"]])  # type: ignore[arg-type]
+        embedded = _embed_text(node)
+        assert "Rate | Value" in embedded
+        assert "1 | 2" in embedded
+        assert "[['Rate'" not in embedded
+
 
 class TestDescriptionDerivation:
     """The derivation moved to the model; pin the behaviour it must keep."""

@@ -24,6 +24,35 @@ from kompend.core.models import (
     StructuredTable,
     WikiNode,
 )
+from kompend.core.models.elements import element_text
+
+
+class TestElementText:
+    """The canonical projection of the element-content union onto text.
+
+    ``DocumentElement.content`` is ``str | list[list[str]] | bytes`` because
+    parsers may return structured tables or raw payloads, but every downstream
+    consumer needs text. These pin each branch, especially ``bytes``: stringified
+    by ``str()`` it becomes a repr blob that reaches the embedder as noise.
+    """
+
+    def test_prose_passes_through_unchanged(self) -> None:
+        assert element_text("plain text") == "plain text"
+
+    def test_table_renders_as_rows_not_a_list_repr(self) -> None:
+        rendered = element_text([["Name", "Value"], ["a", "1"]])
+        assert rendered == "Name | Value\na | 1"
+        assert "[[" not in rendered
+
+    def test_binary_payload_becomes_an_explicit_placeholder(self) -> None:
+        payload = b"\x89PNG" + bytes(100)
+        rendered = element_text(payload)
+        assert rendered == f"[binary content: {len(payload)} bytes, not text]"
+        assert "b'" not in rendered
+        assert "x89" not in rendered
+
+    def test_empty_table_renders_empty(self) -> None:
+        assert element_text([]) == ""
 
 
 def test_element_type_enum() -> None:

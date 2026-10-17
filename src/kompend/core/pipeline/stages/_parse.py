@@ -18,6 +18,7 @@ from kompend.core.models import (
     WikiField,
 )
 from kompend.core.models.attachments import AttachmentManifest, adopt_orphan_attachments
+from kompend.core.models.elements import element_text
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.attachments import (
     ingest_attachment,
@@ -368,7 +369,9 @@ def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocumen
             "elements": [
                 {
                     "type": str(el.type),
-                    "content": str(el.content) if not isinstance(el.content, list) else el.content,
+                    # element_text, not str(): bytes would land in the cache (and
+                    # every later read of it) as a repr blob.
+                    "content": el.content if isinstance(el.content, list) else element_text(el.content),
                     "page": el.page,
                     MetadataField.READING_ORDER: el.reading_order,
                     "heading_level": el.heading_level,

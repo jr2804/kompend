@@ -12,6 +12,7 @@ from typing import Any, Final, NotRequired, TypedDict
 
 import yaml
 
+from kompend.core.models.elements import element_text
 from kompend.core.models.enums import MetadataField
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import WIKI_SNAPSHOT_TABLE
@@ -117,7 +118,7 @@ class WikiNode:
         not a heading fragment) and ``[[wikilinks]]`` are reduced to their
         display text.
         """
-        content = (self.content or "").strip()
+        content = element_text(self.content).strip()
         if not content:
             return ""
         for line in content.split("\n"):
