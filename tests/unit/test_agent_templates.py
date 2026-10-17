@@ -35,6 +35,8 @@ from collections.abc import Iterator
 
 import pytest
 from jinja2 import Environment, UndefinedError
+from jinja2.meta import find_undeclared_variables
+from jinja2.nodes import Template
 
 import kompend.agents as agents_package
 from kompend.agents.base import KompendAgentBase
@@ -77,6 +79,27 @@ def test_declared_templates_resolve(agent: type[KompendAgentBase]) -> None:
 
 
 @pytest.mark.parametrize("agent", _AGENTS, ids=lambda cls: cls.__name__)
+def test_base_rendered_user_template_declares_every_variable_it_references(agent: type[KompendAgentBase]) -> None:
+    """A base-rendered user template may only reference declared variables.
+
+    ``render_user_prompt`` passes exactly the variables a template's frontmatter
+    declares — ``{k: v for k, v in vars_dict.items() if k in declared}`` — so any
+    other reference renders as ``UndefinedError`` the first time the agent runs,
+    long after the parse-time checks above have passed. The subset relation is
+    decidable statically, so it needs neither runtime deps nor a model: this is
+    the check that catches a template whose body outlived the prompt it was
+    copied from.
+    """
+    user_template, _ = _declared_templates(agent)
+    if not user_template:
+        pytest.skip(f"{agent.__name__} owns its user prompt or declares none")
+    declared = _loader.get_meta(user_template).declared_variable_names()
+    referenced = find_undeclared_variables(_parse_template(_loader.get_body(user_template)))
+    missing = sorted(referenced - declared)
+    assert not missing, f"{user_template} references {missing} but declares {sorted(declared)}"
+
+
+@pytest.mark.parametrize("agent", _AGENTS, ids=lambda cls: cls.__name__)
 def test_declared_templates_parse(agent: type[KompendAgentBase]) -> None:
     user_template, system_template = _declared_templates(agent)
     declared = [path for path in (user_template, system_template) if path]
@@ -84,7 +107,7 @@ def test_declared_templates_parse(agent: type[KompendAgentBase]) -> None:
         pytest.skip(f"{agent.__name__} declares no base-managed template")
     for path in declared:
         # Valid Jinja2 (syntax + expression parse); rendering needs runtime deps.
-        Environment().parse(_loader.get_body(path))  # noqa: S701 — AST parse only
+        _parse_template(_loader.get_body(path))
 
 
 @pytest.mark.parametrize("agent", _AGENTS, ids=lambda cls: cls.__name__)
@@ -111,6 +134,15 @@ def test_agentic_system_tools_match_registered(agent: type[KompendAgentBase]) ->
     registered = _registered_tool_names(_build_agent_instance(agent))
     declared = _declared_tool_names(system_body)
     assert declared == registered, f"{agent.__name__} system prompt declares {declared}, agent registers {registered}"
+
+
+def _parse_template(body: str) -> Template:
+    """Parse a template body to an AST.
+
+    ``autoescape`` is irrelevant to parsing — it is set only so the security
+    linter sees an explicit choice rather than a default.
+    """
+    return Environment(autoescape=True).parse(body)
 
 
 def _declared_templates(agent: type[KompendAgentBase]) -> tuple[str, str]:

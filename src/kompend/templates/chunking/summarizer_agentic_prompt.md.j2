@@ -1,10 +1,9 @@
-Write a concise summary (1-2 sentences, under 600 chars) of the following
-document section. The content is compiled from child nodes; capture the
-section's key purpose and key points.
+---
+variables: []
+role: chunking.summarizer-agentic
+response_format: text
+---
 
-Heading: {{ heading_chain }}
-Content:
-
-{{ content }}
-
-Summary:
+Summarize every internal node of the chunk tree. Call next_node() to fetch each
+node awaiting a summary, then record it with summarize_node(node_id, summary).
+Continue until next_node() reports no work left.

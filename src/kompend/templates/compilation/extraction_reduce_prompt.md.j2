@@ -1,3 +1,11 @@
+---
+variables:
+  - name: text
+    required: true
+role: compilation.extraction-reduce
+response_format: json_object
+---
+
 Below are partial extractions from different sections of the same source document.
 Merge them into ONE coherent document-level extraction.
 
@@ -11,4 +19,4 @@ Return only the JSON object, no markdown fences.
 
 Partial extractions (JSON array):
 
-{{ partial_json }}
+{{ text }}

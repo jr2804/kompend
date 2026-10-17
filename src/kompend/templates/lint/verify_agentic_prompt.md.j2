@@ -1,2 +1,10 @@
-{% for claim in deps.claims[:50] %}{{ claim.text }}
-{% endfor %}
+---
+variables: []
+role: lint.verify-agentic
+response_format: json_object
+---
+
+Verify every claim in the compiled wiki. Call get_claim() to fetch them in
+batches and work through them as the system prompt describes, recording each
+verdict with mark_verified(), mark_contradicted() or mark_unverifiable().
+Continue until get_claim() returns {}.

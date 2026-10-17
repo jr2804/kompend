@@ -1,1 +1,9 @@
-Write the wiki page titled: {{ page_title }}
+---
+variables: []
+role: capture.write-agentic
+response_format: text
+---
+
+Write the wiki page. Call list_sources() to see what is available, read the
+sources you need with read_source(stem), then submit the finished Markdown with
+save_page(content).

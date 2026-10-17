@@ -1,8 +1,10 @@
-Generate situating context for the chunk described below.
+---
+variables: []
+role: chunking.contextual-agentic
+response_format: text
+---
 
-Document: {{ doc_title }}
-Document summary: {{ doc_summary }}
-Chunk heading chain: {{ current_chunk.heading_chain }}
-Chunk text: {{ current_chunk.text }}
-
-Return ONLY the context paragraph. No preamble.
+Generate situating context for every chunk that needs it. Call next_chunk() to
+fetch the next chunk, then record the paragraph with
+situate_chunk(chunk_id, content). Continue until next_chunk() reports no work
+left.
