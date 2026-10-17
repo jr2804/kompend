@@ -35,9 +35,13 @@ from .compile import (
     Frontmatter,
     Ignore,
     IndexStore,
+    LlmDefaultModel,
+    LlmFallbackChain,
+    LlmFallbackMaxRetries,
     OnlineUrls,
     SynthesizeFlag,
     UrlFile,
+    VlmModel,
 )
 
 # Config command
@@ -45,6 +49,19 @@ from .config import ConfigGlobalOpt, ConfigKeyArg, ConfigValueArg
 
 # Init command
 from .init import InitBare, InitConfig, InitForce, InitGit, InitKeepCache, InitTarget
+
+# Knowledge commands (attachments, references, capture, pack, organize, agents)
+from .knowledge import (
+    CaptureText,
+    IngestTarget,
+    LearnText,
+    OrganizeCollapseSingle,
+    OrganizeDryRun,
+    OrganizeMaxDepth,
+    OrganizeMinSubcategories,
+    SourceAttrs,
+    SourceTags,
+)
 
 # Memory command
 from .memory import (
@@ -54,13 +71,27 @@ from .memory import (
     MemoryQuery,
     MemoryTopK,
 )
+from .parse import ParseFiles, PrintElements
 
-# Other commands (lint, serve, organize, capture, learn, ingest, llm, etc.)
-from .other import (
+# Pipeline/tiered compilation
+from .pipeline import (
+    ExportAll,
+    ExportAnnotations,
+    ExportInline,
+    ExportSummary,
+    ForceTier,
+    InPlaceFlag,
+    JsonProgress,
+    ListTiers,
+    MemoryEnabled,
+    NoCacheFlag,
+    StartAtTier,
+    Workers,
+)
+
+# Quality commands (lint, review, provenance, doctor, status)
+from .quality import (
     BypassReview,
-    CaptureText,
-    IngestTarget,
-    LearnText,
     LintDryRun,
     LintFix,
     LintFixDestructive,
@@ -71,37 +102,11 @@ from .other import (
     LintPruneAgeDays,
     LintPruneKeep,
     LintRule,
-    LlmDefaultModel,
-    LlmFallbackChain,
-    LlmFallbackMaxRetries,
-    MemoryEnabled,
     NoPrivacy,
-    OrganizeCollapseSingle,
-    OrganizeDryRun,
-    OrganizeMaxDepth,
-    OrganizeMinSubcategories,
     Private,
     Provenance,
     ReviewMode,
-    ServeHost,
-    ServeOpen,
-    ServePort,
-    SourceAttrs,
-    SourceTags,
     Verify,
-    VlmModel,
-)
-from .parse import ParseFiles, PrintElements
-
-# Pipeline/tiered compilation
-from .pipeline import (
-    ForceTier,
-    InPlaceFlag,
-    JsonProgress,
-    ListTiers,
-    NoCacheFlag,
-    StartAtTier,
-    Workers,
 )
 
 # Query command
@@ -118,6 +123,9 @@ from .query import (
     SearchMode,
 )
 
+# Serving commands (serve, mcp, agent)
+from .serving import ServeHost, ServeOpen, ServePort
+
 __all__ = [
     # Common
     "APP_NAME_UPPERCASE",
@@ -125,6 +133,7 @@ __all__ = [
     "DEFAULT_START_AT_TIER",
     # Other
     "BypassReview",
+    # Knowledge
     "CaptureText",
     "CliSet",
     # Compile
@@ -137,6 +146,10 @@ __all__ = [
     "ConfigValueArg",
     "EmbedModel",
     # Pipeline
+    "ExportAll",
+    "ExportAnnotations",
+    "ExportInline",
+    "ExportSummary",
     "ForceTier",
     "Frontmatter",
     "Ignore",
@@ -198,6 +211,7 @@ __all__ = [
     "QueryTopK",
     "QueryVerbosity",
     "Recursive",
+    # Serving
     "ReviewMode",
     "SearchMode",
     "ServeHost",

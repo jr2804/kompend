@@ -23,14 +23,17 @@ Arguments organized by domain/command group:
 | Module | Purpose | Commands |
 |--------|---------|----------|
 | `common.py` | Cross-command arguments | used by multiple command groups |
-| `compile.py` | Compile command arguments | `/kompend compile` and tiered compilation |
+| `compile.py` | Compile command arguments | `/kompend compile` incl. LLM failover options |
 | `parse.py` | Parse command arguments | `/kompend parse` |
 | `query.py` | Query command arguments | `/kompend query` and RAG operations |
-| `pipeline.py` | Pipeline/tiered compilation arguments | `/kompend pipeline` |
+| `pipeline.py` | Pipeline/tiered compilation arguments | `/kompend pipeline`, sources export |
+| `knowledge.py` | Knowledge command arguments | attachments, references, capture, pack, organize, agents |
+| `quality.py` | Quality command arguments | lint, review, provenance, doctor, status |
+| `serving.py` | Serving command arguments | serve, mcp, agent |
 | `config.py` | Config subcommand arguments | `/kompend config` sub-app |
 | `init.py` | Init subcommand arguments | `/kompend init` sub-app |
 | `memory.py` | Memory command group arguments | `/kompend memory` sub-app |
-| `other.py` | Remaining commands | `/kompend lint`, `/kompend review`, `/kompend serve`, `/kompend organize`, `/kompend pack`, `/kompend quality`, `/kompend capture`, `/kompend doctor`, `/kompend status` |
+| `other.py` | Compatibility re-export shim of the domain modules | retires once no caller deep-imports `args.other` |
 
 ### Naming conventions
 

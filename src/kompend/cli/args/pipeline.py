@@ -6,6 +6,7 @@ from typing import Annotated
 
 import typer
 
+from kompend.core.config import ExportMode
 from kompend.core.config.keys import EnvVar
 
 # ── Q20 tiered compilation ──────────────────────────────────────────────
@@ -76,6 +77,48 @@ JsonProgress = Annotated[
     typer.Option(
         "--json-progress",
         help="Emit progress as JSONL to stdout (for machine consumers).",
+        rich_help_panel="Pipeline",
+    ),
+]
+
+# ── sources export ───────────────────────────────────────────────────────
+
+ExportAll = Annotated[
+    bool,
+    typer.Option("--all", help="Export every ingested source into exported/."),
+]
+
+ExportInline = Annotated[
+    bool,
+    typer.Option(
+        "--inline/--no-inline",
+        help="Embed images as data URIs (default: copy to <output stem>_assets/).",
+    ),
+]
+
+ExportAnnotations = Annotated[
+    ExportMode | None,
+    typer.Option(
+        "--annotations",
+        help="Where extracted table/figure annotations go: off, inline, or asset (default: export.annotations config).",
+    ),
+]
+
+ExportSummary = Annotated[
+    ExportMode | None,
+    typer.Option(
+        "--summary",
+        help="Where the document summary goes: off, inline, or asset (default: export.summary config).",
+    ),
+]
+
+
+MemoryEnabled = Annotated[
+    bool | None,
+    typer.Option(
+        "--memory/--no-memory",
+        help=("Track node lifecycle (confidence, tiers, supersession, retention/decay) across compiles. Disabled skips the memory update pass. Default: on."),
+        envvar=EnvVar.MEMORY_ENABLED,
         rich_help_panel="Pipeline",
     ),
 ]

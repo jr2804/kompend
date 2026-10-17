@@ -96,3 +96,58 @@ CompileLintAll = Annotated[
         envvar=EnvVar.COMPILE_LINT_ALL,
     ),
 ]
+
+
+LlmDefaultModel = Annotated[
+    str | None,
+    typer.Option(
+        "--llm-default-model",
+        help=(
+            "Primary model in provider/model format ('provider/model'), "
+            "e.g. 'openai/gpt-4o' or 'ollama/llama3.2'. "
+            "Overrides the config-file model/provider when set."
+        ),
+        envvar=EnvVar.LLM_DEFAULT_MODEL,
+        rich_help_panel="LLM",
+    ),
+]
+
+VlmModel = Annotated[
+    str | None,
+    typer.Option(
+        "--vlm-model",
+        help=(
+            "Vision model in provider/model format ('provider/model') used to caption "
+            "IMAGE chunks during resolution. When set, VLMEnricher is added to "
+            "the resolver chain. Example: 'openai/gpt-4o'. Default: off."
+        ),
+        envvar=EnvVar.VLM_MODEL,
+        rich_help_panel="LLM",
+    ),
+]
+
+LlmFallbackChain = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--llm-fallback-chain",
+        help=(
+            "Ordered fallback model(s) tried when the primary LLM fails "
+            "(repeatable). Each value is a message-dict 'provider/model' "
+            "string, e.g. 'openai/gpt-4o'. Empty means single-model mode. "
+            "Env var value: comma-separated list."
+        ),
+        envvar=EnvVar.LLM_FALLBACK_CHAIN,
+        rich_help_panel="LLM",
+    ),
+]
+
+LlmFallbackMaxRetries = Annotated[
+    int,
+    typer.Option(
+        "--llm-fallback-max-retries",
+        help=("Transient-error retries before advancing to the next model in the failover chain. 2 means up to three attempts per model."),
+        min=0,
+        envvar=EnvVar.LLM_FALLBACK_MAX_RETRIES,
+        rich_help_panel="LLM",
+    ),
+]

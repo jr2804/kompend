@@ -13,6 +13,7 @@ every command in the registry must land in exactly one panel.
 
 from __future__ import annotations
 
+import pytest
 from typer.testing import CliRunner
 
 from kompend.cli._registry import COMMANDS, PANEL_ORDER, CommandModule, CommandName
@@ -64,3 +65,17 @@ class TestHelpEverywhere:
         result = runner.invoke(app, ["-w", "d:/some/wiki", "compile", "--help"])
         assert result.exit_code == 0
         assert "compile" in result.output.lower()
+
+
+class TestCommandHelpSafetyNet:
+    """Every registry command must answer ``<cmd> --help`` with exit 0.
+
+    Guards the lazy group, the registry, and every option declaration at
+    once: a broken alias (e.g. a missing ``envvar`` member) surfaces here
+    the moment a command module or args module drifts.
+    """
+
+    @pytest.mark.parametrize("name", list(COMMANDS), ids=lambda n: n.value)
+    def test_command_help_exits_zero(self, name: CommandName) -> None:
+        result = runner.invoke(app, [name.value, "--help"])
+        assert result.exit_code == 0, result.output
