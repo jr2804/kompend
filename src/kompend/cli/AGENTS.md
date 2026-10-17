@@ -29,22 +29,25 @@ calls the right core function, and formats the output. Nothing more.
 
 ### Lazy command registration
 
-Command modules are NOT imported eagerly at startup. `app.py` maintains a
-`_LAZY_MODULES` dict mapping command names to `(module_name, attribute_name)`.
-Only the module for the invoked command is imported (or all for `--help`).
+Command modules are NOT imported eagerly at startup. `_registry.py` declares each
+command exactly once — `CommandName`, the `CommandModule` registering it, and its
+`HelpPanel` — and `_group.LazyGroup` imports a module only when one of its commands
+is used. All three are `StrEnum` members: a bare string is the defect the config
+schema bans, and help lists every command from the registry at no import cost.
 
 **Why:** eager imports pulled heavy deps (pydantic-ai, parsecraft, MCP SDK)
 into every `kompend` invocation. With lazy registration, `kompend --version` takes
 ~1.5s instead of ~23s.
 
-**Two-layer lazy:** `app.py` lazy-imports command modules on first use, AND
+**Two-layer lazy:** `_group.py` lazy-imports command modules on first use, AND
 `cmds/__init__.py` uses `__getattr__` to avoid eagerly importing sibling
 modules when any single command is accessed.
 
 **Adding a new command:**
 
-1. Add `"name": "kompend.cli.cmds.module"` to `_LAZY_MODULES` in `app.py`
-2. Add `"name"` to `_MODULE_NAMES` and `__all__` in `cmds/__init__.py`
+1. Add the name to `CommandName`, its module to `CommandModule` if new, and one
+   `CommandSpec` entry to `COMMANDS` in `_registry.py`
+2. Add the module to `_MODULE_NAMES` and `__all__` in `cmds/__init__.py`
 3. Tests: `conftest.py` calls `register_all_commands()` at session start
 4. No other changes needed — the module is imported on first invocation
 
@@ -68,7 +71,9 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 
 | File/Directory | Purpose |
 |---|---|
-| `app.py` | Typer app instance, global callback (`--wiki-dir`, `--verbose`, `--version`), **lazy command registration** |
+| `app.py` | Typer app instance, global callback (`--wiki-dir`, `--verbose`, `--version`), command registration |
+| `_registry.py` | The command registry: `CommandName` / `CommandModule` / `HelpPanel` StrEnums, `COMMANDS`, `PANEL_ORDER` |
+| `_group.py` | `LazyGroup` — lists every command from the registry, imports each module on first use |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
 | `cmds/` | Command implementations organized by domain (see `cmds/AGENTS.md`) |
 | `_sources.py` | File resolution, glob expansion, copy-to-sources, URL download. |

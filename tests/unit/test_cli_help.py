@@ -8,14 +8,15 @@ replaced by a Click-native lazy group: Typer handles help in every
 position natively while command modules still import on demand.
 
 Help groups subcommands into workflow panels (``rich_help_panel``);
-every registered command must land in exactly one panel.
+every command in the registry must land in exactly one panel.
 """
 
 from __future__ import annotations
 
 from typer.testing import CliRunner
 
-from kompend.cli.app import _COMMAND_MODULES, _COMMAND_PANELS, _PANEL_ORDER, app
+from kompend.cli._registry import COMMANDS, PANEL_ORDER, CommandModule, CommandName
+from kompend.cli.app import app
 
 runner = CliRunner()
 
@@ -35,15 +36,19 @@ class TestHelpEverywhere:
         assert "Build pipeline" in result.output
 
     def test_every_command_has_a_workflow_panel(self) -> None:
-        """Panel map covers the registry exactly once — no orphans."""
-        assert set(_COMMAND_PANELS) == set(_COMMAND_MODULES)
-        assert set(_COMMAND_PANELS.values()) <= set(_PANEL_ORDER)
+        """The registry covers every declared command, and every entry declares
+        a panel drawn from the panel order — no command without a panel, and no
+        panel name outside the workflow order.
+        """
+        assert set(COMMANDS) == set(CommandName)
+        assert {spec.panel for spec in COMMANDS.values()} <= set(PANEL_ORDER)
+        assert {spec.module for spec in COMMANDS.values()} == set(CommandModule)
 
     def test_help_shows_all_workflow_panels(self) -> None:
         result = runner.invoke(app, ["--help"])
         assert result.exit_code == 0
-        for panel in _PANEL_ORDER:
-            assert panel in result.output
+        for panel in PANEL_ORDER:
+            assert panel.value in result.output
 
     def test_unknown_short_help_rejected_regardless_of_position(self) -> None:
         """``-h`` is not a registered option — same rejection everywhere

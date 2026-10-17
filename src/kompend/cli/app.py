@@ -1,13 +1,9 @@
 """Typer CLI app.
 
-Commands are registered lazily through :class:`_LazyGroup` (Click's
-native ``list_commands``/``get_command`` pattern, adapted to Typer), so
-Typer owns the full command tree — help, completion, and error
-suggestions work natively in every position (``kompend --help``,
-``kompend -w <dir> --help``, bare ``kompend``) — while only the invoked
-subcommand's module is actually imported. Command modules keep heavy
-dependencies inside their command bodies so per-command startup stays
-fast.
+Commands come from :mod:`kompend.cli._registry` and are registered lazily by
+:class:`kompend.cli._group.LazyGroup`, so help names every command while only
+the invoked subcommand's module is imported. Command modules keep heavy
+dependencies inside their command bodies so per-command startup stays fast.
 """
 
 from __future__ import annotations
@@ -17,183 +13,17 @@ import importlib
 import os
 import sys
 from importlib.metadata import version
-from typing import Final
 
 import logfire
 import typer
 
-# Typer 0.26 vendors its own click as ``typer._click``: its API types are a
-# different class hierarchy from the standalone ``click`` package, so
-# annotating these overrides with ``click.Context``/``click.Command`` both
-# mismatched the parent signatures and made the returned command a foreign
-# type. Name Typer's own types once, here.
-from typer._click.core import Command as ClickCommand
-from typer._click.core import Context as ClickContext
-from typer.core import TyperCommand, TyperGroup
-from typer.main import get_command_from_info, get_group
-
+from kompend.cli._group import LazyGroup
+from kompend.cli._registry import COMMANDS
 from kompend.cli._shared import format_exception_for_cli
 from kompend.core.config.keys import EnvVar
 from kompend.core.reporting.runlog import RunHandle, log_run_end, log_run_start
 from kompend.core.verbosity import is_verbose, set_verbose
 from kompend.logging import configure_logging, get_console
-
-# ── Lazy command registry ─────────────────────────────────────────────
-#
-# Maps subcommand name → module path.  Importing the module registers its
-# command(s) on ``app`` via the ``@app.command()`` decorator side effect.
-# Multiple subcommands can share one module (e.g. ``compile`` + ``ingest`` +
-# ``parse`` all live in ``pipeline.py``).
-#
-# Modules NOT listed here are never imported by the CLI — add new commands
-# here when they are created.
-
-#: Subcommand name → module path. Importing the module registers its
-#: command(s) on ``app`` via the ``@app.command()`` decorator side effect.
-#: Multiple subcommands can share one module (e.g. ``compile`` + ``ingest``
-#: + ``parse`` all live in ``pipeline.py``). Consumed by :class:`_LazyGroup`.
-_COMMAND_MODULES: Final[dict[str, str]] = {
-    "agents": "kompend.cli.cmds.agents",
-    "attachments": "kompend.cli.cmds.knowledge.attachments",
-    "att": "kompend.cli.cmds.knowledge.attachments",
-    "capture": "kompend.cli.cmds.knowledge.capture",
-    "learn": "kompend.cli.cmds.knowledge.capture",
-    "distill": "kompend.cli.cmds.knowledge.capture",
-    "write": "kompend.cli.cmds.knowledge.capture",
-    "config": "kompend.cli.cmds.pipeline.config",
-    "doctor": "kompend.cli.cmds.quality.doctor_cmd",
-    "status": "kompend.cli.cmds.quality.status_cmd",
-    "list-parsers": "kompend.cli.cmds.quality.list_parsers_cmd",
-    "provenance": "kompend.cli.cmds.quality.provenance_cmd",  # nocheck: CLI command registry key
-    "init": "kompend.cli.cmds.init",
-    "lint": "kompend.cli.cmds.quality.lint",
-    "log": "kompend.cli.cmds.quality.log",
-    "memory": "kompend.cli.cmds.knowledge.memory",
-    "organize": "kompend.cli.cmds.knowledge.organize",
-    "pack-list": "kompend.cli.cmds.knowledge.pack",
-    "pack-install": "kompend.cli.cmds.knowledge.pack",
-    "parse": "kompend.cli.cmds.pipeline.pipeline",
-    "compile": "kompend.cli.cmds.pipeline.pipeline",
-    "ingest": "kompend.cli.cmds.pipeline.pipeline",
-    "index": "kompend.cli.cmds.pipeline.pipeline",
-    "query": "kompend.cli.cmds.knowledge.query",
-    "references": "kompend.cli.cmds.knowledge.references",
-    "review": "kompend.cli.cmds.quality.review",
-    "sources": "kompend.cli.cmds.pipeline.sources",
-    "mcp": "kompend.cli.cmds.serve",
-    "serve": "kompend.cli.cmds.serve",
-    "agent": "kompend.cli.cmds.agent",
-}
-
-#: Workflow panels for ``kompend --help``. Every :data:`_COMMAND_MODULES` key
-#: must appear here exactly once; :class:`_LazyGroup` applies the panel to
-#: each command (plain or sub-group) when it is built, and lists commands
-#: panel-by-panel so help follows the workflow, not the alphabet.
-#: Single source of truth for help organization — command modules stay
-#: panel-agnostic.
-_PANEL_ORDER: Final[tuple[str, ...]] = (
-    "Build pipeline",
-    "Capture & synthesis",
-    "Knowledge base",
-    "Quality & inspection",
-    "Setup",
-    "Serving",
-)
-
-_COMMAND_PANELS: Final[dict[str, str]] = {
-    "compile": "Build pipeline",
-    "ingest": "Build pipeline",
-    "parse": "Build pipeline",
-    "index": "Build pipeline",
-    "capture": "Capture & synthesis",
-    "learn": "Capture & synthesis",
-    "distill": "Capture & synthesis",
-    "write": "Capture & synthesis",
-    "query": "Knowledge base",
-    "memory": "Knowledge base",
-    "sources": "Knowledge base",
-    "references": "Knowledge base",
-    "attachments": "Knowledge base",
-    "att": "Knowledge base",
-    "organize": "Knowledge base",
-    "pack-list": "Knowledge base",
-    "pack-install": "Knowledge base",
-    "agents": "Knowledge base",
-    "lint": "Quality & inspection",
-    "doctor": "Quality & inspection",
-    "status": "Quality & inspection",
-    "log": "Quality & inspection",
-    "review": "Quality & inspection",
-    "provenance": "Quality & inspection",  # nocheck: CLI help-panel key
-    "list-parsers": "Quality & inspection",
-    "init": "Setup",
-    "config": "Setup",
-    "mcp": "Serving",
-    "serve": "Serving",
-    "agent": "Serving",
-}
-
-
-class _LazyGroup(TyperGroup):
-    """Click group that imports command modules on demand.
-
-    This is Click's documented lazy-subcommand pattern (``list_commands`` /
-    ``get_command``), adapted to Typer: Typer pre-builds command objects
-    when ``@app.command()`` decorates a function, so the group can't hold
-    them until the module is imported. ``list_commands`` reports every
-    registered name without importing anything (fast ``--help`` naming),
-    and ``get_command`` imports the module and attaches the freshly built
-    click command to this group.
-
-    Framework-native: no argv sniffing — Typer/Click decide when commands
-    are needed (dispatch, help rendering, completion, suggestions).
-    """
-
-    def list_commands(self, ctx: ClickContext) -> list[str]:  # noqa: PLR6301 — Click API override
-        order = {panel: idx for idx, panel in enumerate(_PANEL_ORDER)}
-        return sorted(_COMMAND_MODULES, key=lambda n: (order[_COMMAND_PANELS[n]], n))
-
-    def get_command(self, ctx: ClickContext, cmd_name: str) -> ClickCommand | None:
-        # NOTE: Typer's get_group_from_info pre-fills self.commands eagerly
-        # from already-imported modules (panels unset), so the panel must be
-        # applied to EVERY served command — not just lazily built ones —
-        # or second and later help renders lose their workflow grouping.
-        if cmd_name not in self.commands:
-            module_name = _COMMAND_MODULES.get(cmd_name)
-            if module_name is None:
-                return None
-            importlib.import_module(module_name)  # registers commands / groups on app
-
-            # Plain commands from @app.command()
-            for info in app.registered_commands:
-                cmd = get_command_from_info(
-                    info,
-                    pretty_exceptions_short=True,
-                    rich_markup_mode=None,
-                )
-                if cmd.name == cmd_name:
-                    self.add_command(cmd)
-                    break
-            else:
-                # Sub-Typer groups from app.add_typer() (config, lint, attachments, …).
-                # Aliases ("att" → attachments_app) live on the GroupInfo name.
-                for group_info in app.registered_groups:
-                    if group_info.typer_instance is None:
-                        continue
-                    gname = group_info.name or group_info.typer_instance.info.name or ""
-                    if gname == cmd_name:
-                        sub_group = get_group(group_info.typer_instance)
-                        sub_group.name = gname
-                        self.add_command(sub_group)
-                        break
-        cmd = self.commands.get(cmd_name)
-        panel = _COMMAND_PANELS.get(cmd_name)
-        # ``rich_help_panel`` is declared on Typer's command class, not on the
-        # click base this group stores commands as — narrow before setting it.
-        if panel is not None and isinstance(cmd, TyperCommand):
-            cmd.rich_help_panel = panel
-        return cmd
-
 
 app = typer.Typer(
     name="kompend",
@@ -202,8 +32,10 @@ app = typer.Typer(
     no_args_is_help=True,
     pretty_exceptions_enable=False,
     pretty_exceptions_show_locals=False,
-    cls=_LazyGroup,
+    cls=LazyGroup,
 )
+
+LazyGroup.bind(app)
 
 
 #: Module-level holder for the run handle, written by :func:`_callback`
@@ -342,9 +174,9 @@ def _configure_streams_utf8() -> None:
 def register_all_commands() -> None:
     """Import every command module (test-support introspection helper).
 
-    Dispatch never needs this — :class:`_LazyGroup` imports on demand.
+    Dispatch never needs this — :class:`~kompend.cli._group.LazyGroup` imports on demand.
     Tests that enumerate the full command surface (CLI↔MCP parity) call
     it so ``app.registered_commands`` is fully populated.
     """
-    for module_name in dict.fromkeys(_COMMAND_MODULES.values()):
+    for module_name in sorted({spec.module.value for spec in COMMANDS.values()}):
         importlib.import_module(module_name)
