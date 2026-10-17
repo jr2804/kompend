@@ -55,7 +55,8 @@ Verbose = Annotated[
     bool,
     typer.Option(
         "--verbose",
-        help="Show detailed output.",
+        help=("Show full tracebacks for errors (fatal crashes and recoverable parse failures). Env: KOMP_VERBOSE."),
+        envvar=EnvVar.VERBOSE,
     ),
 ]
 
@@ -73,6 +74,24 @@ Progress = Annotated[
         "--progress/--no-progress",
         help="Show rich progress bars (auto-detected for TTY).",
         rich_help_panel="Pipeline",
+    ),
+]
+
+NoUserTracking = Annotated[
+    bool,
+    typer.Option(
+        "--no-user-tracking",
+        help="Do not record the OS user (ingested_by / memory_by) in metadata for this invocation. Env: KOMP_USER_TRACKING=false.",
+    ),
+]
+
+Version = Annotated[
+    bool,
+    typer.Option(
+        "--version",
+        "-v",
+        help="Show version and exit",
+        is_eager=True,
     ),
 ]
 

@@ -15,6 +15,7 @@ import typer
 
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.app import app
+from kompend.cli.args import ConfigPath
 from kompend.core.config import resolve_config
 from kompend.core.reporting.log import build_log_report
 from kompend.logging import get_console
@@ -34,12 +35,7 @@ def log_cmd(
         "--write",
         help="Write the report to .kompend/log.md instead of printing it.",
     ),
-    config: str = typer.Option(
-        None,
-        "--config",
-        "-c",
-        help="Path to a kompend.toml config file.",
-    ),
+    config: ConfigPath = None,
 ) -> None:
     """Regenerate the pipeline log from structured stores (no LLM calls).
 

@@ -19,9 +19,11 @@ from .common import (
     CliSet,
     ConfigPath,
     JsonOutput,
+    NoUserTracking,
     Progress,
     Recursive,
     Verbose,
+    Version,
     WikiDir,
 )
 
@@ -174,6 +176,7 @@ __all__ = [
     "MemoryTopK",
     "NoCacheFlag",
     "NoPrivacy",
+    "NoUserTracking",
     "OnlineUrls",
     "OrganizeCollapseSingle",
     "OrganizeDryRun",
@@ -207,6 +210,7 @@ __all__ = [
     "UrlFile",
     "Verbose",
     "Verify",
+    "Version",
     "VlmModel",
     "WikiDir",
     "Workers",

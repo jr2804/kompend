@@ -6,14 +6,13 @@ import typer
 
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.app import app
-from kompend.cli.args import ConfigPath, JsonOutput, Verbose
+from kompend.cli.args import ConfigPath, JsonOutput, Verbose, WikiDir
 from kompend.cli.cmds.quality.doctor import print_doctor_results, run_doctor
 from kompend.core.config import resolve_config
 from kompend.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_VLM_MODEL,
-    EnvVar,
 )
 from kompend.core.paths import vault_paths
 from kompend.core.utils.dicts import as_str
@@ -23,13 +22,7 @@ from kompend.logging import get_err_console
 @app.command(name="doctor")
 def doctor_cmd(
     ctx: typer.Context,
-    wiki_dir: str | None = typer.Option(
-        None,
-        "--wiki-dir",
-        "-w",
-        help="Project root directory. Default: current working directory or KOMP_WIKI_DIR.",
-        envvar=EnvVar.WIKI_DIR,
-    ),
+    wiki_dir: WikiDir = None,
     verbose: Verbose = False,
     json_output: JsonOutput = False,
     config: ConfigPath = None,

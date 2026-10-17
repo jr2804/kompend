@@ -46,13 +46,11 @@ from kompend.cli.args import (
     QueryVerbosity,
     SourceAttrs,
     SourceTags,
+    WikiDir,
 )
 from kompend.cli.args.query import SearchMode
 from kompend.core.config import LLMConfig, resolve_config
 from kompend.core.config._configs import LlmDataFormat
-from kompend.core.config.keys import (
-    EnvVar,
-)
 from kompend.core.models import load_wiki_from_files
 from kompend.core.paths import vault_paths
 from kompend.llm.context_window import discover_context_window
@@ -68,13 +66,7 @@ logger = get_logger(__name__)
 def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
     ctx: typer.Context,
     query: QueryText,
-    wiki_dir: str | None = typer.Option(
-        None,
-        "--wiki-dir",
-        "-w",
-        help="Project root directory. Default: current working directory or KOMP_WIKI_DIR.",
-        envvar=EnvVar.WIKI_DIR,
-    ),
+    wiki_dir: WikiDir = None,
     top_k: QueryTopK = 5,
     raw: QueryRaw = False,
     format: QueryFormatOption = None,

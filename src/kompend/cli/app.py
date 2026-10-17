@@ -20,6 +20,7 @@ import typer
 from kompend.cli._group import LazyGroup
 from kompend.cli._registry import COMMANDS
 from kompend.cli._shared import format_exception_for_cli
+from kompend.cli.args import NoUserTracking, Verbose, Version, WikiDir
 from kompend.core.config.keys import EnvVar
 from kompend.core.reporting.runlog import RunHandle, log_run_end, log_run_start
 from kompend.core.verbosity import is_verbose, set_verbose
@@ -46,31 +47,10 @@ _run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
 @app.callback(invoke_without_command=True)
 def _callback(
     ctx: typer.Context,
-    version: bool = typer.Option(
-        False,
-        "--version",
-        "-v",
-        help="Show version and exit",
-        is_eager=True,
-    ),
-    wiki_dir: str | None = typer.Option(
-        None,
-        "--wiki-dir",
-        "-w",
-        help="Project root directory. All other paths are resolved relative to it. Default: current working directory.",
-        envvar=EnvVar.WIKI_DIR,
-    ),
-    no_user_tracking: bool = typer.Option(
-        False,
-        "--no-user-tracking",
-        help="Do not record the OS user (ingested_by / memory_by) in metadata for this invocation. Env: KOMP_USER_TRACKING=false.",
-    ),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        help="Show full tracebacks for errors (fatal crashes and recoverable parse failures). Env: KOMP_VERBOSE.",
-        envvar=EnvVar.VERBOSE,
-    ),
+    version: Version = False,
+    wiki_dir: WikiDir = None,
+    no_user_tracking: NoUserTracking = False,
+    verbose: Verbose = False,
 ) -> None:
     """Compile a document corpus into an interlinked, OKF-conformant markdown wiki"""
     set_verbose(verbose)
