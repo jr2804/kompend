@@ -639,7 +639,7 @@ class TestOcrWiring:
 class TestStructuredRows:
     """``StructuredChunk.rows`` (tuple of tuples) → a TABLE's ``list[list[str]]``.
 
-    parsecraft carries a recovered grid as a tuple of tuples while komend's
+    parsecraft carries a recovered grid as a tuple of tuples while kompend's
     element carries ``list[list[str]]``; the conversion lives at the IR
     boundary so nothing downstream has to know about the tuple shape.
     """
