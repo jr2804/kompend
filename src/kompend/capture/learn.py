@@ -7,6 +7,7 @@ from kompend.capture._utils import format_sources_markdown, make_slug
 from kompend.core.paths import LEARNED_SUBDIR
 from kompend.core.utils.time import display_local
 from kompend.logging import get_logger
+from kompend.output.frontmatter import okf_frontmatter_yaml, source_frontmatter
 
 logger = get_logger(__name__)
 
@@ -27,21 +28,20 @@ def learn(
     filename = f"learn-{timestamp}-{slug}.md"
     filepath = learned_dir / filename
 
-    tag_lines = "\n".join(f"  - {t}" for t in (tags or []))
-    attr_lines = "\n".join(f"  {k}: {v}" for k, v in (attributes or {}).items())
-    frontmatter = f"""---
-type: learn
-captured_at: {timestamp}
-tags:
-{tag_lines}
-attributes:
-{attr_lines}
-source: manual
----
+    frontmatter = okf_frontmatter_yaml(
+        source_frontmatter(
+            page_type="learn",
+            timestamp=timestamp,
+            timestamp_key="captured_at",
+            tags=list(tags or []),
+            extra={
+                "attributes": dict(attributes or {}),  # nocheck: frontmatter dict, not wiki metadata
+                "source": "manual",  # nocheck: frontmatter dict, not wiki metadata
+            },
+        ),
+    )
 
-{text.strip()}
-"""
-    filepath.write_text(frontmatter, encoding="utf-8")
+    filepath.write_text(f"{frontmatter}{text.strip()}\n", encoding="utf-8")
     logger.info("Learned fact -> %s", filepath)
     format_sources_markdown(sources_dir)
     return filepath

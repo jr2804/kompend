@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock
 
 import pytest
+import yaml
 
 from kompend.agents.capture_models import CaptureOutput
 from kompend.agents.deps import DistillDeps
@@ -264,9 +265,13 @@ class TestLearn:
             attributes={"version": "2", "status": "confirmed"},
         )
         content = path.read_text(encoding="utf-8")
-        assert "version: 2" in content
-        assert "status: confirmed" in content
-        assert "architecture" in content
+        assert "okf_version" in content
+        meta = yaml.safe_load(content[4:].split("\n---\n", 1)[0])
+        # Quoted, so a numeric-looking attribute stays the string it was passed
+        # as. The previous hand-built frontmatter wrote it bare, and YAML read
+        # it back as the integer 2.
+        assert meta["attributes"] == {"version": "2", "status": "confirmed"}
+        assert meta["tags"] == ["architecture"]
 
 
 class TestCaptureSufficiency:
@@ -303,7 +308,64 @@ class TestCaptureSufficiency:
             attributes={"version": "2"},
         )
         content = paths[0].read_text(encoding="utf-8")
-        assert "version: 2" in content
+        assert "okf_version" in content
+        meta = yaml.safe_load(content[4:].split("\n---\n", 1)[0])
+        assert meta["attributes"] == {"version": "2"}
+
+
+class TestOkfFrontmatter:
+    """Every source-corpus writer emits OKF 0.2 frontmatter.
+
+    The source notes are part of the same corpus as the compiled wiki, so they
+    declare the spec version they were written against; a reader cannot
+    otherwise tell a pre-migration note from a conformant one.
+    """
+
+    @staticmethod
+    def _meta(path: Path) -> dict:
+        content = path.read_text(encoding="utf-8")
+        assert content.startswith("---\n")
+        return yaml.safe_load(content[4:].split("\n---\n", 1)[0])
+
+    def test_learn_declares_okf_version(self, tmp_path: Path) -> None:
+        meta = self._meta(learn("A fact worth keeping.", sources_dir=tmp_path))
+        assert meta["okf_version"] == "0.2"
+        assert meta["type"] == "learn"
+
+    def test_capture_declares_okf_version(self, tmp_path: Path) -> None:
+        meta = self._meta(capture("Something captured.", sources_dir=tmp_path)[0])
+        assert meta["okf_version"] == "0.2"
+        assert meta["type"] == "note"
+
+    def test_special_characters_do_not_break_the_yaml(self, tmp_path: Path) -> None:
+        """A colon in a title or tag used to produce invalid frontmatter.
+
+        The writers interpolated values into hand-built YAML; anything with a
+        colon parsed as a nested mapping and a newline split the block.
+        """
+        meta = self._meta(
+            capture(
+                "Ratio: 3:1 is the documented setting.",
+                sources_dir=tmp_path,
+                tags=["tag: with colon"],
+                attributes={"note": "value: with colon"},
+            )[0]
+        )
+        assert meta["tags"] == ["tag: with colon"]
+        assert meta["attributes"]["note"] == "value: with colon"
+        assert isinstance(meta["title"], str)
+
+    def test_existing_corpus_notes_still_read(self, tmp_path: Path) -> None:
+        """Pre-migration notes carry no okf_version; readers must not require one."""
+        path = tmp_path / "capture-old.md"
+        path.write_text(
+            "---\ntype: note\ntitle: Old\ncaptured_at: 20260101T000000\ntags:\n  - legacy\nattributes:\n  source: capture\n---\n\nBody.\n",
+            encoding="utf-8",
+        )
+        meta = self._meta(path)
+        assert "okf_version" not in meta
+        assert meta["tags"] == ["legacy"]
+        assert meta["captured_at"] == "20260101T000000"
 
 
 class TestDistillUpdateAndArchive:

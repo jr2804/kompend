@@ -29,8 +29,6 @@ from abc import abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar
 
-import yaml
-
 from kompend import __version__ as _KOMP_VERSION
 from kompend.core.models import CompiledWiki, GraphEdge, ImageRef, MetadataField, WikiNode, image_source_key
 from kompend.core.models.assets import AssetRecord
@@ -59,11 +57,13 @@ from kompend.core.store.schema import VERIFICATION_TABLE
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
 from kompend.output.base import BaseOutputWriter
+from kompend.output.frontmatter import OKF_VERSION
+from kompend.output.frontmatter import okf_frontmatter_yaml as _okf_frontmatter_yaml
 from kompend.output.models import Document, OkfSource, TrustEvent
 from kompend.output.reference_links import format_bibliography_entry, rewrite_source_references
 
 # OKF spec version every vault writer targets.
-OKF_VERSION = "0.2"
+__all__ = ["OKF_VERSION", "okf_frontmatter_yaml"]
 
 # OKF actor convention (§7) for the producer of generated content.
 # ``<producer>/<version>`` for agents and tools.
@@ -86,13 +86,6 @@ DEFAULT_TYPE = "Concept"
 WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
 
 logger = get_logger(__name__)
-
-
-class _NoAliasDumper(yaml.Dumper):
-    """YAML Dumper that disables anchor/alias emission."""
-
-    def ignore_aliases(self, data: object) -> bool:  # noqa: PLR6301
-        return True
 
 
 class VaultWriter(BaseOutputWriter):
@@ -846,15 +839,13 @@ class VaultWriter(BaseOutputWriter):
 
 
 def okf_frontmatter_yaml(frontmatter: dict[str, Any]) -> str:
-    """Render frontmatter as YAML without anchors/aliases."""
-    yaml_str = yaml.dump(
-        frontmatter,
-        Dumper=_NoAliasDumper,
-        default_flow_style=False,
-        allow_unicode=True,
-        sort_keys=True,
-    ).strip()
-    return f"---\n{yaml_str}\n---\n\n"
+    """Render frontmatter as YAML without anchors/aliases.
+
+    Deprecated alias — the implementation moved to
+    :func:`kompend.output.frontmatter.okf_frontmatter_yaml` so the capture
+    writers can use it without importing this module's dependencies.
+    """
+    return _okf_frontmatter_yaml(frontmatter)
 
 
 def _asset_lines(lines: list[str], items: list[AssetRecord]) -> None:

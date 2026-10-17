@@ -10,6 +10,7 @@ from kompend.capture._utils import format_sources_markdown, make_slug, make_titl
 from kompend.core.paths import CAPTURED_SUBDIR
 from kompend.core.utils.time import display_local
 from kompend.logging import get_logger
+from kompend.output.frontmatter import okf_frontmatter_yaml, source_frontmatter
 
 logger = get_logger(__name__)
 
@@ -51,24 +52,21 @@ def capture(
         filename = f"capture-{timestamp}-{i:02d}-{slug}.md"
         filepath = captured_dir / filename
 
-        tag_lines = "\n".join(f"  - {t}" for t in item.tags)
-        attr_lines = "\n".join(f"  {k}: {v}" for k, v in (attributes or {}).items())
-        frontmatter = f"""---
-type: {item.kind}
-title: {item.title}
-captured_at: {timestamp}
-tags:
-{tag_lines}
-attributes:
-{attr_lines}
-source: capture
----
+        frontmatter = okf_frontmatter_yaml(
+            source_frontmatter(
+                page_type=str(item.kind),
+                title=item.title,
+                timestamp=timestamp,
+                timestamp_key="captured_at",
+                tags=list(item.tags),
+                extra={
+                    "attributes": dict(attributes or {}),  # nocheck: frontmatter dict, not wiki metadata
+                    "source": "capture",  # nocheck: frontmatter dict, not wiki metadata
+                },
+            ),
+        )
 
-# {item.title}
-
-{item.content.strip()}
-"""
-        filepath.write_text(frontmatter, encoding="utf-8")
+        filepath.write_text(f"{frontmatter}# {item.title}\n\n{item.content.strip()}\n", encoding="utf-8")
         logger.info("Captured %s -> %s", item.kind, filepath)
         paths.append(filepath)
 

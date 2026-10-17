@@ -23,6 +23,7 @@ from kompend.capture._utils import format_sources_markdown, make_slug, make_titl
 from kompend.core.paths import ARCHIVE_SUBDIR, CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
 from kompend.core.utils.time import display_local
 from kompend.logging import get_logger
+from kompend.output.frontmatter import okf_frontmatter_yaml, source_frontmatter
 
 logger = get_logger(__name__)
 
@@ -313,17 +314,17 @@ def _write_page(
     timestamp: str,
 ) -> None:
     """Write a distilled page with frontmatter."""
-    tag_lines = "\n".join(f"  - {t}" for t in page["tags"])  # nocheck: frontmatter dict, not wiki metadata
-    source_lines = "\n".join(f"  - {s}" for s in source_files)
-    frontmatter = (
-        f"---\n"
-        f"type: distilled\n"
-        f"title: {page['title']}\n"
-        f"distilled_at: {timestamp}\n"
-        f"tags:\n{tag_lines}\n"
-        f"synthesized_from:\n{source_lines}\n"
-        f"---\n\n"
-        f"# {page['title']}\n\n"
-        f"{page['content'].strip()}\n"
+    frontmatter = okf_frontmatter_yaml(
+        source_frontmatter(
+            page_type="distilled",
+            title=page["title"],
+            timestamp=timestamp,
+            timestamp_key="distilled_at",
+            tags=list(page["tags"]),  # nocheck: frontmatter dict, not wiki metadata
+            extra={"synthesized_from": list(source_files)},
+        ),
     )
-    filepath.write_text(frontmatter, encoding="utf-8")
+    filepath.write_text(
+        f"{frontmatter}# {page['title']}\n\n{page['content'].strip()}\n",
+        encoding="utf-8",
+    )
