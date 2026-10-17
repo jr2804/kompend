@@ -31,11 +31,6 @@ class LazyGroup(TyperGroup):
     #: reference is bound once by ``app.py`` rather than passed in.
     app: ClassVar[typer.Typer | None] = None
 
-    @classmethod
-    def bind(cls, app: typer.Typer) -> None:
-        """Bind the application whose command tree this group serves."""
-        cls.app = app
-
     @override
     def list_commands(self, ctx: object) -> list[str]:
         """Command names in workflow order, importing none of their modules."""
@@ -63,12 +58,9 @@ class LazyGroup(TyperGroup):
         return None
 
     @classmethod
-    def _owner(cls) -> typer.Typer:
-        """The bound application, or a failure naming the missing binding."""
-        if cls.app is None:
-            msg = "LazyGroup.bind(app) must run before the CLI is invoked"
-            raise RuntimeError(msg)
-        return cls.app
+    def bind(cls, app: typer.Typer) -> None:
+        """Bind the application whose command tree this group serves."""
+        cls.app = app
 
     def _attach(self, name: CommandName, owner: typer.Typer) -> None:
         """Attach the command ``name``'s module just registered on its import."""
@@ -90,3 +82,11 @@ class LazyGroup(TyperGroup):
                 sub_group.name = group_name
                 self.add_command(sub_group)
                 return
+
+    @classmethod
+    def _owner(cls) -> typer.Typer:
+        """The bound application, or a failure naming the missing binding."""
+        if cls.app is None:
+            msg = "LazyGroup.bind(app) must run before the CLI is invoked"
+            raise RuntimeError(msg)
+        return cls.app
