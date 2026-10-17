@@ -70,6 +70,7 @@ class CommandName(StrEnum):
     CAPTURE = "capture"
     COMPILE = "compile"
     CONFIG = "config"
+    CONSOLIDATE = "consolidate"
     DISTILL = "distill"
     DOCTOR = "doctor"
     INDEX = "index"
@@ -112,6 +113,7 @@ COMMANDS: Final[dict[CommandName, CommandSpec]] = {
     CommandName.INDEX: CommandSpec(CommandModule.PIPELINE, HelpPanel.BUILD_PIPELINE),
     # Capture & synthesis
     CommandName.CAPTURE: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
+    CommandName.CONSOLIDATE: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
     CommandName.LEARN: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
     CommandName.DISTILL: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
     CommandName.WRITE: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
