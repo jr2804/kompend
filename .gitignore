@@ -91,4 +91,4 @@ opencode.json
 .repowise/
 .repowise/.env
 tmp/
-.beads.gate.lock
+.beads.*.lock
