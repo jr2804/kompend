@@ -92,3 +92,6 @@ opencode.json
 .repowise/.env
 tmp/
 .beads.*.lock
+# Pre-migration snapshots written by `bd` beside the live store (e.g.
+# .beads.backup-20261017/); local-only, never committed.
+.beads.backup-*/
