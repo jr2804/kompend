@@ -192,6 +192,12 @@ documented public surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
 
     The message is word-for-word what a genuinely empty release produces, so
     confirm it against PyPI's JSON before concluding the release itself broke.
+    Note PyPI answers inconsistently while a release propagates: the
+    `…/<package>/json` endpoint can still report the previous version, while
+    `…/<package>/<version>/json` already lists it. For the same cause on the
+    lockfile path, `uv lock --refresh` re-reads the index — a floor bump can fail
+    resolution with "only <package><=<previous> is available" even when the new
+    release is metadata-identical apart from its version.
 
 ### What the parsecraft adapter does
 
