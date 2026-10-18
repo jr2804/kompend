@@ -346,6 +346,35 @@ class TestCheckOllamaDevice:
         result = doctor._check_ollama_device("ollama/foo", None)
         assert "not loaded" in result.message
 
+    def test_same_llm_and_vlm_model_merged_into_one_line(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """One model serving both roles is loaded once — report it once."""
+        monkeypatch.setattr(
+            doctor,
+            "_ollama_ps_lookup",
+            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 100 * 1024 * 1024, "context_length": 65536, "digest": "d1"},
+        )
+        result = doctor._check_ollama_device("ollama/foo:8b", "ollama/foo:8b")
+        assert result.passed is True
+        assert result.warning is False
+        assert "llm+vlm: GPU (100/100 MiB VRAM, 100%)" in result.message
+
+    def test_distinct_llm_and_vlm_models_not_merged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Different digests keep separate per-role lines."""
+        entries = {
+            "foo:8b": {"size": 100 * 1024 * 1024, "size_vram": 100 * 1024 * 1024, "context_length": 65536, "digest": "d1"},
+            "bar:2b": {"size": 30 * 1024 * 1024, "size_vram": 15 * 1024 * 1024, "context_length": 4096, "digest": "d2"},
+        }
+        monkeypatch.setattr(doctor, "_ollama_ps_lookup", entries.get)
+        result = doctor._check_ollama_device("ollama/foo:8b", "ollama/bar:2b")
+        assert "llm: GPU (100/100 MiB VRAM, 100%)" in result.message
+        assert "vlm: partial (15/30 MiB VRAM, 50%)" in result.message
+
+    def test_unloaded_same_name_shared_line(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Not-loaded entries group by name only."""
+        monkeypatch.setattr(doctor, "_ollama_ps_lookup", lambda name: None)
+        result = doctor._check_ollama_device("ollama/foo:8b", "ollama/foo:8b")
+        assert result.message.startswith("llm+vlm: not loaded")
+
     def test_nvidia_unused_is_flagged(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
         monkeypatch.setattr(
@@ -364,6 +393,42 @@ class TestCheckOllamaDevice:
 
     def _ps(self, models: list) -> object:
         return SimpleNamespace(models=[SimpleNamespace(**m) for m in models])
+
+
+class TestOllamaPsLookupTagMatching:
+    """``_ollama_ps_lookup`` matches by full name; bare-name fallback only when untagged."""
+
+    def test_exact_tag_match_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ps(
+            monkeypatch,
+            [self._MODEL | {"model": "qwen3:8b", "digest": "d8"}, self._MODEL | {"model": "qwen3:4b", "name": "qwen3:4b", "digest": "d4"}],
+        )
+        entry = doctor._ollama_ps_lookup("qwen3:4b")
+        assert entry is not None
+        assert entry["digest"] == "d4"
+
+    def test_tagged_name_does_not_absorb_other_variant(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Configured ``qwen3:4b`` must not report ``qwen3:8b``'s stats."""
+        self._patch_ps(monkeypatch, [self._MODEL | {"model": "qwen3:8b", "digest": "d8"}])
+        assert doctor._ollama_ps_lookup("qwen3:4b") is None
+
+    def test_untagged_name_falls_back_to_base(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ps(monkeypatch, [self._MODEL | {"model": "qwen3:latest", "digest": "dl"}])
+        entry = doctor._ollama_ps_lookup("qwen3")
+        assert entry is not None
+        assert entry["digest"] == "dl"
+
+    def test_untagged_name_matches_any_loaded_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ps(monkeypatch, [self._MODEL | {"model": "qwen3:4b", "digest": "d4"}])
+        entry = doctor._ollama_ps_lookup("qwen3")
+        assert entry is not None
+        assert entry["digest"] == "d4"
+
+    def _patch_ps(self, monkeypatch: pytest.MonkeyPatch, entries: list[dict]) -> None:
+        ps = SimpleNamespace(models=[SimpleNamespace(**e) for e in entries])
+        monkeypatch.setattr(doctor.ollama, "ps", lambda: ps)
+
+    _MODEL = {"name": "qwen3:8b", "size": 100, "size_vram": 100, "context_length": 65536}
 
 
 class TestVlmFallbackIndication:

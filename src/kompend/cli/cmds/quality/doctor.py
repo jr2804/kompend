@@ -460,6 +460,10 @@ def _check_ollama_device(default_model: str | None, vlm_model: str | None) -> Ch
     Ollama exposes only ``size_vram`` vs ``size`` — there's no per-engine field.
     The ratio is a reliable proxy: full offload means a real GPU is in use;
     partial typically means iGPU/overflow (slow).
+
+    Roles that resolve to the same loaded instance (same digest — e.g. one
+    vision-capable model acting as both llm and vlm) share one merged
+    ``llm+vlm:`` line, because Ollama loads and bills that VRAM once.
     """
     name = "ollama-device"
     targets = [("llm", default_model), ("vlm", vlm_model)]
@@ -467,19 +471,33 @@ def _check_ollama_device(default_model: str | None, vlm_model: str | None) -> Ch
     if not targets:
         return CheckResult(name, True, "No ollama/ models configured — skipped", warning=True)
 
-    parts: list[str] = []
-    any_warn = False
+    # Group by loaded identity: two roles pointing at the same model (same
+    # digest, e.g. a vision-capable default serving as VLM) resolve to one
+    # loaded Ollama instance, so they share a merged ``llm+vlm`` line instead
+    # of two identical VRAM reports that read as double the memory. Unloaded
+    # models group by their own name so distinct not-loaded variants stay
+    # separate.
+    labels_by_key: dict[str, list[str]] = {}
+    entry_by_key: dict[str, dict[str, Any] | None] = {}
     for label, model in targets:
         bare = model.split("/", 1)[1] if "/" in model else model
         entry = _ollama_ps_lookup(bare)
+        key = entry["digest"] if entry is not None and entry.get("digest") else f"unloaded:{bare}"
+        labels_by_key.setdefault(key, []).append(label)
+        entry_by_key[key] = entry
+
+    parts: list[str] = []
+    any_warn = False
+    for key, entry in entry_by_key.items():
+        merged = "+".join(labels_by_key[key])
         if entry is None:
-            parts.append(f"{label}: not loaded")
+            parts.append(f"{merged}: not loaded")
             continue
         ratio = entry["size_vram"] / entry["size"] if entry["size"] else 0.0
         kind = _classify_ollama_offload(entry["size"], entry["size_vram"])
         vram_mib = entry["size_vram"] / (1024 * 1024)
         size_mib = entry["size"] / (1024 * 1024)
-        parts.append(f"{label}: {kind} ({vram_mib:.0f}/{size_mib:.0f} MiB VRAM, {ratio:.0%})")
+        parts.append(f"{merged}: {kind} ({vram_mib:.0f}/{size_mib:.0f} MiB VRAM, {ratio:.0%})")
         if kind != "GPU":
             any_warn = True
 
@@ -510,7 +528,14 @@ def _provider_id_of(model_string: str) -> str | None:
 
 
 def _ollama_ps_lookup(model_name: str) -> dict[str, Any] | None:
-    """Find ``model_name`` (with or without ``:tag``) in ``ollama.ps()`` output.
+    """Find ``model_name`` in ``ollama.ps()`` output.
+
+    An exact match on the full name (including ``:tag``) wins. Only a name
+    without a tag (registry default implied) may fall back to matching any
+    loaded model of the same base name. An explicitly tagged name that is
+    not loaded returns ``None`` — it must not absorb the stats of a
+    different tag of the same base model (e.g. ``qwen3:4b`` configured
+    while ``qwen3:8b`` is loaded would falsely report 8b's VRAM as 4b's).
 
     Returns a plain dict with ``size``, ``size_vram``, ``context_length``,
     ``digest`` so the result is JSON-serializable.
@@ -520,20 +545,24 @@ def _ollama_ps_lookup(model_name: str) -> dict[str, Any] | None:
     except Exception as exc:
         logger.debug("ollama.ps() failed for device check: %s", exc, exc_info=is_verbose())
         return None
-    base = model_name.split(":", 1)[0]
+
+    def _entry(m: Any) -> dict[str, Any]:
+        return {
+            "size": int(m.size or 0),
+            "size_vram": int(m.size_vram or 0),
+            "context_length": int(m.context_length or 0),
+            "digest": m.digest,
+        }
+
+    tagged = ":" in model_name
     for m in ps_models:
         for ps_id in (m.model, m.name):
             if not ps_id:
                 continue
-            if ps_id == model_name or ps_id.split(":", 1)[0] == base:
-                size = int(m.size or 0)
-                size_vram = int(m.size_vram or 0)
-                return {
-                    "size": size,
-                    "size_vram": size_vram,
-                    "context_length": int(m.context_length or 0),
-                    "digest": m.digest,
-                }
+            if ps_id == model_name:
+                return _entry(m)
+            if not tagged and ps_id.split(":", 1)[0] == model_name:
+                return _entry(m)
     return None
 
 
