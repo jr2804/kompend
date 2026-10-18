@@ -17,6 +17,8 @@ Key design decisions:
   sentence per child) so the pipeline still functions without an LLM.
 - Summaries are cached by content hash + model name so unchanged subtrees
   are not re-summarised across runs.
+- An agentic session that exhausts its request budget is resumed for the
+  nodes it left unsummarized, so a large or chatty tree still completes.
 """
 
 from __future__ import annotations
@@ -24,6 +26,8 @@ from __future__ import annotations
 import hashlib
 import re
 from typing import Any, cast
+
+from pydantic_ai.exceptions import UsageLimitExceeded
 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.summarizer import SummarizerAgent
@@ -108,7 +112,15 @@ class NodeSummarizer:
         return tree
 
     def _summarize_agentic(self, tree: ChunkTree) -> ChunkTree:
-        """Summarize all eligible internal nodes in a single agentic session."""
+        """Summarize all eligible internal nodes in agentic session(s).
+
+        Each session works from a request budget derived from its payload
+        (see ``AgenticSummarizerAgent._usage_limits_for``).  A large or chatty
+        tree can exhaust that budget mid-run; summaries recorded before the
+        abort stay in ``deps.results``, so the session is re-run for the nodes
+        left unsummarized.  Every round gets its own budget and payload, and
+        the loop stops as soon as a round summarizes nothing new.
+        """
         if not isinstance(self._agent, AgenticSummarizerAgent):
             raise TypeError("AgenticSummarizerAgent expected")
         eligible: list[ChunkNode] = []
@@ -127,8 +139,44 @@ class NodeSummarizer:
         if not eligible:
             return tree
 
-        nodes_payload: list[dict[str, Any]] = []
-        for node in eligible:
+        done: set[str] = set()
+        while True:
+            remaining = [node for node in eligible if node.id not in done]
+            payload = self._agentic_payload(tree, remaining)
+            payload_ids = {entry["id"] for entry in payload}
+            done.update(node.id for node in remaining if node.id not in payload_ids)
+            if not payload:
+                break
+
+            deps = SummarizerDeps(nodes=payload, source_id=tree.root_id, timeout=120.0)
+            try:
+                self._agent.run(deps)
+            except UsageLimitExceeded as exc:
+                logger.warning(
+                    "Agentic summarizer hit its request budget (%s) — resuming for the remaining node(s)",
+                    exc,
+                )
+            except Exception as exc:
+                logger.warning("Agentic summarizer failed: %s", exc)
+            self._apply_agentic_results(eligible, payload, deps.results)
+            if not deps.results:
+                logger.warning(
+                    "Agentic summarizer recorded no summaries for %d node(s) — leaving them unsummarized",
+                    len(payload),
+                )
+                break
+            done.update(deps.results)
+
+        return tree
+
+    def _agentic_payload(self, tree: ChunkTree, nodes: list[ChunkNode]) -> list[dict[str, Any]]:
+        """Build the per-node session payload for ``nodes``.
+
+        Cached summaries are applied to their nodes in place and excluded from
+        the payload, so a resumed session never re-asks for finished work.
+        """
+        payload: list[dict[str, Any]] = []
+        for node in nodes:
             parts: list[str] = []
             for child_id in node.children_ids:
                 child = tree.nodes.get(child_id)
@@ -145,23 +193,26 @@ class NodeSummarizer:
             if cached is not None:
                 node.summary = cached
                 continue
-            nodes_payload.append({"id": node.id, "heading_chain": heading_chain, "content": content})
+            payload.append({"id": node.id, "heading_chain": heading_chain, "content": content})
+        return payload
 
-        if nodes_payload:
-            deps = SummarizerDeps(nodes=nodes_payload, source_id=tree.root_id, timeout=120.0)
-            try:
-                self._agent.run(deps)
-            except Exception as exc:
-                logger.warning("Agentic summarizer failed: %s", exc)
-            for node in eligible:
-                summary = deps.results.get(node.id)
-                if summary:
-                    node.summary = summary
-                    heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
-                    content = next((n["content"] for n in nodes_payload if n["id"] == node.id), "")
-                    if content:
-                        self._cache_store(content, heading_chain, summary)
-        return tree
+    def _apply_agentic_results(
+        self,
+        eligible: list[ChunkNode],
+        payload: list[dict[str, Any]],
+        results: dict[str, str],
+    ) -> None:
+        """Copy session summaries onto their nodes and persist them in the cache."""
+        content_by_id = {entry["id"]: entry["content"] for entry in payload}
+        for node in eligible:
+            summary = results.get(node.id)
+            if not summary:
+                continue
+            node.summary = summary
+            heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
+            content = content_by_id.get(node.id, "")
+            if content:
+                self._cache_store(content, heading_chain, summary)
 
     def _summarize_node(self, tree: ChunkTree, node: ChunkNode) -> str:
         """Build content from children, then summarise via LLM or extractive fallback."""
