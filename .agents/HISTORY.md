@@ -55,6 +55,16 @@ remaining legacy violations are tracked in beads — `bd list`, not a table here
 models.dev catalog, litellm was 40+ transitive dependencies and added latency
 around a unified `build_model()` path. Removed.
 
+### Why anthropic is pinned below 1.0 (2026-10-18)
+
+pydantic-ai 2.31.1's Anthropic provider hands the SDK an `httpx.AsyncClient`,
+while `anthropic>=1.0` moved to `httpx2` and rejects it at construction
+(`TypeError: Invalid http_client argument`), and pydantic-ai-slim 2.31.1 still
+declares `anthropic>=0.108.0` with no upper bound. `[tool.uv]
+constraint-dependencies = ["anthropic<1.0"]` holds the SDK on the 0.x line
+(`httpx`, resolves to 0.125.0); drop it when pydantic-ai is upgraded (newer
+pydantic-ai already requires `anthropic>=1.12.1`).
+
 ### Why heavy imports are lazy-loaded (SPEC-0001)
 
 `kompend --help` took ~80s because `register_all_commands()` imported every command

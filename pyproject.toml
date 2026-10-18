@@ -115,6 +115,13 @@ source = "uv-dynamic-versioning"
 fallback-version = "0.0.0"
 pattern = "default-unprefixed"
 
+[tool.uv]
+# pydantic-ai 2.31.1's Anthropic provider still hands the SDK an
+# ``httpx.AsyncClient``, while anthropic>=1.0 requires ``httpx2`` and raises
+# TypeError on construction. Upstream fixed this by requiring anthropic>=1.12.1
+# in newer pydantic-ai, so hold the SDK on the 0.x line until we upgrade.
+constraint-dependencies = ["anthropic<1.0"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src", "tests"]
