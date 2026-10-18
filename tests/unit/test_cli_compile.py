@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import patch
 
 import pytest
@@ -14,6 +16,8 @@ from kompend.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from kompend.core.models import Chunk, ChunkNode, ChunkTree, ElementType, ResolvedChunk
 from kompend.core.pipeline.config import Compiler, ImageMode, PipelineConfig
 from kompend.core.pipeline.orchestrator import build_pipeline
+from kompend.core.pipeline.runtime import PipelineRuntime
+from kompend.core.pipeline.stages._index import iter_sources
 from kompend.core.pipeline.stages._resolve import resolve_chunks
 from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.resolution.base import BaseResolver
@@ -201,6 +205,9 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
     (kompend_dir / "config.toml").write_text("", encoding="utf-8")
 
     class _BoomPipeline:
+        def iter_sources(self) -> list[Path]:
+            return [sources / "note.md"]
+
         def run(self, progress_callback: object | None = None) -> None:
             raise RuntimeError("synthetic boom")
 
@@ -215,3 +222,139 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
     assert result.exit_code == 1
     assert "Error: synthetic boom" in result.output
     assert "Traceback (most recent call last)" in result.output
+
+
+def test_compile_prints_pending_notes_notice_without_distilling(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Notes awaiting distillation are reported but never distilled unless asked."""
+    sources = _make_compile_vault(tmp_path, pending_notes=2)
+    distill_calls: list[Path] = []
+
+    class _BoomPipeline:
+        def iter_sources(self) -> list[Path]:
+            return [sources / "note.md"]
+
+        def run(self, progress_callback: object | None = None) -> None:
+            raise RuntimeError("synthetic boom")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
+    monkeypatch.setattr(
+        "kompend.cli.cmds.pipeline.pipeline.run_distill",
+        lambda sources_dir, cfg, **kwargs: distill_calls.append(sources_dir) or [],
+    )
+
+    result = CliRunner().invoke(app, ["compile"])
+
+    assert result.exit_code == 1
+    assert "2 note(s) in sources/_captured/ + sources/_learned/ are not distilled" in result.output
+    assert "--distill" in result.output
+    assert distill_calls == []
+
+
+def test_compile_distill_flag_distills_before_pipeline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--distill runs the distill flow (with archiving) ahead of the pipeline tiers."""
+    sources = _make_compile_vault(tmp_path, pending_notes=2)
+    order: list[str] = []
+    archive_flags: list[bool] = []
+    page = sources / "_distilled" / "distilled-20261019T101112-stage-3.md"
+
+    class _BoomPipeline:
+        def iter_sources(self) -> list[Path]:
+            return [sources / "note.md", page]
+
+        def run(self, progress_callback: object | None = None) -> None:
+            order.append("compile")
+            raise RuntimeError("synthetic boom")
+
+    def _fake_distill(sources_dir: Path, cfg: object, *, archive: bool = True) -> list[Path]:
+        order.append("distill")
+        archive_flags.append(archive)
+        return [page]
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.run_distill", _fake_distill)
+
+    result = CliRunner().invoke(app, ["compile", "--distill"])
+
+    assert result.exit_code == 1
+    assert order == ["distill", "compile"]
+    assert archive_flags == [True]
+    assert "Distilling 2 note(s) before compile" in result.output
+    assert "Distilled 1 page(s) to" in result.output
+    assert page.name in result.output
+    assert "are not distilled" not in result.output
+
+
+def test_compile_distill_flag_reports_empty_corpus(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--distill with no pending notes still reports the step, without the count line."""
+    sources = _make_compile_vault(tmp_path)
+
+    class _BoomPipeline:
+        def iter_sources(self) -> list[Path]:
+            return [sources / "note.md"]
+
+        def run(self, progress_callback: object | None = None) -> None:
+            raise RuntimeError("synthetic boom")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg: _BoomPipeline())
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.run_distill", lambda sources_dir, cfg, **kwargs: [])
+
+    result = CliRunner().invoke(app, ["compile", "--distill"])
+
+    assert result.exit_code == 1
+    assert "No captured notes found to distill." in result.output
+    assert "Distilling 0 note(s)" not in result.output
+
+
+def test_compile_lists_no_archive_files_in_source_count(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The 'Compiling N document(s)' count matches the tiers, which skip sources/_archive/."""
+    sources = _make_compile_vault(tmp_path)
+    archived = sources / "_archive" / "learn"
+    archived.mkdir(parents=True)
+    (archived / "retired.md").write_text("# Retired\ncontent")
+
+    def _real_iter_sources_pipeline(cfg: PipelineConfig) -> object:
+        real_sources = iter_sources(cast(PipelineRuntime, SimpleNamespace(config=cfg)))
+
+        class _BoomPipeline:
+            def iter_sources(self) -> list[Path]:
+                return real_sources
+
+            def run(self, progress_callback: object | None = None) -> None:
+                raise RuntimeError("synthetic boom")
+
+        return _BoomPipeline()
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", _real_iter_sources_pipeline)
+
+    result = CliRunner().invoke(app, ["compile"])
+
+    assert result.exit_code == 1
+    assert "Compiling 1 document(s)" in result.output
+
+
+def _make_compile_vault(tmp_path: Path, *, pending_notes: int = 0) -> Path:
+    """Create a minimal vault; ``pending_notes`` adds notes to sources/_captured/."""
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    (sources / "note.md").write_text("# Test\ncontent")
+    if pending_notes:
+        captured = sources / "_captured"
+        captured.mkdir()
+        for index in range(pending_notes):
+            (captured / f"fragment-{index}.md").write_text("# Fragment\ncontent")
+    kompend_dir = tmp_path / ".kompend"
+    kompend_dir.mkdir()
+    (kompend_dir / "config.toml").write_text("", encoding="utf-8")
+    return sources
