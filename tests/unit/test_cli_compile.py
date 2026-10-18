@@ -114,6 +114,27 @@ def test_iter_sources_skips_unsupported_extensions(tmp_path: Path) -> None:
     assert sources == {"doc1.pdf", "doc2.md", "notes.html", "script.py"}
 
 
+def test_iter_sources_skips_archive_subdir(tmp_path: Path) -> None:
+    """Consolidate/distill archives are retired notes, not sources.
+
+    ``consolidate`` and ``distill`` move superseded notes to
+    ``sources/_archive/<kind>/`` to hide them — if compile still picked
+    them up, archived tombstones would ride through the whole pipeline
+    again and recreate the duplicate content they were retired to remove.
+    """
+    (tmp_path / "_archive" / "capture").mkdir(parents=True)
+    archive_note = tmp_path / "_archive" / "capture" / "old-note.md"
+    archive_note.write_text("archived", encoding="utf-8")
+    (tmp_path / "_archive" / "learn" / "sub").mkdir(parents=True)
+    deep_note = tmp_path / "_archive" / "learn" / "sub" / "deep.md"
+    deep_note.write_text("archived deep", encoding="utf-8")
+    _populate_source_dir(tmp_path, "live.md")
+    config = _make_config(tmp_path, vlm_model="")
+    pipeline = build_pipeline(config)
+    sources = {s.name for s in pipeline.iter_sources()}
+    assert sources == {"live.md"}
+
+
 def _populate_source_dir(tmp_path: Path, *filenames: str) -> None:
     """Create empty files in tmp_path to simulate a source directory."""
     for name in filenames:

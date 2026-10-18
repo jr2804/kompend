@@ -27,9 +27,11 @@ sources/
     └── distilled/
 ```
 
-Everything under these zones is a **source**: the next `kompend compile` parses,
-chunks, and resolves it like any other document. `kompend organize` never
-flattens or relocates them.
+Everything under `_captured/`, `_learned/` and `_distilled/` is a **source**:
+the next `kompend compile` parses, chunks, and resolves it like any other
+document. `_archive/` is retired content — excluded from compile and from
+query retrieval, so archived notes stop contributing without being deleted.
+`kompend organize` never flattens or relocates any of these zones.
 
 ## capture vs learn
 

@@ -560,9 +560,13 @@ def attachment_slug(source_rel: Path | str) -> str:
 def is_protected_source(path: Path, sources_dir: Path) -> bool:
     """True if *path* lives under a protected tool-managed subdir of *sources_dir*.
 
-    Files in ``sources/_captured/`` or ``sources/_distilled/`` are inputs produced
-    by ``capture``/``learn``/``distill``. ``organize`` must never flatten or
-    relocate them — they are left in place. Compile still processes them.
+    Files in ``sources/_captured/``, ``sources/_learned/`` and
+    ``sources/_distilled/`` are inputs produced by ``capture``/``learn``/
+    ``distill``; ``sources/_archive/`` holds notes retired by
+    ``consolidate``/``distill``. ``organize`` must never flatten or relocate
+    any of them — they are left in place. Compile still processes the
+    capture-lifecycle subdirs, but not ``_archive`` (excluded by
+    ``iter_sources`` because those notes were retired, not removed).
     """
     try:
         rel = path.resolve().relative_to(sources_dir.resolve())

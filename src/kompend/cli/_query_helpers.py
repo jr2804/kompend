@@ -15,7 +15,7 @@ from kompend.cli.args.query import SearchMode
 from kompend.core.config import ResolvedConfig, RlmConfig
 from kompend.core.config._configs import LlmDataFormat, Verbosity
 from kompend.core.models import CompiledWiki, MetadataField
-from kompend.core.paths import CAPTURED_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, VECTORS_DIR
+from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, PROTECTED_SOURCE_SUBDIRS, VECTORS_DIR
 from kompend.core.trust.actor import resolve_actor
 from kompend.core.verbosity import is_verbose
 from kompend.llm.context_window import ContextWindow
@@ -341,8 +341,14 @@ def synthesize_and_output(  # noqa: PLR0917
 
 
 def is_captured_source(source_file: str | None) -> bool:
-    """Return True if *source_file* is a learn/capture note (``_captured/…``)."""
-    return bool(source_file) and CAPTURED_SUBDIR in source_file.replace("\\", "/")
+    """Return True if *source_file* is a tool-managed note in the capture lifecycle.
+
+    Covers ``_captured/``, ``_learned/``, ``_distilled/`` and ``_archive/``
+    notes — raw and archived notes are hidden from query retrieval either
+    because they feed compile directly (raw) or were retired by
+    ``consolidate``/``distill`` (archived).
+    """
+    return bool(source_file) and any(sub in source_file.replace("\\", "/") for sub in PROTECTED_SOURCE_SUBDIRS)
 
 
 def structured_answer(synthesis: SynthesisResult, wiki: CompiledWiki | None = None) -> JSONDict:

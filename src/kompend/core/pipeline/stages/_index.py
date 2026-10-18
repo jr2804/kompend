@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from kompend.core.config.keys import DEFAULT_PARSER
+from kompend.core.paths import ARCHIVE_SUBDIR
 from kompend.core.pipeline.config import Tier
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.preprocessing.parsers._registry import get_all_extensions
@@ -30,7 +31,7 @@ def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     extensions = get_all_extensions([DEFAULT_PARSER])
     sources = []
     for f in pipeline.config.source_dir.rglob("*"):
-        if _STATE_DIR in f.parts:
+        if _STATE_DIR in f.parts or ARCHIVE_SUBDIR in f.parts:
             continue
         if f.suffix.lower() in extensions:
             sources.append(f)
