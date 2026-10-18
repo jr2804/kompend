@@ -280,7 +280,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 deps=deps,
                 instructions=system_prompt,
                 message_history=message_history,
-                usage_limits=self._rlm_usage_limits,
+                usage_limits=self._usage_limits_for(deps),
             )
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
@@ -319,7 +319,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 deps=deps,
                 instructions=system_prompt,
                 message_history=message_history,
-                usage_limits=self._rlm_usage_limits,
+                usage_limits=self._usage_limits_for(deps),
             )
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
@@ -344,6 +344,15 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     def current_source_id(self) -> str:
         """The source_id from the most recent ``run()`` call."""
         return self._current_source_id
+
+    def _usage_limits_for(self, deps: DepsT) -> UsageLimits | None:
+        """Per-run UsageLimits; default is the RLM preset limits (or None).
+
+        pydantic-ai's implicit default caps a run at 50 requests, which is
+        tighter than multi-turn tool agents need — overriding agents derive
+        their honest budget from deps (see AgenticSummarizerAgent).
+        """
+        return self._rlm_usage_limits
 
     def _resolve_type_params(self) -> None:
         """Resolve ``result_type`` and ``deps_type`` from generic type params.

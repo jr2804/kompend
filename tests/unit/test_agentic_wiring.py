@@ -10,6 +10,7 @@ register exactly the tools its prompt declares.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -20,7 +21,7 @@ from pydantic_ai import RunContext
 from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent, make_agentic_context_chunk_agent
 from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
-from kompend.agents.types import ContextChunkDeps, QueryAgentDeps
+from kompend.agents.types import ContextChunkDeps, QueryAgentDeps, SummarizerDeps
 from kompend.chunking.contextual import ContextualEnricher
 from kompend.compilation.query_tools import read_page, search_wiki
 from kompend.core.config._configs import SearchConfig, SearchContextualConfig
@@ -97,6 +98,35 @@ class TestAgenticSummarizerAgentWiring:
         pipeline = build_pipeline(config)
         assert pipeline.summarizer is not None
         assert isinstance(pipeline.summarizer._agent, AgenticSummarizerAgent)  # noqa: SLF001
+
+
+class TestAgenticSummarizerUsageLimits:
+    """Regression: pydantic-ai's implicit default caps a run at 50 requests.
+    A tree session spends ~2 requests per eligible node (next_node +
+    summarize_node), so trees with >24 nodes died with "request_limit of 50"
+    instead of summarizing (p863 P863E_root).
+    """
+
+    def test_request_limit_scales_with_node_count(self) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        deps = SummarizerDeps(nodes=[{"id": str(i), "heading_chain": "", "content": "x"} for i in range(40)], source_id="root")
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil(40 * 2 * 1.1)  # 88
+
+    def test_headroom_params_are_overridable(self) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        deps = SummarizerDeps(nodes=[{"id": str(i), "heading_chain": "", "content": "x"} for i in range(40)], source_id="root")
+        limits = agent._usage_limits_for(deps, requests_per_node=1, headroom_frac=1.0)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == 40
+
+    def test_small_tree_budget(self) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        deps = SummarizerDeps(nodes=[{"id": "a", "heading_chain": "", "content": "x"}], source_id="root")
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == 3  # ceil(2 * 1.1) — one spare request
 
 
 class TestAgenticContextChunkAgentWiring:

@@ -7,8 +7,10 @@ nodes via ``next_node()`` and records each summary via
 
 from __future__ import annotations
 
+import math
 from typing import ClassVar
 
+from pydantic_ai import UsageLimits
 from pydantic_ai.agent.abstract import AgentRetries
 
 from kompend.agents.agentic_harness import AgenticHarness
@@ -24,6 +26,25 @@ class AgenticSummarizerAgent(KompendAgentBase[str, SummarizerDeps]):
     template_name: ClassVar[str] = "summarizer_agentic_prompt.md.j2"
     system_template_name: ClassVar[str] = "summarizer_agentic_system.md.j2"
     template_prefix: ClassVar[str] = "chunking/"
+
+    def _usage_limits_for(
+        self,
+        deps: SummarizerDeps,
+        *,
+        requests_per_node: int = 2,
+        headroom_frac: float = 1.1,
+    ) -> UsageLimits | None:
+        """Honest request budget for one tree session.
+
+        ``requests_per_node`` × node count is the base budget (one
+        ``next_node()`` turn plus one ``summarize_node()`` turn), scaled by
+        ``headroom_frac`` (ceil, so small trees get at least one spare
+        request) for tool/output retries. The pydantic-ai implicit default
+        of 50 requests aborts trees with more than ~24 eligible nodes.
+        """
+        if self._rlm_usage_limits is not None:
+            return self._rlm_usage_limits
+        return UsageLimits(request_limit=math.ceil(len(deps.nodes) * requests_per_node * headroom_frac))
 
 
 def make_agentic_summarizer_agent(
