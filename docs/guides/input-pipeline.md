@@ -117,4 +117,7 @@ graph LR
 ```
 
 Run `kompend compile` after `distill`/`consolidate` to fold the results into
-the compiled wiki.
+the compiled wiki. `kompend compile --distill` runs the distill step
+(with its default archiving) immediately before compiling, and prints a
+one-line reminder whenever `_captured/` or `_learned/` still hold
+undistilled notes.

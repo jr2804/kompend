@@ -155,10 +155,30 @@ kompend compile [OPTIONS] FILES...
 | `--vlm-model` | — | Vision model for captioning images during resolution |
 | `--verify/--no-verify` | on | Run grounding verification on each claim |
 | `--synthesize/--no-synthesize` | on | Generate LLM-synthesized overview.md |
+| `--distill` | off | Distill pending notes from `sources/_captured/` + `sources/_learned/` into `sources/_distilled/` pages before compiling (archives the notes it merged) |
 | `--ignore` | — | Ignore pattern (glob-style, repeatable) |
 | `--progress/--no-progress` | auto | Show rich progress bars (auto-detected for TTY) |
 
 Source and output directories are resolved from `--wiki-dir` (or `KOMP_WIKI_DIR`), defaulting to the current directory. See [Configuration](./configuration.md) for details.
+
+### Pending notes
+
+When `sources/_captured/` or `sources/_learned/` still hold notes, `compile`
+prints a one-line reminder that they are not distilled yet. It never distills
+them on its own — refining the note corpus is an explicit step:
+
+```bash
+# Distill pending notes, then compile in one run
+kompend compile --distill
+
+# Equivalent two-step form
+kompend distill && kompend compile
+```
+
+`--distill` runs the exact flow of [`kompend distill`](#kompend-distill),
+including its archiving of the merged notes, so the input zones end up empty
+and later compiles only pay for new notes. Archived notes under
+`sources/_archive/` are never compiled.
 
 ### Ignore patterns
 
@@ -465,6 +485,9 @@ kompend distill --no-archive
 # Then compile to incorporate distilled pages
 kompend compile
 ```
+
+`kompend compile --distill` runs this same flow (with the default archiving)
+just before compiling, when a single command is more convenient.
 
 ## `kompend consolidate`
 

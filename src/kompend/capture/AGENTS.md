@@ -17,16 +17,20 @@ patterns across captures.
 
 | Module | Contents |
 |--------|----------|
-| ``capture.py`` | ``capture_source`` — fetch and normalise input sources |
-| ``distill.py`` | ``distill_to_chunks`` — content distillation into structured data |
+| ``capture.py`` | ``capture`` — LLM-extract durable items from text into ``_captured/`` |
+| ``learn.py`` | ``learn`` — store a verbatim fact into ``_learned/`` |
+| ``distill.py`` | ``distill`` — merge ``_captured/`` + ``_learned/`` notes by tag into ``_distilled/`` pages |
+| ``consolidate.py`` | ``consolidate`` — archive near-duplicate notes across the note zones |
 | ``ingest.py`` | Capture-to-ingest pipeline adapter |
-| ``learn.py`` | ``learn_from_captures`` — pattern extraction across captures |
-| ``_utils.py`` | Capture-specific utilities |
+| ``_utils.py`` | Capture-specific utilities (titles, slugs, sources index) |
 
 ## Rules
 
-- Import: ``from kompend.capture.capture import capture_source``,
-  ``from kompend.capture.distill import distill_to_chunks``.
+- Import: ``from kompend.capture.capture import capture``,
+  ``from kompend.capture.distill import distill``.
+- Distill wiring (agent selection, pending-note counting, result lines) used by
+  the CLI lives in ``kompend.cli._distill_helpers`` — this package exposes the
+  flow, not the CLI presentation.
 - Capture agents (``CaptureAgent``, ``DistillAgent``) live in
   ``kompend.agents.capture`` — this package contains orchestration and
   non-agent logic only.

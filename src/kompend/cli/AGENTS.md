@@ -79,6 +79,7 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 | `_sources.py` | File resolution, glob expansion, copy-to-sources, URL download. |
 | `_ignore.py` | Ignore/gitignore pattern matching for source scanning. |
 | `_pipeline_helpers.py` | Pipeline orchestration helpers (progress callback, input resolution, review queue, provenance, lint-fix persistence). |
+| `_distill_helpers.py` | Distill wiring shared by `kompend distill` and `kompend compile --distill` (pending-note count/notice, agent selection, result lines). |
 | `_progress.py` | Rich progress bar wrappers. |
 | `_shared.py` | Shared utilities (config resolution, CLI overrides, hook loading). |
 

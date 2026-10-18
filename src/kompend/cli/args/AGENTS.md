@@ -145,6 +145,7 @@ when the command actually has options in it.
 - `OnlineUrls` — Fetch and embed external URLs
 - `UrlFile` — File with URLs to download
 - `Ignore` — Glob ignore patterns
+- `CompileDistill` — Distill pending notes before compiling
 - `EmbedModel` — Embedding model name
 - `SynthesizeFlag` / `IndexStore` / `CompileLint` — output toggles
 
