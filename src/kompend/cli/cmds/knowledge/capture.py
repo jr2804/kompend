@@ -8,14 +8,12 @@ from typing import Any
 import typer
 
 from kompend.agents.capture import CaptureAgent
-from kompend.agents.distill import DistillAgent
-from kompend.agents.distill_agentic import make_agentic_distill_agent
 from kompend.agents.types import WriteDeps
 from kompend.agents.write import make_agentic_write_agent
 from kompend.capture.capture import capture
 from kompend.capture.consolidate import consolidate
-from kompend.capture.distill import distill
 from kompend.capture.learn import learn
+from kompend.cli._distill_helpers import distill_result_lines, run_distill
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli._sources import resolve_files
 from kompend.cli.app import app
@@ -35,7 +33,7 @@ from kompend.cli.args import (
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
 from kompend.core.models import MetadataField, load_cached_wiki
-from kompend.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR
+from kompend.core.paths import CAPTURED_SUBDIR
 from kompend.core.text.encoding import read_text_auto
 from kompend.core.text.matching import SemanticMatcher
 from kompend.core.text.slug import slugify
@@ -207,32 +205,9 @@ def distill_cmd(
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
-    default_model = cfg.kompend.compile.llm.default_model
-    distill_agent = None
-    if default_model:
-        try:
-            distill_agent = make_agentic_distill_agent(
-                default_model,
-                timeout=float(cfg.kompend.compile.llm.timeout),
-                retries=cfg.kompend.compile.llm.output_retries,
-            )
-        except Exception:
-            try:
-                distill_agent = DistillAgent(
-                    default_model,
-                    timeout=float(cfg.kompend.compile.llm.timeout),
-                    retries=cfg.kompend.compile.llm.output_retries,
-                )
-            except Exception:
-                distill_agent = None
-
-    paths = distill(vp.sources_dir, distill_agent=distill_agent, archive=not no_archive)
-    if not paths:
-        get_console().print("No captured notes found to distill.")
-        return
-    get_console().print(f"Distilled {len(paths)} page(s) to {vp.sources_dir / DISTILLED_SUBDIR}")
-    for p in paths:
-        get_console().print(f"  {p.name}")
+    paths = run_distill(vp.sources_dir, cfg, archive=not no_archive)
+    for line in distill_result_lines(paths, vp.sources_dir):
+        get_console().print(line)
 
 
 @app.command(name="write")

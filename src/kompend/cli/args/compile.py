@@ -38,6 +38,17 @@ Ignore = Annotated[
     ),
 ]
 
+# ── compile --distill pre-step ──────────────────────────────────────────
+
+CompileDistill = Annotated[
+    bool,
+    typer.Option(
+        "--distill",
+        help=("Distill captured/learned notes into sources/_distilled/ pages before compiling (archives the notes it merged). Default: off."),
+        rich_help_panel="Sources",
+    ),
+]
+
 IndexStore = Annotated[
     bool | None,
     typer.Option(

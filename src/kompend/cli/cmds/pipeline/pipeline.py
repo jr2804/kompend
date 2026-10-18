@@ -10,6 +10,12 @@ from typing import Any
 
 import typer
 
+from kompend.cli._distill_helpers import (
+    count_pending_notes,
+    distill_result_lines,
+    pending_notes_message,
+    run_distill,
+)
 from kompend.cli._pipeline_helpers import (
     PostCompileOptions,
     check_llm_availability,
@@ -30,6 +36,7 @@ from kompend.cli.args import (
     DEFAULT_START_AT_TIER,
     BypassReview,
     CliSet,
+    CompileDistill,
     CompileLint,
     CompileLintAll,
     ConfigPath,
@@ -67,7 +74,6 @@ from kompend.cli.args import (
 from kompend.core.config import DEFAULTS, coerce_config_value, resolve_config, validate_config_key
 from kompend.core.config._configs import LintConfig
 from kompend.core.config.keys import (
-    DEFAULT_PARSER,
     DISPLAY_CLI_ELEMENT_CHARS,
 )
 from kompend.core.models import MetadataField, WikiField, load_cached_wiki, load_wiki_from_files
@@ -79,7 +85,7 @@ from kompend.core.trust.actor import resolve_actor
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.pages.log import log_stage
-from kompend.preprocessing.parsers._registry import ParserBuildOptions, build_default_router, get_all_extensions
+from kompend.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
 from kompend.preprocessing.parsers.base import ParserRouter
 from kompend.rag import build_vector_index
 
@@ -131,6 +137,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     url_file: UrlFile = None,
     embed_model: EmbedModel = None,
     ignore: Ignore = None,
+    distill: CompileDistill = False,
     show_progress: Progress = None,
     start_at_tier: StartAtTier = DEFAULT_START_AT_TIER,
     no_cache: NoCacheFlag = None,
@@ -161,6 +168,10 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     Reads all source files from the vault's ``sources/`` directory
     (configured via ``[paths] sources_dir`` in the project config).
     Use ``kompend ingest`` to add new files or URLs to the vault first.
+
+    Pass ``--distill`` to merge captured/learned notes into
+    ``sources/_distilled/`` pages (archiving the notes it merged) before
+    compiling — otherwise notes awaiting distillation are only reported.
 
     Output shape (format, flavor, frontmatter, kind, compiler, image_mode) and
     tuning values (budgets, timeouts, decay params) are read from config —
@@ -200,13 +211,16 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
 
-    source_extensions = get_all_extensions([DEFAULT_PARSER])
-    source_files = [f for f in sources_dir.rglob("*") if f.suffix.lower() in source_extensions]
-    if not source_files:
-        get_err_console().print(f"No supported files found in {sources_dir}.")
-        raise typer.Exit(1)
+    console = get_err_console() if json_progress else get_console()
 
-    get_console().print(f"Compiling {len(source_files)} document(s) -> {output_dir}")
+    pending_notes = count_pending_notes(sources_dir)
+    if distill and not list_tiers:
+        if pending_notes:
+            console.print(f"Distilling {pending_notes} note(s) before compile…")
+        for line in distill_result_lines(run_distill(sources_dir, cfg), sources_dir):
+            console.print(line)
+    elif pending_notes and not list_tiers:
+        console.print(pending_notes_message(pending_notes))
 
     pipeline_config = PipelineConfig.from_resolved(
         cfg,
@@ -216,6 +230,13 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     )
 
     pipeline = build_pipeline(pipeline_config)
+
+    source_files = pipeline.iter_sources()
+    if not source_files:
+        get_err_console().print(f"No supported files found in {sources_dir}.")
+        raise typer.Exit(1)
+
+    console.print(f"Compiling {len(source_files)} document(s) -> {output_dir}")
 
     check_llm_availability(pipeline)
 

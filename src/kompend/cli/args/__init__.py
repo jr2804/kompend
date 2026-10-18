@@ -29,6 +29,7 @@ from .common import (
 
 # Compile command
 from .compile import (
+    CompileDistill,
     CompileLint,
     CompileLintAll,
     EmbedModel,
@@ -198,6 +199,7 @@ __all__ = [
     "CaptureText",
     "CliSet",
     # Compile
+    "CompileDistill",
     "CompileLint",
     "CompileLintAll",
     # Config
