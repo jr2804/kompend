@@ -50,6 +50,7 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
     The overall bar resets per phase. Each phase has a flat handler keyed by
     name in the dispatch table — no nested phase if/elif chain.
     - **parse**: bar tracks files (0 → N)
+    - **summary**: bar tracks per-tree LLM summarization (0 → N trees)
     - **resolve**: bar resets to track chunks (0 → M)
     - **compile** / **output**: bar becomes indeterminate
     """
@@ -60,6 +61,17 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
             tracker.reset_for_phase(total, "Parsing…")
         elif detail == "done":
             tracker.update_progress(total, f"Parsed {total} file(s)")
+        else:
+            tracker.update_progress(current, f"[{current}/{total}] {detail}")
+
+    def _summary(current: int, total: int, detail: str) -> None:
+        if detail == "starting":
+            tracker.reset_for_phase(total, f"Summarizing sections ({total} source(s) to summarize)…")
+        elif detail == "done":
+            if total:
+                tracker.update_progress(total, f"Summarized {total} source(s)")
+            else:
+                tracker.message("No sources to summarize")
         else:
             tracker.update_progress(current, f"[{current}/{total}] {detail}")
 
@@ -118,6 +130,7 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
 
     handlers: dict[str, Callable[[int, int, str], None]] = {
         "parse": _parse,
+        "summary": _summary,
         "index": _index,
         "resolve": _resolve,
         "compile": _compile(),

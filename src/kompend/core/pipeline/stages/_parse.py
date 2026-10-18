@@ -132,10 +132,22 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
         trees.extend(att_trees)
 
     if pipeline.summarizer is not None:
-        for tree in trees:
+        # Summarization runs one LLM session per tree and can take hours for
+        # large vaults — emit the summary sub-phase so the bar tracks it
+        # instead of pinning at "Parsed N file(s) 100%".
+        pipeline.emit("summary", 0, len(trees), "starting")
+        for idx, tree in enumerate(trees):
+            pipeline.emit("summary", idx + 1, len(trees), tree_label(tree))
             pipeline.summarizer.summarize(tree)
+        pipeline.emit("summary", len(trees), len(trees), "done")
 
     return trees
+
+
+def tree_label(tree: ChunkTree) -> str:
+    """Short label identifying a tree in progress output."""
+    source = tree.source_file
+    return source.name if source is not None else tree.root_id
 
 
 def _process_single_source(

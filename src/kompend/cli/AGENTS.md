@@ -192,7 +192,7 @@ per unit. The handler must recognize both the sentinel `detail` string and
 the per-unit one.
 
 **Determinate vs indeterminate:** bars with a known `total` (parse,
-resolve, image-captioning) fill as units complete. Bars without one
+summary, resolve, image-captioning) fill as units complete. Bars without one
 (compile, output) are indeterminate and convey activity via description
 updates, not percentage. Never fake a percentage on an indeterminate task.
 

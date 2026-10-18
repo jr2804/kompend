@@ -42,9 +42,23 @@ def configure_logfire() -> None:
     os.environ.setdefault("OTEL_TRACES_EXPORTER", "none")
     os.environ.setdefault("OTEL_METRICS_EXPORTER", "none")
     os.environ.setdefault("OTEL_LOGS_EXPORTER", "none")
+    # Quiet the logfire console span exporter: it prints every instrumented
+    # span/log to the terminal (config.py:1206-1223) — "running tool: …",
+    # "chat …", per-agent spans — drowning CLI progress output. Passing
+    # console=False hard-overrides LOGFIRE_* env vars (config.py:811 only
+    # consults the env when console=None), so an explicitly set
+    # LOGFIRE_CONSOLE=true is honored instead by passing console=None.
+    # Backend telemetry (spans/logs/metrics to OTLP or logfire.dev) is
+    # untouched either way.
+    console = (
+        None  # logfire's own env-driven default applies (console on)
+        if os.environ.get("LOGFIRE_CONSOLE", "").strip().lower() in ("1", "true", "yes")
+        else False
+    )
     logfire.configure(
         service_name="kompend",
         environment="staging",
         send_to_logfire="if-token-present",
+        console=console,
     )
     logfire.instrument_pydantic_ai()
