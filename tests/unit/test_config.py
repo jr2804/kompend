@@ -517,6 +517,15 @@ class TestResolveConfig:
         assert cfg.get("compile.llm.default_model") == "local-model"
         assert cfg.get("compile.llm.timeout") == 300.0
 
+    @pytest.fixture(autouse=True)
+    def _isolate_global_config(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """Point the global-config lookup at an empty dir.
+
+        Without this, a developer's real ``~/.config/kompend/config.toml``
+        leaks into defaults assertions.
+        """
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+
 
 # ── ResolvedConfig ──────────────────────────────────────────────────────
 
