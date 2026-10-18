@@ -6,8 +6,10 @@ One session processes all tag groups: the agent pulls groups via
 
 from __future__ import annotations
 
+import math
 from typing import ClassVar
 
+from pydantic_ai import UsageLimits
 from pydantic_ai.agent.abstract import AgentRetries
 
 from kompend.agents.agentic_harness import AgenticHarness
@@ -23,6 +25,25 @@ class AgenticDistillAgent(KompendAgentBase[str, DistillAgentDeps]):
     template_name: ClassVar[str] = "distill_agentic_prompt.md.j2"
     system_template_name: ClassVar[str] = "distill_agentic_system.md.j2"
     template_prefix: ClassVar[str] = "capture/"
+
+    def _usage_limits_for(
+        self,
+        deps: DistillAgentDeps,
+        *,
+        requests_per_group: int = 3,
+        headroom_frac: float = 1.1,
+    ) -> UsageLimits | None:
+        """Honest request budget for one multi-group distill session.
+
+        ``requests_per_group`` × group count is the base budget (a
+        ``get_group()`` turn, a ``save_page()`` turn, and one turn of slack
+        for re-reads or retries), scaled by ``headroom_frac`` (ceil, so tiny
+        runs still get a spare request). The pydantic-ai implicit default of
+        50 requests aborts sessions with more than ~16 groups.
+        """
+        if self._rlm_usage_limits is not None:
+            return self._rlm_usage_limits
+        return UsageLimits(request_limit=math.ceil(len(deps.groups) * requests_per_group * headroom_frac))
 
 
 def make_agentic_distill_agent(

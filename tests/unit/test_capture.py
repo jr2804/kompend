@@ -19,6 +19,7 @@ from kompend.capture.capture import (
 from kompend.capture.consolidate import consolidate, find_duplicates
 from kompend.capture.distill import (
     CapturedNote,
+    _distilled_path,
     _group_by_tag,
     _parse_frontmatter,
     distill,
@@ -443,3 +444,34 @@ class TestConsolidate:
         p = d / name
         p.write_text(f"---\ntitle: {name}\n---\n\n{body}", encoding="utf-8")
         return p
+
+
+class TestDistilledPathCollision:
+    """`_distilled_path` must not hand the same file to two groups in one run.
+
+    Regression guard: two `probe-audit` tag groups in one p863 distill run
+    both resolved to `distilled-…-probe-audit.md`; the second write
+    overwrote the first page and its group text was silently lost.
+    """
+
+    TS = "20261018T223411"
+
+    def test_reuses_page_from_previous_run(self, tmp_path: Path) -> None:
+        prev = tmp_path / "distilled-20260818T120000-probe-audit.md"
+        prev.write_text("old", encoding="utf-8")
+        path = _distilled_path(tmp_path, "probe-audit", self.TS, used=set())
+        assert path == prev
+
+    def test_same_run_same_slug_gets_unique_names(self, tmp_path: Path) -> None:
+        first = _distilled_path(tmp_path, "probe-audit", self.TS, used=set())
+        second = _distilled_path(tmp_path, "probe-audit", self.TS, used={first})
+        third = _distilled_path(tmp_path, "probe-audit", self.TS, used={first, second})
+        assert first == tmp_path / f"distilled-{self.TS}-probe-audit.md"
+        assert second == tmp_path / f"distilled-{self.TS}-probe-audit-2.md"
+        assert third == tmp_path / f"distilled-{self.TS}-probe-audit-3.md"
+
+    def test_existing_pages_all_claimed_this_run(self, tmp_path: Path) -> None:
+        first = _distilled_path(tmp_path, "probe-audit", self.TS, used=set())
+        first.write_text("page", encoding="utf-8")
+        path = _distilled_path(tmp_path, "probe-audit", self.TS, used={first})
+        assert path.name == f"distilled-{self.TS}-probe-audit-2.md"

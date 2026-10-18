@@ -10,6 +10,7 @@ the model is told it has tools and has none.
 from __future__ import annotations
 
 from kompend.agents.distill_agentic import make_agentic_distill_agent
+from kompend.agents.types import DistillAgentDeps
 
 # NOTE: system-prompt-tools == registered-tools is guarded centrally for every
 # agent in tests/unit/test_agent_templates.py; only the pinned tool list remains
@@ -21,3 +22,25 @@ class TestAgenticDistillAgentTools:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
         built = agent._build_agent()
         assert sorted(built._function_toolset.tools.keys()) == ["get_group", "save_page"]
+
+
+class TestAgenticDistillAgentPrompt:
+    def test_render_user_prompt_with_groups(self) -> None:
+        """render_user_prompt succeeds with deps built by capture/distill.py.
+
+        Regression guard: the user-prompt template once declared a required
+        ``max_groups`` variable the deps never carried, so every agentic
+        distill render raised at run start and kompend silently fell back to
+        deterministic per-group merging.
+        """
+        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        deps = DistillAgentDeps(
+            groups=[{"tag": "dll", "notes": [{"title": "T", "content": "b", "source": "n.md"}]}],
+            source_id="distill-all",
+            timeout=180.0,
+        )
+        user_prompt = agent.render_user_prompt(deps)
+        assert user_prompt.strip()
+        system_prompt = agent.render_system_prompt(deps)
+        assert "get_group" in system_prompt
+        assert "save_page" in system_prompt

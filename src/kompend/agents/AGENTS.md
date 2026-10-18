@@ -96,8 +96,9 @@ The base class provides:
   `_usage_limits_for(deps)` (default: the RLM preset limits, else None →
   pydantic-ai's implicit 50-request cap). Multi-turn tool agents override the
   hook; `AgenticSummarizerAgent` derives `request_limit` from node count
-  (~2 requests/node) with 10% headroom — both factors are kwargs with the
-  same defaults (`requests_per_node`, `headroom_frac`)
+  (~2 requests/node, `requests_per_node`) and `AgenticDistillAgent` from group
+  count (~3 requests/group, `requests_per_group`), both with 10% headroom —
+  every factor is a kwarg with a default
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
 

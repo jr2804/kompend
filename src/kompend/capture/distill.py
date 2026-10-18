@@ -87,7 +87,7 @@ def distill(
             page = _synthesize_with_agent(tag, group_notes, distill_agent) if distill_agent is not None else _synthesize_fallback(tag, group_notes)
             slug = make_slug(page["title"])
             source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
-            filepath = _distilled_path(output_dir, slug, timestamp)
+            filepath = _distilled_path(output_dir, slug, timestamp, used=set(written))
             _write_page(filepath, page, source_files, timestamp)
             logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
             written.append(filepath)
@@ -206,7 +206,7 @@ def _distill_agentic(
             )
         slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in note_list]
-        filepath = _distilled_path(output_dir, slug, timestamp)
+        filepath = _distilled_path(output_dir, slug, timestamp, used=set(written))
         _write_page(filepath, page, source_files, timestamp)
         logger.info("Distilled %d notes -> %s", len(note_list), filepath)
         written.append(filepath)
@@ -231,25 +231,36 @@ def _distill_fallback_per_group(
         page = _synthesize_fallback(tag, group_notes)
         slug = make_slug(page["title"])
         source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
-        filepath = _distilled_path(output_dir, slug, timestamp)
+        filepath = _distilled_path(output_dir, slug, timestamp, used=set(written))
         _write_page(filepath, page, source_files, timestamp)
         logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
         written.append(filepath)
     return written
 
 
-def _distilled_path(output_dir: Path, slug: str, timestamp: str) -> Path:
+def _distilled_path(output_dir: Path, slug: str, timestamp: str, used: set[Path]) -> Path:
     """Return the distilled page path for *slug*.
 
-    If a page for the same slug already exists (a previous distill run),
-    that file is reused — the group's page is *updated* in place instead of
+    If a page for the same slug already exists (a previous distill run), that
+    file is reused — the group's page is *updated* in place instead of
     accumulating a new timestamped file per run. This is what keeps repeated
     ``kompend distill`` runs from piling up near-duplicate pages.
+
+    *used* lists the pages this run has already claimed: two groups sharing a
+    slug inside one run must not both write the same path (the second would
+    silently overwrite the first), so the second group gets a fresh unique
+    filename instead.
     """
     existing = sorted(output_dir.glob(f"distilled-*-{slug}.md"))
-    if existing:
-        return existing[0]
-    return output_dir / f"distilled-{timestamp}-{slug}.md"
+    for path in existing:
+        if path not in used:
+            return path
+    candidate = output_dir / f"distilled-{timestamp}-{slug}.md"
+    n = 1
+    while candidate in used or candidate.exists():
+        n += 1
+        candidate = output_dir / f"distilled-{timestamp}-{slug}-{n}.md"
+    return candidate
 
 
 # ── Synthesis ───────────────────────────────────────────────────────────

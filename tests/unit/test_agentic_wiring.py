@@ -19,9 +19,10 @@ import pytest
 from pydantic_ai import RunContext
 
 from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent, make_agentic_context_chunk_agent
+from kompend.agents.distill_agentic import make_agentic_distill_agent
 from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
-from kompend.agents.types import ContextChunkDeps, QueryAgentDeps, SummarizerDeps
+from kompend.agents.types import ContextChunkDeps, DistillAgentDeps, QueryAgentDeps, SummarizerDeps
 from kompend.chunking.contextual import ContextualEnricher
 from kompend.compilation.query_tools import read_page, search_wiki
 from kompend.core.config._configs import SearchConfig, SearchContextualConfig
@@ -127,6 +128,36 @@ class TestAgenticSummarizerUsageLimits:
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == 3  # ceil(2 * 1.1) — one spare request
+
+
+class TestAgenticDistillUsageLimits:
+    """Regression: pydantic-ai's implicit default caps a run at 50 requests.
+
+    A multi-group distill session spends ~2-3 requests per group
+    (get_group + save_page + slack), so runs with >16 groups died with
+    "request_limit of 50" instead of distilling (p863: 32 tag groups).
+    """
+
+    def test_request_limit_scales_with_group_count(self) -> None:
+        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        deps = DistillAgentDeps(groups=[{"tag": f"t{i}", "notes": []} for i in range(32)], source_id="distill-all")
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil(32 * 3 * 1.1)  # 106
+
+    def test_headroom_params_are_overridable(self) -> None:
+        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        deps = DistillAgentDeps(groups=[{"tag": f"t{i}", "notes": []} for i in range(10)], source_id="distill-all")
+        limits = agent._usage_limits_for(deps, requests_per_group=2, headroom_frac=1.0)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == 20
+
+    def test_single_group_budget(self) -> None:
+        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        deps = DistillAgentDeps(groups=[{"tag": "dll", "notes": []}], source_id="distill-all")
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == 4  # ceil(3 * 1.1) — one spare request
 
 
 class TestAgenticContextChunkAgentWiring:
