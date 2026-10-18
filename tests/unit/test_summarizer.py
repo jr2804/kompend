@@ -6,7 +6,10 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic_ai.exceptions import UsageLimitExceeded
 
+from kompend.agents.summarizer_agentic import make_agentic_summarizer_agent
+from kompend.agents.types import SummarizerDeps
 from kompend.chunking.summarizer import NodeSummarizer
 from kompend.core.models import (
     Chunk,
@@ -178,6 +181,81 @@ class TestSummarizerStructuredLeaf:
         assert section_node.summary != ""
 
 
+class TestSummarizerAgenticResume:
+    """Regression (p863 ``ITU-T_P_863__03_2018__root``): one agentic session
+    that ran out of its request budget abandoned the rest of the tree.  A
+    session that exhausts its budget must be resumed for the nodes it left
+    unsummarized, and must stop instead of spinning when a round makes no
+    progress.
+    """
+
+    def test_resumes_after_request_budget_exhaustion(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            ids = [entry["id"] for entry in deps.nodes]
+            rounds.append(ids)
+            if len(rounds) == 1:
+                deps.results[ids[0]] = f"summary {ids[0]}"
+                raise UsageLimitExceeded("The next request would exceed the request_limit of 3.")
+            for node_id in ids:
+                deps.results[node_id] = f"summary {node_id}"
+
+        monkeypatch.setattr(agent, "run", _run)
+        tree = NodeSummarizer(agent=agent).summarize(agentic_tree)
+
+        assert len(rounds) == 2
+        assert len(rounds[0]) == 4
+        assert rounds[0][0] not in rounds[1]
+        assert set(rounds[1]) == set(rounds[0]) - {rounds[0][0]}
+        for node_id in rounds[0]:
+            assert tree.nodes[node_id].summary == f"summary {node_id}"
+
+    def test_stops_when_a_round_records_nothing(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            rounds.append([entry["id"] for entry in deps.nodes])
+            raise UsageLimitExceeded("The next request would exceed the request_limit of 3.")
+
+        monkeypatch.setattr(agent, "run", _run)
+        tree = NodeSummarizer(agent=agent).summarize(agentic_tree)
+
+        assert len(rounds) == 1
+        for node_id in rounds[0]:
+            assert not tree.nodes[node_id].summary
+
+    def test_single_round_when_the_budget_suffices(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            rounds.append([entry["id"] for entry in deps.nodes])
+            for node_id in rounds[-1]:
+                deps.results[node_id] = f"summary {node_id}"
+
+        monkeypatch.setattr(agent, "run", _run)
+        tree = NodeSummarizer(agent=agent).summarize(agentic_tree)
+
+        assert len(rounds) == 1
+        for node_id in rounds[0]:
+            assert tree.nodes[node_id].summary == f"summary {node_id}"
+
+
 # ── fixtures ─────────────────────────────────────────────────────────────
 
 
@@ -229,6 +307,40 @@ def sample_tree() -> ChunkTree:
     nodes = {n.id: n for n in [root, section1, leaf_a, leaf_b, section2, leaf_c]}
     return ChunkTree(
         root_id="doc_root",
+        nodes=nodes,
+        source_file=Path("doc.md"),
+        strategy=ChunkStrategy.TWO_LEVEL,
+    )
+
+
+@pytest.fixture
+def agentic_tree() -> ChunkTree:
+    """Root → 3 sections with 2 leaves each: 4 eligible internal nodes."""
+    root = ChunkNode(id="r", depth=0)
+    nodes: dict[str, ChunkNode] = {"r": root}
+    for index in range(3):
+        section_id = f"s{index}"
+        section = ChunkNode(
+            id=section_id,
+            parent_id="r",
+            depth=1,
+            heading_chain=(f"Section {index}",),
+        )
+        for leaf in range(2):
+            leaf_id = f"l{index}{leaf}"
+            nodes[leaf_id] = ChunkNode(
+                id=leaf_id,
+                parent_id=section_id,
+                depth=2,
+                heading_chain=(f"Section {index}",),
+                chunk=_make_chunk(leaf_id, f"body {leaf_id}"),
+                token_count=4,
+            )
+            section.children_ids.append(leaf_id)
+        nodes[section_id] = section
+        root.children_ids.append(section_id)
+    return ChunkTree(
+        root_id="r",
         nodes=nodes,
         source_file=Path("doc.md"),
         strategy=ChunkStrategy.TWO_LEVEL,
