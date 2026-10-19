@@ -235,6 +235,26 @@ class TestSummarizerAgenticResume:
         for node_id in rounds[0]:
             assert not tree.nodes[node_id].summary
 
+    def test_junk_ids_do_not_count_as_progress(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A model that mangles ids must not freeze the payload and re-run forever."""
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            rounds.append([entry["id"] for entry in deps.nodes])
+            deps.results[f"not-a-node-{len(rounds)}"] = "junk"
+
+        monkeypatch.setattr(agent, "run", _run)
+        tree = NodeSummarizer(agent=agent).summarize(agentic_tree)
+
+        assert len(rounds) == 1
+        for node_id in rounds[0]:
+            assert not tree.nodes[node_id].summary
+
     def test_single_round_when_the_budget_suffices(
         self,
         agentic_tree: ChunkTree,
