@@ -32,18 +32,24 @@ class AgenticDistillAgent(KompendAgentBase[str, DistillAgentDeps]):
         *,
         requests_per_group: int = 3,
         headroom_frac: float = 1.1,
+        session_overhead: int = 2,
     ) -> UsageLimits | None:
         """Honest request budget for one multi-group distill session.
 
-        ``requests_per_group`` × group count is the base budget (a
-        ``get_group()`` turn, a ``save_page()`` turn, and one turn of slack
-        for re-reads or retries), scaled by ``headroom_frac`` (ceil, so tiny
-        runs still get a spare request). The pydantic-ai implicit default of
-        50 requests aborts sessions with more than ~16 groups.
+        ``requests_per_group`` per group (a ``get_group()`` turn, a
+        ``save_page()`` turn, and one turn of slack for re-reads or retries),
+        plus ``session_overhead`` for the session's fixed costs — the final
+        "no more groups" probe and the closing turn.  Without that constant a
+        single-group session is budgeted at exactly its own cost and dies on
+        the closing turn.
+
+        ``headroom_frac`` then covers retries. The pydantic-ai implicit
+        default of 50 requests aborts sessions with more than ~16 groups.
         """
         if self._rlm_usage_limits is not None:
             return self._rlm_usage_limits
-        return UsageLimits(request_limit=math.ceil(len(deps.groups) * requests_per_group * headroom_frac))
+        planned = len(deps.groups) * requests_per_group + session_overhead
+        return UsageLimits(request_limit=math.ceil(planned * headroom_frac))
 
 
 def make_agentic_distill_agent(

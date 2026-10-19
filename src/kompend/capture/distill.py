@@ -17,7 +17,7 @@ import yaml
 from kompend.agents.deps import DistillDeps
 from kompend.agents.distill import DistillAgent
 from kompend.agents.distill_agentic import AgenticDistillAgent
-from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote
+from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote, DistillPage
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug, make_title
 from kompend.core.paths import ARCHIVE_SUBDIR, CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
@@ -179,28 +179,47 @@ def _distill_agentic(
     timestamp: str,
     output_dir: Path,
 ) -> list[Path]:
-    """Distill all groups in a single agentic session."""
+    """Distill all groups, resuming a session that ran out of budget.
+
+    A session covers every group that still has no page. When it exhausts its
+    request budget, the pages it did save are kept and a fresh session is
+    re-run for the groups left over, each round carrying only those. The loop
+    stops as soon as a round saves nothing new; whatever is still missing then
+    falls back to the deterministic per-group merge, so a partial session
+    never discards work the agent already did.
+    """
     groups_data: list[DistillGroup] = [
         DistillGroup(
             tag=tag,
-            notes=[
-                DistillNote(title=n.title, content=n.content, source=n.source_file.name if n.source_file else "unknown")
-                for n in note_list
-            ],
+            notes=[DistillNote(title=n.title, content=n.content, source=n.source_file.name if n.source_file else "unknown") for n in note_list],
         )
         for tag, note_list in groups.items()
     ]
-    deps = DistillAgentDeps(groups=groups_data, source_id="distill-all", timeout=distill_agent.timeout)
 
-    try:
-        distill_agent.run(deps)
-    except Exception as exc:
-        logger.warning("AgenticDistillAgent failed: %s, falling back to per-group", exc)
-        return _distill_fallback_per_group(groups, timestamp, output_dir)
+    pages: dict[str, DistillPage] = {}
+    pending = list(groups_data)
+    sessions = 0
+    while pending:
+        deps = DistillAgentDeps(groups=pending, source_id="distill-all", timeout=distill_agent.timeout)
+        sessions += 1
+        try:
+            distill_agent.run(deps)
+        except Exception as exc:
+            logger.warning("AgenticDistillAgent session %d failed: %s", sessions, exc)
+        recorded = {entry["tag"] for entry in pending if entry["tag"] in deps.pages}
+        if not recorded:
+            logger.warning(
+                "AgenticDistillAgent saved no pages for %d group(s) after %d session(s) — merging those deterministically",
+                len(pending),
+                sessions,
+            )
+            break
+        pages.update({tag: deps.pages[tag] for tag in recorded})
+        pending = [entry for entry in pending if entry["tag"] not in recorded]
 
     written = []
     for tag, note_list in groups.items():
-        page_data = deps.pages.get(tag)
+        page_data = pages.get(tag)
         if page_data is None:
             page = _synthesize_fallback(tag, note_list)
         else:
@@ -215,31 +234,6 @@ def _distill_agentic(
         filepath = _distilled_path(output_dir, slug, timestamp, used=set(written))
         _write_page(filepath, page, source_files, timestamp)
         logger.info("Distilled %d notes -> %s", len(note_list), filepath)
-        written.append(filepath)
-    return written
-
-
-def _distill_fallback_per_group(
-    groups: dict[str, list[CapturedNote]],
-    timestamp: str,
-    output_dir: Path,
-) -> list[Path]:
-    """Deterministically merge every group after the agentic session failed.
-
-    The agentic agent's contract is one multi-group session (``groups``/
-    ``pages`` deps); it has no per-group entry point, so there is no second
-    LLM pass to fall back to. Passing it to ``_synthesize_with_agent`` — which
-    builds the *structured-output* agent's deps — only ever rendered a broken
-    prompt and landed here anyway, via the fallback it already returned.
-    """
-    written: list[Path] = []
-    for tag, group_notes in groups.items():
-        page = _synthesize_fallback(tag, group_notes)
-        slug = make_slug(page["title"])
-        source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
-        filepath = _distilled_path(output_dir, slug, timestamp, used=set(written))
-        _write_page(filepath, page, source_files, timestamp)
-        logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
         written.append(filepath)
     return written
 

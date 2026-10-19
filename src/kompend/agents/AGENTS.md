@@ -96,13 +96,15 @@ The base class provides:
   `_usage_limits_for(deps)` (default: the RLM preset limits, else None →
   pydantic-ai's implicit 50-request cap). Multi-turn tool agents override the
   hook; `AgenticSummarizerAgent` derives `request_limit` from node count
-  (~2 requests/node, `requests_per_node`) and `AgenticDistillAgent` from group
-  count (~3 requests/group, `requests_per_group`), both with 10% headroom —
-  every factor is a kwarg with a default. The derived budget is a floor, not a
-  guarantee: the agentic summarizer is re-run for the nodes a session left
-  unsummarized when it exhausts the limit (caller-side, in `NodeSummarizer`) — a round counts as
-progress only for ids in its own payload, and `summarize_node` rejects unknown
-ids with `ModelRetry` so a mangled id can never masquerade as progress
+  (~2 requests/node plus a fixed 2-request session cost — the "no more nodes"
+  probe and the closing turn — scaled by `headroom_frac`), and
+  `AgenticDistillAgent` from group count (~3 requests/group,
+  `requests_per_group`), every factor a kwarg with a default. The derived
+  budget is a floor, not a guarantee: the agentic summarizer is re-run for the
+  nodes a session left unsummarized when it exhausts the limit (caller-side,
+  in `NodeSummarizer`) — a round counts as progress only for ids in its own
+  payload, and `summarize_node` rejects unknown ids with `ModelRetry` so a
+  mangled id can never masquerade as progress
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
 
@@ -137,10 +139,11 @@ feedback loop — was removed.
 | `DistillAgentDeps`  | AgenticDistillAgent (payload: `DistillGroup`, `DistillPage`)                          |
 | `VerificationDeps`  | AgenticVerificationAgent (payload: `VerificationClaim`, `VerificationSource`, `VerificationPage`) |
 
-Agentic-session payload structures are `TypedDict`s declared beside their deps
-class in `types.py` — never bare `dict[str, Any]` at the agent boundary, so a
-mistyped key is a `ty` error. `DistillPage` is `total=False` because it mirrors
-untrusted model output; callers re-read every key defensively.
+Agentic-session payload structures are `TypedDict`s declared in `types.py`
+alongside the other module-level classes (the sorter groups them after the
+deps dataclasses) — never bare `dict[str, Any]` at the agent boundary, so a
+mistyped key is a `ty` error. `DistillPage` is `total=False` because it
+mirrors untrusted model output; callers re-read every key defensively.
 
 ## Local Contracts
 

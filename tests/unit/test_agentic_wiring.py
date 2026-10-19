@@ -73,6 +73,11 @@ class _Ctx:
     deps: QueryAgentDeps
 
 
+@dataclass
+class _ChunkCtx:
+    deps: ContextChunkDeps
+
+
 class TestAgenticSummarizerAgentWiring:
     def test_factory_registers_prompt_declared_tools(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
@@ -106,8 +111,10 @@ class TestAgenticSummarizerAgentWiring:
 class TestAgenticSummarizerUsageLimits:
     """Regression: pydantic-ai's implicit default caps a run at 50 requests.
     A tree session spends ~2 requests per eligible node (next_node +
-    summarize_node), so trees with >24 nodes died with "request_limit of 50"
-    instead of summarizing (p863 P863E_root).
+    summarize_node) plus a fixed closing cost, so trees with >24 nodes died
+    with "request_limit of 50" instead of summarizing (p863 P863E_root), and
+    a one-node payload was budgeted at exactly 3 — the closing turn fell off
+    the end ("request_limit of 3", p863 T-REC-P.10-201906).
     """
 
     def test_request_limit_scales_with_node_count(self) -> None:
@@ -116,7 +123,7 @@ class TestAgenticSummarizerUsageLimits:
         deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == math.ceil(40 * 2 * 1.1)  # 88
+        assert limits.request_limit == math.ceil((40 * 2 + 2) * 1.1)  # 91
 
     def test_headroom_params_are_overridable(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
@@ -124,22 +131,32 @@ class TestAgenticSummarizerUsageLimits:
         deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps, requests_per_node=1, headroom_frac=1.0)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 40
+        assert limits.request_limit == 42
 
-    def test_small_tree_budget(self) -> None:
+    def test_single_node_session_covers_its_own_closing_turn(self) -> None:
+        """A one-node payload needs next_node + summarize_node + the closing turn."""
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
         deps = SummarizerDeps(nodes=[SummaryNode(id="a", heading_chain="", content="x")], source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 3  # ceil(2 * 1.1) — one spare request
+        assert limits.request_limit == 5
+
+    def test_session_overhead_is_overridable(self) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        deps = SummarizerDeps(nodes=[SummaryNode(id="a", heading_chain="", content="x")], source_id="root")
+        limits = agent._usage_limits_for(deps, headroom_frac=1.0, session_overhead=0)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == 2
 
 
 class TestAgenticDistillUsageLimits:
     """Regression: pydantic-ai's implicit default caps a run at 50 requests.
 
-    A multi-group distill session spends ~2-3 requests per group
-    (get_group + save_page + slack), so runs with >16 groups died with
-    "request_limit of 50" instead of distilling (p863: 32 tag groups).
+    A multi-group distill session spends ~3 requests per group
+    (get_group + save_page + slack) plus a fixed closing cost, so runs with
+    >16 groups died with "request_limit of 50" instead of distilling
+    (p863: 32 tag groups), and a one-group session was budgeted at exactly its
+    own cost.
     """
 
     def test_request_limit_scales_with_group_count(self) -> None:
@@ -148,7 +165,7 @@ class TestAgenticDistillUsageLimits:
         deps = DistillAgentDeps(groups=groups, source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == math.ceil(32 * 3 * 1.1)  # 106
+        assert limits.request_limit == math.ceil((32 * 3 + 2) * 1.1)  # 108
 
     def test_headroom_params_are_overridable(self) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
@@ -156,14 +173,21 @@ class TestAgenticDistillUsageLimits:
         deps = DistillAgentDeps(groups=groups, source_id="distill-all")
         limits = agent._usage_limits_for(deps, requests_per_group=2, headroom_frac=1.0)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 20
+        assert limits.request_limit == 22
 
-    def test_single_group_budget(self) -> None:
+    def test_single_group_session_covers_its_own_closing_turn(self) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
         deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 4  # ceil(3 * 1.1) — one spare request
+        assert limits.request_limit == 6
+
+    def test_session_overhead_is_overridable(self) -> None:
+        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
+        limits = agent._usage_limits_for(deps, headroom_frac=1.0, session_overhead=0)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == 3
 
 
 class TestAgenticContextChunkAgentWiring:
@@ -228,11 +252,6 @@ class TestContextualEnricherAgenticPath:
     def test_no_agent_skips(self) -> None:
         tree = _make_tree(_make_leaf("a"))
         assert ContextualEnricher(agent=None).enrich_tree(tree, _make_doc()) is tree
-
-
-@dataclass
-class _ChunkCtx:
-    deps: ContextChunkDeps
 
 
 class TestContextChunkHeadingContract:

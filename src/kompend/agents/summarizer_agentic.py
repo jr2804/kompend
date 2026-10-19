@@ -33,18 +33,26 @@ class AgenticSummarizerAgent(KompendAgentBase[str, SummarizerDeps]):
         *,
         requests_per_node: int = 2,
         headroom_frac: float = 1.1,
+        session_overhead: int = 2,
     ) -> UsageLimits | None:
         """Honest request budget for one tree session.
 
-        ``requests_per_node`` × node count is the base budget (one
-        ``next_node()`` turn plus one ``summarize_node()`` turn), scaled by
-        ``headroom_frac`` (ceil, so small trees get at least one spare
-        request) for tool/output retries. The pydantic-ai implicit default
-        of 50 requests aborts trees with more than ~24 eligible nodes.
+        The tool loop costs ``requests_per_node`` per node (one
+        ``next_node()`` turn plus one ``summarize_node()`` turn), but a
+        session also pays a fixed price: one ``next_node()`` probe that finds
+        no work left, and the closing turn.  Without that constant a
+        single-node session is budgeted at exactly its own cost and dies on
+        the closing turn — which is how a one-node payload ends up reported
+        as ``request_limit of 3``.
+
+        ``session_overhead`` carries the constant; ``headroom_frac`` then
+        covers tool/output retries.  The pydantic-ai implicit default of 50
+        requests aborts trees with more than ~24 eligible nodes.
         """
         if self._rlm_usage_limits is not None:
             return self._rlm_usage_limits
-        return UsageLimits(request_limit=math.ceil(len(deps.nodes) * requests_per_node * headroom_frac))
+        planned = len(deps.nodes) * requests_per_node + session_overhead
+        return UsageLimits(request_limit=math.ceil(planned * headroom_frac))
 
 
 def make_agentic_summarizer_agent(

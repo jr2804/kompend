@@ -31,6 +31,10 @@ patterns across captures.
 - Distill wiring (agent selection, pending-note counting, result lines) used by
   the CLI lives in ``kompend.cli._distill_helpers`` — this package exposes the
   flow, not the CLI presentation.
+- ``_distill_agentic`` resumes: a session that exhausts its request budget
+  keeps the pages it saved, and a further session runs for the tag groups still
+  without one. It stops when a round saves nothing new; groups still missing
+  then merge deterministically.
 - Capture agents (``CaptureAgent``, ``DistillAgent``) live in
   ``kompend.agents.capture`` — this package contains orchestration and
   non-agent logic only.
