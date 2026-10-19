@@ -10,7 +10,7 @@ from pydantic_ai.exceptions import UsageLimitExceeded
 
 from kompend.agents.summarizer_agentic import make_agentic_summarizer_agent
 from kompend.agents.types import SummarizerDeps
-from kompend.chunking.summarizer import NodeSummarizer
+from kompend.chunking.summarizer import NodeSummarizer, SummarizerSessionPolicy
 from kompend.core.models import (
     Chunk,
     ChunkNode,
@@ -273,6 +273,83 @@ class TestSummarizerAgenticResume:
 
         assert len(rounds) == 1
         for node_id in rounds[0]:
+            assert tree.nodes[node_id].summary == f"summary {node_id}"
+
+
+class TestSummarizerAgenticBatching:
+    """Batch size and stall retries come from ``SummarizerSessionPolicy``.
+
+    A session that records nothing must not abandon the whole tree: it only
+    strands its own batch, and that batch is retried per the policy.
+    """
+
+    def test_sessions_are_bounded_by_the_policy(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            rounds.append([entry["id"] for entry in deps.nodes])
+            for node_id in rounds[-1]:
+                deps.results[node_id] = f"summary {node_id}"
+
+        monkeypatch.setattr(agent, "run", _run)
+        policy = SummarizerSessionPolicy(batch_size=2, stall_retries=0)
+        tree = NodeSummarizer(agent=agent, session_policy=policy).summarize(agentic_tree)
+
+        assert [len(round) for round in rounds] == [2, 2]
+        for node_id in ("s0", "s1", "s2", "r"):
+            assert tree.nodes[node_id].summary == f"summary {node_id}"
+
+    def test_stalled_batch_does_not_abandon_the_rest(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            rounds.append([entry["id"] for entry in deps.nodes])
+            if len(rounds) == 1:
+                return  # model answers in prose: no summarize_node() calls
+            for node_id in rounds[-1]:
+                deps.results[node_id] = f"summary {node_id}"
+
+        monkeypatch.setattr(agent, "run", _run)
+        policy = SummarizerSessionPolicy(batch_size=2, stall_retries=0)
+        tree = NodeSummarizer(agent=agent, session_policy=policy).summarize(agentic_tree)
+
+        assert len(rounds) == 2
+        for node_id in rounds[0]:
+            assert not tree.nodes[node_id].summary
+        for node_id in rounds[1]:
+            assert tree.nodes[node_id].summary == f"summary {node_id}"
+
+    def test_stalled_batch_is_retried_per_policy(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            rounds.append([entry["id"] for entry in deps.nodes])
+            if len(rounds) == 1:
+                return  # first attempt records nothing
+            for node_id in rounds[-1]:
+                deps.results[node_id] = f"summary {node_id}"
+
+        monkeypatch.setattr(agent, "run", _run)
+        policy = SummarizerSessionPolicy(batch_size=2, stall_retries=1)
+        tree = NodeSummarizer(agent=agent, session_policy=policy).summarize(agentic_tree)
+
+        assert [len(round) for round in rounds] == [2, 2, 2]
+        for node_id in ("s0", "s1", "s2", "r"):
             assert tree.nodes[node_id].summary == f"summary {node_id}"
 
 
