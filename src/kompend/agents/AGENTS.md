@@ -100,7 +100,9 @@ The base class provides:
   count (~3 requests/group, `requests_per_group`), both with 10% headroom —
   every factor is a kwarg with a default. The derived budget is a floor, not a
   guarantee: the agentic summarizer is re-run for the nodes a session left
-  unsummarized when it exhausts the limit (caller-side, in `NodeSummarizer`)
+  unsummarized when it exhausts the limit (caller-side, in `NodeSummarizer`) — a round counts as
+progress only for ids in its own payload, and `summarize_node` rejects unknown
+ids with `ModelRetry` so a mangled id can never masquerade as progress
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
 

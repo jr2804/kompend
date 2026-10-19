@@ -30,4 +30,5 @@ each model's auto-detected context window. Atomic elements are never split.
 - Tags from ``ParsedDocument.metadata["tags"]`` propagate through ``ChunkTree``.
 - ``NodeSummarizer`` re-runs an agentic session for the nodes it left
   unsummarized when the session exhausts its request budget (``UsageLimitExceeded``),
-  stopping only when a round summarizes nothing new.
+  stopping only when a round records nothing for its own payload — summaries
+  written for ids outside the payload never count as progress.
