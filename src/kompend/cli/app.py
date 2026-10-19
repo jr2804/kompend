@@ -19,6 +19,7 @@ from kompend.cli._group import LazyGroup
 from kompend.cli._registry import COMMANDS, OnDemandModule
 from kompend.cli._shared import format_exception_for_cli
 from kompend.cli.args import NoUserTracking, Verbose, Version, WikiDir
+from kompend.core.cancel import CANCEL_EXIT_CODE, KompendCancelled
 from kompend.core.reporting.runlog import RunHandle, log_run_end, log_run_start
 from kompend.core.verbosity import is_verbose, set_verbose
 from kompend.logging import configure_logging, get_console
@@ -85,6 +86,14 @@ def main() -> None:
         handle = _extract_handle()
         log_run_end(handle, status="ok" if code == 0 else "error", exit_code=code)
         raise
+    except KompendCancelled as exc:
+        # Graceful user abort (double-ESC during a progress bar): the command
+        # already saved its progress and unwound cleanly — report and exit
+        # 130, no traceback.
+        handle = _extract_handle()
+        log_run_end(handle, status="cancelled", exit_code=CANCEL_EXIT_CODE, error=exc.reason)
+        sys.stderr.write(f"\nCancelled ({exc.reason}) — progress saved; rerun the command to resume.\n")
+        raise SystemExit(CANCEL_EXIT_CODE) from exc
     except KeyboardInterrupt:
         # System-level interrupt — keep default Python behaviour (no reformatting).
         handle = _extract_handle()

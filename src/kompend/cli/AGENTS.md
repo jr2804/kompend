@@ -80,7 +80,8 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 | `_ignore.py` | Ignore/gitignore pattern matching for source scanning. |
 | `_pipeline_helpers.py` | Pipeline orchestration helpers (progress callback, input resolution, review queue, provenance, lint-fix persistence). |
 | `_distill_helpers.py` | Distill wiring shared by `kompend distill` and `kompend compile --distill` (pending-note count/notice, agent selection, result lines). |
-| `_progress.py` | Rich progress bar wrappers. |
+| `_esc_watch.py` | Double-ESC cancel watcher — polls stdin (msvcrt/termios), two ESC within `CANCEL_WINDOW_SECONDS` requests the cancel token. |
+| `_progress.py` | Rich progress bar wrappers; owns the watcher lifecycle (`cancel=` token in, watcher started with the bar, stopped on finish/stop). |
 | `_shared.py` | Shared utilities (config resolution, CLI overrides, hook loading). |
 
 ### Argument declarations (`args/` submodule)
@@ -197,6 +198,14 @@ summary, resolve, image-captioning) fill as units complete. Bars without one
 (compile, output) are indeterminate and convey activity via description
 updates, not percentage. Never fake a percentage on an indeterminate task.
 
+### Cooperative cancel (double-ESC)
+
+`compile`/`ingest` create a `core.cancel.CancelState` and thread it into
+`build_pipeline` / `ingest_documents` and `PipelineProgress.create`; with a
+bar shown, `start()` runs the `_esc_watch.py` watcher (two ESC within
+`CANCEL_WINDOW_SECONDS` ⇒ cancel request; no bar ⇒ no watcher). Boundary
+contract: `core/pipeline/AGENTS.md`; `app.py` exits 130 with a resume hint.
+
 ### No direct core imports in thin wrappers
 
 Helper functions like `_send_to_review_queue`, `_annotate_provenance`,
@@ -207,22 +216,14 @@ to a core module.
 
 ## Known violations (do not replicate)
 
-These patterns remain in the current codebase and should be refactored when
-touched, not extended:
+These patterns remain in the codebase — refactor when touched, don't extend:
 
 | Violation | Where | Why it's wrong |
 |---|---|---|
 | `status.py` imports from `kompend.cli._sources` | `status.py:10` | Cross-imports within CLI are fine, but extension enumeration should come from parser registry |
 
-### Fixed violations (do not re-introduce)
-
-| Fixed | Was |
-|---|---|
-| `_build_router()` → `build_default_router()` in `kompend.preprocessing.parsers._registry` | Parser construction in CLI |
-| `_load_wiki()` → `load_cached_wiki()` in `kompend.core.models` | JSON deserialization in CLI |
-| `_build_vector_index()` → `build_vector_index()` in `kompend.rag` | RAG business logic in CLI |
-| `status.py` now uses `find_project_config()` | Hardcoded `.kompend/config.yaml` path |
-| `SUPPORTED_EXTENSIONS` → `get_supported_extensions()` querying parser registry | Duplicated extension set |
+Fixed violations (router/wiki/vector-index construction, config path,
+extension set — all moved into core) are archived in `.agents/HISTORY.md`.
 
 ## Work Guidance
 

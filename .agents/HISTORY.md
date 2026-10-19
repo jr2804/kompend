@@ -103,3 +103,13 @@ passed explicitly to bypass rumdl's ignore filtering).
 
 Calver `YYYY.M.D` / `YYYY.M.D.N` — no zero-padding, no `v` prefix. See
 `.forgejo/workflows/release.yml`.
+
+### Fixed CLI violations archive (moved from `src/kompend/cli/AGENTS.md`)
+
+| Fixed | Was |
+|---|---|
+| `_build_router()` -> `build_default_router()` in `kompend.preprocessing.parsers._registry` | Parser construction in CLI |
+| `_load_wiki()` -> `load_cached_wiki()` in `kompend.core.models` | JSON deserialization in CLI |
+| `_build_vector_index()` -> `build_vector_index()` in `kompend.rag` | RAG business logic in CLI |
+| `status.py` now uses `find_project_config()` | Hardcoded `.kompend/config.yaml` path |
+| `SUPPORTED_EXTENSIONS` -> `get_supported_extensions()` querying parser registry | Duplicated extension set |

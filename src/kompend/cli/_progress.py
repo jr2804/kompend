@@ -27,6 +27,8 @@ from rich.progress import (
 from rich.table import Column
 from rich.text import Text
 
+from kompend.cli._esc_watch import EscDoublePressWatcher
+from kompend.core.cancel import CancelState
 from kompend.logging import get_err_console
 
 
@@ -105,11 +107,19 @@ class PipelineProgress:
 
     enabled: bool = True
     _file_tracker: FileProgressTracker | None = None
+    cancel: CancelState | None = None
+    _esc_watcher: EscDoublePressWatcher | None = None
 
     def start(self) -> None:
-        """Start the overall progress display."""
+        """Start the overall progress display.
+
+        When a :class:`~kompend.core.cancel.CancelState` is attached and the
+        display is enabled, this also starts the double-ESC cancel watcher
+        (best-effort: silently off when stdin is not an interactive TTY).
+        """
         if self._file_tracker:
             self._file_tracker.start()
+        self._start_cancel_watcher()
 
     def update_progress(self, current: int, description: str) -> None:
         """Set the bar's completed count and description."""
@@ -143,12 +153,14 @@ class PipelineProgress:
 
     def finish(self) -> None:
         """Mark progress complete and stop the display."""
+        self._stop_cancel_watcher()
         if self._file_tracker:
             self._file_tracker.complete()
             self._file_tracker.stop()
 
     def stop(self) -> None:
         """Stop the progress display."""
+        self._stop_cancel_watcher()
         if self._file_tracker:
             self._file_tracker.stop()
 
@@ -157,6 +169,7 @@ class PipelineProgress:
         cls,
         total_files: int,
         force_progress: bool | None = None,
+        cancel: CancelState | None = None,
     ) -> PipelineProgress:
         """Create a PipelineProgress, auto-detecting TTY.
 
@@ -168,11 +181,28 @@ class PipelineProgress:
         """
         show = _should_show_progress(force_progress)
         if not show:
+            # No bar → no ESC watcher either; Ctrl+C stays the only interrupt
+            # for non-interactive/machine consumers (e.g. --json-progress).
             return cls(enabled=False)
 
         console = _make_progress_console(force=bool(force_progress))
         file_tracker = FileProgressTracker(total=total_files, console=console)
-        return cls(enabled=True, _file_tracker=file_tracker)
+        return cls(enabled=True, _file_tracker=file_tracker, cancel=cancel)
+
+    def _start_cancel_watcher(self) -> None:
+        if self.cancel is None or not self.enabled or self._esc_watcher is not None:
+            return
+        watcher = EscDoublePressWatcher(
+            self.cancel,
+            on_cancel=lambda reason: get_err_console().print(f"[yellow]ESC ESC ({reason}) — finishing the current step, then exiting…[/yellow]"),
+        )
+        if watcher.start():
+            self._esc_watcher = watcher
+
+    def _stop_cancel_watcher(self) -> None:
+        if self._esc_watcher is not None:
+            self._esc_watcher.stop()
+            self._esc_watcher = None
 
 
 # ── Rich progress tracker ───────────────────────────────────────────────

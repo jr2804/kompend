@@ -71,6 +71,7 @@ from kompend.cli.args import (
     WikiDir,
     Workers,
 )
+from kompend.core.cancel import CancelState, KompendCancelled
 from kompend.core.config import DEFAULTS, coerce_config_value, resolve_config, validate_config_key
 from kompend.core.config._configs import LintConfig
 from kompend.core.config.keys import (
@@ -229,7 +230,8 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
         input_files=None,
     )
 
-    pipeline = build_pipeline(pipeline_config)
+    cancel = CancelState()
+    pipeline = build_pipeline(pipeline_config, cancel=cancel)
 
     source_files = pipeline.iter_sources()
     if not source_files:
@@ -250,6 +252,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
         tracker = PipelineProgress.create(
             total_files=len(source_files),
             force_progress=show_progress,
+            cancel=cancel,
         )
         progress_cb = make_progress_callback(tracker) if tracker.enabled else None
         # Start the bar eagerly (idempotent). The parse handler also calls start(),
@@ -298,6 +301,14 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
                 embed_attachments=cfg.kompend.attachments.embed,
             )
         )
+
+    except KompendCancelled:
+        # Graceful user abort (double-ESC): pipeline.run() already saved tier
+        # state and unwound cleanly — stop the bar and re-raise for the
+        # top-level handler (exit 130, no traceback).
+        if not json_progress:
+            tracker.stop()
+        raise
 
     except Exception as exc:
         if not json_progress:
@@ -379,9 +390,11 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     router: ParserRouter = build_default_router(
         ParserBuildOptions.from_config(cfg, images_dir=images_dir),
     )
+    cancel = CancelState()
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),
         force_progress=show_progress,
+        cancel=cancel,
     )
     tracker.start()
 
@@ -413,6 +426,7 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
             attributes=_parse_attrs(attrs),
             rumdl_config=cfg.kompend.compile.output.rumdl_config,
             flavor=cfg.kompend.compile.output.flavor,
+            cancel=cancel,
         )
         time.monotonic() - ingest_start
     finally:
