@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic_ai import RunContext
+from pydantic_ai import ModelRetry, RunContext
 
 from kompend.agents.types import SummarizerDeps
 
@@ -36,11 +36,22 @@ async def next_node(ctx: RunContext[SummarizerDeps]) -> str:
     ctx.deps.current_node = node
     heading = node.get("heading_chain", "") or "document root"
     content = node.get("content", "")[:_NODE_CONTENT_CHARS]
-    return f"Node {node['id']}: heading={heading}, content={content}"
+    return f"node_id: {node['id']}\nheading: {heading}\ncontent: {content}"
 
 
 async def summarize_node(ctx: RunContext[SummarizerDeps], node_id: str, summary: str) -> str:
-    """Record the summary for a node."""
+    """Record the summary for a node.
+
+    The id must be one of the session payload nodes; a small model that
+    mangles it gets a correction instead of writing a summary nobody reads.
+    """
+    node_id = node_id.strip()
+    known = {node["id"] for node in ctx.deps.nodes}
+    if node_id not in known:
+        raise ModelRetry(
+            f"Unknown node id {node_id!r}. Call next_node() and pass the id it returns verbatim. "
+            f"Nodes awaiting a summary: {sorted(known)}"
+        )
     ctx.deps.results[node_id] = summary.strip()
     ctx.deps.current_node = None
     return f"Summary recorded for node {node_id}."

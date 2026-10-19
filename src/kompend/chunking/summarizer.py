@@ -119,7 +119,9 @@ class NodeSummarizer:
         tree can exhaust that budget mid-run; summaries recorded before the
         abort stay in ``deps.results``, so the session is re-run for the nodes
         left unsummarized.  Every round gets its own budget and payload, and
-        the loop stops as soon as a round summarizes nothing new.
+        the loop stops as soon as a round records nothing for its own payload —
+        summaries written for other nodes never count as progress, so a model
+        that invents or mangles ids cannot spin the loop.
         """
         if not isinstance(self._agent, AgenticSummarizerAgent):
             raise TypeError("AgenticSummarizerAgent expected")
@@ -140,6 +142,8 @@ class NodeSummarizer:
             return tree
 
         done: set[str] = set()
+        sessions = 0
+        stalled = False
         while True:
             remaining = [node for node in eligible if node.id not in done]
             payload = self._agentic_payload(tree, remaining)
@@ -148,6 +152,7 @@ class NodeSummarizer:
             if not payload:
                 break
 
+            sessions += 1
             deps = SummarizerDeps(nodes=payload, source_id=tree.root_id, timeout=120.0)
             try:
                 self._agent.run(deps)
@@ -159,13 +164,20 @@ class NodeSummarizer:
             except Exception as exc:
                 logger.warning("Agentic summarizer failed: %s", exc)
             self._apply_agentic_results(eligible, payload, deps.results)
-            if not deps.results:
-                logger.warning(
-                    "Agentic summarizer recorded no summaries for %d node(s) — leaving them unsummarized",
-                    len(payload),
-                )
+            recorded = set(deps.results) & payload_ids
+            if not recorded:
+                stalled = True
                 break
-            done.update(deps.results)
+            done.update(recorded)
+
+        missing = [node for node in eligible if not node.summary]
+        if missing:
+            logger.warning(
+                "Agentic summarizer left %d node(s) unsummarized after %d session(s)%s",
+                len(missing),
+                sessions,
+                " (last session recorded nothing for its payload)" if stalled else "",
+            )
 
         return tree
 
