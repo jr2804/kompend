@@ -122,7 +122,7 @@ pydantic-ai Agent layer via `ContextManagerCapability` (see
 dropped all `ModelResponse` on retry, defeating pydantic-ai's retry
 feedback loop — was removed.
 
-### Dependency types (`deps.py`)
+### Dependency types (`types.py`, `deps.py`)
 
 | Deps class          | Used by                                                                               |
 | ------------------- | ------------------------------------------------------------------------------------- |
@@ -132,6 +132,15 @@ feedback loop — was removed.
 | `WicerEvaluateDeps` | WicerEvaluateAgent                                                                    |
 | `WicerDiagnoseDeps` | WicerDiagnoseAgent                                                                    |
 | `DoctorDeps`        | DoctorAgent                                                                           |
+| `SummarizerDeps`    | AgenticSummarizerAgent (payload: `SummaryNode`)                                       |
+| `ContextChunkDeps`  | AgenticContextChunkAgent (payload: `ContextChunk`)                                    |
+| `DistillAgentDeps`  | AgenticDistillAgent (payload: `DistillGroup`, `DistillPage`)                          |
+| `VerificationDeps`  | AgenticVerificationAgent (payload: `VerificationClaim`, `VerificationSource`, `VerificationPage`) |
+
+Agentic-session payload structures are `TypedDict`s declared beside their deps
+class in `types.py` — never bare `dict[str, Any]` at the agent boundary, so a
+mistyped key is a `ty` error. `DistillPage` is `total=False` because it mirrors
+untrusted model output; callers re-read every key defensively.
 
 ## Local Contracts
 
