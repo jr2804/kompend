@@ -55,3 +55,13 @@ persistence, and standalone ingestion.
   bare file/key with no reason. `logger.exception(...)` has no gate-able form —
   use `logger.error(..., exc_info=is_verbose())`. The `--verbose` flag itself
   lives in `cli/` (see `cli/AGENTS.md`).
+- **Cancel contract** (token: `core.cancel.CancelState`; signal:
+  `KompendCancelled`, a `BaseException` so `except Exception` sites cannot
+  swallow it): `WikiPipeline.emit()` raises it *before* callback dispatch when
+  the token is set — the deliberate exception to "callbacks must not abort the
+  pipeline". `run()`/`run_tier()` and `ingest_documents()` stop at tier/file
+  boundaries: save tier state, then re-raise. `build_pipeline(config, *,
+  cancel=...)` threads the token in; `cli/` owns token creation and the
+  double-ESC watcher (see `cli/AGENTS.md`). `_parse.py`'s threaded branch
+  shuts its executor down with `cancel_futures=True` so a cancel drops queued
+  parse futures instead of chewing through the corpus.

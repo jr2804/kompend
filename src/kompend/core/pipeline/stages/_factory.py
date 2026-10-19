@@ -15,6 +15,7 @@ from kompend.compilation.graph import GraphCompiler
 from kompend.compilation.two_phase import TwoPhaseCompiler
 from kompend.compilation.wicer import WiCERCompiler
 from kompend.core.cache.store import CacheStore
+from kompend.core.cancel import CancelState
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.pipeline.config import Compiler, PipelineConfig, Tier
 from kompend.core.pipeline.stages._parse import build_resolver_chain
@@ -30,6 +31,8 @@ logger = get_logger(__name__)
 
 def build_pipeline(
     config: PipelineConfig,
+    *,
+    cancel: CancelState | None = None,
 ) -> WikiPipeline:
     """Shared factory used by both CLI and MCP.
 
@@ -46,6 +49,10 @@ def build_pipeline(
     ----------
     config:
         Pipeline configuration.
+    cancel:
+        Cooperative cancellation token; when set, progress-emitting loops
+        raise ``KompendCancelled`` at unit boundaries after a cancel was
+        requested (CLI double-ESC watcher).
     """
     writer_cls = BaseOutputWriter.get(config.output.format)
     if writer_cls is None:
@@ -130,6 +137,7 @@ def build_pipeline(
     return WikiPipeline(
         config=config,
         router=router,
+        cancel=cancel,
         chunker=HierarchicalChunker(
             context_window=chunker_context_window,
             chunk_size_min=config.budget.chunk_size_min,

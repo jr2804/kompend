@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from kompend.core.cancel import CancelState, KompendCancelled
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import ElementType, MetadataField, ParsedDocument
 from kompend.core.paths import VaultPaths
@@ -70,6 +71,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     attributes: dict[str, str] | None = None,
     rumdl_config: Path | None = None,
     flavor: str | None = None,
+    cancel: CancelState | None = None,
 ) -> IngestResult:
     """Parse every file and cache the structured documents.
 
@@ -118,6 +120,9 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         rumdl_config: Optional rumdl config path for the parse-time markdown
             normalisation pass (defaults to the vault's ``.kompend/rumdl.toml``).
         flavor: Optional rumdl flavor for that same pass.
+        cancel: Optional cooperative cancellation token, checked between
+            files; on cancel the accumulated tier-1 state is saved before
+            ``KompendCancelled`` propagates.
 
     Returns:
         :class:`IngestResult` with counts and the cache directory source_file.
@@ -140,6 +145,12 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
 
     count = cached = skipped = failed = 0
 
+    def _check_cancel() -> None:
+        """Stop between files on a graceful cancel, persisting tier-1 records."""
+        if cancel is not None and cancel.requested():
+            state_store.save(state)
+            raise KompendCancelled(cancel.reason)
+
     # ── Dedup orchestrator (created once, used in pass 2) ──────────
     # Fingerprints are computed AFTER all files are parsed so that GPU-bound
     # parsers and the embedding model don't compete for GPU memory.
@@ -152,6 +163,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     parser_fingerprint = router.fingerprint()
 
     for idx, source_file in enumerate(files):
+        _check_cancel()
         if progress_fn is not None:
             progress_fn(idx, total, source_file.name)
 
@@ -231,6 +243,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         # Load the store early so we can skip fingerprinting unchanged docs.
         dedup_orch._store.load()  # noqa: SLF001 — intentional access to load cached fingerprints
         for idx, source_file in enumerate(files):
+            _check_cancel()
             slug = source_file.stem
             # Skip files already fingerprinted in a previous run.
             if slug in dedup_orch._store:  # noqa: SLF001

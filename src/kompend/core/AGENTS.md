@@ -36,6 +36,7 @@ other kompend subsystems build on.
 | Path | Scope |
 |------|-------|
 | `page_builder.py` | Wenmode-based Markdown AST builder (shared by core and output modules) |
+| `cancel.py` | Cooperative cancellation — `CancelState` token, `KompendCancelled` (BaseException), `CANCEL_WINDOW_SECONDS`, `CANCEL_EXIT_CODE` |
 | `config/AGENTS.md` | Configuration system — resolution, precedence, TOML schema |
 | `models/AGENTS.md` | Data models — enums, elements, chunks, structured data, trees, wiki, citations |
 | `pipeline/AGENTS.md` | Pipeline orchestration — orchestrator, config, state, ingest |

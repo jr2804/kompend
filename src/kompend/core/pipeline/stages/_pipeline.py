@@ -17,6 +17,7 @@ from kompend.chunking.hierarchical import HierarchicalChunker
 from kompend.chunking.summarizer import NodeSummarizer
 from kompend.compilation.base import BaseCompiler
 from kompend.core.cache.store import CacheStore
+from kompend.core.cancel import CancelState, KompendCancelled
 from kompend.core.config import DEFAULTS
 from kompend.core.config.keys import DISPLAY_TIER_SAMPLE_SIZE
 from kompend.core.models import (
@@ -82,6 +83,7 @@ class WikiPipeline:
         state_store: TierStateStore | None = None,
         summarizer: NodeSummarizer | None = None,
         enricher: ContextualEnricher | None = None,
+        cancel: CancelState | None = None,
     ) -> None:
         self.config = config
         set_user_providers(config.providers)
@@ -93,6 +95,7 @@ class WikiPipeline:
         self.output_writer = output_writer
         self.summarizer = summarizer
         self.enricher = enricher
+        self.cancel = cancel
         self.base_directory = config.resolved_base_dir()
         self.state_store = state_store or TierStateStore(self._default_state_file(), self.base_directory)
         self._progress_callback: ProgressCallback | None = None
@@ -123,8 +126,159 @@ class WikiPipeline:
 
     # ── Public API ──────────────────────────────────────────────
 
-    def run(self, progress_callback: ProgressCallback | None = None) -> CompiledWiki:  # noqa: PLR0915
-        """Execute the full pipeline from sources to compiled wiki."""
+    def run(self, progress_callback: ProgressCallback | None = None) -> CompiledWiki:
+        """Execute the full pipeline from sources to compiled wiki.
+
+        Raises :class:`~kompend.core.cancel.KompendCancelled` when a graceful
+        cancel was requested mid-run (double-ESC). Tier state is saved before
+        the raise so a rerun resumes instead of starting over.
+        """
+        try:
+            return self._run_impl(progress_callback)
+        except KompendCancelled:
+            # Graceful user abort: caches and tier records for completed
+            # units are already persisted per unit; flush the tier-state
+            # file so a rerun resumes from where this run stopped.
+            self._progress_callback = None
+            self.save_state()
+            get_template_loader().clear_global_context()
+            logger.info("Pipeline cancelled — tier state saved; rerun to resume.")
+            raise
+
+    def run_tier(self, tier: str) -> None:
+        """Run a single tier by name.
+
+        Valid names: ``index``, ``chunk``, ``resolve``, ``compile``, ``output``.
+        """
+        valid_tiers = {ti.tier.value for ti in Tier.all_tiers()}
+        if tier not in valid_tiers:
+            msg = f"Unknown tier {tier!r}. Valid: {sorted(valid_tiers)}"
+            raise ValueError(msg)
+
+        target_level = Tier.level_of(Tier(tier))
+
+        try:
+            if target_level >= Tier.level_of(Tier.INDEX):
+                run_index_tier(self)
+            if target_level >= Tier.level_of(Tier.CHUNK):
+                parse_and_chunk(self)
+            if target_level >= Tier.level_of(Tier.COMPILE):
+                run_compile_tier(self)
+            if target_level >= Tier.level_of(Tier.OUTPUT):
+                run_output_tier(self)
+        except KompendCancelled:
+            self.save_state()
+            logger.info("Tier run cancelled — tier state saved; rerun to resume.")
+            raise
+
+        self.save_state()
+
+    def iter_sources(self) -> list:
+        """Yield source files to process."""
+        return iter_sources(self)
+
+    def list_tiers(self) -> list[dict[str, str | int]]:
+        """Return the available tiers with their current persisted state."""
+        state = self.state
+        distribution = state.tier_distribution()
+        sample_limit = DEFAULTS.get(DISPLAY_TIER_SAMPLE_SIZE, 5)
+        sample = list(state.entries.values())[:sample_limit]
+        return [
+            {
+                "tier": tier.value,
+                "level": Tier.level_of(tier),
+                "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= Tier.level_of(tier)),
+                "description": _TIER_DESCRIPTIONS[tier],  # nocheck: progress-report payload
+            }
+            for tier in [ti.tier for ti in Tier.all_tiers()]
+        ] + [
+            {
+                "tier": "_distribution",
+                "level": -1,
+                "sources_at_or_above": 0,
+                "description": f"tier distribution: {distribution}",  # nocheck: progress-report payload
+            },
+            {
+                "tier": "_sample",
+                "level": -2,
+                "sources_at_or_above": 0,
+                "description": f"sample sources: {[e.stem for e in sample]}",  # nocheck: progress-report payload
+            },
+        ]
+
+    # ── Internal helpers ────────────────────────────────────────
+
+    def rel_file(self, file: Path) -> str:
+        """Convert absolute path to relative POSIX string for serialization.
+
+        Thin wrapper over :func:`kompend.core.paths.rel_to_vault` — the
+        canonical relativization helper (single source of truth).
+        """
+        return rel_to_vault(file, self.base_directory)
+
+    def abs_file(self, file_str: str) -> Path:
+        """Reconstruct absolute path from potentially relative string."""
+        resolved_path = Path(file_str) if file_str else Path()
+        if resolved_path != Path() and not resolved_path.is_absolute():
+            return self.base_directory / resolved_path
+        return resolved_path
+
+    def normalize_metadata_paths(self, metadata: dict[str, MetadataValue]) -> dict[str, MetadataValue]:
+        """Convert known absolute path values in metadata to relative."""
+        if MetadataField.SOURCE_FILE in metadata:
+            meta = dict(metadata)
+            source_file = meta[MetadataField.SOURCE_FILE]
+            if isinstance(source_file, str):
+                meta[MetadataField.SOURCE_FILE] = self.rel_file(Path(source_file))
+            return meta
+        return metadata
+
+    def emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
+        """Emit a progress event if a callback is registered.
+
+        Cancellation takes priority over the callback: when a cancel was
+        requested (double-ESC watcher), this raises
+        :class:`~kompend.core.cancel.KompendCancelled` so the calling loop
+        stops at its next unit boundary. That is the one deliberate
+        exception to the "callback must not abort the pipeline" contract
+        below — a user-requested stop is not a callback bug.
+
+        A progress callback is arbitrary user code; it may raise anything. Per
+        src/kompend/AGENTS.md this is a best-effort enrichment site: a buggy
+        callback must NOT abort the pipeline, so the broad catch is intentional.
+        The failure is logged at WARNING (not swallowed) so it stays visible.
+        """
+        if self.cancel is not None and self.cancel.requested():
+            raise KompendCancelled(self.cancel.reason)
+        if self._progress_callback is not None:
+            try:
+                self._progress_callback(phase, current, total, detail)
+            except Exception as exc:  # best-effort: callback is user code, must not abort pipeline
+                logger.warning("Progress callback raised in phase %s — continuing: %s", phase, exc, exc_info=is_verbose())
+
+    def dedup_store_file(self) -> Path:
+        """Resolve the dedup fingerprint store path.
+
+        Returns the vault DB handle (``kompend.db``) — the dedup fingerprints now
+        live in the ``dedup_fingerprints`` table; ``DedupStore`` resolves the
+        vault DB from any path under it, so the legacy ``fingerprints.json``
+        path stays valid as a handle but names a file that is no longer
+        written.
+        """
+        base_dir = self.config.resolved_base_dir()
+        return VaultPaths(base_dir).kompend_db_file
+
+    def cache_directory(self) -> Path:
+        """Resolve the cache directory."""
+        if self.config.cache_dir:
+            return self.config.cache_dir
+        return self.config.paths.cache_dir
+
+    def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:
+        """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
+        apply_tags_to_tree(tree, source_file, self.config.source_dir, self.config.source_tags)
+
+    def _run_impl(self, progress_callback: ProgressCallback | None) -> CompiledWiki:  # noqa: PLR0915
         self._progress_callback = progress_callback
 
         if self.config.notes_file and self.config.notes_file.exists():
@@ -238,125 +392,6 @@ class WikiPipeline:
             len(wiki.nodes),
         )
         return wiki
-
-    def run_tier(self, tier: str) -> None:
-        """Run a single tier by name.
-
-        Valid names: ``index``, ``chunk``, ``resolve``, ``compile``, ``output``.
-        """
-        valid_tiers = {ti.tier.value for ti in Tier.all_tiers()}
-        if tier not in valid_tiers:
-            msg = f"Unknown tier {tier!r}. Valid: {sorted(valid_tiers)}"
-            raise ValueError(msg)
-
-        target_level = Tier.level_of(Tier(tier))
-
-        if target_level >= Tier.level_of(Tier.INDEX):
-            run_index_tier(self)
-        if target_level >= Tier.level_of(Tier.CHUNK):
-            parse_and_chunk(self)
-        if target_level >= Tier.level_of(Tier.COMPILE):
-            run_compile_tier(self)
-        if target_level >= Tier.level_of(Tier.OUTPUT):
-            run_output_tier(self)
-
-        self.save_state()
-
-    def iter_sources(self) -> list:
-        """Yield source files to process."""
-        return iter_sources(self)
-
-    def list_tiers(self) -> list[dict[str, str | int]]:
-        """Return the available tiers with their current persisted state."""
-        state = self.state
-        distribution = state.tier_distribution()
-        sample_limit = DEFAULTS.get(DISPLAY_TIER_SAMPLE_SIZE, 5)
-        sample = list(state.entries.values())[:sample_limit]
-        return [
-            {
-                "tier": tier.value,
-                "level": Tier.level_of(tier),
-                "sources_at_or_above": sum(1 for e in state.entries.values() if e.current_tier >= Tier.level_of(tier)),
-                "description": _TIER_DESCRIPTIONS[tier],  # nocheck: progress-report payload
-            }
-            for tier in [ti.tier for ti in Tier.all_tiers()]
-        ] + [
-            {
-                "tier": "_distribution",
-                "level": -1,
-                "sources_at_or_above": 0,
-                "description": f"tier distribution: {distribution}",  # nocheck: progress-report payload
-            },
-            {
-                "tier": "_sample",
-                "level": -2,
-                "sources_at_or_above": 0,
-                "description": f"sample sources: {[e.stem for e in sample]}",  # nocheck: progress-report payload
-            },
-        ]
-
-    # ── Internal helpers ────────────────────────────────────────
-
-    def rel_file(self, file: Path) -> str:
-        """Convert absolute path to relative POSIX string for serialization.
-
-        Thin wrapper over :func:`kompend.core.paths.rel_to_vault` — the
-        canonical relativization helper (single source of truth).
-        """
-        return rel_to_vault(file, self.base_directory)
-
-    def abs_file(self, file_str: str) -> Path:
-        """Reconstruct absolute path from potentially relative string."""
-        resolved_path = Path(file_str) if file_str else Path()
-        if resolved_path != Path() and not resolved_path.is_absolute():
-            return self.base_directory / resolved_path
-        return resolved_path
-
-    def normalize_metadata_paths(self, metadata: dict[str, MetadataValue]) -> dict[str, MetadataValue]:
-        """Convert known absolute path values in metadata to relative."""
-        if MetadataField.SOURCE_FILE in metadata:
-            meta = dict(metadata)
-            source_file = meta[MetadataField.SOURCE_FILE]
-            if isinstance(source_file, str):
-                meta[MetadataField.SOURCE_FILE] = self.rel_file(Path(source_file))
-            return meta
-        return metadata
-
-    def emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
-        """Emit a progress event if a callback is registered.
-
-        A progress callback is arbitrary user code; it may raise anything. Per
-        src/kompend/AGENTS.md this is a best-effort enrichment site: a buggy
-        callback must NOT abort the pipeline, so the broad catch is intentional.
-        The failure is logged at WARNING (not swallowed) so it stays visible.
-        """
-        if self._progress_callback is not None:
-            try:
-                self._progress_callback(phase, current, total, detail)
-            except Exception as exc:  # best-effort: callback is user code, must not abort pipeline
-                logger.warning("Progress callback raised in phase %s — continuing: %s", phase, exc, exc_info=is_verbose())
-
-    def dedup_store_file(self) -> Path:
-        """Resolve the dedup fingerprint store path.
-
-        Returns the vault DB handle (``kompend.db``) — the dedup fingerprints now
-        live in the ``dedup_fingerprints`` table; ``DedupStore`` resolves the
-        vault DB from any path under it, so the legacy ``fingerprints.json``
-        path stays valid as a handle but names a file that is no longer
-        written.
-        """
-        base_dir = self.config.resolved_base_dir()
-        return VaultPaths(base_dir).kompend_db_file
-
-    def cache_directory(self) -> Path:
-        """Resolve the cache directory."""
-        if self.config.cache_dir:
-            return self.config.cache_dir
-        return self.config.paths.cache_dir
-
-    def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:
-        """Attach directory-based tags and CLI-provided tags to every leaf chunk in *tree*."""
-        apply_tags_to_tree(tree, source_file, self.config.source_dir, self.config.source_tags)
 
     def _should_run(self, tier: Tier) -> bool:
         """Check whether *tier* falls within [start, stop]."""

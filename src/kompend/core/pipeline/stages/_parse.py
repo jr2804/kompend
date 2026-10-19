@@ -108,8 +108,14 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
         # Python code in parallel on a free-threaded build.
         logger.info("%s", describe_parallelism(workers))
         completed = 0
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            futures = {executor.submit(_process_single_source, pipeline, sf, dedup_similar): sf for sf in source_files}
+        # Explicit executor (not a ``with`` block): on a graceful cancel the
+        # emit below raises KompendCancelled, and shutdown(cancel_futures=True)
+        # then drops queued futures instead of parsing the whole corpus.
+        # In-flight workers still finish (bounded by ``workers``) so caches
+        # stay consistent.
+        executor = ThreadPoolExecutor(max_workers=workers)
+        futures = {executor.submit(_process_single_source, pipeline, sf, dedup_similar): sf for sf in source_files}
+        try:
             for future in as_completed(futures):
                 sf = futures[future]
                 try:
@@ -121,6 +127,8 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
                 finally:
                     completed += 1
                     pipeline.emit("parse", completed, len(source_files), sf.name)
+        finally:
+            executor.shutdown(wait=True, cancel_futures=True)
     else:
         for idx, sf in enumerate(source_files):
             tree = _process_single_source(pipeline, sf, dedup_similar)
