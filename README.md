@@ -145,7 +145,7 @@ uv add kompend
 pip install kompend
 ```
 
-The published package is [`kompend`](https://pypi.org/project/kompend/) (latest release tracks the latest `YYYY.M.N` tag; current is `2026.10.4`). Optional extras for parser backends and LLM providers are declared in the repository's `pyproject.toml` and resolve as `uv add "kompend[<extras>]"` or `pip install "kompend[<extras>]"`.
+The published package is [`kompend`](https://pypi.org/project/kompend/) (released as a `YYYY.M.N` tag; [`uv tool install kompend`](https://pypi.org/project/kompend/) always gets the newest one). Optional extras for parser backends and LLM providers are declared in the repository's `pyproject.toml` and resolve as `uv add "kompend[<extras>]"` or `pip install "kompend[<extras>]"`.
 
 ## License
 
