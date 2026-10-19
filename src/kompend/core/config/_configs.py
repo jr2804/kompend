@@ -306,6 +306,8 @@ class BudgetConfig(_KompendBaseModel):
     summary_target_chars: int = 600
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
+    summary_session_batch_size: int = Field(default=20, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_BATCH_SIZE)
+    summary_session_stall_retries: int = Field(default=1, ge=0, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_STALL_RETRIES)
     capture_source_char_max: int = Field(default=4000, validation_alias=EnvVar.BUDGET_CAPTURE_SOURCE_CHAR_MAX)
     concept_merge_threshold: float = Field(default=0.82, validation_alias=EnvVar.BUDGET_CONCEPT_MERGE_THRESHOLD)
     concept_string_merge_threshold: float = Field(default=0.70, validation_alias=EnvVar.BUDGET_CONCEPT_STRING_MERGE_THRESHOLD)

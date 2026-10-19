@@ -342,6 +342,11 @@ summary_target_chars = 600
 summary_skip_single_child = true
 # Max chunks before switching from two_level to multi_resolution strategy
 summary_chunk_threshold = 10
+# Agentic summarizer sessions: nodes per session, and how many extra attempts
+# a session that records nothing gets before its nodes are left unsummarized.
+# Smaller batches bound the blast radius of a model that stops calling tools.
+summary_session_batch_size = 20
+summary_session_stall_retries = 1
 
 # Capture / write-page synthesis: per-source LLM input char cap
 capture_source_char_max = 4000

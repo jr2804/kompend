@@ -17,14 +17,16 @@ Key design decisions:
   sentence per child) so the pipeline still functions without an LLM.
 - Summaries are cached by content hash + model name so unchanged subtrees
   are not re-summarised across runs.
-- An agentic session that exhausts its request budget is resumed for the
-  nodes it left unsummarized, so a large or chatty tree still completes.
+- Agentic sessions are bounded per batch (``SummarizerSessionPolicy``), so a
+  session that exhausts its request budget or ends without recording anything
+  only loses its own batch; the remaining batches still run.
 """
 
 from __future__ import annotations
 
 import hashlib
 import re
+from dataclasses import dataclass
 from typing import cast
 
 from pydantic_ai.exceptions import UsageLimitExceeded
@@ -47,6 +49,24 @@ _SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True)
+class SummarizerSessionPolicy:
+    """Batching and retry policy for one agentic summarizer tree.
+
+    Both values come from ``compile.budget`` (``summary_session_batch_size``
+    and ``summary_session_stall_retries``). No default lives here, so the
+    config schema stays the single source of truth for the numbers.
+
+    Attributes:
+        batch_size: Maximum nodes handed to one agentic session.
+        stall_retries: Extra attempts a node gets after a session that recorded
+            nothing for its payload. ``0`` abandons it on the first stall.
+    """
+
+    batch_size: int
+    stall_retries: int
+
+
 class NodeSummarizer:
     """Generate bottom-up summaries for internal nodes of a :class:`ChunkTree`.
 
@@ -65,6 +85,10 @@ class NodeSummarizer:
     skip_single_child:
         When ``True``, internal nodes with exactly one child are skipped —
         the child's content already represents the parent fully.
+    session_policy:
+        Batching/retry policy for the agentic summarizer. ``None`` keeps the
+        pre-batching behaviour: one session for the whole tree with no stall
+        retries. The pipeline always passes the configured policy.
     """
 
     def __init__(
@@ -75,12 +99,14 @@ class NodeSummarizer:
         max_content_chars: int = 8000,
         target_chars: int = 600,
         skip_single_child: bool = True,
+        session_policy: SummarizerSessionPolicy | None = None,
     ) -> None:
         self._agent = agent
         self._cache = cache_store
         self._max_content_chars = max_content_chars
         self._target_chars = target_chars
         self._skip_single_child = skip_single_child
+        self._session_policy = session_policy
         self._loader = get_template_loader()
 
     def summarize(self, tree: ChunkTree) -> ChunkTree:
@@ -95,80 +121,93 @@ class NodeSummarizer:
         if isinstance(self._agent, AgenticSummarizerAgent):
             return self._summarize_agentic(tree)
 
-        for node in reversed(list(tree.walk())):
-            if node.chunk is not None:
-                continue
-            if node.structured is not None:
-                continue
-            if self._skip_single_child and len(node.children_ids) <= 1:
-                if len(node.children_ids) == 0:
-                    continue
-                child = tree.nodes.get(node.children_ids[0])
-                if child is not None:
-                    node.summary = child.summary or ""
-                continue
+        for node in self._eligible_nodes(tree):
             node.summary = self._summarize_node(tree, node)
 
         return tree
 
-    def _summarize_agentic(self, tree: ChunkTree) -> ChunkTree:
-        """Summarize all eligible internal nodes in agentic session(s).
+    def _eligible_nodes(self, tree: ChunkTree) -> list[ChunkNode]:
+        """Internal nodes awaiting a summary, bottom-up.
 
-        Each session works from a request budget derived from its payload
-        (see ``AgenticSummarizerAgent._usage_limits_for``).  A large or chatty
-        tree can exhaust that budget mid-run; summaries recorded before the
-        abort stay in ``deps.results``, so the session is re-run for the nodes
-        left unsummarized.  Every round gets its own budget and payload, and
-        the loop stops as soon as a round records nothing for its own payload —
-        summaries written for other nodes never count as progress, so a model
-        that invents or mangles ids cannot spin the loop.
+        Single-child wrappers inherit their child's summary instead of costing
+        a call; they are not eligible themselves.
         """
-        if not isinstance(self._agent, AgenticSummarizerAgent):
-            raise TypeError("AgenticSummarizerAgent expected")
         eligible: list[ChunkNode] = []
         for node in reversed(list(tree.walk())):
             if node.chunk is not None or node.structured is not None:
                 continue
             if self._skip_single_child and len(node.children_ids) <= 1:
-                if len(node.children_ids) == 0:
+                if not node.children_ids:
                     continue
                 child = tree.nodes.get(node.children_ids[0])
                 if child is not None:
                     node.summary = child.summary or ""
                 continue
             eligible.append(node)
+        return eligible
 
+    def _summarize_agentic(self, tree: ChunkTree) -> ChunkTree:
+        """Summarize all eligible internal nodes in agentic session(s).
+
+        Nodes are asked in bounded batches (``session_policy.batch_size``), so a
+        session that ends without calling ``summarize_node()`` — a small model
+        answering in prose instead of using its tools — strands only its own
+        batch. A stalled batch is retried up to
+        ``session_policy.stall_retries`` times; the rest of the tree keeps
+        going either way. Each session gets its own payload and request budget
+        (see ``AgenticSummarizerAgent._usage_limits_for``), and only ids in that
+        session's payload count as progress, so a model that invents or mangles
+        ids cannot spin the loop.
+        """
+        if not isinstance(self._agent, AgenticSummarizerAgent):
+            raise TypeError("AgenticSummarizerAgent expected")
+        agent = self._agent
+        eligible = self._eligible_nodes(tree)
         if not eligible:
             return tree
 
-        done: set[str] = set()
+        order = [node.id for node in eligible]
+        pending: set[str] = set(order)
+        strikes: dict[str, int] = {}
+        batch_size = self._session_policy.batch_size if self._session_policy else None
+        stall_retries = self._session_policy.stall_retries if self._session_policy else 0
         sessions = 0
-        stalled = False
-        while True:
-            remaining = [node for node in eligible if node.id not in done]
-            payload = self._agentic_payload(tree, remaining)
-            payload_ids = {entry["id"] for entry in payload}
-            done.update(node.id for node in remaining if node.id not in payload_ids)
-            if not payload:
-                break
+        last_session_recorded = True
 
-            sessions += 1
-            deps = SummarizerDeps(nodes=payload, source_id=tree.root_id, timeout=120.0)
-            try:
-                self._agent.run(deps)
-            except UsageLimitExceeded as exc:
-                logger.warning(
-                    "Agentic summarizer hit its request budget (%s) — resuming for the remaining node(s)",
-                    exc,
-                )
-            except Exception as exc:
-                logger.warning("Agentic summarizer failed: %s", exc)
-            self._apply_agentic_results(eligible, payload, deps.results)
-            recorded = set(deps.results) & payload_ids
-            if not recorded:
-                stalled = True
-                break
-            done.update(recorded)
+        while pending:
+            queue = [tree.nodes[node_id] for node_id in order if node_id in pending]
+            limit = batch_size or len(queue)
+            for start in range(0, len(queue), limit):
+                window = queue[start : start + limit]
+                payload = self._agentic_payload(tree, window)
+                payload_ids = {entry["id"] for entry in payload}
+                # Cache hits were applied by ``_agentic_payload`` — no session needed.
+                pending.difference_update(node.id for node in window if node.id not in payload_ids)
+                if not payload:
+                    continue
+
+                sessions += 1
+                deps = SummarizerDeps(nodes=payload, source_id=tree.root_id, timeout=agent.timeout)
+                try:
+                    agent.run(deps)
+                except UsageLimitExceeded as exc:
+                    logger.warning(
+                        "Agentic summarizer hit its request budget (%s) — resuming for the remaining node(s)",
+                        exc,
+                    )
+                except Exception as exc:
+                    logger.warning("Agentic summarizer failed: %s", exc)
+                self._apply_agentic_results(window, payload, deps.results)
+
+                recorded = {node_id for node_id in payload_ids if deps.results.get(node_id, "").strip()}
+                if recorded:
+                    pending.difference_update(recorded)
+                    last_session_recorded = True
+                    continue
+                last_session_recorded = False
+                for node_id in payload_ids:
+                    strikes[node_id] = strikes.get(node_id, 0) + 1
+                pending.difference_update(node_id for node_id in payload_ids if strikes[node_id] > stall_retries)
 
         missing = [node for node in eligible if not node.summary]
         if missing:
@@ -176,7 +215,7 @@ class NodeSummarizer:
                 "Agentic summarizer left %d node(s) unsummarized after %d session(s)%s",
                 len(missing),
                 sessions,
-                " (last session recorded nothing for its payload)" if stalled else "",
+                " (last session recorded nothing for its payload)" if not last_session_recorded else "",
             )
 
         return tree
@@ -210,13 +249,13 @@ class NodeSummarizer:
 
     def _apply_agentic_results(
         self,
-        eligible: list[ChunkNode],
+        nodes: list[ChunkNode],
         payload: list[SummaryNode],
         results: dict[str, str],
     ) -> None:
-        """Copy session summaries onto their nodes and persist them in the cache."""
+        """Copy session summaries onto the batch's nodes and persist them in the cache."""
         content_by_id = {entry["id"]: entry["content"] for entry in payload}
-        for node in eligible:
+        for node in nodes:
             summary = results.get(node.id)
             if not summary:
                 continue

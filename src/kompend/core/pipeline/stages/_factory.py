@@ -9,7 +9,7 @@ from kompend.agents.context_chunk_agentic import (
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
 from kompend.chunking.contextual import ContextualEnricher
 from kompend.chunking.hierarchical import HierarchicalChunker
-from kompend.chunking.summarizer import NodeSummarizer
+from kompend.chunking.summarizer import NodeSummarizer, SummarizerSessionPolicy
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.graph import GraphCompiler
 from kompend.compilation.two_phase import TwoPhaseCompiler
@@ -162,6 +162,10 @@ def build_pipeline(
             max_content_chars=config.budget.summary_max_content_chars,
             target_chars=config.budget.summary_target_chars,
             skip_single_child=config.budget.summary_skip_single_child,
+            session_policy=SummarizerSessionPolicy(
+                batch_size=config.budget.summary_session_batch_size,
+                stall_retries=config.budget.summary_session_stall_retries,
+            ),
         ),
         enricher=ContextualEnricher(agent=enricher_agent) if enricher_agent is not None else None,
     )
