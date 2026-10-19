@@ -36,9 +36,9 @@ async def next_chunk(ctx: RunContext[ContextChunkDeps]) -> str:
         return "No more chunks to process."
     chunk = pending[0]
     ctx.deps.current_chunk = chunk
-    stem = chunk.get("heading_chain", [])
+    stem = chunk["heading_chain"]
     heading = " > ".join(stem) if stem else "document root"
-    text = chunk.get("text", "")[:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]
+    text = chunk["text"][:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]
     return f"Chunk {chunk['id']}: heading={heading}, text={text}"
 
 

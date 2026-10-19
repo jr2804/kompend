@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, TypedDict
 
 
 @dataclass
@@ -151,6 +151,27 @@ class VerificationVerdict:
     sources: list[str] = field(default_factory=list)
 
 
+class VerificationClaim(TypedDict):
+    """One claim the agentic verification agent may verify."""
+
+    id: int
+    text: str
+
+
+class VerificationSource(TypedDict):
+    """One cited source snippet offered as evidence."""
+
+    slug: str
+    text: str
+
+
+class VerificationPage(TypedDict):
+    """One wiki page the verifier may read in full."""
+
+    slug: str
+    content: str
+
+
 @dataclass
 class VerificationDeps:
     """Runtime context for the agentic verification agent.
@@ -160,15 +181,15 @@ class VerificationDeps:
     ``mark_verified()`` / ``mark_contradicted()`` / ``mark_unverifiable()``.
 
     Attributes:
-        claims: List of claim dicts (id + text).
-        sources: List of source snippet dicts (slug + text).
-        pages: List of wiki page dicts (slug + content).
+        claims: List of claim records (id + text).
+        sources: List of source snippet records (slug + text).
+        pages: List of wiki page records (slug + content).
         results: Collected verdicts, populated by the mark_* tools.
     """
 
-    claims: list[dict[str, Any]]  # each: {"id": int, "text": str}
-    sources: list[dict[str, Any]] = field(default_factory=list)  # each: {"slug", "text"}
-    pages: list[dict[str, Any]] = field(default_factory=list)  # each: {"slug", "content"}
+    claims: list[VerificationClaim]
+    sources: list[VerificationSource] = field(default_factory=list)
+    pages: list[VerificationPage] = field(default_factory=list)
     results: list[VerificationVerdict] = field(default_factory=list)
     source_id: str = "verification"
     timeout: float = 120.0
@@ -197,6 +218,18 @@ class WriteDeps:
     timeout: float = 120.0
 
 
+class ContextChunk(TypedDict):
+    """One leaf chunk the agentic context-chunk agent may situate.
+
+    ``id`` is the identity of the live ``ChunkNode`` (``id(leaf)``), so the
+    summarizer side and the result mapping agree on the key.
+    """
+
+    id: int
+    heading_chain: list[str]
+    text: str
+
+
 @dataclass
 class ContextChunkDeps:
     """Runtime context for the agentic context-chunk enrichment agent.
@@ -207,7 +240,7 @@ class ContextChunkDeps:
     Attributes:
         doc_title: The document title.
         doc_summary: Brief summary of the document (for context injection).
-        chunks: List of chunk dicts (id, heading_chain, text).
+        chunks: List of chunk records (id, heading path, text).
         results: Collected context strings keyed by chunk_id.
         source_id: Identifier for the document being chunked.
         timeout: Per-call timeout in seconds.
@@ -215,11 +248,19 @@ class ContextChunkDeps:
 
     doc_title: str
     doc_summary: str
-    chunks: list[dict[str, Any]]  # each: {"id": int, "heading_chain": list[str], "text": str}
+    chunks: list[ContextChunk]
     results: dict[int, str] = field(default_factory=dict)
     source_id: str = "context_chunk"
     timeout: float = 120.0
-    current_chunk: dict[str, Any] | None = None
+    current_chunk: ContextChunk | None = None
+
+
+class SummaryNode(TypedDict):
+    """One internal chunk node the agentic summarizer may summarize."""
+
+    id: str
+    heading_chain: str
+    content: str
 
 
 @dataclass
@@ -229,17 +270,44 @@ class SummarizerDeps:
     The agent iterates over internal chunk nodes and writes a summary for each.
 
     Attributes:
-        nodes: List of node dicts (id, heading_chain, content).
+        nodes: List of node records (id, heading path, content).
         results: Collected summaries keyed by node id.
         source_id: Identifier for the tree being summarized.
         timeout: Per-call timeout in seconds.
     """
 
-    nodes: list[dict[str, Any]]  # each: {"id": str, "heading_chain": str, "content": str}
+    nodes: list[SummaryNode]
     results: dict[str, str] = field(default_factory=dict)
     source_id: str = "summarizer"
     timeout: float = 120.0
-    current_node: dict[str, Any] | None = None
+    current_node: SummaryNode | None = None
+
+
+class DistillNote(TypedDict):
+    """One captured note inside a distill group."""
+
+    title: str
+    content: str
+    source: str
+
+
+class DistillGroup(TypedDict):
+    """One tag group the agentic distill agent may distill."""
+
+    tag: str
+    notes: list[DistillNote]
+
+
+class DistillPage(TypedDict, total=False):
+    """A distilled page as returned by the model's ``save_page`` call.
+
+    Untrusted model output: every key is optional and only ``title``,
+    ``content`` and ``tags`` are read (defensively) by the caller.
+    """
+
+    title: str
+    content: str
+    tags: list[str]
 
 
 @dataclass
@@ -249,17 +317,17 @@ class DistillAgentDeps:
     The agent processes multiple tag groups, distilling each into a page.
 
     Attributes:
-        groups: List of group dicts (tag, notes).
-        pages: Collected DistillOutput JSON strings keyed by group tag.
+        groups: List of group records (tag, notes).
+        pages: Collected page records keyed by group tag.
         source_id: Identifier for tracking.
         timeout: Per-call timeout in seconds.
     """
 
-    groups: list[dict[str, Any]]  # each: {"tag": str, "notes": list[dict]}
-    pages: dict[str, dict[str, Any]] = field(default_factory=dict)
+    groups: list[DistillGroup]
+    pages: dict[str, DistillPage] = field(default_factory=dict)
     source_id: str = "distill"
     timeout: float = 120.0
-    current_group: dict[str, Any] | None = None
+    current_group: DistillGroup | None = None
 
 
 @dataclass

@@ -17,7 +17,7 @@ import yaml
 from kompend.agents.deps import DistillDeps
 from kompend.agents.distill import DistillAgent
 from kompend.agents.distill_agentic import AgenticDistillAgent
-from kompend.agents.types import DistillAgentDeps
+from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug, make_title
 from kompend.core.paths import ARCHIVE_SUBDIR, CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
@@ -180,8 +180,14 @@ def _distill_agentic(
     output_dir: Path,
 ) -> list[Path]:
     """Distill all groups in a single agentic session."""
-    groups_data = [
-        {"tag": tag, "notes": [{"title": n.title, "content": n.content, "source": n.source_file.name if n.source_file else "unknown"} for n in note_list]}
+    groups_data: list[DistillGroup] = [
+        DistillGroup(
+            tag=tag,
+            notes=[
+                DistillNote(title=n.title, content=n.content, source=n.source_file.name if n.source_file else "unknown")
+                for n in note_list
+            ],
+        )
         for tag, note_list in groups.items()
     ]
     deps = DistillAgentDeps(groups=groups_data, source_id="distill-all", timeout=distill_agent.timeout)

@@ -12,11 +12,11 @@ All tools access their data through ``RunContext[DistillAgentDeps]``.
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, cast
 
 from pydantic_ai import RunContext, Tool
 
-from kompend.agents.types import DistillAgentDeps
+from kompend.agents.types import DistillAgentDeps, DistillPage
 
 
 def build_distill_tools() -> list[Any]:
@@ -38,7 +38,11 @@ async def get_group(ctx: RunContext[DistillAgentDeps], tag: str) -> str:
 
 
 async def save_page(ctx: RunContext[DistillAgentDeps], tag: str, page: dict[str, Any]) -> str:
-    """Record a distilled wiki page for a tag group."""
-    ctx.deps.pages[tag] = page
+    """Record a distilled wiki page for a tag group.
+
+    ``page`` is untrusted model output: every key of :class:`DistillPage` is
+    optional and the caller re-reads ``title``/``content``/``tags`` defensively.
+    """
+    ctx.deps.pages[tag] = cast("DistillPage", page)
     ctx.deps.current_group = None
     return f"Page saved for group '{tag}'."

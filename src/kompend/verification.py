@@ -13,10 +13,9 @@ import json
 import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
 
 from kompend.agents.deps import PipelineAgentDeps
-from kompend.agents.types import VerificationDeps
+from kompend.agents.types import VerificationClaim, VerificationDeps, VerificationPage, VerificationSource
 from kompend.agents.verification import AgenticVerificationAgent, VerificationAgent
 from kompend.core.config._core import DEFAULTS
 from kompend.core.models import Citation, CompiledWiki, WikiNode, extract_citations
@@ -118,9 +117,9 @@ def _verify_wiki_agentic(wiki: CompiledWiki, sources_dir: Path, agent: AgenticVe
     Claims with no citation or unfound sources are still emitted as
     ``unsupported`` so the result table stays complete.
     """
-    claim_dicts: list[dict[str, Any]] = []
-    sources: list[dict[str, Any]] = []
-    pages: list[dict[str, Any]] = []
+    claims: list[VerificationClaim] = []
+    sources: list[VerificationSource] = []
+    pages: list[VerificationPage] = []
     claim_to_node: dict[int, tuple[str, Citation | None]] = {}
 
     claim_id = 0
@@ -128,16 +127,16 @@ def _verify_wiki_agentic(wiki: CompiledWiki, sources_dir: Path, agent: AgenticVe
         for claim_text in _split_claims(node.content or ""):
             citations = extract_citations(node.content or "")
             citation = citations[0] if citations else None
-            claim_dicts.append({"id": claim_id, "text": claim_text})
+            claims.append(VerificationClaim(id=claim_id, text=claim_text))
             claim_to_node[claim_id] = (node.id, citation)
             if citation:
                 excerpt = _load_excerpt(citation.source, sources_dir)
                 if excerpt:
-                    sources.append({"slug": citation.source, "text": excerpt[:_EXCERPT_CHARS]})
-            pages.append({"slug": node.id, "content": node.content or ""})
+                    sources.append(VerificationSource(slug=citation.source, text=excerpt[:_EXCERPT_CHARS]))
+            pages.append(VerificationPage(slug=node.id, content=node.content or ""))
             claim_id += 1
 
-    deps = VerificationDeps(claims=claim_dicts, sources=sources, pages=pages)
+    deps = VerificationDeps(claims=claims, sources=sources, pages=pages)
     try:
         agent.run(deps)
     except Exception:

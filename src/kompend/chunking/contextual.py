@@ -16,12 +16,12 @@ Config keys (under ``[search.contextual]``):
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import cast
 
 from kompend.agents.context_chunk import ContextChunkAgent
 from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent
 from kompend.agents.deps import PipelineAgentDeps
-from kompend.agents.types import ContextChunkDeps
+from kompend.agents.types import ContextChunk, ContextChunkDeps
 from kompend.core.config import DEFAULTS
 from kompend.core.config.keys import DISPLAY_DOC_HEADINGS, DISPLAY_EXCERPT_CHARS
 from kompend.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
@@ -95,16 +95,16 @@ class ContextualEnricher:
         """Enrich all leaves in a single agentic session."""
         if not isinstance(self._agent, AgenticContextChunkAgent):
             raise TypeError("AgenticContextChunkAgent expected")
-        chunks: list[dict[str, Any]] = []
+        chunks: list[ContextChunk] = []
         for leaf in leaves:
-            heading_chain = " > ".join(h for h in (leaf.heading_chain or []) if h) or "document root"
+            headings = [h for h in (leaf.heading_chain or []) if h]
             excerpt_limit = DEFAULTS.get(DISPLAY_EXCERPT_CHARS, 300)
             text = ""
             if leaf.chunk:
                 text = leaf.chunk.text[:excerpt_limit]
             elif leaf.structured:
                 text = str(leaf.structured)[:excerpt_limit]
-            chunks.append({"id": id(leaf), "heading_chain": heading_chain, "text": text})
+            chunks.append(ContextChunk(id=id(leaf), heading_chain=headings, text=text))
 
         deps = ContextChunkDeps(
             doc_title=doc_title,

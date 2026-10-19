@@ -10,7 +10,7 @@ the model is told it has tools and has none.
 from __future__ import annotations
 
 from kompend.agents.distill_agentic import make_agentic_distill_agent
-from kompend.agents.types import DistillAgentDeps
+from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote
 
 # NOTE: system-prompt-tools == registered-tools is guarded centrally for every
 # agent in tests/unit/test_agent_templates.py; only the pinned tool list remains
@@ -35,7 +35,7 @@ class TestAgenticDistillAgentPrompt:
         """
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
         deps = DistillAgentDeps(
-            groups=[{"tag": "dll", "notes": [{"title": "T", "content": "b", "source": "n.md"}]}],
+            groups=[DistillGroup(tag="dll", notes=[DistillNote(title="T", content="b", source="n.md")])],
             source_id="distill-all",
             timeout=180.0,
         )

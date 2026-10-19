@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
+from typing import cast
 
 import pytest
 from pydantic_ai import ModelRetry, RunContext
 
-from kompend.agents.types import SummarizerDeps
+from kompend.agents.types import SummarizerDeps, SummaryNode
 from kompend.compilation.summarizer_tools import next_node, summarize_node
 
 
@@ -23,8 +23,8 @@ def _ctx(deps: SummarizerDeps) -> RunContext[SummarizerDeps]:
     return cast("RunContext[SummarizerDeps]", _Ctx(deps))
 
 
-def _node(node_id: str) -> dict[str, Any]:
-    return {"id": node_id, "heading_chain": "h", "content": "c"}
+def _node(node_id: str) -> SummaryNode:
+    return SummaryNode(id=node_id, heading_chain="h", content="c")
 
 
 class TestNextNode:

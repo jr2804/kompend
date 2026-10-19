@@ -31,12 +31,13 @@ class AgenticContextChunkAgent(KompendAgentBase[str, ContextChunkDeps]):
         chunk = deps.current_chunk
         if not chunk:
             return "No chunk to situate."
+        heading = " > ".join(chunk["heading_chain"]) or "document root"
         return (
             f"Generate situating context for this chunk:\n"
             f"Document: {deps.doc_title}\n"
             f"Summary: {deps.doc_summary}\n"
-            f"Heading: {chunk.get('heading_chain', [])} \n"
-            f"Text: {chunk.get('text', '')[:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]}"
+            f"Heading: {heading}\n"
+            f"Text: {chunk['text'][:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]}"
         )
 
 

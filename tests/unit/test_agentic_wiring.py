@@ -10,6 +10,7 @@ register exactly the tools its prompt declares.
 
 from __future__ import annotations
 
+import asyncio
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,8 +23,9 @@ from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent, make_
 from kompend.agents.distill_agentic import make_agentic_distill_agent
 from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
-from kompend.agents.types import ContextChunkDeps, DistillAgentDeps, QueryAgentDeps, SummarizerDeps
+from kompend.agents.types import ContextChunk, ContextChunkDeps, DistillAgentDeps, DistillGroup, QueryAgentDeps, SummarizerDeps, SummaryNode
 from kompend.chunking.contextual import ContextualEnricher
+from kompend.compilation.context_chunk_tools import next_chunk
 from kompend.compilation.query_tools import read_page, search_wiki
 from kompend.core.config._configs import SearchConfig, SearchContextualConfig
 from kompend.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
@@ -110,21 +112,23 @@ class TestAgenticSummarizerUsageLimits:
 
     def test_request_limit_scales_with_node_count(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
-        deps = SummarizerDeps(nodes=[{"id": str(i), "heading_chain": "", "content": "x"} for i in range(40)], source_id="root")
+        nodes = [SummaryNode(id=str(i), heading_chain="", content="x") for i in range(40)]
+        deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == math.ceil(40 * 2 * 1.1)  # 88
 
     def test_headroom_params_are_overridable(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
-        deps = SummarizerDeps(nodes=[{"id": str(i), "heading_chain": "", "content": "x"} for i in range(40)], source_id="root")
+        nodes = [SummaryNode(id=str(i), heading_chain="", content="x") for i in range(40)]
+        deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps, requests_per_node=1, headroom_frac=1.0)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == 40
 
     def test_small_tree_budget(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
-        deps = SummarizerDeps(nodes=[{"id": "a", "heading_chain": "", "content": "x"}], source_id="root")
+        deps = SummarizerDeps(nodes=[SummaryNode(id="a", heading_chain="", content="x")], source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == 3  # ceil(2 * 1.1) — one spare request
@@ -140,21 +144,23 @@ class TestAgenticDistillUsageLimits:
 
     def test_request_limit_scales_with_group_count(self) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
-        deps = DistillAgentDeps(groups=[{"tag": f"t{i}", "notes": []} for i in range(32)], source_id="distill-all")
+        groups = [DistillGroup(tag=f"t{i}", notes=[]) for i in range(32)]
+        deps = DistillAgentDeps(groups=groups, source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == math.ceil(32 * 3 * 1.1)  # 106
 
     def test_headroom_params_are_overridable(self) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
-        deps = DistillAgentDeps(groups=[{"tag": f"t{i}", "notes": []} for i in range(10)], source_id="distill-all")
+        groups = [DistillGroup(tag=f"t{i}", notes=[]) for i in range(10)]
+        deps = DistillAgentDeps(groups=groups, source_id="distill-all")
         limits = agent._usage_limits_for(deps, requests_per_group=2, headroom_frac=1.0)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == 20
 
     def test_single_group_budget(self) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
-        deps = DistillAgentDeps(groups=[{"tag": "dll", "notes": []}], source_id="distill-all")
+        deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == 4  # ceil(3 * 1.1) — one spare request
@@ -222,6 +228,43 @@ class TestContextualEnricherAgenticPath:
     def test_no_agent_skips(self) -> None:
         tree = _make_tree(_make_leaf("a"))
         assert ContextualEnricher(agent=None).enrich_tree(tree, _make_doc()) is tree
+
+
+@dataclass
+class _ChunkCtx:
+    deps: ContextChunkDeps
+
+
+class TestContextChunkHeadingContract:
+    """The payload carries the heading *path*, never a pre-joined string.
+
+    ``next_chunk`` joins the parts itself; a joined string here made it join
+    characters, so the agent saw "S e c t i o n" instead of "Section A".
+    """
+
+    def test_payload_carries_the_heading_path_as_a_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        agent = make_agentic_context_chunk_agent(model_string="ollama/gpt-oss:20b")
+        captured: list[ContextChunk] = []
+
+        def fake_run(deps: ContextChunkDeps, **_: object) -> str:
+            captured.extend(deps.chunks)
+            return ""
+
+        monkeypatch.setattr(agent, "run", fake_run)
+        ContextualEnricher(agent=agent).enrich_tree(_make_tree(_make_leaf("a")), _make_doc())
+
+        assert captured[0]["heading_chain"] == ["Section A"]
+
+    def test_next_chunk_renders_the_heading_path(self) -> None:
+        deps = ContextChunkDeps(
+            doc_title="Doc",
+            doc_summary="Summary",
+            chunks=[ContextChunk(id=7, heading_chain=["Chapter 1", "Section 1.1"], text="body")],
+        )
+
+        out = asyncio.run(next_chunk(cast("RunContext[ContextChunkDeps]", _ChunkCtx(deps))))
+
+        assert "heading=Chapter 1 > Section 1.1" in out
 
 
 def test_build_pipeline_enricher_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:

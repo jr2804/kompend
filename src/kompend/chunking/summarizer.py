@@ -25,14 +25,14 @@ from __future__ import annotations
 
 import hashlib
 import re
-from typing import Any, cast
+from typing import cast
 
 from pydantic_ai.exceptions import UsageLimitExceeded
 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.summarizer import SummarizerAgent
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent
-from kompend.agents.types import SummarizerDeps
+from kompend.agents.types import SummarizerDeps, SummaryNode
 from kompend.core.cache.store import CacheStore
 from kompend.core.models import ChunkNode, ChunkStrategy, ChunkTree
 from kompend.core.models.structured import structured_to_text
@@ -181,13 +181,13 @@ class NodeSummarizer:
 
         return tree
 
-    def _agentic_payload(self, tree: ChunkTree, nodes: list[ChunkNode]) -> list[dict[str, Any]]:
+    def _agentic_payload(self, tree: ChunkTree, nodes: list[ChunkNode]) -> list[SummaryNode]:
         """Build the per-node session payload for ``nodes``.
 
         Cached summaries are applied to their nodes in place and excluded from
         the payload, so a resumed session never re-asks for finished work.
         """
-        payload: list[dict[str, Any]] = []
+        payload: list[SummaryNode] = []
         for node in nodes:
             parts: list[str] = []
             for child_id in node.children_ids:
@@ -205,13 +205,13 @@ class NodeSummarizer:
             if cached is not None:
                 node.summary = cached
                 continue
-            payload.append({"id": node.id, "heading_chain": heading_chain, "content": content})
+            payload.append(SummaryNode(id=node.id, heading_chain=heading_chain, content=content))
         return payload
 
     def _apply_agentic_results(
         self,
         eligible: list[ChunkNode],
-        payload: list[dict[str, Any]],
+        payload: list[SummaryNode],
         results: dict[str, str],
     ) -> None:
         """Copy session summaries onto their nodes and persist them in the cache."""
