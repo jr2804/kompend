@@ -7,7 +7,7 @@ line-length = 320
 # Markdown flavor/dialect: kompend targets Obsidian by default
 flavor = "obsidian"
 
-[per-file-ignores]
-"README.md" = ["MD033", "MD013"]  # Allow long line length and HTML in README
-"docs/**/*.md" = ["MD013", "MD041"]  # Relax rules for generated docs
-"**/AGENTS.md" = ["MD013"]  # Allow long lines in AGENTS.md (agent-only files)
+# MD013 (line length) is disabled globally: `line-length` above already allows
+# long URLs and tables, and the remaining long lines are in generated or
+# agent-only files where wrapping buys nothing.
+disable = ["MD013"]

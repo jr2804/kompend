@@ -1,9 +1,6 @@
 # kompend
 
-<p align="center">
-  <img src="./assets/readme/hero.svg" width="100%"
-       alt="kompend — compile scattered documents into an interlinked, queryable wiki with any LLM">
-</p>
+![kompend — compile scattered documents into an interlinked, queryable wiki with any LLM](./assets/readme/hero.svg)
 
 kompend refuses to pick a side in the LLM-wiki space. Existing tools either
 demand a frontier-model subscription **and** lock you into their stack, or
@@ -19,10 +16,7 @@ extraction intact. [Read the full motivation →](docs/about/motivation.md)
 
 ## How it works
 
-<p align="center">
-  <img src="./assets/readme/pipeline.svg" width="100%"
-       alt="kompend 5-tier pipeline: Preprocessing → Chunking → Resolution → Compilation → Output">
-</p>
+![kompend 5-tier pipeline: Preprocessing → Chunking → Resolution → Compilation → Output](./assets/readme/pipeline.svg)
 
 kompend runs a 5-tier pipeline — each tier independently replaceable, with a
 clear `Base` interface:

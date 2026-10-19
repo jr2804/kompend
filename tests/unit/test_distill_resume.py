@@ -22,14 +22,6 @@ from kompend.capture.distill import CapturedNote, _distill_agentic
 TIMESTAMP = "20261019T120000Z"
 
 
-def _note(tag: str) -> CapturedNote:
-    return CapturedNote(title=f"{tag} note", content=f"body for {tag}", tags=[tag], source_file=Path(f"{tag}.md"))
-
-
-def _groups(*tags: str) -> dict[str, list[CapturedNote]]:
-    return {tag: [_note(tag)] for tag in tags}
-
-
 class TestDistillSessionResume:
     def test_resumes_for_the_groups_without_a_page(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
@@ -118,6 +110,14 @@ class TestDistillSessionResume:
         _distill_agentic(_groups("a", "b", "c"), [], agent, TIMESTAMP, tmp_path)
 
         assert seen == [["a", "b", "c"], ["b", "c"], ["c"]]
+
+
+def _groups(*tags: str) -> dict[str, list[CapturedNote]]:
+    return {tag: [_note(tag)] for tag in tags}
+
+
+def _note(tag: str) -> CapturedNote:
+    return CapturedNote(title=f"{tag} note", content=f"body for {tag}", tags=[tag], source_file=Path(f"{tag}.md"))
 
 
 def test_no_pending_groups_skips_the_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

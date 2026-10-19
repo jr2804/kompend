@@ -180,24 +180,19 @@ never imports parsecraft internals, private modules, or test helpers — only th
 documented public surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
 
 !!! warning "A resolution failure moments after a release is usually a stale index cache"
-
     `No solution found … because there is no version of kompend[pdf-full]==<version>`
     seconds after a release is almost always a stale index cache, not a missing
-    artifact. Check the version on PyPI, then retry with the cache bypassed and an
-    explicit version:
+    artifact. Check the version on PyPI, then retry with the cache bypassed and
+    an explicit version — `UV_NO_CACHE=1 uv pip install --force-reinstall "kompend[pdf-full]==2026.10.15"`.
 
-    ```bash
-    UV_NO_CACHE=1 uv pip install --force-reinstall "kompend[pdf-full]==2026.10.15"
-    ```
-
-    The message is word-for-word what a genuinely empty release produces, so
-    confirm it against PyPI's JSON before concluding the release itself broke.
-    Note PyPI answers inconsistently while a release propagates: the
-    `…/<package>/json` endpoint can still report the previous version, while
-    `…/<package>/<version>/json` already lists it. For the same cause on the
-    lockfile path, `uv lock --refresh` re-reads the index — a floor bump can fail
-    resolution with "only <package><=<previous> is available" even when the new
-    release is metadata-identical apart from its version.
+The message is word-for-word what a genuinely empty release produces, so
+confirm it against PyPI's JSON before concluding the release itself broke. Note
+PyPI answers inconsistently while a release propagates: the `…/<package>/json`
+endpoint can still report the previous version, while
+`…/<package>/<version>/json` already lists it. For the same cause on the
+lockfile path, `uv lock --refresh` re-reads the index — a floor bump can fail
+resolution with "only <package><=<previous> is available" even when the new
+release is metadata-identical apart from its version.
 
 ### What the parsecraft adapter does
 
