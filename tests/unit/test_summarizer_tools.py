@@ -19,14 +19,6 @@ class _Ctx:
         self.deps = deps
 
 
-def _ctx(deps: SummarizerDeps) -> RunContext[SummarizerDeps]:
-    return cast("RunContext[SummarizerDeps]", _Ctx(deps))
-
-
-def _node(node_id: str) -> SummaryNode:
-    return SummaryNode(id=node_id, heading_chain="h", content="c")
-
-
 class TestNextNode:
     def test_returns_first_pending_node_with_an_explicit_id(self) -> None:
         deps = SummarizerDeps(nodes=[_node("a"), _node("b")], source_id="root")
@@ -81,3 +73,11 @@ class TestSummarizeNode:
         assert "Unknown node id 'a/mangled'" in str(excinfo.value)
         assert "'a'" in str(excinfo.value)
         assert deps.results == {}
+
+
+def _ctx(deps: SummarizerDeps) -> RunContext[SummarizerDeps]:
+    return cast("RunContext[SummarizerDeps]", _Ctx(deps))
+
+
+def _node(node_id: str) -> SummaryNode:
+    return SummaryNode(id=node_id, heading_chain="h", content="c")

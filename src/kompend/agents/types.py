@@ -151,27 +151,6 @@ class VerificationVerdict:
     sources: list[str] = field(default_factory=list)
 
 
-class VerificationClaim(TypedDict):
-    """One claim the agentic verification agent may verify."""
-
-    id: int
-    text: str
-
-
-class VerificationSource(TypedDict):
-    """One cited source snippet offered as evidence."""
-
-    slug: str
-    text: str
-
-
-class VerificationPage(TypedDict):
-    """One wiki page the verifier may read in full."""
-
-    slug: str
-    content: str
-
-
 @dataclass
 class VerificationDeps:
     """Runtime context for the agentic verification agent.
@@ -218,18 +197,6 @@ class WriteDeps:
     timeout: float = 120.0
 
 
-class ContextChunk(TypedDict):
-    """One leaf chunk the agentic context-chunk agent may situate.
-
-    ``id`` is the identity of the live ``ChunkNode`` (``id(leaf)``), so the
-    summarizer side and the result mapping agree on the key.
-    """
-
-    id: int
-    heading_chain: list[str]
-    text: str
-
-
 @dataclass
 class ContextChunkDeps:
     """Runtime context for the agentic context-chunk enrichment agent.
@@ -255,14 +222,6 @@ class ContextChunkDeps:
     current_chunk: ContextChunk | None = None
 
 
-class SummaryNode(TypedDict):
-    """One internal chunk node the agentic summarizer may summarize."""
-
-    id: str
-    heading_chain: str
-    content: str
-
-
 @dataclass
 class SummarizerDeps:
     """Runtime context for the agentic summarizer agent.
@@ -281,33 +240,6 @@ class SummarizerDeps:
     source_id: str = "summarizer"
     timeout: float = 120.0
     current_node: SummaryNode | None = None
-
-
-class DistillNote(TypedDict):
-    """One captured note inside a distill group."""
-
-    title: str
-    content: str
-    source: str
-
-
-class DistillGroup(TypedDict):
-    """One tag group the agentic distill agent may distill."""
-
-    tag: str
-    notes: list[DistillNote]
-
-
-class DistillPage(TypedDict, total=False):
-    """A distilled page as returned by the model's ``save_page`` call.
-
-    Untrusted model output: every key is optional and only ``title``,
-    ``content`` and ``tags`` are read (defensively) by the caller.
-    """
-
-    title: str
-    content: str
-    tags: list[str]
 
 
 @dataclass
@@ -362,6 +294,74 @@ class QueryAgentDeps:
     source_id: str = "query"
     timeout: float = 120.0
     current_sub_question: str | None = None
+
+
+class VerificationClaim(TypedDict):
+    """One claim the agentic verification agent may verify."""
+
+    id: int
+    text: str
+
+
+class VerificationSource(TypedDict):
+    """One cited source snippet offered as evidence."""
+
+    slug: str
+    text: str
+
+
+class VerificationPage(TypedDict):
+    """One wiki page the verifier may read in full."""
+
+    slug: str
+    content: str
+
+
+class ContextChunk(TypedDict):
+    """One leaf chunk the agentic context-chunk agent may situate.
+
+    ``id`` is the identity of the live ``ChunkNode`` (``id(leaf)``), so the
+    summarizer side and the result mapping agree on the key.
+    """
+
+    id: int
+    heading_chain: list[str]
+    text: str
+
+
+class SummaryNode(TypedDict):
+    """One internal chunk node the agentic summarizer may summarize."""
+
+    id: str
+    heading_chain: str
+    content: str
+
+
+class DistillNote(TypedDict):
+    """One captured note inside a distill group."""
+
+    title: str
+    content: str
+    source: str
+
+
+class DistillGroup(TypedDict):
+    """One tag group the agentic distill agent may distill."""
+
+    tag: str
+    notes: list[DistillNote]
+
+
+class DistillPage(TypedDict, total=False):
+    """A distilled page as returned by the model's ``save_page`` call.
+
+    Untrusted model output: every key is optional and only ``title``,
+    ``content`` and ``tags`` are read (defensively) by the caller.
+    """
+
+    title: str
+    content: str
+    tags: list[str]
 
 
 class WikiHitProtocol(Protocol):

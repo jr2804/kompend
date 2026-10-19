@@ -48,10 +48,7 @@ async def summarize_node(ctx: RunContext[SummarizerDeps], node_id: str, summary:
     node_id = node_id.strip()
     known = {node["id"] for node in ctx.deps.nodes}
     if node_id not in known:
-        raise ModelRetry(
-            f"Unknown node id {node_id!r}. Call next_node() and pass the id it returns verbatim. "
-            f"Nodes awaiting a summary: {sorted(known)}"
-        )
+        raise ModelRetry(f"Unknown node id {node_id!r}. Call next_node() and pass the id it returns verbatim. Nodes awaiting a summary: {sorted(known)}")
     ctx.deps.results[node_id] = summary.strip()
     ctx.deps.current_node = None
     return f"Summary recorded for node {node_id}."
