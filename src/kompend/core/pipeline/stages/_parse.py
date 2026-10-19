@@ -31,6 +31,7 @@ from kompend.core.pipeline.ingest import (
     preserve_cached_metadata,
     relativize_image_paths,
 )
+from kompend.core.pipeline.parallelism import describe_parallelism
 from kompend.core.pipeline.parse_cache import (
     content_hash_prefix,
     read_document,
@@ -103,6 +104,9 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
 
     trees: list[ChunkTree] = []
     if workers > 1 and len(source_files) > 1:
+        # Say which kind of interpreter this is: a thread pool only runs
+        # Python code in parallel on a free-threaded build.
+        logger.info("%s", describe_parallelism(workers))
         completed = 0
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {executor.submit(_process_single_source, pipeline, sf, dedup_similar): sf for sf in source_files}

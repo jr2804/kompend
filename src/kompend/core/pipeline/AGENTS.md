@@ -23,6 +23,7 @@ persistence, and standalone ingestion.
 | `state.py`            | `TierStateStore`, `TierState`, `SourceState`, `CompileStatus`, `classify_compile_status` |
 | `references.py`       | `ReferenceStore` — JSON-backed bibliographic reference persistence                       |
 | `ingest.py`           | `ingest_documents`, `parse_cache_name`, `preserve_cached_metadata`, `parse_cache_is_current`, `PARSE_CACHE_PARSER_KEY`, `IngestResult` |
+| `parallelism.py`      | `gil_enabled`, `describe_parallelism` — interpreter parallelism facts for `compile.workers` |
 
 ## Rules
 

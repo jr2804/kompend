@@ -236,6 +236,24 @@ A: Yes: `kompend compile *.pdf --start-at-tier resolve` skips re-parsing and chu
 **Q: How do I get a JSON status report?**
 A: `kompend compile *.pdf --list-tiers` outputs JSON.
 
+## Parallel workers and the GIL
+
+Partly, and it depends on the interpreter rather than on kompend. Tier 1 runs
+through a thread pool, and whether a thread pool can run Python code at the
+same time is decided by the GIL:
+
+- **Free-threaded CPython (3.14t+)** — threads parse documents in parallel.
+  The same `--workers N` that is a no-op on a standard build does real work
+  here.
+- **Standard CPython (3.13/3.14, GIL enabled)** — threads interleave rather
+  than run Python bytecode concurrently. Parsing and OCR are CPU-bound, so
+  `workers > 1` buys you overlap only for I/O and for backends that release
+  the GIL (ONNX inference, native PDF code). kompend logs which of the two it
+  is running on when the pool starts.
+
+Worker count is also clipped against a provider's `[providers.<name>].max_connections`
+before the pool is built, so two local GPU servers cannot starve each other.
+
 ## Q: Ingest hangs or crashes on large scanned PDFs
 
 Memory pressure on huge scanned PDFs comes from the OCR backend parsecraft

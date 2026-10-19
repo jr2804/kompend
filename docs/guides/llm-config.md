@@ -88,6 +88,11 @@ on that provider (parse today, and future parallel LLM stages) — a quiet way
 to rate-limit online APIs so tokens aren't burned faster than intended, or to
 stop two local GPU servers from starving each other under `compile.workers > 1`.
 
+The count it clips is a **thread** count. Threads only run Python code in
+parallel on a free-threaded interpreter (CPython 3.14t+); on a standard GIL
+build, not how much runs concurrently. See
+[Parallel workers and the GIL](compilation.md#parallel-workers-and-the-gil).
+
 `api_key` supports the same `${ENV_VAR}` interpolation kompend uses elsewhere.
 A plain literal works too. Omit `api_key` entirely for keyless endpoints;
 kompend sends a placeholder token because pydantic-ai/OpenAI SDK require one.

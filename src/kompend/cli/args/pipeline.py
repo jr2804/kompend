@@ -39,7 +39,7 @@ Workers = Annotated[
     typer.Option(
         "--workers",
         "-j",
-        help="Number of parallel parse workers (1 = sequential).",
+        help=("Number of parallel parse workers (1 = sequential). Threads only run Python code in parallel on a free-threaded interpreter (CPython 3.14t+)."),
         min=1,
         rich_help_panel="Pipeline",
     ),
