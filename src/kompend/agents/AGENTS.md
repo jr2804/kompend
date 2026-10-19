@@ -100,11 +100,12 @@ The base class provides:
   probe and the closing turn — scaled by `headroom_frac`), and
   `AgenticDistillAgent` from group count (~3 requests/group,
   `requests_per_group`), every factor a kwarg with a default. The derived
-  budget is a floor, not a guarantee: the agentic summarizer is re-run for the
-  nodes a session left unsummarized when it exhausts the limit (caller-side,
-  in `NodeSummarizer`) — a round counts as progress only for ids in its own
-  payload, and `summarize_node` rejects unknown ids with `ModelRetry` so a
-  mangled id can never masquerade as progress
+  budget is a floor, not a guarantee: unsummarized nodes are re-requested in a
+  later session (caller-side, in `NodeSummarizer`, batched and stall-retried
+  per `SummarizerSessionPolicy` from `budget.summary_session_*`). A session
+  counts as progress only for ids in its own payload, and `summarize_node`
+  rejects unknown ids with `ModelRetry` so a mangled id can never masquerade as
+  progress
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
 
