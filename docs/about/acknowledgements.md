@@ -171,4 +171,4 @@ Across all 11 investigated projects, the following patterns emerge:
 
 ---
 
-*Analysis conducted 2026-06-07 across 11 projects. Full multi-repo audit available in beads issue history.*
+*Analysis conducted 2026-06-07 across 11 projects.*
