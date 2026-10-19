@@ -214,6 +214,21 @@ model don't compete for GPU memory.
 
 Use `--no-progress` to disable, or `--progress` to force enable.
 
+### Cancelling a running command
+
+While a progress bar is shown, press **ESC twice within one second** to cancel
+`kompend compile` or `kompend ingest` gracefully:
+
+- The command stops at the next safe boundary (current file / tier step),
+  saves its progress state, and exits with code `130`.
+- A rerun of the same command resumes from the saved state instead of
+  redoing finished work.
+- Any other key resets the sequence, so a stray ESC press does nothing;
+  Ctrl+C behaviour is unchanged.
+
+`--json-progress` output shows no bar and therefore installs no key watcher —
+machine consumers should rely on their own process signal handling instead.
+
 ## `kompend ingest`
 
 Copy files (or URLs) into `sources/` without compiling. Like `capture`/`learn`,
