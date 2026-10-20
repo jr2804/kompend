@@ -8,7 +8,7 @@ insist everything run on an underpowered local model while lecturing you
 about _privacy_. kompend is provider-agnostic, adapts to whatever LLM you have
 — from a local 8B model to a frontier API — and uses structure-preserving
 parsing so technical content (tables, equations, figures) survives
-extraction intact. [Read the full motivation →](docs/about/motivation.md)
+extraction intact. [Read the full motivation →](https://jr2804.github.io/kompend/about/motivation/)
 
 > **OKF v0.2 compliant** — produces [Open Knowledge Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) bundles by default.
 > **ACP agent** — implements the [Agent Client Protocol](https://agentclientprotocol.com) for credential-free LLM injection via `kompend agent`.
@@ -110,14 +110,14 @@ reasoning_effort = "none"             # tame over-thinking local models
 kompend auto-detects each model's context window and sizes every call to fit.
 **Recommended: a model with ≥ 32K context** (16K is the functional floor;
 the generation stage reserves 16K output tokens). See the
-[LLM configuration guide](./docs/guides/llm-config.md#context-window-requirements)
+[LLM configuration guide](https://jr2804.github.io/kompend/guides/llm-config/#context-window-requirements)
 for the full breakdown.
 
-See the [LLM configuration guide](./docs/guides/llm-config.md) for the full reference.
+See the [LLM configuration guide](https://jr2804.github.io/kompend/guides/llm-config/) for the full reference.
 
 ## Documentation
 
-> See [`docs/index.md`](./docs/index.md) for the complete documentation index — architecture deep-dives, tier references, WiCER loop, CLI guides, integrations.
+> **[jr2804.github.io/kompend](https://jr2804.github.io/kompend/)** — the complete documentation site: architecture deep-dives, tier references, the WiCER loop, CLI guides, and integrations.
 
 ## Development
 
