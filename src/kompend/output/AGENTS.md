@@ -66,6 +66,10 @@ User-facing guide: `docs/concepts/open-knowledge-format.md`.
 - ``DocumentRenderer`` is the single path for per-page Markdown rendering;
   all generated output is additionally piped through ``rumdl fmt``
   (``format_output``) after write — no hand-rolled flavor converters.
+- ``format_output`` passes explicit file paths to ``rumdl fmt`` in batches
+  capped by a command-line char budget — Windows' ~32K spawn limit overflowed
+  on large vaults (``WinError 206``); a failed batch stops the sweep and the
+  earlier batches' changes are still reported.
 - OKF is a **compliance spec**, not an output format: there is exactly one
   markdown writer, and it is OKF v0.2-compliant. Never add a second
   markdown variant for flavor/link-syntax reasons.
