@@ -342,6 +342,10 @@ summary_target_chars = 600
 summary_skip_single_child = true
 # Max chunks before switching from two_level to multi_resolution strategy
 summary_chunk_threshold = 10
+# LLM requests budgeted per node in an agentic summarizer session
+# (one next_node() turn + one summarize_node() turn). Raise for models that
+# need extra turns before they reach a tool call.
+summary_requests_per_node = 2
 # Agentic summarizer sessions: nodes per session, and how many extra attempts
 # a session that records nothing gets before its nodes are left unsummarized.
 # Smaller batches bound the blast radius of a model that stops calling tools.

@@ -90,6 +90,7 @@ def build_pipeline(
             retries=config.llm.output_retries if config.llm.output_retries_enabled else 0,
             output_retries=config.llm.agentic_output_retries if config.llm.output_retries_enabled else 0,
             context_window=cw.max_input,
+            requests_per_node=config.budget.summary_requests_per_node,
             rlm=config.llm.rlm,
         )
         if config.search.contextual.enabled:
