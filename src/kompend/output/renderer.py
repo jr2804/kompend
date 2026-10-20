@@ -12,6 +12,7 @@ AST renderer, which produces consistent formatting without a subprocess.
 from __future__ import annotations
 
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -19,12 +20,20 @@ import yaml
 
 from kompend.core.page_builder import PageBuilder
 from kompend.core.text.rumdl import rumdl_available
+from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 from kompend.output.models import Document
 
 #: Tail of rumdl's stderr included in the failure warning — enough to show the
 #: cause without dumping the whole diagnostic.
 _STDERR_PREVIEW_CHARS = 300
+
+#: Character budget for the file arguments of one ``rumdl fmt`` invocation.
+#: Windows caps a spawned process' command line at ~32,767 characters
+#: (CreateProcess); half that leaves headroom for ``list2cmdline`` quoting of
+#: paths with spaces. POSIX ARG_MAX is far larger — the budget only means
+#: fewer, bigger batches there.
+_COMMAND_LINE_CHAR_BUDGET = 16_000
 
 # ── Flavour auto-detection ──────────────────────────────────────────────
 
@@ -175,7 +184,9 @@ def format_output(
     Formats every ``.md`` file under *output_dir* plus *extra_files* (e.g. the
     vault-root ``index.md``). Returns the files that changed (or, with
     *check_only*, the files that *would* change). Skips silently when rumdl
-    is not installed; never raises.
+    is not installed; never raises. File arguments are batched
+    (:func:`_command_line_batches`) so large vault sweeps stay under the
+    Windows command-line limit instead of failing to spawn.
     """
     if not _check_rumdl():
         return []
@@ -189,31 +200,35 @@ def format_output(
     # Pass explicit file paths, not directories: rumdl filters directory
     # scans through ignore files (.gitignore etc.) and would silently skip
     # generated output.
-    cmd = ["rumdl", "fmt", "--silent"] if not check_only else ["rumdl", "fmt", "--check"]
+    base_cmd = ["rumdl", "fmt", "--check"] if check_only else ["rumdl", "fmt", "--silent"]
     if flavor:
-        cmd.extend(["--flavor", flavor])
+        base_cmd.extend(["--flavor", flavor])
     if rumdl_config:
-        cmd.extend(["--config", str(rumdl_config)])
-    cmd.extend(str(p) for p in files)
+        base_cmd.extend(["--config", str(rumdl_config)])
 
-    try:
-        result = subprocess.run(  # noqa: S603 — internally constructed cmd list, no user input
-            cmd,
-            capture_output=True,
-            encoding="utf-8",
-            timeout=300,
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        logger.warning("rumdl fmt failed — skipping output formatting", exc_info=True)
-        return []
-    if result.returncode not in (0, 1):
-        logger.warning("rumdl fmt exited %s: %s", result.returncode, result.stderr.strip()[:_STDERR_PREVIEW_CHARS])
-        return []
+    would_change = False
+    for batch in _command_line_batches(files, base_cmd):
+        try:
+            result = subprocess.run(  # noqa: S603 — internally constructed cmd list, no user input
+                [*base_cmd, *(str(p) for p in batch)],
+                capture_output=True,
+                encoding="utf-8",
+                timeout=300,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            logger.warning("rumdl fmt failed (%s) — skipping output formatting", exc, exc_info=is_verbose())
+            break
+        if result.returncode not in (0, 1):
+            logger.warning("rumdl fmt exited %s: %s", result.returncode, result.stderr.strip()[:_STDERR_PREVIEW_CHARS])
+            break
+        would_change |= result.returncode == 1
 
     if check_only:
         # ``rumdl fmt --check`` exits 1 when changes would be made.
-        return list(files) if result.returncode == 1 else []
+        return list(files) if would_change else []
+    # Diff after every batch, so a mid-sweep failure still reports the pages
+    # earlier batches did format.
     return [p for p in files if p.read_bytes() != before.get(p)]
 
 
@@ -234,3 +249,27 @@ def _md_files_under(targets: list[Path]) -> list[Path]:
         elif target.is_dir():
             files.extend(p for p in target.rglob("*.md") if p.is_file())
     return sorted(set(files))
+
+
+def _command_line_batches(files: list[Path], base_cmd: list[str]) -> Iterator[list[Path]]:
+    """Split *files* into per-invocation batches under a command-line budget.
+
+    Windows caps the command line of a spawned process at ~32,767 characters,
+    so one ``rumdl fmt`` over a large vault (hundreds of page paths) fails to
+    spawn with ``FileNotFoundError: [WinError 206] The filename or extension
+    is too long``. Batching keeps every invocation well inside
+    :data:`_COMMAND_LINE_CHAR_BUDGET`; correctness is unchanged — each batch
+    formats its own files and results aggregate across batches.
+    """
+    budget = max(_COMMAND_LINE_CHAR_BUDGET - len(" ".join(base_cmd)) - 1, 1)
+    batch: list[Path] = []
+    used = 0
+    for path in files:
+        size = len(str(path)) + 1
+        if batch and used + size > budget:
+            yield batch
+            batch, used = [], 0
+        batch.append(path)
+        used += size
+    if batch:
+        yield batch
