@@ -27,7 +27,7 @@ from kompend.agents.types import ContextChunk, ContextChunkDeps, DistillAgentDep
 from kompend.chunking.contextual import ContextualEnricher
 from kompend.compilation.context_chunk_tools import next_chunk
 from kompend.compilation.query_tools import read_page, search_wiki
-from kompend.core.config._configs import SearchConfig, SearchContextualConfig
+from kompend.core.config._configs import BudgetConfig, SearchConfig, SearchContextualConfig
 from kompend.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
 from kompend.core.pipeline.config import Compiler, EmbeddingConfig, LLMConfig, PipelineConfig
 from kompend.core.pipeline.orchestrator import build_pipeline
@@ -107,6 +107,24 @@ class TestAgenticSummarizerAgentWiring:
         assert pipeline.summarizer is not None
         assert isinstance(pipeline.summarizer._agent, AgenticSummarizerAgent)  # noqa: SLF001
 
+    def test_build_pipeline_passes_summary_requests_per_node(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "kompend.core.pipeline.stages._factory.discover_context_window",
+            lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
+        )
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/gpt-oss:20b", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="hash"),
+            compiler=Compiler.GRAPH,
+            budget=BudgetConfig(summary_requests_per_node=5),
+        )
+        pipeline = build_pipeline(config)
+        assert pipeline.summarizer is not None
+        assert isinstance(pipeline.summarizer._agent, AgenticSummarizerAgent)  # noqa: SLF001
+        assert pipeline.summarizer._agent.requests_per_node == 5  # noqa: SLF001
+
 
 class TestAgenticSummarizerUsageLimits:
     """Regression: pydantic-ai's implicit default caps a run at 50 requests.
@@ -132,6 +150,20 @@ class TestAgenticSummarizerUsageLimits:
         limits = agent._usage_limits_for(deps, requests_per_node=1, headroom_frac=1.0)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == 42
+
+    def test_configured_requests_per_node_raises_the_budget(self) -> None:
+        """``budget.summary_requests_per_node`` reaches the derived limit.
+
+        Small local models burn prose turns and id retries before every tool
+        call; the 2-request/node default starves them mid-batch (p863:
+        request_limit of 47 hit four times in a row on one 20-node window).
+        """
+        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b", requests_per_node=4)
+        nodes = [SummaryNode(id=str(i), heading_chain="", content="x") for i in range(10)]
+        deps = SummarizerDeps(nodes=nodes, source_id="root")
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((10 * 4 + 2) * 1.1)  # 47
 
     def test_single_node_session_covers_its_own_closing_turn(self) -> None:
         """A one-node payload needs next_node + summarize_node + the closing turn."""
