@@ -96,9 +96,10 @@ The base class provides:
   `_usage_limits_for(deps)` (default: the RLM preset limits, else None →
   pydantic-ai's implicit 50-request cap). Multi-turn tool agents override the
   hook; `AgenticSummarizerAgent` derives `request_limit` from node count
-  (~2 requests/node plus a fixed 2-request session cost — the "no more nodes"
-  probe and the closing turn — scaled by `headroom_frac`), and
-  `AgenticDistillAgent` from group count (~3 requests/group,
+  (`requests_per_node` — instance field set by the pipeline from
+  `budget.summary_requests_per_node` — plus a fixed 2-request session cost —
+  the "no more nodes" probe and the closing turn — scaled by `headroom_frac`),
+  and `AgenticDistillAgent` from group count (~3 requests/group,
   `requests_per_group`), every factor a kwarg with a default. The derived
   budget is a floor, not a guarantee: unsummarized nodes are re-requested in a
   later session (caller-side, in `NodeSummarizer`, batched and stall-retried
