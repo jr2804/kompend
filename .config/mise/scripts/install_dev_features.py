@@ -29,16 +29,15 @@ def _run(cmd: list[str]) -> None:
     subprocess.run(cmd, check=False)
 
 
-def add_mcp_servers(agent: str) -> None:
+def add_mcp_servers(agent: str, mise_env: str | None = None) -> None:
     """Install every tool and register every MCP server in dev-features.csv."""
+    mise_env_option = ["--env", mise_env] if mise_env else []
+
     for row in _rows("dev-features.csv"):
+
         if tool := row.get("tool"):
-            # ponytail: dirty hack — always pins @latest even though
-            # tool_value may carry a real version/extras; upgrade when the
-            # CSV gains a proper install-command column. `mise use` (not
-            # `mise install`) so the tool lands in the project's [tools] and
-            # its shim resolves (fixes "No version is set for shim").
-            _run(["mise", "use", f"{tool}@latest"])
+            #
+            _run(["mise", "use", f"{tool}@latest"] + mise_env_option)
         if row.get("mcp_command") and row.get("mcp_name"):
             _run(
                 [
@@ -82,7 +81,7 @@ def main() -> None:
     cmd = sys.argv[1]
     if cmd == "add-mcp-servers":
         agent = sys.argv[2] if len(sys.argv) > 2 else ""
-        add_mcp_servers(agent)
+        add_mcp_servers(agent, mise_env="local")
     elif cmd == "add-skills":
         add_skills()
     else:
