@@ -74,6 +74,7 @@ kompend init [OPTIONS] [DIR]
 | `--bare` | Skip authored templates (`NOTES.md`, `README.md`) |
 | `--force` | Overwrite existing project config |
 | `--git` | Initialize a git repo with an initial commit |
+| `--wiki-dir`, `-w` | Target directory, alternative to the `DIR` argument |
 
 Creates the following structure:
 
@@ -157,6 +158,7 @@ kompend compile [OPTIONS] FILES...
 | `--synthesize/--no-synthesize` | on | Generate LLM-synthesized overview.md |
 | `--distill` | off | Distill pending notes from `sources/_captured/` + `sources/_learned/` into `sources/_distilled/` pages before compiling (archives the notes it merged) |
 | `--ignore` | — | Ignore pattern (glob-style, repeatable) |
+| `--recursive/--no-recursive` | on | Scan `sources/` subdirectories for source files; overrides `paths.recursive` |
 | `--progress/--no-progress` | auto | Show rich progress bars (auto-detected for TTY) |
 
 Source and output directories are resolved from `--wiki-dir` (or `KOMP_WIKI_DIR`), defaulting to the current directory. See [Configuration](./configuration.md) for details.
@@ -241,6 +243,10 @@ capture/learn/distill/consolidate lifecycle.
 kompend ingest paper.pdf --tag audio --tag standards --attr version=2
 kompend ingest --url https://example.com/report.pdf --attr status=draft
 ```
+
+`--recursive/--no-recursive` controls whether source selection descends into
+subdirectories (directory arguments and the no-arguments scan of `sources/`).
+Unset, it follows the `paths.recursive` config value (default on).
 
 ### Forced re-ingest (parser setting change)
 

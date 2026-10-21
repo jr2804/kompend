@@ -44,7 +44,11 @@ and should not be imported outside this package or tests.
 `generate.py` provides `generate_scaffold_config()` (used by `kompend init` to
 write `.kompend/config.toml` from `DEFAULTS` — no Jinja2 template involved) and
 `extract_toml_keys()` / `get_default_keys()` (used by the sync test to verify
-`kompend.toml.example` documents every key in `DEFAULTS`).
+`kompend.toml.example` documents every key in `DEFAULTS`). Scaffold output
+annotates enum-like keys with the remaining valid values as a trailing
+comment (`key = "value"  # other, values`); the value domains come from
+`enum_choices()` — schema StrEnum leaves plus `_STR_ENUM_CHOICES` for
+str-typed keys with a closed domain.
 
 ### Precedence order (memorize this)
 
@@ -87,9 +91,14 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
    valid values. Keep the same section structure as `DEFAULTS`.
    The sync test (`TestKompendDotExampleSync`) will fail if a key in `DEFAULTS`
    is missing from `kompend.toml.example`.
-5. **Wire into the consumer** (e.g. `PipelineConfig`, `LintRunner`) via
+5. **Declare enum-like value domains** — a key whose values form a closed set
+   must be discoverable by `enum_choices()` in `generate.py`: StrEnum-typed
+   fields are picked up automatically; str-typed keys need an entry in
+   `_STR_ENUM_CHOICES`. The domain drives the scaffold's trailing value
+   comments and must match `kompend.toml.example`.
+6. **Wire into the consumer** (e.g. `PipelineConfig`, `LintRunner`) via
    `cfg.get("dotted.key", fallback)`.
-6. **Write tests** — at minimum: default value, project config override, env var
+7. **Write tests** — at minimum: default value, project config override, env var
    override, CLI override, full precedence chain.
 
 ### Conventions

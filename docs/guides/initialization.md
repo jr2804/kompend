@@ -33,7 +33,7 @@ kompend init ./my-vault --config scripts/configs/config-cloud.toml
 
 ### `.kompend/config.toml`
 
-The primary project configuration file. Contains all available settings with documentation comments. See [Configuration](./configuration.md) for the full reference.
+The primary project configuration file. Contains all available settings with documentation comments; enum-like keys list their remaining valid values in a trailing comment (e.g. `format = "markdown"  # json, typst`). See [Configuration](./configuration.md) for the full reference.
 
 ### `NOTES.md`
 
@@ -92,6 +92,17 @@ generated default. Use this to seed a vault with a specific LLM/budget/profile
 
 ```bash
 kompend init ./my-vault --config scripts/configs/config-cloud.toml
+```
+
+### `--wiki-dir` / `-w`
+
+Scaffold into the given directory as an alternative to the `DIR` argument —
+`kompend init -w ./my-wiki` is equivalent to `kompend init ./my-wiki`. This
+mirrors the global `--wiki-dir` option (which must precede the subcommand).
+Passing both a `DIR` and `--wiki-dir` with different paths is an error.
+
+```bash
+kompend init --wiki-dir ./my-wiki
 ```
 
 ### `--git`

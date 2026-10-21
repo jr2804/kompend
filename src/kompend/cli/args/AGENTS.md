@@ -161,6 +161,7 @@ when the command actually has options in it.
 - `StartAtTier` — Which compilation tier to begin at
 - `Workers` — Number of parallel workers
 - `NoCacheFlag` — Skip cache and recompile
+- `RecursiveScan` — Tri-state `--recursive/--no-recursive` for pipeline source discovery; `None` follows the `paths.recursive` config value (distinct from common `Recursive`)
 - `JsonProgress` — Machine-readable progress output
 
 ## Verification
