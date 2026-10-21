@@ -14,6 +14,10 @@ sources_dir = "sources"
 output_dir = "wiki"
 cache_dir = ".kompend/cache"
 state_dir = ".kompend"
+# Discover sources in subdirectories of sources_dir. Set false for a flat
+# vault: only files directly in sources_dir are indexed.
+# CLI: --recursive / --no-recursive   Env: KOMP_PATHS_RECURSIVE
+recursive = true
 
 # ── User notes ──────────────────────────────────────────────────────────
 # Free-form context file injected into LLM templates as {{ user_notes }}.

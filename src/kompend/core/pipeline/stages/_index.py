@@ -20,7 +20,9 @@ _STATE_DIR = ".kompend"
 def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     """Yield source files to process.
 
-    Always scans ``config.source_dir`` for supported file types.
+    Always scans ``config.source_dir`` for supported file types — recursively
+    unless ``config.recursive`` is false (flat vault: only files directly in
+    ``source_dir``).
     The ``config.input_files`` list is only used by the ingest
     command to copy files into the source directory — it does
     *not* scope which files the pipeline processes.
@@ -30,7 +32,8 @@ def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     """
     extensions = get_all_extensions([DEFAULT_PARSER])
     sources = []
-    for f in pipeline.config.source_dir.rglob("*"):
+    pattern = "**/*" if pipeline.config.recursive else "*"
+    for f in pipeline.config.source_dir.glob(pattern):
         if _STATE_DIR in f.parts or ARCHIVE_SUBDIR in f.parts:
             continue
         if f.suffix.lower() in extensions:

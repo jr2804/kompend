@@ -21,6 +21,7 @@ PATHS_WIKI_DIR: Final[str] = "paths.wiki_dir"
 PATHS_SOURCES_DIR: Final[str] = "paths.sources_dir"
 PATHS_OUTPUT_DIR: Final[str] = "paths.output_dir"
 PATHS_STATE_DIR: Final[str] = "paths.state_dir"
+PATHS_RECURSIVE: Final[str] = "paths.recursive"
 
 # ── ingest section ──
 

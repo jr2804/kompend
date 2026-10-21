@@ -351,6 +351,15 @@ class PathsConfig(_KompendBaseModel):
     output_dir: str = Field(default="wiki", validation_alias=EnvVar.OUTPUT_DIR)
     cache_dir: str = Field(default=CACHE_DIR, validation_alias=EnvVar.CACHE_DIR)
     state_dir: str = Field(default=KOMP_DIR, validation_alias=EnvVar.STATE_DIR)
+    recursive: bool = Field(
+        default=True,
+        validation_alias=EnvVar.PATHS_RECURSIVE,
+        description=(
+            "Discover sources in subdirectories of sources_dir. Set false for a flat "
+            "vault: only files directly in sources_dir are indexed. "
+            "CLI: --recursive/--no-recursive."
+        ),
+    )
 
 
 class LintConfig(_KompendBaseModel):

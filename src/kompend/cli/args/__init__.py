@@ -115,6 +115,7 @@ from .pipeline import (
     ListTiers,
     MemoryEnabled,
     NoCacheFlag,
+    RecursiveScan,
     StartAtTier,
     Workers,
 )
@@ -289,6 +290,7 @@ __all__ = [
     "QueryTopK",
     "QueryVerbosity",
     "Recursive",
+    "RecursiveScan",
     "ReferencesExportOutput",
     "ReferencesExportSource",
     "ReferencesFetchDryRun",

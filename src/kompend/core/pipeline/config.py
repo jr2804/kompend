@@ -157,6 +157,7 @@ class PipelineConfig:
     tier_state_file: Path | None = None  # None = base_dir/.kompend/compile_state.json
     ignore_patterns: list[str] | None = None  # glob patterns to exclude
     respect_gitignore: bool = True  # respect .gitignore in source dir
+    recursive: bool = True  # scan sources_dir subdirectories (paths.recursive)
     compiler: Compiler = Compiler.GRAPH  # C4: compiler backend selection
     privacy_filter: bool = True  # redact PII/secrets from parsed content
     memory_enabled: bool = True  # Track node confidence/tiers/supersession/decay
@@ -273,6 +274,7 @@ class PipelineConfig:
             tier_state_file=Path(kompend.compile.tier_state_file) if kompend.compile.tier_state_file else None,
             ignore_patterns=list(kompend.ignore.patterns),
             respect_gitignore=kompend.compile.respect_gitignore,
+            recursive=kompend.paths.recursive,
             compiler=Compiler(kompend.compile.compiler),
             privacy_filter=kompend.trust.privacy_filter,
             parsecraft_judge=kompend.ingest.parsecraft_judge,
