@@ -231,12 +231,20 @@ max_tokens = *_output_max   # per-phase ceiling, scales the same on 8K or 1M mod
 | Extraction | 8 192 | `KOMP_BUDGET_EXTRACT_OUTPUT_MAX` |
 | Generation | 16 384 | `KOMP_BUDGET_GEN_OUTPUT_MAX` |
 | Overview | 4 096 | `KOMP_BUDGET_OVERVIEW_OUTPUT_MAX` |
+| Reference extraction | 8 192 | `KOMP_BUDGET_REFERENCE_OUTPUT_MAX` |
 | Verification | 4 096 | — (config only) |
 | Lint | 8 192 | — (config only) |
 | WiCER probe | 4 096 | — (config only) |
 | WiCER eval | — | — |
 
 All values are in tokens.
+
+Reference extraction sizes its requests against the discovered context
+window: a reference section larger than the content budget (window minus
+system prompt, `reference_output_max`, and safety margin) is split into
+line-aligned windows and parsed window by window, with results merged per
+source. This keeps very large bibliographies from failing with an
+oversized-request error on small local models.
 
 ## Structural Controls
 
