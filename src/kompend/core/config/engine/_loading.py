@@ -1,4 +1,4 @@
-"""TOML loading, env var expansion, and config file discovery."""
+"""TOML loading, env var expansion, duplicate-key tolerance, config file discovery."""
 
 from __future__ import annotations
 
@@ -6,8 +6,10 @@ import os
 import re
 import tomllib
 from pathlib import Path
+from tomllib import TOMLDecodeError
 from typing import Any
 
+from kompend.core.config.engine._dedupe import strip_duplicate_keys
 from kompend.core.config.keys import PATHS_WIKI_DIR, EnvVar
 from kompend.core.paths import CONFIG_FILE, KOMP_CONFIG_FILE, PROJECT_CONFIG_FILE, VaultPaths
 from kompend.logging import get_logger
@@ -23,17 +25,57 @@ logger = get_logger(__name__)
 
 
 def load_toml(toml_file: Path) -> dict[str, Any]:
-    """Load a TOML file, returning an empty dict on failure."""
+    """Load a TOML file, returning an empty dict on failure.
+
+    Duplicate key assignments are tolerated: the first occurrence wins and
+    later duplicates are dropped with a warning, instead of rejecting the
+    whole file (tomllib raises "Cannot overwrite a value" on any
+    redefinition).
+    """
     try:
-        raw = toml_file.read_bytes()
-        data: dict[str, Any] = tomllib.loads(raw.decode("utf-8"))
-        data = _expand_env_vars_recursive(data)
-        data = _strip_strings_recursive(data)
-        logger.debug("Loaded config from %s", toml_file)
-        return data
+        text = toml_file.read_bytes().decode("utf-8")
     except Exception as exc:
         logger.warning("Failed to load config %s: %s", toml_file, exc, exc_info=True)
         return {}
+    try:
+        data: dict[str, Any] = tomllib.loads(text)
+    except TOMLDecodeError as exc:
+        data = _reload_tolerating_duplicates(text, toml_file, exc)
+        if data is None:
+            return {}
+    data = _expand_env_vars_recursive(data)
+    data = _strip_strings_recursive(data)
+    logger.debug("Loaded config from %s", toml_file)
+    return data
+
+
+def _reload_tolerating_duplicates(text: str, toml_file: Path, exc: TOMLDecodeError) -> dict[str, Any] | None:
+    """Re-parse *text* with duplicate keys dropped, or ``None`` if unrecoverable.
+
+    Only engages on tomllib's duplicate-key error; any other decode error —
+    and any duplicate pattern the tolerant scanner cannot resolve — falls
+    back to the original failure path.
+    """
+    message = str(exc)
+    if "Cannot overwrite a value" not in message and "Cannot declare" not in message:
+        logger.warning("Failed to load config %s: %s", toml_file, exc, exc_info=True)
+        return None
+    cleaned, dropped = strip_duplicate_keys(text)
+    if not dropped:
+        logger.warning("Failed to load config %s: %s", toml_file, exc, exc_info=True)
+        return None
+    summary = ", ".join(f"{key} (line {lineno})" for key, lineno in dropped)
+    logger.warning(
+        "Config %s contains duplicated keys — kept the first occurrence, dropped: %s",
+        toml_file,
+        summary,
+    )
+    try:
+        cleaned_data: dict[str, Any] = tomllib.loads(cleaned)
+    except TOMLDecodeError as reload_exc:
+        logger.warning("Failed to load config %s: %s", toml_file, reload_exc, exc_info=True)
+        return None
+    return cleaned_data
 
 
 def _expand_env_vars_recursive(data: JSONDict) -> JSONDict:
