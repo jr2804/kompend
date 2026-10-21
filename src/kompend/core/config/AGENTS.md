@@ -31,6 +31,7 @@ through this package — no other module reads config files or env vars directly
 - `engine/` — Split resolution engine (discrete stages):
   - `_env.py` — Env var loading (``KOMP_*``)
   - `_loading.py` — TOML file loading
+  - `_dedupe.py` — Duplicate-key tolerant TOML rewriting (keeps first occurrence)
   - `_overlay.py` — Config overlay merging
   - `_precedence.py` — Precedence ordering and final resolution
   - `_schema.py` — Config schema validation
@@ -49,6 +50,14 @@ annotates enum-like keys with the remaining valid values as a trailing
 comment (`key = "value"  # other, values`); the value domains come from
 `enum_choices()` — schema StrEnum leaves plus `_STR_ENUM_CHOICES` for
 str-typed keys with a closed domain.
+
+`_loading.load_toml()` tolerates duplicated key assignments: tomllib's
+duplicate errors ("Cannot overwrite a value", "Cannot declare … twice")
+trigger `_dedupe.strip_duplicate_keys()`, which drops later
+re-assignments (first occurrence wins) and logs a warning naming each
+dropped key and line number. Only *adjacent* `[table]` re-declarations
+are merged; non-adjacent re-opens and any other TOML error still fall
+through to the hard-failure path (empty config + warning).
 
 ### Precedence order (memorize this)
 

@@ -153,6 +153,15 @@ Status legend:
 The exit code is `0` (clean), `1` (only modified), or `2` (errors), so
 this command plugs straight into CI to catch typos in checked-in config.
 
+### Duplicate keys
+
+A key assigned twice in the same table (a common hand-merge artifact)
+no longer discards the whole file. Kompend keeps the first occurrence,
+drops the later duplicates, and logs a warning naming each dropped key
+and its line number. Adjacent re-declarations of the same `[table]`
+header are merged the same way; any other TOML error still fails the
+file load.
+
 ## Configuration Reference
 
 The main configuration sections:
