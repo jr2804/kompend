@@ -61,7 +61,7 @@ file = "NOTES.md"
 # A judge that cannot be reached, or that fails mid-run, degrades to the
 # rule table with a WARNING instead of failing the ingest.
 # Env: KOMP_INGEST_PARSECRAFT_JUDGE
-# parsecraft_judge = "none"
+# parsecraft_judge = "none"  # ollama, zen, typesafe-ai
 # Env: KOMP_INGEST_PARSECRAFT_JUDGE_MODEL
 # parsecraft_judge_model = ""
 #
@@ -70,7 +70,7 @@ file = "NOTES.md"
 #   balanced (default) — prefer capability, bounded by the host budget
 #   quality  — prefer the strongest eligible backend
 # Env: KOMP_INGEST_PARSECRAFT_PREFERENCE
-# parsecraft_preference = "balanced"
+# parsecraft_preference = "balanced"  # speed, quality
 #
 # MinerU conversion effort. The validated set mirrors parsecraft's own
 # `BackendConfig.options["effort"]` choices:
@@ -85,7 +85,7 @@ file = "NOTES.md"
 # Until then it flips the parse cache key on every change but is otherwise
 # configured-but-inert.
 # Env: KOMP_INGEST_PARSECRAFT_EFFORT
-# parsecraft_effort = "flash"
+# parsecraft_effort = "flash"  # medium, high, xhigh
 #
 # Whether parsecraft may route a page to an OCR sub-backend.
 #   unset (default) — parsecraft derives it: OCR is permitted when an `ocr-*`
@@ -150,8 +150,8 @@ file = "NOTES.md"
 # Values: off (skip) | inline (markdown section) | asset (extracted.json in
 # the export's assets directory). Overridable per run with --annotations /
 # --summary on `kompend sources export`.
-annotations = "inline"   # table/figure annotations -> `## Annotated Items`
-summary = "inline"       # one-line document summary -> `## Summary`
+annotations = "inline"   # off, asset
+summary = "inline"       # off, asset
 
 # ── Display settings ────────────────────────────────────────────────────
 
@@ -213,10 +213,10 @@ search_snippet_chars = 300 # max chars of a search-result snippet (RAG / RRF / h
 # Compiler backend: graph (heading-based extraction) | wicer (iterative compile-evaluate-refine).
 # Both wrap the TwoPhaseCompiler, which runs bibliographic reference extraction
 # as a pre-pass before the main extraction phase.
-compiler = "graph"
+compiler = "graph"  # wicer
 
 # Image handling: file (extract to disk) | base64 (inline)
-image_mode = "file"
+image_mode = "file"  # base64
 
 # VLM caption pre-filter: images below these thresholds (bytes / pixels) are
 # skipped as decorative noise (logos, icons, spacers) without a VLM call.
@@ -224,10 +224,10 @@ image_mode = "file"
 # vlm_min_image_dimension = 64
 
 # Pipeline start tier: index | chunk | resolve | compile | output
-# start_at_tier = "index"
+# start_at_tier = "index"  # chunk, resolve, compile, output
 
 # Pipeline stop tier: index | chunk | resolve | compile | output
-# stop_at_tier = "output"
+# stop_at_tier = "output"  # index, chunk, resolve, compile
 
 # Parallel parse workers (1 = sequential)
 workers = 1
@@ -242,7 +242,7 @@ respect_gitignore = true
 # tier_state_file = "compile_state.json"
 
 # Pipeline mode: full | ingest-only | compile-only
-# mode = "full"
+# mode = "full"  # ingest-only, compile-only
 
 # Force re-run all stages even if cached
 # force = false
@@ -398,7 +398,7 @@ fallback_max_retries = 2
 # LLM output always uses JSON regardless of this setting — the API-level
 # response_format guarantee is preserved.
 # Packages (core deps, already installed): toon_format (TOON), ison-py (ISON)
-# data_format = "json"
+# data_format = "json"  # toon, ison, text
 
 # LLM call timeout (seconds)
 timeout = 120.0
@@ -453,7 +453,7 @@ throughput_window_tokens = 1000
 # Reasoning effort: controls how much the model "thinks" before responding.
 # Supported values: "none", "minimal", "low", "medium", "high", "xhigh", "default".
 # For Ollama models, "none"/"minimal"/"low" also set think=False.
-reasoning_effort = "none"
+reasoning_effort = "none"  # minimal, low, medium, high, xhigh, default
 
 # Extraction strategy for multi-chunk sources:
 # - "incremental" (default): feeds chunks sequentially into one agent
@@ -473,7 +473,7 @@ reasoning_effort = "none"
 #   digest rather than raw message history, so it stays bounded
 #   regardless of document length. Best coherence for long/high-value
 #   sources; source-level cache only (no per-batch cache).
-extraction_strategy = "incremental"
+extraction_strategy = "incremental"  # reduce, agentic
 
 # Context-window management for multi-turn / multi-batch agents
 # (WiCER probe/judge loops; NOT incremental extraction, which has its
@@ -484,7 +484,7 @@ extraction_strategy = "incremental"
 #   "aggressive" — compress at 70%, keep 5 trailing messages
 #   "sliding"    — trim oldest messages at 100, keep 50 (no LLM call)
 #   false        — disable (history preserved verbatim)
-context_manager = "default"
+context_manager = "default"  # aggressive, sliding, false
 
 # RLM (Recursive Language Model) — lets agents explore large contexts by
 # writing Python code in a sandboxed REPL instead of packing everything
@@ -568,11 +568,11 @@ enable = false                    # on/off switch
 # OKF (Open Knowledge Format) is NOT a format — it is the compliance spec
 # the default markdown output follows: compliant frontmatter, portable
 # relative links, reserved files (index.md, log.md), §5.1 footnotes.
-# format = "markdown"
+# format = "markdown"  # json, typst
 
 # Markdown flavor: obsidian | gfm | mkdocs | mdx | quarto | myst | standard
 # Set to auto-detect when omitted.
-# flavor = "obsidian"
+# flavor = "obsidian"  # gfm, mkdocs, mdx, quarto, myst, standard
 
 # Max related-links per page in vault mode (0 = unlimited)
 # max_related_links = 15
@@ -596,7 +596,7 @@ enable = false                    # on/off switch
 
 [dedup]
 # enabled = false
-# matchers = "embedding,minhash"
+# matchers = "embedding,minhash"  # embedding, minhash
 # threshold_identical = 0.95
 # threshold_similar = 0.80
 # Embedding model override. Empty string "" is treated as unset — falls
@@ -716,7 +716,7 @@ history_size = 20
 #   comprehensive = thorough, covers all relevant aspects (~2000 tokens)
 # Token budgets are clamped to the model's max_output so small models are
 # never asked for more than they can produce.
-# synthesis.verbosity = "standard"
+# synthesis.verbosity = "standard"  # brief, comprehensive
 
 # Whether ingestible attachments (text/image captions) are included in
 # the vector index. When false, attachment content is parsed and compiled
@@ -732,4 +732,4 @@ history_size = 20
 # toon / ison = compact structured encodings for LLM/agent consumers
 #   (30-70% fewer tokens than json)
 [query]
-# format = "text"
+# format = "text"  # json, toon, ison

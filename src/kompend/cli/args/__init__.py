@@ -55,7 +55,7 @@ from .config import (
 )
 
 # Init command
-from .init import InitBare, InitConfig, InitForce, InitGit, InitKeepCache, InitTarget
+from .init import InitBare, InitConfig, InitForce, InitGit, InitKeepCache, InitTarget, InitWikiDir
 
 # Knowledge commands (attachments, references, capture, pack, organize, agents)
 from .knowledge import (
@@ -233,6 +233,7 @@ __all__ = [
     "InitGit",
     "InitKeepCache",
     "InitTarget",
+    "InitWikiDir",
     "JsonOutput",
     "JsonProgress",
     "LearnText",

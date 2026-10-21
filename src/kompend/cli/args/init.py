@@ -64,3 +64,16 @@ InitConfig = Annotated[
         ),
     ),
 ]
+
+InitWikiDir = Annotated[
+    str | None,
+    typer.Option(
+        "--wiki-dir",
+        "-w",
+        help=(
+            "Project directory to scaffold into, as an alternative to the TARGET "
+            "argument. Mirrors the global --wiki-dir/-w option, which must precede "
+            "the subcommand. Passing both with different paths is an error."
+        ),
+    ),
+]
