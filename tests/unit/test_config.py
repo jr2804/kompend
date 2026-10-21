@@ -30,6 +30,7 @@ from kompend.core.config._core import (
     set_dot,
     validate_config_key,
 )
+from kompend.core.config.engine._dedupe import strip_duplicate_keys
 from kompend.core.config.generate import enum_choices, extract_toml_keys, generate_scaffold_config, get_default_keys
 from kompend.core.config.keys import PATHS_WIKI_DIR
 from kompend.core.paths import KOMP_DIR
@@ -40,6 +41,20 @@ from kompend.types import JSONDict
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+# ── TOML loading ────────────────────────────────────────────────────────
+
+_DUPLICATE_CONFIG = """\
+[compile.budget]
+summary_requests_per_node = 5
+summary_session_batch_size = 10
+summary_requests_per_node = 2
+summary_session_batch_size = 20
+
+[compile]
+compiler = "wicer"
+"""
 
 # ── Deep merge ──────────────────────────────────────────────────────────
 
@@ -565,9 +580,6 @@ class TestResolvedConfig:
         assert isinstance(parsed, dict)
 
 
-# ── TOML loading ────────────────────────────────────────────────────────
-
-
 class TestTomlLoading:
     def test_valid_toml(self, tmp_path: Any) -> None:
         f = tmp_path / "test.toml"
@@ -592,6 +604,63 @@ class TestTomlLoading:
         data = load_toml(f)
         assert data["compile"]["llm"]["default_model"] == "openai/gpt-4o"
         assert data["compile"]["llm"]["fallback_chain"] == ["anthropic/claude"]
+
+    def test_duplicate_keys_keep_first(self, tmp_path: Any) -> None:
+        f = tmp_path / "dup.toml"
+        f.write_text(_DUPLICATE_CONFIG)
+        data = load_toml(f)
+        assert data["compile"]["budget"]["summary_requests_per_node"] == 5
+        assert data["compile"]["budget"]["summary_session_batch_size"] == 10
+        assert data["compile"]["compiler"] == "wicer"
+
+    def test_duplicate_keys_warn(self, tmp_path: Any, caplog: pytest.LogCaptureFixture) -> None:
+        f = tmp_path / "dup.toml"
+        f.write_text(_DUPLICATE_CONFIG)
+        with caplog.at_level("WARNING"):
+            load_toml(f)
+        messages = [r.getMessage() for r in caplog.records]
+        assert any(
+            "kept the first occurrence" in m
+            and "compile.budget.summary_requests_per_node (line 4)" in m
+            and "compile.budget.summary_session_batch_size (line 5)" in m
+            for m in messages
+        )
+
+    def test_same_key_in_different_tables_is_not_a_duplicate(self, tmp_path: Any) -> None:
+        f = tmp_path / "tables.toml"
+        f.write_text("[a]\nvalue = 1\n[b]\nvalue = 2\n")
+        data = load_toml(f)
+        assert data["a"]["value"] == 1
+        assert data["b"]["value"] == 2
+
+    def test_adjacent_table_redeclaration_is_merged(self, tmp_path: Any) -> None:
+        f = tmp_path / "reopen.toml"
+        f.write_text("[a]\nx = 1\n[a]\ny = 2\n")
+        data = load_toml(f)
+        assert data["a"] == {"x": 1, "y": 2}
+
+    def test_non_adjacent_table_reopen_still_fails(self, tmp_path: Any) -> None:
+        f = tmp_path / "reopen.toml"
+        f.write_text("[a]\nx = 1\n[b]\ny = 2\n[a]\nz = 3\n")
+        assert load_toml(f) == {}
+
+    def test_duplicate_with_multiline_value_is_dropped_whole(self, tmp_path: Any) -> None:
+        f = tmp_path / "array.toml"
+        f.write_text('[t]\nitems = [\n  "a",\n  "b",\n]\nitems = [\n  "c",\n  "d",\n]\n')
+        data = load_toml(f)
+        assert data["t"]["items"] == ["a", "b"]
+
+    def test_duplicate_with_multiline_string_is_dropped_whole(self, tmp_path: Any) -> None:
+        f = tmp_path / "string.toml"
+        f.write_text('[t]\nnote = """\nfirst\n"""\nnote = """\nsecond\n"""\n')
+        data = load_toml(f)
+        assert data["t"]["note"] == "first"
+
+    def test_strip_duplicate_keys_reports_dropped_lines(self) -> None:
+        text = "[t]\na = 1\nb = 2\na = 3\n"
+        cleaned, dropped = strip_duplicate_keys(text)
+        assert dropped == [("t.a", 4)]
+        assert tomllib.loads(cleaned) == {"t": {"a": 1, "b": 2}}
 
 
 # ── Hierarchical config ─────────────────────────────────────────────────
