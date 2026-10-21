@@ -40,6 +40,14 @@ def test_cli_overrides_include_vlm_model() -> None:
     assert overrides["compile.llm.vlm_model"] == "openai/gpt-4o"
 
 
+def test_cli_overrides_include_paths_recursive() -> None:
+    assert _build_cli_overrides(recursive=False)["paths.recursive"] is False
+
+
+def test_cli_overrides_skip_unset_paths_recursive() -> None:
+    assert "paths.recursive" not in _build_cli_overrides()
+
+
 def test_build_pipeline_wires_the_parsecraft_router(tmp_path: Path) -> None:
     """build_pipeline wires the parsecraft router from the config options.
 
@@ -137,6 +145,21 @@ def test_iter_sources_skips_archive_subdir(tmp_path: Path) -> None:
     pipeline = build_pipeline(config)
     sources = {s.name for s in pipeline.iter_sources()}
     assert sources == {"live.md"}
+
+
+def test_iter_sources_flat_when_not_recursive(tmp_path: Path) -> None:
+    """paths.recursive=false scans only the top level of source_dir.
+
+    Scratch/staging folders below sources/ stay out of the pipeline.
+    """
+    (tmp_path / "top.md").touch()
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    (scratch / "nested.md").touch()
+    config = _make_config(tmp_path, vlm_model="")
+    config.recursive = False
+    sources = iter_sources(cast(PipelineRuntime, SimpleNamespace(config=config)))
+    assert {s.name for s in sources} == {"top.md"}
 
 
 def _populate_source_dir(tmp_path: Path, *filenames: str) -> None:

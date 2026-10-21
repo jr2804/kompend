@@ -113,6 +113,7 @@ class TestInitCommand:
         assert "--force" in result.stdout
         assert "--git" in result.stdout
         assert "--keep-cache" in result.stdout
+        assert "--wiki-dir" in result.stdout
 
     def test_keep_cache_preserves_cache(self, tmp_path: Path) -> None:
         target = tmp_path / "wiki"
@@ -128,6 +129,32 @@ class TestInitCommand:
         assert result.exit_code == 0, result.stdout
         assert (cache_dir / "doc.json").is_file()
         assert not (target / "stale.md").exists()
+
+    def test_wiki_dir_option_scaffolds_into_directory(self, tmp_path: Path) -> None:
+        target = tmp_path / "via-flag"
+        result = runner.invoke(app, ["init", "--wiki-dir", str(target)])
+        assert result.exit_code == 0, result.stdout
+        assert (target / "sources").is_dir()
+        assert (target / KOMP_DIR / "config.toml").is_file()
+        assert "Created wiki project" in result.stdout
+
+    def test_wiki_dir_short_flag(self, tmp_path: Path) -> None:
+        target = tmp_path / "short-flag"
+        result = runner.invoke(app, ["init", "-w", str(target)])
+        assert result.exit_code == 0, result.stdout
+        assert (target / KOMP_DIR / "config.toml").is_file()
+
+    def test_wiki_dir_matching_target_is_accepted(self, tmp_path: Path) -> None:
+        target = tmp_path / "same"
+        result = runner.invoke(app, ["init", str(target), "--wiki-dir", str(target)])
+        assert result.exit_code == 0, result.stdout
+        assert (target / KOMP_DIR / "config.toml").is_file()
+
+    def test_wiki_dir_conflicting_target_fails(self, tmp_path: Path) -> None:
+        result = runner.invoke(app, ["init", str(tmp_path / "a"), "--wiki-dir", str(tmp_path / "b")])
+        assert result.exit_code == 1
+        combined = result.stdout + (result.stderr or "")
+        assert "either as TARGET or via --wiki-dir" in combined
 
 
 def _git_available() -> bool:

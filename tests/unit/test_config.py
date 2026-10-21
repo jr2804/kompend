@@ -30,7 +30,7 @@ from kompend.core.config._core import (
     set_dot,
     validate_config_key,
 )
-from kompend.core.config.generate import extract_toml_keys, generate_scaffold_config, get_default_keys
+from kompend.core.config.generate import enum_choices, extract_toml_keys, generate_scaffold_config, get_default_keys
 from kompend.core.config.keys import PATHS_WIKI_DIR
 from kompend.core.paths import KOMP_DIR
 from kompend.core.pipeline.config import PipelineConfig
@@ -268,6 +268,19 @@ class TestResolveConfig:
         monkeypatch.setenv("KOMP_BUDGET_CHUNK_SIZE_MIN", "64")
         cfg = resolve_config(cli_overrides={"compile.budget.chunk_size_min": 32})
         assert cfg.get("compile.budget.chunk_size_min") == 32
+
+    def test_paths_recursive_default_and_layers(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """paths.recursive: default true, project < env < CLI."""
+        monkeypatch.chdir(tmp_path)
+        assert resolve_config().get("paths.recursive") is True
+
+        (tmp_path / "kompend.toml").write_text("[paths]\nrecursive = false\n")
+        assert resolve_config().get("paths.recursive") is False
+
+        monkeypatch.setenv("KOMP_PATHS_RECURSIVE", "true")
+        assert resolve_config().get("paths.recursive") is True
+
+        assert resolve_config(cli_overrides={"paths.recursive": False}).get("paths.recursive") is False
 
     def test_attachments_config_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
@@ -871,6 +884,46 @@ class TestGenerateScaffoldConfig:
         data = tomllib.loads(generate_scaffold_config())
         budget = data["compile"]["budget"]
         assert budget["extract_output_max"] == 8192
+
+    def test_annotates_enum_values_with_remaining_domain(self) -> None:
+        text = generate_scaffold_config()
+        assert 'compiler = "graph"  # wicer' in text
+        assert 'data_format = "json"  # toon, ison, text' in text
+        assert 'parsecraft_judge = "none"  # ollama, zen, typesafe-ai' in text
+        assert 'annotations = "inline"  # off, asset' in text
+
+    def test_enum_annotation_excludes_shown_value(self) -> None:
+        text = generate_scaffold_config()
+        assert 'format = "markdown"  # json, typst' in text
+        assert 'verbosity = "standard"  # brief, comprehensive' in text
+        assert 'start_at_tier = "index"  # chunk, resolve, compile, output' in text
+        assert 'stop_at_tier = "output"  # index, chunk, resolve, compile' in text
+
+    def test_enum_annotation_keeps_toml_valid(self) -> None:
+        data = tomllib.loads(generate_scaffold_config())
+        assert data["compile"]["compiler"] == "graph"
+
+    def test_enum_choices_keys_are_valid_config_keys(self) -> None:
+        known = get_default_keys()
+        for key, values in enum_choices().items():
+            assert key in known, f"{key} is not a known config key"
+            assert values, f"{key} has an empty value domain"
+            assert all(isinstance(v, str) and v for v in values)
+
+    def test_enum_choices_cover_strenum_schema_leaves(self) -> None:
+        covered = set(enum_choices())
+        for key in (
+            "compile.image_mode",
+            "compile.llm.data_format",
+            "compile.llm.extraction_strategy",
+            "compile.output.format",
+            "query.format",
+            "search.synthesis.verbosity",
+            "ingest.parsecraft_judge",
+            "export.annotations",
+            "export.summary",
+        ):
+            assert key in covered
 
 
 class TestExtractTomlKeys:
