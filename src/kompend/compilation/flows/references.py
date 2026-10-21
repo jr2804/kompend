@@ -8,7 +8,8 @@ for all compilation flow logic. Runs before the main extraction phase:
    to split into ``(body, ref_section)``.
 3. If a reference section is found, run
    :class:`~kompend.agents.reference_extraction.ReferenceExtractionAgent`
-   on it and store results in
+   on it (split into context-window-sized windows when the section
+   exceeds the discovered budget) and store results in
    :class:`~kompend.core.pipeline.references.ReferenceStore`.
 4. Strip the reference section from the chunks so the extraction phase
    sees only substantive content.
@@ -16,6 +17,7 @@ for all compilation flow logic. Runs before the main extraction phase:
 
 from __future__ import annotations
 
+import functools
 from collections import defaultdict
 from pathlib import Path
 from typing import Protocol
@@ -24,13 +26,24 @@ from pydantic_ai.messages import ModelMessage
 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.reference_extraction import ReferenceExtractionAgent
-from kompend.compilation._two_phase_core import TwoPhaseRuntime
+from kompend.compilation._two_phase_core import (
+    TwoPhaseRuntime,
+    context_safety_tokens,
+    tokens_to_chars,
+)
 from kompend.compilation.reference_excision import excise_references
 from kompend.core.models import ResolvedChunk
-from kompend.core.models.references import ReferenceResolutionOutput
+from kompend.core.models.references import Reference, ReferenceResolutionOutput
 from kompend.core.paths import rel_to_vault
 from kompend.core.pipeline.references import ReferenceStore
+from kompend.core.templates import get_template_loader
 from kompend.logging import get_logger
+
+#: System-prompt template of the reference extraction agent. Its rendered
+#: length is measured (the same way ``two_phase.py`` measures the
+#: extraction/generation system prompts) so the window budget accounts for
+#: the fixed per-request cost.
+_REFERENCE_SYSTEM_TEMPLATE = "compilation/reference_extraction_system.md.j2"
 
 logger = get_logger(__name__)
 
@@ -61,6 +74,10 @@ def run_reference_extraction(
     reference section, parse references with the LLM agent, and store
     results. Mutates *store* in place.
 
+    Oversized sections are split into line-aligned windows that fit the
+    discovered context-window budget (see ``_reference_char_budget``) and
+    parsed window by window; results are merged per source.
+
     Logs a summary at the end. Failures are non-fatal — the pipeline
     continues without reference data for that source.
     """
@@ -79,9 +96,11 @@ def run_reference_extraction(
     total_refs = 0
 
     agent: ReferenceExtractionAgent | None = None
+    max_window_chars = 0
     if model_string:
         try:
             agent = ReferenceExtractionAgent(model_string=model_string)
+            max_window_chars = _reference_char_budget(compiler)
         except Exception as exc:  # noqa: BLE001 — agent construction may fail without model
             logger.warning("ReferenceExtractionAgent init failed: %s — skipping reference extraction", exc)
             return
@@ -109,14 +128,34 @@ def run_reference_extraction(
             logger.debug("TwoPhase: no model configured — reference section detected but not parsed")
             continue
 
-        try:
-            deps = PipelineAgentDeps(text=ref_section, source_id=source, timeout=timeout)
-            result = agent.run(deps)
-        except Exception as exc:  # noqa: BLE001 — PydanticAI raises many error subclasses
-            logger.warning("Reference extraction failed for '%s': %s", source, exc)
-            continue
+        windows = [ref_section] if len(ref_section) <= max_window_chars else _split_windows(ref_section, max_window_chars)
+        if len(windows) > 1:
+            logger.info(
+                "TwoPhase: references [%d/%d] %s — %d chars split into %d window(s)",
+                source_idx,
+                num_sources,
+                Path(source).name,
+                len(ref_section),
+                len(windows),
+            )
 
-        refs = result.references if result else []
+        refs: list[Reference] = []
+        for win_idx, window in enumerate(windows, start=1):
+            try:
+                deps = PipelineAgentDeps(text=window, source_id=source, timeout=timeout)
+                result = agent.run(deps)
+            except Exception as exc:  # noqa: BLE001 — PydanticAI raises many error subclasses
+                logger.warning(
+                    "Reference extraction failed for '%s' (window %d/%d): %s",
+                    source,
+                    win_idx,
+                    len(windows),
+                    exc,
+                )
+                break  # keep references parsed from earlier windows
+            if result:
+                refs.extend(result.references)
+
         # Stamp each reference with the citing source
         for ref in refs:
             ref.citing_source = source
@@ -135,6 +174,70 @@ def run_reference_extraction(
             total_refs,
             store.source_count(),
         )
+
+
+def _reference_char_budget(compiler: TwoPhaseRuntime) -> int:
+    """Character budget for one reference-extraction window.
+
+    Mirrors ``flows/extraction.py``'s ``_extract_char_budget``: start from the
+    discovered context window, subtract the measured system prompt, the
+    configured output reserve (``compile.budget.reference_output_max``) and the
+    shared context safety margin, then convert the remaining tokens to chars.
+    A parsed bibliography is roughly as large as its raw text, so reserving a
+    full output window keeps input plus expected output inside the model's
+    limit — without it a large section overflowed as
+    ``request (236320 tokens) exceeds the available context size (65536)``.
+    """
+    cw = compiler._context_window  # noqa: SLF001 — flow/runtime contract
+    sys_tokens = _reference_system_tokens()
+    out_tokens = compiler._budget.reference_output_max  # noqa: SLF001
+    safety_tokens = context_safety_tokens(cw.max_input)
+    content_tokens = max(1, cw.max_input - sys_tokens - out_tokens - safety_tokens)
+    logger.info(
+        "TwoPhase: reference budget (cw=%d sys=%d out=%d safety=%d) -> %d tokens for content",
+        cw.max_input,
+        sys_tokens,
+        out_tokens,
+        safety_tokens,
+        content_tokens,
+    )
+    return tokens_to_chars(
+        content_tokens,
+        chars_per_token=compiler._config.llm.default_chars_per_token,  # noqa: SLF001
+    )
+
+
+@functools.lru_cache(maxsize=1)
+def _reference_system_tokens() -> int:
+    """Estimated token cost of the reference-extraction system prompt."""
+    system = get_template_loader().get_body(_REFERENCE_SYSTEM_TEMPLATE)
+    return max(1, len(system) // 4)
+
+
+def _split_windows(text: str, max_chars: int) -> list[str]:
+    """Split *text* into line-aligned windows of at most *max_chars* characters.
+
+    Reference entries are typically one per line, so windows break between
+    entries and the model never sees a torn citation. A single line longer
+    than *max_chars* (rare) is hard-split as a fallback.
+    """
+    windows: list[str] = []
+    current: list[str] = []
+    size = 0
+    for line in text.split("\n"):
+        line_len = len(line) + 1  # account for the join newline
+        if current and size + line_len > max_chars:
+            windows.append("\n".join(current))
+            current, size = [], 0
+        if line_len > max_chars:
+            for i in range(0, len(line), max_chars):
+                windows.append(line[i : i + max_chars])
+            continue
+        current.append(line)
+        size += line_len
+    if current:
+        windows.append("\n".join(current))
+    return windows
 
 
 def resolve_unresolved_references(

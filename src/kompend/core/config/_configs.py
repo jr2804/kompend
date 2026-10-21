@@ -298,6 +298,7 @@ class BudgetConfig(_KompendBaseModel):
     extract_output_max: int = Field(default=8192, validation_alias=EnvVar.BUDGET_EXTRACT_OUTPUT_MAX)
     gen_output_max: int = Field(default=16384, validation_alias=EnvVar.BUDGET_GEN_OUTPUT_MAX)
     overview_output_max: int = Field(default=4096, validation_alias=EnvVar.BUDGET_OVERVIEW_OUTPUT_MAX)
+    reference_output_max: int = Field(default=8192, validation_alias=EnvVar.BUDGET_REFERENCE_OUTPUT_MAX)
     verify_output_max: int = 4096
     lint_output_max: int = 8192
     wicer_probe_output_max: int = 4096

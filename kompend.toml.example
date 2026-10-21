@@ -330,6 +330,10 @@ gen_output_max = 16384
 # Overview output ceiling (tokens)
 overview_output_max = 4096
 
+# Reference extraction output ceiling (tokens) — per window when an
+# oversized reference section is split to fit the context window
+reference_output_max = 8192
+
 # Verification output ceiling (tokens)
 verify_output_max = 4096
 
