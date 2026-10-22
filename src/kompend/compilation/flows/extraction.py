@@ -7,7 +7,6 @@ that operate on compiler instance state.
 from __future__ import annotations
 
 import hashlib
-import json
 import time
 from collections import defaultdict
 from pathlib import Path
@@ -38,6 +37,7 @@ from kompend.core.paths import rel_to_vault
 from kompend.core.templates import get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.core.utils.tokens import estimate_tokens
+from kompend.llm.format import encode_payload
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 
 logger = get_logger(__name__)
@@ -362,7 +362,6 @@ def extract_incremental(
                 timeout=compiler._timeout,
                 max_tokens=compiler._budget.extract_output_max,
                 skills=compiler._config.skills,
-                retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
                 delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
                 reasoning_effort=compiler._config.llm.reasoning_effort,
                 context_manager=compiler._config.llm.context_manager,
@@ -499,9 +498,9 @@ def combine_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extr
 
 def reduce_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extraction]) -> Extraction:
     """LLM-powered reduce: merge partial extractions into a coherent whole."""
-    partial_json = json.dumps([p.to_dict() for p in parts], ensure_ascii=False)
+    partial_data = encode_payload([p.to_dict() for p in parts], compiler._config.llm.data_format)
     reduce_deps_key: dict[str, str] = {
-        CacheDeps.SOURCE_TEXT: hashlib.sha256(partial_json.encode()).hexdigest(),
+        CacheDeps.SOURCE_TEXT: hashlib.sha256(partial_data.encode()).hexdigest(),
         CacheDeps.MODEL: compiler._model,
         CacheDeps.STAGE: "reduce",
     }
@@ -522,7 +521,7 @@ def reduce_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extra
         budget=compiler._budget,
     )
     try:
-        deps = PipelineAgentDeps(text=partial_json, source_id=f"{source}:reduce", timeout=compiler._timeout)
+        deps = PipelineAgentDeps(text=partial_data, source_id=f"{source}:reduce", timeout=compiler._timeout)
         validated = agent.run(deps)
     except LLMOutputError:
         logger.warning("TwoPhase: reduce failed for '%s' — falling back to naive merge", source)

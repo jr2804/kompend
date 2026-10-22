@@ -61,7 +61,7 @@ from kompend.agents.rlm import (
     RLMCapability,
 )
 from kompend.agents.types import PipelineAgentDeps
-from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.config._configs import BudgetConfig, LLMConfig, LlmDataFormat, RlmConfig
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.format import salvage_json
@@ -205,6 +205,10 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     #: taken from the config (see :meth:`_apply_config_defaults`).
     llm: LLMConfig | None = None
     budget: BudgetConfig | None = None
+    #: Format used for structured context injected into this agent's prompts
+    #: (``compile.llm.data_format``). Compact formats (TOON/ISON) shrink the
+    #: input, which leaves more context window for the answer.
+    data_format: LlmDataFormat = LlmDataFormat.JSON
 
     # Class-level template config (overridden by subclasses, NOT dataclass fields)
     template_name: ClassVar[str] = ""
@@ -442,6 +446,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 self.fallback_models = list(llm.fallback_chain)
             if self.delta_retry_enabled is None:
                 self.delta_retry_enabled = llm.delta_retry_enabled
+            self.data_format = llm.data_format
         if self.timeout == UNSET_TIMEOUT:
             self.timeout = _DEFAULT_TIMEOUT_SECONDS
         if self.retries == UNSET_RETRIES:

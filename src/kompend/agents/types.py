@@ -10,6 +10,8 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol, TypedDict
 
+from kompend.core.config._configs import LlmDataFormat
+
 
 @dataclass
 class PipelineAgentDeps:
@@ -257,6 +259,8 @@ class DistillAgentDeps:
         pages: Collected page records keyed by group tag.
         source_id: Identifier for tracking.
         timeout: Per-call timeout in seconds.
+        data_format: Format the group notes are encoded in when a tool
+            hands them to the model (``compile.llm.data_format``).
     """
 
     groups: list[DistillGroup]
@@ -264,6 +268,7 @@ class DistillAgentDeps:
     source_id: str = "distill"
     timeout: float = 120.0
     current_group: DistillGroup | None = None
+    data_format: LlmDataFormat = LlmDataFormat.JSON
 
 
 @dataclass

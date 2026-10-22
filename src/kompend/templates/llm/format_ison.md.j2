@@ -1,0 +1,27 @@
+---
+variables: []
+role: llm.format.ison
+response_format: text
+---
+The data below is encoded in ISON (Indented Sparse Object Notation), a compact
+table format. Read it like this:
+
+- `table.<path>` introduces a table. The next line is its header row
+  (space-separated column names); every line after that is one record with
+  the values in header order.
+- `null` is an empty value, `[]` an empty list.
+- A list of records inside a field becomes its own table
+  `table.<path>_<field>`. Its column `records_id` points back to the parent
+  record — `:1` is the first record of the parent table.
+
+Example:
+
+table.records
+title score aliases
+Introduction 0.5 null
+Background 0.9 []
+
+table.records_aliases
+records_id value
+:1 a
+:1 b

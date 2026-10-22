@@ -11,7 +11,7 @@ from pydantic_ai_summarization import ContextManagerCapability, SlidingWindowCap
 
 from kompend.agents.base import KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
-from kompend.core.config._configs import BudgetConfig, LLMConfig
+from kompend.core.config._configs import BudgetConfig, LLMConfig, LlmDataFormat
 from kompend.llm.usage import UsageTracker
 
 
@@ -199,6 +199,14 @@ class TestConfigDrivenDefaults:
         assert agent.context_window == 1234
         assert agent.fallback_models == ["other/model"]
         assert agent.delta_retry_enabled is False
+
+    def test_data_format_comes_from_the_config(self) -> None:
+        """Sites that serialise a payload into a prompt read the format off the agent."""
+        assert self._agent(llm=LLMConfig(data_format=LlmDataFormat.TOON)).data_format == LlmDataFormat.TOON
+
+    def test_data_format_defaults_to_json(self) -> None:
+        assert self._agent(llm=LLMConfig()).data_format == LlmDataFormat.JSON
+        assert self._agent().data_format == LlmDataFormat.JSON
 
     def test_explicit_values_win_over_the_config(self) -> None:
         llm = LLMConfig(timeout=45.0, output_retries=5)

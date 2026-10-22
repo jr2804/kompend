@@ -6,10 +6,15 @@ templates). TOON and ISON reduce prompt token count by 30–70 %, leaving
 more context window budget for model output and reducing truncation-related
 malformed responses with small local models.
 
+The compact formats are only useful when the model can *read* them, so every
+compact payload carries a short format specification (rendered from
+``templates/llm/format_*.md.j2``) that tells the model how to parse it.
+``kompend doctor`` probes whether a model handles a format at all.
+
 LLM *output* always uses JSON — the ``response_format: json_object`` API
 constraint is kept so providers can enforce valid JSON at the protocol
-level. TOON and ISON are not yet widely understood by models, and attaching
-a format specification to every call would be counterproductive.
+level, and the structured-output modes of the agent framework are
+JSON-schema based.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ import toon_format as _toon
 from pydantic import BaseModel
 
 from kompend.core.config._configs import LlmDataFormat
+from kompend.core.templates import get_template_loader
 from kompend.types import JSON, JSONDict, JSONReadable, TypeType
 
 # ── Reasoning strip ─────────────────────────────────────────────────────
@@ -52,6 +58,113 @@ def _build_reasoning_strip_pattern() -> re.Pattern[str]:
 
 
 _REASONING_RE: re.Pattern[str] = _build_reasoning_strip_pattern()
+
+
+def decode_from_llm(text: str, fmt: LlmDataFormat) -> JSONReadable | None:
+    """Parse *text* written in the LLM communication format *fmt*.
+
+    The inverse of :func:`encode_for_llm`. Returns ``None`` when the text
+    does not parse — a model that cannot produce the format is a fact the
+    caller (for example ``kompend doctor``) wants to report, not an error
+    to raise.
+
+    Parameters
+    ----------
+    text:
+        The raw model output.
+    fmt:
+        :class:`LlmDataFormat` value or equivalent string.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return None
+    if fmt.value == "text":
+        return stripped
+    if fmt == LlmDataFormat.JSON:
+        return salvage_json(stripped, unwrap_list=False)
+    if fmt == LlmDataFormat.TOON:
+        try:
+            decoded = _toon.decode(stripped)
+        except _toon.ToonDecodeError:
+            return None
+        # TOON decodes plain prose to itself — that is not a TOON document.
+        if isinstance(decoded, str) and decoded.strip() == stripped:
+            return None
+        return cast(JSONReadable, decoded)
+    if fmt == LlmDataFormat.ISON:
+        return _decode_ison(stripped)
+    return None
+
+
+def encode_payload(data: JSONReadable, fmt: LlmDataFormat) -> str:
+    """Serialize *data* for injection into a prompt.
+
+    Like :func:`encode_for_llm`, but a compact format additionally carries
+    its format specification so the model can read the payload. Use this for
+    every structured blob that goes into a prompt; use
+    :func:`encode_for_llm` when the caller supplies the format description
+    itself.
+
+    Parameters
+    ----------
+    data:
+        Python dict or list to serialize.
+    fmt:
+        :class:`LlmDataFormat` value.
+    """
+    body = encode_for_llm(data, fmt)
+    note = format_note(fmt)
+    return f"{note}\n\n{body}" if note else body
+
+
+# ── Format encode / decode ────────────────────────────────────────────────
+
+
+def encode_for_llm(data: JSONReadable, fmt: LlmDataFormat) -> str:
+    """Serialize *data* to the LLM communication format *fmt*.
+
+    Use this to serialize structured context data before injecting into
+    prompt templates. Compact formats reduce input token count, leaving
+    more context window available for model output.
+
+    Parameters
+    ----------
+    data:
+        Python dict or list to serialize.
+    fmt:
+        :class:`LlmDataFormat` value or equivalent string:
+        ``"json"`` (default), ``"toon"``, ``"ison"``, or ``"text"``.
+        For ``"text"``/``"markdown"`` the data is returned as-is
+        (no-op) since it is already human-readable prose.
+    """
+    # MARKDOWN and TEXT share value "text" — compare by value.
+    if fmt.value == "text":
+        return str(data) if not isinstance(data, str) else data
+    if fmt == LlmDataFormat.JSON:
+        return json.dumps(data, ensure_ascii=False)
+    elif fmt == LlmDataFormat.TOON:
+        return _toon.encode(data)
+    elif fmt == LlmDataFormat.ISON:
+        doc = _ison.from_dict(data if isinstance(data, dict) else {"data": data})
+        return _ison.dumps(doc)
+    else:
+        raise ValueError(f"Unknown data_format: {fmt!r}. Valid: {[f.value for f in LlmDataFormat]}")
+
+
+def format_note(fmt: LlmDataFormat) -> str:
+    """Return the prompt note that explains *fmt* to the model.
+
+    JSON and plain text need no explanation — every model knows them. The
+    compact formats are not widespread, so a payload in those formats is
+    accompanied by a short syntax specification (rendered from
+    ``templates/llm/format_<format>.md.j2``).
+
+    Returns an empty string for the formats that need no note.
+    """
+    if fmt == LlmDataFormat.JSON or fmt.value == "text":
+        return ""
+    loader = get_template_loader()
+    return loader.render(f"llm/format_{fmt.value}.md.j2").strip()
 
 
 def salvage_json(
@@ -309,38 +422,27 @@ def _coerce_list_to_object(items: list[JSON], schema: type[BaseModel] | dict[str
     return merged
 
 
-# ── Format encode / decode ────────────────────────────────────────────────
+def _decode_ison(text: str) -> JSONReadable | None:
+    """Parse ISON text into plain Python data.
 
-
-def encode_for_llm(data: JSONReadable, fmt: LlmDataFormat) -> str:
-    """Serialize *data* to the LLM communication format *fmt*.
-
-    Use this to serialize structured context data before injecting into
-    prompt templates. Compact formats reduce input token count, leaving
-    more context window available for model output.
-
-    Parameters
-    ----------
-    data:
-        Python dict or list to serialize.
-    fmt:
-        :class:`LlmDataFormat` value or equivalent string:
-        ``"json"`` (default), ``"toon"``, ``"ison"``, or ``"text"``.
-        For ``"text"``/``"markdown"`` the data is returned as-is
-        (no-op) since it is already human-readable prose.
+    ISON tables become lists of row dicts, a single object becomes a dict.
     """
-    # MARKDOWN and TEXT share value "text" — compare by value.
-    if fmt.value == "text":
-        return str(data) if not isinstance(data, str) else data
-    if fmt == LlmDataFormat.JSON:
-        return json.dumps(data, ensure_ascii=False)
-    elif fmt == LlmDataFormat.TOON:
-        return _toon.encode(data)
-    elif fmt == LlmDataFormat.ISON:
-        doc = _ison.from_dict(data if isinstance(data, dict) else {"data": data})
-        return _ison.dumps(doc)
-    else:
-        raise ValueError(f"Unknown data_format: {fmt!r}. Valid: {[f.value for f in LlmDataFormat]}")
+    try:
+        document = _ison.Parser(text).parse()
+    except _ison.ISONError:
+        return None
+    rows: list[JSONDict] = []
+    objects: list[JSONDict] = []
+    for block in document.blocks:
+        if block.kind == "table":
+            rows.extend(cast("list[JSONDict]", block.rows))
+        elif block.kind == "object" and block.rows:
+            objects.append(cast("JSONDict", block.rows[0]))
+    if rows:
+        return cast(JSONReadable, rows)
+    if objects:
+        return cast(JSONReadable, objects[0])
+    return None
 
 
 def strip_reasoning(content: str) -> str:

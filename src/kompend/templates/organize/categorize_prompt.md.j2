@@ -1,6 +1,6 @@
 ---
 variables:
-  - name: files_json
+  - name: files_data
     required: true
 role: organize.categorize
 response_format: text
@@ -9,6 +9,6 @@ Categorise the source files below into a hierarchical directory
 structure. Each entry has a filename, a one-paragraph summary, and optional
 pre-existing tags.
 
-{{ files_json }}
+{{ files_data }}
 
 Return only the JSON object described in the system prompt.

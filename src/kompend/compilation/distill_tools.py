@@ -11,12 +11,13 @@ All tools access their data through ``RunContext[DistillAgentDeps]``.
 
 from __future__ import annotations
 
-import json
 from typing import Any, cast
 
 from pydantic_ai import RunContext, Tool
 
 from kompend.agents.types import DistillAgentDeps, DistillPage
+from kompend.llm.format import encode_payload
+from kompend.types import JSONDict
 
 
 def build_distill_tools() -> list[Any]:
@@ -32,8 +33,11 @@ async def get_group(ctx: RunContext[DistillAgentDeps], tag: str) -> str:
     for g in ctx.deps.groups:
         if g["tag"] == tag:
             ctx.deps.current_group = g
-            notes_json = json.dumps(g["notes"])
-            return f"Group '{tag}' with {len(g['notes'])} notes:\n{notes_json}"
+            # ``DistillNote`` is already the JSON shape the model expects; a
+            # cast states that, instead of re-typing its keys here.
+            notes = cast("list[JSONDict]", g["notes"])
+            notes_data = encode_payload(notes, ctx.deps.data_format)
+            return f"Group '{tag}' with {len(g['notes'])} notes:\n{notes_data}"
     return f"Group '{tag}' not found. Available: {[g['tag'] for g in ctx.deps.groups]}"
 
 

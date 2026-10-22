@@ -4,8 +4,38 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from kompend.llm.format import salvage_json
+from kompend.core.config._configs import LlmDataFormat
+from kompend.llm.format import encode_for_llm, encode_payload, format_note, salvage_json
 from tests.conftest import as_obj
+
+
+class TestFormatNote:
+    def test_json_needs_no_note(self) -> None:
+        """Every model knows JSON - a note would only cost tokens."""
+        assert format_note(LlmDataFormat.JSON) == ""
+        assert format_note(LlmDataFormat.TEXT) == ""
+
+    def test_toon_note_describes_the_syntax(self) -> None:
+        note = format_note(LlmDataFormat.TOON)
+        assert "TOON" in note
+        assert "key: value" in note
+
+    def test_ison_note_describes_the_syntax(self) -> None:
+        note = format_note(LlmDataFormat.ISON)
+        assert "ISON" in note
+        assert "table." in note
+
+
+class TestEncodePayload:
+    def test_json_payload_is_just_json(self) -> None:
+        payload = [{"a": 1}]
+        assert encode_payload(payload, LlmDataFormat.JSON) == encode_for_llm(payload, LlmDataFormat.JSON)
+
+    def test_compact_payload_carries_its_spec(self) -> None:
+        """A small model cannot read TOON unless the payload explains TOON."""
+        encoded = encode_payload([{"a": 1}], LlmDataFormat.TOON)
+        assert encoded.startswith(format_note(LlmDataFormat.TOON))
+        assert encoded.endswith(encode_for_llm([{"a": 1}], LlmDataFormat.TOON))
 
 
 class TestSalvageValid:

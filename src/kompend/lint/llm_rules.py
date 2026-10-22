@@ -7,17 +7,18 @@ default and only run when the user passes ``--llm``.
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.lint import LintRuleAgent
+from kompend.core.config._configs import LlmDataFormat
 from kompend.core.models import CompiledWiki
 from kompend.core.templates import get_template_loader
 from kompend.core.text.slug import slugify
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from kompend.llm.format import encode_payload
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
@@ -87,9 +88,17 @@ class LlmLintRule(BaseLintRule):
     Subclasses must set ``name``, ``description``, and implement ``check``.
     """
 
-    def __init__(self, agent: LintRuleAgent | None = None, lint_page_budget: int = 100000) -> None:
+    def __init__(
+        self,
+        agent: LintRuleAgent | None = None,
+        lint_page_budget: int = 100000,
+        data_format: LlmDataFormat = LlmDataFormat.JSON,
+    ) -> None:
         self._agent = agent
         self.lint_page_budget = lint_page_budget
+        #: Format for the structured payloads injected into the rule prompts
+        #: (``compile.llm.data_format``).
+        self.data_format = data_format
 
     def _call_agent[T: BaseModel](self, template_name: str, *, result_type: type[T], **kwargs: Any) -> T | None:
         """Call the LintRuleAgent with a rendered template.
@@ -351,10 +360,10 @@ class CoverageGapRule(LlmLintRule):
         """
         if len(gaps) <= 1:
             return gaps
-        gaps_json = json.dumps(gaps, ensure_ascii=False)
-        if len(gaps_json) <= self.lint_page_budget:
+        payload = encode_payload(gaps, self.data_format)
+        if len(payload) <= self.lint_page_budget:
             return self._dedup_gaps_batch(gaps)
-        chunk_size = max(10, len(gaps) * self.lint_page_budget // (len(gaps_json) + 1))
+        chunk_size = max(10, len(gaps) * self.lint_page_budget // (len(payload) + 1))
         merged: list[dict] = []
         for i in range(0, len(gaps), chunk_size):
             merged.extend(self._dedup_gaps_batch(gaps[i : i + chunk_size]))
@@ -366,13 +375,13 @@ class CoverageGapRule(LlmLintRule):
         """Single LLM call to merge a gap list that fits in the context window."""
         if len(gaps) <= 1:
             return gaps
-        gaps_json = json.dumps(gaps, ensure_ascii=False, indent=2)
-        _loader.render("lint/coverage-gap-dedup.md.j2", gaps_json=gaps_json)
+        gaps_data = encode_payload(gaps, self.data_format)
+        _loader.render("lint/coverage-gap-dedup.md.j2", gaps_data=gaps_data)
         try:
             llm_result = self._call_agent(
                 "lint/coverage-gap-dedup.md.j2",
                 result_type=CoverageGapOutput,
-                gaps_json=gaps_json,
+                gaps_data=gaps_data,
             )
         except Exception as exc:
             logger.warning("coverage-gap dedup failed: %s", exc, exc_info=True)

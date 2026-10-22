@@ -14,6 +14,7 @@ from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
 from kompend.agents.types import RemediationDeps, RemediationPageResult
 from kompend.compilation._two_phase_core import Extraction
 from kompend.compilation.schema import Concept, Entity
+from kompend.core.config._configs import LlmDataFormat
 from kompend.core.config.rumdl import _shipped_hash, resolve_rumdl_config
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
@@ -26,6 +27,7 @@ from kompend.lint.llm_rules import (
     ContradictionOutput,
     CoverageGap,
     CoverageGapOutput,
+    CoverageGapRule,
 )
 from kompend.lint.remediation import remediate
 from kompend.lint.runner import LintRunner, _build_report, report_to_dict, report_to_json, report_to_text
@@ -1220,6 +1222,18 @@ class TestAgenticRemediation:
 
 class TestCoverageGapRuleDedup:
     """Cross-batch dedup of semantically equivalent coverage gaps."""
+
+    def test_dedup_payload_follows_the_configured_data_format(self) -> None:
+        """A compact format reaches the model with its own syntax spec attached."""
+        client = MagicMock()
+        client.run.return_value = CoverageGapOutput(gaps=[CoverageGap(concept="A", reason="r")])
+        rule = CoverageGapRule(agent=client, data_format=LlmDataFormat.TOON)
+
+        rule._dedup_gaps([{"concept": "A", "reason": "r"}, {"concept": "B", "reason": "r"}])
+
+        prompt = client.run.call_args[0][0].text
+        assert "TOON" in prompt
+        assert "Gaps to merge:" in prompt
 
     def test_dedup_merges_equivalent_concepts(self) -> None:
         wiki = _make_wiki([_make_node("n1", "A", "content"), _make_node("n2", "B", "content")])

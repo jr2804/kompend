@@ -140,7 +140,6 @@ def _make_lint_agent(cfg: Any) -> tuple[LintRuleAgent | None, str | None]:
         LintRuleAgent(
             model,
             timeout=float(cfg.kompend.compile.llm.timeout),
-            retries=cfg.kompend.compile.llm.output_retries if cfg.kompend.compile.llm.output_retries_enabled else 0,
             llm=cfg.kompend.compile.llm,
             budget=cfg.kompend.compile.budget,
         ),
@@ -174,6 +173,7 @@ def _run_pass(
         sources_dir=str(vp.sources_dir) if vp.sources_dir.exists() else None,
         lint_config=LintConfig(fuzzy_threshold=float(cfg.kompend.lint.fuzzy_threshold)),
         rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.kompend.compile.output.rumdl_config),
+        data_format=cfg.kompend.compile.llm.data_format,
     )
     start = time.monotonic()
     report = runner.run(wiki)

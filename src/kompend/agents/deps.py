@@ -144,13 +144,13 @@ class CategorizeDeps:
 
     The categorise agent proposes a hierarchical directory tree for the
     files in ``sources/``. The prompt template
-    ``organize/categorize_prompt.md.j2`` expects ``files_json``, and the
+    ``organize/categorize_prompt.md.j2`` expects ``files_data``, and the
     system template ``organize/categorize_system.md.j2`` expects the
     three tree-constraint values (``max_depth``, ``min_subcategories``,
     ``min_files_per_category``).
 
     Attributes:
-        files_json: Serialised file/summary/tags payload for the prompt
+        files_data: Serialised file/summary/tags payload for the prompt
             (built by :func:`kompend.organize.categorize._build_files_payload`).
         max_depth: Maximum category tree depth.
         min_subcategories: Minimum sibling subcategories for a non-leaf
@@ -160,7 +160,7 @@ class CategorizeDeps:
         timeout: Per-call timeout in seconds.
     """
 
-    files_json: str
+    files_data: str
     max_depth: int = 3
     min_subcategories: int = 2
     min_files_per_category: int = 2

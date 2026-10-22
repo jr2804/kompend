@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from kompend.agents.lint import LintRuleAgent
-from kompend.core.config._configs import LintConfig
+from kompend.core.config._configs import LintConfig, LlmDataFormat
 from kompend.core.models import CompiledWiki
 from kompend.lint.base import BaseLintRule, LintReport, LintResult, LintRuleOutcome, Severity
 from kompend.lint.llm_rules import LLM_RULE_BY_NAME
@@ -47,6 +47,7 @@ class LintRunner:
         sources_dir: str | None = None,
         lint_config: LintConfig | None = None,
         rumdl_config: Path | None = None,
+        data_format: LlmDataFormat = LlmDataFormat.JSON,
     ) -> None:
         self.requested_rules = rules
         self.enable_llm = enable_llm
@@ -63,6 +64,9 @@ class LintRunner:
         self.sources_dir = sources_dir
         self._lint_config = lint_config
         self.rumdl_config = rumdl_config
+        #: Format for the structured payloads the LLM rules inject into
+        #: their prompts (``compile.llm.data_format``).
+        self.data_format = data_format
 
     def run(
         self,
@@ -121,7 +125,11 @@ class LintRunner:
         """Build the list of rule instances to run."""
         rules: list[BaseLintRule] = []
 
-        llm_kwargs = {"agent": self._lint_agent, "lint_page_budget": self.lint_page_budget}
+        llm_kwargs = {
+            "agent": self._lint_agent,
+            "lint_page_budget": self.lint_page_budget,
+            "data_format": self.data_format,
+        }
 
         # Config-derived values for DuplicateReferencesRule / RumdlRule
         ref_kwargs: dict[str, Any] = {}

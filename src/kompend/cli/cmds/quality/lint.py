@@ -144,6 +144,7 @@ def lint_check(
         sources_dir=str(vp.sources_dir) if vp.sources_dir.exists() else None,
         lint_config=LintConfig(fuzzy_threshold=float(cfg.kompend.lint.fuzzy_threshold)),
         rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.kompend.compile.output.rumdl_config),
+        data_format=cfg.kompend.compile.llm.data_format,
     )
     report = run_runner_with_progress(runner, wiki, show_progress=None)
     elapsed = time.monotonic() - start

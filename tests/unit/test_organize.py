@@ -17,6 +17,7 @@ from kompend.compilation._two_phase_core import Extraction
 from kompend.core.cache import CacheStore
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import OrganizeConfig, resolve_config
+from kompend.core.config._configs import LlmDataFormat
 from kompend.core.config.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
@@ -807,6 +808,8 @@ def _fake_agent(payload: dict[str, Any] | None) -> CategorizeAgent:
     """Return a CategorizeAgent that yields the given CategoryTree once."""
     agent = MagicMock(spec=CategorizeAgent)
     agent.timeout = 120
+    # A real CategorizeAgent carries the resolved compile.llm.data_format.
+    agent.data_format = LlmDataFormat.JSON
     if payload is None:
         agent.run.side_effect = Exception("LLM failed")
     else:

@@ -1,0 +1,26 @@
+---
+variables: []
+role: llm.format.toon
+response_format: text
+---
+The data below is encoded in TOON (Token-Oriented Object Notation), a compact
+indentation-based format. Read it like this:
+
+- `key: value` is a field. The value is plain text; `true`, `false`, `null`
+  and numbers are literals.
+- `key[N]:` introduces a list of N items. Every item starts with `- `.
+- `key[N]: a,b` is an inline list of N scalar values; `key: []` is an empty
+  list.
+- A nested object is a `key:` line followed by an indented block of fields.
+- Two spaces of indentation per level show the nesting. Objects have no
+  braces and no brackets.
+
+Example:
+
+[2]:
+  - title: Introduction
+    tags[2]: a,b
+    score: 0.5
+  - title: Background
+    tags: []
+    score: 0.9

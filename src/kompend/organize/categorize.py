@@ -12,8 +12,8 @@ The module is responsible for the *brain* of the organize workflow:
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, cast
 
@@ -22,12 +22,28 @@ from kompend.agents.deps import CategorizeDeps
 from kompend.compilation._two_phase_core import Extraction
 from kompend.core.cache import CacheStore
 from kompend.core.config import OrganizeConfig
+from kompend.core.config._configs import LlmDataFormat
 from kompend.core.paths import VaultPaths, is_protected_source
 from kompend.core.text.slug import slugify
+from kompend.llm.format import encode_payload
 from kompend.logging import get_logger
-from kompend.types import JSONDict
+from kompend.types import JSONDict, JSONList
 
 logger = get_logger(__name__)
+
+
+class CategorizePayloadField(StrEnum):
+    """Keys of the file inventory handed to the categorise prompt.
+
+    The prompt template reads them (``organize/categorize_prompt.md.j2``) and
+    the system prompt refers to them ("Each entry has a filename, a
+    one-paragraph summary, and optional pre-existing tags"), so the names are a
+    contract, not incidental dict keys.
+    """
+
+    FILENAME = "filename"
+    SUMMARY = "summary"
+    TAGS = "tags"
 
 
 @dataclass
@@ -174,15 +190,16 @@ def propose_categories(
     """Ask the LLM to categorise every file into a hierarchical tree.
 
     The prompt comes from ``organize/categorize_prompt.md.j2`` and the
-    system prompt from ``organize/categorize_system.md.j2``.
+    system prompt from ``organize/categorize_system.md.j2``. The payload
+    format is the one the agent carries (``compile.llm.data_format``).
     """
     if not extractions:
         return CategoryTree()
 
-    files_json = _build_files_payload(extractions)
+    files_data = _build_files_payload(extractions, categorize_agent.data_format)
 
     deps = CategorizeDeps(
-        files_json=files_json,
+        files_data=files_data,
         max_depth=config.max_depth,
         min_subcategories=config.min_subcategories,
         min_files_per_category=config.min_files_per_category,
@@ -197,23 +214,23 @@ def propose_categories(
     return _tree_from_json(result.model_dump(), sorted(extractions))
 
 
-def _build_files_payload(extractions: dict[str, Extraction]) -> str:
-    """Serialise extractions to a compact JSON array for the prompt.
+def _build_files_payload(extractions: dict[str, Extraction], data_format: LlmDataFormat) -> str:
+    """Serialise extractions to a compact payload for the prompt.
 
-    The output is a single-line JSON list so the LLM can echo it back
-    unchanged when it wants to reference specific files.
+    The payload is encoded in *data_format* (``compile.llm.data_format``);
+    the compact formats carry their own syntax specification, so the model
+    can read them without extra instructions.
     """
-    payload: list[dict[str, object]] = []
+    payload: JSONList = []
     for source in sorted(extractions):
         ext = extractions[source]
-        payload.append(
-            {
-                "filename": source,
-                "summary": ext.summary,
-                "tags": list(ext.tags),  # nocheck: categorize output, not wiki metadata
-            }
-        )
-    return json.dumps(payload, ensure_ascii=False)
+        row: JSONDict = {
+            CategorizePayloadField.FILENAME: source,
+            CategorizePayloadField.SUMMARY: ext.summary,
+            CategorizePayloadField.TAGS: list(ext.tags),
+        }
+        payload.append(row)
+    return encode_payload(payload, data_format)
 
 
 def _tree_from_json(payload: dict[str, Any], known_files: list[str]) -> CategoryTree:

@@ -26,7 +26,7 @@ from kompend.compilation.graph import GraphCompiler
 from kompend.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.llm.context_window import ContextWindow, discover_context_window
-from kompend.llm.format import encode_for_llm
+from kompend.llm.format import encode_payload
 from kompend.logging import get_logger
 
 # Fraction of the available context window (after reserves) allocated to
@@ -398,7 +398,6 @@ class WiCERCompiler(BaseCompiler):
             agent = WicerProbeAgent(
                 model_string=self._config.llm.default_model or "",
                 skills=self._config.skills,
-                retries=self._config.llm.output_retries if self._config.llm.output_retries_enabled else 0,
                 timeout=self._config.llm.timeout,
                 reasoning_effort=self._config.llm.reasoning_effort,
                 # The probe loop keeps earlier probes in context, so the
@@ -443,7 +442,6 @@ class WiCERCompiler(BaseCompiler):
                 agent = WicerEvaluateAgent(
                     model_string=self._config.llm.default_model or "",
                     skills=self._config.skills,
-                    retries=self._config.llm.output_retries if self._config.llm.output_retries_enabled else 0,
                     timeout=self._config.llm.timeout,
                     reasoning_effort=self._config.llm.reasoning_effort,
                     context_manager=self._config.llm.context_manager,
@@ -454,7 +452,7 @@ class WiCERCompiler(BaseCompiler):
                 output = agent.run(
                     WicerEvaluateDeps(
                         wiki_text=segment,
-                        probes_json=encode_for_llm(probes, self._config.llm.data_format),
+                        probes_json=encode_payload(probes, self._config.llm.data_format),
                         source_id="wicer-eval",
                     )
                 )
@@ -486,7 +484,6 @@ class WiCERCompiler(BaseCompiler):
             agent = WicerDiagnoseAgent(
                 model_string=self._config.llm.default_model or "",
                 skills=self._config.skills,
-                retries=self._config.llm.output_retries if self._config.llm.output_retries_enabled else 0,
                 timeout=self._config.llm.timeout,
                 reasoning_effort=self._config.llm.reasoning_effort,
                 context_manager=self._config.llm.context_manager,
@@ -496,7 +493,7 @@ class WiCERCompiler(BaseCompiler):
             )
             output = agent.run(
                 WicerDiagnoseDeps(
-                    failures_json=encode_for_llm(failures, self._config.llm.data_format),
+                    failures_json=encode_payload(failures, self._config.llm.data_format),
                     source_id="wicer-diagnose",
                 )
             )
