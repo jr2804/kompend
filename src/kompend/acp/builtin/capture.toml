@@ -4,7 +4,6 @@ task = "capture"
 
 [llm]
 temperature = 0.4
-max_tokens = 2048
 
 [prompt]
 system = """\

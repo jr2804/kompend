@@ -4,7 +4,6 @@ task = "generic"
 
 [llm]
 temperature = 0.3
-max_tokens = 4096
 
 [prompt]
 system = """\

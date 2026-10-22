@@ -37,6 +37,25 @@ class TestAgentDefinition:
         assert agent.tools.enabled is None  # all tools
         assert agent.behavior.max_turns == 10
 
+    def test_legacy_max_tokens_is_ignored(self) -> None:
+        """An older definition that carries [llm].max_tokens still loads.
+
+        kompend sends no output ceiling, so the key is dropped instead of
+        failing the agent (``[llm]`` forbids unknown keys).
+        """
+        agent = AgentDefinition.from_dict(
+            {
+                "name": "legacy",
+                "description": "Legacy agent",
+                "task": "generic",
+                "llm": {"model": None, "temperature": 0.2, "max_tokens": 4096},
+                "prompt": {"system": "You are legacy."},
+            }
+        )
+
+        assert agent.llm.temperature == 0.2
+        assert not hasattr(agent.llm, "max_tokens")
+
     def test_from_toml(self, tmp_path: Path) -> None:
         """Load from a TOML file."""
         toml_content = textwrap.dedent("""\

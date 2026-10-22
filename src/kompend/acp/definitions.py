@@ -12,7 +12,6 @@ TOML schema::
     [llm]
     model = null  # null = vault default
     temperature = 0.2
-    max_tokens = 4096
 
     [prompt]
     system = "You are a kompend compilation assistant..."
@@ -32,7 +31,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from kompend.logging import get_logger
 
 
 class AgentTask(StrEnum):
@@ -50,13 +51,27 @@ class AgentTask(StrEnum):
 
 
 class AgentLLMConfig(BaseModel):
-    """Per-agent LLM model and generation parameters."""
+    """Per-agent LLM model and sampling parameters.
+
+    There is no output ceiling: a reply is bounded by the model's context
+    window, so a ``max_tokens`` entry is dropped from older definitions with
+    a warning instead of failing the agent.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
     model: str | None = Field(default=None, description="Model identifier. None = vault default.")
     temperature: float = Field(default=0.3, ge=0.0, le=2.0)
-    max_tokens: int = Field(default=4096, ge=1)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_legacy_max_tokens(cls, data: object) -> object:
+        """Ignore a legacy ``max_tokens`` key — kompend never sends a ceiling."""
+        if isinstance(data, dict) and "max_tokens" in data:
+            warning = "ACP agent [llm].max_tokens is ignored: a reply is bounded by the model's context window"
+            get_logger(__name__).warning(warning)
+            return {key: value for key, value in data.items() if key != "max_tokens"}
+        return data
 
 
 class AgentPromptConfig(BaseModel):
