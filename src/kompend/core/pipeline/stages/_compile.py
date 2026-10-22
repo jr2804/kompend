@@ -9,6 +9,7 @@ from kompend.core.models import (
     MetadataField,
     WikiNode,
 )
+from kompend.core.models.metadata import meta_str
 from kompend.core.models.wiki import (
     WIKI_SNAPSHOT_COMPILED,
     load_wiki_snapshot,
@@ -97,13 +98,13 @@ def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[ChunkTree]) -> None:
         if t.source_file is not None:
             tree_map[str(t.source_file)] = t
 
-    node_by_heading: dict[tuple[str, str | None], WikiNode] = {}
+    node_by_heading: dict[tuple[str, str], WikiNode] = {}
     for node in wiki.nodes:
-        heading = node.metadata.get(MetadataField.HEADING_CONTEXT, "_root")
-        source = node.metadata.get(MetadataField.SOURCE_FILE)
+        heading = meta_str(node.metadata.get(MetadataField.HEADING_CONTEXT)) or "_root"
+        source = meta_str(node.metadata.get(MetadataField.SOURCE_FILE))
         node_by_heading[(heading, source)] = node
 
-    def _link_parent(node: WikiNode, chunk_node: ChunkNode, tree: ChunkTree, source: str | None, node_map: dict[tuple[str, str | None], WikiNode]) -> None:
+    def _link_parent(node: WikiNode, chunk_node: ChunkNode, tree: ChunkTree, source: str, node_map: dict[tuple[str, str], WikiNode]) -> None:
         if not chunk_node.parent_id:
             return
         parent_chunk = tree.nodes.get(chunk_node.parent_id)
@@ -118,9 +119,9 @@ def build_wiki_hierarchy(wiki: CompiledWiki, trees: list[ChunkTree]) -> None:
             parent_node.children_ids.append(node.id)
 
     for node in wiki.nodes:
-        heading = node.metadata.get(MetadataField.HEADING_CONTEXT, "_root")
-        source = node.metadata.get(MetadataField.SOURCE_FILE)
-        if source is None:
+        heading = meta_str(node.metadata.get(MetadataField.HEADING_CONTEXT)) or "_root"
+        source = meta_str(node.metadata.get(MetadataField.SOURCE_FILE))
+        if not source:
             continue
         tree = tree_map.get(source)
         if tree is None:

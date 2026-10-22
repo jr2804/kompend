@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 from kompend.agents.types import OverviewDeps, OverviewPage
 from kompend.agents.wiki_index import AgenticOverviewAgent
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.output.pages.index import _full_catalog, exported_sources_section, generate_index, sync_exported_sources_section, write_index
 from kompend.output.pages.overview import generate_overview_agentic
 from kompend.output.wiki_index import (
@@ -320,8 +321,8 @@ class TestGenerateIndexPortable:
     def _wiki(self) -> CompiledWiki:
         return CompiledWiki(
             nodes=[
-                WikiNode(id="concept-a", title="Concept A", content="First line of concept A.", node_type="concept"),
-                WikiNode(id="intro", title="Introduction", content="The introduction section.", node_type="section"),
+                WikiNode(id="concept-a", title="Concept A", content="First line of concept A.", node_type=NodeType.CONCEPT),
+                WikiNode(id="intro", title="Introduction", content="The introduction section.", node_type=NodeType.SECTION),
             ],
             edges=[],
             toc=[],
@@ -368,7 +369,7 @@ class TestExportedSourcesSection:
     def _wiki(self) -> CompiledWiki:
         return CompiledWiki(
             nodes=[
-                WikiNode(id="concept-a", title="Concept A", content="First line of concept A.", node_type="concept"),
+                WikiNode(id="concept-a", title="Concept A", content="First line of concept A.", node_type=NodeType.CONCEPT),
             ],
             edges=[],
             toc=[],
@@ -431,8 +432,8 @@ def _make_wiki(**overrides: object) -> CompiledWiki:
     """Create a minimal CompiledWiki for testing."""
     defaults: dict = {
         "nodes": [
-            WikiNode(id="attention", title="Attention", content="Attention is all you need.", node_type="concept"),
-            WikiNode(id="transformer", title="Transformer", content="Uses attention.", node_type="concept"),
+            WikiNode(id="attention", title="Attention", content="Attention is all you need.", node_type=NodeType.CONCEPT),
+            WikiNode(id="transformer", title="Transformer", content="Uses attention.", node_type=NodeType.CONCEPT),
         ],
         "edges": [],
         "toc": [{"id": "attention", "title": "Attention"}, {"id": "transformer", "title": "Transformer"}],

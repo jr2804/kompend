@@ -43,7 +43,7 @@ from kompend.core.config import resolve_config
 from kompend.core.config._configs import LintConfig
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import MetadataField, load_cached_wiki
-from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE
+from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD
 from kompend.lint.base import LintReport, RemediationStatus
 from kompend.lint.flow import (
     _make_lint_agent,
@@ -588,7 +588,7 @@ def lint_format(
     )
     rumdl_cfg = resolve_rumdl_config(vp.base_dir, cfg.kompend.compile.output.rumdl_config)
     extra_files: list[Path] = []
-    for name in (INDEX_FILE, "overview.md"):
+    for name in (INDEX_FILE, OVERVIEW_MD):
         p = vp.base_dir / name
         if p.exists():
             extra_files.append(p)

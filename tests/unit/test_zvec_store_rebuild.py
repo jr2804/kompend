@@ -12,6 +12,7 @@ import pytest
 import zvec as _zvec
 
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.memory.store import MemoryStore
 from kompend.rag.zvec_store import EmbeddingProvider, ZvecWikiStore
 
@@ -254,7 +255,7 @@ def _manifest_ids(db_path: Path) -> list[str]:
 
 def _wiki_ids(dim: int, *ids: str) -> CompiledWiki:
     return CompiledWiki(
-        nodes=[WikiNode(id=i, title=i, content=f"c-{i}", node_type="concept") for i in ids],
+        nodes=[WikiNode(id=i, title=i, content=f"c-{i}", node_type=NodeType.CONCEPT) for i in ids],
         edges=[],
         toc=[],
     )
@@ -263,7 +264,7 @@ def _wiki_ids(dim: int, *ids: str) -> CompiledWiki:
 def _wiki(dim: int) -> CompiledWiki:
     return CompiledWiki(
         nodes=[
-            WikiNode(id="n1", title="t", content="c", node_type="concept"),
+            WikiNode(id="n1", title="t", content="c", node_type=NodeType.CONCEPT),
         ],
         edges=[],
         toc=[],

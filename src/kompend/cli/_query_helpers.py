@@ -13,8 +13,9 @@ import typer
 from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from kompend.cli.args.query import SearchMode
 from kompend.core.config import ResolvedConfig, RlmConfig
-from kompend.core.config._configs import LlmDataFormat, Verbosity
+from kompend.core.config._configs import DisplayConfig, LlmDataFormat, Verbosity
 from kompend.core.models import CompiledWiki, MetadataField
+from kompend.core.models.metadata import meta_str
 from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, PROTECTED_SOURCE_SUBDIRS, VECTORS_DIR
 from kompend.core.trust.actor import resolve_actor
 from kompend.core.verbosity import is_verbose
@@ -71,7 +72,7 @@ def open_vector_store(
     if not db_file.exists():
         return None
 
-    model = wiki.metadata.get(str(MetadataField.EMBEDDING_MODEL)) or embed_model
+    model = meta_str(wiki.metadata.get(str(MetadataField.EMBEDDING_MODEL))) or embed_model
     if not model:
         logger.debug("No embedding model available; skipping vector store")
         return None
@@ -401,7 +402,7 @@ def node_type_index(wiki: CompiledWiki | None) -> dict[str, str]:
     """Map every wiki node id → its ``node_type`` (the wiki sub-directory)."""
     if wiki is None:
         return {}
-    return {n.id: n.node_type for n in wiki.nodes}
+    return {n.id: n.node_type.value for n in wiki.nodes}
 
 
 def wiki_link(article_id: str | None, node_types: dict[str, str]) -> str | None:

@@ -38,7 +38,10 @@ JSONReadable = Mapping[str, "JSONReadable"] | Sequence["JSONReadable"] | str | i
 # Wiki page aliases were deleted: use WikiNode / ParsedDocument directly.
 
 # Metadata types
-MetadataValue = str | bool | int | float | list["MetadataValue"] | dict[str, "MetadataValue"]  # Value stored in WikiNode.metadata / provenance dicts
+#: A value stored in ``WikiNode.metadata`` / provenance dicts. The container
+#: members are covariant (``Sequence``/``Mapping``) so a caller holding a
+#: concrete ``list[str]`` or ``dict[str, str]`` can store it without copying.
+MetadataValue = str | bool | int | float | None | Sequence["MetadataValue"] | Mapping[str, "MetadataValue"]
 
 # Configuration types
 ConfigDict = dict[str, JSONValue]  # Configuration dictionary

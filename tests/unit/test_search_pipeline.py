@@ -10,6 +10,7 @@ import pytest
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.core.templates import get_template_loader
 from kompend.search.pipeline import EnhancedRetriever
 from kompend.search.retriever import SearchResult, SynthesisResult
@@ -191,8 +192,8 @@ def _warned(caplog: pytest.LogCaptureFixture, needle: str) -> bool:
 def _make_wiki() -> CompiledWiki:
     return CompiledWiki(
         nodes=[
-            WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type="section"),
-            WikiNode(id="beta", title="Beta Page", content="beta content here", node_type="section"),
+            WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type=NodeType.SECTION),
+            WikiNode(id="beta", title="Beta Page", content="beta content here", node_type=NodeType.SECTION),
         ],
         edges=[],
         toc=[],

@@ -14,7 +14,7 @@ from kompend.compilation._two_phase_core import TwoPhaseRuntime
 from kompend.compilation.flows.generation import build_known_titles, learn_wikilink_aliases
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.models import CompiledWiki, WikiNode
-from kompend.core.models.enums import MetadataField
+from kompend.core.models.enums import MetadataField, NodeType
 from kompend.core.templates import get_template_loader
 
 # ── learn_wikilink_aliases (kompend-2kai) ──────────────────────────────────
@@ -63,7 +63,7 @@ def test_learn_dedupes_repeated_targets() -> None:
 
 
 def _node(nid: str, title: str, content: str) -> WikiNode:
-    return WikiNode(id=nid, title=title, content=content, node_type="entity")
+    return WikiNode(id=nid, title=title, content=content, node_type=NodeType.ENTITY)
 
 
 def test_build_known_titles_from_concepts(tmp_path: Path) -> None:

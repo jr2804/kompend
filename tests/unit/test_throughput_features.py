@@ -31,6 +31,7 @@ from kompend.compilation.two_phase import (
 )
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
+from kompend.core.models.enums import NodeType
 from kompend.core.paths import KOMP_DIR, REVIEW_DIR, STATE_FILE
 from kompend.core.pipeline.config import Tier
 from kompend.core.pipeline.orchestrator import (
@@ -1089,14 +1090,14 @@ class TestReviewQueue:
 
     def test_enqueue_creates_pending_file(self, tmp_path: Path) -> None:
         queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
-        node = WikiNode(id="n1", title="Hello World", content="body", node_type="section")
+        node = WikiNode(id="n1", title="Hello World", content="body", node_type=NodeType.SECTION)
         queue.enqueue(node)
         assert (tmp_path / REVIEW_DIR / "hello-world.md").exists()
         assert (tmp_path / REVIEW_DIR / "_state.json").exists()
 
     def test_approve_moves_file(self, tmp_path: Path) -> None:
         queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
-        node = WikiNode(id="n1", title="My Page", content="b", node_type="section")
+        node = WikiNode(id="n1", title="My Page", content="b", node_type=NodeType.SECTION)
         queue.enqueue(node)
         approved = queue.approve("my-page")
         assert approved
@@ -1107,27 +1108,27 @@ class TestReviewQueue:
     def test_approve_all(self, tmp_path: Path) -> None:
         queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
         for i in range(3):
-            queue.enqueue(WikiNode(id=f"n{i}", title=f"Page {i}", content="x", node_type="section"))
+            queue.enqueue(WikiNode(id=f"n{i}", title=f"Page {i}", content="x", node_type=NodeType.SECTION))
         approved = queue.approve("", approve_all=True)
         assert len(approved) == 3
 
     def test_reject_with_reason(self, tmp_path: Path) -> None:
         queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
-        queue.enqueue(WikiNode(id="n1", title="Bad", content="x", node_type="section"))
+        queue.enqueue(WikiNode(id="n1", title="Bad", content="x", node_type=NodeType.SECTION))
         rejected = queue.reject("bad", reason="too long")
         assert rejected[0].reason == "too long"
         assert (tmp_path / REVIEW_DIR / "bad.rejected.md").exists()
 
     def test_lock_and_unlock(self, tmp_path: Path) -> None:
         queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
-        queue.enqueue(WikiNode(id="n1", title="L", content="x", node_type="section"))
+        queue.enqueue(WikiNode(id="n1", title="L", content="x", node_type=NodeType.SECTION))
         queue.approve("l")
         assert queue.lock("l") is True
         assert queue.is_locked("l") is True
 
     def test_list_entries(self, tmp_path: Path) -> None:
         queue = ReviewQueue(review_dir=tmp_path / REVIEW_DIR)
-        queue.enqueue(WikiNode(id="n1", title="A", content="x", node_type="section"))
+        queue.enqueue(WikiNode(id="n1", title="A", content="x", node_type=NodeType.SECTION))
         entries = queue.list_entries()
         assert len(entries) == 1
         assert entries[0].status == ReviewStatus.PENDING
@@ -1190,7 +1191,7 @@ class TestAnnotateWikiWithProvenance:
                     id="n1",
                     title="A",
                     content="Claim. ^[a.pdf:1-3]",
-                    node_type="section",
+                    node_type=NodeType.SECTION,
                 )
             ]
         )
@@ -1240,7 +1241,7 @@ class TestMarkWikiPrivate:
     """mark_wiki_private writes a private.json index."""
 
     def test_creates_private_index(self, tmp_path: Path) -> None:
-        wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="x", node_type="section")])
+        wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="x", node_type=NodeType.SECTION)])
         mark_wiki_private(wiki, tmp_path)
         with open_store(tmp_path / KOMP_DIR / "kompend.db") as conn:
             rows = {r["id"] for r in conn.execute(f"SELECT id FROM {PRIVATE_PAGES_TABLE}")}
@@ -1293,7 +1294,7 @@ class TestVerificationUnavailable:
             id="n1",
             title="T",
             content="This claim has no citation.",
-            node_type="section",
+            node_type=NodeType.SECTION,
         )
         result = verify_node(node, tmp_path, agent=self._fake_client())
         assert result[0].verdict == "unsupported"
@@ -1304,7 +1305,7 @@ class TestVerificationUnavailable:
             id="n1",
             title="T",
             content="A claim with a missing source citation. ^[missing.pdf:1-3]",
-            node_type="section",
+            node_type=NodeType.SECTION,
         )
         result = verify_node(node, tmp_path, agent=self._fake_client())
         assert result[0].verdict == "unsupported"
@@ -1321,7 +1322,7 @@ class TestVerificationUnavailable:
             id="n1",
             title="T",
             content="The transformer uses self attention to model sequences. ^[a.pdf:1-2]",
-            node_type="section",
+            node_type=NodeType.SECTION,
         )
         result = verify_node(node, sources, agent=self._fake_client())
         assert result[0].verdict == "unverified"
@@ -1330,7 +1331,7 @@ class TestVerificationUnavailable:
     def test_verify_wiki_writes_report(self, tmp_path: Path) -> None:
         wiki = _wiki(
             nodes=[
-                WikiNode(id="n1", title="A", content="x" * 50, node_type="section"),
+                WikiNode(id="n1", title="A", content="x" * 50, node_type=NodeType.SECTION),
             ]
         )
         result = verify_wiki(wiki, tmp_path, agent=self._fake_client())
@@ -1355,8 +1356,8 @@ class TestAgenticVerification:
     def test_single_session_all_claims(self, tmp_path: Path) -> None:
         wiki = _wiki(
             nodes=[
-                WikiNode(id="n1", title="A", content="Claim about transformers. ^[a.pdf:1-2]" * 5, node_type="section"),
-                WikiNode(id="n2", title="B", content="Claim about attention. ^[b.pdf:1-2]" * 5, node_type="section"),
+                WikiNode(id="n1", title="A", content="Claim about transformers. ^[a.pdf:1-2]" * 5, node_type=NodeType.SECTION),
+                WikiNode(id="n2", title="B", content="Claim about attention. ^[b.pdf:1-2]" * 5, node_type=NodeType.SECTION),
             ]
         )
         # _split_claims produces 5 claims per node (4 from repeated citation pattern)
@@ -1367,7 +1368,7 @@ class TestAgenticVerification:
         assert result.total == 10
 
     def test_agentic_failure_returns_unverified(self, tmp_path: Path) -> None:
-        wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="Some claim text. ^[a.pdf:1-2]" * 5, node_type="section")])
+        wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="Some claim text. ^[a.pdf:1-2]" * 5, node_type=NodeType.SECTION)])
         agent = MagicMock(spec=AgenticVerificationAgent)
         agent.run.side_effect = RuntimeError("LLM failed")
         result = verify_wiki(wiki, tmp_path, agent=agent)

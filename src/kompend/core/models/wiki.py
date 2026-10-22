@@ -6,17 +6,21 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Final, NotRequired, TypedDict
+from typing import Final, NotRequired, TypedDict
 
 import yaml
 
 from kompend.core.models.elements import element_text
-from kompend.core.models.enums import MetadataField
+from kompend.core.models.enums import EdgeType, MetadataField, NodeType, OkfField, node_type_from_okf_type
+from kompend.core.models.metadata import meta_float, meta_int, meta_str
+from kompend.core.paths import INDEX_FILE, LOG_FILE, REFERENCES_MD
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import WIKI_SNAPSHOT_TABLE
 from kompend.core.utils.time import iso_local
+from kompend.types import JSONDict, JSONValue, MetadataValue
 
 #: Discriminator values for the ``wiki_snapshot`` table. ``last`` is the
 #: post-run snapshot (lint/capture/MCP); ``compiled`` is the tier-handoff
@@ -36,20 +40,12 @@ __all__ = [
     "load_cached_wiki",
     "load_wiki_from_files",
     "load_wiki_snapshot",
+    "truncate_description",
     "write_wiki_snapshot_payload",
 ]
 
-# Frontmatter ``kind`` extension maps back to the kompend node_type.
-_KIND_TO_NODE_TYPE = {
-    "Concept": "concept",
-    "Entity": "entity",
-    "Overview": "overview",
-    "Procedure": "procedure",
-    "Section": "section",
-}
-
 # Non-content pages that are not wiki nodes.
-_SKIP_PAGES = {"index.md", "log.md", "references.md"}
+_SKIP_PAGES: Final[frozenset[str]] = frozenset({INDEX_FILE, LOG_FILE, REFERENCES_MD})
 
 # Links: ``[title](path)`` and ``[[wikilink]]``.
 _MD_LINK_RE = re.compile(r"\[([^\]]+)\]\(([^)]+)\.md\)")
@@ -89,6 +85,21 @@ class ExtractionStats:
     tag_count: int = 0
     batches: int = 0
 
+    @classmethod
+    def from_mapping(cls, data: Mapping[str, MetadataValue]) -> ExtractionStats:
+        """Build the stats from a metadata mapping, coercing the numbers."""
+        return cls(
+            source=meta_str(data.get("source")),
+            summary=meta_str(data.get("summary")),
+            duration_s=meta_float(data.get("duration_s")),
+            summary_chars=meta_int(data.get("summary_chars")),
+            summary_words=meta_int(data.get("summary_words")),
+            entity_count=meta_int(data.get("entity_count")),
+            concept_count=meta_int(data.get("concept_count")),
+            tag_count=meta_int(data.get("tag_count")),
+            batches=meta_int(data.get("batches")),
+        )
+
 
 @dataclass
 class WikiNode:
@@ -97,14 +108,24 @@ class WikiNode:
     id: str
     title: str
     content: str
-    node_type: str  # e.g. "concept", "procedure", "entity", "section"
+    node_type: NodeType
     source_chunks: list[str] | None = None
-    structured_sections: dict[str, Any] = field(default_factory=dict)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    structured_sections: dict[str, JSONValue] = field(default_factory=dict)
+    metadata: dict[str, MetadataValue] = field(default_factory=dict)
     parent_id: str | None = None
     children_ids: list[str] = field(default_factory=list)
     depth: int = 0
     heading_chain: tuple[str, ...] = field(default_factory=tuple)
+
+    def __post_init__(self) -> None:
+        """Normalize the node type into the vocabulary.
+
+        A node type is a :class:`NodeType`, never a bare string. The value
+        also arrives from JSON payloads and cached snapshots, so the
+        constructor normalizes whatever it is given; an empty kind is a bug
+        and raises.
+        """
+        self.node_type = NodeType.of(self.node_type)
 
     @property
     def description(self) -> str:
@@ -117,6 +138,10 @@ class WikiNode:
         subheadings, so the description must be the first sentence of prose and
         not a heading fragment) and ``[[wikilinks]]`` are reduced to their
         display text.
+
+        The description is *not* length-capped here: the cap is a rendering
+        decision (``display.description_max_chars``) and belongs to the
+        writer, not to the model. Use :func:`truncate_description` to apply it.
         """
         content = element_text(self.content).strip()
         if not content:
@@ -150,8 +175,6 @@ class WikiNode:
         else:
             tail = re.match(r"^(.+?[.!?])\s*$", text)
             desc = tail.group(1) if tail else text
-        if len(desc) > 200:
-            desc = desc[:200].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
         return desc
 
 
@@ -164,7 +187,7 @@ class CompiledWiki:
     toc: list[TocEntry]
     quality_score: float = 0.0
     iteration: int = 0
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, MetadataValue] = field(default_factory=dict)
 
 
 class GraphEdge(TypedDict):
@@ -189,16 +212,31 @@ class TocEntry(TypedDict):
     level: int
 
 
+def truncate_description(text: str, max_chars: int) -> str:
+    """Shorten *text* to at most *max_chars* characters, cut at a word boundary.
+
+    The length cap is a rendering decision (OKF frontmatter, index catalog)
+    driven by ``display.description_max_chars`` — the model derives the
+    description, the renderer decides how much of it fits. A limit of zero
+    or less yields an empty description.
+    """
+    if max_chars <= 0:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars].rsplit(" ", 1)[0].rstrip(" ,;:") + "…"
+
+
 def write_wiki_snapshot_payload(
     base_dir: Path,
     kind: str,
     *,
-    nodes: list[dict[str, Any]],
-    edges: list[Any],
-    toc: list[Any],
+    nodes: Sequence[Mapping[str, object]],
+    edges: Sequence[GraphEdge],
+    toc: Sequence[TocEntry],
     quality_score: float,
     iteration: int,
-    metadata: dict[str, Any],
+    metadata: Mapping[str, MetadataValue],
 ) -> None:
     """Write a wiki snapshot to the ``wiki_snapshot`` table under *kind*.
 
@@ -285,19 +323,21 @@ def load_wiki_from_files(output_dir: Path) -> CompiledWiki | None:
         slug = path.stem
         text = path.read_text(encoding="utf-8")
         frontmatter, body = _split_frontmatter(text)
-        title = str(frontmatter.get("title") or slug.replace("-", " ").title())
-        kind = str(frontmatter.get("kind") or _KIND_TO_NODE_TYPE.get(str(frontmatter.get("type", "")), "concept"))
-        metadata: dict[str, Any] = {}
-        if frontmatter.get("description"):  # nocheck: OKF frontmatter key, not wiki metadata
-            metadata[MetadataField.DESCRIPTION] = frontmatter["description"]  # nocheck: value read from OKF frontmatter
-        tags = frontmatter.get("tags")  # nocheck: OKF frontmatter key, not wiki metadata
+        title = str(frontmatter.get(OkfField.TITLE) or slug.replace("-", " ").title())
+        kind = frontmatter.get(OkfField.KIND)
+        node_type = NodeType.of(str(kind)) if kind else node_type_from_okf_type(str(frontmatter.get(OkfField.TYPE, "")))
+        metadata: dict[str, MetadataValue] = {}
+        description = frontmatter.get(OkfField.DESCRIPTION)
+        if description:
+            metadata[MetadataField.DESCRIPTION] = str(description)
+        tags = frontmatter.get(OkfField.TAGS)
         if tags:
-            metadata[MetadataField.TAGS] = tags if isinstance(tags, list) else [tags]
-        source_files = frontmatter.get("source_files")
+            metadata[MetadataField.TAGS] = _as_str_list(tags)
+        source_files = frontmatter.get(OkfField.SOURCE_FILES)
         if source_files:
-            metadata[MetadataField.PROVENANCE] = source_files if isinstance(source_files, list) else [source_files]
+            metadata[MetadataField.PROVENANCE] = _as_str_list(source_files)
 
-        nodes.append(WikiNode(id=slug, title=title, content=body.strip(), node_type=kind, metadata=metadata))
+        nodes.append(WikiNode(id=slug, title=title, content=body.strip(), node_type=node_type, metadata=metadata))
         slug_to_title[slug] = title
 
     # Edges from body links: ``[title](concepts/x.md)`` and ``[[x]]``.
@@ -313,12 +353,19 @@ def load_wiki_from_files(output_dir: Path) -> CompiledWiki | None:
             targets.add(title_to_slug.get(target, target))
         for target in targets:
             if target in slug_to_title and target != node.id:
-                edges.append(GraphEdge(source=node.id, target=target, type="reference"))
+                edges.append(GraphEdge(source=node.id, target=target, type=EdgeType.REFERENCE))
 
     return CompiledWiki(nodes=nodes, edges=edges, toc=[], metadata={})
 
 
-def _split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
+def _as_str_list(value: JSONValue) -> list[str]:
+    """Normalize a frontmatter list-or-scalar into a list of strings."""
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return [str(value)]
+
+
+def _split_frontmatter(text: str) -> tuple[JSONDict, str]:
     """Split markdown into (frontmatter dict, body). Empty dict when absent."""
     if not text.startswith("---"):
         return {}, text

@@ -9,9 +9,9 @@ adaptive modes:
 
 from __future__ import annotations
 
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_SEARCH_SNIPPET_CHARS
+from kompend.core.config._configs import DisplayConfig
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
+from kompend.core.models.metadata import meta_str_list, meta_str_list_dict
 from kompend.logging import get_logger
 from kompend.rag.zvec_store import VectorStoreLike, ZvecField
 from kompend.search.budget import BudgetPlan, ContextBudgetManager
@@ -157,8 +157,8 @@ class AdaptiveRetriever:
                     snippet=snippet,
                     score=float(hit.get("score", 0.0)),
                     source_file=source_file,
-                    tags=set(node.metadata.get(MetadataField.TAGS, [])) if node and node.metadata else set(),
-                    attributes=dict(node.metadata.get(MetadataField.ATTRIBUTES) or {}) if node and node.metadata else {},
+                    tags=set(meta_str_list(node.metadata.get(MetadataField.TAGS))) if node and node.metadata else set(),
+                    attributes=meta_str_list_dict(node.metadata.get(MetadataField.ATTRIBUTES)) if node and node.metadata else {},
                 )
             )
         return results

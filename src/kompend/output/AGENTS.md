@@ -84,3 +84,8 @@ User-facing guide: `docs/concepts/open-knowledge-format.md`.
 - ``VaultWriter._load_verification`` reads the latest ``verification`` row from
   ``.kompend/kompend.db`` (``ORDER BY id DESC LIMIT 1``), not ``.kompend/verification.json``;
   a missing pass yields ``None`` and the quality page is skipped.
+- The one-line description of a node is capped by
+  ``display.description_max_chars`` — the writer takes it as
+  ``description_max_chars`` (``VaultWriter.okf_description`` /
+  ``okf_frontmatter``); the cap lives in the config, never in a literal
+  (``truncate_description`` in ``core.models.wiki``).

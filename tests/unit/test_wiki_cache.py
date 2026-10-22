@@ -9,6 +9,7 @@ import pytest
 
 from kompend.cli._pipeline_helpers import write_wiki_cache
 from kompend.core.models import CompiledWiki, WikiNode, load_cached_wiki
+from kompend.core.models.enums import NodeType
 from kompend.core.paths import KOMP_DIR
 from kompend.core.store import open_store, vault_db_path
 
@@ -82,7 +83,7 @@ def _make_wiki() -> CompiledWiki:
                 id="intro",
                 title="Introduction",
                 content="Hello world",
-                node_type="section",
+                node_type=NodeType.SECTION,
                 source_chunks=["chunk-1"],
             ),
         ],

@@ -19,6 +19,7 @@ from typing import Any, ClassVar
 from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.core.models import CompiledWiki, MetadataField
 from kompend.core.models.attachments import AttachmentManifest
+from kompend.core.models.metadata import meta_dict_list, meta_str
 from kompend.core.paths import KIND_FOLDERS, KOMP_DIR, REFERENCES_FILE, VaultPaths, attachment_slugs_for_source, is_protected_source
 from kompend.core.pipeline.references import ReferenceStore, consolidate_references
 from kompend.core.pipeline.state import TierStateStore
@@ -28,6 +29,12 @@ from kompend.logging import get_logger
 
 #: Max chars of a reference title used for display labels in lint findings.
 _REF_LABEL_TITLE_MAX = 40
+
+#: Max chars of a duplicate title kept in a duplicate finding as evidence.
+_DUPLICATE_TITLE_MAX = 60
+
+#: Max chars of a duplicated raw reference kept in a duplicate finding.
+_DUPLICATE_RAW_MAX = 80
 
 #: Leading argv entries of the rumdl command shown in a failure warning —
 #: enough to identify the invocation without echoing every path.
@@ -177,7 +184,7 @@ class BrokenWikilinksRule(BaseLintRule):
                 if alias_of and target_node is not None:
                     # Rewrite to the resolved page link (same path the
                     # renderer's convert_wikilinks produces).
-                    folder = KIND_FOLDERS.get(target_node.node_type, "concepts")
+                    folder = KIND_FOLDERS.get(target_node.node_type.value, "concepts")
                     replacement = f"[{alias_text.strip()}]({folder}/{alias_of}.md)"
                 else:
                     # Genuinely missing target — keep the text, drop the brackets.
@@ -255,8 +262,8 @@ class KompendReferenceRule(BaseLintRule):
                         details={"target": target},
                     )
                 )
-            for img in node.metadata.get("images") or []:
-                path = str(img.get("path", "")) if isinstance(img, dict) else ""
+            for img in meta_dict_list(node.metadata.get("images")):
+                path = meta_str(img.get("path"))
                 if path and KOMP_DIR in PurePosixPath(path).parts:
                     results.append(
                         LintResult(
@@ -293,7 +300,7 @@ class MissingFrontmatterRule(BaseLintRule):
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
         for node in wiki.nodes:
-            fm = node.metadata.get("frontmatter", {})
+            fm = node.metadata.get(MetadataField.FRONTMATTER, {})
             if not isinstance(fm, dict):
                 fm = {}
             missing = [f for f in self.REQUIRED_FIELDS if f not in fm]
@@ -321,13 +328,13 @@ class MissingFrontmatterRule(BaseLintRule):
             node = next((n for n in wiki.nodes if n.id == r.page_id), None)
             if node is None:
                 continue
-            fm = node.metadata.get("frontmatter", {})
+            fm = node.metadata.get(MetadataField.FRONTMATTER, {})
             if not isinstance(fm, dict):
                 fm = {}
             for field_name in r.details.get("missing_fields", []):
                 if field_name == "title":
                     fm["title"] = node.title
-            node.metadata["frontmatter"] = fm
+            node.metadata[MetadataField.FRONTMATTER] = fm
             r.fix_applied = True
         return fixed
 
@@ -499,7 +506,7 @@ class StalePageRule(BaseLintRule):
             sources_root = Path(sources_dir)
             if sources_root.exists():
                 for node in wiki.nodes:
-                    source_file_str = node.metadata.get(MetadataField.SOURCE_FILE)
+                    source_file_str = meta_str(node.metadata.get(MetadataField.SOURCE_FILE))
                     if not source_file_str:
                         continue
                     source_file = Path(source_file_str)
@@ -685,7 +692,7 @@ class SourceNotFoundRule(BaseLintRule):
                 continue
             # source_chunks are chunk IDs, not file paths. Check if
             # metadata references source_file.
-            source_file_str = node.metadata.get(MetadataField.SOURCE_FILE)
+            source_file_str = meta_str(node.metadata.get(MetadataField.SOURCE_FILE))
             if not source_file_str:
                 continue
             source_file = Path(source_file_str)
@@ -974,7 +981,9 @@ class DuplicateReferencesRule(BaseLintRule):
             if len(sources_seen) > 1:
                 family, title = key.split("|", 1)
                 refs = [lbl for _, lbl in entries]
-                duplicates.append({"type": "title-author", "author": family, "title": title[:60], "sources": sorted(sources_seen), "refs": refs})
+                duplicates.append(
+                    {"type": "title-author", "author": family, "title": title[:_DUPLICATE_TITLE_MAX], "sources": sorted(sources_seen), "refs": refs}
+                )
 
         raw_seen: dict[str, list[str]] = {}
         for raw_text, source_name, _ in by_raw:
@@ -982,7 +991,7 @@ class DuplicateReferencesRule(BaseLintRule):
         for raw_text, sources_for_raw in raw_seen.items():
             unique_sources = set(sources_for_raw)
             if len(unique_sources) > 1:
-                duplicates.append({"type": "raw", "raw": raw_text[:80], "sources": sorted(unique_sources)})
+                duplicates.append({"type": "raw", "raw": raw_text[:_DUPLICATE_RAW_MAX], "sources": sorted(unique_sources)})
 
         return duplicates
 
@@ -1300,7 +1309,7 @@ def _node_lookup_index(wiki: CompiledWiki) -> tuple[dict[str, str], dict[str, st
         # entity_subtype here without inspecting metadata, so we register
         # both forms (``entities/<id>`` for unknown-type lookup and let
         # nearest_alias pick the closer one).
-        folder = KIND_FOLDERS.get(n.node_type, "concepts")
+        folder = KIND_FOLDERS.get(n.node_type.value, "concepts")
         alias_index.setdefault(f"{folder}/{n.id}", n.id)
     return alias_index, slug_to_id
 

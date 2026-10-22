@@ -24,9 +24,16 @@ class NoAliasDumper(yaml.Dumper):
 
 
 def okf_frontmatter_yaml(frontmatter: dict[str, Any]) -> str:
-    """Render frontmatter as YAML without anchors/aliases."""
+    """Render frontmatter as YAML without anchors/aliases.
+
+    Keys are rendered as plain strings: the OKF key contract is a
+    ``StrEnum`` (:class:`kompend.core.models.enums.OkfField`), and a YAML
+    dumper would otherwise emit a python-object tag for the enum member
+    instead of the key name.
+    """
+    plain = {str(key): value for key, value in frontmatter.items()}
     yaml_str = yaml.dump(
-        frontmatter,
+        plain,
         Dumper=NoAliasDumper,
         default_flow_style=False,
         allow_unicode=True,

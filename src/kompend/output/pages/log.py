@@ -10,19 +10,30 @@ Two concerns live here:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
 
 from wenmode.nodes import Node
 
 from kompend.core.models import CompiledWiki, ExtractionStats, MetadataField, WikiField
+from kompend.core.models.metadata import (
+    meta_dict,
+    meta_dict_list,
+    meta_float,
+    meta_float_dict,
+    meta_int,
+    meta_str,
+    meta_str_dict,
+    meta_str_list,
+)
 from kompend.core.page_builder import PageBuilder, code_span, strong
 from kompend.core.paths import LOG_FILE, VaultPaths
 from kompend.core.pipeline.config import Tier
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
+from kompend.types import MetadataValue
 
 __all__ = [
     "LogStage",
@@ -63,10 +74,11 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: LogStage) -> str:
     """
     now = iso_local()
     meta = wiki.metadata
-    source_count = meta.get(MetadataField.SOURCE_COUNT, 0)
+    source_count = meta_int(meta.get(MetadataField.SOURCE_COUNT))
     article_count = len(wiki.nodes)
-    duration = meta.get(WikiField.DURATION_SECONDS)
-    llm_model = meta.get(WikiField.LLM_MODEL)
+    duration_raw = meta.get(WikiField.DURATION_SECONDS)
+    duration = meta_float(duration_raw) if duration_raw is not None else None
+    llm_model = meta_str(meta.get(WikiField.LLM_MODEL))
 
     header_by_stage: dict[LogStage, str] = {
         LogStage.COMPILE: f"{source_count} source(s) → {article_count} page(s)",
@@ -83,9 +95,8 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: LogStage) -> str:
     b = PageBuilder()
 
     # Sources: short inline list (≤5) or table with titles.
-    source_names = meta.get(MetadataField.SOURCE_NAMES, [])
-    extraction_stats_raw = meta.get("extraction_stats") or []
-    extraction_stats: list[ExtractionStats] = [ExtractionStats(**d) for d in extraction_stats_raw] if extraction_stats_raw else []
+    source_names = meta_str_list(meta.get(MetadataField.SOURCE_NAMES))
+    extraction_stats = [ExtractionStats.from_mapping(item) for item in meta_dict_list(meta.get("extraction_stats"))]
     titles = _extraction_titles(extraction_stats)
     if source_names:
         _add_sources_block(b, source_names, titles or None)
@@ -116,11 +127,11 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: LogStage) -> str:
         breakdown = ", ".join(f"{count} {etype}" for etype, count in edge_counts)
         b.paragraph(strong("Cross-references:"), f" {edge_count:,} edges ({breakdown})")
 
-    llm_usage = meta.get(WikiField.LLM_USAGE, {})
+    llm_usage = meta_dict(meta.get(WikiField.LLM_USAGE))
     if usage_line := _llm_usage_line(llm_usage, llm_model):
         b.paragraph(usage_line)
 
-    tier_timings = meta.get(WikiField.TIER_TIMINGS, {})
+    tier_timings = meta_float_dict(meta.get(WikiField.TIER_TIMINGS))
     if tier_timings:
         _add_tier_timings_table(b, tier_timings, duration)
 
@@ -212,18 +223,18 @@ def _add_extraction_block(b: PageBuilder, stats: list[ExtractionStats]) -> None:
     b.table(headers=headers, rows=rows, aligns=[None, None, "right", "right", "right", "right", "right", "right"])
 
 
-def _llm_usage_line(llm_usage: dict[str, Any], llm_model: str | None) -> str | None:
+def _llm_usage_line(llm_usage: Mapping[str, MetadataValue], llm_model: str | None) -> str | None:
     """One-line LLM usage summary, or None when no calls were made."""
-    calls = llm_usage.get("call_count", 0)
+    calls = meta_int(llm_usage.get("call_count"))
     if calls <= 0:
         return None
-    per_model = llm_usage.get("per_model", {})
+    per_model = meta_str_dict(llm_usage.get("per_model"))
     models = ", ".join(per_model.keys()) if per_model else (llm_model or "unknown")
-    pt = llm_usage.get("prompt_tokens", 0)
-    ct = llm_usage.get("completion_tokens", 0)
-    ttft = llm_usage.get("avg_ttft", 0)
-    overall = llm_usage.get("overall_tok_s", 0)
-    recent = llm_usage.get("recent_tok_s", 0)
+    pt = meta_int(llm_usage.get("prompt_tokens"))
+    ct = meta_int(llm_usage.get("completion_tokens"))
+    ttft = meta_float(llm_usage.get("avg_ttft"))
+    overall = meta_float(llm_usage.get("overall_tok_s"))
+    recent = meta_float(llm_usage.get("recent_tok_s"))
     rate_s = f" | {overall:.1f} tok/s avg ({recent:.1f} recent)" if overall else ""
     return f"{strong('LLM:')} {calls} calls | {_fmt_tokens(pt)} in / {_fmt_tokens(ct)} out{rate_s} | avg TTFT {ttft:.1f}s | {models}"
 
@@ -242,7 +253,7 @@ def _node_type_counts(wiki: CompiledWiki) -> dict[str, int]:
     """Count nodes by ``node_type``."""
     counts: dict[str, int] = {}
     for node in wiki.nodes:
-        counts[node.node_type] = counts.get(node.node_type, 0) + 1
+        counts[node.node_type.value] = counts.get(node.node_type.value, 0) + 1
     return counts
 
 

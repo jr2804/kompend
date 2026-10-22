@@ -7,15 +7,26 @@ from typing import Final
 
 from wenmode.nodes import Paragraph, Text
 
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_WIKI_TOPICS
-from kompend.core.models import CompiledWiki, MetadataField, WikiField
+from kompend.core.config._configs import DisplayConfig
+from kompend.core.models import CompiledWiki, MetadataField, NodeType, WikiField
 from kompend.core.page_builder import PageBuilder, link, strong
-from kompend.core.paths import EXPORTED_DIR_NAME, INDEX_FILE, LOG_FILE, SUMMARIES_SUBDIR
+from kompend.core.paths import (
+    ATTACHMENTS_DIR_NAME,
+    EXPORTED_DIR_NAME,
+    INDEX_FILE,
+    LOG_FILE,
+    OVERVIEW_MD,
+    REFERENCES_MD,
+    SUMMARIES_SUBDIR,
+)
 from kompend.core.utils.time import display_local
 from kompend.output.vault import VaultWriter
 
 EXPORTED_HEADING: Final[str] = "Exported sources"
+INDEX_HEADING: Final[str] = "Wiki Index"
+SUMMARY_HEADING: Final[str] = "Summary"
+TOC_HEADING: Final[str] = "Table of Contents"
+SURFACES_HEADING: Final[str] = "Wiki surfaces"
 
 
 def write_index(
@@ -23,11 +34,15 @@ def write_index(
     output_dir: Path,
     *,
     base_dir: Path | None = None,
+    description_max_chars: int | None = None,
 ) -> dict[str, Path]:
     """Write ``index.md`` for a compiled wiki.
 
     The human-readable pipeline log is no longer auto-written; regenerate it
     on demand with ``kompend log`` (or ``kompend log --write``).
+
+    *description_max_chars* caps the one-line description per catalog entry
+    (``display.description_max_chars``); it defaults to the config value.
 
     Returns a dict of ``{name: path}`` for generated files.
     """
@@ -36,7 +51,12 @@ def write_index(
 
     # index.md — entry point at base_dir level
     index_file = resolved_base / INDEX_FILE
-    index_content = generate_index(wiki, output_dir=output_dir, base_dir=resolved_base)
+    index_content = generate_index(
+        wiki,
+        output_dir=output_dir,
+        base_dir=resolved_base,
+        description_max_chars=description_max_chars,
+    )
     index_file.write_text(index_content, encoding="utf-8")
 
     return {"index": index_file}
@@ -47,6 +67,7 @@ def generate_index(
     *,
     output_dir: Path | None = None,
     base_dir: Path | None = None,
+    description_max_chars: int | None = None,
 ) -> str:
     """Generate ``index.md`` for the vault root.
 
@@ -60,7 +81,7 @@ def generate_index(
     nested = output_dir is not None and base_dir is not None and output_dir != base_dir
     if nested:
         return _hub_index(wiki, prefix, base_dir)
-    return _full_catalog(wiki, output_dir, prefix, base_dir)
+    return _full_catalog(wiki, output_dir, prefix, base_dir, description_max_chars)
 
 
 def sync_exported_sources_section(index_file: Path, base_dir: Path) -> None:
@@ -103,9 +124,9 @@ def _splice_section(text: str, section: str) -> str:
 def _hub_index(wiki: CompiledWiki, prefix: str, base_dir: Path | None) -> str:
     """Thin hub: quick facts + pointer to the portable catalog."""
     b = PageBuilder()
-    b.heading(1, "Wiki Index")
+    b.heading(1, INDEX_HEADING)
     _emit_stat_paragraphs(b, wiki, prefix)
-    b.paragraph("The full catalog lives at ", link(f"{prefix}/index.md", f"{prefix}/index.md"), ".")
+    b.paragraph("The full catalog lives at ", link(f"{prefix}/{INDEX_FILE}", f"{prefix}/{INDEX_FILE}"), ".")
     section = exported_sources_section(base_dir) if base_dir is not None else ""
     return b.render() + ("\n\n" + section if section else "")
 
@@ -115,32 +136,27 @@ def _full_catalog(
     output_dir: Path | None,
     prefix: str,
     base_dir: Path | None = None,
+    description_max_chars: int | None = None,
 ) -> str:
-    """Full catalog: stats, topics, per-page TOC, generated surfaces."""
+    """Full catalog: stats, per-page TOC, generated surfaces."""
     b = PageBuilder()
-    b.heading(1, "Wiki Index")
+    b.heading(1, INDEX_HEADING)
 
-    b.heading(2, "Summary")
+    b.heading(2, SUMMARY_HEADING)
     _emit_stat_paragraphs(b, wiki, prefix)
 
-    # Topic / concept cloud (from edges metadata)
-    topics = wiki.metadata.get("topics", [])
-    if topics:
-        topics_limit = DEFAULTS.get(DISPLAY_WIKI_TOPICS, 30)
-        b.heading(2, "Topics")
-        b.paragraph(" ".join(f"`{t}`" for t in sorted(topics)[:topics_limit]))
-
     # Full TOC — catalog entries: link + one-line description.
-    b.heading(2, "Table of Contents")
+    b.heading(2, TOC_HEADING)
+    desc_limit = description_max_chars if description_max_chars is not None else DisplayConfig().description_max_chars
     toc_items: list[Paragraph] = []
-    for _i, node in enumerate(wiki.nodes, 1):
+    for node in wiki.nodes:
         slug = node.id
         folder = VaultWriter._folder_for_kind(
-            node.node_type or "",
-            str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if (node.node_type or "") == "entity" else "",
+            node.node_type,
+            str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if node.node_type is NodeType.ENTITY else "",
         )
         link_target = f"{prefix}/{folder}/{slug}.md" if folder else f"{prefix}/{slug}.md"
-        desc = VaultWriter.okf_description(node)
+        desc = VaultWriter.okf_description(node, desc_limit)
         entry = Paragraph()
         entry.children.append(link(link_target, node.title))
         if desc:
@@ -155,14 +171,19 @@ def _full_catalog(
     if output_dir is not None:
         if (output_dir / SUMMARIES_SUBDIR).is_dir() and any((output_dir / SUMMARIES_SUBDIR).glob("*.md")):
             surfaces.append((f"{prefix}/{SUMMARIES_SUBDIR}/", "Per-source overview pages (assets, citations, backlinks)"))
-        if (output_dir / "references.md").exists():
-            surfaces.append((f"{prefix}/references.md", "Corpus sources + bibliography"))
-        if (output_dir / "overview.md").exists():
-            surfaces.append((f"{prefix}/overview.md", "Thematic overview of the corpus"))
+        if (output_dir / REFERENCES_MD).exists():
+            surfaces.append((f"{prefix}/{REFERENCES_MD}", "Corpus sources + bibliography"))
+        if (output_dir / OVERVIEW_MD).exists():
+            surfaces.append((f"{prefix}/{OVERVIEW_MD}", "Thematic overview of the corpus"))
         if (output_dir / LOG_FILE).exists():
             surfaces.append((f"{prefix}/{LOG_FILE}", "Append-only activity journal"))
-    surfaces.append(("attachments/" if not prefix else f"{prefix}/../attachments/", "Media & figures extracted from sources"))
-    b.heading(2, "Wiki surfaces")
+    surfaces.append(
+        (
+            f"{prefix}/../{ATTACHMENTS_DIR_NAME}/" if prefix else f"{ATTACHMENTS_DIR_NAME}/",
+            "Media & figures extracted from sources",
+        )
+    )
+    b.heading(2, SURFACES_HEADING)
     surface_items: list[Paragraph] = []
     for target, desc in surfaces:
         name = target.rstrip("/").rsplit("/", 1)[-1]
@@ -190,7 +211,7 @@ def exported_sources_section(base_dir: Path) -> str:
         return ""
     b = PageBuilder()
     b.heading(2, EXPORTED_HEADING)
-    b.bullet_list([link(f"exported/{name}", name) for name in files])
+    b.bullet_list([link(f"{EXPORTED_DIR_NAME}/{name}", name) for name in files])
     return b.render()
 
 
@@ -199,18 +220,7 @@ def _emit_stat_paragraphs(b: PageBuilder, wiki: CompiledWiki, prefix: str) -> No
     source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
     duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
 
-    stats: list[tuple[str, str]] = [
-        ("Sources", str(source_count)),
-        ("Articles", str(len(wiki.nodes))),
-        ("Total words", f"{sum(len(n.content.split()) for n in wiki.nodes):,}"),
-        ("Last compile", display_local("%Y-%m-%d %H:%M")),
-    ]
-    if duration is not None:
-        stats.append(("Duration", f"{duration:.1f}s"))
-    if wiki.quality_score:
-        stats.append(("Health score", f"{wiki.quality_score:.0f}/100"))
-
-    att_target = f"{prefix}/../attachments/" if prefix else "attachments/"
+    att_target = f"{prefix}/../{ATTACHMENTS_DIR_NAME}/" if prefix else f"{ATTACHMENTS_DIR_NAME}/"
     b.paragraph(strong("Sources:"), f" {source_count}")
     b.paragraph(strong("Articles:"), f" {len(wiki.nodes)}")
     b.paragraph(strong("Total words:"), f" {sum(len(n.content.split()) for n in wiki.nodes):,}")
@@ -222,7 +232,7 @@ def _emit_stat_paragraphs(b: PageBuilder, wiki: CompiledWiki, prefix: str) -> No
     b.paragraph(
         strong("Media:"),
         " ",
-        link(att_target, "attachments/"),
+        link(att_target, f"{ATTACHMENTS_DIR_NAME}/"),
         " — figures extracted from sources",
     )
 

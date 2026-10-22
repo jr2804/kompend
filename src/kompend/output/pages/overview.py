@@ -11,7 +11,7 @@ from kompend.agents.types import OverviewDeps, OverviewPage
 from kompend.agents.wiki_index import AgenticOverviewAgent, WikiIndexAgent
 from kompend.core.cache.store import CacheStore
 from kompend.core.models import CompiledWiki
-from kompend.core.paths import VaultPaths
+from kompend.core.paths import OVERVIEW_MD, VaultPaths
 from kompend.core.templates import get_template_loader
 from kompend.logging import get_logger
 
@@ -41,7 +41,7 @@ def write_overview(
     }
     cached = cache_store.get("overview", overview_deps)
     if isinstance(cached, str):
-        overview_file = base_dir / "overview.md"
+        overview_file = base_dir / OVERVIEW_MD
         overview_file.write_text(cached, encoding="utf-8")
         return overview_file
 
@@ -55,7 +55,7 @@ def write_overview(
 
     cache_store.set("overview", overview_deps, f"# Wiki Overview\n\n{content}\n")
 
-    overview_file = base_dir / "overview.md"
+    overview_file = base_dir / OVERVIEW_MD
     overview_file.write_text(f"# Wiki Overview\n\n{content}\n", encoding="utf-8")
     return overview_file
 

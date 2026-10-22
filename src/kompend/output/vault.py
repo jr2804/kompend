@@ -27,12 +27,15 @@ import shutil
 import sqlite3
 from abc import abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final
 
 from kompend import __version__ as _KOMP_VERSION
-from kompend.core.models import CompiledWiki, GraphEdge, ImageRef, MetadataField, WikiNode, image_source_key
+from kompend.core.config._configs import DisplayConfig, OutputConfig
+from kompend.core.models import CompiledWiki, ExtractionStats, GraphEdge, ImageRef, MetadataField, WikiNode, image_source_key
 from kompend.core.models.assets import AssetRecord
-from kompend.core.models.enums import AssetKind
+from kompend.core.models.enums import AssetKind, NodeType, OkfField
+from kompend.core.models.metadata import meta_dict, meta_dict_list, meta_str_list, meta_str_list_dict
+from kompend.core.models.wiki import truncate_description
 from kompend.core.page_builder import PageBuilder, link, strong
 from kompend.core.paths import (
     ATTACHMENTS_DIR_NAME,
@@ -44,6 +47,7 @@ from kompend.core.paths import (
     KOMP_DIR,
     LOG_FILE,
     QUALITY_FILE,
+    REFERENCES_MD,
     SUMMARIES_SUBDIR,
     VaultPaths,
     attachment_slug,
@@ -69,18 +73,17 @@ __all__ = ["OKF_VERSION", "okf_frontmatter_yaml"]
 # ``<producer>/<version>`` for agents and tools.
 _GENERATED_BY = f"kompend/{_KOMP_VERSION or '0.0.0'}"
 
+#: Fallback page title when a node carries no title.
+_DEFAULT_TITLE: Final[str] = "Untitled"
+#: OKF lifecycle default (§5.4) — a page is stable unless stated otherwise.
+_DEFAULT_STATUS: Final[str] = "stable"
+
 # Map kompend node_type values to OKF ``type`` values. OKF types are free-form
-# strings (§4.1); these are descriptive and self-explanatory per the spec.
-KIND_TO_TYPE: dict[str, str] = {
-    "concept": "Concept",
-    "comparison": "Comparison",
-    "entity": "Entity",
-    "summary": "Summary",
-    "overview": "Overview",
-    "procedure": "Procedure",
-    "section": "Section",
-}
-DEFAULT_TYPE = "Concept"
+# strings (§4.1); the label is the node type's title case, derived from the
+# single :class:`NodeType` vocabulary so a new node type cannot be written
+# under one label and read back under another.
+KIND_TO_TYPE: dict[str, str] = {node_type.value: node_type.okf_type for node_type in NodeType}
+DEFAULT_TYPE: str = NodeType.CONCEPT.okf_type
 
 # Regex to find ``[[wikilinks]]`` or ``[[wikilinks|alias]]`` in body text.
 WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
@@ -105,15 +108,24 @@ class VaultWriter(BaseOutputWriter):
     def __init__(
         self,
         *,
-        max_related_links: int = 15,
+        max_related_links: int | None = None,
+        description_max_chars: int | None = None,
         references_file: Path | None = None,
         assets_file: Path | None = None,
         base_dir: Path | None = None,
         output_dir_name: str = DEFAULT_OUTPUT_DIR_NAME,
         **kwargs: Any,
     ) -> None:
+        """Create a vault writer.
+
+        ``max_related_links`` and ``description_max_chars`` default to the
+        config values (``output.max_related_links``,
+        ``display.description_max_chars``); callers that hold a resolved
+        config pass them explicitly.
+        """
         super().__init__(**kwargs)
-        self.max_related_links = max_related_links
+        self.max_related_links = max_related_links if max_related_links is not None else OutputConfig().max_related_links
+        self.description_max_chars = description_max_chars if description_max_chars is not None else DisplayConfig().description_max_chars
         self._references_file = references_file
         self._assets_file = assets_file
         self._base_dir = base_dir
@@ -195,21 +207,21 @@ class VaultWriter(BaseOutputWriter):
     # emits. Markdown flavors differ only in body link syntax, not here.
 
     @staticmethod
-    def okf_type(node_type: str | None) -> str:
+    def okf_type(node_type: NodeType | None) -> str:
         """Map a kompend node_type to an OKF type string."""
         if not node_type:
             return DEFAULT_TYPE
-        return KIND_TO_TYPE.get(node_type, node_type.title() or DEFAULT_TYPE)
+        return KIND_TO_TYPE.get(node_type.value, node_type.value.title() or DEFAULT_TYPE)
 
     @staticmethod
-    def okf_description(node: WikiNode) -> str:
-        """Frontmatter description for *node* — delegates to :attr:`WikiNode.description`.
+    def okf_description(node: WikiNode, max_chars: int) -> str:
+        """Frontmatter description for *node*, capped at *max_chars* characters.
 
-        Kept as a named seam because the writer is the historic caller; the
-        derivation itself lives on the model so the vector store's embed text
-        and the written index cannot drift apart.
+        The derivation (first sentence of the first prose line) lives on the
+        model so the vector store's embed text and the written index cannot
+        drift apart; the cap is a rendering decision and belongs here.
         """
-        return node.description
+        return truncate_description(node.description, max_chars)
 
     @staticmethod
     def okf_frontmatter(
@@ -217,6 +229,7 @@ class VaultWriter(BaseOutputWriter):
         compiled_at: str,
         frontmatter_defaults: dict[str, Any] | None = None,
         *,
+        description_max_chars: int,
         sources: list[OkfSource] | None = None,
         verified: list[TrustEvent] | None = None,
     ) -> dict[str, Any]:
@@ -241,61 +254,61 @@ class VaultWriter(BaseOutputWriter):
         - ``source_files`` — provenance filename stems (distinct from OKF
           ``sources`` to avoid shape collision; freed ``tags`` from this overload)
         """
-        provenance = node.metadata.get(MetadataField.PROVENANCE) or []
-        source_files = sorted({safe_stem(p) for p in provenance if p}) if provenance else []
-        node_tags = node.metadata.get(MetadataField.TAGS) or []
+        provenance = meta_str_list(node.metadata.get(MetadataField.PROVENANCE))
+        source_files = sorted({safe_stem(p) for p in provenance if p})
+        node_tags = meta_str_list(node.metadata.get(MetadataField.TAGS))
 
         frontmatter: dict[str, Any] = dict(frontmatter_defaults or {})
         # Per-node frontmatter overrides config defaults.
-        frontmatter.update(node.metadata.get("frontmatter", {}))
+        frontmatter.update(meta_dict(node.metadata.get(MetadataField.FRONTMATTER)))
 
         # OKF v0.2 consolidation: the node ``frontmatter`` override is a legacy
         # escape hatch and may carry v0.1 bare-string ``sources`` (filename
         # stems) or ``tags`` overloaded with provenance. Drop both so the only
         # ``sources`` that survives is the structured §5.1 list passed in below,
         # and ``tags`` stays topic-only (provenance stems live in ``source_files``).
-        frontmatter.pop("sources", None)
-        frontmatter.pop("compiled_at", None)
-        frontmatter.pop("timestamp", None)
+        frontmatter.pop(OkfField.SOURCES, None)
+        frontmatter.pop(OkfField.COMPILED_AT, None)
+        frontmatter.pop(OkfField.TIMESTAMP, None)
 
         # OKF-required fields (always present, spec-compliant).
-        frontmatter["type"] = frontmatter.get("type") or VaultWriter.okf_type(node.node_type)
-        frontmatter.setdefault("title", node.title or "Untitled")
-        description = VaultWriter.okf_description(node)
+        frontmatter[OkfField.TYPE] = frontmatter.get(OkfField.TYPE) or VaultWriter.okf_type(node.node_type)
+        frontmatter.setdefault(OkfField.TITLE, node.title or _DEFAULT_TITLE)
+        description = VaultWriter.okf_description(node, description_max_chars)
         if description:
-            frontmatter.setdefault("description", description)
+            frontmatter.setdefault(OkfField.DESCRIPTION, description)
         # OKF lifecycle (§5.4): default stable; absence ⇒ stable per spec.
-        frontmatter.setdefault("status", "stable")
+        frontmatter.setdefault(OkfField.STATUS, _DEFAULT_STATUS)
         # OKF tags (§4.1): cross-cutting topic tags from compilation.
         # Source-filename provenance no longer overloads ``tags``; it lives in
         # the ``source_files`` extension to match OKF v0.2 semantics.
         if node_tags:
-            merged_tags = sorted(set(frontmatter.get("tags", [])) | {str(t) for t in node_tags})  # nocheck: OKF frontmatter key, not wiki metadata
-            frontmatter["tags"] = merged_tags  # nocheck: OKF frontmatter key, not wiki metadata
-        node_attrs = node.metadata.get(MetadataField.ATTRIBUTES) or {}
-        if node_attrs and "attributes" not in frontmatter:
+            merged_tags = sorted(set(frontmatter.get(OkfField.TAGS, [])) | {str(t) for t in node_tags})
+            frontmatter[OkfField.TAGS] = merged_tags
+        node_attrs = meta_str_list_dict(node.metadata.get(MetadataField.ATTRIBUTES))
+        if node_attrs and OkfField.ATTRIBUTES not in frontmatter:
             serialized: dict[str, str | list[str]] = {}
             for k, v in node_attrs.items():
                 serialized[k] = v[0] if len(v) == 1 else v
-            frontmatter["attributes"] = serialized  # nocheck: OKF frontmatter key, not wiki metadata
+            frontmatter[OkfField.ATTRIBUTES] = serialized
 
         # OKF trust (§5.2): ``generated`` records how/when content was produced.
         # Supersedes the v0.1 ``timestamp`` field (§13.1).
-        frontmatter["generated"] = {"by": _GENERATED_BY, "at": compiled_at}
+        frontmatter[OkfField.GENERATED] = {"by": _GENERATED_BY, "at": compiled_at}
         # ``verified`` only when trust events are known (absence ⇒ unverified tier).
         if verified:
-            frontmatter["verified"] = verified
+            frontmatter[OkfField.VERIFIED] = verified
 
         # OKF structured provenance (§5.1): list of objects with at least
         # ``resource``. Only emitted when callers supply real structured sources
         # (from the ReferenceStore); never populated with bare filename strings.
         if sources:
-            frontmatter.setdefault("sources", sources)
+            frontmatter.setdefault(OkfField.SOURCES, sources)
 
         # kompend extensions (OKF §4.1 permits additional keys).
-        frontmatter["kind"] = node.metadata.get("frontmatter", {}).get("kind", node.node_type or "page")
+        frontmatter[OkfField.KIND] = node.metadata.get(MetadataField.FRONTMATTER, {}).get(OkfField.KIND, node.node_type.value)
         if source_files:
-            frontmatter["source_files"] = source_files
+            frontmatter[OkfField.SOURCE_FILES] = source_files
 
         return frontmatter
 
@@ -427,17 +440,17 @@ class VaultWriter(BaseOutputWriter):
         # Backlink index: stem -> concept titles fed by this source.
         feeds: dict[str, list[str]] = {}
         for node in wiki.nodes:
-            for stem in node.metadata.get(MetadataField.PROVENANCE) or []:
-                feeds.setdefault(Path(str(stem)).stem, []).append(node.title or node.id)
+            for stem in meta_str_list(node.metadata.get(MetadataField.PROVENANCE)):
+                feeds.setdefault(Path(stem).stem, []).append(node.title or node.id)
 
         # LLM extraction summary text per source (keyed by vault-relative
         # path), so each summary page carries the semantic extract instead of
         # frontmatter + asset counts alone. Skipped when unavailable (e.g.
         # non-extractive caches).
         summary_by_key = {
-            str(s.get("source", "")): str(s.get("summary", "")).strip()
-            for s in wiki.metadata.get("extraction_stats") or []
-            if str(s.get("summary", "")).strip()
+            stats.source: stats.summary.strip()
+            for stats in (ExtractionStats.from_mapping(item) for item in meta_dict_list(wiki.metadata.get("extraction_stats")))
+            if stats.summary.strip()
         }
 
         summaries_dir = output_dir / SUMMARIES_SUBDIR
@@ -483,13 +496,13 @@ class VaultWriter(BaseOutputWriter):
             lines = [
                 okf_frontmatter_yaml(
                     {
-                        "type": "Source",
-                        "title": title,
-                        "description": f"Per-source overview of {key}",  # nocheck: OKF frontmatter key, not wiki metadata
-                        "generated": {"by": _GENERATED_BY, "at": iso_local()},
-                        "status": "stable",
-                        "kind": "source",
-                        "source_files": [key],
+                        OkfField.TYPE: NodeType.SOURCE.okf_type,
+                        OkfField.TITLE: title,
+                        OkfField.DESCRIPTION: f"Per-source overview of {key}",
+                        OkfField.GENERATED: {"by": _GENERATED_BY, "at": iso_local()},
+                        OkfField.STATUS: _DEFAULT_STATUS,
+                        OkfField.KIND: NodeType.SOURCE.value,
+                        OkfField.SOURCE_FILES: [key],
                     }
                 ).rstrip(),
                 "",
@@ -615,12 +628,12 @@ class VaultWriter(BaseOutputWriter):
         (output_dir / QUALITY_FILE).write_text(
             okf_frontmatter_yaml(
                 {
-                    "type": "Quality",
-                    "title": "Quality",
-                    "description": "Claim verification summary (WiCER pass)",  # nocheck: OKF frontmatter key, not wiki metadata
-                    "generated": {"by": _GENERATED_BY, "at": iso_local()},
-                    "status": "stable",
-                    "kind": "quality",
+                    OkfField.TYPE: NodeType.QUALITY.okf_type,
+                    OkfField.TITLE: "Quality",
+                    OkfField.DESCRIPTION: "Claim verification summary (WiCER pass)",
+                    OkfField.GENERATED: {"by": _GENERATED_BY, "at": iso_local()},
+                    OkfField.STATUS: _DEFAULT_STATUS,
+                    OkfField.KIND: NodeType.QUALITY.value,
                 }
             ).rstrip()
             + "\n\n"
@@ -676,20 +689,20 @@ class VaultWriter(BaseOutputWriter):
             # No vault context — derive from node provenance.
             seen: set[str] = set()
             for node in wiki.nodes:
-                for stem in node.metadata.get(MetadataField.PROVENANCE) or []:
-                    key = str(stem)
+                for stem in meta_str_list(node.metadata.get(MetadataField.PROVENANCE)):
+                    key = stem
                     if key not in seen:
                         seen.add(key)
                         corpus.append((key, attachment_slug(key)))
 
         fm = okf_frontmatter_yaml(
             {
-                "type": "Reference",
-                "title": "References",
-                "description": "Corpus sources and bibliographic entries cited by them",  # nocheck: OKF frontmatter key, not wiki metadata
-                "generated": {"by": _GENERATED_BY, "at": iso_local()},
-                "status": "stable",
-                "kind": "reference",
+                OkfField.TYPE: NodeType.REFERENCE.okf_type,
+                OkfField.TITLE: "References",
+                OkfField.DESCRIPTION: "Corpus sources and bibliographic entries cited by them",
+                OkfField.GENERATED: {"by": _GENERATED_BY, "at": iso_local()},
+                OkfField.STATUS: _DEFAULT_STATUS,
+                OkfField.KIND: NodeType.REFERENCE.value,
             }
         ).rstrip()
 
@@ -710,7 +723,7 @@ class VaultWriter(BaseOutputWriter):
         else:
             parts.append("_(none extracted yet)_")
 
-        (output_dir / "references.md").write_text("\n\n".join(parts) + "\n", encoding="utf-8")
+        (output_dir / REFERENCES_MD).write_text("\n\n".join(parts) + "\n", encoding="utf-8")
 
     @abstractmethod
     def _write_index(self, docs: list[Document], output_dir: Path, wiki: CompiledWiki) -> None: ...
@@ -731,13 +744,13 @@ class VaultWriter(BaseOutputWriter):
         return rel if rel.parts and rel.parts[0] == KOMP_DIR else None
 
     @classmethod
-    def _folder_for_kind(cls, node_type: str, sub: str = "") -> str:
+    def _folder_for_kind(cls, node_type: NodeType, sub: str = "") -> str:
         """Return the subfolder for a page kind, or '' to stay at the root.
 
         Entity pages route into ``entities/<sub>/`` — the sub-type
         (person/organization/standard/...) from node metadata.
         """
-        folder = cls._KIND_FOLDERS.get(node_type, "")
+        folder = cls._KIND_FOLDERS.get(node_type.value, "")
         if folder and sub:
             return f"{folder}/{sub}"
         return folder

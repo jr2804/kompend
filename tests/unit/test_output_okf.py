@@ -10,7 +10,7 @@ import yaml
 
 from kompend.core.models import CompiledWiki, GraphEdge, MetadataField, WikiNode
 from kompend.core.models.assets import AssetRecord
-from kompend.core.models.enums import AssetKind
+from kompend.core.models.enums import AssetKind, NodeType
 from kompend.core.models.structured import StructuredFigure, StructuredTable
 from kompend.core.pipeline.assets import AssetStore
 from kompend.output.base import BaseOutputWriter
@@ -128,7 +128,7 @@ def test_every_page_has_type_frontmatter(tmp_path: Path) -> None:
     wiki = _make_wiki(
         [
             _make_node("alpha", "Alpha", "Content A"),
-            _make_node("beta", "Beta", "Content B", node_type="entity"),
+            _make_node("beta", "Beta", "Content B", node_type=NodeType.ENTITY),
         ]
     )
     writer = OkfWriter()
@@ -148,9 +148,9 @@ def test_type_maps_from_node_type(tmp_path: Path) -> None:
     """Map kompend node_type values to OKF type strings."""
     wiki = _make_wiki(
         [
-            _make_node("c", "Concept", "x", node_type="concept"),
-            _make_node("e", "Entity", "x", node_type="entity"),
-            _make_node("o", "Overview", "x", node_type="overview"),
+            _make_node("c", "Concept", "x", node_type=NodeType.CONCEPT),
+            _make_node("e", "Entity", "x", node_type=NodeType.ENTITY),
+            _make_node("o", "Overview", "x", node_type=NodeType.OVERVIEW),
         ]
     )
     writer = OkfWriter()
@@ -246,8 +246,8 @@ def test_wikilinks_converted_to_folder_relative_markdown_links(tmp_path: Path) -
     """Cross-links use portable folder-relative markdown, not [[wikilinks]]."""
     wiki = _make_wiki(
         [
-            _make_node("alpha", "Alpha", "See [[beta]] for more.", node_type="concept"),
-            _make_node("beta", "Beta", "See [[alpha]] for context.", node_type="concept"),
+            _make_node("alpha", "Alpha", "See [[beta]] for more.", node_type=NodeType.CONCEPT),
+            _make_node("beta", "Beta", "See [[alpha]] for context.", node_type=NodeType.CONCEPT),
         ]
     )
     writer = OkfWriter()
@@ -269,8 +269,8 @@ def test_related_section_uses_markdown_links(tmp_path: Path) -> None:
     """Related section links must be standard markdown, not wikilinks."""
     wiki = _make_wiki(
         [
-            _make_node("a", "Alpha", "x", node_type="concept"),
-            _make_node("b", "Beta", "x", node_type="concept"),
+            _make_node("a", "Alpha", "x", node_type=NodeType.CONCEPT),
+            _make_node("b", "Beta", "x", node_type=NodeType.CONCEPT),
         ],
         edges=[{"source": "a", "target": "b", "type": "related", "confidence": 0.9}],
     )
@@ -348,9 +348,9 @@ def test_index_has_grouped_sections(tmp_path: Path) -> None:
     """OKF §8: index uses grouped sections with descriptions."""
     wiki = _make_wiki(
         [
-            _make_node("c1", "Concept 1", "First concept.", node_type="concept"),
-            _make_node("c2", "Concept 2", "Second concept.", node_type="concept"),
-            _make_node("e1", "Entity 1", "An entity.", node_type="entity"),
+            _make_node("c1", "Concept 1", "First concept.", node_type=NodeType.CONCEPT),
+            _make_node("c2", "Concept 2", "Second concept.", node_type=NodeType.CONCEPT),
+            _make_node("e1", "Entity 1", "An entity.", node_type=NodeType.ENTITY),
         ]
     )
     writer = OkfWriter()
@@ -370,10 +370,10 @@ def test_index_groups_mandatory_kinds(tmp_path: Path) -> None:
     """Index renders one ``## {Type}`` group per kind (concept/entity/summary/comparison)."""
     wiki = _make_wiki(
         [
-            _make_node("c1", "Concept 1", "First concept.", node_type="concept"),
-            _make_node("e1", "Entity 1", "An entity.", node_type="entity"),
-            _make_node("s1", "Summary 1", "A digest.", node_type="summary"),
-            _make_node("p1", "Comparison 1", "X vs Y.", node_type="comparison"),
+            _make_node("c1", "Concept 1", "First concept.", node_type=NodeType.CONCEPT),
+            _make_node("e1", "Entity 1", "An entity.", node_type=NodeType.ENTITY),
+            _make_node("s1", "Summary 1", "A digest.", node_type=NodeType.SUMMARY),
+            _make_node("p1", "Comparison 1", "X vs Y.", node_type=NodeType.COMPARISON),
         ]
     )
     writer = OkfWriter()
@@ -527,7 +527,7 @@ def test_no_citations_unchanged() -> None:
 
 def test_source_footnote_definition_is_referenced(tmp_path: Path) -> None:
     """Generated page: every [^id]: definition has a matching [^id] reference."""
-    wiki = _make_wiki([_make_node("n1", "Page One", "Claim [sources/paper-1.pdf].", node_type="concept", provenance=["paper-1"])])
+    wiki = _make_wiki([_make_node("n1", "Page One", "Claim [sources/paper-1.pdf].", node_type=NodeType.CONCEPT, provenance=["paper-1"])])
     OkfWriter().write(wiki, tmp_path)
     page = (tmp_path / "concepts" / "n1.md").read_text(encoding="utf-8")
     assert "[^paper-1]: paper-1" in page
@@ -538,8 +538,8 @@ def test_index_has_single_top_level_heading(tmp_path: Path) -> None:
     """MD025: bundle index keeps one H1 (group headings are ##)."""
     wiki = _make_wiki(
         [
-            _make_node("c1", "Concept A", "x", node_type="concept"),
-            _make_node("c2", "Concept B", "x", node_type="concept"),
+            _make_node("c1", "Concept A", "x", node_type=NodeType.CONCEPT),
+            _make_node("c2", "Concept B", "x", node_type=NodeType.CONCEPT),
         ]
     )
     OkfWriter().write(wiki, tmp_path)
@@ -559,7 +559,7 @@ def _make_node(
     node_id: str = "test",
     title: str = "Test Page",
     content: str = "This is test content.",
-    node_type: str = "concept",
+    node_type: NodeType = NodeType.CONCEPT,
     provenance: list[str] | None = None,
 ) -> WikiNode:
     metadata = {}

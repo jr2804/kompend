@@ -14,13 +14,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final, TypedDict
 
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT
 from kompend.agents.deps import QueryDeps
 from kompend.agents.query import QueryAgent
 from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
-from kompend.core.config import DEFAULTS, RlmConfig
-from kompend.core.config.keys import DISPLAY_SEARCH_SNIPPET_CHARS
+from kompend.core.config import RlmConfig
+from kompend.core.config._configs import BudgetConfig, DisplayConfig, LLMConfig
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
+from kompend.core.models.metadata import meta_str_list_dict
 from kompend.logging import get_logger
 from kompend.rag.zvec_store import VectorStoreLike, ZvecField
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
@@ -591,16 +593,13 @@ def _node_attributes(node: WikiNode | None) -> dict[str, list[str]]:
     """Attributes from node metadata, guarded against missing node."""
     if node is None or not node.metadata:
         return {}
-    raw = node.metadata.get(MetadataField.ATTRIBUTES)
-    if isinstance(raw, dict):
-        return {k: list(v) if isinstance(v, list) else [str(v)] for k, v in raw.items()}
-    return {}
+    return meta_str_list_dict(node.metadata.get(MetadataField.ATTRIBUTES))
 
 
 def extract_snippet(content: str, query_tokens: set[str], max_chars: int | None = None) -> str:
     """Extract a snippet around the first query token match."""
     if max_chars is None:
-        max_chars = DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)
+        max_chars = DisplayConfig().search_snippet_chars
     if not content or not query_tokens:
         if content and len(content) > max_chars:
             return content[:max_chars] + "..."

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from kompend.core.models import WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.search.budget import ContextBudgetManager, RetrievalMode
 
 
@@ -130,7 +131,7 @@ def _make_node(
         id=node_id,
         title=node_id,
         content=content,
-        node_type="concept",
+        node_type=NodeType.CONCEPT,
         depth=depth,
         parent_id=parent_id,
         children_ids=children_ids or [],

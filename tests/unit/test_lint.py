@@ -16,6 +16,7 @@ from kompend.compilation._two_phase_core import Extraction
 from kompend.compilation.schema import Concept, Entity
 from kompend.core.config.rumdl import _shipped_hash, resolve_rumdl_config
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.lint import _remediation_gaps as gaps_module
 from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
@@ -403,7 +404,7 @@ class TestEmptyPageRule:
         assert len(failures) == 1
 
     def test_none_content_detected(self) -> None:
-        node = WikiNode(id="n1", title="Alpha", content="", node_type="section")
+        node = WikiNode(id="n1", title="Alpha", content="", node_type=NodeType.SECTION)
         wiki = _make_wiki([node])
         rule = EmptyPageRule()
         results = rule.check(wiki)
@@ -1427,7 +1428,7 @@ def _make_node(
         id=node_id,
         title=title,
         content=content,
-        node_type="section",
+        node_type=NodeType.SECTION,
         source_chunks=source_chunks,
         metadata=meta,
     )

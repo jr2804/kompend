@@ -15,6 +15,7 @@ from pathlib import Path
 import pytest
 
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.core.models.references import Author, Reference
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.output.markdown import MarkdownWriter
@@ -357,7 +358,7 @@ def _make_wiki() -> CompiledWiki:
                 id="test-page",
                 title="Test Page",
                 content="This cites [1] something.",
-                node_type="concept",
+                node_type=NodeType.CONCEPT,
                 source_chunks=["c1"],
                 metadata={
                     "heading_level": 1,

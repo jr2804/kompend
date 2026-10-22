@@ -15,6 +15,7 @@ from __future__ import annotations
 from kompend.compilation._two_phase_core import upsert_node
 from kompend.compilation.base import BaseCompiler
 from kompend.core.models import WikiNode
+from kompend.core.models.enums import NodeType
 
 
 class TestMergeByConceptKey:
@@ -57,7 +58,7 @@ class TestMergeByConceptKey:
             id="entity-x",
             title="Entity X",
             content="x",
-            node_type="entity",
+            node_type=NodeType.ENTITY,
             source_chunks=[],
             metadata={},
         )
@@ -65,7 +66,7 @@ class TestMergeByConceptKey:
             id="summary-y",
             title="Summary Y",
             content="y",
-            node_type="summary",
+            node_type=NodeType.SUMMARY,
             source_chunks=[],
             metadata={},
         )
@@ -98,7 +99,7 @@ class TestUpsertNodeHardensSourceChunks:
             id="x",
             title="X",
             content="x",
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
             source_chunks=None,  # type: ignore[arg-type]
             metadata={},
         )
@@ -113,7 +114,7 @@ def _node(title: str, content: str = "body", chunks: list[str] | None = None) ->
         id=title.lower().replace(" ", "-"),
         title=title,
         content=content,
-        node_type="concept",
+        node_type=NodeType.CONCEPT,
         source_chunks=chunks or [],
         metadata={},
     )

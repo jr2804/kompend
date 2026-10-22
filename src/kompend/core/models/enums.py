@@ -16,11 +16,15 @@ __all__ = [
     "ChunkNodeField",
     "ChunkStrategy",
     "ChunkTreeField",
+    "EdgeType",
     "ElementType",
     "ExtractionField",
     "MetadataField",
+    "NodeType",
+    "OkfField",
     "StructuredField",
     "WikiField",
+    "node_type_from_okf_type",
 ]
 #: Chars of the asset kind value used as its short id prefix when a kind
 #: declares no explicit alias (``tab-<hash>``, ``fig-<hash>``).
@@ -135,6 +139,22 @@ class ChunkTreeField(StrEnum):
     STRATEGY = "strategy"
 
 
+class EdgeType(StrEnum):
+    """Wiki graph edge types — the ``GraphEdge.type`` vocabulary.
+
+    Every producer of a graph edge (the graph compiler, the assembly flow, the
+    VLM enricher, the markdown loader) uses these values, so the edge types
+    have one home instead of a literal per call site.
+    """
+
+    ENTITY_REFERENCE = "entity_reference"
+    CONCEPT_REFERENCE = "concept_reference"
+    TITLE_REFERENCE = "title_reference"
+    RELATED = "related"
+    SIBLING = "sibling"
+    REFERENCE = "reference"
+
+
 class ElementType(StrEnum):
     """Document element types for structure-preserving extraction.
 
@@ -213,6 +233,88 @@ class MetadataField(StrEnum):
     RELATED = "related"
     ENTITY_TYPE = "entity_type"
     WIKILINK_ALIASES = "wikilink_aliases"
+    FRONTMATTER = "frontmatter"
+
+
+class NodeType(StrEnum):
+    """Canonical wiki node types — the ``WikiNode.node_type`` vocabulary.
+
+    Every producer of a node type (the graph compiler, the capture writer,
+    the OKF frontmatter writer) and every consumer (folder routing, the
+    index catalog) uses these values, so the vocabulary has one home.
+
+    The members below are the *built-in* kinds. A vault may add extra page
+    kinds through ``compile.extraction.categories``; those are not members
+    but are carried as extra pseudo-members of the same type (see
+    :meth:`of`), so a node type is always a ``NodeType`` and never a bare
+    string.
+    """
+
+    CONCEPT = "concept"
+    COMPARISON = "comparison"
+    ENTITY = "entity"
+    SUMMARY = "summary"
+    OVERVIEW = "overview"
+    PROCEDURE = "procedure"
+    SECTION = "section"
+    PAGE = "page"
+    SOURCE = "source"
+    QUALITY = "quality"
+    REFERENCE = "reference"
+
+    @property
+    def okf_type(self) -> str:
+        """The OKF ``type`` label for this node type (e.g. ``Concept``)."""
+        return self.value.title()
+
+    @classmethod
+    def of(cls, value: str | NodeType) -> NodeType:
+        """Map a kind string onto the vocabulary.
+
+        A built-in kind maps to its member. Any other non-empty kind — the
+        extra categories a vault configures through
+        ``compile.extraction.categories`` — maps to an extra pseudo-member of
+        the same type, so the field stays one type end to end. An empty kind
+        is a bug and raises.
+        """
+        if isinstance(value, cls):
+            return value
+        normalized = value.strip().lower()
+        if not normalized:
+            raise ValueError("A node type must not be empty")
+        member = cls._value2member_map_.get(normalized)
+        if isinstance(member, cls):
+            return member
+        extra = str.__new__(cls, normalized)
+        extra._name_ = normalized.title()
+        extra._value_ = normalized
+        # Cache it so the same extra kind is always the same object.
+        cls._value2member_map_[normalized] = extra
+        return extra
+
+
+class OkfField(StrEnum):
+    """OKF v0.2 frontmatter keys — the YAML contract every writer emits.
+
+    The vault writers, the capture writers and the markdown reader all
+    speak these keys; a bare ``"description"`` literal in one of them
+    would be a second, silently divergent contract.
+    """
+
+    OKF_VERSION = "okf_version"
+    TYPE = "type"
+    TITLE = "title"
+    DESCRIPTION = "description"
+    STATUS = "status"
+    TAGS = "tags"
+    ATTRIBUTES = "attributes"
+    GENERATED = "generated"
+    VERIFIED = "verified"
+    SOURCES = "sources"
+    KIND = "kind"
+    SOURCE_FILES = "source_files"
+    COMPILED_AT = "compiled_at"
+    TIMESTAMP = "timestamp"
 
 
 class StructuredField(StrEnum):
@@ -259,3 +361,15 @@ class WikiField(StrEnum):
     LLM_DEGRADATION = "llm_degradation"
     TIER_TIMINGS = "tier_timings"
     METADATA = "metadata"
+
+
+def node_type_from_okf_type(okf_type: str) -> NodeType:
+    """Map an OKF ``type`` label back to its :class:`NodeType`.
+
+    Unknown labels fall back to :attr:`NodeType.CONCEPT` — a page with an
+    unrecognized type still routes as a concept page.
+    """
+    try:
+        return NodeType(okf_type.strip().lower())
+    except ValueError:
+        return NodeType.CONCEPT

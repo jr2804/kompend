@@ -47,16 +47,30 @@ from wenmode.nodes import Node, Paragraph, Text
 
 from kompend.compilation.concept_keys import nearest_alias, normalize_concept_key
 from kompend.core.models import CompiledWiki, MetadataField, Reference, WikiNode
+from kompend.core.models.enums import NodeType
+from kompend.core.models.metadata import meta_int, meta_list_dict, meta_str, meta_str_list
 from kompend.core.page_builder import PageBuilder, link
-from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, INDEX_FILE, LOG_FILE, QUALITY_FILE, SUMMARIES_SUBDIR, safe_stem
+from kompend.core.paths import (
+    ATTACHMENTS_DIR_NAME,
+    DEFAULT_OUTPUT_DIR_NAME,
+    INDEX_FILE,
+    LOG_FILE,
+    OVERVIEW_MD,
+    QUALITY_FILE,
+    REFERENCES_MD,
+    SUMMARIES_SUBDIR,
+    WIKI_MARKDOWN_FILE,
+    safe_stem,
+)
 from kompend.core.pipeline.assets import AssetStore
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.utils.time import iso_local
-from kompend.output.models import Document, OkfSource
+from kompend.output.models import Document, OkfSource, TrustEvent
 from kompend.output.pages.log import append_log_entry
 from kompend.output.renderer import DocumentRenderer
 from kompend.output.vault import OKF_VERSION, VaultWriter
 from kompend.output.vault import okf_frontmatter_yaml as _okf_frontmatter
+from kompend.types import MetadataValue
 
 # Regex to find [[wikilinks]] or [[wikilinks|alias]] in body text.
 _WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
@@ -70,10 +84,6 @@ _CITATION_RE = re.compile(r"\[sources/[^\]\n]+\]")
 
 # Match inline footnote references ``[^id]``.
 _FOOTNOTE_REF_RE = re.compile(r"\[\^([^\]]+)\]")
-
-
-# _NoAliasDumper + okf_frontmatter_yaml live in vault.py (shared with the
-# per-source summary writer); markdown imports them below.
 
 
 class MarkdownWriter(VaultWriter):
@@ -93,7 +103,8 @@ class MarkdownWriter(VaultWriter):
         frontmatter_defaults: dict[str, Any] | None = None,
         rumdl_config: Path | None = None,
         vault_mode: bool = True,
-        max_related_links: int = 15,
+        max_related_links: int | None = None,
+        description_max_chars: int | None = None,
         references_file: Path | None = None,
         assets_file: Path | None = None,
         base_dir: Path | None = None,
@@ -101,6 +112,7 @@ class MarkdownWriter(VaultWriter):
     ) -> None:
         super().__init__(
             max_related_links=max_related_links,
+            description_max_chars=description_max_chars,
             references_file=references_file,
             assets_file=assets_file,
             base_dir=base_dir,
@@ -117,8 +129,8 @@ class MarkdownWriter(VaultWriter):
         docs = self._wiki_to_documents(wiki)
 
         if not self.vault_mode:
-            markdown = self.renderer.render_all(docs, title=wiki.metadata.get("title", "Compiled Wiki"))
-            output_file = output_dir / "wiki.md"
+            markdown = self.renderer.render_all(docs, title=meta_str(wiki.metadata.get("title"), "Compiled Wiki"))
+            output_file = output_dir / WIKI_MARKDOWN_FILE
             output_file.write_text(markdown, encoding="utf-8")
             return output_file
 
@@ -140,7 +152,7 @@ class MarkdownWriter(VaultWriter):
         docs: list[Document] = []
         compiled_at = iso_local()
         ref_store = self._load_ref_store()
-        verified = wiki.metadata.get("verified")
+        verified = _trust_events(wiki.metadata.get("verified"))
         verification = self._load_verification()
 
         for node in wiki.nodes:
@@ -149,6 +161,7 @@ class MarkdownWriter(VaultWriter):
                 node,
                 compiled_at,
                 self.frontmatter_defaults,
+                description_max_chars=self.description_max_chars,
                 sources=sources or None,
                 verified=verified,
             )
@@ -165,7 +178,7 @@ class MarkdownWriter(VaultWriter):
                 folder = self._folder_for_kind(node.node_type, str(node.metadata.get(MetadataField.ENTITY_TYPE) or ""))
                 images = self.portablize_images(
                     images,
-                    node.metadata.get(MetadataField.PROVENANCE) or [],
+                    meta_str_list(node.metadata.get(MetadataField.PROVENANCE)),
                     folder,
                 )
                 body = self._embed_images(body, images)
@@ -175,11 +188,11 @@ class MarkdownWriter(VaultWriter):
                     title=node.title or "Untitled",
                     body=body,
                     frontmatter=frontmatter,
-                    heading_level=node.metadata.get("heading_level", 1),
+                    heading_level=meta_int(node.metadata.get("heading_level"), 1),
                     source_chunks=node.source_chunks,
                     page_slug=node.id,
                     node_type=node.node_type,
-                    entity_subtype=(str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if node.node_type == "entity" else ""),
+                    entity_subtype=(str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if node.node_type is NodeType.ENTITY else ""),
                 ),
             )
 
@@ -255,7 +268,7 @@ class MarkdownWriter(VaultWriter):
 
         fm = f'---\nokf_version: "{OKF_VERSION}"\n---'
         b = PageBuilder()
-        b.heading(1, wiki.metadata.get("title", "Knowledge Bundle"))
+        b.heading(1, meta_str(wiki.metadata.get("title"), "Knowledge Bundle"))
 
         for type_name in sorted(by_type):
             group = by_type[type_name]
@@ -281,14 +294,14 @@ class MarkdownWriter(VaultWriter):
         if summaries:
             b.heading(2, "Sources")
             b.bullet_list([link(f"summaries/{p.name}", p.stem) for p in summaries])
-        surfaces: list[tuple[str, str]] = [("references.md", "Corpus sources + cited works not in corpus")]
+        surfaces: list[tuple[str, str]] = [(REFERENCES_MD, "Corpus sources + cited works not in corpus")]
         if (output_dir / QUALITY_FILE).exists():
             surfaces.append((QUALITY_FILE, "Claim verification summary (WiCER pass)"))
-        if (output_dir / "overview.md").exists():
-            surfaces.append(("overview.md", "Thematic overview of the corpus"))
+        if (output_dir / OVERVIEW_MD).exists():
+            surfaces.append((OVERVIEW_MD, "Thematic overview of the corpus"))
         if (output_dir / LOG_FILE).exists():
             surfaces.append((LOG_FILE, "Append-only activity journal"))
-        surfaces.append(("../attachments/", "Media & figures extracted from sources"))
+        surfaces.append((f"../{ATTACHMENTS_DIR_NAME}/", "Media & figures extracted from sources"))
         if surfaces:
             b.heading(2, "References & surfaces")
             b.bullet_list([Paragraph(children=[link(name, name), Text(value=f" — {desc}")]) for name, desc in surfaces])
@@ -308,6 +321,16 @@ class MarkdownWriter(VaultWriter):
             action="Creation",
             detail=f"Compiled {article_count} page(s) from {source_count} source(s).",
         )
+
+
+# _NoAliasDumper + okf_frontmatter_yaml live in vault.py (shared with the
+# per-source summary writer); markdown imports them below.
+
+
+def _trust_events(value: MetadataValue | None) -> list[TrustEvent] | None:
+    """The metadata value as OKF trust events; ``None`` when there are none."""
+    events = [TrustEvent(by=event.get("by", ""), at=event.get("at", "")) for event in meta_list_dict(value)]
+    return events or None
 
 
 def _relativize(bundle_path: str, folder: str) -> str:
@@ -417,15 +440,14 @@ def _provenance_sources(
     no structured references exist, the raw provenance identifiers are wrapped
     as minimal ``{id, resource}`` entries so the field stays spec-shaped.
     """
-    provenance = node.metadata.get(MetadataField.PROVENANCE) or []
+    provenance = meta_str_list(node.metadata.get(MetadataField.PROVENANCE))
     if not provenance:
         return []
 
     # Deduplicate provenance identifiers, preserving order.
     seen: set[str] = set()
     prov_ids: list[str] = []
-    for p in provenance:
-        ps = str(p)
+    for ps in provenance:
         if ps and ps not in seen:
             seen.add(ps)
             prov_ids.append(ps)

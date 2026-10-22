@@ -18,7 +18,13 @@ LLM-coding mistakes observed in this codebase:
 - Magic ``[:N]`` and ``[:N].replace(...)`` string/list crops are flagged
   unless the source line also references a ``config.get(...)`` /
   ``DEFAULTS.get(...)`` / ``cfg.get(...)`` call. This is the
-  "Antipattern 4" enforcement from the project AGENTS.md.
+  "Antipattern 4" enforcement from the project AGENTS.md. A crop whose bound
+  is a *named constant* is not matched by the scanner at all — the constant
+  is the traceable form the rule asks for.
+- Hard-coded wiki file names (``"index.md"``, ``"references.md"``, …) are
+  flagged: the file names live once in :mod:`kompend.core.paths` as
+  ``Final[str]`` constants and every other site imports them. A hard-coded
+  name is a second, silent source of truth.
 - Hard-coded ``"KOMP_..."`` env-var literals in env-access positions
   (``os.environ``, ``envvar=``, ``validation_alias``, ``_set_env``) are
   flagged. The single definition lives in ``kompend/core/env.py`` (``EnvVar``);
@@ -42,6 +48,7 @@ import json
 import re
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import cache
 from pathlib import Path
 
 from _common import repo_root, require_scanned
@@ -51,7 +58,7 @@ SRC_ROOT = REPO_ROOT / "src" / "kompend"
 TESTS_ROOT = REPO_ROOT / "tests"
 
 # Banned-noqa rules. Each entry: the rule code that must NEVER appear in
-# a ``# noqa: CODE`` comment. Add new ones here as the project decides
+# a ``noqa: CODE`` comment. Add new ones here as the project decides
 # to harden enforcement.
 BANNED_NOQA: frozenset[str] = frozenset(
     {
@@ -78,13 +85,19 @@ _DATA_DRIVEN_ACCESSOR_RE = re.compile(
 # prefixes for display/storage and that's not a data crop.
 _HASH_TRUNCATION_RE = re.compile(r"(?:hexdigest\s*\(\s*\)|\.hex)\s*\[:\s*\d+\s*\]")
 
-
-_LINE_PADDING_RE = re.compile(r"\bif\s+len\s*\(")
-
 # Env-var access mechanisms. A ``"KOMP_..."`` literal on a line with one of
 # these reads/sets an env var and must reference an ``EnvVar`` member.
 _ENV_ACCESS_RE = re.compile(r"\b(?:os\.environ|envvar|validation_alias|_set_env|setenv\(|delenv\()\b")
 _KOMP_LITERAL_RE = re.compile(r'"KOMP_[A-Z_]+"')
+
+# Hard-coded wiki file names. The canonical names live in
+# ``kompend/core/paths.py`` as ``Final[str]`` constants; a literal that
+# duplicates one of them is a second source of truth for a path that
+# several modules share.
+_WIKI_FILENAME_RE = re.compile(r"""["']([A-Za-z0-9][A-Za-z0-9_.-]*\.md)["']""")
+
+# The single allowed definition site for the wiki file names.
+_PATHS_MODULE = SRC_ROOT / "core" / "paths.py"
 
 # The single allowed definition site for ``KOMP_*`` env-var names.
 _ENV_MODULE = SRC_ROOT / "core" / "env.py"
@@ -192,7 +205,62 @@ def scan_file(path: Path) -> list[Violation]:
     out.extend(scan_global_usage(path, tree, lines))
     out.extend(scan_magic_crops(path, lines))
     out.extend(scan_env_var_literals(path, lines))
+    out.extend(scan_wiki_filenames(path, lines))
     return out
+
+
+def scan_wiki_filenames(path: Path, lines: list[str]) -> list[Violation]:
+    """Flag hard-coded wiki file names that duplicate a path constant.
+
+    A wiki file name is a shared path component: the vault writer, the index
+    page, the lint fixer and the MCP tools all have to agree on it. The
+    canonical names live in :mod:`kompend.core.paths` as ``Final[str]``
+    constants — a literal that repeats one of them is a second source of
+    truth. Names that no constant covers (scaffold templates such as
+    ``README.md``) are not flagged: they are not shared path components.
+    """
+    if path == _PATHS_MODULE or _is_test_file(path):
+        return []
+    known = _path_filename_constants()
+    if not known:
+        return []
+    out: list[Violation] = []
+    for i, line in enumerate(lines, start=1):
+        code = line.split("#", 1)[0]
+        if '"""' in code:
+            continue
+        for m in _WIKI_FILENAME_RE.finditer(code):
+            if m.group(1) not in known:
+                continue
+            out.append(
+                Violation(
+                    path,
+                    i,
+                    m.start() + 1,
+                    "HARD-CODED-FILENAME",
+                    f"hard-coded wiki file name {m.group(0)} — use the Final constant from kompend.core.paths",
+                )
+            )
+    return out
+
+
+@cache
+def _path_filename_constants() -> frozenset[str]:
+    """The ``*.md`` file names defined as ``Final[str]`` in ``core/paths.py``."""
+    try:
+        source = _PATHS_MODULE.read_text(encoding="utf-8")
+        tree = ast.parse(source, filename=str(_PATHS_MODULE))
+    except (OSError, SyntaxError):
+        return frozenset()
+    names: set[str] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
+            continue
+        if "Final" not in ast.unparse(node.annotation):
+            continue
+        if isinstance(node.value, ast.Constant) and isinstance(node.value.value, str) and node.value.value.endswith(".md"):
+            names.add(node.value.value)
+    return frozenset(names)
 
 
 def scan_env_var_literals(path: Path, lines: list[str]) -> list[Violation]:
@@ -339,13 +407,13 @@ def scan_magic_crops(path: Path, lines: list[str]) -> list[Violation]:
     the legitimate patterns:
     - hash truncation: ``hexdigest()[:16]`` is intentional and safe.
     - data-driven slices: lines that compute the limit from config.
+    - named constants: a bound that is a module constant (``title[:MAX]``)
+      is not matched by the scanner — the constant is the traceable form.
 
     The scanner also skips:
     - Comment lines (anything after ``#`` in a source line)
-    - Lines where the slice is the only thing on the RHS of a string
-      arithmetic that strongly suggests line-length padding rather than
-      data truncation (heuristic: slice is the entire expression and the
-      file is in okf_writer.py / packs / cli).
+    - Lines the author opted out of via ``# noqa:`` (a justification for
+      the crop is required in that case).
     """
     if _is_test_file(path):
         return []
@@ -360,8 +428,6 @@ def scan_magic_crops(path: Path, lines: list[str]) -> list[Violation]:
             if _HASH_TRUNCATION_RE.search(code):
                 continue
             if _DATA_DRIVEN_ACCESSOR_RE.search(code):
-                continue
-            if _is_line_padding_context(lines, i - 1):
                 continue
             out.append(
                 Violation(
@@ -382,13 +448,9 @@ def scan_magic_crops(path: Path, lines: list[str]) -> list[Violation]:
 
 # Line-length padding slices are NOT data truncation — they enforce a
 # physical output width (e.g. a Markdown hard line break at 117 chars).
-# The pattern: the slice is preceded on the previous non-blank line by
-# ``if len(x) > N``. We use a small window (3 lines back) to catch this.
-def _is_line_padding_context(lines: list[str], current_idx_0based: int) -> bool:
-    """True if a ``if len(...) > N`` guard appears just above this slice."""
-    return any(_LINE_PADDING_RE.search(lines[j]) for j in range(max(0, current_idx_0based - 3), current_idx_0based))
-
-
+# Such a crop must use a named constant (or a config-derived limit) and
+# carry a ``noqa:`` justification; the scanner no longer guesses from
+# the surrounding lines, because that guess hid real data crops.
 def _is_noqa_line(line: str) -> re.Match[str] | None:
     """Return a match object for ``# noqa: CODE[, CODE...]`` if present."""
     return re.search(r"#\s*noqa\s*:\s*([A-Z0-9_, ]+)", line)

@@ -11,14 +11,16 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.concept_keys import is_structural_concept
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_EXCERPT_CHARS
+from kompend.core.config._configs import DisplayConfig
 from kompend.core.models import ChunkTree, CompiledWiki, GraphEdge, MetadataField, ResolvedChunk, TocEntry, WikiField, WikiNode
+from kompend.core.models.enums import EdgeType, NodeType, OkfField
+from kompend.core.models.metadata import meta_str, meta_str_list
 from kompend.logging import get_logger
+from kompend.types import JSONValue
 
 logger = get_logger(__name__)
 
@@ -119,7 +121,7 @@ class GraphCompiler(BaseCompiler):
 
         kind_counts: dict[str, int] = defaultdict(int)
         for n in nodes:
-            kind_counts[n.node_type] += 1
+            kind_counts[n.node_type.value] += 1
 
         return CompiledWiki(
             nodes=nodes,
@@ -162,8 +164,10 @@ class GraphCompiler(BaseCompiler):
                     MetadataField.HEADING_CONTEXT: heading,
                     MetadataField.SOURCE_FILE: source,
                     WikiField.CHUNK_COUNT: len(group_chunks),
-                    "frontmatter": {"kind": kind},
-                    MetadataField.TAGS: list({tag for rc in group_chunks for tag in (rc.chunk.metadata.get(MetadataField.TAGS) or [])}),
+                    MetadataField.FRONTMATTER: {OkfField.KIND: kind.value},
+                    MetadataField.TAGS: sorted(
+                        {tag for rc in group_chunks for tag in meta_str_list(rc.chunk.metadata.get(MetadataField.TAGS))},
+                    ),
                     MetadataField.ATTRIBUTES: _collect_attributes(group_chunks),
                 },
             )
@@ -172,8 +176,99 @@ class GraphCompiler(BaseCompiler):
 
         return nodes, node_index
 
+    def _build_concept_pages(
+        self,
+        nodes: list[WikiNode],
+        entity_location: dict[str, set[int]],
+        *,
+        min_sources: int,
+        max_pages: int,
+    ) -> tuple[list[WikiNode], list[GraphEdge]]:
+        """Create concept pages for entities spanning multiple source documents.
+
+        Each entity appearing in nodes from at least *min_sources* distinct
+        ``source_file`` values gets a synthesised page that aggregates
+        relevant excerpts from every mentioning section.  Bidirectional
+        edges connect the concept page to each source section.
+        """
+        node_sources: dict[str, str | None] = {n.id: meta_str(n.metadata.get(MetadataField.SOURCE_FILE)) or None for n in nodes}
+
+        candidates: list[tuple[str, set[int], set[str]]] = []
+        for entity_name, node_indices in entity_location.items():
+            if not entity_name or not entity_name.strip():
+                continue
+            # Drop table/spreadsheet structural artifacts (column headers,
+            # field labels, generic metadata labels) the same way the
+            # TwoPhase backend does, so they never become concept pages on
+            # either compiler.
+            if is_structural_concept(entity_name):
+                continue
+            sources: set[str] = set()
+            for idx in node_indices:
+                src = node_sources.get(nodes[idx].id)
+                # Skip pseudo-source ids emitted by the table layer (e.g.
+                # ``table.data_sources``) — they are not real files and
+                # only pollute concept provenance.
+                if src is not None and not src.startswith("table"):
+                    sources.add(src)
+            if len(sources) >= min_sources:
+                candidates.append((entity_name, node_indices, sources))
+
+        candidates.sort(key=lambda c: len(c[2]), reverse=True)
+        if max_pages > 0 and len(candidates) > max_pages:
+            logger.warning(
+                "%d concept-page candidate(s) exceed max_concept_pages=%d — generating all of them; the cap is a warning threshold, never an exclusion",
+                len(candidates),
+                max_pages,
+            )
+
+        concept_nodes: list[WikiNode] = []
+        concept_edges: list[GraphEdge] = []
+        entity_lower = ""
+
+        for entity_name, node_indices, sources in candidates:
+            concept_id = f"concept_{len(concept_nodes)}"
+            entity_lower = entity_name.lower()
+            excerpt_chars = self._display.excerpt_chars
+            excerpts: list[str] = []
+            for idx in sorted(node_indices):
+                node = nodes[idx]
+                excerpt = ""
+                for para in (node.content or "").split("\n\n"):
+                    if entity_lower in para.lower():
+                        excerpt = para.strip()[:excerpt_chars]
+                        break
+                if not excerpt:
+                    excerpt = (node.content or "")[:excerpt_chars].strip()
+                if excerpt:
+                    excerpts.append(f"**{node.title}**\n\n{excerpt}")
+
+            content = "\n\n---\n\n".join(excerpts) if excerpts else f"*{entity_name}*"
+
+            concept_node = WikiNode(
+                id=concept_id,
+                title=entity_name,
+                content=content,
+                node_type=NodeType.CONCEPT,
+                source_chunks=[],
+                metadata={
+                    "cross_cutting": True,
+                    MetadataField.SOURCE_COUNT: len(sources),
+                    "referenced_nodes": [nodes[idx].id for idx in sorted(node_indices)],
+                    MetadataField.FRONTMATTER: {OkfField.KIND: NodeType.CONCEPT.value},
+                },
+            )
+            concept_nodes.append(concept_node)
+
+            for idx in sorted(node_indices):
+                target_id = nodes[idx].id
+                concept_edges.append({"source": concept_id, "target": target_id, "type": EdgeType.CONCEPT_REFERENCE})
+                concept_edges.append({"source": target_id, "target": concept_id, "type": EdgeType.CONCEPT_REFERENCE})
+
+        return concept_nodes, concept_edges
+
     @staticmethod
-    def _infer_page_kind(title: str, heading: str, entity_names: set[str]) -> str:
+    def _infer_page_kind(title: str, heading: str, entity_names: set[str]) -> NodeType:
         """Infer a built-in page kind from heading, title, and resolved entities.
 
         The heuristic is intentionally simple: it favours ``overview`` for root
@@ -182,12 +277,12 @@ class GraphCompiler(BaseCompiler):
         """
         lowered = title.lower()
         if heading == "_root" or lowered == "overview":
-            return "overview"
+            return NodeType.OVERVIEW
         if any(keyword in lowered for keyword in ("comparison", "compare", "versus", " vs ", " vs. ")):
-            return "comparison"
+            return NodeType.COMPARISON
         if lowered in entity_names:
-            return "entity"
-        return "concept"
+            return NodeType.ENTITY
+        return NodeType.CONCEPT
 
     @staticmethod
     def _source_stats(chunks: list[ResolvedChunk]) -> tuple[int, list[str]]:
@@ -261,7 +356,7 @@ class GraphCompiler(BaseCompiler):
                             {
                                 "source": nodes[sorted_indices[i]].id,
                                 "target": nodes[sorted_indices[j]].id,
-                                "type": "entity_reference",
+                                "type": EdgeType.ENTITY_REFERENCE,
                                 "entity": name,
                             }
                         )
@@ -280,7 +375,7 @@ class GraphCompiler(BaseCompiler):
 
         for rc in chunks:
             for rel in rc.relations:
-                rel_type = rel.get("type", "related")
+                rel_type = rel.get("type", EdgeType.RELATED)
                 confidence = rel.get("confidence")
                 source_name = rel.get("source")
                 target_name = rel.get("target")
@@ -324,8 +419,8 @@ class GraphCompiler(BaseCompiler):
 
         by_source: dict[str, list[int]] = defaultdict(list)
         for idx, node in enumerate(nodes):
-            source = node.metadata.get(MetadataField.SOURCE_FILE)
-            if source is not None:
+            source = meta_str(node.metadata.get(MetadataField.SOURCE_FILE))
+            if source:
                 by_source[source].append(idx)
 
         new_edges: list[GraphEdge] = []
@@ -338,95 +433,8 @@ class GraphCompiler(BaseCompiler):
                 for a, b in [(src_id, tgt_id), (tgt_id, src_id)]:
                     if (a, b) not in seen:
                         seen.add((a, b))
-                        new_edges.append({"source": a, "target": b, "type": "sibling"})
+                        new_edges.append({"source": a, "target": b, "type": EdgeType.SIBLING})
         return new_edges
-
-    @staticmethod
-    def _build_concept_pages(
-        nodes: list[WikiNode],
-        entity_location: dict[str, set[int]],
-        *,
-        min_sources: int,
-        max_pages: int,
-    ) -> tuple[list[WikiNode], list[GraphEdge]]:
-        """Create concept pages for entities spanning multiple source documents.
-
-        Each entity appearing in nodes from at least *min_sources* distinct
-        ``source_file`` values gets a synthesised page that aggregates
-        relevant excerpts from every mentioning section.  Bidirectional
-        edges connect the concept page to each source section.
-        """
-        node_sources: dict[str, str | None] = {n.id: n.metadata.get(MetadataField.SOURCE_FILE) for n in nodes}
-
-        candidates: list[tuple[str, set[int], set[str]]] = []
-        for entity_name, node_indices in entity_location.items():
-            if not entity_name or not entity_name.strip():
-                continue
-            # Drop table/spreadsheet structural artifacts (column headers,
-            # field labels, generic metadata labels) the same way the
-            # TwoPhase backend does, so they never become concept pages on
-            # either compiler.
-            if is_structural_concept(entity_name):
-                continue
-            sources: set[str] = set()
-            for idx in node_indices:
-                src = node_sources.get(nodes[idx].id)
-                # Skip pseudo-source ids emitted by the table layer (e.g.
-                # ``table.data_sources``) — they are not real files and
-                # only pollute concept provenance.
-                if src is not None and not src.startswith("table"):
-                    sources.add(src)
-            if len(sources) >= min_sources:
-                candidates.append((entity_name, node_indices, sources))
-
-        candidates.sort(key=lambda c: len(c[2]), reverse=True)
-        if max_pages > 0:
-            candidates = candidates[:max_pages]
-
-        concept_nodes: list[WikiNode] = []
-        concept_edges: list[GraphEdge] = []
-        entity_lower = ""
-
-        for entity_name, node_indices, sources in candidates:
-            concept_id = f"concept_{len(concept_nodes)}"
-            entity_lower = entity_name.lower()
-            excerpt_chars = DEFAULTS.get(DISPLAY_EXCERPT_CHARS, 300)
-            excerpts: list[str] = []
-            for idx in sorted(node_indices):
-                node = nodes[idx]
-                excerpt = ""
-                for para in (node.content or "").split("\n\n"):
-                    if entity_lower in para.lower():
-                        excerpt = para.strip()[:excerpt_chars]
-                        break
-                if not excerpt:
-                    excerpt = (node.content or "")[:excerpt_chars].strip()
-                if excerpt:
-                    excerpts.append(f"**{node.title}**\n\n{excerpt}")
-
-            content = "\n\n---\n\n".join(excerpts) if excerpts else f"*{entity_name}*"
-
-            concept_node = WikiNode(
-                id=concept_id,
-                title=entity_name,
-                content=content,
-                node_type="concept",
-                source_chunks=[],
-                metadata={
-                    "cross_cutting": True,
-                    MetadataField.SOURCE_COUNT: len(sources),
-                    "referenced_nodes": [nodes[idx].id for idx in sorted(node_indices)],
-                    "frontmatter": {"kind": "concept"},
-                },
-            )
-            concept_nodes.append(concept_node)
-
-            for idx in sorted(node_indices):
-                target_id = nodes[idx].id
-                concept_edges.append({"source": concept_id, "target": target_id, "type": "concept_reference"})
-                concept_edges.append({"source": target_id, "target": concept_id, "type": "concept_reference"})
-
-        return concept_nodes, concept_edges
 
     @staticmethod
     def _build_toc(nodes: list[WikiNode]) -> list[TocEntry]:
@@ -464,7 +472,7 @@ class GraphCompiler(BaseCompiler):
             if tree is None:
                 continue
 
-            structured_sections: list[dict[str, Any]] = []
+            structured_sections: list[JSONValue] = []
             for chunk_node in tree.walk():
                 if chunk_node.structured is None:
                     continue

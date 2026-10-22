@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -32,6 +33,7 @@ from kompend.compilation.schema import (
 from kompend.compilation.two_phase import TwoPhaseCompiler
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.llm.context_window import ContextSource, ContextWindow
 from tests.conftest import make_tmp_vault
@@ -109,7 +111,7 @@ class TestGraphCompiler:
             id="neural-net",
             title="Neural Net",
             content="c1",
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
             source_chunks=[],
             metadata={"provenance": [{"chunk": "c1", "quote": "x"}], "related": [{"id": "r1"}]},
         )
@@ -117,7 +119,7 @@ class TestGraphCompiler:
             id="neural-net",
             title="Neural Net",
             content="c2",
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
             source_chunks=[],
             metadata={"provenance": [{"chunk": "c2"}, {"chunk": "c1", "quote": "x"}]},
         )
@@ -210,26 +212,26 @@ class TestGraphCompiler:
         c = _chunk(text="Overview content.", heading="", chunk_id="c1")
         rc = ResolvedChunk(chunk=c)
         wiki = GraphCompiler("model").compile([rc])
-        assert wiki.nodes[0].node_type == "overview"
+        assert wiki.nodes[0].node_type == NodeType.OVERVIEW
         assert wiki.nodes[0].metadata["frontmatter"]["kind"] == "overview"
 
     def test_comparison_kind_inferred(self) -> None:
         c = _chunk(text="Comparison text.", heading="Comparison of Methods", chunk_id="c1")
         rc = ResolvedChunk(chunk=c)
         wiki = GraphCompiler("model").compile([rc])
-        assert wiki.nodes[0].node_type == "comparison"
+        assert wiki.nodes[0].node_type == NodeType.COMPARISON
 
     def test_entity_kind_inferred_when_title_matches_entity(self) -> None:
         c = _chunk(text="kompend details.", heading="kompend", chunk_id="c1")
         rc = ResolvedChunk(chunk=c, entities=[{"name": "kompend", "type": "project"}])
         wiki = GraphCompiler("model").compile([rc])
-        assert wiki.nodes[0].node_type == "entity"
+        assert wiki.nodes[0].node_type == NodeType.ENTITY
 
     def test_concept_kind_default(self) -> None:
         c = _chunk(text="Some concept.", heading="Signal Theory", chunk_id="c1")
         rc = ResolvedChunk(chunk=c, entities=[{"name": "kompend", "type": "project"}])
         wiki = GraphCompiler("model").compile([rc])
-        assert wiki.nodes[0].node_type == "concept"
+        assert wiki.nodes[0].node_type == NodeType.CONCEPT
 
     def test_kind_distribution_in_metadata(self) -> None:
         chunks = [
@@ -679,7 +681,7 @@ class TestWiCERCompilerUnavailable:
                 del chunks, trees
                 self.calls.append(list(pinned_facts) if pinned_facts else None)
                 return CompiledWiki(
-                    nodes=[WikiNode(id="n0", title="N", content="X", node_type="section")],
+                    nodes=[WikiNode(id="n0", title="N", content="X", node_type=NodeType.SECTION)],
                     edges=[],
                     toc=[{"title": "N", "id": "n0", "level": 1}],
                     metadata={"chunk_count": 1},
@@ -720,7 +722,7 @@ class TestWiCERCompilerUnavailable:
                 del chunks, trees
                 self.calls.append(list(pinned_facts) if pinned_facts else None)
                 return CompiledWiki(
-                    nodes=[WikiNode(id="n0", title="N", content="X", node_type="section")],
+                    nodes=[WikiNode(id="n0", title="N", content="X", node_type=NodeType.SECTION)],
                     edges=[],
                     toc=[{"title": "N", "id": "n0", "level": 1}],
                     metadata={"chunk_count": 1},
@@ -931,7 +933,7 @@ class TestWiCERCompilerWithMock:
             ) -> CompiledWiki:
                 del chunks, trees, pinned_facts
                 return CompiledWiki(
-                    nodes=[WikiNode(id="dummy", title="Dummy", content="X", node_type="section")],
+                    nodes=[WikiNode(id="dummy", title="Dummy", content="X", node_type=NodeType.SECTION)],
                     edges=[],
                     toc=[{"title": "Dummy", "id": "dummy", "level": 1}],
                     metadata={"custom": True},
@@ -1039,18 +1041,30 @@ class TestEmptyNodeFiltering:
         assert "Has Body" in filtered
         assert "Title Only" not in filtered
 
-    def test_filter_empty_groups_disabled_when_zero(self) -> None:
+    def test_filter_empty_groups_drops_only_empty_content(self) -> None:
+        """min_content_length is a warning threshold — it never keeps empty content alive."""
         groups = {"Title Only": [ResolvedChunk(chunk=_chunk("# Title Only", heading="Title Only", chunk_id="t"))]}
-        assert BaseCompiler.filter_empty_groups(groups, min_content_length=0) == groups
+        assert BaseCompiler.filter_empty_groups(groups, min_content_length=0) == {}
+
+    def test_filter_empty_groups_keeps_short_content(self) -> None:
+        """Content shorter than the warning threshold is kept — size never excludes."""
+        groups = {"Short": [ResolvedChunk(chunk=_chunk("# Short\nTiny.", heading="Short", chunk_id="s"))]}
+        assert "Short" in BaseCompiler.filter_empty_groups(groups, min_content_length=500)
 
     def test_filter_empty_nodes_keeps_overview(self) -> None:
         nodes = [
-            WikiNode(id="n1", title="Overview", content="Brief.", node_type="overview"),
-            WikiNode(id="n2", title="Stub", content="# Stub", node_type="concept"),
+            WikiNode(id="n1", title="Overview", content="Brief.", node_type=NodeType.OVERVIEW),
+            WikiNode(id="n2", title="Stub", content="# Stub", node_type=NodeType.CONCEPT),
         ]
         filtered = BaseCompiler.filter_empty_nodes(nodes, min_content_length=10)
         assert len(filtered) == 1
         assert filtered[0].id == "n1"
+
+    def test_filter_empty_nodes_keeps_short_content(self) -> None:
+        """A short concept node is kept — only nodes without body text are dropped."""
+        nodes = [WikiNode(id="n1", title="Short", content="Tiny.", node_type=NodeType.CONCEPT)]
+        filtered = BaseCompiler.filter_empty_nodes(nodes, min_content_length=500)
+        assert len(filtered) == 1
 
     def test_graph_compiler_filters_heading_only_nodes(self) -> None:
         chunks = [
@@ -1066,16 +1080,16 @@ class TestEmptyNodeFiltering:
         """knox-h7bm: singular/plural pages with identical content collapse to one."""
         body = "Phoneme posteriorgrams are dense representations of phoneme probabilities."
         nodes = [
-            WikiNode(id="phoneme-posteriorgram", title="Phoneme Posteriorgram", content=body, node_type="concept"),
-            WikiNode(id="phoneme-posteriorgrams", title="Phoneme Posteriorgrams", content=body, node_type="concept"),
+            WikiNode(id="phoneme-posteriorgram", title="Phoneme Posteriorgram", content=body, node_type=NodeType.CONCEPT),
+            WikiNode(id="phoneme-posteriorgrams", title="Phoneme Posteriorgrams", content=body, node_type=NodeType.CONCEPT),
         ]
         kept = BaseCompiler.dedup_content_duplicate_nodes(nodes)
         assert len(kept) == 1
 
     def test_dedup_content_duplicate_nodes_keeps_distinct_bodies(self) -> None:
         nodes = [
-            WikiNode(id="a", title="A", content="Alpha concept body.", node_type="concept"),
-            WikiNode(id="b", title="B", content="Beta concept body.", node_type="concept"),
+            WikiNode(id="a", title="A", content="Alpha concept body.", node_type=NodeType.CONCEPT),
+            WikiNode(id="b", title="B", content="Beta concept body.", node_type=NodeType.CONCEPT),
         ]
         kept = BaseCompiler.dedup_content_duplicate_nodes(nodes)
         assert len(kept) == 2

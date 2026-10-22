@@ -15,6 +15,7 @@ from typer.testing import CliRunner
 
 from kompend.cli.app import app
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 
 runner = CliRunner()
 
@@ -109,7 +110,7 @@ def test_index_no_embedding_model_errors(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def _make_wiki() -> CompiledWiki:
-    node = WikiNode(id="test-node", title="Test", content="content", node_type="concept")
+    node = WikiNode(id="test-node", title="Test", content="content", node_type=NodeType.CONCEPT)
     return CompiledWiki(nodes=[node], edges=[], toc=[], quality_score=0.0, iteration=0, metadata={})
 
 

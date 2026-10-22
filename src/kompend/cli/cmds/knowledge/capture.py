@@ -32,7 +32,10 @@ from kompend.cli.args import (
 )
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
+from kompend.core.config._configs import BudgetConfig, LLMConfig
 from kompend.core.models import MetadataField, load_cached_wiki
+from kompend.core.models.enums import NodeType, OkfField
+from kompend.core.models.metadata import meta_str_list
 from kompend.core.paths import CAPTURED_SUBDIR
 from kompend.core.text.encoding import read_text_auto
 from kompend.core.text.matching import SemanticMatcher
@@ -262,11 +265,11 @@ def write_cmd(
                 fm[k.strip()] = v.strip()
 
     compiled_at = iso_local()
-    fm.setdefault("title", page_title)
-    fm.setdefault("kind", "page")
-    fm.setdefault("compiled_at", compiled_at)
+    fm.setdefault(OkfField.TITLE, page_title)
+    fm.setdefault(OkfField.KIND, NodeType.PAGE.value)
+    fm.setdefault(OkfField.COMPILED_AT, compiled_at)
     if source_texts:
-        fm.setdefault("sources", [s for s, _ in source_texts])
+        fm.setdefault(OkfField.SOURCES, [s for s, _ in source_texts])
 
     if not source_texts:
         body = "_(Content pending — run with --source to populate)_"
@@ -290,8 +293,8 @@ def write_cmd(
     write_dir.mkdir(parents=True, exist_ok=True)
     output_file = write_dir / f"{slug}.md"
 
-    writer = MarkdownWriter()
-    doc = Document(title=page_title, body=body, frontmatter=fm, node_type="page")
+    writer = MarkdownWriter(description_max_chars=cfg.kompend.display.description_max_chars)
+    doc = Document(title=page_title, body=body, frontmatter=fm, node_type=NodeType.PAGE)
     rendered = writer.renderer.render(doc)
     output_file.write_text(rendered, encoding="utf-8")
     get_console().print(f"Written: {output_file}")
@@ -310,8 +313,8 @@ def _load_related_titles(
         return related
     source_stems = {s for s, _ in source_texts}
     for node in wiki.nodes:
-        prov = (node.metadata or {}).get(MetadataField.PROVENANCE) or []
-        node_sources = {Path(str(p)).stem for p in prov if p}
+        prov = meta_str_list((node.metadata or {}).get(MetadataField.PROVENANCE))
+        node_sources = {Path(p).stem for p in prov if p}
         if node_sources & source_stems:
             related.append(str(node.title))
     return related

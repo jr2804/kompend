@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any, cast
 
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.rag.zvec_store import VectorStoreLike
 from kompend.search.adaptive_retriever import AdaptiveRetriever
 
@@ -97,7 +98,7 @@ class TestAdaptiveRetriever:
         assert len(results) > 0
 
     def test_search_targeted_mode(self) -> None:
-        structured = _make_wiki_node("structured", content="table data", node_type="concept", depth=1, parent_id="root")
+        structured = _make_wiki_node("structured", content="table data", node_type=NodeType.CONCEPT, depth=1, parent_id="root")
         structured.structured_sections["table"] = {"columns": ["a", "b"]}
         plain = _make_wiki_node("plain", content="just text", depth=1, parent_id="root")
         wiki = _make_wiki([structured, plain])
@@ -175,7 +176,7 @@ def _make_wiki_node(
     depth: int = 0,
     parent_id: str | None = None,
     children_ids: list[str] | None = None,
-    node_type: str = "concept",
+    node_type: NodeType = NodeType.CONCEPT,
 ) -> WikiNode:
     return WikiNode(
         id=node_id,

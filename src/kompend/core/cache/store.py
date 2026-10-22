@@ -37,6 +37,7 @@ from kompend.core.models import (
     ResolvedChunk,
     WikiNode,
 )
+from kompend.core.models.enums import NodeType
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import CHUNKS_TABLE, EXTRACTIONS_TABLE
 from kompend.core.utils.time import iso_local
@@ -56,6 +57,7 @@ _CACHE_DATACLASSES: dict[str, type] = {
 
 _CACHE_ENUMS: dict[str, type[StrEnum]] = {
     "ElementType": ElementType,
+    "NodeType": NodeType,
 }
 
 #: Cache layer whose payloads are keyed only by ``cache_key`` (no layer column).

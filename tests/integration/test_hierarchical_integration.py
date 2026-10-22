@@ -31,6 +31,7 @@ from kompend.core.models import (
     StructuredTable,
     WikiNode,
 )
+from kompend.core.models.enums import NodeType
 from kompend.core.models.structured import structured_to_text
 from kompend.core.resolution.entity_registry import EntityRegistry
 from kompend.core.resolution.xref_checker import CrossReferenceChecker
@@ -245,10 +246,10 @@ class TestRetrievalBudget:
     def test_zoom_in_plan_within_budget(self) -> None:
         """Zoom-in plan never exceeds available tokens."""
         nodes = [
-            WikiNode(id="sec1", title="Section 1", content="A" * 400, node_type="section", depth=1, parent_id="root", children_ids=["leaf1"]),
-            WikiNode(id="leaf1", title="Leaf 1", content="B" * 400, node_type="concept", depth=2, parent_id="sec1"),
-            WikiNode(id="sec2", title="Section 2", content="C" * 400, node_type="section", depth=1, parent_id="root", children_ids=["leaf2"]),
-            WikiNode(id="leaf2", title="Leaf 2", content="D" * 400, node_type="concept", depth=2, parent_id="sec2"),
+            WikiNode(id="sec1", title="Section 1", content="A" * 400, node_type=NodeType.SECTION, depth=1, parent_id="root", children_ids=["leaf1"]),
+            WikiNode(id="leaf1", title="Leaf 1", content="B" * 400, node_type=NodeType.CONCEPT, depth=2, parent_id="sec1"),
+            WikiNode(id="sec2", title="Section 2", content="C" * 400, node_type=NodeType.SECTION, depth=1, parent_id="root", children_ids=["leaf2"]),
+            WikiNode(id="leaf2", title="Leaf 2", content="D" * 400, node_type=NodeType.CONCEPT, depth=2, parent_id="sec2"),
         ]
         mgr = ContextBudgetManager(max_input_tokens=32000)
         plan = mgr.plan_zoom_in(candidates=nodes, query="test query")
@@ -257,13 +258,13 @@ class TestRetrievalBudget:
 
     def test_zoom_out_plan_within_budget(self) -> None:
         """Zoom-out plan never exceeds available tokens."""
-        nodes = [WikiNode(id=f"leaf{i}", title=f"Leaf {i}", content="X" * 200, node_type="concept", depth=2, parent_id="sec1") for i in range(20)]
+        nodes = [WikiNode(id=f"leaf{i}", title=f"Leaf {i}", content="X" * 200, node_type=NodeType.CONCEPT, depth=2, parent_id="sec1") for i in range(20)]
         nodes.append(
             WikiNode(
                 id="sec1",
                 title="Section 1",
                 content="Y" * 200,
-                node_type="section",
+                node_type=NodeType.SECTION,
                 depth=1,
                 parent_id="root",
                 children_ids=[f"leaf{i}" for i in range(20)],
@@ -277,8 +278,8 @@ class TestRetrievalBudget:
     def test_targeted_plan_within_budget(self) -> None:
         """Targeted plan never exceeds available tokens."""
         nodes = [
-            WikiNode(id="t1", title="Table 1", content="Accuracy results", node_type="concept", structured_sections={"table": {"cols": ["A"]}}),
-            WikiNode(id="t2", title="Table 2", content="Latency results", node_type="concept", structured_sections={"table": {"cols": ["B"]}}),
+            WikiNode(id="t1", title="Table 1", content="Accuracy results", node_type=NodeType.CONCEPT, structured_sections={"table": {"cols": ["A"]}}),
+            WikiNode(id="t2", title="Table 2", content="Latency results", node_type=NodeType.CONCEPT, structured_sections={"table": {"cols": ["B"]}}),
         ]
         mgr = ContextBudgetManager(max_input_tokens=32000)
         plan = mgr.plan_targeted(candidates=nodes, query="table accuracy")
@@ -410,7 +411,7 @@ class TestWikiNodeHierarchy:
 
     def test_wikinode_hierarchy_fields_exist(self) -> None:
         """WikiNode has parent_id, children_ids, depth, heading_chain fields."""
-        node = WikiNode(id="test", title="Test", content="Content", node_type="concept")
+        node = WikiNode(id="test", title="Test", content="Content", node_type=NodeType.CONCEPT)
         assert hasattr(node, "parent_id")
         assert hasattr(node, "children_ids")
         assert hasattr(node, "depth")
@@ -422,7 +423,7 @@ class TestWikiNodeHierarchy:
 
     def test_wikinode_structured_sections_exist(self) -> None:
         """WikiNode has structured_sections field."""
-        node = WikiNode(id="test", title="Test", content="Content", node_type="concept")
+        node = WikiNode(id="test", title="Test", content="Content", node_type=NodeType.CONCEPT)
         assert hasattr(node, "structured_sections")
         assert node.structured_sections == {}
 

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from kompend.core.models import CompiledWiki
+from kompend.core.models.metadata import meta_int
 from kompend.output.base import BaseOutputWriter
 
 
@@ -59,7 +60,7 @@ class TypstWriter(BaseOutputWriter):
 
         # Nodes as sections with proper heading levels and cross-references
         for node in wiki.nodes:
-            level = node.metadata.get("heading_level", 1)
+            level = meta_int(node.metadata.get("heading_level"), 1)
             heading = "=" * min(level + 1, 6)
 
             node_id = node.id

@@ -26,6 +26,7 @@ from kompend.capture.distill import (
 )
 from kompend.capture.learn import learn
 from kompend.cli.cmds.knowledge.capture import _build_references_section
+from kompend.core.models.enums import NodeType
 from kompend.core.pipeline.ingest import extract_text_from_cached
 from kompend.core.pipeline.parse_cache import write_document
 from kompend.core.store import vault_db_path
@@ -231,7 +232,7 @@ class TestWriteCmd:
             "compiled_at": compiled_at,
             "sources": ["paper"],
         }
-        doc = Document(title="My Page", body="Content.", frontmatter=fm, node_type="page")
+        doc = Document(title="My Page", body="Content.", frontmatter=fm, node_type=NodeType.PAGE)
         writer = MarkdownWriter()
         rendered = writer.renderer.render(doc)
         assert "kind: page" in rendered

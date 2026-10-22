@@ -44,7 +44,7 @@ from kompend.compilation.flows.assembly import (
 )
 from kompend.core.config.keys import MANDATORY_KINDS
 from kompend.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, images_for_provenance, load_cached_wiki
-from kompend.core.models.enums import CacheDeps, ExtractionField, MetadataField
+from kompend.core.models.enums import CacheDeps, ExtractionField, MetadataField, NodeType
 from kompend.core.paths import safe_stem
 from kompend.core.pipeline.entity_types import EntityTypeRegistry
 from kompend.core.templates import get_template_loader
@@ -436,7 +436,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
     entity_types: dict[str, str] = {}
     overrides_applied = 0
     for c in concepts:
-        if c.get("kind") != "entity":
+        if c.get("kind") != NodeType.ENTITY.value:
             continue
         name = str(c.get(ExtractionField.NAME, ""))
         key = normalize_concept_key(name)
@@ -638,11 +638,11 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                     MetadataField.TWO_PHASE: True,
                     # Only this page's sources' figures — see images_for_provenance.
                     "images": images_for_provenance(all_images, page.provenance),
-                    "frontmatter": {
+                    MetadataField.FRONTMATTER: {
                         "title": page.title or f"Concept {idx}",
                     },
                 }
-                if kind == "entity":
+                if kind is NodeType.ENTITY:
                     node_metadata[MetadataField.ENTITY_TYPE] = entity_types.get(normalize_concept_key(page.title or ""), "entity")
                 upsert_node(
                     WikiNode(
@@ -881,7 +881,7 @@ def _resolve_page_kind(
     title: str,
     preassigned: dict[str, str],
     extras: dict[str, str],
-) -> str:
+) -> NodeType:
     """Resolve a page kind: a pre-assigned kind wins, else the model's label.
 
     ``_with_entity_pages`` pre-assigns ``kind: entity`` to mandatory pages.
@@ -893,15 +893,17 @@ def _resolve_page_kind(
     return _allowed_kind(expected or model_kind, extras)
 
 
-def _allowed_kind(kind: str, extras: dict[str, str]) -> str:
+def _allowed_kind(kind: str, extras: dict[str, str]) -> NodeType:
     """Validate an LLM-assigned page kind against the taxonomy.
 
     Mandatory kinds plus configured extras are accepted; anything else falls
     back to ``concept`` (permissive-consumption model, OKF §10).
     """
-    if kind in MANDATORY_KINDS or kind in extras:
-        return kind
-    return "concept"
+    if kind in MANDATORY_KINDS:
+        return NodeType(kind)
+    if kind in extras:
+        return NodeType.of(kind)
+    return NodeType.CONCEPT
 
 
 def _categories_block(extras: dict[str, str]) -> str:
@@ -928,7 +930,7 @@ def assemble_wiki(
         entity_types_registry = EntityTypeRegistry(compiler._config.paths.entity_types_file)
         new_entries = 0
         for c in concepts:
-            if c.get("kind") != "entity":
+            if c.get("kind") != NodeType.ENTITY.value:
                 continue
             key = normalize_concept_key(str(c.get(ExtractionField.NAME, "")))
             if not key:

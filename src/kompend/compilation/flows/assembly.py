@@ -13,7 +13,7 @@ from kompend.compilation._two_phase_core import ExtractionSet
 from kompend.compilation.asset_registry import AssetIdMap
 from kompend.compilation.asset_summarizer import summarize_asset
 from kompend.core.models import ChunkTree, GraphEdge, ResolvedChunk, WikiNode
-from kompend.core.models.enums import MetadataField
+from kompend.core.models.enums import EdgeType, MetadataField
 from kompend.core.models.structured import StructuredEquation, structured_to_text
 from kompend.core.text.matching import cosine, similarity
 from kompend.logging import get_logger
@@ -327,7 +327,7 @@ def build_edges(
                     {
                         "source": sorted_ids[i],
                         "target": sorted_ids[j],
-                        "type": "entity_reference",
+                        "type": EdgeType.ENTITY_REFERENCE,
                         "entity": ent_name,
                     }
                 )
@@ -343,7 +343,7 @@ def build_edges(
                     continue
                 seen_edges.add(pair)
                 edges.append(
-                    {"source": node.id, "target": target_id, "type": "related", "entity": related_title},
+                    {"source": node.id, "target": target_id, "type": EdgeType.RELATED, "entity": related_title},
                 )
 
     # Title-based edges: if a page's title appears as plaintext in another
@@ -365,7 +365,7 @@ def build_edges(
                     {
                         "source": node.id,
                         "target": other.id,
-                        "type": "title_reference",
+                        "type": EdgeType.TITLE_REFERENCE,
                         "entity": other.title,
                     }
                 )

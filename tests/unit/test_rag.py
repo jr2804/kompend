@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore, make_provider, to_pydantic_ai_embedding_string
 from tests.conftest import DeterministicTestEmbeddingProvider
 
@@ -29,7 +30,7 @@ class TestZvecWikiStore:
 
     def test_build_index_works(self, zvec_db: Path) -> None:
         wiki = CompiledWiki(
-            nodes=[WikiNode(id="n1", title="Test", content="...", node_type="section")],
+            nodes=[WikiNode(id="n1", title="Test", content="...", node_type=NodeType.SECTION)],
             edges=[],
             toc=[],
         )
@@ -43,8 +44,8 @@ class TestZvecWikiStore:
             store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
             wiki = CompiledWiki(
                 nodes=[
-                    WikiNode(id="n1", title="Testing", content="test content here", node_type="section"),
-                    WikiNode(id="n2", title="Results", content="important findings", node_type="section"),
+                    WikiNode(id="n1", title="Testing", content="test content here", node_type=NodeType.SECTION),
+                    WikiNode(id="n2", title="Results", content="important findings", node_type=NodeType.SECTION),
                 ],
                 edges=[],
                 toc=[],
@@ -64,7 +65,7 @@ class TestZvecWikiStore:
             store = ZvecWikiStore(db_file=str(db), embedding_provider=_TEST_PROVIDER)
             wiki = CompiledWiki(
                 nodes=[
-                    WikiNode(id="n1", title="Test", content="...", node_type="section"),
+                    WikiNode(id="n1", title="Test", content="...", node_type=NodeType.SECTION),
                 ],
                 edges=[],
                 toc=[],
@@ -109,7 +110,7 @@ class TestZvecWikiStore:
     def test_open_existing_store_and_search(self, zvec_db: Path) -> None:
         """Opening an existing collection allows querying without rebuilding."""
         wiki = CompiledWiki(
-            nodes=[WikiNode(id="n1", title="Testing", content="test content here", node_type="section")],
+            nodes=[WikiNode(id="n1", title="Testing", content="test content here", node_type=NodeType.SECTION)],
             edges=[],
             toc=[],
         )
@@ -135,7 +136,7 @@ class TestZvecWikiStore:
                     id="n1",
                     title="Methods",
                     content="Analysis methods used in the study.",
-                    node_type="section",
+                    node_type=NodeType.SECTION,
                     metadata={"source": "paper.pdf"},
                 ),
             ],
@@ -222,13 +223,13 @@ def sample_wiki() -> CompiledWiki:
                 id="intro",
                 title="Introduction",
                 content="This is the introduction content.",
-                node_type="section",
+                node_type=NodeType.SECTION,
             ),
             WikiNode(
                 id="methods",
                 title="Methods",
                 content="We used several analysis methods.",
-                node_type="section",
+                node_type=NodeType.SECTION,
             ),
         ],
         edges=[{"source": "intro", "target": "methods", "type": "next"}],

@@ -11,6 +11,7 @@ from pathlib import Path
 import zvec as _zvec
 
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.rag.zvec_store import EmbeddingProvider, ZvecField, ZvecWikiStore
 
 
@@ -104,9 +105,9 @@ def _built_store(tmp_path: Path) -> ZvecWikiStore:
 def _tagged_wiki() -> CompiledWiki:
     return CompiledWiki(
         nodes=[
-            WikiNode(id="n1", title="a", content="alpha", node_type="concept", metadata={"tags": ["x", "y"], "attributes": {"lang": ["python"]}}),
-            WikiNode(id="n2", title="b", content="beta", node_type="concept", metadata={"tags": ["y", "z"], "attributes": {"lang": ["rust"]}}),
-            WikiNode(id="n3", title="c", content="gamma", node_type="concept", metadata={"tags": []}),
+            WikiNode(id="n1", title="a", content="alpha", node_type=NodeType.CONCEPT, metadata={"tags": ["x", "y"], "attributes": {"lang": ["python"]}}),
+            WikiNode(id="n2", title="b", content="beta", node_type=NodeType.CONCEPT, metadata={"tags": ["y", "z"], "attributes": {"lang": ["rust"]}}),
+            WikiNode(id="n3", title="c", content="gamma", node_type=NodeType.CONCEPT, metadata={"tags": []}),
         ],
         edges=[],
         toc=[],

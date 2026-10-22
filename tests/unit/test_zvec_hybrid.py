@@ -9,6 +9,7 @@ import pytest
 import zvec as _zvec
 
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.rag.zvec_store import EmbeddingProvider, ZvecField, ZvecWikiStore
 from tests.conftest import as_float
 
@@ -227,21 +228,21 @@ def _wiki() -> CompiledWiki:
                 id="n1",
                 title="ITU-T P.863",
                 content="perceptual objective listening quality assessment",
-                node_type="concept",
+                node_type=NodeType.CONCEPT,
                 metadata={"tags": ["a", "b"], "attributes": {"version": ["2024"]}},
             ),
             WikiNode(
                 id="n2",
                 title="MOS-LQO",
                 content="mean opinion score listening quality objective",
-                node_type="concept",
+                node_type=NodeType.CONCEPT,
                 metadata={"tags": ["a"], "attributes": {"lang": ["en"]}},
             ),
             WikiNode(
                 id="n3",
                 title="Codec overview",
                 content="overview of wideband codecs and their quality",
-                node_type="concept",
+                node_type=NodeType.CONCEPT,
                 metadata={"tags": ["c"], "attributes": {}},
             ),
         ],

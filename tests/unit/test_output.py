@@ -11,7 +11,7 @@ import pytest
 
 from kompend.core.models import CompiledWiki, GraphEdge, TocEntry, WikiNode
 from kompend.core.models.assets import AssetRecord
-from kompend.core.models.enums import AssetKind
+from kompend.core.models.enums import AssetKind, NodeType
 from kompend.core.models.references import Reference
 from kompend.core.models.structured import StructuredFigure, StructuredTable
 from kompend.core.paths import attachment_slug
@@ -95,8 +95,8 @@ class TestMarkdownWriter:
     def test_vault_mode_typed_relation_annotation(self, temp_output: Path) -> None:
         wiki = CompiledWiki(
             nodes=[
-                WikiNode(id="a", title="Page A", content="A.", node_type="section"),
-                WikiNode(id="b", title="Page B", content="B.", node_type="section"),
+                WikiNode(id="a", title="Page A", content="A.", node_type=NodeType.SECTION),
+                WikiNode(id="b", title="Page B", content="B.", node_type=NodeType.SECTION),
             ],
             edges=[
                 {"source": "a", "target": "b", "type": "uses", "confidence": 0.91},
@@ -121,7 +121,7 @@ class TestMarkdownWriter:
     def test_vault_mode_single_node(self, tmp_path: Path) -> None:
         wiki = CompiledWiki(
             nodes=[
-                WikiNode(id="test", title="Test Page", content="Hello.", node_type="concept"),
+                WikiNode(id="test", title="Test Page", content="Hello.", node_type=NodeType.CONCEPT),
             ],
             edges=[],
             toc=[],
@@ -189,9 +189,9 @@ class TestSubfolderLayout:
     def test_concepts_routed_to_concepts_folder(self, tmp_path: Path) -> None:
         wiki = CompiledWiki(
             nodes=[
-                WikiNode(id="c1", title="Concept A", content="Body.", node_type="concept"),
-                WikiNode(id="c2", title="Concept B", content="Body.", node_type="comparison"),
-                WikiNode(id="c3", title="Term X", content="Body.", node_type="entity"),
+                WikiNode(id="c1", title="Concept A", content="Body.", node_type=NodeType.CONCEPT),
+                WikiNode(id="c2", title="Concept B", content="Body.", node_type=NodeType.COMPARISON),
+                WikiNode(id="c3", title="Term X", content="Body.", node_type=NodeType.ENTITY),
             ],
             edges=[],
             toc=[],
@@ -205,8 +205,8 @@ class TestSubfolderLayout:
     def test_overview_and_unknown_kinds_stay_at_root(self, tmp_path: Path) -> None:
         wiki = CompiledWiki(
             nodes=[
-                WikiNode(id="ov", title="Overview", content="Body.", node_type="overview"),
-                WikiNode(id="sec", title="Section", content="Body.", node_type="section"),
+                WikiNode(id="ov", title="Overview", content="Body.", node_type=NodeType.OVERVIEW),
+                WikiNode(id="sec", title="Section", content="Body.", node_type=NodeType.SECTION),
             ],
             edges=[],
             toc=[],
@@ -233,7 +233,7 @@ class TestSubfolderLayout:
                         id="daga-2023",
                         title="DAGA 2023",
                         content="Body.",
-                        node_type="entity",
+                        node_type=NodeType.ENTITY,
                         metadata={"entity_type": entity_type},
                     )
                 ],
@@ -301,7 +301,7 @@ class TestFrontmatterEmission:
                     id="c1",
                     title="Concept",
                     content="Body.",
-                    node_type="concept",
+                    node_type=NodeType.CONCEPT,
                     metadata={"provenance": ["sources/paper_a.pdf", "sources/paper_b.pdf"]},
                 )
             ],
@@ -326,7 +326,7 @@ class TestFrontmatterEmission:
     def test_frontmatter_defaults_preserved(self, temp_output: Path) -> None:
         """frontmatter_defaults from config are included alongside title."""
         wiki = CompiledWiki(
-            nodes=[WikiNode(id="n1", title="Page", content="Body.", node_type="section")],
+            nodes=[WikiNode(id="n1", title="Page", content="Body.", node_type=NodeType.SECTION)],
             edges=[],
             toc=[],
         )
@@ -345,7 +345,7 @@ class TestFrontmatterEmission:
                     id="n1",
                     title="Original",
                     content="Body.",
-                    node_type="section",
+                    node_type=NodeType.SECTION,
                     metadata={"frontmatter": {"title": "Custom Title", "kind": "overview"}},
                 ),
             ],
@@ -464,7 +464,7 @@ class TestTypstWriter:
     def test_wiki_without_metadata_title(self, temp_output: Path) -> None:
         """Fallback title 'Compiled Wiki' when no metadata title."""
         wiki = CompiledWiki(
-            nodes=[WikiNode(id="n1", title="Node", content="Content", node_type="section")],
+            nodes=[WikiNode(id="n1", title="Node", content="Content", node_type=NodeType.SECTION)],
             edges=[],
             toc=[],
             metadata={},
@@ -497,7 +497,7 @@ class TestPortableImages:
                     id="concept-1",
                     title="Core Concepts",
                     content="Understanding the fundamental ideas.",
-                    node_type="concept",
+                    node_type=NodeType.CONCEPT,
                     source_chunks=["chunk-3"],
                     metadata={
                         "provenance": ["sources/report.pdf"],
@@ -533,7 +533,7 @@ class TestPortableImages:
                     id="concept-1",
                     title="Core Concepts",
                     content="Body.",
-                    node_type="concept",
+                    node_type=NodeType.CONCEPT,
                     metadata={
                         "provenance": ["sources/report.pdf"],
                         "images": [
@@ -558,7 +558,7 @@ class TestPortableImages:
                     id="concept-1",
                     title="Core Concepts",
                     content="Body.",
-                    node_type="concept",
+                    node_type=NodeType.CONCEPT,
                     metadata={
                         "provenance": ["sources/report.pdf"],
                         "images": [{"path": ".kompend/cache/images/x.png", "caption": "", "element_type": "image"}],
@@ -585,7 +585,7 @@ class TestSourceSummaries:
                     id="concept-1",
                     title="Core Concepts",
                     content="Body.",
-                    node_type="concept",
+                    node_type=NodeType.CONCEPT,
                     metadata={"provenance": ["sources/report.pdf"]},
                 ),
             ],
@@ -685,7 +685,7 @@ class TestSourceSummaries:
                     id="concept-1",
                     title="Core Concepts",
                     content="Body.",
-                    node_type="concept",
+                    node_type=NodeType.CONCEPT,
                     metadata={"provenance": ["sources/report.pdf"]},
                 ),
             ],
@@ -732,8 +732,8 @@ class TestQualityPage:
         self._verification(base)
         wiki = CompiledWiki(
             nodes=[
-                WikiNode(id="concept-1", title="Alpha", content="A.", node_type="concept"),
-                WikiNode(id="concept-2", title="Beta", content="B.", node_type="concept"),
+                WikiNode(id="concept-1", title="Alpha", content="A.", node_type=NodeType.CONCEPT),
+                WikiNode(id="concept-2", title="Beta", content="B.", node_type=NodeType.CONCEPT),
             ],
             edges=[],
             toc=[],
@@ -762,7 +762,7 @@ class TestQualityPage:
         base = self._vault(tmp_path)
         self._verification(base)
         wiki = CompiledWiki(
-            nodes=[WikiNode(id="concept-1", title="Alpha", content="A.", node_type="concept")],
+            nodes=[WikiNode(id="concept-1", title="Alpha", content="A.", node_type=NodeType.CONCEPT)],
             edges=[],
             toc=[],
         )
@@ -842,7 +842,8 @@ class TestOkfDescription:
     """okf_description truncates to the first sentence.
 
     Index entries are link + one-line summary, not a duplicate of the page
-    body.
+    body. The length cap is a rendering decision taken by the writer
+    (``display.description_max_chars``), not by the model.
     """
 
     def test_first_sentence_only(self) -> None:
@@ -850,25 +851,60 @@ class TestOkfDescription:
             id="x",
             title="X",
             content="The Bark scale is non-linear. It models frequency resolution.",
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
         )
-        assert VaultWriter.okf_description(node) == "The Bark scale is non-linear."
+        assert VaultWriter.okf_description(node, 200) == "The Bark scale is non-linear."
 
     def test_abbreviation_not_split(self) -> None:
         node = WikiNode(
             id="x",
             title="X",
             content="Defined in ITU-T Rec. P.863 for speech quality.",
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
         )
         # ". 8" is not a sentence boundary; whole line returned.
-        assert VaultWriter.okf_description(node) == "Defined in ITU-T Rec. P.863 for speech quality."
+        assert VaultWriter.okf_description(node, 200) == "Defined in ITU-T Rec. P.863 for speech quality."
 
     def test_long_line_capped(self) -> None:
-        node = WikiNode(id="x", title="X", content="word " * 80, node_type="concept")
-        desc = VaultWriter.okf_description(node)
-        assert len(desc) <= 201
+        node = WikiNode(id="x", title="X", content="word " * 80, node_type=NodeType.CONCEPT)
+        desc = VaultWriter.okf_description(node, 200)
+        assert len(desc) <= 200
         assert desc.endswith("…")
+
+    def test_cap_is_applied_by_the_writer(self) -> None:
+        node = WikiNode(
+            id="x",
+            title="X",
+            content="The Bark scale is non-linear. It models frequency resolution.",
+            node_type=NodeType.CONCEPT,
+        )
+        assert VaultWriter.okf_description(node, 20) == "The Bark scale is…"
+
+    def test_writer_applies_the_configured_cap(self, temp_output: Path) -> None:
+        """``display.description_max_chars`` reaches the written frontmatter.
+
+        The cap used to be a literal 200 inside ``WikiNode.description``, so a
+        vault could never widen or narrow it.
+        """
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="a",
+                    title="Page A",
+                    content="word " * 60,
+                    node_type=NodeType.SECTION,
+                ),
+            ],
+            edges=[],
+            toc=[],
+            metadata={},
+        )
+
+        MarkdownWriter(vault_mode=True, description_max_chars=40).write(wiki, temp_output)
+
+        frontmatter = (temp_output / "a.md").read_text(encoding="utf-8")
+        description = next(line for line in frontmatter.splitlines() if line.startswith("description:"))
+        assert len(description) - len("description: ") <= 40
 
     def test_skips_leading_heading_lines(self) -> None:
         """Regression: p863 wiki pages started with '## Definition', so the
@@ -878,27 +914,27 @@ class TestOkfDescription:
             id="x",
             title="X",
             content="## Definition\nAbsolute Category Rating is a discrete rating scale. It uses five points.",
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
         )
-        assert VaultWriter.okf_description(node) == "Absolute Category Rating is a discrete rating scale."
+        assert VaultWriter.okf_description(node, 200) == "Absolute Category Rating is a discrete rating scale."
 
     def test_skips_multiple_leading_headings(self) -> None:
         node = WikiNode(
             id="x",
             title="X",
             content="# Title\n## Definition\n## Methodology\nBody sentence starts here.",
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
         )
-        assert VaultWriter.okf_description(node) == "Body sentence starts here."
+        assert VaultWriter.okf_description(node, 200) == "Body sentence starts here."
 
     def test_all_headings_returns_empty(self) -> None:
         node = WikiNode(
             id="x",
             title="X",
             content="# H1\n## H2\n### H3",
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
         )
-        assert VaultWriter.okf_description(node) == ""
+        assert VaultWriter.okf_description(node, 200) == ""
 
 
 # ---------------------------------------------------------------------------
@@ -914,7 +950,7 @@ def sample_wiki() -> CompiledWiki:
             id="intro",
             title="Introduction",
             content="This is the introduction section.",
-            node_type="section",
+            node_type=NodeType.SECTION,
             source_chunks=["chunk-1", "chunk-2"],
             metadata={"heading_level": 1},
         ),
@@ -922,7 +958,7 @@ def sample_wiki() -> CompiledWiki:
             id="concept-1",
             title="Core Concepts",
             content="Understanding the fundamental ideas.",
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
             source_chunks=["chunk-3"],
             metadata={"heading_level": 2},
         ),
@@ -930,7 +966,7 @@ def sample_wiki() -> CompiledWiki:
             id="procedure-1",
             title="How to Use",
             content="Step-by-step instructions.",
-            node_type="procedure",
+            node_type=NodeType.PROCEDURE,
             source_chunks=None,
             metadata={},
         ),

@@ -158,6 +158,7 @@ def build_pipeline(
             frontmatter_defaults=config.output.frontmatter or {},
             rumdl_config=resolve_rumdl_config(config.paths.base_dir, config.output.rumdl_config),
             max_related_links=config.output.max_related_links,
+            description_max_chars=config.display.description_max_chars,
             references_file=config.paths.references_file,
             assets_file=config.paths.assets_file,
             base_dir=config.paths.base_dir,

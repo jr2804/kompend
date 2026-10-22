@@ -16,6 +16,7 @@ import pytest
 
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.core.paths import VaultPaths
 from kompend.lint.flow import run_full_lint_flow
 from kompend.lint.gap_analysis import load_degree_map
@@ -49,8 +50,8 @@ def test_run_full_lint_flow_succeeds_on_seeded_store(tmp_path: Path, monkeypatch
 def _seed_wiki(base_dir: Path) -> None:
     wiki = CompiledWiki(
         nodes=[
-            WikiNode(id="a", title="A", content="a", node_type="concept"),
-            WikiNode(id="b", title="B", content="b", node_type="concept"),
+            WikiNode(id="a", title="A", content="a", node_type=NodeType.CONCEPT),
+            WikiNode(id="b", title="B", content="b", node_type=NodeType.CONCEPT),
         ],
         edges=[{"source": "a", "target": "b", "type": "related"}],
         toc=[],

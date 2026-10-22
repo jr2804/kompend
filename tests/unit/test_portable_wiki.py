@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from kompend.core.models import load_wiki_from_files
+from kompend.core.models.enums import NodeType
 from kompend.search.retriever import KeywordRetriever
 
 
@@ -21,7 +22,7 @@ class TestLoadWikiFromFiles:
         assert node.id == "alpha"
         assert node.title == "Alpha"
         assert "alpha waves" in node.content
-        assert node.node_type == "concept"
+        assert node.node_type == NodeType.CONCEPT
 
     def test_skips_index_log_references_pages(self, tmp_path: Path) -> None:
         _write_page(tmp_path, "alpha", "Alpha", "Content.")

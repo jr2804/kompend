@@ -14,6 +14,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.output.markdown import MarkdownWriter
 
 _SOURCE_A = "ECMA-418-2_4th_edition_june_2025.pdf"
@@ -97,6 +98,6 @@ def _node(node_id: str, provenance: list[str], images: list[dict[str, str]]) -> 
         id=node_id,
         title=node_id.title(),
         content=f"Body of {node_id}.",
-        node_type="concept",
+        node_type=NodeType.CONCEPT,
         metadata={"provenance": provenance, "images": images},
     )

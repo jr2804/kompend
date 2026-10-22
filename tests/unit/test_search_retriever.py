@@ -7,6 +7,7 @@ from unittest.mock import MagicMock, patch
 
 from kompend.agents.query import QueryAgent
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.search.retriever import HybridRetriever, extract_snippet, synthesize_results
 
@@ -119,8 +120,8 @@ class TestHybridRetriever:
     def _make_wiki(self) -> CompiledWiki:
         return CompiledWiki(
             nodes=[
-                WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type="section"),
-                WikiNode(id="beta", title="Beta Page", content="beta content here", node_type="section"),
+                WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type=NodeType.SECTION),
+                WikiNode(id="beta", title="Beta Page", content="beta content here", node_type=NodeType.SECTION),
             ],
             edges=[],
             toc=[],
@@ -129,9 +130,9 @@ class TestHybridRetriever:
     def _make_wiki_with_edges(self) -> CompiledWiki:
         return CompiledWiki(
             nodes=[
-                WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type="section"),
-                WikiNode(id="beta", title="Beta Page", content="beta content here", node_type="section"),
-                WikiNode(id="gamma", title="Gamma Page", content="gamma related content", node_type="section"),
+                WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type=NodeType.SECTION),
+                WikiNode(id="beta", title="Beta Page", content="beta content here", node_type=NodeType.SECTION),
+                WikiNode(id="gamma", title="Gamma Page", content="gamma related content", node_type=NodeType.SECTION),
             ],
             edges=[
                 {"source": "alpha", "target": "gamma", "type": "related_to"},

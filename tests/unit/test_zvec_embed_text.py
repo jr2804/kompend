@@ -19,6 +19,7 @@ from typing import TypedDict
 import pytest
 
 from kompend.core.models import CompiledWiki, WikiNode, load_wiki_from_files
+from kompend.core.models.enums import NodeType
 from kompend.rag.zvec_store import (
     _EMBED_TEXT_VERSION,
     ZvecWikiStore,
@@ -205,7 +206,7 @@ class TestManifestStaleness:
             id="n1",
             title="T",
             content="body",
-            node_type="page",
+            node_type=NodeType.PAGE,
             metadata={"tags": ["a"]},
         )
         retagged = replace(tagged, metadata={"tags": ["a", "b"]})
@@ -289,4 +290,4 @@ def _wiki(*nodes: WikiNode) -> CompiledWiki:
 
 def _node(node_id: str, content: str = "body", *, source_asset: bool = False) -> WikiNode:
     metadata: dict[str, object] = {"source_asset": True} if source_asset else {}
-    return WikiNode(id=node_id, title="T", content=content, node_type="page", metadata=metadata)
+    return WikiNode(id=node_id, title="T", content=content, node_type=NodeType.PAGE, metadata=metadata)

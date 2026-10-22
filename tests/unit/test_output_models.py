@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.output.markdown import MarkdownWriter
 from kompend.output.models import Document
 from kompend.output.renderer import (
@@ -151,7 +152,7 @@ class TestMarkdownWriterRegression:
                     id="test-page",
                     title="Test Page",
                     content="This is the body.",
-                    node_type="concept",
+                    node_type=NodeType.CONCEPT,
                 ),
             ],
             edges=[],

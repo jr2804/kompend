@@ -20,6 +20,7 @@ from kompend.core.cache.wiki import write_wiki_cache  # noqa: F401 — re-export
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LintConfig
 from kompend.core.models import CompiledWiki, MetadataField, WikiField, load_wiki_from_files
+from kompend.core.models.metadata import meta_int, meta_list_dict
 from kompend.core.paths import LINT_HISTORY_FILE, VaultPaths
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.utils.time import iso_local
@@ -92,13 +93,19 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
                 agent=make_agentic_verification_agent(
                     model_string=model,
                     timeout=opts.pipeline_config.llm.timeout,
-                    retries=opts.pipeline_config.llm.output_retries,
-                    output_retries=opts.pipeline_config.llm.agentic_output_retries if opts.pipeline_config.llm.output_retries_enabled else None,
+                    llm=opts.pipeline_config.llm,
+                    budget=opts.pipeline_config.budget,
                 ),
                 verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
+                min_ngram=opts.pipeline_config.budget.verify_min_ngram,
             )
 
-    generated = write_index(opts.wiki, opts.output_dir, base_dir=base_dir)
+    generated = write_index(
+        opts.wiki,
+        opts.output_dir,
+        base_dir=base_dir,
+        description_max_chars=opts.pipeline_config.display.description_max_chars,
+    )
     get_console().print(f"Index: {generated['index']}")
 
     if opts.synthesize:
@@ -172,11 +179,11 @@ def verify_claims(
     (§5.2) on ``wiki.metadata`` so output writers can surface it. The actor
     follows the §7 convention (``<producer>/<version>``).
     """
-    result = verify_wiki(wiki, base_dir, agent=agent, verify_budget=verify_budget)
+    result = verify_wiki(wiki, base_dir, agent=agent, verify_budget=verify_budget, min_ngram=min_ngram)
     get_console().print(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
     # Stamp the OKF v0.2 ``verified`` trust event (§5.2).
-    verified_events = list(wiki.metadata.get("verified") or [])
+    verified_events = meta_list_dict(wiki.metadata.get("verified"))
     verified_events.append({"by": _VERIFIED_BY, "at": iso_local()})  # TrustEvent (output.models)
     wiki.metadata["verified"] = verified_events
 
@@ -277,12 +284,12 @@ def print_compile_summary(wiki: CompiledWiki) -> None:
 
     src_stats = meta.get("extraction_stats")
     if src_stats:
-        parts.append(f"{len(src_stats)} source(s)")
+        parts.append(f"{len(meta_list_dict(src_stats))} source(s)")
 
     llm_calls = meta.get("llm_calls")
     if llm_calls:
-        pt = meta.get("llm_prompt_tokens", 0)
-        ct = meta.get("llm_completion_tokens", 0)
+        pt = meta_int(meta.get("llm_prompt_tokens"))
+        ct = meta_int(meta.get("llm_completion_tokens"))
         parts.append(f"{llm_calls} LLM call(s) ({pt}+{ct}={pt + ct} token(s))")
 
     wicer_iters = meta.get("wicer_iterations")

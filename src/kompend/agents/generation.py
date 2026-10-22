@@ -19,14 +19,14 @@ from __future__ import annotations
 from typing import ClassVar
 
 from pydantic_ai import ModelRetry, RunContext
-from pydantic_ai.agent.abstract import AgentRetries
 
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import ToolGenerationDeps
 from kompend.compilation.gen_tools import build_gen_tools
 from kompend.compilation.schema import GenerationOutput, GenerationPage
-from kompend.core.config._configs import RlmConfig
+from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.models.enums import NodeType
 from kompend.core.text.slug import slugify
 from kompend.llm.usage import UsageTracker
 
@@ -123,7 +123,7 @@ def _fix_slugs_locally(pages: list[GenerationPage]) -> None:
     seen: set[str] = set()
     for page in pages:
         if not page.slug.strip():
-            page.slug = slugify(page.title, default="concept")
+            page.slug = slugify(page.title, default=NodeType.CONCEPT.value)
         # De-duplicate: append numeric suffix if slug already seen.
         if page.slug in seen:
             base = page.slug

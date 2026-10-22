@@ -25,6 +25,7 @@ from kompend.core.models import (
     WikiNode,
 )
 from kompend.core.models.elements import element_text
+from kompend.core.models.enums import NodeType
 
 
 class TestElementText:
@@ -126,9 +127,9 @@ def test_wiki_node_creation() -> None:
         id="node-1",
         title="Introduction",
         content="The intro...",
-        node_type="section",
+        node_type=NodeType.SECTION,
     )
-    assert node.node_type == "section"
+    assert node.node_type == NodeType.SECTION
     assert node.title == "Introduction"
 
 
@@ -137,7 +138,7 @@ def test_compiled_wiki_creation() -> None:
         id="node-1",
         title="Intro",
         content="...",
-        node_type="section",
+        node_type=NodeType.SECTION,
     )
     wiki = CompiledWiki(
         nodes=[node],

@@ -13,6 +13,7 @@ from pathlib import Path
 
 from kompend.core.cache.store import decode_json, encode_json, make_cache_key
 from kompend.core.models import MetadataField, WikiNode
+from kompend.core.models.metadata import meta_str
 from kompend.core.paths import rel_to_vault
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.logging import get_logger
@@ -107,8 +108,9 @@ def _relativize_node(node: WikiNode, base_dir: Path) -> WikiNode:
     meta = node.metadata or {}
     if MetadataField.SOURCE_FILE not in meta:
         return node
-    rel = rel_to_vault(meta[MetadataField.SOURCE_FILE], base_dir)
-    if rel == meta[MetadataField.SOURCE_FILE]:
+    source_file = meta_str(meta[MetadataField.SOURCE_FILE])
+    rel = rel_to_vault(source_file, base_dir)
+    if rel == source_file:
         return node
     new_meta = {**meta, MetadataField.SOURCE_FILE: rel}
     return WikiNode(

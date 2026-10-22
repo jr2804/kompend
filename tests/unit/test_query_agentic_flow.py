@@ -20,6 +20,7 @@ from kompend.cli._query_helpers import should_use_agentic
 from kompend.compilation.query_tools import add_finding, read_page, search_wiki
 from kompend.core.config import ResolvedConfig
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
 from kompend.search.retriever import KeywordRetriever, SearchResult, run_agentic_query
 
@@ -158,9 +159,9 @@ def _fake() -> _FakeRetriever:
 
 def test_keyword_retriever_applies_filters() -> None:
     nodes = [
-        WikiNode(id="a", title="Audio paper", content="audio codec", node_type="concept", metadata={"tags": ["audio", "paper"]}),
-        WikiNode(id="b", title="Video paper", content="video codec", node_type="concept", metadata={"tags": ["video"]}),
-        WikiNode(id="c", title="Audio note", content="audio note", node_type="concept", metadata={"tags": ["audio"]}),
+        WikiNode(id="a", title="Audio paper", content="audio codec", node_type=NodeType.CONCEPT, metadata={"tags": ["audio", "paper"]}),
+        WikiNode(id="b", title="Video paper", content="video codec", node_type=NodeType.CONCEPT, metadata={"tags": ["video"]}),
+        WikiNode(id="c", title="Audio note", content="audio note", node_type=NodeType.CONCEPT, metadata={"tags": ["audio"]}),
     ]
     retriever = KeywordRetriever(CompiledWiki(nodes=nodes, edges=[], toc=[]))
     dnf = retriever.search("codec", top_k=5, tags_dnf=[["audio", "paper"]])
@@ -170,7 +171,7 @@ def test_keyword_retriever_applies_filters() -> None:
 
 
 def test_retriever_read_page_returns_node_content() -> None:
-    node = WikiNode(id="p1", title="P.863", content="BODY", node_type="concept")
+    node = WikiNode(id="p1", title="P.863", content="BODY", node_type=NodeType.CONCEPT)
     retriever = KeywordRetriever(CompiledWiki(nodes=[node], edges=[], toc=[]))
     assert retriever.read_page("p1") == "BODY"
     assert retriever.read_page("missing") is None

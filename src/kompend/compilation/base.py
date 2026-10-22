@@ -11,6 +11,8 @@ from typing import TypeVar
 from kompend.compilation._two_phase_core import _merge_node
 from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
+from kompend.core.models.enums import NodeType
+from kompend.core.models.metadata import meta_str_list
 from kompend.core.paths import safe_stem
 from kompend.core.text.matching import cosine as cosine_similarity
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
@@ -87,7 +89,7 @@ class BaseCompiler(ABC):
         if len(nodes) < 2 or not embedding_model or embedding_model == "hash":
             return nodes
 
-        concept_nodes = [n for n in nodes if n.node_type == "concept"]
+        concept_nodes = [n for n in nodes if n.node_type is NodeType.CONCEPT]
         if len(concept_nodes) < 2:
             return nodes
 
@@ -168,7 +170,7 @@ class BaseCompiler(ABC):
                     survivor = _merge_node(survivor, concept_nodes[m])
                 merged_concepts.append(survivor)
 
-        non_concept = [n for n in nodes if n.node_type != "concept"]
+        non_concept = [n for n in nodes if n.node_type is not NodeType.CONCEPT]
         result = non_concept + merged_concepts
 
         logger.info(
@@ -202,7 +204,7 @@ class BaseCompiler(ABC):
         # canonical (longest-title) winner for each key.
         key_to_indices: dict[str, list[int]] = defaultdict(list)
         for idx, node in enumerate(nodes):
-            if node.node_type != "concept":
+            if node.node_type is not NodeType.CONCEPT:
                 continue
             key = normalize_concept_key(node.title)
             if key:
@@ -281,28 +283,35 @@ class BaseCompiler(ABC):
         *,
         min_content_length: int,
     ) -> list[WikiNode]:
-        """Remove nodes whose content falls below *min_content_length*.
+        """Remove nodes that carry no body text at all.
 
         Content is measured after stripping markdown headings and
-        whitespace. Overview nodes (``node_type == 'overview'``) are
-        always retained.
+        whitespace. A node with any body text is kept, even when it is
+        shorter than *min_content_length* — that value is a warning
+        threshold, never an exclusion. Overview nodes (``node_type ==
+        'overview'``) are always retained.
         """
-        if min_content_length <= 0:
-            return nodes
         kept: list[WikiNode] = []
         for node in nodes:
-            if node.node_type == "overview":
+            if node.node_type is NodeType.OVERVIEW:
                 kept.append(node)
                 continue
             body_len = BaseCompiler.effective_content_length(node.content)
-            if body_len >= min_content_length:
-                kept.append(node)
-            else:
+            if body_len <= 0:
                 logger.debug(
-                    "Filtered empty node %s '%s' (%d chars body)",
+                    "Removed empty node %s '%s' (no body text)",
+                    node.id,
+                    node.title,
+                )
+                continue
+            kept.append(node)
+            if body_len < min_content_length:
+                logger.warning(
+                    "Node %s '%s' has only %d chars of body (below min_content_length=%d) — kept; content is never dropped for being short",
                     node.id,
                     node.title,
                     body_len,
+                    min_content_length,
                 )
         return kept
 
@@ -335,12 +344,12 @@ class BaseCompiler(ABC):
                         (survivor.source_chunks or []) + (node.source_chunks or []),
                     ),
                 )
-                ex_prov = {str(x) for x in (survivor.metadata.get(MetadataField.PROVENANCE) or [])}
-                inc_prov = {str(x) for x in (node.metadata.get(MetadataField.PROVENANCE) or [])}
+                ex_prov = set(meta_str_list(survivor.metadata.get(MetadataField.PROVENANCE)))
+                inc_prov = set(meta_str_list(node.metadata.get(MetadataField.PROVENANCE)))
                 if ex_prov or inc_prov:
                     survivor.metadata[MetadataField.PROVENANCE] = sorted(ex_prov | inc_prov)
-                ex_rel = {str(x) for x in (survivor.metadata.get(MetadataField.RELATED) or [])}
-                inc_rel = {str(x) for x in (node.metadata.get(MetadataField.RELATED) or [])}
+                ex_rel = set(meta_str_list(survivor.metadata.get(MetadataField.RELATED)))
+                inc_rel = set(meta_str_list(node.metadata.get(MetadataField.RELATED)))
                 if ex_rel or inc_rel:
                     survivor.metadata[MetadataField.RELATED] = sorted(ex_rel | inc_rel)
                 logger.debug(

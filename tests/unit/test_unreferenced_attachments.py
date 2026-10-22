@@ -19,6 +19,7 @@ from pathlib import Path
 
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.attachments import Attachment, AttachmentManifest
+from kompend.core.models.enums import NodeType
 from kompend.core.paths import VaultPaths
 from kompend.lint.base import LintRuleOutcome
 from kompend.lint.runner import LintRunner
@@ -165,4 +166,4 @@ def _page(base_dir: Path, link: str | None) -> None:
 
 
 def _wiki() -> CompiledWiki:
-    return CompiledWiki(nodes=[WikiNode(id="one", title="One", content="Body.", node_type="concept")], edges=[], toc=[])
+    return CompiledWiki(nodes=[WikiNode(id="one", title="One", content="Body.", node_type=NodeType.CONCEPT)], edges=[], toc=[])

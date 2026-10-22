@@ -10,6 +10,7 @@ import json
 from pathlib import Path
 
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.core.reporting.runlog import log_run_end, log_run_start
 from kompend.core.store import open_store
 from kompend.core.store.schema import PRIVATE_PAGES_TABLE, RUNS_TABLE, VERIFICATION_TABLE
@@ -97,7 +98,7 @@ class TestPrivatePagesRoundTrip:
 
     def _wiki(self, ids: list[str]) -> CompiledWiki:
         return CompiledWiki(
-            nodes=[WikiNode(id=i, title=f"t-{i}", content="c", node_type="concept") for i in ids],
+            nodes=[WikiNode(id=i, title=f"t-{i}", content="c", node_type=NodeType.CONCEPT) for i in ids],
             edges=[],
             toc=[],
         )

@@ -13,12 +13,13 @@ from kompend.compilation._checkpoints import (
 )
 from kompend.core.config._configs import EmbeddingConfig, LLMConfig
 from kompend.core.models import WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.core.pipeline.config import PipelineConfig
 
 
 def test_round_trip_preserves_caller_progress(tmp_pipeline_config: PipelineConfig) -> None:
     deps = {"model": "ollama/test", "prompt_sha": "abc"}
-    nodes = [WikiNode(id="node-0", title="Topic 0", content="content", node_type="concept")]
+    nodes = [WikiNode(id="node-0", title="Topic 0", content="content", node_type=NodeType.CONCEPT)]
     slug_to_idx = {"node-0": 0}
     completed: set[int] = set()
     caller_progress = {"seg_0": ["Topic 0"], "seg_1": ["Topic 1", "Topic 2"]}

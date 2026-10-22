@@ -33,6 +33,7 @@ from pydantic_ai.providers.ollama import OllamaProvider
 
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.core.models.elements import element_text
+from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.paths import KOMP_DB_FILE, rel_to_vault
 from kompend.core.store import open_store
 from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
@@ -556,12 +557,12 @@ class ZvecWikiStore:
                 fields={
                     ZvecField.NODE_ID: node.id,
                     ZvecField.TITLE: node.title,
-                    ZvecField.NODE_TYPE: node.node_type,
+                    ZvecField.NODE_TYPE: node.node_type.value,
                     ZvecField.SOURCE_FILE: source_file,
                     ZvecField.CONTENT_PREVIEW: node.content[: self._PREVIEW_LEN],
                     ZvecField.TAGS: list(node.metadata.get(MetadataField.TAGS, [])),
-                    ZvecField.ATTRIBUTES: _attributes_to_list(node.metadata.get(MetadataField.ATTRIBUTES) or {}),
-                    ZvecField.ATTR_KEYS: list(node.metadata.get(MetadataField.ATTRIBUTES, {}).keys()),
+                    ZvecField.ATTRIBUTES: _attributes_to_list(meta_str_list_dict(node.metadata.get(MetadataField.ATTRIBUTES))),
+                    ZvecField.ATTR_KEYS: list(meta_str_list_dict(node.metadata.get(MetadataField.ATTRIBUTES)).keys()),
                 },
             )
             docs_batch.append(doc)
@@ -682,8 +683,8 @@ def _content_hash(node: WikiNode) -> str:
     """
     metadata = node.metadata or {}
     tags = sorted(str(tag) for tag in metadata.get(MetadataField.TAGS, []))
-    attributes = sorted(_attributes_to_list(metadata.get(MetadataField.ATTRIBUTES) or {}))
-    payload = "\n".join([_embed_text(node), node.node_type, " ".join(tags), " ".join(attributes)])
+    attributes = sorted(_attributes_to_list(meta_str_list_dict(metadata.get(MetadataField.ATTRIBUTES))))
+    payload = "\n".join([_embed_text(node), node.node_type.value, " ".join(tags), " ".join(attributes)])
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
 
 

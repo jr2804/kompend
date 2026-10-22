@@ -24,6 +24,7 @@ from kompend.core.config.keys import (
     ORGANIZE_MIN_SUBCATEGORIES,
 )
 from kompend.core.models import CompiledWiki, WikiNode, load_cached_wiki
+from kompend.core.models.enums import NodeType
 from kompend.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KOMP_DIR, ORGANIZE_REPORT_FILE
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.core.store import open_store, vault_db_path
@@ -573,7 +574,7 @@ class TestUpdateWikiLinks:
     def test_updates_provenance(self, tmp_path: Path) -> None:
         annotate_wiki_with_provenance(
             CompiledWiki(
-                nodes=[WikiNode(id="node", title="T", content="Claim ^[old.md:1-2]", node_type="section")],
+                nodes=[WikiNode(id="node", title="T", content="Claim ^[old.md:1-2]", node_type=NodeType.SECTION)],
                 edges=[],
                 toc=[],
             ),
@@ -597,7 +598,7 @@ class TestUpdateWikiLinks:
         wiki.mkdir()
         write_wiki_cache(
             CompiledWiki(
-                nodes=[WikiNode(id="n1", title="T", content="x", node_type="section", metadata={"source_file": "sources/old.md"})],
+                nodes=[WikiNode(id="n1", title="T", content="x", node_type=NodeType.SECTION, metadata={"source_file": "sources/old.md"})],
                 edges=[],
                 toc=[],
             ),

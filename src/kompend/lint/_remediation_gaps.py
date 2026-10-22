@@ -14,6 +14,7 @@ from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
 from kompend.agents.types import RemediationDeps
 from kompend.compilation._two_phase_core import Extraction, ExtractionSet
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.models.enums import NodeType
 from kompend.core.templates import get_template_loader
 from kompend.core.text.matching import best_match
 from kompend.core.text.slug import slugify
@@ -119,7 +120,7 @@ def remediate_coverage_gaps(
                 id=page_id,
                 title=concept_name,
                 content=page_result.content,
-                node_type="concept",
+                node_type=NodeType.CONCEPT,
                 metadata={"source": "lint-remediation"},
             )
             # In-place replace ghost nodes, otherwise append.
@@ -174,7 +175,7 @@ def remediate_coverage_gaps(
             id=page_id,
             title=concept_name,
             content=content,
-            node_type="concept",
+            node_type=NodeType.CONCEPT,
             metadata={
                 "source": "lint-remediation",
                 "generated_from": matched.get("sources", []),

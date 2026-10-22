@@ -344,10 +344,11 @@ def update_memory_for_compile(
         )
 
     # Attach memory metadata to wiki for downstream consumers.
-    wiki.metadata.setdefault("memory", {})
-    wiki.metadata["memory"]["new"] = report.new
-    wiki.metadata["memory"]["updated"] = report.updated
-    wiki.metadata["memory"]["superseded"] = report.superseded
-    wiki.metadata["memory"]["stale"] = [s.node_id for s in store.all_stale(threshold=decay_threshold, half_life_days=half_life_days)]
+    wiki.metadata["memory"] = {
+        "new": list(report.new),
+        "updated": list(report.updated),
+        "superseded": list(report.superseded),
+        "stale": [s.node_id for s in store.all_stale(threshold=decay_threshold, half_life_days=half_life_days)],
+    }
 
     return report

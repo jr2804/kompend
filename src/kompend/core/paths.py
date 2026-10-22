@@ -70,6 +70,11 @@ EXTRACT_SUBDIR: Final[str] = "extract"
 WIKI_CACHE_FILE: Final[str] = "last_wiki.json"
 COMPILED_WIKI_FILE: Final[str] = "compiled_wiki.json"
 INDEX_FILE: Final[str] = "index.md"
+#: Corpus bibliography page (wiki/references.md) — distinct from the
+#: machine-readable ``REFERENCES_FILE`` cache.
+REFERENCES_MD: Final[str] = "references.md"
+#: Thematic corpus overview page (wiki/overview.md).
+OVERVIEW_MD: Final[str] = "overview.md"
 
 # ── Review queue ────────────────────────────────────────────────────────
 REVIEW_DIR: Final[str] = "review"
@@ -79,6 +84,8 @@ SUMMARIES_SUBDIR: Final[str] = "summaries"
 EXPORTED_DIR_NAME: Final[str] = "exported"
 # ── Verification summary page (wiki/quality.md) ─────────────────────────────
 QUALITY_FILE: Final[str] = "quality.md"
+#: Single-file markdown export of the whole wiki (output_dir/wiki.md).
+WIKI_MARKDOWN_FILE: Final[str] = "wiki.md"
 
 # ── Vector store ────────────────────────────────────────────────────────
 VECTORS_DIR: Final[str] = "vectors"
@@ -92,6 +99,10 @@ DOWNLOADED_FILE: Final[str] = "downloaded.json"
 MEMORY_DB_FILE: Final[str] = "memory.db"  # zvec collection dir (rebuildable from the log)
 MEMORY_LOG_FILE: Final[str] = "memory.jsonl"  # legacy — superseded by kompend.db
 MEMORY_STORE_FILE: Final[str] = "memory.json"  # legacy — superseded by kompend.db
+#: Subdirectory under ``sources/`` that holds the synthesized memory context.
+MEMORY_SUBDIR: Final[str] = "_memory"
+#: Synthesized memory context page (sources/_memory/system_context.md).
+MEMORY_CONTEXT_FILE: Final[str] = "system_context.md"
 
 # ── Provenance ──────────────────────────────────────────────────────────
 PROVENANCE_DIR: Final[str] = "provenance"  # legacy — superseded by kompend.db

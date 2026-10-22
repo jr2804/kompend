@@ -20,7 +20,7 @@ from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config._configs import LintConfig
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import CompiledWiki, MetadataField, load_cached_wiki
-from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, VaultPaths
+from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, VaultPaths
 from kompend.lint.base import LintReport, LintResult
 from kompend.lint.gap_analysis import analyze_gaps, load_degree_map
 from kompend.lint.history import entry_from_report, save_lint_entry
@@ -233,7 +233,7 @@ def _rich_report(results: list[LintResult]) -> LintReport:
 def _format_output_phase(vp: VaultPaths, cfg: Any) -> None:
     """Step: run rumdl format pass on the output dir."""
     rumdl_cfg = resolve_rumdl_config(vp.base_dir, cfg.kompend.compile.output.rumdl_config)
-    extra_files = [p for fname in (INDEX_FILE, "overview.md") if (p := vp.base_dir / fname).exists()]
+    extra_files = [p for fname in (INDEX_FILE, OVERVIEW_MD) if (p := vp.base_dir / fname).exists()]
     format_output(
         vp.output_dir,
         flavor=cfg.kompend.compile.output.flavor,
@@ -277,7 +277,7 @@ def persist_lint_fixes(wiki: CompiledWiki, vp: VaultPaths) -> int:
     """
     updated = 0
     for node in wiki.nodes:
-        fm = node.metadata.get("frontmatter", {})
+        fm = node.metadata.get(MetadataField.FRONTMATTER, {})
         if not isinstance(fm, dict) or "title" not in fm:
             continue
         md_file = vp.output_dir / f"node_{node.id}.md"

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, NotRequired, TypedDict
 
 from kompend.core.models import TocEntry
+from kompend.core.models.enums import NodeType
 
 __all__ = ["Document", "OkfSource", "TrustEvent"]
 
@@ -43,7 +44,7 @@ class Document:
     page_slug: str = ""
     """URL-friendly slug for cross-referencing and file naming."""
 
-    node_type: str = ""
+    node_type: NodeType = NodeType.PAGE
     """Compiler-assigned kind (concept/overview/comparison/entity/...).
     Used to route the page into a subfolder in vault mode."""
 

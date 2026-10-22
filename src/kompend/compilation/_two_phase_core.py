@@ -21,7 +21,8 @@ from kompend.compilation.concept_keys import (
 from kompend.compilation.schema import Concept, Entity, ExtractionOutput, LLMOutputError
 from kompend.core.cache.store import CacheStore
 from kompend.core.config import BudgetConfig
-from kompend.core.models import ElementType, ExtractionStats, GraphEdge, ImageRef, ResolvedChunk, WikiNode
+from kompend.core.models import ElementType, ExtractionStats, GraphEdge, ImageRef, MetadataField, ResolvedChunk, WikiNode
+from kompend.core.models.metadata import meta_str_list
 from kompend.core.pipeline.assets import AssetStore
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.templates import get_template_loader
@@ -598,13 +599,13 @@ def _merge_node(
     # ponytail: LLM output may return dicts/non-strings in provenance/related
     # (e.g. {"chunk": ...} under timeout stress); coerce to str so the set
     # dedup never hits "unhashable type: 'dict'".
-    existing_prov = {str(x) for x in (existing.metadata.get("provenance") or [])}
-    incoming_prov = {str(x) for x in (incoming.metadata.get("provenance") or [])}
+    existing_prov = set(meta_str_list(existing.metadata.get(MetadataField.PROVENANCE)))
+    incoming_prov = set(meta_str_list(incoming.metadata.get(MetadataField.PROVENANCE)))
     merged_prov = sorted(existing_prov | incoming_prov)
 
     # Merge related
-    existing_rel = {str(x) for x in (existing.metadata.get("related") or [])}
-    incoming_rel = {str(x) for x in (incoming.metadata.get("related") or [])}
+    existing_rel = set(meta_str_list(existing.metadata.get(MetadataField.RELATED)))
+    incoming_rel = set(meta_str_list(incoming.metadata.get(MetadataField.RELATED)))
     merged_rel = sorted(existing_rel | incoming_rel)
 
     return WikiNode(

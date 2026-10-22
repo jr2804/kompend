@@ -194,7 +194,7 @@ def render_document_markdown(
     return "\n\n".join(p for p in parts if p).rstrip() + "\n"
 
 
-def document_summary(data: dict[str, Any]) -> str:
+def document_summary(data: dict[str, Any], doc_headings: int) -> str:
     """One-line document summary: joined headings, else title, else stem.
 
     Mirrors ``chunking/contextual.py:_summarize_document`` (the canonical
