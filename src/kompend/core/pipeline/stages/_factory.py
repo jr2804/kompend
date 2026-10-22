@@ -9,7 +9,11 @@ from kompend.agents.context_chunk_agentic import (
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
 from kompend.chunking.contextual import ContextualEnricher
 from kompend.chunking.hierarchical import HierarchicalChunker
-from kompend.chunking.summarizer import NodeSummarizer, SummarizerSessionPolicy
+from kompend.chunking.summarizer import (
+    NodeSummarizer,
+    SummarizerContentPolicy,
+    SummarizerSessionPolicy,
+)
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.graph import GraphCompiler
 from kompend.compilation.two_phase import TwoPhaseCompiler
@@ -163,9 +167,7 @@ def build_pipeline(
         summarizer=NodeSummarizer(
             agent=summarizer_agent,
             cache_store=CacheStore(config.paths.cache_dir),
-            max_content_chars=config.budget.summary_max_content_chars,
-            target_chars=config.budget.summary_target_chars,
-            skip_single_child=config.budget.summary_skip_single_child,
+            content_policy=SummarizerContentPolicy.from_config(config.budget),
             session_policy=SummarizerSessionPolicy(
                 batch_size=config.budget.summary_session_batch_size,
                 stall_retries=config.budget.summary_session_stall_retries,

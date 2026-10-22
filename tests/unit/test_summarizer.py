@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -10,7 +11,12 @@ from pydantic_ai.exceptions import UsageLimitExceeded
 
 from kompend.agents.summarizer_agentic import make_agentic_summarizer_agent
 from kompend.agents.types import SummarizerDeps
-from kompend.chunking.summarizer import NodeSummarizer, SummarizerSessionPolicy
+from kompend.chunking.summarizer import (
+    NodeSummarizer,
+    SummarizerContentPolicy,
+    SummarizerSessionPolicy,
+)
+from kompend.core.config._configs import BudgetConfig
 from kompend.core.models import (
     Chunk,
     ChunkNode,
@@ -25,19 +31,19 @@ from kompend.core.models import (
 
 class TestSummarizerSkip:
     def test_single_pass_skipped(self, single_pass_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None)
+        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
         result = summarizer.summarize(single_pass_tree)
         root = result.nodes["root"]
         assert root.summary == ""
 
     def test_single_child_skipped_by_default(self, single_child_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, skip_single_child=True)
+        summarizer = NodeSummarizer(agent=None, content_policy=_policy(skip_single_child=True))
         summarizer.summarize(single_child_tree)
         wrapper = single_child_tree.nodes["w"]
         assert wrapper.summary == ""
 
     def test_single_child_summarized_when_disabled(self, single_child_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, skip_single_child=False)
+        summarizer = NodeSummarizer(agent=None, content_policy=_policy(skip_single_child=False))
         summarizer.summarize(single_child_tree)
         wrapper = single_child_tree.nodes["w"]
         assert wrapper.summary != ""
@@ -45,27 +51,27 @@ class TestSummarizerSkip:
 
 class TestSummarizerExtractiveFallback:
     def test_internal_nodes_get_summaries(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None)
+        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
         summarizer.summarize(sample_tree)
         section1 = sample_tree.nodes["doc_h1"]
         assert section1.summary != ""
         assert "SNR" in section1.summary or "threshold" in section1.summary.lower()
 
     def test_root_gets_summary(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None)
+        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
         summarizer.summarize(sample_tree)
         root = sample_tree.nodes["doc_root"]
         assert root.summary != ""
 
     def test_leaf_nodes_unchanged(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None)
+        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
         summarizer.summarize(sample_tree)
         leaf = sample_tree.nodes["doc_t1"]
         assert leaf.summary == ""
         assert leaf.chunk is not None
 
     def test_extractive_max_sentences(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None)
+        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
         summarizer.summarize(sample_tree)
         root = sample_tree.nodes["doc_root"]
         assert len(root.summary.split(". ")) <= 6
@@ -77,7 +83,7 @@ class TestSummarizerLLM:
         mock_llm.model_string = "test-model"
         mock_llm.run.return_value = "LLM summary."
 
-        summarizer = NodeSummarizer(agent=mock_llm)
+        summarizer = NodeSummarizer(agent=mock_llm, content_policy=_policy())
         summarizer.summarize(sample_tree)
 
         section1 = sample_tree.nodes["doc_h1"]
@@ -89,7 +95,7 @@ class TestSummarizerLLM:
         mock_llm.model_string = "test-model"
         mock_llm.run.return_value = "Summary."
 
-        summarizer = NodeSummarizer(agent=mock_llm)
+        summarizer = NodeSummarizer(agent=mock_llm, content_policy=_policy())
         summarizer.summarize(sample_tree)
 
         call_args = mock_llm.run.call_args
@@ -98,9 +104,21 @@ class TestSummarizerLLM:
         assert "SNR" in prompt or "threshold" in prompt.lower()
 
     def test_returns_same_tree_object(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None)
+        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
         result = summarizer.summarize(sample_tree)
         assert result is sample_tree
+
+    def test_target_length_reaches_the_prompt(self, sample_tree: ChunkTree) -> None:
+        mock_llm = MagicMock()
+        mock_llm.model_string = "test-model"
+        mock_llm.run.return_value = "Summary."
+
+        policy = replace(_policy(), target_chars=321)
+        summarizer = NodeSummarizer(agent=mock_llm, content_policy=policy)
+        summarizer.summarize(sample_tree)
+
+        prompt = mock_llm.run.call_args[0][0].text
+        assert "321 characters" in prompt
 
 
 class TestSummarizerCache:
@@ -112,7 +130,7 @@ class TestSummarizerCache:
         mock_cache = MagicMock()
         mock_cache.get.return_value = "Cached summary."
 
-        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache)
+        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache, content_policy=_policy())
         summarizer.summarize(sample_tree)
 
         mock_llm.run.assert_not_called()
@@ -125,7 +143,7 @@ class TestSummarizerCache:
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
 
-        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache)
+        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache, content_policy=_policy())
         summarizer.summarize(sample_tree)
 
         assert mock_llm.run.called
@@ -139,7 +157,7 @@ class TestSummarizerCache:
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
 
-        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache)
+        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache, content_policy=_policy())
         summarizer.summarize(sample_tree)
 
         for call in mock_cache.set.call_args_list:
@@ -174,7 +192,7 @@ class TestSummarizerStructuredLeaf:
             strategy=ChunkStrategy.TWO_LEVEL,
         )
 
-        summarizer = NodeSummarizer(agent=None, skip_single_child=False)
+        summarizer = NodeSummarizer(agent=None, content_policy=_policy(skip_single_child=False))
         summarizer.summarize(tree)
 
         section_node = tree.nodes["s"]
@@ -207,7 +225,7 @@ class TestSummarizerAgenticResume:
                 deps.results[node_id] = f"summary {node_id}"
 
         monkeypatch.setattr(agent, "run", _run)
-        tree = NodeSummarizer(agent=agent).summarize(agentic_tree)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy()).summarize(agentic_tree)
 
         assert len(rounds) == 2
         assert len(rounds[0]) == 4
@@ -229,7 +247,7 @@ class TestSummarizerAgenticResume:
             raise UsageLimitExceeded("The next request would exceed the request_limit of 3.")
 
         monkeypatch.setattr(agent, "run", _run)
-        tree = NodeSummarizer(agent=agent).summarize(agentic_tree)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy()).summarize(agentic_tree)
 
         assert len(rounds) == 1
         for node_id in rounds[0]:
@@ -249,7 +267,7 @@ class TestSummarizerAgenticResume:
             deps.results[f"not-a-node-{len(rounds)}"] = "junk"
 
         monkeypatch.setattr(agent, "run", _run)
-        tree = NodeSummarizer(agent=agent).summarize(agentic_tree)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy()).summarize(agentic_tree)
 
         assert len(rounds) == 1
         for node_id in rounds[0]:
@@ -269,7 +287,7 @@ class TestSummarizerAgenticResume:
                 deps.results[node_id] = f"summary {node_id}"
 
         monkeypatch.setattr(agent, "run", _run)
-        tree = NodeSummarizer(agent=agent).summarize(agentic_tree)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy()).summarize(agentic_tree)
 
         assert len(rounds) == 1
         for node_id in rounds[0]:
@@ -298,7 +316,7 @@ class TestSummarizerAgenticBatching:
 
         monkeypatch.setattr(agent, "run", _run)
         policy = SummarizerSessionPolicy(batch_size=2, stall_retries=0)
-        tree = NodeSummarizer(agent=agent, session_policy=policy).summarize(agentic_tree)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
 
         assert [len(round) for round in rounds] == [2, 2]
         for node_id in ("s0", "s1", "s2", "r"):
@@ -321,7 +339,7 @@ class TestSummarizerAgenticBatching:
 
         monkeypatch.setattr(agent, "run", _run)
         policy = SummarizerSessionPolicy(batch_size=2, stall_retries=0)
-        tree = NodeSummarizer(agent=agent, session_policy=policy).summarize(agentic_tree)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
 
         assert len(rounds) == 2
         for node_id in rounds[0]:
@@ -346,7 +364,7 @@ class TestSummarizerAgenticBatching:
 
         monkeypatch.setattr(agent, "run", _run)
         policy = SummarizerSessionPolicy(batch_size=2, stall_retries=1)
-        tree = NodeSummarizer(agent=agent, session_policy=policy).summarize(agentic_tree)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
 
         assert [len(round) for round in rounds] == [2, 2, 2]
         for node_id in ("s0", "s1", "s2", "r"):
@@ -361,7 +379,7 @@ class TestSummarizerWindowing:
         mock_llm.model_string = "test-model"
         mock_llm.run.side_effect = lambda deps: f"summary of {len(deps.text)} chars"
 
-        summarizer = NodeSummarizer(agent=mock_llm, max_content_chars=100)
+        summarizer = NodeSummarizer(agent=mock_llm, content_policy=_policy(max_content_chars=100))
         tree = summarizer.summarize(_long_tree())
 
         prompts = [call[0][0].text for call in mock_llm.run.call_args_list]
@@ -381,13 +399,51 @@ class TestSummarizerWindowing:
 
         agent.run = _run  # type: ignore[method-assign]
         policy = SummarizerSessionPolicy(batch_size=10, stall_retries=1)
-        tree = NodeSummarizer(agent=agent, session_policy=policy).summarize(_long_tree())
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(_long_tree())
 
         entries = [entry for session in seen for entry in session]
         ids = [entry_id for entry_id, _ in entries]
         assert any(entry_id.startswith("s#w") for entry_id in ids)
         assert any("TAIL-MARKER" in content for _, content in entries)
         assert tree.nodes["s"].summary != ""
+
+    def test_agentic_window_size_comes_from_the_config(self) -> None:
+        agent = make_agentic_summarizer_agent("test-model")
+        seen: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            seen.append([entry["id"] for entry in deps.nodes])
+            for entry in deps.nodes:
+                deps.results[entry["id"]] = f"summary {entry['id']}"
+
+        agent.run = _run  # type: ignore[method-assign]
+        policy = SummarizerSessionPolicy(batch_size=100, stall_retries=1)
+        NodeSummarizer(agent=agent, content_policy=_policy(window_chars=40), session_policy=policy).summarize(_long_tree())
+        small_window_entries = [entry_id for session in seen for entry_id in session]
+
+        seen.clear()
+        NodeSummarizer(agent=agent, content_policy=_policy(window_chars=4000), session_policy=policy).summarize(_long_tree())
+        large_window_entries = [entry_id for session in seen for entry_id in session]
+
+        # A bigger window means fewer summarize calls — never fewer windows of
+        # content.
+        assert len(small_window_entries) > len(large_window_entries)
+
+
+def _policy(
+    max_content_chars: int | None = None,
+    window_chars: int | None = None,
+    skip_single_child: bool | None = None,
+) -> SummarizerContentPolicy:
+    """Content policy from the config defaults, with optional overrides."""
+    policy = SummarizerContentPolicy.from_config(BudgetConfig())
+    if max_content_chars is not None:
+        policy = replace(policy, max_content_chars=max_content_chars)
+    if window_chars is not None:
+        policy = replace(policy, window_chars=window_chars)
+    if skip_single_child is not None:
+        policy = replace(policy, skip_single_child=skip_single_child)
+    return policy
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────

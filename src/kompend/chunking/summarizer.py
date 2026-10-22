@@ -35,8 +35,8 @@ from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.summarizer import SummarizerAgent
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent
 from kompend.agents.types import SummarizerDeps, SummaryNode
-from kompend.compilation.summarizer_tools import NODE_CONTENT_CHARS
 from kompend.core.cache.store import CacheStore
+from kompend.core.config._configs import BudgetConfig
 from kompend.core.models import ChunkNode, ChunkStrategy, ChunkTree
 from kompend.core.models.structured import structured_to_text
 from kompend.core.templates import get_template_loader
@@ -67,6 +67,41 @@ class SummarizerSessionPolicy:
 
     batch_size: int
     stall_retries: int
+
+
+@dataclass(frozen=True)
+class SummarizerContentPolicy:
+    """Content shaping policy for one summarizer run.
+
+    Every value comes from ``compile.budget``. No default lives here, so the
+    config schema stays the single source of truth for the numbers.
+
+    Attributes:
+        max_content_chars: Characters of child content per summary call in the
+            plain (non-agentic) path. Longer content is split into several
+            calls — it is never truncated.
+        window_chars: Characters per payload window in the agentic path. One
+            window costs one summarize call, so a bigger window means fewer
+            calls (faster) — it never drops content.
+        target_chars: Target length of the produced summary, in characters.
+        skip_single_child: When ``True``, an internal node with exactly one
+            child is skipped — the child's content already represents it.
+    """
+
+    max_content_chars: int
+    window_chars: int
+    target_chars: int
+    skip_single_child: bool
+
+    @classmethod
+    def from_config(cls, budget: BudgetConfig) -> SummarizerContentPolicy:
+        """Build the policy from the ``compile.budget`` config section."""
+        return cls(
+            max_content_chars=budget.summary_max_content_chars,
+            window_chars=budget.summary_window_chars,
+            target_chars=budget.summary_target_chars,
+            skip_single_child=budget.summary_skip_single_child,
+        )
 
 
 @dataclass
@@ -110,15 +145,12 @@ class NodeSummarizer:
         fallback is used.
     cache_store:
         Optional cache for summary persistence across runs.
-    max_content_chars:
-        Maximum characters of child content assembled for a single summary
-        call. Longer content is split into several calls (slower, but no
-        content is lost) — it is never truncated.
-    target_chars:
-        Target summary length (informational, passed to LLM via template).
-    skip_single_child:
-        When ``True``, internal nodes with exactly one child are skipped —
-        the child's content already represents the parent fully.
+    content_policy:
+        Content shaping policy (:class:`SummarizerContentPolicy`) — the
+        characters per summary call, the characters per agentic payload
+        window, the target summary length, and whether single-child nodes
+        are skipped. It is built from ``compile.budget``; no number is
+        duplicated in this module.
     session_policy:
         Batching/retry policy for the agentic summarizer. ``None`` keeps the
         pre-batching behaviour: one session for the whole tree with no stall
@@ -130,16 +162,12 @@ class NodeSummarizer:
         agent: SummarizerAgent | AgenticSummarizerAgent | None = None,
         cache_store: CacheStore | None = None,
         *,
-        max_content_chars: int = 8000,
-        target_chars: int = 600,
-        skip_single_child: bool = True,
+        content_policy: SummarizerContentPolicy,
         session_policy: SummarizerSessionPolicy | None = None,
     ) -> None:
         self._agent = agent
         self._cache = cache_store
-        self._max_content_chars = max_content_chars
-        self._target_chars = target_chars
-        self._skip_single_child = skip_single_child
+        self._policy = content_policy
         self._session_policy = session_policy
         self._loader = get_template_loader()
 
@@ -170,7 +198,7 @@ class NodeSummarizer:
         for node in reversed(list(tree.walk())):
             if node.chunk is not None or node.structured is not None:
                 continue
-            if self._skip_single_child and len(node.children_ids) <= 1:
+            if self._policy.skip_single_child and len(node.children_ids) <= 1:
                 if not node.children_ids:
                     continue
                 child = tree.nodes.get(node.children_ids[0])
@@ -279,7 +307,7 @@ class NodeSummarizer:
         Cached summaries are applied to their nodes in place and excluded from
         the payload, so a resumed session never re-asks for finished work.
 
-        Node content is split into windows of at most ``NODE_CONTENT_CHARS``
+        Node content is split into windows of at most ``window_chars``
         characters. Every window is asked for separately (the payload id
         carries the window index), so the model sees the whole node instead
         of a truncated head; the per-node summary is the join of its window
@@ -297,7 +325,7 @@ class NodeSummarizer:
                     parts.append(text)
             content = "\n\n".join(parts)
             heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
-            windows = split_text_windows(content, NODE_CONTENT_CHARS) or [""]
+            windows = split_text_windows(content, self._policy.window_chars) or [""]
             entry_ids = self._entry_ids(node.id, len(windows))
             state.entry_ids[node.id] = entry_ids
             done = state.done_for(node.id)
@@ -359,7 +387,7 @@ class NodeSummarizer:
         content = "\n\n".join(parts)
         heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
 
-        windows = split_text_windows(content, self._max_content_chars)
+        windows = split_text_windows(content, self._policy.max_content_chars)
         if not windows:
             return ""
 
@@ -381,7 +409,12 @@ class NodeSummarizer:
 
     def _llm_summarize(self, content: str, heading_chain: str) -> str:
         """Call LLM via the node-summary template."""
-        prompt = self._loader.render(_TEMPLATE, content=content, heading_chain=heading_chain)
+        prompt = self._loader.render(
+            _TEMPLATE,
+            content=content,
+            heading_chain=heading_chain,
+            target_chars=self._policy.target_chars,
+        )
         deps = PipelineAgentDeps(text=prompt, source_id=heading_chain, timeout=120)
         try:
             if self._agent is None:

@@ -4,6 +4,8 @@ variables:
     required: false
   - name: content
     required: true
+  - name: target_chars
+    required: false
 role: chunking.node-summary
 response_format: text
 temperature: 0.0
@@ -14,7 +16,7 @@ You are a precise summariser for a hierarchical document-chunk tree. Your summar
 {% if heading_chain %}Section context: {{ heading_chain }}
 
 {% endif %}
-Summarise the following content in 2–5 sentences. Preserve:
+Summarise the following content in 2-5 sentences{% if target_chars %} (about {{ target_chars }} characters){% endif %}. Preserve:
 - Specific numbers, measurements, and thresholds
 - Named entities and their relationships
 - Key definitions and claims

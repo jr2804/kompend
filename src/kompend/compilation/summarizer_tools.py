@@ -17,12 +17,6 @@ from pydantic_ai import ModelRetry, RunContext
 
 from kompend.agents.types import SummarizerDeps
 
-#: Node content handed to the summarizer agent's tool payload. Content longer
-#: than this is split into several payload windows by ``NodeSummarizer``, so
-#: the model always sees the whole node — one window per call, never a
-#: silent truncation.
-NODE_CONTENT_CHARS: int = 2000
-
 
 def build_summarizer_tools() -> list[Any]:
     """Return the full toolset for the agentic summarizer agent."""
