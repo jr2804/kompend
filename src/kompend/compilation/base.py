@@ -256,14 +256,15 @@ class BaseCompiler(ABC):
         *,
         min_content_length: int,
     ) -> dict[K, list[ResolvedChunk]]:
-        """Remove groups whose merged content falls below *min_content_length*.
+        """Remove groups that carry no body text at all.
 
         Content is measured after stripping markdown headings and
-        whitespace. Groups with title-only or heading-only chunks are
-        removed. The ``_root`` group is always retained.
+        whitespace. A group whose chunks are heading-only has nothing to
+        compile and is dropped. A group with *any* body text is kept, even
+        when it is shorter than *min_content_length* — that value is a
+        warning threshold, never an exclusion: no document is dropped for
+        being small. The ``_root`` group is always retained.
         """
-        if min_content_length <= 0:
-            return groups
         kept: dict[K, list[ResolvedChunk]] = {}
         for heading, group_chunks in groups.items():
             if heading == "_root":
@@ -271,10 +272,17 @@ class BaseCompiler(ABC):
                 continue
             merged = "\n\n".join(rc.chunk.text for rc in group_chunks if rc.chunk.text)
             body_len = BaseCompiler.effective_content_length(merged)
-            if body_len >= min_content_length:
-                kept[heading] = group_chunks
-            else:
-                logger.debug("Filtered empty group '%s' (%d chars body)", heading, body_len)
+            if body_len <= 0:
+                logger.debug("Removed empty group '%s' (no body text)", heading)
+                continue
+            kept[heading] = group_chunks
+            if body_len < min_content_length:
+                logger.warning(
+                    "Group '%s' has only %d chars of body (below min_content_length=%d) — kept; content is never dropped for being short",
+                    heading,
+                    body_len,
+                    min_content_length,
+                )
         return kept
 
     @staticmethod

@@ -151,7 +151,7 @@ Five MCP tools provide attachment access to agents:
 | Tool | Description |
 |------|-------------|
 | `wiki_list_attachments(source?)` | List registered attachments (optionally filtered by source). |
-| `wiki_read_attachment(source, attachment_name)` | Read text content (up to 100KB) or metadata for binary files. |
+| `wiki_read_attachment(source, attachment_name, offset?)` | Read text content (up to 100KB per call) or metadata for binary files. A longer file names the `next_offset` in the reply — read it to get the rest. |
 | `wiki_attachment_info(source, attachment_name)` | Return manifest entry + file metadata. |
 | `attachments_verify(wiki_dir?)` | Read-only check: orphan dirs + manifest rows with no file on disk. |
 | `attachments_adopt(wiki_dir?)` | Register orphaned files on disk (compile-hook adoption). |

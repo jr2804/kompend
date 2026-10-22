@@ -253,18 +253,59 @@ line-aligned windows and parsed window by window, with results merged per
 source. This keeps very large bibliographies from failing with an
 oversized-request error on small local models.
 
+The window size obeys two bounds, and the smaller one wins:
+
+- **Input** — the discovered context window minus the measured system
+  prompt, the reserved output and the safety margin.
+- **Output** — `reference_output_max` divided by the JSON expansion factor
+  of the reference schema (the parsed list repeats the raw citation text
+  and adds parsed fields, so it is roughly three times larger). A window
+  whose references do not fit the output ceiling truncates the response
+  and fails with `Exceeded maximum output retries`.
+
+`reference_output_max` is passed to the model as the response ceiling
+(`max_tokens`), so the response is bounded explicitly instead of being cut
+off by the provider. Every window of a source is processed — one window is
+one LLM call, so a larger `reference_output_max` means fewer calls (faster)
+and never fewer references. Windows that fail are logged and skipped; the
+remaining windows still contribute their references.
+
 ## Structural Controls
 
 Beyond token budgets, `BudgetConfig` provides content-quality controls:
 
 | Field | Default | Env var | Purpose |
 |-------|---------|---------|---------|
-| `min_content_length` | `50` | `KOMP_BUDGET_MIN_CONTENT_LENGTH` | Min body characters for a wiki page (filters heading-only fragments) |
+| `min_content_length` | `50` | `KOMP_BUDGET_MIN_CONTENT_LENGTH` | Warning threshold for body length (heading-only fragments are dropped, short pages are kept) |
 | `min_concept_sources` | `2` | `KOMP_BUDGET_MIN_CONCEPT_SOURCES` | Min distinct sources for a cross-cutting concept page |
-| `max_concept_pages` | `50` | `KOMP_BUDGET_MAX_CONCEPT_PAGES` | Upper limit on generated concept pages |
+| `max_concept_pages` | `50` | `KOMP_BUDGET_MAX_CONCEPT_PAGES` | Warning threshold for generated concept pages (all candidates are compiled) |
 | `concepts_per_batch` | `8` | `KOMP_BUDGET_CONCEPTS_PER_BATCH` | Concepts extracted per LLM batch |
 | `verify_min_ngram` | `3` | — (config only) | Min n-gram overlap for verification |
-| `wicer_max_iterations` | `3` | `KOMP_BUDGET_WICER_MAX_ITERATIONS` | Max compile-evaluate-refine loop iterations |
+| `wicer_max_iterations` | `0` | `KOMP_BUDGET_WICER_MAX_ITERATIONS` | Refinement rounds — `0` runs until the loop converges |
+| `wicer_max_seconds` | `1800` | `KOMP_BUDGET_WICER_MAX_SECONDS` | Wall-clock budget of the refinement loop (`0` disables it) |
+
+## No Silent Exclusions
+
+A budget never decides what gets compiled. It only decides how many calls a
+piece of work needs:
+
+- **Content is windowed, never truncated.** Node summaries split long
+  content into several calls (`summary_max_content_chars`), reference
+  sections are split per source window, and the write-page synthesis reads
+  a source in windows of `capture_source_char_max` (the agent pages through
+  it with the offset the reply names) — the tail always reaches the model,
+  the cost is extra LLM calls.
+- **Thresholds warn, they do not drop.** `min_content_length` and
+  `max_concept_pages` log a warning when a page is short or a run produces
+  many concept pages; the content is still compiled.
+- **Only empty content is dropped.** A page without any body text has
+  nothing to compile.
+- **Timeouts and loops are the only stop reasons.** A provider timeout, a
+  wall-clock budget, or a model that never stops calling tools ends the
+  work — and what was already compiled is kept.
+
+If a run reports a warning about a threshold, the fix is a bigger budget
+or a faster model — never a smaller exclusion.
 
 ## Example Configurations
 

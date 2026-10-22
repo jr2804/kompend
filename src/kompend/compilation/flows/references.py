@@ -37,6 +37,7 @@ from kompend.core.models.references import Reference, ReferenceResolutionOutput
 from kompend.core.paths import rel_to_vault
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.templates import get_template_loader
+from kompend.core.text.windows import split_text_windows
 from kompend.logging import get_logger
 
 #: System-prompt template of the reference extraction agent. Its rendered
@@ -155,7 +156,7 @@ def run_reference_extraction(
             logger.debug("TwoPhase: no model configured — reference section detected but not parsed")
             continue
 
-        windows = [ref_section] if len(ref_section) <= max_window_chars else _split_windows(ref_section, max_window_chars)
+        windows = [ref_section] if len(ref_section) <= max_window_chars else split_text_windows(ref_section, max_window_chars)
         if len(windows) > 1:
             logger.info(
                 "TwoPhase: references [%d/%d] %s — %d chars split into %d window(s)",

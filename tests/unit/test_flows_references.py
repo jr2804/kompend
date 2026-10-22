@@ -15,10 +15,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from kompend.agents.reference_extraction import ReferenceExtractionAgent
 from kompend.compilation.flows import references as ref_flow
 from kompend.compilation.flows.references import run_reference_extraction
 from kompend.core.models import Chunk, ElementType, ResolvedChunk
 from kompend.core.models.references import Reference
+from kompend.core.text.windows import split_text_windows
 from kompend.llm.context_window import ContextSource, ContextWindow
 
 SOURCE = "doc.docx"
@@ -66,17 +68,17 @@ class FakeStore:
 class TestSplitWindows:
     def test_short_text_is_single_window(self) -> None:
         text = "aa\nbb\ncc"
-        assert ref_flow._split_windows(text, 100) == [text]
+        assert split_text_windows(text, 100) == [text]
 
     def test_windows_never_exceed_max_chars(self) -> None:
         text = "\n".join("x" * 10 for _ in range(20))
-        windows = ref_flow._split_windows(text, 25)
+        windows = split_text_windows(text, 25)
         assert len(windows) > 1
         assert all(len(w) <= 25 for w in windows)
-        assert "\n".join(windows) == text
+        assert "".join(windows) == text
 
     def test_oversized_line_is_hard_split(self) -> None:
-        windows = ref_flow._split_windows("y" * 100, 30)
+        windows = split_text_windows("y" * 100, 30)
         assert [len(w) for w in windows] == [30, 30, 30, 10]
 
 

@@ -564,8 +564,8 @@ class TestConceptPages:
         wiki = GraphCompiler("model").compile(chunks)
         assert not any(n.metadata.get("cross_cutting") for n in wiki.nodes)
 
-    def test_max_concept_pages_caps_count(self) -> None:
-        """No more than max_concept_pages concept nodes are created."""
+    def test_max_concept_pages_is_a_warning_threshold(self) -> None:
+        """max_concept_pages never excludes a candidate — all of them are compiled."""
         chunks: list[ResolvedChunk] = []
         for i in range(5):
             chunks.append(
@@ -592,7 +592,7 @@ class TestConceptPages:
             )
         compiler = GraphCompiler("model", min_concept_sources=2, max_concept_pages=2)
         wiki = compiler.compile(chunks)
-        assert len(self._generated_concepts(wiki)) == 2
+        assert len(self._generated_concepts(wiki)) == 5
 
     @staticmethod
     def _generated_concepts(wiki: CompiledWiki) -> list[WikiNode]:

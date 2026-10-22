@@ -17,8 +17,11 @@ from pydantic_ai import ModelRetry, RunContext
 
 from kompend.agents.types import SummarizerDeps
 
-#: Node content handed to the summarizer agent's tool payload.
-_NODE_CONTENT_CHARS: int = 2000
+#: Node content handed to the summarizer agent's tool payload. Content longer
+#: than this is split into several payload windows by ``NodeSummarizer``, so
+#: the model always sees the whole node — one window per call, never a
+#: silent truncation.
+NODE_CONTENT_CHARS: int = 2000
 
 
 def build_summarizer_tools() -> list[Any]:
@@ -35,7 +38,10 @@ async def next_node(ctx: RunContext[SummarizerDeps]) -> str:
     node = pending[0]
     ctx.deps.current_node = node
     heading = node.get("heading_chain", "") or "document root"
-    content = node.get("content", "")[:_NODE_CONTENT_CHARS]
+    # The payload is pre-windowed by ``NodeSummarizer`` (one window per
+    # payload entry), so the content is handed over in full — never
+    # truncated here.
+    content = node.get("content", "")
     return f"node_id: {node['id']}\nheading: {heading}\ncontent: {content}"
 
 

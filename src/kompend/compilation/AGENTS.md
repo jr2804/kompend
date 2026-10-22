@@ -40,6 +40,12 @@ merging and an optional iterative WiCER refinement loop.
   extracted core logic to keep the main module focused.
 - `WiCERCompiler` wraps a `TwoPhaseCompiler` and adds iterative probing.
 - No prompt text belongs here — templates live in `src/kompend/templates/`.
+- **No content is excluded by size or by a threshold** (see the budget rule in
+  `.agents/CODE.md`). `min_content_length` and `max_concept_pages` are warning
+  thresholds: short pages and every concept-page candidate are compiled. Only
+  content without any body text is dropped. `wicer_max_iterations = 0` means
+  "until the loop converges"; `wicer_max_seconds` is a wall-clock stop that
+  keeps the compiled wiki.
 
 ### Page kinds (category taxonomy)
 

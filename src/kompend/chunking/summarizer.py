@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import cast
 
 from pydantic_ai.exceptions import UsageLimitExceeded
@@ -35,10 +35,12 @@ from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.summarizer import SummarizerAgent
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent
 from kompend.agents.types import SummarizerDeps, SummaryNode
+from kompend.compilation.summarizer_tools import NODE_CONTENT_CHARS
 from kompend.core.cache.store import CacheStore
 from kompend.core.models import ChunkNode, ChunkStrategy, ChunkTree
 from kompend.core.models.structured import structured_to_text
 from kompend.core.templates import get_template_loader
+from kompend.core.text.windows import split_text_windows
 from kompend.logging import get_logger
 
 _TEMPLATE = "chunking/node_summary.md.j2"
@@ -67,6 +69,37 @@ class SummarizerSessionPolicy:
     stall_retries: int
 
 
+@dataclass
+class _WindowState:
+    """Per-node window bookkeeping for one agentic summarization run.
+
+    A node whose content exceeds the payload window is asked for in several
+    windows. The state remembers which payload ids a node has (all of them,
+    even the ones already answered) and the summary each window produced, so
+    a resumed session only asks for what is still missing and the node
+    summary is always the join of *all* its windows.
+    """
+
+    entry_ids: dict[str, list[str]] = field(default_factory=dict)
+    summaries: dict[str, dict[str, str]] = field(default_factory=dict)
+
+    def ids_for(self, node_id: str) -> list[str]:
+        """All payload ids of ``node_id`` (empty when the node has none)."""
+        return self.entry_ids.get(node_id, [])
+
+    def done_for(self, node_id: str) -> dict[str, str]:
+        """Window summaries recorded for ``node_id``."""
+        return self.summaries.setdefault(node_id, {})
+
+    def is_complete(self, node_id: str) -> bool:
+        """True when every window of ``node_id`` has a summary."""
+        ids = self.ids_for(node_id)
+        if not ids:
+            return False
+        done = self.summaries.get(node_id, {})
+        return all(entry_id in done and done[entry_id].strip() for entry_id in ids)
+
+
 class NodeSummarizer:
     """Generate bottom-up summaries for internal nodes of a :class:`ChunkTree`.
 
@@ -79,7 +112,8 @@ class NodeSummarizer:
         Optional cache for summary persistence across runs.
     max_content_chars:
         Maximum characters of child content assembled for a single summary
-        prompt.  Content exceeding this is truncated.
+        call. Longer content is split into several calls (slower, but no
+        content is lost) — it is never truncated.
     target_chars:
         Target summary length (informational, passed to LLM via template).
     skip_single_child:
@@ -169,6 +203,7 @@ class NodeSummarizer:
         order = [node.id for node in eligible]
         pending: set[str] = set(order)
         strikes: dict[str, int] = {}
+        state = _WindowState()
         batch_size = self._session_policy.batch_size if self._session_policy else None
         stall_retries = self._session_policy.stall_retries if self._session_policy else 0
         sessions = 0
@@ -179,10 +214,11 @@ class NodeSummarizer:
             limit = batch_size or len(queue)
             for start in range(0, len(queue), limit):
                 window = queue[start : start + limit]
-                payload = self._agentic_payload(tree, window)
+                payload = self._agentic_payload(tree, window, state)
                 payload_ids = {entry["id"] for entry in payload}
+                payload_node_ids = {self._base_node_id(entry_id) for entry_id in payload_ids}
                 # Cache hits were applied by ``_agentic_payload`` — no session needed.
-                pending.difference_update(node.id for node in window if node.id not in payload_ids)
+                pending.difference_update(node.id for node in window if node.id not in payload_node_ids)
                 if not payload:
                     continue
 
@@ -197,17 +233,23 @@ class NodeSummarizer:
                     )
                 except Exception as exc:
                     logger.warning("Agentic summarizer failed: %s", exc)
-                self._apply_agentic_results(window, payload, deps.results)
+                progressed = self._apply_agentic_results(window, payload, deps.results, state)
 
-                recorded = {node_id for node_id in payload_ids if deps.results.get(node_id, "").strip()}
-                if recorded:
-                    pending.difference_update(recorded)
+                completed = {node_id for node_id in payload_node_ids if state.is_complete(node_id)}
+                if completed:
+                    pending.difference_update(completed)
+                if progressed:
                     last_session_recorded = True
+                    # The session produced something: the nodes that are
+                    # done leave the queue, the nodes that still miss a
+                    # window keep their place. A session that recorded
+                    # nothing is a stall — only then do the nodes lose a
+                    # retry.
                     continue
                 last_session_recorded = False
-                for node_id in payload_ids:
+                for node_id in payload_node_ids:
                     strikes[node_id] = strikes.get(node_id, 0) + 1
-                pending.difference_update(node_id for node_id in payload_ids if strikes[node_id] > stall_retries)
+                pending.difference_update(node_id for node_id in payload_node_ids if strikes.get(node_id, 0) > stall_retries)
 
         missing = [node for node in eligible if not node.summary]
         if missing:
@@ -217,14 +259,31 @@ class NodeSummarizer:
                 sessions,
                 " (last session recorded nothing for its payload)" if not last_session_recorded else "",
             )
+        incomplete = [node for node in eligible if node.summary and not state.is_complete(node.id)]
+        if incomplete:
+            logger.warning(
+                "Agentic summarizer summarised %d node(s) partially — some content windows are missing",
+                len(incomplete),
+            )
 
         return tree
 
-    def _agentic_payload(self, tree: ChunkTree, nodes: list[ChunkNode]) -> list[SummaryNode]:
+    def _agentic_payload(
+        self,
+        tree: ChunkTree,
+        nodes: list[ChunkNode],
+        state: _WindowState,
+    ) -> list[SummaryNode]:
         """Build the per-node session payload for ``nodes``.
 
         Cached summaries are applied to their nodes in place and excluded from
         the payload, so a resumed session never re-asks for finished work.
+
+        Node content is split into windows of at most ``NODE_CONTENT_CHARS``
+        characters. Every window is asked for separately (the payload id
+        carries the window index), so the model sees the whole node instead
+        of a truncated head; the per-node summary is the join of its window
+        summaries.
         """
         payload: list[SummaryNode] = []
         for node in nodes:
@@ -237,14 +296,21 @@ class NodeSummarizer:
                 if text:
                     parts.append(text)
             content = "\n\n".join(parts)
-            if len(content) > self._max_content_chars:
-                content = content[: self._max_content_chars]
             heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
-            cached = self._cache_lookup(content, heading_chain)
-            if cached is not None:
-                node.summary = cached
-                continue
-            payload.append(SummaryNode(id=node.id, heading_chain=heading_chain, content=content))
+            windows = split_text_windows(content, NODE_CONTENT_CHARS) or [""]
+            entry_ids = self._entry_ids(node.id, len(windows))
+            state.entry_ids[node.id] = entry_ids
+            done = state.done_for(node.id)
+            for entry_id, window in zip(entry_ids, windows, strict=True):
+                if entry_id in done:
+                    continue
+                cached = self._cache_lookup(window, heading_chain)
+                if cached is not None:
+                    done[entry_id] = cached
+                    continue
+                payload.append(SummaryNode(id=entry_id, heading_chain=heading_chain, content=window))
+            if state.is_complete(node.id):
+                node.summary = self._merge_window_summaries(done, entry_ids)
         return payload
 
     def _apply_agentic_results(
@@ -252,18 +318,29 @@ class NodeSummarizer:
         nodes: list[ChunkNode],
         payload: list[SummaryNode],
         results: dict[str, str],
-    ) -> None:
-        """Copy session summaries onto the batch's nodes and persist them in the cache."""
+        state: _WindowState,
+    ) -> set[str]:
+        """Copy session summaries onto the batch's nodes and persist them in the cache.
+
+        Returns the ids of the nodes that gained at least one window summary
+        in this session — the signal that the session made progress.
+        """
         content_by_id = {entry["id"]: entry["content"] for entry in payload}
+        progressed: set[str] = set()
         for node in nodes:
-            summary = results.get(node.id)
-            if not summary:
-                continue
-            node.summary = summary
             heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
-            content = content_by_id.get(node.id, "")
-            if content:
-                self._cache_store(content, heading_chain, summary)
+            done = state.done_for(node.id)
+            for entry_id in state.ids_for(node.id):
+                summary = results.get(entry_id, "").strip()
+                if not summary:
+                    continue
+                done[entry_id] = summary
+                progressed.add(node.id)
+                content = content_by_id.get(entry_id, "")
+                if content:
+                    self._cache_store(content, heading_chain, summary)
+            node.summary = self._merge_window_summaries(done, state.ids_for(node.id))
+        return progressed
 
     def _summarize_node(self, tree: ChunkTree, node: ChunkNode) -> str:
         """Build content from children, then summarise via LLM or extractive fallback."""
@@ -280,19 +357,27 @@ class NodeSummarizer:
             return ""
 
         content = "\n\n".join(parts)
-        if len(content) > self._max_content_chars:
-            content = content[: self._max_content_chars]
-
         heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
 
-        cached = self._cache_lookup(content, heading_chain)
-        if cached is not None:
-            return cached
+        windows = split_text_windows(content, self._max_content_chars)
+        if not windows:
+            return ""
 
-        summary = self._llm_summarize(content, heading_chain) if self._agent is not None else self._extractive_summary(parts)
-
-        self._cache_store(content, heading_chain, summary)
-        return summary
+        summaries: list[str] = []
+        for window in windows:
+            cached = self._cache_lookup(window, heading_chain)
+            if cached is not None:
+                summaries.append(cached)
+                continue
+            if self._agent is not None:
+                summary = self._llm_summarize(window, heading_chain)
+            elif len(windows) == 1:
+                summary = self._extractive_summary(parts)
+            else:
+                summary = self._extractive_summary([window])
+            self._cache_store(window, heading_chain, summary)
+            summaries.append(summary)
+        return "\n\n".join(part for part in summaries if part)
 
     def _llm_summarize(self, content: str, heading_chain: str) -> str:
         """Call LLM via the node-summary template."""
@@ -332,6 +417,28 @@ class NodeSummarizer:
             "heading_chain": hashlib.sha256(heading_chain.encode()).hexdigest()[:16],
             "model": model,  # nocheck: summarizer cache deps, not wiki metadata
         }
+
+    @staticmethod
+    def _entry_ids(node_id: str, window_count: int) -> list[str]:
+        """Payload ids for a node's windows.
+
+        A node with a single window keeps its plain id, so payloads and
+        caches stay identical to the un-windowed case; extra windows carry a
+        ``#wN`` suffix.
+        """
+        if window_count <= 1:
+            return [node_id]
+        return [f"{node_id}#w{index + 1}" for index in range(window_count)]
+
+    @staticmethod
+    def _base_node_id(entry_id: str) -> str:
+        """Node id behind a payload entry id (``id#wN`` → ``id``)."""
+        return entry_id.split("#w", 1)[0]
+
+    @staticmethod
+    def _merge_window_summaries(done: dict[str, str], entry_ids: list[str]) -> str:
+        """Join the window summaries of one node in window order."""
+        return "\n\n".join(done[entry_id].strip() for entry_id in entry_ids if entry_id in done and done[entry_id].strip())
 
     @staticmethod
     def _child_content(tree: ChunkTree, child: ChunkNode) -> str:

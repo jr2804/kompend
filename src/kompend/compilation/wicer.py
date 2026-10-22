@@ -14,6 +14,8 @@ crashes on a single bad provider.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
+from itertools import count
 from typing import Any, Final
 
 from kompend.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
@@ -67,7 +69,11 @@ class WiCERCompiler(BaseCompiler):
         and offline fallback, but the production pipeline wires a
         :class:`~kompend.compilation.two_phase.TwoPhaseCompiler` here).
     max_iterations:
-        Maximum number of refinement rounds (default 3).
+        Maximum number of refinement rounds. ``0`` (the default) means
+        "until the loop converges" — the loop stops on its own when it
+        finds no new facts, when all probes pass, or when the wall-clock
+        budget (``wicer_max_seconds``) is spent. A positive value is an
+        explicit user-set limit.
     llm_client:
         Shared LLM client. When ``None``, a default client is built
         from the global default model. Inject a custom client (or one
@@ -86,6 +92,7 @@ class WiCERCompiler(BaseCompiler):
             min_content_length=config.budget.min_content_length,
         )
         self.max_iterations = config.budget.wicer_max_iterations
+        self._max_seconds = config.budget.wicer_max_seconds
         self._has_llm = bool(config.llm.default_model)
 
         # Output budgets (how many tokens the LLM may emit).
@@ -184,17 +191,29 @@ class WiCERCompiler(BaseCompiler):
             "wicer_pinned_facts": len(cumulative_pinned),
         }
 
-        for attempt in range(self.max_iterations):
+        iterations: Iterable[int] = range(1, self.max_iterations + 1) if self.max_iterations > 0 else count(1)
+        for attempt in iterations:
             iter_start = time.monotonic()
 
-            self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — generating probes")
+            if self._max_seconds > 0 and (time.monotonic() - compile_start) > self._max_seconds:
+                logger.warning(
+                    "WiCER: wall-clock budget of %ds spent after %d iteration(s) — stopping the refinement loop",
+                    self._max_seconds,
+                    attempt - 1,
+                )
+                iteration_info["wicer_iterations"] = attempt - 1
+                break
+
+            label = f"{attempt}/{self.max_iterations}" if self.max_iterations > 0 else str(attempt)
+
+            self._report(num_sources, num_sources, f"iter {label} — generating probes")
             probes = self._generate_probes(wiki, chunks)
             if not probes:
-                logger.info("WiCER: no probes generated, ending loop at iteration %d (%.1fs)", attempt + 1, time.monotonic() - iter_start)
+                logger.info("WiCER: no probes generated, ending loop at iteration %d (%.1fs)", attempt, time.monotonic() - iter_start)
                 break
             iteration_info["wicer_probes_generated"] += len(probes)
 
-            self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — evaluating {len(probes)} probes")
+            self._report(num_sources, num_sources, f"iter {label} — evaluating {len(probes)} probes")
             eval_results = self._evaluate(wiki, probes)
             failures = [r for r in eval_results if not r.get("correct", False)]
             passed = len(eval_results) - len(failures)
@@ -202,28 +221,26 @@ class WiCERCompiler(BaseCompiler):
 
             if not failures:
                 logger.info(
-                    "WiCER: iter %d/%d done in %.1fs — %d probes, all passed → converged",
-                    attempt + 1,
-                    self.max_iterations,
+                    "WiCER: iter %s done in %.1fs — %d probes, all passed → converged",
+                    label,
                     time.monotonic() - iter_start,
                     len(probes),
                 )
-                iteration_info["wicer_iterations"] = attempt + 1
+                iteration_info["wicer_iterations"] = attempt
                 break
 
-            self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — diagnosing {len(failures)} failures")
+            self._report(num_sources, num_sources, f"iter {label} — diagnosing {len(failures)} failures")
             new_facts = self._diagnose(failures)
             if not new_facts:
                 logger.info(
-                    "WiCER: iter %d/%d done in %.1fs — %d probes, %d passed, %d failed, no new facts",
-                    attempt + 1,
-                    self.max_iterations,
+                    "WiCER: iter %s done in %.1fs — %d probes, %d passed, %d failed, no new facts",
+                    label,
                     time.monotonic() - iter_start,
                     len(probes),
                     passed,
                     len(failures),
                 )
-                iteration_info["wicer_iterations"] = attempt + 1
+                iteration_info["wicer_iterations"] = attempt
                 break
 
             # F_cumulative ← F_cumulative ∪ D_facts (dedup, preserve order).
@@ -232,27 +249,25 @@ class WiCERCompiler(BaseCompiler):
             added = len(cumulative_pinned) - before
             if added == 0:
                 logger.info(
-                    "WiCER: iter %d/%d done in %.1fs — all %d fact(s) already pinned, ending loop",
-                    attempt + 1,
-                    self.max_iterations,
+                    "WiCER: iter %s done in %.1fs — all %d fact(s) already pinned, ending loop",
+                    label,
                     time.monotonic() - iter_start,
                     len(cumulative_pinned),
                 )
-                iteration_info["wicer_iterations"] = attempt + 1
+                iteration_info["wicer_iterations"] = attempt
                 break
 
             recompile_start = time.monotonic()
-            self._report(num_sources, num_sources, f"iter {attempt + 1}/{self.max_iterations} — recompiling with {len(cumulative_pinned)} pinned fact(s)")
+            self._report(num_sources, num_sources, f"iter {label} — recompiling with {len(cumulative_pinned)} pinned fact(s)")
             wiki = self._blind_compile(chunks, trees=trees, pinned_facts=cumulative_pinned)
             recompile_elapsed = time.monotonic() - recompile_start
             iteration_info["wicer_refinements"] += 1
-            iteration_info["wicer_iterations"] = attempt + 1
+            iteration_info["wicer_iterations"] = attempt
             iteration_info["wicer_pinned_facts"] = len(cumulative_pinned)
 
             logger.info(
-                "WiCER: iter %d/%d done in %.1fs — probes=%d, passed=%d, failed=%d, new_facts=%d, recompile=%.1fs, pinned=%d",
-                attempt + 1,
-                self.max_iterations,
+                "WiCER: iter %s done in %.1fs — probes=%d, passed=%d, failed=%d, new_facts=%d, recompile=%.1fs, pinned=%d",
+                label,
                 time.monotonic() - iter_start,
                 len(probes),
                 passed,

@@ -16,6 +16,7 @@ or conventions — it takes precedence over a conflicting habit or default.
 | Domain value as function default (`prompt_budget: int = 200_000`) | ❌ | Config dataclass field |
 | `x: T | None = None` with hidden default in body | ❌ | Config field; docstring if `None` is truly meaningful |
 | `content[:200]` / `text[:4096]` | ❌ | Full content, or a batch size derived from config/model |
+| Silent exclusion by a config value (`candidates[:max_pages]`, `if len(x) > budget: drop`) | ❌ | Split the work into windows and warn — a budget shapes the work, it never excludes it (Boundaries) |
 | Config fallback duplicating a runtime provider value (`dim = 384`) | ❌ | Read it from the provider at runtime (`provider.dim`) |
 | Bare schema/field-name literals (`hit.get("source_file")`) | ❌ | `StrEnum` / `Final[str]` symbol imported at every site |
 | Hard-coded `"KOMP_*"` env-var literal (`os.environ.get("KOMP_WIKI_DIR")`, `envvar=`) | ❌ | `EnvVar` member from `kompend.core.env` |
@@ -51,6 +52,13 @@ before committing — see `CHECKS.md`.
   fast. Package level: `lazy.attach(__name__, submod_attrs={...})`. Function
   level: the registry factory (`get_backend()`), never a module-scope import.
   Canonical pattern: `src/kompend/preprocessing/parsers/__init__.py`.
+- **A budget shapes the work, it never excludes it.** A `budget.*` value may
+  bound one response (`*_output_max`), size one window (a request or a
+  content block is *split*, never cropped), or set a threshold that warns.
+  It must never drop content, skip a document, or silently shrink a result
+  set. The only legitimate stops are a provider/model timeout and an endless
+  agent loop — and both keep the work done so far. Fix the loop; do not cap
+  the budget.
 - **Temp files** go in `./tmp` (gitignored) or `tempfile.TemporaryDirectory()`.
 
 ## Error handling — prefer "let it burn"

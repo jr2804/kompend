@@ -353,7 +353,72 @@ class TestSummarizerAgenticBatching:
             assert tree.nodes[node_id].summary == f"summary {node_id}"
 
 
+class TestSummarizerWindowing:
+    """Content longer than the per-call budget is split — never truncated."""
+
+    def test_long_content_is_summarized_window_by_window(self) -> None:
+        mock_llm = MagicMock()
+        mock_llm.model_string = "test-model"
+        mock_llm.run.side_effect = lambda deps: f"summary of {len(deps.text)} chars"
+
+        summarizer = NodeSummarizer(agent=mock_llm, max_content_chars=100)
+        tree = summarizer.summarize(_long_tree())
+
+        prompts = [call[0][0].text for call in mock_llm.run.call_args_list]
+        assert len(prompts) > 1
+        # The tail of the content reaches the model — nothing is dropped.
+        assert any("TAIL-MARKER" in prompt for prompt in prompts)
+        assert tree.nodes["s"].summary != ""
+
+    def test_agentic_payload_carries_every_window(self) -> None:
+        agent = make_agentic_summarizer_agent("test-model")
+        seen: list[list[tuple[str, str]]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            seen.append([(entry["id"], entry["content"]) for entry in deps.nodes])
+            for entry in deps.nodes:
+                deps.results[entry["id"]] = f"summary {entry['id']}"
+
+        agent.run = _run  # type: ignore[method-assign]
+        policy = SummarizerSessionPolicy(batch_size=10, stall_retries=1)
+        tree = NodeSummarizer(agent=agent, session_policy=policy).summarize(_long_tree())
+
+        entries = [entry for session in seen for entry in session]
+        ids = [entry_id for entry_id, _ in entries]
+        assert any(entry_id.startswith("s#w") for entry_id in ids)
+        assert any("TAIL-MARKER" in content for _, content in entries)
+        assert tree.nodes["s"].summary != ""
+
+
 # ── fixtures ─────────────────────────────────────────────────────────────
+
+
+def _long_tree() -> ChunkTree:
+    """Root → one section with four long leaves (the last one is the tail)."""
+    root = ChunkNode(id="r", depth=0)
+    section = ChunkNode(id="s", parent_id="r", depth=1, heading_chain=("Intro",))
+    leaves: list[ChunkNode] = []
+    for index in range(4):
+        text = f"line {index} " + "x" * 700 + (". TAIL-MARKER" if index == 3 else "")
+        leaves.append(
+            ChunkNode(
+                id=f"l{index}",
+                parent_id="s",
+                depth=2,
+                heading_chain=("Intro",),
+                chunk=_make_chunk(f"l{index}", text),
+                token_count=30,
+            )
+        )
+    section.children_ids = [leaf.id for leaf in leaves]
+    root.children_ids = ["s"]
+    nodes = {node.id: node for node in [root, section, *leaves]}
+    return ChunkTree(
+        root_id="r",
+        nodes=nodes,
+        source_file=Path("doc.md"),
+        strategy=ChunkStrategy.TWO_LEVEL,
+    )
 
 
 @pytest.fixture

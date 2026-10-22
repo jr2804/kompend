@@ -5,5 +5,6 @@ response_format: text
 ---
 
 Write the wiki page. Call list_sources() to see what is available, read the
-sources you need with read_source(stem), then submit the finished Markdown with
-save_page(content).
+sources you need with read_source(stem, offset=0) — a source longer than one
+window ends its reply with the next offset, so keep reading until you have
+the text you need — then submit the finished Markdown with save_page(content).

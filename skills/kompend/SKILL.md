@@ -303,7 +303,7 @@ All MCP tools return `{"status": "ok", ...}` or `{"status": "error", "message": 
 | `config_set` | Set a config value | `key: str`, `value: str`, `wiki_dir: str = "."` |
 | `parse_document` | Parse a single document | `file: str` |
 | `wiki_list_attachments` | List registered attachments (optionally by source) | `source: str \| None`, `wiki_dir: str \| None` |
-| `wiki_read_attachment` | Read text content (up to 100KB) or metadata for binary files | `source: str`, `attachment_name: str`, `wiki_dir: str \| None` |
+| `wiki_read_attachment` | Read text content (up to 100KB per call) or metadata for binary files; a longer file names the `next_offset` in the reply | `source: str`, `attachment_name: str`, `wiki_dir: str \| None`, `offset: int = 0` |
 | `wiki_attachment_info` | Return manifest entry + file metadata | `source: str`, `attachment_name: str`, `wiki_dir: str \| None` |
 
 ## Agent Workflows

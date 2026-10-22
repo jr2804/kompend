@@ -3,7 +3,9 @@
 Provides ``build_write_tools()`` returning the toolset the
 agentic write agent uses to build a wiki page from sources:
 
-- ``read_source(stem)`` — load the full text of a source by its stem.
+- ``read_source(stem, offset=0)`` — load a window of a source's text; the
+  reply names the offset of the next window, so the agent can page through
+  a long source without losing any of it.
 - ``read_related()`` — return the list of related page titles.
 - ``save_page(content)`` — submit the final markdown page content.
 
@@ -25,11 +27,27 @@ def build_write_tools() -> list[Any]:
     return [read_source, list_sources, read_related, save_page]
 
 
-async def read_source(ctx: RunContext[WriteDeps], stem: str) -> str:
-    """Return the full text of the source identified by *stem*."""
+async def read_source(ctx: RunContext[WriteDeps], stem: str, offset: int = 0) -> str:
+    """Return a window of the source text identified by *stem*.
+
+    A source is longer than one call may carry, so the text is served in
+    windows of ``deps.source_char_max`` characters. The reply names the
+    offset of the next window — read it to get the rest. Nothing is
+    dropped: the budget sizes a window, it does not shorten the source.
+    """
     for src_stem, text in ctx.deps.source_texts:
-        if src_stem == stem:
+        if src_stem != stem:
+            continue
+        limit = ctx.deps.source_char_max
+        if limit <= 0 or (offset <= 0 and len(text) <= limit):
             return text
+        if offset >= len(text):
+            return ""
+        window = text[offset : offset + limit]
+        next_offset = offset + len(window)
+        if next_offset >= len(text):
+            return window
+        return f'{window}\n\n[end of window — {next_offset} of {len(text)} characters read; call read_source(stem="{stem}", offset={next_offset}) for the rest]'
     return f"Unknown source: {stem}"
 
 
