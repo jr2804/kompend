@@ -231,6 +231,8 @@ def run_agentic_query_output(
             context_window=cw.max_input if cw is not None else None,
             tag_groups=tag_groups or [],
             attr_filters=attr_filters or [],
+            llm=cfg.kompend.compile.llm,
+            budget=cfg.kompend.compile.budget,
         )
     except Exception as exc:
         get_err_console().print(f"Agentic query failed: {exc}")
@@ -252,10 +254,12 @@ def build_enhanced_retriever(
     model: str,
 ) -> EnhancedRetriever:
     """Build an EnhancedRetriever from resolved config."""
-    _retries = cfg.kompend.compile.llm.output_retries
-    expansion_agent = QueryExpansionAgent(model, timeout=120, retries=_retries) if model else None
-    crag_agent = CragGradeAgent(model, timeout=120, retries=_retries) if model else None
-    hyde_agent = HydeAgent(model, timeout=120, retries=_retries) if model else None
+    _llm = cfg.kompend.compile.llm
+    _budget = cfg.kompend.compile.budget
+    _retries = _llm.output_retries if _llm.output_retries_enabled else 0
+    expansion_agent = QueryExpansionAgent(model, timeout=_llm.timeout, retries=_retries, llm=_llm, budget=_budget) if model else None
+    crag_agent = CragGradeAgent(model, timeout=_llm.timeout, retries=_retries, llm=_llm, budget=_budget) if model else None
+    hyde_agent = HydeAgent(model, timeout=_llm.timeout, retries=_retries, llm=_llm, budget=_budget) if model else None
     return EnhancedRetriever(
         wiki,
         vector_store=vector_store,
@@ -270,6 +274,9 @@ def build_enhanced_retriever(
         reranker_model=cfg.kompend.search.reranker.model,
         reranker_top_k=cfg.kompend.search.reranker.top_k,
         hyde_enabled=cfg.kompend.search.hyde.enabled,
+        llm=_llm,
+        budget=_budget,
+        display=cfg.kompend.display,
     )
 
 
@@ -317,6 +324,8 @@ def synthesize_and_output(  # noqa: PLR0917
                 verbosity=verbosity,
                 max_tokens=max_tokens,
                 rlm=rlm_cfg,
+                llm=cfg.kompend.compile.llm,
+                budget=cfg.kompend.compile.budget,
             )
     except Exception as exc:
         get_err_console().print(f"LLM synthesis failed: {exc}")

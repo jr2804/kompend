@@ -161,7 +161,20 @@ def wiki_capture(
     try:
         cfg = resolve_config()
         model = cfg.kompend.compile.llm.default_model
-        capture_agent = CaptureAgent(model, timeout=120, retries=as_int(cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) or 2) if model else None
+        try:
+            capture_agent = (
+                CaptureAgent(
+                    model,
+                    timeout=float(cfg.kompend.compile.llm.timeout),
+                    retries=cfg.kompend.compile.llm.output_retries if cfg.kompend.compile.llm.output_retries_enabled else 0,
+                    llm=cfg.kompend.compile.llm,
+                    budget=cfg.kompend.compile.budget,
+                )
+                if model
+                else None
+            )
+        except Exception:
+            capture_agent = None
     except Exception:
         capture_agent = None
 
@@ -209,10 +222,29 @@ def wiki_distill(
 
         try:
             model = cfg.kompend.compile.llm.default_model
-            distill_agent = make_agentic_distill_agent(model, timeout=120, retries=as_int(cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) or 2) if model else None
+            distill_agent = (
+                make_agentic_distill_agent(
+                    model,
+                    timeout=float(cfg.kompend.compile.llm.timeout),
+                    llm=cfg.kompend.compile.llm,
+                    budget=cfg.kompend.compile.budget,
+                )
+                if model
+                else None
+            )
         except Exception:
             try:
-                distill_agent = DistillAgent(model, timeout=120, retries=as_int(cfg.get(COMPILE_LLM_OUTPUT_RETRIES)) or 2) if model else None
+                distill_agent = (
+                    DistillAgent(
+                        model,
+                        timeout=float(cfg.kompend.compile.llm.timeout),
+                        retries=cfg.kompend.compile.llm.output_retries if cfg.kompend.compile.llm.output_retries_enabled else 0,
+                        llm=cfg.kompend.compile.llm,
+                        budget=cfg.kompend.compile.budget,
+                    )
+                    if model
+                    else None
+                )
             except Exception:
                 distill_agent = None
 
@@ -312,17 +344,21 @@ def wiki_read_attachment(
     *,
     wiki_dir: str | None = None,
     max_bytes: int = 100_000,
+    offset: int = 0,
 ) -> dict[str, Any]:
     """Read the text content of an attachment.
 
     Binary files return metadata only (no content). Text files return
-    up to ``max_bytes`` of content.
+    ``max_bytes`` of characters starting at ``offset``.
 
     Args:
         source: Source stem the attachment belongs to.
         attachment_name: Attachment filename within the source's attachment directory.
         wiki_dir: Wiki directory override.
-        max_bytes: Maximum bytes to read for text files.
+        max_bytes: Maximum characters to read for text files.
+        offset: Character offset to start reading at. The reply names the
+            next offset when the attachment is longer — read it to get the
+            rest.
 
     Returns:
         Dict with ``content`` (text) or ``binary: true``.
@@ -345,8 +381,13 @@ def wiki_read_attachment(
         info["binary"] = True
         return info
 
-    content = att_file.read_text(errors="replace")[:max_bytes]
+    text = att_file.read_text(errors="replace")
+    content = text[offset : offset + max_bytes]
     info["content"] = content
+    info["offset"] = offset
+    next_offset = offset + len(content)
+    if next_offset < len(text):
+        info["next_offset"] = next_offset
     return info
 
 

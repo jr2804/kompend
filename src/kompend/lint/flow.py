@@ -137,7 +137,13 @@ def _make_lint_agent(cfg: Any) -> tuple[LintRuleAgent | None, str | None]:
     if not model:
         return None, None
     return (
-        LintRuleAgent(model, timeout=float(cfg.kompend.compile.llm.timeout), retries=cfg.kompend.compile.llm.output_retries),
+        LintRuleAgent(
+            model,
+            timeout=float(cfg.kompend.compile.llm.timeout),
+            retries=cfg.kompend.compile.llm.output_retries if cfg.kompend.compile.llm.output_retries_enabled else 0,
+            llm=cfg.kompend.compile.llm,
+            budget=cfg.kompend.compile.budget,
+        ),
         model,
     )
 

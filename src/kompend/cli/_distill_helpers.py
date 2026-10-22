@@ -58,14 +58,17 @@ def build_distill_agent(cfg: ResolvedConfig) -> DistillAgent | AgenticDistillAge
         return make_agentic_distill_agent(
             model,
             timeout=float(cfg.kompend.compile.llm.timeout),
-            retries=cfg.kompend.compile.llm.output_retries,
+            llm=cfg.kompend.compile.llm,
+            budget=cfg.kompend.compile.budget,
         )
     except Exception:
         try:
             return DistillAgent(
                 model,
                 timeout=float(cfg.kompend.compile.llm.timeout),
-                retries=cfg.kompend.compile.llm.output_retries,
+                retries=cfg.kompend.compile.llm.output_retries if cfg.kompend.compile.llm.output_retries_enabled else 0,
+                llm=cfg.kompend.compile.llm,
+                budget=cfg.kompend.compile.budget,
             )
         except Exception:
             return None

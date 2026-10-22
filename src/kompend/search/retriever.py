@@ -404,6 +404,8 @@ def synthesize_results(
     reasoning_effort: str | None = None,
     rlm: RlmConfig | None = None,
     query_agent: QueryAgent | None = None,
+    llm: LLMConfig | None = None,
+    budget: BudgetConfig | None = None,
 ) -> SynthesisResult:
     """Format search results into context and call the LLM for an answer.
 
@@ -450,11 +452,13 @@ def synthesize_results(
         else:
             agent = QueryAgent(
                 model_string=model,
-                timeout=120.0,
+                max_tokens=max_tokens,
                 skills=skills or {},
                 reasoning_effort=reasoning_effort,
                 rlm=rlm,
                 rlm_context_field="context",
+                llm=llm,
+                budget=budget,
             )
         deps = QueryDeps(
             question=query,
@@ -488,12 +492,14 @@ def run_agentic_query(
     retriever: QuerySearchProtocol,
     model: str,
     max_sub_questions: int = 5,
-    timeout: float = 120.0,
-    retries: int = 2,
+    timeout: float = UNSET_TIMEOUT,
+    retries: int = UNSET_RETRIES,
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     tag_groups: list[list[str]] | None = None,
     attr_filters: list[tuple[str, str | None]] | None = None,
+    llm: LLMConfig | None = None,
+    budget: BudgetConfig | None = None,
 ) -> str:
     """Answer *question* with the agentic query agent against *retriever*.
 
@@ -510,6 +516,8 @@ def run_agentic_query(
         retries=retries,
         context_window=context_window,
         rlm=rlm,
+        llm=llm,
+        budget=budget,
     )
     deps = QueryAgentDeps(
         question=question,

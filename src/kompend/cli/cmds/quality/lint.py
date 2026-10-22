@@ -511,7 +511,16 @@ def lint_remediate(
         raise typer.Exit(1)
 
     default_model = cfg.kompend.compile.llm.default_model
-    agent = make_agentic_remediation_agent(model_string=default_model, timeout=float(cfg.kompend.compile.llm.timeout)) if default_model else None
+    agent = (
+        make_agentic_remediation_agent(
+            model_string=default_model,
+            timeout=float(cfg.kompend.compile.llm.timeout),
+            llm=cfg.kompend.compile.llm,
+            budget=cfg.kompend.compile.budget,
+        )
+        if default_model
+        else None
+    )
 
     actions = remediate(
         wiki,

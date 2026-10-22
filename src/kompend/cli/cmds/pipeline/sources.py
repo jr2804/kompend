@@ -250,6 +250,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
                     inline=inline,
                     annotations=ann,
                     summary=summ,
+                    doc_headings=doc_headings,
                 )
             except FileNotFoundError as exc:
                 get_console().print(f"[yellow]Skipped {escape(file)}: {escape(str(exc))}[/]")
@@ -281,6 +282,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
             inline=inline,
             annotations=ann,
             summary=summ,
+            doc_headings=doc_headings,
         )
     except FileNotFoundError as exc:
         get_console().print(f"[red]{escape(str(exc))}[/]")

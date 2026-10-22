@@ -340,11 +340,17 @@ verify_output_max = 4096
 # Lint output ceiling (tokens)
 lint_output_max = 8192
 
+# Generic agent response ceiling (tokens) — applies to agents without a
+# dedicated ceiling above (query synthesis, capture, organize, VLM captions).
+agent_output_max = 8192
+
 # WiCER probe/eval output ceilings (tokens)
 wicer_probe_output_max = 4096
 wicer_eval_output_max = 4096
 
 # Node summarization (hierarchical chunk tree internal nodes)
+# Longer content is split into several calls (slower, but no content is
+# lost) — it is never truncated.
 summary_max_content_chars = 8000
 summary_target_chars = 600
 summary_skip_single_child = true

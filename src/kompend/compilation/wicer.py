@@ -357,6 +357,19 @@ class WiCERCompiler(BaseCompiler):
 
         return all_probes
 
+    def _loop_context_manager(self) -> str | bool:
+        """Context manager for the probe loop.
+
+        The loop keeps earlier probes in context, so the "aggressive"
+        preset (compress at 70%, keep 5 messages) is the safe default.
+        Every other configured value (``compile.llm.context_manager``) is
+        honored as-is.
+        """
+        configured = self._config.llm.context_manager
+        if configured == "default":
+            return "aggressive"
+        return configured
+
     def _probe_batch(self, combined: str) -> list[dict]:
         """Generate probes from a single batch of combined text."""
         if not combined:
@@ -369,17 +382,19 @@ class WiCERCompiler(BaseCompiler):
         try:
             agent = WicerProbeAgent(
                 model_string=self._config.llm.default_model or "",
-                max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
-                retries=self._config.llm.output_retries,
+                retries=self._config.llm.output_retries if self._config.llm.output_retries_enabled else 0,
                 timeout=self._config.llm.timeout,
                 reasoning_effort=self._config.llm.reasoning_effort,
-                # WiCER probe runs in an 8-iteration loop: compress earlier
-                # (70%) and keep 5 trailing messages so prior probes stay in
-                # context. Per the migration plan Phase 4 per-agent tuning.
-                context_manager="aggressive",
+                # The probe loop keeps earlier probes in context, so the
+                # "aggressive" preset (compress at 70%, keep 5 messages) is
+                # the safe default; every other configured value is used
+                # as-is.
+                context_manager=self._loop_context_manager(),
                 context_window=self._context_window.max_input if self._context_window else None,
                 rlm=self._config.llm.rlm,
+                llm=self._config.llm,
+                budget=self._config.budget,
             )
             output = agent.run(WicerProbeDeps(text=combined, source_id="wicer-probe"))
             return [p.model_dump() for p in output.probes]
@@ -412,13 +427,14 @@ class WiCERCompiler(BaseCompiler):
             try:
                 agent = WicerEvaluateAgent(
                     model_string=self._config.llm.default_model or "",
-                    max_tokens=self._config.budget.verify_output_max,
                     skills=self._config.skills,
-                    retries=self._config.llm.output_retries,
+                    retries=self._config.llm.output_retries if self._config.llm.output_retries_enabled else 0,
                     timeout=self._config.llm.timeout,
                     reasoning_effort=self._config.llm.reasoning_effort,
                     context_manager=self._config.llm.context_manager,
                     context_window=self._context_window.max_input if self._context_window else None,
+                    llm=self._config.llm,
+                    budget=self._config.budget,
                 )
                 output = agent.run(
                     WicerEvaluateDeps(
@@ -454,13 +470,14 @@ class WiCERCompiler(BaseCompiler):
         try:
             agent = WicerDiagnoseAgent(
                 model_string=self._config.llm.default_model or "",
-                max_tokens=self._config.budget.verify_output_max,
                 skills=self._config.skills,
-                retries=self._config.llm.output_retries,
+                retries=self._config.llm.output_retries if self._config.llm.output_retries_enabled else 0,
                 timeout=self._config.llm.timeout,
                 reasoning_effort=self._config.llm.reasoning_effort,
                 context_manager=self._config.llm.context_manager,
                 context_window=self._context_window.max_input if self._context_window else None,
+                llm=self._config.llm,
+                budget=self._config.budget,
             )
             output = agent.run(
                 WicerDiagnoseDeps(

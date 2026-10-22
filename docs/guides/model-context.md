@@ -236,8 +236,15 @@ max_tokens = *_output_max   # per-phase ceiling, scales the same on 8K or 1M mod
 | Lint | 8 192 | — (config only) |
 | WiCER probe | 4 096 | — (config only) |
 | WiCER eval | — | — |
+| All other agents (query, capture, organize, VLM, …) | 8 192 | `KOMP_BUDGET_AGENT_OUTPUT_MAX` |
 
-All values are in tokens.
+All values are in tokens. Every agent takes its ceiling from the config —
+the agent classes declare which key applies to them
+(`budget.<phase>_output_max`, or the generic `budget.agent_output_max`),
+and a construction site that hands over the config group gets the ceiling,
+the timeout, the retry budget, the reasoning effort, the context manager and
+the fallback chain without spelling them out. An explicitly passed value
+always wins over the config.
 
 Reference extraction sizes its requests against the discovered context
 window: a reference section larger than the content budget (window minus

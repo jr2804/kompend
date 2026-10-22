@@ -92,6 +92,8 @@ def build_pipeline(
             context_window=cw.max_input,
             requests_per_node=config.budget.summary_requests_per_node,
             rlm=config.llm.rlm,
+            llm=config.llm,
+            budget=config.budget,
         )
         if config.search.contextual.enabled:
             enricher_agent = make_agentic_context_chunk_agent(
@@ -102,6 +104,8 @@ def build_pipeline(
                 output_retries=config.llm.agentic_output_retries if config.llm.output_retries_enabled else 0,
                 context_window=cw.max_input,
                 rlm=config.llm.rlm,
+                llm=config.llm,
+                budget=config.budget,
             )
         resolver = build_resolver_chain(config)
 

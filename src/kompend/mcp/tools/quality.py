@@ -182,7 +182,7 @@ def lint_gaps(
 ) -> dict[str, Any]:
     """Analyze the latest lint run for knowledge gaps and source recommendations."""
     vp = vault_paths(wiki_dir)
-    resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
     state_dir = vp.kompend_dir
 
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
@@ -234,7 +234,16 @@ def lint_remediate(
         return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
     default_model = cfg.kompend.compile.llm.default_model
-    agent = make_agentic_remediation_agent(model_string=default_model, timeout=float(cfg.kompend.compile.llm.timeout)) if default_model else None
+    agent = (
+        make_agentic_remediation_agent(
+            model_string=default_model,
+            timeout=float(cfg.kompend.compile.llm.timeout),
+            llm=cfg.kompend.compile.llm,
+            budget=cfg.kompend.compile.budget,
+        )
+        if default_model
+        else None
+    )
 
     actions = remediate(
         wiki,

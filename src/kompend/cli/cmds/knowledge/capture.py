@@ -77,7 +77,9 @@ def capture_cmd(
             capture_agent = CaptureAgent(
                 default_model,
                 timeout=float(cfg.kompend.compile.llm.timeout),
-                retries=cfg.kompend.compile.llm.output_retries,
+                retries=cfg.kompend.compile.llm.output_retries if cfg.kompend.compile.llm.output_retries_enabled else 0,
+                llm=cfg.kompend.compile.llm,
+                budget=cfg.kompend.compile.budget,
             )
         except Exception:
             capture_agent = None
@@ -278,6 +280,8 @@ def write_cmd(
             model=llm_model,
             timeout=float(cfg.kompend.compile.llm.timeout),
             source_char_max=cfg.kompend.compile.budget.capture_source_char_max,
+            llm=cfg.kompend.compile.llm,
+            budget=cfg.kompend.compile.budget,
         )
 
     # ── Write to wiki/write/ ─────────────────────────────────────────────
@@ -320,13 +324,19 @@ def _synthesize_write_page(
     related_titles: list[str],
     model: str | None,
     timeout: float,
-    source_char_max: int = 4000,
+    source_char_max: int,
+    llm: LLMConfig | None = None,
+    budget: BudgetConfig | None = None,
 ) -> str:
     """Return continuous prose for the write page.
 
     When an LLM is available, asks it to synthesize the sources into a
     coherent essay with a References section. Falls back to a structured
     text join when the LLM is unavailable or returns nothing.
+
+    The sources are passed in full — ``source_char_max`` sizes one
+    ``read_source()`` window, and the agent pages through a source it
+    wants to read completely. No source text is dropped.
     """
     references_section = _build_references_section(source_texts, related_titles)
 
@@ -336,14 +346,16 @@ def _synthesize_write_page(
     agent = make_agentic_write_agent(
         model_string=model,
         timeout=timeout,
+        llm=llm,
+        budget=budget,
     )
-    source_texts_tuples = [(stem, text[:source_char_max]) for stem, text in source_texts]
     deps = WriteDeps(
         page_title=page_title,
-        source_texts=source_texts_tuples,
+        source_texts=source_texts,
         related_titles=related_titles,
         source_id="write",
         timeout=timeout,
+        source_char_max=source_char_max,
     )
     try:
         content = agent.run(deps)

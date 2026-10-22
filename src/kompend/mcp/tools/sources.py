@@ -162,6 +162,7 @@ def sources_export(
                     inline=inline,
                     annotations=ann,
                     summary=summ,
+                    doc_headings=doc_headings,
                 )
                 exported.append(str(out_file))
             except FileNotFoundError as exc:
@@ -189,6 +190,7 @@ def sources_export(
             inline=inline,
             annotations=ann,
             summary=summ,
+            doc_headings=doc_headings,
         )
     except FileNotFoundError as exc:
         return {"status": "error", "message": str(exc)}

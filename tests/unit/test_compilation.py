@@ -864,6 +864,60 @@ class TestWiCERCompilerWithMock:
         assert len(wiki.nodes) >= 1
         assert wiki.metadata["wicer_iterations"] == 0
 
+    def test_unlimited_iterations_stop_when_no_new_facts(self, mock_llm: MagicMock) -> None:
+        """wicer_max_iterations=0 means 'until convergence' — the loop stops on its own."""
+        mock_llm.probe.return_value = self._probe_output([{"question": "Q1?", "answer": "A1."}])
+        mock_llm.evaluate.return_value = self._evaluate_output([{"question": "Q1?", "expected_answer": "A1.", "found_answer": "", "correct": False}])
+        mock_llm.diagnose.return_value = self._diagnose_output(["the same fact"])
+        chunks = _make_chunks(count=1, heading="Test")
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
+        )
+        config.budget.wicer_max_iterations = 0
+        config.budget.min_content_length = 0
+        compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
+        compiler._has_llm = True
+        wiki = compiler.compile(chunks)
+        # Iteration 1 pins the fact, iteration 2 finds nothing new → stop.
+        assert wiki.metadata["wicer_iterations"] == 2
+        assert wiki.metadata["wicer_refinements"] == 1
+
+    def test_wall_clock_budget_stops_the_loop(self, mock_llm: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The wall-clock budget is a timeout-class stop, not a size cap."""
+        mock_llm.probe.return_value = self._probe_output([{"question": "Q1?", "answer": "A1."}])
+        mock_llm.evaluate.return_value = self._evaluate_output([{"question": "Q1?", "expected_answer": "A1.", "found_answer": "", "correct": False}])
+        mock_llm.diagnose.return_value = self._diagnose_output(["a fact"])
+        chunks = _make_chunks(count=1, heading="Test")
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
+        )
+        config.budget.wicer_max_iterations = 0
+        config.budget.wicer_max_seconds = 1
+        config.budget.min_content_length = 0
+        compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
+        compiler._has_llm = True
+        clock = {"t": 0.0}
+
+        def fake_monotonic() -> float:
+            return clock["t"]
+
+        def fake_diagnose(failures: list[Any]) -> list[str]:
+            clock["t"] = 10_000.0  # the wall-clock budget is spent after iteration 1
+            return ["a fact"]
+
+        monkeypatch.setattr(compiler, "_diagnose", fake_diagnose)
+        with patch("kompend.compilation.wicer.time.monotonic", side_effect=fake_monotonic):
+            wiki = compiler.compile(chunks)
+        # The budget is spent after the first iteration → the loop stops.
+        assert wiki.metadata["wicer_iterations"] == 1
+        assert wiki.metadata["wicer_refinements"] == 1
+
     def test_custom_base_compiler(self) -> None:
         """A custom BaseCompiler can be injected."""
 

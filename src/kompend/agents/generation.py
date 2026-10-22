@@ -41,18 +41,17 @@ class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDe
     ``generation_agentic_*`` template pair.
 
     The agent is equipped with:
-    - ``Memory`` (InMemoryStore) — cross-segment judgment notes
     - ``SlidingWindowCompaction`` — keeps history bounded
     - ``ClampOversizedMessages`` — prevents runaway tool outputs
     """
 
     template_name: ClassVar[str] = "generation_agentic_prompt.md.j2"
     system_template_name: ClassVar[str] = "generation_agentic_system.md.j2"
-    use_delta_retry: bool = True
+    supports_delta_retry: ClassVar[bool] = True
+    output_budget_key: ClassVar[str] = "gen_output_max"
 
-    def validate_output(  # noqa: PLR6301
-        self, ctx: RunContext[ToolGenerationDeps], output: GenerationOutput
-    ) -> GenerationOutput:
+    @staticmethod
+    def validate_output(ctx: RunContext[ToolGenerationDeps], output: GenerationOutput) -> GenerationOutput:
         """Validate generation output for the agentic flow."""
         if not output.pages:
             raise ModelRetry("You returned an empty pages list. Generate at least one wiki page.")
@@ -63,23 +62,26 @@ class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDe
 def make_agentic_generation_agent(
     *,
     model_string: str,
-    timeout: float = 120.0,
+    timeout: float = UNSET_TIMEOUT,
     max_tokens: int | None = None,
     skills: dict[str, str] | None = None,
-    retries: int = 0,
+    retries: int = UNSET_RETRIES,
     output_retries: int | None = None,
-    delta_retry_enabled: bool = True,
+    delta_retry_enabled: bool | None = None,
     reasoning_effort: str | None = None,
     context_manager: str | bool | None = None,
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     usage_tracker: UsageTracker | None = None,
+    llm: LLMConfig | None = None,
+    budget: BudgetConfig | None = None,
 ) -> AgenticGenerationAgent:
     """Factory for :class:`AgenticGenerationAgent` with harness capabilities.
 
     Injects standard agentic capabilities via :class:`AgenticHarness`
-    (``Memory`` + ``SlidingWindowCompaction`` + ``ClampOversizedMessages``)
-    and registers the ``read_segment()`` / ``fetch_concepts()`` tools.
+    (``SlidingWindowCompaction`` + ``ClampOversizedMessages``; the generation
+    flow runs without cross-segment memory) and registers the
+    ``read_segment()`` / ``fetch_concepts()`` tools.
 
     Retry budgets are passed as a pydantic-ai ``AgentRetries`` dict so output
     validation and tool calls get independent ceilings. ``retries`` is the
@@ -88,7 +90,7 @@ def make_agentic_generation_agent(
     agents (default = ``compile.llm.agentic_output_retries``, higher because
     agentic turns invalidate more often on small models).
     """
-    agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
+    agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
     harness = AgenticHarness(context_window=context_window, memory_agent_name="generation", memory=False)
     return AgenticGenerationAgent(
         model_string=model_string,
@@ -98,10 +100,12 @@ def make_agentic_generation_agent(
         retries=agent_retries,
         delta_retry_enabled=delta_retry_enabled,
         reasoning_effort=reasoning_effort,
-        context_manager=context_manager if context_manager is not None else False,
+        context_manager=context_manager,
         context_window=context_window,
         rlm=rlm,
         usage_tracker=usage_tracker,
+        llm=llm,
+        budget=budget,
         tools=build_gen_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

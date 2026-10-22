@@ -9,8 +9,9 @@ import pytest
 from pydantic_ai import Agent
 from pydantic_ai_summarization import ContextManagerCapability, SlidingWindowCapability
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
+from kompend.core.config._configs import BudgetConfig, LLMConfig
 from kompend.llm.usage import UsageTracker
 
 
@@ -172,3 +173,79 @@ class TestContextManagerCapability:
             pass
 
         return _A(model_string="ollama/noop", **kwargs)
+
+
+class TestConfigDrivenDefaults:
+    """Every limit a construction site does not set comes from the config."""
+
+    def test_limits_come_from_the_config(self) -> None:
+        llm = LLMConfig(
+            timeout=45.0,
+            output_retries=5,
+            output_retries_enabled=True,
+            reasoning_effort="high",
+            context_manager="aggressive",
+            context_window=1234,
+            fallback_chain=["other/model"],
+            delta_retry_enabled=False,
+        )
+        agent = self._agent(llm=llm, budget=BudgetConfig(agent_output_max=999))
+        assert agent.timeout == 45.0
+        assert agent.retries == 5
+        assert agent.max_tokens == 999
+        assert agent.reasoning_effort == "high"
+        assert agent.context_manager == "aggressive"
+        assert agent.context_window == 1234
+        assert agent.fallback_models == ["other/model"]
+        assert agent.delta_retry_enabled is False
+
+    def test_explicit_values_win_over_the_config(self) -> None:
+        llm = LLMConfig(timeout=45.0, output_retries=5)
+        agent = self._agent(
+            llm=llm,
+            budget=BudgetConfig(agent_output_max=999),
+            timeout=7.0,
+            retries=1,
+            max_tokens=11,
+        )
+        assert (agent.timeout, agent.retries, agent.max_tokens) == (7.0, 1, 11)
+
+    def test_output_retries_disabled_switches_retries_off(self) -> None:
+        llm = LLMConfig(output_retries=5, output_retries_enabled=False)
+        assert self._agent(llm=llm).retries == 0
+
+    def test_dedicated_output_budget_key_wins(self) -> None:
+        class _Ref(KompendAgentBase[Any, Any]):
+            output_budget_key = "reference_output_max"
+
+        budget = BudgetConfig(agent_output_max=999, reference_output_max=4242)
+        assert _Ref(model_string="ollama/noop", budget=budget).max_tokens == 4242
+
+    def test_defaults_without_config(self) -> None:
+        agent = self._agent()
+        assert agent.timeout == 120.0
+        assert agent.retries == 2
+        assert agent.max_tokens is None
+        assert agent.context_manager is False
+        assert agent.delta_retry_enabled is True
+
+    @staticmethod
+    def _agent(**kwargs: Any) -> KompendAgentBase[Any, Any]:
+        class _A(KompendAgentBase[Any, Any]):
+            pass
+
+        return _A(model_string="ollama/noop", **kwargs)
+
+
+class TestResolveRetryBudget:
+    def test_splits_tool_and_output_retries(self) -> None:
+        llm = LLMConfig(output_retries=3, agentic_output_retries=6, output_retries_enabled=True)
+        assert resolve_retry_budget(llm, retries=None, output_retries=None) == {"tools": 3, "output": 6}
+
+    def test_disabled_output_retries_zero_both(self) -> None:
+        llm = LLMConfig(output_retries=3, agentic_output_retries=6, output_retries_enabled=False)
+        assert resolve_retry_budget(llm, retries=None, output_retries=None) == {"tools": 0, "output": 0}
+
+    def test_explicit_retries_win(self) -> None:
+        llm = LLMConfig(output_retries=3, agentic_output_retries=6)
+        assert resolve_retry_budget(llm, retries=9, output_retries=None) == {"tools": 9, "output": 6}

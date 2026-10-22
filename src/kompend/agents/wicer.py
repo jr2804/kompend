@@ -14,6 +14,7 @@ class WicerProbeAgent(KompendAgentBase[WicerProbeOutput, WicerProbeDeps]):
 
     template_name: ClassVar[str] = "wicer_probe.md.j2"
     system_template_name: ClassVar[str] = "wicer_probe.md.j2"
+    output_budget_key: ClassVar[str] = "wicer_probe_output_max"
 
     def render_system_prompt(self, deps: WicerProbeDeps) -> str:
         """WiCER probe uses a simple system message, not a template."""
@@ -29,6 +30,7 @@ class WicerEvaluateAgent(KompendAgentBase[WicerEvaluateOutput, WicerEvaluateDeps
 
     template_name: ClassVar[str] = "wicer_evaluate.md.j2"
     system_template_name: ClassVar[str] = "wicer_evaluate.md.j2"
+    output_budget_key: ClassVar[str] = "wicer_eval_output_max"
 
     def render_system_prompt(self, deps: WicerEvaluateDeps) -> str:
         """WiCER evaluate uses a simple system message."""
@@ -44,6 +46,7 @@ class WicerDiagnoseAgent(KompendAgentBase[WicerDiagnoseOutput, WicerDiagnoseDeps
 
     template_name: ClassVar[str] = "wicer_diagnose.md.j2"
     system_template_name: ClassVar[str] = "wicer_diagnose.md.j2"
+    output_budget_key: ClassVar[str] = "wicer_eval_output_max"
 
     def render_system_prompt(self, deps: WicerDiagnoseDeps) -> str:
         """WiCER diagnose uses a simple system message."""

@@ -220,6 +220,8 @@ def wiki_write(
             model=llm_model,
             timeout=float(cfg.kompend.compile.llm.timeout),
             source_char_max=cfg.kompend.compile.budget.capture_source_char_max,
+            llm=cfg.kompend.compile.llm,
+            budget=cfg.kompend.compile.budget,
         )
 
     slug = slugify(page_title)
@@ -266,7 +268,9 @@ def wiki_organize(
 
     categorize_agent = CategorizeAgent(
         default_model,
-        timeout=float(timeout) if timeout else 120,
+        timeout=float(timeout),
+        llm=cfg.kompend.compile.llm,
+        budget=cfg.kompend.compile.budget,
     )
 
     try:
@@ -319,32 +323,63 @@ def _synthesize_write_page(
     related_titles: list[str],
     model: str | None,
     timeout: float,
-    source_char_max: int = 4000,
+    source_char_max: int,
+    llm: LLMConfig | None = None,
+    budget: BudgetConfig | None = None,
 ) -> str:
+    """Synthesize the sources into the body of a write page.
+
+    A source longer than ``source_char_max`` characters is synthesized in
+    several calls — the budget sizes one call, it never shortens the
+    source. The per-call results are joined; a failing call keeps the
+    results of the calls that succeeded before it.
+    """
     references_section = _build_references_section(source_texts, related_titles)
 
     if not model:
         raise RuntimeError("No LLM model configured for write-page synthesis")
 
-    agent = WriteAgent(model, timeout=timeout, retries=2)
-    source_block = "\n\n".join(f"### {stem}\n\n{text[:source_char_max]}" for stem, text in source_texts)
-    loader = get_template_loader()
-    prompt = loader.render(
-        "capture/write_prompt.md.j2",
-        page_title=page_title,
-        source_block=source_block,
+    agent = WriteAgent(
+        model,
+        timeout=timeout,
+        retries=llm.output_retries if llm and llm.output_retries_enabled else 0,
+        llm=llm,
+        budget=budget,
     )
-    deps = PipelineAgentDeps(text=prompt, source_id="write", timeout=timeout)
-    try:
-        content = agent.run(deps)
-        content = strip_reasoning(content)
+    loader = get_template_loader()
+    pages: list[str] = []
+    for block in _source_blocks(source_texts, source_char_max):
+        prompt = loader.render(
+            "capture/write_prompt.md.j2",
+            page_title=page_title,
+            source_block=block,
+        )
+        deps = PipelineAgentDeps(text=prompt, source_id="write", timeout=timeout)
+        try:
+            content = strip_reasoning(agent.run(deps))
+        except Exception as exc:
+            if not pages:
+                raise RuntimeError(f"LLM synthesis failed for write page: {exc}") from exc
+            logger.warning("Write-page synthesis stopped after %d block(s): %s", len(pages), exc)
+            break
         if content.strip():
-            return content.strip() + "\n\n" + references_section
+            pages.append(content.strip())
+    if not pages:
         raise RuntimeError("LLM returned empty content for write page")
-    except RuntimeError:
-        raise
-    except Exception as exc:
-        raise RuntimeError(f"LLM synthesis failed for write page: {exc}") from exc
+    return "\n\n".join(pages) + "\n\n" + references_section
+
+
+def _source_blocks(source_texts: list[tuple[str, str]], source_char_max: int) -> list[str]:
+    """Return one prompt block per source window.
+
+    The sources are never shortened — a long source contributes several
+    blocks, each holding the next window of its text.
+    """
+    blocks: list[str] = []
+    for stem, text in source_texts:
+        for window in split_text_windows(text, source_char_max):
+            blocks.append(f"### {stem}\n\n{window}")
+    return blocks
 
 
 def _build_references_section(source_texts: list[tuple[str, str]], related_titles: list[str]) -> str:

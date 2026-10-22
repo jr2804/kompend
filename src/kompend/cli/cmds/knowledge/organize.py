@@ -58,7 +58,9 @@ def organize_cmd(
 
     categorize_agent = CategorizeAgent(
         default_model,
-        timeout=float(timeout) if timeout else 120,
+        timeout=float(timeout),
+        llm=cfg.kompend.compile.llm,
+        budget=cfg.kompend.compile.budget,
     )
 
     result = organize_sources(

@@ -45,6 +45,15 @@ from kompend.logging import get_logger
 #: the fixed per-request cost.
 _REFERENCE_SYSTEM_TEMPLATE = "compilation/reference_extraction_system.md.j2"
 
+#: How much larger the parsed reference JSON is than the raw citation text.
+#: The schema repeats the original citation in ``raw`` and adds parsed
+#: fields (title, authors, year, doi, url, ...), so a window of raw
+#: bibliography expands roughly threefold in the response. The window
+#: budget divides the output ceiling by this factor — a window whose
+#: references do not fit the ceiling truncates the response and fails the
+#: extraction with ``Exceeded maximum output retries``.
+_REFERENCE_JSON_EXPANSION: float = 3.0
+
 logger = get_logger(__name__)
 
 
@@ -76,7 +85,10 @@ def run_reference_extraction(
 
     Oversized sections are split into line-aligned windows that fit the
     discovered context-window budget (see ``_reference_char_budget``) and
-    parsed window by window; results are merged per source.
+    parsed window by window; results are merged per source. Every window
+    is processed — no window is skipped to save cost — and a failing
+    window is skipped so the remaining windows still contribute their
+    references.
 
     Logs a summary at the end. Failures are non-fatal — the pipeline
     continues without reference data for that source.
@@ -99,7 +111,22 @@ def run_reference_extraction(
     max_window_chars = 0
     if model_string:
         try:
-            agent = ReferenceExtractionAgent(model_string=model_string)
+            agent = ReferenceExtractionAgent(
+                model_string=model_string,
+                timeout=timeout,
+                max_tokens=_reference_output_tokens(compiler),
+                retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
+                reasoning_effort=compiler._config.llm.reasoning_effort,
+                context_window=compiler._context_window.max_input,
+                usage_tracker=compiler._usage_tracker,
+                # Salvage a truncated reference list instead of failing the
+                # window: the delta-retry hook (enabled by the agent's
+                # ``supports_delta_retry`` opt-in) repairs partial JSON and
+                # merges it across retries.
+                delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
+                llm=compiler._config.llm,
+                budget=compiler._budget,
+            )
             max_window_chars = _reference_char_budget(compiler)
         except Exception as exc:  # noqa: BLE001 — agent construction may fail without model
             logger.warning("ReferenceExtractionAgent init failed: %s — skipping reference extraction", exc)
@@ -140,11 +167,13 @@ def run_reference_extraction(
             )
 
         refs: list[Reference] = []
+        failed_windows = 0
         for win_idx, window in enumerate(windows, start=1):
             try:
                 deps = PipelineAgentDeps(text=window, source_id=source, timeout=timeout)
                 result = agent.run(deps)
             except Exception as exc:  # noqa: BLE001 — PydanticAI raises many error subclasses
+                failed_windows += 1
                 logger.warning(
                     "Reference extraction failed for '%s' (window %d/%d): %s",
                     source,
@@ -152,9 +181,18 @@ def run_reference_extraction(
                     len(windows),
                     exc,
                 )
-                break  # keep references parsed from earlier windows
+                continue  # keep the references parsed from the other windows
             if result:
                 refs.extend(result.references)
+
+        if failed_windows:
+            logger.warning(
+                "TwoPhase: %d of %d reference window(s) failed for '%s' — %d reference(s) kept",
+                failed_windows,
+                len(windows),
+                source,
+                len(refs),
+            )
 
         # Stamp each reference with the citing source
         for ref in refs:
@@ -179,32 +217,56 @@ def run_reference_extraction(
 def _reference_char_budget(compiler: TwoPhaseRuntime) -> int:
     """Character budget for one reference-extraction window.
 
-    Mirrors ``flows/extraction.py``'s ``_extract_char_budget``: start from the
-    discovered context window, subtract the measured system prompt, the
-    configured output reserve (``compile.budget.reference_output_max``) and the
-    shared context safety margin, then convert the remaining tokens to chars.
-    A parsed bibliography is roughly as large as its raw text, so reserving a
-    full output window keeps input plus expected output inside the model's
-    limit — without it a large section overflowed as
-    ``request (236320 tokens) exceeds the available context size (65536)``.
+    Two bounds apply and the smaller one wins:
+
+    1. *Context* — the discovered context window minus the measured system
+       prompt, the reserved output and the shared context safety margin.
+       Without it a large section overflowed as ``request (236320 tokens)
+       exceeds the available context size (65536 tokens)``.
+    2. *Output* — the output ceiling divided by
+       :data:`_REFERENCE_JSON_EXPANSION`. The parsed reference list
+       repeats the raw citation text, so a window whose references do not
+       fit the ceiling produces a truncated response and a failed
+       extraction (``Exceeded maximum output retries``).
     """
     cw = compiler._context_window  # noqa: SLF001 — flow/runtime contract
     sys_tokens = _reference_system_tokens()
-    out_tokens = compiler._budget.reference_output_max  # noqa: SLF001
+    out_tokens = _reference_output_tokens(compiler)
     safety_tokens = context_safety_tokens(cw.max_input)
     content_tokens = max(1, cw.max_input - sys_tokens - out_tokens - safety_tokens)
+    chars_per_token = compiler._config.llm.default_chars_per_token  # noqa: SLF001
+    context_chars = tokens_to_chars(content_tokens, chars_per_token=chars_per_token)
+    output_chars = tokens_to_chars(
+        max(1, int(out_tokens / _REFERENCE_JSON_EXPANSION)),
+        chars_per_token=chars_per_token,
+    )
+    budget = min(context_chars, output_chars)
     logger.info(
-        "TwoPhase: reference budget (cw=%d sys=%d out=%d safety=%d) -> %d tokens for content",
+        "TwoPhase: reference budget (cw=%d sys=%d out=%d safety=%d) -> %d chars per window (context %d chars, output %d chars)",
         cw.max_input,
         sys_tokens,
         out_tokens,
         safety_tokens,
-        content_tokens,
+        budget,
+        context_chars,
+        output_chars,
     )
-    return tokens_to_chars(
-        content_tokens,
-        chars_per_token=compiler._config.llm.default_chars_per_token,  # noqa: SLF001
-    )
+    return budget
+
+
+def _reference_output_tokens(compiler: TwoPhaseRuntime) -> int:
+    """Output-token ceiling for one reference-extraction request.
+
+    ``compile.budget.reference_output_max`` is the configured bound; the
+    model's discovered output limit caps it further. The value is handed to
+    the agent as ``max_tokens`` so the response is bounded explicitly
+    instead of being truncated by the provider.
+    """
+    configured = compiler._budget.reference_output_max  # noqa: SLF001
+    discovered = compiler._context_window.max_output  # noqa: SLF001
+    if discovered and discovered > 0:
+        configured = min(configured, discovered)
+    return max(1, configured)
 
 
 @functools.lru_cache(maxsize=1)
@@ -212,32 +274,6 @@ def _reference_system_tokens() -> int:
     """Estimated token cost of the reference-extraction system prompt."""
     system = get_template_loader().get_body(_REFERENCE_SYSTEM_TEMPLATE)
     return max(1, len(system) // 4)
-
-
-def _split_windows(text: str, max_chars: int) -> list[str]:
-    """Split *text* into line-aligned windows of at most *max_chars* characters.
-
-    Reference entries are typically one per line, so windows break between
-    entries and the model never sees a torn citation. A single line longer
-    than *max_chars* (rare) is hard-split as a fallback.
-    """
-    windows: list[str] = []
-    current: list[str] = []
-    size = 0
-    for line in text.split("\n"):
-        line_len = len(line) + 1  # account for the join newline
-        if current and size + line_len > max_chars:
-            windows.append("\n".join(current))
-            current, size = [], 0
-        if line_len > max_chars:
-            for i in range(0, len(line), max_chars):
-                windows.append(line[i : i + max_chars])
-            continue
-        current.append(line)
-        size += line_len
-    if current:
-        windows.append("\n".join(current))
-    return windows
 
 
 def resolve_unresolved_references(

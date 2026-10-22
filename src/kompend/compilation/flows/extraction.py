@@ -229,6 +229,8 @@ def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extractio
         context_manager=compiler._config.llm.context_manager,
         context_window=compiler._context_window.max_input,
         usage_tracker=compiler._usage_tracker,
+        llm=compiler._config.llm,
+        budget=compiler._budget,
     )
 
     # Per-batch retry: the agent already retries internally (via PydanticAI's
@@ -366,6 +368,8 @@ def extract_incremental(
                 context_manager=compiler._config.llm.context_manager,
                 context_window=compiler._context_window.max_input,
                 usage_tracker=compiler._usage_tracker,
+                llm=compiler._config.llm,
+                budget=compiler._budget,
             )
         deps = PipelineAgentDeps(
             text=combined,
@@ -511,9 +515,11 @@ def reduce_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extra
         timeout=compiler._timeout,
         max_tokens=compiler._budget.extract_output_max,
         skills=compiler._config.skills,
-        retries=compiler._config.llm.output_retries,
         reasoning_effort=compiler._config.llm.reasoning_effort,
+        context_window=compiler._context_window.max_input,
         usage_tracker=compiler._usage_tracker,
+        llm=compiler._config.llm,
+        budget=compiler._budget,
     )
     try:
         deps = PipelineAgentDeps(text=partial_json, source_id=f"{source}:reduce", timeout=compiler._timeout)

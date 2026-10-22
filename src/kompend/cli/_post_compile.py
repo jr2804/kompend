@@ -328,8 +328,8 @@ def run_overview_synthesis(
             agent=make_agentic_overview_agent(
                 model_string=pipeline_config.llm.default_model or "",
                 timeout=pipeline_config.llm.timeout,
-                retries=pipeline_config.llm.output_retries if pipeline_config.llm.output_retries_enabled else 0,
-                output_retries=pipeline_config.llm.agentic_output_retries if pipeline_config.llm.output_retries_enabled else 0,
+                llm=pipeline_config.llm,
+                budget=pipeline_config.budget,
             ),
             overview_budget=pipeline_config.budget.overview_output_max * 4,
             progress_callback=_synth_cb if synthesize_tracker.enabled else None,

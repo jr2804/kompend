@@ -79,7 +79,11 @@ The base class provides:
   `rlm_query(prompt, slice)` — a child agent (same main model, own REPL)
   recursing up to the depth budget, guarded by a per-root-run node
   budget (default 16) and cycle detection on (depth, prompt, context
-  fingerprint). Run
+  fingerprint). The per-run REPL cache is keyed by `id(deps)`; a lookup
+  must confirm the entry still belongs to that deps object — ids are
+  recycled once a deps object is collected, and a stale REPL would run
+  the next agent against the previous run's namespace, guard and model.
+  Run
   tool-calls are bounded by `UsageLimits` from the preset. When RLM is
   enabled, the `rlm_context_field` deps value is replaced by a
   placeholder in rendered prompts (`RLM_CONTEXT_PLACEHOLDER`) so the
@@ -109,6 +113,47 @@ The base class provides:
   progress
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
+
+### Construction contract
+
+Agents take their limits from the config, not from the call site. A
+construction site hands over the two config groups and gets every limit it
+did not spell out:
+
+| Kwarg | Source |
+|-------|--------|
+| `llm` | the `compile.llm` group — timeout, retries, reasoning effort, context manager, context window, fallback chain, delta-retry switch |
+| `budget` | the `compile.budget` group — the response ceiling |
+
+`KompendAgentBase._apply_config_defaults()` fills the gaps: `timeout` ←
+`llm.timeout`, `retries` ← `llm.output_retries` (0 when
+`output_retries_enabled` is false), `reasoning_effort` ←
+`llm.reasoning_effort`, `context_manager` ← `llm.context_manager`,
+`context_window` ← `llm.context_window`, `fallback_models` ←
+`llm.fallback_chain`, `delta_retry_enabled` ← `llm.delta_retry_enabled`,
+`max_tokens` ← `budget.<output_budget_key>`. An explicitly passed value
+always wins over the config.
+
+Each agent class declares `output_budget_key` — the `budget.*_output_max`
+that bounds its response (`extract_output_max`, `gen_output_max`,
+`reference_output_max`, `overview_output_max`, `verify_output_max`,
+`lint_output_max`, `wicer_probe_output_max`, `wicer_eval_output_max`).
+Agents without a dedicated key use the generic `budget.agent_output_max`.
+
+`resolve_retry_budget(llm, retries=…, output_retries=…)` derives the
+tool/output retry split from the same config — the agentic factories use it
+so a multi-turn agent does not share the single-shot retry budget.
+
+An agent built with only `model_string` gets the provider's default output
+ceiling and the hardcoded `_DEFAULT_RETRIES` — the response is truncated by
+the provider and the structured output fails with
+`Exceeded maximum output retries`.
+
+The delta-retry salvage hook is opt-in per class: a subclass sets
+`supports_delta_retry: ClassVar[bool] = True`, and the hook fires only when
+`delta_retry_enabled` (from `llm.delta_retry_enabled`) is on. It is a
+`ClassVar` — a plain class attribute would be shadowed by the dataclass
+`__init__` and never take effect.
 
 ### KompendModel (`kompend_model.py`)
 
@@ -140,6 +185,7 @@ feedback loop — was removed.
 | `ContextChunkDeps`  | AgenticContextChunkAgent (payload: `ContextChunk`)                                    |
 | `DistillAgentDeps`  | AgenticDistillAgent (payload: `DistillGroup`, `DistillPage`)                          |
 | `VerificationDeps`  | AgenticVerificationAgent (payload: `VerificationClaim`, `VerificationSource`, `VerificationPage`) |
+| `WriteDeps`         | AgenticWriteAgent (payload: `source_texts` — the full sources, served in windows of `source_char_max` characters) |
 
 Agentic-session payload structures are `TypedDict`s declared in `types.py`
 alongside the other module-level classes (the sorter groups them after the

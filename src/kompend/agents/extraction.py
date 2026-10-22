@@ -35,4 +35,5 @@ class ExtractionAgent(KompendAgentBase[ExtractionOutput, PipelineAgentDeps]):
 
     template_name: ClassVar[str] = "extraction_prompt.md.j2"
     system_template_name: ClassVar[str] = "extraction_system.md.j2"
-    use_delta_retry: bool = True
+    supports_delta_retry: ClassVar[bool] = True
+    output_budget_key: ClassVar[str] = "extract_output_max"

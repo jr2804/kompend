@@ -61,7 +61,7 @@ from kompend.agents.rlm import (
     RLMCapability,
 )
 from kompend.agents.types import PipelineAgentDeps
-from kompend.core.config._configs import RlmConfig
+from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.format import salvage_json
@@ -77,6 +77,15 @@ _DEFAULT_TIMEOUT_SECONDS: float = 120.0
 #: Default retries when no config value is provided. Matches the config
 #: default in ``compile.llm.output_retries``.
 _DEFAULT_RETRIES: int = 2
+
+#: Sentinels for "the construction site did not set this limit" — the
+#: config (``compile.llm``) or the base default decides.
+UNSET_TIMEOUT: float = -1.0
+UNSET_RETRIES: int = -1
+
+#: Budget key that bounds the response of agents without a dedicated
+#: output ceiling.
+_GENERIC_OUTPUT_BUDGET_KEY: str = "agent_output_max"
 
 #: ContextManagerCapability presets: name -> (compress_threshold, keep).
 #: ``keep`` uses the ``ContextSize`` shape (``("messages", N)``).
@@ -113,6 +122,32 @@ class AgentDeps(Protocol):
     timeout: float
 
 
+def resolve_retry_budget(
+    llm: LLMConfig | None,
+    *,
+    retries: int | AgentRetries | None,
+    output_retries: int | None,
+) -> int | AgentRetries:
+    """Resolve the tool/output retry split from the config.
+
+    ``retries`` bounds tool-call retries, ``output_retries`` bounds output
+    validation. Both come from ``compile.llm`` when the caller left them
+    unset; ``compile.llm.output_retries_enabled = false`` switches retries
+    off entirely.
+    """
+    if llm is not None:
+        if retries is None or retries == UNSET_RETRIES:
+            retries = llm.output_retries if llm.output_retries_enabled else 0
+        if output_retries is None:
+            output_retries = llm.agentic_output_retries if llm.output_retries_enabled else 0
+    if retries is None or retries == UNSET_RETRIES:
+        retries = _DEFAULT_RETRIES
+    if output_retries is not None:
+        tool_retries = retries if isinstance(retries, int) else retries.get("tools", _DEFAULT_RETRIES)
+        return {"tools": tool_retries, "output": output_retries}
+    return retries
+
+
 def _context_usage_str(tracker: UsageTracker | None) -> str:
     """Format the last-known context-window utilization for failure logs.
 
@@ -144,26 +179,30 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     """
 
     model_string: str
-    timeout: float = _DEFAULT_TIMEOUT_SECONDS
-    retries: int | AgentRetries = _DEFAULT_RETRIES
+    timeout: float = UNSET_TIMEOUT
+    retries: int | AgentRetries = UNSET_RETRIES
     max_tokens: int | None = None
     skills: dict[str, str] = field(default_factory=dict)
     usage_tracker: UsageTracker | None = None
     fallback_models: list[str] | None = None
     reasoning_effort: str | None = None
     use_native_output: bool = False
-    context_manager: str | bool = False
+    context_manager: str | bool | None = None
     context_window: int | None = None
-    delta_retry_enabled: bool = True
+    delta_retry_enabled: bool | None = None
     tools: list[Tool[DepsT]] = field(default_factory=list)
     extra_capabilities: Sequence[AbstractCapability[DepsT]] = field(default_factory=list)
     temperature: float | None = None
-    use_delta_retry: bool = False
     #: RLM configuration from the ``compile.llm.rlm`` group
     #: (:class:`~kompend.core.config._configs.RlmConfig`); ``None`` disables.
     rlm: RlmConfig | None = None
     #: Deps attribute holding the document context for the RLM REPL.
     rlm_context_field: str = "text"
+    #: Config groups that drive the agent limits. When a construction site
+    #: hands them over, every limit the site did not set explicitly is
+    #: taken from the config (see :meth:`_apply_config_defaults`).
+    llm: LLMConfig | None = None
+    budget: BudgetConfig | None = None
 
     # Class-level template config (overridden by subclasses, NOT dataclass fields)
     template_name: ClassVar[str] = ""
@@ -172,6 +211,16 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     #: Override in subclasses whose templates are not under ``compilation/``
     #: (e.g. ``"search/"``, ``"capture/"``, ``"organize/"``).
     template_prefix: ClassVar[str] = "compilation/"
+    #: Opt-in for the delta-retry salvage hook. Subclasses set this to
+    #: ``True`` to recover partially valid structured output (see
+    #: :meth:`_make_delta_retry_hook`). The runtime switch is
+    #: ``delta_retry_enabled``; this flag only marks the agent as
+    #: capable of the hook.
+    supports_delta_retry: ClassVar[bool] = False
+    #: Budget key that bounds this agent's response (``budget.*_output_max``).
+    #: Agents without a dedicated ceiling use the generic
+    #: ``budget.agent_output_max`` (the empty key selects it).
+    output_budget_key: ClassVar[str] = ""
 
     # Runtime-resolved type params (set in __post_init__, not constructor params)
     result_type: type = field(default=str, init=False, repr=False)
@@ -193,6 +242,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         # RLM placeholder, and a Pydantic model is always truthy.
         if isinstance(self.rlm, RlmConfig) and not self.rlm.enable:
             self.rlm = None
+        self._apply_config_defaults()
 
     @property
     def stage(self) -> str:
@@ -241,15 +291,6 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 skill_blocks.append(f"## Skill: {name}\n\n{instructions}")
             prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
         return prompt
-
-    def validate_output(self, ctx: RunContext[DepsT], output: ResultT) -> ResultT:  # noqa: PLR6301
-        """Semantic output validator. Override in subclasses to add validation.
-
-        Default: pass-through (no validation). Subclasses that override this
-        method can raise ``ModelRetry`` to trigger a retry, or modify and
-        return the output.
-        """
-        return output
 
     def run(
         self,
@@ -345,6 +386,56 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """The source_id from the most recent ``run()`` call."""
         return self._current_source_id
 
+    @staticmethod
+    def validate_output(ctx: RunContext[DepsT], output: ResultT) -> ResultT:
+        """Semantic output validator. Override in subclasses to add validation.
+
+        Default: pass-through (no validation). Subclasses that override this
+        method can raise ``ModelRetry`` to trigger a retry, or modify and
+        return the output. It is a static method so an override never has to
+        touch the instance — the base passes the result through unchanged.
+        """
+        return output
+
+    def _apply_config_defaults(self) -> None:
+        """Take every limit the construction site did not set from the config.
+
+        A site may hand over the ``llm``/``budget`` config groups instead
+        of spelling out timeout, retries, output ceiling, reasoning
+        effort, context manager, fallback chain and delta-retry switch.
+        Explicit constructor values always win — the config only fills
+        the gaps, so every agent reacts to the same config.
+        """
+        llm = self.llm
+        if llm is not None:
+            if self.timeout == UNSET_TIMEOUT:
+                self.timeout = llm.timeout
+            if self.retries == UNSET_RETRIES:
+                self.retries = llm.output_retries if llm.output_retries_enabled else 0
+            if self.reasoning_effort is None:
+                self.reasoning_effort = llm.reasoning_effort
+            if self.context_manager is None:
+                self.context_manager = llm.context_manager
+            if self.context_window is None and llm.context_window:
+                self.context_window = llm.context_window
+            if self.fallback_models is None and llm.fallback_chain:
+                self.fallback_models = list(llm.fallback_chain)
+            if self.delta_retry_enabled is None:
+                self.delta_retry_enabled = llm.delta_retry_enabled
+        if self.timeout == UNSET_TIMEOUT:
+            self.timeout = _DEFAULT_TIMEOUT_SECONDS
+        if self.retries == UNSET_RETRIES:
+            self.retries = _DEFAULT_RETRIES
+        if self.context_manager is None:
+            self.context_manager = False
+        if self.delta_retry_enabled is None:
+            self.delta_retry_enabled = True
+        if self.max_tokens is None and self.budget is not None:
+            key = self.output_budget_key or _GENERIC_OUTPUT_BUDGET_KEY
+            ceiling = getattr(self.budget, key, None)
+            if ceiling:
+                self.max_tokens = int(ceiling)
+
     def _usage_limits_for(self, deps: DepsT) -> UsageLimits | None:
         """Per-run UsageLimits; default is the RLM preset limits (or None).
 
@@ -405,7 +496,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         capabilities: list[AbstractCapability[DepsT]] = []
         if capability is not None:
             capabilities.append(capability)
-        if self.delta_retry_enabled and self.use_delta_retry:
+        if self.delta_retry_enabled and type(self).supports_delta_retry:
             capabilities.append(self._make_delta_retry_hook())
         rlm_capability = self._resolve_rlm_capability(top_model)
         if rlm_capability is not None:
@@ -471,8 +562,8 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         expected structure looks like.  On retry, valid parts from previous
         attempts are accumulated and merged.
 
-        Only fires for agents with ``use_delta_retry = True`` and a Pydantic
-        ``result_type`` (structured output).
+        Only fires for agents with ``supports_delta_retry = True`` and a
+        Pydantic ``result_type`` (structured output).
         """
         state = self._delta_retry_state
         hooks = Hooks()

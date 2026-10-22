@@ -23,3 +23,4 @@ class ExtractionReduceAgent(KompendAgentBase[ExtractionOutput, PipelineAgentDeps
 
     template_name: ClassVar[str] = "extraction_reduce_prompt.md.j2"
     system_template_name: ClassVar[str] = "extraction_reduce_system.md.j2"
+    output_budget_key: ClassVar[str] = "extract_output_max"

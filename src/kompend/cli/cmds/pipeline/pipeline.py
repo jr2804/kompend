@@ -32,7 +32,6 @@ from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli._sources import resolve_files
 from kompend.cli.app import app
 from kompend.cli.args import (
-    DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     DEFAULT_START_AT_TIER,
     BypassReview,
     CliSet,
@@ -50,7 +49,6 @@ from kompend.cli.args import (
     ListTiers,
     LlmDefaultModel,
     LlmFallbackChain,
-    LlmFallbackMaxRetries,
     MemoryEnabled,
     NoCacheFlag,
     NoPrivacy,
@@ -205,7 +203,6 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
         vlm_model=vlm_model,
         memory_enabled=memory_enabled,
         llm_fallback_chain=llm_fallback_chain,
-        llm_fallback_max_retries=llm_fallback_max_retries,
         embed_model=embed_model,
         in_place_sources=in_place,
         recursive=recursive,

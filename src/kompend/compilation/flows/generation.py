@@ -514,6 +514,8 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             context_window=compiler._context_window.max_input,
             rlm=compiler._config.llm.rlm,
             usage_tracker=compiler._usage_tracker,
+            llm=compiler._config.llm,
+            budget=compiler._budget,
         )
 
         deps = ToolGenerationDeps(

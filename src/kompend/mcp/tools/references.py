@@ -114,7 +114,12 @@ def references_fetch(
 
     timeout = float(cfg.kompend.compile.llm.timeout)
     try:
-        agent = ReferenceResolverAgent(model_string=model, timeout=timeout)
+        agent = ReferenceResolverAgent(
+            model_string=model,
+            timeout=timeout,
+            llm=cfg.kompend.compile.llm,
+            budget=cfg.kompend.compile.budget,
+        )
     except Exception as exc:
         return {"status": "error", "message": f"Could not initialise resolver agent: {exc}"}
 

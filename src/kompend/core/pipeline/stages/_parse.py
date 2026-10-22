@@ -471,6 +471,8 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
             vlm_captioner = VlmAgent(
                 vlm_model,
                 timeout=pipeline.config.llm.timeout,
+                llm=pipeline.config.llm,
+                budget=pipeline.config.budget,
             )
         except Exception as exc:
             logger.debug("VLM captioner not available for attachments: %s", exc, exc_info=is_verbose())
@@ -528,6 +530,8 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
             vlm_agent = VlmAgent(
                 vlm_model,
                 timeout=config.llm.timeout,
+                llm=config.llm,
+                budget=config.budget,
             )
             resolvers.append(
                 VLMEnricher(

@@ -184,9 +184,12 @@ class WriteDeps:
 
     Attributes:
         page_title: The page title to write.
-        source_texts: List of (stem, text) tuples.
+        source_texts: List of (stem, text) tuples — the full source texts.
         related_titles: List of related wiki page titles.
         page_content: The agent's submitted page content.
+        source_char_max: Characters served per ``read_source()`` call.
+            0 serves the whole source. The agent pages through a source by
+            passing the offset of the next window — no content is dropped.
     """
 
     page_title: str
@@ -195,6 +198,7 @@ class WriteDeps:
     page_content: str = ""
     source_id: str = "write"
     timeout: float = 120.0
+    source_char_max: int = 0
 
 
 @dataclass

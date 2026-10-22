@@ -102,6 +102,8 @@ def extract_agentic(
         context_window=compiler._context_window.max_input,
         tools=tools or [],
         usage_tracker=compiler._usage_tracker,
+        llm=compiler._config.llm,
+        budget=budget,
     )
 
     memory = ExtractionMemory()

@@ -4,14 +4,12 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from pydantic_ai.agent.abstract import AgentRetries
-
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import WriteDeps
 from kompend.compilation.write_tools import build_write_tools
-from kompend.core.config._configs import RlmConfig
+from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
 
 
 class WriteAgent(KompendAgentBase[str, PipelineAgentDeps]):
@@ -46,15 +44,17 @@ class AgenticWriteAgent(KompendAgentBase[str, WriteDeps]):
 def make_agentic_write_agent(
     model_string: str,
     *,
-    timeout: float = 120.0,
+    timeout: float = UNSET_TIMEOUT,
     skills: dict[str, str] | None = None,
-    retries: int = 2,
+    retries: int = UNSET_RETRIES,
     output_retries: int | None = None,
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
+    llm: LLMConfig | None = None,
+    budget: BudgetConfig | None = None,
 ) -> AgenticWriteAgent:
     """Build an :class:`AgenticWriteAgent` with the standard agentic capabilities."""
-    agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
+    agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
     harness = AgenticHarness(context_window=context_window, memory_agent_name="write")
     return AgenticWriteAgent(
         model_string=model_string,
@@ -63,6 +63,8 @@ def make_agentic_write_agent(
         retries=agent_retries,
         context_window=context_window,
         rlm=rlm,
+        llm=llm,
+        budget=budget,
         tools=build_write_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

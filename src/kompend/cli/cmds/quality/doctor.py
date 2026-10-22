@@ -289,7 +289,7 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
             model_string=model,
             timeout=timeout,
             max_tokens=128,
-            retries=retries or 2,
+            retries=retries if retries is not None else 2,
             usage_tracker=tracker,
         )
         deps = DoctorDeps(ping="Respond with exactly one word: ok")
@@ -347,7 +347,7 @@ def _check_structured_output(
         agent = _Agent(
             build_model(model),
             output_type=_CapabilityCheck,
-            retries=retries or 1,
+            retries=retries if retries is not None else 1,
             model_settings=ModelSettings(timeout=timeout, max_tokens=128),
             name=f"doctor-structured-output-{label}",
         )

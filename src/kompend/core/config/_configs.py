@@ -289,13 +289,30 @@ class BudgetConfig(_KompendBaseModel):
     """
 
     verify_min_ngram: int = 3
-    wicer_max_iterations: int = Field(default=3, validation_alias=EnvVar.BUDGET_WICER_MAX_ITERATIONS)
+    #: Maximum refinement rounds of the WiCER loop. ``0`` means "until the
+    #: loop converges" — the loop stops on its own when it finds no new
+    #: facts, when all probes pass, or when the wall-clock budget
+    #: (``wicer_max_seconds``) is spent. A positive value is an explicit
+    #: user-set limit.
+    wicer_max_iterations: int = Field(default=0, validation_alias=EnvVar.BUDGET_WICER_MAX_ITERATIONS)
+    #: Wall-clock budget for the WiCER refinement loop, in seconds. ``0``
+    #: disables the limit. A timeout is a legitimate stop reason; it never
+    #: discards the wiki that was already compiled.
+    wicer_max_seconds: int = Field(default=1800, ge=0, validation_alias=EnvVar.BUDGET_WICER_MAX_SECONDS)
+    #: Warning threshold for the body length of a group/node. Content below
+    #: it is kept — the value never excludes anything.
     min_content_length: int = Field(default=50, validation_alias=EnvVar.BUDGET_MIN_CONTENT_LENGTH)
     min_concept_sources: int = Field(default=2, validation_alias=EnvVar.BUDGET_MIN_CONCEPT_SOURCES)
+    #: Warning threshold for the number of concept pages. Above it every
+    #: candidate is compiled — the value never drops a candidate.
     max_concept_pages: int = Field(default=50, validation_alias=EnvVar.BUDGET_MAX_CONCEPT_PAGES)
     chunk_size_min: int = Field(default=2048, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MIN)
     chunk_size_max: int = Field(default=131072, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MAX)
     extract_output_max: int = Field(default=8192, validation_alias=EnvVar.BUDGET_EXTRACT_OUTPUT_MAX)
+    #: Generic response ceiling for agents without a dedicated output key
+    #: (capture, write, distill, organize, doctor, vlm, ...). The ceiling
+    #: only bounds the response length — it never cancels work.
+    agent_output_max: int = Field(default=8192, validation_alias=EnvVar.BUDGET_AGENT_OUTPUT_MAX)
     gen_output_max: int = Field(default=16384, validation_alias=EnvVar.BUDGET_GEN_OUTPUT_MAX)
     overview_output_max: int = Field(default=4096, validation_alias=EnvVar.BUDGET_OVERVIEW_OUTPUT_MAX)
     reference_output_max: int = Field(default=8192, validation_alias=EnvVar.BUDGET_REFERENCE_OUTPUT_MAX)

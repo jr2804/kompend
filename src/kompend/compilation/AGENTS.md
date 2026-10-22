@@ -28,8 +28,9 @@ merging and an optional iterative WiCER refinement loop.
 | `flows/assembly.py`     | Cross-source assembly flow                                               |
 | `flows/extraction.py`   | Extraction flow                                                          |
 | `flows/generation.py`   | Generation flow; `build_known_titles` (canonical titles for wikilinks), `learn_wikilink_aliases` (post-generation alias map persisted as `MetadataField.WIKILINK_ALIASES`) |
-| `flows/references.py`   | Reference-extraction flow (pre-extraction pass; splits oversized sections into context-window-sized windows)                |
+| `flows/references.py`   | Reference-extraction flow (pre-extraction pass; agent limits come from config — `max_tokens` = `budget.reference_output_max`, retries = `llm.output_retries`; splits oversized sections into windows bounded by the input *and* output budget; every window is processed) |
 | `reference_excision.py` | Reference-section detection + excision (regex-based)                     |
+| `write_tools.py`        | Tools of the agentic write agent — `read_source(stem, offset)` serves a source in windows of `budget.capture_source_char_max` characters and names the next offset, so a long source is paged through, never shortened |
 
 ## Rules
 

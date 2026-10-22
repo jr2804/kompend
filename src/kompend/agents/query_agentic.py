@@ -9,13 +9,11 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from pydantic_ai.agent.abstract import AgentRetries
-
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import QueryAgentDeps
 from kompend.compilation.query_tools import build_query_tools
-from kompend.core.config._configs import RlmConfig
+from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
 
 
 class AgenticQueryAgent(KompendAgentBase[str, QueryAgentDeps]):
@@ -29,12 +27,14 @@ class AgenticQueryAgent(KompendAgentBase[str, QueryAgentDeps]):
 def make_agentic_query_agent(
     model_string: str,
     *,
-    timeout: float = 120.0,
+    timeout: float = UNSET_TIMEOUT,
     skills: dict[str, str] | None = None,
-    retries: int = 2,
+    retries: int = UNSET_RETRIES,
     output_retries: int | None = None,
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
+    llm: LLMConfig | None = None,
+    budget: BudgetConfig | None = None,
 ) -> AgenticQueryAgent:
     """Build an :class:`AgenticQueryAgent` with tools + harness capabilities.
 
@@ -42,7 +42,7 @@ def make_agentic_query_agent(
     the system prompt instructs the model to call, and injects the standard
     agentic capabilities via :class:`AgenticHarness`.
     """
-    agent_retries: int | AgentRetries = {"tools": retries, "output": output_retries} if output_retries is not None else retries
+    agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
     harness = AgenticHarness(context_window=context_window, memory_agent_name="query")
     return AgenticQueryAgent(
         model_string=model_string,
@@ -51,6 +51,8 @@ def make_agentic_query_agent(
         retries=agent_retries,
         context_window=context_window,
         rlm=rlm,
+        llm=llm,
+        budget=budget,
         tools=build_query_tools(),
         extra_capabilities=harness.build_capabilities(),
     )
