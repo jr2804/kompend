@@ -122,17 +122,25 @@ did not spell out:
 
 | Kwarg | Source |
 |-------|--------|
-| `llm` | the `compile.llm` group — timeout, retries, reasoning effort, context manager, context window, fallback chain, delta-retry switch |
+| `llm` | the `compile.llm` group — timeout, retries, reasoning effort, context manager, context window, fallback chain, delta-retry switch, data format |
 | `budget` | the `compile.budget` group — the response ceiling |
 
 `KompendAgentBase._apply_config_defaults()` fills the gaps: `timeout` ←
-`llm.timeout`, `retries` ← `llm.output_retries` (0 when
+`llm.timeout`, `retries` ← the tool/output split
+(`llm.tool_retries` / `llm.output_retries`, 0 when
 `output_retries_enabled` is false), `reasoning_effort` ←
 `llm.reasoning_effort`, `context_manager` ← `llm.context_manager`,
 `context_window` ← `llm.context_window`, `fallback_models` ←
 `llm.fallback_chain`, `delta_retry_enabled` ← `llm.delta_retry_enabled`,
-`max_tokens` ← `budget.<output_budget_key>`. An explicitly passed value
-always wins over the config.
+`data_format` ← `llm.data_format`, `max_tokens` ←
+`budget.<output_budget_key>`. An explicitly passed value always wins over the
+config.
+
+`agent.data_format` is the resolved `llm.data_format` — the format this
+agent's prompts must serialize structured payloads in (see `llm/AGENTS.md`).
+Prompt-building code reads it off the agent instead of taking a parameter, so
+the format cannot drift from the config the agent already carries
+(`CategorizeAgent` → `_build_files_payload`).
 
 Each agent class declares `output_budget_key` — the `budget.*_output_max`
 that bounds its response (`extract_output_max`, `gen_output_max`,
@@ -142,7 +150,24 @@ Agents without a dedicated key use the generic `budget.agent_output_max`.
 
 `resolve_retry_budget(llm, retries=…, output_retries=…)` derives the
 tool/output retry split from the same config — the agentic factories use it
-so a multi-turn agent does not share the single-shot retry budget.
+so a multi-turn agent does not share the single-shot retry budget. The two
+halves are separate because the failure modes differ: a tool that raises
+`ModelRetry` (a missing file, a bad argument) needs a correction attempt, a
+schema violation needs a regeneration. `KompendAgentBase.tool_retry_budget()`
+exposes the tool half to the capabilities that need it (the context
+manager's summarizer agent).
+
+The agentic harness offers the memory capability only on request
+(`AgenticHarness(memory=True)`). The notebook is a `read_memory`/`write_memory`
+tool pair: a model that invents a file name gets `ModelRetry` back, and once
+the tool budget is spent the run dies with the node left unsummarized.
+
+`compile.llm.agent_memory` (default off) decides which stages request it. The
+notebook is an `InMemoryStore` owned by ONE agent instance, so it only helps a
+stage where one instance handles MANY outputs — summarisation, verification,
+remediation, distillation. Stages that build a fresh agent per unit
+(generation per segment, write per page, query per question, context-chunk,
+overview) gain nothing: the notebook would be empty for every unit.
 
 An agent built with only `model_string` gets the provider's default output
 ceiling and the hardcoded `_DEFAULT_RETRIES` — the response is truncated by

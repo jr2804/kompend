@@ -363,6 +363,11 @@ wicer_eval_output_max = 4096
 # Longer content is split into several calls (slower, but no content is
 # lost) — it is never truncated.
 summary_max_content_chars = 8000
+# Characters per payload window of the agentic summarizer. One window costs
+# one summarize call, so a bigger window means fewer calls (faster) — it never
+# drops content. Raise it for small-context models only carefully: the whole
+# window is sent to the model.
+summary_window_chars = 2000
 summary_target_chars = 600
 summary_skip_single_child = true
 # Max chunks before switching from two_level to multi_resolution strategy
@@ -417,11 +422,19 @@ default_model = "${KOMP_LLM_DEFAULT_MODEL}"
 
 # LLM communication data format for prompt input context: "json" (default) | "toon" | "ison"
 # Compact formats reduce input token count by 30-70%, giving small-context models
-# more output budget and reducing truncated/malformed responses.
+# more output budget and reducing truncated/malformed responses. Every compact
+# payload carries a short syntax specification, so the model can read it.
 # LLM output always uses JSON regardless of this setting — the API-level
 # response_format guarantee is preserved.
+# Run "kompend doctor" to check whether your model handles a format at all.
 # Packages (core deps, already installed): toon_format (TOON), ison-py (ISON)
 # data_format = "json"  # toon, ison, text
+
+# Agent notebook (memory capability) for the stages where one agent instance
+# handles many outputs: summarisation, verification, remediation, distillation.
+# Stages that build a fresh agent per unit (generation, capture, query,
+# indexing) gain nothing — the notebook dies with the agent.
+# agent_memory = false
 
 # LLM call timeout (seconds)
 timeout = 120.0
@@ -429,11 +442,17 @@ timeout = 120.0
 # PydanticAI output retries (retries when LLM output fails schema validation)
 output_retries = 2
 
+# Tool-call retry budget (retries when a tool raises ModelRetry — a missing
+# file, an invalid argument). Independent of the output-validation budget:
+# a flaky tool can be given more trials without granting the model more
+# schema-validation attempts. One hallucinated tool call must not abort a
+# run, so the default is 3.
+tool_retries = 3
+
 # Output-validation retry budget for tool-based (agentic) agents. Defaults
 # higher than output_retries because agentic agents run multi-turn loops
 # (fetch concepts, read segment, generate) where each turn can be
 # invalidated; small models routinely need more than 2 output retries there.
-# Tool-call retries keep using output_retries via pydantic-ai's AgentRetries.
 agentic_output_retries = 4
 
 # Rolling window (in output tokens) for the short-term tok/s rate reported

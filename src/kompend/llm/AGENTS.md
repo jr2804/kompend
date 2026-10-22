@@ -71,7 +71,8 @@ distinguish such blocks from typo'd provider ids.
 ## Format module
 
 `kompend.llm.format` is the single source of truth for LLM communication
-formats. It owns `salvage_json` and `encode_for_llm`.
+formats. It owns `salvage_json`, `encode_for_llm`, `decode_from_llm`,
+`format_note` and `encode_payload`.
 
 Supported formats (`LlmDataFormat` enum, config key
 `compile.llm.data_format`):
@@ -79,11 +80,32 @@ Supported formats (`LlmDataFormat` enum, config key
 | Value | Token reduction | Package | Scope |
 |-------|----------------|---------|-------|
 | `JSON` | baseline | stdlib | input + output |
-| `TOON` | 30–60% | `toon_format` (core dep) | input only |
-| `ISON` | 30–70% | `ison-py` → `ison_parser` (core dep) | input only |
+| `TOON` | 30-60% | `toon_format` (core dep) | input only |
+| `ISON` | 30-70% | `ison-py` → `ison_parser` (core dep) | input only |
 
 **Input only.** TOON and ISON apply to context data serialized into
-prompt templates (`encode_for_llm`).
+prompt templates. Model *output* stays JSON: providers enforce
+`response_format: json_object`, and the structured-output modes of
+pydantic-ai are JSON-schema based.
+
+**Teach the format, or the model cannot read it.** `encode_payload(data, fmt)`
+appends the format specification (`format_note`, rendered from
+`templates/llm/format_<format>.md.j2`) to the encoded data. Use it for every
+structured blob injected into a prompt; use `encode_for_llm` only when the
+caller supplies the specification itself (e.g. console output in
+`cli/_query_helpers.py`, which is not a prompt).
+
+**The format travels with the agent.** `KompendAgentBase.data_format` holds the
+resolved `compile.llm.data_format`; prompt-building sites read it off the agent
+instead of threading a new parameter (`CategorizeAgent` → `_build_files_payload`).
+Config holders without an agent read `config.llm.data_format` directly.
+
+**`decode_from_llm(text, fmt)`** is the inverse and never raises: a model that
+cannot produce the format is a fact to report (`kompend doctor`), not an error.
+
+`kompend doctor` probes each format on the configured model
+(`cli/cmds/quality/_capabilities.py`) and prints the input-side size saving, so
+the format choice is evidence-based.
 
 ## Verification
 

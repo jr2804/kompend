@@ -85,9 +85,13 @@ temperature: 0.0
 ### Rules
 
 - Import from the package root: `from kompend.core.templates import get_template_loader`.
-- No prompt text in Python — see `src/kompend/AGENTS.md` ("no text in code").
+- No prompt text in Python - see `src/kompend/AGENTS.md` ("no text in code").
+  This applies to format specifications too: the TOON/ISON syntax a compact
+  payload carries lives in `templates/llm/format_<format>.md.j2`, rendered by
+  `kompend.llm.format.format_note()`. Those spec templates declare
+  `variables: []` - they are fragments, not agent prompts.
 - The loader depends on `kompend.core.config._core.find_project_config` to locate
-  the project root. Acceptable coupling — template lookup is inherently
+  the project root. Acceptable coupling - template lookup is inherently
   project-root-relative.
 
 ## Work Guidance

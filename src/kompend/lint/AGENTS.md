@@ -31,6 +31,11 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.
+- ``LlmLintRule`` takes ``data_format`` — the `compile.llm.data_format` the
+  rule's structured prompt payloads are encoded in. `LintRunner` owns the value
+  (``data_format=``) and hands it to every LLM rule through its kwargs; a rule
+  must encode its payload with ``kompend.llm.format.encode_payload`` rather
+  than ``json.dumps`` so the format setting has one source.
 - ``RemediationAutoFixer`` calls ``RemediationAgent`` for LLM auto-fixes.
 - ``LintRuleAgent`` and ``RemediationAgent`` live in ``kompend.agents.lint``.
 - ``history.py`` I/O takes a vault path and resolves ``kompend.db`` via

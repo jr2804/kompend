@@ -254,13 +254,27 @@ When validation fails, the agent retries before surfacing the error.
 
 ```toml
 [compile.llm]
-output_retries = 2                  # PydanticAI retry count (N = N+1 total attempts)
+tool_retries = 3                   # retries when a tool raises ModelRetry (missing file, bad argument)
+output_retries = 2                  # PydanticAI retry count for output validation (N = N+1 total attempts)
 output_retries_enabled = true       # Master switch — set false to disable all retries
 delta_retry_enabled = true          # Delta-retry: fix partial output instead of regenerating
 ```
 
+Two failure modes get separate budgets:
+
+- **`tool_retries`** — a tool that raises `ModelRetry` (a file that does not
+  exist, an invalid argument). The tool answers with feedback and the model
+  gets another attempt. The default is 3: one hallucinated tool call must not
+  abort a run.
+- **`output_retries`** — the model produced output that does not match the
+  expected schema. A validation error is a different problem with a different
+  remedy, so it has its own budget.
+
+`agentic_output_retries` (default 4) replaces `output_retries` for agentic
+agents: they run multi-turn loops where every turn can invalidate the result.
+
 When `output_retries_enabled = false`, the agent makes a single attempt with
-no retries regardless of `output_retries`.
+no retries regardless of `output_retries` and `tool_retries`.
 
 `delta_retry_enabled` controls the delta-retry hook: when the model returns
 partially valid JSON, the hook sends a **correction message** identifying
@@ -273,6 +287,66 @@ increasing latency without improving results:
 [compile.llm]
 delta_retry_enabled = false  # recommended for small models
 ```
+
+### Interaction format (JSON / TOON / ISON)
+
+```toml
+[compile.llm]
+data_format = "json"   # json | toon | ison | text
+```
+
+Structured context that kompend injects into a prompt (lint gap lists, the
+organizer's file inventory, partial extractions, WiCER probes, distilled notes)
+can be encoded in a compact format:
+
+| Format | Input tokens | Notes |
+|--------|--------------|-------|
+| `json` | baseline | universal, the default |
+| `toon` | ~30–60 % fewer | indentation-based, tabular |
+| `ison` | ~30–70 % fewer | table rows, `null`/reference syntax |
+
+The saving is on the **input** side — the model reads fewer tokens, so more of
+the context window is left for the answer. Model *output* stays JSON: providers
+enforce `response_format: json_object`, and the structured-output validation is
+JSON-schema based.
+
+Every compact payload carries a short syntax specification (rendered from
+`templates/llm/format_<format>.md.j2`), because a small model has never seen
+TOON or ISON. That costs a few hundred tokens per call, so a compact format only
+pays off when the payload is larger than the specification.
+
+Check the model first:
+
+```bash
+kompend doctor
+```
+
+The doctor probes, per model, native tool-call output, schema-in-prompt output,
+raw JSON, and the configured compact format, and prints the input-side size
+saving per format (`input-format-size`). A model that fails the
+`structured-output-toon` probe should keep `data_format = "json"`.
+
+### Agent notebook (memory)
+
+```toml
+[compile.llm]
+agent_memory = false   # default
+```
+
+The agentic harness can give an agent a scratch notebook (`write_memory`,
+`read_memory`, `search_memory`). It is a per-instance `InMemoryStore`, so it
+only helps a stage where **one agent instance handles many outputs**:
+summarisation (one session, many nodes), verification (one pass, many claims),
+remediation (one pass, many findings), distillation (one session, many tag
+groups).
+
+It does not help stages that build a fresh agent per unit — generation per
+segment, page writing per page, query per question, indexing per run: the
+notebook dies with the agent. Those stages deliberately keep it off.
+
+Leave it off for small models. A model that invents a memory file name gets
+`ModelRetry` from `read_memory`; once the tool budget is spent the run dies with
+the node left unsummarized.
 
 ### Batch failure detection
 

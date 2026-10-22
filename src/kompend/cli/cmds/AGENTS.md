@@ -32,6 +32,12 @@ are subpackages:
 | `pipeline/` | Parse, compile, ingest, index, config, sources | `/kompend parse`, `/kompend compile`, `/kompend ingest`, `/kompend index`, `/kompend config`, `/kompend sources` |
 | `quality/` | Doctor, lint, review, log, status, provenance, list-parsers | `/kompend doctor`, `/kompend lint`, `/kompend review`, `/kompend log`, `/kompend status`, `/kompend provenance`, `/kompend list-parsers` |
 
+`quality/_capabilities.py` holds the doctor's model probes (native tool-call
+output, schema-in-prompt output, raw JSON, the configured compact format, and
+the deterministic input-format size comparison). Each probe returns a
+`CapabilityProbe` and never raises: an unreachable model is a failed probe, not
+a crashed doctor.
+
 ### Command function patterns
 
 Every command follows the thin-wrapper pattern:

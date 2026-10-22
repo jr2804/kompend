@@ -290,11 +290,13 @@ A budget never decides what gets compiled. It only decides how many calls a
 piece of work needs:
 
 - **Content is windowed, never truncated.** Node summaries split long
-  content into several calls (`summary_max_content_chars`), reference
-  sections are split per source window, and the write-page synthesis reads
-  a source in windows of `capture_source_char_max` (the agent pages through
-  it with the offset the reply names) — the tail always reaches the model,
-  the cost is extra LLM calls.
+  content into several calls (`summary_max_content_chars`), the agentic
+  summarizer splits its payload into windows of `summary_window_chars`
+  (one summarize call per window), reference sections are split per source
+  window, and the write-page synthesis reads a source in windows of
+  `capture_source_char_max` (the agent pages through it with the offset the
+  reply names) — the tail always reaches the model, the cost is extra LLM
+  calls.
 - **Thresholds warn, they do not drop.** `min_content_length` and
   `max_concept_pages` log a warning when a page is short or a run produces
   many concept pages; the content is still compiled.
