@@ -304,6 +304,40 @@ class TestResolveConfig:
         assert cfg.get("attachments.ingest_adopted") is False
         assert cfg.get("attachments.embed") is False
 
+    def test_tool_retries_has_its_own_budget(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """compile.llm.tool_retries is separate from the output-validation budget."""
+        monkeypatch.chdir(tmp_path)
+        assert resolve_config().get("compile.llm.tool_retries") == 3
+
+        (tmp_path / "kompend.toml").write_text("[compile.llm]\ntool_retries = 7\n")
+        assert resolve_config().get("compile.llm.tool_retries") == 7
+
+        monkeypatch.setenv("KOMP_LLM_TOOL_RETRIES", "5")
+        assert resolve_config().get("compile.llm.tool_retries") == 5
+
+    def test_agent_memory_is_opt_in(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """The agent notebook stays off unless the vault asks for it."""
+        monkeypatch.chdir(tmp_path)
+        assert resolve_config().get("compile.llm.agent_memory") is False
+
+        (tmp_path / "kompend.toml").write_text("[compile.llm]\nagent_memory = true\n")
+        assert resolve_config().get("compile.llm.agent_memory") is True
+
+        monkeypatch.delenv("KOMP_LLM_AGENT_MEMORY", raising=False)
+        monkeypatch.setenv("KOMP_LLM_AGENT_MEMORY", "false")
+        assert resolve_config().get("compile.llm.agent_memory") is False
+
+    def test_summary_window_chars_is_configurable(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """The agentic payload window is a config value, not a hardcoded constant."""
+        monkeypatch.chdir(tmp_path)
+        assert resolve_config().get("compile.budget.summary_window_chars") == 2000
+
+        (tmp_path / "kompend.toml").write_text("[compile.budget]\nsummary_window_chars = 4000\n")
+        assert resolve_config().get("compile.budget.summary_window_chars") == 4000
+
+        monkeypatch.setenv("KOMP_BUDGET_SUMMARY_WINDOW_CHARS", "6000")
+        assert resolve_config().get("compile.budget.summary_window_chars") == 6000
+
     def test_deprecated_embed_attachments_migrates(self, tmp_path: Any, monkeypatch: Any) -> None:
         """Old search.embed_attachments migrates to attachments.embed with deprecation provenance."""
         config_file = tmp_path / "kompend.toml"

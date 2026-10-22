@@ -244,6 +244,8 @@ class LLMConfig(_KompendBaseModel):
         default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model"
     )
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias=EnvVar.LLM_DATA_FORMAT)
+    #: Output-validation retry budget for plain (single-shot) agents: how
+    #: often a model answer may fail schema validation before the run fails.
     output_retries: int = Field(default=2, validation_alias=EnvVar.LLM_OUTPUT_RETRIES)
     output_retries_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_OUTPUT_RETRIES_ENABLED)
     #: Per-turn output-validation retry budget for tool-based (agentic) agents.
@@ -251,10 +253,23 @@ class LLMConfig(_KompendBaseModel):
     #: multi-turn loops (fetch concepts → read segment → generate) where each
     #: turn can be invalidated; 2 retries is too tight for the typical
     #: small-model interaction.  Does NOT govern tool-call retries — those
-    #: share the legacy ``output_retries`` budget via pydantic-ai's
-    #: ``AgentRetries`` TypedDict (tool failures 4× in a row are a real bug;
-    #: output validation 4× in a row is a small-model normal occurrence).
+    #: have their own budget (``tool_retries``).
     agentic_output_retries: int = Field(default=4, validation_alias=EnvVar.LLM_AGENTIC_OUTPUT_RETRIES)
+    #: Tool-call retry budget for every agent (a tool that keeps raising
+    #: ``ModelRetry`` — a missing file, an invalid argument).  Separate from
+    #: the output-validation budgets so a flaky tool can be given more trials
+    #: without also granting a model more schema-validation attempts.
+    #: Defaults to 3: one hallucinated tool call must not abort a run — the
+    #: ``ModelRetry`` feedback is usually enough for the model to correct
+    #: itself.
+    tool_retries: int = Field(default=3, validation_alias=EnvVar.LLM_TOOL_RETRIES)
+    #: Offer the agentic memory capability (a per-agent notebook the model
+    #: can write to and read from) to the stages where ONE agent instance
+    #: handles MANY outputs — summarisation, verification, remediation and
+    #: distillation. Stages that build a fresh agent per unit (generation,
+    #: capture, query, indexing) gain nothing from a notebook: the memory
+    #: dies with the agent.
+    agent_memory: bool = Field(default=False, validation_alias=EnvVar.LLM_AGENT_MEMORY)
     #: Rolling window (in output tokens) for the short-term tok/s rate.
     throughput_window_tokens: int = Field(default=1000, validation_alias=EnvVar.LLM_THROUGHPUT_WINDOW_TOKENS)
     delta_retry_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_DELTA_RETRY_ENABLED)
@@ -322,6 +337,10 @@ class BudgetConfig(_KompendBaseModel):
     #: Characters per summary call. Longer content is split into several
     #: calls (slower, but no content is lost) — it is never truncated.
     summary_max_content_chars: int = 8000
+    #: Characters per payload window of the agentic summarizer. One window
+    #: costs one summarize call, so a bigger window means fewer calls (faster)
+    #: — it never drops content.
+    summary_window_chars: int = Field(default=2000, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_WINDOW_CHARS)
     summary_target_chars: int = 600
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
