@@ -14,16 +14,20 @@ from time import monotonic
 from typing import Any
 
 import ollama
-from pydantic import BaseModel as _BM
-from pydantic_ai import Agent as _Agent
-from pydantic_ai.settings import ModelSettings
 
 from kompend.agents.doctor import DoctorAgent, DoctorDeps
-from kompend.core.config import LLMConfig
+from kompend.cli.cmds.quality._capabilities import (
+    measure_compact_formats,
+    probe_compact_format,
+    probe_native_structured_output,
+    probe_prompted_structured_output,
+    probe_raw_json,
+)
+from kompend.core.config import LLMConfig, LlmDataFormat
 from kompend.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_OUTPUT_RETRIES
 from kompend.core.verbosity import is_verbose
 from kompend.llm.context_window import discover_context_window
-from kompend.llm.models import build_model, is_known_provider, resolve_vlm_model
+from kompend.llm.models import is_known_provider, resolve_vlm_model
 from kompend.llm.usage import UsageTracker, tokens_per_second
 from kompend.logging import get_console, get_logger
 from kompend.preprocessing.parsers._registry import get_registered_parsers
@@ -36,13 +40,6 @@ from kompend.types import JSON
 _OLLAMA_GPU_OFFLOAD_MIN = 0.9
 
 logger = get_logger(__name__)
-
-
-class _CapabilityCheck(_BM):
-    """Structured output schema for the structured-output doctor check."""
-
-    ok: bool
-    message: str
 
 
 # ── Check results ───────────────────────────────────────────────────────
@@ -116,7 +113,17 @@ def run_doctor(
     # (often memory-capped below the GGUF-metadata value).
 
     results.append(_ping_model(default_model, "llm", verbose=verbose, timeout=llm_timeout, retries=_retries))
-    results.append(_check_structured_output(default_model, "llm", timeout=llm_timeout, retries=_retries))
+    results.extend(
+        _check_model_capabilities(
+            default_model,
+            "llm",
+            timeout=llm_timeout,
+            retries=_retries,
+            data_format=llm_cfg.data_format,
+        )
+    )
+    size_probe = measure_compact_formats()
+    results.append(CheckResult(size_probe.name, size_probe.ok, size_probe.detail))
     results.append(_check_context_window(default_model, "llm", context_window_cap, llm_cfg))
     results.append(_check_budget_consistency(default_model, cfg, context_window_cap))
 
@@ -137,7 +144,7 @@ def run_doctor(
         )
     else:
         results.append(_ping_model(None, "vlm", verbose=verbose, timeout=llm_timeout, retries=_retries))
-    results.append(_check_structured_output(vlm_model, "vlm", timeout=llm_timeout, retries=_retries))
+    results.extend(_check_model_capabilities(vlm_model, "vlm", timeout=llm_timeout, retries=_retries, full=False))
     results.append(_check_context_window(vlm_model, "vlm", context_window_cap, llm_cfg))
 
     referenced_providers = {provider_id for model in (default_model, vlm_model, embed_model) if model and (provider_id := _provider_id_of(model)) is not None}
@@ -326,51 +333,37 @@ def _ping_embed_model(model: str | None) -> CheckResult:
         return CheckResult(name, False, f"embed failed: {exc}")
 
 
-def _check_structured_output(
+def _check_model_capabilities(
     model: str | None,
     label: str,
+    *,
     timeout: float = 120.0,
     retries: int | None = None,
-) -> CheckResult:
-    """Probe a model's ability to produce valid structured JSON output.
+    data_format: LlmDataFormat = LlmDataFormat.JSON,
+    full: bool = True,
+) -> list[CheckResult]:
+    """Probe how the model produces structured output.
 
-    Creates a trivial PydanticAI agent with a simple schema and checks
-    whether the model can return valid structured data. This catches the
-    "model returns empty string" failure mode that small or unsuitable
-    models exhibit.
+    The first probe — native tool output — is the capability every typed
+    kompend agent depends on. The extra probes tell the user what else the
+    model manages: a model that fails natively but answers a schema in the
+    prompt is still usable, and a model that can emit the configured
+    compact format saves context on every structured payload.
     """
-    name = f"structured-output-{label}"
     if not model:
-        return CheckResult(name, True, f"No {label} model configured — skipped")
-
-    try:
-        agent = _Agent(
-            build_model(model),
-            output_type=_CapabilityCheck,
-            retries=retries if retries is not None else 1,
-            model_settings=ModelSettings(timeout=timeout, max_tokens=128),
-            name=f"doctor-structured-output-{label}",
-        )
-        start = monotonic()
-        result = agent.run_sync("Respond with a JSON object where ok=true and message='hello'")
-        elapsed = monotonic() - start
-        usage = result.usage
-        rate = tokens_per_second(usage.output_tokens, elapsed)
-        rate_s = f" ({rate:.1f} tok/s over {elapsed:.1f}s)" if rate else ""
-        validated = result.output
-        if isinstance(validated, _CapabilityCheck) and validated.ok:
-            return CheckResult(
-                name,
-                True,
-                f"{label} OK{rate_s} (model={model})",
-            )
-        return CheckResult(
-            name,
-            False,
-            f"{label} returned invalid structured output after {elapsed:.1f}s",
-        )
-    except Exception as exc:
-        return CheckResult(name, False, f"{label} structured output test failed: {exc}")
+        return [CheckResult(f"structured-output-{label}", True, f"No {label} model configured — skipped")]
+    budget = retries if retries is not None else 1
+    probes = [probe_native_structured_output(model, timeout=timeout, retries=budget)]
+    if full:
+        probes.append(probe_prompted_structured_output(model, timeout=timeout, retries=budget))
+        probes.append(probe_raw_json(model, timeout=timeout, retries=budget))
+        if data_format in (LlmDataFormat.TOON, LlmDataFormat.ISON):
+            probes.append(probe_compact_format(model, data_format, timeout=timeout, retries=budget))
+    results: list[CheckResult] = []
+    for probe in probes:
+        check_name = f"structured-output-{label}" if probe.name == "structured-output" else f"{probe.name}-{label}"
+        results.append(CheckResult(check_name, probe.ok, f"{probe.detail} (model={model})"))
+    return results
 
 
 def _check_git_repo() -> CheckResult:

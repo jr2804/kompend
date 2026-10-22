@@ -450,7 +450,7 @@ class TestVlmFallbackIndication:
         monkeypatch.setattr(doctor, "_ping_embed_model", lambda *a, **k: CheckResult("embed", True))
         monkeypatch.setattr(doctor, "_check_context_window", lambda *a, **k: CheckResult("ctx", True))
         monkeypatch.setattr(doctor, "_check_budget_consistency", lambda *a, **k: CheckResult("budget", True))
-        monkeypatch.setattr(doctor, "_check_structured_output", lambda *a, **k: CheckResult("struct", True))
+        monkeypatch.setattr(doctor, "_check_model_capabilities", lambda *a, **k: [CheckResult("struct", True)])
         monkeypatch.setattr(doctor, "_check_custom_providers", lambda *a, **k: CheckResult("providers", True))
         monkeypatch.setattr(doctor, "_check_ollama_device", lambda *a, **k: CheckResult("device", True))
 
@@ -485,7 +485,7 @@ class TestVlmFallbackIndication:
         monkeypatch.setattr(doctor, "_ping_embed_model", lambda *a, **k: CheckResult("embed", True))
         monkeypatch.setattr(doctor, "_check_context_window", lambda *a, **k: CheckResult("ctx", True))
         monkeypatch.setattr(doctor, "_check_budget_consistency", lambda *a, **k: CheckResult("budget", True))
-        monkeypatch.setattr(doctor, "_check_structured_output", lambda *a, **k: CheckResult("struct", True))
+        monkeypatch.setattr(doctor, "_check_model_capabilities", lambda *a, **k: [CheckResult("struct", True)])
         monkeypatch.setattr(doctor, "_check_custom_providers", lambda *a, **k: CheckResult("providers", True))
         monkeypatch.setattr(doctor, "_check_ollama_device", lambda *a, **k: CheckResult("device", True))
 
