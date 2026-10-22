@@ -70,7 +70,11 @@ def make_agentic_distill_agent(
     capabilities via :class:`AgenticHarness`.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
-    harness = AgenticHarness(context_window=context_window, memory_agent_name="distill")
+    harness = AgenticHarness(
+        context_window=context_window,
+        memory_agent_name="distill",
+        memory=bool(llm and llm.agent_memory),
+    )
     return AgenticDistillAgent(
         model_string=model_string,
         timeout=timeout,

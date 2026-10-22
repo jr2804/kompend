@@ -85,13 +85,13 @@ def make_agentic_generation_agent(
 
     Retry budgets are passed as a pydantic-ai ``AgentRetries`` dict so output
     validation and tool calls get independent ceilings. ``retries`` is the
-    tool-call retry budget (default = legacy ``compile.llm.output_retries``);
+    tool-call retry budget (default = ``compile.llm.tool_retries``);
     ``output_retries`` is the output-validation retry budget for agentic
     agents (default = ``compile.llm.agentic_output_retries``, higher because
     agentic turns invalidate more often on small models).
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
-    harness = AgenticHarness(context_window=context_window, memory_agent_name="generation", memory=False)
+    harness = AgenticHarness(context_window=context_window, memory_agent_name="generation")
     return AgenticGenerationAgent(
         model_string=model_string,
         timeout=timeout,

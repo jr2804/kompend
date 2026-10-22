@@ -69,6 +69,7 @@ def make_agentic_remediation_agent(
     harness = AgenticHarness(
         context_window=context_window,
         memory_agent_name="remediation",
+        memory=bool(llm and llm.agent_memory),
     )
     return AgenticRemediationAgent(
         model_string=model_string,

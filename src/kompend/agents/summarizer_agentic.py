@@ -86,7 +86,11 @@ def make_agentic_summarizer_agent(
     via :class:`AgenticHarness`.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
-    harness = AgenticHarness(context_window=context_window, memory_agent_name="summarizer")
+    harness = AgenticHarness(
+        context_window=context_window,
+        memory_agent_name="summarizer",
+        memory=bool(llm and llm.agent_memory),
+    )
     return AgenticSummarizerAgent(
         model_string=model_string,
         timeout=timeout,

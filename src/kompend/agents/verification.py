@@ -57,7 +57,11 @@ def make_agentic_verification_agent(
     tool-call retries; ``output_retries`` governs output-validation.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
-    harness = AgenticHarness(context_window=context_window, memory_agent_name="verification")
+    harness = AgenticHarness(
+        context_window=context_window,
+        memory_agent_name="verification",
+        memory=bool(llm and llm.agent_memory),
+    )
     return AgenticVerificationAgent(
         model_string=model_string,
         timeout=timeout,

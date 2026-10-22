@@ -1,16 +1,21 @@
 """Standard pydantic-ai-harness capability bundle for agentic agents.
 
-Agentic agents in kompend share three harness capabilities:
+Agentic agents in kompend share these harness capabilities:
 
 - **Memory** — ``InMemoryStore``, fresh per run (no cross-session persistence).
   Lets the agent write/read a notebook across turns for long-running tasks.
+  **Opt-in** (``memory=True``): the notebook is only useful when the agent's
+  prompt tells the model to keep notes.  Offering it unconditionally invites
+  small models to call ``read_memory`` for a file that does not exist — the
+  tool answers with ``ModelRetry`` and, once the tool-retry budget is spent,
+  the whole run dies with the node left unsummarized.
 - **SlidingWindowCompaction** — ``max_fraction=0.6`` of context window.
   Drops oldest turns when context fills up, avoiding token-limit failures
   on multi-turn tool agents.
 - **ClampOversizedMessages** — ``max_part_tokens=context_window // 4``.
   Clamps runaway tool outputs that would blow a single turn.
 
-``AgenticHarness`` centralizes the construction of these three capabilities
+``AgenticHarness`` centralizes the construction of these capabilities
 from a known context window, with an ``extra_capabilities`` hook for
 agent-specific additions (e.g. ``ContextManagerCapability`` for agents
 that need full-context management instead of sliding window).
@@ -43,7 +48,7 @@ class AgenticHarness:
 
     context_window: int | None = None
     memory_agent_name: str = "agentic"
-    memory: bool = True
+    memory: bool = False
     compaction: bool = True
     clamp: bool = True
     extra_capabilities: Sequence[AbstractCapability] = field(default_factory=list)
