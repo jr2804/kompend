@@ -189,7 +189,7 @@ is **output quality**, which is entirely model-dependent.
 |--------|-----------------|
 | Chunk size | `context_window − reserve_tokens`, clamped to rails |
 | Number of chunks | Inversely proportional to chunk size |
-| Output token budget | Per-phase absolute ceiling (`*_output_max`) |
+| Answer room | A quarter of the window (max 8 192 tokens), reserved by the planners |
 | Retrieval system-prompt reserve | 4 096 tokens absolute |
 | Retrieval response reserve | 4 096 tokens absolute |
 
@@ -217,58 +217,38 @@ The cost/quality curve is **not linear** — the jump from 8K to 32K is
 more impactful than from 128K to 1M, because below ~16K the chunker is
 forced to split semantic units that belong together.
 
-## Output Budget Reference
+## How Far the Answer May Go
 
-kompend uses **absolute** per-phase output token budgets. These cap how many
-tokens each LLM call is allowed to emit:
+kompend sends **no output ceiling**. There is no `max_tokens` in any request:
+an answer is bounded by physics - the context window minus its prompt - so a
+configured number could only make it shorter than the model allows, and a
+number larger than the window fails the request outright
+(`Model token limit (N) exceeded before any response was generated`, where N
+is the ceiling kompend sent).
+
+What the pipeline does instead is *plan* the request:
 
 ```text
-max_tokens = *_output_max   # per-phase ceiling, scales the same on 8K or 1M models
+answer_reserve = clamp(context_window / 4, 512, 8192)   # ContextWindow.answer_reserve
+input_budget   = context_window - answer_reserve - measured_overhead
 ```
 
-| Phase | Max tokens | Env var |
-|-------|-----------|---------|
-| Extraction | 8 192 | `KOMP_BUDGET_EXTRACT_OUTPUT_MAX` |
-| Generation | 16 384 | `KOMP_BUDGET_GEN_OUTPUT_MAX` |
-| Overview | 4 096 | `KOMP_BUDGET_OVERVIEW_OUTPUT_MAX` |
-| Reference extraction | 8 192 | `KOMP_BUDGET_REFERENCE_OUTPUT_MAX` |
-| Verification | 4 096 | — (config only) |
-| Lint | 8 192 | — (config only) |
-| WiCER probe | 4 096 | — (config only) |
-| WiCER eval | — | — |
-| All other agents (query, capture, organize, VLM, …) | 8 192 | `KOMP_BUDGET_AGENT_OUTPUT_MAX` |
+`answer_reserve` is what a planner leaves free for the answer when it decides
+how much source text to put in one call (`ContextWindow.input_budget`). It is
+an assumption, not a limit: a model whose prompt ended up smaller than planned
+simply gets more room to answer, and the window is what stops it.
 
-All values are in tokens. Every agent takes its ceiling from the config —
-the agent classes declare which key applies to them
-(`budget.<phase>_output_max`, or the generic `budget.agent_output_max`),
-and a construction site that hands over the config group gets the ceiling,
-the timeout, the retry budget, the reasoning effort, the context manager and
-the fallback chain without spelling them out. An explicitly passed value
-always wins over the config.
+Consequences worth knowing:
 
-Reference extraction sizes its requests against the discovered context
-window: a reference section larger than the content budget (window minus
-system prompt, `reference_output_max`, and safety margin) is split into
-line-aligned windows and parsed window by window, with results merged per
-source. This keeps very large bibliographies from failing with an
-oversized-request error on small local models.
-
-The window size obeys two bounds, and the smaller one wins:
-
-- **Input** — the discovered context window minus the measured system
-  prompt, the reserved output and the safety margin.
-- **Output** — `reference_output_max` divided by the JSON expansion factor
-  of the reference schema (the parsed list repeats the raw citation text
-  and adds parsed fields, so it is roughly three times larger). A window
-  whose references do not fit the output ceiling truncates the response
-  and fails with `Exceeded maximum output retries`.
-
-`reference_output_max` is passed to the model as the response ceiling
-(`max_tokens`), so the response is bounded explicitly instead of being cut
-off by the provider. Every window of a source is processed — one window is
-one LLM call, so a larger `reference_output_max` means fewer calls (faster)
-and never fewer references. Windows that fail are logged and skipped; the
-remaining windows still contribute their references.
+- A stage that writes long pages works on a 32K window exactly as it does on a
+  1M window: the segments get smaller, the calls get more numerous, no content
+  is dropped.
+- Nothing truncates an answer except the window itself. If a reply is cut off,
+  the prompt was too big for the model - shrink the input (smaller
+  `chunk_size_max`, fewer nodes per summarizer session), not the output.
+- Two things still bound a run instead of a response: the per-request timeout
+  (`compile.llm.timeout`) and the multi-turn request budgets of agentic
+  sessions (`budget.summary_requests_per_node`, WiCER's wall clock).
 
 ## Structural Controls
 
@@ -327,8 +307,6 @@ chunk_size_max = 24576      # 32K context − 8192 reserve_tokens
 # Lower concept-page generation to reduce LLM calls.
 max_concept_pages = 20
 # Tighter output budgets — small models work better with focused prompts.
-extract_output_max = 4096
-overview_output_max = 2048
 ```
 
 **When to use:** Privacy-sensitive documents, air-gapped environments,
@@ -364,10 +342,6 @@ fallback_chain = ["anthropic/claude-3.5-sonnet", "openai/gpt-4o"]
 chunk_size_max = 131072     # default — already optimal
 # Richer concept pages for deep knowledge bases.
 max_concept_pages = 100
-# Higher output ceilings for detailed synthesis.
-extract_output_max = 8192
-gen_output_max = 16384
-overview_output_max = 4096
 ```
 
 **When to use:** Large document corpora (500+ pages), research compendia,

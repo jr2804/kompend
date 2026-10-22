@@ -39,6 +39,10 @@ each model's auto-detected context window. Atomic elements are never split.
   ``budget.summary_window_chars``) is summarised in several calls, one per window.
   The per-node summary is the join of its window summaries; window ids carry
   a ``#wN`` suffix, a single-window node keeps its plain id.
+- An agentic payload carries at most ``SummarizerSessionPolicy.payload_chars``
+  characters of node content (from ``ContextWindow.input_budget``). Windows that
+  do not fit stay pending, so the next session asks them - the bound splits a
+  request, it never drops a window.
 - The summarizer's numbers live in ``compile.budget`` only:
   ``SummarizerContentPolicy.from_config(budget)`` and
   ``SummarizerSessionPolicy`` carry them into the summarizer. Never repeat a

@@ -123,7 +123,6 @@ did not spell out:
 | Kwarg | Source |
 |-------|--------|
 | `llm` | the `compile.llm` group — timeout, retries, reasoning effort, context manager, context window, fallback chain, delta-retry switch, data format |
-| `budget` | the `compile.budget` group — the response ceiling |
 
 `KompendAgentBase._apply_config_defaults()` fills the gaps: `timeout` ←
 `llm.timeout`, `retries` ← the tool/output split
@@ -132,21 +131,18 @@ did not spell out:
 `llm.reasoning_effort`, `context_manager` ← `llm.context_manager`,
 `context_window` ← `llm.context_window`, `fallback_models` ←
 `llm.fallback_chain`, `delta_retry_enabled` ← `llm.delta_retry_enabled`,
-`data_format` ← `llm.data_format`, `max_tokens` ←
-`budget.<output_budget_key>`. An explicitly passed value always wins over the
-config.
+`data_format` ← `llm.data_format`. An explicitly passed value always wins
+over the config.
+
+There is no `max_tokens` and no `budget` kwarg: an answer is bounded by the
+model's context window minus its prompt, and the planners leave
+`ContextWindow.answer_reserve` free for it (`llm/AGENTS.md`).
 
 `agent.data_format` is the resolved `llm.data_format` — the format this
 agent's prompts must serialize structured payloads in (see `llm/AGENTS.md`).
 Prompt-building code reads it off the agent instead of taking a parameter, so
 the format cannot drift from the config the agent already carries
 (`CategorizeAgent` → `_build_files_payload`).
-
-Each agent class declares `output_budget_key` — the `budget.*_output_max`
-that bounds its response (`extract_output_max`, `gen_output_max`,
-`reference_output_max`, `overview_output_max`, `verify_output_max`,
-`lint_output_max`, `wicer_probe_output_max`, `wicer_eval_output_max`).
-Agents without a dedicated key use the generic `budget.agent_output_max`.
 
 `resolve_retry_budget(llm, retries=…, output_retries=…)` derives the
 tool/output retry split from the same config — the agentic factories use it

@@ -195,39 +195,42 @@ enforces — but a model that's too small produces tiny, low-quality chunks.
 
 ### How input is budgeted
 
-Each compile stage carves out its output reserve _before_ sizing input:
+Each compile stage carves out room for the answer _before_ sizing input:
 
 ```text
-stage_input_tokens = context_window − system_prompt − stage_output_max
+answer_reserve    = clamp(context_window / 4, 512, 8192)
+stage_input_tokens = context_window - system_prompt - answer_reserve - safety_margin
 ```
 
-System prompts are small (~200 tokens). The per-stage output reserves
-(`BudgetConfig`):
+The reserve is derived from the model's window (`ContextWindow.answer_reserve`)
 
-| Stage                    | Output reserve (tokens)              |
-| ------------------------ | ------------------------------------ |
-| **Generation** (binding) | `gen_output_max` = **16 384**        |
-| Extraction               | `extract_output_max` = 8 192         |
-| Overview                 | `overview_output_max` = 4 096        |
-| Lint                     | `lint_output_max` = 8 192            |
-| Verify / WiCER           | 4 096                                |
-| Summary                  | bounded at 8 000 chars (~2 K tokens) |
+- there is no per-stage output ceiling and kompend never sends `max_tokens`.
+A stage that writes a longer answer simply gets it: the window stops it, not a
+configured number. What the reserve buys is a _planned_ prompt that leaves the
+answer somewhere to go.
+
+Practical effect by window (generation, the binding stage):
+
+| Context window | Answer reserve | Input for a generation call |
+| -------------- | -------------- | --------------------------- |
+| 8 K            | 2 048          | ~5.9 K tokens               |
+| 32 K           | 8 192          | ~24.5 K tokens              |
+| 128 K          | 8 192          | ~119 K tokens               |
 
 ### Recommended minimums
 
 | Context window | Verdict                                                                                                      |
 | -------------- | ------------------------------------------------------------------------------------------------------------ |
-| **< 16 K**     | ❌ Not enough headroom after the generation reserve; chunks become near-empty. Avoid for compilation.        |
-| **16 K–20 K**  | ⚠️ Absolute functional floor. Generation gets ~2 K tokens of input — usable but cramped for dense documents. |
-| **32 K**       | ✅ Comfortable minimum for typical PDFs and web pages. The default `fallback_max_input`.                     |
-| **128 K+**     | ✅ Recommended for large/long documents. The chunker ceiling is 131 072 tokens.                              |
+| **< 8 K**      | Not enough room for a chunk plus an answer - chunks become near-empty. Avoid. |
+| **8 K-16 K**   | Functional floor: generation gets ~6 K tokens of input - usable, cramped when dense. |
+| **32 K**       | Comfortable minimum for typical PDFs and web pages. The default `fallback_max_input`. |
+| **128 K+**     | Recommended for large/long documents. The chunker ceiling is 131 072 tokens. |
 
-The **binding stage is generation** (largest reserve at 16 384 tokens). The
-practical floor so a model can both receive a meaningful chunk _and_ emit a
-full page is:
+The binding constraint is the smallest window that still fits a minimum chunk plus
+the answer reserve:
 
 ```text
-chunk_size_min (2 048) + gen_output_max (16 384) + overhead (~512) ≈ 19 000
+chunk_size_min (2 048) + answer_reserve (window / 4, at most 8 192)
 ```
 
 For best results use a model with **≥ 32 K** context. Set
@@ -306,7 +309,7 @@ can be encoded in a compact format:
 | `ison` | ~30–70 % fewer | table rows, `null`/reference syntax |
 
 The saving is on the **input** side — the model reads fewer tokens, so more of
-the context window is left for the answer. Model *output* stays JSON: providers
+the context window is left for the answer. Model _output_ stays JSON: providers
 enforce `response_format: json_object`, and the structured-output validation is
 JSON-schema based.
 

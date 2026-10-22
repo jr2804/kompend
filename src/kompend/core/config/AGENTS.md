@@ -112,8 +112,10 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
 7. **Write tests** — at minimum: default value, project config override, env var
    override, CLI override, full precedence chain.
 8. **A budget key shapes the work, it never excludes it** — a threshold warns,
-   a `*_output_max` bounds one response, a window size splits a request (see
-   the budget rule in `.agents/CODE.md` and `compilation/AGENTS.md`).
+   a window size splits a request (see the budget rule in `.agents/CODE.md`
+   and `compilation/AGENTS.md`). There is no output-ceiling key: an answer is
+   bounded by the model's context window, and the planners derive their answer
+   room from it (`ContextWindow.answer_reserve`).
 
 ### Conventions
 

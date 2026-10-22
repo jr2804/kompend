@@ -60,7 +60,6 @@ factory is called by the CLI/MCP layer. Example (single-shot extraction):
 agent = ExtractionAgent(
     model_string=self._model or "",
     timeout=self._timeout,
-    max_tokens=self._budget.extract_output_max,
     skills=self._config.skills,
     retries=self._config.llm.output_retries,
     reasoning_effort=self._config.llm.reasoning_effort,

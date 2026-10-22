@@ -68,6 +68,17 @@ provider resolvable natively or via the catalog — `is_known_provider()`
 (exported from `models.py`) is the predicate `kompend doctor` uses to
 distinguish such blocks from typo'd provider ids.
 
+### Answer room — `ContextWindow`
+
+A response is bounded by the window, not by a setting: kompend sends **no
+`max_tokens`** anywhere. `ContextWindow.answer_reserve`
+(`answer_reserve_tokens(window)`) is the *planning* assumption a caller uses
+when it decides how much input to pack: a quarter of the window, clamped to
+512…8192 tokens. `input_budget(reserved_tokens=0)` is the rest, and
+`history_budget` (twice the reserve) is where threaded message history gets
+compacted. These values never travel to a provider — they only split work into
+requests that fit. `kompend doctor` reports them in its `window-fit` check.
+
 ## Format module
 
 `kompend.llm.format` is the single source of truth for LLM communication

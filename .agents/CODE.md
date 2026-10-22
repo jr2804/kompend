@@ -53,8 +53,10 @@ before committing — see `CHECKS.md`.
   level: the registry factory (`get_backend()`), never a module-scope import.
   Canonical pattern: `src/kompend/preprocessing/parsers/__init__.py`.
 - **A budget shapes the work, it never excludes it.** A `budget.*` value may
-  bound one response (`*_output_max`), size one window (a request or a
-  content block is *split*, never cropped), or set a threshold that warns.
+  size one window (a request or a content block is *split*, never cropped),
+  or set a threshold that warns. It never bounds a model's answer: no
+  `max_tokens` is sent, and a planner's answer room comes from the model
+  window (`ContextWindow.answer_reserve`).
   It must never drop content, skip a document, or silently shrink a result
   set. The only legitimate stops are a provider/model timeout and an endless
   agent loop — and both keep the work done so far. Fix the loop; do not cap

@@ -193,14 +193,15 @@ Hook callbacks receive a `HookContext` and exceptions are isolated — a failing
 
 ## Prompt budget
 
-Each concept page in phase 2 sees at most `compile.budget.gen_output_max`
-characters of source content. When a concept draws from many sources, the
-content is **fair-share truncated** — each source gets an equal slice, not
-first-N-chunks. Excess truncation is logged. Tune it in config:
+Each concept page in phase 2 sees at most the model's input budget of source
+content (`context_window - answer_reserve - overhead`). When a concept draws
+from many sources, the content is **fair-share truncated** - each source gets
+an equal slice, not first-N-chunks. Excess truncation is logged. To give
+generation more source text, raise the model's context window - a bigger
+`chunk_size_max` alone cannot create room an answer needs:
 
 ```bash
-kompend config set compile.budget.gen_output_max 100000
-kompend compile *.pdf --set compile.budget.gen_output_max=100000
+kompend compile *.pdf --set compile.llm.context_window=65536
 ```
 
 ## Per-source state

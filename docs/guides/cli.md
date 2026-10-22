@@ -371,7 +371,7 @@ Checks performed:
 5. **Disk space** — warn if < 500 MB free
 6. **LLM context window** — auto-discovered size and source (provider override, Ollama, models.dev, or fallback)
 7. **VLM context window** — same for the configured VLM model
-8. **Budget consistency** — validates that `gen_output_max` and `extract_output_max` fit within the context window, and that sufficient input budget remains after reserving output tokens
+8. **Window fit** — validates that the context window leaves a usable input budget after the answer reserve (`ContextWindow.answer_reserve`); kompend sends no `max_tokens`
 9. **LLM connectivity** — quick ping to configured LLM
 10. **VLM connectivity** — quick ping to configured VLM
 11. **Embedding connectivity** — quick ping to configured embedding model
