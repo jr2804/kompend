@@ -34,7 +34,6 @@ def add_mcp_servers(agent: str, mise_env: str | None = None) -> None:
     mise_env_option = ["--env", mise_env] if mise_env else []
 
     for row in _rows("dev-features.csv"):
-
         if tool := row.get("tool"):
             #
             _run(["mise", "use", f"{tool}@latest"] + mise_env_option)
