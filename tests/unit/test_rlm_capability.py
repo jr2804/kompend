@@ -24,6 +24,10 @@ from kompend.agents.kompend_model import KompendModel
 from kompend.agents.query import QueryAgent
 from kompend.agents.rlm import (
     RLMCapability,
+    _deps_token,
+    _get_repl,
+    _lookup_repl,
+    _repl_registry,
     build_rlm_instructions,
     cleanup_rlm_repls,
 )
@@ -416,6 +420,28 @@ class TestRlmConfigDefaults:
         """Cleanup drops cached REPL environments (no crash when empty)."""
         cleanup_rlm_repls()
         cleanup_rlm_repls()
+
+
+class TestReplCacheIdentity:
+    """The REPL cache is keyed by ``id(deps)`` — ids are recycled."""
+
+    def test_lookup_returns_the_live_entry(self) -> None:
+        deps = PipelineAgentDeps(text="ctx", source_id="d")
+        repl = _get_repl(deps, "ctx", None, 1.0)
+        assert _lookup_repl(deps) is repl
+
+    def test_recycled_id_does_not_hand_out_a_foreign_repl(self) -> None:
+        """A stale entry (its deps object was collected) must not be reused.
+
+        Reusing it would run the new agent against the previous run's
+        namespace, guard and model — a cross-run leak that surfaced as
+        sporadic failures in the recursion tests.
+        """
+        deps = PipelineAgentDeps(text="ctx", source_id="d")
+        repl = _get_repl(deps, "ctx", None, 1.0)
+        # Simulate the id being recycled by a different deps object.
+        _repl_registry[id(deps)] = (_deps_token(PipelineAgentDeps(text="other", source_id="d2")), repl)
+        assert _lookup_repl(deps) is None
 
 
 def _run_rlm_agent(

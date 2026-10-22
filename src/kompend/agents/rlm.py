@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import weakref
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast, override
@@ -35,7 +36,7 @@ from pydantic_ai.messages import ToolCallPart
 from pydantic_ai.models import Model
 from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.toolsets import FunctionToolset
-from pydantic_ai_rlm.dependencies import RLMConfig
+from pydantic_ai_rlm.dependencies import ContextType, RLMConfig
 from pydantic_ai_rlm.repl import REPLEnvironment
 from pydantic_ai_rlm.utils import format_repl_result
 
@@ -88,10 +89,11 @@ _DEFAULT_NODE_BUDGET: int = 16
 logger = get_logger(__name__)
 
 #: Per-run REPL environments keyed by ``id(ctx.deps)`` — one REPL per agent
-#: run, mirroring the package's module-global registry. Guards (recursion
-#: budgets) live alongside, one per ROOT run, shared across the child tree.
-_repl_registry: dict[int, REPLEnvironment] = {}
-_guard_registry: dict[int, _RLMRunGuard] = {}
+#: run, mirroring the package's module-global registry. The entry also keeps
+#: an identity token for the deps object: ``id()`` is recycled once a deps
+#: object is garbage collected, so a lookup must confirm that the cached REPL
+#: still belongs to *this* deps object before it is reused.
+_repl_registry: dict[int, tuple[Callable[[], object], REPLEnvironment]] = {}
 _repl_lock = threading.Lock()
 
 
@@ -178,7 +180,7 @@ class RLMCapability(AbstractCapability[Any]):
         async def execute_code(ctx: RunContext[Any], code: str) -> str:
             context = getattr(ctx.deps, cap._context_field)
             repl = _get_repl(
-                id(ctx.deps),
+                ctx.deps,
                 context,
                 cap._sub_model,
                 cap._code_timeout,
@@ -230,8 +232,8 @@ class RLMCapability(AbstractCapability[Any]):
 
 
 def _get_repl(
-    deps_id: int,
-    context: Any,
+    deps: object,
+    context: ContextType,
     sub_model: Model | None,
     code_timeout: float,
     *,
@@ -247,9 +249,12 @@ def _get_repl(
     ``rlm_query`` builtin is injected into the REPL (upstream issue #4).
     Child capabilities pass the root ``guard`` down so the whole call tree
     shares one budget and cycle-detection set.
+
+    The cache is keyed by ``id(deps)``; the lookup verifies the cached entry
+    still belongs to this deps object (see :func:`_lookup_repl`).
     """
     with _repl_lock:
-        repl = _repl_registry.get(deps_id)
+        repl = _lookup_repl(deps)
         if repl is None:
             # The dependency annotates ``sub_model`` as ``str | None`` but its
             # REPL forwards the value to ``model_request_sync``, which accepts
@@ -261,10 +266,9 @@ def _get_repl(
                     code_timeout=code_timeout,
                 ),
             )
-            _repl_registry[deps_id] = repl
+            _repl_registry[id(deps)] = (_deps_token(deps), repl)
             if guard is None:
                 guard = _RLMRunGuard(node_budget=node_budget)
-                _guard_registry[deps_id] = guard
             if depth > 0 and main_model is not None:
                 repl.locals["rlm_query"] = _make_rlm_query(
                     guard=guard,
@@ -276,6 +280,35 @@ def _get_repl(
                     source_id=source_id,
                 )
     return repl
+
+
+def _deps_token(deps: object) -> Callable[[], object]:
+    """Identity token for a deps object that survives ``id()`` recycling.
+
+    A weakref resolves to the object while it is alive and to ``None`` once
+    it is gone, so a recycled id can never resolve to the old object. Deps
+    that do not support weak references fall back to a strong reference —
+    the object then stays alive and its id stays unique.
+    """
+    try:
+        return weakref.ref(deps)
+    except TypeError:
+        return lambda: deps
+
+
+def _lookup_repl(deps: object) -> REPLEnvironment | None:
+    """Return the cached REPL for ``deps``, or None if there is no live one.
+
+    A stale entry (its deps object was collected and the id was recycled by
+    a different object) is treated as absent — reusing it would run the new
+    agent against a foreign REPL, with the previous run's namespace, guard
+    and model.
+    """
+    entry = _repl_registry.get(id(deps))
+    if entry is None:
+        return None
+    token, repl = entry
+    return repl if token() is deps else None
 
 
 def _make_rlm_query(
