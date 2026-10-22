@@ -205,11 +205,22 @@ def _execute_search(
     keyword search over the wiki pages — same corpus, keyword recall only.
     """
     if vector_store is None:
-        retriever: HybridRetriever | KeywordRetriever = KeywordRetriever(wiki)
+        retriever: HybridRetriever | KeywordRetriever = KeywordRetriever(wiki, display=cfg.kompend.display)
         results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups, attr_filters)
         return results, raw, False
     if adaptive:
-        results, raw = handle_adaptive_search(query, top_k, search_mode, vector_store, sources_dir, wiki, state_dir, tag_groups, attr_filters)
+        results, raw = handle_adaptive_search(
+            query,
+            top_k,
+            search_mode,
+            vector_store,
+            sources_dir,
+            wiki,
+            state_dir,
+            tag_groups,
+            attr_filters,
+            display=cfg.kompend.display,
+        )
         return results, raw, False
     enhanced_result = (
         handle_enhanced_search(query, top_k, search_mode, sources_dir, vector_store, state_dir, wiki, cfg, model, tag_groups, attr_filters)
@@ -218,7 +229,7 @@ def _execute_search(
     )
     if enhanced_result is not None:
         return enhanced_result, False, True
-    retriever = HybridRetriever(wiki, vector_store=vector_store)
+    retriever = HybridRetriever(wiki, vector_store=vector_store, display=cfg.kompend.display)
     results, raw = execute_query_search(retriever, query, search_mode, sources_dir, top_k, tag_groups, attr_filters)
     return results, raw, False
 

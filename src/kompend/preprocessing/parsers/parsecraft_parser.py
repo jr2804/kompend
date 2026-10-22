@@ -117,6 +117,7 @@ class ParsecraftParser:
         parsecraft_extract_vector_graphics: bool | None = None,
         parsecraft_preferred_backend: str | None = None,
         parsecraft_only_backend: str | None = None,
+        parsecraft_backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
     ) -> None:
         self._registry = registry
         self._environment: EnvironmentInfo | None = None
@@ -140,6 +141,10 @@ class ParsecraftParser:
         self._extract_vector_graphics = parsecraft_extract_vector_graphics
         self._preferred_backend = _parse_backend_name(parsecraft_preferred_backend)
         self._only_backend = _parse_backend_name(parsecraft_only_backend)
+        #: Per-backend options the user configured (`[ingest] parsecraft_backend_options`).
+        #: They are merged over the derived ones, so a user option wins over the
+        #: adapter's default for the same key.
+        self._backend_options_override = {backend: dict(options) for backend, options in (parsecraft_backend_options or {}).items()}
         #: Parsed once — every deterministic-path construction reuses it, so the
         #: knob reaches the rule table even when no provider judge is configured
         #: (parsecraft's ``DeterministicJudge`` tilts its VRAM tiebreak by it).
@@ -256,6 +261,12 @@ class ParsecraftParser:
             parts.append(f"preferred_backend:{self._preferred_backend}")
         if self._only_backend is not None:
             parts.append(f"only_backend:{self._only_backend}")
+        if self._backend_options_override:
+            rendered = ",".join(
+                f"{backend}:{','.join(f'{key}={value}' for key, value in sorted(options.items()))}"
+                for backend, options in sorted(self._backend_options_override.items())
+            )
+            parts.append(f"backend_options:{rendered}")
         routing = "|".join(parts)
         return f"{host}|{routing}"
 
@@ -267,12 +278,19 @@ class ParsecraftParser:
         differently from passing nothing and churn every existing vault's
         conversion cache on upgrade. The same reasoning covers
         ``extract_vector_graphics``, whose backend default is unset.
+
+        The user's ``[ingest] parsecraft_backend_options`` are merged over the
+        derived ones — an explicit user option wins over the derived default for
+        the same key.
         """
         options: dict[str, dict[str, str | int | float | bool]] = {}
         if self._effort != ParsecraftEffort.FLASH.value:
             options.setdefault("mineru", {})["effort"] = self._effort
         if self._extract_vector_graphics is not None:
             options.setdefault("liteparse", {})["extract_vector_graphics"] = self._extract_vector_graphics
+        for backend, backend_options in self._backend_options_override.items():
+            merged = options.setdefault(backend, {})
+            merged.update(backend_options)
         return options
 
     def _warn_on_ignored_backend_options(self, winners: str, media_type: str, elements: list[DocumentElement]) -> None:
@@ -662,6 +680,7 @@ def _factory(options: ParserBuildOptions) -> ParsecraftParser:
         parsecraft_extract_vector_graphics=options.parsecraft_extract_vector_graphics,
         parsecraft_preferred_backend=options.parsecraft_preferred_backend,
         parsecraft_only_backend=options.parsecraft_only_backend,
+        parsecraft_backend_options=options.parsecraft_backend_options,
     )
 
 

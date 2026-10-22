@@ -44,11 +44,13 @@ class GraphCompiler(BaseCompiler):
         min_content_length: int = 0,
         min_concept_sources: int = 0,
         max_concept_pages: int = 0,
+        display: DisplayConfig | None = None,
     ) -> None:
         self.model = model
         self._min_content_length = min_content_length
         self._min_concept_sources = min_concept_sources
         self._max_concept_pages = max_concept_pages
+        self._display = display if display is not None else DisplayConfig()
 
     def compile(
         self,

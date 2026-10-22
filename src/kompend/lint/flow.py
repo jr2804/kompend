@@ -81,7 +81,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
                 semantic_report, _ = _run_pass(wiki, vp, cfg, rules=None, enable_llm=True, lint_agent=lint_agent, fix=False)
             elif name == "gaps":
                 merged_results = _merge_results(check_report, semantic_report)
-                analyze_gaps(LintReport(results=merged_results), load_degree_map(vp.base_dir))
+                analyze_gaps(LintReport(results=merged_results), load_degree_map(vp.base_dir), cfg.kompend.display)
             elif name == "remediate":
                 merged_results = _merge_results(check_report, semantic_report)
                 actions = _remediate_phase(wiki, vp, cfg, merged_results, lint_agent, fix)

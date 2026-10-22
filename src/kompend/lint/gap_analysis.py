@@ -21,8 +21,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_LINT_FEEDBACK_CHARS
+from kompend.core.config._configs import DisplayConfig
 from kompend.core.models import load_cached_wiki
 from kompend.lint.base import LintReport, LintResult
 
@@ -82,7 +81,11 @@ def load_degree_map(base_dir: Path) -> dict[str, int] | None:
     return degree or None
 
 
-def analyze_gaps(report: LintReport, degree_map: dict[str, int] | None = None) -> list[GapRecommendation]:
+def analyze_gaps(
+    report: LintReport,
+    degree_map: dict[str, int] | None = None,
+    display: DisplayConfig | None = None,
+) -> list[GapRecommendation]:
     """Extract knowledge-gap recommendations from a typed lint report.
 
     Accepts a :class:`LintReport` (the ``report`` sub-dict as stored in
@@ -95,7 +98,7 @@ def analyze_gaps(report: LintReport, degree_map: dict[str, int] | None = None) -
 
     recs.extend(_analyze_broken_wikilinks(results, degree_map))
     recs.extend(_analyze_coverage_gaps(results))
-    recs.extend(_analyze_clarity(results))
+    recs.extend(_analyze_clarity(results, display))
     recs.extend(_analyze_empty_pages(results))
     recs.extend(_analyze_orphans(results))
     recs.extend(_analyze_contradictions(results))
@@ -244,9 +247,10 @@ def _analyze_coverage_gaps(results: list[LintResult]) -> list[GapRecommendation]
     return recs
 
 
-def _analyze_clarity(results: list[LintResult]) -> list[GapRecommendation]:
+def _analyze_clarity(results: list[LintResult], display: DisplayConfig | None = None) -> list[GapRecommendation]:
     """Low clarity scores indicate incomplete or poorly extracted content."""
     recs: list[GapRecommendation] = []
+    feedback_chars = (display if display is not None else DisplayConfig()).lint_feedback_chars
     for r in results:
         if r.rule != "clarity-score" or r.outcome != "fail":
             continue
@@ -268,7 +272,7 @@ def _analyze_clarity(results: list[LintResult]) -> list[GapRecommendation]:
 
         finding = f"Page '{page_id}' scored {score}/10"
         if feedback:
-            feedback_limit = DEFAULTS.get(DISPLAY_LINT_FEEDBACK_CHARS, 200)
+            feedback_limit = feedback_chars
             finding += f": {feedback[:feedback_limit]}"
         recs.append(
             GapRecommendation(

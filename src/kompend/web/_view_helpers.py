@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import dataclasses
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from kompend.core.config import DisplayConfig, resolve_config
 from kompend.core.models import MetadataField, WikiField, load_cached_wiki
 from kompend.core.paths import VaultPaths
 from kompend.logging import get_logger
@@ -19,6 +21,17 @@ logger = get_logger(__name__)
 def project_dir() -> Path:
     """Return the current project directory."""
     return _PROJECT_DIR
+
+
+def display_config() -> DisplayConfig:
+    """Return the display limits configured for the current project."""
+    return _display_config(_PROJECT_DIR)
+
+
+@lru_cache(maxsize=8)
+def _display_config(base_dir: Path) -> DisplayConfig:
+    """Resolved display limits for *base_dir*, cached per project."""
+    return resolve_config(base_dir=base_dir).kompend.display
 
 
 def render_result(r: SearchResult) -> str:

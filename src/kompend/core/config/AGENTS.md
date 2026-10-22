@@ -106,15 +106,30 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
    `_STR_ENUM_CHOICES`. The domain drives the scaffold's trailing value
    comments and must match `kompend.toml.example`.
 6. **Wire into the consumer** (e.g. `PipelineConfig`, `LintRunner`) via
-   `cfg.get("dotted.key", fallback)`.
+   `cfg.get("dotted.key", fallback)` — or, for a group of related keys, hand
+   the config group to the consumer (`display=cfg.kompend.display`) instead of
+   copying single values around.
 7. **Write tests** — at minimum: default value, project config override, env var
    override, CLI override, full precedence chain.
+8. **A budget key shapes the work, it never excludes it** — a threshold warns,
+   a `*_output_max` bounds one response, a window size splits a request (see
+   the budget rule in `.agents/CODE.md` and `compilation/AGENTS.md`).
 
 ### Conventions
 
 - **TOML only** — no YAML, no JSON config files. Python 3.11+ has `tomllib`.
 - **Dotted keys** — all config access uses dot-separated paths:
   `cfg.get("compile.llm.default_model")`. Never reach into `cfg.raw` directly.
+- **`DEFAULTS` is a nested dict** — `DEFAULTS.get("display.x", fallback)` always
+  returns the fallback, because `DEFAULTS` is `KompendConfig().model_dump()`
+  (sections, not dotted keys). Read a value from the *resolved* config
+  (`cfg.get("display.x")`, `cfg.kompend.display.x`) and pass the config group
+  to the consumer; never read a dotted key out of `DEFAULTS`.
+- **A key either has an effect or does not exist** — a key with no reader is
+  removed from the schema, the `EnvVar` enum, `keys.py` and
+  `kompend.toml.example`, and registered in `REMOVED_KEYS`
+  (`engine/_schema.py`) so old vaults get a deprecation warning instead of a
+  crash. A key with a reader but no wiring gets wired.
 - **`resolve_config()` is the single entry point** — callers should never
   call `_load_toml` or `_read_env_vars` directly.
 - **No mutable global state** — `resolve_config()` returns a fresh

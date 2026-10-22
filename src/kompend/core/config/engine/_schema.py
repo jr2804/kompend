@@ -69,7 +69,11 @@ ENV_MAP: dict[str, str] = _build_env_map()
 # upgrade; ``kompend config check`` reports them as deprecations.
 REMOVED_KEYS: dict[str, list[str]] = {
     "compile.budget": ["concepts_per_batch"],
-    "compile.llm": ["role_models"],
+    "compile.llm": ["role_models", "fallback_max_retries"],
+    # `compile.mode` selected a pipeline mode, but the tier flags
+    # (`start_at_tier` / `stop_at_tier`) cover the same ground and are the
+    # only ones the pipeline reads.
+    "compile": ["mode"],
     # The whole [compile.pdf] section. It configured the kompend-owned docling and
     # liteparse backends, which parsecraft supersedes; nothing reads it now.
     # The keys are listed individually so an older vault is stripped with a
@@ -91,6 +95,14 @@ REMOVED_KEYS: dict[str, list[str]] = {
     # selector had nothing left to select between. `parser_fallback` was its chain
     # companion and went when the key became single-valued.
     "ingest": ["parser", "parser_fallback"],
+    # The whole [eval] section. It held a score threshold and a history size
+    # for an evaluation loop that no longer exists.
+    "eval": ["threshold", "history_size"],
+    # Display limits without a reader: `error_chars` / `json_chars` were
+    # never read (the error and JSON renderers use their own formatting),
+    # `query_expansions` has no expander behind it, and `wiki_topics` only
+    # fed an index section that was dropped.
+    "display": ["error_chars", "json_chars", "query_expansions", "wiki_topics"],
 }
 
 # Deprecated config keys → their canonical replacement.  The single source of

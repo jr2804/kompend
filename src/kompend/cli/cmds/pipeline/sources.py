@@ -224,6 +224,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     )
     ann = as_str(cfg.get(EXPORT_ANNOTATIONS)) or "off"
     summ = as_str(cfg.get(EXPORT_SUMMARY)) or "off"
+    doc_headings = cfg.kompend.display.doc_headings
 
     if export_all:
         if source_id:

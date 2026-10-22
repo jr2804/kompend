@@ -35,11 +35,13 @@ class AdaptiveRetriever:
         *,
         vector_store: VectorStoreLike | None = None,
         max_input_tokens: int = 128_000,
+        display: DisplayConfig | None = None,
     ) -> None:
         self._wiki = wiki
         self._vector_store = vector_store
         self._node_by_id: dict[str, WikiNode] = {n.id: n for n in wiki.nodes}
         self._budget = ContextBudgetManager(max_input_tokens)
+        self._display = display if display is not None else DisplayConfig()
 
     def search(
         self,
@@ -90,9 +92,9 @@ class AdaptiveRetriever:
             node = self._node_by_id.get(nid)
             if node is None:
                 continue
-            snippet_limit = DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)
+            snippet_limit = self._display.search_snippet_chars
             if node.content and query_tokens:
-                snippet = extract_snippet(node.content, query_tokens)
+                snippet = extract_snippet(node.content, query_tokens, snippet_limit)
             elif node.content:
                 snippet = node.content[:snippet_limit]
             else:
@@ -140,7 +142,11 @@ class AdaptiveRetriever:
             node_id = hit.get("id", "")
             node = self._node_by_id.get(node_id)
             title = hit.get(ZvecField.TITLE) or (node.title if node else node_id)
-            snippet = extract_snippet(node.content, query_tokens) if node and node.content else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
+            snippet = (
+                extract_snippet(node.content, query_tokens, self._display.search_snippet_chars)
+                if node and node.content
+                else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
+            )
             source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
             if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
                 source_file = str(node.metadata[MetadataField.SOURCE])

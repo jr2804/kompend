@@ -22,8 +22,7 @@ from kompend.agents.context_chunk import ContextChunkAgent
 from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import ContextChunk, ContextChunkDeps
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_DOC_HEADINGS, DISPLAY_EXCERPT_CHARS
+from kompend.core.config._configs import DisplayConfig
 from kompend.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.logging import get_logger
@@ -43,8 +42,10 @@ class ContextualEnricher:
     def __init__(
         self,
         agent: ContextChunkAgent | AgenticContextChunkAgent | None = None,
+        display: DisplayConfig | None = None,
     ) -> None:
         self._agent = agent
+        self._display = display if display is not None else DisplayConfig()
         self._template_loader: TemplateLoader = get_template_loader()
 
     def enrich_tree(
@@ -98,7 +99,7 @@ class ContextualEnricher:
         chunks: list[ContextChunk] = []
         for leaf in leaves:
             headings = [h for h in (leaf.heading_chain or []) if h]
-            excerpt_limit = DEFAULTS.get(DISPLAY_EXCERPT_CHARS, 300)
+            excerpt_limit = self._display.excerpt_chars
             text = ""
             if leaf.chunk:
                 text = leaf.chunk.text[:excerpt_limit]
@@ -145,7 +146,7 @@ class ContextualEnricher:
 
         # Estimate chunk content length
         content_preview = ""
-        excerpt_limit = DEFAULTS.get(DISPLAY_EXCERPT_CHARS, 300)
+        excerpt_limit = self._display.excerpt_chars
         if node.chunk:
             content_preview = node.chunk.text[:excerpt_limit]
         elif node.structured:
@@ -173,6 +174,15 @@ class ContextualEnricher:
         # Fallback: structural context without LLM
         return f"This chunk is from '{doc_title}', under section: {heading_chain}."
 
+    def _summarize_document(self, doc: ParsedDocument) -> str:
+        """Generate a one-line summary of the document."""
+        elements = doc.elements
+        headings = [e.content for e in elements if e.type == ElementType.HEADING and isinstance(e.content, str)]
+        if headings:
+            limit = self._display.doc_headings
+            return "; ".join(headings[:limit])
+        return doc.title or doc.source_file.stem
+
     @staticmethod
     def _collect_leaves(tree: ChunkTree) -> list[ChunkNode]:
         """Collect all leaf nodes from a ChunkTree."""
@@ -190,13 +200,3 @@ class ContextualEnricher:
         if root is not None:
             _walk(root)
         return leaves
-
-    @staticmethod
-    def _summarize_document(doc: ParsedDocument) -> str:
-        """Generate a one-line summary of the document."""
-        elements = doc.elements
-        headings = [e.content for e in elements if e.type == ElementType.HEADING and isinstance(e.content, str)]
-        if headings:
-            limit = DEFAULTS.get(DISPLAY_DOC_HEADINGS, 5)
-            return "; ".join(headings[:limit])
-        return doc.title or doc.source_file.stem

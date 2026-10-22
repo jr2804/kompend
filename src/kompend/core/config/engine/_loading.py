@@ -40,9 +40,10 @@ def load_toml(toml_file: Path) -> dict[str, Any]:
     try:
         data: dict[str, Any] = tomllib.loads(text)
     except TOMLDecodeError as exc:
-        data = _reload_tolerating_duplicates(text, toml_file, exc)
-        if data is None:
+        recovered = _reload_tolerating_duplicates(text, toml_file, exc)
+        if recovered is None:
             return {}
+        data = recovered
     data = _expand_env_vars_recursive(data)
     data = _strip_strings_recursive(data)
     logger.debug("Loaded config from %s", toml_file)

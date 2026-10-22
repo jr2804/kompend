@@ -20,8 +20,7 @@ from typing import NotRequired, TypedDict
 
 import zvec as _zvec
 
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_MEMORY_QUERY_CHARS
+from kompend.core.config import DisplayConfig
 from kompend.core.paths import VaultPaths
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import MEMORY_LOG_TABLE
@@ -75,6 +74,7 @@ class MemoryStore:
         embedding_model: str | None = None,
         *,
         embedding_provider: EmbeddingProvider | None = None,
+        display: DisplayConfig | None = None,
     ) -> None:
         self.base_dir = Path(base_dir)
         _paths = VaultPaths(self.base_dir)
@@ -83,6 +83,7 @@ class MemoryStore:
         self._embedding_model = embedding_model
         self._provider: EmbeddingProvider | None = embedding_provider
         self._collection: _zvec.Collection | None = None
+        self._display = display if display is not None else DisplayConfig()
 
     def add_entry(
         self,
@@ -123,7 +124,7 @@ class MemoryStore:
                 (mem_id, timestamp, query, answer, feedback or "", memory_by),
             )
 
-        query_log_limit = DEFAULTS.get(DISPLAY_MEMORY_QUERY_CHARS, 50)
+        query_log_limit = self._display.memory_query_chars
         logger.info("Added memory entry for query: %s", query[:query_log_limit])
 
     def search(

@@ -10,8 +10,9 @@ import typer
 from kompend.cli._shared import vault_paths_from_ctx
 from kompend.cli.app import app
 from kompend.cli.args.memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
-from kompend.core.config import DEFAULTS, resolve_config
-from kompend.core.config.keys import DISPLAY_MEMORY_ENTRIES, TRUST_USER_TRACKING
+from kompend.core.config import ResolvedConfig, resolve_config
+from kompend.core.config.keys import TRUST_USER_TRACKING
+from kompend.core.paths import MEMORY_CONTEXT_FILE, MEMORY_SUBDIR
 from kompend.core.templates import get_template_loader
 from kompend.core.trust.actor import resolve_actor
 from kompend.logging import get_console, get_err_console
@@ -33,7 +34,7 @@ def memory_add(
     feedback: MemoryFeedback = None,
 ) -> None:
     """Add a query, answer, and optional feedback to the memory store."""
-    store, _base_dir, actor = _get_memory_store(ctx)
+    store, _base_dir, actor, _cfg = _get_memory_store(ctx)
     try:
         store.add_entry(query=query, answer=answer, feedback=feedback, memory_by=actor)
         get_console().print("✓ Memory entry added successfully.")
@@ -51,7 +52,7 @@ def memory_search(
     top_k: MemoryTopK = 5,
 ) -> None:
     """Search the memory store for past queries and answers."""
-    store, _base_dir, _actor = _get_memory_store(ctx)
+    store, _base_dir, _actor, _cfg = _get_memory_store(ctx)
     try:
         results = store.search(query=query, top_k=top_k)
         if not results:
@@ -78,7 +79,7 @@ def memory_synthesize(
     limit: MemoryLimit = 20,
 ) -> None:
     """Review recent memory entries and generate a system context file."""
-    store, base_dir, _actor = _get_memory_store(ctx)
+    store, base_dir, _actor, cfg = _get_memory_store(ctx)
 
     try:
         entries = store.get_recent_entries(limit=limit)
@@ -86,11 +87,11 @@ def memory_synthesize(
             get_console().print("No memory entries found to synthesize.")
             return
 
-        context_file = base_dir / "sources" / "_memory" / "system_context.md"
+        context_file = base_dir / cfg.kompend.paths.sources_dir / MEMORY_SUBDIR / MEMORY_CONTEXT_FILE
         context_file.parent.mkdir(parents=True, exist_ok=True)
 
         loader = get_template_loader()
-        memory_entry_limit = DEFAULTS.get(DISPLAY_MEMORY_ENTRIES, 10)
+        memory_entry_limit = cfg.kompend.display.memory_entries
         content = loader.render(
             "memory/system_context.md.j2",
             entries=entries[:memory_entry_limit],
@@ -106,8 +107,8 @@ def memory_synthesize(
         store.close()
 
 
-def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str]:
-    """Resolve the memory store, project base directory, and acting user."""
+def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str, ResolvedConfig]:
+    """Resolve the memory store, project base directory, acting user and config."""
     overrides: dict[str, Any] = {}
     vp = vault_paths_from_ctx(ctx)
     if ctx and ctx.obj and ctx.obj.get("no_user_tracking"):
@@ -115,4 +116,9 @@ def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=overrides)
     embed_model = cfg.kompend.compile.embedding.model
     base_dir = vp.base_dir
-    return MemoryStore(base_dir=base_dir, embedding_model=embed_model), base_dir, resolve_actor(cfg)
+    return (
+        MemoryStore(base_dir=base_dir, embedding_model=embed_model, display=cfg.kompend.display),
+        base_dir,
+        resolve_actor(cfg),
+        cfg,
+    )

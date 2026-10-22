@@ -87,6 +87,10 @@ class ParserBuildOptions:
     parsecraft_preferred_backend: str | None = None
     #: Backend used exclusively; a hard pin, unreachable pages fail loudly.
     parsecraft_only_backend: str | None = None
+    #: Per-backend options (`{backend: {option: value}}`) forwarded verbatim to
+    #: parsecraft's `RoutingConstraints.backend_options`. Empty keeps the
+    #: adapter's own derived options untouched.
+    parsecraft_backend_options: dict[str, dict[str, str | int | float | bool]] = field(default_factory=dict)
 
     @classmethod
     def from_config(cls, cfg: ResolvedConfig, *, images_dir: Path | None = None) -> ParserBuildOptions:
@@ -116,6 +120,7 @@ class ParserBuildOptions:
             parsecraft_extract_vector_graphics=kompend.ingest.parsecraft_extract_vector_graphics,
             parsecraft_preferred_backend=kompend.ingest.parsecraft_preferred_backend,
             parsecraft_only_backend=kompend.ingest.parsecraft_only_backend,
+            parsecraft_backend_options={backend: dict(options) for backend, options in kompend.ingest.parsecraft_backend_options.items()},
         )
 
 

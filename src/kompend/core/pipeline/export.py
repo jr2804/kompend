@@ -29,8 +29,6 @@ from typing import Any
 
 from kompend.chunking.extractors import extract_structured
 from kompend.core import source_metadata
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_DOC_HEADINGS
 from kompend.core.models import (
     AttachmentManifest,
     DocumentElement,
@@ -102,6 +100,7 @@ def export_source(
     inline: bool,
     annotations: str,
     summary: str,
+    doc_headings: int,
 ) -> Path:
     """Render the source identified by *source_id* to *out_path* (markdown).
 
@@ -117,6 +116,7 @@ def export_source(
         inline=inline,
         annotations=annotations,
         summary=summary,
+        doc_headings=doc_headings,
     )
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(md, encoding="utf-8")
@@ -147,6 +147,7 @@ def render_document_markdown(
     inline: bool,
     annotations: str,
     summary: str,
+    doc_headings: int,
 ) -> str:
     """Render a parse-cache dict to clean markdown.
 
@@ -162,7 +163,7 @@ def render_document_markdown(
     if title:
         parts.append(f"# {title}")
 
-    doc_summary = document_summary(data)
+    doc_summary = document_summary(data, doc_headings)
     if summary == "inline":
         parts.append(f"## Summary\n\n{doc_summary}")
 
@@ -205,8 +206,7 @@ def document_summary(data: dict[str, Any]) -> str:
         if el.get("type") == ElementType.HEADING.value and isinstance(el.get("content"), str) and str(el["content"]).strip()
     ]
     if headings:
-        limit = int(DEFAULTS.get(DISPLAY_DOC_HEADINGS, 5))
-        return "; ".join(headings[:limit])
+        return "; ".join(headings[:doc_headings])
     return str(data.get("title") or Path(str(data.get(MetadataField.SOURCE_FILE, ""))).stem or "Untitled")
 
 

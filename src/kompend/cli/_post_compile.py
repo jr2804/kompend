@@ -164,6 +164,7 @@ def verify_claims(
     *,
     agent: VerificationAgent | AgenticVerificationAgent,
     verify_budget: int = 3000,
+    min_ngram: int = 3,
 ) -> None:
     """Run grounding verification over wiki claims.
 

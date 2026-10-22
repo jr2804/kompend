@@ -119,6 +119,7 @@ def build_pipeline(
                         min_content_length=config.budget.min_content_length,
                         min_concept_sources=config.budget.min_concept_sources,
                         max_concept_pages=config.budget.max_concept_pages,
+                        display=config.display,
                     ),
                     context_window=cw,
                 ),
@@ -132,6 +133,7 @@ def build_pipeline(
                     min_content_length=config.budget.min_content_length,
                     min_concept_sources=config.budget.min_concept_sources,
                     max_concept_pages=config.budget.max_concept_pages,
+                    display=config.display,
                 ),
                 context_window=cw,
             )
@@ -172,5 +174,5 @@ def build_pipeline(
                 stall_retries=config.budget.summary_session_stall_retries,
             ),
         ),
-        enricher=ContextualEnricher(agent=enricher_agent) if enricher_agent is not None else None,
+        enricher=ContextualEnricher(agent=enricher_agent, display=config.display) if enricher_agent is not None else None,
     )

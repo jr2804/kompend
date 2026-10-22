@@ -50,7 +50,6 @@ _KEY_RE = re.compile(r"^#?\s*([\w.\-]+)\s*=")
 #: closed. Order is the presentation order used in trailing comments.
 _STR_ENUM_CHOICES: dict[str, tuple[str, ...]] = {
     "compile.compiler": ("graph", "wicer"),
-    "compile.mode": ("full", "ingest-only", "compile-only"),
     "compile.start_at_tier": ("index", "chunk", "resolve", "compile", "output"),
     "compile.stop_at_tier": ("index", "chunk", "resolve", "compile", "output"),
     "compile.llm.reasoning_effort": ("none", "minimal", "low", "medium", "high", "xhigh", "default"),

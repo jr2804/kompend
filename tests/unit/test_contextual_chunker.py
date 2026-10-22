@@ -53,18 +53,18 @@ class TestSummarizeDocument:
             ],
             title="My Paper",
         )
-        summary = ContextualEnricher._summarize_document(doc)
+        summary = ContextualEnricher(agent=None)._summarize_document(doc)
         assert "Introduction" in summary
         assert "Methods" in summary
 
     def test_falls_back_to_title(self) -> None:
         doc = _make_doc(title="Fallback Title")
-        summary = ContextualEnricher._summarize_document(doc)
+        summary = ContextualEnricher(agent=None)._summarize_document(doc)
         assert summary == "Fallback Title"
 
     def test_falls_back_to_stem_when_no_title(self) -> None:
         doc = ParsedDocument(source_file=Path("my_document.md"), elements=[], title="")
-        summary = ContextualEnricher._summarize_document(doc)
+        summary = ContextualEnricher(agent=None)._summarize_document(doc)
         assert summary == "my_document"
 
 

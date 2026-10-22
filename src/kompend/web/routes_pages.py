@@ -7,13 +7,11 @@ import json
 from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse
 
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_WEB_NODES
 from kompend.core.models import CompiledWiki, MetadataField, WikiField
 from kompend.core.paths import PROJECT_CONFIG_FILE
 from kompend.search.classifier import classify
 from kompend.search.retriever import HybridRetriever
-from kompend.web._view_helpers import load_wiki, project_dir, render_result, source_of
+from kompend.web._view_helpers import display_config, load_wiki, project_dir, render_result, source_of
 
 router = APIRouter()
 
@@ -77,7 +75,7 @@ async def dashboard() -> str:
       {
         "".join(
             f'<tr><td><a href="/wiki/{n.get("id", "")}">{n.get("title", "")}</a></td><td>{n.get("node_type", "")}</td><td>{source_of(n)}</td></tr>'
-            for n in nodes[: DEFAULTS.get(DISPLAY_WEB_NODES, 10)]
+            for n in nodes[: display_config().web_nodes]
         )
     }
     </table>
@@ -179,7 +177,7 @@ async def query_page(q: str = Query(default="")) -> str:
             iteration=wiki.get(WikiField.ITERATION, 0),
             metadata=wiki.get(WikiField.METADATA, {}),
         )
-        retriever = HybridRetriever(w)
+        retriever = HybridRetriever(w, display=display_config())
         results = retriever.search(q, top_k=5)
 
         intent = classify(q)

@@ -191,7 +191,7 @@ def lint_gaps(
 
     report_dict = entries[-1].get("report", {})
     report = report_from_dict(report_dict)
-    recs = analyze_gaps(report)
+    recs = analyze_gaps(report, display=cfg.kompend.display)
 
     if json_output:
         return {

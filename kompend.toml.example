@@ -132,6 +132,14 @@ file = "NOTES.md"
 # Env: KOMP_INGEST_PARSECRAFT_ONLY_BACKEND
 # parsecraft_only_backend = "mineru"
 
+# Per-backend options forwarded to parsecraft, e.g.
+#   {backend_name: {option_key: option_value}}
+# Keys must match parsecraft's registered backends; values are
+# str | int | float | bool. A user option wins over the option kompend
+# derives from the other [ingest] keys. Part of the parse-cache fingerprint.
+# Env: KOMP_INGEST_PARSECRAFT_BACKEND_OPTIONS
+# parsecraft_backend_options = { mineru = { effort = "high" } }
+
 # ── Downloader settings ─────────────────────────────────────────────────
 # Controls how URLs are fetched. URLs whose path looks like HTML (no
 # extension, .html/.htm/.aspx/.php/.jsp, or trailing /) go through the
@@ -177,8 +185,6 @@ log_error_chars = 500     # max chars of an error string in the run-log JSONL
 lint_feedback_chars = 200 # max chars of lint feedback embedded in a finding
 memory_query_chars = 50   # max chars of a query string in the memory-store info log
 mcp_element_chars = 500   # max chars per parsed element in the MCP `parse_document` response
-wiki_topics = 30          # max topics shown in the wiki index "Topics" section
-query_expansions = 7      # max multi-query-expansion variants per search
 web_nodes = 10            # max nodes shown in the web server's node preview
 search_snippet_chars = 300 # max chars of a search-result snippet (RAG / RRF / hybrid)
 
@@ -244,9 +250,6 @@ respect_gitignore = true
 
 # Tier state file (None = base_dir/.kompend/compile_state.json).
 # tier_state_file = "compile_state.json"
-
-# Pipeline mode: full | ingest-only | compile-only
-# mode = "full"  # ingest-only, compile-only
 
 # Force re-run all stages even if cached
 # force = false
@@ -331,7 +334,9 @@ gen_output_max = 16384
 overview_output_max = 4096
 
 # Reference extraction output ceiling (tokens) — per window when an
-# oversized reference section is split to fit the context window
+# oversized reference section is split to fit the context window.
+# Every window is processed; a larger ceiling means fewer LLM calls per
+# source (faster), never fewer extracted references.
 reference_output_max = 8192
 
 # Verification output ceiling (tokens)
@@ -366,7 +371,8 @@ summary_requests_per_node = 2
 summary_session_batch_size = 20
 summary_session_stall_retries = 1
 
-# Capture / write-page synthesis: per-source LLM input char cap
+# Capture / write-page synthesis: characters served per source window.
+# A longer source is read in several windows — it is never shortened.
 capture_source_char_max = 4000
 
 # Concept dedup thresholds (Phase 1 — name+definition embedding merge)
@@ -402,9 +408,6 @@ default_model = "${KOMP_LLM_DEFAULT_MODEL}"
 # of what Ollama or models-dev report. Useful for limiting context usage
 # on slower/local models. None = no cap (use full discovered window).
 # context_window = 65536
-
-# Transient-error retries before advancing to next fallback model
-fallback_max_retries = 2
 
 # LLM communication data format for prompt input context: "json" (default) | "toon" | "ison"
 # Compact formats reduce input token count by 30-70%, giving small-context models
@@ -649,15 +652,6 @@ enable = false                    # on/off switch
 # Model override for LLM-powered lint steps (factual-consistency, clarity-score,
 # coverage-gap, contradiction-detection). Falls back to compile.llm.default_model.
 # model = "openai/gpt-4o-mini"
-
-# ── Eval settings ───────────────────────────────────────────────────────
-
-[eval]
-# CI gate: exit non-zero if score below threshold
-# threshold = 80
-
-# Number of historical eval results to keep
-history_size = 20
 
 # ── Trust settings ──────────────────────────────────────────────────────
 

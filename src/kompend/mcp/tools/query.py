@@ -53,7 +53,11 @@ def query_wiki(
             vector_store = None
 
     try:
-        retriever = HybridRetriever(wiki, vector_store=vector_store) if vector_store is not None else KeywordRetriever(wiki)
+        retriever = (
+            HybridRetriever(wiki, vector_store=vector_store, display=cfg.kompend.display)
+            if vector_store is not None
+            else KeywordRetriever(wiki, display=cfg.kompend.display)
+        )
         model = cfg.kompend.compile.llm.default_model or ""
         agentic = cfg.kompend.search.agentic
         if agentic.enabled and not raw and model and search_mode != SearchMode.RAW:
@@ -111,7 +115,7 @@ def query_wiki(
 
     if model and not raw:
         try:
-            synthesizer = HybridRetriever(wiki)
+            synthesizer = HybridRetriever(wiki, display=cfg.kompend.display)
             synthesis = synthesizer.synthesize(
                 query,
                 results,

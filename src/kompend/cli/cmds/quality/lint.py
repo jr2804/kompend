@@ -397,7 +397,7 @@ def lint_gaps(
 
     # Coverage weighting: node degree from the cached wiki graph.
     degree_map = load_degree_map(vp.base_dir)
-    recs = analyze_gaps(report, degree_map)
+    recs = analyze_gaps(report, degree_map, cfg.kompend.display)
 
     # Semantic source-coverage verification for missing topics.
     embed_model = cfg.kompend.compile.embedding.model

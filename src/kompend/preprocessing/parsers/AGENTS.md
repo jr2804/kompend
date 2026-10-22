@@ -36,6 +36,12 @@ is absent must fail loudly instead of starting with an empty router. The `name`
 parameter still exists as registry API — the tests pin it — but no caller passes
 it.
 
+`ingest.parsecraft_backend_options` is the only parser-side config key. It
+carries the backend options the user wants to override (a mapping of option
+name → value); `ParserBuildOptions.parsecraft_backend_options` hands them to
+the adapter, which merges them over its derived defaults. The options are part
+of the parser's `cache_identity()`, so changing them re-parses.
+
 `get_all_extensions(names)` takes the backend names to union suffixes for.
 Discovery passes `[DEFAULT_PARSER]`, so a vault ingests exactly what its parser can
 read — parsecraft's native-text backend reads `.c/.h/.py/…`.

@@ -30,6 +30,7 @@ from kompend.core.config._core import (
     set_dot,
     validate_config_key,
 )
+from kompend.core.config.engine._check import check_config_file
 from kompend.core.config.engine._dedupe import strip_duplicate_keys
 from kompend.core.config.generate import enum_choices, extract_toml_keys, generate_scaffold_config, get_default_keys
 from kompend.core.config.keys import PATHS_WIKI_DIR
@@ -238,7 +239,7 @@ class TestResolveConfig:
         cfg = resolve_config()
         assert cfg.get("compile.budget.chunk_size_min") == 2048
         assert cfg.get("compile.output.format") == "markdown"
-        assert cfg.get("compile.llm.fallback_max_retries") == 2
+        assert cfg.get("compile.llm.fallback_chain") == []
         assert cfg.get("compile.llm.vlm_model") is None
 
     def test_project_config_overrides_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
@@ -578,6 +579,70 @@ class TestResolvedConfig:
         output = json.dumps(data, default=str)
         parsed = json.loads(output)
         assert isinstance(parsed, dict)
+
+
+class TestRemovedConfigKeys:
+    """A key either has an effect or does not exist.
+
+    Keys without a reader leave the schema; an old vault that still carries
+    one must load (with a warning) instead of failing every command.
+    """
+
+    def test_removed_keys_are_stripped_with_a_warning(self, tmp_path: Any, monkeypatch: Any, caplog: pytest.LogCaptureFixture) -> None:
+        config_file = tmp_path / "kompend.toml"
+        config_file.write_text(
+            '[compile]\nmode = "full"\n\n'
+            "[compile.llm]\nfallback_max_retries = 4\n\n"
+            "[eval]\nthreshold = 80\nhistory_size = 20\n\n"
+            "[display]\nwiki_topics = 30\nerror_chars = 200\njson_chars = 300\nquery_expansions = 7\n",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        with caplog.at_level("WARNING"):
+            cfg = resolve_config()
+            # The validated view is what strips the retired keys (and warns).
+            model = cfg.kompend
+
+        messages = [r.getMessage() for r in caplog.records]
+        for key in ("compile.mode", "compile.llm.fallback_max_retries", "eval.threshold", "display.wiki_topics"):
+            assert any(key in message for message in messages), key
+
+        # The vault still loads — a removed key must not brick it.
+        assert not hasattr(model.compile, "mode")
+        assert not hasattr(model.compile.llm, "fallback_max_retries")
+        assert not hasattr(model, "eval")
+        assert not hasattr(model.display, "wiki_topics")
+
+    def test_removed_display_keys_keep_the_other_display_values(self, tmp_path: Any, monkeypatch: Any) -> None:
+        config_file = tmp_path / "kompend.toml"
+        config_file.write_text("[display]\nwiki_topics = 30\nexcerpt_chars = 111\n")
+        monkeypatch.chdir(tmp_path)
+
+        cfg = resolve_config()
+
+        assert cfg.kompend.display.excerpt_chars == 111
+
+    def test_removed_key_is_reported_by_config_check(self, tmp_path: Any) -> None:
+        config_file = tmp_path / "kompend.toml"
+        config_file.write_text('[compile]\nmode = "full"\n')
+        report = check_config_file(config_file)
+
+        assert any("compile.mode" in entry.key for entry in report.entries)
+
+    def test_display_value_reaches_the_consumer(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """A user-set display value must be the value the consumer sees.
+
+        ``DEFAULTS`` is a nested dict, so a dotted lookup in it always
+        returned the hardcoded fallback and the user's value never applied.
+        """
+        config_file = tmp_path / "kompend.toml"
+        config_file.write_text("[display]\nsearch_snippet_chars = 77\n")
+        monkeypatch.chdir(tmp_path)
+
+        cfg = resolve_config()
+
+        assert cfg.kompend.display.search_snippet_chars == 77
+        assert cfg.get("display.search_snippet_chars") == 77
 
 
 class TestTomlLoading:

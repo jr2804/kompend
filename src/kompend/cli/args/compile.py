@@ -151,14 +151,3 @@ LlmFallbackChain = Annotated[
         rich_help_panel="LLM",
     ),
 ]
-
-LlmFallbackMaxRetries = Annotated[
-    int,
-    typer.Option(
-        "--llm-fallback-max-retries",
-        help=("Transient-error retries before advancing to the next model in the failover chain. 2 means up to three attempts per model."),
-        min=0,
-        envvar=EnvVar.LLM_FALLBACK_MAX_RETRIES,
-        rich_help_panel="LLM",
-    ),
-]

@@ -14,19 +14,16 @@ from kompend.capture.consolidate import consolidate
 from kompend.capture.distill import distill
 from kompend.capture.learn import learn
 from kompend.core.config import (
-    DEFAULTS,
     EmbeddingConfig,
     LLMConfig,
     resolve_config,
 )
-from kompend.core.config.keys import COMPILE_LLM_OUTPUT_RETRIES, DISPLAY_MCP_ELEMENT_CHARS
 from kompend.core.models import MetadataField, WikiField
 from kompend.core.models.attachments import AttachmentManifest
 from kompend.core.paths import vault_paths
 from kompend.core.pipeline.config import Compiler, ImageMode, OutputConfig, OutputFormat, PipelineConfig
 from kompend.core.pipeline.orchestrator import build_pipeline
 from kompend.core.text.matching import SemanticMatcher
-from kompend.core.utils.dicts import as_int
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers import build_default_router
 from kompend.rag.zvec_store import make_provider
@@ -45,6 +42,7 @@ def parse_document(file: str) -> dict[str, Any]:
     except ValueError as exc:
         return {"status": "error", "message": str(exc)}
 
+    element_limit = resolve_config(base_dir=doc_file.parent).kompend.display.mcp_element_chars
     try:
         doc = router.parse(doc_file)
         return {
@@ -54,7 +52,7 @@ def parse_document(file: str) -> dict[str, Any]:
             "elements": [
                 {
                     "type": str(el.type),
-                    "content": str(el.content)[: DEFAULTS.get(DISPLAY_MCP_ELEMENT_CHARS, 500)],
+                    "content": str(el.content)[:element_limit],
                     "page": el.page,
                     "heading_level": el.heading_level,
                 }

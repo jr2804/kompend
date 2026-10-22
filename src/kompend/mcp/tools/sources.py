@@ -137,6 +137,7 @@ def sources_export(
         cli_overrides=build_cli_overrides(cli_set=cli_set),
     )
     ann = as_str(cfg.get(EXPORT_ANNOTATIONS)) or "off"
+    doc_headings = cfg.kompend.display.doc_headings
     summ = as_str(cfg.get(EXPORT_SUMMARY)) or "off"
 
     if export_all:

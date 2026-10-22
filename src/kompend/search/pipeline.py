@@ -16,6 +16,7 @@ from __future__ import annotations
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from kompend.core.config import RlmConfig
+from kompend.core.config._configs import BudgetConfig, DisplayConfig, LLMConfig
 from kompend.core.models import CompiledWiki
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.text.matching import cosine as cosine_similarity
@@ -59,17 +60,25 @@ class EnhancedRetriever:
         reranker_top_k: int = 20,
         # HyDE config
         hyde_enabled: bool = False,
+        # LLM/budget config — applied to every agent this retriever owns
+        llm: LLMConfig | None = None,
+        budget: BudgetConfig | None = None,
+        display: DisplayConfig | None = None,
     ) -> None:
         self._wiki = wiki
         self._expansion_agent = expansion_agent
         self._crag_agent = crag_agent
         self._hyde_agent = hyde_agent
+        self._llm = llm
+        self._budget = budget
+        self._display = display
         self._template_loader: TemplateLoader = get_template_loader()
 
         # Base retriever
         self._retriever = HybridRetriever(
             wiki,
             vector_store=vector_store,
+            display=display,
         )
 
         # Expansion config
@@ -159,6 +168,8 @@ class EnhancedRetriever:
             skills=skills,
             reasoning_effort=reasoning_effort,
             rlm=rlm,
+            llm=self._llm,
+            budget=self._budget,
         )
 
     # ── Multi-Query Expansion (RAG-Fusion) ────────────────────────────────

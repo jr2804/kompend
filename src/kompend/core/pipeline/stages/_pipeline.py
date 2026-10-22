@@ -18,8 +18,6 @@ from kompend.chunking.summarizer import NodeSummarizer
 from kompend.compilation.base import BaseCompiler
 from kompend.core.cache.store import CacheStore
 from kompend.core.cancel import CancelState, KompendCancelled
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_TIER_SAMPLE_SIZE
 from kompend.core.models import (
     ChunkTree,
     CompiledWiki,
@@ -181,7 +179,7 @@ class WikiPipeline:
         """Return the available tiers with their current persisted state."""
         state = self.state
         distribution = state.tier_distribution()
-        sample_limit = DEFAULTS.get(DISPLAY_TIER_SAMPLE_SIZE, 5)
+        sample_limit = self.config.display.tier_sample_size
         sample = list(state.entries.values())[:sample_limit]
         return [
             {

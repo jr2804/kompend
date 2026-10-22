@@ -162,6 +162,26 @@ and its line number. Adjacent re-declarations of the same `[table]`
 header are merged the same way; any other TOML error still fails the
 file load.
 
+### Removed keys
+
+A config key either has an effect or does not exist. Keys without a
+reader were removed from the schema; an old vault that still carries one
+gets a warning and the key is ignored — the file keeps loading.
+
+| Removed key | Why |
+|-------------|-----|
+| `compile.mode` | The tier flags (`start_at_tier` / `stop_at_tier`) cover the same ground and are the only ones the pipeline reads. |
+| `compile.llm.fallback_max_retries` | Unused; the fallback chain is tried in order. |
+| `compile.llm.role_models` | Superseded by `compile.llm.default_model`. |
+| `eval.threshold`, `eval.history_size` | The evaluation loop no longer exists. |
+| `display.error_chars`, `display.json_chars` | Never read — the renderers use their own formatting. |
+| `display.query_expansions` | No expander behind the key. |
+| `display.wiki_topics` | Fed an index section that was dropped. |
+| `ingest.parser`, `ingest.parser_fallback` | Parsecraft is the only backend and routes internally. |
+| `compile.pdf.*` | The kompend-owned docling/liteparse backends were replaced by parsecraft. |
+
+`kompend config check` reports them as deprecations.
+
 ## Configuration Reference
 
 The main configuration sections:
@@ -170,10 +190,12 @@ The main configuration sections:
 |---------|---------|
 | `[paths]` | Wiki directory, source/output/cache/state paths; `recursive` controls whether `sources/` subdirectories are scanned (`--recursive/--no-recursive`) |
 | `[compile]` | Compile settings: format, chunk size, image mode, workers |
-| `[compile.budget]` | Token budget settings (see [Model Context Adaptation](model-context.md) for full reference) |
+| `[compile.budget]` | Token budget settings — budgets shape the work, they never exclude it (see [Model Context Adaptation](model-context.md) for full reference) |
 | `[compile.llm]` | LLM model, provider, fallback chain, role models |
 | `[compile.embedding]` | Embedding model for the vector index (`<provider>:<model>`, e.g. `ollama:granite-embedding:278m`; empty disables) |
 | `[compile.memory]` | Memory lifecycle (confidence decay, tiers) |
+| `[display]` | Output limits (excerpts, snippets, description length, CLI previews) |
+| `[ingest]` | Ingestion settings; `parsecraft_backend_options` overrides the parsecraft backend options |
 | `[providers.<id>]` | User-defined OpenAI-compatible endpoints (self-hosted llama.cpp, vLLM, TGI). See [LLM Configuration](llm-config.md#user-defined-providers) |
 | `[export]` | `kompend sources export` placement of extracted data (`annotations` / `summary`: `off` \| `inline` \| `asset`) |
 | `[notes]` | User notes file configuration |

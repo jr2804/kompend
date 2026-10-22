@@ -14,7 +14,6 @@ from __future__ import annotations
 # Common/global arguments
 from .common import (
     APP_NAME_UPPERCASE,
-    DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     DEFAULT_START_AT_TIER,
     CliSet,
     ConfigPath,
@@ -38,7 +37,6 @@ from .compile import (
     IndexStore,
     LlmDefaultModel,
     LlmFallbackChain,
-    LlmFallbackMaxRetries,
     OnlineUrls,
     SynthesizeFlag,
     UrlFile,
@@ -178,7 +176,6 @@ from .serving import (
 __all__ = [
     # Common
     "APP_NAME_UPPERCASE",
-    "DEFAULT_LLM_FALLBACK_MAX_RETRIES",
     "DEFAULT_START_AT_TIER",
     "WRITE_SOURCES_DEFAULT",
     "AgentMcpPort",
@@ -253,7 +250,6 @@ __all__ = [
     "ListTiers",
     "LlmDefaultModel",
     "LlmFallbackChain",
-    "LlmFallbackMaxRetries",
     "LogLast",
     "LogWrite",
     # Memory

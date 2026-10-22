@@ -36,4 +36,7 @@ def make_memory_store(wiki_dir: str) -> tuple[MemoryStore, str]:
     """Create a MemoryStore and resolve the acting user from config."""
     cfg = resolve_config(base_dir=wiki_dir)
     embed_model = as_str(cfg.get(COMPILE_EMBEDDING_MODEL))
-    return MemoryStore(base_dir=Path(wiki_dir), embedding_model=embed_model), resolve_actor(cfg)
+    return (
+        MemoryStore(base_dir=Path(wiki_dir), embedding_model=embed_model, display=cfg.kompend.display),
+        resolve_actor(cfg),
+    )

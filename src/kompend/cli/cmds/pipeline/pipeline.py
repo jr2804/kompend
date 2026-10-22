@@ -71,11 +71,8 @@ from kompend.cli.args import (
     Workers,
 )
 from kompend.core.cancel import CancelState, KompendCancelled
-from kompend.core.config import DEFAULTS, coerce_config_value, resolve_config, validate_config_key
+from kompend.core.config import coerce_config_value, resolve_config, validate_config_key
 from kompend.core.config._configs import LintConfig
-from kompend.core.config.keys import (
-    DISPLAY_CLI_ELEMENT_CHARS,
-)
 from kompend.core.models import MetadataField, WikiField, load_cached_wiki, load_wiki_from_files
 from kompend.core.paths import VaultPaths, vault_paths
 from kompend.core.pipeline.config import PipelineConfig
@@ -122,7 +119,7 @@ def parse_cmd(
             continue
         get_console().print(f"{path.name}: {len(doc.elements)} element(s)")
         if print_elements:
-            element_text_limit = DEFAULTS.get(DISPLAY_CLI_ELEMENT_CHARS, 80)
+            element_text_limit = cfg.kompend.display.cli_element_chars
             for el in doc.elements:
                 content = el.content if isinstance(el.content, str) else repr(el.content)
                 get_console().print(f"  - {el.type}: {content[:element_text_limit]}")
@@ -157,7 +154,6 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     compile_lint: CompileLint = True,
     compile_lint_all: CompileLintAll = True,
     llm_fallback_chain: LlmFallbackChain = None,
-    llm_fallback_max_retries: LlmFallbackMaxRetries = DEFAULT_LLM_FALLBACK_MAX_RETRIES,
     llm_default_model: LlmDefaultModel = None,
     vlm_model: VlmModel = None,
     memory_enabled: MemoryEnabled = None,

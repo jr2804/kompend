@@ -176,7 +176,6 @@ single-model mode.
 
 ```bash
 export KOMP_LLM_FALLBACK_CHAIN="openai/gpt-4o,anthropic/claude-3-haiku-20240307,ollama/llama3.2"
-export KOMP_LLM_FALLBACK_MAX_RETRIES=2
 ```
 
 ### TOML
@@ -185,7 +184,6 @@ export KOMP_LLM_FALLBACK_MAX_RETRIES=2
 [compile.llm]
 default_model = "ollama/qwen3"
 fallback_chain = ["openai/gpt-4o", "anthropic/claude-3-haiku-20240307"]
-fallback_max_retries = 2
 ```
 
 ## Context window requirements

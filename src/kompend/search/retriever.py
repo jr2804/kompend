@@ -75,10 +75,12 @@ class HybridRetriever:
         self,
         wiki: CompiledWiki,
         vector_store: VectorStoreLike | None = None,
+        display: DisplayConfig | None = None,
     ) -> None:
         self._wiki = wiki
         self._vector_store = vector_store
         self._node_by_id: dict[str, WikiNode] = {n.id: n for n in wiki.nodes}
+        self._display = display if display is not None else DisplayConfig()
 
     def search(
         self,
@@ -168,7 +170,11 @@ class HybridRetriever:
         node_id = str(hit.get("id", ""))
         node = self._node_by_id.get(node_id)
         title = _hit_str(hit, ZvecField.TITLE) or (node.title if node else node_id)
-        snippet = extract_snippet(node.content, query_tokens) if node and node.content else _hit_str(hit, ZvecField.CONTENT_PREVIEW) or title
+        snippet = (
+            extract_snippet(node.content, query_tokens, self._display.search_snippet_chars)
+            if node and node.content
+            else _hit_str(hit, ZvecField.CONTENT_PREVIEW) or title
+        )
         source_file = _hit_opt_str(hit, ZvecField.SOURCE_FILE)
         if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
             source_file = str(node.metadata[MetadataField.SOURCE])
@@ -236,7 +242,7 @@ class HybridRetriever:
 
         expanded: dict[str, SearchResult] = {r.article_id: r for r in initial_results}
         decay_factor = 0.5
-        max_chars = DEFAULTS.get(DISPLAY_SEARCH_SNIPPET_CHARS, 300)
+        max_chars = self._display.search_snippet_chars
 
         def add_neighbor(neighbor_id: str, seed_score: float) -> None:
             if neighbor_id in expanded:
@@ -279,8 +285,9 @@ class KeywordRetriever:
     dispatch is unchanged.
     """
 
-    def __init__(self, wiki: CompiledWiki) -> None:
+    def __init__(self, wiki: CompiledWiki, display: DisplayConfig | None = None) -> None:
         self._nodes = {n.id: n for n in wiki.nodes}
+        self._display = display if display is not None else DisplayConfig()
 
     def search(
         self,
@@ -315,7 +322,7 @@ class KeywordRetriever:
 
         results: list[SearchResult] = []
         for score, node in scored[:top_k]:
-            snippet = extract_snippet(node.content, query_tokens) if node.content else node.title
+            snippet = extract_snippet(node.content, query_tokens, self._display.search_snippet_chars) if node.content else node.title
             source_file = None
             if node.metadata and node.metadata.get(MetadataField.SOURCE):
                 source_file = str(node.metadata[MetadataField.SOURCE])

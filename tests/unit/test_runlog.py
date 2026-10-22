@@ -7,28 +7,57 @@ argv-walk that hand-stripped ``--wiki-dir``/``-w`` is gone).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from typer.testing import CliRunner
 
 from kompend.cli.app import app
+from kompend.core.config import resolve_config
+from kompend.core.config._configs import DisplayConfig
 from kompend.core.reporting.runlog import _command_label
 
 
 class TestCommandLabel:
     def test_plain_command(self) -> None:
-        assert _command_label(["compile"]) == "compile"
+        assert _command_label(["compile"], DisplayConfig()) == "compile"
 
     def test_nested_command_keeps_full_path(self) -> None:
-        assert _command_label(["attachments", "add", "s", "f"]) == "attachments add s f"
+        assert _command_label(["attachments", "add", "s", "f"], DisplayConfig()) == "attachments add s f"
 
     def test_truncates_to_preview_limit(self) -> None:
-        assert _command_label(["lint", "a", "b", "c", "d"]) == "lint a b c"
+        assert _command_label(["lint", "a", "b", "c", "d"], DisplayConfig()) == "lint a b c"
 
     def test_empty_tokens_labels_none(self) -> None:
-        assert _command_label([]) == "(none)"
+        assert _command_label([], DisplayConfig()) == "(none)"
 
     def test_subcommand_args_included_verbatim(self) -> None:
-        assert _command_label(["compile", "--foo"]) == "compile --foo"
+        assert _command_label(["compile", "--foo"], DisplayConfig()) == "compile --foo"
+
+
+class TestRunLogNeverFails:
+    """The run log is written for every command — a config problem must not abort one.
+
+    The run log reads its display limits from the *merged* config, never from
+    the validated model: a vault whose config does not validate yet (a typo in
+    a key) must still run ``kompend config path``.
+    """
+
+    def test_invalid_config_does_not_break_the_command(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "kompend.toml").write_text("[compile]\nchunk_size = 128\n")
+
+        result = CliRunner().invoke(app, ["config", "path"])
+
+        assert result.exit_code == 0, result.output
+
+    def test_display_limits_come_from_the_config(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "kompend.toml").write_text("[display]\ncli_arg_preview = 2\n")
+
+        cfg = resolve_config()
+
+        assert cfg.get("display.cli_arg_preview") == 2
 
 
 class TestCallbackTokens:

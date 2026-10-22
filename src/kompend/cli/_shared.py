@@ -22,7 +22,6 @@ from kompend.core.config.keys import (
     COMPILE_LINT_ALL,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
-    COMPILE_LLM_FALLBACK_MAX_RETRIES,
     COMPILE_LLM_VLM_MODEL,
     COMPILE_MEMORY_ENABLED,
     COMPILE_NO_CACHE,
@@ -94,7 +93,6 @@ def build_cli_overrides(
     vlm_model: str | None = None,
     memory_enabled: bool | None = None,
     llm_fallback_chain: list[str] | None = None,
-    llm_fallback_max_retries: int | None = None,
     embed_model: str | None = None,
     in_place_sources: bool | None = None,
     recursive: bool | None = None,
@@ -152,8 +150,6 @@ def build_cli_overrides(
         overrides[TRUST_USER_TRACKING] = False
     if llm_fallback_chain is not None:
         overrides[COMPILE_LLM_FALLBACK_CHAIN] = list(llm_fallback_chain)
-    if llm_fallback_max_retries is not None:
-        overrides[COMPILE_LLM_FALLBACK_MAX_RETRIES] = llm_fallback_max_retries
     if cli_set:
         # --set values are already coerced and validated; merged last = highest precedence.
         overrides.update(cli_set)

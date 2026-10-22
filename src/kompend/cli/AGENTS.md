@@ -181,7 +181,7 @@ repeatedly. Break the cycle with this diagnostic order:
 
 Do NOT "fix" a bar that passes steps 1–2. Investigate the backend call
 that isn't completing. The fix lives in `src/kompend/llm/`, the resolver,
-or the model config (`timeout`, `fallback_max_retries`), not in
+or the model config (`timeout`, `fallback_chain`), not in
 `_progress.py` or `_pipeline_helpers.py`.
 
 **Signal-path contract:** a phase advances only when the core tier calls

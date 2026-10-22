@@ -17,18 +17,25 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
-from kompend.core.config import DEFAULTS, resolve_config
-from kompend.core.config.keys import DISPLAY_CLI_ARG_PREVIEW, DISPLAY_LOG_ERROR_CHARS, PATHS_STATE_DIR, PATHS_WIKI_DIR
+from kompend.core.config import ResolvedConfig, resolve_config
+from kompend.core.config._configs import DisplayConfig
+from kompend.core.config.keys import (
+    DISPLAY_CLI_ARG_PREVIEW,
+    DISPLAY_LOG_ERROR_CHARS,
+    PATHS_STATE_DIR,
+    PATHS_WIKI_DIR,
+)
 from kompend.core.paths import CONFIG_FILE
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import RUNS_TABLE
 from kompend.core.utils.time import iso_local, now_local
 from kompend.logging import get_logger
+from kompend.types import ConfigValue
 
 _SOFT_CAP_ROWS = 1000
 _KEEP_ROWS = 500
@@ -44,6 +51,7 @@ class RunHandle:
     cmd: str
     db_path: Path
     start_iso: str
+    error_chars: int = field(default_factory=lambda: DisplayConfig().log_error_chars)
 
 
 class RunEvent(TypedDict):
@@ -65,13 +73,13 @@ def log_run_start(wiki_dir: str | None = None, *, cmd_tokens: list[str] | None =
     ``cmd_tokens`` are the already-parsed command tokens supplied by the CLI
     layer (subcommand + its raw args); the run log never reads ``sys.argv``.
     """
-    state_dir = resolve_state_dir(wiki_dir=wiki_dir)
+    state_dir, display = _resolve_run_context(wiki_dir)
     if state_dir is None:
         return None
     db_path = vault_db_path(state_dir)
     run_id = uuid.uuid4().hex[:8]
     start_iso = iso_local()
-    cmd = _command_label(cmd_tokens or [])
+    cmd = _command_label(cmd_tokens or [], display)
     try:
         with open_store(db_path) as conn:
             conn.execute(
@@ -82,7 +90,7 @@ def log_run_start(wiki_dir: str | None = None, *, cmd_tokens: list[str] | None =
         logger.debug("run-log start write failed: %s", exc)
         return None
     _maybe_prune(db_path)
-    return RunHandle(run_id=run_id, cmd=cmd, db_path=db_path, start_iso=start_iso)
+    return RunHandle(run_id=run_id, cmd=cmd, db_path=db_path, start_iso=start_iso, error_chars=display.log_error_chars)
 
 
 def resolve_state_dir(wiki_dir: str | None = None) -> Path | None:
@@ -95,21 +103,53 @@ def resolve_state_dir(wiki_dir: str | None = None) -> Path | None:
         ``KOMP_WIKI_DIR`` env var is **not** checked here — that is
         handled by Typer's ``WikiDir`` type in the CLI layer.
     """
+    state_dir, _ = _resolve_run_context(wiki_dir)
+    return state_dir
+
+
+def _resolve_run_context(wiki_dir: str | None = None) -> tuple[Path | None, DisplayConfig]:
+    """Resolve the vault state dir and the display limits for this run.
+
+    The display limits are read from the *merged* config, not from the
+    validated model: the run log is written for every command, so a vault
+    whose config does not validate yet (``kompend config path`` on a stale
+    config) must still run and still be logged.
+    """
     cli_overrides = {PATHS_WIKI_DIR: wiki_dir} if wiki_dir else {}
     cfg = resolve_config(cli_overrides=cli_overrides)
     raw = cfg.get(PATHS_STATE_DIR)
+    display = _display_limits(cfg)
     if raw is None:
-        return None
+        return None, display
     state_dir = Path(str(raw))
     if state_dir.is_dir() and (state_dir / CONFIG_FILE).is_file():
-        return state_dir
-    return None
+        return state_dir, display
+    return None, display
 
 
-def _command_label(cmd_tokens: list[str]) -> str:
+def _display_limits(cfg: ResolvedConfig) -> DisplayConfig:
+    """Read the run-log display limits from the resolved config.
+
+    Unset or non-numeric values fall back to the schema defaults — the run
+    log never fails because of a config value.
+    """
+    defaults = DisplayConfig()
+    return defaults.model_copy(
+        update={
+            "cli_arg_preview": _int_or(cfg.get(DISPLAY_CLI_ARG_PREVIEW), defaults.cli_arg_preview),
+            "log_error_chars": _int_or(cfg.get(DISPLAY_LOG_ERROR_CHARS), defaults.log_error_chars),
+        }
+    )
+
+
+def _int_or(value: ConfigValue, fallback: int) -> int:
+    """Return *value* when it is an int, else *fallback*."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else fallback
+
+
+def _command_label(cmd_tokens: list[str], display: DisplayConfig) -> str:
     """Render the first few command tokens as the run label."""
-    arg_preview_limit = DEFAULTS.get(DISPLAY_CLI_ARG_PREVIEW, 4)
-    return " ".join(cmd_tokens[:arg_preview_limit]) or "(none)"
+    return " ".join(cmd_tokens[: display.cli_arg_preview]) or "(none)"
 
 
 def log_run_end(
@@ -125,8 +165,7 @@ def log_run_end(
     duration = (now_local() - _parse_iso(handle.start_iso)).total_seconds()
     capped_error: str | None = None
     if error:
-        log_error_limit = DEFAULTS.get(DISPLAY_LOG_ERROR_CHARS, 500)
-        capped_error = error[:log_error_limit]
+        capped_error = error[: handle.error_chars]
     try:
         with open_store(handle.db_path) as conn:
             conn.execute(

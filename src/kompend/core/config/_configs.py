@@ -237,7 +237,6 @@ class LLMConfig(_KompendBaseModel):
     default_model: str | None = Field(default=None, validation_alias=EnvVar.LLM_DEFAULT_MODEL)
     vlm_model: str | None = Field(default=None, validation_alias=EnvVar.VLM_MODEL)
     fallback_chain: list[str] = Field(default_factory=list, validation_alias=EnvVar.LLM_FALLBACK_CHAIN)
-    fallback_max_retries: int = Field(default=2, validation_alias=EnvVar.LLM_FALLBACK_MAX_RETRIES)
     timeout: float = Field(default=120.0, validation_alias=EnvVar.LLM_TIMEOUT)
     fallback_max_input: int = Field(default=32768, validation_alias=EnvVar.LLM_FALLBACK_MAX_INPUT)
     fallback_max_output: int = Field(default=4096, validation_alias=EnvVar.LLM_FALLBACK_MAX_OUTPUT)
@@ -320,6 +319,8 @@ class BudgetConfig(_KompendBaseModel):
     lint_output_max: int = 8192
     wicer_probe_output_max: int = 4096
     wicer_eval_output_max: int = 4096
+    #: Characters per summary call. Longer content is split into several
+    #: calls (slower, but no content is lost) — it is never truncated.
     summary_max_content_chars: int = 8000
     summary_target_chars: int = 600
     summary_skip_single_child: bool = True
@@ -327,6 +328,9 @@ class BudgetConfig(_KompendBaseModel):
     summary_requests_per_node: int = Field(default=2, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_REQUESTS_PER_NODE)
     summary_session_batch_size: int = Field(default=20, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_BATCH_SIZE)
     summary_session_stall_retries: int = Field(default=1, ge=0, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_STALL_RETRIES)
+    #: Characters served per ``read_source()`` call in the write-page
+    #: synthesis. A longer source is read in several windows (the agent
+    #: pages through it) — it is never shortened.
     capture_source_char_max: int = Field(default=4000, validation_alias=EnvVar.BUDGET_CAPTURE_SOURCE_CHAR_MAX)
     concept_merge_threshold: float = Field(default=0.82, validation_alias=EnvVar.BUDGET_CONCEPT_MERGE_THRESHOLD)
     concept_string_merge_threshold: float = Field(default=0.70, validation_alias=EnvVar.BUDGET_CONCEPT_STRING_MERGE_THRESHOLD)
@@ -390,13 +394,6 @@ class LintConfig(_KompendBaseModel):
         validation_alias=EnvVar.LINT_MODEL,
         description="Model override for LLM-powered lint steps (factual-consistency, clarity-score, ...). Falls back to compile.llm.default_model when unset.",
     )
-
-
-class EvalConfig(_KompendBaseModel):
-    """Evaluation configuration."""
-
-    threshold: float | None = Field(default=None, validation_alias=EnvVar.EVAL_THRESHOLD)
-    history_size: int = 20
 
 
 class DedupConfig(_KompendBaseModel):
@@ -538,8 +535,6 @@ class DisplayConfig(_KompendBaseModel):
     lint_feedback_chars: int = Field(default=200, validation_alias=EnvVar.DISPLAY_LINT_FEEDBACK_CHARS)
     memory_query_chars: int = Field(default=50, validation_alias=EnvVar.DISPLAY_MEMORY_QUERY_CHARS)
     mcp_element_chars: int = Field(default=500, validation_alias=EnvVar.DISPLAY_MCP_ELEMENT_CHARS)
-    wiki_topics: int = Field(default=30, validation_alias=EnvVar.DISPLAY_WIKI_TOPICS)
-    query_expansions: int = Field(default=7, validation_alias=EnvVar.DISPLAY_QUERY_EXPANSIONS)
     web_nodes: int = Field(default=10, validation_alias=EnvVar.DISPLAY_WEB_NODES)
     search_snippet_chars: int = Field(default=300, validation_alias=EnvVar.DISPLAY_SEARCH_SNIPPET_CHARS)
 
@@ -781,7 +776,6 @@ class CompileConfig(_KompendBaseModel):
     image_mode: ImageMode = Field(default=ImageMode.FILE, validation_alias=EnvVar.IMAGE_MODE)
     vlm_min_image_bytes: int = 2048
     vlm_min_image_dimension: int = 64
-    mode: str = "full"
     workers: int = Field(default=1, validation_alias=EnvVar.WORKERS)
     no_cache: bool = Field(default=False, validation_alias=EnvVar.NO_CACHE)
     force: bool = Field(default=False, validation_alias=EnvVar.FORCE)
@@ -825,7 +819,6 @@ class KompendConfig(_KompendBaseModel):
     display: DisplayConfig = Field(default_factory=DisplayConfig)
     compile: CompileConfig = Field(default_factory=CompileConfig)
     lint: LintConfig = Field(default_factory=LintConfig)
-    eval: EvalConfig = Field(default_factory=EvalConfig)
     dedup: DedupConfig = Field(default_factory=DedupConfig)
     trust: TrustConfig = Field(default_factory=TrustConfig)
     query: QueryConfig = Field(default_factory=QueryConfig)

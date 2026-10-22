@@ -3,8 +3,8 @@
 from pathlib import Path
 from typing import Any
 
-from kompend.core.config import DEFAULTS
-from kompend.core.config.keys import DISPLAY_MEMORY_ENTRIES
+from kompend.core.config import resolve_config
+from kompend.core.paths import MEMORY_CONTEXT_FILE, MEMORY_SUBDIR
 from kompend.core.templates import get_template_loader
 from kompend.logging import get_logger
 from kompend.mcp.tools._helpers import make_memory_store, resolve_wiki_dir
@@ -59,13 +59,14 @@ def memory_synthesize(
             return {"status": "ok", "message": "No memory entries found to synthesize."}
 
         base_dir = Path(resolved_dir)
-        context_file = base_dir / "sources" / "_memory" / "system_context.md"
+        cfg = resolve_config(base_dir=resolved_dir)
+        context_file = base_dir / cfg.kompend.paths.sources_dir / MEMORY_SUBDIR / MEMORY_CONTEXT_FILE
         context_file.parent.mkdir(parents=True, exist_ok=True)
 
         loader = get_template_loader()
         content = loader.render(
             "memory/system_context.md.j2",
-            entries=entries[: DEFAULTS.get(DISPLAY_MEMORY_ENTRIES, 10)],
+            entries=entries[: cfg.kompend.display.memory_entries],
         )
         context_file.write_text(content, encoding="utf-8")
 

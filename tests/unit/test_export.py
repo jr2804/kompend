@@ -64,10 +64,10 @@ class TestElementRendering:
 
     def test_summary_from_headings(self, tmp_path: Path) -> None:
         data = _cache_data(_element("heading", "A", heading_level=1), _element("heading", "B", heading_level=1))
-        assert document_summary(data) == "A; B"
+        assert document_summary(data, 5) == "A; B"
 
     def test_summary_falls_back_to_stem(self, tmp_path: Path) -> None:
-        assert document_summary(_cache_data(title="")) == "doc"
+        assert document_summary(_cache_data(title=""), 5) == "doc"
 
     def test_table_escapes_pipes(self, tmp_path: Path) -> None:
         data = _cache_data(_element("table", [["a|b"], ["1"]]))
@@ -98,6 +98,7 @@ class TestImages:
             inline=False,
             annotations="off",
             summary="off",
+            doc_headings=5,
         )
         md = out.read_text(encoding="utf-8")
         assert "out_assets/pic.png" in md
@@ -124,6 +125,7 @@ class TestImages:
             inline=True,
             annotations="off",
             summary="off",
+            doc_headings=5,
         )
         assert "data:image/png;base64," in md
         assert not (tmp_path / "out_assets").exists()
@@ -238,6 +240,7 @@ class TestAnnotations:
             inline=False,
             annotations="asset",
             summary="asset",
+            doc_headings=5,
         )
         payload = json.loads((tmp_path / "out_assets" / "extracted.json").read_text(encoding="utf-8"))
         assert payload["source"] == "sources/doc.pdf"
@@ -259,6 +262,7 @@ class TestAnnotations:
             inline=False,
             annotations="off",
             summary="off",
+            doc_headings=5,
         )
         md = out.read_text(encoding="utf-8")
         assert "## Summary" not in md
@@ -373,7 +377,7 @@ def _write_cache(tmp_path: Path, data: dict, stem: str = "doc") -> None:
 
 
 def _render(data: dict, tmp_path: Path, **kwargs: object) -> str:
-    opts: dict[str, object] = {"inline": False, "annotations": "off", "summary": "off"}
+    opts: dict[str, object] = {"inline": False, "annotations": "off", "summary": "off", "doc_headings": 5}
     opts.update(kwargs)
     return render_document_markdown(
         data,

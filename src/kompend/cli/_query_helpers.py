@@ -145,9 +145,10 @@ def handle_adaptive_search(  # noqa: PLR0917
     state_dir: Path,
     tag_groups: list[list[str]] | None = None,
     attr_filters: list[tuple[str, str | None]] | None = None,
+    display: DisplayConfig | None = None,
 ) -> tuple[list[SearchResult], bool]:
     """Search using adaptive retriever."""
-    retriever = AdaptiveRetriever(wiki, vector_store=vector_store)
+    retriever = AdaptiveRetriever(wiki, vector_store=vector_store, display=display)
     mode = search_mode if search_mode != SearchMode.HYBRID else None
     results = retriever.search(query, top_k=top_k, mode=mode)
     if tag_groups:
@@ -221,7 +222,11 @@ def run_agentic_query_output(
     if not model:
         get_err_console().print("error: No LLM model configured for agentic query.")
         raise typer.Exit(1)
-    retriever = HybridRetriever(wiki, vector_store=vector_store) if vector_store is not None else KeywordRetriever(wiki)
+    retriever = (
+        HybridRetriever(wiki, vector_store=vector_store, display=cfg.kompend.display)
+        if vector_store is not None
+        else KeywordRetriever(wiki, display=cfg.kompend.display)
+    )
     try:
         answer = run_agentic_query(
             query,
@@ -243,7 +248,14 @@ def run_agentic_query_output(
     else:
         get_console().print(encode_structured(structured_answer(synthesis, wiki), format))
     if remember:
-        save_query_memory(state_dir, query, synthesis.answer, cfg.kompend.compile.embedding.model, memory_by=resolve_actor(cfg))
+        save_query_memory(
+            state_dir,
+            query,
+            synthesis.answer,
+            cfg.kompend.compile.embedding.model,
+            memory_by=resolve_actor(cfg),
+            display=cfg.kompend.display,
+        )
 
 
 def build_enhanced_retriever(
@@ -346,7 +358,14 @@ def synthesize_and_output(  # noqa: PLR0917
         get_console().print(encode_structured(structured_answer(synthesis, wiki), format))
 
     if remember:
-        save_query_memory(state_dir, query, synthesis.answer, cfg.kompend.compile.embedding.model, memory_by=resolve_actor(cfg))
+        save_query_memory(
+            state_dir,
+            query,
+            synthesis.answer,
+            cfg.kompend.compile.embedding.model,
+            memory_by=resolve_actor(cfg),
+            display=cfg.kompend.display,
+        )
 
 
 def is_captured_source(source_file: str | None) -> bool:
@@ -436,10 +455,17 @@ def encode_structured(payload: JSONDict, fmt: LlmDataFormat) -> str:
     return encode_for_llm(payload, fmt)
 
 
-def save_query_memory(state_dir: Path, query: str, answer: str, embedding_model: str | None, memory_by: str = "") -> None:
+def save_query_memory(
+    state_dir: Path,
+    query: str,
+    answer: str,
+    embedding_model: str | None,
+    memory_by: str = "",
+    display: DisplayConfig | None = None,
+) -> None:
     """Persist a query/answer pair to the memory store."""
     try:
-        mem_store = MemoryStore(base_dir=state_dir, embedding_model=embedding_model)
+        mem_store = MemoryStore(base_dir=state_dir, embedding_model=embedding_model, display=display)
         mem_store.add_entry(query=query, answer=answer, memory_by=memory_by)
         mem_store.close()
         get_err_console().print("\n✓ Query and answer saved to memory.")

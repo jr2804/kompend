@@ -14,6 +14,7 @@ from pathlib import Path
 
 import pytest
 
+from kompend.core.config import resolve_config
 from kompend.core.models import ParsedDocument
 from kompend.core.models.elements import DocumentElement
 from kompend.core.models.enums import ElementType
@@ -75,6 +76,37 @@ def test_parser_build_options_defaults() -> None:
     assert opts.parsecraft_allow_ocr is None
     assert opts.parsecraft_engines == []
     assert opts.parsecraft_extract_vector_graphics is None
+    assert opts.parsecraft_backend_options == {}
+
+
+def test_backend_options_reach_the_parser(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """``[ingest] parsecraft_backend_options`` is wired to the adapter.
+
+    The key used to exist without a reader: the parser built its own options
+    and the user's setting was silently ignored.
+    """
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "kompend.toml").write_text(
+        '[ingest]\nparsecraft_backend_options = { mineru = { effort = "high" } }\n',
+    )
+
+    options = ParserBuildOptions.from_config(resolve_config())
+
+    assert options.parsecraft_backend_options == {"mineru": {"effort": "high"}}
+
+
+def test_backend_options_are_merged_over_the_derived_ones() -> None:
+    """A user option wins over the adapter's derived default for the same key."""
+    parser = ParsecraftParser(
+        registry=None,
+        parsecraft_effort="high",
+        parsecraft_backend_options={"mineru": {"effort": "medium", "extra": 1}},
+    )
+
+    options = parser._backend_options()  # noqa: SLF001 — the merged options are the contract
+
+    assert options["mineru"]["effort"] == "medium"
+    assert options["mineru"]["extra"] == 1
 
 
 @pytest.mark.parametrize(

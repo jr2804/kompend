@@ -13,7 +13,6 @@ APP_NAME_UPPERCASE = "kompend"
 
 # ── Defaults ────────────────────────────────────────────────────────────
 
-DEFAULT_LLM_FALLBACK_MAX_RETRIES: int = 2
 DEFAULT_START_AT_TIER: str = "index"
 
 
