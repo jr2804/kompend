@@ -74,8 +74,8 @@ from kompend.types import JSONDict, JSONValue
 #: PydanticAI's run_sync is fast but provider-side latency can spike.
 _DEFAULT_TIMEOUT_SECONDS: float = 120.0
 
-#: Default retries when no config value is provided. Matches the config
-#: default in ``compile.llm.output_retries``.
+#: Fallback retries when neither the construction site nor the config set a
+#: budget (``compile.llm.output_retries`` defaults to 2).
 _DEFAULT_RETRIES: int = 2
 
 #: Sentinels for "the construction site did not set this limit" — the
@@ -130,14 +130,16 @@ def resolve_retry_budget(
 ) -> int | AgentRetries:
     """Resolve the tool/output retry split from the config.
 
-    ``retries`` bounds tool-call retries, ``output_retries`` bounds output
-    validation. Both come from ``compile.llm`` when the caller left them
-    unset; ``compile.llm.output_retries_enabled = false`` switches retries
-    off entirely.
+    ``retries`` bounds tool-call retries (``compile.llm.tool_retries``),
+    ``output_retries`` bounds output validation
+    (``compile.llm.agentic_output_retries`` for agentic agents). Both come
+    from ``compile.llm`` when the caller left them unset;
+    ``compile.llm.output_retries_enabled = false`` switches retries off
+    entirely.
     """
     if llm is not None:
         if retries is None or retries == UNSET_RETRIES:
-            retries = llm.output_retries if llm.output_retries_enabled else 0
+            retries = llm.tool_retries if llm.output_retries_enabled else 0
         if output_retries is None:
             output_retries = llm.agentic_output_retries if llm.output_retries_enabled else 0
     if retries is None or retries == UNSET_RETRIES:
@@ -386,6 +388,18 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """The source_id from the most recent ``run()`` call."""
         return self._current_source_id
 
+    def tool_retry_budget(self) -> int:
+        """The tool-call retry budget of this agent.
+
+        ``retries`` is either a plain count (tool *and* output validation) or
+        the split form — the tool half is the one that governs a tool that
+        keeps raising ``ModelRetry``.
+        """
+        retries = self.retries
+        if isinstance(retries, int):
+            return retries
+        return int(retries.get("tools", _DEFAULT_RETRIES))
+
     @staticmethod
     def validate_output(ctx: RunContext[DepsT], output: ResultT) -> ResultT:
         """Semantic output validator. Override in subclasses to add validation.
@@ -411,7 +425,13 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             if self.timeout == UNSET_TIMEOUT:
                 self.timeout = llm.timeout
             if self.retries == UNSET_RETRIES:
-                self.retries = llm.output_retries if llm.output_retries_enabled else 0
+                if llm.output_retries_enabled:
+                    # Tool failures and schema-validation failures are
+                    # different failure modes with different remedies, so
+                    # they get their own budgets.
+                    self.retries = AgentRetries(tools=llm.tool_retries, output=llm.output_retries)
+                else:
+                    self.retries = 0
             if self.reasoning_effort is None:
                 self.reasoning_effort = llm.reasoning_effort
             if self.context_manager is None:
@@ -662,6 +682,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             on_usage_update=self._on_usage_update,
             on_before_compress=self._on_before_compress,
             on_after_compress=self._on_after_compress,
+            tool_retries=self.tool_retry_budget(),
         )
 
     def _resolve_rlm_capability(self, model: Model) -> RLMCapability | None:

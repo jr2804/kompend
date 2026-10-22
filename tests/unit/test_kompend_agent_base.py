@@ -181,6 +181,7 @@ class TestConfigDrivenDefaults:
     def test_limits_come_from_the_config(self) -> None:
         llm = LLMConfig(
             timeout=45.0,
+            tool_retries=4,
             output_retries=5,
             output_retries_enabled=True,
             reasoning_effort="high",
@@ -191,7 +192,7 @@ class TestConfigDrivenDefaults:
         )
         agent = self._agent(llm=llm, budget=BudgetConfig(agent_output_max=999))
         assert agent.timeout == 45.0
-        assert agent.retries == 5
+        assert agent.retries == {"tools": 4, "output": 5}
         assert agent.max_tokens == 999
         assert agent.reasoning_effort == "high"
         assert agent.context_manager == "aggressive"
@@ -239,13 +240,50 @@ class TestConfigDrivenDefaults:
 
 class TestResolveRetryBudget:
     def test_splits_tool_and_output_retries(self) -> None:
-        llm = LLMConfig(output_retries=3, agentic_output_retries=6, output_retries_enabled=True)
+        llm = LLMConfig(
+            tool_retries=3,
+            output_retries=3,
+            agentic_output_retries=6,
+            output_retries_enabled=True,
+        )
         assert resolve_retry_budget(llm, retries=None, output_retries=None) == {"tools": 3, "output": 6}
 
     def test_disabled_output_retries_zero_both(self) -> None:
-        llm = LLMConfig(output_retries=3, agentic_output_retries=6, output_retries_enabled=False)
+        llm = LLMConfig(
+            tool_retries=3,
+            output_retries=3,
+            agentic_output_retries=6,
+            output_retries_enabled=False,
+        )
         assert resolve_retry_budget(llm, retries=None, output_retries=None) == {"tools": 0, "output": 0}
 
     def test_explicit_retries_win(self) -> None:
-        llm = LLMConfig(output_retries=3, agentic_output_retries=6)
+        llm = LLMConfig(tool_retries=3, output_retries=3, agentic_output_retries=6)
         assert resolve_retry_budget(llm, retries=9, output_retries=None) == {"tools": 9, "output": 6}
+
+    def test_tool_budget_comes_from_its_own_key(self) -> None:
+        """A tool that keeps raising ModelRetry has its own budget.
+
+        The output-validation budget must not decide how often a tool may be
+        retried - the two failure modes have different remedies.
+        """
+        llm = LLMConfig(tool_retries=7, output_retries=1, agentic_output_retries=1)
+        assert resolve_retry_budget(llm, retries=None, output_retries=None) == {"tools": 7, "output": 1}
+
+
+class TestToolRetryBudget:
+    """The tool half of the retry budget is reachable by the agent."""
+
+    def test_agent_exposes_the_tool_budget(self) -> None:
+        class _A(KompendAgentBase[Any, Any]):
+            pass
+
+        agent = _A(model_string="ollama/noop", llm=LLMConfig(tool_retries=6, output_retries=2))
+        assert agent.tool_retry_budget() == 6
+
+    def test_plain_retry_count_is_the_tool_budget(self) -> None:
+        class _A(KompendAgentBase[Any, Any]):
+            pass
+
+        agent = _A(model_string="ollama/noop", retries=4)
+        assert agent.tool_retry_budget() == 4

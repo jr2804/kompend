@@ -16,19 +16,25 @@ that no tools exist.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 from pydantic_ai import Agent
 from pydantic_ai_summarization import ContextManagerCapability, SummarizationProcessor
 
 __all__ = ["KompendContextManager"]
 
-#: Tool-call retry budget for the summarizer agent. One hallucinated tool
-#: call must not abort summarization — the ModelRetry feedback ("Unknown
-#: tool name") is usually enough for the model to answer in plain text.
-_SUMMARIZER_RETRIES = 3
+#: Fallback tool-call retry budget for the summarizer agent when no config
+#: value is available. One hallucinated tool call must not abort
+#: summarization — the ModelRetry feedback ("Unknown tool name") is usually
+#: enough for the model to answer in plain text.
+_DEFAULT_TOOL_RETRIES = 3
 
 
+@dataclass
 class _HardenedSummarizationProcessor(SummarizationProcessor):
     """SummarizationProcessor whose agent tolerates hallucinated tool calls."""
+
+    tool_retries: int = _DEFAULT_TOOL_RETRIES
 
     def _get_summarization_agent(self) -> Agent[None, str]:
         if self._summarization_agent is None:
@@ -40,13 +46,16 @@ class _HardenedSummarizationProcessor(SummarizationProcessor):
                     "Respond with plain text only — you have no tools and must "
                     "never attempt to call any."
                 ),
-                retries=_SUMMARIZER_RETRIES,
+                retries=self.tool_retries,
             )
         return self._summarization_agent
 
 
+@dataclass
 class KompendContextManager(ContextManagerCapability):
     """ContextManagerCapability whose summarizer survives tool-hallucinating models."""
+
+    tool_retries: int = _DEFAULT_TOOL_RETRIES
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -57,4 +66,5 @@ class KompendContextManager(ContextManagerCapability):
             token_counter=self.token_counter,
             summary_prompt=self.summary_prompt,
             max_input_tokens=self._resolved_max_tokens,
+            tool_retries=self.tool_retries,
         )

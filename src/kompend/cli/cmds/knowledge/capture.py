@@ -80,7 +80,6 @@ def capture_cmd(
             capture_agent = CaptureAgent(
                 default_model,
                 timeout=float(cfg.kompend.compile.llm.timeout),
-                retries=cfg.kompend.compile.llm.output_retries if cfg.kompend.compile.llm.output_retries_enabled else 0,
                 llm=cfg.kompend.compile.llm,
                 budget=cfg.kompend.compile.budget,
             )

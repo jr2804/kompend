@@ -95,7 +95,6 @@ def extract_agentic(
         timeout=compiler._timeout,
         max_tokens=budget.extract_output_max,
         skills=compiler._config.skills,
-        retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
         delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
         reasoning_effort=compiler._config.llm.reasoning_effort,
         context_manager=compiler._config.llm.context_manager,

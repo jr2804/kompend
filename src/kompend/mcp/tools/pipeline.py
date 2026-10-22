@@ -346,7 +346,6 @@ def _synthesize_write_page(
     agent = WriteAgent(
         model,
         timeout=timeout,
-        retries=llm.output_retries if llm and llm.output_retries_enabled else 0,
         llm=llm,
         budget=budget,
     )

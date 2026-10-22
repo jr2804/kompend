@@ -116,7 +116,6 @@ def run_reference_extraction(
                 model_string=model_string,
                 timeout=timeout,
                 max_tokens=_reference_output_tokens(compiler),
-                retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
                 reasoning_effort=compiler._config.llm.reasoning_effort,
                 context_window=compiler._context_window.max_input,
                 usage_tracker=compiler._usage_tracker,

@@ -248,7 +248,6 @@ def check_llm_availability(pipeline: WikiPipeline) -> None:
         agent = DoctorAgent(
             model,
             timeout=pipeline.config.llm.timeout,
-            retries=pipeline.config.llm.output_retries if pipeline.config.llm.output_retries_enabled else 0,
             llm=pipeline.config.llm,
             budget=pipeline.config.budget,
         )

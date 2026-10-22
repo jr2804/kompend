@@ -134,25 +134,31 @@ def test_agent_receives_configured_limits(flow_env: Callable[[FakeAgent], FakeSt
     run_reference_extraction(compiler, _chunks("Ref one\n"), store)
 
     assert agent.init_kwargs["max_tokens"] == 400
-    assert agent.init_kwargs["retries"] == 3
     assert agent.init_kwargs["context_window"] == 1_500
     assert agent.init_kwargs["timeout"] == 30.0
     assert agent.init_kwargs["delta_retry_enabled"] is True
+    # The retry budget is not pinned at the construction site - the agent
+    # derives it from the llm config (tool budget and output budget are
+    # separate knobs).
+    assert "retries" not in agent.init_kwargs
+    assert agent.init_kwargs["llm"] is compiler._config.llm
     # The salvage hook is a class-level opt-in of the agent, not a
     # constructor argument (the reference agent enables it).
     assert ReferenceExtractionAgent.supports_delta_retry is True
 
 
-def test_agent_retry_budget_follows_output_retries_enabled(
+def test_agent_retry_budget_comes_from_the_config(
     flow_env: Callable[[FakeAgent], FakeStore],
 ) -> None:
     agent = FakeAgent()
     store = flow_env(agent)
-    compiler = _compiler(output_retries=4, output_retries_enabled=False)
+    compiler = _compiler(output_retries=4, tool_retries=7, output_retries_enabled=False)
 
     run_reference_extraction(compiler, _chunks("Ref one\n"), store)
 
-    assert agent.init_kwargs["retries"] == 0
+    llm = agent.init_kwargs["llm"]
+    assert llm.output_retries_enabled is False
+    assert llm.tool_retries == 7
 
 
 def test_every_window_is_processed(flow_env: Callable[[FakeAgent], FakeStore]) -> None:
@@ -232,6 +238,7 @@ def _compiler(
     ref_output_max: int = 8192,
     max_output: int | None = None,
     output_retries: int = 2,
+    tool_retries: int = 3,
     output_retries_enabled: bool = True,
 ) -> SimpleNamespace:
     return SimpleNamespace(
@@ -249,6 +256,7 @@ def _compiler(
             llm=SimpleNamespace(
                 default_chars_per_token=4.0,
                 output_retries=output_retries,
+                tool_retries=tool_retries,
                 output_retries_enabled=output_retries_enabled,
                 reasoning_effort=None,
                 delta_retry_enabled=True,
