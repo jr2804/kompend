@@ -295,11 +295,11 @@ class BudgetConfig(_KompendBaseModel):
     """Token budgets and structural limits for LLM operations.
 
     Sizing strategy:
-    - Input chunks: ``clamp(context_window - reserve, chunk_size_min, chunk_size_max)`` (knox-7sp)
-    - LLM output reserves: per-phase absolute ``*_output_max`` (knox-vxd).  Absolute
-      reserves scale correctly to large context windows; an earlier ratio-based
-      design (``*_output_ratio`` / ``*_output_min``) was specified but never
-      implemented and has been removed.
+    - Input chunks: ``clamp(context_window - reserve, chunk_size_min, chunk_size_max)``.
+    - No output ceiling exists. ``max_tokens`` is never sent to a model: an
+      answer is bounded by the context window minus its prompt, and the
+      planners leave ``ContextWindow.answer_reserve`` free for it (see
+      ``kompend.llm.context_window``).
     """
 
     verify_min_ngram: int = 3
@@ -322,18 +322,6 @@ class BudgetConfig(_KompendBaseModel):
     max_concept_pages: int = Field(default=50, validation_alias=EnvVar.BUDGET_MAX_CONCEPT_PAGES)
     chunk_size_min: int = Field(default=2048, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MIN)
     chunk_size_max: int = Field(default=131072, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MAX)
-    extract_output_max: int = Field(default=8192, validation_alias=EnvVar.BUDGET_EXTRACT_OUTPUT_MAX)
-    #: Generic response ceiling for agents without a dedicated output key
-    #: (capture, write, distill, organize, doctor, vlm, ...). The ceiling
-    #: only bounds the response length — it never cancels work.
-    agent_output_max: int = Field(default=8192, validation_alias=EnvVar.BUDGET_AGENT_OUTPUT_MAX)
-    gen_output_max: int = Field(default=16384, validation_alias=EnvVar.BUDGET_GEN_OUTPUT_MAX)
-    overview_output_max: int = Field(default=4096, validation_alias=EnvVar.BUDGET_OVERVIEW_OUTPUT_MAX)
-    reference_output_max: int = Field(default=8192, validation_alias=EnvVar.BUDGET_REFERENCE_OUTPUT_MAX)
-    verify_output_max: int = 4096
-    lint_output_max: int = 8192
-    wicer_probe_output_max: int = 4096
-    wicer_eval_output_max: int = 4096
     #: Characters per summary call. Longer content is split into several
     #: calls (slower, but no content is lost) — it is never truncated.
     summary_max_content_chars: int = 8000
@@ -475,15 +463,8 @@ class SearchAgenticConfig(_KompendBaseModel):
     max_sub_questions: int = Field(default=5, validation_alias=EnvVar.SEARCH_AGENTIC_MAX_SUB_QUESTIONS)
 
 
-class SearchSynthesisTokensConfig(_KompendBaseModel):
-    brief: int = Field(default=300, validation_alias=EnvVar.SEARCH_SYNTHESIS_TOKENS_BRIEF)
-    standard: int = Field(default=800, validation_alias=EnvVar.SEARCH_SYNTHESIS_TOKENS_STANDARD)
-    comprehensive: int = Field(default=2000, validation_alias=EnvVar.SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE)
-
-
 class SearchSynthesisConfig(_KompendBaseModel):
     verbosity: Verbosity = Field(default=Verbosity.STANDARD, validation_alias=EnvVar.SEARCH_SYNTHESIS_VERBOSITY)
-    tokens: SearchSynthesisTokensConfig = Field(default_factory=SearchSynthesisTokensConfig)
 
 
 class AttachmentsConfig(_KompendBaseModel):

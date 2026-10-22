@@ -61,7 +61,7 @@ from kompend.agents.rlm import (
     RLMCapability,
 )
 from kompend.agents.types import PipelineAgentDeps
-from kompend.core.config._configs import BudgetConfig, LLMConfig, LlmDataFormat, RlmConfig
+from kompend.core.config._configs import LLMConfig, LlmDataFormat, RlmConfig
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.format import salvage_json
@@ -82,10 +82,6 @@ _DEFAULT_RETRIES: int = 2
 #: config (``compile.llm``) or the base default decides.
 UNSET_TIMEOUT: float = -1.0
 UNSET_RETRIES: int = -1
-
-#: Budget key that bounds the response of agents without a dedicated
-#: output ceiling.
-_GENERIC_OUTPUT_BUDGET_KEY: str = "agent_output_max"
 
 #: ContextManagerCapability presets: name -> (compress_threshold, keep).
 #: ``keep`` uses the ``ContextSize`` shape (``("messages", N)``).
@@ -183,7 +179,6 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     model_string: str
     timeout: float = UNSET_TIMEOUT
     retries: int | AgentRetries = UNSET_RETRIES
-    max_tokens: int | None = None
     skills: dict[str, str] = field(default_factory=dict)
     usage_tracker: UsageTracker | None = None
     fallback_models: list[str] | None = None
@@ -200,11 +195,10 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     rlm: RlmConfig | None = None
     #: Deps attribute holding the document context for the RLM REPL.
     rlm_context_field: str = "text"
-    #: Config groups that drive the agent limits. When a construction site
-    #: hands them over, every limit the site did not set explicitly is
-    #: taken from the config (see :meth:`_apply_config_defaults`).
+    #: The ``compile.llm`` config group. When a construction site hands it
+    #: over, every limit the site did not set explicitly is taken from the
+    #: config (see :meth:`_apply_config_defaults`).
     llm: LLMConfig | None = None
-    budget: BudgetConfig | None = None
     #: Format used for structured context injected into this agent's prompts
     #: (``compile.llm.data_format``). Compact formats (TOON/ISON) shrink the
     #: input, which leaves more context window for the answer.
@@ -223,10 +217,6 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     #: ``delta_retry_enabled``; this flag only marks the agent as
     #: capable of the hook.
     supports_delta_retry: ClassVar[bool] = False
-    #: Budget key that bounds this agent's response (``budget.*_output_max``).
-    #: Agents without a dedicated ceiling use the generic
-    #: ``budget.agent_output_max`` (the empty key selects it).
-    output_budget_key: ClassVar[str] = ""
 
     # Runtime-resolved type params (set in __post_init__, not constructor params)
     result_type: type = field(default=str, init=False, repr=False)
@@ -455,11 +445,6 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             self.context_manager = False
         if self.delta_retry_enabled is None:
             self.delta_retry_enabled = True
-        if self.max_tokens is None and self.budget is not None:
-            key = self.output_budget_key or _GENERIC_OUTPUT_BUDGET_KEY
-            ceiling = getattr(self.budget, key, None)
-            if ceiling:
-                self.max_tokens = int(ceiling)
 
     def _usage_limits_for(self, deps: DepsT) -> UsageLimits | None:
         """Per-run UsageLimits; default is the RLM preset limits (or None).
@@ -503,8 +488,6 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         model_settings: ModelSettings = {"timeout": self.timeout}
         if self.temperature is not None:
             model_settings["temperature"] = self.temperature
-        if self.max_tokens is not None:
-            model_settings["max_tokens"] = self.max_tokens
 
         output_type: OutputSpec[Any] = self.result_type
         if self.use_native_output:

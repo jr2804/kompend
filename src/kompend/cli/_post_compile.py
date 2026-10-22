@@ -16,6 +16,7 @@ from kompend import __version__ as _KOMP_VERSION
 from kompend.agents.verification import AgenticVerificationAgent, VerificationAgent, make_agentic_verification_agent
 from kompend.agents.wiki_index import make_agentic_overview_agent
 from kompend.cli._progress import PipelineProgress
+from kompend.compilation._two_phase_core import tokens_to_chars
 from kompend.core.cache.wiki import write_wiki_cache  # noqa: F401 — re-export
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LintConfig
@@ -27,6 +28,7 @@ from kompend.core.utils.time import iso_local
 from kompend.lint.flow import run_full_lint_flow, run_runner_with_progress
 from kompend.lint.history import entry_from_report, save_lint_entry
 from kompend.lint.runner import LintRunner, report_to_summary
+from kompend.llm.context_window import discover_context_window
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.wiki_index import write_index, write_overview
 from kompend.provenance import annotate_wiki_with_provenance
@@ -94,9 +96,8 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
                     model_string=model,
                     timeout=opts.pipeline_config.llm.timeout,
                     llm=opts.pipeline_config.llm,
-                    budget=opts.pipeline_config.budget,
                 ),
-                verify_budget=opts.pipeline_config.budget.verify_output_max * 4,
+                verify_budget=_input_char_budget(opts.pipeline_config),
                 min_ngram=opts.pipeline_config.budget.verify_min_ngram,
             )
 
@@ -337,9 +338,8 @@ def run_overview_synthesis(
                 model_string=pipeline_config.llm.default_model or "",
                 timeout=pipeline_config.llm.timeout,
                 llm=pipeline_config.llm,
-                budget=pipeline_config.budget,
             ),
-            overview_budget=pipeline_config.budget.overview_output_max * 4,
+            overview_budget=_input_char_budget(pipeline_config),
             progress_callback=_synth_cb if synthesize_tracker.enabled else None,
         )
     except Exception as exc:
@@ -351,3 +351,15 @@ def run_overview_synthesis(
         get_console().print("Overview: {overview_file}")
     else:
         get_err_console().print("Overview generation skipped (no content to summarise).")
+
+
+def _input_char_budget(config: PipelineConfig) -> int:
+    """Characters of source text one request can carry for the default model.
+
+    Derived from the model's window minus the answer reserve
+    (``ContextWindow.input_budget``) — no configured output ceiling decides
+    how much source a request may read.
+    """
+    model = config.llm.default_model or ""
+    cw = discover_context_window(model, llm_config=config.llm)
+    return tokens_to_chars(cw.input_budget(), chars_per_token=config.llm.default_chars_per_token)

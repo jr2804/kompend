@@ -517,7 +517,6 @@ def lint_remediate(
             model_string=default_model,
             timeout=float(cfg.kompend.compile.llm.timeout),
             llm=cfg.kompend.compile.llm,
-            budget=cfg.kompend.compile.budget,
         )
         if default_model
         else None

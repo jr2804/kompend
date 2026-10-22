@@ -8,10 +8,22 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Final
 
 from kompend.core.config import LLMConfig
 from kompend.llm.models import _query_ollama_num_ctx, _user_providers, resolve_model_limits
 from kompend.logging import get_logger
+
+#: Share of the window a planner leaves free for the model's answer. No stage
+#: declares its own output ceiling: the answer is bounded by physics (window
+#: minus prompt), so the only planning question is how much of the window a
+#: request must leave unused for the answer it is about to ask for.
+_ANSWER_RESERVE_FRACTION: Final[float] = 0.25
+#: Ceiling for that reserve. A larger window does not mean a longer answer —
+#: a wiki page or a record set tops out well below this.
+_ANSWER_RESERVE_MAX: Final[int] = 8192
+#: Floor for that reserve, so a tiny window still gets a usable answer.
+_ANSWER_RESERVE_MIN: Final[int] = 512
 
 logger = get_logger(__name__)
 
@@ -34,6 +46,40 @@ class ContextWindow:
     max_input: int
     max_output: int
     source: ContextSource
+
+    @property
+    def answer_reserve(self) -> int:
+        """Tokens a request must leave free for the answer."""
+        return answer_reserve_tokens(self.max_input)
+
+    def input_budget(self, reserved_tokens: int = 0) -> int:
+        """Tokens available for prompt content after the answer reserve.
+
+        *reserved_tokens* is any further fixed overhead the caller knows
+        about (a measured system prompt, tool framing, a safety margin).
+        """
+        return max(1, self.max_input - self.answer_reserve - reserved_tokens)
+
+    @property
+    def history_budget(self) -> int:
+        """Token size at which threaded conversation history is compacted.
+
+        Twice the answer reserve: enough history to keep the thread, little
+        enough that the next answer still fits beside it.
+        """
+        return 2 * self.answer_reserve
+
+
+def answer_reserve_tokens(context_window: int) -> int:
+    """Tokens to leave free for the answer when planning a request.
+
+    Derived from the window alone: a quarter of it, bounded to
+    ``[_ANSWER_RESERVE_MIN, _ANSWER_RESERVE_MAX]``. It is a *planning*
+    assumption, not a limit sent to the provider — kompend sends no
+    ``max_tokens``, so a model may use more than this when its prompt ended
+    up smaller than planned, and the window is what stops it.
+    """
+    return max(_ANSWER_RESERVE_MIN, min(_ANSWER_RESERVE_MAX, int(context_window * _ANSWER_RESERVE_FRACTION)))
 
 
 def discover_context_window(  # noqa: PLR0915

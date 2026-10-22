@@ -67,9 +67,8 @@ def extract_agentic(
     - Caching is at the source level (keyed on text hash), NOT per
       section, because memory depends on prior section results.
     - Memory compaction triggers when estimated digest tokens exceed
-      ``extract_output_max`` * 2.
+      ``context_window.history_budget`` (twice the answer reserve).
     """
-    budget = compiler._budget
     full_text_hash = _full_text_hash(texts)
 
     # Source-level cache
@@ -93,7 +92,6 @@ def extract_agentic(
     agent = ExtractionAgent(
         model_string=compiler._model or "",
         timeout=compiler._timeout,
-        max_tokens=budget.extract_output_max,
         skills=compiler._config.skills,
         delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
         reasoning_effort=compiler._config.llm.reasoning_effort,
@@ -102,11 +100,10 @@ def extract_agentic(
         tools=tools or [],
         usage_tracker=compiler._usage_tracker,
         llm=compiler._config.llm,
-        budget=budget,
     )
 
     memory = ExtractionMemory()
-    compaction_threshold = budget.extract_output_max * 2
+    compaction_threshold = compiler._context_window.history_budget
     batch_retries = compiler._config.llm.batch_retry_attempts
     overall_succeeded = False
 
@@ -119,7 +116,7 @@ def extract_agentic(
         )
 
         # Build message history with memory digest injected as a system message
-        memory_digest = memory.summarize(max_tokens=budget.extract_output_max)
+        memory_digest = memory.summarize(max_tokens=compiler._context_window.answer_reserve)
         message_history: list[ModelMessage] = []
         if tools:
             message_history.append(

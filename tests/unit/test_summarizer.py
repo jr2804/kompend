@@ -315,7 +315,7 @@ class TestSummarizerAgenticBatching:
                 deps.results[node_id] = f"summary {node_id}"
 
         monkeypatch.setattr(agent, "run", _run)
-        policy = SummarizerSessionPolicy(batch_size=2, stall_retries=0)
+        policy = SummarizerSessionPolicy(batch_size=2, stall_retries=0, payload_chars=100_000)
         tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
 
         assert [len(round) for round in rounds] == [2, 2]
@@ -338,7 +338,7 @@ class TestSummarizerAgenticBatching:
                 deps.results[node_id] = f"summary {node_id}"
 
         monkeypatch.setattr(agent, "run", _run)
-        policy = SummarizerSessionPolicy(batch_size=2, stall_retries=0)
+        policy = SummarizerSessionPolicy(batch_size=2, stall_retries=0, payload_chars=100_000)
         tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
 
         assert len(rounds) == 2
@@ -363,7 +363,7 @@ class TestSummarizerAgenticBatching:
                 deps.results[node_id] = f"summary {node_id}"
 
         monkeypatch.setattr(agent, "run", _run)
-        policy = SummarizerSessionPolicy(batch_size=2, stall_retries=1)
+        policy = SummarizerSessionPolicy(batch_size=2, stall_retries=1, payload_chars=100_000)
         tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
 
         assert [len(round) for round in rounds] == [2, 2, 2]
@@ -398,13 +398,34 @@ class TestSummarizerWindowing:
                 deps.results[entry["id"]] = f"summary {entry['id']}"
 
         agent.run = _run  # type: ignore[method-assign]
-        policy = SummarizerSessionPolicy(batch_size=10, stall_retries=1)
+        policy = SummarizerSessionPolicy(batch_size=10, stall_retries=1, payload_chars=100_000)
         tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(_long_tree())
 
         entries = [entry for session in seen for entry in session]
         ids = [entry_id for entry_id, _ in entries]
         assert any(entry_id.startswith("s#w") for entry_id in ids)
         assert any("TAIL-MARKER" in content for _, content in entries)
+        assert tree.nodes["s"].summary != ""
+
+    def test_agentic_payload_is_bounded_by_the_session_payload_size(self) -> None:
+        """A payload never exceeds its character budget; the rest is asked later."""
+        agent = make_agentic_summarizer_agent("test-model")
+        seen: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            entries = list(deps.nodes)
+            seen.append([entry["id"] for entry in entries])
+            assert sum(len(entry["content"]) for entry in entries) <= 120
+            for entry in entries:
+                deps.results[entry["id"]] = f"summary {entry['id']}"
+
+        agent.run = _run  # type: ignore[method-assign]
+        policy = SummarizerSessionPolicy(batch_size=10, stall_retries=1, payload_chars=120)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(window_chars=50), session_policy=policy).summarize(_long_tree())
+
+        # The long node needs several windows, so it takes several sessions -
+        # and every window is eventually summarised.
+        assert len(seen) > 1
         assert tree.nodes["s"].summary != ""
 
     def test_agentic_window_size_comes_from_the_config(self) -> None:
@@ -417,7 +438,7 @@ class TestSummarizerWindowing:
                 deps.results[entry["id"]] = f"summary {entry['id']}"
 
         agent.run = _run  # type: ignore[method-assign]
-        policy = SummarizerSessionPolicy(batch_size=100, stall_retries=1)
+        policy = SummarizerSessionPolicy(batch_size=100, stall_retries=1, payload_chars=100_000)
         NodeSummarizer(agent=agent, content_policy=_policy(window_chars=40), session_policy=policy).summarize(_long_tree())
         small_window_entries = [entry_id for session in seen for entry_id in session]
 

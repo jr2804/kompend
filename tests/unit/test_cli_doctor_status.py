@@ -16,6 +16,7 @@ from kompend.cli.cmds.quality import doctor
 from kompend.cli.cmds.quality.doctor import CheckResult, print_doctor_results, run_doctor
 from kompend.core.paths import COMPILE_STATE_FILE, KOMP_DB_FILE
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
+from kompend.llm.context_window import ContextSource, ContextWindow
 
 
 class TestCheckResult:
@@ -240,11 +241,36 @@ class TestRunDoctorOrder:
         if "connectivity-vlm" in names and "context-window-vlm" in names:
             assert names.index("connectivity-vlm") < names.index("context-window-vlm")
 
-    def test_budget_consistency_after_context_window(self) -> None:
-        """budget-consistency uses the discovered context window, so it must follow."""
+    def test_window_fit_reports_a_usable_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            doctor,
+            "discover_context_window",
+            lambda *a, **k: ContextWindow(max_input=32_768, max_output=32_768, source=ContextSource.OLLAMA),
+        )
+
+        result = doctor._check_window_fit("ollama/test")
+
+        assert result.passed
+        assert "8192 answer reserve" in result.message
+
+    def test_window_fit_rejects_a_window_without_input_room(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A window whose answer reserve leaves no room for input cannot compile."""
+        monkeypatch.setattr(
+            doctor,
+            "discover_context_window",
+            lambda *a, **k: ContextWindow(max_input=600, max_output=600, source=ContextSource.OLLAMA),
+        )
+
+        result = doctor._check_window_fit("ollama/test")
+
+        assert not result.passed
+        assert "increase the model's context window" in result.message
+
+    def test_window_fit_after_context_window(self) -> None:
+        """The window-fit check reads the discovered window, so it must follow it."""
         names = [r.name for r in run_doctor()]
-        if "context-window-llm" in names and "budget-consistency" in names:
-            assert names.index("context-window-llm") < names.index("budget-consistency")
+        if "context-window-llm" in names and "window-fit" in names:
+            assert names.index("context-window-llm") < names.index("window-fit")
 
     def test_llm_block_precedes_vlm_block(self) -> None:
         """Per-model blocks: every llm check runs before the vlm block starts."""
@@ -449,7 +475,7 @@ class TestVlmFallbackIndication:
         monkeypatch.setattr(doctor, "_ping_model", lambda *a, **k: CheckResult("ping", True))
         monkeypatch.setattr(doctor, "_ping_embed_model", lambda *a, **k: CheckResult("embed", True))
         monkeypatch.setattr(doctor, "_check_context_window", lambda *a, **k: CheckResult("ctx", True))
-        monkeypatch.setattr(doctor, "_check_budget_consistency", lambda *a, **k: CheckResult("budget", True))
+        monkeypatch.setattr(doctor, "_check_window_fit", lambda *a, **k: CheckResult("window-fit", True))
         monkeypatch.setattr(doctor, "_check_model_capabilities", lambda *a, **k: [CheckResult("struct", True)])
         monkeypatch.setattr(doctor, "_check_custom_providers", lambda *a, **k: CheckResult("providers", True))
         monkeypatch.setattr(doctor, "_check_ollama_device", lambda *a, **k: CheckResult("device", True))
@@ -484,7 +510,7 @@ class TestVlmFallbackIndication:
         monkeypatch.setattr(doctor, "_ping_model", _fake_ping)
         monkeypatch.setattr(doctor, "_ping_embed_model", lambda *a, **k: CheckResult("embed", True))
         monkeypatch.setattr(doctor, "_check_context_window", lambda *a, **k: CheckResult("ctx", True))
-        monkeypatch.setattr(doctor, "_check_budget_consistency", lambda *a, **k: CheckResult("budget", True))
+        monkeypatch.setattr(doctor, "_check_window_fit", lambda *a, **k: CheckResult("window-fit", True))
         monkeypatch.setattr(doctor, "_check_model_capabilities", lambda *a, **k: [CheckResult("struct", True)])
         monkeypatch.setattr(doctor, "_check_custom_providers", lambda *a, **k: CheckResult("providers", True))
         monkeypatch.setattr(doctor, "_check_ollama_device", lambda *a, **k: CheckResult("device", True))

@@ -59,7 +59,6 @@ def build_distill_agent(cfg: ResolvedConfig) -> DistillAgent | AgenticDistillAge
             model,
             timeout=float(cfg.kompend.compile.llm.timeout),
             llm=cfg.kompend.compile.llm,
-            budget=cfg.kompend.compile.budget,
         )
     except Exception:
         try:
@@ -67,7 +66,6 @@ def build_distill_agent(cfg: ResolvedConfig) -> DistillAgent | AgenticDistillAge
                 model,
                 timeout=float(cfg.kompend.compile.llm.timeout),
                 llm=cfg.kompend.compile.llm,
-                budget=cfg.kompend.compile.budget,
             )
         except Exception:
             return None

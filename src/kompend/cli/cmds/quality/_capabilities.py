@@ -156,12 +156,16 @@ def _agent[OutputT](
     retries: int,
     name: str,
 ) -> Agent[None, OutputT]:
-    """Build a probe agent with a bounded budget."""
+    """Build a probe agent bounded only by its timeout.
+
+    No ``max_tokens``: a reply is bounded by the model's context window, and
+    the probe asks for a tiny answer anyway (see ``_PROBE_RECORDS``).
+    """
     return Agent(
         build_model(model),
         output_type=output_type,
         retries=retries,
-        model_settings=ModelSettings(timeout=timeout, max_tokens=256),
+        model_settings=ModelSettings(timeout=timeout),
         name=name,
     )
 

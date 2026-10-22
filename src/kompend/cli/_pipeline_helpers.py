@@ -249,7 +249,6 @@ def check_llm_availability(pipeline: WikiPipeline) -> None:
             model,
             timeout=pipeline.config.llm.timeout,
             llm=pipeline.config.llm,
-            budget=pipeline.config.budget,
         )
         agent.run(DoctorDeps(ping="ok"))
     except Exception as exc:

@@ -16,8 +16,10 @@ from pydantic import ValidationError
 from kompend.core.config._configs import ProviderEndpoint
 from kompend.llm.context_window import (
     ContextSource,
+    ContextWindow,
     _coerce_context_window_cap,
     _split_model,
+    answer_reserve_tokens,
     discover_context_window,
 )
 from kompend.llm.models import set_user_providers
@@ -252,3 +254,30 @@ class TestUserProviderOverrideBeatsDiscovery:
             cw = discover_context_window("ollama/qwen3")
         assert cw.max_input == 131072
         assert cw.source == ContextSource.OLLAMA
+
+
+class TestAnswerReserve:
+    """The planners' answer room is derived from the window, never configured."""
+
+    def test_reserve_is_a_quarter_of_the_window(self) -> None:
+        assert answer_reserve_tokens(16_384) == 4096
+
+    def test_reserve_has_a_floor(self) -> None:
+        assert answer_reserve_tokens(1024) == 512
+
+    def test_reserve_has_a_ceiling(self) -> None:
+        assert answer_reserve_tokens(1_000_000) == 8192
+
+    def test_input_budget_subtracts_the_reserve_and_extra_overhead(self) -> None:
+        cw = ContextWindow(max_input=32_768, max_output=32_768, source=ContextSource.OLLAMA)
+        assert cw.answer_reserve == 8192
+        assert cw.input_budget() == 24_576
+        assert cw.input_budget(1024) == 23_552
+
+    def test_input_budget_never_goes_below_one(self) -> None:
+        cw = ContextWindow(max_input=600, max_output=600, source=ContextSource.OLLAMA)
+        assert cw.input_budget(10_000) >= 1
+
+    def test_history_budget_is_twice_the_reserve(self) -> None:
+        cw = ContextWindow(max_input=32_768, max_output=32_768, source=ContextSource.OLLAMA)
+        assert cw.history_budget == 2 * cw.answer_reserve

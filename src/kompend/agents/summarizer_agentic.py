@@ -17,7 +17,7 @@ from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import SummarizerDeps
 from kompend.compilation.summarizer_tools import build_summarizer_tools
-from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.config._configs import LLMConfig, RlmConfig
 
 
 @dataclass
@@ -77,7 +77,6 @@ def make_agentic_summarizer_agent(
     requests_per_node: int = 2,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> AgenticSummarizerAgent:
     """Build an :class:`AgenticSummarizerAgent` with tools + harness capabilities.
 
@@ -100,7 +99,6 @@ def make_agentic_summarizer_agent(
         requests_per_node=requests_per_node,
         rlm=rlm,
         llm=llm,
-        budget=budget,
         tools=build_summarizer_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

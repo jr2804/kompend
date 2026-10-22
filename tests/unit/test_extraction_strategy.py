@@ -300,7 +300,7 @@ class TestExtractCharBudget:
         safety = context_safety_tokens(cw)
 
         # Everything that lands in the request, plus the margin, must fit.
-        assert content_tokens + compiler._extract_system_tokens + compiler._budget.extract_output_max + safety <= cw
+        assert content_tokens + compiler._extract_system_tokens + compiler._context_window.answer_reserve + safety <= cw
 
     def test_budget_is_smaller_than_without_margin(self) -> None:
         compiler = _make_big_window_compiler()
@@ -309,7 +309,7 @@ class TestExtractCharBudget:
 
         with_margin = ext_module._extract_char_budget(compiler)
         without = ext_module.tokens_to_chars(
-            cw - compiler._extract_system_tokens - compiler._budget.extract_output_max,
+            cw - compiler._extract_system_tokens - compiler._context_window.answer_reserve,
             chars_per_token=cpt,
         )
 
@@ -372,7 +372,7 @@ def _make_big_window_compiler() -> TwoPhaseCompiler:
 
     Batch sizing is only meaningful when the window comfortably exceeds the
     reserved output — the 8192-token fixture window is smaller than
-    ``extract_output_max`` and collapses every budget to the 1-token floor.
+    the answer reserve and collapses every budget to the 1-token floor.
     A 65536-token window mirrors the local model this was observed on.
     """
     compiler = _make_compiler()

@@ -11,7 +11,7 @@ from pydantic_ai_summarization import ContextManagerCapability, SlidingWindowCap
 
 from kompend.agents.base import KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
-from kompend.core.config._configs import BudgetConfig, LLMConfig, LlmDataFormat
+from kompend.core.config._configs import LLMConfig, LlmDataFormat
 from kompend.llm.usage import UsageTracker
 
 
@@ -190,10 +190,9 @@ class TestConfigDrivenDefaults:
             fallback_chain=["other/model"],
             delta_retry_enabled=False,
         )
-        agent = self._agent(llm=llm, budget=BudgetConfig(agent_output_max=999))
+        agent = self._agent(llm=llm)
         assert agent.timeout == 45.0
         assert agent.retries == {"tools": 4, "output": 5}
-        assert agent.max_tokens == 999
         assert agent.reasoning_effort == "high"
         assert agent.context_manager == "aggressive"
         assert agent.context_window == 1234
@@ -212,29 +211,23 @@ class TestConfigDrivenDefaults:
         llm = LLMConfig(timeout=45.0, output_retries=5)
         agent = self._agent(
             llm=llm,
-            budget=BudgetConfig(agent_output_max=999),
             timeout=7.0,
             retries=1,
-            max_tokens=11,
         )
-        assert (agent.timeout, agent.retries, agent.max_tokens) == (7.0, 1, 11)
+        assert (agent.timeout, agent.retries) == (7.0, 1)
 
     def test_output_retries_disabled_switches_retries_off(self) -> None:
         llm = LLMConfig(output_retries=5, output_retries_enabled=False)
         assert self._agent(llm=llm).retries == 0
 
-    def test_dedicated_output_budget_key_wins(self) -> None:
-        class _Ref(KompendAgentBase[Any, Any]):
-            output_budget_key = "reference_output_max"
-
-        budget = BudgetConfig(agent_output_max=999, reference_output_max=4242)
-        assert _Ref(model_string="ollama/noop", budget=budget).max_tokens == 4242
+    def test_no_output_ceiling_is_configured(self) -> None:
+        """An answer is bounded by the window, so the agent carries no ceiling."""
+        assert not hasattr(self._agent(), "max_tokens")
 
     def test_defaults_without_config(self) -> None:
         agent = self._agent()
         assert agent.timeout == 120.0
         assert agent.retries == 2
-        assert agent.max_tokens is None
         assert agent.context_manager is False
         assert agent.delta_retry_enabled is True
 

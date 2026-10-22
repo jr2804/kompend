@@ -141,7 +141,6 @@ def _make_lint_agent(cfg: Any) -> tuple[LintRuleAgent | None, str | None]:
             model,
             timeout=float(cfg.kompend.compile.llm.timeout),
             llm=cfg.kompend.compile.llm,
-            budget=cfg.kompend.compile.budget,
         ),
         model,
     )

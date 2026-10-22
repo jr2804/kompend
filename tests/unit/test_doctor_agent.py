@@ -21,9 +21,9 @@ class TestDoctorAgentConstruction:
         agent = DoctorAgent(model_string="ollama/test-model")
         assert agent.model_string == "ollama/test-model"
 
-    def test_constructs_with_max_tokens(self) -> None:
-        agent = DoctorAgent(model_string="ollama/test-model", max_tokens=128)
-        assert agent.max_tokens == 128
+    def test_carries_no_output_ceiling(self) -> None:
+        """A response is bounded by the window, so the agent has no max_tokens."""
+        assert not hasattr(DoctorAgent(model_string="ollama/test-model"), "max_tokens")
 
 
 class TestDoctorAgentRun:

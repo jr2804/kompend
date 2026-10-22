@@ -68,7 +68,22 @@ ENV_MAP: dict[str, str] = _build_env_map()
 # Stripped (with a warning) before validation so old vaults don't crash on
 # upgrade; ``kompend config check`` reports them as deprecations.
 REMOVED_KEYS: dict[str, list[str]] = {
-    "compile.budget": ["concepts_per_batch"],
+    "compile.budget": [
+        "concepts_per_batch",
+        # Output ceilings. `max_tokens` is no longer sent to a model: an
+        # answer is bounded by the context window minus its prompt, so the
+        # planners derive the room they leave free from the window itself.
+        "agent_output_max",
+        "extract_output_max",
+        "gen_output_max",
+        "overview_output_max",
+        "reference_output_max",
+        "verify_output_max",
+        "lint_output_max",
+        "wicer_probe_output_max",
+        "wicer_eval_output_max",
+    ],
+    "search.synthesis": ["tokens"],
     "compile.llm": ["role_models", "fallback_max_retries"],
     # `compile.mode` selected a pipeline mode, but the tier flags
     # (`start_at_tier` / `stop_at_tier`) cover the same ground and are the

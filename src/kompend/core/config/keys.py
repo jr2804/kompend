@@ -125,9 +125,6 @@ SEARCH_AGENTIC_ENABLED: Final[str] = "search.agentic.enabled"
 SEARCH_AGENTIC_MODEL: Final[str] = "search.agentic.model"
 SEARCH_AGENTIC_MAX_SUB_QUESTIONS: Final[str] = "search.agentic.max_sub_questions"
 SEARCH_SYNTHESIS_VERBOSITY: Final[str] = "search.synthesis.verbosity"
-SEARCH_SYNTHESIS_TOKENS_BRIEF: Final[str] = "search.synthesis.tokens.brief"
-SEARCH_SYNTHESIS_TOKENS_STANDARD: Final[str] = "search.synthesis.tokens.standard"
-SEARCH_SYNTHESIS_TOKENS_COMPREHENSIVE: Final[str] = "search.synthesis.tokens.comprehensive"
 
 # ── display section ──
 DISPLAY_SOURCE_NAMES: Final[str] = "display.source_names"

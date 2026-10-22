@@ -13,7 +13,7 @@ import typer
 from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from kompend.cli.args.query import SearchMode
 from kompend.core.config import ResolvedConfig, RlmConfig
-from kompend.core.config._configs import DisplayConfig, LlmDataFormat, Verbosity
+from kompend.core.config._configs import DisplayConfig, LlmDataFormat
 from kompend.core.models import CompiledWiki, MetadataField
 from kompend.core.models.metadata import meta_str
 from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, PROTECTED_SOURCE_SUBDIRS, VECTORS_DIR
@@ -42,12 +42,6 @@ from kompend.types import JSONDict, JSONList
 #: On-disk folder per node kind — mirrors ``VaultWriter._KIND_FOLDERS`` plus
 #: the overview kind, which stays at the bundle root.
 _KIND_FOLDERS: dict[str, str] = {**VaultWriter._KIND_FOLDERS, "overview": ""}
-
-_SYNTHESIS_TOKEN_KEYS: dict[str, str] = {
-    Verbosity.BRIEF.value: "brief",
-    Verbosity.STANDARD.value: "standard",
-    Verbosity.COMPREHENSIVE.value: "comprehensive",
-}
 
 logger = get_logger(__name__)
 
@@ -238,7 +232,6 @@ def run_agentic_query_output(
             tag_groups=tag_groups or [],
             attr_filters=attr_filters or [],
             llm=cfg.kompend.compile.llm,
-            budget=cfg.kompend.compile.budget,
         )
     except Exception as exc:
         get_err_console().print(f"Agentic query failed: {exc}")
@@ -269,9 +262,9 @@ def build_enhanced_retriever(
     """Build an EnhancedRetriever from resolved config."""
     _llm = cfg.kompend.compile.llm
     _budget = cfg.kompend.compile.budget
-    expansion_agent = QueryExpansionAgent(model, timeout=_llm.timeout, llm=_llm, budget=_budget) if model else None
-    crag_agent = CragGradeAgent(model, timeout=_llm.timeout, llm=_llm, budget=_budget) if model else None
-    hyde_agent = HydeAgent(model, timeout=_llm.timeout, llm=_llm, budget=_budget) if model else None
+    expansion_agent = QueryExpansionAgent(model, timeout=_llm.timeout, llm=_llm) if model else None
+    crag_agent = CragGradeAgent(model, timeout=_llm.timeout, llm=_llm) if model else None
+    hyde_agent = HydeAgent(model, timeout=_llm.timeout, llm=_llm) if model else None
     return EnhancedRetriever(
         wiki,
         vector_store=vector_store,
@@ -287,7 +280,6 @@ def build_enhanced_retriever(
         reranker_top_k=cfg.kompend.search.reranker.top_k,
         hyde_enabled=cfg.kompend.search.hyde.enabled,
         llm=_llm,
-        budget=_budget,
         display=cfg.kompend.display,
     )
 
@@ -312,9 +304,6 @@ def synthesize_and_output(  # noqa: PLR0917
         raise typer.Exit(0)
 
     verbosity: str = cfg.kompend.search.synthesis.verbosity.value
-    token_attr = _SYNTHESIS_TOKEN_KEYS.get(verbosity, "standard")
-    target_tokens: int = getattr(cfg.kompend.search.synthesis.tokens, token_attr)
-    max_tokens: int = min(target_tokens, cw.max_output) if cw is not None else target_tokens
 
     try:
         reasoning_effort: str | None = cfg.kompend.compile.llm.reasoning_effort
@@ -324,7 +313,6 @@ def synthesize_and_output(  # noqa: PLR0917
                 query,
                 results,
                 verbosity=verbosity,
-                max_tokens=max_tokens,
                 reasoning_effort=reasoning_effort,
                 rlm=rlm_cfg,
             )
@@ -334,10 +322,8 @@ def synthesize_and_output(  # noqa: PLR0917
                 results,
                 model=model,
                 verbosity=verbosity,
-                max_tokens=max_tokens,
                 rlm=rlm_cfg,
                 llm=cfg.kompend.compile.llm,
-                budget=cfg.kompend.compile.budget,
             )
     except Exception as exc:
         get_err_console().print(f"LLM synthesis failed: {exc}")

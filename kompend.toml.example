@@ -307,8 +307,10 @@ respect_gitignore = true
 # Chunks fill the available context window, clamped to [chunk_size_min,
 # chunk_size_max]. The system NEVER silently truncates input.
 #
-# Output sizing is adaptive per phase:
-#   output_budget = clamp(input_tokens * ratio, output_min, output_max)
+# Output sizing: there is none. kompend never sends a max_tokens ceiling;
+# an answer is bounded by the context window minus its prompt. The planners
+# reserve a quarter of the window (max 8192 tokens) for the answer and use
+# the rest for input - see ContextWindow.answer_reserve.
 
 [compile.budget]
 # Structural controls (not token budgets)
@@ -329,35 +331,6 @@ max_concept_pages = 50         # warn above this many auto-generated concept pag
 # Chunk sizing safety rails (tokens)
 chunk_size_min = 2048          # floor: prevents useless tiny chunks
 chunk_size_max = 131072        # ceiling: safety rail for models claiming 1M+ context
-
-# Extraction output ceiling (tokens)
-extract_output_max = 8192
-
-# Generation output: fixed ceiling per concept (expansion, not compression)
-gen_output_max = 16384
-
-# Overview output ceiling (tokens)
-overview_output_max = 4096
-
-# Reference extraction output ceiling (tokens) — per window when an
-# oversized reference section is split to fit the context window.
-# Every window is processed; a larger ceiling means fewer LLM calls per
-# source (faster), never fewer extracted references.
-reference_output_max = 8192
-
-# Verification output ceiling (tokens)
-verify_output_max = 4096
-
-# Lint output ceiling (tokens)
-lint_output_max = 8192
-
-# Generic agent response ceiling (tokens) — applies to agents without a
-# dedicated ceiling above (query synthesis, capture, organize, VLM captions).
-agent_output_max = 8192
-
-# WiCER probe/eval output ceilings (tokens)
-wicer_probe_output_max = 4096
-wicer_eval_output_max = 4096
 
 # Node summarization (hierarchical chunk tree internal nodes)
 # Longer content is split into several calls (slower, but no content is
@@ -501,7 +474,7 @@ reasoning_effort = "none"  # minimal, low, medium, high, xhigh, default
 # - "incremental" (default): feeds chunks sequentially into one agent
 #   conversation via message_history, so each batch sees accumulated
 #   context from prior batches within the same document. History is
-#   compacted when its token estimate exceeds 2x extract_output_max
+#   compacted when its token estimate exceeds 2x the answer reserve
 #   (oldest batches dropped first) so the context window never
 #   overflows — which would otherwise cause empty model responses.
 # - "reduce": map-reduce — extract each batch independently, then a
@@ -754,9 +727,6 @@ enable = false                    # on/off switch
 # Whether ingestible attachments (text/image captions) are included in
 # the vector index. When false, attachment content is parsed and compiled
 # but not embedded. Per-attachment overrides via `kompend attachments add --embed/--no-embed`.
-# synthesis.tokens.brief = 300
-# synthesis.tokens.standard = 800
-# synthesis.tokens.comprehensive = 2000
 
 # ── Query settings ───────────────────────────────────────────────────────
 # Default output format for `kompend query`. Override per-run with --format.

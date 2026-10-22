@@ -9,7 +9,7 @@ from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import WriteDeps
 from kompend.compilation.write_tools import build_write_tools
-from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.config._configs import LLMConfig, RlmConfig
 
 
 class WriteAgent(KompendAgentBase[str, PipelineAgentDeps]):
@@ -51,7 +51,6 @@ def make_agentic_write_agent(
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> AgenticWriteAgent:
     """Build an :class:`AgenticWriteAgent` with the standard agentic capabilities."""
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
@@ -64,7 +63,6 @@ def make_agentic_write_agent(
         context_window=context_window,
         rlm=rlm,
         llm=llm,
-        budget=budget,
         tools=build_write_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

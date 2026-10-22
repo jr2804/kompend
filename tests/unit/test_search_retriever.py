@@ -204,10 +204,10 @@ class TestSynthesizeVerbosity:
         system = agent.render_system_prompt(deps)
         assert "balanced" in system.lower()
 
-    def _synthesize(self, verbosity: str, max_tokens: int | None = 100) -> tuple[Any, Any]:
+    def _synthesize(self, verbosity: str) -> tuple[Any, Any]:
         fake = _FakeLLMClient()
         mock_agent = MagicMock()
         mock_agent.run = MagicMock(return_value=f"answer ({verbosity})")
         with patch("kompend.search.retriever.QueryAgent", return_value=mock_agent):
-            result = synthesize_results("q", [], model=fake.default_model, verbosity=verbosity, max_tokens=max_tokens)
+            result = synthesize_results("q", [], model=fake.default_model, verbosity=verbosity)
         return result, mock_agent

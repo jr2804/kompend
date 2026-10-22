@@ -8,7 +8,7 @@ from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import ContextChunkDeps
 from kompend.compilation.context_chunk_tools import CONTEXT_CHUNK_TEXT_PREVIEW_CHARS, build_context_chunk_tools
-from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.config._configs import LLMConfig, RlmConfig
 
 
 class AgenticContextChunkAgent(KompendAgentBase[str, ContextChunkDeps]):
@@ -49,7 +49,6 @@ def make_agentic_context_chunk_agent(
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> AgenticContextChunkAgent:
     """Build an :class:`AgenticContextChunkAgent` with tools + harness capabilities.
 
@@ -67,7 +66,6 @@ def make_agentic_context_chunk_agent(
         context_window=context_window,
         rlm=rlm,
         llm=llm,
-        budget=budget,
         tools=build_context_chunk_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

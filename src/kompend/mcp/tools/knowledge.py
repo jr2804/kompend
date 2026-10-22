@@ -165,7 +165,6 @@ def wiki_capture(
                     model,
                     timeout=float(cfg.kompend.compile.llm.timeout),
                     llm=cfg.kompend.compile.llm,
-                    budget=cfg.kompend.compile.budget,
                 )
                 if model
                 else None
@@ -224,7 +223,6 @@ def wiki_distill(
                     model,
                     timeout=float(cfg.kompend.compile.llm.timeout),
                     llm=cfg.kompend.compile.llm,
-                    budget=cfg.kompend.compile.budget,
                 )
                 if model
                 else None
@@ -236,7 +234,6 @@ def wiki_distill(
                         model,
                         timeout=float(cfg.kompend.compile.llm.timeout),
                         llm=cfg.kompend.compile.llm,
-                        budget=cfg.kompend.compile.budget,
                     )
                     if model
                     else None

@@ -168,7 +168,6 @@ def references_fetch(
             model_string=model,
             timeout=timeout,
             llm=cfg.kompend.compile.llm,
-            budget=cfg.kompend.compile.budget,
         )
     except Exception as exc:  # noqa: BLE001
         get_err_console().print(f"Could not initialise resolver agent: {exc}")

@@ -9,7 +9,7 @@ from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import VerificationDeps
 from kompend.compilation.verification_tools import build_verification_tools
-from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.config._configs import LLMConfig, RlmConfig
 
 
 class VerificationAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
@@ -17,7 +17,6 @@ class VerificationAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
 
     template_name: ClassVar[str] = "verify_claim.md.j2"
     system_template_name: ClassVar[str] = "verify_system.md.j2"
-    output_budget_key: ClassVar[str] = "verify_output_max"
     template_prefix: ClassVar[str] = "verification/"
 
 
@@ -35,7 +34,6 @@ class AgenticVerificationAgent(KompendAgentBase[str, VerificationDeps]):
     system_template_name: ClassVar[str] = "verify_agentic_system.md.j2"
     template_prefix: ClassVar[str] = "lint/"
     supports_delta_retry: ClassVar[bool] = True
-    output_budget_key: ClassVar[str] = "verify_output_max"
 
 
 def make_agentic_verification_agent(
@@ -48,7 +46,6 @@ def make_agentic_verification_agent(
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> AgenticVerificationAgent:
     """Factory for :class:`AgenticVerificationAgent`.
 
@@ -70,7 +67,6 @@ def make_agentic_verification_agent(
         context_window=context_window,
         rlm=rlm,
         llm=llm,
-        budget=budget,
         tools=build_verification_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

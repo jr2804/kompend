@@ -20,7 +20,7 @@ from kompend.agents.query import QueryAgent
 from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
 from kompend.core.config import RlmConfig
-from kompend.core.config._configs import BudgetConfig, DisplayConfig, LLMConfig
+from kompend.core.config._configs import DisplayConfig, LLMConfig
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.core.models.metadata import meta_str_list_dict
 from kompend.logging import get_logger
@@ -149,7 +149,6 @@ class HybridRetriever:
         results: list[SearchResult],
         *,
         verbosity: str = "standard",
-        max_tokens: int | None = None,
         skills: dict[str, str] | None = None,
         model: str = "",
         rlm: RlmConfig | None = None,
@@ -160,7 +159,6 @@ class HybridRetriever:
             results,
             model=model,
             verbosity=verbosity,
-            max_tokens=max_tokens,
             skills=skills,
             rlm=rlm,
         )
@@ -408,13 +406,11 @@ def synthesize_results(
     model: str = "",
     *,
     verbosity: str = "standard",
-    max_tokens: int | None = None,
     skills: dict[str, str] | None = None,
     reasoning_effort: str | None = None,
     rlm: RlmConfig | None = None,
     query_agent: QueryAgent | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> SynthesisResult:
     """Format search results into context and call the LLM for an answer.
 
@@ -461,13 +457,11 @@ def synthesize_results(
         else:
             agent = QueryAgent(
                 model_string=model,
-                max_tokens=max_tokens,
                 skills=skills or {},
                 reasoning_effort=reasoning_effort,
                 rlm=rlm,
                 rlm_context_field="context",
                 llm=llm,
-                budget=budget,
             )
         deps = QueryDeps(
             question=query,
@@ -508,7 +502,6 @@ def run_agentic_query(
     tag_groups: list[list[str]] | None = None,
     attr_filters: list[tuple[str, str | None]] | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> str:
     """Answer *question* with the agentic query agent against *retriever*.
 
@@ -526,7 +519,6 @@ def run_agentic_query(
         context_window=context_window,
         rlm=rlm,
         llm=llm,
-        budget=budget,
     )
     deps = QueryAgentDeps(
         question=question,

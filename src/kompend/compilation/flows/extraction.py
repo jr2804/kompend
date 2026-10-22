@@ -221,7 +221,6 @@ def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extractio
     agent = ExtractionAgent(
         model_string=compiler._model or "",
         timeout=compiler._timeout,
-        max_tokens=compiler._budget.extract_output_max,
         skills=compiler._config.skills,
         retries=compiler._config.llm.output_retries if compiler._config.llm.output_retries_enabled else 0,
         delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
@@ -230,7 +229,6 @@ def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extractio
         context_window=compiler._context_window.max_input,
         usage_tracker=compiler._usage_tracker,
         llm=compiler._config.llm,
-        budget=compiler._budget,
     )
 
     # Per-batch retry: the agent already retries internally (via PydanticAI's
@@ -292,14 +290,13 @@ def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
     batches.
     """
     cw = compiler._context_window
-    budget = compiler._budget
     safety_tokens = context_safety_tokens(cw.max_input)
-    overhead = compiler._extract_system_tokens + budget.extract_output_max + safety_tokens
+    overhead = compiler._extract_system_tokens + cw.answer_reserve + safety_tokens
     logger.info(
-        "TwoPhase: extract budget (cw=%d sys=%d out=%d safety=%d) -> %d tokens for content",
+        "TwoPhase: extract budget (cw=%d sys=%d answer_reserve=%d safety=%d) -> %d tokens for content",
         cw.max_input,
         compiler._extract_system_tokens,
-        budget.extract_output_max,
+        cw.answer_reserve,
         safety_tokens,
         max(1, cw.max_input - overhead),
     )
@@ -322,15 +319,14 @@ def extract_incremental(
     message history threads between consecutive uncached batches.
 
     History compaction: the threaded ``message_history`` is compacted
-    when its estimated token cost exceeds ``extract_output_max * 2``.
+    when its estimated token cost exceeds ``context_window.history_budget``.
     The oldest (request, response) pair is dropped first, preserving
     the most recent context the model actually needs. Without this
     guard, long documents with many batches fill the model's context
     window and the model returns empty (``finish_reason: stop``, no
     content) — see commit history for the regression this fixed.
     """
-    budget = compiler._budget
-    compaction_threshold = budget.extract_output_max * 2
+    compaction_threshold = compiler._context_window.history_budget
     results: list[Extraction | None] = []
     history: list[ModelMessage] = []
     agent: ExtractionAgent | None = None
@@ -360,7 +356,6 @@ def extract_incremental(
             agent = ExtractionAgent(
                 model_string=compiler._model or "",
                 timeout=compiler._timeout,
-                max_tokens=compiler._budget.extract_output_max,
                 skills=compiler._config.skills,
                 delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
                 reasoning_effort=compiler._config.llm.reasoning_effort,
@@ -368,7 +363,6 @@ def extract_incremental(
                 context_window=compiler._context_window.max_input,
                 usage_tracker=compiler._usage_tracker,
                 llm=compiler._config.llm,
-                budget=compiler._budget,
             )
         deps = PipelineAgentDeps(
             text=combined,
@@ -512,13 +506,11 @@ def reduce_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extra
     agent = ExtractionReduceAgent(
         model_string=compiler._model or "",
         timeout=compiler._timeout,
-        max_tokens=compiler._budget.extract_output_max,
         skills=compiler._config.skills,
         reasoning_effort=compiler._config.llm.reasoning_effort,
         context_window=compiler._context_window.max_input,
         usage_tracker=compiler._usage_tracker,
         llm=compiler._config.llm,
-        budget=compiler._budget,
     )
     try:
         deps = PipelineAgentDeps(text=partial_data, source_id=f"{source}:reduce", timeout=compiler._timeout)

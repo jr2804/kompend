@@ -36,4 +36,3 @@ class ReferenceExtractionAgent(KompendAgentBase[ReferenceExtractionOutput, Pipel
     template_name: ClassVar[str] = "reference_extraction_prompt.md.j2"
     system_template_name: ClassVar[str] = "reference_extraction_system.md.j2"
     supports_delta_retry: ClassVar[bool] = True
-    output_budget_key: ClassVar[str] = "reference_output_max"

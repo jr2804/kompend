@@ -13,7 +13,7 @@ from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import QueryAgentDeps
 from kompend.compilation.query_tools import build_query_tools
-from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.config._configs import LLMConfig, RlmConfig
 
 
 class AgenticQueryAgent(KompendAgentBase[str, QueryAgentDeps]):
@@ -34,7 +34,6 @@ def make_agentic_query_agent(
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> AgenticQueryAgent:
     """Build an :class:`AgenticQueryAgent` with tools + harness capabilities.
 
@@ -52,7 +51,6 @@ def make_agentic_query_agent(
         context_window=context_window,
         rlm=rlm,
         llm=llm,
-        budget=budget,
         tools=build_query_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

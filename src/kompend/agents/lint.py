@@ -28,7 +28,6 @@ class LintRuleAgent(KompendAgentBase[BaseModel | str, PipelineAgentDeps]):
 
     template_name: ClassVar[str] = ""  # not used; render_user_prompt is overridden
     system_template_name: ClassVar[str] = ""  # not used; system prompt is empty
-    output_budget_key: ClassVar[str] = "lint_output_max"
     _agents_by_type: dict[type, Agent[Any, Any]] = field(default_factory=dict, init=False, repr=False)
 
     def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301

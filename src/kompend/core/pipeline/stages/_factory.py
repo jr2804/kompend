@@ -14,6 +14,7 @@ from kompend.chunking.summarizer import (
     SummarizerContentPolicy,
     SummarizerSessionPolicy,
 )
+from kompend.compilation._two_phase_core import tokens_to_chars
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.graph import GraphCompiler
 from kompend.compilation.two_phase import TwoPhaseCompiler
@@ -95,7 +96,6 @@ def build_pipeline(
             requests_per_node=config.budget.summary_requests_per_node,
             rlm=config.llm.rlm,
             llm=config.llm,
-            budget=config.budget,
         )
         if config.search.contextual.enabled:
             enricher_agent = make_agentic_context_chunk_agent(
@@ -105,7 +105,6 @@ def build_pipeline(
                 context_window=cw.max_input,
                 rlm=config.llm.rlm,
                 llm=config.llm,
-                budget=config.budget,
             )
         resolver = build_resolver_chain(config)
 
@@ -171,6 +170,12 @@ def build_pipeline(
             session_policy=SummarizerSessionPolicy(
                 batch_size=config.budget.summary_session_batch_size,
                 stall_retries=config.budget.summary_session_stall_retries,
+                # The window dictates how much node content one payload may
+                # carry; a bigger budget here is a request that cannot fit.
+                payload_chars=tokens_to_chars(
+                    cw.input_budget(),
+                    chars_per_token=config.llm.default_chars_per_token,
+                ),
             ),
         ),
         enricher=ContextualEnricher(agent=enricher_agent, display=config.display) if enricher_agent is not None else None,

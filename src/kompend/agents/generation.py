@@ -25,7 +25,7 @@ from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, 
 from kompend.agents.types import ToolGenerationDeps
 from kompend.compilation.gen_tools import build_gen_tools
 from kompend.compilation.schema import GenerationOutput, GenerationPage
-from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.config._configs import LLMConfig, RlmConfig
 from kompend.core.models.enums import NodeType
 from kompend.core.text.slug import slugify
 from kompend.llm.usage import UsageTracker
@@ -48,7 +48,6 @@ class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDe
     template_name: ClassVar[str] = "generation_agentic_prompt.md.j2"
     system_template_name: ClassVar[str] = "generation_agentic_system.md.j2"
     supports_delta_retry: ClassVar[bool] = True
-    output_budget_key: ClassVar[str] = "gen_output_max"
 
     @staticmethod
     def validate_output(ctx: RunContext[ToolGenerationDeps], output: GenerationOutput) -> GenerationOutput:
@@ -63,7 +62,6 @@ def make_agentic_generation_agent(
     *,
     model_string: str,
     timeout: float = UNSET_TIMEOUT,
-    max_tokens: int | None = None,
     skills: dict[str, str] | None = None,
     retries: int = UNSET_RETRIES,
     output_retries: int | None = None,
@@ -74,7 +72,6 @@ def make_agentic_generation_agent(
     rlm: RlmConfig | None = None,
     usage_tracker: UsageTracker | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> AgenticGenerationAgent:
     """Factory for :class:`AgenticGenerationAgent` with harness capabilities.
 
@@ -95,7 +92,6 @@ def make_agentic_generation_agent(
     return AgenticGenerationAgent(
         model_string=model_string,
         timeout=timeout,
-        max_tokens=max_tokens,
         skills=skills or {},
         retries=agent_retries,
         delta_retry_enabled=delta_retry_enabled,
@@ -105,7 +101,6 @@ def make_agentic_generation_agent(
         rlm=rlm,
         usage_tracker=usage_tracker,
         llm=llm,
-        budget=budget,
         tools=build_gen_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

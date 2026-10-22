@@ -32,7 +32,7 @@ from kompend.cli.args import (
 )
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
-from kompend.core.config._configs import BudgetConfig, LLMConfig
+from kompend.core.config._configs import LLMConfig
 from kompend.core.models import MetadataField, load_cached_wiki
 from kompend.core.models.enums import NodeType, OkfField
 from kompend.core.models.metadata import meta_str_list
@@ -81,7 +81,6 @@ def capture_cmd(
                 default_model,
                 timeout=float(cfg.kompend.compile.llm.timeout),
                 llm=cfg.kompend.compile.llm,
-                budget=cfg.kompend.compile.budget,
             )
         except Exception:
             capture_agent = None
@@ -283,7 +282,6 @@ def write_cmd(
             timeout=float(cfg.kompend.compile.llm.timeout),
             source_char_max=cfg.kompend.compile.budget.capture_source_char_max,
             llm=cfg.kompend.compile.llm,
-            budget=cfg.kompend.compile.budget,
         )
 
     # ── Write to wiki/write/ ─────────────────────────────────────────────
@@ -328,7 +326,6 @@ def _synthesize_write_page(
     timeout: float,
     source_char_max: int,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> str:
     """Return continuous prose for the write page.
 
@@ -349,7 +346,6 @@ def _synthesize_write_page(
         model_string=model,
         timeout=timeout,
         llm=llm,
-        budget=budget,
     )
     deps = WriteDeps(
         page_title=page_title,

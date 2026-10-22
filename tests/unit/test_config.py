@@ -1049,9 +1049,11 @@ class TestGenerateScaffoldConfig:
         assert "compile" in keys
 
     def test_budget_keys_present(self) -> None:
+        """The scaffold carries work-shaping budgets, never response ceilings."""
         data = tomllib.loads(generate_scaffold_config())
         budget = data["compile"]["budget"]
-        assert budget["extract_output_max"] == 8192
+        assert budget["summary_window_chars"] == 2000
+        assert not [key for key in budget if key.endswith("_output_max")]
 
     def test_annotates_enum_values_with_remaining_domain(self) -> None:
         text = generate_scaffold_config()

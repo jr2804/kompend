@@ -60,7 +60,6 @@ def organize_cmd(
         default_model,
         timeout=float(timeout),
         llm=cfg.kompend.compile.llm,
-        budget=cfg.kompend.compile.budget,
     )
 
     result = organize_sources(

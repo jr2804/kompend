@@ -25,7 +25,7 @@ from kompend.compilation.base import BaseCompiler
 from kompend.compilation.graph import GraphCompiler
 from kompend.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from kompend.core.pipeline.config import PipelineConfig
-from kompend.llm.context_window import ContextWindow, discover_context_window
+from kompend.llm.context_window import ContextWindow, answer_reserve_tokens, discover_context_window
 from kompend.llm.format import encode_payload
 from kompend.logging import get_logger
 
@@ -95,12 +95,9 @@ class WiCERCompiler(BaseCompiler):
         self._max_seconds = config.budget.wicer_max_seconds
         self._has_llm = bool(config.llm.default_model)
 
-        # Output budgets (how many tokens the LLM may emit).
-        self._probe_output_budget = config.budget.wicer_probe_output_max
-        self._eval_output_budget = config.budget.wicer_eval_output_max
-
         # Input batch sizes adapt to the model's discovered context window.
-        # When no context window is available, fall back to a conservative size.
+        # The room left for the answer comes from the window itself
+        # (``ContextWindow.answer_reserve``) — kompend sends no ``max_tokens``.
         cw = (
             context_window
             or discover_context_window(
@@ -110,21 +107,17 @@ class WiCERCompiler(BaseCompiler):
             if config.llm.default_model
             else None
         )
+        cpt = config.llm.default_chars_per_token
         if cw is not None:
             self._context_window: ContextWindow | None = cw
-            cpt = config.llm.default_chars_per_token
-            self._probe_input_chars = tokens_to_chars(
-                max(1, int((cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._probe_output_budget) * _WICER_CONTEXT_UTILIZATION)),
-                chars_per_token=cpt,
-            )
-            self._eval_input_chars = tokens_to_chars(
-                max(1, int((cw.max_input - _WICER_PROMPT_RESERVE_TOKENS - self._eval_output_budget) * _WICER_CONTEXT_UTILIZATION)),
-                chars_per_token=cpt,
-            )
+            input_tokens = max(1, int(cw.input_budget(_WICER_PROMPT_RESERVE_TOKENS) * _WICER_CONTEXT_UTILIZATION))
+            self._probe_input_chars = tokens_to_chars(input_tokens, chars_per_token=cpt)
+            self._eval_input_chars = self._probe_input_chars
         else:
             self._context_window = None
-            self._probe_input_chars = tokens_to_chars(self._probe_output_budget)
-            self._eval_input_chars = tokens_to_chars(self._eval_output_budget)
+            fallback_tokens = answer_reserve_tokens(config.llm.fallback_max_input)
+            self._probe_input_chars = tokens_to_chars(fallback_tokens, chars_per_token=cpt)
+            self._eval_input_chars = self._probe_input_chars
 
     # ------------------------------------------------------------------
     # Public API
@@ -408,7 +401,6 @@ class WiCERCompiler(BaseCompiler):
                 context_window=self._context_window.max_input if self._context_window else None,
                 rlm=self._config.llm.rlm,
                 llm=self._config.llm,
-                budget=self._config.budget,
             )
             output = agent.run(WicerProbeDeps(text=combined, source_id="wicer-probe"))
             return [p.model_dump() for p in output.probes]
@@ -447,7 +439,6 @@ class WiCERCompiler(BaseCompiler):
                     context_manager=self._config.llm.context_manager,
                     context_window=self._context_window.max_input if self._context_window else None,
                     llm=self._config.llm,
-                    budget=self._config.budget,
                 )
                 output = agent.run(
                     WicerEvaluateDeps(
@@ -489,7 +480,6 @@ class WiCERCompiler(BaseCompiler):
                 context_manager=self._config.llm.context_manager,
                 context_window=self._context_window.max_input if self._context_window else None,
                 llm=self._config.llm,
-                budget=self._config.budget,
             )
             output = agent.run(
                 WicerDiagnoseDeps(

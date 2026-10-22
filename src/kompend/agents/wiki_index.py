@@ -9,7 +9,7 @@ from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import OverviewDeps
 from kompend.compilation.overview_tools import build_overview_tools
-from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.config._configs import LLMConfig, RlmConfig
 
 
 class WikiIndexAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
@@ -33,7 +33,6 @@ class AgenticOverviewAgent(KompendAgentBase[str, OverviewDeps]):
     system_template_name: ClassVar[str] = "synthesize_agentic_system.md.j2"
     template_prefix: ClassVar[str] = "output/"
     supports_delta_retry: ClassVar[bool] = True
-    output_budget_key: ClassVar[str] = "overview_output_max"
 
 
 def make_agentic_overview_agent(
@@ -46,7 +45,6 @@ def make_agentic_overview_agent(
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> AgenticOverviewAgent:
     """Factory for :class:`AgenticOverviewAgent` with harness capabilities.
 
@@ -64,7 +62,6 @@ def make_agentic_overview_agent(
         context_window=context_window,
         rlm=rlm,
         llm=llm,
-        budget=budget,
         tools=build_overview_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

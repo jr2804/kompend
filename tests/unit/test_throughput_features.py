@@ -765,14 +765,15 @@ class TestAgenticSegmentSizing:
         # The reservation must actually shrink the per-segment budget.
         assert len(sized) >= len(empty)
 
-    def test_request_fit_guard_raises_on_overflow(self) -> None:
-        """When segment content + overhead + output exceeds the window, the
-        agentic loop must fail loudly instead of letting Ollama stall.
+    def test_request_fit_guard_raises_when_a_segment_exceeds_the_window(self) -> None:
+        """A segment that cannot fit beside the answer reserve must fail loudly
+        instead of letting the provider stall mid-stream.
+
+        Segmentation normally sizes segments to fit; this test hands the loop
+        an oversized segment directly to exercise the guard.
         """
-        compiler = self._compiler(context_window=8192, gen_output_max=8192)
-        # Tiny window: even a small segment overflows once reserved + output
-        # are added. The guard must raise LLMOutputError before any agent call.
-        chunks = [
+        compiler = self._compiler(context_window=8192)
+        [
             ResolvedChunk(
                 chunk=Chunk(
                     id="c1",
@@ -784,14 +785,15 @@ class TestAgenticSegmentSizing:
                 )
             )
         ]
-        reserved = _agentic_reserved_tokens(compiler, [], [])
-        segments = prepare_source_segments(compiler, chunks, reserved_tokens=reserved)
+        cw = compiler._context_window.max_input
+        cpt = compiler._config.llm.default_chars_per_token
+        oversized_chars = int((cw + 4096) * cpt)
         concepts = [{"name": "Concept One", "kind": "concept", "importance": "high", "definition": "def"}]
         with pytest.raises(Exception, match="context window"):
             generate_all_pages_agentic(
                 compiler,
                 concepts,
-                segments,
+                [[("a.pdf", "y" * oversized_chars)]],
                 [],
                 pinned_facts=[],
                 known_titles=[],
@@ -802,7 +804,7 @@ class TestAgenticSegmentSizing:
         request-fit guard — the rendered block (content + labels) + reserved
         + output budget fits the window.
         """
-        compiler = self._compiler(context_window=16384, gen_output_max=4096)
+        compiler = self._compiler(context_window=16384)
         # Content sized to fit: 16K window - 4K output - reserved - labels.
         chunks = [
             ResolvedChunk(
@@ -826,7 +828,7 @@ class TestAgenticSegmentSizing:
         rendered_tokens = rendered / compiler._config.llm.default_chars_per_token
         assert rendered_tokens + reserved + 4096 <= 16384
 
-    def _compiler(self, *, context_window: int = 65536, gen_output_max: int = 16384) -> TwoPhaseCompiler:
+    def _compiler(self, *, context_window: int = 65536) -> TwoPhaseCompiler:
         config = PipelineConfig(
             source_dir=make_tmp_vault(),
             output_dir=make_tmp_vault(),
@@ -837,7 +839,6 @@ class TestAgenticSegmentSizing:
             ),
             embedding=EmbeddingConfig(model="hash"),
         )
-        config.budget.gen_output_max = gen_output_max
         config.llm.context_window = context_window
         compiler = TwoPhaseCompiler(config=config)
         return compiler

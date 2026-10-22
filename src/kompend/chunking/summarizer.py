@@ -63,10 +63,16 @@ class SummarizerSessionPolicy:
         batch_size: Maximum nodes handed to one agentic session.
         stall_retries: Extra attempts a node gets after a session that recorded
             nothing for its payload. ``0`` abandons it on the first stall.
+        payload_chars: Characters of node content one session payload may
+            carry. It is derived from the model's window
+            (``ContextWindow.input_budget``), not from a configured ceiling:
+            windows beyond it stay pending and are asked in the next session,
+            so nothing is dropped.
     """
 
     batch_size: int
     stall_retries: int
+    payload_chars: int
 
 
 @dataclass(frozen=True)
@@ -169,6 +175,7 @@ class NodeSummarizer:
         self._cache = cache_store
         self._policy = content_policy
         self._session_policy = session_policy
+        self._payload_chars = session_policy.payload_chars if session_policy else 0
         self._loader = get_template_loader()
 
     def summarize(self, tree: ChunkTree) -> ChunkTree:
@@ -314,6 +321,7 @@ class NodeSummarizer:
         summaries.
         """
         payload: list[SummaryNode] = []
+        chars_used = 0
         for node in nodes:
             parts: list[str] = []
             for child_id in node.children_ids:
@@ -336,7 +344,12 @@ class NodeSummarizer:
                 if cached is not None:
                     done[entry_id] = cached
                     continue
+                if self._payload_chars and payload and chars_used + len(window) > self._payload_chars:
+                    # The payload is full: this window is asked in the next
+                    # session (the node stays pending, so nothing is lost).
+                    break
                 payload.append(SummaryNode(id=entry_id, heading_chain=heading_chain, content=window))
+                chars_used += len(window)
             if state.is_complete(node.id):
                 node.summary = self._merge_window_summaries(done, entry_ids)
         return payload

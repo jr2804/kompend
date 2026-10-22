@@ -34,6 +34,9 @@ from kompend.preprocessing.parsers._registry import get_registered_parsers
 from kompend.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
 from kompend.types import JSON
 
+#: Smallest input budget a window may leave before the doctor calls it unusable.
+_MIN_INPUT_TOKENS: int = 2048
+
 #: Models whose Ollama offload ratio is below this are treated as CPU/partial
 #: — typically iGPU-only or VRAM overflow. Below this, inference is slow and
 #: the user almost certainly wants to know.
@@ -125,7 +128,7 @@ def run_doctor(
     size_probe = measure_compact_formats()
     results.append(CheckResult(size_probe.name, size_probe.ok, size_probe.detail))
     results.append(_check_context_window(default_model, "llm", context_window_cap, llm_cfg))
-    results.append(_check_budget_consistency(default_model, cfg, context_window_cap))
+    results.append(_check_window_fit(default_model, context_window_cap, llm_cfg))
 
     vlm_effective = resolve_vlm_model(default_model, vlm_model)
     if vlm_model:
@@ -219,47 +222,36 @@ def _check_context_window(
         return CheckResult(name, False, f"{label} context window discovery failed: {exc}")
 
 
-def _check_budget_consistency(model: str | None, cfg: dict[str, Any] | None, context_window_cap: int | None = None) -> CheckResult:
-    """Check that budget config values don't exceed the model's context window."""
-    name = "budget-consistency"
-    if not model or cfg is None:
-        return CheckResult(name, True, "No model or config — skipped")
+def _check_window_fit(
+    model: str | None,
+    context_window_cap: int | None = None,
+    llm_cfg: LLMConfig | None = None,
+) -> CheckResult:
+    """Check that the discovered window still leaves room for a request.
+
+    kompend sends no ``max_tokens``: the answer is bounded by the window minus
+    its prompt, and the planners reserve a share of the window for it
+    (``ContextWindow.answer_reserve``). The only thing that can be wrong is a
+    window too small to carry both.
+    """
+    name = "window-fit"
+    if not model:
+        return CheckResult(name, True, "No model - skipped")
 
     try:
-        llm_cfg = LLMConfig(**(cfg or {}).get("compile", {}).get("llm", {}))
-        cw = discover_context_window(model, llm_config=llm_cfg, context_window_cap=context_window_cap)
+        cw = discover_context_window(model, context_window_cap=context_window_cap, llm_config=llm_cfg)
     except Exception as exc:
         return CheckResult(name, False, f"Cannot discover context window: {exc}")
 
-    issues: list[str] = []
-
-    # Check gen_output_max vs context window
-    gen_max = _cfg_get_int(cfg, "compile.budget.gen_output_max", 32768)
-    if gen_max > cw.max_output:
-        issues.append(f"gen_output_max ({gen_max}) > context window output ({cw.max_output})")
-
-    # Check extract_output_max vs context window
-    extract_max = _cfg_get_int(cfg, "compile.budget.extract_output_max", 16384)
-    if extract_max > cw.max_output:
-        issues.append(f"extract_output_max ({extract_max}) > context window output ({cw.max_output})")
-
-    # Check that input + output fits in context window
-    sys_tokens = 128  # approximate system prompt overhead
-    input_budget = cw.max_input - sys_tokens - gen_max
-    if input_budget < 512:
-        issues.append(
-            f"Input budget ({input_budget} tokens) too small after reserving "
-            f"{sys_tokens} system + {gen_max} output tokens in {cw.max_input} context window. "
-            "Reduce gen_output_max or increase context_window."
-        )
-
-    if not issues:
+    reserve = cw.answer_reserve
+    input_budget = cw.input_budget()
+    if input_budget < _MIN_INPUT_TOKENS:
         return CheckResult(
             name,
-            True,
-            f"Budgets OK: {cw.max_input} ctx, {gen_max} gen_out, {extract_max} extract_out, ~{input_budget} input",
+            False,
+            f"Window {cw.max_input} tokens leaves {input_budget} for input after the {reserve}-token answer reserve - increase the model's context window",
         )
-    return CheckResult(name, False, "; ".join(issues))
+    return CheckResult(name, True, f"{cw.max_input} ctx: {reserve} answer reserve, {input_budget} input")
 
 
 def _cfg_get_int(cfg: dict[str, Any], key: str, default: int) -> int:
@@ -295,7 +287,6 @@ def _ping_model(model: str | None, label: str, verbose: bool = False, timeout: f
         agent = DoctorAgent(
             model_string=model,
             timeout=timeout,
-            max_tokens=128,
             retries=retries if retries is not None else 2,
             usage_tracker=tracker,
         )

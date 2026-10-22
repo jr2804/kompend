@@ -69,7 +69,6 @@ def query_wiki(
                 rlm=RlmConfig.model_validate(cfg.kompend.compile.llm.rlm or {}),
                 attr_filters=_parse_attr_filters(attributes) if attributes else [],
                 llm=cfg.kompend.compile.llm,
-                budget=cfg.kompend.compile.budget,
             )
             return {"status": "ok", "results": [], "raw": False, "synthesis": {"answer": answer, "citations": []}}
         expand_graph = search_mode == SearchMode.GRAPH

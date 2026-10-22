@@ -15,7 +15,7 @@ from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import DistillAgentDeps
 from kompend.compilation.distill_tools import build_distill_tools
-from kompend.core.config._configs import BudgetConfig, LLMConfig, RlmConfig
+from kompend.core.config._configs import LLMConfig, RlmConfig
 
 
 class AgenticDistillAgent(KompendAgentBase[str, DistillAgentDeps]):
@@ -61,7 +61,6 @@ def make_agentic_distill_agent(
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> AgenticDistillAgent:
     """Build an :class:`AgenticDistillAgent` with tools + harness capabilities.
 
@@ -83,7 +82,6 @@ def make_agentic_distill_agent(
         context_window=context_window,
         rlm=rlm,
         llm=llm,
-        budget=budget,
         tools=build_distill_tools(),
         extra_capabilities=harness.build_capabilities(),
     )

@@ -101,7 +101,7 @@ def test_oversized_section_split_into_line_aligned_windows(flow_env: Callable[[F
     agent = FakeAgent()
     store = flow_env(agent)
     text = "\n".join(f"[{i}] Author, Title, Journal 20{i % 10}, pp. 1-99." for i in range(120))
-    compiler = _compiler(max_input=1_500, ref_output_max=400)
+    compiler = _compiler(max_input=1_500)
     budget = ref_flow._reference_char_budget(compiler)
 
     run_reference_extraction(compiler, _chunks(text), store)
@@ -117,7 +117,7 @@ def test_window_failure_keeps_references_from_other_windows(flow_env: Callable[[
     agent = FakeAgent(fail_on={2})
     store = flow_env(agent)
     text = "\n".join(f"Reference entry number {i} with some detail." for i in range(120))
-    compiler = _compiler(max_input=1_500, ref_output_max=400)
+    compiler = _compiler(max_input=1_500)
 
     run_reference_extraction(compiler, _chunks(text), store)
 
@@ -129,11 +129,11 @@ def test_window_failure_keeps_references_from_other_windows(flow_env: Callable[[
 def test_agent_receives_configured_limits(flow_env: Callable[[FakeAgent], FakeStore]) -> None:
     agent = FakeAgent()
     store = flow_env(agent)
-    compiler = _compiler(max_input=1_500, ref_output_max=400, output_retries=3)
+    compiler = _compiler(max_input=1_500, output_retries=3)
 
     run_reference_extraction(compiler, _chunks("Ref one\n"), store)
 
-    assert agent.init_kwargs["max_tokens"] == 400
+    assert "max_tokens" not in agent.init_kwargs
     assert agent.init_kwargs["context_window"] == 1_500
     assert agent.init_kwargs["timeout"] == 30.0
     assert agent.init_kwargs["delta_retry_enabled"] is True
@@ -166,7 +166,7 @@ def test_every_window_is_processed(flow_env: Callable[[FakeAgent], FakeStore]) -
     agent = FakeAgent()
     store = flow_env(agent)
     text = "\n".join(f"Reference entry number {i} with some detail." for i in range(120))
-    compiler = _compiler(max_input=1_500, ref_output_max=400)
+    compiler = _compiler(max_input=1_500)
 
     run_reference_extraction(compiler, _chunks(text), store)
 
@@ -174,18 +174,24 @@ def test_every_window_is_processed(flow_env: Callable[[FakeAgent], FakeStore]) -
     assert len(store.saved[SOURCE]) == agent.calls
 
 
-def test_window_budget_respects_the_output_ceiling() -> None:
-    compiler = _compiler(max_input=65_536, ref_output_max=300)
+def test_window_budget_follows_the_answer_reserve() -> None:
+    """The per-window size is the smaller of the input room and the answer room."""
+    compiler = _compiler(max_input=65_536)
+    cw = compiler._context_window
 
     budget = ref_flow._reference_char_budget(compiler)
+    answer_chars = ref_flow.tokens_to_chars(
+        cw.answer_reserve // ref_flow._REFERENCE_JSON_EXPANSION,
+        chars_per_token=4.0,
+    )
 
-    # 300 output tokens / 3x JSON expansion = 100 tokens = 400 chars
-    assert budget == 400
+    assert budget == min(ref_flow.tokens_to_chars(cw.input_budget(), chars_per_token=4.0), answer_chars)
 
 
-def test_reference_output_tokens_capped_by_the_model() -> None:
-    assert ref_flow._reference_output_tokens(_compiler(ref_output_max=8192, max_output=4096)) == 4096
-    assert ref_flow._reference_output_tokens(_compiler(ref_output_max=8192, max_output=0)) == 8192
+def test_reference_answer_room_comes_from_the_window() -> None:
+    """No configured ceiling: the answer room is a share of the model window."""
+    assert ref_flow._reference_answer_tokens(_compiler(max_input=32_768)) == 8192
+    assert ref_flow._reference_answer_tokens(_compiler(max_input=4_096)) == 1024
 
 
 @pytest.fixture
@@ -229,13 +235,12 @@ def _chunks(text: str) -> list[ResolvedChunk]:
 
 
 def test_reference_char_budget_stays_positive() -> None:
-    budget = ref_flow._reference_char_budget(_compiler(max_input=600, ref_output_max=500))
+    budget = ref_flow._reference_char_budget(_compiler(max_input=600))
     assert budget >= 1
 
 
 def _compiler(
     max_input: int = 65_536,
-    ref_output_max: int = 8192,
     max_output: int | None = None,
     output_retries: int = 2,
     tool_retries: int = 3,
@@ -249,9 +254,7 @@ def _compiler(
             max_output=max_input if max_output is None else max_output,
             source=ContextSource.OLLAMA,
         ),
-        _budget=SimpleNamespace(
-            reference_output_max=ref_output_max,
-        ),
+        _budget=SimpleNamespace(),
         _config=SimpleNamespace(
             llm=SimpleNamespace(
                 default_chars_per_token=4.0,

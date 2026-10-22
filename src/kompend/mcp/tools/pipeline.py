@@ -18,7 +18,7 @@ from kompend.cli._shared import build_cli_overrides
 from kompend.cli._sources import resolve_files
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
-from kompend.core.config._configs import BudgetConfig, LLMConfig
+from kompend.core.config._configs import LLMConfig
 from kompend.core.models import MetadataField, load_cached_wiki, load_wiki_from_files
 from kompend.core.models.enums import NodeType, OkfField
 from kompend.core.models.metadata import meta_str_list
@@ -225,7 +225,6 @@ def wiki_write(
             timeout=float(cfg.kompend.compile.llm.timeout),
             source_char_max=cfg.kompend.compile.budget.capture_source_char_max,
             llm=cfg.kompend.compile.llm,
-            budget=cfg.kompend.compile.budget,
         )
 
     slug = slugify(page_title)
@@ -274,7 +273,6 @@ def wiki_organize(
         default_model,
         timeout=float(timeout),
         llm=cfg.kompend.compile.llm,
-        budget=cfg.kompend.compile.budget,
     )
 
     try:
@@ -329,7 +327,6 @@ def _synthesize_write_page(
     timeout: float,
     source_char_max: int,
     llm: LLMConfig | None = None,
-    budget: BudgetConfig | None = None,
 ) -> str:
     """Synthesize the sources into the body of a write page.
 
@@ -347,7 +344,6 @@ def _synthesize_write_page(
         model,
         timeout=timeout,
         llm=llm,
-        budget=budget,
     )
     loader = get_template_loader()
     pages: list[str] = []

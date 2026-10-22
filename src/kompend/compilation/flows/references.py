@@ -115,7 +115,6 @@ def run_reference_extraction(
             agent = ReferenceExtractionAgent(
                 model_string=model_string,
                 timeout=timeout,
-                max_tokens=_reference_output_tokens(compiler),
                 reasoning_effort=compiler._config.llm.reasoning_effort,
                 context_window=compiler._context_window.max_input,
                 usage_tracker=compiler._usage_tracker,
@@ -125,7 +124,6 @@ def run_reference_extraction(
                 # merges it across retries.
                 delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
                 llm=compiler._config.llm,
-                budget=compiler._budget,
             )
             max_window_chars = _reference_char_budget(compiler)
         except Exception as exc:  # noqa: BLE001 — agent construction may fail without model
@@ -231,7 +229,7 @@ def _reference_char_budget(compiler: TwoPhaseRuntime) -> int:
     """
     cw = compiler._context_window  # noqa: SLF001 — flow/runtime contract
     sys_tokens = _reference_system_tokens()
-    out_tokens = _reference_output_tokens(compiler)
+    out_tokens = _reference_answer_tokens(compiler)
     safety_tokens = context_safety_tokens(cw.max_input)
     content_tokens = max(1, cw.max_input - sys_tokens - out_tokens - safety_tokens)
     chars_per_token = compiler._config.llm.default_chars_per_token  # noqa: SLF001
@@ -254,19 +252,14 @@ def _reference_char_budget(compiler: TwoPhaseRuntime) -> int:
     return budget
 
 
-def _reference_output_tokens(compiler: TwoPhaseRuntime) -> int:
-    """Output-token ceiling for one reference-extraction request.
+def _reference_answer_tokens(compiler: TwoPhaseRuntime) -> int:
+    """Tokens one reference-extraction request leaves free for its answer.
 
-    ``compile.budget.reference_output_max`` is the configured bound; the
-    model's discovered output limit caps it further. The value is handed to
-    the agent as ``max_tokens`` so the response is bounded explicitly
-    instead of being truncated by the provider.
+    Derived from the model's window (``ContextWindow.answer_reserve``), not
+    from a configured ceiling: kompend never sends ``max_tokens``, so the
+    window is the only real bound.
     """
-    configured = compiler._budget.reference_output_max  # noqa: SLF001
-    discovered = compiler._context_window.max_output  # noqa: SLF001
-    if discovered and discovered > 0:
-        configured = min(configured, discovered)
-    return max(1, configured)
+    return compiler._context_window.answer_reserve  # noqa: SLF001
 
 
 @functools.lru_cache(maxsize=1)

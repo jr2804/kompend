@@ -291,7 +291,6 @@ def prepare_source_segments(
     sources: list[tuple[str, str]] = list(by_source.items())
 
     cw = compiler._context_window
-    budget = compiler._budget
     # The rendered content block is ``"\n\n".join(f"### {label}\n{content}")``
     # — each source adds ``### {label}\n`` plus the ``\n\n`` separator. The
     # request-fit guard measures the *rendered* block, so the sizing must
@@ -305,21 +304,21 @@ def prepare_source_segments(
         # Agentic path: reserved is the complete fixed overhead (system +
         # prompt + variables + tool framing), so the content budget is the
         # window minus the output budget minus everything reserved.
-        content_budget = cw.max_input - budget.gen_output_max - reserved_tokens - label_overhead_tokens
+        content_budget = cw.input_budget(reserved_tokens + label_overhead_tokens)
     else:
         # Legacy template path: only the system template is pre-known; the
         # content block IS the prompt, so no other reservation applies.
-        content_budget = cw.max_input - compiler._gen_system_tokens - budget.gen_output_max - label_overhead_tokens
+        content_budget = cw.input_budget(compiler._gen_system_tokens + label_overhead_tokens)
     segment_char_size = tokens_to_chars(
         max(compiler._config.llm.min_segment_tokens, content_budget),
         chars_per_token=compiler._config.llm.default_chars_per_token,
     )
     logger.info(
-        "TwoPhase: segment_char_size=%d chars (cw=%d, sys_tok=%d, gen_max=%d, reserved=%d)",
+        "TwoPhase: segment_char_size=%d chars (cw=%d, sys_tok=%d, answer_reserve=%d, reserved=%d)",
         segment_char_size,
         cw.max_input,
         compiler._gen_system_tokens,
-        budget.gen_output_max,
+        cw.answer_reserve,
         reserved_tokens,
     )
     source_segments = segment_sources(sources, segment_char_size)
@@ -504,7 +503,6 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
         agent = make_agentic_generation_agent(
             model_string=compiler._model or "",
             timeout=compiler._timeout,
-            max_tokens=compiler._budget.gen_output_max,
             skills=compiler._config.skills,
             delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
             reasoning_effort=compiler._config.llm.reasoning_effort,
@@ -513,7 +511,6 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             rlm=compiler._config.llm.rlm,
             usage_tracker=compiler._usage_tracker,
             llm=compiler._config.llm,
-            budget=compiler._budget,
         )
 
         deps = ToolGenerationDeps(
@@ -539,19 +536,20 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
         seg_titles: set[str] = set()  # normalized page titles produced for this segment
         seg_consumed_names: list[str] = list(caller_progress.get(seg_id, []))  # accumulate for checkpoint
         # Request-fit guard: the segment content is placed in the conversation
-        # by read_segment (a tool result), and the model still emits up to
-        # gen_output_max on top. If even ONE call would exceed the window,
+        # by read_segment (a tool result), and the model still needs room for
+        # its answer (context_window.answer_reserve) on top. If even ONE call
+        # would exceed the window,
         # fail loudly now instead of letting Ollama stall/time out mid-stream.
         # The no-crop rule is honored: we never silently clamp max_tokens;
         # content is preserved by splitting into smaller segments at the
         # sizing stage.
         _segment_content_tokens = _token_estimate(content_block, compiler._config.llm.default_chars_per_token)
         _estimated_request = _agentic_reserved_tokens(compiler, known_titles or [], pinned_facts or []) + _segment_content_tokens
-        if _estimated_request + compiler._budget.gen_output_max > compiler._context_window.max_input:
+        if _estimated_request + compiler._context_window.answer_reserve > compiler._context_window.max_input:
             raise LLMOutputError(
                 f"Agentic generation for {seg_label}: segment content ({_segment_content_tokens} tokens) + fixed "
-                f"overhead ({_estimated_request - _segment_content_tokens} tokens) + output budget "
-                f"({compiler._budget.gen_output_max} tokens) exceeds the {compiler._context_window.max_input}-token "
+                f"overhead ({_estimated_request - _segment_content_tokens} tokens) + answer reserve "
+                f"({compiler._context_window.answer_reserve} tokens) exceeds the {compiler._context_window.max_input}-token "
                 f"context window. Segments were sized with reserved_tokens; this indicates the conversation "
                 f"grew beyond the reservation. Re-run with a smaller context budget or check config."
             )
