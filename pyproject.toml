@@ -62,7 +62,6 @@ dependencies = [
     "tenacity>=9.1.4",
     "logfire[system-metrics]>=5.2.0",
     "pydantic-ai-harness[acp]>=0.24.0",
-    "models-dev>=1.0.398",
     "ollama>=0.6.3",
     "summarization-pydantic-ai>=0.1.11",
     "aenum>=3.1.17",
@@ -70,6 +69,7 @@ dependencies = [
     "rapidfuzz>=3.14.6",
     "charset-normalizer>=3.5.2",
     "parsecraft[docling,web]>=2026.10.12",
+    "llmdb>=1.0.0",
 ]
 
 [project.scripts]

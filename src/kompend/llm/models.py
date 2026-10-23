@@ -16,7 +16,7 @@ Resolution strategy (first match wins):
    side — pydantic-ai's dispatch resolves both the provider class and
    the model class.
 
-2. **models-dev catalog** — for providers pydantic-ai doesn't ship a
+2. **model catalogue (models.dev)** — for providers pydantic-ai doesn't ship a
    class for (custom OpenAI-compatible mirrors like ``claudinio``,
    ``opencode``), the catalog's ``api`` URL and advertised ``env`` var
    build a generic :class:`~pydantic_ai.models.openai.OpenAIChatModel`
@@ -35,11 +35,12 @@ import os
 import pkgutil
 import re
 
+import llmdb
 import ollama
 import pydantic_ai.providers
-from models_dev import Provider, get_model_by_id, get_provider
 from pydantic_ai.models import Model, infer_model
 from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
 from pydantic_ai.providers import infer_provider_class
@@ -48,11 +49,13 @@ from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 
+from kompend.llm import catalog
+
 # ── public API ─────────────────────────────────────────────────────────
 from kompend.llm.user_providers import _user_providers, set_user_providers  # noqa: E402  (re-export for build_model)
 from kompend.logging import get_logger
 
-# Default base URL for local Ollama — ``ollama`` is not in the models-dev
+# Default base URL for local Ollama — ``ollama`` is not in the models.dev
 # catalog, and OllamaProvider has no built-in default (it raises UserError
 # when neither ``base_url`` nor ``OLLAMA_BASE_URL`` is given). pydantic-ai's
 # OllamaModel uses the OpenAI-compatible endpoint, so ``/v1`` is required in
@@ -94,11 +97,11 @@ class _NotNativeProvider(Exception):
     """Provider is not natively known to pydantic-ai."""
 
 
-# ── path 2: models-dev catalog (OpenAI-compatible custom provider) ─────
+# ── path 2: model catalogue (models.dev) (OpenAI-compatible custom provider) ─────
 
 
 class _NotInCatalog(Exception):
-    """Provider is not in the models-dev catalog or has no API endpoint."""
+    """Provider is not in the model catalogue (models.dev) or has no API endpoint."""
 
 
 def resolve_vlm_model(default_model: str | None, vlm_model: str | None) -> str | None:
@@ -124,7 +127,7 @@ def model_supports_vision(model_string: str) -> bool:
     accept images for a vision model and reject them for a text-only one.
     How the signature is discovered depends on the provider:
 
-    - **models-dev catalog providers** (openai, google, anthropic, ...): the
+    - **model catalogue (models.dev) providers** (openai, google, anthropic, ...): the
       catalog entry's ``modalities.input`` lists ``"image"``.
     - **Ollama**: a live ``ollama.show()`` probe returns the server-side
       ``capabilities`` list, which includes ``"vision"`` for multimodal
@@ -152,15 +155,11 @@ def model_supports_vision(model_string: str) -> bool:
 
 
 def _vision_from_catalog(provider_id: str, model_name: str) -> bool | None:
-    """Vision flag from the models-dev catalog; ``None`` when not listed."""
-    try:
-        model = get_model_by_id(provider_id, model_name)
-    except (KeyError, ValueError, TypeError):
+    """Vision flag from the model catalogue (models.dev); ``None`` when not listed."""
+    model = catalog.model(provider_id, model_name)
+    if model is None or model.modalities is None:
         return None
-    modalities = getattr(model, "modalities", None)
-    if modalities is None or modalities.input is None:
-        return None
-    return "image" in modalities.input
+    return llmdb.Modality.IMAGE in model.modalities.input
 
 
 def _vision_from_ollama(model_name: str) -> bool | None:
@@ -194,7 +193,7 @@ def build_model(model_string: str) -> Model:
     if provider_id in _user_providers and _user_providers[provider_id].get("base_url"):
         return _build_user_provider(provider_id, model_name)
 
-    # 3. models-dev catalog (OpenAI-compatible custom provider)?
+    # 3. model catalogue (models.dev) (OpenAI-compatible custom provider)?
     try:
         return _build_catalog(provider_id, model_name)
     except _NotInCatalog as exc:
@@ -205,7 +204,7 @@ def build_model(model_string: str) -> Model:
     known_str = ", ".join(sorted(known))
     msg = (
         f"Unknown provider {provider_id!r}: not natively supported by "
-        f"pydantic-ai and not in the models-dev catalog. "
+        f"pydantic-ai and not in the model catalogue (models.dev). "
         f"Model strings use the format 'provider/model' (e.g. 'ollama/{model_string}').\n"
         f"  Known providers: {known_str}\n"
         f"  Got: {model_string!r} -> provider={provider_id!r}, model={model_name!r}"
@@ -217,22 +216,35 @@ def is_known_provider(provider_id: str) -> bool:
     """Whether *provider_id* resolves without a user-defined endpoint.
 
     True when pydantic-ai ships a native provider class for it, or the
-    models-dev catalog has an entry. Distinguishes an override-only
+    model catalogue (models.dev) has an entry. Distinguishes an override-only
     ``[providers.<name>]`` block (valid for a known provider — e.g.
     ``[providers.ollama]`` with only ``context_window``) from a typo'd
     provider id that can never build a model.
     """
     if provider_id in _discover_provider_ids():
         return True
-    try:
-        get_provider(provider_id)
-    except (KeyError, ValueError):
-        return False
-    return True
+    return catalog.provider(provider_id) is not None
+
+
+def requires_output_ceiling(model: Model) -> bool:
+    """True when the provider protocol rejects a request without ``max_tokens``.
+
+    Only the Anthropic protocol mandates the field. When kompend leaves it
+    unset, pydantic-ai substitutes its own 4096, which silently caps every
+    reply (thinking tokens included) -- so that protocol needs a value. The
+    OpenAI-compatible endpoints and Ollama generate until the model stops or
+    the window fills, and there kompend sends nothing at all.
+    """
+    if isinstance(model, FallbackModel):
+        return any(requires_output_ceiling(inner) for inner in model.models)
+    delegate = getattr(model, "delegate", None)
+    if isinstance(delegate, Model):
+        return requires_output_ceiling(delegate)
+    return isinstance(model, AnthropicModel)
 
 
 def resolve_model_limits(model_id: str) -> tuple[int, int]:
-    """Resolve ``(max_input, max_output)`` token limits from the models-dev catalog.
+    """Resolve ``(max_input, max_output)`` token limits from the model catalogue (models.dev).
 
     Raises:
         ValueError: If *model_id* has no ``/`` or ``:`` separator.
@@ -240,13 +252,15 @@ def resolve_model_limits(model_id: str) -> tuple[int, int]:
         LookupError: If the model entry has no limit data.
     """
     provider_id, model_name = _split(model_id)
-    model = get_model_by_id(provider_id, model_name)  # raises KeyError
+    entry = catalog.model(provider_id, model_name)
+    if entry is None:
+        raise KeyError(model_name)
 
-    limit = model.limit
-    if limit is None or limit.context is None:
+    limit = entry.limit
+    if limit is None or not limit.context:
         raise LookupError(f"No limit data for {model_id!r}")
 
-    return limit.context, limit.output or limit.context
+    return int(limit.context), int(limit.output or limit.context)
 
 
 # ── parsing ────────────────────────────────────────────────────────────
@@ -288,7 +302,7 @@ def _build_native(provider_id: str, model_name: str) -> Model:
     except ValueError as exc:
         raise _NotNativeProvider from exc
 
-    # Ollama is a well-known local provider with no models-dev catalog entry
+    # Ollama is a well-known local provider with no model catalogue (models.dev) entry
     # and no built-in default base_url. Provide the local default so kompend
     # works out of the box; OLLAMA_BASE_URL still wins when set.
     if provider_cls is OllamaProvider:
@@ -323,22 +337,21 @@ def _build_ollama(model_name: str) -> OllamaModel:
 
 
 def _build_catalog(provider_id: str, model_name: str) -> Model:
-    """Build a generic OpenAI-compatible model from models-dev catalog data.
+    """Build a generic OpenAI-compatible model from model catalogue (models.dev) data.
 
     The catalog's ``api`` field is the OpenAI-compatible base URL; the
     advertised ``env`` var carries the API key. Raises
     :class:`_NotInCatalog` when the provider is absent or has no ``api``.
     """
-    try:
-        catalog = get_provider(provider_id)
-    except KeyError as exc:
-        raise _NotInCatalog from exc
+    entry = catalog.provider(provider_id)
+    if entry is None:
+        raise _NotInCatalog(f"Provider {provider_id!r} is not in the model catalogue.")
 
-    if not catalog.api:
-        raise _NotInCatalog(f"Provider {provider_id!r} is in the catalog but has no API URL.")
+    if not entry.api:
+        raise _NotInCatalog(f"Provider {provider_id!r} is in the catalogue but has no API URL.")
 
-    base_url = _normalize_base_url(catalog.api)
-    api_key = _catalog_api_key(catalog)
+    base_url = _normalize_base_url(entry.api)
+    api_key = _catalog_api_key(entry)
     return OpenAIChatModel(
         model_name,
         provider=OpenAIProvider(base_url=base_url, api_key=api_key),
@@ -353,7 +366,7 @@ def _normalize_base_url(api_url: str) -> str:
     return base
 
 
-def _catalog_api_key(catalog: Provider) -> str:
+def _catalog_api_key(catalog: llmdb.Provider) -> str:
     """API key from the first advertised env var that is set, else a placeholder."""
     for env_var in catalog.env:
         value = os.environ.get(env_var)

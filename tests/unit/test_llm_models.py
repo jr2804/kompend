@@ -3,18 +3,90 @@
 from __future__ import annotations
 
 import os
+from datetime import UTC, datetime
 from types import SimpleNamespace
 
+import llmdb
 import pydantic
 import pytest
 from pydantic_ai.models.anthropic import AnthropicModel
+from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
+from pydantic_ai.providers.anthropic import AnthropicProvider
+from pydantic_ai.providers.ollama import OllamaProvider
+from pydantic_ai.providers.openai import OpenAIProvider
 
 import kompend.llm.models as mod
 from kompend.core.config._configs import ProviderEndpoint
-from kompend.llm.models import OLLAMA_CONTEXT_LENGTH_ENV, _resolve_env_ref, _split, build_model, resolve_model_limits, set_user_providers
+from kompend.llm import catalog
+from kompend.llm.models import (
+    OLLAMA_CONTEXT_LENGTH_ENV,
+    _resolve_env_ref,
+    _split,
+    build_model,
+    requires_output_ceiling,
+    resolve_model_limits,
+    set_user_providers,
+)
+
+# ── Catalogue fixture ──────────────────────────────────────────────────
+#
+# The model catalogue is live data (models.dev), so these tests pin it to a
+# synthetic snapshot instead of whatever the network served today: URLs and
+# limits move, and a test that asserted on them would break on every refresh.
+
+_CATALOGUE_ENTRIES: dict[str, dict[str, object]] = {
+    "anthropic": {
+        "api": "https://api.anthropic.com/v1",
+        "env": ["ANTHROPIC_API_KEY"],
+        "models": {
+            "claude-sonnet-4-20250514": (200000, 64000, False),
+            "claude-sonnet-4-5": (200000, 64000, False),
+        },
+    },
+    "claudinio": {
+        "api": "https://api.claudin.io/v1",
+        "env": ["CLAUDINIO_API_KEY"],
+        "models": {"claude-4": (200000, 32000, False)},
+    },
+    "google": {
+        "api": "https://generativelanguage.googleapis.com",
+        "env": ["GOOGLE_API_KEY"],
+        "models": {
+            "gemini-3-flash": (1000000, 65536, True),
+            "gemini-2.5-flash": (1048576, 65536, True),
+        },
+    },
+    "minimax": {
+        "api": "https://api.minimax.io/v1",
+        "env": ["MINIMAX_API_KEY"],
+        "models": {
+            "MiniMax-M2.7-highspeed": (196608, 128000, False),
+            "MiniMax-M3.1-Flash": (1000000, 524288, True),
+        },
+    },
+    "ollama-cloud": {
+        "api": "https://ollama.com/v1",
+        "env": [],
+        "models": {"deepseek-v4-flash": (131072, 8192, False)},
+    },
+    "openai": {
+        "api": "https://api.openai.com/v1",
+        "env": ["OPENAI_API_KEY"],
+        "models": {
+            "gpt-4o": (128000, 16384, True),
+            "gpt-5.2": (400000, 128000, True),
+        },
+    },
+    "opencode": {
+        "api": "https://opencode.ai/inference/openai/v1",
+        "env": ["OPENCODE_API_KEY"],
+        "models": {"gpt-5.4-nano": (200000, 32768, False)},
+    },
+}
+
 
 # ── _split ─────────────────────────────────────────────────────────────
 
@@ -132,7 +204,7 @@ class TestBuildModelCatalog:
         m = build_model("opencode/gpt-5.4-nano")
         assert isinstance(m, OpenAIChatModel)
         assert m.model_name == "gpt-5.4-nano"
-        assert str(m.base_url).rstrip("/") == "https://opencode.ai/zen/v1"
+        assert str(m.base_url).rstrip("/") == "https://opencode.ai/inference/openai/v1"
 
     def test_claudinio_via_catalog(self) -> None:
         m = build_model("claudinio/claude-4")
@@ -398,6 +470,68 @@ class TestResolveVlmModel:
     def test_no_vlm_no_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(mod, "model_supports_vision", lambda s: True)
         assert mod.resolve_vlm_model(None, None) is None
+
+
+class TestRequiresOutputCeiling:
+    """Only the Anthropic protocol rejects a request without max_tokens."""
+
+    def test_anthropic_needs_one(self) -> None:
+        model = AnthropicModel("claude-x", provider=AnthropicProvider(api_key="x"))
+
+        assert requires_output_ceiling(model) is True
+
+    def test_openai_and_ollama_do_not(self) -> None:
+        assert requires_output_ceiling(OpenAIChatModel("gpt-x", provider=OpenAIProvider(api_key="x"))) is False
+        assert requires_output_ceiling(OllamaModel("qwen", provider=OllamaProvider(base_url="http://127.0.0.1:11434"))) is False
+
+    def test_follows_a_delegate_and_a_fallback_chain(self) -> None:
+        anthropic = AnthropicModel("claude-x", provider=AnthropicProvider(api_key="x"))
+        openai = OpenAIChatModel("gpt-x", provider=OpenAIProvider(api_key="x"))
+
+        class _Wrapper:
+            delegate = anthropic
+
+        assert requires_output_ceiling(anthropic) is True
+        assert requires_output_ceiling(FallbackModel(openai, anthropic)) is True
+        assert requires_output_ceiling(FallbackModel(openai)) is False
+
+
+@pytest.fixture(autouse=True)
+def _catalog(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the model catalogue to ``_CATALOGUE_ENTRIES`` for every test here."""
+    providers: dict[str, llmdb.Provider] = {}
+    for provider_id, entry in _CATALOGUE_ENTRIES.items():
+        models = entry["models"]
+        if not isinstance(models, dict):
+            continue
+        providers[provider_id] = llmdb.Provider.model_validate(
+            {
+                "id": provider_id,
+                "name": provider_id,
+                "api": entry.get("api"),
+                "env": entry.get("env", []),
+                "models": {model_id: _catalog_model(model_id, limits) for model_id, limits in models.items()},
+            }
+        )
+    snapshot = catalog.CatalogSnapshot(fetched_at=datetime.now(UTC), providers=providers)
+    catalog._install(snapshot)
+
+
+def _catalog_model(model_id: str, limits: tuple[int, int, bool]) -> dict[str, object]:
+    """Build one catalogue model payload with the fields ``llmdb`` requires."""
+    context, output, image = limits
+    return {
+        "id": model_id,
+        "name": model_id,
+        "attachment": False,
+        "reasoning": False,
+        "tool_call": True,
+        "release_date": "2025-01-01",
+        "last_updated": "2025-01-01",
+        "modalities": {"input": ["text", "image"] if image else ["text"], "output": ["text"]},
+        "open_weights": False,
+        "limit": {"context": context, "output": output},
+    }
 
 
 # ── build_model: native pydantic-ai providers ──────────────────────────
