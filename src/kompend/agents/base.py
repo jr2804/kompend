@@ -32,7 +32,7 @@ import json
 import re
 import typing
 from abc import ABC
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
@@ -229,12 +229,19 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     #: ``delta_retry_enabled``; this flag only marks the agent as
     #: capable of the hook.
     supports_delta_retry: ClassVar[bool] = False
+    #: Optional model factory for agents whose model is not a chat model
+    #: (the decision sidecar speaks the SystemOne protocol). ``None`` uses
+    #: :func:`kompend.llm.models.build_model`.
+    model_builder: ClassVar[Callable[[str], Model] | None] = None
 
     # Runtime-resolved type params (set in __post_init__, not constructor params)
     result_type: type = field(default=str, init=False, repr=False)
     deps_type: type[AgentDeps] = field(default=PipelineAgentDeps, init=False, repr=False)
     # Lazy-init internal state (not constructor params)
     _agent: Agent[DepsT, ResultT] | None = field(default=None, init=False, repr=False)
+    #: False once a gateway rejected the prompt-cache field; the agent is then
+    #: rebuilt without it and runs with caching off for its lifetime.
+    _prompt_cache: bool = field(default=True, init=False, repr=False)
     _template_loader: TemplateLoader = field(init=False, repr=False)
     _current_source_id: str = field(default="", init=False, repr=False)
     _delta_retry_state: dict[int, JSONValue] = field(default_factory=dict, init=False, repr=False)
@@ -324,13 +331,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         user_prompt = self.render_user_prompt(deps)
         system_prompt = self.render_system_prompt(deps)
         try:
-            result = self._agent.run_sync(
-                user_prompt,
-                deps=deps,
-                instructions=system_prompt,
-                message_history=message_history,
-                usage_limits=self._usage_limits_for(deps),
-            )
+            result = self._invoke(user_prompt, deps, system_prompt, message_history)
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
             ctx_info = _context_usage_str(self.usage_tracker)
@@ -345,6 +346,47 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             error_cls = LLMTransientError if is_transient_error(exc) else LLMOutputError
             raise error_cls(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
         return result.output
+
+    def _invoke(
+        self,
+        user_prompt: str,
+        deps: DepsT,
+        system_prompt: str,
+        message_history: list[ModelMessage] | None,
+    ) -> Any:
+        """Run the agent, retrying once without prompt caching if a gateway rejects it.
+
+        A gateway that does not know the provider's cache field answers 400
+        with the field name in the body. Caching is an optimisation, never a
+        requirement, so the retry disables it for this agent and logs why.
+        """
+        if self._agent is None:
+            self._agent = self._build_agent()
+        try:
+            return self._agent.run_sync(
+                user_prompt,
+                deps=deps,
+                instructions=system_prompt,
+                message_history=message_history,
+                usage_limits=self._usage_limits_for(deps),
+            )
+        except Exception as exc:
+            if not self._prompt_cache or not _is_cache_rejection(exc):
+                raise
+            logger.warning(
+                "Prompt caching rejected by '%s' (%s) - retrying without it; set compile.llm.prompt_cache = false to skip the probe",
+                self.model_string,
+                exc,
+            )
+            self._prompt_cache = False
+            self._agent = self._build_agent()
+            return self._agent.run_sync(
+                user_prompt,
+                deps=deps,
+                instructions=system_prompt,
+                message_history=message_history,
+                usage_limits=self._usage_limits_for(deps),
+            )
 
     def run_with_messages(
         self,
@@ -364,13 +406,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         user_prompt = self.render_user_prompt(deps)
         system_prompt = self.render_system_prompt(deps)
         try:
-            result = self._agent.run_sync(
-                user_prompt,
-                deps=deps,
-                instructions=system_prompt,
-                message_history=message_history,
-                usage_limits=self._usage_limits_for(deps),
-            )
+            result = self._invoke(user_prompt, deps, system_prompt, message_history)
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
             ctx_info = _context_usage_str(self.usage_tracker)
@@ -513,7 +549,15 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
         # Build the top-level model once and reuse it for both the Agent and
         # the summarization capability (same failover chain).
-        top_model = self._build_top_level_model()
+        top_model = self.model_builder(self.model_string) if self.model_builder else self._build_top_level_model()
+        # Cache the conversation prefix. The agentic loops re-send it on every
+        # pass, so this is the difference between N prefills and N cache reads.
+        # ``cache`` is pydantic-ai's unified setting: it translates to the
+        # provider's own mechanism (Anthropic ``cache_control`` breakpoints,
+        # OpenAI cache options/key, OpenRouter pass-through) and is a no-op
+        # where the provider caches implicitly or not at all.
+        if self._prompt_cache and (self.llm.prompt_cache if self.llm else True):
+            model_settings = {**model_settings, "cache": True}
         settings: AgentModelSettings[DepsT] = model_settings
         if requires_output_ceiling(top_model):
             settings = self._ceiling_model_settings(model_settings)
@@ -958,3 +1002,12 @@ def _merge_valid_data(previous: JSONValue, current: JSONDict, schema: type[BaseM
             merged[field_name] = prev_val[: len(prev_val) - len(curr_val)] + curr_val
 
     return merged
+
+
+def _is_cache_rejection(exc: BaseException) -> bool:
+    """True when an error says the provider does not accept the cache field."""
+    status = getattr(exc, "status_code", None)
+    if status not in (400, 404, 422):
+        return False
+    text = str(exc).lower()
+    return "cache" in text or "unknown field" in text or "extra inputs" in text

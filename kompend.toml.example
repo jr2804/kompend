@@ -352,6 +352,10 @@ summary_requests_per_node = 2
 # Agentic summarizer sessions: nodes per session, and how many extra attempts
 # a session that records nothing gets before its nodes are left unsummarized.
 # Smaller batches bound the blast radius of a model that stops calling tools.
+# Concepts one agentic generation segment owns. Each pass re-sends the
+# segment content, so a segment that owns a whole document's concept list
+# pays one full prefill per batch of pages.
+concepts_per_segment = 12
 summary_session_batch_size = 20
 summary_session_stall_retries = 1
 
@@ -407,6 +411,12 @@ default_model = "${KOMP_LLM_DEFAULT_MODEL}"
 # handles many outputs: summarisation, verification, remediation, distillation.
 # Stages that build a fresh agent per unit (generation, capture, query,
 # indexing) gain nothing — the notebook dies with the agent.
+# Mark the conversation prefix for provider-side prompt caching. pydantic-ai's
+# unified `cache` setting is translated per provider (Anthropic breakpoints,
+# OpenAI cache options, OpenRouter pass-through); providers that cache
+# implicitly or not at all are unaffected. A gateway that rejects the field is
+# detected once, logged, and the agent retries without caching.
+prompt_cache = true
 # agent_memory = false
 
 # LLM call timeout (seconds)

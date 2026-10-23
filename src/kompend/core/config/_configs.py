@@ -244,6 +244,12 @@ class LLMConfig(_KompendBaseModel):
         default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model"
     )
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias=EnvVar.LLM_DATA_FORMAT)
+    #: Mark the conversation prefix for provider-side prompt caching. Only
+    #: Anthropic-protocol models act on it (``anthropic_cache_messages``,
+    #: the proxy-safe variant); a multi-pass agentic loop re-sends the same
+    #: prefix, so this turns repeated prefill into cache reads. Disable it
+    #: for a gateway that rejects the ``cache_control`` field.
+    prompt_cache: bool = Field(default=True, validation_alias=EnvVar.LLM_PROMPT_CACHE)
     #: Output-validation retry budget for plain (single-shot) agents: how
     #: often a model answer may fail schema validation before the run fails.
     output_retries: int = Field(default=2, validation_alias=EnvVar.LLM_OUTPUT_RETRIES)
@@ -333,6 +339,10 @@ class BudgetConfig(_KompendBaseModel):
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
     summary_requests_per_node: int = Field(default=2, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_REQUESTS_PER_NODE)
+    #: How many concepts one agentic generation segment owns. Each pass of
+    #: the segment loop re-sends the segment content, so a segment that owns
+    #: a whole document's concept list costs one prefill per batch of pages.
+    concepts_per_segment: int = Field(default=12, validation_alias=EnvVar.BUDGET_CONCEPTS_PER_SEGMENT)
     summary_session_batch_size: int = Field(default=20, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_BATCH_SIZE)
     summary_session_stall_retries: int = Field(default=1, ge=0, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_STALL_RETRIES)
     #: Characters served per ``read_source()`` call in the write-page

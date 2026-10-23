@@ -11,11 +11,13 @@ Used by :mod:`kompend.cli.cmds.agent` to serve kompend over ACP via
 from __future__ import annotations
 
 from pydantic_ai import Agent
+from pydantic_ai.capabilities import Caching
 from pydantic_ai_harness.experimental.acp import AcpSession, AcpSessionConfig
 
 from kompend.acp.definitions import AgentTask
 from kompend.acp.registry import AgentRegistry
 from kompend.acp.tools import build_toolset
+from kompend.core.config import resolve_config
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
@@ -48,7 +50,8 @@ def kompend_session_config(session: AcpSession) -> AcpSessionConfig[None]:
             ``mcp_servers``, ``client_capabilities``).
 
     Returns:
-        An ``AcpSessionConfig`` with deps=None and the resolved toolset.
+        An ``AcpSessionConfig`` with deps=None, the resolved toolset and, unless
+        ``compile.llm.prompt_cache`` is off, pydantic-ai's ``Caching`` capability.
     """
     cwd = session.cwd
     registry = AgentRegistry(base_dir=cwd)
@@ -59,7 +62,13 @@ def kompend_session_config(session: AcpSession) -> AcpSessionConfig[None]:
         enabled=definition.tools.enabled,
     )
 
+    # A conversational session resends its whole history on every turn, which
+    # is exactly what prompt caching pays off on. The capability is the
+    # per-session form of the ``cache`` setting the agents use; the switch is
+    # the same one (``compile.llm.prompt_cache``).
+    cache_enabled = bool(resolve_config(base_dir=cwd).kompend.compile.llm.prompt_cache)
     return AcpSessionConfig(
         deps=None,
         toolsets=[toolset],
+        capabilities=[Caching()] if cache_enabled else None,
     )

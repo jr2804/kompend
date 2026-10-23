@@ -396,6 +396,37 @@ output type is a single `StrEnum` field (`ErrorAction`). When the sidecar is
 disabled or unreachable, the deterministic classification applies and the
 pipeline behaves exactly as it does without it.
 
+### Prompt caching
+
+```toml
+[compile.llm]
+prompt_cache = true   # default
+```
+
+Agent runs resend the whole conversation at every step, and the agentic loops
+(generation, extraction, summarization) resend the same long prefix on every
+pass. With `prompt_cache = true` the agent sets pydantic-ai's unified `cache`
+model setting, which is translated per provider:
+
+| Provider | What it becomes |
+|---|---|
+| Anthropic (API, Vertex, Foundry, Bedrock Messages) | `anthropic_cache` breakpoints on tools, instructions and conversation |
+| OpenAI GPT-5.6+ | `openai_prompt_cache_options` (implicit, 30 min) plus an instruction breakpoint |
+| OpenAI before GPT-5.6, OpenRouter | implicit caching, with explicit breakpoints passed through |
+| Gemini, DeepSeek, xAI, Mistral | implicit caching, or a cache key — nothing extra to send |
+| Ollama and other local backends | no cross-request cache exists |
+
+Caching is not free: a cache write costs 1.25x (5-minute retention) or 2x
+(1-hour) the input price, while a cache read costs 0.1x. A prefix therefore
+breaks even after one read (5 min) or two (1 hour) — which a multi-pass loop
+reaches immediately. A one-off request that is never repeated pays the write
+premium, so the setting is worth turning off for purely single-shot pipelines.
+
+A gateway that does not accept the field answers 400 with the field name in the
+body. The agent detects that once, logs `Prompt caching rejected by …`, rebuilds
+itself without caching and retries the same call; set
+`prompt_cache = false` to skip that probe.
+
 ### Batch failure detection
 
 The two-phase compiler tracks per-batch success/failure via a circuit

@@ -80,6 +80,7 @@ COMPILE_LLM_AGENTIC_OUTPUT_RETRIES: Final[str] = "compile.llm.agentic_output_ret
 COMPILE_LLM_THROUGHPUT_WINDOW_TOKENS: Final[str] = "compile.llm.throughput_window_tokens"
 COMPILE_LLM_TOOL_RETRIES: Final[str] = "compile.llm.tool_retries"
 COMPILE_LLM_AGENT_MEMORY: Final[str] = "compile.llm.agent_memory"
+COMPILE_LLM_PROMPT_CACHE: Final[str] = "compile.llm.prompt_cache"
 
 # -- decision section --
 DECISION_ENABLED: Final[str] = "decision.enabled"
