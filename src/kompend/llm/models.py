@@ -43,10 +43,12 @@ from pydantic_ai.models.anthropic import AnthropicModel
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
+from pydantic_ai.models.typesafe import TypeSafeModel
 from pydantic_ai.providers import infer_provider_class
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
+from pydantic_ai.providers.typesafe import TypeSafeProvider
 from pydantic_ai.settings import ModelSettings
 
 from kompend.llm import catalog
@@ -494,3 +496,23 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
         logger.debug("ollama.show() failed for %s", model_name, exc_info=True)
     candidates = [c for c in (env_ctx, loaded_ctx, param_ctx, native_ctx) if c is not None]
     return min(candidates) if candidates else None
+
+
+def build_decision_model(model_string: str) -> Model:
+    """Build a decision model (SystemOne protocol) instead of a chat model.
+
+    A decision model answers typed questions rather than writing text, so it
+    speaks ``/v1/systemone`` - not the chat-completions path a normal model
+    uses. Providers that serve one (TypeSafe's Jev, Ollama's Clef) expose that
+    endpoint on the same base URL as their other models, so the provider block
+    is reused unchanged.
+    """
+    provider_id, _, model_name = model_string.partition("/")
+    if not model_name:
+        raise ValueError(f"Decision model must be 'provider/model', got {model_string!r}")
+    provider = _user_providers.get(provider_id) or {}
+    base_url = provider.get("base_url")
+    api_key = provider.get("api_key")
+    if not base_url and not api_key:
+        return TypeSafeModel(model_name)
+    return TypeSafeModel(model_name, provider=TypeSafeProvider(base_url=base_url, api_key=api_key))

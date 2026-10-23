@@ -20,6 +20,7 @@ from typing import ClassVar
 from kompend.agents.base import KompendAgentBase
 from kompend.core.config._configs import DecisionConfig
 from kompend.llm.decision import ErrorAction, ErrorDecision, decision_model_string
+from kompend.llm.models import build_decision_model
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
@@ -55,6 +56,7 @@ class DecisionAgent(KompendAgentBase[ErrorDecision, DecisionDeps]):
     system_template_name: ClassVar[str] = "error_triage_system.md.j2"
     template_prefix: ClassVar[str] = "decision/"
     temperature: float | None = 0.0
+    model_builder = staticmethod(build_decision_model)
 
 
 def decide_error_action(
