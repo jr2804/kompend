@@ -48,7 +48,6 @@ text goes to the active conversational agent. The protocol itself is handled by
   parallel implementation.
 - `ProviderCredentials` is thread-safe (`threading.Lock`) and restores the
   previous environment on `disable()`.
-
 - **Sessions cache their prefix.** A conversational session resends its whole
   history every turn, so `kompend_session_config` attaches pydantic-ai's
   `Caching()` capability unless `compile.llm.prompt_cache` is off. The agents in
