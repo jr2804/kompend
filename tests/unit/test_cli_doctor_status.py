@@ -383,7 +383,7 @@ class TestCheckOllamaDevice:
 
         result = doctor._check_ollama_device(default_model="openai/gpt-4o", vlm_model=None)
         assert result.passed is True
-        assert result.warning is True
+        assert result.warning is False
         assert "skipped" in result.message
 
     def test_reports_full_gpu_offload(self, monkeypatch: pytest.MonkeyPatch) -> None:

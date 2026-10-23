@@ -415,7 +415,7 @@ def _check_model_capabilities(
     results: list[CheckResult] = []
     for probe in probes:
         check_name = f"structured-output-{label}" if probe.name == "structured-output" else f"{probe.name}-{label}"
-        results.append(CheckResult(check_name, probe.ok, f"{probe.detail} (model={model})"))
+        results.append(CheckResult(check_name, probe.ok, f"{probe.detail} (model={model})", warning=probe.skipped))
     return results
 
 
@@ -515,7 +515,7 @@ def _check_ollama_device(default_model: str | None, vlm_model: str | None) -> Ch
     targets = [("llm", default_model), ("vlm", vlm_model)]
     targets = [(label, m) for label, m in targets if m and _provider_id_of(m) == "ollama"]
     if not targets:
-        return CheckResult(name, True, "No ollama/ models configured — skipped", warning=True)
+        return CheckResult(name, True, "No ollama/ models configured - skipped")
 
     # Group by loaded identity: two roles pointing at the same model (same
     # digest, e.g. a vision-capable default serving as VLM) resolve to one

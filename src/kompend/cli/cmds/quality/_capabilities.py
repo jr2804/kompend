@@ -65,10 +65,26 @@ def probe_native_structured_output(model: str, *, timeout: float, retries: int) 
         )
         output, elapsed = _timed(agent, "Reply with ok=true and message='hello'.")
     except Exception as exc:
+        if _is_unsupported_protocol(exc):
+            # Not a model defect: the provider's protocol has no native output
+            # mode, so pydantic-ai refuses the request before it is sent.
+            # kompend then uses the tool/prompted mode, which the next probes
+            # verify - report it as information, not as a failure.
+            return CapabilityProbe(
+                name,
+                True,
+                "provider has no native structured-output mode; kompend uses tool/prompted output",
+                skipped=True,
+            )
         return CapabilityProbe(name, False, f"native tool output failed: {_short(exc)}")
     if isinstance(output, _ProbeAnswer) and output.ok:
         return CapabilityProbe(name, True, f"native tool output works ({elapsed:.1f}s)")
     return CapabilityProbe(name, False, f"native tool output returned an invalid answer ({elapsed:.1f}s)")
+
+
+def _is_unsupported_protocol(exc: BaseException) -> bool:
+    """True when pydantic-ai rejects native output for this provider."""
+    return "native structured output is not supported" in str(exc).lower()
 
 
 def probe_prompted_structured_output(model: str, *, timeout: float, retries: int) -> CapabilityProbe:
