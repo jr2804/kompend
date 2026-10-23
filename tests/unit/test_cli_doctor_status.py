@@ -231,6 +231,11 @@ class TestCollectStats:
         assert stats["compile_status"]["error"]
 
 
+def _catalog_snapshot() -> SimpleNamespace:
+    """A minimal catalogue snapshot for the doctor's reporting check."""
+    return SimpleNamespace(providers={"acme": object()}, fetched_at=None)
+
+
 class TestRunDoctorOrder:
     """Connectivity pings must run before context-window discovery so /api/ps reports the served context (not GGUF metadata)."""
 
@@ -240,6 +245,62 @@ class TestRunDoctorOrder:
             assert names.index("connectivity-llm") < names.index("context-window-llm")
         if "connectivity-vlm" in names and "context-window-vlm" in names:
             assert names.index("connectivity-vlm") < names.index("context-window-vlm")
+
+    def test_output_ceiling_reports_the_protocol_rule(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(doctor, "build_model", lambda model: object())
+        monkeypatch.setattr(doctor, "requires_output_ceiling", lambda model: True)
+        monkeypatch.setattr(doctor, "resolve_model_limits", lambda model: (1_000_000, 524_288))
+
+        result = doctor._check_output_ceiling("minimax/MiniMax-M3.1-Flash", "llm")
+
+        assert result.name == "output-ceiling-llm"
+        assert result.passed
+        assert "524288-token output limit" in result.message
+
+    def test_output_ceiling_absent_for_openai_protocols(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(doctor, "build_model", lambda model: object())
+        monkeypatch.setattr(doctor, "requires_output_ceiling", lambda model: False)
+
+        result = doctor._check_output_ceiling("ollama/qwen3", "llm")
+
+        assert result.passed
+        assert "provider default" in result.message
+
+    def test_catalog_reports_the_cached_snapshot(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A usable cache is reported with its age and TTL."""
+        snapshot = _catalog_snapshot()
+        monkeypatch.setattr(doctor.catalog, "ensure_fresh", lambda ttl_hours=None: False)
+        monkeypatch.setattr(doctor.catalog, "snapshot", lambda refresh=False: snapshot)
+
+        result = doctor._check_catalog()
+
+        assert result.passed
+        assert "1 providers" in result.message
+        assert "cached" in result.message
+
+    def test_catalog_refreshes_a_stale_snapshot(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A stale cache is refreshed once and reported as refreshed."""
+        snapshot = _catalog_snapshot()
+        called: list[bool] = []
+        monkeypatch.setattr(doctor.catalog, "ensure_fresh", lambda ttl_hours=None: called.append(True) or True)
+        monkeypatch.setattr(doctor.catalog, "snapshot", lambda refresh=False: snapshot)
+
+        result = doctor._check_catalog()
+
+        assert called == [True]
+        assert result.passed
+        assert "refreshed" in result.message
+
+    def test_catalog_without_snapshot_is_a_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No cache and a failed download must not fail the doctor run."""
+        monkeypatch.setattr(doctor.catalog, "ensure_fresh", lambda ttl_hours=None: False)
+        monkeypatch.setattr(doctor.catalog, "snapshot", lambda refresh=False: None)
+
+        result = doctor._check_catalog()
+
+        assert not result.passed
+        assert result.warning
+        assert "no cached copy" in result.message
 
     def test_window_fit_reports_a_usable_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
