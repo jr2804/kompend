@@ -13,7 +13,11 @@ response_format: json_object
 Generate wiki pages for the concepts in this source segment.
 
 Use the **read_segment()** tool to load the source content, then
-use **fetch_concepts()** to retrieve concept batches.
+use **fetch_concepts()** to retrieve concept batches (up to 10 per call).
+
+Return one page for **every** concept in the batch you fetched, in this same
+pass - a pass that fetches ten concepts and returns one page wastes nine
+prefills of the segment context.
 
 {% if pinned_facts %}
 MUST-PRESERVE FACTS (hard constraint, WiCER refinement input):

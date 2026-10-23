@@ -413,8 +413,20 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
     nodes: list[WikiNode] = list(initial_nodes or [])
     slug_to_idx: dict[str, int] = dict(initial_slug_to_idx or {})
     caller_progress: dict[str, list[str]] = {str(k): list(v) for k, v in (initial_caller_progress or {}).items()}
-    num_segments = len(source_segments)
+    num_source_segments = len(source_segments)
     num_concepts = len(concepts)
+    # One segment owns at most ``budget.concepts_per_segment`` concepts: every
+    # pass of the agent loop below re-sends the segment content as context, so
+    # a segment that owns a whole document's concept list pays one full prefill
+    # per batch of pages. Extra segments reuse the source content round-robin -
+    # content is read through the read_segment() tool, never cropped.
+    per_segment = max(0, int(compiler._config.budget.concepts_per_segment))
+    if per_segment and num_source_segments:
+        wanted = -(-num_concepts // per_segment)
+        segment_plan = [source_segments[i % num_source_segments] for i in range(max(num_source_segments, wanted))]
+    else:
+        segment_plan = list(source_segments)
+    num_segments = len(segment_plan)
 
     broker = ConceptBroker(concepts, num_callers=num_segments)
     # Skip segments whose pages are already in the checkpoint: advance the
@@ -474,7 +486,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
     if num_segments > 0:
         compiler._report(0, gen_progress_total, f"generating wiki ({num_concepts} concepts, {num_segments} segments)")
 
-    for seg_idx, segment in enumerate(source_segments):
+    for seg_idx, segment in enumerate(segment_plan):
         seg_label = f"segment {seg_idx + 1}/{num_segments}"
         seg_id = ConceptBroker.caller_id(seg_idx)
         # Resume support: skip segments whose pages are already produced and
@@ -991,7 +1003,8 @@ def assemble_wiki(
     if not nodes:
         raise LLMOutputError(
             f"Generation failed: 0 of {len(concepts)} concept(s) synthesized. "
-            f"All LLM calls returned invalid data after retries. "
+            f"Every LLM call failed after retries (see the transient/validation warnings above - "
+            f"an upstream long-request timeout is not a structured-output problem). "
             f"Check that model '{compiler._model}' can produce structured JSON output."
         )
 

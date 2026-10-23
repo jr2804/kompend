@@ -44,13 +44,13 @@ async def read_segment(ctx: RunContext[ToolGenerationDeps]) -> str:
 
 async def fetch_concepts(
     ctx: RunContext[ToolGenerationDeps],
-    limit: int = 5,
+    limit: int = 10,
 ) -> str:
     """Fetch the next batch of unassigned concepts for this agent.
 
     Args:
         ctx: Runtime context providing the concept broker via deps.
-        limit: Maximum number of concepts to return (default 5, max 20).
+        limit: Maximum number of concepts to return (default 10, max 20).
 
     Returns:
         A JSON-encoded list of concept dicts, or ``[]`` when all
