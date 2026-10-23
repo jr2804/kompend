@@ -50,11 +50,11 @@ arrives with kompend itself. The judge is enabled purely by config
 
 ### Why `marker` cannot be a locked extra
 
-Measured fresh (kompend-3, 2026-10-10) against the current lock: the tight pin
+Measured fresh (kompend-3, 2026-10-23) against the current lock: the tight pin
 `marker-pdf>=1.10.2,<2` **hard-fails** — `marker-pdf` 1.10.2 pins
-`anthropic>=0.46,<0.47` while `pydantic-ai` 2.31.1 needs `anthropic>=0.108`,
+`anthropic>=0.46,<0.47` while `pydantic-ai` 2.60.0 needs `anthropic>=1.12.1`,
 and the two ranges do not overlap. Dropping the upper bound only makes it
-"resolve" by downgrading `anthropic` 1.13.0 → 0.125.0 and `pillow`
+"resolve" by downgrading `anthropic` 2.1.0 → 0.125.0 and `pillow`
 12.3.0 → 10.4.0 — silently regressing kompend's LLM stack.
 
 That is the substantive reason the marker backend was deleted rather than

@@ -223,7 +223,7 @@ These patterns remain in the codebase — refactor when touched, don't extend:
 | `status.py` imports from `kompend.cli._sources` | `status.py:10` | Cross-imports within CLI are fine, but extension enumeration should come from parser registry |
 
 Fixed violations (router/wiki/vector-index construction, config path,
-extension set — all moved into core) are archived in `.agents/HISTORY.md`.
+extension set) are archived in `.agents/history/2026-10-23-rationale-archive.md`.
 
 ## Work Guidance
 

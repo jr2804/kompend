@@ -93,9 +93,8 @@ A cache belongs in `.kompend/` (at the project root, alongside `sources/` and `w
 
 Global caches (e.g. `~/.cache/kompend/`) would only make sense for:
 
-- **Downloaded ML models** — but HuggingFace, sentence-transformers, and
-  Docling already manage their own caches under `~/.cache/huggingface/`
-  and `~/.cache/docling/`
+- **Downloaded ML models** — but Docling already manages its own caches
+  under `~/.cache/docling/` and `~/.cache/huggingface/`
 - **Parser binaries** — pandoc, external tools — managed by the OS package
   manager or pipx
 
@@ -159,7 +158,7 @@ These are managed by upstream libraries and listed here for reference:
 
 | Path | What | Managed by |
 |------|------|-----------|
-| `~/.cache/huggingface/` | sentence-transformers models (≈1 GB each) | HuggingFace Hub |
+| `~/.cache/huggingface/` | Docling layout/table models (via HuggingFace Hub) | HuggingFace Hub |
 | `~/.cache/docling/` | Docling model files (≈500 MB) | Docling |
 | `~/.cache/pip/` | Python packages | pip |
 

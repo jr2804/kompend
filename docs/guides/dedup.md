@@ -83,10 +83,10 @@ or **CLI arg** (when the ingest command supports it).
 
 ### Embedding Matcher
 
-Uses [sentence-transformers](https://www.sbert.net/) (or any pydantic-ai-compatible
-embedding provider) to compute document vectors, then compares via cosine
-similarity. The model must specify an explicit provider prefix (e.g.
-`ollama:granite-embedding:278m`); there is no built-in local model.
+Uses any pydantic-ai-compatible embedding provider to compute document
+vectors, then compares via cosine similarity. The model must specify an
+explicit provider prefix (e.g. `ollama:granite-embedding:278m`); there is no
+built-in local model.
 
 - **Model:** Configurable; must include a provider prefix.
 - **Chunking:** Long documents are split into word chunks and mean-pooled into

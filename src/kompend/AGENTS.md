@@ -40,7 +40,8 @@ type annotations.
 
 Template layout, loader search order, frontmatter schema, and variable
 validation — see `core/templates/AGENTS.md`. Pack layout — see
-`packs/AGENTS.md`. Known legacy violations — see `.agents/HISTORY.md`.
+`packs/AGENTS.md`. Known legacy violations are tracked in beads (`bd list`); the
+ban's rationale — see `.agents/history/2026-10-23-rationale-archive.md`.
 
 ### Python antipatterns
 
@@ -74,7 +75,7 @@ module map, and modification guidance — **see `acp/AGENTS.md`** and
 
 ## Work Guidance
 
-- Python 3.11+ only. Modern typing (`X | None`, `list[str]`).
+- Python 3.13+ only. Modern typing (`X | None`, `list[str]`).
 - Every module in `src/kompend/` has an `__init__.py` that defines its public API
   via re-exports. Import from the package root, not the defining submodule.
 - `src/kompend/core/paths.py` is the single source of truth for on-disk artifact

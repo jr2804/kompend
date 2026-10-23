@@ -234,7 +234,7 @@ See `kompend agents list` for available agents.
 **Why ACP instead of MCP sampling?** kompend needs full Pydantic structured output
 for compilation — MCP sampling is free-text only. With ACP `providers/set`,
 the editor configures kompend's LLM endpoint at init time, and kompend makes its own
-direct HTTP calls with the full litellm pipeline.
+direct HTTP calls through its pydantic-ai pipeline.
 
 **Slash commands:**
 
@@ -440,7 +440,7 @@ Key config keys:
 |-----|---------|---------|
 | `compile.llm.default_model` | `""` | LLM for compilation/querying |
 | `compile.llm.vlm_model` | `""` | VLM for image captioning |
-| `compile.embedding.model` | `sentence-transformers/all-MiniLM-L6-v2` | Embedding model |
+| `compile.embedding.model` | `""` | Embedding model (`provider:model`, e.g. `ollama:granite-embedding:278m`; empty = no vector index) |
 | `compile.output.format` | `okf` | Output format (okf, markdown, json, typst) |
 | `compile.compiler` | `graph` | Compiler backend (graph, wicer) |
 | `compile.workers` | `1` | Parallel worker count |
@@ -508,7 +508,7 @@ kompend config set compile.provenance true
 | Symptom | Likely Cause | Fix |
 |---------|-------------|-----|
 | "No parser for X" | Unsupported file format | Check file extension. Supported: pdf, docx, pptx, html, md, epub, tex, doc, odt, rst, rtf, txt, png, jpg, csv, xlsx, adoc |
-| Compilation fails with LLM error | Model not available / wrong name | Set `compile.llm.default_model` to a model litellm supports. Check connectivity. |
+| Compilation fails with LLM error | Model not available / wrong name | Set `compile.llm.default_model` to a valid `provider/model` string. Check connectivity. |
 | query returns empty results | Wiki not compiled, or no matching content | Run `compile` first. Try `--search-mode hybrid`. Lower `search.cache.threshold`. Without a vector sidecar recall is keyword-only — check `compile.embedding.model` if paraphrase queries miss. |
 | "Sources directory not found" | Wrong working directory | Run from project root, or pass --wiki-dir |
 | Memory not working | memory disabled or no embedding model | Set `compile.memory_enabled=true` and `compile.embedding.model` |

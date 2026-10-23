@@ -84,7 +84,7 @@ Full option reference: `kompend <command> --help`
 
 | Subsystem            | Description                                                                                                                                               |
 | -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **RAG / Search**     | `HybridRetriever` fuses FTS + vector + token-overlap + raw sources via reciprocal rank fusion. Embeddings via `litellm:` prefix or sentence-transformers. |
+| **RAG / Search**     | `HybridRetriever` fuses FTS + vector + token-overlap + raw sources via reciprocal rank fusion. Embeddings via any pydantic-ai provider (`ollama:`, `openai:`, …). |
 | **Memory lifecycle** | Confidence decay, tier promotion (working → episodic → semantic → procedural), supersession detection.                                                    |
 | **Review queue**     | Route compiled pages through approve/reject/lock before publishing.                                                                                       |
 | **MCP server**       | Stdio server exposing `parse_document`, `compile_wiki`, `wiki_capture`, `wiki_learn` to Claude Code, Cursor, etc.                                         |

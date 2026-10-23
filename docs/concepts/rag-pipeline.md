@@ -54,10 +54,10 @@ Always active. Combines four retrieval methods via RRF:
 
 **Config:** `[search.reranker]` — `enabled`, `model`, `top_k`
 
-Re-ranks the top-K candidates from hybrid retrieval using a cross-encoder model (e.g., `cross-encoder/ms-marco-MiniLM-L-6-v2`). Cross-encoders score query-passage pairs directly, producing more accurate relevance scores than embedding similarity.
+Re-ranks the top-K candidates from hybrid retrieval by embedding the query and each candidate with the vector store's embedding provider and sorting by cosine similarity (bi-encoder re-ranking).
 
-- **When to enable:** When ranking quality matters more than latency. The cross-encoder is slower than embedding similarity but significantly more accurate.
-- **Model:** Default `cross-encoder/ms-marco-MiniLM-L-6-v2`. Any sentence-transformers CrossEncoder model works.
+- **When to enable:** When ranking quality matters more than latency. Re-ranking adds one embedding call per candidate.
+- **Model:** none to configure — re-ranking always uses the same embedding model as the vector store (`compile.embedding.model`).
 - **top_k:** 20 (default). Higher = more candidates re-ranked but slower.
 
 ### 5. CRAG (Corrective RAG)
@@ -87,9 +87,8 @@ expansion.variants = 3
 crag.enabled = false
 crag.threshold = 0.3
 
-# Neural re-ranker
+# Neural re-ranker (bi-encoder; uses the vector store's embedding model)
 reranker.enabled = false
-reranker.model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
 reranker.top_k = 20
 
 # HyDE

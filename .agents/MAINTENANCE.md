@@ -62,6 +62,6 @@ How to keep `.agents/` files current.
 | `CODE.md` | Root `AGENTS.md`, subtree `AGENTS.md` `on entry` headers, `tests/AGENTS.md` |
 | `FILES.md` | Root `AGENTS.md`, all subtree `AGENTS.md` `on entry` headers |
 | `CHECKS.md` | Root `AGENTS.md`, all subtree `AGENTS.md` `on entry` headers |
-| `HISTORY.md` | `src/kompend/AGENTS.md` (text-in-code violations pointer) |
+| `HISTORY.md` | Root `AGENTS.md` (.agents/ index) |
 | `ONBOARDING.md` | Root `AGENTS.md` (First time? line) |
 | `MAINTENANCE.md` | Root `AGENTS.md` (.agents/ index) |
