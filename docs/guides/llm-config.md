@@ -274,12 +274,14 @@ When validation fails, the agent retries before surfacing the error.
 ```toml
 [compile.llm]
 tool_retries = 3                   # retries when a tool raises ModelRetry (missing file, bad argument)
+transient_retries = 2                # whole-request retries after a timeout / 429 / 5xx
+transient_backoff = 5.0              # first backoff in seconds, doubled per attempt
 output_retries = 2                  # PydanticAI retry count for output validation (N = N+1 total attempts)
 output_retries_enabled = true       # Master switch — set false to disable all retries
 delta_retry_enabled = true          # Delta-retry: fix partial output instead of regenerating
 ```
 
-Two failure modes get separate budgets:
+Three failure modes get separate budgets:
 
 - **`tool_retries`** — a tool that raises `ModelRetry` (a file that does not
   exist, an invalid argument). The tool answers with feedback and the model
@@ -288,6 +290,14 @@ Two failure modes get separate budgets:
 - **`output_retries`** — the model produced output that does not match the
   expected schema. A validation error is a different problem with a different
   remedy, so it has its own budget.
+- **`transient_retries`** — the request never produced an answer (a timeout, a
+  dropped connection, a 429 or 5xx). Nothing about the request needs to change,
+  so the same request is repeated with exponential backoff.
+
+The transient policy lives on `KompendAgentBase` (`_invoke`), which every stage
+inherits — generation, extraction, lint, verification, decision. A stage must
+not grow its own backoff loop: when a call needs more tries, raise
+`transient_retries`, not a copy of the loop.
 
 `agentic_output_retries` (default 4) replaces `output_retries` for agentic
 agents: they run multi-turn loops where every turn can invalidate the result.
@@ -306,6 +316,21 @@ increasing latency without improving results:
 [compile.llm]
 delta_retry_enabled = false  # recommended for small models
 ```
+
+### Lint call timeout
+
+```toml
+[lint]
+llm_timeout = 300.0    # seconds, per LLM lint call
+```
+
+`kompend lint --llm` and the post-compile lint run four LLM rules. They are
+long-context JSON requests - `coverage-gap` sends a batch of page summaries,
+`clarity-score` and `factual-consistency` send whole pages - so they need more
+headroom than a compile call of the same model. `lint.llm_timeout` is separate
+from `compile.llm.timeout` for that reason. A transient failure is retried by
+the agent base (`compile.llm.transient_retries`) before the rule reports
+nothing. A semantic failure is not retried.
 
 ### Interaction format (JSON / TOON / ISON)
 
