@@ -1,70 +1,92 @@
-"""Hardened context-manager capability for kompend agents.
+"""Context compaction for kompend agents, on ``pydantic_ai_harness.compaction``.
 
-Wraps :class:`~pydantic_ai_summarization.ContextManagerCapability` with a
-summarizer agent that survives tool-hallucinating models.
+The functionality this module used started in the community package
+``summarization-pydantic-ai``; it was upstreamed into pydantic-ai-harness
+(``pydantic_ai_harness.compaction``), which kompend now uses directly:
+``SummarizingCompaction`` for the LLM path, ``SlidingWindowCompaction`` for the
+zero-cost path and ``ReportContextUsage`` for the token accounting.
 
-The library's internal summarizer agent is built with no tools and a retry
-budget of 1. Tool-tuned models (e.g. MiniMax via the anthropic protocol) see
-``final_result`` tool calls in the embedded conversation history and mimic
-the pattern — the hallucinated call burns the retry budget on the first
-attempt, summarization aborts, and compaction silently never happens (the
-processor keeps the original history, so context grows until the segment
-fails). The hardened agent raises the retry budget so the model can
-self-correct after the "Unknown tool name" feedback, and states explicitly
-that no tools exist.
+Kompend adds one guarantee on top: **compaction must always happen**. The
+summarizer runs on the agent's own model, and a model that hallucinates a tool
+call (MiniMax mirrors ``final_result`` from the embedded history) makes the
+summary fail; the harness then leaves the history untouched and the next
+request overflows the model window. ``_HardenedSummarizingCompaction`` falls
+back to a deterministic extractive summary when the model cannot answer.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from typing import Any
 
-from pydantic_ai import Agent
-from pydantic_ai_summarization import ContextManagerCapability, SummarizationProcessor
+from pydantic_ai.messages import ModelMessage
+from pydantic_ai_harness.compaction import SummarizingCompaction
 
-__all__ = ["KompendContextManager"]
+from kompend.logging import get_logger
 
-#: Fallback tool-call retry budget for the summarizer agent when no config
-#: value is available. One hallucinated tool call must not abort
-#: summarization — the ModelRetry feedback ("Unknown tool name") is usually
-#: enough for the model to answer in plain text.
-_DEFAULT_TOOL_RETRIES = 3
+#: Characters kept by the extractive fallback summary.
+_FALLBACK_SUMMARY_CHARS: int = 4000
+
+logger = get_logger(__name__)
 
 
-@dataclass
-class _HardenedSummarizationProcessor(SummarizationProcessor):
-    """SummarizationProcessor whose agent tolerates hallucinated tool calls."""
+class _HardenedSummarizingCompaction(SummarizingCompaction):
+    """``SummarizingCompaction`` that never leaves the history uncompacted."""
 
-    tool_retries: int = _DEFAULT_TOOL_RETRIES
-
-    def _get_summarization_agent(self) -> Agent[None, str]:
-        if self._summarization_agent is None:
-            self._summarization_agent = Agent(
-                self.model,
-                instructions=(
-                    "You are a context summarization assistant. "
-                    "Extract the most important information from conversations. "
-                    "Respond with plain text only — you have no tools and must "
-                    "never attempt to call any."
-                ),
-                retries=self.tool_retries,
+    async def _summarize(self, messages: list[ModelMessage], ctx: Any, previous_summary: str | None = None) -> str:
+        logger.info("Context compression starting: %d message(s)", len(messages))
+        try:
+            summary = await super()._summarize(messages, ctx, previous_summary=previous_summary)
+        except Exception as exc:  # ponytail: any summarizer failure must not disable compaction
+            logger.warning(
+                "Summarizer model failed (%s) - compacting with an extractive summary of %d message(s)",
+                exc,
+                len(messages),
             )
-        return self._summarization_agent
+            return _extractive_summary(messages)
+        logger.info("Context compression produced %d-char summary", len(summary or ""))
+        return summary
 
 
-@dataclass
-class KompendContextManager(ContextManagerCapability):
-    """ContextManagerCapability whose summarizer survives tool-hallucinating models."""
+def build_summarizing_compaction(
+    *,
+    context_window: int | None,
+    compress_threshold: float,
+    keep_messages: int,
+    model: Any = None,
+) -> SummarizingCompaction:
+    """Build the LLM compaction capability from kompend's config values.
 
-    tool_retries: int = _DEFAULT_TOOL_RETRIES
+    Parameters
+    ----------
+    context_window:
+        The model's input window; the trigger is a fraction of it.
+    compress_threshold:
+        Fraction of the window at which compaction runs (``max_fraction``).
+    keep_messages:
+        How many recent messages survive compaction verbatim.
+    model:
+        The agent's model, reused for the summary so both run on the same
+        failover chain.
+    """
+    return _HardenedSummarizingCompaction(
+        model=model,
+        max_fraction=compress_threshold,
+        keep_messages=keep_messages,
+        context_window=context_window,
+    )
 
-    def __post_init__(self) -> None:
-        super().__post_init__()
-        self._summarization_processor = _HardenedSummarizationProcessor(
-            trigger=("fraction", self.compress_threshold),
-            keep=self.keep,
-            model=self.summarization_model,
-            token_counter=self.token_counter,
-            summary_prompt=self.summary_prompt,
-            max_input_tokens=self._resolved_max_tokens,
-            tool_retries=self.tool_retries,
-        )
+
+def _extractive_summary(messages: list[ModelMessage]) -> str:
+    """Keep the tail of the conversation as plain text (model-free compaction)."""
+    chunks: list[str] = []
+    for message in messages:
+        for part in getattr(message, "parts", ()):
+            content = getattr(part, "content", None)
+            if isinstance(content, str) and content.strip():
+                chunks.append(content.strip())
+    rendered = "\n".join(chunks).strip()
+    if not rendered:
+        return "No previous conversation history."
+    if len(rendered) <= _FALLBACK_SUMMARY_CHARS:
+        return rendered
+    return "… " + rendered[-_FALLBACK_SUMMARY_CHARS:]

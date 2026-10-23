@@ -193,7 +193,7 @@ Thin delegate around any native pydantic-ai `Model`. Adds:
   before the strict validator (fixes malformed JSON from small local models)
 
 History compression is **not** handled here. It moved up to the
-pydantic-ai Agent layer via `ContextManagerCapability` (see
+pydantic-ai Agent layer via `SummarizingCompaction` (see
 `KompendAgentBase`); the old `_compact_messages()` workaround — which
 dropped all `ModelResponse` on retry, defeating pydantic-ai's retry
 feedback loop — was removed.

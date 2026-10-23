@@ -49,12 +49,9 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
-from pydantic_ai_summarization import (
-    ContextSize,
-    SlidingWindowCapability,
-)
+from pydantic_ai_harness.compaction import ContextUsage, ReportContextUsage, SlidingWindowCompaction
 
-from kompend.agents.context_manager import KompendContextManager
+from kompend.agents.context_manager import build_summarizing_compaction
 from kompend.agents.instrument import configure_observability
 from kompend.agents.kompend_model import KompendModel
 from kompend.agents.rlm import (
@@ -95,16 +92,15 @@ _DEFAULT_RETRIES: int = 2
 UNSET_TIMEOUT: float = -1.0
 UNSET_RETRIES: int = -1
 
-#: ContextManagerCapability presets: name -> (compress_threshold, keep).
-#: ``keep`` uses the ``ContextSize`` shape (``("messages", N)``).
-_CONTEXT_PRESETS: dict[str, tuple[float, ContextSize]] = {
-    "default": (0.9, ("messages", 0)),
-    "aggressive": (0.7, ("messages", 5)),
+#: Compaction presets: name -> (compress threshold, messages kept verbatim).
+_CONTEXT_PRESETS: dict[str, tuple[float, int]] = {
+    "default": (0.9, 0),
+    "aggressive": (0.7, 5),
 }
 
-#: SlidingWindowCapability default trigger/keep (zero-cost, no LLM call).
-_SLIDING_TRIGGER: ContextSize = ("messages", 100)
-_SLIDING_KEEP: ContextSize = ("messages", 50)
+#: Sliding-window defaults (zero-cost, no LLM call).
+_SLIDING_MAX_MESSAGES: int = 100
+_SLIDING_KEEP_MESSAGES: int = 50
 
 #: Placeholder replacing the inlined context in prompts when RLM is
 #: enabled — the context stays available in the deps (REPL ``context``
@@ -347,47 +343,6 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             raise error_cls(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
         return result.output
 
-    def _invoke(
-        self,
-        user_prompt: str,
-        deps: DepsT,
-        system_prompt: str,
-        message_history: list[ModelMessage] | None,
-    ) -> Any:
-        """Run the agent, retrying once without prompt caching if a gateway rejects it.
-
-        A gateway that does not know the provider's cache field answers 400
-        with the field name in the body. Caching is an optimisation, never a
-        requirement, so the retry disables it for this agent and logs why.
-        """
-        if self._agent is None:
-            self._agent = self._build_agent()
-        try:
-            return self._agent.run_sync(
-                user_prompt,
-                deps=deps,
-                instructions=system_prompt,
-                message_history=message_history,
-                usage_limits=self._usage_limits_for(deps),
-            )
-        except Exception as exc:
-            if not self._prompt_cache or not _is_cache_rejection(exc):
-                raise
-            logger.warning(
-                "Prompt caching rejected by '%s' (%s) - retrying without it; set compile.llm.prompt_cache = false to skip the probe",
-                self.model_string,
-                exc,
-            )
-            self._prompt_cache = False
-            self._agent = self._build_agent()
-            return self._agent.run_sync(
-                user_prompt,
-                deps=deps,
-                instructions=system_prompt,
-                message_history=message_history,
-                usage_limits=self._usage_limits_for(deps),
-            )
-
     def run_with_messages(
         self,
         deps: DepsT,
@@ -454,6 +409,47 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         touch the instance — the base passes the result through unchanged.
         """
         return output
+
+    def _invoke(
+        self,
+        user_prompt: str,
+        deps: DepsT,
+        system_prompt: str,
+        message_history: list[ModelMessage] | None,
+    ) -> Any:
+        """Run the agent, retrying once without prompt caching if a gateway rejects it.
+
+        A gateway that does not know the provider's cache field answers 400
+        with the field name in the body. Caching is an optimisation, never a
+        requirement, so the retry disables it for this agent and logs why.
+        """
+        if self._agent is None:
+            self._agent = self._build_agent()
+        try:
+            return self._agent.run_sync(
+                user_prompt,
+                deps=deps,
+                instructions=system_prompt,
+                message_history=message_history,
+                usage_limits=self._usage_limits_for(deps),
+            )
+        except Exception as exc:
+            if not self._prompt_cache or not _is_cache_rejection(exc):
+                raise
+            logger.warning(
+                "Prompt caching rejected by '%s' (%s) - retrying without it; set compile.llm.prompt_cache = false to skip the probe",
+                self.model_string,
+                exc,
+            )
+            self._prompt_cache = False
+            self._agent = self._build_agent()
+            return self._agent.run_sync(
+                user_prompt,
+                deps=deps,
+                instructions=system_prompt,
+                message_history=message_history,
+                usage_limits=self._usage_limits_for(deps),
+            )
 
     def _apply_config_defaults(self) -> None:
         """Take every limit the construction site did not set from the config.
@@ -565,6 +561,10 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         capabilities: list[AbstractCapability[DepsT]] = []
         if capability is not None:
             capabilities.append(capability)
+            if self.usage_tracker is not None:
+                # The harness reports token usage through an event; keep feeding
+                # the tracker so context usage stays visible in the run summary.
+                capabilities.append(ReportContextUsage(on_usage=self._on_usage_update))
         if self.delta_retry_enabled and type(self).supports_delta_retry:
             capabilities.append(self._make_delta_retry_hook())
         rlm_capability = self._resolve_rlm_capability(top_model)
@@ -764,9 +764,9 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             preset = "default"  # ``True`` -> default preset
 
         if preset == "sliding":
-            return SlidingWindowCapability(
-                trigger=_SLIDING_TRIGGER,
-                keep=_SLIDING_KEEP,
+            return SlidingWindowCompaction(
+                max_messages=_SLIDING_MAX_MESSAGES,
+                keep_messages=_SLIDING_KEEP_MESSAGES,
             )
         try:
             threshold, keep = _CONTEXT_PRESETS[preset]
@@ -776,15 +776,11 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 setting,
             )
             threshold, keep = _CONTEXT_PRESETS["default"]
-        return KompendContextManager(
-            max_tokens=self.context_window,
+        return build_summarizing_compaction(
+            context_window=self.context_window,
             compress_threshold=threshold,
-            keep=keep,
-            summarization_model=model,
-            on_usage_update=self._on_usage_update,
-            on_before_compress=self._on_before_compress,
-            on_after_compress=self._on_after_compress,
-            tool_retries=self.tool_retry_budget(),
+            keep_messages=keep,
+            model=model,
         )
 
     def _resolve_rlm_capability(self, model: Model) -> RLMCapability | None:
@@ -825,12 +821,12 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             node_budget=node_budget or _DEFAULT_NODE_BUDGET,
         )
 
-    # ── ContextManagerCapability callbacks ─────────────────────────────
+    # ── compaction callbacks ─────────────────────────────
 
-    def _on_usage_update(self, pct: float, current: int, max_tokens: int) -> None:
-        """Token-usage snapshot from the capability → UsageTracker."""
+    def _on_usage_update(self, usage: ContextUsage) -> None:
+        """Token-usage snapshot from the compaction capability → UsageTracker."""
         if self.usage_tracker is not None:
-            self.usage_tracker.record_context_usage(current, max_tokens)
+            self.usage_tracker.record_context_usage(usage.used_tokens, usage.window_tokens)
 
     @staticmethod
     def _coerce_type(arg: type[Any], fallback: type) -> type:
@@ -847,23 +843,6 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         if origin is not None and isinstance(origin, type):
             return origin
         return fallback
-
-    @staticmethod
-    def _on_before_compress(messages: list[ModelMessage], cutoff_index: int) -> None:
-        """Fires between plan and execute — log the impending compression."""
-        logger.info(
-            "Context compression starting: %d messages, cutoff at index %d",
-            len(messages),
-            cutoff_index,
-        )
-
-    @staticmethod
-    def _on_after_compress(messages: list[ModelMessage], summarized: bool, summary: str | None) -> None:
-        """Fires after the summary LLM — log the outcome. Returns no reinject."""
-        if summarized:
-            logger.info("Context compression produced %d-char summary", len(summary or ""))
-        else:
-            logger.warning("Context compression skipped (history preserved)")
 
     @staticmethod
     def _deps_to_template_vars(deps: DepsT) -> dict[str, object]:

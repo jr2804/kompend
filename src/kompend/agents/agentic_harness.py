@@ -17,7 +17,7 @@ Agentic agents in kompend share these harness capabilities:
 
 ``AgenticHarness`` centralizes the construction of these capabilities
 from a known context window, with an ``extra_capabilities`` hook for
-agent-specific additions (e.g. ``ContextManagerCapability`` for agents
+agent-specific additions (e.g. ``SummarizingCompaction`` for agents
 that need full-context management instead of sliding window).
 """
 

@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from pydantic_ai import Agent
-from pydantic_ai_summarization import ContextManagerCapability, SlidingWindowCapability
+from pydantic_ai_harness.compaction import ContextUsage, SlidingWindowCompaction, SummarizingCompaction
 
 from kompend.agents.base import KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
@@ -110,7 +110,7 @@ class TestSkillInjection:
         assert "## Skill:" not in prompt
 
 
-class TestContextManagerCapability:
+class TestCompactionCapability:
     """``context_manager`` preset resolution on KompendAgentBase."""
 
     def test_disabled_by_default_at_code_api(self) -> None:
@@ -121,26 +121,26 @@ class TestContextManagerCapability:
     def test_default_preset_builds_context_manager(self) -> None:
         agent = self._agent(context_manager="default", context_window=8192)
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, ContextManagerCapability)
-        assert cap.compress_threshold == 0.9
-        assert cap.max_tokens == 8192
+        assert isinstance(cap, SummarizingCompaction)
+        assert cap.max_fraction == 0.9
+        assert cap.context_window == 8192
 
     def test_aggressive_preset_uses_lower_threshold(self) -> None:
         agent = self._agent(context_manager="aggressive")
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, ContextManagerCapability)
-        assert cap.compress_threshold == 0.7
+        assert isinstance(cap, SummarizingCompaction)
+        assert cap.max_fraction == 0.7
 
     def test_true_maps_to_default(self) -> None:
         agent = self._agent(context_manager=True)
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, ContextManagerCapability)
-        assert cap.compress_threshold == 0.9
+        assert isinstance(cap, SummarizingCompaction)
+        assert cap.max_fraction == 0.9
 
     def test_sliding_preset_builds_sliding_window(self) -> None:
         agent = self._agent(context_manager="sliding")
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, SlidingWindowCapability)
+        assert isinstance(cap, SlidingWindowCompaction)
 
     @pytest.mark.parametrize("value", ["off", "false", "none", "no", ""])
     def test_disabled_string_variants(self, value: str) -> None:
@@ -150,13 +150,13 @@ class TestContextManagerCapability:
     def test_unknown_preset_falls_back_to_default(self, caplog: Any) -> None:
         agent = self._agent(context_manager="bogus")
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, ContextManagerCapability)
-        assert cap.compress_threshold == 0.9  # fell back
+        assert isinstance(cap, SummarizingCompaction)
+        assert cap.max_fraction == 0.9  # fell back
 
     def test_usage_update_feeds_tracker(self) -> None:
         tracker = UsageTracker()
         agent = self._agent(usage_tracker=tracker)
-        agent._on_usage_update(0.5, 4096, 8192)  # noqa: SLF001
+        agent._on_usage_update(ContextUsage(used_tokens=4096, window_tokens=8192, resolved=True))  # noqa: SLF001
         assert tracker.context_tokens == 4096
         assert tracker.context_budget == 8192
         assert tracker.to_dict()["context_tokens"] == 4096
@@ -164,7 +164,7 @@ class TestContextManagerCapability:
     def test_usage_update_noop_without_tracker(self) -> None:
         agent = self._agent()  # no usage_tracker
         # must not raise when no tracker is attached
-        agent._on_usage_update(0.5, 4096, 8192)  # noqa: SLF001
+        agent._on_usage_update(ContextUsage(used_tokens=4096, window_tokens=8192, resolved=True))  # noqa: SLF001
         assert agent.usage is None
 
     @staticmethod

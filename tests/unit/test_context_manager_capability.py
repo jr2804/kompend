@@ -1,48 +1,60 @@
-"""Tests for the hardened context-manager capability (agents/context_manager.py)."""
+"""Tests for kompend's compaction wiring on pydantic_ai_harness.compaction."""
 
 from __future__ import annotations
 
-from pydantic_ai.models.test import TestModel
+from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai_harness.compaction import SlidingWindowCompaction, SummarizingCompaction
 
-from kompend.agents.context_manager import (
-    KompendContextManager,
-    _HardenedSummarizationProcessor,
-)
-
-
-def test_capability_builds_hardened_processor() -> None:
-    """KompendContextManager swaps in the hardened summarization processor."""
-    cap = KompendContextManager(
-        max_tokens=200_000,
-        compress_threshold=0.9,
-        keep=("messages", 0),
-        summarization_model="ollama/test-model",
-    )
-    assert isinstance(cap._summarization_processor, _HardenedSummarizationProcessor)
+from kompend.agents.base import _CONTEXT_PRESETS, _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES
+from kompend.agents.context_manager import _extractive_summary, build_summarizing_compaction
 
 
-def test_summarizer_agent_has_tool_retry_budget() -> None:
-    """The summarizer agent must tolerate hallucinated tool calls.
+class TestBuildSummarizingCompaction:
+    def test_maps_the_kompend_knobs_onto_the_harness(self) -> None:
+        capability = build_summarizing_compaction(
+            context_window=200_000,
+            compress_threshold=0.9,
+            keep_messages=5,
+            model="ollama/test-model",
+        )
 
-    Regression: tool-tuned models (MiniMax via anthropic protocol) mimic the
-    ``final_result`` tool calls embedded in the summarized history; with the
-    library default retry budget of 1, one hallucinated call aborted
-    summarization entirely — compaction silently never happened.
-    """
-    proc = _HardenedSummarizationProcessor(model=TestModel())
-    agent = proc._get_summarization_agent()
-    # No tools registered (plain text output) — the model must not call any.
-    assert list(agent._function_toolset.tools.keys()) == []
+        assert isinstance(capability, SummarizingCompaction)
+        assert capability.max_fraction == 0.9
+        assert capability.keep_messages == 5
+        assert capability.context_window == 200_000
+
+    def test_uses_kompend_subclass_with_the_extractive_fallback(self) -> None:
+        capability = build_summarizing_compaction(context_window=None, compress_threshold=0.7, keep_messages=0)
+
+        assert type(capability).__mro__[1] is SummarizingCompaction
+
+    def test_presets_are_ordered_by_aggressiveness(self) -> None:
+        default_threshold, _ = _CONTEXT_PRESETS["default"]
+        aggressive_threshold, aggressive_keep = _CONTEXT_PRESETS["aggressive"]
+
+        assert aggressive_threshold < default_threshold
+        assert aggressive_keep > 0
 
 
-def test_hardened_processor_preserves_threshold_and_keep() -> None:
-    cap = KompendContextManager(
-        max_tokens=100_000,
-        compress_threshold=0.7,
-        keep=("messages", 5),
-        summarization_model="ollama/test-model",
-    )
-    proc = cap._summarization_processor
-    assert proc is not None
-    assert proc.trigger == ("fraction", 0.7)
-    assert proc.keep == ("messages", 5)
+class TestSlidingWindowDefaults:
+    def test_keeps_fewer_messages_than_it_triggers_on(self) -> None:
+        assert _SLIDING_KEEP_MESSAGES < _SLIDING_MAX_MESSAGES
+        capability = SlidingWindowCompaction(max_messages=_SLIDING_MAX_MESSAGES, keep_messages=_SLIDING_KEEP_MESSAGES)
+
+        assert capability.keep_messages == _SLIDING_KEEP_MESSAGES
+
+
+class TestExtractiveFallback:
+    def test_renders_the_conversation_text(self) -> None:
+        messages = [
+            ModelRequest(parts=[UserPromptPart(content="first question")]),
+            ModelResponse(parts=[TextPart(content="first answer")]),
+        ]
+
+        summary = _extractive_summary(messages)
+
+        assert "first question" in summary
+        assert "first answer" in summary
+
+    def test_empty_history_has_a_placeholder(self) -> None:
+        assert _extractive_summary([]) == "No previous conversation history."
