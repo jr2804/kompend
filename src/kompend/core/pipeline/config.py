@@ -29,7 +29,7 @@ from kompend.core.config import (
     OutputFormat,
     ResolvedConfig,
 )
-from kompend.core.config._configs import SearchConfig
+from kompend.core.config._configs import DecisionConfig, SearchConfig
 from kompend.core.paths import VaultPaths
 from kompend.preprocessing.parsers._registry import ParserBuildOptions
 
@@ -142,6 +142,7 @@ class PipelineConfig:
     output_dir: Path
     llm: LLMConfig
     embedding: EmbeddingConfig
+    decision: DecisionConfig = field(default_factory=DecisionConfig)
     base_dir: Path | None = None  # None → output_dir.parent; .kompend lives here
     image_mode: ImageMode = ImageMode.FILE
     vlm_min_image_bytes: int = 2048
@@ -285,6 +286,7 @@ class PipelineConfig:
             memory_decay_threshold=kompend.compile.memory_decay_threshold,
             notes_file=notes_file,
             llm=llm_config,
+            decision=kompend.decision,
             budget=budget_config,
             search=SearchConfig(**_kwargs_for(SearchConfig, "search")),
             output=output_config,

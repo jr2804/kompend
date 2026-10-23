@@ -64,7 +64,8 @@ from kompend.agents.rlm import (
 from kompend.agents.types import PipelineAgentDeps
 from kompend.core.config._configs import LLMConfig, LlmDataFormat, RlmConfig
 from kompend.core.templates import TemplateLoader, get_template_loader
-from kompend.core.utils.exceptions import LLMOutputError
+from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
+from kompend.llm.errors import is_transient_error
 from kompend.llm.format import salvage_json
 from kompend.llm.models import build_model, requires_output_ceiling, resolve_model_limits
 from kompend.llm.usage import UsageTracker
@@ -341,7 +342,8 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 debug_hint,
                 ctx_info,
             )
-            raise LLMOutputError(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
+            error_cls = LLMTransientError if is_transient_error(exc) else LLMOutputError
+            raise error_cls(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
         return result.output
 
     def run_with_messages(
@@ -380,7 +382,8 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 debug_hint,
                 ctx_info,
             )
-            raise LLMOutputError(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
+            error_cls = LLMTransientError if is_transient_error(exc) else LLMOutputError
+            raise error_cls(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
         return result.output, result.new_messages()
 
     @property

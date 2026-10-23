@@ -39,6 +39,7 @@ All agents extend `KompendAgentBase[ResultT, DepsT]` (ABC):
 - `SummarizerAgent`
 - `ContextChunkAgent`
 - `DoctorAgent`
+- `DecisionAgent` (TypeSafe decision model, error triage)
 
 ### KompendAgentBase responsibilities
 

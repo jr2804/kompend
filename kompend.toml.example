@@ -609,13 +609,28 @@ enable = false                    # on/off switch
 # embedding similarity and/or MinHash signatures. Documents with >95%
 # similarity are flagged as "identical" and excluded from compilation.
 
+# ── decision model (optional sidecar) ────────────────────────────────────────
+# A decision model answers questions the pipeline cannot answer from types:
+# "is this failure worth repeating, skip it, or abort the run?". Any provider
+# that serves a decision model works - TypeSafe's Jev (`typesafe/jev-latest`),
+# Ollama's Clef (`ollama-cloud/clef`), or another provider - and it is named exactly
+# like every other model. Credentials and base URL come from the [providers.*]
+# blocks - a decision model is not a separate provider entry.
+# With enabled = false the pipeline uses the deterministic classification in
+# kompend.llm.errors instead.
+[decision]
+# enabled = false
+# model = "ollama-cloud/clef"
+# timeout = 10.0
+
 [dedup]
 # enabled = false
 # matchers = "embedding,minhash"  # embedding, minhash
 # threshold_identical = 0.95
 # threshold_similar = 0.80
 # Embedding model override. Empty string "" is treated as unset — falls
-# back to compile.embedding.model, then all-MiniLM-L6-v2 (local HuggingFace model).
+# back to compile.embedding.model; if both are unset the embedding matcher
+# is skipped (no local fallback model).
 # model = ""
 # minhash_lsh_threshold = 0.8
 
@@ -696,9 +711,10 @@ enable = false                    # on/off switch
 # crag.threshold = 0.3
 
 # Neural re-ranker: bi-encoder cosine-similarity re-ranks top-K
-# candidates. Uses the same embedding model as the vector store.
+# candidates. Uses the same embedding model as the vector store; reranker.model
+# is accepted for config compat but unused.
 # reranker.enabled = false
-# reranker.model = "all-MiniLM-L6-v2"
+# reranker.model = ""
 # reranker.top_k = 20
 
 # HyDE (Hypothetical Document Embeddings): for sparse queries, generate

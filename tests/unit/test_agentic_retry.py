@@ -1,68 +1,57 @@
-"""Unit tests for the upstream transient-timeout retry heuristic in
-``kompend.compilation.flows.generation``.
-
-The heuristic catches ``pydantic_ai.exceptions.ModelHTTPError`` whose
-``status_code`` is below 500 and whose body contains ``"timed out"`` and
-retries the same agentic-generation pass with exponential backoff before
-counting it as a failed pass.
-"""
+"""Classification of failed LLM calls and the generation retry policy."""
 
 from __future__ import annotations
 
+import httpx
+import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 
 from kompend.compilation.flows.generation import (
     _UPSTREAM_TRANSIENT_BACKOFF_BASE,
     _UPSTREAM_TRANSIENT_MAX_RETRIES,
-    _is_upstream_transient_timeout,
 )
+from kompend.llm.errors import is_transient_error
 
 
-def test_upstream_transient_timeout_matches_4xx_with_timed_out_body() -> None:
-    """4xx + 'timed out' body → transient, retry-worthy."""
-    exc = ModelHTTPError(400, "gemma", body={"message": "Request timed out."})
-    assert _is_upstream_transient_timeout(exc) is True
+@pytest.mark.parametrize("status", [408, 409, 425, 429, 500, 502, 503, 504, 529])
+def test_retryable_statuses_are_transient(status: int) -> None:
+    assert is_transient_error(ModelHTTPError(status, "model", body={})) is True
 
 
-def test_upstream_transient_timeout_matches_lowercase_body() -> None:
-    """Match is case-insensitive on the body substring."""
-    exc = ModelHTTPError(408, "gemma", body={"message": "request TIMED OUT."})
-    assert _is_upstream_transient_timeout(exc) is True
+@pytest.mark.parametrize("status", [400, 401, 404, 422])
+def test_request_errors_are_not_transient(status: int) -> None:
+    """A 4xx is a property of the request - a "timed out" wording does not change that."""
+    assert is_transient_error(ModelHTTPError(status, "model", body={"message": "Request timed out."})) is False
 
 
-def test_upstream_transient_timeout_rejects_5xx() -> None:
-    """5xx is hard-fail territory; do not retry, surface upstream."""
-    exc = ModelHTTPError(503, "gemma", body={"message": "Request timed out."})
-    assert _is_upstream_transient_timeout(exc) is False
+def test_transport_failures_are_transient() -> None:
+    assert is_transient_error(httpx.ReadTimeout("slow")) is True
+    assert is_transient_error(httpx.ConnectError("refused")) is True
+    assert is_transient_error(ConnectionError("reset")) is True
+    assert is_transient_error(TimeoutError()) is True
 
 
-def test_upstream_transient_timeout_rejects_non_timeout_body() -> None:
-    """4xx without 'timed out' body is a real client error; do not retry."""
-    exc = ModelHTTPError(400, "gemma", body={"message": "Invalid tool_choice"})
-    assert _is_upstream_transient_timeout(exc) is False
+def test_cause_chain_is_followed() -> None:
+    wrapper = RuntimeError("agent failed")
+    wrapper.__cause__ = httpx.ReadTimeout("slow")
+    assert is_transient_error(wrapper) is True
 
 
-def test_upstream_transient_timeout_handles_string_body() -> None:
-    """Some gateways serialize the body as a bare string."""
-    exc = ModelHTTPError(400, "gemma", body="Request timed out.")
-    assert _is_upstream_transient_timeout(exc) is True
+def test_status_attribute_is_respected() -> None:
+    class ProviderError(Exception):
+        def __init__(self, status_code: int) -> None:
+            super().__init__("boom")
+            self.status_code = status_code
+
+    assert is_transient_error(ProviderError(503)) is True
+    assert is_transient_error(ProviderError(422)) is False
 
 
-def test_upstream_transient_timeout_handles_nested_error_key() -> None:
-    """Body may use ``error`` instead of ``message``."""
-    exc = ModelHTTPError(400, "gemma", body={"error": "Request timed out."})
-    assert _is_upstream_transient_timeout(exc) is True
-
-
-def test_upstream_transient_timeout_rejects_non_model_http_error() -> None:
-    """Only ModelHTTPError qualifies; ValueError, RuntimeError, etc. do not."""
-    assert _is_upstream_transient_timeout(ValueError("Request timed out.")) is False
-    assert _is_upstream_transient_timeout(RuntimeError("boom")) is False
+def test_plain_errors_are_not_transient() -> None:
+    assert is_transient_error(ValueError("Request timed out.")) is False
 
 
 def test_retry_constants_have_expected_shape() -> None:
-    """Sanity: backoff base is small enough to keep total wait < 10s."""
-    # 1 + 2 + 4 = 7s worst-case at base=1.0, max 3 retries.
     assert _UPSTREAM_TRANSIENT_MAX_RETRIES >= 1
     assert 0.5 <= _UPSTREAM_TRANSIENT_BACKOFF_BASE <= 5.0
     worst_case = sum(_UPSTREAM_TRANSIENT_BACKOFF_BASE * (2 ** (attempt - 1)) for attempt in range(1, _UPSTREAM_TRANSIENT_MAX_RETRIES + 1))

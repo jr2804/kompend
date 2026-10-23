@@ -14,3 +14,14 @@ class LLMOutputError(Exception):
     The model is considered not suitable for compilation — no fallback,
     no retry.  The caller should abort compilation with a clear message.
     """
+
+
+class LLMTransientError(LLMOutputError):
+    """Raised when an LLM call failed for a reason worth repeating.
+
+    Timeouts, dropped connections and retryable server statuses (see
+    :func:`kompend.llm.errors.is_transient_error`) say nothing about the
+    model's suitability: the same request may well succeed on the next
+    attempt. Callers catch this class before :class:`LLMOutputError` and
+    retry with backoff instead of skipping the unit of work.
+    """

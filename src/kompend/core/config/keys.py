@@ -81,6 +81,11 @@ COMPILE_LLM_THROUGHPUT_WINDOW_TOKENS: Final[str] = "compile.llm.throughput_windo
 COMPILE_LLM_TOOL_RETRIES: Final[str] = "compile.llm.tool_retries"
 COMPILE_LLM_AGENT_MEMORY: Final[str] = "compile.llm.agent_memory"
 
+# -- decision section --
+DECISION_ENABLED: Final[str] = "decision.enabled"
+DECISION_MODEL: Final[str] = "decision.model"
+DECISION_TIMEOUT: Final[str] = "decision.timeout"
+
 # ── organize section ──
 ORGANIZE_MAX_DEPTH: Final[str] = "organize.max_depth"
 ORGANIZE_MIN_SUBCATEGORIES: Final[str] = "organize.min_subcategories"

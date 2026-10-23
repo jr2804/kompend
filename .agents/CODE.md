@@ -19,6 +19,7 @@ or conventions — it takes precedence over a conflicting habit or default.
 | Silent exclusion by a config value (`candidates[:max_pages]`, `if len(x) > budget: drop`) | ❌ | Split the work into windows and warn — a budget shapes the work, it never excludes it (Boundaries) |
 | Config fallback duplicating a runtime provider value (`dim = 384`) | ❌ | Read it from the provider at runtime (`provider.dim`) |
 | Bare schema/field-name literals (`hit.get("source_file")`) | ❌ | `StrEnum` / `Final[str]` symbol imported at every site |
+| `Literal["a", "b"]` as a value vocabulary | ❌ | a `StrEnum` with one member per value |
 | Hard-coded `"KOMP_*"` env-var literal (`os.environ.get("KOMP_WIKI_DIR")`, `envvar=`) | ❌ | `EnvVar` member from `kompend.core.env` |
 | Stable-shape dict without a schema (JSONL records, persisted entries — lint history, dedup store, graph edges, citations) | ❌ | `TypedDict` next to the owning model — types keys at zero runtime cost. Dataclasses only where the shape is also constructed/validated in code |
 | Absolute path in a `.kompend/` artifact (`citing_source = str(path)`) | ❌ | Relativize at the persistence boundary (`rel_to_vault(path, base_dir)`) |

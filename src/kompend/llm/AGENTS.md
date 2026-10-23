@@ -137,8 +137,27 @@ cannot produce the format is a fact to report (`kompend doctor`), not an error.
 (`cli/cmds/quality/_capabilities.py`) and prints the input-side size saving, so
 the format choice is evidence-based.
 
+## Failure classification and the decision sidecar
+
+`kompend.llm.errors` answers one question about a failed call: **transient or
+semantic?** `is_transient_error(exc)` walks the `raise ... from ...` chain and
+matches exception *types* and HTTP *status codes* only (`TRANSIENT_STATUS_CODES`
+= 408/409/425/429/5xx/529). There is deliberately no message matching — a
+gateway that words a 400 as "timed out" is still a client error, and a 504 is
+still a server-side timeout. `KompendAgentBase` raises `LLMTransientError`
+(a subclass of `LLMOutputError`) for a transient cause, so callers can retry
+that class and treat the rest as unretryable.
+
+`kompend.llm.decision` holds the vocabulary for the optional **decision model**
+(TypeSafe SystemOne / Jev): `ErrorAction = Literal["retry", "skip", "abort"]`
+and `ErrorDecision` (only `action` — a decision model can fill choices and
+booleans, never free text). The model itself is an ordinary agent
+(`kompend.agents.decision.DecisionAgent`) reached through pydantic-ai's
+`typesafe` provider, configured as `decision.enabled/model/api_key/base_url/
+timeout`. Every helper returns `None` when the sidecar is off or unreachable,
+so the deterministic classification stays the floor.
+
 ## Verification
 
 - `uv run pytest tests/unit/test_llm_models.py -x` — model construction
-- `uv run pytest tests/unit/test_litellm_model.py -x` — pydantic-ai model wrapper
 - `uv run pytest tests/unit/test_llm_context_window.py -x` — window discovery

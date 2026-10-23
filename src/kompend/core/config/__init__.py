@@ -14,6 +14,7 @@ See ``kompend.core.config.AGENTS.md`` for coding conventions.
 
 from kompend.core.config._configs import (
     BudgetConfig,
+    DecisionConfig,
     DisplayConfig,
     EmbeddingConfig,
     ExportConfig,
@@ -62,6 +63,7 @@ __all__ = [
     "ConfigCheckEntry",
     "ConfigCheckReport",
     "ConfigSource",
+    "DecisionConfig",
     "DisplayConfig",
     "EmbeddingConfig",
     "ExportConfig",

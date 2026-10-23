@@ -367,6 +367,35 @@ Leave it off for small models. A model that invents a memory file name gets
 `ModelRetry` from `read_memory`; once the tool budget is spent the run dies with
 the node left unsummarized.
 
+### Decision model (optional sidecar)
+
+```toml
+[decision]
+enabled = true
+model = "ollama/clef"          # any provider that serves a decision model
+timeout = 10.0                 # credentials + base URL come from [providers.*]
+```
+
+A decision model answers questions the pipeline cannot answer from types:
+"is this failure worth repeating, should this unit of work be skipped, or is
+the run doomed?". It is named exactly like every other model
+(`provider/model`), so its credentials and base URL come from the same
+`[providers.*]` block you already use - TypeSafe's Jev
+(`typesafe/jev-latest`) and Ollama's Clef (`ollama/clef`) are both valid.
+
+Where it is used today: **error triage** in the generation loop. A failed
+model call is classified first by type (`kompend.llm.errors`): a timeout, a
+dropped connection or a retryable status (408, 409, 425, 429, 5xx, 529) raises
+`LLMTransientError` and is retried with backoff; a validation or schema failure
+is not retried. With `decision.enabled = true`, the decision model gets the
+last word - `retry`, `skip` or `abort` - and can therefore also abort a run
+when retrying is pointless.
+
+A decision model can only fill choices and booleans, never free text, so its
+output type is a single `StrEnum` field (`ErrorAction`). When the sidecar is
+disabled or unreachable, the deterministic classification applies and the
+pipeline behaves exactly as it does without it.
+
 ### Batch failure detection
 
 The two-phase compiler tracks per-batch success/failure via a circuit

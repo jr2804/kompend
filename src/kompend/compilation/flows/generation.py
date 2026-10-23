@@ -13,8 +13,7 @@ import time
 from collections import defaultdict
 from typing import Any
 
-from pydantic_ai.exceptions import ModelHTTPError
-
+from kompend.agents.decision import decide_error_action
 from kompend.agents.generation import make_agentic_generation_agent
 from kompend.agents.types import ToolGenerationDeps
 from kompend.compilation._checkpoints import (
@@ -49,9 +48,10 @@ from kompend.core.paths import safe_stem
 from kompend.core.pipeline.entity_types import EntityTypeRegistry
 from kompend.core.templates import get_template_loader
 from kompend.core.text.matching import best_match, cosine
-from kompend.core.utils.exceptions import LLMOutputError
+from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.lint.base import LintRuleOutcome
 from kompend.lint.structural import BrokenWikilinksRule
+from kompend.llm.decision import ErrorAction
 from kompend.llm.usage import UsageTracker
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 from kompend.rag.zvec_store import make_provider
@@ -570,17 +570,29 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                             retry_attempts,
                         )
                     break
-                except LLMOutputError as exc:
-                    logger.warning("Agentic generation failed for '%s': %s", seg_id, exc)
-                    gen_output = None
-                    last_error = str(exc)
-                    break
-                except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
-                    if _is_upstream_transient_timeout(exc) and retry < _UPSTREAM_TRANSIENT_MAX_RETRIES:
+                except LLMTransientError as exc:
+                    # Transport-level failure: the request may succeed on the
+                    # next attempt, so it does not consume a pass slot.
+                    action = _failure_action(
+                        compiler,
+                        exc,
+                        stage=f"agentic-generation:{seg_id}",
+                        attempt=retry + 1,
+                        max_attempts=_UPSTREAM_TRANSIENT_MAX_RETRIES + 1,
+                        transient=True,
+                    )
+                    if action is ErrorAction.ABORT:
+                        raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
+                    if action is ErrorAction.SKIP:
+                        logger.warning("Agentic generation transient failure for '%s' - skipping: %s", seg_id, exc)
+                        gen_output = None
+                        last_error = str(exc)
+                        break
+                    if retry < _UPSTREAM_TRANSIENT_MAX_RETRIES:
                         retry_attempts += 1
                         backoff = _UPSTREAM_TRANSIENT_BACKOFF_BASE * (2 ** (retry_attempts - 1))
                         logger.warning(
-                            "Agentic generation transient upstream timeout for '%s' (attempt %d/%d); retrying in %.1fs. error=%s",
+                            "Agentic generation transient failure for '%s' (attempt %d/%d); retrying in %.1fs. error=%s",
                             seg_id,
                             retry_attempts,
                             _UPSTREAM_TRANSIENT_MAX_RETRIES,
@@ -589,6 +601,34 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                         )
                         time.sleep(backoff)
                         continue
+                    logger.warning(
+                        "Agentic generation transient failure for '%s' exhausted %d retries: %s",
+                        seg_id,
+                        _UPSTREAM_TRANSIENT_MAX_RETRIES,
+                        exc,
+                    )
+                    gen_output = None
+                    last_error = str(exc)
+                    break
+                except LLMOutputError as exc:
+                    action = _failure_action(
+                        compiler,
+                        exc,
+                        stage=f"agentic-generation:{seg_id}",
+                        attempt=retry + 1,
+                        max_attempts=_UPSTREAM_TRANSIENT_MAX_RETRIES + 1,
+                        transient=False,
+                    )
+                    logger.warning("Agentic generation failed for '%s' (%s): %s", seg_id, action, exc)
+                    if action is ErrorAction.RETRY and retry < _UPSTREAM_TRANSIENT_MAX_RETRIES:
+                        time.sleep(_UPSTREAM_TRANSIENT_BACKOFF_BASE * (2**retry))
+                        continue
+                    if action is ErrorAction.ABORT:
+                        raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
+                    gen_output = None
+                    last_error = str(exc)
+                    break
+                except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
                     logger.warning("Agentic generation unexpected error for '%s': %s", seg_id, exc)
                     gen_output = None
                     last_error = str(exc)
@@ -776,31 +816,32 @@ def _format_uncovered_concepts(
     return ", ".join(rendered) + suffix
 
 
-def _is_upstream_transient_timeout(exc: BaseException) -> bool:
-    """Return True when *exc* looks like an upstream "Request timed out" 4xx.
+def _failure_action(
+    compiler: TwoPhaseRuntime,
+    exc: BaseException,
+    *,
+    stage: str,
+    attempt: int,
+    max_attempts: int,
+    transient: bool,
+) -> ErrorAction:
+    """Decide what to do with a failed generation call.
 
-    Matches ``pydantic_ai.exceptions.ModelHTTPError`` whose ``status_code``
-    is below 500 and whose ``body['message']`` (or string body) contains
-    ``"timed out"`` case-insensitively. Other exception types are not
-    matched — keep this heuristic narrow.
+    The optional decision model answers this when it is configured. Without it
+    the fallback is deterministic: a transport failure is worth repeating, a
+    semantic failure is not - repeating it would produce the same output.
     """
-    try:
-        pass
-    except ImportError:  # pragma: no cover — pydantic-ai is a hard dep
-        return False
-
-    if not isinstance(exc, ModelHTTPError):
-        return False
-    if not isinstance(exc.status_code, int) or exc.status_code >= 500:
-        return False
-    body = exc.body
-    if isinstance(body, dict):
-        msg = body.get("message") or body.get("error") or ""
-    elif isinstance(body, str):
-        msg = body
-    else:
-        msg = str(exc)
-    return "timed out" in str(msg).lower()
+    decided = decide_error_action(
+        compiler._config.decision,
+        error=str(exc),
+        stage=stage,
+        attempt=attempt,
+        max_attempts=max_attempts,
+        context=f"model={compiler._model or '?'}",
+    )
+    if decided is not None:
+        return decided
+    return ErrorAction.RETRY if transient else ErrorAction.SKIP
 
 
 def _agentic_reserved_tokens(

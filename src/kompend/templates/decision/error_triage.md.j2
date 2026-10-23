@@ -1,0 +1,24 @@
+---
+variables:
+  - name: stage
+    required: true
+  - name: error
+    required: true
+  - name: attempt
+    required: true
+  - name: max_attempts
+    required: true
+  - name: context
+    required: false
+role: decision.error-triage
+response_format: text
+temperature: 0.0
+---
+Pipeline stage: {{ stage }}
+Attempt: {{ attempt }} of {{ max_attempts }}
+{% if context %}
+Run context: {{ context }}
+{% endif %}
+A model call in this pipeline step failed with:
+
+{{ error }}
