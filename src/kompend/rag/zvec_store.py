@@ -6,8 +6,8 @@ knowledge base.
 
 Embedding providers are pluggable via ``EmbeddingProvider``. The default
 ``PydanticAIEmbeddingProvider`` wraps pydantic-ai's :class:`~pydantic_ai.Embedder`,
-which supports every provider pydantic-ai ships (openai, ollama, google,
-cohere, bedrock, and HuggingFace sentence-transformers).
+which supports every remote provider pydantic-ai ships (openai, ollama,
+google, cohere, bedrock).
 """
 
 # ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
@@ -95,8 +95,8 @@ class EmbeddingProvider(ABC):
 class PydanticAIEmbeddingProvider(EmbeddingProvider):
     """Embedding via pydantic-ai's :class:`~pydantic_ai.Embedder`.
 
-    Supports every embedding provider pydantic-ai ships (openai, ollama,
-    google, cohere, bedrock, and HuggingFace sentence-transformers).
+    Supports every remote embedding provider pydantic-ai ships (openai,
+    ollama, google, cohere, bedrock).
     The *model_string* uses the same ``provider:model`` convention as
     :func:`kompend.llm.models.build_model`.
     """
@@ -502,7 +502,7 @@ class ZvecWikiStore:
                         self._provider.dim,
                     )
                     collection.destroy()
-                    collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
+                    collection = self._create_and_open(schema)
                 elif stored_fields != expected_fields:
                     # Compare (name, data_type), not names alone: a field that
                     # keeps its name but changes type (e.g. tags STRING ->
@@ -523,15 +523,33 @@ class ZvecWikiStore:
                         retyped,
                     )
                     collection.destroy()
-                    collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
+                    collection = self._create_and_open(schema)
             except Exception as exc:
                 logger.warning("Vector store at %s is unreadable (%s); rebuilding", self.db_file, exc)
                 shutil.rmtree(self.db_file, ignore_errors=True)
-                collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
+                collection = self._create_and_open(schema)
         else:
-            collection = _zvec.create_and_open(path=str(self.db_file), schema=schema)
+            collection = self._create_and_open(schema)
         self._collection = collection
         return collection
+
+    def _create_and_open(self, schema: _zvec.CollectionSchema) -> ZvecCollection:
+        """Create or open the collection, rebuilding a corrupt indexer once.
+
+        zvec 0.8 answers ``RuntimeError: Failed to open scalar indexer`` when a
+        previous collection at the same path left index files behind - a
+        crashed run, or many collections opened in one long-lived process (the
+        test suite). The vector index is derived data, so the recovery is to
+        drop the directory and create it again.
+        """
+        try:
+            return _zvec.create_and_open(path=str(self.db_file), schema=schema)
+        except RuntimeError as exc:
+            if "scalar indexer" not in str(exc).lower():
+                raise
+            logger.warning("Vector store at %s could not open its scalar indexer (%s); rebuilding", self.db_file, exc)
+            shutil.rmtree(self.db_file, ignore_errors=True)
+            return _zvec.create_and_open(path=str(self.db_file), schema=schema)
 
     def _index_nodes(
         self,
@@ -900,7 +918,6 @@ def to_pydantic_ai_embedding_string(embedding_model: str) -> str:
             "groq",
             "mistral",
             "deepseek",
-            "sentence-transformers",
         }
     )
 

@@ -74,6 +74,11 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
   shape (`id`, `score`, plus the stored fields).
 - Embeddings route through `make_provider` / `build_embedder` (pydantic-ai);
   zvec's built-in embedders do not cover Ollama.
+- **A corrupt indexer is rebuilt, not fatal.** `zvec` can answer
+  `RuntimeError: Failed to open scalar indexer` for a directory that a crashed
+  run or a long-lived process left behind. The vector index is derived data, so
+  `_create_and_open()` drops the directory and recreates the collection once
+  before surfacing an error.
 
 ## Work Guidance
 
