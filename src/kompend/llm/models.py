@@ -511,8 +511,24 @@ def build_decision_model(model_string: str) -> Model:
     if not model_name:
         raise ValueError(f"Decision model must be 'provider/model', got {model_string!r}")
     provider = _user_providers.get(provider_id) or {}
-    base_url = provider.get("base_url")
+    base_url = _decision_base_url(provider.get("base_url"))
     api_key = provider.get("api_key")
     if not base_url and not api_key:
         return TypeSafeModel(model_name)
     return TypeSafeModel(model_name, provider=TypeSafeProvider(base_url=base_url, api_key=api_key))
+
+
+def _decision_base_url(base_url: str | None) -> str | None:
+    """Drop the API version suffix from a provider base URL.
+
+    ``TypeSafeProvider`` appends ``/v1/systemone`` itself, while a provider
+    block normally lists a chat base URL that already ends in ``/v1`` - handing
+    that through unchanged produces ``/v1/v1/systemone`` (404).
+    """
+    if not base_url:
+        return base_url
+    trimmed = base_url.rstrip("/")
+    for suffix in ("/v1", "/v1beta", "/openai/v1"):
+        if trimmed.endswith(suffix):
+            return trimmed[: -len(suffix)].rstrip("/")
+    return trimmed
