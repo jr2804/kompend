@@ -347,14 +347,7 @@ def _synthesize_write_page(
         timeout=timeout,
         llm=llm,
     )
-    deps = WriteDeps(
-        page_title=page_title,
-        source_texts=source_texts,
-        related_titles=related_titles,
-        source_id="write",
-        timeout=timeout,
-        source_char_max=source_char_max,
-    )
+    deps = WriteDeps(page_title=page_title, source_texts=source_texts, related_titles=related_titles, source_id="write", source_char_max=source_char_max)
     try:
         content = agent.run(deps)
         content = strip_reasoning(content) if isinstance(content, str) else content

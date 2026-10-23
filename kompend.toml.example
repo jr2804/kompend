@@ -432,6 +432,14 @@ output_retries = 2
 # run, so the default is 3.
 tool_retries = 3
 
+# Whole-request retries after a transient failure (timeout, dropped connection,
+# 429/5xx). Distinct from tool_retries (a tool raising ModelRetry) and
+# output_retries (a schema violation): it only repeats the same request. The
+# agent base owns this policy, so every stage obeys it - no stage keeps its own
+# backoff loop.
+transient_retries = 2
+transient_backoff = 5.0
+
 # Output-validation retry budget for tool-based (agentic) agents. Defaults
 # higher than output_retries because agentic agents run multi-turn loops
 # (fetch concepts, read segment, generate) where each turn can be
@@ -675,6 +683,12 @@ enable = false                    # on/off switch
 # Model override for LLM-powered lint steps (factual-consistency, clarity-score,
 # coverage-gap, contradiction-detection). Falls back to compile.llm.default_model.
 # model = "openai/gpt-4o-mini"
+
+# Per-call timeout for those lint steps (seconds). They send a batch of page
+# summaries (coverage-gap) or a whole page (clarity, factual consistency), so a
+# slow provider needs more room than the compile default - a timed-out rule
+# reports nothing. A transient timeout is retried once.
+# llm_timeout = 300.0
 
 # ── Trust settings ──────────────────────────────────────────────────────
 

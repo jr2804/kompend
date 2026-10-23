@@ -28,6 +28,11 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 
 ## Rules
 
+- **An LLM rule call is long-context and slow.** `lint.llm_timeout` (default
+  300 s) governs it, separately from `compile.llm.timeout`. The retry policy is
+  not lint's own: `LlmLintRule._call_agent` makes one attempt and the agent base
+  retries a transient failure (`compile.llm.transient_retries`). A failed call
+  still yields no findings for the rule, so do not swallow the error.
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.

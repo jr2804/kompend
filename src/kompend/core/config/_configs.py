@@ -244,6 +244,15 @@ class LLMConfig(_KompendBaseModel):
         default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model"
     )
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias=EnvVar.LLM_DATA_FORMAT)
+    #: Whole-request retries after a *transient* failure (a timeout, a dropped
+    #: connection, a 429/5xx). Distinct from ``tool_retries`` (a tool raising
+    #: ``ModelRetry``) and from ``output_retries`` (a schema violation): those
+    #: fix the request, a transient retry only repeats it. It lives on the agent
+    #: base, so every stage - generation, lint, extraction, verification - obeys
+    #: one policy instead of each loop inventing backoff.
+    transient_retries: int = Field(default=2, validation_alias=EnvVar.LLM_TRANSIENT_RETRIES)
+    #: First backoff in seconds for a transient retry; doubled per attempt.
+    transient_backoff: float = Field(default=5.0, validation_alias=EnvVar.LLM_TRANSIENT_BACKOFF)
     #: Mark the conversation prefix for provider-side prompt caching. Only
     #: Anthropic-protocol models act on it (``anthropic_cache_messages``,
     #: the proxy-safe variant); a multi-pass agentic loop re-sends the same
@@ -406,6 +415,11 @@ class LintConfig(_KompendBaseModel):
 
     enabled: list[str] | None = None
     fuzzy_threshold: float = Field(default=0.85, validation_alias=EnvVar.LINT_FUZZY_THRESHOLD)
+    #: Per-call timeout for the LLM lint rules. They are long-context JSON
+    #: requests (a batch of page summaries, or a whole page for clarity and
+    #: factual checks), so a slow provider needs more than the compile default:
+    #: a timed-out rule loses its findings instead of retrying the call.
+    llm_timeout: float = Field(default=300.0, validation_alias=EnvVar.LINT_LLM_TIMEOUT)
     model: str | None = Field(
         default=None,
         validation_alias=EnvVar.LINT_MODEL,

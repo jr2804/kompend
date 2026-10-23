@@ -139,7 +139,7 @@ class TestSearchAgentPrompts:
     @pytest.mark.parametrize("agent_cls", [QueryExpansionAgent, CragGradeAgent, HydeAgent])
     def test_agent_returns_prerendered_prompt(self, agent_cls: type) -> None:
         agent = agent_cls(model_string="ollama/gpt-oss:20b")
-        deps = PipelineAgentDeps(text="PROMPT BODY", source_id="test", timeout=120)
+        deps = PipelineAgentDeps(text="PROMPT BODY", source_id="test")
         assert agent.render_user_prompt(deps) == "PROMPT BODY"
         assert agent.render_system_prompt(deps) == ""
 

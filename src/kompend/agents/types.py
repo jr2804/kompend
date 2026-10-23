@@ -25,9 +25,6 @@ class PipelineAgentDeps:
         source_id: Stable identifier for the source (file path stem,
             URL, etc.) used for provenance and logging. Does not need
             to be a Path — plain string is fine.
-        timeout: Per-call timeout in seconds. Forwarded to
-            PydanticAI's model settings so a single slow call doesn't
-            stall the pipeline.
         extra_context: Optional structured context string injected
             as a system message before the user prompt (used by the
             AGENTIC extraction strategy to inject the memory digest).
@@ -36,7 +33,6 @@ class PipelineAgentDeps:
 
     text: str
     source_id: str
-    timeout: float = 120.0
     extra_context: str = ""
 
 
@@ -50,11 +46,9 @@ class BaseGenerationDeps:
             refinement input). Empty list when unused.
         known_titles: Canonical page titles the LLM should use verbatim in
             ``[[wikilinks]]``. Empty list when unknown.
-        timeout: Per-call timeout in seconds.
     """
 
     source_id: str
-    timeout: float = 120.0
     pinned_facts: list[str] = field(default_factory=list)
     known_titles: list[str] = field(default_factory=list)
 
@@ -99,7 +93,6 @@ class RemediationDeps:
         gaps: Broker over coverage-gap concepts matched to cached
             extraction buckets.
         source_id: Provenance / log label for the remediation run.
-        timeout: Per-call timeout in seconds.
         dry_run: When ``True``, the caller records would-be actions
             instead of writing nodes.
         pages: Pages submitted via ``save_page()`` — populated by the
@@ -108,7 +101,6 @@ class RemediationDeps:
 
     gaps: GapBrokerProtocol
     source_id: str = "remediation"
-    timeout: float = 120.0
     dry_run: bool = False
     pages: list[RemediationPageResult] = field(default_factory=list)
 
@@ -123,14 +115,12 @@ class OverviewDeps:
     Attributes:
         pages: Ordered list of page summaries (slug, title, content).
         source_id: Provenance / log label for the overview run.
-        timeout: Per-call timeout in seconds.
         overview: The submitted overview text, populated by the
             ``save_overview`` tool.
     """
 
     pages: list[OverviewPage]
     source_id: str = "overview"
-    timeout: float = 120.0
     overview: str = ""
 
 
@@ -173,7 +163,6 @@ class VerificationDeps:
     pages: list[VerificationPage] = field(default_factory=list)
     results: list[VerificationVerdict] = field(default_factory=list)
     source_id: str = "verification"
-    timeout: float = 120.0
 
 
 @dataclass
@@ -199,7 +188,6 @@ class WriteDeps:
     related_titles: list[str] = field(default_factory=list)
     page_content: str = ""
     source_id: str = "write"
-    timeout: float = 120.0
     source_char_max: int = 0
 
 
@@ -216,7 +204,6 @@ class ContextChunkDeps:
         chunks: List of chunk records (id, heading path, text).
         results: Collected context strings keyed by chunk_id.
         source_id: Identifier for the document being chunked.
-        timeout: Per-call timeout in seconds.
     """
 
     doc_title: str
@@ -224,7 +211,6 @@ class ContextChunkDeps:
     chunks: list[ContextChunk]
     results: dict[int, str] = field(default_factory=dict)
     source_id: str = "context_chunk"
-    timeout: float = 120.0
     current_chunk: ContextChunk | None = None
 
 
@@ -238,13 +224,11 @@ class SummarizerDeps:
         nodes: List of node records (id, heading path, content).
         results: Collected summaries keyed by node id.
         source_id: Identifier for the tree being summarized.
-        timeout: Per-call timeout in seconds.
     """
 
     nodes: list[SummaryNode]
     results: dict[str, str] = field(default_factory=dict)
     source_id: str = "summarizer"
-    timeout: float = 120.0
     current_node: SummaryNode | None = None
 
 
@@ -258,7 +242,6 @@ class DistillAgentDeps:
         groups: List of group records (tag, notes).
         pages: Collected page records keyed by group tag.
         source_id: Identifier for tracking.
-        timeout: Per-call timeout in seconds.
         data_format: Format the group notes are encoded in when a tool
             hands them to the model (``compile.llm.data_format``).
     """
@@ -266,7 +249,6 @@ class DistillAgentDeps:
     groups: list[DistillGroup]
     pages: dict[str, DistillPage] = field(default_factory=dict)
     source_id: str = "distill"
-    timeout: float = 120.0
     current_group: DistillGroup | None = None
     data_format: LlmDataFormat = LlmDataFormat.JSON
 
@@ -290,7 +272,6 @@ class QueryAgentDeps:
             ``None`` = key-presence); all must hold. Pushed down likewise.
         results: Collected answer fragments keyed by sub-question index.
         source_id: Identifier for tracking.
-        timeout: Per-call timeout in seconds.
     """
 
     question: str
@@ -301,7 +282,6 @@ class QueryAgentDeps:
     attr_filters: list[tuple[str, str | None]] = field(default_factory=list)
     results: dict[int, str] = field(default_factory=dict)
     source_id: str = "query"
-    timeout: float = 120.0
     current_sub_question: str | None = None
 
 

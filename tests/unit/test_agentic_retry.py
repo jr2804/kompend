@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import ClassVar
+from unittest.mock import MagicMock
+
 import httpx
 import pytest
 from pydantic_ai.exceptions import ModelHTTPError
 
-from kompend.compilation.flows.generation import (
-    _UPSTREAM_TRANSIENT_BACKOFF_BASE,
-    _UPSTREAM_TRANSIENT_MAX_RETRIES,
-)
+from kompend.agents.base import KompendAgentBase
+from kompend.agents.deps import PipelineAgentDeps
+from kompend.core.config._configs import LLMConfig
+from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.llm.errors import is_transient_error
 
 
@@ -51,8 +55,55 @@ def test_plain_errors_are_not_transient() -> None:
     assert is_transient_error(ValueError("Request timed out.")) is False
 
 
-def test_retry_constants_have_expected_shape() -> None:
-    assert _UPSTREAM_TRANSIENT_MAX_RETRIES >= 1
-    assert 0.5 <= _UPSTREAM_TRANSIENT_BACKOFF_BASE <= 5.0
-    worst_case = sum(_UPSTREAM_TRANSIENT_BACKOFF_BASE * (2 ** (attempt - 1)) for attempt in range(1, _UPSTREAM_TRANSIENT_MAX_RETRIES + 1))
-    assert worst_case < 10.0, f"total worst-case backoff too long: {worst_case:.1f}s"
+class _StubAgent(KompendAgentBase[str, PipelineAgentDeps]):
+    """Minimal agent: no template, no tools - the request path only."""
+
+    template_name: ClassVar[str] = ""
+    system_template_name: ClassVar[str] = ""
+
+    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:
+        return deps.text
+
+    def render_system_prompt(self, deps: PipelineAgentDeps) -> str:
+        return ""
+
+
+def _stub(retries: int = 2) -> tuple[_StubAgent, MagicMock]:
+    agent = _StubAgent("test/model", llm=LLMConfig(transient_retries=retries, transient_backoff=0.01))
+    fake = MagicMock()
+    agent._agent = fake
+    return agent, fake
+
+
+def _deps() -> PipelineAgentDeps:
+    return PipelineAgentDeps(text="hello", source_id="test")
+
+
+def test_transient_failure_is_retried_on_the_agent_base(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The retry policy lives in one place - no per-stage backoff loops."""
+    monkeypatch.setattr("kompend.agents.base.time.sleep", lambda _seconds: None)
+    agent, fake = _stub(retries=2)
+    fake.run_sync.side_effect = [httpx.ReadTimeout("slow"), SimpleNamespace(output="ok")]
+
+    assert agent.run(_deps()) == "ok"
+    assert fake.run_sync.call_count == 2
+
+
+def test_transient_budget_is_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("kompend.agents.base.time.sleep", lambda _seconds: None)
+    agent, fake = _stub(retries=1)
+    fake.run_sync.side_effect = httpx.ReadTimeout("slow")
+
+    with pytest.raises(LLMTransientError):
+        agent.run(_deps())
+    assert fake.run_sync.call_count == 2
+
+
+def test_semantic_failure_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("kompend.agents.base.time.sleep", lambda _seconds: None)
+    agent, fake = _stub(retries=2)
+    fake.run_sync.side_effect = ValueError("bad schema")
+
+    with pytest.raises(LLMOutputError):
+        agent.run(_deps())
+    assert fake.run_sync.call_count == 1

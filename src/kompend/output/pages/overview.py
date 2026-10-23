@@ -76,7 +76,7 @@ def generate_overview_agentic(
         return None
     if progress_callback:
         progress_callback(0, 1)
-    deps = OverviewDeps(pages=pages, timeout=agent.timeout)
+    deps = OverviewDeps(pages=pages)
     try:
         agent.run(deps)
     except Exception as exc:
@@ -128,7 +128,7 @@ def generate_overview(
     partials: list[str] = []
     for idx, batch_text in enumerate(batches):
         prompt = _loader.render("output/synthesize.md.j2", wiki_content=batch_text)
-        deps = PipelineAgentDeps(text=prompt, source_id="overview", timeout=agent.timeout)
+        deps = PipelineAgentDeps(text=prompt, source_id="overview")
         try:
             result = agent.run(deps)
             if result and isinstance(result, dict):
@@ -151,7 +151,7 @@ def generate_overview(
     # hide a real LLM failure behind a degraded overview.
     combined = "\n\n".join(partials)
     prompt = _loader.render("output/synthesize.md.j2", wiki_content=combined)
-    deps = PipelineAgentDeps(text=prompt, source_id="overview-merge", timeout=agent.timeout)
+    deps = PipelineAgentDeps(text=prompt, source_id="overview-merge")
     try:
         result = agent.run(deps)
         if result and isinstance(result, dict):

@@ -136,11 +136,7 @@ def extract_agentic(
             msg = ModelRequest(parts=[SystemPromptPart(content=f"=== Context from prior sections ===\n{memory_digest}")])
             message_history.append(msg)
 
-        deps = PipelineAgentDeps(
-            text=section_text,
-            source_id=f"{source}:{section_idx}",
-            timeout=compiler._timeout,
-        )
+        deps = PipelineAgentDeps(text=section_text, source_id=f"{source}:{section_idx}")
 
         validated: ExtractionOutput | None = None
         for attempt in range(1 + batch_retries):

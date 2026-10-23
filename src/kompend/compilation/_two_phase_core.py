@@ -434,7 +434,6 @@ def try_pydanticai_extraction(
     *,
     text: str,
     source_id: str,
-    timeout: float = 120.0,
 ) -> ExtractionOutput | None:
     """Run a PydanticAI :class:`ExtractionAgent` on a chunk of source text.
 
@@ -450,15 +449,13 @@ def try_pydanticai_extraction(
         agent: An instantiated :class:`~kompend.agents.ExtractionAgent`.
         text: The combined chunk text to extract from.
         source_id: Provenance tag (file stem / URL).
-        timeout: Per-call timeout in seconds; forwarded to the
-            agent's model settings.
 
     Returns:
         The validated :class:`~kompend.compilation.schema.ExtractionOutput`
         instance, or ``None`` on failure.
     """
     try:
-        deps = PipelineAgentDeps(text=text, source_id=source_id, timeout=timeout)
+        deps = PipelineAgentDeps(text=text, source_id=source_id)
         return agent.run(deps)
     except LLMOutputError as exc:
         logger.warning("PydanticAI extraction failed for '%s': %s", source_id, exc)

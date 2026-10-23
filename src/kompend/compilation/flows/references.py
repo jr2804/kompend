@@ -168,7 +168,7 @@ def run_reference_extraction(
         failed_windows = 0
         for win_idx, window in enumerate(windows, start=1):
             try:
-                deps = PipelineAgentDeps(text=window, source_id=source, timeout=timeout)
+                deps = PipelineAgentDeps(text=window, source_id=source)
                 result = agent.run(deps)
             except Exception as exc:  # noqa: BLE001 — PydanticAI raises many error subclasses
                 failed_windows += 1
@@ -325,7 +325,7 @@ def resolve_unresolved_references(
             label,
         )
 
-        deps = PipelineAgentDeps(text=query_text, source_id=src, timeout=timeout)
+        deps = PipelineAgentDeps(text=query_text, source_id=src)
         try:
             result = agent.run(deps)
         except Exception as exc:  # noqa: BLE001 — PydanticAI raises many error subclasses

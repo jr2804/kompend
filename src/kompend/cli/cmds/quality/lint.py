@@ -142,7 +142,10 @@ def lint_check(
         fix=fix,
         fix_destructive=fix_destructive,
         sources_dir=str(vp.sources_dir) if vp.sources_dir.exists() else None,
-        lint_config=LintConfig(fuzzy_threshold=float(cfg.kompend.lint.fuzzy_threshold)),
+        lint_config=LintConfig(
+            fuzzy_threshold=float(cfg.kompend.lint.fuzzy_threshold),
+            llm_timeout=float(cfg.kompend.lint.llm_timeout),
+        ),
         rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.kompend.compile.output.rumdl_config),
         data_format=cfg.kompend.compile.llm.data_format,
     )

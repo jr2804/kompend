@@ -30,6 +30,7 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+import time
 import typing
 from abc import ABC
 from collections.abc import Callable, Sequence
@@ -87,6 +88,10 @@ _FALLBACK_CHARS_PER_TOKEN: float = 4.0
 #: budget (``compile.llm.output_retries`` defaults to 2).
 _DEFAULT_RETRIES: int = 2
 
+#: Transient retries when no config is handed over (``compile.llm`` unset).
+_DEFAULT_TRANSIENT_RETRIES: int = 2
+_DEFAULT_TRANSIENT_BACKOFF_SECONDS: float = 5.0
+
 #: Sentinels for "the construction site did not set this limit" — the
 #: config (``compile.llm``) or the base default decides.
 UNSET_TIMEOUT: float = -1.0
@@ -118,12 +123,11 @@ ResultT = TypeVar("ResultT")
 class AgentDeps(Protocol):
     """Structural type for deps objects passed to :class:`KompendAgentBase`.
 
-    Any dataclass with a ``source_id: str`` and ``timeout: float`` field
+    Any dataclass with a ``source_id: str`` field
     satisfies this protocol.
     """
 
     source_id: str
-    timeout: float
 
 
 def resolve_retry_budget(
@@ -417,39 +421,62 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         system_prompt: str,
         message_history: list[ModelMessage] | None,
     ) -> Any:
-        """Run the agent, retrying once without prompt caching if a gateway rejects it.
+        """Run the agent: one transient-retry policy, one cache-rejection retry.
 
-        A gateway that does not know the provider's cache field answers 400
-        with the field name in the body. Caching is an optimisation, never a
-        requirement, so the retry disables it for this agent and logs why.
+        The retry policy is the *only* place a request is repeated. A stage that
+        needs a different number of tries changes ``compile.llm.transient_retries``
+        instead of growing its own backoff loop.
+
+        A gateway that does not know the provider's cache field answers 400 with
+        the field name in the body; caching is an optimisation, so that failure
+        disables caching for this agent and retries immediately.
         """
         if self._agent is None:
             self._agent = self._build_agent()
-        try:
-            return self._agent.run_sync(
-                user_prompt,
-                deps=deps,
-                instructions=system_prompt,
-                message_history=message_history,
-                usage_limits=self._usage_limits_for(deps),
-            )
-        except Exception as exc:
-            if not self._prompt_cache or not _is_cache_rejection(exc):
-                raise
-            logger.warning(
-                "Prompt caching rejected by '%s' (%s) - retrying without it; set compile.llm.prompt_cache = false to skip the probe",
-                self.model_string,
-                exc,
-            )
-            self._prompt_cache = False
-            self._agent = self._build_agent()
-            return self._agent.run_sync(
-                user_prompt,
-                deps=deps,
-                instructions=system_prompt,
-                message_history=message_history,
-                usage_limits=self._usage_limits_for(deps),
-            )
+
+        transient_left = self._transient_retries()
+        attempt = 0
+        while True:
+            try:
+                return self._agent.run_sync(
+                    user_prompt,
+                    deps=deps,
+                    instructions=system_prompt,
+                    message_history=message_history,
+                    usage_limits=self._usage_limits_for(deps),
+                )
+            except Exception as exc:
+                if self._prompt_cache and _is_cache_rejection(exc):
+                    logger.warning(
+                        "Prompt caching rejected by '%s' (%s) - retrying without it; set compile.llm.prompt_cache = false to skip the probe",
+                        self.model_string,
+                        exc,
+                    )
+                    self._prompt_cache = False
+                    self._agent = self._build_agent()
+                    continue
+                if transient_left <= 0 or not is_transient_error(exc):
+                    raise
+                attempt += 1
+                transient_left -= 1
+                delay = self._transient_backoff() * 2 ** (attempt - 1)
+                logger.warning(
+                    "Transient failure from '%s' (attempt %d, %d retry/retries left, waiting %.1fs): %s",
+                    self.model_string,
+                    attempt,
+                    transient_left,
+                    delay,
+                    exc,
+                )
+                time.sleep(delay)
+
+    def _transient_retries(self) -> int:
+        """Configured whole-request retries after a transient failure."""
+        return self.llm.transient_retries if self.llm is not None else _DEFAULT_TRANSIENT_RETRIES
+
+    def _transient_backoff(self) -> float:
+        """Configured first backoff (seconds) for a transient retry."""
+        return self.llm.transient_backoff if self.llm is not None else _DEFAULT_TRANSIENT_BACKOFF_SECONDS
 
     def _apply_config_defaults(self) -> None:
         """Take every limit the construction site did not set from the config.

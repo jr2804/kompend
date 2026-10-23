@@ -275,6 +275,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
 
         lint_config = LintConfig(
             fuzzy_threshold=float(cfg.kompend.lint.fuzzy_threshold),
+            llm_timeout=float(cfg.kompend.lint.llm_timeout),
         )
         post_compile_actions(
             PostCompileOptions(

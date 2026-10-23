@@ -19,6 +19,7 @@ from kompend.core.config.rumdl import _shipped_hash, resolve_rumdl_config
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
+from kompend.core.utils.exceptions import LLMTransientError
 from kompend.lint import _remediation_gaps as gaps_module
 from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
 from kompend.lint.history import entry_from_report, report_from_dict
@@ -1473,3 +1474,16 @@ def _mock_remediate_llm(content: str = "Generated concept page.") -> MagicMock:
 
 def _gap_result(concept: str) -> LintResult:
     return LintResult(rule="coverage-gap", outcome=LintRuleOutcome.FAIL, message=f"{concept} — missing", details={"concept": concept})
+
+
+class TestLintCallFailure:
+    """The rule reports nothing when its one call fails - the base retries."""
+
+    def test_a_failed_call_yields_no_result_and_no_retry_here(self) -> None:
+        client = MagicMock()
+        client.timeout = 300.0
+        client.run.side_effect = LLMTransientError("timeout")
+        rule = CoverageGapRule(agent=client)
+
+        assert rule._call_agent("lint/coverage-gap-dedup.md.j2", result_type=CoverageGapOutput, gaps_data="[]") is None
+        assert client.run.call_count == 1

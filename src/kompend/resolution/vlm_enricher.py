@@ -173,7 +173,7 @@ class VLMEnricher(BaseResolver):
             return None
 
         prompt = (f"[Context: {context_hint}] " if context_hint else "") + self._VLM_PROMPT_INSTRUCTION
-        deps = VlmDeps(prompt=prompt, image_file=str(image_ref), timeout=self._agent.timeout)
+        deps = VlmDeps(prompt=prompt, image_file=str(image_ref))
         try:
             return self._agent.run(deps)
         except FileNotFoundError:

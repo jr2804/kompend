@@ -79,6 +79,8 @@ COMPILE_LLM_OUTPUT_RETRIES: Final[str] = "compile.llm.output_retries"
 COMPILE_LLM_AGENTIC_OUTPUT_RETRIES: Final[str] = "compile.llm.agentic_output_retries"
 COMPILE_LLM_THROUGHPUT_WINDOW_TOKENS: Final[str] = "compile.llm.throughput_window_tokens"
 COMPILE_LLM_TOOL_RETRIES: Final[str] = "compile.llm.tool_retries"
+COMPILE_LLM_TRANSIENT_RETRIES: Final[str] = "compile.llm.transient_retries"
+COMPILE_LLM_TRANSIENT_BACKOFF: Final[str] = "compile.llm.transient_backoff"
 COMPILE_LLM_AGENT_MEMORY: Final[str] = "compile.llm.agent_memory"
 COMPILE_LLM_PROMPT_CACHE: Final[str] = "compile.llm.prompt_cache"
 
@@ -111,6 +113,7 @@ DEDUP_MINHASH_LSH_THRESHOLD: Final[str] = "dedup.minhash_lsh_threshold"
 
 # ── lint section ──
 LINT_FUZZY_THRESHOLD: Final[str] = "lint.fuzzy_threshold"
+LINT_LLM_TIMEOUT: Final[str] = "lint.llm_timeout"
 
 # ── trust/privacy ──
 TRUST_PRIVACY_FILTER: Final[str] = "trust.privacy_filter"

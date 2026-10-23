@@ -249,7 +249,7 @@ def _generate_concept_page(agent: RemediationAgent, concept_data: dict[str, Any]
         sources=concept_data.get("sources", []),
         source_summaries=concept_data.get("summaries", []),
     )
-    deps = PipelineAgentDeps(text=prompt, source_id="lint-remediate", timeout=120)
+    deps = PipelineAgentDeps(text=prompt, source_id="lint-remediate")
     result = agent.run(deps)
     return result if result else None
 

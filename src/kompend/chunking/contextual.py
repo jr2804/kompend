@@ -107,13 +107,7 @@ class ContextualEnricher:
                 text = str(leaf.structured)[:excerpt_limit]
             chunks.append(ContextChunk(id=id(leaf), heading_chain=headings, text=text))
 
-        deps = ContextChunkDeps(
-            doc_title=doc_title,
-            doc_summary=doc_summary,
-            chunks=chunks,
-            source_id=doc_title,
-            timeout=120,
-        )
+        deps = ContextChunkDeps(doc_title=doc_title, doc_summary=doc_summary, chunks=chunks, source_id=doc_title)
         try:
             self._agent.run(deps)
         except Exception as exc:
@@ -160,7 +154,7 @@ class ContextualEnricher:
                 heading_chain=heading_chain,
                 content_preview=content_preview,
             )
-            deps = PipelineAgentDeps(text=rendered, source_id=heading_chain, timeout=120)
+            deps = PipelineAgentDeps(text=rendered, source_id=heading_chain)
             if self._agent is None:
                 raise RuntimeError("ContextChunkAgent not initialized")
             agent = cast("ContextChunkAgent", self._agent)

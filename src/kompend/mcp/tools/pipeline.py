@@ -353,7 +353,7 @@ def _synthesize_write_page(
             page_title=page_title,
             source_block=block,
         )
-        deps = PipelineAgentDeps(text=prompt, source_id="write", timeout=timeout)
+        deps = PipelineAgentDeps(text=prompt, source_id="write")
         try:
             content = strip_reasoning(agent.run(deps))
         except Exception as exc:

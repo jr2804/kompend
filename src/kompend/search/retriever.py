@@ -527,7 +527,6 @@ def run_agentic_query(
         max_sub_questions=max_sub_questions,
         tag_groups=tag_groups or [],
         attr_filters=attr_filters or [],
-        timeout=timeout,
     )
     return agent.run(deps)
 

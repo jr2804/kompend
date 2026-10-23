@@ -145,12 +145,12 @@ class TestWicerDiagnoseAgent:
 class TestWicerDepsDefaults:
     def test_probe_deps_defaults(self) -> None:
         deps = WicerProbeDeps(text="x", source_id="s")
-        assert deps.timeout == 120.0
+        assert not hasattr(deps, "timeout")
 
     def test_evaluate_deps_defaults(self) -> None:
         deps = WicerEvaluateDeps(wiki_text="x", probes_json="[]", source_id="s")
-        assert deps.timeout == 120.0
+        assert not hasattr(deps, "timeout")
 
     def test_diagnose_deps_defaults(self) -> None:
         deps = WicerDiagnoseDeps(failures_json="[]", source_id="s")
-        assert deps.timeout == 120.0
+        assert not hasattr(deps, "timeout")

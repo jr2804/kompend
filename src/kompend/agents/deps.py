@@ -67,14 +67,12 @@ class QueryDeps:
         source_id: Log/provenance label for the query.
         verbosity: Synthesis verbosity (``brief``, ``standard``,
             ``comprehensive``). Controls answer length.
-        timeout: Per-call timeout in seconds.
     """
 
     question: str
     context: str
     source_id: str
     verbosity: str = "standard"
-    timeout: float = 120.0
 
 
 @dataclass
@@ -88,12 +86,10 @@ class WicerProbeDeps:
     Attributes:
         text: The combined source text to generate probes from.
         source_id: Log/provenance label for the batch.
-        timeout: Per-call timeout in seconds.
     """
 
     text: str
     source_id: str
-    timeout: float = 120.0
 
 
 @dataclass
@@ -108,13 +104,11 @@ class WicerEvaluateDeps:
         wiki_text: A segment of compiled wiki text to evaluate against.
         probes_json: The probes encoded via :func:`kompend.llm.format.encode_for_llm`.
         source_id: Log/provenance label.
-        timeout: Per-call timeout in seconds.
     """
 
     wiki_text: str
     probes_json: str
     source_id: str
-    timeout: float = 120.0
 
 
 @dataclass
@@ -130,12 +124,10 @@ class WicerDiagnoseDeps:
         failures_json: The failed evaluations encoded via
             :func:`kompend.llm.format.encode_for_llm`.
         source_id: Log/provenance label.
-        timeout: Per-call timeout in seconds.
     """
 
     failures_json: str
     source_id: str
-    timeout: float = 120.0
 
 
 @dataclass
@@ -157,7 +149,6 @@ class CategorizeDeps:
             category.
         min_files_per_category: Minimum files a leaf category must hold.
         source_id: Log/provenance label (always ``"categorize"``).
-        timeout: Per-call timeout in seconds.
     """
 
     files_data: str
@@ -165,4 +156,3 @@ class CategorizeDeps:
     min_subcategories: int = 2
     min_files_per_category: int = 2
     source_id: str = "categorize"
-    timeout: float = 120.0

@@ -95,13 +95,10 @@ class TestExtractionAgentRun:
 
 
 class TestPipelineAgentDeps:
-    def test_default_timeout(self) -> None:
+    def test_deps_carry_no_timeout(self) -> None:
+        """The agent owns the request timeout; deps only carry the prompt."""
         deps = PipelineAgentDeps(text="x", source_id="y")
-        assert deps.timeout == 120.0
-
-    def test_custom_timeout(self) -> None:
-        deps = PipelineAgentDeps(text="x", source_id="y", timeout=30.0)
-        assert deps.timeout == 30.0
+        assert not hasattr(deps, "timeout")
 
     def test_template_vars_excludes_underscore_keys(self) -> None:
         """Internal Python attributes should not leak into Jinja2 context."""
@@ -109,6 +106,6 @@ class TestPipelineAgentDeps:
         vars_ = ExtractionAgent._deps_to_template_vars(deps)
         assert "text" in vars_
         assert "source_id" in vars_
-        assert "timeout" in vars_
+        assert "timeout" not in vars_
         for k in vars_:
             assert not k.startswith("_")

@@ -258,7 +258,7 @@ class NodeSummarizer:
                     continue
 
                 sessions += 1
-                deps = SummarizerDeps(nodes=payload, source_id=tree.root_id, timeout=agent.timeout)
+                deps = SummarizerDeps(nodes=payload, source_id=tree.root_id)
                 try:
                     agent.run(deps)
                 except UsageLimitExceeded as exc:
@@ -428,7 +428,7 @@ class NodeSummarizer:
             heading_chain=heading_chain,
             target_chars=self._policy.target_chars,
         )
-        deps = PipelineAgentDeps(text=prompt, source_id=heading_chain, timeout=120)
+        deps = PipelineAgentDeps(text=prompt, source_id=heading_chain)
         try:
             if self._agent is None:
                 raise RuntimeError("SummarizerAgent not initialized")

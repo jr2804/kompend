@@ -150,14 +150,19 @@ Prompt-building code reads it off the agent instead of taking a parameter, so
 the format cannot drift from the config the agent already carries
 (`CategorizeAgent` → `_build_files_payload`).
 
+A **transient** failure (timeout, dropped connection, 429/5xx) is retried in
+`KompendAgentBase._invoke` — `compile.llm.transient_retries` times with
+`transient_backoff` doubling. That is the only whole-request retry: stages must
+not add backoff loops of their own (generation and lint had one; both were
+removed). Tool, output-schema and session-progress retries are other axes.
+
 `resolve_retry_budget(llm, retries=…, output_retries=…)` derives the
-tool/output retry split from the same config — the agentic factories use it
-so a multi-turn agent does not share the single-shot retry budget. The two
-halves are separate because the failure modes differ: a tool that raises
-`ModelRetry` (a missing file, a bad argument) needs a correction attempt, a
-schema violation needs a regeneration. `KompendAgentBase.tool_retry_budget()`
-exposes the tool half to the capabilities that need it (the context
-manager's summarizer agent).
+tool/output retry split from the same config — the agentic factories use it so
+a multi-turn agent does not share the single-shot budget. The halves are
+separate because the remedies differ: a tool raising `ModelRetry` needs a
+correction attempt, a schema violation a regeneration.
+`KompendAgentBase.tool_retry_budget()` exposes the tool half to the
+capabilities that need it (the context manager's summarizer agent).
 
 The agentic harness offers the memory capability only on request
 (`AgenticHarness(memory=True)`). The notebook is a `read_memory`/`write_memory`
@@ -170,11 +175,6 @@ stage where one instance handles MANY outputs — summarisation, verification,
 remediation, distillation. Stages that build a fresh agent per unit
 (generation per segment, write per page, query per question, context-chunk,
 overview) gain nothing: the notebook would be empty for every unit.
-
-An agent built with only `model_string` gets the provider's default output
-ceiling and the hardcoded `_DEFAULT_RETRIES` — the response is truncated by
-the provider and the structured output fails with
-`Exceeded maximum output retries`.
 
 The delta-retry salvage hook is opt-in per class: a subclass sets
 `supports_delta_retry: ClassVar[bool] = True`, and the hook fires only when

@@ -200,12 +200,7 @@ def _distill_agentic(
     pending = list(groups_data)
     sessions = 0
     while pending:
-        deps = DistillAgentDeps(
-            groups=pending,
-            source_id="distill-all",
-            timeout=distill_agent.timeout,
-            data_format=distill_agent.data_format,
-        )
+        deps = DistillAgentDeps(groups=pending, source_id="distill-all", data_format=distill_agent.data_format)
         sessions += 1
         try:
             distill_agent.run(deps)
@@ -291,7 +286,6 @@ def _synthesize_with_agent(
         group_tag=tag,
         text=user_prompt,
         source_id=f"distill-{tag}",
-        timeout=distill_agent.timeout,
     )
 
     try:

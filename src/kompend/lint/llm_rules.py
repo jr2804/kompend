@@ -109,7 +109,7 @@ class LlmLintRule(BaseLintRule):
         if self._agent is None:
             return None
         prompt = _loader.render(template_name, **kwargs)
-        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}", timeout=120)
+        deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}")
         try:
             result = self._agent.run(deps, result_type=result_type)
             if isinstance(result, result_type):

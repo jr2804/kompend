@@ -176,7 +176,7 @@ class EnhancedRetriever:
 
         try:
             prompt = self._template_loader.render("search/expand_query.md.j2", query=query)
-            deps = PipelineAgentDeps(text=prompt, source_id="expand", timeout=120)
+            deps = PipelineAgentDeps(text=prompt, source_id="expand")
             result = self._expansion_agent.run(deps)
 
             expansions: list[str] = [query]
@@ -193,7 +193,7 @@ class EnhancedRetriever:
         """Generate a hypothetical answer passage for sparse queries."""
         try:
             prompt = self._template_loader.render("search/hyde_generate.md.j2", query=query)
-            deps = PipelineAgentDeps(text=prompt, source_id="hyde", timeout=120)
+            deps = PipelineAgentDeps(text=prompt, source_id="hyde")
             if self._hyde_agent is None:
                 raise RuntimeError("HyDE agent not initialized")
             result = self._hyde_agent.run(deps)
@@ -293,7 +293,7 @@ class EnhancedRetriever:
                 title=result.title,
                 snippet=result.snippet,
             )
-            deps = PipelineAgentDeps(text=prompt, source_id="crag", timeout=120)
+            deps = PipelineAgentDeps(text=prompt, source_id="crag")
             if self._crag_agent is None:
                 raise RuntimeError("CRAG agent not initialized")
             grade = self._crag_agent.run(deps)

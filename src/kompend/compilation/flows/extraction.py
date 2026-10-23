@@ -243,7 +243,6 @@ def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extractio
             agent,
             text=combined,
             source_id=source,
-            timeout=compiler._timeout,
         )
         if validated is not None:
             break
@@ -364,11 +363,7 @@ def extract_incremental(
                 usage_tracker=compiler._usage_tracker,
                 llm=compiler._config.llm,
             )
-        deps = PipelineAgentDeps(
-            text=combined,
-            source_id=f"{source}:{batch_idx}",
-            timeout=compiler._timeout,
-        )
+        deps = PipelineAgentDeps(text=combined, source_id=f"{source}:{batch_idx}")
         try:
             validated, new_messages = agent.run_with_messages(
                 deps,
@@ -513,7 +508,7 @@ def reduce_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extra
         llm=compiler._config.llm,
     )
     try:
-        deps = PipelineAgentDeps(text=partial_data, source_id=f"{source}:reduce", timeout=compiler._timeout)
+        deps = PipelineAgentDeps(text=partial_data, source_id=f"{source}:reduce")
         validated = agent.run(deps)
     except LLMOutputError:
         logger.warning("TwoPhase: reduce failed for '%s' — falling back to naive merge", source)

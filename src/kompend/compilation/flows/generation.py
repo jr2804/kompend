@@ -9,7 +9,6 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import time
 from collections import defaultdict
 from typing import Any
 
@@ -532,7 +531,6 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
             categories=categories,
             known_titles=known_titles or [],
             concept_broker=broker,
-            timeout=compiler._timeout,
         )
 
         # Force full concept coverage: small models often stop after the first
@@ -566,85 +564,33 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                 f"grew beyond the reservation. Re-run with a smaller context budget or check config."
             )
         while broker.remaining(seg_id) > 0 and passes < cap:
-            # Inner retry: upstream transient errors (4xx with
-            # 'timed out' body) get a brief backoff and a re-attempt of the
-            # SAME pass (does not consume a pass slot). Hard errors (5xx,
-            # validation, schema) skip the backoff and consume a pass.
-            retry_attempts = 0
-            for retry in range(_UPSTREAM_TRANSIENT_MAX_RETRIES + 1):
-                passes += 1 if retry == 0 else 0  # only the first try counts as a pass
-                try:
-                    gen_output = agent.run(deps)
-                    if retry_attempts:
-                        logger.info(
-                            "Agentic generation for '%s' recovered after %d transient retry attempt(s)",
-                            seg_id,
-                            retry_attempts,
-                        )
-                    break
-                except LLMTransientError as exc:
-                    # Transport-level failure: the request may succeed on the
-                    # next attempt, so it does not consume a pass slot.
-                    action = _failure_action(
-                        compiler,
-                        exc,
-                        stage=f"agentic-generation:{seg_id}",
-                        attempt=retry + 1,
-                        max_attempts=_UPSTREAM_TRANSIENT_MAX_RETRIES + 1,
-                        transient=True,
-                    )
-                    if action is ErrorAction.ABORT:
-                        raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
-                    if action is ErrorAction.SKIP:
-                        logger.warning("Agentic generation transient failure for '%s' - skipping: %s", seg_id, exc)
-                        gen_output = None
-                        last_error = str(exc)
-                        break
-                    if retry < _UPSTREAM_TRANSIENT_MAX_RETRIES:
-                        retry_attempts += 1
-                        backoff = _UPSTREAM_TRANSIENT_BACKOFF_BASE * (2 ** (retry_attempts - 1))
-                        logger.warning(
-                            "Agentic generation transient failure for '%s' (attempt %d/%d); retrying in %.1fs. error=%s",
-                            seg_id,
-                            retry_attempts,
-                            _UPSTREAM_TRANSIENT_MAX_RETRIES,
-                            backoff,
-                            exc,
-                        )
-                        time.sleep(backoff)
-                        continue
-                    logger.warning(
-                        "Agentic generation transient failure for '%s' exhausted %d retries: %s",
-                        seg_id,
-                        _UPSTREAM_TRANSIENT_MAX_RETRIES,
-                        exc,
-                    )
-                    gen_output = None
-                    last_error = str(exc)
-                    break
-                except LLMOutputError as exc:
-                    action = _failure_action(
-                        compiler,
-                        exc,
-                        stage=f"agentic-generation:{seg_id}",
-                        attempt=retry + 1,
-                        max_attempts=_UPSTREAM_TRANSIENT_MAX_RETRIES + 1,
-                        transient=False,
-                    )
-                    logger.warning("Agentic generation failed for '%s' (%s): %s", seg_id, action, exc)
-                    if action is ErrorAction.RETRY and retry < _UPSTREAM_TRANSIENT_MAX_RETRIES:
-                        time.sleep(_UPSTREAM_TRANSIENT_BACKOFF_BASE * (2**retry))
-                        continue
-                    if action is ErrorAction.ABORT:
-                        raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
-                    gen_output = None
-                    last_error = str(exc)
-                    break
-                except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
-                    logger.warning("Agentic generation unexpected error for '%s': %s", seg_id, exc)
-                    gen_output = None
-                    last_error = str(exc)
-                    break
+            # One pass = one agent run. The agent base owns the whole-request
+            # retry policy (``compile.llm.transient_retries``), so a transient
+            # failure only reaches this loop after those retries are spent.
+            passes += 1
+            last_error = None
+            action = ErrorAction.SKIP
+            try:
+                gen_output = agent.run(deps)
+            except (LLMTransientError, LLMOutputError) as exc:
+                transient = isinstance(exc, LLMTransientError)
+                action = _failure_action(
+                    compiler,
+                    exc,
+                    stage=f"agentic-generation:{seg_id}",
+                    attempt=passes,
+                    max_attempts=cap,
+                    transient=transient,
+                )
+                logger.warning("Agentic generation failed for '%s' (%s): %s", seg_id, action, exc)
+                if action is ErrorAction.ABORT:
+                    raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
+                gen_output = None
+                last_error = str(exc)
+            except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
+                logger.warning("Agentic generation unexpected error for '%s': %s", seg_id, exc)
+                gen_output = None
+                last_error = str(exc)
             debug_file = getattr(agent, "_last_debug_file", None)
 
             compiler._batch_tracker.record(failed=gen_output is None)

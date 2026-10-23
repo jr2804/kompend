@@ -81,7 +81,7 @@ class TestQueryDeps:
     def test_defaults(self) -> None:
         deps = QueryDeps(question="q", context="c", source_id="s")
         assert deps.verbosity == "standard"
-        assert deps.timeout == 120.0
+        assert not hasattr(deps, "timeout")
 
     def test_custom_verbosity(self) -> None:
         deps = QueryDeps(question="q", context="c", source_id="s", verbosity="brief")

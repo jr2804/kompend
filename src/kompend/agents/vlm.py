@@ -64,7 +64,6 @@ class VlmDeps:
     prompt: str
     image_file: str
     source_id: str = "vlm"
-    timeout: float = 120.0
 
 
 class VlmAgent(KompendAgentBase[str, VlmDeps]):

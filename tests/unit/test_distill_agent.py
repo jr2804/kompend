@@ -37,7 +37,6 @@ class TestAgenticDistillAgentPrompt:
         deps = DistillAgentDeps(
             groups=[DistillGroup(tag="dll", notes=[DistillNote(title="T", content="b", source="n.md")])],
             source_id="distill-all",
-            timeout=180.0,
         )
         user_prompt = agent.render_user_prompt(deps)
         assert user_prompt.strip()
