@@ -467,7 +467,7 @@ class TestDedupOrchestrator:
 
 def _make_embedding_matcher(**kwargs: object) -> EmbeddingMatcher:
     """Create an EmbeddingMatcher with a deterministic test provider."""
-    model_name = str(kwargs.get("model_name", "all-MiniLM-L6-v2"))
+    model_name = str(kwargs.get("model_name", "ollama:test-embedding"))
     dim = int(str(kwargs.get("dim", 384)))
     chunk_size = int(str(kwargs.get("chunk_size", 512)))
     provider = DeterministicTestEmbeddingProvider(dim=dim)

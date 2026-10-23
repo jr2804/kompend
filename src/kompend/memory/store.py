@@ -102,7 +102,7 @@ class MemoryStore:
             raise RuntimeError("Memory collection is not initialized")
         timestamp = iso_local(timespec="microseconds")
 
-        # Trigger embedding to ensure dim is resolved if using LiteLLM
+        # Embed before writing so the vector dimension is resolved up front
         embedding = provider.embed(query)
         mem_id = f"mem_{timestamp.replace(':', '').replace('.', '')}"
         doc = _zvec.Doc(

@@ -81,7 +81,7 @@ class TestProviderCredentials:
             headers={"Authorization": "Bearer sk-test"},
         )
         store.set(cfg)
-        # These names mirror provider_store's litellm env injection (KOMP_LLM_DEFAULT_MODEL is a config-map key).
+        # These names mirror provider_store's env injection (KOMP_LLM_DEFAULT_MODEL is a config-map key).
         # No model on the provider → the pipeline's own default stays untouched.
         assert EnvVar.LLM_DEFAULT_MODEL not in os.environ
         assert os.environ.get(EnvVar.LLM_API_BASE) == "https://api.openai.com/v1"

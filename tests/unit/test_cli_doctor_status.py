@@ -231,11 +231,6 @@ class TestCollectStats:
         assert stats["compile_status"]["error"]
 
 
-def _catalog_snapshot() -> SimpleNamespace:
-    """A minimal catalogue snapshot for the doctor's reporting check."""
-    return SimpleNamespace(providers={"acme": object()}, fetched_at=None)
-
-
 class TestRunDoctorOrder:
     """Connectivity pings must run before context-window discovery so /api/ps reports the served context (not GGUF metadata)."""
 
@@ -602,6 +597,11 @@ class TestCheckCustomProviders:
         cfg = {"providers": {"ollama": {"context_window": 65536}}}
         result = doctor._check_custom_providers(cfg, {"openai"})
         assert result.passed is True
+
+
+def _catalog_snapshot() -> SimpleNamespace:
+    """A minimal catalogue snapshot for the doctor's reporting check."""
+    return SimpleNamespace(providers={"acme": object()}, fetched_at=None)
 
 
 def test_provenance_no_wiki() -> None:

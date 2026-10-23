@@ -18,10 +18,11 @@ uv.lock
 .config/memorygraph/memory.db
 /.opencode
 
-# temp folders
+# temp files/folders
 /.tmp
 /tmp
 /temp
+.tmp*.*
 
 # Copier answers (regenerated on update)
 .copier-answers.yml

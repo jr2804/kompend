@@ -21,7 +21,6 @@ from typing import Any, Protocol
 
 from pydantic_ai import ModelMessage
 from pydantic_ai.messages import (
-    RetryPromptPart,
     SystemPromptPart,
     TextPart,
     ThinkingPart,
@@ -189,7 +188,9 @@ def _part_to_debug_dict(part: Any) -> dict[str, Any]:  # noqa: PLR0911
             "tool_name": part.tool_name,
             "content": part.content,
         }
-    if isinstance(part, RetryPromptPart):
+    # ``RetryPromptPart`` is deprecated in pydantic-ai 2.60 (v3 replaces it with
+    # ToolReturnPart/RetryFeedbackPart); match by name until the v3 migration.
+    if type(part).__name__ == "RetryPromptPart":
         content = part.content
         # RetryPromptPart.content can be a list of validation errors
         if isinstance(content, list):

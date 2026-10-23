@@ -541,8 +541,8 @@ def _catalog_model(model_id: str, limits: tuple[int, int, bool]) -> dict[str, ob
 def _provider_api_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     """API keys for hosted providers (read by pydantic-ai's own providers).
 
-    OLLAMA_BASE_URL is intentionally NOT set here -- litellm owns the ollama
-    transport (endpoint, auth) and defaults to localhost:11434.
+    OLLAMA_BASE_URL is intentionally NOT set here -- the ollama provider owns
+    the transport (endpoint, auth) and defaults to localhost:11434.
     """
     for key in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"):
         monkeypatch.setenv(key, "test-key")
