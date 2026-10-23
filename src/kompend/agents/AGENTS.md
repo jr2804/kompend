@@ -138,6 +138,11 @@ There is no `max_tokens` and no `budget` kwarg: an answer is bounded by the
 model's context window minus its prompt, and the planners leave
 `ContextWindow.answer_reserve` free for it (`llm/AGENTS.md`).
 
+The exception is protocol-driven, not configured: the Anthropic protocol
+rejects an unset `max_tokens`, so there the agent passes a callable
+`model_settings` that computes window − prompt − margin per request, clamped
+by the model's catalog output limit. Every other protocol sends nothing.
+
 `agent.data_format` is the resolved `llm.data_format` — the format this
 agent's prompts must serialize structured payloads in (see `llm/AGENTS.md`).
 Prompt-building code reads it off the agent instead of taking a parameter, so

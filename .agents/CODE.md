@@ -56,7 +56,9 @@ before committing — see `CHECKS.md`.
   size one window (a request or a content block is *split*, never cropped),
   or set a threshold that warns. It never bounds a model's answer: no
   `max_tokens` is sent, and a planner's answer room comes from the model
-  window (`ContextWindow.answer_reserve`).
+  window (`ContextWindow.answer_reserve`). The single exception is a protocol
+  that rejects an unset value (Anthropic): there the ceiling is computed from
+  the window and the actual prompt, never read from config.
   It must never drop content, skip a document, or silently shrink a result
   set. The only legitimate stops are a provider/model timeout and an endless
   agent loop — and both keep the work done so far. Fix the loop; do not cap

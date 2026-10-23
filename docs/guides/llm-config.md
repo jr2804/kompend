@@ -209,6 +209,22 @@ A stage that writes a longer answer simply gets it: the window stops it, not a
 configured number. What the reserve buys is a _planned_ prompt that leaves the
 answer somewhere to go.
 
+**The Anthropic protocol is the exception.** Anthropic-compatible endpoints
+(e.g. a `[providers.minimax]` block with `api_type = "anthropic"`) reject a
+request that carries no `max_tokens`; left unset, the SDK fills in 4096 and
+silently caps every reply. For those models only, kompend sends a value
+computed per request — window − estimated prompt − a 5% margin, clamped by the
+model's own output limit from the models.dev catalog when it knows the model.
+`kompend doctor` reports which rule applies (`output-ceiling-llm`).
+
+The catalog comes from [models.dev](https://models.dev) through `llmdb`.
+kompend caches the payload (`~/.cache/kompend/models.json`, TTL 168 h) so a
+run never waits for a download, and `kompend doctor` refreshes it when it is
+stale - a model released this week therefore appears after a doctor run, not
+after a package upgrade. While the model is still missing, kompend sends the
+computed value without the clamp and takes the window from
+`[providers.<name>].context_window`.
+
 Practical effect by window (generation, the binding stage):
 
 | Context window | Answer reserve | Input for a generation call |

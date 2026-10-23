@@ -17,22 +17,23 @@ import LLM SDKs directly.
 
 Resolution order:
 
-1. Look up the provider in the **models-dev** bundled catalog.
+1. Look up the provider in the **models.dev catalogue** (`kompend.llm.catalog`,
+   backed by `llmdb` and a local cache).
    - If the provider has a known `api` base URL (e.g. `claudinio`,
      `opencode-zen`, `deepseek`), construct an OpenAI-compatible
      `OpenAIChatModel` with the discovered endpoint and API key env var.
    - Otherwise fall through to pydantic-ai native resolution.
-2. If models-dev has no entry for the provider either, try
+2. If the catalogue has no entry for the provider either, try
    pydantic-ai's `infer_model()` (supports ollama, openai, anthropic,
    google-gla, groq, mistral, cohere, bedrock, etc.).
 3. If all resolution paths fail, raise `ValueError`.
 
 | Prefix | Native model | Source |
 |--------|--------------|-------|
-| `claudinio/` | `OpenAIChatModel` at `api.claudin.io/v1` | models-dev |
-| `ollama-cloud/` | `OpenAIChatModel` at `ollama.com/v1` | models-dev |
-| `opencode-zen/`, `opencode-go/` | `OpenAIChatModel` at `opencode.ai/zen/v1` or `opencode.ai/zen/go/v1` | models-dev |
-| `deepseek/` | `OpenAIChatModel` at `api.deepseek.com/v1` | models-dev |
+| `claudinio/` | `OpenAIChatModel` at `api.claudin.io/v1` | catalogue |
+| `ollama-cloud/` | `OpenAIChatModel` at `ollama.com/v1` | catalogue |
+| `opencode-zen/`, `opencode-go/` | `OpenAIChatModel` at the catalogue's `api` URL | catalogue |
+| `deepseek/` | `OpenAIChatModel` at `api.deepseek.com/v1` | catalogue |
 | `ollama/` | `OllamaModel` | pydantic-ai `infer_model` |
 | `openai/` | `OpenAIResponsesModel` | pydantic-ai `infer_model` |
 | `anthropic/` | `AnthropicModel` | pydantic-ai `infer_model` |
@@ -48,9 +49,9 @@ Provider ID aliases (`opencode-zen` → `opencode`) are maintained in
 `_PROVIDER_ALIASES` — the only hardcoded mapping in the module.
 
 `resolve_model_limits(model_id)` looks up `(max_input, max_output)`
-token limits from the models-dev catalog. Returns `None` when the
-model is not found. The caller (`discover_context_window`) decides how
-to handle the miss.
+token limits in the catalogue (`catalog.model(...)`). It raises `KeyError`
+when the model is not listed and `LookupError` when it carries no limit
+data; the caller (`discover_context_window`) decides how to handle the miss.
 
 ## Context-window discovery
 
@@ -78,6 +79,24 @@ when it decides how much input to pack: a quarter of the window, clamped to
 `history_budget` (twice the reserve) is where threaded message history gets
 compacted. These values never travel to a provider — they only split work into
 requests that fit. `kompend doctor` reports them in its `window-fit` check.
+
+**One exception, and it is not a cap.** The Anthropic protocol rejects a
+request without `max_tokens` (pydantic-ai then substitutes 4096, capping every
+reply, thinking included). For that protocol only, the agent passes a callable
+`model_settings` that computes the value per request - window minus estimated
+prompt minus a 5% margin, clamped by the model's own catalog output limit.
+`requires_output_ceiling(model)` marks such models (it unwraps wrappers and
+fallback chains); OpenAI-compatible endpoints and Ollama get no ceiling at all.
+`kompend doctor` prints which rule applies in its `output-ceiling` check.
+
+**Catalog freshness.** `llmdb` downloads the models.dev payload instead of
+shipping it, and keeps it in memory only - so kompend caches it at
+`~/.cache/kompend/models.json` (see `kompend.llm.catalog`). Reads never touch
+the network; `kompend doctor` refreshes a cache older than
+`catalog.CACHE_TTL_HOURS` (168 h), and a cache miss downloads once. A brand-new
+model therefore shows up after a doctor run, not after a package upgrade. A
+model still missing from the payload makes kompend send the computed ceiling
+without a clamp and take the window from `[providers.<name>]` config.
 
 ## Format module
 
