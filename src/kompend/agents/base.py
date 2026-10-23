@@ -40,10 +40,11 @@ from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
 from pydantic_ai import Agent, ModelRequestContext, NativeOutput, RunContext, Tool, UsageLimits
+from pydantic_ai.agent import AgentModelSettings
 from pydantic_ai.agent.abstract import AgentRetries
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
+from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelResponse, TextPart
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.output import OutputSpec
@@ -65,7 +66,7 @@ from kompend.core.config._configs import LLMConfig, LlmDataFormat, RlmConfig
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.format import salvage_json
-from kompend.llm.models import build_model
+from kompend.llm.models import build_model, requires_output_ceiling, resolve_model_limits
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 from kompend.types import JSONDict, JSONValue
@@ -73,6 +74,16 @@ from kompend.types import JSONDict, JSONValue
 #: Per-stage timeout floor. Agents in kompend are synchronous single-turn;
 #: PydanticAI's run_sync is fast but provider-side latency can spike.
 _DEFAULT_TIMEOUT_SECONDS: float = 120.0
+
+#: Share of the window kept free on top of the estimated prompt when a
+#: protocol demands an explicit output ceiling.
+_CEILING_MARGIN_FRACTION: float = 0.05
+
+#: Floor for that margin, in tokens.
+_CEILING_MARGIN_MIN: int = 256
+
+#: Chars-per-token used when the agent has no ``compile.llm`` config group.
+_FALLBACK_CHARS_PER_TOKEN: float = 4.0
 
 #: Fallback retries when neither the construction site nor the config set a
 #: budget (``compile.llm.output_retries`` defaults to 2).
@@ -500,6 +511,9 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         # Build the top-level model once and reuse it for both the Agent and
         # the summarization capability (same failover chain).
         top_model = self._build_top_level_model()
+        settings: AgentModelSettings[DepsT] = model_settings
+        if requires_output_ceiling(top_model):
+            settings = self._ceiling_model_settings(model_settings)
         capability = self._resolve_context_capability(top_model)
         capabilities: list[AbstractCapability[DepsT]] = []
         if capability is not None:
@@ -523,7 +537,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 top_model,
                 deps_type=cast("type[DepsT]", self.deps_type),
                 output_type=output_type,
-                model_settings=model_settings,
+                model_settings=settings,
                 retries=self.retries,
                 tools=self.tools,
                 capabilities=capabilities or None,
@@ -536,6 +550,59 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         if type(self).validate_output is not KompendAgentBase.validate_output:
             agent.output_validator(self.validate_output)
         return agent
+
+    def _ceiling_model_settings(self, base: ModelSettings) -> AgentModelSettings[DepsT]:
+        """Per-request settings that add the protocol-mandated ``max_tokens``.
+
+        Only protocols that reject an unset value use this (see
+        :func:`kompend.llm.models.requires_output_ceiling`); everything else
+        keeps the plain dict and sends no ceiling at all.
+        """
+
+        def _settings(ctx: RunContext[DepsT]) -> ModelSettings:
+            ceiling = self._output_ceiling(ctx.messages)
+            if ceiling is None:
+                return base
+            return {**base, "max_tokens": ceiling}
+
+        return _settings
+
+    def _output_ceiling(self, messages: Sequence[ModelMessage]) -> int | None:
+        """Tokens this request may generate, or ``None`` when nothing is sent.
+
+        The value is the physical maximum, not a configured cap: the model's
+        window minus the prompt about to be sent, minus a margin, clamped by
+        the model's own output limit when the catalog knows it.
+        """
+        window = self.context_window
+        if not window:
+            return None
+        prompt_tokens = self._estimate_prompt_tokens(messages)
+        if prompt_tokens is None:
+            return None
+        margin = max(_CEILING_MARGIN_MIN, int(window * _CEILING_MARGIN_FRACTION))
+        available = window - prompt_tokens - margin
+        limit = self._model_max_output()
+        if limit is not None:
+            available = min(available, limit)
+        return max(1, available)
+
+    def _estimate_prompt_tokens(self, messages: Sequence[ModelMessage]) -> int | None:
+        """Rough token count of the request payload, ``None`` when unknown."""
+        try:
+            payload = ModelMessagesTypeAdapter.dump_json(list(messages))
+        except Exception:  # noqa: BLE001 - an unmeasurable prompt must not break the call
+            return None
+        chars_per_token = self.llm.default_chars_per_token if self.llm is not None else _FALLBACK_CHARS_PER_TOKEN
+        return max(1, int(len(payload) / chars_per_token))
+
+    def _model_max_output(self) -> int | None:
+        """The model's own output limit from the catalog, or ``None`` if unknown."""
+        try:
+            _, max_output = resolve_model_limits(self.model_string)
+        except (KeyError, LookupError, ValueError):
+            return None
+        return max_output or None
 
     def _build_top_level_model(self) -> Model:
         """Build the model (with failover + kompend wrapper) for the Agent."""

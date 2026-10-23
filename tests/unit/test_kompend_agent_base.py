@@ -224,6 +224,24 @@ class TestConfigDrivenDefaults:
         """An answer is bounded by the window, so the agent carries no ceiling."""
         assert not hasattr(self._agent(), "max_tokens")
 
+    def test_output_ceiling_is_window_minus_prompt_minus_margin(self) -> None:
+        agent = self._agent(llm=LLMConfig(), context_window=32_768)
+        agent._estimate_prompt_tokens = lambda messages: 10_000  # type: ignore[method-assign]
+        agent._model_max_output = lambda: None  # type: ignore[method-assign]
+
+        # 32768 - 10000 - max(256, 1638) = 21130
+        assert agent._output_ceiling([]) == 21_130
+
+    def test_output_ceiling_is_clamped_by_the_model_limit(self) -> None:
+        agent = self._agent(llm=LLMConfig(), context_window=200_000)
+        agent._estimate_prompt_tokens = lambda messages: 1_000  # type: ignore[method-assign]
+        agent._model_max_output = lambda: 64_000  # type: ignore[method-assign]
+
+        assert agent._output_ceiling([]) == 64_000
+
+    def test_output_ceiling_needs_a_window(self) -> None:
+        assert self._agent(llm=LLMConfig())._output_ceiling([]) is None
+
     def test_defaults_without_config(self) -> None:
         agent = self._agent()
         assert agent.timeout == 120.0
