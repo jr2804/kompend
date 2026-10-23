@@ -1,0 +1,45 @@
+#!/usr/bin/env sh
+# Pre-commit hook — the repository's own gates, run before a commit lands.
+#
+# Installed by: mise run install-hooks   (sets core.hooksPath=.githooks)
+#
+# 1. Forbidden ruff rules (hard block, no auto-fix):
+#      ANN001  — missing type annotation for function argument
+#      ANN201  — missing return type annotation for public function
+#      ANN202  — missing return type annotation for private function
+#      PLC0415 — import placed outside module top level
+# 2. Gates that linting cannot express (see .agents/CHECKS.md):
+#      check_field_consistency — bare-string cross-file contract keys
+#      check_antipatterns      — magic crops, banned noqa, global state
+#      check_dox               — DOX size budgets, cross-file duplication
+# 3. Whatever the tool-managed hooks want to run (_delegate.sh: beads, repowise).
+#
+# Scans 2 and 3 are whole-repo and run unconditionally — they are cheap and
+# they catch drift introduced by an untracked edit as well as a staged one.
+
+set -e
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+
+staged=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
+if [ -n "$staged" ]; then
+    echo "--- ruff: checking forbidden rules (ANN001, ANN201, ANN202, PLC0415) ---"
+    if ! echo "$staged" | tr '\n' '\0' | xargs -0 uv run ruff check \
+        --select ANN001,ANN201,ANN202,PLC0415 \
+        --no-fix \
+        --quiet; then
+        echo ""
+        echo "✗ Commit blocked — fix the violations above, then commit again."
+        echo "  Run: uv run ruff check --select ANN001,ANN201,ANN202,PLC0415 <file>"
+        exit 1
+    fi
+    echo "✓ No forbidden rule violations in staged files."
+fi
+
+echo "--- gates: field consistency, antipatterns, DOX budgets ---"
+uv run "$root/scripts/checks/check_field_consistency.py" || exit 1
+uv run "$root/scripts/checks/check_antipatterns.py" || exit 1
+uv run "$root/scripts/checks/check_dox.py" || exit 1
+echo "✓ No field-consistency, antipattern, or DOX violations."
+
+exec "$(dirname "$0")/_delegate.sh" pre-commit "$@"
