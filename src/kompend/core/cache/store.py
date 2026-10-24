@@ -37,7 +37,22 @@ from kompend.core.models import (
     ResolvedChunk,
     WikiNode,
 )
-from kompend.core.models.enums import ChunkStrategy, EdgeType, NodeType
+from kompend.core.models.enums import (
+    AssetField,
+    AssetKind,
+    CacheDeps,
+    ChunkField,
+    ChunkNodeField,
+    ChunkStrategy,
+    ChunkTreeField,
+    EdgeType,
+    ExtractionField,
+    MetadataField,
+    NodeType,
+    OkfField,
+    StructuredField,
+    WikiField,
+)
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import CHUNKS_TABLE, EXTRACTIONS_TABLE
 from kompend.core.utils.time import iso_local
@@ -61,10 +76,24 @@ _CACHE_DATACLASSES: dict[str, type] = {
 #: the work again. ``EdgeType`` reached the payload through ``CompiledWiki.edges``
 #: and cost a 65-minute regeneration before it was registered here.
 _CACHE_ENUMS: dict[str, type[StrEnum]] = {
-    "ChunkStrategy": ChunkStrategy,
-    "EdgeType": EdgeType,
-    "ElementType": ElementType,
-    "NodeType": NodeType,
+    enum.__name__: enum
+    for enum in (
+        AssetField,
+        AssetKind,
+        CacheDeps,
+        ChunkField,
+        ChunkNodeField,
+        ChunkStrategy,
+        ChunkTreeField,
+        EdgeType,
+        ElementType,
+        ExtractionField,
+        MetadataField,
+        NodeType,
+        OkfField,
+        StructuredField,
+        WikiField,
+    )
 }
 
 #: Cache layer whose payloads are keyed only by ``cache_key`` (no layer column).

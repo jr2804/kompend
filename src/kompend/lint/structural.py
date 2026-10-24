@@ -1097,7 +1097,7 @@ class RumdlRule(BaseLintRule):
                 [exe, *cmd],
                 capture_output=True,
                 encoding="utf-8",
-                timeout=120,
+                timeout=120,  # nocheck: rumdl subprocess timeout, unrelated to any model request timeout
                 check=False,
             )
         except (OSError, subprocess.TimeoutExpired):

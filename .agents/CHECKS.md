@@ -47,8 +47,13 @@ the waiver: it states why this site is legitimate.
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
 - Run `uv run pytest tests/integration -x --timeout=30` for integration tests (no real-engine calls — must be fast)
 - Run `ty check src/kompend` for type checking (mypy is not used)
+- Run `uv run python scripts/checks/all.py` - the single entry point for every gate
 - Run `uv run python scripts/checks/check_field_consistency.py` to catch hard-coded contract keys
 - Run `uv run python scripts/checks/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
+- Run `uv run python scripts/checks/check_enum_cache.py` to catch a cached payload carrying an unregistered `StrEnum` (an unreadable entry is a silent miss)
+- Run `uv run python scripts/checks/check_config_literals.py` to catch a config default re-typed in code or a dotted config key written as a literal
+- Run `uv run python scripts/checks/check_cli_surface.py` to catch a run-level flag re-declared on a command
+- Run `uv run pytest tests/smoke` after touching the CLI surface: it spawns the real `kompend` (init, config check, status, doctor, lint show, empty-vault compile) and fails on a traceback
 - Verify `kompend.toml.example` stays in sync with `DEFAULTS` when adding config keys
 - After changing `src/kompend/core/paths.py`, verify no hard-coded path strings
   exist in other `.py` files
@@ -82,6 +87,10 @@ Tick these BEFORE writing a function:
 | `scripts/checks/check_field_consistency.py` | Bare-string contract keys | scripts/checks/ |
 | `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` | scripts/checks/ |
 | `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
+| `scripts/checks/check_enum_cache.py` | A `StrEnum` reachable from a cached dataclass missing from `_CACHE_ENUMS` | scripts/checks/ |
+| `scripts/checks/check_config_literals.py` | A literal repeating a config default, or a dotted config key as a string | scripts/checks/ |
+| `scripts/checks/check_cli_surface.py` | A run-level flag (`--config`) declared on a command instead of the root app | scripts/checks/ |
+| `scripts/checks/all.py` | Runs every gate in one command; stops at the first failure | scripts/checks/ |
 | `scripts/analyze/analyze_codebase.py` | Files/submodules exceeding net-line targets (>350 lines/file, >7 files/submodule) | scripts/analyze/ |
 
 **Wiring.** Git honours one `core.hooksPath`; this repo points it at

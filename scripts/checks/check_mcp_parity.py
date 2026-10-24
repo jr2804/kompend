@@ -19,6 +19,7 @@ Design notes
   are excluded via ``EXCLUDED_CLI_COMMANDS`` and listed at the end of the run.
 """
 
+import asyncio
 import sys
 
 from kompend.cli.app import app as cli_app
@@ -157,10 +158,14 @@ def _normalize_cli_name(name: str) -> str:
 
 
 def get_mcp_tools() -> set[str]:
-    """Extract all tool names registered on the FastMCP server."""
-    if hasattr(mcp_server, "_tool_manager") and hasattr(mcp_server._tool_manager, "_tools"):
-        return set(mcp_server._tool_manager._tools.keys())
-    return set()
+    """Extract all tool names registered on the FastMCP server.
+
+    ``fastmcp`` 4.x dropped the private ``_tool_manager._tools`` store, so the
+    old accessor returned an empty set - every CLI command then looked missing
+    and the gate failed for the wrong reason. Use the public async API.
+    """
+    tools = asyncio.run(mcp_server.list_tools())
+    return {tool.name for tool in tools}
 
 
 if __name__ == "__main__":

@@ -23,7 +23,7 @@ def init(
     force: InitForce = False,
     git: InitGit = False,
     keep_cache: InitKeepCache = False,
-    config: InitConfig = None,
+    seed_config: InitConfig = None,
     wiki_dir: InitWikiDir = None,
 ) -> None:
     """Create a new wiki project in TARGET (default: current directory)."""
@@ -43,7 +43,7 @@ def init(
             raise typer.Exit(code=0)
 
     try:
-        result = scaffold_project(target_dir, bare=bare, force=force, git=git, keep_cache=keep_cache, config_file=config)
+        result = scaffold_project(target_dir, bare=bare, force=force, git=git, keep_cache=keep_cache, config_file=seed_config)
     except ScaffoldError as exc:
         get_err_console().print(f"error: {exc}")
         raise typer.Exit(code=1) from exc
