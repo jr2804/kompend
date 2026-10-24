@@ -45,8 +45,15 @@ kompend provides a Typer-based CLI with the following commands:
 | `--verbose` | Show full tracebacks for errors (fatal crashes and recoverable parse failures). Default is a one-line error. |
 | `--help` | Show help message and exit |
 
-`--wiki-dir` can also be set via the `KOMP_WIKI_DIR` environment variable, and
-`--verbose` via `KOMP_VERBOSE=1`.
+`--wiki-dir` can also be set via the `KOMP_WIKI_DIR` environment variable,
+`--config` via `KOMP_CONFIG`, and `--verbose` via `KOMP_VERBOSE=1`.
+
+The run-level flags go **before** the sub-command, because they configure the
+whole invocation rather than one command:
+
+```bash
+kompend --wiki-dir ~/notes --config ~/alt.toml lint all
+```
 
 Errors are **quiet by default**: a failed parse logs a single
 `WARNING: Failed to parse <file>: <error>` line and the run continues, and a
@@ -74,6 +81,7 @@ kompend init [OPTIONS] [DIR]
 | `--bare` | Skip authored templates (`NOTES.md`, `README.md`) |
 | `--force` | Overwrite existing project config |
 | `--git` | Initialize a git repo with an initial commit |
+| `--seed-config` | Install this TOML file as `.kompend/config.toml` instead of the generated default (it is copied verbatim, e.g. a cloud-LLM profile) |
 | `--wiki-dir`, `-w` | Target directory, alternative to the `DIR` argument |
 
 Creates the following structure:

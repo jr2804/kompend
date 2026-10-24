@@ -18,6 +18,10 @@ calls the right core function, and formats the output. Nothing more.
 
 ## Local Contracts
 
+- **A run-level input is declared once, on the root app.** `--wiki-dir` and
+  `--config` live in `_callback` (`ctx.obj`); commands read them via
+  `vault_paths_from_ctx` / `config_file_from_ctx`. Never add a per-command copy.
+
 ### What belongs in `kompend.cli`
 
 - Typer command definitions (`@app.command`)
@@ -38,10 +42,6 @@ schema bans, and help lists every command from the registry at no import cost.
 **Why:** eager imports pulled heavy deps (pydantic-ai, parsecraft, MCP SDK)
 into every `kompend` invocation. With lazy registration, `kompend --version` takes
 ~1.5s instead of ~23s.
-
-**Two-layer lazy:** `_group.py` lazy-imports command modules on first use, AND
-`cmds/__init__.py` uses `__getattr__` to avoid eagerly importing sibling
-modules when any single command is accessed.
 
 **Adding a new command:**
 
@@ -71,7 +71,7 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 
 | File/Directory | Purpose |
 |---|---|
-| `app.py` | Typer app instance, global callback (`--wiki-dir`, `--verbose`, `--version`), command registration |
+| `app.py` | Typer app instance, global callback (`--wiki-dir`, `--config`, `--verbose`, `--version`), command registration |
 | `_registry.py` | The command registry: `CommandName` / `CommandModule` / `HelpPanel` StrEnums, `COMMANDS`, `PANEL_ORDER` |
 | `_group.py` | `LazyGroup` — lists every command from the registry, imports each module on first use |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
@@ -82,7 +82,7 @@ programmatic use (pipeline, models, config, lint), then the boundary is clean.
 | `_distill_helpers.py` | Distill wiring shared by `kompend distill` and `kompend compile --distill` (pending-note count/notice, agent selection, result lines). |
 | `_esc_watch.py` | Double-ESC cancel watcher — polls stdin (msvcrt/termios), two ESC within `CANCEL_WINDOW_SECONDS` requests the cancel token. |
 | `_progress.py` | Rich progress bar wrappers; owns the watcher lifecycle (`cancel=` token in, watcher started with the bar, stopped on finish/stop). |
-| `_shared.py` | Shared utilities (config resolution, CLI overrides, hook loading). |
+| `_shared.py` | Shared utilities: config resolution + `config_file_from_ctx`, CLI overrides, hook loading. |
 
 ### Argument declarations (`args/` submodule)
 
@@ -105,7 +105,6 @@ See `src/kompend/cli/cmds/AGENTS.md` for detailed command organization rules.
 **Summary:**
 
 - One file per command group organized by domain. Groups are cohesive sets of related commands.
-- 14 command modules: `capture.py`, `config.py`, `doctor.py`, `init.py`, `lint.py`, `memory.py`, `organize.py`, `pack.py`, `pipeline.py`, `quality.py`, `query.py`, `review.py`, `serve.py`, `status.py`.
 - Each command function is thin: parse args → resolve config → call core → print.
 - Never put a `for` loop that iterates over wiki nodes and does real work.
   That's business logic — move it to a core module.

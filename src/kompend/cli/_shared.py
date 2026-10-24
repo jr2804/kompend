@@ -13,6 +13,7 @@ from typing import Any
 
 import typer
 
+from kompend.core.config._configs import LintOutput
 from kompend.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_FORCE,
@@ -60,6 +61,19 @@ logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
 
 
+def config_file_from_ctx(ctx: typer.Context | None) -> str | None:
+    """The ``--config`` path given to the root command, if any.
+
+    ``--config`` is a run-level input like ``--wiki-dir``: it is declared once
+    on the root app and read from the Typer context here, so a command never
+    has to repeat the flag (and cannot drift from the others).
+    """
+    if ctx is None or not ctx.obj:
+        return None
+    value = ctx.obj.get("config_file")
+    return value if isinstance(value, str) else None
+
+
 def vault_paths_from_ctx(ctx: typer.Context | None, *, require_vault: bool = True) -> VaultPaths:
     """Resolve VaultPaths from a Typer CLI context.
 
@@ -69,6 +83,21 @@ def vault_paths_from_ctx(ctx: typer.Context | None, *, require_vault: bool = Tru
     """
     wiki_dir = ctx.obj.get("wiki_dir") if ctx and ctx.obj else None
     return vault_paths(wiki_dir, require_vault=require_vault)
+
+
+def resolve_lint_output(configured: LintOutput, *, verbose: bool, quiet: bool) -> LintOutput:
+    """Resolve how much lint report reaches the terminal.
+
+    ``--verbose-lint`` / ``--quiet-lint`` override ``lint.output``; passing both
+    is a usage error rather than one silently winning.
+    """
+    if verbose and quiet:
+        raise typer.BadParameter("--verbose-lint and --quiet-lint are mutually exclusive")
+    if verbose:
+        return LintOutput.FULL
+    if quiet:
+        return LintOutput.QUIET
+    return configured
 
 
 def build_cli_overrides(

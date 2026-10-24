@@ -18,7 +18,7 @@ import typer
 from kompend.cli._group import LazyGroup
 from kompend.cli._registry import COMMANDS, OnDemandModule
 from kompend.cli._shared import format_exception_for_cli
-from kompend.cli.args import NoUserTracking, Verbose, Version, WikiDir
+from kompend.cli.args import ConfigPath, NoUserTracking, Verbose, Version, WikiDir
 from kompend.core.cancel import CANCEL_EXIT_CODE, KompendCancelled
 from kompend.core.reporting.runlog import RunHandle, log_run_end, log_run_start
 from kompend.core.verbosity import is_verbose, set_verbose
@@ -47,6 +47,7 @@ def _callback(
     ctx: typer.Context,
     version: Version = False,
     wiki_dir: WikiDir = None,
+    config: ConfigPath = None,
     no_user_tracking: NoUserTracking = False,
     verbose: Verbose = False,
 ) -> None:
@@ -55,7 +56,7 @@ def _callback(
     if version:
         get_console().print(_get_version())
         raise typer.Exit()
-    ctx.obj = {"wiki_dir": wiki_dir, "no_user_tracking": no_user_tracking}
+    ctx.obj = {"wiki_dir": wiki_dir, "config_file": config, "no_user_tracking": no_user_tracking}
     # Framework-parsed tokens: the group parser has already consumed its own
     # options (--wiki-dir, --version, ...), so protected_args + args is
     # exactly subcommand + its raw args. No argv sniffing.

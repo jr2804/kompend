@@ -31,10 +31,9 @@ from kompend.cli._query_helpers import (  # noqa: F401  # re-exported for backwa
     synthesize_and_output,
     wiki_link,
 )
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
+from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.app import app
 from kompend.cli.args import (
-    ConfigPath,
     QueryAdaptive,
     QueryFormatOption,
     QueryNoClassify,
@@ -70,7 +69,6 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
     top_k: QueryTopK = 5,
     raw: QueryRaw = False,
     format: QueryFormatOption = None,
-    config: ConfigPath = None,
     no_classify: QueryNoClassify = False,
     search_mode: QuerySearchMode = SearchMode.HYBRID,
     adaptive: QueryAdaptive = False,
@@ -90,7 +88,7 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
         no_user_tracking=no_user_tracking,
         synthesis_verbosity=verbosity.value if verbosity is not None else None,
     )
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx(ctx))
     if format is None:
         format = LlmDataFormat(cfg.kompend.query.format)
     sources_dir = vp.sources_dir

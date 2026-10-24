@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import typer
 
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
+from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.app import app
-from kompend.cli.args import ConfigPath, JsonOutput, Verbose, WikiDir
+from kompend.cli.args import JsonOutput, Verbose, WikiDir
 from kompend.cli.cmds.quality.doctor import print_doctor_results, run_doctor
 from kompend.core.config import resolve_config
 from kompend.core.config.keys import (
@@ -25,7 +25,6 @@ def doctor_cmd(
     wiki_dir: WikiDir = None,
     verbose: Verbose = False,
     json_output: JsonOutput = False,
-    config: ConfigPath = None,
 ) -> None:
     """Validate configuration and connectivity for a wiki.
 
@@ -36,7 +35,7 @@ def doctor_cmd(
     vp = vault_paths_from_ctx(ctx)
     if wiki_dir:
         vp = vault_paths(wiki_dir)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx(ctx))
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
 

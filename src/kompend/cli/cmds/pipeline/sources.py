@@ -21,7 +21,7 @@ from typing import Any
 import typer
 from rich.markup import escape
 
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
+from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.app import app
 from kompend.cli.args import (
     ExportAll,
@@ -57,14 +57,13 @@ app.add_typer(sources_app)
 def sources_list(
     ctx: typer.Context,
     tags: SourceTags = None,
-    config: str | None = None,
 ) -> None:
     """List ingested source files with their tags.
 
     Optionally filter by tag using --tags (same semantics as query --tags).
     """
     vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config)
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
     cache_dir = vp.cache_dir
 
     cache_data = source_metadata.load_source_entries(cache_dir)
@@ -118,7 +117,6 @@ def sources_tag(
     ctx: typer.Context,
     file: str,
     tag: str,
-    config: str | None = None,
 ) -> None:
     """Add a tag to an ingested source file.
 
@@ -126,7 +124,7 @@ def sources_tag(
     wiki nodes on the next compile.
     """
     vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config)
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
     _mutate_tags(vp.cache_dir, file, tag, add=True)
 
 
@@ -135,7 +133,6 @@ def sources_untag(
     ctx: typer.Context,
     file: str,
     tag: str,
-    config: str | None = None,
 ) -> None:
     """Remove a tag from an ingested source file.
 
@@ -143,7 +140,7 @@ def sources_untag(
     to be recompiled to reflect the change.
     """
     vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config)
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
     _mutate_tags(vp.cache_dir, file, tag, add=False)
 
 
@@ -155,7 +152,6 @@ def sources_attr(
     ctx: typer.Context,
     file: str,
     key_value: str,
-    config: str | None = None,
 ) -> None:
     """Set a key=value attribute on an ingested source file.
 
@@ -163,7 +159,7 @@ def sources_attr(
     wiki nodes on the next compile. Use KEY=VALUE format.
     """
     vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config)
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
     _mutate_attributes(vp.cache_dir, file, key_value, add=True)
 
 
@@ -172,7 +168,6 @@ def sources_attr_rm(
     ctx: typer.Context,
     file: str,
     key: str,
-    config: str | None = None,
 ) -> None:
     """Remove an attribute key from an ingested source file.
 
@@ -180,7 +175,7 @@ def sources_attr_rm(
     to be recompiled to reflect the change.
     """
     vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config)
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
     _mutate_attributes(vp.cache_dir, file, key, add=False)
 
 
@@ -196,7 +191,6 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     inline: ExportInline = False,
     annotations: ExportAnnotations = None,
     summary: ExportSummary = None,
-    config: str | None = None,
 ) -> None:
     """Render an ingested source as a clean, self-contained markdown file.
 
@@ -219,7 +213,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
         cli_set[EXPORT_SUMMARY] = summary.value
     cfg = resolve_config(
         base_dir=vp.base_dir,
-        config_file=config,
+        config_file=config_file_from_ctx(ctx),
         cli_overrides=build_cli_overrides(cli_set=cli_set),
     )
     ann = as_str(cfg.get(EXPORT_ANNOTATIONS)) or "off"

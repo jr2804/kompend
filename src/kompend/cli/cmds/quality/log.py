@@ -13,9 +13,8 @@ from __future__ import annotations
 
 import typer
 
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
+from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.app import app
-from kompend.cli.args import ConfigPath
 from kompend.cli.args.quality import LogLast, LogWrite
 from kompend.core.config import resolve_config
 from kompend.core.reporting.log import build_log_report
@@ -27,7 +26,6 @@ def log_cmd(
     ctx: typer.Context,
     last: LogLast = 25,
     write: LogWrite = False,
-    config: ConfigPath = None,
 ) -> None:
     """Regenerate the pipeline log from structured stores (no LLM calls).
 
@@ -39,7 +37,7 @@ def log_cmd(
     resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_file=config,
+        config_file=config_file_from_ctx(ctx),
     )
     base_dir = vp.base_dir
 

@@ -54,8 +54,7 @@ InitGit = Annotated[
 InitConfig = Annotated[
     Path | None,
     typer.Option(
-        "--config",
-        "-c",
+        "--seed-config",
         help=(
             "Path to a TOML config to install as the vault's .kompend/config.toml "
             "instead of the generated default. Use to seed a vault with a chosen "
