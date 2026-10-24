@@ -15,6 +15,7 @@ import yaml
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from kompend.agents.lint import LintRuleAgent
+from kompend.agents.remediate import make_agentic_remediation_agent
 from kompend.cli._progress import EtaColumn, PercentageColumn, _should_show_progress
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config._configs import LintConfig, LintOutput
@@ -86,7 +87,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
                 analyze_gaps(LintReport(results=merged_results), load_degree_map(vp.base_dir), cfg.kompend.display)
             elif name == "remediate":
                 merged_results = _merge_results(check_report, semantic_report)
-                actions = _remediate_phase(wiki, vp, cfg, merged_results, lint_agent, fix)
+                actions = _remediate_phase(wiki, vp, cfg, merged_results, fix)
                 step["items"] = max(len(actions), 1)
                 if progress is not None and task_id is not None:
                     progress.update(task_id, total=sum(s["weight"] * s["items"] for s in steps))
@@ -147,11 +148,6 @@ def _make_lint_agent(cfg: Any) -> tuple[LintRuleAgent | None, str | None]:
         ),
         model,
     )
-
-
-def _lint_model(cfg: Any) -> str | None:
-    """LLM model for lint steps: compile.lint.model override, else default_model."""
-    return cfg.kompend.lint.model or cfg.kompend.compile.llm.default_model
 
 
 def _run_pass(
@@ -248,26 +244,46 @@ def _format_output_phase(vp: VaultPaths, cfg: Any) -> None:
     )
 
 
-def _remediate_phase(  # noqa: PLR0917 — orchestrates one step with 6 inputs
+def _remediate_phase(
     wiki: CompiledWiki,
     vp: VaultPaths,
     cfg: Any,
     merged_results: list[LintResult],
-    lint_agent: Any,
     fix: bool,
 ) -> list[Any]:
-    """Step: generate pages for source-covered missing topics; return actions."""
+    """Step: generate pages for source-covered missing topics; return actions.
+
+    Page generation needs a :class:`~kompend.agents.remediate.AgenticRemediationAgent`
+    (a free-text page writer). The lint-rule agent cannot stand in for it: its
+    output type is ``BaseModel | str``, so a whole Markdown page fails
+    validation and, before this was fixed, took the entire ``lint all`` run
+    down with ``Exceeded maximum output retries``.
+    """
+    model = _lint_model(cfg)
+    if not model:
+        logger.info("Lint remediation skipped - no lint.model or compile.llm.default_model configured")
+        return []
+    agent = make_agentic_remediation_agent(
+        model_string=model,
+        timeout=float(cfg.kompend.lint.llm_timeout),
+        llm=cfg.kompend.compile.llm,
+    )
     actions = remediate(
         wiki,
         LintReport(results=merged_results),
         base_dir=vp.base_dir,
         output_dir=vp.output_dir,
-        agent=lint_agent,
+        agent=agent,
         dry_run=not fix,
     )
     if fix and any(a.status == RemediationStatus.APPLIED for a in actions):
         write_wiki_cache(wiki, vp.base_dir)
     return actions
+
+
+def _lint_model(cfg: Any) -> str | None:
+    """LLM model for lint steps: compile.lint.model override, else default_model."""
+    return cfg.kompend.lint.model or cfg.kompend.compile.llm.default_model
 
 
 def persist_lint_fixes(wiki: CompiledWiki, vp: VaultPaths) -> int:

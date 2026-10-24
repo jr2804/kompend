@@ -18,6 +18,7 @@ from kompend.core.models.enums import NodeType
 from kompend.core.templates import get_template_loader
 from kompend.core.text.matching import best_match
 from kompend.core.text.slug import slugify
+from kompend.core.utils.exceptions import LLMOutputError
 from kompend.lint.base import LintResult, RemediationAction, RemediationStatus
 from kompend.lint.gap_broker import GapBroker
 from kompend.logging import get_logger
@@ -250,7 +251,13 @@ def _generate_concept_page(agent: RemediationAgent, concept_data: dict[str, Any]
         source_summaries=concept_data.get("summaries", []),
     )
     deps = PipelineAgentDeps(text=prompt, source_id="lint-remediate")
-    result = agent.run(deps)
+    try:
+        result = agent.run(deps)
+    except LLMOutputError as exc:
+        # One unresolvable concept must not abort the whole remediation pass:
+        # the caller records a SKIPPED action and moves on to the next gap.
+        logger.warning("Remediation failed for '%s': %s", concept_data.get("name", ""), exc)
+        return None
     return result if result else None
 
 
