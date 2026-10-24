@@ -57,6 +57,25 @@ REPO_ROOT = repo_root()
 SRC_ROOT = REPO_ROOT / "src" / "kompend"
 TESTS_ROOT = REPO_ROOT / "tests"
 
+# Dependency installs go through uv alone. `pip install` / `uv pip install`
+# bypass uv.lock, so nothing is tracked and the environment stops being
+# reproducible - see .agents/POLICIES.md (Boundaries).
+_PIP_INSTALL_RE = re.compile(r"\buv pip install\b|\bpip3? install\b")
+#: The policy files must be able to name the forbidden form.
+_PIP_POLICY_FILES: frozenset[Path] = frozenset({REPO_ROOT / ".agents" / "POLICIES.md", REPO_ROOT / ".agents" / "CODE.md"})
+#: Documentation and manifests that may spell out an install command.
+_DOC_GLOBS: tuple[str, ...] = (
+    "*.md",
+    "docs/**/*.md",
+    ".agents/**/*.md",
+    "src/**/AGENTS.md",
+    "skills/**/*.md",
+    "tests/**/*.md",
+    "*.example",
+    "pyproject.toml",
+    "ruff.toml",
+)
+
 # Banned-noqa rules. Each entry: the rule code that must NEVER appear in
 # a ``noqa: CODE`` comment. Add new ones here as the project decides
 # to harden enforcement.
@@ -114,6 +133,10 @@ _GLOBAL_KEYWORD_ALLOWLIST: frozenset[str] = frozenset(
 )
 
 
+#: Vendored skill assets quote other projects' instructions - not our policy.
+_DOC_EXCLUDED_PARTS: tuple[str, ...] = (".agents/skills", "tmp", "node_modules")
+
+
 @dataclass
 class Violation:
     """One antipattern finding."""
@@ -156,10 +179,17 @@ def main() -> int:
     roots = [Path(p).resolve() for p in args.src] if args.src else [SRC_ROOT, TESTS_ROOT]
 
     py_files = discover_py_files(roots)
-    require_scanned(len(py_files), roots)
+    doc_files = discover_doc_files()
+    require_scanned(len(py_files) + len(doc_files), roots)
     all_violations: list[Violation] = []
     for f in py_files:
         all_violations.extend(scan_file(f))
+    for f in doc_files:
+        try:
+            lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        all_violations.extend(scan_pip_installs(f, lines))
 
     by_rule: dict[str, int] = defaultdict(int)
     for v in all_violations:
@@ -173,7 +203,9 @@ def main() -> int:
         }
         print(json.dumps(payload, indent=2))
     else:
-        print(f"check-antipatterns: {len(all_violations)} violation(s) in {len({v.file for v in all_violations})} file(s), {len(py_files)} file(s) scanned")
+        touched = len({v.file for v in all_violations})
+        scanned = f"{len(py_files)} python + {len(doc_files)} doc"
+        print(f"check-antipatterns: {len(all_violations)} violation(s) in {touched} file(s), {scanned} scanned")
         if by_rule:
             print("  by rule:")
             for rule, n in sorted(by_rule.items()):
@@ -187,6 +219,19 @@ def main() -> int:
                 print(v.format())
 
     return 1 if all_violations else 0
+
+
+def discover_doc_files() -> list[Path]:
+    """Markdown and manifests that carry install instructions."""
+    files: set[Path] = set()
+    for pattern in _DOC_GLOBS:
+        for found in REPO_ROOT.glob(pattern):
+            rel = found.relative_to(REPO_ROOT).as_posix()
+            if any(part in rel for part in _DOC_EXCLUDED_PARTS):
+                continue
+            if found.is_file():
+                files.add(found)
+    return sorted(files)
 
 
 def scan_file(path: Path) -> list[Violation]:
@@ -206,6 +251,29 @@ def scan_file(path: Path) -> list[Violation]:
     out.extend(scan_magic_crops(path, lines))
     out.extend(scan_env_var_literals(path, lines))
     out.extend(scan_wiki_filenames(path, lines))
+    out.extend(scan_pip_installs(path, lines))
+    return out
+
+
+def scan_pip_installs(path: Path, lines: list[str]) -> list[Violation]:
+    """Flag documentation that tells a reader to install with pip."""
+    if path in _PIP_POLICY_FILES:
+        return []
+    out: list[Violation] = []
+    for line_no, line in enumerate(lines, 1):
+        match = _PIP_INSTALL_RE.search(line)
+        if match is None:
+            continue
+        out.append(
+            Violation(
+                file=path,
+                line=line_no,
+                col=match.start() + 1,
+                rule="PIP-INSTALL",
+                message="dependencies arrive through uv add / uv lock / uv sync, never pip (.agents/POLICIES.md)",
+                context=line.strip()[:120].encode("ascii", "replace").decode("ascii"),
+            )
+        )
     return out
 
 
