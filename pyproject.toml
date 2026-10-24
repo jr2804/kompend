@@ -33,7 +33,11 @@ keywords = [
     "knowledge-graph",
 ]
 dependencies = [
-    "typer>=0.27.3",
+    # docling (base dependency, via parsecraft[docling]) caps typer at <0.27 for
+    # every release up to 2.142.1, so the floor has to stay below that ceiling.
+    # src/kompend/cli/_group.py uses typer.core.TyperCommand/TyperGroup and
+    # typer.main.get_command_from_info, whose signatures are unchanged in 0.26.
+    "typer>=0.19,<0.27",
     "rich>=15.0.0",
     "jinja2>=3.1.6",
     "fastapi>=0.161.1",
@@ -79,11 +83,19 @@ kompend = "kompend.cli.app:main"
 
 # Only heavy ML OCR models and licence-gated backends (pymupdf, mineru) stay opt-in.
 ocr = ["parsecraft[ocr]>=2026.10.12"]
+# MinerU 4.x caps openai at <3 while pydantic-ai-slim >=2.60 needs openai>=3.26,
+# so this extra cannot resolve next to the model stack. It is kept for the
+# pinned-override workflow (the repo's own [tool.uv] overrides) only.
 mineru = ["parsecraft[mineru]>=2026.10.12"]
 pymupdf = ["parsecraft[pymupdf]>=2026.10.12"]
-pdf-full = ["parsecraft[pdf-full]>=2026.10.12"]  # pymupdf + mineru
+# docling is already a base dependency; pdf-full adds the licensed pymupdf
+# backend and stays free of mineru (see the openai note above).
+pdf-full = [
+    "parsecraft[pymupdf]>=2026.10.12",
+    "parsecraft[docling]>=2026.10.12",
+]
 
-# marker-pdf is bring-your-own: uv pip install marker-pdf
+# marker-pdf is bring-your-own: uv add marker-pdf
 otel = [
     "opentelemetry-sdk>=1.45.1",
     "opentelemetry-exporter-otlp>=1.45.1",
@@ -103,11 +115,11 @@ dev = [
 ]
 
 [tool.uv]
-# MinerU (≤4.0.12) caps openai at <3 while pydantic-ai-slim ≥2.55 needs
-# openai>=3.26.0, and docling-slim (≤2.142.1) caps typer at <0.27 — both pins
-# hold the graph on outdated versions, so the overrides force the floors below.
-# Revisit when MinerU/docling-deps declare support for the newer versions.
-override-dependencies = ["openai>=3.26.0", "typer>=0.27.3"]
+# MinerU (<=4.0.12) caps openai at <3 while pydantic-ai-slim >=2.60 needs
+# openai>=3.26.0. Only the mineru extra hits that, and this override keeps
+# the repository's own environment (and its tests) on one model stack. A
+# PyPI install must not use [mineru] until MinerU lifts the cap.
+override-dependencies = ["openai>=3.26.0"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/kompend"]
