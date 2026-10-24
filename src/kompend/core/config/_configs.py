@@ -70,6 +70,14 @@ class ImageMode(StrEnum):
     BASE64 = "base64"
 
 
+class LintOutput(StrEnum):
+    """Volume of a lint report on the terminal."""
+
+    QUIET = "quiet"
+    SUMMARY = "summary"
+    FULL = "full"
+
+
 class LlmApiType(StrEnum):
     """Wire protocol the LLM endpoint speaks.
 
@@ -420,6 +428,12 @@ class LintConfig(_KompendBaseModel):
     #: factual checks), so a slow provider needs more than the compile default:
     #: a timed-out rule loses its findings instead of retrying the call.
     llm_timeout: float = Field(default=300.0, validation_alias=EnvVar.LINT_LLM_TIMEOUT)
+    #: How much of a lint report reaches the terminal. ``quiet`` (default) prints
+    #: the verdict and the path of the full report; ``summary`` adds one line per
+    #: failing rule; ``full`` prints every finding and every passing rule. The
+    #: full report is always written to ``.kompend/lint-log/``, and
+    #: ``--verbose-lint`` / ``--quiet-lint`` override this per run.
+    output: LintOutput = Field(default=LintOutput.QUIET, validation_alias=EnvVar.LINT_OUTPUT)
     model: str | None = Field(
         default=None,
         validation_alias=EnvVar.LINT_MODEL,

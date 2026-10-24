@@ -19,7 +19,7 @@ from kompend.cli._progress import PipelineProgress
 from kompend.compilation._two_phase_core import tokens_to_chars
 from kompend.core.cache.wiki import write_wiki_cache  # noqa: F401 — re-export
 from kompend.core.config import resolve_config
-from kompend.core.config._configs import LintConfig
+from kompend.core.config._configs import LintConfig, LintOutput
 from kompend.core.models import CompiledWiki, MetadataField, WikiField, load_wiki_from_files
 from kompend.core.models.metadata import meta_int, meta_list_dict
 from kompend.core.paths import LINT_HISTORY_FILE, VaultPaths
@@ -27,7 +27,8 @@ from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.utils.time import iso_local
 from kompend.lint.flow import run_full_lint_flow, run_runner_with_progress
 from kompend.lint.history import entry_from_report, save_lint_entry
-from kompend.lint.runner import LintRunner, report_to_summary
+from kompend.lint.log import render_report, write_lint_log
+from kompend.lint.runner import LintRunner
 from kompend.llm.context_window import discover_context_window
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.wiki_index import write_index, write_overview
@@ -64,6 +65,7 @@ class PostCompileOptions:
     show_progress: bool | None = None
     lint_config: LintConfig | None = None
     embed_attachments: bool = False
+    lint_output: LintOutput = LintOutput.QUIET
 
 
 def post_compile_actions(opts: PostCompileOptions) -> None:
@@ -141,9 +143,22 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
             logger.warning("Vector index build failed (wiki is already compiled). Run 'kompend index' to retry: %s", exc)
 
     if opts.compile_lint_all:
-        run_post_compile_lint_all(opts.wiki, base_dir, pipeline_config=opts.pipeline_config, show_progress=opts.show_progress)
+        run_post_compile_lint_all(
+            opts.wiki,
+            base_dir,
+            pipeline_config=opts.pipeline_config,
+            show_progress=opts.show_progress,
+            lint_output=opts.lint_output,
+        )
     elif opts.compile_lint:
-        run_post_compile_lint(opts.wiki, opts.sources_dir, base_dir=base_dir, lint_config=opts.lint_config, show_progress=opts.show_progress)
+        run_post_compile_lint(
+            opts.wiki,
+            opts.sources_dir,
+            base_dir=base_dir,
+            lint_config=opts.lint_config,
+            show_progress=opts.show_progress,
+            lint_output=opts.lint_output,
+        )
 
     write_wiki_cache(opts.wiki, base_dir)
 
@@ -195,6 +210,7 @@ def run_post_compile_lint_all(
     *,
     pipeline_config: PipelineConfig,
     show_progress: bool | None = None,
+    lint_output: LintOutput = LintOutput.QUIET,
 ) -> dict[str, Any]:
 
     paths = VaultPaths(base_dir)
@@ -205,6 +221,7 @@ def run_post_compile_lint_all(
         fix=True,
         json_output=False,
         show_progress=show_progress if show_progress is not None else True,
+        lint_output=lint_output,
     )
 
 
@@ -216,6 +233,7 @@ def run_post_compile_lint(
     json_output: bool = False,
     lint_config: LintConfig | None = None,
     show_progress: bool | None = None,
+    lint_output: LintOutput = LintOutput.QUIET,
 ) -> None:
     """Run lint after compilation, persist to history, and print a summary."""
     runner = LintRunner(
@@ -236,10 +254,11 @@ def run_post_compile_lint(
     )
     save_lint_entry(entry, state_dir / LINT_HISTORY_FILE)
 
-    get_console().print(f"\n{report_to_summary(report)}")
+    paths = write_lint_log(entry, base_dir)
+    render_report(report, lint_output, paths)
     if report.failures > 0:
         get_console().print(
-            f"  Details: `kompend lint run` (full report) or `kompend lint gaps` (source recommendations)\n"
+            f"  Details: `kompend lint show` (latest report) or `kompend lint gaps` (source recommendations)\n"
             f"  History: `kompend lint history` — saved to .kompend/{LINT_HISTORY_FILE}"
         )
 

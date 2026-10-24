@@ -680,6 +680,13 @@ enable = false                    # on/off switch
 # Cosine-similarity threshold for reference fuzzy dedup (0.0–1.0).
 # fuzzy_threshold = 0.85
 
+# How much of a lint report reaches the terminal: "quiet" (default - the
+# verdict plus the path of the full report), "summary" (one line per failing
+# rule) or "full" (every finding and every passing rule). The full report is
+# always written to .kompend/lint-log/<timestamp>.md (+ .json), readable with
+# "kompend lint show"; --verbose-lint / --quiet-lint override this per run.
+# output = "quiet"
+
 # Model override for LLM-powered lint steps (factual-consistency, clarity-score,
 # coverage-gap, contradiction-detection). Falls back to compile.llm.default_model.
 # model = "openai/gpt-4o-mini"

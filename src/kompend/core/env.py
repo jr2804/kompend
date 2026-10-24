@@ -89,6 +89,7 @@ class EnvVar(StrEnum):
     LINT_FUZZY_THRESHOLD = "KOMP_LINT_FUZZY_THRESHOLD"
     LINT_LLM_TIMEOUT = "KOMP_LINT_LLM_TIMEOUT"
     LINT_MODEL = "KOMP_LINT_MODEL"
+    LINT_OUTPUT = "KOMP_LINT_OUTPUT"
     LLM_API_BASE = "KOMP_LLM_API_BASE"
     # "KEY"/"TOKEN" here are parts of env-var NAMES; values are never stored
     # in this enum.

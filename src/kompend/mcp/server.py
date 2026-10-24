@@ -34,6 +34,7 @@ from kompend.mcp.tools import (
     lint_prune,
     lint_remediate,
     lint_semantic,
+    lint_show,
     list_parsers,
     log,
     memory_add,
@@ -118,6 +119,7 @@ def _register_all(srv: FastMCP) -> None:  # noqa: PLR0915 — one registration p
     srv.tool(name="lint_check")(lint_check)
     srv.tool(name="lint_semantic")(lint_semantic)
     srv.tool(name="lint_history")(lint_history)
+    srv.tool(name="lint_show")(lint_show)
     srv.tool(name="lint_prune")(lint_prune)
     srv.tool(name="lint_gaps")(lint_gaps)
     srv.tool(name="lint_remediate")(lint_remediate)

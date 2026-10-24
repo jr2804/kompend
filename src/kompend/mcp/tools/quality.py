@@ -26,6 +26,7 @@ from kompend.lint.history import (
     report_from_dict,
 )
 from kompend.lint.llm_rules import LLM_RULE_BY_NAME
+from kompend.lint.log import latest_lint_log, lint_log_dir, read_lint_log
 from kompend.lint.remediation import remediate, remediation_to_text
 from kompend.lint.runner import report_to_text
 from kompend.logging import get_logger
@@ -145,6 +146,31 @@ def lint_history(
     if json_output:
         return {"status": "ok", "entries": history_to_json(entries)}
     return {"status": "ok", "entries_text": history_to_text(entries, show_trend=trend)}
+
+
+def lint_show(
+    wiki_dir: str | None = None,
+    run: str | None = None,
+    json_output: bool = False,
+    config_file: str | None = None,
+) -> dict[str, Any]:
+    """Return the detailed report of a lint run (default: the newest)."""
+    vp = vault_paths(wiki_dir)
+    resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
+    directory = lint_log_dir(vp.base_dir)
+    if run:
+        path = directory / f"{run}.{'json' if json_output else 'md'}"
+        if not path.exists():
+            return {"status": "error", "message": f"No lint report named '{run}' in {directory}."}
+    else:
+        markdown = latest_lint_log(vp.base_dir)
+        if markdown is None:
+            return {"status": "error", "message": "No lint report found - run 'kompend lint all' or 'kompend compile' first."}
+        path = markdown.with_suffix(".json") if json_output else markdown
+    content = read_lint_log(path)
+    if json_output:
+        return {"status": "ok", "entry": content}
+    return {"status": "ok", "report": content}
 
 
 # ── lint_prune ────────────────────────────────────────────────────────────

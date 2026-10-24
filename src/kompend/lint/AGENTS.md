@@ -33,6 +33,11 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   not lint's own: `LlmLintRule._call_agent` makes one attempt and the agent base
   retries a transient failure (`compile.llm.transient_retries`). A failed call
   still yields no findings for the rule, so do not swallow the error.
+- **The terminal shows a bounded report; the file shows everything.** A
+  lint run over a big vault yields hundreds of findings, so the console prints
+  the verdict plus (at most) one line per failing rule and points at
+  ``.kompend/lint-log/<stamp>.md``. Never print `report_to_text` from a
+  pipeline path: it is for `--verbose-lint` and `kompend lint show`.
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.

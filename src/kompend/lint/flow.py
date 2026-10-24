@@ -17,15 +17,16 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 from kompend.agents.lint import LintRuleAgent
 from kompend.cli._progress import EtaColumn, PercentageColumn, _should_show_progress
 from kompend.core.cache.wiki import write_wiki_cache
-from kompend.core.config._configs import LintConfig
+from kompend.core.config._configs import LintConfig, LintOutput
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import CompiledWiki, MetadataField, load_cached_wiki
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, VaultPaths
 from kompend.lint.base import LintReport, LintResult
 from kompend.lint.gap_analysis import analyze_gaps, load_degree_map
 from kompend.lint.history import entry_from_report, save_lint_entry
+from kompend.lint.log import render_report, write_lint_log
 from kompend.lint.remediation import RemediationStatus, remediate
-from kompend.lint.runner import LintRunner, report_to_text
+from kompend.lint.runner import LintRunner
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.renderer import format_output
 
@@ -44,6 +45,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     fix_destructive: bool = False,
     json_output: bool = False,
     show_progress: bool = True,
+    lint_output: LintOutput = LintOutput.QUIET,
 ) -> dict[str, Any]:
     """Run every lint phase; return the merged report dict.
 
@@ -124,10 +126,11 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     save_lint_entry(entry, vp.kompend_dir / LINT_HISTORY_FILE)
 
     merged_dict = entry["report"]
+    paths = write_lint_log(entry, vp.base_dir)
     if json_output:
         get_console().print_json(data=merged_dict)
     else:
-        get_console().print(report_to_text(merged_report))
+        render_report(merged_report, lint_output, paths)
     return merged_dict
 
 

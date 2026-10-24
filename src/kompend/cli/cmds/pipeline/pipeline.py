@@ -28,7 +28,7 @@ from kompend.cli._pipeline_helpers import (
 )
 from kompend.cli._post_compile import write_wiki_cache
 from kompend.cli._progress import PipelineProgress
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
+from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, resolve_lint_output, vault_paths_from_ctx
 from kompend.cli._sources import resolve_files
 from kompend.cli.app import app
 from kompend.cli.args import (
@@ -38,7 +38,6 @@ from kompend.cli.args import (
     CompileDistill,
     CompileLint,
     CompileLintAll,
-    ConfigPath,
     EmbedModel,
     ForceTier,
     Ignore,
@@ -46,6 +45,8 @@ from kompend.cli.args import (
     IngestFiles,
     InPlaceFlag,
     JsonProgress,
+    LintQuiet,
+    LintVerbose,
     ListTiers,
     LlmDefaultModel,
     LlmFallbackChain,
@@ -129,7 +130,6 @@ def parse_cmd(
 def compile_cmd(  # noqa: PLR0915, PLR0917
     ctx: typer.Context,
     wiki_dir: WikiDir = None,
-    config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
     embed_model: EmbedModel = None,
@@ -153,6 +153,8 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     index_store: IndexStore = None,
     compile_lint: CompileLint = True,
     compile_lint_all: CompileLintAll = True,
+    verbose_lint: LintVerbose = False,
+    quiet_lint: LintQuiet = False,
     llm_fallback_chain: LlmFallbackChain = None,
     llm_default_model: LlmDefaultModel = None,
     vlm_model: VlmModel = None,
@@ -204,7 +206,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
         recursive=recursive,
         cli_set=parse_cli_set(cli_set),
     )
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx(ctx))
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
 
@@ -296,6 +298,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
                 show_progress=show_progress,
                 lint_config=lint_config,
                 embed_attachments=cfg.kompend.attachments.embed,
+                lint_output=resolve_lint_output(cfg.kompend.lint.output, verbose=verbose_lint, quiet=quiet_lint),
             )
         )
 
@@ -329,7 +332,6 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
 def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     ctx: typer.Context,
     files: IngestFiles = None,
-    config: ConfigPath = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
     ignore: Ignore = None,
@@ -363,7 +365,7 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
         no_user_tracking=no_user_tracking,
         cli_set=parse_cli_set(cli_set),
     )
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx(ctx))
     sources_dir = vp.sources_dir
     base_dir = vp.base_dir
 
@@ -446,7 +448,6 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
 def index_cmd(
     ctx: typer.Context,
     embed_model: EmbedModel = None,
-    config: ConfigPath = None,
     wiki_dir: WikiDir = None,
     cli_set: CliSet = None,
 ) -> None:
@@ -469,7 +470,7 @@ def index_cmd(
         vp = vault_paths(wiki_dir)
 
     cli_overrides = build_cli_overrides(cli_set=parse_cli_set(cli_set))
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config)
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx(ctx))
     output_dir = vp.output_dir
 
     # Index the markdown bundle — the node set ``kompend query`` judges staleness

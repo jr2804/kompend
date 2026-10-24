@@ -243,6 +243,43 @@ kompend lint all --json > lint-report.json
 python -c "import json,sys; sys.exit(0 if json.load(open('lint-report.json'))['health_score']>=80 else 1)"
 ```
 
+## Report output
+
+A lint run over a large vault produces hundreds of findings. Printing them all
+pushed the health score - and every compile warning above it - out of the
+terminal scrollback, so the console now shows a bounded report and the full one
+is written to disk.
+
+**Levels** (`lint.output`, overridable per run with `--verbose-lint` /
+`--quiet-lint`):
+
+| Level | Terminal output |
+|-------|-----------------|
+| `quiet` (default) | the verdict, e.g. `Lint: 87% health (52 pass / 4 fail / 1 skip)`, plus the path of the full report |
+| `summary` | the verdict plus one line per failing rule: count, affected pages, one example |
+| `full` | every finding and every passing rule - the pre-0.3 behaviour |
+
+```bash
+kompend lint all                     # honours lint.output (default: quiet)
+kompend compile --verbose-lint       # full detail for one run
+KOMP_LINT_OUTPUT=summary kompend lint all
+```
+
+**Artefacts.** Every run writes `.kompend/lint-log/<timestamp>.md` (the human
+report, including the header, duration and page count) and `<timestamp>.json`
+(the same payload the `lint_runs` table stores). The Markdown file is the one
+the terminal points at; it survives `--no-cache` and is easy to attach to an
+issue.
+
+```bash
+kompend lint show                     # newest report
+kompend lint show --run 2026-10-24T01-42-11
+kompend lint show --json              # the JSON entry of the newest run
+```
+
+`--json` on a lint command still prints the report object to stdout; the
+artefacts are written either way.
+
 ## JSON Output
 
 ```bash

@@ -256,9 +256,38 @@ def report_to_dict(report: LintReport) -> dict[str, Any]:
     }
 
 
+def report_to_compact(report: LintReport, *, max_rules: int = 6, max_examples: int = 1) -> str:
+    """Bounded report: the verdict plus one line per failing rule.
+
+    A vault with a few hundred findings produces one line per *rule* here, so
+    the health score stays on screen. The full list lives in the per-run
+    report under ``.kompend/lint-log/``.
+    """
+    lines = [report_to_summary(report)]
+    grouped = _group_failures(report)
+    for rule, severity, results in grouped[:max_rules]:
+        pages = {r.page_id for r in results if r.page_id}
+        where = f" in {len(pages)} page(s)" if pages else ""
+        examples = "; ".join(r.message for r in results[:max_examples])
+        lines.append(f"  {severity.value.upper():7} {rule}: {len(results)} finding(s){where} - e.g. {examples}")
+    hidden = len(grouped) - max_rules
+    if hidden > 0:
+        lines.append(f"  ... {hidden} more rule(s) failing")
+    return "\n".join(lines)
+
+
 def report_to_summary(report: LintReport) -> str:
     """Compact one-line summary for pipeline/CLI status output."""
     return f"Lint: {report.health_score:.0f}% health ({report.passes} pass / {report.failures} fail / {report.skips} skip)"
+
+
+def _group_failures(report: LintReport) -> list[tuple[str, Severity, list[LintResult]]]:
+    """Failures grouped by rule, first-seen order preserved."""
+    grouped: dict[str, list[LintResult]] = {}
+    for result in report.results:
+        if result.outcome == LintRuleOutcome.FAIL:
+            grouped.setdefault(result.rule, []).append(result)
+    return [(rule, results[0].severity, results) for rule, results in grouped.items()]
 
 
 def report_to_text(report: LintReport) -> str:

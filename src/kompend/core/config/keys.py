@@ -114,6 +114,7 @@ DEDUP_MINHASH_LSH_THRESHOLD: Final[str] = "dedup.minhash_lsh_threshold"
 # ── lint section ──
 LINT_FUZZY_THRESHOLD: Final[str] = "lint.fuzzy_threshold"
 LINT_LLM_TIMEOUT: Final[str] = "lint.llm_timeout"
+LINT_OUTPUT: Final[str] = "lint.output"
 
 # ── trust/privacy ──
 TRUST_PRIVACY_FILTER: Final[str] = "trust.privacy_filter"

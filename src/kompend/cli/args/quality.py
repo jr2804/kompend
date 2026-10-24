@@ -28,6 +28,22 @@ LintFixDestructive = Annotated[
     ),
 ]
 
+LintVerbose = Annotated[
+    bool,
+    typer.Option(
+        "--verbose-lint",
+        help="Print every lint finding (default: a bounded summary; the full report is always written to .kompend/lint-log/).",
+    ),
+]
+
+LintQuiet = Annotated[
+    bool,
+    typer.Option(
+        "--quiet-lint",
+        help="Print only the lint verdict and the path of the full report.",
+    ),
+]
+
 LintLlm = Annotated[
     bool,
     typer.Option(
