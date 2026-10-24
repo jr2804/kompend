@@ -17,6 +17,19 @@ from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.llm.errors import is_transient_error
 
 
+class _StubAgent(KompendAgentBase[str, PipelineAgentDeps]):
+    """Minimal agent: no template, no tools - the request path only."""
+
+    template_name: ClassVar[str] = ""
+    system_template_name: ClassVar[str] = ""
+
+    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:
+        return deps.text
+
+    def render_system_prompt(self, deps: PipelineAgentDeps) -> str:
+        return ""
+
+
 @pytest.mark.parametrize("status", [408, 409, 425, 429, 500, 502, 503, 504, 529])
 def test_retryable_statuses_are_transient(status: int) -> None:
     assert is_transient_error(ModelHTTPError(status, "model", body={})) is True
@@ -55,30 +68,6 @@ def test_plain_errors_are_not_transient() -> None:
     assert is_transient_error(ValueError("Request timed out.")) is False
 
 
-class _StubAgent(KompendAgentBase[str, PipelineAgentDeps]):
-    """Minimal agent: no template, no tools - the request path only."""
-
-    template_name: ClassVar[str] = ""
-    system_template_name: ClassVar[str] = ""
-
-    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:
-        return deps.text
-
-    def render_system_prompt(self, deps: PipelineAgentDeps) -> str:
-        return ""
-
-
-def _stub(retries: int = 2) -> tuple[_StubAgent, MagicMock]:
-    agent = _StubAgent("test/model", llm=LLMConfig(transient_retries=retries, transient_backoff=0.01))
-    fake = MagicMock()
-    agent._agent = fake
-    return agent, fake
-
-
-def _deps() -> PipelineAgentDeps:
-    return PipelineAgentDeps(text="hello", source_id="test")
-
-
 def test_transient_failure_is_retried_on_the_agent_base(monkeypatch: pytest.MonkeyPatch) -> None:
     """The retry policy lives in one place - no per-stage backoff loops."""
     monkeypatch.setattr("kompend.agents.base.time.sleep", lambda _seconds: None)
@@ -107,3 +96,14 @@ def test_semantic_failure_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> Non
     with pytest.raises(LLMOutputError):
         agent.run(_deps())
     assert fake.run_sync.call_count == 1
+
+
+def _stub(retries: int = 2) -> tuple[_StubAgent, MagicMock]:
+    agent = _StubAgent("test/model", llm=LLMConfig(transient_retries=retries, transient_backoff=0.01))
+    fake = MagicMock()
+    agent._agent = fake
+    return agent, fake
+
+
+def _deps() -> PipelineAgentDeps:
+    return PipelineAgentDeps(text="hello", source_id="test")

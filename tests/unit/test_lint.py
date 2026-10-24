@@ -1402,6 +1402,19 @@ class TestOrphanAttachmentsRule:
         return base, str(base / "sources")
 
 
+class TestLintCallFailure:
+    """The rule reports nothing when its one call fails - the base retries."""
+
+    def test_a_failed_call_yields_no_result_and_no_retry_here(self) -> None:
+        client = MagicMock()
+        client.timeout = 300.0
+        client.run.side_effect = LLMTransientError("timeout")
+        rule = CoverageGapRule(agent=client)
+
+        assert rule._call_agent("lint/coverage-gap-dedup.md.j2", result_type=CoverageGapOutput, gaps_data="[]") is None
+        assert client.run.call_count == 1
+
+
 def _mock_agentic_remediation(pages: list[tuple[str, str]] | None = None) -> MagicMock:
     """Mock AgenticRemediationAgent whose ``run`` populates ``deps.pages``."""
     agent = MagicMock(spec=AgenticRemediationAgent)
@@ -1474,16 +1487,3 @@ def _mock_remediate_llm(content: str = "Generated concept page.") -> MagicMock:
 
 def _gap_result(concept: str) -> LintResult:
     return LintResult(rule="coverage-gap", outcome=LintRuleOutcome.FAIL, message=f"{concept} — missing", details={"concept": concept})
-
-
-class TestLintCallFailure:
-    """The rule reports nothing when its one call fails - the base retries."""
-
-    def test_a_failed_call_yields_no_result_and_no_retry_here(self) -> None:
-        client = MagicMock()
-        client.timeout = 300.0
-        client.run.side_effect = LLMTransientError("timeout")
-        rule = CoverageGapRule(agent=client)
-
-        assert rule._call_agent("lint/coverage-gap-dedup.md.j2", result_type=CoverageGapOutput, gaps_data="[]") is None
-        assert client.run.call_count == 1
