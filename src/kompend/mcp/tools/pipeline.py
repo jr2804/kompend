@@ -19,6 +19,11 @@ from kompend.cli._sources import resolve_files
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LLMConfig
+from kompend.core.config.keys import (
+    ORGANIZE_COLLAPSE_SINGLE_FILE,
+    ORGANIZE_MAX_DEPTH,
+    ORGANIZE_MIN_SUBCATEGORIES,
+)
 from kompend.core.models import MetadataField, load_cached_wiki, load_wiki_from_files
 from kompend.core.models.enums import NodeType, OkfField
 from kompend.core.models.metadata import meta_str_list
@@ -251,11 +256,11 @@ def wiki_organize(
     vp = vault_paths(wiki_dir)
     overrides: dict[str, object] = {}
     if max_depth is not None:
-        overrides["organize.max_depth"] = max_depth
+        overrides[ORGANIZE_MAX_DEPTH] = max_depth
     if min_subcategories is not None:
-        overrides["organize.min_subcategories"] = min_subcategories
+        overrides[ORGANIZE_MIN_SUBCATEGORIES] = min_subcategories
     if collapse_single_file is not None:
-        overrides["organize.collapse_single_file"] = collapse_single_file
+        overrides[ORGANIZE_COLLAPSE_SINGLE_FILE] = collapse_single_file
 
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=overrides or None)
     sources_dir = vp.sources_dir

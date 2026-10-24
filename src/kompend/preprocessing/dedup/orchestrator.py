@@ -19,6 +19,15 @@ from typing import Any
 
 from datasketch import MinHash
 
+from kompend.core.config.keys import (
+    COMPILE_EMBEDDING_MODEL,
+    DEDUP_ENABLED,
+    DEDUP_MATCHERS,
+    DEDUP_MINHASH_LSH_THRESHOLD,
+    DEDUP_MODEL,
+    DEDUP_THRESHOLD_IDENTICAL,
+    DEDUP_THRESHOLD_SIMILAR,
+)
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup.base import ContentMatcher, DedupVerdict, classify_score
 from kompend.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
@@ -75,7 +84,7 @@ class DedupOrchestrator:
 
     @property
     def enabled(self) -> bool:
-        return bool(self._config.get("dedup.enabled", False))
+        return bool(self._config.get(DEDUP_ENABLED, False))
 
     @property
     def store(self) -> DedupStore:
@@ -183,8 +192,8 @@ class DedupOrchestrator:
 
             verdict = classify_score(
                 best_score,
-                threshold_identical=_cfg_float(self._config, "dedup.threshold_identical", 0.95),
-                threshold_similar=_cfg_float(self._config, "dedup.threshold_similar", 0.80),
+                threshold_identical=_cfg_float(self._config, DEDUP_THRESHOLD_IDENTICAL, 0.95),
+                threshold_similar=_cfg_float(self._config, DEDUP_THRESHOLD_SIMILAR, 0.80),
             )
 
             result = DedupResult(
@@ -256,7 +265,7 @@ class DedupOrchestrator:
         return DedupStore(self._base_dir, config=self._config)
 
     def _build_matchers(self) -> tuple[list[AnyMatcher], dict[str, AnyMatcher]]:
-        matchers_cfg = self._config.get("dedup.matchers", "embedding,minhash")
+        matchers_cfg = self._config.get(DEDUP_MATCHERS, "embedding,minhash")
         if not isinstance(matchers_cfg, str):
             raise TypeError(f"Config key 'dedup.matchers' must be a string, got {type(matchers_cfg).__name__}")
         names = [m.strip() for m in matchers_cfg.split(",") if m.strip()]
@@ -266,9 +275,9 @@ class DedupOrchestrator:
         # Resolve the effective embedding model.
         # Empty string "" and None are both treated as "not set" (falsy),
         # so `or` chains the fallback: dedup.model → compile.embedding.model → built-in.
-        raw_model = self._config.get("dedup.model", "") or self._config.get("compile.embedding.model", "")
+        raw_model = self._config.get(DEDUP_MODEL, "") or self._config.get(COMPILE_EMBEDDING_MODEL, "")
         model = raw_model if isinstance(raw_model, str) else ""
-        lsh_threshold = _cfg_float(self._config, "dedup.minhash_lsh_threshold", 0.8)
+        lsh_threshold = _cfg_float(self._config, DEDUP_MINHASH_LSH_THRESHOLD, 0.8)
 
         for name in names:
             if name == "embedding":

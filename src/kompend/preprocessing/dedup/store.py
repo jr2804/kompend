@@ -17,6 +17,12 @@ import sqlite3
 from pathlib import Path
 from typing import TypedDict
 
+from kompend.core.config.keys import (
+    COMPILE_EMBEDDING_MODEL,
+    DEDUP_MATCHERS,
+    DEDUP_MINHASH_LSH_THRESHOLD,
+    DEDUP_MODEL,
+)
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import DEDUP_FINGERPRINTS_TABLE
 from kompend.logging import get_logger
@@ -71,10 +77,10 @@ class DedupStore:
     def stamp(self) -> str:
         """Fingerprint over all config keys that affect fingerprint computation."""
         parts = [
-            _cfg_str(self.config, "dedup.matchers", "embedding,minhash"),
-            _cfg_str(self.config, "dedup.model", ""),
-            str(self.config.get("dedup.minhash_lsh_threshold", 0.8)),
-            _cfg_str(self.config, "compile.embedding.model", ""),
+            _cfg_str(self.config, DEDUP_MATCHERS, "embedding,minhash"),
+            _cfg_str(self.config, DEDUP_MODEL, ""),
+            str(self.config.get(DEDUP_MINHASH_LSH_THRESHOLD, 0.8)),
+            _cfg_str(self.config, COMPILE_EMBEDDING_MODEL, ""),
         ]
         return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
 

@@ -9,6 +9,11 @@ from kompend.cli._shared import build_cli_overrides
 from kompend.cli.cmds.quality.doctor import run_doctor
 from kompend.cli.cmds.quality.lint import CHECK_STEP_RULES, _make_lint_agent, _persist_history
 from kompend.core.config import resolve_config
+from kompend.core.config.keys import (
+    COMPILE_EMBEDDING_MODEL,
+    COMPILE_LLM_DEFAULT_MODEL,
+    COMPILE_LLM_VLM_MODEL,
+)
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import MetadataField, load_wiki_from_files
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, REVIEW_DIR, VaultPaths, vault_paths
@@ -364,9 +369,9 @@ def doctor(
     results = run_doctor(
         sources_dir=sources_dir,
         output_dir=output_dir,
-        default_model=as_str(cfg.get("compile.llm.default_model")),
-        vlm_model=as_str(cfg.get("compile.llm.vlm_model")),
-        embed_model=as_str(cfg.get("compile.embedding.model")),
+        default_model=as_str(cfg.get(COMPILE_LLM_DEFAULT_MODEL)),
+        vlm_model=as_str(cfg.get(COMPILE_LLM_VLM_MODEL)),
+        embed_model=as_str(cfg.get(COMPILE_EMBEDDING_MODEL)),
         cfg=cfg.raw,
         verbose=verbose,
     )

@@ -15,6 +15,9 @@ from pathlib import Path
 from typing import Any, cast
 
 from kompend.core.cancel import CancelState, KompendCancelled
+from kompend.core.config.keys import (
+    DEDUP_ENABLED,
+)
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import ElementType, MetadataField, ParsedDocument
 from kompend.core.paths import VaultPaths
@@ -154,7 +157,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     # ── Dedup orchestrator (created once, used in pass 2) ──────────
     # Fingerprints are computed AFTER all files are parsed so that GPU-bound
     # parsers and the embedding model don't compete for GPU memory.
-    dedup_enabled = bool((config or {}).get("dedup.enabled"))
+    dedup_enabled = bool((config or {}).get(DEDUP_ENABLED))
     dedup_orch: DedupOrchestrator | None = DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
     dedup_fps: dict[str, dict[str, Any]] = {}
 
