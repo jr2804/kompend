@@ -26,7 +26,7 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 **Date:** Jun 5, 2026  
 **Context:** Need fast iteration, rich ML/NLP ecosystem, easy agent integration. Go (sage-wiki) is fast but lacks the Python ML/NLP ecosystem (docling, pydantic-ai). Rust is too slow for prototyping.  
 **Decision:** Python 3.12+, uv for packaging, mise for task running.
-**Consequences:** Cannot produce a single static binary. Distribution via PyPI + `uv pip install`.
+**Consequences:** Cannot produce a single static binary. Distribution via PyPI, installed with `uv tool install` or `uv add`.
 
 ### Decision: Use copier-uv-plus template
 

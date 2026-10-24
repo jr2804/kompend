@@ -17,6 +17,8 @@ Correctness · Evidence · Safety · Minimal changes · Consistency · Performan
 - NEVER delete or move files without explicit instruction.
 - NEVER modify `.gitignore`, `pyproject.toml`, `ruff.toml`, or CI config, and add
   no new dependency, without explicit instruction.
+- NEVER install with `pip install` or `uv pip install`: uv alone manages the venv
+  (`uv add`, `uv lock`, `uv sync`); pip bypasses `uv.lock` — untracked, never relied on.
 - NEVER create temp files outside `tmp/` (gitignored) — never `_tmp_*.py` at the root.
 
 ## Change constraints
@@ -26,16 +28,14 @@ Correctness · Evidence · Safety · Minimal changes · Consistency · Performan
 
 ## Code quality
 
-Universal defaults. kompend code policies — antipatterns, boundaries, error
-handling — live in `CODE.md`; project-specific standards in child AGENTS.md.
+Universal defaults. Antipatterns, boundaries and error handling live in
+`CODE.md`; project-specific standards in child AGENTS.md.
 
 - **SRP** — one reason to change per module/function. If a name needs "and",
-  split it. Remove dead branches, unreachable conditions, and unused params or
-  imports before finishing.
+  split it; remove dead branches and unused params/imports before finishing.
 - **DRY** — check for an existing helper/constant before adding one; extract on
   the _third_ occurrence (Rule of Three), not earlier.
-- Prefer a little duplication over the wrong premature abstraction; add no new
-  code-quality tooling, patterns, or value-object rules by default.
+- A little duplication beats a premature abstraction; add no new quality tooling by default.
 
 ## Completion checklist
 

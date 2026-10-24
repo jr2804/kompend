@@ -49,7 +49,7 @@ the waiver: it states why this site is legitimate.
 - Run `ty check src/kompend` for type checking (mypy is not used)
 - Run `uv run python scripts/checks/all.py` - the single entry point for every gate
 - Run `uv run python scripts/checks/check_field_consistency.py` to catch hard-coded contract keys
-- Run `uv run python scripts/checks/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, and `global` keyword usage
+- Run `uv run python scripts/checks/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, `global` keyword usage, and pip-side install instructions
 - Run `uv run python scripts/checks/check_enum_cache.py` to catch a cached payload carrying an unregistered `StrEnum` (an unreadable entry is a silent miss)
 - Run `uv run python scripts/checks/check_config_literals.py` to catch a config default re-typed in code or a dotted config key written as a literal
 - Run `uv run python scripts/checks/check_cli_surface.py` to catch a run-level flag re-declared on a command
@@ -85,7 +85,7 @@ Tick these BEFORE writing a function:
 |---|---|---|
 | `ruff check` | Most lint issues (PLC0415/E402 are warnings, not errors) | ruff.toml |
 | `scripts/checks/check_field_consistency.py` | Bare-string contract keys | scripts/checks/ |
-| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global` | scripts/checks/ |
+| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global`, pip-side installs in code/docs | scripts/checks/ |
 | `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
 | `scripts/checks/check_enum_cache.py` | A `StrEnum` reachable from a cached dataclass missing from `_CACHE_ENUMS` | scripts/checks/ |
 | `scripts/checks/check_config_literals.py` | A literal repeating a config default, or a dotted config key as a string | scripts/checks/ |

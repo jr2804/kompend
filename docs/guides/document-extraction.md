@@ -183,7 +183,7 @@ documented public surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
     `No solution found … because there is no version of kompend[pdf-full]==<version>`
     seconds after a release is almost always a stale index cache, not a missing
     artifact. Check the version on PyPI, then retry with the cache bypassed and
-    an explicit version — `UV_NO_CACHE=1 uv pip install --force-reinstall "kompend[pdf-full]==2026.10.15"`.
+    an explicit version — `UV_NO_CACHE=1 uv tool install --force --refresh "kompend[pdf-full]==2026.10.15"`.
 
 The message is word-for-word what a genuinely empty release produces, so
 confirm it against PyPI's JSON before concluding the release itself broke. Note

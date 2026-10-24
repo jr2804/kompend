@@ -23,12 +23,14 @@ or conventions — it takes precedence over a conflicting habit or default.
 | Hard-coded `"KOMP_*"` env-var literal (`os.environ.get("KOMP_WIKI_DIR")`, `envvar=`) | ❌ | `EnvVar` member from `kompend.core.env` |
 | Stable-shape dict without a schema (JSONL records, persisted entries — lint history, dedup store, graph edges, citations) | ❌ | `TypedDict` next to the owning model — types keys at zero runtime cost. Dataclasses only where the shape is also constructed/validated in code |
 | Absolute path in a `.kompend/` artifact (`citing_source = str(path)`) | ❌ | Relativize at the persistence boundary (`rel_to_vault(path, base_dir)`) |
+| `pip install` / `uv pip install` in code, docs or a comment | ❌ | `uv add` / `uv remove` / `uv lock` / `uv sync` — pip bypasses `uv.lock` (POLICIES, Boundaries) |
+| `pip install …` / `uv pip install …` in docs, scripts or a fix hint | ❌ | `uv add` / `uv lock` / `uv sync` — a pip install bypasses `uv.lock` (`POLICIES.md`, Boundaries) |
 
 The first five are instances of the universal magic-number rule
-(see `POLICIES.md`); rows 6–9 are kompend-specific. Two of them are enforced:
+(see `POLICIES.md`); rows 6–9 are kompend-specific. Three of them are enforced:
 `scripts/checks/check_field_consistency.py` (bare contract keys) and
-`scripts/checks/check_antipatterns.py` (env-var literals, magic crops). Run both
-before committing — see `CHECKS.md`.
+`scripts/checks/check_antipatterns.py` (env-var literals, magic crops, pip
+installs). Run both before committing — see `CHECKS.md`.
 
 ## Boundaries
 

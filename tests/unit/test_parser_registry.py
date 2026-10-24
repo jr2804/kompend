@@ -133,7 +133,7 @@ def test_build_default_router_missing_extra_is_loud(monkeypatch: pytest.MonkeyPa
     # No real known-but-uninstalled backend ships anymore, so fake one: a
     # KNOWN_BACKENDS entry whose module cannot import stays unregistered and
     # must raise with its hint instead of starting an empty router.
-    monkeypatch.setitem(KNOWN_BACKENDS, "_uninstalled", "Uninstalled demo parser (install: uv pip install demo-parser)")
+    monkeypatch.setitem(KNOWN_BACKENDS, "_uninstalled", "Uninstalled demo parser (install: uv add demo-parser)")
     monkeypatch.setitem(_BACKEND_MODULES, "_uninstalled", "kompend.preprocessing.parsers.not_a_module")
     with pytest.raises(ValueError, match="is not installed"):
         build_default_router(name="_uninstalled")

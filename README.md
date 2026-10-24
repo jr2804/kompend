@@ -136,10 +136,10 @@ Install from PyPI:
 ```bash
 uv add kompend
 # or
-pip install kompend
+uv tool install kompend
 ```
 
-The published package is [`kompend`](https://pypi.org/project/kompend/) (released as a `YYYY.M.N` tag; [`uv tool install kompend`](https://pypi.org/project/kompend/) always gets the newest one). Optional extras for parser backends and LLM providers are declared in the repository's `pyproject.toml` and resolve as `uv add "kompend[<extras>]"` or `pip install "kompend[<extras>]"`.
+The published package is [`kompend`](https://pypi.org/project/kompend/) (released as a `YYYY.M.N` tag; [`uv tool install kompend`](https://pypi.org/project/kompend/) always gets the newest one). Optional extras for parser backends and LLM providers are declared in the repository's `pyproject.toml` and resolve as `uv tool install "kompend[<extras>]"` on a workstation or `uv add "kompend[<extras>]"` in a project.
 
 ## License
 

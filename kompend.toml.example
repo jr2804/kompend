@@ -35,7 +35,7 @@ file = "NOTES.md"
 #   uv add kompend[parsecraft]      — the pipeline itself
 #   uv add kompend[mineru]          — adds the MinerU 4.x engine via
 #                                  parsecraft[mineru]; licence opt-in (ADR-0007)
-#   uv pip install marker-pdf    — bring-your-own PDF engine, detected by import
+#   uv add marker-pdf    — bring-your-own PDF engine, detected by import
 #                                  (ADR-0006); PDF pages only
 #
 # See docs/guides/document-extraction.md, and `kompend list-parsers` for the
