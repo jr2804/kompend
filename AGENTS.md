@@ -144,6 +144,9 @@ When the user requests a durable behavior change, record it here or in the
 relevant child AGENTS.md. (Conventions, config, or boundary rules belong in
 `.agents/` or the child; only always-applied preferences go here.)
 
+- Run every tool through `uv run …` (scripts, checks, pytest, one-off probes);
+  a bare `python …` is never used.
+
 ## Closeout
 
 1. Re-check changed paths against the DOX chain.
