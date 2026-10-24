@@ -37,7 +37,7 @@ from kompend.core.models import (
     ResolvedChunk,
     WikiNode,
 )
-from kompend.core.models.enums import NodeType
+from kompend.core.models.enums import ChunkStrategy, EdgeType, NodeType
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import CHUNKS_TABLE, EXTRACTIONS_TABLE
 from kompend.core.utils.time import iso_local
@@ -55,7 +55,14 @@ _CACHE_DATACLASSES: dict[str, type] = {
     "CompiledWiki": CompiledWiki,
 }
 
+#: Every ``StrEnum`` that can appear inside a cached dataclass. The codec
+#: tags an enum by class name and raises on an unknown tag; a missing entry
+#: therefore made a *readable* entry look like a miss, and the caller paid for
+#: the work again. ``EdgeType`` reached the payload through ``CompiledWiki.edges``
+#: and cost a 65-minute regeneration before it was registered here.
 _CACHE_ENUMS: dict[str, type[StrEnum]] = {
+    "ChunkStrategy": ChunkStrategy,
+    "EdgeType": EdgeType,
     "ElementType": ElementType,
     "NodeType": NodeType,
 }
@@ -115,7 +122,16 @@ class CacheStore:
             if not isinstance(decoded, dict):
                 raise ValueError(f"Cache entry {layer}/{key} is not a JSON object")
         except Exception:
-            logger.debug("Cache read error for %s/%s - treating as miss", layer, key, exc_info=True)
+            # A payload that cannot be decoded is not a normal miss: the work
+            # was already paid for and is now unreachable. Say so loudly, or
+            # the next unregistered enum tag silently costs a full recompile.
+            logger.warning(
+                "Cache entry %s/%s is unreadable (%s) - treating as a miss; check that every enum in the payload is registered in _CACHE_ENUMS",
+                layer,
+                key,
+                "see the traceback below",
+                exc_info=True,
+            )
             return None
         entry = cast("JSONDict", decoded)
 

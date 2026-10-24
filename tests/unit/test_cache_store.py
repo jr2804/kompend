@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from kompend.core.cache.store import CacheStore, make_cache_key
-from kompend.core.models import Chunk, ElementType, ResolvedChunk
+from kompend.core.models import Chunk, CompiledWiki, EdgeType, ElementType, GraphEdge, NodeType, ResolvedChunk, WikiNode
 from kompend.types import CacheValue
 
 # ---------------------------------------------------------------------------
@@ -165,3 +165,35 @@ class TestCacheStoreErrors:
     def test_non_existent_layer(self, tmp_path: Path) -> None:
         store = CacheStore(tmp_path)
         assert store.get("nonexistent", {"k": "1"}) is None
+
+
+# ---------------------------------------------------------------------------
+# CacheStore - enum coverage in cached dataclasses
+# ---------------------------------------------------------------------------
+
+
+class TestCachedEnums:
+    """Every ``StrEnum`` reachable from a cached dataclass must be registered.
+
+    The codec tags enums by class name and raises on an unknown tag; ``get()``
+    treats that as a miss, so a missing registration silently invalidates a
+    perfectly good entry and the caller pays for the work again.
+    """
+
+    def test_compiled_wiki_with_edges_round_trips(self, tmp_path: Path) -> None:
+        store = CacheStore(tmp_path)
+        wiki = CompiledWiki(
+            nodes=[WikiNode(id="a", title="A", content="alpha", node_type=NodeType.CONCEPT)],
+            edges=[GraphEdge(source="a", target="a", type=EdgeType.REFERENCE)],
+            toc=[],
+        )
+        deps = {"extra": "1"}
+        store.set("generate", deps, wiki)
+
+        result = store.get("generate", deps)
+
+        assert isinstance(result, CompiledWiki)
+        assert result.nodes[0].node_type is NodeType.CONCEPT
+        # Edges decode as plain dicts (GraphEdge is not a registered cache
+        # dataclass), but the enum inside them must survive as an EdgeType.
+        assert result.edges[0]["type"] is EdgeType.REFERENCE

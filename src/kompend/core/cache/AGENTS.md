@@ -19,7 +19,10 @@ dataclasses, `Path`, `StrEnum`, `bytes`, and `tuple` via custom JSON codecs.
 - Import: `from kompend.core.cache.store import CacheStore`.
 - A `StrEnum` that reaches the cache must be registered in `_CACHE_ENUMS` —
   the codec tags enums by class name and raises `ValueError` on an unknown
-  tag when decoding.
+  tag when decoding — so every `StrEnum` reachable from a cached dataclass
+  (`CompiledWiki.edges` → `EdgeType`, `WikiNode.node_type` → `NodeType`, …)
+  must be in `_CACHE_ENUMS`. A missing entry is not a normal miss: the entry
+  was paid for, cannot be read, and `get()` now logs that at `WARNING`.
 - Depends on `kompend.core.models` (for dataclass serialization) and
   `kompend.core.utils.time` (for cache timestamps).
 - Different inputs write to different cache files; writes are atomic
