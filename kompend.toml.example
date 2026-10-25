@@ -84,10 +84,10 @@ file = "NOTES.md"
 #              `flash` skips. Loads MinerU's VLM checkpoint (~1.2B params).
 #   xhigh    — VLM path at the highest quality setting.
 # `flash` is the schema default. The value is read, validated and fingerprinted
-# at construction; it reaches the mineru backend only once parsecraft's executor
-# routes `BackendConfig.options` through `RoutingConstraints.backend_options`.
-# Until then it flips the parse cache key on every change but is otherwise
-# configured-but-inert.
+# at construction, and it reaches the mineru backend as
+# `BackendConfig.options["effort"]` through `RoutingConstraints.backend_options`.
+# It is inert for every other backend - a page the router sends to docling
+# ignores it, and the parse tier says so once per run.
 # Env: KOMP_INGEST_PARSECRAFT_EFFORT
 # parsecraft_effort = "flash"  # medium, high, xhigh
 #
