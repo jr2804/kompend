@@ -186,6 +186,18 @@ class TestEnvVars:
         result = read_env_vars()
         assert result["compile"]["llm"]["vlm_model"] == "openai/gpt-4o"
 
+    def test_embedding_model_env(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("KOMP_EMBEDDING_MODEL", "ollama/granite-embedding:278m")
+        result = read_env_vars()
+        assert result["compile"]["embedding"]["model"] == "ollama/granite-embedding:278m"
+
+    def test_embedding_model_env_overrides_project(self, tmp_path: Any, monkeypatch: Any) -> None:
+        (tmp_path / "kompend.toml").write_text('[compile.embedding]\nmodel = "ollama/from-the-project"\n', encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KOMP_EMBEDDING_MODEL", "ollama/from-the-env")
+        cfg = resolve_config(base_dir=tmp_path)
+        assert cfg.get("compile.embedding.model") == "ollama/from-the-env"
+
     def test_user_tracking_env_false(self, monkeypatch: Any) -> None:
         # knox-gsb5: KOMP_USER_TRACKING=false disables user tracking.
         monkeypatch.setenv("KOMP_USER_TRACKING", "false")

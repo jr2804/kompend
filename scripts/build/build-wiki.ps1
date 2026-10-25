@@ -1,21 +1,25 @@
 # build-wiki.ps1 --- Build the demo wiki for A/B model comparison
 #
 # Prerequisites:
-#   - Ollama running with models pulled (see config files for model list)
+#   - Ollama running with models pulled (see the profile table below)
 #   - uv installed (https://docs.astral.sh/uv/)
 #
 # Usage (paths relative to the repo root):
-#   .\scripts\build\build-wiki.ps1 scripts\configs\config-cloud.toml     # enterprise LLM (~1M ctx)
-#   .\scripts\build\build-wiki.ps1 scripts\configs\config-local.toml     # local LLM (128K ctx)
-#   .\scripts\build\build-wiki.ps1 scripts\configs\config-local.toml -LLMModel "ollama/llama3.2"
-#   .\scripts\build\build-wiki.ps1 scripts\configs\config-cloud.toml -VLMModel "ollama-cloud/gemma4:cloud"
-#   .\scripts\build\build-wiki.ps1 scripts\configs\config-local.toml -EmbedModel "ollama:granite-embedding:278m"
-#   .\scripts\build\build-wiki.ps1 scripts\configs\config-cloud.toml -Preview
+#   .\scripts\build\build-wiki.ps1 -Profile local              # small models on this box
+#   .\scripts\build\build-wiki.ps1 -Profile cloud              # hosted models
+#   .\scripts\build\build-wiki.ps1 -Profile local -LLMModel "ollama/llama3.2"
+#   .\scripts\build\build-wiki.ps1 -Profile cloud -VLMModel "ollama-cloud/gemma4:cloud"
+#   .\scripts\build\build-wiki.ps1 -Profile local -EmbedModel "ollama/granite-embedding:278m"
+#   .\scripts\build\build-wiki.ps1 -Profile cloud -Preview
 #
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory = $true, Position = 0)]
-    [string]$ConfigFile,
+    [Parameter(Mandatory = $false)]
+    [ValidateSet("local", "cloud")]
+    [string]$Profile = "local",
+
+    [Parameter(Mandatory = $false)]
+    [string]$ConfigFile = "scripts\configs\demo.toml",
 
     [Parameter(Mandatory = $false)]
     [string]$LLMModel,
@@ -53,43 +57,59 @@ if (-not $Preview) {
 
 # ------ Validate config ---------------------------------------------------------------------------------------------------------------------------------------------------------------
 # Validate the config exists (relative to cwd = $ProjectRoot). Keep $ConfigFile
-# in its original (relative) form for passing to `init --config` — an absolute
+# in its original (relative) form for passing to `init --seed-config` — an absolute
 # resolved path would carry backslashes that get mangled by the native-command
 # call layer on Windows.
 $null = Resolve-Path $ConfigFile -ErrorAction Stop
 $ConfigPath = $ConfigFile
 Write-Host "Using config: $ConfigPath" -ForegroundColor Cyan
 
-# ------ Default models (per-config env-var overrides) ------------------------------------------------
-# Config files use config-specific env vars (${KOMP_LOCAL_LLM}, ${KOMP_CLOUD_LLM}, etc.)
-# that are expanded at load time. The script sets the right set based on which
-# config file is in use. The env vars ${KOMP_LLM_DEFAULT_MODEL} / ${KOMP_VLM_MODEL}
-# / ${KOMP_EMBEDDING_MODEL} at the _ENV_MAP layer (Layer 2) still work as a generic
-# override, but the config-specific vars are the recommended approach.
-
-# Derive which config we are using
-$BaseName = [System.IO.Path]::GetFileNameWithoutExtension($ConfigFile)
-$IsLocalConfig = $BaseName -like "*local*"
-
-# Prefer script parameter > existing env var > script default
-if ($IsLocalConfig) {
-    $env:KOMP_LOCAL_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KOMP_LOCAL_LLM        ?? "ollama/gemma4:e2b" }   else { $LLMModel }
-    $env:KOMP_LOCAL_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KOMP_LOCAL_VLM        ?? "ollama/lmfm2.5" }     else { $VLMModel }
-    $env:KOMP_LOCAL_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KOMP_LOCAL_EMBEDDING  ?? "ollama:granite-embedding:278m" } else { $EmbedModel }
-} else {
-    $env:KOMP_CLOUD_LLM        = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KOMP_CLOUD_LLM        ?? "ollama-cloud/deepseek-v4-flash" }   else { $LLMModel }
-    $env:KOMP_CLOUD_VLM        = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KOMP_CLOUD_VLM        ?? "ollama-cloud/gemma4:31b" }         else { $VLMModel }
-    $env:KOMP_CLOUD_EMBEDDING  = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KOMP_CLOUD_EMBEDDING  ?? "openai:text-embedding-3-large" }   else { $EmbedModel }
+# ------ Demo profiles (the single source of truth for both profiles) ------------------------------------------------
+# The shared config (scripts/configs/demo.toml) holds what both profiles have in
+# common. Everything that differs is an env var: the env layer (Layer 2)
+# outranks the project config (Layer 3), so the profile always wins.
+#
+# Prefer script parameter > existing env var > profile default.
+$Profiles = @{
+    local = @{
+        Output     = "demo-wiki-local"
+        LLM        = "ollama/hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:latest"
+        VLM        = "ollama/hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:latest"
+        Embedding  = "ollama/granite-embedding:278m"
+        CtxCap     = "160000"
+        Timeout    = "600"
+        Retries    = "4"
+        Reasoning  = "none"
+        Iterations = "2"
+    }
+    cloud = @{
+        Output     = "demo-wiki-cloud"
+        LLM        = "ollama-cloud/deepseek-v4.1-flash"
+        VLM        = "ollama-cloud/deepseek-v4.1-flash"
+        Embedding  = "ollama/granite-embedding:278m"
+        CtxCap     = "256000"
+        Timeout    = "300"
+        Retries    = "2"
+        Reasoning  = "low"
+        Iterations = "0"
+    }
 }
+$Active = $Profiles[$Profile]
 
-# Derive output directory name from config filename:
-#   scripts\configs\config-cloud.toml  →  demo-wiki-cloud
-#   scripts\configs\config-local.toml   →  demo-wiki-local
-$OutputName = $BaseName -replace "^config-", "demo-wiki-"
+$env:KOMP_LLM_DEFAULT_MODEL          = if ([string]::IsNullOrWhiteSpace($LLMModel))   { $env:KOMP_LLM_DEFAULT_MODEL          ?? $Active.LLM }        else { $LLMModel }
+$env:KOMP_VLM_MODEL                  = if ([string]::IsNullOrWhiteSpace($VLMModel))   { $env:KOMP_VLM_MODEL                  ?? $Active.VLM }        else { $VLMModel }
+$env:KOMP_EMBEDDING_MODEL            = if ([string]::IsNullOrWhiteSpace($EmbedModel)) { $env:KOMP_EMBEDDING_MODEL            ?? $Active.Embedding }  else { $EmbedModel }
+$env:KOMP_LLM_CONTEXT_WINDOW         = if ([string]::IsNullOrWhiteSpace($env:KOMP_LLM_CONTEXT_WINDOW)) { $Active.CtxCap } else { $env:KOMP_LLM_CONTEXT_WINDOW }
+$env:KOMP_LLM_TIMEOUT                = if ([string]::IsNullOrWhiteSpace($env:KOMP_LLM_TIMEOUT)) { $Active.Timeout } else { $env:KOMP_LLM_TIMEOUT }
+$env:KOMP_LLM_OUTPUT_RETRIES         = if ([string]::IsNullOrWhiteSpace($env:KOMP_LLM_OUTPUT_RETRIES)) { $Active.Retries } else { $env:KOMP_LLM_OUTPUT_RETRIES }
+$env:KOMP_LLM_REASONING_EFFORT       = if ([string]::IsNullOrWhiteSpace($env:KOMP_LLM_REASONING_EFFORT)) { $Active.Reasoning } else { $env:KOMP_LLM_REASONING_EFFORT }
+$env:KOMP_BUDGET_WICER_MAX_ITERATIONS = if ([string]::IsNullOrWhiteSpace($env:KOMP_BUDGET_WICER_MAX_ITERATIONS)) { $Active.Iterations } else { $env:KOMP_BUDGET_WICER_MAX_ITERATIONS }
+
 # Relative to cwd ($ProjectRoot) — avoids backslash-mangling when passed to
 # native commands via `--wiki-dir`. kompend resolves it against cwd.
-$OutputPath = $OutputName
+$OutputPath = $Active.Output
 
+Write-Host "  Profile: $Profile" -ForegroundColor DarkGray
 Write-Host "  Output: $OutputPath" -ForegroundColor DarkGray
 
 # Input sources are relative to cwd as well.
@@ -114,7 +134,7 @@ $InitArgs = @(
     "--bare",
     "--force",
     "--keep-cache",
-    "--config", $ConfigPath
+    "--seed-config", $ConfigPath
 )
 
 Write-Host ""

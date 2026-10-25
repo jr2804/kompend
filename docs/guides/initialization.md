@@ -10,11 +10,11 @@ kompend init [DIR]
 
 If `DIR` is omitted, the current directory is used.
 
-To seed the vault with a chosen config (e.g. a cloud/local LLM profile), pass it
+To seed the vault with a chosen config (e.g. the shared demo config), pass it
 — the file is copied verbatim into `<dir>/.kompend/config.toml`:
 
 ```bash
-kompend init ./my-vault --config scripts/configs/config-cloud.toml
+kompend init ./my-vault --seed-config scripts/configs/demo.toml
 ```
 
 ## What it creates
@@ -84,14 +84,14 @@ fast re-runs where ingest should skip already-parsed documents.
 kompend init --force --keep-cache ./existing-project
 ```
 
-### `--config`
+### `--seed-config`
 
 Install a chosen TOML config as the vault's `.kompend/config.toml` instead of the
 generated default. Use this to seed a vault with a specific LLM/budget/profile
-(e.g. a cloud or local demo config). The file is copied verbatim.
+(e.g. the shared demo config). The file is copied verbatim.
 
 ```bash
-kompend init ./my-vault --config scripts/configs/config-cloud.toml
+kompend init ./my-vault --seed-config scripts/configs/demo.toml
 ```
 
 ### `--wiki-dir` / `-w`

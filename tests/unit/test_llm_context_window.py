@@ -40,7 +40,7 @@ class TestCoerceContextWindowCap:
 
     def test_unexpanded_env_placeholder_returns_none(self) -> None:
         # Unset env var leaves the literal ${VAR} placeholder.
-        assert _coerce_context_window_cap("${KOMP_LOCAL_CTX_CAP}") is None
+        assert _coerce_context_window_cap("${KOMP_LLM_CONTEXT_WINDOW}") is None
 
     def test_empty_string_returns_none(self) -> None:
         assert _coerce_context_window_cap("") is None

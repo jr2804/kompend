@@ -314,7 +314,6 @@ respect_gitignore = true
 
 [compile.budget]
 # Structural controls (not token budgets)
-concepts_per_batch = 8         # concepts per generation batch
 verify_min_ngram = 3           # minimum n-gram for substring verification
 # WiCER refinement rounds: 0 = run until the loop converges (no probes, no
 # new facts, all probes pass) or the wall-clock budget below is spent.

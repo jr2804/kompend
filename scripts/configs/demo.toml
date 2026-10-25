@@ -1,0 +1,65 @@
+# demo.toml — the shared demo profile for scripts/build/build-wiki.ps1
+#
+# One file for both demo profiles (local small models vs. hosted models).
+# Everything that differs between the profiles is an env var, because the
+# env layer outranks the project config:
+#
+#   KOMP_LLM_DEFAULT_MODEL            compile.llm.default_model
+#   KOMP_VLM_MODEL                    compile.llm.vlm_model
+#   KOMP_EMBEDDING_MODEL              compile.embedding.model
+#   KOMP_LLM_TIMEOUT                  compile.llm.timeout
+#   KOMP_LLM_OUTPUT_RETRIES           compile.llm.output_retries
+#   KOMP_LLM_REASONING_EFFORT         compile.llm.reasoning_effort
+#   KOMP_LLM_CONTEXT_WINDOW           compile.llm.context_window
+#   KOMP_BUDGET_WICER_MAX_ITERATIONS  compile.budget.wicer_max_iterations
+#
+# The build script sets them per profile; set them yourself to run a
+# profile by hand:
+#
+#   $env:KOMP_LLM_DEFAULT_MODEL = "ollama/hf.co/google/gemma-4-E4B-it-qat-q4_0-gguf:latest"
+#   $env:KOMP_EMBEDDING_MODEL   = "ollama/granite-embedding:278m"
+#   $env:KOMP_LLM_CONTEXT_WINDOW = "160000"
+#   uv run kompend init ./my-vault --seed-config scripts/configs/demo.toml
+#
+# No ${VAR} placeholders here on purpose: an unset env var leaves the
+# placeholder text in the value, and a string where an int belongs is a
+# config error ("Input should be a valid integer").
+#
+# Only values that differ from the schema defaults are listed. Everything
+# else comes from the defaults — see kompend.toml.example for the full
+# reference of every key.
+
+[compile]
+# The iterative compiler. The default ("graph") compiles in one pass;
+# "wicer" refines each concept over several passes.
+compiler = "wicer"
+
+[compile.llm]
+# Structured output format for the LLM tier.
+data_format = "ison"
+
+[compile.output]
+# Obsidian-flavoured wikilinks and frontmatter.
+flavor = "obsidian"
+
+[lint]
+enabled = [
+    "broken-wikilinks",
+    "missing-frontmatter",
+    "orphan-page",
+    "duplicate-title",
+    "empty-page",
+    "heading-skip",
+    "stale-page",
+    "source-not-found",
+]
+
+[dedup]
+enabled = true
+
+[search]
+expansion.enabled = true
+crag.enabled = true
+reranker.enabled = true
+hyde.enabled = true
+contextual.enabled = true

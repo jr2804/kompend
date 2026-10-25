@@ -392,7 +392,7 @@ class EmbeddingConfig(_KompendBaseModel):
     embedding provider — no ``dim`` config value is needed.
     """
 
-    model: str = Field(default="")
+    model: str = Field(default="", validation_alias=EnvVar.LLM_EMBEDDING_MODEL)
     batch_size: int = Field(default=10, validation_alias=EnvVar.EMBEDDING_BATCH_SIZE)
 
 
