@@ -28,7 +28,7 @@ ripgrep = "latest"
 
 "github:gastownhall/beads" = "latest"
 "github:dolthub/dolt" = "latest"
-"pypi:beads-mcp" = "latest"
+"pypi:beads-mcp" = {version = "latest", uvx_args = "-p 3.13"}
 
 [settings.npm]
 package_manager = "bun"
