@@ -29,6 +29,39 @@
 # else comes from the defaults — see kompend.toml.example for the full
 # reference of every key.
 
+[ingest]
+# The parse tier, tuned for the demo corpus (15 native-text PDFs + 6 URLs,
+# 123 PDF pages - every page carries a text layer).
+#
+# parsecraft_judge / parsecraft_judge_model - a live System One judge
+# re-ranks, per page, the backends the hard constraints already admitted.
+# Measured on the 34-page paper in the corpus
+# (tests/data/sources/dnn_speech_intelligibility_2022.pdf):
+#
+#   judge "none" -> liteparse   1.5s  147 elements  4 headings, no tables
+#   judge tev1   -> docling  59-90s  215 elements  22 headings, 53 list
+#                                               items, 4 tables with cells
+#
+# The judge model must be a Tev/Nimble GGUF (the ollama System One endpoint
+# rejects anything else with HTTP 400) and must be reachable under its BARE
+# name: "tev1" resolves to "tev1:latest". The build script aliases the tag
+# when only "tev1:0.8b" is installed.
+parsecraft_judge = "ollama"
+parsecraft_judge_model = "tev1"
+
+# Prefer the strongest eligible backend over the cheapest one.
+parsecraft_preference = "quality"
+
+# Recover table structure from a page's vector graphics - a vector table
+# arrives as a structured list[list[str]] instead of a Markdown grid.
+parsecraft_extract_vector_graphics = true
+
+# No OCR: every page of the demo corpus has a text layer, and this host has
+# no usable OCR backend (no CUDA torch build, no tesseract). Without this the
+# installed "ocr" extra would let the planner route a page to a GPU VLM that
+# cannot run here.
+parsecraft_allow_ocr = false
+
 [compile]
 # The iterative compiler. The default ("graph") compiles in one pass;
 # "wicer" refines each concept over several passes.

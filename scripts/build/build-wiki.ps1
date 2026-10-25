@@ -48,7 +48,10 @@ $ProjectRoot = $PSScriptRoot | Split-Path -Parent | Split-Path -Parent
 Set-Location $ProjectRoot
 
 if (-not $Preview) {
-    & uv sync -U
+    # Locked environment, not the newest one: `uv sync -U` would pull a newer
+    # parsecraft/typer combination than the docling pin allows, and a silently
+    # upgraded parse toolset is not what an A/B demo should measure.
+    & uv sync
     if ($LASTEXITCODE -ne 0) {
         Write-Error "uv sync failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
@@ -104,6 +107,29 @@ $env:KOMP_LLM_TIMEOUT                = if ([string]::IsNullOrWhiteSpace($env:KOM
 $env:KOMP_LLM_OUTPUT_RETRIES         = if ([string]::IsNullOrWhiteSpace($env:KOMP_LLM_OUTPUT_RETRIES)) { $Active.Retries } else { $env:KOMP_LLM_OUTPUT_RETRIES }
 $env:KOMP_LLM_REASONING_EFFORT       = if ([string]::IsNullOrWhiteSpace($env:KOMP_LLM_REASONING_EFFORT)) { $Active.Reasoning } else { $env:KOMP_LLM_REASONING_EFFORT }
 $env:KOMP_BUDGET_WICER_MAX_ITERATIONS = if ([string]::IsNullOrWhiteSpace($env:KOMP_BUDGET_WICER_MAX_ITERATIONS)) { $Active.Iterations } else { $env:KOMP_BUDGET_WICER_MAX_ITERATIONS }
+
+# ------ Ensure the parse judge model resolves under its bare name -------------------------------------------------------------------
+# The ollama System One endpoint resolves a BARE model name ("tev1"), not a
+# tagged one. A model installed only as "tev1:0.8b" is not found under that
+# name, and the judge then degrades to the deterministic rule table - the parse
+# tier loses the structured output the demo is built on.
+$judgeModel = $null
+$judgeSetting = Select-String -Path $ConfigPath -Pattern '^\s*parsecraft_judge_model\s*=\s*"([^"]+)"' | Select-Object -First 1
+if ($judgeSetting) {
+    $judgeModel = $judgeSetting.Matches[0].Groups[1].Value
+}
+if ($judgeModel -and (Get-Command ollama -ErrorAction SilentlyContinue)) {
+    $ollamaModels = @(ollama list 2>$null | Select-Object -Skip 1 | ForEach-Object { ($_ -split '\s+')[0] } | Where-Object { $_ })
+    if (-not ($ollamaModels | Where-Object { $_ -eq $judgeModel -or $_ -eq "${judgeModel}:latest" })) {
+        $tagged = $ollamaModels | Where-Object { $_ -like "${judgeModel}:*" } | Select-Object -First 1
+        if ($tagged) {
+            Write-Host "  Aliasing judge model $tagged -> ${judgeModel}:latest" -ForegroundColor DarkGray
+            ollama cp $tagged "${judgeModel}:latest" | Out-Null
+        } else {
+            Write-Warning "Judge model '$judgeModel' is not installed in ollama - the parse judge degrades to the rule table."
+        }
+    }
+}
 
 # Relative to cwd ($ProjectRoot) — avoids backslash-mangling when passed to
 # native commands via `--wiki-dir`. kompend resolves it against cwd.
