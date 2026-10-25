@@ -52,10 +52,6 @@ parsecraft_judge_model = "tev1"
 # Prefer the strongest eligible backend over the cheapest one.
 parsecraft_preference = "quality"
 
-# Recover table structure from a page's vector graphics - a vector table
-# arrives as a structured list[list[str]] instead of a Markdown grid.
-parsecraft_extract_vector_graphics = true
-
 # No OCR: every page of the demo corpus has a text layer, and this host has
 # no usable OCR backend (no CUDA torch build, no tesseract). Without this the
 # installed "ocr" extra would let the planner route a page to a GPU VLM that
