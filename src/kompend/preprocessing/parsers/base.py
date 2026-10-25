@@ -68,8 +68,11 @@ class FileExtension(StrEnum):
 
 
 #: Text-format extensions. Single source of truth for the encoding layer
-#: gate in :mod:`kompend.core.pipeline.stages._parse`. Anything not in this
-#: set is treated as a binary container by the parse tier.
+#: gate (:func:`kompend.core.pipeline.ingest.parse_target_path`): a source
+#: in this set is handed to the parser as UTF-8. Everything else is handed
+#: over byte-wise — binary containers because they are binary, suffixes the
+#: table does not know because the backend that claimed them reads the
+#: bytes as they are.
 _TEXT_EXTENSIONS: frozenset[FileExtension] = frozenset(
     {
         FileExtension.HTML,
@@ -159,6 +162,22 @@ class ParserRouter:
         if parser is None:
             raise ValueError(f"No parser found for {source_file}")
         return scrub_document(parser.parse(source_file))
+
+
+def known_extension(suffix: str) -> FileExtension | None:
+    """The :class:`FileExtension` for *suffix*, or ``None`` when the table
+    does not know it.
+
+    The table names the formats kompend knows about; a backend may know
+    more (parsecraft's native-text backend reads source code: ``.c``,
+    ``.h``, ``.py``). Resolving a suffix therefore never raises — an
+    unknown suffix is a fact about the format, not an error — and it never
+    gates parsing: the router decides which backend reads a file.
+    """
+    try:
+        return FileExtension(suffix.lower())
+    except ValueError:
+        return None
 
 
 def _cache_identity(parser: object) -> str:

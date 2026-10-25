@@ -22,7 +22,7 @@ persistence, and standalone ingestion.
 | `config.py`           | `Tier`, `Compiler`, `ALL_TIERS`, `TIER_LEVEL`, `TIER_DESCRIPTIONS`, `PipelineConfig`     |
 | `state.py`            | `TierStateStore`, `TierState`, `SourceState`, `CompileStatus`, `classify_compile_status` |
 | `references.py`       | `ReferenceStore` — JSON-backed bibliographic reference persistence                       |
-| `ingest.py`           | `ingest_documents`, `parse_cache_name`, `preserve_cached_metadata`, `parse_cache_is_current`, `PARSE_CACHE_PARSER_KEY`, `IngestResult` |
+| `ingest.py`           | `ingest_documents`, `parse_cache_name`, `preserve_cached_metadata`, `parse_cache_is_current`, `PARSE_CACHE_PARSER_KEY`, `parse_target_path`, `IngestResult` |
 | `parallelism.py`      | `gil_enabled`, `describe_parallelism` — interpreter parallelism facts for `compile.workers` |
 
 ## Rules
@@ -42,6 +42,11 @@ persistence, and standalone ingestion.
   `preserve_cached_metadata` first so user tags/attributes (written by
   `kompend sources tag`/`attr`) survive a forced re-ingest. The chunk cache
   keys on the same fingerprint, so a re-parse also re-chunks.
+- The parse tier and the standalone ingest share one decision point for
+  *which bytes a parser receives*: `parse_target_path` (in `ingest.py`) hands
+  a known text format over as UTF-8 and every other source byte-wise. It
+  never rejects a source — the router already picked a backend, and the
+  format table classifies bytes, it does not gate parsing.
 - Contextual chunk enrichment is opt-in via `search.contextual.enabled`
   (default false). When on, `build_pipeline` constructs a `ContextualEnricher`;
   `_parse.py` runs it after chunking and **before** the chunk-cache write, so the

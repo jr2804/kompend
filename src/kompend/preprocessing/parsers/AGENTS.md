@@ -14,7 +14,8 @@ imported on demand (`_ensure_backend`), never at package-import time, so CLI
 ## Architecture
 
 ```text
-base.py            BaseParser, FileExtension (extensions only), ParserRouter, DPI/IMAGE_SCALE constants
+base.py            BaseParser, FileExtension (extensions only), known_extension(), ParserRouter,
+                   DPI/IMAGE_SCALE constants
 markdown.py        element_to_markdown()/markdown_to_element() — the wrap/unwrap pair used for
                    rumdl whole-part normalisation; no Markdown→element converter lives here
                    anymore (parsecraft maps its IR directly)
@@ -71,6 +72,18 @@ pydantic-ai's ≥0.108, and 2.0.0 resolves only by downgrading anthropic and
 pillow graph-wide) — and `mineru` enters through kompend's `parsecraft[mineru]`
 extra (licence opt-in, ADR-0007 — see the comment in `pyproject.toml`).
 Extraction-pass defaults now live in parsecraft.
+
+### The format table classifies, it never gates
+
+`FileExtension` lists the formats kompend knows about; a backend may know
+more (parsecraft's native-text backend reads `.c/.h/.py/…`). Suffix
+resolution therefore goes through `known_extension()`, which returns `None`
+for a suffix outside the table instead of raising — an unknown suffix is a
+fact about the format, not an error. A source the table does not know is
+handed to the backend byte-wise (`parse_target_path`, in
+`core/pipeline/ingest.py`): the router already picked a backend, the table
+only decides which bytes that backend receives. Upstream issue #3 — a raise
+on an unknown suffix dropped every code file the backend reads.
 
 ### Registration — cycle avoidance
 

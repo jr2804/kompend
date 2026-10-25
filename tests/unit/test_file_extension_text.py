@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from kompend.preprocessing.parsers.base import FileExtension
+import pytest
+
+from kompend.preprocessing.parsers.base import FileExtension, known_extension
 
 _TEXT = {
     FileExtension.HTML,
@@ -36,3 +38,21 @@ def test_pdf_is_binary() -> None:
 
 def test_md_is_text() -> None:
     assert FileExtension.MD.is_text is True
+
+
+@pytest.mark.parametrize(
+    ("suffix", "expected"),
+    [
+        (".md", FileExtension.MD),
+        (".MD", FileExtension.MD),
+        (".pdf", FileExtension.PDF),
+    ],
+)
+def test_known_extension_resolves_table_suffix(suffix: str, expected: FileExtension) -> None:
+    assert known_extension(suffix) is expected
+
+
+@pytest.mark.parametrize("suffix", [".c", ".h", ".m", ".py", ".sh", ".cfg", ".ini", ""])
+def test_known_extension_is_none_for_unknown_suffix(suffix: str) -> None:
+    """A suffix outside the table is a fact about the format, not an error."""
+    assert known_extension(suffix) is None

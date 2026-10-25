@@ -28,6 +28,7 @@ from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.pipeline.ingest import (
     PARSE_CACHE_PARSER_KEY,
     parse_cache_is_current,
+    parse_target_path,
     preserve_cached_metadata,
     relativize_image_paths,
 )
@@ -39,14 +40,13 @@ from kompend.core.pipeline.parse_cache import (
 )
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.store import vault_db_path
-from kompend.core.text.encoding import normalize_to_utf8_path
 from kompend.core.text.rumdl import normalize_element_markdown
 from kompend.core.verbosity import is_verbose
 from kompend.llm.models import resolve_vlm_model
 from kompend.llm.user_providers import effective_workers
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup import DedupStore
-from kompend.preprocessing.parsers.base import FileExtension, scrub_document
+from kompend.preprocessing.parsers.base import scrub_document
 from kompend.resolution.base import BaseResolver
 from kompend.resolution.chain import ResolverChain
 from kompend.resolution.vlm_enricher import VLMEnricher
@@ -260,11 +260,10 @@ def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool,
         if selected is None:
             logger.warning("No parser backend for %s, skipping", source_file)
             return None
-        # Encoding normalization only helps text-format sources; binary
-        # containers (PDF/DOCX/raster) are handled byte-wise by their parser
-        # and would raise ValueError("binary") if funneled through normalize_to_utf8_path.
-        suffix = FileExtension(source_file.suffix.lower())
-        parse_target, _encoding = normalize_to_utf8_path(source_file, pipeline.cache_directory()) if suffix.is_text else (source_file, None)
+        # The router has already picked a backend: the format table only
+        # decides which bytes that backend receives (UTF-8 for known text
+        # formats, the raw file otherwise). It never gates parsing.
+        parse_target = parse_target_path(source_file, pipeline.cache_directory())
         parsed = selected.parse(parse_target)
         _ = len(parsed.elements)
     except Exception as exc:

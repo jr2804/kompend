@@ -38,7 +38,7 @@ from kompend.core.text.rumdl import normalize_element_markdown
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup import DedupOrchestrator
-from kompend.preprocessing.parsers.base import FileExtension, ParserRouter
+from kompend.preprocessing.parsers.base import ParserRouter, known_extension
 from kompend.types import JSONDict
 
 # Length of the content-hash suffix appended to parse-cache keys.
@@ -190,12 +190,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             continue
 
         try:
-            # Encoding normalization only helps text-format sources; binary
-            # containers (PDF/DOCX/raster) are handled byte-wise by their parser
-            # and would raise ValueError("binary") via normalize_to_utf8_path.
-            # Mirrors the gate in ``_parse.py`` (memory #802) — keep in sync.
-            suffix = FileExtension(source_file.suffix.lower())
-            parse_target, _encoding = normalize_to_utf8_path(source_file, cache_dir) if suffix.is_text else (source_file, None)
+            parse_target = parse_target_path(source_file, cache_dir)
             doc = parser.parse(parse_target)
             normalize_element_markdown(
                 doc.elements,
@@ -291,6 +286,33 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         dedup_skipped=dedup_skipped,
         cache_dir=cache_dir,
     )
+
+
+def parse_target_path(source_file: Path, cache_dir: Path) -> Path:
+    """The path a parser must read for *source_file*.
+
+    The router has already decided that a backend claims the file, so this
+    never rejects a source — it only decides *which bytes* the parser
+    receives:
+
+    - A format the table knows as text (``.md``, ``.txt``, ...) is handed
+      over as UTF-8: the source itself when it already is UTF-8, otherwise
+      the normalized sibling in the encoding cache.
+    - A format the table knows as a binary container (``.pdf``, ``.docx``,
+      raster) is handed over byte-wise — charset detection would reject it.
+    - A suffix the table does not know (source code: ``.c``, ``.h``,
+      ``.py``) is handed over byte-wise as well: the backend that claimed
+      it reads the bytes and decides. The format table classifies sources,
+      it never gates parsing.
+
+    Shared by the ingest tier and the tier-1 parse stage so the two cannot
+    drift apart.
+    """
+    extension = known_extension(source_file.suffix)
+    if extension is None or not extension.is_text:
+        return source_file
+    normalized, _encoding = normalize_to_utf8_path(source_file, cache_dir)
+    return normalized
 
 
 def parse_cache_is_current(data: JSONDict, parser_fingerprint: str) -> bool:
