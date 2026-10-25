@@ -8,17 +8,48 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from kompend.cli._sources import get_supported_extensions
-from kompend.core.config import find_project_config
-from kompend.core.paths import COMPILE_STATE_FILE, INDEX_FILE
+from kompend.core.paths import (
+    COMPILE_STATE_FILE,
+    INDEX_FILE,
+    KIND_FOLDERS,
+    LOG_FILE,
+    OVERVIEW_MD,
+    QUALITY_FILE,
+    REFERENCES_MD,
+)
 from kompend.core.pipeline.state import TierStateStore, classify_compile_status
 from kompend.logging import get_console
+from kompend.preprocessing.parsers._registry import get_supported_extensions
+
+#: Root files of a compiled bundle that carry the bundle, not a page.
+_BUNDLE_FILES: frozenset[str] = frozenset({INDEX_FILE, LOG_FILE, QUALITY_FILE, REFERENCES_MD, OVERVIEW_MD})
+#: Folders the writer puts pages in — one page per file.
+_PAGE_FOLDERS: frozenset[str] = frozenset(KIND_FOLDERS.values())
+
+
+def _page_files(output_dir: Path) -> list[Path]:
+    """The compiled pages of a bundle — one ``.md`` file per page.
+
+    Pages live in the kind folders (``concepts/``, ``entities/``). The
+    bundle root holds the reserved files (index, log, quality,
+    references, overview); those describe the bundle, they are not pages.
+    """
+    pages: list[Path] = []
+    for path in output_dir.rglob("*.md"):
+        relative = path.relative_to(output_dir)
+        if len(relative.parts) > 1:
+            if relative.parts[0] in _PAGE_FOLDERS:
+                pages.append(path)
+        elif path.name not in _BUNDLE_FILES:
+            pages.append(path)
+    return pages
 
 
 def collect_stats(
     sources_dir: Path | None = None,
     output_dir: Path | None = None,
     state_dir: Path | None = None,
+    config_file: Path | None = None,
 ) -> dict:
     """Collect wiki statistics. Gracefully handles missing dirs."""
     stats: dict = {
@@ -42,9 +73,9 @@ def collect_stats(
 
     wiki_exists = False
 
-    # Article stats — scan per-page .md files (one file per page since N9)
+    # Article stats — one .md file per page
     if output_dir and output_dir.exists():
-        page_files = [f for f in output_dir.glob("*.md") if f.name != INDEX_FILE]
+        page_files = _page_files(output_dir)
         wiki_exists = bool(page_files)
         if page_files:
             total_words = 0
@@ -62,10 +93,9 @@ def collect_stats(
         if index_file.exists():
             stats["articles"]["count"] = max(stats["articles"]["count"], 1)
 
-        # Config path
-        project_config = find_project_config()
-        if project_config:
-            stats["config_file"] = str(project_config)
+    # Config path — the vault's own config, not one found in the cwd.
+    if config_file is not None and config_file.exists():
+        stats["config_file"] = str(config_file)
 
     # Compile status from tier state
     state_dir_exists = bool(state_dir and state_dir.exists())

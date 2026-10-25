@@ -151,6 +151,27 @@ class TestCollectStats:
         stats = collect_stats(output_dir=tmp_path)
         assert stats["articles"]["total_words"] > 0
 
+    def test_pages_counted_from_kind_folders(self, tmp_path: Path) -> None:
+        """Pages live in the kind folders - the bundle root files are not pages."""
+        (tmp_path / "concepts").mkdir()
+        (tmp_path / "concepts" / "speech-intelligibility.md").write_text("# Speech Intelligibility\n\nWords about speech.", encoding="utf-8")
+        (tmp_path / "index.md").write_text("# Index\n\nBundle index.", encoding="utf-8")
+        (tmp_path / "log.md").write_text("# Log\n\nBundle log.", encoding="utf-8")
+        stats = collect_stats(output_dir=tmp_path)
+        assert stats["articles"]["count"] == 1
+        assert stats["articles"]["total_words"] == 6
+
+    def test_config_file_reported(self, tmp_path: Path) -> None:
+        """The vault's own config is reported - not one found in the cwd."""
+        config_file = tmp_path / "config.toml"
+        config_file.write_text("", encoding="utf-8")
+        stats = collect_stats(config_file=config_file)
+        assert stats["config_file"] == str(config_file)
+
+    def test_missing_config_file_reported_as_none(self, tmp_path: Path) -> None:
+        stats = collect_stats(config_file=tmp_path / "absent.toml")
+        assert stats["config_file"] is None
+
     def test_json_output(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         stats = collect_stats(sources_dir=tmp_path)
         print_status(stats, json_output=True)

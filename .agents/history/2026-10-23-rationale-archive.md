@@ -49,6 +49,7 @@ fields. Separately, `KOMP_CHARS_PER_TOKEN` was a dead env var — the real alias
 | `_build_vector_index()` -> `build_vector_index()` in `kompend.rag` | RAG business logic in CLI |
 | `status.py` now uses `find_project_config()` | Hardcoded `.kompend/config.yaml` path |
 | `SUPPORTED_EXTENSIONS` -> `get_supported_extensions()` querying parser registry | Duplicated extension set |
+| `get_supported_extensions()` moved to `kompend.preprocessing.parsers._registry` | Extension enumeration owned by the CLI layer |
 
 ## Why `global` is gone in favour of `functools.cache`
 

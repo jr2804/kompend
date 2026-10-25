@@ -145,7 +145,7 @@ other flag.
 
 `kompend --wiki-dir <vault> ...` reads *that* vault's config (`.kompend/config.toml`),
 not the cwd's. See `core/config/AGENTS.md`: Project config discovery. Seed a
-vault with a chosen config at creation time via `kompend init <dir> --config <toml>`
+vault with a chosen config at creation time via `kompend init <dir> --seed-config <toml>`
 (the file is copied verbatim into the vault).
 
 ### Fail-fast vault validation
@@ -217,12 +217,11 @@ to a core module.
 
 These patterns remain in the codebase — refactor when touched, don't extend:
 
-| Violation | Where | Why it's wrong |
-|---|---|---|
-| `status.py` imports from `kompend.cli._sources` | `status.py:10` | Cross-imports within CLI are fine, but extension enumeration should come from parser registry |
+None at the moment.
 
 Fixed violations (router/wiki/vector-index construction, config path,
-extension set) are archived in `.agents/history/2026-10-23-rationale-archive.md`.
+extension set, extension enumeration) are archived in
+`.agents/history/2026-10-23-rationale-archive.md`.
 
 ## Work Guidance
 

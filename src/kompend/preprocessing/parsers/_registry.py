@@ -18,11 +18,16 @@ from typing import Any, TypedDict
 
 from kompend.core.config import ResolvedConfig
 from kompend.core.config.keys import DEFAULT_PARSER
+from kompend.core.verbosity import is_verbose
+from kompend.logging import get_logger
 from kompend.preprocessing.parsers.base import (
     IMAGE_SCALE_DEFAULT,
     BaseParser,
+    FileExtension,
     ParserRouter,
 )
+
+logger = get_logger(__name__)
 
 # Selectable ingestion backends: name → factory(options) -> BaseParser.
 PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
@@ -180,6 +185,21 @@ def get_all_extensions(names: Iterable[str]) -> set[str]:
         if entry is None:
             continue
         extensions.update(ext.lower() for ext in entry.get("extensions", []))
+    return extensions
+
+
+def get_supported_extensions() -> set[str]:
+    """The file extensions a vault can ingest.
+
+    Merges the canonical :class:`~kompend.preprocessing.parsers.base.FileExtension`
+    table with the suffixes the ingestion backend declares. Discovery, the
+    status report and the parsers themselves must agree on this set.
+    """
+    extensions: set[str] = set(FileExtension)
+    try:
+        extensions.update(get_all_extensions([DEFAULT_PARSER]))
+    except Exception as exc:
+        logger.debug("Could not load external parser extensions: %s", exc, exc_info=is_verbose())
     return extensions
 
 

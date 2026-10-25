@@ -23,9 +23,11 @@ def status_cmd(
     """
     vp = vault_paths_from_ctx(ctx)
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    config_file = vp.config_file if vp.config_file.exists() else vp.project_config_file
     stats = collect_stats(
         sources_dir=vp.sources_dir if vp.sources_dir.exists() else None,
         output_dir=vp.output_dir if vp.output_dir.exists() else None,
         state_dir=vp.kompend_dir if vp.kompend_dir.exists() else None,
+        config_file=config_file if config_file.exists() else None,
     )
     print_status(stats, json_output=json_output)

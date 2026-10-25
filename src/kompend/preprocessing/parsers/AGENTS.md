@@ -20,7 +20,8 @@ markdown.py        element_to_markdown()/markdown_to_element() — the wrap/unwr
                    rumdl whole-part normalisation; no Markdown→element converter lives here
                    anymore (parsecraft maps its IR directly)
 _registry.py       ParserBuildOptions, PARSER_BACKENDS, KNOWN_BACKENDS, register_backend/get_backend,
-                   build_default_router() — the single factory for a ready-to-use router
+                   build_default_router() — the single factory for a ready-to-use router,
+                   get_supported_extensions() — the ingestible suffix set
 parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routing is
                    parsecraft's, kompend keeps none of its own
 ```
@@ -46,6 +47,9 @@ of the parser's `cache_identity()`, so changing them re-parses.
 `get_all_extensions(names)` takes the backend names to union suffixes for.
 Discovery passes `[DEFAULT_PARSER]`, so a vault ingests exactly what its parser can
 read — parsecraft's native-text backend reads `.c/.h/.py/…`.
+`get_supported_extensions()` is the merged set (that union plus the canonical
+`FileExtension` table) and the single answer to "what can this vault ingest":
+discovery, the status report and the parsers all read it.
 
 `ParserRouter.fingerprint()` hashes the registered backend class names plus any
 per-backend `cache_identity()` — the identity of the parser *with its routing

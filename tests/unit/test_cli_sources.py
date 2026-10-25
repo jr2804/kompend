@@ -9,10 +9,10 @@ import pytest
 from kompend.cli._sources import (
     _unique_file,
     ensure_in_sources,
-    get_supported_extensions,
     looks_like_html_url,
     resolve_files,
 )
+from kompend.preprocessing.parsers._registry import get_supported_extensions
 
 # ── resolve_files ───────────────────────────────────────────────────────
 

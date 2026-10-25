@@ -18,10 +18,8 @@ from kompend.cli._sources_io import (
     extract_archive,
     looks_like_html_url,
 )
-from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
-from kompend.preprocessing.parsers._registry import DEFAULT_PARSER, get_all_extensions
-from kompend.preprocessing.parsers.base import FileExtension
+from kompend.preprocessing.parsers._registry import get_supported_extensions
 
 __all__ = [
     "download_urls",
@@ -213,20 +211,6 @@ def _scan_dir(
 
 
 # ── Extension helpers ───────────────────────────────────────────────────
-
-
-def get_supported_extensions() -> set[str]:
-    """Return the set of file extensions this vault can ingest.
-
-    Merges the canonical FileExtension enum with the suffixes the ingestion
-    backend declares.
-    """
-    extensions: set[str] = set(FileExtension)
-    try:
-        extensions.update(get_all_extensions([DEFAULT_PARSER]))
-    except Exception as exc:
-        logger.debug("Could not load external parser extensions: %s", exc, exc_info=is_verbose())
-    return extensions
 
 
 def _add(candidate_file: Path, seen: set[Path], results: list[Path]) -> None:

@@ -148,6 +148,7 @@ def wiki_status(
         stats = collect_stats(
             sources_dir=sources_dir if sources_dir.exists() else None,
             output_dir=output_dir if output_dir.exists() else None,
+            config_file=vp.config_file if vp.config_file.exists() else None,
         )
         return {"status": "ok", "stats": stats}
     except Exception as exc:
