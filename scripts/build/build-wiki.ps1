@@ -84,6 +84,7 @@ $Profiles = @{
         Retries    = "4"
         Reasoning  = "none"
         Iterations = "2"
+        DataFormat = "json"   # the small model cannot emit a compact format
     }
     cloud = @{
         Output     = "demo-wiki-cloud"
@@ -95,6 +96,7 @@ $Profiles = @{
         Retries    = "2"
         Reasoning  = "low"
         Iterations = "0"
+        DataFormat = "ison"
     }
 }
 $Active = $Profiles[$Profile]
@@ -107,6 +109,7 @@ $env:KOMP_LLM_TIMEOUT                = if ([string]::IsNullOrWhiteSpace($env:KOM
 $env:KOMP_LLM_OUTPUT_RETRIES         = if ([string]::IsNullOrWhiteSpace($env:KOMP_LLM_OUTPUT_RETRIES)) { $Active.Retries } else { $env:KOMP_LLM_OUTPUT_RETRIES }
 $env:KOMP_LLM_REASONING_EFFORT       = if ([string]::IsNullOrWhiteSpace($env:KOMP_LLM_REASONING_EFFORT)) { $Active.Reasoning } else { $env:KOMP_LLM_REASONING_EFFORT }
 $env:KOMP_BUDGET_WICER_MAX_ITERATIONS = if ([string]::IsNullOrWhiteSpace($env:KOMP_BUDGET_WICER_MAX_ITERATIONS)) { $Active.Iterations } else { $env:KOMP_BUDGET_WICER_MAX_ITERATIONS }
+$env:KOMP_LLM_DATA_FORMAT            = if ([string]::IsNullOrWhiteSpace($env:KOMP_LLM_DATA_FORMAT)) { $Active.DataFormat } else { $env:KOMP_LLM_DATA_FORMAT }
 
 # ------ Ensure the parse judge model resolves under its bare name -------------------------------------------------------------------
 # The ollama System One endpoint resolves a BARE model name ("tev1"), not a

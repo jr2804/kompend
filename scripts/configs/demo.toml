@@ -11,7 +11,12 @@
 #   KOMP_LLM_OUTPUT_RETRIES           compile.llm.output_retries
 #   KOMP_LLM_REASONING_EFFORT         compile.llm.reasoning_effort
 #   KOMP_LLM_CONTEXT_WINDOW           compile.llm.context_window
+#   KOMP_LLM_DATA_FORMAT              compile.llm.data_format
 #   KOMP_BUDGET_WICER_MAX_ITERATIONS  compile.budget.wicer_max_iterations
+#
+# data_format is a profile value on purpose: the local model cannot emit a
+# compact format (the doctor probe fails and every structured call would
+# retry out); the cloud model can. json is the schema default.
 #
 # The build script sets them per profile; set them yourself to run a
 # profile by hand:
@@ -62,10 +67,6 @@ parsecraft_allow_ocr = false
 # The iterative compiler. The default ("graph") compiles in one pass;
 # "wicer" refines each concept over several passes.
 compiler = "wicer"
-
-[compile.llm]
-# Structured output format for the LLM tier.
-data_format = "ison"
 
 [compile.output]
 # Obsidian-flavoured wikilinks and frontmatter.
