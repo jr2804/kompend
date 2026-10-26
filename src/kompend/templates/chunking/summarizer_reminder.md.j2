@@ -1,0 +1,11 @@
+---
+variables: []
+role: compile.generate
+response_format: text
+---
+
+Reminder — session discipline:
+- Keep looping: next_node() → summarize_node() → next_node(), until next_node reports the tree is done.
+- Record every summary with summarize_node() immediately — do not batch summaries for later.
+- Summaries already recorded are done; never summarize the same node twice (you can search this conversation with the conversation-search tool).
+- Finish by returning the final summary JSON when the whole tree is recorded.

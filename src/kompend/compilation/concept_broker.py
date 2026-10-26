@@ -9,6 +9,7 @@ Thread safety is *not* required: agents run sequentially.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import Any
 
 
@@ -70,17 +71,17 @@ class ConceptBroker:
         cursor = self._cursors.get(caller_id, 0)
         return list(pool[:cursor])
 
-    def mark_caller_consumed(self, caller_id: str, names: list[str]) -> None:
+    def mark_caller_consumed(self, caller_id: str, names: Collection[str]) -> None:
         """Advance *caller_id*'s cursor past the concepts whose *names* are given.
 
-        Used at checkpoint resume to skip already-produced pages: the
+        Used at transcript resume to skip already-produced pages: the
         broker's pre-allocation of concepts to segments is deterministic
         (segment index → contiguous slice), so advancing the cursor past
         the already-finished names is sufficient — the next ``fetch`` call
         hands out only the remaining unconsumed concepts for that segment.
 
         Concepts not found in the caller's pool are ignored silently
-        (covers checkpoint mismatches across dep versions).
+        (covers transcript mismatches across dep versions).
         """
         if not names:
             return

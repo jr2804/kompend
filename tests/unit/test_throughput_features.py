@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
@@ -11,6 +12,8 @@ from pathlib import Path
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
+from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord, SqliteStepStore
 
 from kompend.agents.types import VerificationDeps, VerificationVerdict
 from kompend.agents.verification import AgenticVerificationAgent
@@ -20,7 +23,8 @@ from kompend.compilation.flows.generation import (
     generate_all_pages_agentic,
     prepare_source_segments,
 )
-from kompend.compilation.schema import Concept, Entity, GenerationOutput
+from kompend.compilation.schema import Concept, Entity, GenerationOutput, GenerationPage
+from kompend.compilation.step_recovery import generation_conversation, pass_run_id, segment_run_prefix
 from kompend.compilation.two_phase import (
     Extraction,
     ExtractionSet,
@@ -1058,7 +1062,7 @@ class TestTwoPhaseCompiler:
             agent = MagicMock()
             agent.result_type = GenerationOutput
 
-            def _run(_deps: object) -> object:
+            def _run(_deps: object, **_kwargs: object) -> object:
                 # Drain the broker so the coverage loop terminates normally
                 # (the real agent would call fetch_concepts).
                 broker = getattr(_deps, "concept_broker", None)
@@ -1079,6 +1083,158 @@ class TestTwoPhaseCompiler:
         assert len(stats) == 1
         assert stats[0]["source"] == "a.pdf"
         assert stats[0]["summary_words"] == 2
+
+
+class TestStepStoreRecovery:
+    """Transcript-level resume — the step store replaces the gen checkpoint."""
+
+    PAGE = {
+        "title": "Attention",
+        "content": (
+            "Attention is the cognitive process of selectively focusing on "
+            "discrete information while ignoring other perceivable input. "
+            "It plays a critical role in learning and memory."
+        ),
+    }
+    CONCEPTS = [{"name": "attention", "kind": "concept", "importance": "high", "definition": "def"}]
+    SEGMENTS = [[("a.pdf", "Source body text about attention.")]]
+
+    def test_finished_transcript_skips_the_agent(self) -> None:
+        compiler = self._compiler()
+        compiler._active_gen_deps = {"MODEL": "test/model", "EXTRACTIONS": "seed"}
+        self._seed_finished_run(compiler, pages=[dict(self.PAGE)])
+
+        def _fail_factory(**_kwargs: object) -> object:
+            raise AssertionError("the agent must not run for a recovered segment")
+
+        nodes, slug_to_idx, progress = self._run_generation(compiler, _fail_factory)
+        assert [n.title for n in nodes] == ["Attention"]
+        assert "attention" in slug_to_idx
+        assert progress == {"seg_0": ["attention"]}
+
+    def test_empty_transcript_result_reruns_fresh(self) -> None:
+        compiler = self._compiler()
+        compiler._active_gen_deps = {"MODEL": "test/model", "EXTRACTIONS": "seed"}
+        self._seed_finished_run(compiler, pages=[])
+        calls: list[dict[str, object]] = []
+
+        nodes, _slug_to_idx, progress = self._run_generation(compiler, self._agent_factory(calls))
+        assert len(calls) == 1
+        assert [n.title for n in nodes] == ["Attention"]
+        assert progress == {"seg_0": ["attention"]}
+
+        # The seeded transcript yielded no page, so the fresh attempt is the
+        # SECOND attempt of the segment (the transcript key must advance).
+        conversation = generation_conversation(compiler._active_gen_deps)
+        assert calls[0]["run_id"] == pass_run_id(segment_run_prefix(conversation, 0), 2, 1)
+
+    def test_no_cache_ignores_the_transcript(self) -> None:
+        compiler = self._compiler()
+        compiler._config.no_cache = True
+        compiler._active_gen_deps = {"MODEL": "test/model", "EXTRACTIONS": "seed"}
+        self._seed_finished_run(compiler, pages=[dict(self.PAGE)])
+        calls: list[dict[str, object]] = []
+
+        nodes, _slug_to_idx, _progress = self._run_generation(compiler, self._agent_factory(calls))
+        assert len(calls) == 1
+        assert [n.title for n in nodes] == ["Attention"]
+
+    def test_interrupted_transcript_resumes_with_history(self) -> None:
+        compiler = self._compiler()
+        compiler._active_gen_deps = {"MODEL": "test/model", "EXTRACTIONS": "seed"}
+        self._seed_finished_run(compiler, pages=[dict(self.PAGE)], state="interrupted")
+        calls: list[dict[str, object]] = []
+
+        nodes, _slug_to_idx, _progress = self._run_generation(compiler, self._agent_factory(calls))
+        assert len(calls) == 1
+        # The run continues the interrupted conversation: history is passed,
+        # the prompt is the resume template, and the run id advances to
+        # attempt 2.
+        assert calls[0]["message_history"]
+        assert calls[0]["user_prompt"]
+        conversation = generation_conversation(compiler._active_gen_deps)
+        assert calls[0]["run_id"] == pass_run_id(segment_run_prefix(conversation, 0), 2, 1)
+        assert calls[0]["conversation_id"] == conversation
+        assert [n.title for n in nodes] == ["Attention"]
+
+    def test_fresh_run_uses_deterministic_transcript_keys(self) -> None:
+        compiler = self._compiler()
+        compiler._active_gen_deps = {"MODEL": "test/model", "EXTRACTIONS": "seed"}
+        calls: list[dict[str, object]] = []
+
+        self._run_generation(compiler, self._agent_factory(calls))
+
+        # The run keys are what the real StepPersistence capability persists
+        # under — they must be deterministic per (inputs, segment, attempt)
+        # so a later process can find the transcript again.
+        conversation = generation_conversation(compiler._active_gen_deps)
+        assert calls[0]["conversation_id"] == conversation
+        assert calls[0]["run_id"] == pass_run_id(segment_run_prefix(conversation, 0), 1, 1)
+
+    def _compiler(self) -> TwoPhaseCompiler:
+        vault = make_tmp_vault()
+        config = PipelineConfig(
+            base_dir=vault,
+            source_dir=vault / "sources",
+            output_dir=vault / "wiki",
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm", timeout=120.0),
+            embedding=EmbeddingConfig(model="hash"),
+        )
+        return TwoPhaseCompiler(config=config)
+
+    def _run_generation(self, compiler: TwoPhaseCompiler, factory: Callable[..., object]) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
+        with patch("kompend.compilation.flows.generation.make_agentic_generation_agent", side_effect=factory):
+            return generate_all_pages_agentic(
+                compiler,
+                list(self.CONCEPTS),
+                list(self.SEGMENTS),
+                [],
+                pinned_facts=[],
+                known_titles=[],
+                step_store=SqliteStepStore(database=compiler._config.paths.step_db_file),
+            )
+
+    @staticmethod
+    def _seed_finished_run(compiler: TwoPhaseCompiler, *, pages: list[dict[str, str]], attempt: int = 1, state: str = "complete") -> SqliteStepStore:
+        store = SqliteStepStore(database=compiler._config.paths.step_db_file)
+        conversation = generation_conversation(compiler._active_gen_deps)
+        run_id = pass_run_id(segment_run_prefix(conversation, 0), attempt, 1)
+        payload = GenerationOutput.model_validate({"pages": pages}).model_dump_json()
+        messages: list[ModelMessage] = [
+            ModelResponse(parts=[ToolCallPart(tool_name="final_result", args=payload, tool_call_id="seed")]),
+            ModelRequest(parts=[ToolReturnPart(tool_name="final_result", content="ok", tool_call_id="seed")]),
+        ]
+
+        def _seed() -> None:
+            snapshot = ContinuableSnapshot(run_id=run_id, step_index=1, messages=messages, state=state)  # type: ignore[arg-type]
+            record = RunRecord(run_id=run_id, conversation_id=conversation)
+
+            async def _inner() -> None:
+                await store.register_run(record)
+                await store.save_snapshot(snapshot)
+
+            asyncio.run(_inner())
+
+        _seed()
+        return store
+
+    @staticmethod
+    def _agent_factory(calls: list[dict[str, object]], page_title: str = "Attention") -> Callable[..., object]:
+        def _factory(**kwargs: object) -> object:
+            agent = MagicMock()
+            agent.result_type = GenerationOutput
+
+            def _run(_deps: object, **run_kwargs: object) -> GenerationOutput:
+                calls.append(dict(run_kwargs))
+                broker = getattr(_deps, "concept_broker", None)
+                if broker is not None:
+                    broker.fetch(getattr(_deps, "source_id", ""), limit=10)
+                return GenerationOutput(pages=[GenerationPage(title=page_title, content=f"The {page_title} page body, written by the fresh attempt.")])
+
+            agent.run = _run
+            return agent
+
+        return _factory
 
 
 # ===========================================================================

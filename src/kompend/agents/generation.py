@@ -19,16 +19,25 @@ from __future__ import annotations
 from typing import ClassVar
 
 from pydantic_ai import ModelRetry, RunContext
+from pydantic_ai_harness.step_persistence import StepStore
 
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import ToolGenerationDeps
 from kompend.compilation.gen_tools import build_gen_tools
 from kompend.compilation.schema import GenerationOutput, GenerationPage
-from kompend.core.config._configs import LLMConfig, RlmConfig
+from kompend.core.config._configs import ContextManagerPreset, LLMConfig, ReasoningEffort, RlmConfig
 from kompend.core.models.enums import NodeType
+from kompend.core.templates import get_template_loader
 from kompend.core.text.slug import slugify
 from kompend.llm.usage import UsageTracker
+
+#: Requests between coverage-discipline reminders. Long segment
+#: conversations drift off the fetch-then-write discipline; the harness
+#: re-injects the anchor at the request tail (cache-safe) at this cadence.
+_REMINDER_INTERVAL: int = 8
+
+_loader = get_template_loader()
 
 
 class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDeps]):
@@ -66,12 +75,13 @@ def make_agentic_generation_agent(
     retries: int = UNSET_RETRIES,
     output_retries: int | None = None,
     delta_retry_enabled: bool | None = None,
-    reasoning_effort: str | None = None,
-    context_manager: str | bool | None = None,
+    reasoning_effort: ReasoningEffort | None = None,
+    context_manager: ContextManagerPreset | bool | None = None,
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     usage_tracker: UsageTracker | None = None,
     llm: LLMConfig | None = None,
+    step_store: StepStore | None = None,
 ) -> AgenticGenerationAgent:
     """Factory for :class:`AgenticGenerationAgent` with harness capabilities.
 
@@ -79,6 +89,12 @@ def make_agentic_generation_agent(
     (``SlidingWindowCompaction`` + ``ClampOversizedMessages``; the generation
     flow runs without cross-segment memory) and registers the
     ``read_segment()`` / ``fetch_concepts()`` tools.
+
+    With *step_store*, every run is persisted (``StepPersistence``) and the
+    agent gains ``search_conversation_history`` over its own persisted
+    transcript (``ConversationSearch``, scope ``conversation``), plus a
+    coverage-discipline system reminder that re-anchors long segment
+    conversations at a fixed request interval (cache-safe tail injection).
 
     Retry budgets are passed as a pydantic-ai ``AgentRetries`` dict so output
     validation and tool calls get independent ceilings. ``retries`` is the
@@ -88,7 +104,15 @@ def make_agentic_generation_agent(
     agentic turns invalidate more often on small models).
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
-    harness = AgenticHarness(context_window=context_window, memory_agent_name="generation")
+    reminder = _loader.render("compilation/generation_reminder.md.j2").strip()
+    harness = AgenticHarness(
+        context_window=context_window,
+        memory_agent_name="generation",
+        step_store=step_store,
+        search_history=step_store is not None,
+        reminder_content=reminder or None,
+        reminder_interval=_REMINDER_INTERVAL,
+    )
     return AgenticGenerationAgent(
         model_string=model_string,
         timeout=timeout,

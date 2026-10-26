@@ -36,7 +36,7 @@ from abc import ABC
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Protocol, TypeVar, cast, runtime_checkable
+from typing import Any, ClassVar, Final, Protocol, TypeVar, cast, runtime_checkable
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
@@ -60,7 +60,7 @@ from kompend.agents.rlm import (
     RLMCapability,
 )
 from kompend.agents.types import PipelineAgentDeps
-from kompend.core.config._configs import LLMConfig, LlmDataFormat, RlmConfig
+from kompend.core.config._configs import ContextManagerPreset, LLMConfig, LlmDataFormat, ReasoningEffort, RlmConfig
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.llm.errors import is_transient_error
@@ -97,10 +97,13 @@ _DEFAULT_TRANSIENT_BACKOFF_SECONDS: float = 5.0
 UNSET_TIMEOUT: float = -1.0
 UNSET_RETRIES: int = -1
 
-#: Compaction presets: name -> (compress threshold, messages kept verbatim).
-_CONTEXT_PRESETS: dict[str, tuple[float, int]] = {
-    "default": (0.9, 0),
-    "aggressive": (0.7, 5),
+#: Compaction presets: preset -> (compress threshold, messages kept verbatim).
+#: Keys are the validated :class:`~kompend.core.config.ContextManagerPreset`
+#: members — a preset absent here fails the ``[]`` lookup loudly instead of
+#: degrading to a different compaction shape.
+_CONTEXT_PRESETS: Final[dict[ContextManagerPreset, tuple[float, int]]] = {
+    ContextManagerPreset.DEFAULT: (0.9, 0),
+    ContextManagerPreset.AGGRESSIVE: (0.7, 5),
 }
 
 #: Sliding-window defaults (zero-cost, no LLM call).
@@ -194,9 +197,13 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     skills: dict[str, str] = field(default_factory=dict)
     usage_tracker: UsageTracker | None = None
     fallback_models: list[str] | None = None
-    reasoning_effort: str | None = None
+    #: Reasoning effort from ``compile.llm.reasoning_effort``; ``None`` leaves
+    #: the provider's default in place (same as ``ReasoningEffort.DEFAULT``).
+    reasoning_effort: ReasoningEffort | None = None
     use_native_output: bool = False
-    context_manager: str | bool | None = None
+    #: Context-manager preset from ``compile.llm.context_manager``. ``False``
+    #: disables compaction; ``None`` defers to the config, then to disabled.
+    context_manager: ContextManagerPreset | bool | None = None
     context_window: int | None = None
     delta_retry_enabled: bool | None = None
     tools: list[Tool[DepsT]] = field(default_factory=list)
@@ -312,6 +319,9 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         deps: DepsT,
         *,
         message_history: list[ModelMessage] | None = None,
+        user_prompt: str | None = None,
+        conversation_id: str | None = None,
+        run_id: str | None = None,
     ) -> ResultT:
         """Single-turn agent invocation. Returns the typed result.
 
@@ -320,6 +330,16 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             message_history: Optional prior conversation messages to
                 continue from (used by incremental extraction to thread
                 context across chunks of the same source).
+            user_prompt: Overrides the deps-rendered prompt. Only useful
+                together with ``message_history`` (a resume pass continues
+                an interrupted conversation with a short continuation
+                prompt instead of re-stating the full task).
+            conversation_id: Groups the run with related runs (step
+                persistence + conversation search scope). Inherited from
+                ``message_history`` when omitted there.
+            run_id: Explicit identity for this run. Step persistence keys
+                its snapshots by it, and it is single-shot per store —
+                a re-used id raises. Omitted: a fresh UUID7.
 
         Raises:
             LLMOutputError: if the LLM call fails or returns
@@ -328,10 +348,11 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         if self._agent is None:
             self._agent = self._build_agent()
         self._current_source_id = deps.source_id
-        user_prompt = self.render_user_prompt(deps)
+        if user_prompt is None:
+            user_prompt = self.render_user_prompt(deps)
         system_prompt = self.render_system_prompt(deps)
         try:
-            result = self._invoke(user_prompt, deps, system_prompt, message_history)
+            result = self._invoke(user_prompt, deps, system_prompt, message_history, conversation_id=conversation_id, run_id=run_id)
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
             ctx_info = _context_usage_str(self.usage_tracker)
@@ -352,20 +373,25 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         deps: DepsT,
         *,
         message_history: list[ModelMessage] | None = None,
+        user_prompt: str | None = None,
+        conversation_id: str | None = None,
+        run_id: str | None = None,
     ) -> tuple[ResultT, list[ModelMessage]]:
         """Single-turn agent invocation that also returns the new messages.
 
         Same as :meth:`run` but returns ``(output, new_messages)`` so callers
         can thread the conversation history into the next call (used by the
-        incremental extraction strategy).
+        incremental extraction strategy). The ``user_prompt`` /
+        ``conversation_id`` / ``run_id`` kwargs forward to :meth:`run`.
         """
         if self._agent is None:
             self._agent = self._build_agent()
         self._current_source_id = deps.source_id
-        user_prompt = self.render_user_prompt(deps)
+        if user_prompt is None:
+            user_prompt = self.render_user_prompt(deps)
         system_prompt = self.render_system_prompt(deps)
         try:
-            result = self._invoke(user_prompt, deps, system_prompt, message_history)
+            result = self._invoke(user_prompt, deps, system_prompt, message_history, conversation_id=conversation_id, run_id=run_id)
         except Exception as exc:
             debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
             ctx_info = _context_usage_str(self.usage_tracker)
@@ -420,6 +446,9 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         deps: DepsT,
         system_prompt: str,
         message_history: list[ModelMessage] | None,
+        *,
+        conversation_id: str | None = None,
+        run_id: str | None = None,
     ) -> Any:
         """Run the agent: one transient-retry policy, one cache-rejection retry.
 
@@ -444,6 +473,8 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                     instructions=system_prompt,
                     message_history=message_history,
                     usage_limits=self._usage_limits_for(deps),
+                    conversation_id=conversation_id,
+                    run_id=run_id,
                 )
             except Exception as exc:
                 if self._prompt_cache and _is_cache_rejection(exc):
@@ -782,27 +813,14 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         setting = self.context_manager
         if setting is False or setting is None:
             return None
-        if isinstance(setting, str):
-            normalized = setting.strip().lower()
-            if normalized in {"", "off", "false", "none", "no"}:
-                return None
-            preset = normalized
-        else:
-            preset = "default"  # ``True`` -> default preset
+        preset = ContextManagerPreset.DEFAULT if setting is True else setting
 
-        if preset == "sliding":
+        if preset is ContextManagerPreset.SLIDING:
             return SlidingWindowCompaction(
                 max_messages=_SLIDING_MAX_MESSAGES,
                 keep_messages=_SLIDING_KEEP_MESSAGES,
             )
-        try:
-            threshold, keep = _CONTEXT_PRESETS[preset]
-        except KeyError:
-            logger.warning(
-                "Unknown context_manager preset %r — falling back to 'default'",
-                setting,
-            )
-            threshold, keep = _CONTEXT_PRESETS["default"]
+        threshold, keep = _CONTEXT_PRESETS[preset]
         return build_summarizing_compaction(
             context_window=self.context_window,
             compress_threshold=threshold,

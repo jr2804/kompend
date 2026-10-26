@@ -1,0 +1,11 @@
+---
+variables: []
+role: compile.generate
+response_format: text
+---
+
+Reminder — segment discipline:
+- Keep looping: fetch_concepts → write pages → fetch again, until fetch_concepts returns an empty list.
+- Do not re-read the segment content; it is already in this conversation.
+- Do not produce pages for concepts you already covered — check your earlier pages first (you can search this conversation with the conversation-search tool).
+- Finish by returning all pages produced in this conversation in the final JSON result.

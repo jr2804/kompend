@@ -177,6 +177,16 @@ roots the notebook at `.kompend/agent-memory/` via `DirectoryMemoryStore`
 factory fingerprints `MEMORY.md` into the summary cache deps - editing the
 notebook invalidates cached summaries like a model switch.
 
+Three more harness capabilities ride on `AgenticHarness` (`agentic_harness.py`),
+first consumed by the generation and summarizer agents: **StepPersistence**
+(`step_store`) saves every run's transcript after each turn, so a hard kill
+resumes from the last complete snapshot; generation derives its keys in
+`compilation/step_recovery.py` (conversation = gen deps, run =
+`...-segNNN-aNNpNN`). **ConversationSearch** (`search_history`) adds a BM25
+tool over the same store, scoped to the conversation. **SystemReminders**
+(`reminder_content` + `reminder_interval`) appends a cache-safe tail reminder
+rendered from a template - never inlined.
+
 The delta-retry salvage hook is opt-in per class: a subclass sets
 `supports_delta_retry: ClassVar[bool] = True`, and it fires only when
 `llm.delta_retry_enabled` is on. It is a `ClassVar` — a plain attribute would
@@ -192,11 +202,9 @@ Thin delegate around any native pydantic-ai `Model`. Adds:
 - `_repair_tool_call_args()` / `_repair_text_part()` — `json_repair`
   before the strict validator (fixes malformed JSON from small local models)
 
-History compression is **not** handled here. It moved up to the
-pydantic-ai Agent layer via `SummarizingCompaction` (see
-`KompendAgentBase`); the old `_compact_messages()` workaround — which
-dropped all `ModelResponse` on retry, defeating pydantic-ai's retry
-feedback loop — was removed.
+History compression is **not** handled here - it moved up to the pydantic-ai
+Agent layer via `SummarizingCompaction` (see `KompendAgentBase`); the old
+`_compact_messages()` workaround was removed.
 
 ### Dependency types (`types.py`, `deps.py`)
 
@@ -214,11 +222,9 @@ feedback loop — was removed.
 | `VerificationDeps`  | AgenticVerificationAgent (payload: `VerificationClaim`, `VerificationSource`, `VerificationPage`) |
 | `WriteDeps`         | AgenticWriteAgent (payload: `source_texts` — the full sources, served in windows of `source_char_max` characters) |
 
-Agentic-session payload structures are `TypedDict`s declared in `types.py`
-alongside the other module-level classes (the sorter groups them after the
-deps dataclasses) — never bare `dict[str, Any]` at the agent boundary, so a
-mistyped key is a `ty` error. `DistillPage` is `total=False` because it
-mirrors untrusted model output; callers re-read every key defensively.
+Agentic-session payloads are `TypedDict`s in `types.py`, never bare
+`dict[str, Any]` at the agent boundary. `DistillPage` is `total=False` because
+it mirrors untrusted model output.
 
 ## Local Contracts
 
@@ -237,14 +243,7 @@ mirrors untrusted model output; callers re-read every key defensively.
 ## Relationship to other layers
 
 This package (`agents/`, plural) is distinct from `kompend/acp/` (singular
-`agent/`), which implements the ACP protocol adapter for editors. The
-two layers stack:
-
-1. Editor sends an ACP request → `kompend/acp/` dispatches to a
-   TOML-defined conversational agent
-2. Conversational agent calls MCP tools
-3. MCP tools drive the pipeline
-4. Pipeline internally uses **these** PydanticAI agents (`kompend.agents.*`)
-
-See `docs/reference/pydantic-ai-agents.md` for the user-facing guide covering per-role model
-overrides, skills configuration, and how to write a new agent.
+`agent/`), the ACP protocol adapter for editors. Stack: editor request →
+`kompend/acp/` → conversational agent → MCP tools → pipeline → **these**
+PydanticAI agents. See `docs/reference/pydantic-ai-agents.md` for per-role
+model overrides, skills and how to write a new agent.

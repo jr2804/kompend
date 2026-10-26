@@ -45,14 +45,26 @@ class LintRuleAgent(KompendAgentBase[BaseModel | str, PipelineAgentDeps]):
         *,
         result_type: type | None = None,
         message_history: list[ModelMessage] | None = None,
+        user_prompt: str | None = None,
+        conversation_id: str | None = None,
+        run_id: str | None = None,
     ) -> AgentResult:
         """Single-turn agent invocation with optional per-call result type.
 
         When *result_type* differs from the cached agent's type, a new
         PydanticAI Agent is built and cached. This lets lint rules share
         a single LintRuleAgent while using different output schemas.
+
+        The transcript kwargs exist for the base signature; lint rules are
+        single-turn and never persist.
         """
         if result_type is not None and result_type != self.result_type:
             self.result_type = result_type
             self._agent = None  # force rebuild in super().run()
-        return super().run(deps, message_history=message_history)
+        return super().run(
+            deps,
+            message_history=message_history,
+            user_prompt=user_prompt,
+            conversation_id=conversation_id,
+            run_id=run_id,
+        )

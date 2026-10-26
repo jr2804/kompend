@@ -20,6 +20,13 @@ from kompend.agents.types import SummarizerDeps
 from kompend.agents.vault_memory import DirectoryMemoryStore
 from kompend.compilation.summarizer_tools import build_summarizer_tools
 from kompend.core.config._configs import LLMConfig, LlmMemoryStore, RlmConfig
+from kompend.core.templates import get_template_loader
+
+#: Requests between discipline reminders (see the generation agent's
+#: ``_REMINDER_INTERVAL`` — same rationale: long tool sessions drift).
+_REMINDER_INTERVAL: int = 10
+
+_loader = get_template_loader()
 
 
 @dataclass
@@ -95,11 +102,14 @@ def make_agentic_summarizer_agent(
     memory_store: DirectoryMemoryStore | None = None
     if memory_dir is not None and llm is not None and llm.memory_store is LlmMemoryStore.VAULT:
         memory_store = DirectoryMemoryStore(memory_dir)
+    reminder = _loader.render("chunking/summarizer_reminder.md.j2").strip()
     harness = AgenticHarness(
         context_window=context_window,
         memory_agent_name="summarizer",
         memory=bool(llm and llm.agent_memory),
         memory_store=memory_store,
+        reminder_content=reminder or None,
+        reminder_interval=_REMINDER_INTERVAL,
     )
     return AgenticSummarizerAgent(
         model_string=model_string,

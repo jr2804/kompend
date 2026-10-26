@@ -11,6 +11,7 @@ from pydantic_ai_harness.compaction import ContextUsage, SlidingWindowCompaction
 
 from kompend.agents.base import KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
+from kompend.core.config import ContextManagerPreset
 from kompend.core.config._configs import LLMConfig, LlmDataFormat
 from kompend.llm.usage import UsageTracker
 
@@ -119,14 +120,14 @@ class TestCompactionCapability:
         assert agent._resolve_context_capability(MagicMock()) is None  # noqa: SLF001
 
     def test_default_preset_builds_context_manager(self) -> None:
-        agent = self._agent(context_manager="default", context_window=8192)
+        agent = self._agent(context_manager=ContextManagerPreset.DEFAULT, context_window=8192)
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
         assert isinstance(cap, SummarizingCompaction)
         assert cap.max_fraction == 0.9
         assert cap.context_window == 8192
 
     def test_aggressive_preset_uses_lower_threshold(self) -> None:
-        agent = self._agent(context_manager="aggressive")
+        agent = self._agent(context_manager=ContextManagerPreset.AGGRESSIVE)
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
         assert isinstance(cap, SummarizingCompaction)
         assert cap.max_fraction == 0.7
@@ -138,20 +139,26 @@ class TestCompactionCapability:
         assert cap.max_fraction == 0.9
 
     def test_sliding_preset_builds_sliding_window(self) -> None:
-        agent = self._agent(context_manager="sliding")
+        agent = self._agent(context_manager=ContextManagerPreset.SLIDING)
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
         assert isinstance(cap, SlidingWindowCompaction)
 
     @pytest.mark.parametrize("value", ["off", "false", "none", "no", ""])
-    def test_disabled_string_variants(self, value: str) -> None:
-        agent = self._agent(context_manager=value)
+    def test_disabled_string_variants_coerce_at_config_boundary(self, value: str) -> None:
+        """Off-words are accepted by the config schema and map to ``False``.
+
+        The schema is the trust boundary; agents receive the coerced value.
+        """
+        config = LLMConfig(context_manager=value)
+        assert config.context_manager is False
+        agent = self._agent(context_manager=config.context_manager)
         assert agent._resolve_context_capability(MagicMock()) is None  # noqa: SLF001
 
-    def test_unknown_preset_falls_back_to_default(self, caplog: Any) -> None:
-        agent = self._agent(context_manager="bogus")
-        cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, SummarizingCompaction)
-        assert cap.max_fraction == 0.9  # fell back
+    def test_unknown_preset_raises(self) -> None:
+        """An unvalidated preset name fails loudly instead of degrading."""
+        agent = self._agent(context_manager="bogus")  # type: ignore[arg-type]
+        with pytest.raises(KeyError):
+            agent._resolve_context_capability(MagicMock())  # noqa: SLF001
 
     def test_usage_update_feeds_tracker(self) -> None:
         tracker = UsageTracker()

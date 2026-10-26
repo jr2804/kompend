@@ -19,6 +19,7 @@ from typing import Any, ClassVar
 from pydantic_ai.messages import BinaryContent
 
 from kompend.agents.base import KompendAgentBase
+from kompend.core.config import ReasoningEffort
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.debug import save_debug_prompt
 from kompend.llm.format import strip_reasoning
@@ -81,11 +82,23 @@ class VlmAgent(KompendAgentBase[str, VlmDeps]):
         # Image captioning never benefits from reasoning — force it off so
         # the model doesn't burn time on thinking traces that pollute
         # captions and cause timeouts on slow local vision models.
-        self.reasoning_effort = "none"
+        self.reasoning_effort = ReasoningEffort.NONE
         super().__post_init__()
 
-    def run(self, deps: VlmDeps, *, message_history: list[Any] | None = None) -> str:  # noqa: PLR6301
-        """Run VLM captioning with image input via the unified model path."""
+    def run(
+        self,
+        deps: VlmDeps,
+        *,
+        message_history: list[Any] | None = None,
+        user_prompt: str | None = None,
+        conversation_id: str | None = None,
+        run_id: str | None = None,
+    ) -> str:  # noqa: PLR6301
+        """Run VLM captioning with image input via the unified model path.
+
+        The transcript kwargs exist for the base signature; the VLM agent is
+        single-turn and never persists.
+        """
         self._current_source_id = deps.source_id
         image_file = Path(deps.image_file)
         if not image_file.is_file():

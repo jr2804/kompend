@@ -11,7 +11,7 @@ merging and an optional iterative WiCER refinement loop.
 
 ## Ownership
 
-- `src/kompend/compilation/` — compilers, graph construction, schema, checkpoints
+- `src/kompend/compilation/` - compilers, graph construction, schema, transcript recovery
 
 ## Architecture
 
@@ -23,7 +23,7 @@ merging and an optional iterative WiCER refinement loop.
 | `wicer.py`              | `WiCERCompiler` — iterative correctness/entity/consistency refinement    |
 | `graph.py`              | `GraphCompiler` — dependency-graph-aware compilation                     |
 | `schema.py`             | Wiki graph schema: predicates, entity types, relation types              |
-| `_checkpoints.py`       | Compilation checkpoint/restore                                           |
+| `step_recovery.py`      | Transcript-key derivation + scan/extract for step-store resume           |
 | `flows/`                | Flow-based compilation building blocks                                   |
 | `flows/assembly.py`     | Cross-source assembly flow                                               |
 | `flows/extraction.py`   | Extraction flow                                                          |
@@ -41,10 +41,20 @@ merging and an optional iterative WiCER refinement loop.
 - `WiCERCompiler` wraps a `TwoPhaseCompiler` and adds iterative probing.
 - No prompt text belongs here - templates live in `src/kompend/templates/`.
 - **LLM-product cache keys carry the model** (extraction deps, generation
-  deps + checkpoint, summary deps): a model switch invalidates them by
+  deps, summary deps): a model switch invalidates them by
   design. `compile.cache_ignore_model` (`--ignore-model`) drops the model
   from all three keys so a run can be finished on another model - the
   per-page `MetadataField.MODEL` tag keeps the result attributable.
+- **Segment transcripts live in the step store, not in a checkpoint file**
+  (`step_recovery.py` + `flows/generation.py`): the harness
+  `StepPersistence` capability persists every run into
+  `SqliteStepStore(paths.step_db_file)`; the conversation id is the
+  generation deps key and each pass gets a deterministic
+  `...-segNNN-aNNpNN` run id. A complete snapshot whose final result
+  validates as `GenerationOutput` skips the segment; an interrupted one
+  resumes with its history; `--no-cache` ignores both. The store is a
+  separate SQLite file because `kompend.db` is recreated clean-cut on
+  schema bumps.
 - **No content is excluded by size or by a threshold** (see the budget rule in
   `.agents/CODE.md`). `min_content_length` and `max_concept_pages` are warning
   thresholds: short pages and every concept-page candidate are compiled. Only

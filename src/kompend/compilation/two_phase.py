@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import time
 
-from kompend.compilation._checkpoints import delete_gen_checkpoint
 from kompend.compilation._two_phase_core import (
     BatchFailureTracker,
     Extraction,
@@ -256,16 +255,15 @@ class TwoPhaseCompiler(BaseCompiler):
         gen_elapsed = time.monotonic() - gen_start
 
         has_failures = self._batch_tracker.failed > 0
-        # When batches failed, keep the checkpoint so a re-run can resume and
-        # retry only the failed batches. Don't cache the incomplete wiki.
+        # When batches failed, keep the transcripts (they live in the step
+        # store regardless) and skip caching the incomplete wiki — a re-run
+        # retries only the failed segments.
         if has_failures:
             logger.info(
-                "TwoPhase: %d/%d batch(es) failed — checkpoint preserved, wiki not cached. Re-run to retry failed batches only.",
+                "TwoPhase: %d/%d batch(es) failed — transcripts persisted, wiki not cached. Re-run to retry failed segments only.",
                 self._batch_tracker.failed,
                 self._batch_tracker.total,
             )
-        else:
-            delete_gen_checkpoint(self._config, gen_deps)
 
         if self._extraction_stats:
             wiki.metadata["extraction_stats"] = [

@@ -18,6 +18,19 @@ Agentic agents in kompend share these harness capabilities:
   on multi-turn tool agents.
 - **ClampOversizedMessages** — ``max_part_tokens=context_window // 4``.
   Clamps runaway tool outputs that would blow a single turn.
+- **StepPersistence** (``step_store``) — records every agent turn as a
+  continuable snapshot in a :class:`~pydantic_ai_harness.step_persistence.SqliteStepStore`.
+  The generation flow reads those snapshots to skip finished work and to
+  resume an interrupted segment mid-conversation (replacing the old
+  hand-rolled generation checkpoint).
+- **ConversationSearch** (``search_history=True``, needs ``step_store``) —
+  a BM25 ``search_conversation_history`` tool over the same store, scoped
+  to the calling run's conversation, so a segment agent can recall what
+  compaction dropped.
+- **SystemReminders** (``reminder_content`` + ``reminder_interval``) —
+  re-injects a short anchor instruction every N model requests. The text
+  rides at the request tail behind a cache point, so the cached prompt
+  prefix stays byte-identical.
 
 ``AgenticHarness`` centralizes the construction of these capabilities
 from a known context window, with an ``extra_capabilities`` hook for
@@ -29,11 +42,15 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from typing import cast
 
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai_harness.compaction import ClampOversizedMessages, SlidingWindowCompaction
 from pydantic_ai_harness.compaction._context_window import DEFAULT_CONTEXT_WINDOW
+from pydantic_ai_harness.conversation_search import ConversationSearch, SnapshotHistorySource, SnapshotStore
 from pydantic_ai_harness.memory import InMemoryStore, Memory, MemoryStore
+from pydantic_ai_harness.step_persistence import StepPersistence, StepStore
+from pydantic_ai_harness.system_reminders import Reminder, SystemReminders
 
 
 @dataclass
@@ -60,6 +77,19 @@ class AgenticHarness:
     memory_store: MemoryStore | None = None
     compaction: bool = True
     clamp: bool = True
+    #: Persistent step store for the StepPersistence capability. ``None``
+    #: (default) disables persistence. When set, every ``Agent.run`` call
+    #: records continuable snapshots keyed by the ``run_id`` the caller
+    #: passes to :meth:`KompendAgentBase.run`.
+    step_store: StepStore | None = None
+    #: Add a ConversationSearch tool over ``step_store`` (BM25 recall of the
+    #: run's own conversation). Requires ``step_store``; runs must carry a
+    #: ``conversation_id`` or the tool searches nothing.
+    search_history: bool = False
+    #: Anchor text re-injected every ``reminder_interval`` model requests
+    #: (SystemReminders). Both fields must be set together; ``None`` disables.
+    reminder_content: str | None = None
+    reminder_interval: int | None = None
     extra_capabilities: Sequence[AbstractCapability] = field(default_factory=list)
 
     def build_capabilities(self) -> Sequence[AbstractCapability]:
@@ -78,5 +108,18 @@ class AgenticHarness:
             caps.append(SlidingWindowCompaction(max_fraction=0.6, context_window=self.context_window))
         if self.clamp:
             caps.append(ClampOversizedMessages(max_part_tokens=_ctx // 4))
+        if self.step_store is not None:
+            # agent_name stays None: the capability then derives its store
+            # run_id verbatim from the caller-provided ``run_id`` (no
+            # base64 namespacing), which is what the recovery scan matches.
+            caps.append(StepPersistence(store=self.step_store, agent_name=None))
+            if self.search_history:
+                # The concrete stores (SqliteStepStore, FileStepStore) implement
+                # list_snapshots; the harness StepStore protocol just omits it.
+                caps.append(ConversationSearch(source=SnapshotHistorySource(cast("SnapshotStore", self.step_store)), scope="conversation"))
+        if self.reminder_content is not None or self.reminder_interval is not None:
+            if self.reminder_content is None or self.reminder_interval is None:
+                raise ValueError("reminder_content and reminder_interval must be set together")
+            caps.append(SystemReminders(reminders=(Reminder(content=self.reminder_content, interval=self.reminder_interval),)))
         caps.extend(self.extra_capabilities)
         return caps
