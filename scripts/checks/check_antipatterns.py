@@ -30,6 +30,18 @@ LLM-coding mistakes observed in this codebase:
   flagged. The single definition lives in ``kompend/core/env.py`` (``EnvVar``);
   every consumer must reference a member. Docstring/help-text mentions are
   allowed (they document the real name, they don't read env vars).
+- Module-level ``dict[str, ...]`` literals whose keys are all bare strings are
+  flagged (``STR-KEYED-REGISTRY``). A name→something mapping keyed by strings
+  is a registry, and its vocabulary must be a ``StrEnum`` so the keys live in
+  exactly one place (the original ``PARSER_BACKENDS`` defect). Derived
+  mappings (dict comprehensions over enum members) and external-standard
+  vocabularies are fine — the latter waive with ``# nocheck: str-registry —
+  <reason>``.
+- Comparisons against a bare string literal that duplicates a member value of
+  a known project ``StrEnum`` are flagged (``ENUM-VALUE-LITERAL``): compare
+  against the enum member instead, so a vocabulary change cannot silently
+  desync a call site. External vocabularies waive with
+  ``# nocheck: enum-literal — <reason>``.
 
 Each violation prints ``file:line:col  rule  message`` and the script
 exits non-zero on any violation. Exits 0 when clean.
@@ -99,10 +111,11 @@ _DATA_DRIVEN_ACCESSOR_RE = re.compile(
     r"\b(?:config|DEFAULTS|cfg|self\._config|self\._cfg|self\._limits|self\._budget|self\._display|self\._display_config)\s*[\.\(]"
 )
 
-# Allow ``hexdigest()[:N]`` and ``uuid.uuid4().hex[:N]`` style: SHA-256
-# hashes and UUID hex strings are intentionally truncated to short
-# prefixes for display/storage and that's not a data crop.
-_HASH_TRUNCATION_RE = re.compile(r"(?:hexdigest\s*\(\s*\)|\.hex)\s*\[:\s*\d+\s*\]")
+# Allow ``hexdigest()[:N]``, ``uuid.uuid4().hex[:N]`` and
+# ``make_cache_key(...)[:N]`` style: SHA-256 hashes, UUID hex strings and
+# cache keys are intentionally truncated to short prefixes for display/storage
+# and that's not a data crop.
+_HASH_TRUNCATION_RE = re.compile(r"(?:hexdigest\s*\(\s*\)|\.hex|make_cache_key\s*\(.*?\))\s*\[:\s*\d+\s*\]")
 
 # Env-var access mechanisms. A ``"KOMP_..."`` literal on a line with one of
 # these reads/sets an env var and must reference an ``EnvVar`` member.
@@ -120,6 +133,33 @@ _PATHS_MODULE = SRC_ROOT / "core" / "paths.py"
 
 # The single allowed definition site for ``KOMP_*`` env-var names.
 _ENV_MODULE = SRC_ROOT / "core" / "env.py"
+
+# STR-KEYED-REGISTRY: a module-level ``NAME: dict[str, ...] = {...}`` whose
+# keys are all bare string literals is a string-keyed registry — the
+# vocabulary must be a StrEnum (keys as members) or a derived comprehension.
+# ``# nocheck: str-registry — <reason>`` waives external-standard maps.
+_NO_CHECK_RE = re.compile(r"#\s*nocheck:", re.IGNORECASE)
+
+#: StrEnums whose member values participate in ENUM-VALUE-LITERAL. Config /
+#: registry vocabularies whose bare literals have historically leaked into
+#: call sites. Extend when a new enum gains consumers.
+_VOCAB_ENUM_NAMES: frozenset[str] = frozenset(
+    {
+        "Compiler",
+        "ContextManagerPreset",
+        "Flavor",
+        "ImageMode",
+        "MatcherName",
+        "NodeType",
+        "OutputFormat",
+        "ParsecraftEffort",
+        "ParsecraftJudge",
+        "ParsecraftPreference",
+        "ParserName",
+        "ReasoningEffort",
+        "Tier",
+    }
+)
 
 # Files where module-level state is a documented design choice (singleton
 # registries, plugin tables, etc.). Adding a new path here requires a
@@ -251,6 +291,8 @@ def scan_file(path: Path) -> list[Violation]:
     out.extend(scan_magic_crops(path, lines))
     out.extend(scan_env_var_literals(path, lines))
     out.extend(scan_wiki_filenames(path, lines))
+    out.extend(scan_str_keyed_registries(path, tree, lines))
+    out.extend(scan_enum_value_literals(path, tree, lines))
     out.extend(scan_pip_installs(path, lines))
     return out
 
@@ -355,6 +397,129 @@ def scan_env_var_literals(path: Path, lines: list[str]) -> list[Violation]:
                 )
             )
     return out
+
+
+def scan_str_keyed_registries(path: Path, tree: ast.Module, lines: list[str]) -> list[Violation]:
+    """Flag module-level ``dict[str, ...]`` literals with all-bare-string keys.
+
+    A string-keyed registry (``KNOWN_BACKENDS = {"parsecraft": ...}``) hides a
+    closed vocabulary in dict keys: nothing validates it, nothing derives help
+    text or schema choices from it, and every consumer re-types the strings.
+    The fix is a ``StrEnum`` keyed registry (StrEnum members hash as their
+    value, so raw-string lookups keep working). Derived mappings — dict
+    comprehensions over enum members — are the compliant form and never match.
+    """
+    if _is_test_file(path):
+        return []
+    out: list[Violation] = []
+    for node in tree.body:
+        if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
+            continue
+        if not _is_plain_str_keyed_dict_annotation(node.annotation):
+            continue
+        value = node.value
+        if not isinstance(value, ast.Dict) or not value.keys:
+            continue  # empty registries populated via register calls, caches, etc.
+        if any(key is None for key in value.keys):
+            continue  # ** merge — treat as derived
+        if not all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in value.keys):
+            continue
+        line = lines[node.lineno - 1]
+        if _NO_CHECK_RE.search(line):
+            continue
+        keys = ", ".join(repr(key.value) for key in value.keys[:4])
+        out.append(
+            Violation(
+                file=path,
+                line=node.lineno,
+                col=node.col_offset + 1,
+                rule="STR-KEYED-REGISTRY",
+                message=(f"{node.target.id} is a string-keyed registry ({keys}…) — key it by a StrEnum so the vocabulary lives in one place"),
+            )
+        )
+    return out
+
+
+def _is_plain_str_keyed_dict_annotation(annotation: ast.expr) -> bool:
+    """True for ``dict[str, ...]`` / ``Final[dict[str, ...]]`` annotations."""
+    target = annotation
+    while isinstance(target, ast.Subscript) and isinstance(target.value, ast.Name) and target.value.id == "Final":
+        target = target.slice
+    if not isinstance(target, ast.Subscript) or not isinstance(target.value, ast.Name) or target.value.id != "dict":
+        return False
+    key_type = target.slice.elts[0] if isinstance(target.slice, ast.Tuple) else target.slice
+    return isinstance(key_type, ast.Name) and key_type.id == "str"
+
+
+def scan_enum_value_literals(path: Path, tree: ast.Module, lines: list[str]) -> list[Violation]:
+    """Flag comparisons against bare string literals duplicating enum values.
+
+    ``if preset == "sliding"`` compiles fine and silently desyncs the day the
+    ``ContextManagerPreset`` vocabulary changes; ``preset is
+    ContextManagerPreset.SLIDING`` cannot. Only vocabularies in
+    ``_VOCAB_ENUM_NAMES`` are checked — their values are collected from the
+    enum definitions in ``src/kompend`` at scan time.
+    """
+    if _is_test_file(path):
+        return []
+    values = _vocab_enum_values()
+    if not values:
+        return []
+    out: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        if not all(isinstance(op, (ast.Eq, ast.NotEq, ast.In, ast.NotIn)) for op in node.ops):
+            continue
+        for comparator in node.comparators:
+            if not (isinstance(comparator, ast.Constant) and isinstance(comparator.value, str)):
+                continue
+            enum_names = values.get(comparator.value)
+            if not enum_names:
+                continue
+            line_idx = node.lineno - 1
+            if _NO_CHECK_RE.search(lines[line_idx]):
+                continue
+            names = "/".join(sorted(enum_names))
+            out.append(
+                Violation(
+                    file=path,
+                    line=node.lineno,
+                    col=node.col_offset + 1,
+                    rule="ENUM-VALUE-LITERAL",
+                    message=f'comparison with "{comparator.value}" duplicates a {names} member value — compare with the enum member',
+                )
+            )
+    return out
+
+
+@cache
+def _vocab_enum_values() -> dict[str, set[str]]:
+    """Map member value → enum class names for ``_VOCAB_ENUM_NAMES``.
+
+    Collected by scanning ``src/kompend`` for ``class X(StrEnum)`` bodies.
+    """
+    value_map: dict[str, set[str]] = defaultdict(set)
+    for py in SRC_ROOT.rglob("*.py"):
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"), filename=str(py))
+        except (OSError, SyntaxError):
+            continue
+        for node in tree.body:
+            if not isinstance(node, ast.ClassDef) or node.name not in _VOCAB_ENUM_NAMES:
+                continue
+            if not any(isinstance(base, ast.Name) and base.id == "StrEnum" for base in node.bases):
+                continue
+            for stmt in node.body:
+                if (
+                    isinstance(stmt, ast.Assign)
+                    and len(stmt.targets) == 1
+                    and isinstance(stmt.targets[0], ast.Name)
+                    and isinstance(stmt.value, ast.Constant)
+                    and isinstance(stmt.value.value, str)
+                ):
+                    value_map[stmt.value.value].add(node.name)
+    return dict(value_map)
 
 
 def scan_noqa_bans(path: Path, lines: list[str]) -> list[Violation]:
