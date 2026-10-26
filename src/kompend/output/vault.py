@@ -31,7 +31,7 @@ from typing import Any, ClassVar, Final
 
 from kompend import __version__ as _KOMP_VERSION
 from kompend.core.config._configs import DisplayConfig, OutputConfig
-from kompend.core.models import CompiledWiki, ExtractionStats, GraphEdge, ImageRef, MetadataField, WikiNode, image_source_key
+from kompend.core.models import KIND_FOLDERS, CompiledWiki, ExtractionStats, GraphEdge, ImageRef, MetadataField, WikiNode, image_source_key
 from kompend.core.models.assets import AssetRecord
 from kompend.core.models.enums import AssetKind, NodeType, OkfField
 from kompend.core.models.metadata import meta_dict, meta_dict_list, meta_str_list, meta_str_list_dict
@@ -43,7 +43,6 @@ from kompend.core.paths import (
     DEFAULT_SOURCES_DIR_NAME,
     EXPORTED_DIR_NAME,
     INDEX_FILE,
-    KIND_FOLDERS,
     KOMP_DIR,
     LOG_FILE,
     QUALITY_FILE,

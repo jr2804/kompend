@@ -22,13 +22,14 @@ from kompend.preprocessing.parsers._registry import (
     _BACKEND_MODULES,
     KNOWN_BACKENDS,
     ParserBuildOptions,
+    ParserName,
     build_default_router,
     get_all_extensions,
     get_backend,
     get_registered_parsers,
     register_backend,
 )
-from kompend.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, FileExtension, ParserRouter, scrub_document
+from kompend.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, ParserRouter, scrub_document
 from kompend.preprocessing.parsers.parsecraft_parser import ParsecraftParser
 
 
@@ -139,12 +140,26 @@ def test_build_default_router_missing_extra_is_loud(monkeypatch: pytest.MonkeyPa
         build_default_router(name="_uninstalled")
 
 
-def test_register_backend_populates_metadata() -> None:
+def test_register_backend_rejects_names_outside_the_enum() -> None:
+    """The registry vocabulary is closed — only ``ParserName`` members register.
+
+    Arbitrary string keys were the original antipattern: they let backend
+    names drift between the registry, the config schema and the CLI.
+    """
     cls = _dummy_cls()
-    register_backend("_test_dummy", lambda _opts: cls(), parser_cls=cls)
-    assert get_backend("_test_dummy") is not None
-    names = {entry["name"] for entry in get_registered_parsers()}
-    assert "_test_dummy" in names
+    with pytest.raises(ValueError, match="ParserName"):
+        register_backend("_test_dummy", lambda _opts: cls(), parser_cls=cls)
+    with pytest.raises(ValueError, match="Unknown parser backend"):
+        get_backend("_test_dummy")
+
+
+def test_real_backend_metadata_is_populated() -> None:
+    """Importing the canonical backend populates registry metadata."""
+    entries = {entry["name"]: entry for entry in get_registered_parsers()}
+    assert "parsecraft" in entries
+    entry = entries["parsecraft"]
+    assert entry["type"] == "built-in"
+    assert ".pdf" in entry["extensions"]
 
 
 def _dummy_cls() -> type[BaseParser]:
@@ -168,23 +183,15 @@ def test_get_all_extensions_follows_the_named_backend() -> None:
     backend the registry knows — a vault should only ingest what its parser can
     actually read.
     """
-    parsecraft = get_all_extensions(["parsecraft"])
+    parsecraft = get_all_extensions([ParserName.PARSECRAFT])
+    assert parsecraft == {str(ext).lower() for ext in ParsecraftParser.supported_extensions}
     assert ".pdf" in parsecraft
     assert ".docx" in parsecraft
     # parsecraft reads source files as plain text through its native-text
     # backend, so a vault configured for it can ingest code.
     assert ".c" in parsecraft
-    # A backend with no text-family support contributes none of them.
-
-    class _PdfOnly(BaseParser):
-        supported_extensions = {FileExtension.PDF}
-        figure_enrichment = False
-
-        def parse(self, source_file: Path) -> ParsedDocument:
-            raise NotImplementedError
-
-    register_backend("_test_pdf_only", lambda _opts: _PdfOnly(), parser_cls=_PdfOnly)
-    assert get_all_extensions(["_test_pdf_only"]) == {".pdf"}
+    # Unknown or uninstalled names contribute nothing (documented skip).
+    assert get_all_extensions(["_unregistered"]) == set()
 
 
 def test_scrub_document_replaces_lone_surrogates() -> None:

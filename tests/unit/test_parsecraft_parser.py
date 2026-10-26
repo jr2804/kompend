@@ -312,7 +312,10 @@ class TestJudgeWiring:
         adapter = _adapter()
         assert adapter._parse_preference("speed").value == "speed"
         assert adapter._parse_preference("quality").value == "quality"
-        assert adapter._parse_preference("typo").value == "balanced"
+        # A typo raises instead of silently degrading to BALANCED —
+        # a vocabulary mismatch must not quietly reshape routing.
+        with pytest.raises(ValueError, match="ParsecraftPreference"):
+            adapter._parse_preference("typo")
 
     def test_preference_reaches_the_deterministic_judge(self) -> None:
         """The knob must be honoured on the no-judge path, not only via resolve_judge.
@@ -502,11 +505,11 @@ class TestEffortWiring:
         validator at ``backends/mineru/_impl.py``).
         """
         adapter = _adapter()
-        with pytest.raises(ValueError, match="unknown parsecraft effort"):
+        with pytest.raises(ValueError, match="not a valid ParsecraftEffort"):
             adapter.ParsecraftParser(parsecraft_effort="hgih")
-        with pytest.raises(ValueError, match="unknown parsecraft effort"):
+        with pytest.raises(ValueError, match="not a valid ParsecraftEffort"):
             adapter.ParsecraftParser(parsecraft_effort="hi")
-        with pytest.raises(ValueError, match="unknown parsecraft effort"):
+        with pytest.raises(ValueError, match="not a valid ParsecraftEffort"):
             adapter._parse_effort("flashy")
 
     def test_effort_composes_with_preference(self) -> None:
@@ -565,7 +568,7 @@ class TestEffortWiring:
         # Default value at the dataclass level matches the schema default.
         default_backend = adapter.ParsecraftParser()
         assert default_backend._effort == "flash"
-        with pytest.raises(ValueError, match="unknown parsecraft effort"):
+        with pytest.raises(ValueError, match="not a valid ParsecraftEffort"):
             adapter.ParsecraftParser(parsecraft_effort="ULTRA")
 
 

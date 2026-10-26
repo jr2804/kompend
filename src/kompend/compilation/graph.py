@@ -276,7 +276,7 @@ class GraphCompiler(BaseCompiler):
         title itself was extracted as an entity, and ``concept`` otherwise.
         """
         lowered = title.lower()
-        if heading == "_root" or lowered == "overview":
+        if heading == "_root" or lowered == NodeType.OVERVIEW:
             return NodeType.OVERVIEW
         if any(keyword in lowered for keyword in ("comparison", "compare", "versus", " vs ", " vs. ")):
             return NodeType.COMPARISON

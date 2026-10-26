@@ -286,7 +286,8 @@ def _resolve_deprecated_aliases(result: dict[str, Any], provenance: dict[str, Co
         # has left it reports None.  Either way, only a non-default value is
         # worth migrating — and an explicitly set canonical key always wins.
         old_default = get_dot(DEFAULTS, old_key)
-        if old_val is not None and old_val != old_default and provenance.get(new_key, ConfigSource("default")).path == "default":
+        current = provenance.get(new_key, ConfigSource("default"))
+        if old_val is not None and old_val != old_default and current.path == "default":  # nocheck: enum-literal - ConfigSource token
             set_dot(result, new_key, old_val)
             provenance[new_key] = ConfigSource(
                 provenance.get(old_key, ConfigSource("project")).path,

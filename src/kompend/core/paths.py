@@ -109,6 +109,13 @@ AGENT_MEMORY_SUBDIR: Final[str] = "agent-memory"
 #: The injected index file inside the agent-notebook directory (harness convention).
 MEMORY_INDEX_FILE: Final[str] = "MEMORY.md"
 
+# ── Step persistence ────────────────────────────────────────────────────
+#: SQLite file backing the harness ``StepPersistence`` capability (generation
+#: run transcripts + snapshots). Deliberately NOT a table in
+#: :attr:`KOMP_DB_FILE`: that store is recreated clean-cut on schema version
+#: bumps, which would wipe foreign tables.
+STEP_DB_FILE: Final[str] = "steps.db"
+
 # ── Provenance ──────────────────────────────────────────────────────────
 PROVENANCE_DIR: Final[str] = "provenance"  # legacy — superseded by kompend.db
 
@@ -152,15 +159,9 @@ DEDUP_DIR: Final[str] = "dedup"
 DEFAULT_SOURCES_DIR_NAME: Final[str] = "sources"
 DEFAULT_OUTPUT_DIR_NAME: Final[str] = "wiki"
 
-#: Canonical page-kind → output-subfolder mapping. Single source of truth for
-#: both the vault writers and the lint fixer (which computes the path a
-#: resolved wikilink points at).
-KIND_FOLDERS: Final[dict[str, str]] = {
-    "concept": "concepts",
-    "comparison": "concepts",
-    "entity": "entities",
-    "summary": "concepts",
-}
+#: Canonical kind→folder mapping lives next to its key vocabulary:
+#: :data:`kompend.core.models.kinds.KIND_FOLDERS` (``core.models`` imports
+#: ``core.paths``, so it cannot be defined here).
 
 # ── Attachment slug generation ───────────────────────────────────────────
 _SLUG_INVALID_RE: Final = __import__("re").compile(r"[^a-z0-9_-]+")
@@ -340,6 +341,11 @@ class VaultPaths:
     def agent_memory_dir(self) -> Path:
         """Agent notebook directory (``compile.llm.memory_store = "vault"``)."""
         return self.kompend_dir / AGENT_MEMORY_SUBDIR
+
+    @property
+    def step_db_file(self) -> Path:
+        """SQLite file for harness step persistence (generation transcripts)."""
+        return self.kompend_dir / STEP_DB_FILE
 
     @property
     def review_dir(self) -> Path:

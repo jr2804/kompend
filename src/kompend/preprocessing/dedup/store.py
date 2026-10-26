@@ -17,6 +17,7 @@ import sqlite3
 from pathlib import Path
 from typing import TypedDict
 
+from kompend.core.config import DEFAULT_MATCHERS, parse_matchers
 from kompend.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     DEDUP_MATCHERS,
@@ -77,7 +78,7 @@ class DedupStore:
     def stamp(self) -> str:
         """Fingerprint over all config keys that affect fingerprint computation."""
         parts = [
-            _cfg_str(self.config, DEDUP_MATCHERS, "embedding,minhash"),
+            self._canonical_matchers(),
             _cfg_str(self.config, DEDUP_MODEL, ""),
             str(self.config.get(DEDUP_MINHASH_LSH_THRESHOLD, 0.8)),
             _cfg_str(self.config, COMPILE_EMBEDDING_MODEL, ""),
@@ -177,6 +178,18 @@ class DedupStore:
                 embedding=base["embedding"],
                 minhash=base["minhash"],
             )
+
+    def _canonical_matchers(self) -> str:
+        """Canonical ``dedup.matchers`` spelling — member values, comma-joined.
+
+        Parsing through :func:`~kompend.core.config.parse_matchers` makes the
+        stamp insensitive to case and whitespace while still changing when
+        the matcher *set* (or its order) changes. An unknown name
+        raises here rather than stamping a config the orchestrator would
+        later reject.
+        """
+        raw = self.config.get(DEDUP_MATCHERS, ",".join(m.value for m in DEFAULT_MATCHERS))
+        return ",".join(m.value for m in parse_matchers(raw))
 
 
 def _decode_meta(raw: object) -> StoreMeta:

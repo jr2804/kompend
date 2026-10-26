@@ -67,7 +67,7 @@ ENV_MAP: dict[str, str] = _build_env_map()
 # Keys removed from the schema but still present in older vault configs.
 # Stripped (with a warning) before validation so old vaults don't crash on
 # upgrade; ``kompend config check`` reports them as deprecations.
-REMOVED_KEYS: dict[str, list[str]] = {
+REMOVED_KEYS: dict[str, list[str]] = {  # nocheck: str-registry — frozen list of historic config keys, gone from the schema
     "compile.budget": [
         "concepts_per_batch",
         # Output ceilings. `max_tokens` is no longer sent to a model: an
@@ -128,7 +128,7 @@ REMOVED_KEYS: dict[str, list[str]] = {
 # A key here may still be a schema field (kept for a release) or already gone
 # from the schema.  Either way it is *migrated*, not ignored — which is what
 # separates it from REMOVED_KEYS.
-DEPRECATED_ALIASES: dict[str, str] = {
+DEPRECATED_ALIASES: dict[str, str] = {  # nocheck: str-registry — historic rename map; keys exist only in old vault files
     "search.embed_attachments": "attachments.embed",
     "compile.llm.context_window_cap": "compile.llm.context_window",
 }

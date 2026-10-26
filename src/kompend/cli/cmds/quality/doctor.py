@@ -513,7 +513,7 @@ def _check_ollama_device(default_model: str | None, vlm_model: str | None) -> Ch
     """
     name = "ollama-device"
     targets = [("llm", default_model), ("vlm", vlm_model)]
-    targets = [(label, m) for label, m in targets if m and _provider_id_of(m) == "ollama"]
+    targets = [(label, m) for label, m in targets if m and _provider_id_of(m) == "ollama"]  # nocheck: enum-literal — provider id, not the judge vocabulary
     if not targets:
         return CheckResult(name, True, "No ollama/ models configured - skipped")
 

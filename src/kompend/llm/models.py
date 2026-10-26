@@ -150,7 +150,7 @@ def model_supports_vision(model_string: str) -> bool:
         return False
 
     vision = _vision_from_catalog(provider_id, model_name)
-    if vision is None and provider_id == "ollama":
+    if vision is None and provider_id == "ollama":  # nocheck: enum-literal — provider id from the model string, not the judge vocabulary
         vision = _vision_from_ollama(model_name)
     _VISION_CACHE[model_string] = bool(vision)
     return bool(vision)

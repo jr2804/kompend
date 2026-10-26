@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
-from kompend.core.config import RlmConfig
+from kompend.core.config import ReasoningEffort, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LLMConfig
 from kompend.core.models import CompiledWiki
 from kompend.core.templates import TemplateLoader, get_template_loader
@@ -152,7 +152,7 @@ class EnhancedRetriever:
         *,
         verbosity: str = "standard",
         skills: dict[str, str] | None = None,
-        reasoning_effort: str | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
         rlm: RlmConfig | None = None,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""

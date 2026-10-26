@@ -18,6 +18,7 @@ from typing import Any
 
 import yaml
 
+from kompend.core.config import Flavor, resolve_flavor
 from kompend.core.page_builder import PageBuilder
 from kompend.core.text.rumdl import rumdl_available
 from kompend.core.verbosity import is_verbose
@@ -37,20 +38,6 @@ _COMMAND_LINE_CHAR_BUDGET = 16_000
 
 # ── Flavour auto-detection ──────────────────────────────────────────────
 
-FLAVOR_ALIASES: dict[str, str] = {
-    "obsidian": "obsidian",
-    "gfm": "gfm",
-    "github": "gfm",
-    "mkdocs": "mkdocs",
-    "mdx": "mdx",
-    "quarto": "quarto",
-    "myst": "myst",
-    "standard": "standard",
-    "pandoc": "pandoc",
-    "kramdown": "kramdown",
-    "azure_devops": "azure_devops",
-}
-
 logger = get_logger(__name__)
 
 
@@ -63,7 +50,7 @@ class DocumentRenderer:
     Parameters
     ----------
     flavor:
-        Target Markdown flavor (``"obsidian"``, ``"gfm"``, etc.).
+        Target Markdown flavor (a :class:`~kompend.core.config.Flavor` member).
         Auto-detected when ``None``.
     output_dir:
         Output directory (used for auto-detection).
@@ -73,7 +60,7 @@ class DocumentRenderer:
 
     def __init__(
         self,
-        flavor: str | None = None,
+        flavor: Flavor | None = None,
         output_dir: Path | None = None,
         rumdl_config: Path | None = None,
     ) -> None:
@@ -126,35 +113,33 @@ class DocumentRenderer:
         return "\n".join(parts).strip() + "\n"
 
 
-def detect_flavor(output_dir: Path | None = None, configured: str | None = None) -> str:
+def detect_flavor(output_dir: Path | None = None, configured: Flavor | str | None = None) -> Flavor:
     """Auto-detect the best Markdown flavor for the output directory.
 
     Precedence:
-    1. Explicitly configured flavor (highest).
+    1. Explicitly configured flavor (highest) — resolved through
+       :func:`~kompend.core.config.resolve_flavor`, which raises on unknown
+       names instead of silently degrading the render.
     2. Auto-detection from files in the output directory.
-    3. ``"obsidian"`` (default).
+    3. ``Flavor.OBSIDIAN`` (default).
     """
     if configured:
-        canonical = FLAVOR_ALIASES.get(configured.lower())
-        if canonical:
-            return canonical
-        logger.warning("Unknown flavor %r — falling back to obsidian", configured)
-        return "obsidian"
+        return resolve_flavor(configured)
 
     if output_dir and output_dir.exists():
         # Obsidian vault
         if (output_dir / ".obsidian").is_dir():
-            return "obsidian"
+            return Flavor.OBSIDIAN
         # MkDocs project
         if (output_dir / "mkdocs.yml").is_file():
-            return "mkdocs"
+            return Flavor.MKDOCS
         # Quarto project
         if (output_dir / "_quarto.yml").is_file():
-            return "quarto"
+            return Flavor.QUARTO
         if list(output_dir.rglob("*.qmd")):
-            return "quarto"
+            return Flavor.QUARTO
 
-    return "obsidian"
+    return Flavor.OBSIDIAN
 
 
 # ── Frontmatter helpers ─────────────────────────────────────────────────
@@ -174,7 +159,7 @@ def render_frontmatter(frontmatter: dict[str, Any]) -> str:
 def format_output(
     output_dir: Path,
     *,
-    flavor: str | None = None,
+    flavor: Flavor | str | None = None,
     rumdl_config: Path | None = None,
     extra_files: list[Path] | None = None,
     check_only: bool = False,
@@ -202,7 +187,7 @@ def format_output(
     # generated output.
     base_cmd = ["rumdl", "fmt", "--check"] if check_only else ["rumdl", "fmt", "--silent"]
     if flavor:
-        base_cmd.extend(["--flavor", flavor])
+        base_cmd.extend(["--flavor", str(flavor)])
     if rumdl_config:
         base_cmd.extend(["--config", str(rumdl_config)])
 

@@ -15,10 +15,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 from datasketch import MinHash
 
+from kompend.core.config import DEFAULT_MATCHERS, MatcherName, parse_matchers
 from kompend.core.config.keys import (
     COMPILE_EMBEDDING_MODEL,
     DEDUP_ENABLED,
@@ -78,7 +78,11 @@ class DedupOrchestrator:
         self._base_dir = base_dir
         self._config = config or {}
         self._store = self._build_store()
-        self._matchers, self._matcher_by_name = self._build_matchers()
+        #: Built lazily on first use — a disabled dedup (``dedup.enabled =
+        #: false``) never needs matchers, so it must not fail on an
+        #: unconfigured embedding model either.
+        self._matchers: list[AnyMatcher] | None = None
+        self._matcher_by_name: dict[MatcherName, AnyMatcher] = {}
 
     # ── Public API ───────────────────────────────────────────────────────
 
@@ -90,7 +94,7 @@ class DedupOrchestrator:
     def store(self) -> DedupStore:
         return self._store
 
-    def fingerprint(self, slug: str, text: str) -> dict[str, Fingerprint]:
+    def fingerprint(self, slug: str, text: str) -> dict[MatcherName, Fingerprint]:
         """Compute all configured fingerprints for a single document.
 
         Call this **during extraction** (per-document). Embedding network
@@ -108,14 +112,15 @@ class DedupOrchestrator:
         """
         if not self.enabled:
             return {}
-        fps: dict[str, Fingerprint] = {}
-        for matcher in self._matchers:
+        matchers, _ = self._ensure_matchers()
+        fps: dict[MatcherName, Fingerprint] = {}
+        for matcher in matchers:
             fps[matcher.name] = matcher.fingerprint(text)
         return fps
 
     def compare(  # noqa: PLR0915 — multi-phase comparison flow
         self,
-        fingerprints: dict[str, dict[str, Fingerprint]],
+        fingerprints: dict[str, dict[MatcherName, Fingerprint]],
         progress_fn: ProgressFn | None = None,
     ) -> dict[str, DedupResult]:
         """Compare pre-computed fingerprints and produce verdicts.
@@ -151,6 +156,7 @@ class DedupOrchestrator:
 
         results: dict[str, DedupResult] = {}
         new_slugs = list(fingerprints.keys())
+        matchers, matcher_by_name = self._ensure_matchers()
 
         # Phase 2 — compare each new doc against corpus + other new docs
         corpus_slugs = list(self._store.slugs)
@@ -162,7 +168,7 @@ class DedupOrchestrator:
             best_score = -1.0
             best_match: str | None = None
             best_method = ""
-            scores: dict[str, float] = {}
+            scores: dict[MatcherName, float] = {}
 
             fps = fingerprints[slug]
 
@@ -170,8 +176,8 @@ class DedupOrchestrator:
                 if candidate_slug == slug:
                     continue
 
-                matcher_scores: dict[str, float] = {}
-                for matcher in self._matchers:
+                matcher_scores: dict[MatcherName, float] = {}
+                for matcher in matchers:
                     fp_a = fps.get(matcher.name)
                     fp_b = self._get_fingerprint(candidate_slug, matcher.name, fingerprints, matcher)
                     if fp_a is not None and fp_b is not None:
@@ -201,8 +207,8 @@ class DedupOrchestrator:
                 closest_match=best_match,
                 closest_score=best_score,
                 closest_method=best_method,
-                embedding_score=scores.get("embedding"),
-                minhash_score=scores.get("minhash"),
+                embedding_score=scores.get(MatcherName.EMBEDDING),
+                minhash_score=scores.get(MatcherName.MINHASH),
             )
             results[slug] = result
 
@@ -212,15 +218,17 @@ class DedupOrchestrator:
                 "closest_match": best_match,
                 "closest_score": best_score,
                 "closest_method": best_method,
-                "embedding_score": scores.get("embedding"),
-                "minhash_score": scores.get("minhash"),
+                "embedding_score": scores.get(MatcherName.EMBEDDING),
+                "minhash_score": scores.get(MatcherName.MINHASH),
                 "embedding": (
-                    self._matcher_by_name["embedding"].serialize_checked(fps.get("embedding"))
-                    if "embedding" in self._matcher_by_name and "embedding" in fps
+                    matcher_by_name[MatcherName.EMBEDDING].serialize_checked(fps.get(MatcherName.EMBEDDING))
+                    if MatcherName.EMBEDDING in matcher_by_name and MatcherName.EMBEDDING in fps
                     else None
                 ),
                 "minhash": (
-                    self._matcher_by_name["minhash"].serialize_checked(fps.get("minhash")) if "minhash" in self._matcher_by_name and "minhash" in fps else None
+                    matcher_by_name[MatcherName.MINHASH].serialize_checked(fps.get(MatcherName.MINHASH))
+                    if MatcherName.MINHASH in matcher_by_name and MatcherName.MINHASH in fps
+                    else None
                 ),
             }
             self._store[slug] = entry
@@ -232,8 +240,8 @@ class DedupOrchestrator:
                     closest_match=slug,
                     closest_score=best_score,
                     closest_method=best_method,
-                    embedding_score=scores.get("embedding"),
-                    minhash_score=scores.get("minhash"),
+                    embedding_score=scores.get(MatcherName.EMBEDDING),
+                    minhash_score=scores.get(MatcherName.MINHASH),
                 )
 
         self._store.save()
@@ -252,10 +260,16 @@ class DedupOrchestrator:
         ingest. This makes embedding errors attributable to the specific
         document that caused them.
         """
-        fingerprints: dict[str, dict[str, Any]] = {}
+        fingerprints: dict[str, dict[MatcherName, Fingerprint]] = {}
         for slug, text in documents:
             fingerprints[slug] = self.fingerprint(slug, text)
         return self.compare(fingerprints, progress_fn=progress_fn)
+
+    def _ensure_matchers(self) -> tuple[list[AnyMatcher], dict[MatcherName, AnyMatcher]]:
+        """Build the configured matchers on first use."""
+        if self._matchers is None:
+            self._matchers, self._matcher_by_name = self._build_matchers()
+        return self._matchers, self._matcher_by_name
 
     # ── Internals ────────────────────────────────────────────────────────
 
@@ -264,13 +278,19 @@ class DedupOrchestrator:
         # the dedup rows live in the single store keyed by vault root.
         return DedupStore(self._base_dir, config=self._config)
 
-    def _build_matchers(self) -> tuple[list[AnyMatcher], dict[str, AnyMatcher]]:
-        matchers_cfg = self._config.get(DEDUP_MATCHERS, "embedding,minhash")
-        if not isinstance(matchers_cfg, str):
-            raise TypeError(f"Config key 'dedup.matchers' must be a string, got {type(matchers_cfg).__name__}")
-        names = [m.strip() for m in matchers_cfg.split(",") if m.strip()]
+    def _build_matchers(self) -> tuple[list[AnyMatcher], dict[MatcherName, AnyMatcher]]:
+        """Build the configured matchers.
+
+        An unknown matcher name raises via :func:`~kompend.core.config.parse_matchers`,
+        and a ``dedup.matchers`` value that resolves to no matchers raises too:
+        dedup enabled with a typo'd or empty matcher list must fail loudly —
+        quietly narrowing the matchers would change every verdict the store
+        stamps while the run looks successful.
+        """
+        raw = self._config.get(DEDUP_MATCHERS, ",".join(m.value for m in DEFAULT_MATCHERS))
+        names = parse_matchers(raw)
         matchers: list[AnyMatcher] = []
-        by_name: dict[str, AnyMatcher] = {}
+        by_name: dict[MatcherName, AnyMatcher] = {}
 
         # Resolve the effective embedding model.
         # Empty string "" and None are both treated as "not set" (falsy),
@@ -280,10 +300,12 @@ class DedupOrchestrator:
         lsh_threshold = _cfg_float(self._config, DEDUP_MINHASH_LSH_THRESHOLD, 0.8)
 
         for name in names:
-            if name == "embedding":
+            if name is MatcherName.EMBEDDING:
                 if not model:
-                    logger.warning("dedup embedding matcher requested but no embedding model configured — skipping")
-                    continue
+                    raise ValueError(
+                        "dedup embedding matcher requested but no embedding model configured; "
+                        "set dedup.model or compile.embedding.model, or drop 'embedding' from dedup.matchers"
+                    )
                 # Reuse the canonical EmbeddingProvider factory — it requires
                 # an explicit provider/model prefix (no local fallback). The
                 # dimension is detected from the model at runtime (provider.dim),
@@ -292,23 +314,21 @@ class DedupOrchestrator:
                 m = EmbeddingMatcher(model_name=model, dim=provider.dim, provider=provider)
                 matchers.append(m)
                 by_name[name] = m
-            elif name == "minhash":
+            elif name is MatcherName.MINHASH:
                 m = MinhashMatcher(lsh_threshold=lsh_threshold)
                 matchers.append(m)
                 by_name[name] = m
-            else:
-                logger.warning("Unknown dedup matcher: %s", name)
 
         if not matchers:
-            logger.warning("No dedup matchers configured — dedup will be a no-op")
+            raise ValueError("dedup.matchers resolved to no matchers; enable at least one of: " + ", ".join(m.value for m in MatcherName))
 
         return matchers, by_name
 
     def _get_fingerprint(
         self,
         slug: str,
-        matcher_name: str,
-        slug_to_fp: dict[str, dict[str, Fingerprint]],
+        matcher_name: MatcherName,
+        slug_to_fp: dict[str, dict[MatcherName, Fingerprint]],
         matcher: AnyMatcher,
     ) -> Fingerprint | None:
         """Get a fingerprint for *slug* — from batch cache or persistent store."""
@@ -318,10 +338,10 @@ class DedupOrchestrator:
         if fp is not None:
             return fp
 
-        # Then check the persistent store
+        # Then check the persistent store (StoreEntry keys are plain strings)
         stored = self._store.get(slug)
         if stored is not None:
-            raw = stored.get(matcher_name)
+            raw = stored.get(str(matcher_name))
             if raw is not None:
                 try:
                     return matcher.deserialize(raw)

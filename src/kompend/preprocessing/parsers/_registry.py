@@ -13,11 +13,11 @@ from __future__ import annotations
 import importlib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Final, TypedDict
 
-from kompend.core.config import ResolvedConfig
-from kompend.core.config.keys import DEFAULT_PARSER
+from kompend.core.config import ImageMode, ParsecraftEffort, ParsecraftJudge, ParsecraftPreference, ResolvedConfig
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers.base import (
@@ -27,14 +27,27 @@ from kompend.preprocessing.parsers.base import (
     ParserRouter,
 )
 
+
+class ParserName(StrEnum):
+    """Kompend-side ingestion backend identifiers — the registry vocabulary."""
+
+    PARSECRAFT = "parsecraft"
+
+
+#: The one ingestion backend kompend ships with. Single source for the registry
+#: factory default and discovery — a second literal would let them disagree
+#: silently. There is no config key for this: parsecraft routes internally, so
+#: there is nothing left for a selector to select between.
+DEFAULT_PARSER: Final[ParserName] = ParserName.PARSECRAFT
+
 # Selectable ingestion backends: name → factory(options) -> BaseParser.
-PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
+PARSER_BACKENDS: dict[ParserName, Callable[[ParserBuildOptions], BaseParser]] = {}
 
 # Known backend names — always populated so unknown-name detection works even
 # when the backend's optional dependency is not installed. Each entry maps to
 # a human-readable description shown in error messages.
-KNOWN_BACKENDS: dict[str, str] = {
-    "parsecraft": "per-page routing across docling, liteparse, pandoc, native and OCR backends",
+KNOWN_BACKENDS: dict[ParserName, str] = {
+    ParserName.PARSECRAFT: "per-page routing across docling, liteparse, pandoc, native and OCR backends",
 }
 
 # Backend name → module path. The backend module's ``register_backend`` call
@@ -42,15 +55,15 @@ KNOWN_BACKENDS: dict[str, str] = {
 # itself stays cheap. These are loaded on demand by :func:`_ensure_backend`
 # (from ``build_default_router`` / ``get_backend`` / ``get_all_extensions`` /
 # ``get_registered_parsers``) — never at CLI ``--help`` import time.
-_BACKEND_MODULES: dict[str, str] = {
-    "parsecraft": "kompend.preprocessing.parsers.parsecraft_parser",
+_BACKEND_MODULES: dict[ParserName, str] = {
+    ParserName.PARSECRAFT: "kompend.preprocessing.parsers.parsecraft_parser",
 }
 
 logger = get_logger(__name__)
 
 
 # Metadata powering ``kompend list-parsers`` (name/type/extensions/figure_enrichment).
-_registry: dict[str, ParserMetadata] = {}
+_registry: dict[ParserName, ParserMetadata] = {}
 
 
 @dataclass(frozen=True)
@@ -61,23 +74,23 @@ class ParserBuildOptions:
     """
 
     images_dir: Path | None = None
-    image_mode: str = "file"
+    image_mode: ImageMode = ImageMode.FILE
     images_scale: float = IMAGE_SCALE_DEFAULT
     #: Judge-tier routing for the parsecraft backend. `none` leaves the
     #: deterministic rule table in place. Any non-`none` value is the SDK
     #: provider name (`ollama`, `zen`, `typesafe-ai`).
-    parsecraft_judge: str = "none"
+    parsecraft_judge: ParsecraftJudge = ParsecraftJudge.NONE
     #: Provider-specific model token for the judge (e.g. `parable-tinyjev` for
     #: ollama). Empty when the judge is `none`.
     parsecraft_judge_model: str = ""
     #: Ranking axis: `speed` | `balanced` | `quality`. Maps to
     #: parsecraft's `RoutingPreference` and threads through every judge call.
-    parsecraft_preference: str = "balanced"
+    parsecraft_preference: ParsecraftPreference = ParsecraftPreference.BALANCED
     #: MinerU conversion effort: `flash` | `medium` | `high` | `xhigh`. Maps to
     #: parsecraft's `BackendConfig.options["effort"]` and is injected only when
     #: non-default, because parsecraft hashes the options dict verbatim into the
     #: conversion cache key.
-    parsecraft_effort: str = "flash"
+    parsecraft_effort: ParsecraftEffort = ParsecraftEffort.FLASH
     #: Whether parsecraft may lead a page with an OCR sub-backend. `None`
     #: (default) keeps parsecraft's own derivation from the installed extras and
     #: the host's usable engines; `False` bans OCR, `True` permits it.
@@ -116,10 +129,10 @@ class ParserBuildOptions:
         return cls(
             images_dir=images_dir,
             image_mode=kompend.compile.image_mode,
-            parsecraft_judge=kompend.ingest.parsecraft_judge.value,
+            parsecraft_judge=kompend.ingest.parsecraft_judge,
             parsecraft_judge_model=kompend.ingest.parsecraft_judge_model,
-            parsecraft_preference=kompend.ingest.parsecraft_preference.value,
-            parsecraft_effort=kompend.ingest.parsecraft_effort.value,
+            parsecraft_preference=kompend.ingest.parsecraft_preference,
+            parsecraft_effort=kompend.ingest.parsecraft_effort,
             parsecraft_allow_ocr=kompend.ingest.parsecraft_allow_ocr,
             parsecraft_engines=list(kompend.ingest.parsecraft_engines),
             parsecraft_extract_vector_graphics=kompend.ingest.parsecraft_extract_vector_graphics,
@@ -140,7 +153,7 @@ class ParserMetadata(TypedDict):
 
 
 def register_backend(
-    name: str,
+    name: ParserName,
     factory: Callable[[ParserBuildOptions], BaseParser],
     *,
     parser_cls: type[BaseParser],
@@ -149,16 +162,21 @@ def register_backend(
     """Register an ingestion backend.
 
     Args:
-        name: Backend identifier (e.g. ``"docling"``, ``"liteparse"``).
+        name: Backend identifier (a :class:`ParserName` member).
         factory: Builds a parser instance from :class:`ParserBuildOptions`.
         parser_cls: The parser class — ``supported_extensions`` and
             ``figure_enrichment`` are read off it as the single source of truth
             for the registry metadata.
         parser_type: Display category for ``list-parsers``.
+
+    Raises:
+        ValueError: *name* is not a :class:`ParserName` member — the registry
+            vocabulary is closed; a new backend adds a member first.
     """
-    PARSER_BACKENDS[name] = factory
+    key = name if isinstance(name, ParserName) else ParserName(name)
+    PARSER_BACKENDS[key] = factory
     _register(
-        name,
+        key,
         parser_type,
         [str(ext) for ext in parser_cls.supported_extensions],
         parser_cls.figure_enrichment,
@@ -186,7 +204,7 @@ def get_supported_extensions() -> set[str]:
     return extensions
 
 
-def get_all_extensions(names: Iterable[str]) -> set[str]:
+def get_all_extensions(names: Iterable[ParserName | str]) -> set[str]:
     """Union of the suffixes the named backends can ingest.
 
     Discovery follows the backend actually configured (``[ingest] parser``),
@@ -204,7 +222,7 @@ def get_all_extensions(names: Iterable[str]) -> set[str]:
 
 
 def _register(
-    name: str,
+    name: ParserName,
     parser_type: str,
     extensions: list[str],
     figure_enrichment: bool = False,
@@ -212,7 +230,7 @@ def _register(
     """Populate the list-parsers metadata registry. Idempotent."""
     if name not in _registry:
         _registry[name] = {
-            "name": name,
+            "name": str(name),
             "type": parser_type,
             "extensions": extensions,
             "figure_enrichment": figure_enrichment,
@@ -223,7 +241,7 @@ def _register(
 def build_default_router(
     options: ParserBuildOptions | None = None,
     *,
-    name: str = DEFAULT_PARSER,
+    name: ParserName | str = DEFAULT_PARSER,
 ) -> ParserRouter:
     """Construct a :class:`ParserRouter` wired with the single ingestion backend.
 
@@ -249,33 +267,39 @@ def build_default_router(
     if name not in PARSER_BACKENDS:
         hint = KNOWN_BACKENDS.get(name)
         if hint is None:
-            raise ValueError(f"Unknown parser backend {name!r}. Known: {', '.join(sorted(KNOWN_BACKENDS))}.")
-        raise ValueError(f"Parser backend {name!r} is not installed. {hint}")
+            known = ", ".join(sorted(str(k) for k in KNOWN_BACKENDS))
+            raise ValueError(f"Unknown parser backend {str(name)!r}. Known: {known}.")
+        raise ValueError(f"Parser backend {str(name)!r} is not installed. {hint}")
 
     router = ParserRouter()
     router.register(get_backend(name)(options))
     return router
 
 
-def _ensure_backends(names: Iterable[str]) -> None:
+def _ensure_backends(names: Iterable[ParserName | str]) -> None:
     """Ensure every backend in *names* is loaded (installed ones only)."""
     for n in names:
         _ensure_backend(n)
 
 
-def get_backend(name: str) -> Callable[[ParserBuildOptions], BaseParser]:
+def get_backend(name: ParserName | str) -> Callable[[ParserBuildOptions], BaseParser]:
     """Return the factory for *name*. Raises ``ValueError`` when unknown."""
     _ensure_backend(name)
+    key: ParserName | None
     try:
-        return PARSER_BACKENDS[name]
-    except KeyError:
-        available = ", ".join(sorted(PARSER_BACKENDS)) or "(none)"
+        # Coerce raw-string callers onto the enum; members pass through.
+        key = ParserName(name)
+    except ValueError:
+        key = None
+    if key is None or key not in PARSER_BACKENDS:
+        available = ", ".join(sorted(str(k) for k in PARSER_BACKENDS)) or "(none)"
         raise ValueError(
-            f"Unknown parser backend {name!r}. Available: {available}.",
+            f"Unknown parser backend {str(name)!r}. Available: {available}.",
         ) from None
+    return PARSER_BACKENDS[key]
 
 
-def _ensure_backend(name: str) -> None:
+def _ensure_backend(name: ParserName | str) -> None:
     """Import *name*'s backend module if not yet registered.
 
     Importing the module runs its ``register_backend`` call, populating

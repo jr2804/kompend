@@ -46,6 +46,7 @@ from typing import Any, ClassVar, override
 from wenmode.nodes import Node, Paragraph, Text
 
 from kompend.compilation.concept_keys import nearest_alias, normalize_concept_key
+from kompend.core.config import Flavor
 from kompend.core.models import CompiledWiki, MetadataField, Reference, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.core.models.metadata import meta_int, meta_list_dict, meta_str, meta_str_list
@@ -99,7 +100,7 @@ class MarkdownWriter(VaultWriter):
 
     def __init__(
         self,
-        flavor: str | None = None,
+        flavor: Flavor | None = None,
         frontmatter_defaults: dict[str, Any] | None = None,
         rumdl_config: Path | None = None,
         vault_mode: bool = True,

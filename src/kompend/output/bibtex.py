@@ -25,7 +25,7 @@ __all__ = [
 
 #: CSL type → BibTeX entry-type.
 #: Unmapped CSL types fall back to ``misc``.
-_CSL_TO_BIBTEX_TYPE: dict[str, str] = {
+_CSL_TO_BIBTEX_TYPE: dict[str, str] = {  # nocheck: str-registry — external CSL-JSON type vocabulary
     "article-journal": "article",
     "article-magazine": "article",
     "article-newspaper": "article",

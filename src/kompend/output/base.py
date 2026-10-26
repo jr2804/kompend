@@ -6,6 +6,7 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, ClassVar
 
+from kompend.core.config import Flavor
 from kompend.core.models import CompiledWiki
 
 
@@ -21,12 +22,12 @@ class BaseOutputWriter(ABC):
     name: ClassVar[str]
     _registry: ClassVar[dict[str, type[BaseOutputWriter]]] = {}
 
-    def __init__(self, flavor: str | None = None, **kwargs: Any) -> None:
+    def __init__(self, flavor: Flavor | None = None, **kwargs: Any) -> None:
         """
         Parameters
         ----------
         flavor:
-            Markdown flavor (``"obsidian"``, ``"gfm"``, etc.).
+            Markdown flavor (a :class:`~kompend.core.config.Flavor` member).
             Subclasses that produce Markdown use this via
             :class:`DocumentRenderer`. Others ignore it.
         """

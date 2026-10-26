@@ -9,8 +9,9 @@ from __future__ import annotations
 
 import re
 import tomllib
+import types
 from enum import StrEnum
-from typing import Any, cast
+from typing import Any, Union, cast, get_args, get_origin
 
 import tomli_w
 from pydantic import BaseModel
@@ -48,16 +49,14 @@ _KEY_RE = re.compile(r"^#?\s*([\w.\-]+)\s*=")
 #: Supplement to the schema-derived choices: keys whose schema type is
 #: plain ``str`` (or ``str | None``) but whose documented value domain is
 #: closed. Order is the presentation order used in trailing comments.
-_STR_ENUM_CHOICES: dict[str, tuple[str, ...]] = {
-    "compile.compiler": ("graph", "wicer"),
-    "compile.start_at_tier": ("index", "chunk", "resolve", "compile", "output"),
-    "compile.stop_at_tier": ("index", "chunk", "resolve", "compile", "output"),
-    "compile.llm.reasoning_effort": ("none", "minimal", "low", "medium", "high", "xhigh", "default"),
-    # Accepts the boolean ``false`` to disable; listed as its literal form.
-    "compile.llm.context_manager": ("default", "aggressive", "sliding", "false"),
-    "compile.output.flavor": ("obsidian", "gfm", "mkdocs", "mdx", "quarto", "myst", "standard"),
-    "dedup.matchers": ("embedding", "minhash"),
-}
+#: Prefer typing the field with a StrEnum (the walker in :func:`enum_choices`
+#: unwraps ``X | None`` and ``list[X]``) — list an entry here only for
+#: genuinely str-typed closed domains.
+_STR_ENUM_CHOICES: dict[str, tuple[str, ...]] = {}
+
+#: ``X | Y`` annotations evaluate to ``types.UnionType``; ``typing.Union``
+#: covers explicit ``Union[X, Y]`` spellings.
+UnionType = types.UnionType
 
 
 def generate_scaffold_config() -> str:
@@ -78,10 +77,11 @@ def generate_scaffold_config() -> str:
 def enum_choices() -> dict[str, tuple[str, ...]]:
     """Map dotted config keys to their closed value domain.
 
-    Derived from StrEnum-typed leaves of the config schema plus
-    :data:`_STR_ENUM_CHOICES` for str-typed keys with a documented,
-    closed domain. Used to annotate generated config (and the docs)
-    with ``key = "value"  # other_value, ...`` trailing comments.
+    Derived from StrEnum-typed leaves of the config schema (unwrapping
+    optional and list annotations) plus :data:`_STR_ENUM_CHOICES` for
+    str-typed keys with a documented, closed domain. Used to annotate
+    generated config (and the docs) with ``key = "value"  # other_value, ...``
+    trailing comments.
     """
     choices: dict[str, tuple[str, ...]] = {}
 
@@ -89,15 +89,37 @@ def enum_choices() -> dict[str, tuple[str, ...]]:
         for name, field_info in model.model_fields.items():
             dotted = f"{prefix}.{name}" if prefix else name
             annotation = field_info.annotation
-            if isinstance(annotation, type) and issubclass(annotation, BaseModel):
-                _walk(annotation, dotted)
-            elif isinstance(annotation, type) and issubclass(annotation, StrEnum):
+            if enum_type := _str_enum_of(annotation):
                 # Dedupe while keeping declaration order (aliases share values).
-                choices[dotted] = tuple(dict.fromkeys(member.value for member in annotation))
+                choices[dotted] = tuple(dict.fromkeys(member.value for member in enum_type))
+            elif isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                _walk(annotation, dotted)
 
     _walk(KompendConfig)
     choices.update(_STR_ENUM_CHOICES)
     return choices
+
+
+def _str_enum_of(annotation: object) -> type[StrEnum] | None:
+    """Unwrap ``Flavor | None`` / ``list[MatcherName]`` to the StrEnum inside.
+
+    Returns ``None`` when no StrEnum appears in the annotation (including
+    plain ``str`` fields and unions without a StrEnum member).
+    """
+    if isinstance(annotation, type) and issubclass(annotation, StrEnum):
+        return annotation
+    origin = get_origin(annotation)
+    if origin is Union or origin is UnionType:
+        for arg in get_args(annotation):
+            if isinstance(arg, type) and issubclass(arg, StrEnum):
+                return arg
+        return None
+    if origin in (list, tuple):
+        for arg in get_args(annotation):
+            found = _str_enum_of(arg)
+            if found is not None:
+                return found
+    return None
 
 
 def _annotate_value_domains(text: str, choices: dict[str, tuple[str, ...]]) -> str:

@@ -19,7 +19,7 @@ __all__ = ["_user_providers", "effective_workers", "provider_max_connections", "
 
 #: Provider-level keys that left the schema and now migrate to a canonical key.
 #: ``context_window_cap`` → ``context_window``.
-_DEPRECATED_PROVIDER_KEYS: dict[str, str] = {"context_window_cap": "context_window"}
+_DEPRECATED_PROVIDER_KEYS: dict[str, str] = {"context_window_cap": "context_window"}  # nocheck: str-registry — historic rename map, one entry
 
 #: Module-level store for user-defined providers. Maps provider_id -> dict with
 #: keys: base_url, api_key (optional), api_type (optional), context_window

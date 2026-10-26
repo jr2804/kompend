@@ -19,7 +19,7 @@ from kompend.agents.deps import QueryDeps
 from kompend.agents.query import QueryAgent
 from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
-from kompend.core.config import RlmConfig
+from kompend.core.config import ReasoningEffort, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LLMConfig
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.core.models.metadata import meta_str_list_dict
@@ -407,7 +407,7 @@ def synthesize_results(
     *,
     verbosity: str = "standard",
     skills: dict[str, str] | None = None,
-    reasoning_effort: str | None = None,
+    reasoning_effort: ReasoningEffort | None = None,
     rlm: RlmConfig | None = None,
     query_agent: QueryAgent | None = None,
     llm: LLMConfig | None = None,

@@ -14,6 +14,7 @@ defined here. Import from the package root: `from kompend.core.models import Chu
 | Module          | Contents                                                                                                                                                                  |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `enums.py`      | StrEnum key contracts (`MetadataField`, `WikiField`, `ChunkField`, `ChunkNodeField`, `ChunkTreeField`, `StructuredField`), `ElementType`, `ATOMIC_TYPES`, `ChunkStrategy`, `NodeType`, `OkfField`, `EdgeType` |
+| `kinds.py`      | `KIND_FOLDERS` (NodeType value → vault folder) and `KindFolder` — lives here, not `core/paths.py`, because paths → models → paths would cycle |
 | `elements.py`   | `DocumentElement`, `ParsedDocument` (Tier 1 output)                                                                                                                       |
 | `chunks.py`     | `Chunk`, `ResolvedChunk` (Tier 2–3 output)                                                                                                                                |
 | `structured.py` | `EquationVariable`, `StructuredTable`, `StructuredEquation`, `StructuredFigure`, `StructuredData`, serialization helpers                                                  |

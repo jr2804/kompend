@@ -14,7 +14,7 @@ from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from kompend.cli.args.query import SearchMode
 from kompend.core.config import ResolvedConfig, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LlmDataFormat
-from kompend.core.models import CompiledWiki, MetadataField
+from kompend.core.models import CompiledWiki, MetadataField, NodeType
 from kompend.core.models.metadata import meta_str
 from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, PROTECTED_SOURCE_SUBDIRS, VECTORS_DIR
 from kompend.core.trust.actor import resolve_actor
@@ -41,7 +41,7 @@ from kompend.types import JSONDict, JSONList
 
 #: On-disk folder per node kind — mirrors ``VaultWriter._KIND_FOLDERS`` plus
 #: the overview kind, which stays at the bundle root.
-_KIND_FOLDERS: dict[str, str] = {**VaultWriter._KIND_FOLDERS, "overview": ""}
+_KIND_FOLDERS: dict[str, str] = {**VaultWriter._KIND_FOLDERS, NodeType.OVERVIEW.value: ""}
 
 logger = get_logger(__name__)
 

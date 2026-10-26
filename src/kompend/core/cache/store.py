@@ -61,14 +61,7 @@ from kompend.types import CacheValue, JSONDict, JSONValue
 
 # ponytail: registry-boundary (C2) — cache round-trips known dataclasses via
 # JSON tags. Add new cacheable types here, or store to_dict() payloads instead.
-_CACHE_DATACLASSES: dict[str, type] = {
-    "DocumentElement": DocumentElement,
-    "ParsedDocument": ParsedDocument,
-    "Chunk": Chunk,
-    "ResolvedChunk": ResolvedChunk,
-    "WikiNode": WikiNode,
-    "CompiledWiki": CompiledWiki,
-}
+_CACHE_DATACLASSES: dict[str, type] = {cls.__name__: cls for cls in (DocumentElement, ParsedDocument, Chunk, ResolvedChunk, WikiNode, CompiledWiki)}
 
 #: Every ``StrEnum`` that can appear inside a cached dataclass. The codec
 #: tags an enum by class name and raises on an unknown tag; a missing entry

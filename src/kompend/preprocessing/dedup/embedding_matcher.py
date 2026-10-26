@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 from collections.abc import Sequence
 
+from kompend.core.config import MatcherName
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup.base import ContentMatcher, require_json_number
 from kompend.rag.zvec_store import EmbeddingProvider
@@ -26,7 +27,7 @@ class EmbeddingMatcher(ContentMatcher[list[float]]):
     any pydantic-ai embedding provider (local or remote) works transparently.
     """
 
-    name = "embedding"
+    name = MatcherName.EMBEDDING
 
     fp_type = list  # fingerprints are list[float]; list is the closest runtime check
 

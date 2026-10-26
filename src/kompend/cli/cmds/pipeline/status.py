@@ -8,10 +8,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from kompend.core.models import KIND_FOLDERS
 from kompend.core.paths import (
     COMPILE_STATE_FILE,
     INDEX_FILE,
-    KIND_FOLDERS,
     LOG_FILE,
     OVERVIEW_MD,
     QUALITY_FILE,

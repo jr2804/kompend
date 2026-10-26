@@ -40,7 +40,7 @@ FENCE_RE: Final = re.compile(r"^(`{3,}|~{3,})\s*([\w+#.-]*)\s*$")
 #: ``- item``, ``* item``, ``+ item``, ``1. item``, ``1) item``.
 LIST_ITEM_RE: Final = re.compile(r"^(?:[-*+]|\d+[.)])\s+(.*)$")
 #: Block-math openers and their closers, in ``$$``/``\[`` pairs.
-_MATH_DELIMITERS: Final[dict[str, str]] = {"$$": "$$", "\\[": "\\]"}
+_MATH_DELIMITERS: Final[dict[str, str]] = {"$$": "$$", "\\[": "\\]"}  # nocheck: str-registry — LaTeX delimiter syntax, not a vocabulary
 
 #: Tables are grids, images are references, metadata is invisible — already
 #: canonical, never round-tripped through a markdown formatter.

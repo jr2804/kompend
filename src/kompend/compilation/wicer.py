@@ -23,6 +23,7 @@ from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerPr
 from kompend.compilation._two_phase_core import tokens_to_chars
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.graph import GraphCompiler
+from kompend.core.config import ContextManagerPreset
 from kompend.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.llm.context_window import ContextWindow, answer_reserve_tokens, discover_context_window
@@ -365,7 +366,7 @@ class WiCERCompiler(BaseCompiler):
 
         return all_probes
 
-    def _loop_context_manager(self) -> str | bool:
+    def _loop_context_manager(self) -> ContextManagerPreset | bool:
         """Context manager for the probe loop.
 
         The loop keeps earlier probes in context, so the "aggressive"
@@ -374,8 +375,8 @@ class WiCERCompiler(BaseCompiler):
         honored as-is.
         """
         configured = self._config.llm.context_manager
-        if configured == "default":
-            return "aggressive"
+        if configured == ContextManagerPreset.DEFAULT:
+            return ContextManagerPreset.AGGRESSIVE
         return configured
 
     def _probe_batch(self, combined: str) -> list[dict]:

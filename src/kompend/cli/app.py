@@ -39,7 +39,7 @@ LazyGroup.bind(app)
 
 #: Module-level holder for the run handle, written by :func:`_callback`
 #: (where Typer has resolved ``--wiki-dir``) and read by :func:`main`.
-_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}
+_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}  # nocheck: str-registry — single-slot Typer callback holder
 
 
 @app.callback(invoke_without_command=True)

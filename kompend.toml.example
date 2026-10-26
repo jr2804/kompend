@@ -532,7 +532,7 @@ extraction_strategy = "incremental"  # reduce, agentic
 #   "aggressive" — compress at 70%, keep 5 trailing messages
 #   "sliding"    — trim oldest messages at 100, keep 50 (no LLM call)
 #   false        — disable (history preserved verbatim)
-context_manager = "default"  # aggressive, sliding, false
+context_manager = "default"  # aggressive, sliding; or false to disable
 
 # RLM (Recursive Language Model) — lets agents explore large contexts by
 # writing Python code in a sandboxed REPL instead of packing everything
@@ -619,8 +619,9 @@ enable = false                    # on/off switch
 # format = "markdown"  # json, typst
 
 # Markdown flavor: obsidian | gfm | mkdocs | mdx | quarto | myst | standard
+#               | pandoc | kramdown | azure_devops ("github" aliases to gfm).
 # Set to auto-detect when omitted.
-# flavor = "obsidian"  # gfm, mkdocs, mdx, quarto, myst, standard
+# flavor = "obsidian"  # gfm, mkdocs, mdx, quarto, myst, standard, pandoc, kramdown, azure_devops
 
 # Max related-links per page in vault mode (0 = unlimited)
 # max_related_links = 15

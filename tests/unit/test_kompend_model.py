@@ -83,10 +83,15 @@ class TestReasoningEffort:
         assert merged is not None
         assert merged["thinking"] == "medium"
 
-    def test_unknown_effort_ignored_with_warning(self) -> None:
-        wrapper = KompendModel(TestModel(), reasoning_effort="bogus")
-        merged = wrapper._merge_reasoning(None)
-        assert merged is None  # unknown value → no injection
+    def test_unknown_effort_raises(self) -> None:
+        """An unknown effort fails at construction instead of warn+ignore."""
+        with pytest.raises(ValueError, match="bogus"):
+            KompendModel(TestModel(), reasoning_effort="bogus")
+
+    def test_default_member_leaves_settings_untouched(self) -> None:
+        """``default`` means "no thinking override" — nothing is injected."""
+        wrapper = KompendModel(TestModel(), reasoning_effort="default")
+        assert wrapper._merge_reasoning(None) is None  # noqa: SLF001
 
 
 class TestDelegation:

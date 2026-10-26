@@ -51,11 +51,12 @@ from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from parsecraft.routing.judge_providers import JudgeError, resolve_judge
 from parsecraft.routing.models import RoutingPreference
 
-from kompend.core.config._configs import ParsecraftEffort
+from kompend.core.config import ParsecraftEffort, ParsecraftJudge, ParsecraftPreference
 from kompend.core.models import DocumentElement, ElementType, ParsedDocument
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers._registry import (
     ParserBuildOptions,
+    ParserName,
     register_backend,
 )
 
@@ -108,10 +109,10 @@ class ParsecraftParser:
         self,
         registry: BackendRegistry | None = None,
         *,
-        parsecraft_judge: str = "none",
+        parsecraft_judge: ParsecraftJudge = ParsecraftJudge.NONE,
         parsecraft_judge_model: str = "",
-        parsecraft_preference: str = "balanced",
-        parsecraft_effort: str = "flash",
+        parsecraft_preference: ParsecraftPreference = ParsecraftPreference.BALANCED,
+        parsecraft_effort: ParsecraftEffort = ParsecraftEffort.FLASH,
         parsecraft_allow_ocr: bool | None = None,
         parsecraft_engines: list[str] | None = None,
         parsecraft_extract_vector_graphics: bool | None = None,
@@ -207,7 +208,7 @@ class ParsecraftParser:
             author="",
             page_count=len(document.pages),
             metadata={
-                "parser": "parsecraft",
+                "parser": ParserName.PARSECRAFT,
                 "backends": _winning_backends(result.groups),
                 "quality_signals": [signal.name for signal in document.quality],
                 "degraded_pages": sorted(
@@ -245,11 +246,11 @@ class ParsecraftParser:
         # any of them changes, but stays stable for the all-default combination —
         # the leading empty join renders as `""`, not `"|"`.
         parts: list[str] = []
-        if self._judge_name not in ("", "none"):
+        if self._judge_name is not ParsecraftJudge.NONE:
             parts.append(f"judge:{self._judge_name}/{self._judge_model}:{self._judge_preference}")
         elif self._preference is not RoutingPreference.BALANCED:
             parts.append(f"preference:{self._judge_preference}")
-        if self._effort != "flash":
+        if self._effort is not ParsecraftEffort.FLASH:
             parts.append(f"effort:{self._effort}")
         if self._allow_ocr is not None:
             parts.append("ocr:on" if self._allow_ocr else "ocr:off")
@@ -284,8 +285,10 @@ class ParsecraftParser:
         the same key.
         """
         options: dict[str, dict[str, str | int | float | bool]] = {}
-        if self._effort != ParsecraftEffort.FLASH.value:
-            options.setdefault("mineru", {})["effort"] = self._effort
+        if self._effort is not ParsecraftEffort.FLASH:
+            # Plain ``.value`` — parsecraft hashes this options dict verbatim
+            # into its conversion cache key; keep the payload a plain string.
+            options.setdefault("mineru", {})["effort"] = self._effort.value
         if self._extract_vector_graphics is not None:
             options.setdefault("liteparse", {})["extract_vector_graphics"] = self._extract_vector_graphics
         for backend, backend_options in self._backend_options_override.items():
@@ -426,12 +429,12 @@ class ParsecraftParser:
             return self._judge
         if self._judge_fallback is not None:
             return self._judge_fallback
-        if self._judge_name in ("", "none"):
+        if self._judge_name is ParsecraftJudge.NONE:
             self._judge_fallback = self._deterministic_judge()
             return self._judge_fallback
         if not self._judge_model:
             msg = (
-                f"parsecraft_judge is {self._judge_name!r} but parsecraft_judge_model is empty; "
+                f"parsecraft_judge is {str(self._judge_name)!r} but parsecraft_judge_model is empty; "
                 "falling back to the deterministic rule table. Set [ingest] parsecraft_judge_model "
                 "to the SDK's model token for the configured provider."
             )
@@ -494,43 +497,31 @@ def _parsecraft_version() -> str:
         return "unknown"
 
 
-def _parse_preference(name: str) -> RoutingPreference:
-    """Map a config string to parsecraft's ``RoutingPreference``.
+def _parse_preference(preference: ParsecraftPreference | str) -> RoutingPreference:
+    """Map the config enum to parsecraft's ``RoutingPreference``.
 
-    Accepts the same lowercase set the config validates against; an
-    unrecognised value falls through to BALANCED, never errors — a typo
-    in the config should not block a parse run.
+    Both vocabularies are closed and validated —
+    :class:`~kompend.core.config.ParsecraftPreference` at the config schema,
+    ``RoutingPreference`` here — so an unresolvable value is a vocabulary
+    drift between the layers and raises instead of silently degrading to
+    BALANCED (a mismatch must not quietly reshape routing).
     """
-    try:
-        return RoutingPreference(name)
-    except ValueError:
-        return RoutingPreference.BALANCED
+    member = preference if isinstance(preference, ParsecraftPreference) else ParsecraftPreference(preference)
+    return RoutingPreference(member.value)
 
 
-def _parse_effort(name: str) -> str:
-    """Map a config string to a verified mineru effort value.
+def _parse_effort(effort: ParsecraftEffort | str) -> ParsecraftEffort:
+    """Normalise and verify the mineru effort value.
 
     The :class:`ParsecraftEffort` enum on the schema already rejects unknown
-    values at parse time; the runtime check here is a defensive second pass.
-    A silent fall-back to ``"flash"`` would strip a vault of the VLM recovery
+    values at parse time; this second pass covers callers that construct the
+    adapter directly with a raw string (tests, probes) and returns the member.
+    A silent fall-back to ``flash`` would strip a vault of the VLM recovery
     its user configured (high/xhigh load the mineru checkpoint and emit
     equations/tables/figures that flash omits), so an unrecognised value
-    raises rather than degrades. Mirrors the parsecraft-side validator in
-    ``parsecraft.backends.mineru._impl``.
+    raises rather than degrades.
     """
-    accepted = _accepted_effort_values()
-    if name not in accepted:
-        msg = f"unknown parsecraft effort {name!r}; expected one of: {', '.join(sorted(accepted))}"
-        raise ValueError(msg)
-    return name
-
-
-#: Single source of truth for accepted effort values: the :class:`ParsecraftEffort`
-#: enum (the schema already validates; this is a defensive second pass so a
-#: call that bypasses the config layer still raises rather than silently passing
-#: an unrecognised string down to mineru).
-def _accepted_effort_values() -> frozenset[str]:
-    return frozenset(member.value for member in ParsecraftEffort)
+    return ParsecraftEffort(effort)
 
 
 def _map_document(document: DocumentResult, source_file: Path) -> list[DocumentElement]:
@@ -684,4 +675,4 @@ def _factory(options: ParserBuildOptions) -> ParsecraftParser:
     )
 
 
-register_backend("parsecraft", _factory, parser_cls=ParsecraftParser)  # ty: ignore[invalid-argument-type]
+register_backend(ParserName.PARSECRAFT, _factory, parser_cls=ParsecraftParser)  # ty: ignore[invalid-argument-type] — duck-typed BaseParser protocol

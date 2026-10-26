@@ -17,10 +17,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar
 
 from kompend.compilation.concept_keys import normalize_concept_key
-from kompend.core.models import CompiledWiki, MetadataField
+from kompend.core.models import KIND_FOLDERS, CompiledWiki, MetadataField
 from kompend.core.models.attachments import AttachmentManifest
 from kompend.core.models.metadata import meta_dict_list, meta_str
-from kompend.core.paths import KIND_FOLDERS, KOMP_DIR, REFERENCES_FILE, VaultPaths, attachment_slugs_for_source, is_protected_source
+from kompend.core.paths import KOMP_DIR, REFERENCES_FILE, VaultPaths, attachment_slugs_for_source, is_protected_source
 from kompend.core.pipeline.references import ReferenceStore, consolidate_references
 from kompend.core.pipeline.state import TierStateStore
 from kompend.core.text.matching import best_match

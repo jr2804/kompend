@@ -291,15 +291,25 @@ class Flavor(StrEnum):
     AZURE_DEVOPS = "azure_devops"
 
 
-def parse_matchers(value: str | list[str] | tuple[str, ...] | list[MatcherName]) -> list[MatcherName]:
+def parse_matchers(value: object) -> list[MatcherName]:
     """Parse a ``dedup.matchers`` value into matcher members.
 
     Accepts the comma-string form (env var, legacy TOML) and the array form;
-    an unknown name raises instead of being skipped.
+    an unknown name raises instead of being skipped, and a non-string,
+    non-sequence value raises ``TypeError`` (raw config dicts are a trust
+    boundary — anything can be in them).
     """
-    parts: list[str | MatcherName] = [part.strip() for part in value.split(",")] if isinstance(value, str) else list(value)
+    if isinstance(value, str):
+        parts: list[str | MatcherName] = [part.strip() for part in value.split(",")]
+    elif isinstance(value, (list, tuple)):
+        parts = list(value)
+    else:
+        msg = f"dedup.matchers must be a comma-string or a list, got {type(value).__name__}"
+        raise TypeError(msg)
     matchers: list[MatcherName] = []
     for part in parts:
+        if not part:
+            continue
         if isinstance(part, MatcherName):
             matchers.append(part)
             continue
@@ -313,7 +323,7 @@ def parse_matchers(value: str | list[str] | tuple[str, ...] | list[MatcherName])
 
 
 #: Accepted non-canonical spellings → canonical member.
-FLAVOR_ALIASES: Final[dict[str, Flavor]] = {"github": Flavor.GFM}
+FLAVOR_ALIASES: Final[dict[str, Flavor]] = {"github": Flavor.GFM}  # nocheck: str-registry — product-name aliases are an open input domain
 
 
 # ── Compile section (top-level flags + nested sub-configs) ──────────────

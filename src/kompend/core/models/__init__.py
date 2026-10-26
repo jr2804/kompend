@@ -35,6 +35,7 @@ from kompend.core.models.enums import (
     WikiField,
     node_type_from_okf_type,
 )
+from kompend.core.models.kinds import KIND_FOLDERS, KindFolder
 from kompend.core.models.references import (
     Author,
     Reference,
@@ -63,6 +64,7 @@ from kompend.core.models.wiki import (
 
 __all__ = [
     "CHUNK_TREE_CACHE_VERSION",
+    "KIND_FOLDERS",
     "LIFECYCLE_ARCHIVED",
     "LIFECYCLE_DRAFT",
     "LIFECYCLE_REVIEWED",
@@ -90,6 +92,7 @@ __all__ = [
     "ExtractionStats",
     "GraphEdge",
     "ImageRef",
+    "KindFolder",
     "MetadataField",
     "NodeType",
     "OkfField",

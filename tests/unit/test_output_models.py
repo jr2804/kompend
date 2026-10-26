@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.output.markdown import MarkdownWriter
@@ -54,8 +56,9 @@ class TestDetectFlavor:
     def test_explicit(self) -> None:
         assert detect_flavor(configured="gfm") == "gfm"
 
-    def test_unknown_flavor_falls_back(self) -> None:
-        assert detect_flavor(configured="nonexistent") == "obsidian"
+    def test_unknown_flavor_raises(self) -> None:
+        with pytest.raises(ValueError, match="nonexistent"):
+            detect_flavor(configured="nonexistent")
 
     def test_case_insensitive(self) -> None:
         assert detect_flavor(configured="GFM") == "gfm"

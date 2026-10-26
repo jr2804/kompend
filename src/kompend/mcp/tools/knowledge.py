@@ -120,7 +120,7 @@ def compile_wiki(
 
     try:
         wiki = pipeline.run()
-        ext = "md" if output_format == "markdown" else output_format
+        ext = "md" if format_enum is OutputFormat.MARKDOWN else format_enum.value
         output_file = Path(output) / f"wiki.{ext}"
         return {
             "status": "ok",

@@ -19,7 +19,7 @@ base.py            BaseParser, FileExtension (extensions only), known_extension(
 markdown.py        element_to_markdown()/markdown_to_element() — the wrap/unwrap pair used for
                    rumdl whole-part normalisation; no Markdown→element converter lives here
                    anymore (parsecraft maps its IR directly)
-_registry.py       ParserBuildOptions, PARSER_BACKENDS, KNOWN_BACKENDS, register_backend/get_backend,
+_registry.py       ParserName, ParserBuildOptions, PARSER_BACKENDS, KNOWN_BACKENDS, register_backend/get_backend,
                    build_default_router() — the single factory for a ready-to-use router,
                    get_supported_extensions() — the ingestible suffix set
 parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routing is
@@ -125,9 +125,11 @@ Only when parsecraft cannot host the capability.
 1. Create `preprocessing/parsers/<name>_parser.py` with a `BaseParser`
    subclass. Set `supported_extensions` (a set of `FileExtension`) and
    `figure_enrichment` (capability flag, see below).
-2. Add a module-level `_factory(options: ParserBuildOptions) -> <Parser>`, call
-   `register_backend("<name>", _factory, parser_cls=<Parser>)`, and add the name
-   to `KNOWN_BACKENDS` / `_BACKEND_MODULES` in `_registry.py`.
+2. Add a `ParserName` member, a module-level
+   `_factory(options: ParserBuildOptions) -> <Parser>`, call
+   `register_backend(ParserName.<NAME>, _factory, parser_cls=<Parser>)`, and add
+   the member to `KNOWN_BACKENDS` / `_BACKEND_MODULES` in `_registry.py`. The
+   registry vocabulary is closed: a bare string name raises `ValueError`.
 3. Declare the dependency as an **optional** extra or a manual install. No
    parser backend may be a main dependency — parsecraft is the ingestion path,
    and the backends it drives arrive transitively through it.

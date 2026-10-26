@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from enum import StrEnum
 from typing import ClassVar, TypeVar, cast
 
+from kompend.core.config import MatcherName
 from kompend.types import JSONValue
 
 FpT = TypeVar("FpT")
@@ -27,7 +28,9 @@ class ContentMatcher[FpT](ABC):
     and maintains its own persistent fingerprints (vectors, signatures).
     """
 
-    name: str = "base"
+    #: Matcher identity — a :class:`~kompend.core.config.MatcherName` member
+    #: set by every concrete matcher (``name = MatcherName.EMBEDDING`` …).
+    name: MatcherName
 
     #: Runtime type of this matcher's fingerprints. Used by :meth:`score_for`
     #: to validate dynamically paired fingerprints before scoring.

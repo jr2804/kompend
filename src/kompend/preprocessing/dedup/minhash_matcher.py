@@ -13,6 +13,7 @@ from typing import Any
 
 from datasketch import MinHash, MinHashLSH
 
+from kompend.core.config import MatcherName
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup.base import ContentMatcher, require_json_int
 from kompend.types import JSONValue
@@ -36,7 +37,7 @@ class MinhashMatcher(ContentMatcher[MinHash]):
     coefficient approximated by the signature overlap.
     """
 
-    name = "minhash"
+    name = MatcherName.MINHASH
 
     fp_type = MinHash
 

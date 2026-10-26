@@ -48,8 +48,9 @@ write `.kompend/config.toml` from `DEFAULTS` — no Jinja2 template involved) an
 `kompend.toml.example` documents every key in `DEFAULTS`). Scaffold output
 annotates enum-like keys with the remaining valid values as a trailing
 comment (`key = "value"  # other, values`); the value domains come from
-`enum_choices()` — schema StrEnum leaves plus `_STR_ENUM_CHOICES` for
-str-typed keys with a closed domain.
+`enum_choices()` — every StrEnum-typed field, including `X | None` and
+`list[X]` forms. `_STR_ENUM_CHOICES` is empty and stays empty: a str-typed
+key with a closed domain is a missing `StrEnum`.
 
 `_loading.load_toml()` tolerates duplicated key assignments: tomllib's
 duplicate errors ("Cannot overwrite a value", "Cannot declare … twice")
@@ -100,11 +101,12 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
    valid values. Keep the same section structure as `DEFAULTS`.
    The sync test (`TestKompendDotExampleSync`) will fail if a key in `DEFAULTS`
    is missing from `kompend.toml.example`.
-5. **Declare enum-like value domains** — a key whose values form a closed set
-   must be discoverable by `enum_choices()` in `generate.py`: StrEnum-typed
-   fields are picked up automatically; str-typed keys need an entry in
-   `_STR_ENUM_CHOICES`. The domain drives the scaffold's trailing value
-   comments and must match `kompend.toml.example`.
+5. **Declare enum-like value domains as a `StrEnum` field** — a key whose
+   values form a closed set is typed by the enum, and `enum_choices()` in
+   `generate.py` derives the scaffold's trailing value comments from it
+   (unions and `list[...]` included). `_STR_ENUM_CHOICES` stays empty; adding
+   an entry there means the field should have been enum-typed. The domain must
+   match `kompend.toml.example`.
 6. **Wire into the consumer** (e.g. `PipelineConfig`, `LintRunner`) via
    `cfg.get("dotted.key", fallback)` — or, for a group of related keys, hand
    the config group to the consumer (`display=cfg.kompend.display`) instead of

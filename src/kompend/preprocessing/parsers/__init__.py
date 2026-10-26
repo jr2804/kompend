@@ -22,6 +22,9 @@ from kompend.preprocessing.parsers._registry import (
     ParserBuildOptions as ParserBuildOptions,
 )
 from kompend.preprocessing.parsers._registry import (
+    ParserName as ParserName,
+)
+from kompend.preprocessing.parsers._registry import (
     build_default_router as build_default_router,
 )
 from kompend.preprocessing.parsers._registry import (
@@ -37,6 +40,7 @@ __all__ = [
     "DEFAULT_PARSER",
     "BaseParser",
     "ParserBuildOptions",
+    "ParserName",
     "ParserRouter",
     "build_default_router",
     "get_backend",

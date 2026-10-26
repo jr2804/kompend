@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.core.config.keys import DEFAULT_PARSER
 from kompend.core.paths import ARCHIVE_SUBDIR
 from kompend.core.pipeline.config import Tier
 from kompend.core.pipeline.runtime import PipelineRuntime
+from kompend.preprocessing.parsers import DEFAULT_PARSER
 from kompend.preprocessing.parsers._registry import get_all_extensions
 
 #: kompend's own state directory. Never a source, regardless of which extensions

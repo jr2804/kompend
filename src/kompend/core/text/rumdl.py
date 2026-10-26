@@ -100,7 +100,7 @@ def format_markdown_text(
         return None
     cmd = ["rumdl", "fmt", "--silent"]
     if flavor:
-        cmd.extend(["--flavor", flavor])
+        cmd.extend(["--flavor", str(flavor)])
     if rumdl_config:
         cmd.extend(["--config", str(rumdl_config)])
     cmd.append("-")

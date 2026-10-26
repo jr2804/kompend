@@ -1,11 +1,9 @@
 """Pipeline constants, tier definitions, and configuration.
 
-This module is the single source of truth for:
-
-- :class:`Tier` — the 5 pipeline tier identifiers
-- :class:`TierInfo` — metadata per tier (level, description)
-- :meth:`Tier.all_tiers` — ordered tuple of every tier's metadata
-- :data:`PipelineConfig` — dataclass holding the full pipeline configuration
+This module re-exports the tier/compiler enums (defined in
+:mod:`kompend.core.config`, next to the config fields that select them)
+and defines :data:`PipelineConfig`, the dataclass consumed by
+:class:`WikiPipeline` and its factory :func:`build_pipeline`.
 
 Both the CLI (``kompend.cli.commands``) and the orchestrator (``kompend.core.pipeline``)
 file is part of the public configuration contract.
@@ -14,20 +12,23 @@ file is part of the public configuration contract.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import StrEnum
-from functools import cache
 from pathlib import Path
 from typing import Any
 
 from kompend.core.config import (
     BudgetConfig,
+    Compiler,
     DisplayConfig,
     EmbeddingConfig,
     ImageMode,
     LLMConfig,
     OutputConfig,
     OutputFormat,
+    ParsecraftJudge,
+    ParsecraftPreference,
     ResolvedConfig,
+    Tier,
+    TierInfo,
 )
 from kompend.core.config._configs import DecisionConfig, SearchConfig
 from kompend.core.paths import VaultPaths
@@ -43,78 +44,9 @@ __all__ = [
     "TierInfo",
 ]
 
-
-class Compiler(StrEnum):
-    """Compiler backend selection.
-
-    - ``GRAPH``: GraphCompiler (heading-based grouping, default)
-    - ``WICER``: WiCERCompiler (iterative compile-evaluate-refine loop)
-    """
-
-    GRAPH = "graph"
-    WICER = "wicer"
-
-
-class Tier(StrEnum):
-    """Identifiers for the kompend 5-tier compilation pipeline.
-
-    Tiers are cumulative: running a higher tier first ensures the
-    state of every lower tier is up to date.
-    """
-
-    INDEX = "index"
-    CHUNK = "chunk"
-    RESOLVE = "resolve"
-    COMPILE = "compile"
-    OUTPUT = "output"
-
-    @classmethod
-    @cache
-    def all_tiers(cls) -> tuple[TierInfo, ...]:
-        """Return metadata for every tier in execution order."""
-        return (
-            TierInfo(
-                Tier.INDEX,
-                0,
-                "Tier 0: index sources — record local files and download online URLs. Inputs: source_dir, online_sources. Outputs: tier_state entries.",
-            ),
-            TierInfo(
-                Tier.CHUNK,
-                1,
-                "Tier 1: parse documents and split them into chunks. Inputs: indexed source files. Outputs: list of chunks (cached on disk).",
-            ),
-            TierInfo(
-                Tier.RESOLVE,
-                2,
-                "Tier 2: resolve chunks — extract entities/links (LLM-dependent). Inputs: chunks. Outputs: resolved chunks with entities/relations.",
-            ),
-            TierInfo(
-                Tier.COMPILE,
-                3,
-                "Tier 3: compile resolved chunks into a knowledge graph (CompiledWiki). Inputs: resolved chunks. Outputs: CompiledWiki snapshot.",
-            ),
-            TierInfo(
-                Tier.OUTPUT,
-                4,
-                "Tier 4: render the compiled wiki to the output directory. Inputs: CompiledWiki snapshot. Outputs: rendered files (markdown/json/typst).",
-            ),
-        )
-
-    @classmethod
-    def level_of(cls, tier: Tier) -> int:
-        """Return the numeric level of a tier."""
-        return cls._info_by_tier()[tier].level
-
-    @classmethod
-    def description_of(cls, tier: Tier) -> str:
-        """Return the human-readable description of a tier."""
-        return cls._info_by_tier()[tier].description
-
-    @classmethod
-    @cache
-    def _info_by_tier(cls) -> dict[Tier, TierInfo]:
-        """Return a mapping from tier to its metadata for O(1) lookup."""
-        return {ti.tier: ti for ti in cls.all_tiers()}
+# Compiler/Tier/TierInfo live in kompend.core.config (next to the config
+# fields that select them); they are re-exported here for the pipeline
+# module's long-standing import surface.
 
 
 @dataclass
@@ -169,9 +101,9 @@ class PipelineConfig:
     memory_decay_threshold: float = 0.3  # Retention below this = stale
     notes_file: Path | None = None  # User notes file path (None = no notes)
     images_scale: float = 200.0 / 72.0  # Image resolution multiplier (200 DPI base)
-    parsecraft_judge: str = "none"  # judge tier for the parsecraft backend: none|ollama|zen|typesafe-ai
+    parsecraft_judge: ParsecraftJudge = ParsecraftJudge.NONE  # judge tier for the parsecraft backend
     parsecraft_judge_model: str = ""  # provider-specific model token (e.g. parable-tinyjev for ollama)
-    parsecraft_preference: str = "balanced"  # judge ranking axis: speed|balanced|quality
+    parsecraft_preference: ParsecraftPreference = ParsecraftPreference.BALANCED  # judge ranking axis
     #: Parser-construction inputs, built by :meth:`ParserBuildOptions.from_config`
     #: in :meth:`from_resolved`. ``build_pipeline`` reads this rather than
     #: reassembling the fields, so the pipeline, the CLI and the MCP server all
@@ -309,12 +241,3 @@ class PipelineConfig:
     budget: BudgetConfig = field(default_factory=BudgetConfig)
     output: OutputConfig = field(default_factory=OutputConfig)
     display: DisplayConfig = field(default_factory=DisplayConfig)
-
-
-@dataclass(frozen=True)
-class TierInfo:
-    """Metadata for a single pipeline tier."""
-
-    tier: Tier
-    level: int
-    description: str
