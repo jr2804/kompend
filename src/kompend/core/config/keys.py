@@ -25,11 +25,11 @@ PATHS_RECURSIVE: Final[str] = "paths.recursive"
 
 # ── ingest section ──
 
-#: The one ingestion backend kompend ships with. Single source for the registry
-#: factory default and discovery — a second literal would let them disagree
-#: silently. There is no config key for this: parsecraft routes internally, so
-#: there is nothing left for a selector to select between.
-DEFAULT_PARSER: Final[str] = "parsecraft"
+#: The parser-backend vocabulary lives in
+#: :mod:`kompend.preprocessing.parsers._registry` (``ParserName`` /
+#: ``DEFAULT_PARSER``): it is a registry domain, not a config key — there is no
+#: ``ingest.parser`` setting because parsecraft routes internally, so there is
+#: nothing left for a selector to select between.
 INGEST_PARSECRAFT_JUDGE: Final[str] = "ingest.parsecraft_judge"
 INGEST_PARSECRAFT_JUDGE_MODEL: Final[str] = "ingest.parsecraft_judge_model"
 INGEST_PARSECRAFT_PREFERENCE: Final[str] = "ingest.parsecraft_preference"
@@ -83,6 +83,7 @@ COMPILE_LLM_TOOL_RETRIES: Final[str] = "compile.llm.tool_retries"
 COMPILE_LLM_TRANSIENT_RETRIES: Final[str] = "compile.llm.transient_retries"
 COMPILE_LLM_TRANSIENT_BACKOFF: Final[str] = "compile.llm.transient_backoff"
 COMPILE_LLM_AGENT_MEMORY: Final[str] = "compile.llm.agent_memory"
+COMPILE_LLM_MEMORY_STORE: Final[str] = "compile.llm.memory_store"
 COMPILE_LLM_PROMPT_CACHE: Final[str] = "compile.llm.prompt_cache"
 
 # -- decision section --

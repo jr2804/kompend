@@ -354,6 +354,18 @@ class TestResolveConfig:
         monkeypatch.setenv("KOMP_LLM_AGENT_MEMORY", "false")
         assert resolve_config().get("compile.llm.agent_memory") is False
 
+    def test_memory_store_defaults_to_session(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """The notebook backend is session until the vault opts into persistence."""
+        monkeypatch.chdir(tmp_path)
+        assert resolve_config().get("compile.llm.memory_store") == "session"
+
+        (tmp_path / "kompend.toml").write_text('[compile.llm]\nmemory_store = "vault"\n')
+        assert resolve_config().get("compile.llm.memory_store") == "vault"
+
+        monkeypatch.delenv("KOMP_LLM_MEMORY_STORE", raising=False)
+        monkeypatch.setenv("KOMP_LLM_MEMORY_STORE", "session")
+        assert resolve_config().get("compile.llm.memory_store") == "session"
+
     def test_summary_window_chars_is_configurable(self, tmp_path: Any, monkeypatch: Any) -> None:
         """The agentic payload window is a config value, not a hardcoded constant."""
         monkeypatch.chdir(tmp_path)

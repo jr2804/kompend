@@ -2,13 +2,17 @@
 
 Agentic agents in kompend share these harness capabilities:
 
-- **Memory** — ``InMemoryStore``, fresh per run (no cross-session persistence).
-  Lets the agent write/read a notebook across turns for long-running tasks.
-  **Opt-in** (``memory=True``): the notebook is only useful when the agent's
-  prompt tells the model to keep notes.  Offering it unconditionally invites
-  small models to call ``read_memory`` for a file that does not exist — the
-  tool answers with ``ModelRetry`` and, once the tool-retry budget is spent,
-  the whole run dies with the node left unsummarized.
+- **Memory** - ``InMemoryStore`` by default: fresh per run (no cross-session
+  persistence).  Lets the agent write/read a notebook across turns for
+  long-running tasks.  **Opt-in** (``memory=True``): the notebook is only
+  useful when the agent's prompt tells the model to keep notes.  Offering it
+  unconditionally invites small models to call ``read_memory`` for a file
+  that does not exist - the tool answers with ``ModelRetry`` and, once the
+  tool-retry budget is spent, the whole run dies with the node left
+  unsummarized.  A persistent notebook (``compile.llm.memory_store =
+  "vault"``) is wired by passing ``memory_store=DirectoryMemoryStore(...)``
+  from the caller; the injected ``MEMORY.md`` index is capped by the
+  capability, and topic files stay behind the memory tools.
 - **SlidingWindowCompaction** — ``max_fraction=0.6`` of context window.
   Drops oldest turns when context fills up, avoiding token-limit failures
   on multi-turn tool agents.
@@ -29,7 +33,7 @@ from dataclasses import dataclass, field
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai_harness.compaction import ClampOversizedMessages, SlidingWindowCompaction
 from pydantic_ai_harness.compaction._context_window import DEFAULT_CONTEXT_WINDOW
-from pydantic_ai_harness.memory import InMemoryStore, Memory
+from pydantic_ai_harness.memory import InMemoryStore, Memory, MemoryStore
 
 
 @dataclass
@@ -49,6 +53,11 @@ class AgenticHarness:
     context_window: int | None = None
     memory_agent_name: str = "agentic"
     memory: bool = False
+    #: Backend for the Memory capability. ``None`` (default) uses
+    #: :class:`InMemoryStore` - fresh per stage run. A persistent notebook
+    #: passes a :class:`~kompend.agents.vault_memory.DirectoryMemoryStore`
+    #: rooted at the vault's agent-memory directory.
+    memory_store: MemoryStore | None = None
     compaction: bool = True
     clamp: bool = True
     extra_capabilities: Sequence[AbstractCapability] = field(default_factory=list)
@@ -64,7 +73,7 @@ class AgenticHarness:
         _ctx = self.context_window or DEFAULT_CONTEXT_WINDOW
         caps: list[AbstractCapability] = []
         if self.memory:
-            caps.append(Memory(store=InMemoryStore(), agent_name=self.memory_agent_name))
+            caps.append(Memory(store=self.memory_store if self.memory_store is not None else InMemoryStore(), agent_name=self.memory_agent_name))
         if self.compaction:
             caps.append(SlidingWindowCompaction(max_fraction=0.6, context_window=self.context_window))
         if self.clamp:

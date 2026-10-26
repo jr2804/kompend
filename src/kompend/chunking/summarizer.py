@@ -168,6 +168,11 @@ class NodeSummarizer:
         a previous model are reused after a model switch
         (``compile.cache_ignore_model``). Default off: the model is part of
         the key.
+    memory_fingerprint:
+        Fingerprint of the persistent agent-notebook index
+        (``compile.llm.memory_store = "vault"``), or ``None`` for the
+        session store. When set, cached summaries carry it: editing the
+        notebook invalidates them like a model switch does.
     """
 
     def __init__(
@@ -178,6 +183,7 @@ class NodeSummarizer:
         content_policy: SummarizerContentPolicy,
         session_policy: SummarizerSessionPolicy | None = None,
         cache_ignore_model: bool = False,
+        memory_fingerprint: str | None = None,
     ) -> None:
         self._agent = agent
         self._cache = cache_store
@@ -185,6 +191,7 @@ class NodeSummarizer:
         self._session_policy = session_policy
         self._payload_chars = session_policy.payload_chars if session_policy else 0
         self._cache_ignore_model = cache_ignore_model
+        self._memory_fingerprint = memory_fingerprint
         self._loader = get_template_loader()
 
     def summarize(self, tree: ChunkTree) -> ChunkTree:
@@ -473,6 +480,8 @@ class NodeSummarizer:
         }
         if not self._cache_ignore_model:
             deps["model"] = model  # nocheck: summarizer cache deps, not wiki metadata
+        if self._memory_fingerprint is not None:
+            deps["memory"] = self._memory_fingerprint
         return deps
 
     @staticmethod

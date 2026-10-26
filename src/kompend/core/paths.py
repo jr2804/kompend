@@ -103,6 +103,11 @@ MEMORY_STORE_FILE: Final[str] = "memory.json"  # legacy — superseded by kompen
 MEMORY_SUBDIR: Final[str] = "_memory"
 #: Synthesized memory context page (sources/_memory/system_context.md).
 MEMORY_CONTEXT_FILE: Final[str] = "system_context.md"
+#: Sub-directory of ``.kompend/`` for the agent notebook (``compile.llm.memory_store = "vault"``):
+#: a user-curated ``MEMORY.md`` index plus topic files behind the agents' memory tools.
+AGENT_MEMORY_SUBDIR: Final[str] = "agent-memory"
+#: The injected index file inside the agent-notebook directory (harness convention).
+MEMORY_INDEX_FILE: Final[str] = "MEMORY.md"
 
 # ── Provenance ──────────────────────────────────────────────────────────
 PROVENANCE_DIR: Final[str] = "provenance"  # legacy — superseded by kompend.db
@@ -328,8 +333,13 @@ class VaultPaths:
 
     @property
     def provenance_dir(self) -> Path:
-        """Path handle for provenance — the store resolves it to :attr:`kompend_db_file` (``provenance``); the flat directory is no longer written."""
+        """Path handle for provenance - the store resolves it to :attr:`kompend_db_file` (``provenance``); the flat directory is no longer written."""
         return self.kompend_dir / PROVENANCE_DIR
+
+    @property
+    def agent_memory_dir(self) -> Path:
+        """Agent notebook directory (``compile.llm.memory_store = "vault"``)."""
+        return self.kompend_dir / AGENT_MEMORY_SUBDIR
 
     @property
     def review_dir(self) -> Path:

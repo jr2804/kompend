@@ -1,6 +1,9 @@
-"""Pipeline factory — builds WikiPipeline with default components."""
+"""Pipeline factory - builds WikiPipeline with default components."""
 
 from __future__ import annotations
+
+import hashlib
+from pathlib import Path
 
 from kompend.agents.context_chunk_agentic import (
     AgenticContextChunkAgent,
@@ -21,7 +24,9 @@ from kompend.compilation.two_phase import TwoPhaseCompiler
 from kompend.compilation.wicer import WiCERCompiler
 from kompend.core.cache.store import CacheStore
 from kompend.core.cancel import CancelState
+from kompend.core.config._configs import LlmMemoryStore
 from kompend.core.config.rumdl import resolve_rumdl_config
+from kompend.core.paths import MEMORY_INDEX_FILE
 from kompend.core.pipeline.config import Compiler, PipelineConfig, Tier
 from kompend.core.pipeline.stages._parse import build_resolver_chain
 from kompend.core.pipeline.stages._pipeline import WikiPipeline
@@ -30,6 +35,8 @@ from kompend.logging import get_logger
 from kompend.output.base import BaseOutputWriter
 from kompend.preprocessing.parsers._registry import build_default_router
 from kompend.resolution.base import BaseResolver
+
+_MEMORY_FINGERPRINT_CHARS = 16
 
 logger = get_logger(__name__)
 
@@ -96,6 +103,7 @@ def build_pipeline(
             requests_per_node=config.budget.summary_requests_per_node,
             rlm=config.llm.rlm,
             llm=config.llm,
+            memory_dir=_vault_memory_dir(config),
         )
         if config.search.contextual.enabled:
             enricher_agent = make_agentic_context_chunk_agent(
@@ -168,6 +176,7 @@ def build_pipeline(
             cache_store=CacheStore(config.paths.cache_dir),
             content_policy=SummarizerContentPolicy.from_config(config.budget),
             cache_ignore_model=config.cache_ignore_model,
+            memory_fingerprint=_memory_fingerprint(config.paths.agent_memory_dir) if config.llm.memory_store is LlmMemoryStore.VAULT else None,
             session_policy=SummarizerSessionPolicy(
                 batch_size=config.budget.summary_session_batch_size,
                 stall_retries=config.budget.summary_session_stall_retries,
@@ -181,3 +190,30 @@ def build_pipeline(
         ),
         enricher=ContextualEnricher(agent=enricher_agent) if enricher_agent is not None else None,
     )
+
+
+def _memory_fingerprint(memory_dir: Path) -> str | None:
+    """The cache fingerprint of the persistent agent-notebook index.
+
+    ``None`` when the vault carries no ``MEMORY.md`` — the notebook has no
+    influence on cached products yet. The fingerprint changes whenever the
+    user edits the notebook, so cached summaries re-derive exactly like
+    they do after a model switch.
+    """
+    index = memory_dir / MEMORY_INDEX_FILE
+    if not index.is_file():
+        return None
+    return hashlib.sha256(index.read_bytes()).hexdigest()[:_MEMORY_FINGERPRINT_CHARS]
+
+
+def _vault_memory_dir(config: PipelineConfig) -> Path | None:
+    """The agent-memory directory, or ``None`` for the in-process notebook.
+
+    The persistent notebook is opt-in twice: ``compile.llm.agent_memory``
+    turns the capability on and ``compile.llm.memory_store = "vault"`` moves
+    it under :attr:`VaultPaths.agent_memory_dir`. Anything else keeps
+    today's behaviour — a fresh in-process store per stage run.
+    """
+    if not (config.llm.agent_memory and config.llm.memory_store is LlmMemoryStore.VAULT):
+        return None
+    return config.paths.agent_memory_dir

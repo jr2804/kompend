@@ -136,17 +136,14 @@ did not spell out:
 over the config.
 
 There is no `max_tokens` and no `budget` kwarg: an answer is bounded by the
-model's context window minus its prompt, and the planners leave
-`ContextWindow.answer_reserve` free for it (`llm/AGENTS.md`).
+model's context window minus its prompt (`llm/AGENTS.md`). The exception is
+protocol-driven: Anthropic rejects an unset `max_tokens`, so there the agent
+passes a callable `model_settings` computing window - prompt - margin per
+request, clamped by the model's catalog output limit; every other protocol
+sends nothing.
 
-The exception is protocol-driven, not configured: the Anthropic protocol
-rejects an unset `max_tokens`, so there the agent passes a callable
-`model_settings` that computes window − prompt − margin per request, clamped
-by the model's catalog output limit. Every other protocol sends nothing.
-
-`agent.data_format` is the resolved `llm.data_format` — the format this
-agent's prompts must serialize structured payloads in (see `llm/AGENTS.md`).
-Prompt-building code reads it off the agent instead of taking a parameter, so
+`agent.data_format` is the resolved `llm.data_format` (see `llm/AGENTS.md`):
+prompt-building code reads it off the agent instead of taking a parameter, so
 the format cannot drift from the config the agent already carries
 (`CategorizeAgent` → `_build_files_payload`).
 
@@ -159,27 +156,30 @@ removed). Tool, output-schema and session-progress retries are other axes.
 `resolve_retry_budget(llm, retries=…, output_retries=…)` derives the
 tool/output retry split from the same config — the agentic factories use it so
 a multi-turn agent does not share the single-shot budget. The halves are
-separate because the remedies differ: a tool raising `ModelRetry` needs a
-correction attempt, a schema violation a regeneration.
+separate because the remedies differ (correction attempt vs regeneration).
 `KompendAgentBase.tool_retry_budget()` exposes the tool half to the
 capabilities that need it (the context manager's summarizer agent).
 
 The agentic harness offers the memory capability only on request
 (`AgenticHarness(memory=True)`). The notebook is a `read_memory`/`write_memory`
-tool pair: a model that invents a file name gets `ModelRetry` back, and once
-the tool budget is spent the run dies with the node left unsummarized.
+tool pair: an invented file name gets `ModelRetry`, and once the tool budget
+is spent the run dies with the node left unsummarized.
 
 `compile.llm.agent_memory` (default off) decides which stages request it. The
 notebook is an `InMemoryStore` owned by ONE agent instance, so it only helps a
-stage where one instance handles MANY outputs — summarisation, verification,
-remediation, distillation. Stages that build a fresh agent per unit
-(generation per segment, write per page, query per question, context-chunk,
-overview) gain nothing: the notebook would be empty for every unit.
+stage where one instance handles MANY outputs - summarisation, verification,
+remediation, distillation. Fresh-agent-per-unit stages (generation, write,
+query, context-chunk, overview) gain nothing: it would be empty every unit.
+
+`compile.llm.memory_store` (default `session`) picks the backend: `vault`
+roots the notebook at `.kompend/agent-memory/` via `DirectoryMemoryStore`
+(`vault_memory.py`; the harness `FileStore` is POSIX-only locally), and the
+factory fingerprints `MEMORY.md` into the summary cache deps - editing the
+notebook invalidates cached summaries like a model switch.
 
 The delta-retry salvage hook is opt-in per class: a subclass sets
-`supports_delta_retry: ClassVar[bool] = True`, and the hook fires only when
-`delta_retry_enabled` (from `llm.delta_retry_enabled`) is on. It is a
-`ClassVar` — a plain class attribute would be shadowed by the dataclass
+`supports_delta_retry: ClassVar[bool] = True`, and it fires only when
+`llm.delta_retry_enabled` is on. It is a `ClassVar` — a plain attribute would
 `__init__` and never take effect.
 
 ### KompendModel (`kompend_model.py`)

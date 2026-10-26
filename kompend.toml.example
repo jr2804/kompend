@@ -425,6 +425,14 @@ default_model = "${KOMP_LLM_DEFAULT_MODEL}"
 # detected once, logged, and the agent retries without caching.
 prompt_cache = true
 # agent_memory = false
+# Where the agent notebook lives when agent_memory is on.
+#   session (default): in-process only - fresh per stage run.
+#   vault: `.kompend/agent-memory/` - a user-curated MEMORY.md index
+#     (injected into prompts, capped at ~2000 tokens) plus topic files the
+#     model reads on demand via its memory tools. Cached summaries carry
+#     the MEMORY.md fingerprint, so editing the notebook invalidates them
+#     like a model switch does.
+# memory_store = "session"
 
 # LLM call timeout (seconds)
 timeout = 120.0

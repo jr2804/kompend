@@ -182,6 +182,38 @@ class TestSummarizerCache:
             assert "model" not in deps
             assert deps["content_hash"]
 
+    def test_cache_deps_carry_memory_fingerprint(self, sample_tree: ChunkTree) -> None:
+        """The vault notebook index is part of the key: editing it invalidates cached summaries."""
+        mock_llm = MagicMock()
+        mock_llm.model_string = "my-model"
+        mock_llm.run.return_value = "Summary."
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache, content_policy=_policy(), memory_fingerprint="a" * 16)
+        summarizer.summarize(sample_tree)
+
+        for call in mock_cache.set.call_args_list:
+            deps = call[0][1]
+            assert deps["memory"] == "a" * 16
+
+    def test_cache_deps_skip_memory_without_vault_store(self, sample_tree: ChunkTree) -> None:
+        """Session-store runs (default) keep the deps shape unchanged."""
+        mock_llm = MagicMock()
+        mock_llm.model_string = "my-model"
+        mock_llm.run.return_value = "Summary."
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache, content_policy=_policy())
+        summarizer.summarize(sample_tree)
+
+        for call in mock_cache.set.call_args_list:
+            deps = call[0][1]
+            assert "memory" not in deps
+
 
 class TestSummarizerStructuredLeaf:
     def test_structured_leaf_content(self) -> None:

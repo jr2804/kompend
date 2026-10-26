@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from pathlib import Path
 from typing import ClassVar
 
 from pydantic_ai import UsageLimits
@@ -16,8 +17,9 @@ from pydantic_ai import UsageLimits
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import SummarizerDeps
+from kompend.agents.vault_memory import DirectoryMemoryStore
 from kompend.compilation.summarizer_tools import build_summarizer_tools
-from kompend.core.config._configs import LLMConfig, RlmConfig
+from kompend.core.config._configs import LLMConfig, LlmMemoryStore, RlmConfig
 
 
 @dataclass
@@ -77,18 +79,27 @@ def make_agentic_summarizer_agent(
     requests_per_node: int = 2,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
+    memory_dir: Path | None = None,
 ) -> AgenticSummarizerAgent:
     """Build an :class:`AgenticSummarizerAgent` with tools + harness capabilities.
 
     Registers the ``next_node()`` / ``summarize_node()`` tools the system prompt
     instructs the model to call, and injects the standard agentic capabilities
     via :class:`AgenticHarness`.
+
+    ``memory_dir`` is the vault's agent-memory directory; it only takes effect
+    when ``llm.memory_store`` is ``vault`` — the notebook then persists as a
+    ``MEMORY.md`` index plus topic files instead of dying with the process.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
+    memory_store: DirectoryMemoryStore | None = None
+    if memory_dir is not None and llm is not None and llm.memory_store is LlmMemoryStore.VAULT:
+        memory_store = DirectoryMemoryStore(memory_dir)
     harness = AgenticHarness(
         context_window=context_window,
         memory_agent_name="summarizer",
         memory=bool(llm and llm.agent_memory),
+        memory_store=memory_store,
     )
     return AgenticSummarizerAgent(
         model_string=model_string,

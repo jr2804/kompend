@@ -12,14 +12,33 @@ fields on ``PipelineConfig``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
+from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any, Final
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from kompend.core.config.keys import MANDATORY_KINDS, EnvVar
 from kompend.core.paths import CACHE_DIR, KOMP_DIR
+
+#: Spellings that disable the context manager — the accepted "off" surface of
+#: ``compile.llm.context_manager`` (env var and TOML arrive as strings).
+_CONTEXT_OFF_WORDS: Final[frozenset[str]] = frozenset({"", "off", "false", "none", "no"})
+
+
+class ContextManagerPreset(StrEnum):
+    """Context-compaction strategy offered to every agent.
+
+    - ``default``: summarizing compaction at 90% of the context window.
+    - ``aggressive``: summarizing compaction at 70%, keeping 5 messages.
+    - ``sliding``: sliding-window compaction (drop oldest, keep 50).
+    """
+
+    DEFAULT = "default"
+    AGGRESSIVE = "aggressive"
+    SLIDING = "sliding"
 
 
 class ExportMode(StrEnum):
@@ -136,6 +155,28 @@ class LlmDataFormat(StrEnum):
     TEXT = "text"
 
 
+class LlmMemoryStore(StrEnum):
+    """Where the agent notebook (``compile.llm.agent_memory``) lives.
+
+    ``SESSION`` keeps the notebook in-process: it is fresh per stage run and
+    dies with the process. ``VAULT`` backs the notebook with a persistent
+    :class:`~pydantic_ai_harness.memory.FileStore` under the vault's
+    :attr:`~kompend.core.paths.VaultPaths.agent_memory_dir` — a
+    ``MEMORY.md`` index the user curates plus topic files the model reads
+    through its memory tools.
+    """
+
+    SESSION = "session"
+    VAULT = "vault"
+
+
+class MatcherName(StrEnum):
+    """Dedup matcher selection — the ``dedup.matchers`` vocabulary."""
+
+    EMBEDDING = "embedding"
+    MINHASH = "minhash"
+
+
 class OutputFormat(StrEnum):
     """Output format for the compiled wiki.
 
@@ -193,6 +234,164 @@ class ParsecraftPreference(StrEnum):
     QUALITY = "quality"
 
 
+class ReasoningEffort(StrEnum):
+    """Reasoning effort for providers with an explicit effort control.
+
+    Members other than :attr:`DEFAULT` map onto pydantic-ai's ``ThinkingLevel``
+    (``none`` → ``thinking=False``, the rest pass through verbatim).
+    :attr:`DEFAULT` means "leave ``thinking`` unset" — the provider's own
+    default applies, no setting is injected.
+    """
+
+    DEFAULT = "default"
+    NONE = "none"
+    MINIMAL = "minimal"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    XHIGH = "xhigh"
+
+
+def _coerce_context_manager(value: object) -> object:
+    """Normalize a raw ``compile.llm.context_manager`` value for the schema.
+
+    Strings are matched against the off-words (→ ``False``) and the preset
+    members; anything else passes through for pydantic to validate.
+    """
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _CONTEXT_OFF_WORDS:
+            return False
+        return ContextManagerPreset(normalized)
+    return value
+
+
+#: The default matcher set — single source for the model default, the
+#: orchestrator's fallback and the dedup store's stamp.
+DEFAULT_MATCHERS: Final[tuple[MatcherName, ...]] = (MatcherName.EMBEDDING, MatcherName.MINHASH)
+
+
+class Flavor(StrEnum):
+    """Markdown dialect rendered by the output tier.
+
+    Canonical flavors; ``github`` is accepted as an alias for ``gfm`` (see
+    :data:`FLAVOR_ALIASES`). ``pandoc``/``kramdown``/``azure_devops`` render
+    the closest flavor rumdl supports for those targets.
+    """
+
+    OBSIDIAN = "obsidian"
+    GFM = "gfm"
+    MKDOCS = "mkdocs"
+    MDX = "mdx"
+    QUARTO = "quarto"
+    MYST = "myst"
+    STANDARD = "standard"
+    PANDOC = "pandoc"
+    KRAMDOWN = "kramdown"
+    AZURE_DEVOPS = "azure_devops"
+
+
+def parse_matchers(value: str | list[str] | tuple[str, ...] | list[MatcherName]) -> list[MatcherName]:
+    """Parse a ``dedup.matchers`` value into matcher members.
+
+    Accepts the comma-string form (env var, legacy TOML) and the array form;
+    an unknown name raises instead of being skipped.
+    """
+    parts: list[str | MatcherName] = [part.strip() for part in value.split(",")] if isinstance(value, str) else list(value)
+    matchers: list[MatcherName] = []
+    for part in parts:
+        if isinstance(part, MatcherName):
+            matchers.append(part)
+            continue
+        try:
+            matchers.append(MatcherName(part.strip()))
+        except ValueError as e:
+            expected = ", ".join(member.value for member in MatcherName)
+            msg = f"unknown dedup matcher {part!r}; expected one of: {expected}"
+            raise ValueError(msg) from e
+    return matchers
+
+
+#: Accepted non-canonical spellings → canonical member.
+FLAVOR_ALIASES: Final[dict[str, Flavor]] = {"github": Flavor.GFM}
+
+
+# ── Compile section (top-level flags + nested sub-configs) ──────────────
+
+
+class Compiler(StrEnum):
+    """Compiler backend selection.
+
+    - ``GRAPH``: GraphCompiler (heading-based grouping, default)
+    - ``WICER``: WiCERCompiler (iterative compile-evaluate-refine loop)
+    """
+
+    GRAPH = "graph"
+    WICER = "wicer"
+
+
+class Tier(StrEnum):
+    """Identifiers for the kompend 5-tier compilation pipeline.
+
+    Tiers are cumulative: running a higher tier first ensures the
+    state of every lower tier is up to date.
+    """
+
+    INDEX = "index"
+    CHUNK = "chunk"
+    RESOLVE = "resolve"
+    COMPILE = "compile"
+    OUTPUT = "output"
+
+    @classmethod
+    @cache
+    def all_tiers(cls) -> tuple[TierInfo, ...]:
+        """Return metadata for every tier in execution order."""
+        return (
+            TierInfo(
+                Tier.INDEX,
+                0,
+                "Tier 0: index sources — record local files and download online URLs. Inputs: source_dir, online_sources. Outputs: tier_state entries.",
+            ),
+            TierInfo(
+                Tier.CHUNK,
+                1,
+                "Tier 1: parse documents and split them into chunks. Inputs: indexed source files. Outputs: list of chunks (cached on disk).",
+            ),
+            TierInfo(
+                Tier.RESOLVE,
+                2,
+                "Tier 2: resolve chunks — extract entities/links (LLM-dependent). Inputs: chunks. Outputs: resolved chunks with entities/relations.",
+            ),
+            TierInfo(
+                Tier.COMPILE,
+                3,
+                "Tier 3: compile resolved chunks into a knowledge graph (CompiledWiki). Inputs: resolved chunks. Outputs: CompiledWiki snapshot.",
+            ),
+            TierInfo(
+                Tier.OUTPUT,
+                4,
+                "Tier 4: render the compiled wiki to the output directory. Inputs: CompiledWiki snapshot. Outputs: rendered files (markdown/json/typst).",
+            ),
+        )
+
+    @classmethod
+    def level_of(cls, tier: Tier) -> int:
+        """Return the numeric level of a tier."""
+        return cls._info_by_tier()[tier].level
+
+    @classmethod
+    def description_of(cls, tier: Tier) -> str:
+        """Return the human-readable description of a tier."""
+        return cls._info_by_tier()[tier].description
+
+    @classmethod
+    @cache
+    def _info_by_tier(cls) -> dict[Tier, TierInfo]:
+        """Return a mapping from tier to its metadata for O(1) lookup."""
+        return {ti.tier: ti for ti in cls.all_tiers()}
+
+
 class Verbosity(StrEnum):
     """Synthesis verbosity for the ``query`` command.
 
@@ -204,6 +403,15 @@ class Verbosity(StrEnum):
     BRIEF = "brief"
     STANDARD = "standard"
     COMPREHENSIVE = "comprehensive"
+
+
+@dataclass(frozen=True)
+class TierInfo:
+    """Metadata for a single pipeline tier."""
+
+    tier: Tier
+    level: int
+    description: str
 
 
 class _KompendBaseModel(BaseModel):
@@ -293,13 +501,23 @@ class LLMConfig(_KompendBaseModel):
     #: capture, query, indexing) gain nothing from a notebook: the memory
     #: dies with the agent.
     agent_memory: bool = Field(default=False, validation_alias=EnvVar.LLM_AGENT_MEMORY)
+    #: Backend for the agent notebook. ``session`` (default) keeps it in
+    #: process - fresh per stage run. ``vault`` persists it under the
+    #: vault's agent-memory directory: a user-curated ``MEMORY.md`` index
+    #: (injected into prompts, capped) plus topic files behind the memory
+    #: tools. Cached summaries carry the index fingerprint, so editing the
+    #: notebook invalidates them like a model switch does.
+    memory_store: LlmMemoryStore = Field(default=LlmMemoryStore.SESSION, validation_alias=EnvVar.LLM_MEMORY_STORE)
     #: Rolling window (in output tokens) for the short-term tok/s rate.
     throughput_window_tokens: int = Field(default=1000, validation_alias=EnvVar.LLM_THROUGHPUT_WINDOW_TOKENS)
     delta_retry_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_DELTA_RETRY_ENABLED)
     batch_failure_threshold_ratio: float = Field(default=0.5, validation_alias=EnvVar.LLM_BATCH_FAILURE_THRESHOLD_RATIO)
     batch_failure_threshold_min: int = Field(default=5, validation_alias=EnvVar.LLM_BATCH_FAILURE_THRESHOLD_MIN)
-    reasoning_effort: str | None = Field(default=None, validation_alias=EnvVar.LLM_REASONING_EFFORT)
-    context_manager: str | bool = Field(default="default", validation_alias=EnvVar.LLM_CONTEXT_MANAGER)
+    reasoning_effort: ReasoningEffort | None = Field(default=None, validation_alias=EnvVar.LLM_REASONING_EFFORT)
+    context_manager: Annotated[ContextManagerPreset | bool, BeforeValidator(_coerce_context_manager)] = Field(
+        default=ContextManagerPreset.DEFAULT,
+        validation_alias=EnvVar.LLM_CONTEXT_MANAGER,
+    )
     #: RLM recursive research-loop configuration (see :class:`RlmConfig`);
     #: ``None`` disables. Only the group form is accepted — no scalar
     #: shorthand.
@@ -379,7 +597,7 @@ class OutputConfig(_KompendBaseModel):
     """
 
     format: OutputFormat = Field(default=OutputFormat.MARKDOWN, validation_alias=EnvVar.FORMAT)
-    flavor: str | None = Field(default=None, validation_alias=EnvVar.OUTPUT_FLAVOR)
+    flavor: Annotated[Flavor | None, BeforeValidator(_coerce_flavor)] = Field(default=None, validation_alias=EnvVar.OUTPUT_FLAVOR)
     frontmatter: dict[str, Any] = Field(default_factory=dict)
     rumdl_config: Path | None = Field(default=None, validation_alias=EnvVar.RUMDL_CONFIG)
     max_related_links: int = Field(default=15, validation_alias=EnvVar.OUTPUT_MAX_RELATED_LINKS)
@@ -445,7 +663,12 @@ class DedupConfig(_KompendBaseModel):
     """Deduplication configuration (opt-in by default)."""
 
     enabled: bool = Field(default=False, validation_alias=EnvVar.DEDUP_ENABLED)
-    matchers: str = Field(default="embedding,minhash", validation_alias=EnvVar.DEDUP_MATCHERS)
+    #: Comma-string (env var, legacy TOML) or array; both parse through
+    #: :func:`parse_matchers`, which raises on an unknown name.
+    matchers: Annotated[list[MatcherName], BeforeValidator(parse_matchers)] = Field(
+        default_factory=lambda: list(DEFAULT_MATCHERS),
+        validation_alias=EnvVar.DEDUP_MATCHERS,
+    )
     threshold_identical: float = Field(default=0.95, validation_alias=EnvVar.DEDUP_THRESHOLD_IDENTICAL)
     threshold_similar: float = Field(default=0.80, validation_alias=EnvVar.DEDUP_THRESHOLD_SIMILAR)
     model: str = Field(default="", validation_alias=EnvVar.DEDUP_MODEL)
@@ -799,9 +1022,6 @@ class SkillConfig(_KompendBaseModel):
     instructions: str
 
 
-# ── Compile section (top-level flags + nested sub-configs) ──────────────
-
-
 class CompileConfig(_KompendBaseModel):
     """Compile section: top-level flags and nested sub-configs."""
 
@@ -809,7 +1029,7 @@ class CompileConfig(_KompendBaseModel):
     sources_dir: str = "sources"
     output_dir: str = "wiki"
 
-    compiler: str = "graph"
+    compiler: Compiler = Compiler.GRAPH
     image_mode: ImageMode = Field(default=ImageMode.FILE, validation_alias=EnvVar.IMAGE_MODE)
     vlm_min_image_bytes: int = 2048
     vlm_min_image_dimension: int = 64
@@ -832,8 +1052,8 @@ class CompileConfig(_KompendBaseModel):
     synthesize: bool = True
     index: bool = True
     lint: bool = Field(default=False)
-    start_at_tier: str = Field(default="index", validation_alias=EnvVar.START_AT_TIER)
-    stop_at_tier: str = Field(default="output", validation_alias=EnvVar.STOP_AT_TIER)
+    start_at_tier: Tier = Field(default=Tier.INDEX, validation_alias=EnvVar.START_AT_TIER)
+    stop_at_tier: Tier = Field(default=Tier.OUTPUT, validation_alias=EnvVar.STOP_AT_TIER)
     respect_gitignore: bool = True
     source_tags: list[str] = Field(default_factory=list)
     tier_state_file: str | None = None
@@ -892,3 +1112,24 @@ class KompendConfig(_KompendBaseModel):
     downloader: DownloaderConfig = Field(default_factory=DownloaderConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     providers: dict[str, ProviderEndpoint] = Field(default_factory=dict)
+
+
+def _coerce_flavor(value: object) -> object:
+    """Normalize a raw ``compile.output.flavor`` value for the schema.
+
+    Lowercases, resolves aliases, then lets pydantic validate against the
+    members; ``None`` passes through.
+    """
+    if isinstance(value, str) and value:
+        return FLAVOR_ALIASES.get(value.strip().lower(), value.strip().lower())
+    return value
+
+
+def resolve_flavor(value: str) -> Flavor:
+    """Resolve a programmatic flavor string to its member.
+
+    Applies the same alias handling as the config schema; raises
+    :class:`ValueError` for an unknown flavor.
+    """
+    normalized = FLAVOR_ALIASES.get(value.strip().lower(), value.strip().lower())
+    return Flavor(normalized)
