@@ -41,6 +41,7 @@ from kompend.cli.args import (
     EmbedModel,
     ForceTier,
     Ignore,
+    IgnoreModelFlag,
     IndexStore,
     IngestFiles,
     InPlaceFlag,
@@ -138,6 +139,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     show_progress: Progress = None,
     start_at_tier: StartAtTier = DEFAULT_START_AT_TIER,
     no_cache: NoCacheFlag = None,
+    ignore_model: IgnoreModelFlag = None,
     workers: Workers = 1,
     force: ForceTier = None,
     in_place: InPlaceFlag = None,
@@ -185,7 +187,8 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
         vp = vault_paths(wiki_dir)
     cli_overrides = build_cli_overrides(
         start_at_tier=start_at_tier,
-        no_cache=no_cache or False,
+        no_cache=no_cache,
+        ignore_model=ignore_model,
         workers=workers,
         force=force,
         review=review,
@@ -359,7 +362,7 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     vp = vault_paths_from_ctx(ctx)
     no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
     cli_overrides = build_cli_overrides(
-        no_cache=no_cache or False,
+        no_cache=no_cache,
         workers=workers,
         in_place_sources=in_place,
         no_user_tracking=no_user_tracking,

@@ -815,6 +815,10 @@ class CompileConfig(_KompendBaseModel):
     vlm_min_image_dimension: int = 64
     workers: int = Field(default=1, validation_alias=EnvVar.WORKERS)
     no_cache: bool = Field(default=False, validation_alias=EnvVar.NO_CACHE)
+    # Reuse cached extractions/summaries/pages across model switches: cache
+    # keys drop the model component, so prior-model output is replayed as-is.
+    # Pages keep the model tag they were generated with (metadata "model").
+    cache_ignore_model: bool = Field(default=False, validation_alias=EnvVar.CACHE_IGNORE_MODEL)
     force: bool = Field(default=False, validation_alias=EnvVar.FORCE)
     in_place_sources: bool = Field(default=False)
     memory_enabled: bool = Field(default=True)

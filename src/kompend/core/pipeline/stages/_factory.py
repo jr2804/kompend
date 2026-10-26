@@ -167,6 +167,7 @@ def build_pipeline(
             agent=summarizer_agent,
             cache_store=CacheStore(config.paths.cache_dir),
             content_policy=SummarizerContentPolicy.from_config(config.budget),
+            cache_ignore_model=config.cache_ignore_model,
             session_policy=SummarizerSessionPolicy(
                 batch_size=config.budget.summary_session_batch_size,
                 stall_retries=config.budget.summary_session_stall_retries,

@@ -15,6 +15,7 @@ import typer
 
 from kompend.core.config._configs import LintOutput
 from kompend.core.config.keys import (
+    COMPILE_CACHE_IGNORE_MODEL,
     COMPILE_EMBEDDING_MODEL,
     COMPILE_FORCE,
     COMPILE_IN_PLACE_SOURCES,
@@ -106,6 +107,7 @@ def build_cli_overrides(
     start_at_tier: str | None = None,
     stop_at_tier: str | None = None,
     no_cache: bool | None = None,
+    ignore_model: bool | None = None,
     workers: int | None = None,
     force: bool | None = None,
     review: bool | None = None,
@@ -156,6 +158,7 @@ def build_cli_overrides(
 
     _flags: list[tuple[str, bool | None]] = [
         (COMPILE_NO_CACHE, no_cache),
+        (COMPILE_CACHE_IGNORE_MODEL, ignore_model),
         (COMPILE_FORCE, force),
         (COMPILE_IN_PLACE_SOURCES, in_place_sources),
         (PATHS_RECURSIVE, recursive),

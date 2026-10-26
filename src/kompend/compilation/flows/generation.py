@@ -630,7 +630,11 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + checkpoi
                     MetadataField.PROVENANCE: page.provenance,
                     MetadataField.RELATED: page.related,
                     MetadataField.TWO_PHASE: True,
-                    # Only this page's sources' figures — see images_for_provenance.
+                    # The model that wrote THIS page - survives cache hits, so a
+                    # mixed-model wiki stays attributable per page (and a page
+                    # can be traced back to (and recompiled by) a better model).
+                    MetadataField.MODEL: compiler._model or "",
+                    # Only this page's sources' figures - see images_for_provenance.
                     "images": images_for_provenance(all_images, page.provenance),
                     MetadataField.FRONTMATTER: {
                         "title": page.title or f"Concept {idx}",
@@ -981,6 +985,7 @@ def assemble_wiki(
             toc=[],
             metadata={
                 WikiField.CHUNK_COUNT: len(chunks),
+                MetadataField.MODEL: compiler._model or "",
                 MetadataField.TWO_PHASE: True,
                 MetadataField.GENERATION_SKIPPED: True,
                 MetadataField.SKIP_REASON: "all pages filtered as empty",
@@ -1006,6 +1011,7 @@ def assemble_wiki(
             WikiField.CHUNK_COUNT: len(chunks),
             MetadataField.NODE_COUNT: len(nodes),
             MetadataField.EDGE_COUNT: len(edges),
+            MetadataField.MODEL: compiler._model or "",
             MetadataField.TWO_PHASE: True,
             MetadataField.CONCEPTS_MERGED: len(concepts),
             MetadataField.CONTEXT_WINDOW: cw.max_input,
@@ -1094,7 +1100,8 @@ def gen_cache_deps(
     budget = compiler._budget
     deps: dict[str, str] = {}
     deps[CacheDeps.EXTRACTIONS] = ext_hash or ""
-    deps[CacheDeps.MODEL] = compiler._model or ""
+    if not compiler._config.cache_ignore_model:
+        deps[CacheDeps.MODEL] = compiler._model or ""
     deps[CacheDeps.CHUNK_SIZE_MIN] = str(budget.chunk_size_min or "")
     deps[CacheDeps.CHUNK_SIZE_MAX] = str(budget.chunk_size_max or "")
     deps[CacheDeps.PINNED_FACTS] = pin_hash or ""

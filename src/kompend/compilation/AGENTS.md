@@ -39,7 +39,12 @@ merging and an optional iterative WiCER refinement loop.
 - `two_phase.py` is the primary entry point; `_two_phase_core.py` holds
   extracted core logic to keep the main module focused.
 - `WiCERCompiler` wraps a `TwoPhaseCompiler` and adds iterative probing.
-- No prompt text belongs here — templates live in `src/kompend/templates/`.
+- No prompt text belongs here - templates live in `src/kompend/templates/`.
+- **LLM-product cache keys carry the model** (extraction deps, generation
+  deps + checkpoint, summary deps): a model switch invalidates them by
+  design. `compile.cache_ignore_model` (`--ignore-model`) drops the model
+  from all three keys so a run can be finished on another model - the
+  per-page `MetadataField.MODEL` tag keeps the result attributable.
 - **No content is excluded by size or by a threshold** (see the budget rule in
   `.agents/CODE.md`). `min_content_length` and `max_concept_pages` are warning
   thresholds: short pages and every concept-page candidate are compiled. Only

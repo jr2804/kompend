@@ -155,6 +155,7 @@ class PipelineConfig:
     start_at_tier: Tier = Tier.INDEX  # pipeline entry point (T0 by default)
     stop_at_tier: Tier = Tier.OUTPUT  # pipeline exit point (T4 by default; T1 for ingest)
     force: bool = False  # bypass persistent tier state and re-process everything
+    cache_ignore_model: bool = False  # cache keys drop the model (compile.cache_ignore_model)
     tier_state_file: Path | None = None  # None = base_dir/.kompend/compile_state.json
     ignore_patterns: list[str] | None = None  # glob patterns to exclude
     respect_gitignore: bool = True  # respect .gitignore in source dir
@@ -272,6 +273,7 @@ class PipelineConfig:
             start_at_tier=Tier(kompend.compile.start_at_tier),
             stop_at_tier=Tier(kompend.compile.stop_at_tier),
             force=kompend.compile.force,
+            cache_ignore_model=kompend.compile.cache_ignore_model,
             tier_state_file=Path(kompend.compile.tier_state_file) if kompend.compile.tier_state_file else None,
             ignore_patterns=list(kompend.ignore.patterns),
             respect_gitignore=kompend.compile.respect_gitignore,

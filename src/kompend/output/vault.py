@@ -309,6 +309,12 @@ class VaultWriter(BaseOutputWriter):
         frontmatter[OkfField.KIND] = node.metadata.get(MetadataField.FRONTMATTER, {}).get(OkfField.KIND, node.node_type.value)
         if source_files:
             frontmatter[OkfField.SOURCE_FILES] = source_files
+        # kompend extension (OKF §4.1): the model that generated this page.
+        # Survives cache hits, so a mixed-model wiki stays attributable per
+        # page; absent for pages that are not LLM-generated (graph compiler).
+        model = node.metadata.get(MetadataField.MODEL)
+        if model:
+            frontmatter[OkfField.GENERATED_BY_MODEL] = str(model)
 
         return frontmatter
 

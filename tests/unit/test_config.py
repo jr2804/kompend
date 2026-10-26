@@ -198,6 +198,21 @@ class TestEnvVars:
         cfg = resolve_config(base_dir=tmp_path)
         assert cfg.get("compile.embedding.model") == "ollama/from-the-env"
 
+    def test_cache_ignore_model_env(self, monkeypatch: Any) -> None:
+        # knox-wflz: KOMP_CACHE_IGNORE_MODEL keeps cached LLM products across a model switch.
+        monkeypatch.setenv("KOMP_CACHE_IGNORE_MODEL", "true")
+        result = read_env_vars()
+        assert result["compile"]["cache_ignore_model"] is True
+
+    def test_cache_ignore_model_toml_reaches_pipeline(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """knox-wflz: the flag must survive resolve → from_resolved into the pipeline."""
+        (tmp_path / "kompend.toml").write_text("[compile]\ncache_ignore_model = true\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config(base_dir=tmp_path)
+        assert cfg.get("compile.cache_ignore_model") is True
+        config = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki", input_files=None)
+        assert config.cache_ignore_model is True
+
     def test_user_tracking_env_false(self, monkeypatch: Any) -> None:
         # knox-gsb5: KOMP_USER_TRACKING=false disables user tracking.
         monkeypatch.setenv("KOMP_USER_TRACKING", "false")

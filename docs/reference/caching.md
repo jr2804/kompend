@@ -101,14 +101,17 @@ This means:
 - **Config change**: `chunk_size` changed → `chunk_size` in deps changes →
   chunk cache miss; downstream caches still hit if their deps unchanged
 - **Model change**: `default_model` changed → extract/generation cache miss
+  (opt out with `compile.cache_ignore_model` / `--ignore-model`, then the
+  model is left out of the keys entirely)
 
 ## Invalidation & Bypass
 
 | Control | Mechanism | Effect |
 |---------|-----------|--------|
 | `--no-cache` | `PipelineConfig.no_cache` | Bypasses all cache reads (still writes) |
+| `--ignore-model` | `PipelineConfig.cache_ignore_model` | Drops the model from the extract/generation/summary cache keys, so a model switch keeps cached LLM products (pages keep the model tag they were generated with) |
 | `--force` | `PipelineConfig.force` | Calls `CacheStore.invalidate()` at pipeline start, then re-processes everything |
-| Per-layer | `KOMP_CACHE_DISABLE=chunk,resolve` | Future — env var parsed after tier state work |
+| Per-layer | `KOMP_CACHE_DISABLE=chunk,resolve` | Future - env var parsed after tier state work |
 
 ## Tier State (Complementary)
 

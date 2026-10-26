@@ -313,6 +313,7 @@ class OkfField(StrEnum):
     SOURCES = "sources"
     KIND = "kind"
     SOURCE_FILES = "source_files"
+    GENERATED_BY_MODEL = "model"
     COMPILED_AT = "compiled_at"
     TIMESTAMP = "timestamp"
 

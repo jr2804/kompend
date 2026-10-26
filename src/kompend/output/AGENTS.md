@@ -45,8 +45,10 @@ User-facing guide: `docs/concepts/open-knowledge-format.md`.
 2. **Trust fields** — `generated: {by, at}` (§5.2; `by` follows the §7 actor
    convention `kompend/<version>`) supersedes the v0.1 `timestamp`. `verified` is
    emitted only when a verification pass ran; `status` defaults to `stable`.
-3. **Provenance fields are distinct** — `tags` is topic tags only (no filename
-   overload), `source_files` is the kompend extension (provenance stems), `sources`
+3. **Provenance fields are distinct** - `tags` is topic tags only (no filename
+   overload), `source_files` is the kompend extension (provenance stems), `model`
+   is the kompend extension naming the model that generated the page
+   (`OkfField.GENERATED_BY_MODEL`, absent for non-LLM pages), `sources`
    is OKF §5.1 structured objects `{id, resource, title, author}` from the
    reference store, never bare strings.
 4. **Reserved filenames** — `index.md` and `log.md` follow §8/§9. `log.md` is

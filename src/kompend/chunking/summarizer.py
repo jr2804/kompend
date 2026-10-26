@@ -16,7 +16,9 @@ Key design decisions:
 - When no LLM client is provided, an extractive fallback is used (first
   sentence per child) so the pipeline still functions without an LLM.
 - Summaries are cached by content hash + model name so unchanged subtrees
-  are not re-summarised across runs.
+  are not re-summarised across runs. ``cache_ignore_model`` drops the model
+  from the key (``compile.cache_ignore_model``): after a model switch the
+  previous model's summaries are reused instead of re-derived.
 - Agentic sessions are bounded per batch (``SummarizerSessionPolicy``), so a
   session that exhausts its request budget or ends without recording anything
   only loses its own batch; the remaining batches still run.
@@ -161,6 +163,11 @@ class NodeSummarizer:
         Batching/retry policy for the agentic summarizer. ``None`` keeps the
         pre-batching behaviour: one session for the whole tree with no stall
         retries. The pipeline always passes the configured policy.
+    cache_ignore_model:
+        Drop the model from the summary cache key, so summaries produced by
+        a previous model are reused after a model switch
+        (``compile.cache_ignore_model``). Default off: the model is part of
+        the key.
     """
 
     def __init__(
@@ -170,12 +177,14 @@ class NodeSummarizer:
         *,
         content_policy: SummarizerContentPolicy,
         session_policy: SummarizerSessionPolicy | None = None,
+        cache_ignore_model: bool = False,
     ) -> None:
         self._agent = agent
         self._cache = cache_store
         self._policy = content_policy
         self._session_policy = session_policy
         self._payload_chars = session_policy.payload_chars if session_policy else 0
+        self._cache_ignore_model = cache_ignore_model
         self._loader = get_template_loader()
 
     def summarize(self, tree: ChunkTree) -> ChunkTree:
@@ -458,11 +467,13 @@ class NodeSummarizer:
         if self._agent is not None:
             model = self._agent.model_string
         content_hash = hashlib.sha256(content.encode()).hexdigest()[:16]
-        return {
+        deps = {
             "content_hash": content_hash,
             "heading_chain": hashlib.sha256(heading_chain.encode()).hexdigest()[:16],
-            "model": model,  # nocheck: summarizer cache deps, not wiki metadata
         }
+        if not self._cache_ignore_model:
+            deps["model"] = model  # nocheck: summarizer cache deps, not wiki metadata
+        return deps
 
     @staticmethod
     def _entry_ids(node_id: str, window_count: int) -> list[str]:

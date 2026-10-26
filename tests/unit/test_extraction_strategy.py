@@ -15,8 +15,9 @@ from unittest.mock import MagicMock, patch
 
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
-from kompend.compilation._two_phase_core import Extraction, chars_to_tokens, context_safety_tokens
+from kompend.compilation._two_phase_core import Extraction, ExtractionSet, chars_to_tokens, context_safety_tokens
 from kompend.compilation.flows import extraction as ext_module
+from kompend.compilation.flows import generation as gen_module
 from kompend.compilation.flows.extraction import (
     _compact_history_inplace,
     _estimate_history_tokens,
@@ -365,6 +366,46 @@ class TestExtractCacheDeps:
 
         deps = compiler._cache_store.get_dict.call_args.args[1]
         assert deps[CacheDeps.MODEL] == "ollama/test"
+
+    def test_ignoring_model_drops_it_from_the_key(self) -> None:
+        """knox-wflz: ``compile.cache_ignore_model`` keeps extractions across a model switch."""
+        compiler = _make_compiler()
+        compiler._config.cache_ignore_model = True
+
+        deps = ext_module._extract_cache_deps(compiler, "hello")
+
+        assert CacheDeps.MODEL not in deps
+        assert deps[CacheDeps.SOURCE_TEXT] == hashlib.sha256(b"hello").hexdigest()
+
+
+class TestGenCacheDeps:
+    """The ``generate`` cache key must identify the model — unless the vault
+    opted out via ``compile.cache_ignore_model`` (mixed-model continuation,
+    knox-wflz).
+    """
+
+    def test_key_records_model(self) -> None:
+        deps = gen_module.gen_cache_deps(_make_compiler(), ExtractionSet())
+        assert deps[CacheDeps.MODEL] == "ollama/test"
+
+    def test_ignoring_model_drops_it_from_the_key(self) -> None:
+        compiler = _make_compiler()
+        compiler._config.cache_ignore_model = True
+
+        deps = gen_module.gen_cache_deps(compiler, ExtractionSet())
+
+        assert CacheDeps.MODEL not in deps
+        assert deps[CacheDeps.PINNED_FACTS] == hashlib.sha256(b"").hexdigest()
+
+    def test_switching_model_changes_the_key(self) -> None:
+        first = _make_compiler()
+        second = _make_compiler()
+        second._model = "ollama/other"
+
+        deps_a = gen_module.gen_cache_deps(first, ExtractionSet())
+        deps_b = gen_module.gen_cache_deps(second, ExtractionSet())
+
+        assert make_cache_key(deps_a) != make_cache_key(deps_b)
 
 
 def _make_big_window_compiler() -> TwoPhaseCompiler:

@@ -54,6 +54,20 @@ ForceTier = Annotated[
     ),
 ]
 
+IgnoreModelFlag = Annotated[
+    bool | None,
+    typer.Option(
+        "--ignore-model/--no-ignore-model",
+        help=(
+            "Reuse cached extractions, summaries and generated pages across model switches "
+            "(e.g. finish a run on a local model after an online quota ran out). Cached "
+            "artifacts are keyed without the model; pages keep the model tag they were "
+            "generated with. Default: off (a model switch invalidates cached LLM products)."
+        ),
+        rich_help_panel="Pipeline",
+    ),
+]
+
 InPlaceFlag = Annotated[
     bool | None,
     typer.Option(

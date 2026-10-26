@@ -398,21 +398,25 @@ def extract_incremental(
 def _extract_cache_deps(compiler: TwoPhaseRuntime, text: str) -> dict[str, str]:
     """Cache dependencies for one extraction batch.
 
-    Single source of truth for the ``extract`` cache key — used by both
+    Single source of truth for the ``extract`` cache key - used by both
     :func:`extract_one` and :func:`extract_incremental`, which must agree.
 
     ``CacheDeps.MODEL`` is part of the key because extraction output is
     model-specific (which concepts a model finds, how it names them, how
     verbose the definitions are).  Without it, switching models replays
-    the previous model's extractions instead of re-running them.
+    the previous model's extractions instead of re-running them.  With
+    ``cache_ignore_model`` the model is left out on purpose: the caller
+    accepts replaying prior-model output to avoid re-running everything.
     """
     budget = compiler._budget
-    return {
+    deps = {
         CacheDeps.SOURCE_TEXT: hashlib.sha256(text.encode()).hexdigest(),
-        CacheDeps.MODEL: compiler._model or "",
         CacheDeps.CHUNK_SIZE_MIN: str(budget.chunk_size_min),
         CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
     }
+    if not compiler._config.cache_ignore_model:
+        deps[CacheDeps.MODEL] = compiler._model or ""
+    return deps
 
 
 def _compact_history_inplace(history: list[ModelMessage], max_tokens: int) -> None:
@@ -490,9 +494,10 @@ def reduce_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extra
     partial_data = encode_payload([p.to_dict() for p in parts], compiler._config.llm.data_format)
     reduce_deps_key: dict[str, str] = {
         CacheDeps.SOURCE_TEXT: hashlib.sha256(partial_data.encode()).hexdigest(),
-        CacheDeps.MODEL: compiler._model,
         CacheDeps.STAGE: "reduce",
     }
+    if not compiler._config.cache_ignore_model:
+        reduce_deps_key[CacheDeps.MODEL] = compiler._model
     if not compiler._config.no_cache:
         cached = compiler._cache_store.get_dict("extract", reduce_deps_key)
         if cached is not None:

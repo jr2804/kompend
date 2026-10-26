@@ -256,6 +256,14 @@ respect_gitignore = true
 # Bypass cache entirely
 # no_cache = false
 
+# Reuse cached extractions, summaries and generated pages across model
+# switches (e.g. finish a run on a local model after an online quota ran
+# out). Cached artifacts are keyed without the model, so output from the
+# previous model is replayed as-is; every generated page keeps the `model`
+# frontmatter tag it was produced with, so a page can be traced to its
+# model, deleted and recompiled with a better one.
+# cache_ignore_model = false
+
 # Enable review mode (gate compilation on review approval)
 # review = false
 

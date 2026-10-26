@@ -164,6 +164,24 @@ class TestSummarizerCache:
             deps = call[0][1]
             assert deps["model"] == "my-model"
 
+    def test_cache_deps_skip_model_when_ignoring(self, sample_tree: ChunkTree) -> None:
+        """knox-wflz: ``cache_ignore_model`` reuses summaries across a model switch."""
+        mock_llm = MagicMock()
+        mock_llm.model_string = "my-model"
+        mock_llm.run.return_value = "Summary."
+
+        mock_cache = MagicMock()
+        mock_cache.get.return_value = None
+
+        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache, content_policy=_policy(), cache_ignore_model=True)
+        summarizer.summarize(sample_tree)
+
+        assert mock_llm.run.called
+        for call in mock_cache.set.call_args_list:
+            deps = call[0][1]
+            assert "model" not in deps
+            assert deps["content_hash"]
+
 
 class TestSummarizerStructuredLeaf:
     def test_structured_leaf_content(self) -> None:
