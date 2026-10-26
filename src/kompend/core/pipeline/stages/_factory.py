@@ -179,5 +179,5 @@ def build_pipeline(
                 ),
             ),
         ),
-        enricher=ContextualEnricher(agent=enricher_agent, display=config.display) if enricher_agent is not None else None,
+        enricher=ContextualEnricher(agent=enricher_agent) if enricher_agent is not None else None,
     )

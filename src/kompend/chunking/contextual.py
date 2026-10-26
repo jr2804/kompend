@@ -12,6 +12,10 @@ Config keys (under ``[search.contextual]``):
 
 - ``enabled`` — enable/disable (default: ``false``)
 - ``model`` — LLM model override for context generation (default: uses compile.llm.default_model)
+
+An enrichment failure raises: the context an embedding carries is LLM
+output, never a hand-crafted stand-in, and the chunk text reaches the model
+in full (`.agents/CODE.md`, "LLM calls").
 """
 
 from __future__ import annotations
@@ -22,7 +26,6 @@ from kompend.agents.context_chunk import ContextChunkAgent
 from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import ContextChunk, ContextChunkDeps
-from kompend.core.config._configs import DisplayConfig
 from kompend.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.logging import get_logger
@@ -42,10 +45,8 @@ class ContextualEnricher:
     def __init__(
         self,
         agent: ContextChunkAgent | AgenticContextChunkAgent | None = None,
-        display: DisplayConfig | None = None,
     ) -> None:
         self._agent = agent
-        self._display = display if display is not None else DisplayConfig()
         self._template_loader: TemplateLoader = get_template_loader()
 
     def enrich_tree(
@@ -99,19 +100,16 @@ class ContextualEnricher:
         chunks: list[ContextChunk] = []
         for leaf in leaves:
             headings = [h for h in (leaf.heading_chain or []) if h]
-            excerpt_limit = self._display.excerpt_chars
-            text = ""
             if leaf.chunk:
-                text = leaf.chunk.text[:excerpt_limit]
+                text = leaf.chunk.text
             elif leaf.structured:
-                text = str(leaf.structured)[:excerpt_limit]
+                text = str(leaf.structured)
+            else:
+                text = ""
             chunks.append(ContextChunk(id=id(leaf), heading_chain=headings, text=text))
 
         deps = ContextChunkDeps(doc_title=doc_title, doc_summary=doc_summary, chunks=chunks, source_id=doc_title)
-        try:
-            self._agent.run(deps)
-        except Exception as exc:
-            logger.debug("Agentic contextual enrichment failed for %s: %s", doc_title, exc)
+        self._agent.run(deps)
 
         for leaf in leaves:
             context = deps.results.get(id(leaf))
@@ -134,47 +132,41 @@ class ContextualEnricher:
         """Build situating context for a single chunk node.
 
         Uses the heading path and document metadata to describe where
-        this chunk fits in the document.
+        this chunk fits in the document. A model failure raises — there
+        is no structural stand-in (`.agents/CODE.md`, "LLM calls").
         """
         heading_chain = " > ".join(h for h in (node.heading_chain or []) if h) or "document root"
 
-        # Estimate chunk content length
-        content_preview = ""
-        excerpt_limit = self._display.excerpt_chars
         if node.chunk:
-            content_preview = node.chunk.text[:excerpt_limit]
+            chunk_text = node.chunk.text
         elif node.structured:
-            content_preview = str(node.structured)[:excerpt_limit]
+            chunk_text = str(node.structured)
+        else:
+            chunk_text = ""
 
-        try:
-            rendered = self._template_loader.render(
-                "chunking/contextual_context.md.j2",
-                doc_title=doc_title,
-                doc_summary=doc_summary,
-                heading_chain=heading_chain,
-                content_preview=content_preview,
-            )
-            deps = PipelineAgentDeps(text=rendered, source_id=heading_chain)
-            if self._agent is None:
-                raise RuntimeError("ContextChunkAgent not initialized")
-            agent = cast("ContextChunkAgent", self._agent)
-            result = agent.run(deps)
-            context = result.strip()
-            if context:
-                return context
-        except Exception as exc:
-            logger.debug("Contextual enrichment failed for %s: %s", heading_chain, exc)
+        rendered = self._template_loader.render(
+            "chunking/contextual_context.md.j2",
+            doc_title=doc_title,
+            doc_summary=doc_summary,
+            heading_chain=heading_chain,
+            content_preview=chunk_text,
+        )
+        deps = PipelineAgentDeps(text=rendered, source_id=heading_chain)
+        if self._agent is None:
+            raise RuntimeError("ContextChunkAgent not initialized")
+        agent = cast("ContextChunkAgent", self._agent)
+        context = agent.run(deps).strip()
+        if not context:
+            raise ValueError(f"Contextual enrichment for '{heading_chain}' returned an empty response")
+        return context
 
-        # Fallback: structural context without LLM
-        return f"This chunk is from '{doc_title}', under section: {heading_chain}."
-
-    def _summarize_document(self, doc: ParsedDocument) -> str:
-        """Generate a one-line summary of the document."""
+    @staticmethod
+    def _summarize_document(doc: ParsedDocument) -> str:
+        """Build the document's heading outline for the enrichment prompt."""
         elements = doc.elements
         headings = [e.content for e in elements if e.type == ElementType.HEADING and isinstance(e.content, str)]
         if headings:
-            limit = self._display.doc_headings
-            return "; ".join(headings[:limit])
+            return "; ".join(headings)
         return doc.title or doc.source_file.stem
 
     @staticmethod

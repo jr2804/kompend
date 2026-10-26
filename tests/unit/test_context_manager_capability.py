@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
+import pytest
 from pydantic_ai_harness.compaction import SlidingWindowCompaction, SummarizingCompaction
 
 from kompend.agents.base import _CONTEXT_PRESETS, _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES
-from kompend.agents.context_manager import _extractive_summary, build_summarizing_compaction
+from kompend.agents.context_manager import build_summarizing_compaction
 
 
 class TestBuildSummarizingCompaction:
@@ -23,7 +23,7 @@ class TestBuildSummarizingCompaction:
         assert capability.keep_messages == 5
         assert capability.context_window == 200_000
 
-    def test_uses_kompend_subclass_with_the_extractive_fallback(self) -> None:
+    def test_uses_the_kompend_logging_subclass(self) -> None:
         capability = build_summarizing_compaction(context_window=None, compress_threshold=0.7, keep_messages=0)
 
         assert type(capability).__mro__[1] is SummarizingCompaction
@@ -44,17 +44,25 @@ class TestSlidingWindowDefaults:
         assert capability.keep_messages == _SLIDING_KEEP_MESSAGES
 
 
-class TestExtractiveFallback:
-    def test_renders_the_conversation_text(self) -> None:
-        messages = [
-            ModelRequest(parts=[UserPromptPart(content="first question")]),
-            ModelResponse(parts=[TextPart(content="first answer")]),
-        ]
+class TestCompactionFailurePropagates:
+    """A summarizer model that cannot answer must burn, not degrade silently.
 
-        summary = _extractive_summary(messages)
+    Policy (.agents/CODE.md, "LLM calls"): no fallback summary, no
+    hand-crafted stand-in — the exception reaches the caller.
+    """
 
-        assert "first question" in summary
-        assert "first answer" in summary
+    async def test_summarizer_failure_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        capability = build_summarizing_compaction(
+            context_window=8192,
+            compress_threshold=0.8,
+            keep_messages=2,
+            model="ollama/test-model",
+        )
 
-    def test_empty_history_has_a_placeholder(self) -> None:
-        assert _extractive_summary([]) == "No previous conversation history."
+        async def _broken(*args: object, **kwargs: object) -> str:
+            raise RuntimeError("Tool 'final_result' exceeded max retries count of 1")
+
+        monkeypatch.setattr(capability, "_summarize", _broken)
+
+        with pytest.raises(RuntimeError, match="exceeded max retries"):
+            await capability._summarize([], ctx=None)  # type: ignore[arg-type]  # noqa: SLF001

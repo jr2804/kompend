@@ -146,6 +146,9 @@ relevant child AGENTS.md. (Conventions, config, or boundary rules belong in
 
 - Run every tool through `uv run …` (scripts, checks, pytest, one-off probes);
   a bare `python …` is never used.
+- LLM I/O policy (details in `.agents/CODE.md`): never crop LLM inputs or
+  outputs, no fallbacks where an exception belongs, no hand-crafted heuristic
+  stand-ins for LLM calls without explicit approval.
 
 ## Closeout
 

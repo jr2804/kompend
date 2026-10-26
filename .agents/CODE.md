@@ -66,6 +66,11 @@ installs). Run both before committing — see `CHECKS.md`.
   set. The only legitimate stops are a provider/model timeout and an endless
   agent loop — and both keep the work done so far. Fix the loop; do not cap
   the budget.
+- **LLM calls.** Never crop inputs to or outputs from an LLM (and never use
+  token limits of LLM calls to crop any input or output). Do not implement
+  fallbacks when a clear exception is more appropriate — in doubt, let it
+  burn. Never replace an LLM call with a self-crafted heuristic without the
+  user's explicit approval.
 - **Temp files** go in `./tmp` (gitignored) or `tempfile.TemporaryDirectory()`.
 
 ## Error handling — prefer "let it burn"

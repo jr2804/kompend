@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import pytest
+
 from kompend.chunking.contextual import ContextualEnricher
 from kompend.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
 
@@ -102,26 +104,50 @@ class TestEnrichTreeWithClient:
         for node_id in ("a", "b", "c"):
             assert tree.nodes[node_id].contextual_context != ""
 
-    def test_llm_failure_uses_fallback(self) -> None:
+    def test_llm_failure_raises(self) -> None:
+        """Policy (.agents/CODE.md, "LLM calls"): a failed enrichment burns."""
         mock = MagicMock()
         mock.run.side_effect = RuntimeError("LLM unavailable")
         enricher = ContextualEnricher(agent=mock)
         leaf = _make_leaf("x", heading=("Introduction",))
         tree = _make_tree(leaf)
-        enricher.enrich_tree(tree, _make_doc("My Paper"))
-        # Fallback format includes doc title and heading path
-        ctx = tree.nodes["x"].contextual_context
-        assert "My Paper" in ctx
-        assert "Introduction" in ctx
 
-    def test_empty_llm_response_uses_fallback(self) -> None:
+        with pytest.raises(RuntimeError, match="LLM unavailable"):
+            enricher.enrich_tree(tree, _make_doc("My Paper"))
+
+    def test_empty_llm_response_raises(self) -> None:
+        """An empty model response is a failed enrichment, not a fallback."""
         enricher = self._make_enricher("")  # empty response
         leaf = _make_leaf("y", heading=("Results",))
         tree = _make_tree(leaf)
-        enricher.enrich_tree(tree, _make_doc("Doc"))
-        ctx = tree.nodes["y"].contextual_context
-        assert "Doc" in ctx
-        assert "Results" in ctx
+
+        with pytest.raises(ValueError, match="empty response"):
+            enricher.enrich_tree(tree, _make_doc("Doc"))
+
+    def test_full_chunk_text_reaches_the_model(self) -> None:
+        """The prompt carries the whole chunk — no excerpt crop (policy)."""
+        long_text = "word " * 200  # ~1000 chars, far beyond any display excerpt
+        mock = MagicMock()
+        mock.run.return_value = "context"
+        enricher = ContextualEnricher(agent=mock)
+        leaf = _make_leaf("z", text=long_text)
+
+        enricher.enrich_tree(_make_tree(leaf), _make_doc("Doc"))
+
+        rendered = mock.run.call_args.args[0].text
+        assert long_text.strip() in rendered
+
+    def test_all_headings_reach_the_prompt(self) -> None:
+        """The document outline is not cropped to a display count (policy)."""
+        doc = ParsedDocument(
+            source_file=Path("doc.md"),
+            elements=[DocumentElement(type=ElementType.HEADING, content=f"Heading {index}") for index in range(8)],
+            title="Many Headings",
+        )
+        summary = ContextualEnricher(agent=None)._summarize_document(doc)
+
+        for index in range(8):
+            assert f"Heading {index}" in summary
 
     def _make_enricher(self, response: str = "context paragraph") -> ContextualEnricher:
         mock = MagicMock()
