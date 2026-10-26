@@ -27,24 +27,6 @@ _BUNDLE_FILES: frozenset[str] = frozenset({INDEX_FILE, LOG_FILE, QUALITY_FILE, R
 _PAGE_FOLDERS: frozenset[str] = frozenset(KIND_FOLDERS.values())
 
 
-def _page_files(output_dir: Path) -> list[Path]:
-    """The compiled pages of a bundle — one ``.md`` file per page.
-
-    Pages live in the kind folders (``concepts/``, ``entities/``). The
-    bundle root holds the reserved files (index, log, quality,
-    references, overview); those describe the bundle, they are not pages.
-    """
-    pages: list[Path] = []
-    for path in output_dir.rglob("*.md"):
-        relative = path.relative_to(output_dir)
-        if len(relative.parts) > 1:
-            if relative.parts[0] in _PAGE_FOLDERS:
-                pages.append(path)
-        elif path.name not in _BUNDLE_FILES:
-            pages.append(path)
-    return pages
-
-
 def collect_stats(
     sources_dir: Path | None = None,
     output_dir: Path | None = None,
@@ -129,6 +111,24 @@ def collect_stats(
         stats["tier_distribution"] = tier_state.tier_distribution()
 
     return stats
+
+
+def _page_files(output_dir: Path) -> list[Path]:
+    """The compiled pages of a bundle — one ``.md`` file per page.
+
+    Pages live in the kind folders (``concepts/``, ``entities/``). The
+    bundle root holds the reserved files (index, log, quality,
+    references, overview); those describe the bundle, they are not pages.
+    """
+    pages: list[Path] = []
+    for path in output_dir.rglob("*.md"):
+        relative = path.relative_to(output_dir)
+        if len(relative.parts) > 1:
+            if relative.parts[0] in _PAGE_FOLDERS:
+                pages.append(path)
+        elif path.name not in _BUNDLE_FILES:
+            pages.append(path)
+    return pages
 
 
 def print_status(stats: dict, json_output: bool = False) -> int:

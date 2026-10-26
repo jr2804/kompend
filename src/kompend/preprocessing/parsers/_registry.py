@@ -27,8 +27,6 @@ from kompend.preprocessing.parsers.base import (
     ParserRouter,
 )
 
-logger = get_logger(__name__)
-
 # Selectable ingestion backends: name → factory(options) -> BaseParser.
 PARSER_BACKENDS: dict[str, Callable[[ParserBuildOptions], BaseParser]] = {}
 
@@ -47,6 +45,8 @@ KNOWN_BACKENDS: dict[str, str] = {
 _BACKEND_MODULES: dict[str, str] = {
     "parsecraft": "kompend.preprocessing.parsers.parsecraft_parser",
 }
+
+logger = get_logger(__name__)
 
 
 # Metadata powering ``kompend list-parsers`` (name/type/extensions/figure_enrichment).
@@ -171,6 +171,21 @@ def get_registered_parsers() -> list[ParserMetadata]:
     return list(_registry.values())
 
 
+def get_supported_extensions() -> set[str]:
+    """The file extensions a vault can ingest.
+
+    Merges the canonical :class:`~kompend.preprocessing.parsers.base.FileExtension`
+    table with the suffixes the ingestion backend declares. Discovery, the
+    status report and the parsers themselves must agree on this set.
+    """
+    extensions: set[str] = set(FileExtension)
+    try:
+        extensions.update(get_all_extensions([DEFAULT_PARSER]))
+    except Exception as exc:
+        logger.debug("Could not load external parser extensions: %s", exc, exc_info=is_verbose())
+    return extensions
+
+
 def get_all_extensions(names: Iterable[str]) -> set[str]:
     """Union of the suffixes the named backends can ingest.
 
@@ -185,21 +200,6 @@ def get_all_extensions(names: Iterable[str]) -> set[str]:
         if entry is None:
             continue
         extensions.update(ext.lower() for ext in entry.get("extensions", []))
-    return extensions
-
-
-def get_supported_extensions() -> set[str]:
-    """The file extensions a vault can ingest.
-
-    Merges the canonical :class:`~kompend.preprocessing.parsers.base.FileExtension`
-    table with the suffixes the ingestion backend declares. Discovery, the
-    status report and the parsers themselves must agree on this set.
-    """
-    extensions: set[str] = set(FileExtension)
-    try:
-        extensions.update(get_all_extensions([DEFAULT_PARSER]))
-    except Exception as exc:
-        logger.debug("Could not load external parser extensions: %s", exc, exc_info=is_verbose())
     return extensions
 
 
