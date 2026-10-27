@@ -417,3 +417,45 @@ class TestConfigCheckCli:
         assert result.exit_code == 1, result.output
         assert "MODIFIED" in result.output
         assert "compile.workers" in result.output
+
+
+class TestConfigCommandsHonourTheFlag:
+    """The root ``--config`` flag must reach every config-introspection command."""
+
+    def test_get_reads_the_flag_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        (vault / "kompend.toml").write_text("[compile]\nworkers = 8\n", encoding="utf-8")
+        explicit = tmp_path / "other.toml"
+        explicit.write_text("[compile]\nworkers = 3\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["--config", str(explicit), "-w", str(vault), "config", "get", "compile.workers"])
+
+        assert result.exit_code == 0, result.output
+        assert result.output.strip() == "3"
+
+    def test_list_marks_values_from_the_flag_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        vault = tmp_path / "vault"
+        vault.mkdir()
+        (vault / "kompend.toml").write_text("[compile]\nworkers = 8\n", encoding="utf-8")
+        explicit = tmp_path / "other.toml"
+        explicit.write_text("[compile]\nworkers = 3\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["--config", str(explicit), "-w", str(vault), "config", "list"])
+
+        assert result.exit_code == 0, result.output
+        line = next(ln for ln in result.output.splitlines() if ln.startswith("compile.workers = "))
+        assert line.startswith("compile.workers = 3")
+
+    def test_check_uses_the_flag_file_without_a_path_argument(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        explicit = tmp_path / "bad.toml"
+        explicit.write_text("[compile]\nlegacy_removed = 'x'\n", encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+
+        result = runner.invoke(app, ["--config", str(explicit), "config", "check"])
+
+        assert result.exit_code == 2, result.output
+        assert "bad.toml" in result.output
+        assert "unknown" in result.output.lower()

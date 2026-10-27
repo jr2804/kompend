@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 import re
 import sys
+from pathlib import Path
 
 import typer
 
-from kompend.cli._shared import vault_paths_from_ctx
+from kompend.cli._shared import config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.app import app
 from kompend.cli.args.common import JsonOutput
 from kompend.cli.args.config import (
@@ -61,12 +62,10 @@ def config_get(
         get_err_console().print(f"error: unknown config key: {key}")
         raise typer.Exit(code=1)
 
-    overrides = {}
-    wiki_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
-    if wiki_dir:
-        overrides[PATHS_WIKI_DIR] = str(wiki_dir)
+    base_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
+    overrides = {PATHS_WIKI_DIR: str(base_dir)} if base_dir else {}
 
-    cfg = resolve_config(cli_overrides=overrides)
+    cfg = resolve_config(cli_overrides=overrides, config_file=config_file_from_ctx(ctx), base_dir=base_dir)
     value = cfg.get(key)
     get_console().print(_format_value(_redact_api_key(key, value)))
 
@@ -113,12 +112,10 @@ def config_list(
     global_: ConfigGlobalOpt = False,
 ) -> None:
     """Print every resolved config key, value, and source."""
-    overrides = {}
-    wiki_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
-    if wiki_dir:
-        overrides[PATHS_WIKI_DIR] = str(wiki_dir)
+    base_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
+    overrides = {PATHS_WIKI_DIR: str(base_dir)} if base_dir else {}
 
-    cfg = resolve_config(cli_overrides=overrides)
+    cfg = resolve_config(cli_overrides=overrides, config_file=config_file_from_ctx(ctx), base_dir=base_dir)
     for key, value in sorted(cfg.flat().items()):
         source = cfg.source_of(key)
         get_console().print(f"{key} = {_format_value(_redact_api_key(key, value))}  # {source}")
@@ -158,10 +155,14 @@ def config_check(
     ``--json`` for machine-readable output.
     """
     if not paths:
-        # No explicit file(s) → use the discovered project config (kompend.toml
-        # or .kompend/config.toml). A vault with no config file at all is simply
-        # all-defaults, so report that cleanly instead of 157 "file missing" rows.
-        project_cfg = get_project_config_file(start_dir=vault_paths_from_ctx(ctx, require_vault=False).base_dir)
+        # No path argument: the root --config flag wins (it names exactly one
+        # file), otherwise fall back to the discovered project config
+        # (kompend.toml or .kompend/config.toml). A vault with no config file at
+        # all is simply all-defaults, so report that cleanly instead of 157
+        # "file missing" rows.
+        explicit = config_file_from_ctx(ctx)
+        start_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
+        project_cfg = Path(explicit) if explicit else get_project_config_file(start_dir=start_dir)
         if not project_cfg.exists():
             get_console().print(
                 f"[yellow]No config file found at {project_cfg}[/yellow] — all values are at built-in defaults.",
