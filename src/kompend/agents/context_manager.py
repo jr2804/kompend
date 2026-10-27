@@ -27,10 +27,14 @@ logger = get_logger(__name__)
 class _LoggedSummarizingCompaction(SummarizingCompaction):
     """``SummarizingCompaction`` that logs its compression events."""
 
-    async def _summarize(self, messages: list[ModelMessage], ctx: Any, previous_summary: str | None = None) -> str:
+    # pydantic_ai_harness 0.62 hands ``_summarize`` a ``WrittenSummary``
+    # record (``.text``/``.created_at``) instead of the plain ``str`` of
+    # 0.61 — the return type follows whichever harness is installed.
+    async def _summarize(self, messages: list[ModelMessage], ctx: Any, previous_summary: str | None = None) -> Any:
         logger.info("Context compression starting: %d message(s)", len(messages))
         summary = await super()._summarize(messages, ctx, previous_summary=previous_summary)
-        logger.info("Context compression produced %d-char summary", len(summary or ""))
+        text = getattr(summary, "text", summary)
+        logger.info("Context compression produced %d-char summary", len(text or ""))
         return summary
 
 

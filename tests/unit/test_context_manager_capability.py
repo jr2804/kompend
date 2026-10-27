@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import pytest
 from pydantic_ai_harness.compaction import SlidingWindowCompaction, SummarizingCompaction
 
@@ -66,3 +68,49 @@ class TestCompactionFailurePropagates:
 
         with pytest.raises(RuntimeError, match="exceeded max retries"):
             await capability._summarize([], ctx=None)  # type: ignore[arg-type]  # noqa: SLF001
+
+
+class TestWrittenSummaryCompat:
+    """pydantic_ai_harness 0.62 returns a WrittenSummary record from ``_summarize``.
+
+    kompend only logs the summary length; the record must pass through
+    unchanged (regression: ``len(WrittenSummary)`` crashed every compaction).
+    """
+
+    async def test_summary_record_passes_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        class _Record:
+            text = "the summary"
+            created_at = datetime(2026, 10, 27, 16, 33, 20)
+
+        capability = build_summarizing_compaction(
+            context_window=8192,
+            compress_threshold=0.8,
+            keep_messages=2,
+            model="ollama/test-model",
+        )
+        record = _Record()
+        monkeypatch.setattr(SummarizingCompaction, "_summarize", self._returning(record))
+
+        result = await capability._summarize([], ctx=None)  # type: ignore[arg-type]  # noqa: SLF001
+
+        assert result is record
+
+    async def test_plain_string_summary_still_passes_through(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        capability = build_summarizing_compaction(
+            context_window=8192,
+            compress_threshold=0.8,
+            keep_messages=2,
+            model="ollama/test-model",
+        )
+        monkeypatch.setattr(SummarizingCompaction, "_summarize", self._returning("plain summary"))
+
+        result = await capability._summarize([], ctx=None)  # type: ignore[arg-type]  # noqa: SLF001
+
+        assert result == "plain summary"
+
+    @staticmethod
+    def _returning(value: object) -> object:
+        async def _stub(*args: object, **kwargs: object) -> object:
+            return value
+
+        return _stub
