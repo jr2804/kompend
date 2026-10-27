@@ -94,12 +94,23 @@ def normalize_to_utf8_path(source_path: Path, cache_dir: Path) -> tuple[Path, st
 
     If *source_path* is already UTF-8, returns it unchanged with
     ``encoding=None``. Otherwise writes a normalized copy to
-    ``cache_dir / "encoding" / <sha256>.utf8`` and returns that path
+    ``cache_dir / "encoding" / <sha256><suffix>`` and returns that path
     with the detected encoding name.
+
+    The sibling keeps the source's **suffix**: parser backends classify
+    input by extension (``media_type_for``), so a ``.utf8`` name would be
+    unclassifiable and the source would be dropped. Suffix-preserving names
+    also keep identical-content files with different suffixes in separate
+    siblings; identical bytes *with the same suffix* share one sibling by
+    design (the copy is a pure function of the bytes).
 
     The cache key is the SHA-256 of the source bytes, truncated to
     :data:`_CACHE_HASH_LEN` — so a re-compile of an unchanged file
     hits the cache, and a changed file naturally re-encodes.
+
+    Callers re-point ``ParsedDocument.source_file`` at the original path
+    after parsing (:func:`kompend.core.pipeline.ingest.restore_source_path`)
+    so citations never reference the cache sibling.
 
     Emits one log line per detected file via ``logger.info``.
     """
@@ -111,7 +122,7 @@ def normalize_to_utf8_path(source_path: Path, cache_dir: Path) -> tuple[Path, st
     encoded_dir = cache_dir / _ENCODING_CACHE_DIR
     encoded_dir.mkdir(parents=True, exist_ok=True)
     cache_key = sha256(raw_bytes).hexdigest()[:_CACHE_HASH_LEN]
-    target_path: Path = encoded_dir / f"{cache_key}.utf8"
+    target_path: Path = encoded_dir / f"{cache_key}{source_path.suffix}"
     target_path.write_text(text, encoding="utf-8")
     logger.info(
         "encoding: %s was %s -> re-encoded UTF-8 (cache: %s)",

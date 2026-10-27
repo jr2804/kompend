@@ -22,6 +22,7 @@ from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import DocumentElement, ElementType, ParsedDocument
 from kompend.core.models.attachments import IMAGE_EXTENSIONS, Attachment, AttachmentManifest
 from kompend.core.paths import VaultPaths
+from kompend.core.pipeline.ingest import restore_source_path
 from kompend.core.text.encoding import normalize_to_utf8_path
 from kompend.core.text.rumdl import normalize_element_markdown
 from kompend.core.verbosity import is_verbose
@@ -115,14 +116,14 @@ def _parse_text(att_file: Path, att: Attachment, router: ParserRouter, cache_dir
     """Parse a text/markdown attachment via the standard router.
 
     The path passed to the parser is the UTF-8-normalized sibling of
-    *att_file* (see :func:`normalize_to_utf8_path`); the original path
-    is preserved on the :class:`ParsedDocument` only if the parser
-    chooses to keep it — typical behavior is to read content and leave
-    *source_file* untouched, so this is transparent to downstream.
+    *att_file* (see :func:`normalize_to_utf8_path`); the document is
+    re-pointed at *att_file* right after parsing so citations and manifests
+    never reference the encoding cache.
     """
     try:
         parse_target, _encoding = normalize_to_utf8_path(att_file, cache_dir)
         doc = router.parse(parse_target)
+        restore_source_path(doc, parse_target=parse_target, source_file=att_file)
         # Same part-level markdown normalisation as parse-tier sources.
         normalize_element_markdown(doc.elements, rumdl_config=resolve_rumdl_config(cache_dir.parent.parent))
         doc.title = doc.title or att.filename

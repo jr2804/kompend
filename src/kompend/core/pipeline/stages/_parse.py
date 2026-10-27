@@ -31,6 +31,7 @@ from kompend.core.pipeline.ingest import (
     parse_target_path,
     preserve_cached_metadata,
     relativize_image_paths,
+    restore_source_path,
 )
 from kompend.core.pipeline.parallelism import describe_parallelism
 from kompend.core.pipeline.parse_cache import (
@@ -269,6 +270,9 @@ def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool,
     except Exception as exc:
         logger.error("Failed to parse %s: %s", source_file, exc, exc_info=is_verbose())
         return None
+    # The parser saw the encoding sibling (if any); citations and the cache
+    # entry must reference the real source, not the cache copy.
+    restore_source_path(parsed, parse_target=parse_target, source_file=source_file)
     # Portable cache: absolute image paths -> relative to the vault, BEFORE the
     # cache write so cache and in-memory doc agree (asset ids hash figure
     # image_ref; the same doc is chunked after this function returns).

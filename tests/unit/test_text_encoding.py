@@ -119,11 +119,31 @@ def test_normalize_writes_cache_for_non_utf8(tmp_path: Path) -> None:
     target, encoding = normalize_to_utf8_path(src, cache)
     assert target != src, "Non-UTF-8 source must produce a cached sibling"
     assert encoding is not None
+    # The sibling keeps the source suffix: backends classify input by
+    # extension, and an extensionless name makes them drop the file.
+    assert target.suffix == src.suffix
     # The cache file must be UTF-8-decodable:
     assert target.read_text(encoding="utf-8")  # strict; would fail otherwise
     # Cached by content hash, so a second call is a no-op (no re-write):
     target2, _ = normalize_to_utf8_path(src, cache)
     assert target2 == target
+
+
+def test_normalize_siblings_are_distinct_across_suffixes(tmp_path: Path) -> None:
+    """Identical bytes with different suffixes must not share a sibling."""
+    cache = tmp_path / "cache"
+    as_md = tmp_path / "note.md"
+    as_txt = tmp_path / "note.txt"
+    payload = b"# caf\xe9\n" * 50
+    as_md.write_bytes(payload)
+    as_txt.write_bytes(payload)
+
+    target_md, _ = normalize_to_utf8_path(as_md, cache)
+    target_txt, _ = normalize_to_utf8_path(as_txt, cache)
+
+    assert target_md != target_txt
+    assert target_md.suffix == ".md"
+    assert target_txt.suffix == ".txt"
 
 
 def test_normalize_cache_key_changes_with_content(tmp_path: Path) -> None:

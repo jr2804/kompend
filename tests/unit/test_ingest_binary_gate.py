@@ -16,13 +16,21 @@ FileExtension`` even though the backend parses them).
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import cast
 from unittest.mock import MagicMock, patch
 
-from kompend.core.models import ParsedDocument
-from kompend.core.pipeline.ingest import ingest_documents, parse_target_path
+from kompend.core.models import DocumentElement, ElementType, ParsedDocument
+from kompend.core.pipeline.ingest import (
+    ingest_documents,
+    parse_target_path,
+    restore_source_path,
+)
+from kompend.core.pipeline.parse_cache import cache_key as document_cache_key
+from kompend.core.pipeline.parse_cache import read_document
 from kompend.core.pipeline.state import TierStateStore
+from kompend.core.store import vault_db_path
 from kompend.core.text.encoding import detect_and_decode
 from kompend.preprocessing.parsers import ParserRouter
 
@@ -151,7 +159,92 @@ def test_parse_target_path_normalizes_known_text_source(tmp_path: Path) -> None:
 
     assert target != src
     assert target.parent == cache / "encoding"
+    assert target.suffix == src.suffix, "backend classifies by suffix — keep it"
     assert target.read_text(encoding="utf-8") == expected
+
+
+def test_non_utf8_markdown_is_ingested_not_dropped(tmp_path: Path) -> None:
+    """A Latin-1 markdown source reaches the parser with a classifiable suffix.
+
+    Regression for knox-0mtq: the normalized sibling used to be named
+    ``<hash>.utf8``. Backends classify input by suffix
+    (``media_type_for``), so every non-UTF-8 text source raised
+    ``UnsupportedSourceError`` and was dropped.
+    """
+    base = _seed_vault(tmp_path)
+    src = base / "sources" / "note.md"
+    src.write_bytes("# café\n".encode("latin-1"))
+    router = _FakeRouter()
+
+    result = ingest_documents(
+        files=[src],
+        base_dir=base,
+        router=cast("ParserRouter", router),
+        no_cache=True,
+        config=None,
+    )
+
+    assert result.failed == 0
+    assert result.count == 1
+    (target,) = router.parsed
+    assert target != src
+    assert target.suffix == ".md"
+    expected, _encoding = detect_and_decode(src)
+    assert target.read_text(encoding="utf-8") == expected
+
+
+def test_encoding_sibling_does_not_leak_into_the_cache_entry(tmp_path: Path) -> None:
+    """The cached record points at the real source, not the encoding cache."""
+    base = _seed_vault(tmp_path)
+    src = base / "sources" / "note.md"
+    src.write_bytes("# café\n".encode("latin-1"))
+    router = _FakeRouter()
+
+    ingest_documents(
+        files=[src],
+        base_dir=base,
+        router=cast("ParserRouter", router),
+        no_cache=True,
+        config=None,
+    )
+
+    content_hash = hashlib.sha256(src.read_bytes()).hexdigest()
+    data = read_document(vault_db_path(base), document_cache_key(src, content_hash))
+    assert data is not None
+    assert Path(data["source_file"]).as_posix() == "sources/note.md"
+
+
+def test_restore_source_path_rewrites_document_and_elements() -> None:
+    """Both the document and the elements that read the sibling are restored."""
+    sibling = Path("/cache/encoding/abc.md")
+    origin = Path("/vault/sources/note.md")
+    doc = ParsedDocument(
+        source_file=sibling,
+        elements=[
+            DocumentElement(type=ElementType.TEXT, content="a", source_file=sibling),
+            DocumentElement(type=ElementType.TEXT, content="b", source_file=origin),
+        ],
+        title="",
+    )
+
+    restore_source_path(doc, parse_target=sibling, source_file=origin)
+
+    assert doc.source_file == origin
+    assert [el.source_file for el in doc.elements] == [origin, origin]
+
+
+def test_restore_source_path_is_a_noop_without_an_encoding_sibling() -> None:
+    """UTF-8 sources are parsed in place; nothing is rewritten."""
+    origin = Path("/vault/sources/note.md")
+    doc = ParsedDocument(
+        source_file=origin,
+        elements=[DocumentElement(type=ElementType.TEXT, content="a", source_file=origin)],
+        title="",
+    )
+
+    restore_source_path(doc, parse_target=origin, source_file=origin)
+
+    assert doc.source_file == origin
 
 
 def _seed_vault(tmp_path: Path) -> Path:

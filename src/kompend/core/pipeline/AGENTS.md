@@ -46,7 +46,11 @@ persistence, and standalone ingestion.
   *which bytes a parser receives*: `parse_target_path` (in `ingest.py`) hands
   a known text format over as UTF-8 and every other source byte-wise. It
   never rejects a source — the router already picked a backend, and the
-  format table classifies bytes, it does not gate parsing.
+  format table classifies bytes, it does not gate parsing. The UTF-8 sibling
+  keeps the source suffix (`<hash><suffix>`), so the backend still classifies
+  it, and every caller of `parse_target_path` runs `restore_source_path`
+  straight after parsing: documents and elements carry the original path, the
+  sibling never reaches citations or the parse cache.
 - Contextual chunk enrichment is opt-in via `search.contextual.enabled`
   (default false). When on, `build_pipeline` constructs a `ContextualEnricher`;
   `_parse.py` runs it after chunking and **before** the chunk-cache write, so the

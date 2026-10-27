@@ -147,6 +147,23 @@ def test_iter_sources_skips_archive_subdir(tmp_path: Path) -> None:
     assert sources == {"live.md"}
 
 
+def test_iter_sources_skips_state_dir(tmp_path: Path) -> None:
+    """Encoding siblings live in ``.kompend`` and are never re-ingested.
+
+    Normalized copies keep the source suffix so backends can classify them,
+    which makes them look like sources to the glob — the state-dir guard is
+    what keeps ``<hash>.md`` out of the pipeline.
+    """
+    encoding_cache = tmp_path / ".kompend" / "cache" / "encoding"
+    encoding_cache.mkdir(parents=True)
+    (encoding_cache / "deadbeefdeadbeef.md").write_text("cached sibling", encoding="utf-8")
+    _populate_source_dir(tmp_path, "live.md")
+    config = _make_config(tmp_path, vlm_model="")
+    pipeline = build_pipeline(config)
+    sources = {s.name for s in pipeline.iter_sources()}
+    assert sources == {"live.md"}
+
+
 def test_iter_sources_flat_when_not_recursive(tmp_path: Path) -> None:
     """paths.recursive=false scans only the top level of source_dir.
 

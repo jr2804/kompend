@@ -15,10 +15,10 @@ from pathlib import Path
 from typing import Any, cast
 
 from kompend.core.cancel import CancelState, KompendCancelled
+from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.keys import (
     DEDUP_ENABLED,
 )
-from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import ElementType, MetadataField, ParsedDocument
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.parse_cache import (
@@ -192,6 +192,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         try:
             parse_target = parse_target_path(source_file, cache_dir)
             doc = parser.parse(parse_target)
+            restore_source_path(doc, parse_target=parse_target, source_file=source_file)
             normalize_element_markdown(
                 doc.elements,
                 rumdl_config=resolve_rumdl_config(base_dir, rumdl_config),
@@ -313,6 +314,25 @@ def parse_target_path(source_file: Path, cache_dir: Path) -> Path:
         return source_file
     normalized, _encoding = normalize_to_utf8_path(source_file, cache_dir)
     return normalized
+
+
+def restore_source_path(doc: ParsedDocument, *, parse_target: Path, source_file: Path) -> None:
+    """Point a parsed document back at the real source after an encoding sibling.
+
+    ``parse_target_path`` may hand the parser a normalized copy in the
+    encoding cache. The parser reports whatever path it read, so citations,
+    cache entries and the source tree would otherwise reference
+    ``.kompend/cache/encoding/<hash>.md``. Rewrite the document and every
+    element that read *parse_target* to *source_file*.
+
+    No-op when the parser already read the original file.
+    """
+    if parse_target == source_file:
+        return
+    doc.source_file = source_file
+    for element in doc.elements:
+        if element.source_file == parse_target:
+            element.source_file = source_file
 
 
 def parse_cache_is_current(data: JSONDict, parser_fingerprint: str) -> bool:
