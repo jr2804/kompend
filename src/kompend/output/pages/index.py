@@ -125,7 +125,7 @@ def _hub_index(wiki: CompiledWiki, prefix: str, base_dir: Path | None) -> str:
     """Thin hub: quick facts + pointer to the portable catalog."""
     b = PageBuilder()
     b.heading(1, INDEX_HEADING)
-    _emit_stat_paragraphs(b, wiki, prefix)
+    _emit_stat_paragraphs(b, wiki, base_dir)
     b.paragraph("The full catalog lives at ", link(f"{prefix}/{INDEX_FILE}", f"{prefix}/{INDEX_FILE}"), ".")
     section = exported_sources_section(base_dir) if base_dir is not None else ""
     return b.render() + ("\n\n" + section if section else "")
@@ -143,7 +143,7 @@ def _full_catalog(
     b.heading(1, INDEX_HEADING)
 
     b.heading(2, SUMMARY_HEADING)
-    _emit_stat_paragraphs(b, wiki, prefix)
+    _emit_stat_paragraphs(b, wiki, base_dir)
 
     # Full TOC — catalog entries: link + one-line description.
     b.heading(2, TOC_HEADING)
@@ -177,12 +177,9 @@ def _full_catalog(
             surfaces.append((f"{prefix}/{OVERVIEW_MD}", "Thematic overview of the corpus"))
         if (output_dir / LOG_FILE).exists():
             surfaces.append((f"{prefix}/{LOG_FILE}", "Append-only activity journal"))
-    surfaces.append(
-        (
-            f"{prefix}/../{ATTACHMENTS_DIR_NAME}/" if prefix else f"{ATTACHMENTS_DIR_NAME}/",
-            "Media & figures extracted from sources",
-        )
-    )
+    attachments_target = _attachments_target(base_dir)
+    if attachments_target is not None:
+        surfaces.append((attachments_target, "Media & figures extracted from sources"))
     b.heading(2, SURFACES_HEADING)
     surface_items: list[Paragraph] = []
     for target, desc in surfaces:
@@ -215,12 +212,12 @@ def exported_sources_section(base_dir: Path) -> str:
     return b.render()
 
 
-def _emit_stat_paragraphs(b: PageBuilder, wiki: CompiledWiki, prefix: str) -> None:
+def _emit_stat_paragraphs(b: PageBuilder, wiki: CompiledWiki, base_dir: Path | None) -> None:
     """Emit the quick-facts block: one paragraph per stat."""
     source_count = wiki.metadata.get(MetadataField.SOURCE_COUNT, 0)
     duration = wiki.metadata.get(WikiField.DURATION_SECONDS)
 
-    att_target = f"{prefix}/../{ATTACHMENTS_DIR_NAME}/" if prefix else f"{ATTACHMENTS_DIR_NAME}/"
+    att_target = _attachments_target(base_dir)
     b.paragraph(strong("Sources:"), f" {source_count}")
     b.paragraph(strong("Articles:"), f" {len(wiki.nodes)}")
     b.paragraph(strong("Total words:"), f" {sum(len(n.content.split()) for n in wiki.nodes):,}")
@@ -228,13 +225,28 @@ def _emit_stat_paragraphs(b: PageBuilder, wiki: CompiledWiki, prefix: str) -> No
     if duration is not None:
         b.paragraph(strong("Duration:"), f" {duration:.1f}s")
     if wiki.quality_score:
-        b.paragraph(strong("Health score:"), f" {wiki.quality_score:.0f}/100")
-    b.paragraph(
-        strong("Media:"),
-        " ",
-        link(att_target, f"{ATTACHMENTS_DIR_NAME}/"),
-        " — figures extracted from sources",
-    )
+        b.paragraph(strong("Graph quality:"), f" {wiki.quality_score:.0f}/100")
+    if att_target is not None:
+        b.paragraph(
+            strong("Media:"),
+            " ",
+            link(att_target, f"{ATTACHMENTS_DIR_NAME}/"),
+            " — figures extracted from sources",
+        )
+
+
+def _attachments_target(base_dir: Path | None) -> str | None:
+    """Link from the vault-root index to ``attachments/``, or ``None``.
+
+    The vault-root index is written directly at *base_dir*, so the target is
+    always ``attachments/`` — never ``../attachments/`` (that form only fits
+    an index written inside the output bundle). A vault without an
+    ``attachments`` directory gets no link at all: an unconditional one is a
+    dead link (rumdl MD057).
+    """
+    if base_dir is None or not (base_dir / ATTACHMENTS_DIR_NAME).is_dir():
+        return None
+    return f"{ATTACHMENTS_DIR_NAME}/"
 
 
 def _bundle_prefix(output_dir: Path | None, base_dir: Path | None) -> str:

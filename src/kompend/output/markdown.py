@@ -39,6 +39,7 @@ Two modes:
 
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 from typing import Any, ClassVar, override
@@ -255,6 +256,22 @@ class MarkdownWriter(VaultWriter):
 
         return rendered
 
+    def _attachments_target(self, output_dir: Path) -> str | None:
+        """Link from this index to the vault's ``attachments/``, or ``None``.
+
+        The bundle index lives in *output_dir*; attachments live next to the
+        vault root (``base_dir``, falling back to *output_dir*). The target is
+        therefore location-derived — ``attachments/`` in a flat vault,
+        ``../attachments/`` when the bundle is nested — and omitted entirely
+        when the directory does not exist (a dead link is MD057).
+        """
+        base_dir = self._base_dir if self._base_dir is not None else output_dir
+        attachments = base_dir / ATTACHMENTS_DIR_NAME
+        if not attachments.is_dir():
+            return None
+        relative = Path(os.path.relpath(attachments, output_dir)).as_posix()
+        return f"{relative}/"
+
     @override
     def _write_index(self, docs: list[Document], output_dir: Path, wiki: CompiledWiki) -> None:
         """Write ``index.md`` per §8: grouped sections with descriptions.
@@ -302,7 +319,9 @@ class MarkdownWriter(VaultWriter):
             surfaces.append((OVERVIEW_MD, "Thematic overview of the corpus"))
         if (output_dir / LOG_FILE).exists():
             surfaces.append((LOG_FILE, "Append-only activity journal"))
-        surfaces.append((f"../{ATTACHMENTS_DIR_NAME}/", "Media & figures extracted from sources"))
+        attachments_target = self._attachments_target(output_dir)
+        if attachments_target is not None:
+            surfaces.append((attachments_target, "Media & figures extracted from sources"))
         if surfaces:
             b.heading(2, "References & surfaces")
             b.bullet_list([Paragraph(children=[link(name, name), Text(value=f" — {desc}")]) for name, desc in surfaces])

@@ -10,6 +10,7 @@ from kompend.agents.types import OverviewDeps, OverviewPage
 from kompend.agents.wiki_index import AgenticOverviewAgent
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
+from kompend.output.markdown import MarkdownWriter
 from kompend.output.pages.index import _full_catalog, exported_sources_section, generate_index, sync_exported_sources_section, write_index
 from kompend.output.pages.overview import generate_overview_agentic
 from kompend.output.wiki_index import (
@@ -329,6 +330,42 @@ class TestGenerateIndexPortable:
         )
 
 
+class TestAttachmentsSurface:
+    """The media link exists only when the attachments directory does (MD057)."""
+
+    def test_root_index_omits_media_without_attachments(self, tmp_path: Path) -> None:
+        write_index(_make_wiki(), tmp_path)
+        index = (tmp_path / "index.md").read_text(encoding="utf-8")
+        assert "attachments" not in index
+        assert "Media:" not in index
+
+    def test_root_index_links_attachments_when_present(self, tmp_path: Path) -> None:
+        (tmp_path / "attachments").mkdir()
+        write_index(_make_wiki(), tmp_path)
+        index = (tmp_path / "index.md").read_text(encoding="utf-8")
+        assert "[attachments/](attachments/)" in index
+        assert "../attachments" not in index
+
+    def test_nested_hub_links_attachments_next_to_the_index(self, tmp_path: Path) -> None:
+        """The hub lives at the vault root, so the target is ``attachments/``."""
+        (tmp_path / "attachments").mkdir()
+        write_index(_make_wiki(), tmp_path / "wiki", base_dir=tmp_path)
+        index = (tmp_path / "index.md").read_text(encoding="utf-8")
+        assert "[attachments/](attachments/)" in index
+        assert "wiki/../attachments" not in index
+
+    def test_bundle_index_links_attachments_relative_to_the_bundle(self, tmp_path: Path) -> None:
+        (tmp_path / "attachments").mkdir()
+        MarkdownWriter(vault_mode=True, base_dir=tmp_path).write(_make_wiki(), tmp_path / "wiki")
+        index = (tmp_path / "wiki" / "index.md").read_text(encoding="utf-8")
+        assert "[../attachments/](../attachments/)" in index
+
+    def test_bundle_index_omits_media_without_attachments(self, tmp_path: Path) -> None:
+        MarkdownWriter(vault_mode=True, base_dir=tmp_path).write(_make_wiki(), tmp_path / "wiki")
+        index = (tmp_path / "wiki" / "index.md").read_text(encoding="utf-8")
+        assert "attachments" not in index
+
+
 # ── exported sources section ──────────────────────────────────────────────
 
 
@@ -413,6 +450,22 @@ class TestSyncExportedSourcesSection:
     def test_noop_when_index_missing(self, tmp_path: Path) -> None:
         sync_exported_sources_section(tmp_path / "index.md", tmp_path)
         assert not (tmp_path / "index.md").exists()
+
+
+class TestQualityLabel:
+    """knox-n0hl: the compiled pages must not call the graph score "health"."""
+
+    def test_index_names_the_graph_metric(self) -> None:
+        wiki = _make_wiki(quality_score=87.0)
+        result = generate_index(wiki)
+        assert "**Graph quality:** 87/100" in result
+        assert "Health score" not in result
+
+    def test_log_names_the_graph_metric(self) -> None:
+        wiki = _make_wiki(quality_score=87.0)
+        entry = generate_log_entry(wiki, stage=LogStage.LINT)
+        assert "**Graph quality:** 87/100" in entry
+        assert "Health score" not in entry
 
 
 # ── Agentic overview ────────────────────────────────────────────────────
