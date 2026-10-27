@@ -399,6 +399,8 @@ class ConceptBrokerProtocol(Protocol):
 
     def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
 
+    def remaining(self, caller_id: str) -> int: ...
+
 
 class GapBrokerProtocol(Protocol):
     """Minimal broker surface used by the agentic remediation tools.
@@ -408,6 +410,8 @@ class GapBrokerProtocol(Protocol):
     """
 
     def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
+
+    def remaining(self) -> int: ...
 
     def mark_done(self, name: str) -> None: ...
 

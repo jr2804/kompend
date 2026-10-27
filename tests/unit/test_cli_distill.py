@@ -139,9 +139,26 @@ def _cfg(default_model: str | None) -> ResolvedConfig:
         output_retries=3,
         output_retries_enabled=True,
     )
-    budget = SimpleNamespace()
+    budget = SimpleNamespace(distill_requests_per_group=3)
     compile_ns = SimpleNamespace(llm=llm, budget=budget)
     return cast("ResolvedConfig", SimpleNamespace(kompend=SimpleNamespace(compile=compile_ns)))
+
+
+def test_build_distill_agent_passes_the_group_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """``budget.distill_requests_per_group`` reaches the session budget."""
+    seen: dict[str, object] = {}
+
+    def _fake(*args: object, **kwargs: object) -> _SentinelAgent:
+        seen.update(kwargs)
+        return _SentinelAgent()
+
+    monkeypatch.setattr("kompend.cli._distill_helpers.make_agentic_distill_agent", _fake)
+    cfg = _cfg("ollama/test-model")
+    cfg.kompend.compile.budget.distill_requests_per_group = 7  # type: ignore[union-attr]
+
+    build_distill_agent(cfg)
+
+    assert seen["requests_per_group"] == 7
 
 
 def test_distill_cmd_prints_page_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

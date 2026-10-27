@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import ClassVar
 
+from pydantic_ai import UsageLimits
+
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import ContextChunkDeps
@@ -23,6 +25,13 @@ class AgenticContextChunkAgent(KompendAgentBase[str, ContextChunkDeps]):
     system_template_name: ClassVar[str] = "contextual_agentic_system.md.j2"
     template_prefix: ClassVar[str] = "chunking/"
     supports_delta_retry: ClassVar[bool] = True
+
+    #: Requests one chunk costs: ``next_chunk()`` and ``situate_chunk()``.
+    requests_per_chunk: ClassVar[int] = 2
+
+    def _usage_limits_for(self, deps: ContextChunkDeps) -> UsageLimits | None:
+        """Budget the one session that situates every chunk of a document."""
+        return self._session_limits(units=len(deps.chunks), per_unit=self.requests_per_chunk)
 
     def render_user_prompt(self, deps: ContextChunkDeps) -> str:  # noqa: PLR6301
         """Return a task description with the chunk to situate."""

@@ -356,6 +356,11 @@ summary_chunk_threshold = 10
 # (one next_node() turn + one summarize_node() turn). Raise for models that
 # need extra turns before they reach a tool call.
 summary_requests_per_node = 2
+# LLM requests budgeted per tag group in one agentic distill session
+# (one get_group() turn + one save_page() turn + one turn of slack). Raise for
+# models that spend turns on prose or notebook tools. The session's configured
+# tool/output retry budgets are added on top of this factor.
+distill_requests_per_group = 3
 # Agentic summarizer sessions: nodes per session, and how many extra attempts
 # a session that records nothing gets before its nodes are left unsummarized.
 # Smaller batches bound the blast radius of a model that stops calling tools.

@@ -99,22 +99,22 @@ The base class provides:
 - **Usage tracking** — token usage recorded per call
 - **Usage limits** — `run()`/`run_with_messages()` pass
   `_usage_limits_for(deps)` (default: the RLM preset limits, else None →
-  pydantic-ai's implicit 50-request cap). Multi-turn tool agents override the
-  hook; `AgenticSummarizerAgent` derives `request_limit` from node count
-  (`requests_per_node` — instance field set by the pipeline from
-  `budget.summary_requests_per_node` — plus a fixed 2-request session cost —
-  the "no more nodes" probe and the closing turn — scaled by `headroom_frac`),
-  and `AgenticDistillAgent` from group count (~3 requests/group,
-  `requests_per_group`), every factor a kwarg with a default. The derived
-  budget is a floor, not a guarantee: unsummarized nodes are re-requested in a
-  later session (caller-side, in `NodeSummarizer`, batched and stall-retried
-  per `SummarizerSessionPolicy` from `budget.summary_session_*`). A session
+  pydantic-ai's implicit 50-request cap). Every session agent overrides the
+  hook through `_session_limits(units=…, per_unit=…)` — one formula: planned
+  turns + a fixed 2-request session cost (the "no more work" probe and the
+  closing turn) + `_retry_requests()` (the resolved tool+output budgets: a
+  session that may retry but does not budget the retries aborts on its first
+  retried call), scaled by `headroom_frac`. Only the unit count and per-unit
+  cost are per agent: nodes (`budget.summary_requests_per_node`), groups
+  (`budget.distill_requests_per_group`), claims, gaps, chunks, concepts — the
+  last four class constants. The budget is a floor: unsummarized nodes are
+  re-requested later (caller-side in `NodeSummarizer`, batched and stall-retried
+  per `SummarizerSessionPolicy` from `budget.summary_session_*`); a session
   counts as progress only for ids in its own payload, and `summarize_node`
-  rejects unknown ids with `ModelRetry` so a mangled id can never masquerade as
+  rejects unknown ids with `ModelRetry` so a mangled id cannot masquerade as
   progress
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
-
 ### Construction contract
 
 Agents take their limits from the config, not from the call site. A

@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, ClassVar
 
+from pydantic_ai import UsageLimits
+
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
@@ -36,6 +38,18 @@ class AgenticVerificationAgent(KompendAgentBase[str, VerificationDeps]):
     system_template_name: ClassVar[str] = "verify_agentic_system.md.j2"
     template_prefix: ClassVar[str] = "lint/"
     supports_delta_retry: ClassVar[bool] = True
+
+    #: Requests one claim costs: ``get_claim()``, an optional source read, and
+    #: the ``mark_*()`` verdict.
+    requests_per_claim: ClassVar[int] = 3
+
+    def _usage_limits_for(self, deps: VerificationDeps) -> UsageLimits | None:
+        """Budget the one session that works through every claim.
+
+        A session over 20 claims needs ~60 turns; the pydantic-ai implicit
+        default of 50 would abort it mid-run.
+        """
+        return self._session_limits(units=len(deps.claims), per_unit=self.requests_per_claim)
 
 
 def make_agentic_verification_agent(

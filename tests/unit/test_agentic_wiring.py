@@ -17,21 +17,38 @@ from pathlib import Path
 from typing import cast
 
 import pytest
-from pydantic_ai import RunContext
+from pydantic_ai import RunContext, UsageLimits
 
 from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent, make_agentic_context_chunk_agent
 from kompend.agents.distill_agentic import make_agentic_distill_agent
+from kompend.agents.generation import make_agentic_generation_agent
 from kompend.agents.query_agentic import make_agentic_query_agent
+from kompend.agents.remediate import make_agentic_remediation_agent
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
-from kompend.agents.types import ContextChunk, ContextChunkDeps, DistillAgentDeps, DistillGroup, QueryAgentDeps, SummarizerDeps, SummaryNode
+from kompend.agents.types import (
+    ContextChunk,
+    ContextChunkDeps,
+    DistillAgentDeps,
+    DistillGroup,
+    QueryAgentDeps,
+    RemediationDeps,
+    SummarizerDeps,
+    SummaryNode,
+    ToolGenerationDeps,
+    VerificationClaim,
+    VerificationDeps,
+)
 from kompend.agents.vault_memory import DirectoryMemoryStore
+from kompend.agents.verification import make_agentic_verification_agent
 from kompend.chunking.contextual import ContextualEnricher
+from kompend.compilation.concept_broker import ConceptBroker
 from kompend.compilation.context_chunk_tools import next_chunk
 from kompend.compilation.query_tools import read_page, search_wiki
 from kompend.core.config._configs import BudgetConfig, LlmMemoryStore, SearchConfig, SearchContextualConfig
 from kompend.core.models import Chunk, ChunkNode, ChunkTree, DocumentElement, ElementType, ParsedDocument
 from kompend.core.pipeline.config import Compiler, EmbeddingConfig, LLMConfig, PipelineConfig
 from kompend.core.pipeline.orchestrator import build_pipeline
+from kompend.lint.gap_broker import GapBroker
 from kompend.llm.context_window import ContextSource, ContextWindow
 from tests.conftest import make_tmp_vault
 
@@ -174,8 +191,13 @@ class TestAgenticSummarizerUsageLimits:
     summarize_node) plus a fixed closing cost, so trees with >24 nodes died
     with "request_limit of 50" instead of summarizing (p863 P863E_root), and
     a one-node payload was budgeted at exactly 3 — the closing turn fell off
-    the end ("request_limit of 3", p863 T-REC-P.10-201906).
+    the end ("request_limit of 3", p863 T-REC-P.10-201906). The configured
+    retry budgets are added on top: a session that may retry four times but
+    only budgets its planned turns still dies on the first retry.
     """
+
+    #: ``_DEFAULT_RETRIES`` with no ``llm`` — a bare int sets both categories.
+    _DEFAULT_RETRY_ALLOWANCE = 4
 
     def test_request_limit_scales_with_node_count(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
@@ -183,7 +205,7 @@ class TestAgenticSummarizerUsageLimits:
         deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == math.ceil((40 * 2 + 2) * 1.1)  # 91
+        assert limits.request_limit == math.ceil((40 * 2 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 95
 
     def test_headroom_params_are_overridable(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
@@ -191,7 +213,7 @@ class TestAgenticSummarizerUsageLimits:
         deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps, requests_per_node=1, headroom_frac=1.0)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 42
+        assert limits.request_limit == 40 + 2 + self._DEFAULT_RETRY_ALLOWANCE  # 46
 
     def test_configured_requests_per_node_raises_the_budget(self) -> None:
         """``budget.summary_requests_per_node`` reaches the derived limit.
@@ -205,7 +227,7 @@ class TestAgenticSummarizerUsageLimits:
         deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == math.ceil((10 * 4 + 2) * 1.1)  # 47
+        assert limits.request_limit == math.ceil((10 * 4 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 51
 
     def test_single_node_session_covers_its_own_closing_turn(self) -> None:
         """A one-node payload needs next_node + summarize_node + the closing turn."""
@@ -213,14 +235,14 @@ class TestAgenticSummarizerUsageLimits:
         deps = SummarizerDeps(nodes=[SummaryNode(id="a", heading_chain="", content="x")], source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 5
+        assert limits.request_limit == math.ceil((1 * 2 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 9
 
     def test_session_overhead_is_overridable(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
         deps = SummarizerDeps(nodes=[SummaryNode(id="a", heading_chain="", content="x")], source_id="root")
         limits = agent._usage_limits_for(deps, headroom_frac=1.0, session_overhead=0)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 2
+        assert limits.request_limit == 2 + self._DEFAULT_RETRY_ALLOWANCE  # 6
 
 
 class TestAgenticDistillUsageLimits:
@@ -229,9 +251,14 @@ class TestAgenticDistillUsageLimits:
     A multi-group distill session spends ~3 requests per group
     (get_group + save_page + slack) plus a fixed closing cost, so runs with
     >16 groups died with "request_limit of 50" instead of distilling
-    (p863: 32 tag groups), and a one-group session was budgeted at exactly its
-    own cost.
+    (p863: 32 tag groups). A one-group session was then budgeted at exactly
+    its own cost — and once the retry budgets were configured (four output
+    retries) the closing turn plus the first retry fell off the end again
+    ("request_limit of 6", p863 distill with one group). Retry capacity is
+    therefore added to the plan, never hidden in the headroom fraction.
     """
+
+    _DEFAULT_RETRY_ALLOWANCE = 4
 
     def test_request_limit_scales_with_group_count(self) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
@@ -239,7 +266,7 @@ class TestAgenticDistillUsageLimits:
         deps = DistillAgentDeps(groups=groups, source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == math.ceil((32 * 3 + 2) * 1.1)  # 108
+        assert limits.request_limit == math.ceil((32 * 3 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 112
 
     def test_headroom_params_are_overridable(self) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
@@ -247,21 +274,42 @@ class TestAgenticDistillUsageLimits:
         deps = DistillAgentDeps(groups=groups, source_id="distill-all")
         limits = agent._usage_limits_for(deps, requests_per_group=2, headroom_frac=1.0)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 22
+        assert limits.request_limit == 10 * 2 + 2 + self._DEFAULT_RETRY_ALLOWANCE  # 26
 
     def test_single_group_session_covers_its_own_closing_turn(self) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
         deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 6
+        assert limits.request_limit == math.ceil((1 * 3 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 10
 
     def test_session_overhead_is_overridable(self) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
         deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
         limits = agent._usage_limits_for(deps, headroom_frac=1.0, session_overhead=0)  # noqa: SLF001
         assert limits is not None
-        assert limits.request_limit == 3
+        assert limits.request_limit == 3 + self._DEFAULT_RETRY_ALLOWANCE  # 7
+
+    def test_retry_budgets_are_added_to_the_plan(self) -> None:
+        """A session with retries configured must be able to spend them.
+
+        p863: one tag group, ``agentic_output_retries = 4`` — the session
+        aborted with "request_limit of 6" after its first rejected output.
+        """
+        llm = LLMConfig(default_model="ollama/gpt-oss:20b", vlm_model="vlm", tool_retries=3, agentic_output_retries=4)
+        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b", llm=llm)
+        deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((1 * 3 + 2 + 3 + 4) * 1.1)  # 14
+
+    def test_configured_requests_per_group_raises_the_budget(self) -> None:
+        """``budget.distill_requests_per_group`` reaches the derived limit."""
+        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b", requests_per_group=5)
+        deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((1 * 5 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 13
 
 
 class TestAgenticContextChunkAgentWiring:
@@ -423,3 +471,64 @@ def _make_doc() -> ParsedDocument:
         title="Doc",
         elements=[DocumentElement(type=ElementType.HEADING, content="Introduction")],
     )
+
+
+class TestOtherAgenticSessionLimits:
+    """Regression: every multi-turn session must budget its own work.
+
+    Only the summarizer and the distiller derived a request budget; the other
+    four session agents inherited pydantic-ai's implicit 50-request cap, which
+    aborts a generation segment with ~16+ concepts, a verification run with
+    ~16+ claims, or a large document's context pass mid-work. All four now use
+    the shared ``KompendAgentBase._session_limits`` formula.
+    """
+
+    #: ``_DEFAULT_RETRIES`` with no ``llm`` - a bare int sets both categories.
+    _RETRIES = 4
+
+    def test_verification_budget_scales_with_claims(self) -> None:
+        agent = make_agentic_verification_agent(model_string="ollama/gpt-oss:20b")
+        claims = [VerificationClaim(id=i, text=f"claim {i}") for i in range(20)]
+        limits = agent._usage_limits_for(VerificationDeps(claims=claims))  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((20 * 3 + 2 + self._RETRIES) * 1.1)  # 73
+
+    def test_context_chunk_budget_scales_with_chunks(self) -> None:
+        agent = make_agentic_context_chunk_agent("ollama/gpt-oss:20b")
+        chunks = [ContextChunk(id=i, heading_chain=[], text="t") for i in range(10)]
+        deps = ContextChunkDeps(doc_title="Doc", doc_summary="Summary", chunks=chunks)
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((10 * 2 + 2 + self._RETRIES) * 1.1)  # 29
+
+    def test_remediation_budget_follows_the_remaining_queue(self) -> None:
+        agent = make_agentic_remediation_agent(model_string="ollama/gpt-oss:20b")
+        broker = GapBroker([{"name": f"gap-{i}"} for i in range(4)])
+        deps = RemediationDeps(gaps=broker)
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((4 * 3 + 2 + self._RETRIES) * 1.1)  # 20
+
+        broker.fetch("remediation", limit=2)
+        later = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert later is not None
+        assert later.request_limit == math.ceil((2 * 3 + 2 + self._RETRIES) * 1.1)  # 14
+
+    def test_generation_budget_follows_the_segment_slice(self) -> None:
+        agent = make_agentic_generation_agent(model_string="ollama/gpt-oss:20b")
+        broker = ConceptBroker([{"name": f"concept-{i}"} for i in range(9)], num_callers=3)
+        deps = ToolGenerationDeps(source_id="seg_0", concept_broker=broker)
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((3 * 3 + 2 + self._RETRIES) * 1.1)  # 17
+
+    def test_generation_without_a_broker_keeps_the_default(self) -> None:
+        agent = make_agentic_generation_agent(model_string="ollama/gpt-oss:20b")
+        assert agent._usage_limits_for(ToolGenerationDeps(source_id="seg_0")) is None  # noqa: SLF001
+
+    def test_rlm_presets_win_over_the_derived_budget(self) -> None:
+        agent = make_agentic_context_chunk_agent("ollama/gpt-oss:20b")
+        preset = UsageLimits(request_limit=99)
+        agent._rlm_usage_limits = preset  # noqa: SLF001 - the base installs this preset when RLM is on
+        deps = ContextChunkDeps(doc_title="Doc", doc_summary="S", chunks=[])
+        assert agent._usage_limits_for(deps) is preset  # noqa: SLF001

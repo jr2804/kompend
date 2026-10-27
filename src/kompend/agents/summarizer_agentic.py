@@ -7,7 +7,6 @@ nodes via ``next_node()`` and records each summary via
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
@@ -63,16 +62,18 @@ class AgenticSummarizerAgent(KompendAgentBase[str, SummarizerDeps]):
 
         The per-node factor defaults to the instance value (the pipeline
         passes ``budget.summary_requests_per_node``); an explicit kwarg
-        overrides it for probing. ``session_overhead`` carries the constant;
-        ``headroom_frac`` then covers tool/output retries. The pydantic-ai
-        implicit default of 50 requests aborts trees with more than ~24
-        eligible nodes.
+        overrides it for probing. The shared arithmetic - overhead, retry
+        capacity, headroom - lives in :meth:`KompendAgentBase._session_limits`.
+        The pydantic-ai implicit default of 50 requests aborts trees with
+        more than ~24 eligible nodes.
         """
-        if self._rlm_usage_limits is not None:
-            return self._rlm_usage_limits
         per_node = self.requests_per_node if requests_per_node is None else requests_per_node
-        planned = len(deps.nodes) * per_node + session_overhead
-        return UsageLimits(request_limit=math.ceil(planned * headroom_frac))
+        return self._session_limits(
+            units=len(deps.nodes),
+            per_unit=per_node,
+            headroom_frac=headroom_frac,
+            session_overhead=session_overhead,
+        )
 
 
 def make_agentic_summarizer_agent(

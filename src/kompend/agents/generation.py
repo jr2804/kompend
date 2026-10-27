@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from pydantic_ai import ModelRetry, RunContext
+from pydantic_ai import ModelRetry, RunContext, UsageLimits
 from pydantic_ai_harness.step_persistence import StepStore
 
 from kompend.agents.agentic_harness import AgenticHarness
@@ -57,6 +57,23 @@ class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDe
     template_name: ClassVar[str] = "generation_agentic_prompt.md.j2"
     system_template_name: ClassVar[str] = "generation_agentic_system.md.j2"
     supports_delta_retry: ClassVar[bool] = True
+
+    #: Requests one concept costs: ``fetch_concepts()``, ``read_segment()``,
+    #: and the page write.
+    requests_per_concept: ClassVar[int] = 3
+
+    def _usage_limits_for(self, deps: ToolGenerationDeps) -> UsageLimits | None:
+        """Budget the one session that generates a segment's concepts.
+
+        The work queue lives in the broker, so the budget is derived from what
+        is still unassigned for this segment - a session that inherits the
+        implicit 50-request cap dies mid-segment once a segment carries more
+        than ~16 concepts.
+        """
+        broker = deps.concept_broker
+        if broker is None:
+            return self._rlm_usage_limits
+        return self._session_limits(units=broker.remaining(deps.source_id), per_unit=self.requests_per_concept)
 
     @staticmethod
     def validate_output(ctx: RunContext[ToolGenerationDeps], output: GenerationOutput) -> GenerationOutput:

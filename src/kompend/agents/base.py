@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import math
 import re
 import time
 import typing
@@ -554,10 +555,52 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         """Per-run UsageLimits; default is the RLM preset limits (or None).
 
         pydantic-ai's implicit default caps a run at 50 requests, which is
-        tighter than multi-turn tool agents need — overriding agents derive
-        their honest budget from deps (see AgenticSummarizerAgent).
+        tighter than multi-turn tool agents need - overriding agents derive
+        their honest budget from deps via :meth:`_session_limits`.
         """
         return self._rlm_usage_limits
+
+    def _session_limits(
+        self,
+        *,
+        units: int,
+        per_unit: int,
+        headroom_frac: float = 1.1,
+        session_overhead: int = 2,
+    ) -> UsageLimits | None:
+        """Request budget for a session that works through ``units`` items.
+
+        One formula for every agentic session: the planned turns
+        (``units`` x ``per_unit``) plus the fixed session overhead - the
+        "no more items" probe and the closing turn - plus the retry
+        capacity :meth:`_retry_requests` derives from the configured
+        budgets, scaled by ``headroom_frac``.
+
+        The unit count and its per-unit cost stay in the subclass: only the
+        agent knows what one work item costs. Everything that is the same
+        for all sessions lives here.
+        """
+        if self._rlm_usage_limits is not None:
+            return self._rlm_usage_limits
+        planned = max(units, 0) * per_unit + session_overhead + self._retry_requests()
+        return UsageLimits(request_limit=math.ceil(planned * headroom_frac))
+
+    def _retry_requests(self) -> int:
+        """Requests the configured retry budgets may add to one run.
+
+        A retried tool call and a rejected structured output each cost another
+        request, so a session budget that counts only planned turns aborts as
+        soon as the model needs its first retry - a one-group distill session
+        with four output retries configured died on ``request_limit of 6``
+        while still holding real work. The sum of both budgets is the upper
+        bound a single session may legitimately need.
+        """
+        retries = self.retries
+        if isinstance(retries, int):
+            # A bare int sets both categories (pydantic-ai ``AgentRetries``
+            # shorthand).
+            return max(retries, 0) * 2
+        return max(int(retries.get("tools", 0)), 0) + max(int(retries.get("output", 0)), 0)
 
     def _resolve_type_params(self) -> None:
         """Resolve ``result_type`` and ``deps_type`` from generic type params.

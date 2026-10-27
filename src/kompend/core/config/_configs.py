@@ -509,6 +509,15 @@ class BudgetConfig(_KompendBaseModel):
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
     summary_requests_per_node: int = Field(default=2, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_REQUESTS_PER_NODE)
+    #: LLM requests budgeted per tag group in one agentic distill session.
+    #: Raise for models that spend turns on prose or notebook tools before
+    #: they reach ``save_page()`` - the session's retry budgets are added on
+    #: top of this factor, never folded into it.
+    distill_requests_per_group: int = Field(
+        default=3,
+        ge=1,
+        validation_alias=EnvVar.BUDGET_DISTILL_REQUESTS_PER_GROUP,
+    )
     #: How many concepts one agentic generation segment owns. Each pass of
     #: the segment loop re-sends the segment content, so a segment that owns
     #: a whole document's concept list costs one prefill per batch of pages.

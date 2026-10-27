@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import ClassVar
 
+from pydantic_ai import UsageLimits
+
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
@@ -46,6 +48,14 @@ class AgenticRemediationAgent(KompendAgentBase[str, RemediationDeps]):
     system_template_name: ClassVar[str] = "remediate_agentic_system.md.j2"
     template_prefix: ClassVar[str] = "lint/"
     supports_delta_retry: ClassVar[bool] = True
+
+    #: Requests one gap costs: ``fetch_gaps()``, a source read, and
+    #: ``save_page()`` / ``mark_unfixable()``.
+    requests_per_gap: ClassVar[int] = 3
+
+    def _usage_limits_for(self, deps: RemediationDeps) -> UsageLimits | None:
+        """Budget the one session that works through the gap queue."""
+        return self._session_limits(units=deps.gaps.remaining(), per_unit=self.requests_per_gap)
 
 
 def make_agentic_remediation_agent(

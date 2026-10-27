@@ -191,6 +191,12 @@ class TestEnvVars:
         result = read_env_vars()
         assert result["compile"]["embedding"]["model"] == "ollama/granite-embedding:278m"
 
+    def test_distill_requests_per_group_env(self, monkeypatch: Any) -> None:
+        """The agentic distill session budget is reachable from the environment."""
+        monkeypatch.setenv("KOMP_BUDGET_DISTILL_REQUESTS_PER_GROUP", "6")
+        result = read_env_vars()
+        assert result["compile"]["budget"]["distill_requests_per_group"] == 6
+
     def test_embedding_model_env_overrides_project(self, tmp_path: Any, monkeypatch: Any) -> None:
         (tmp_path / "kompend.toml").write_text('[compile.embedding]\nmodel = "ollama/from-the-project"\n', encoding="utf-8")
         monkeypatch.chdir(tmp_path)
