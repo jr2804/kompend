@@ -17,8 +17,8 @@ Generated after every compile — a table of contents with wiki statistics.
 ## Summary
 
 - **Sources:** 12
-- **Articles:** 47
-- **Total words:** 12,345
+- **Graph pages:** 47
+- **Prose words:** 12,345
 - **Last compile:** 2026-06-07 14:30 UTC
 
 ## Topics
@@ -38,8 +38,8 @@ Generated after every compile — a table of contents with wiki statistics.
 | Stat | Source | Description |
 |------|--------|-------------|
 | Sources count | `wiki.metadata.source_count` | Number of source files |
-| Article count | `len(wiki.nodes)` | Number of compiled pages |
-| Total words | Sum of `node.content` | Word count across all pages |
+| Graph pages | `len(wiki.nodes)` | Compiled graph nodes — `kompend status` counts pages on disk, so the two differ by design |
+| Prose words | Sum of `node.content` | Words in node content; the status report counts full files on disk |
 | Last compile | `datetime.utcnow()` | Timestamp of this compile |
 | Graph quality | `wiki.quality_score` | Graph completeness/connectivity/richness, 0-100 (distinct from the lint health score) |
 

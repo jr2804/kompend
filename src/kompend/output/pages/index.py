@@ -219,8 +219,10 @@ def _emit_stat_paragraphs(b: PageBuilder, wiki: CompiledWiki, base_dir: Path | N
 
     att_target = _attachments_target(base_dir)
     b.paragraph(strong("Sources:"), f" {source_count}")
-    b.paragraph(strong("Articles:"), f" {len(wiki.nodes)}")
-    b.paragraph(strong("Total words:"), f" {sum(len(n.content.split()) for n in wiki.nodes):,}")
+    # Scope: these two count the compiled graph (nodes), not files on disk —
+    # ``kompend status`` owns the on-disk page/word count; the labels say so.
+    b.paragraph(strong("Graph pages:"), f" {len(wiki.nodes)}")
+    b.paragraph(strong("Prose words:"), f" {sum(len(n.content.split()) for n in wiki.nodes):,}")
     b.paragraph(strong("Last compile:"), f" {display_local('%Y-%m-%d %H:%M')}")
     if duration is not None:
         b.paragraph(strong("Duration:"), f" {duration:.1f}s")

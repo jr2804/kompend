@@ -30,7 +30,7 @@ class TestGenerateIndex:
         assert "Wiki Index" in result
         assert "**Sources:**" in result
         assert "5" in result
-        assert "**Articles:**" in result
+        assert "**Graph pages:**" in result
         assert "2" in result
 
     def test_empty_wiki(self) -> None:
@@ -38,7 +38,21 @@ class TestGenerateIndex:
         result = generate_index(wiki)
         assert "**Sources:**" in result
         assert "0" in result
-        assert "**Articles:**" in result
+        assert "**Graph pages:**" in result
+
+
+class TestCountScopeNamesTheGraph:
+    """The index counts nodes, not files - the labels must say so (knox-7bgg)."""
+
+    def test_counts_are_graph_scoped_and_exact(self) -> None:
+        wiki = _make_wiki()
+        result = generate_index(wiki)
+        expected_pages = len(wiki.nodes)
+        expected_words = sum(len(node.content.split()) for node in wiki.nodes)
+        assert f"**Graph pages:** {expected_pages}" in result
+        assert f"**Prose words:** {expected_words:,}" in result
+        assert "**Articles:**" not in result
+        assert "**Total words:**" not in result
 
 
 class TestGenerateLogEntry:
@@ -207,7 +221,7 @@ class TestWriteIndex:
         write_index(wiki, tmp_path)
         index_text = (tmp_path / "index.md").read_text(encoding="utf-8")
         assert "**Sources:**" in index_text
-        assert "**Articles:**" in index_text
+        assert "**Graph pages:**" in index_text
         assert "5" in index_text
         assert "2" in index_text
 
