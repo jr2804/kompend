@@ -29,10 +29,6 @@ class AgenticContextChunkAgent(KompendAgentBase[str, ContextChunkDeps]):
     #: Requests one chunk costs: ``next_chunk()`` and ``situate_chunk()``.
     requests_per_chunk: ClassVar[int] = 2
 
-    def _usage_limits_for(self, deps: ContextChunkDeps) -> UsageLimits | None:
-        """Budget the one session that situates every chunk of a document."""
-        return self._session_limits(units=len(deps.chunks), per_unit=self.requests_per_chunk)
-
     def render_user_prompt(self, deps: ContextChunkDeps) -> str:  # noqa: PLR6301
         """Return a task description with the chunk to situate."""
         chunk = deps.current_chunk
@@ -46,6 +42,10 @@ class AgenticContextChunkAgent(KompendAgentBase[str, ContextChunkDeps]):
             f"Heading: {heading}\n"
             f"Text: {chunk['text'][:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]}"
         )
+
+    def _usage_limits_for(self, deps: ContextChunkDeps) -> UsageLimits | None:
+        """Budget the one session that situates every chunk of a document."""
+        return self._session_limits(units=len(deps.chunks), per_unit=self.requests_per_chunk)
 
 
 def make_agentic_context_chunk_agent(

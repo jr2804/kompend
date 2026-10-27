@@ -131,19 +131,6 @@ def test_run_distill_honours_no_archive(tmp_path: Path, monkeypatch: pytest.Monk
     assert seen == {"archive": False}
 
 
-def _cfg(default_model: str | None) -> ResolvedConfig:
-    """Duck-typed ResolvedConfig carrying only the fields the helpers read."""
-    llm = SimpleNamespace(
-        default_model=default_model,
-        timeout=120.0,
-        output_retries=3,
-        output_retries_enabled=True,
-    )
-    budget = SimpleNamespace(distill_requests_per_group=3)
-    compile_ns = SimpleNamespace(llm=llm, budget=budget)
-    return cast("ResolvedConfig", SimpleNamespace(kompend=SimpleNamespace(compile=compile_ns)))
-
-
 def test_build_distill_agent_passes_the_group_budget(monkeypatch: pytest.MonkeyPatch) -> None:
     """``budget.distill_requests_per_group`` reaches the session budget."""
     seen: dict[str, object] = {}
@@ -159,6 +146,19 @@ def test_build_distill_agent_passes_the_group_budget(monkeypatch: pytest.MonkeyP
     build_distill_agent(cfg)
 
     assert seen["requests_per_group"] == 7
+
+
+def _cfg(default_model: str | None) -> ResolvedConfig:
+    """Duck-typed ResolvedConfig carrying only the fields the helpers read."""
+    llm = SimpleNamespace(
+        default_model=default_model,
+        timeout=120.0,
+        output_retries=3,
+        output_retries_enabled=True,
+    )
+    budget = SimpleNamespace(distill_requests_per_group=3)
+    compile_ns = SimpleNamespace(llm=llm, budget=budget)
+    return cast("ResolvedConfig", SimpleNamespace(kompend=SimpleNamespace(compile=compile_ns)))
 
 
 def test_distill_cmd_prints_page_summary(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -408,6 +408,67 @@ class TestContextChunkHeadingContract:
         assert "heading=Chapter 1 > Section 1.1" in out
 
 
+class TestOtherAgenticSessionLimits:
+    """Regression: every multi-turn session must budget its own work.
+
+    Only the summarizer and the distiller derived a request budget; the other
+    four session agents inherited pydantic-ai's implicit 50-request cap, which
+    aborts a generation segment with ~16+ concepts, a verification run with
+    ~16+ claims, or a large document's context pass mid-work. All four now use
+    the shared ``KompendAgentBase._session_limits`` formula.
+    """
+
+    #: ``_DEFAULT_RETRIES`` with no ``llm`` - a bare int sets both categories.
+    _RETRIES = 4
+
+    def test_verification_budget_scales_with_claims(self) -> None:
+        agent = make_agentic_verification_agent(model_string="ollama/gpt-oss:20b")
+        claims = [VerificationClaim(id=i, text=f"claim {i}") for i in range(20)]
+        limits = agent._usage_limits_for(VerificationDeps(claims=claims))  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((20 * 3 + 2 + self._RETRIES) * 1.1)  # 73
+
+    def test_context_chunk_budget_scales_with_chunks(self) -> None:
+        agent = make_agentic_context_chunk_agent("ollama/gpt-oss:20b")
+        chunks = [ContextChunk(id=i, heading_chain=[], text="t") for i in range(10)]
+        deps = ContextChunkDeps(doc_title="Doc", doc_summary="Summary", chunks=chunks)
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((10 * 2 + 2 + self._RETRIES) * 1.1)  # 29
+
+    def test_remediation_budget_follows_the_remaining_queue(self) -> None:
+        agent = make_agentic_remediation_agent(model_string="ollama/gpt-oss:20b")
+        broker = GapBroker([{"name": f"gap-{i}"} for i in range(4)])
+        deps = RemediationDeps(gaps=broker)
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((4 * 3 + 2 + self._RETRIES) * 1.1)  # 20
+
+        broker.fetch("remediation", limit=2)
+        later = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert later is not None
+        assert later.request_limit == math.ceil((2 * 3 + 2 + self._RETRIES) * 1.1)  # 14
+
+    def test_generation_budget_follows_the_segment_slice(self) -> None:
+        agent = make_agentic_generation_agent(model_string="ollama/gpt-oss:20b")
+        broker = ConceptBroker([{"name": f"concept-{i}"} for i in range(9)], num_callers=3)
+        deps = ToolGenerationDeps(source_id="seg_0", concept_broker=broker)
+        limits = agent._usage_limits_for(deps)  # noqa: SLF001
+        assert limits is not None
+        assert limits.request_limit == math.ceil((3 * 3 + 2 + self._RETRIES) * 1.1)  # 17
+
+    def test_generation_without_a_broker_keeps_the_default(self) -> None:
+        agent = make_agentic_generation_agent(model_string="ollama/gpt-oss:20b")
+        assert agent._usage_limits_for(ToolGenerationDeps(source_id="seg_0")) is None  # noqa: SLF001
+
+    def test_rlm_presets_win_over_the_derived_budget(self) -> None:
+        agent = make_agentic_context_chunk_agent("ollama/gpt-oss:20b")
+        preset = UsageLimits(request_limit=99)
+        agent._rlm_usage_limits = preset  # noqa: SLF001 - the base installs this preset when RLM is on
+        deps = ContextChunkDeps(doc_title="Doc", doc_summary="S", chunks=[])
+        assert agent._usage_limits_for(deps) is preset  # noqa: SLF001
+
+
 def test_build_pipeline_enricher_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """TASK-20: `search.contextual.enabled` defaults false → no enricher, and
     today's chunk-cache output is unchanged.
@@ -471,64 +532,3 @@ def _make_doc() -> ParsedDocument:
         title="Doc",
         elements=[DocumentElement(type=ElementType.HEADING, content="Introduction")],
     )
-
-
-class TestOtherAgenticSessionLimits:
-    """Regression: every multi-turn session must budget its own work.
-
-    Only the summarizer and the distiller derived a request budget; the other
-    four session agents inherited pydantic-ai's implicit 50-request cap, which
-    aborts a generation segment with ~16+ concepts, a verification run with
-    ~16+ claims, or a large document's context pass mid-work. All four now use
-    the shared ``KompendAgentBase._session_limits`` formula.
-    """
-
-    #: ``_DEFAULT_RETRIES`` with no ``llm`` - a bare int sets both categories.
-    _RETRIES = 4
-
-    def test_verification_budget_scales_with_claims(self) -> None:
-        agent = make_agentic_verification_agent(model_string="ollama/gpt-oss:20b")
-        claims = [VerificationClaim(id=i, text=f"claim {i}") for i in range(20)]
-        limits = agent._usage_limits_for(VerificationDeps(claims=claims))  # noqa: SLF001
-        assert limits is not None
-        assert limits.request_limit == math.ceil((20 * 3 + 2 + self._RETRIES) * 1.1)  # 73
-
-    def test_context_chunk_budget_scales_with_chunks(self) -> None:
-        agent = make_agentic_context_chunk_agent("ollama/gpt-oss:20b")
-        chunks = [ContextChunk(id=i, heading_chain=[], text="t") for i in range(10)]
-        deps = ContextChunkDeps(doc_title="Doc", doc_summary="Summary", chunks=chunks)
-        limits = agent._usage_limits_for(deps)  # noqa: SLF001
-        assert limits is not None
-        assert limits.request_limit == math.ceil((10 * 2 + 2 + self._RETRIES) * 1.1)  # 29
-
-    def test_remediation_budget_follows_the_remaining_queue(self) -> None:
-        agent = make_agentic_remediation_agent(model_string="ollama/gpt-oss:20b")
-        broker = GapBroker([{"name": f"gap-{i}"} for i in range(4)])
-        deps = RemediationDeps(gaps=broker)
-        limits = agent._usage_limits_for(deps)  # noqa: SLF001
-        assert limits is not None
-        assert limits.request_limit == math.ceil((4 * 3 + 2 + self._RETRIES) * 1.1)  # 20
-
-        broker.fetch("remediation", limit=2)
-        later = agent._usage_limits_for(deps)  # noqa: SLF001
-        assert later is not None
-        assert later.request_limit == math.ceil((2 * 3 + 2 + self._RETRIES) * 1.1)  # 14
-
-    def test_generation_budget_follows_the_segment_slice(self) -> None:
-        agent = make_agentic_generation_agent(model_string="ollama/gpt-oss:20b")
-        broker = ConceptBroker([{"name": f"concept-{i}"} for i in range(9)], num_callers=3)
-        deps = ToolGenerationDeps(source_id="seg_0", concept_broker=broker)
-        limits = agent._usage_limits_for(deps)  # noqa: SLF001
-        assert limits is not None
-        assert limits.request_limit == math.ceil((3 * 3 + 2 + self._RETRIES) * 1.1)  # 17
-
-    def test_generation_without_a_broker_keeps_the_default(self) -> None:
-        agent = make_agentic_generation_agent(model_string="ollama/gpt-oss:20b")
-        assert agent._usage_limits_for(ToolGenerationDeps(source_id="seg_0")) is None  # noqa: SLF001
-
-    def test_rlm_presets_win_over_the_derived_budget(self) -> None:
-        agent = make_agentic_context_chunk_agent("ollama/gpt-oss:20b")
-        preset = UsageLimits(request_limit=99)
-        agent._rlm_usage_limits = preset  # noqa: SLF001 - the base installs this preset when RLM is on
-        deps = ContextChunkDeps(doc_title="Doc", doc_summary="S", chunks=[])
-        assert agent._usage_limits_for(deps) is preset  # noqa: SLF001

@@ -62,6 +62,14 @@ class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDe
     #: and the page write.
     requests_per_concept: ClassVar[int] = 3
 
+    @staticmethod
+    def validate_output(ctx: RunContext[ToolGenerationDeps], output: GenerationOutput) -> GenerationOutput:
+        """Validate generation output for the agentic flow."""
+        if not output.pages:
+            raise ModelRetry("You returned an empty pages list. Generate at least one wiki page.")
+        _fix_slugs_locally(output.pages)
+        return output
+
     def _usage_limits_for(self, deps: ToolGenerationDeps) -> UsageLimits | None:
         """Budget the one session that generates a segment's concepts.
 
@@ -74,14 +82,6 @@ class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDe
         if broker is None:
             return self._rlm_usage_limits
         return self._session_limits(units=broker.remaining(deps.source_id), per_unit=self.requests_per_concept)
-
-    @staticmethod
-    def validate_output(ctx: RunContext[ToolGenerationDeps], output: GenerationOutput) -> GenerationOutput:
-        """Validate generation output for the agentic flow."""
-        if not output.pages:
-            raise ModelRetry("You returned an empty pages list. Generate at least one wiki page.")
-        _fix_slugs_locally(output.pages)
-        return output
 
 
 def make_agentic_generation_agent(
