@@ -7,8 +7,11 @@ from typing import Any
 from pydantic_ai_harness.memory import InMemoryStore
 
 from kompend.agents.agentic_harness import AgenticHarness
+from kompend.agents.distill_agentic import make_agentic_distill_agent
+from kompend.agents.remediate import make_agentic_remediation_agent
 from kompend.agents.summarizer_agentic import make_agentic_summarizer_agent
 from kompend.agents.vault_memory import DirectoryMemoryStore
+from kompend.agents.verification import make_agentic_verification_agent
 from kompend.core.config._configs import LLMConfig, LlmMemoryStore
 
 
@@ -112,3 +115,59 @@ class TestVaultMemoryStore:
             memory_dir=tmp_path,
         )
         assert not any(cap.__class__.__name__ == "Memory" for cap in agent.extra_capabilities)
+
+
+class TestNotebookStagesShareTheVault:
+    """Every notebook stage keeps its notebook in the vault, scoped by agent name.
+
+    The harness namespaces notebook paths by the agent name, so the stages
+    share one directory and never one file.
+    """
+
+    def test_verification_uses_the_vault_store(self, tmp_path: Any) -> None:
+        agent = make_agentic_verification_agent(
+            model_string="ollama/noop",
+            context_window=8192,
+            llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.VAULT),
+            memory_dir=tmp_path,
+        )
+        memory = self._memory_capability(agent)
+        assert isinstance(memory.store, DirectoryMemoryStore)  # type: ignore[attr-defined]
+        assert memory.store.directory == tmp_path  # type: ignore[attr-defined]
+        assert memory.agent_name == "verification"
+
+    def test_remediation_uses_the_vault_store(self, tmp_path: Any) -> None:
+        agent = make_agentic_remediation_agent(
+            model_string="ollama/noop",
+            context_window=8192,
+            llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.VAULT),
+            memory_dir=tmp_path,
+        )
+        memory = self._memory_capability(agent)
+        assert isinstance(memory.store, DirectoryMemoryStore)  # type: ignore[attr-defined]
+        assert memory.agent_name == "remediation"
+
+    def test_distillation_uses_the_vault_store(self, tmp_path: Any) -> None:
+        agent = make_agentic_distill_agent(
+            "ollama/noop",
+            context_window=8192,
+            llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.VAULT),
+            memory_dir=tmp_path,
+        )
+        memory = self._memory_capability(agent)
+        assert isinstance(memory.store, DirectoryMemoryStore)  # type: ignore[attr-defined]
+        assert memory.agent_name == "distill"
+
+    def test_session_store_leaves_the_notebook_in_process(self, tmp_path: Any) -> None:
+        agent = make_agentic_verification_agent(
+            model_string="ollama/noop",
+            context_window=8192,
+            llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.SESSION),
+            memory_dir=tmp_path,
+        )
+        memory = self._memory_capability(agent)
+        assert isinstance(memory.store, InMemoryStore)  # type: ignore[attr-defined]
+
+    @staticmethod
+    def _memory_capability(agent: Any) -> Any:
+        return next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory")

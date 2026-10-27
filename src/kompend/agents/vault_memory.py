@@ -34,6 +34,8 @@ from pydantic_ai_harness.memory import (
     MemoryOperationConflictError,
 )
 
+from kompend.core.config._configs import LLMConfig, LlmMemoryStore
+
 _MAX_RECEIPTS: Final[int] = 1024
 """Bounded replay protection, mirroring the harness stores."""
 
@@ -155,6 +157,22 @@ class DirectoryMemoryStore:
             return b"", None
         data = path.read_bytes()
         return data, sha256(data).hexdigest()[:_VERSION_CHARS]
+
+
+def build_notebook_store(llm: LLMConfig | None, memory_dir: Path | None) -> DirectoryMemoryStore | None:
+    """The persistent notebook store for a stage, or ``None`` for the in-process one.
+
+    Two config switches decide: ``compile.llm.agent_memory`` turns the notebook
+    on and ``compile.llm.memory_store = "vault"`` moves it out of the process
+    and into ``memory_dir``. Every stage passes the same directory - the
+    harness scopes notebook paths by agent name, so each stage owns its own
+    ``<memory_dir>/<agent_name>/MEMORY.md`` and no two stages share a file.
+    """
+    if llm is None or memory_dir is None or not llm.agent_memory:
+        return None
+    if llm.memory_store is not LlmMemoryStore.VAULT:
+        return None
+    return DirectoryMemoryStore(memory_dir)
 
 
 def _validate_path(path: str) -> None:

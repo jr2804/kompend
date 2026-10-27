@@ -219,7 +219,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     if distill and not list_tiers:
         if pending_notes:
             console.print(f"Distilling {pending_notes} note(s) before compile…")
-        for line in distill_result_lines(run_distill(sources_dir, cfg), sources_dir):
+        for line in distill_result_lines(run_distill(sources_dir, cfg, memory_dir=vp.agent_memory_dir), sources_dir):
             console.print(line)
     elif pending_notes and not list_tiers:
         console.print(pending_notes_message(pending_notes))

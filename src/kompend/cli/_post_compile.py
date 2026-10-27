@@ -98,6 +98,7 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
                     model_string=model,
                     timeout=opts.pipeline_config.llm.timeout,
                     llm=opts.pipeline_config.llm,
+                    memory_dir=opts.pipeline_config.paths.agent_memory_dir,
                 ),
                 verify_budget=_input_char_budget(opts.pipeline_config),
                 min_ngram=opts.pipeline_config.budget.verify_min_ngram,

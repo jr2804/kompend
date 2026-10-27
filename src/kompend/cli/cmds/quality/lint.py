@@ -493,7 +493,12 @@ def _run_remediation_for_gaps(ctx: typer.Context, vp: Any, cfg: Any, report: Any
     if not default_model:
         get_err_console().print("--fix: no compile.llm.default_model configured — cannot generate pages.")
         return
-    agent = make_agentic_remediation_agent(model_string=default_model, timeout=float(cfg.kompend.compile.llm.timeout))
+    agent = make_agentic_remediation_agent(
+        model_string=default_model,
+        timeout=float(cfg.kompend.compile.llm.timeout),
+        llm=cfg.kompend.compile.llm,
+        memory_dir=vp.agent_memory_dir,
+    )
     actions = remediate(
         wiki,
         report,
@@ -557,6 +562,7 @@ def lint_remediate(
             model_string=default_model,
             timeout=float(cfg.kompend.compile.llm.timeout),
             llm=cfg.kompend.compile.llm,
+            memory_dir=vp.agent_memory_dir,
         )
         if default_model
         else None

@@ -7,6 +7,7 @@ One session processes all tag groups: the agent pulls groups via
 from __future__ import annotations
 
 import math
+from pathlib import Path
 from typing import ClassVar
 
 from pydantic_ai import UsageLimits
@@ -14,6 +15,7 @@ from pydantic_ai import UsageLimits
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import DistillAgentDeps
+from kompend.agents.vault_memory import build_notebook_store
 from kompend.compilation.distill_tools import build_distill_tools
 from kompend.core.config._configs import LLMConfig, RlmConfig
 
@@ -61,18 +63,24 @@ def make_agentic_distill_agent(
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
+    memory_dir: Path | None = None,
 ) -> AgenticDistillAgent:
     """Build an :class:`AgenticDistillAgent` with tools + harness capabilities.
 
     Registers the ``get_group()`` / ``save_page()`` tools the system prompt
     instructs the model to call, and injects the standard agentic
     capabilities via :class:`AgenticHarness`.
+
+    ``memory_dir`` is the vault's agent-memory directory; the notebook
+    persists under ``memory_dir/distill/`` when ``llm.memory_store``
+    is ``vault``.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
     harness = AgenticHarness(
         context_window=context_window,
         memory_agent_name="distill",
         memory=bool(llm and llm.agent_memory),
+        memory_store=build_notebook_store(llm, memory_dir),
     )
     return AgenticDistillAgent(
         model_string=model_string,

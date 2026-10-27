@@ -208,7 +208,7 @@ def distill_cmd(
     vp = vault_paths_from_ctx(ctx)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
-    paths = run_distill(vp.sources_dir, cfg, archive=not no_archive)
+    paths = run_distill(vp.sources_dir, cfg, archive=not no_archive, memory_dir=vp.agent_memory_dir)
     for line in distill_result_lines(paths, vp.sources_dir):
         get_console().print(line)
 

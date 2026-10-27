@@ -308,7 +308,13 @@ def test_compile_distill_flag_distills_before_pipeline(tmp_path: Path, monkeypat
             order.append("compile")
             raise RuntimeError("synthetic boom")
 
-    def _fake_distill(sources_dir: Path, cfg: object, *, archive: bool = True) -> list[Path]:
+    def _fake_distill(
+        sources_dir: Path,
+        cfg: object,
+        *,
+        archive: bool = True,
+        memory_dir: Path | None = None,
+    ) -> list[Path]:
         order.append("distill")
         archive_flags.append(archive)
         return [page]

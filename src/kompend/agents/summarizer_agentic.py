@@ -17,9 +17,9 @@ from pydantic_ai import UsageLimits
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import SummarizerDeps
-from kompend.agents.vault_memory import DirectoryMemoryStore
+from kompend.agents.vault_memory import build_notebook_store
 from kompend.compilation.summarizer_tools import build_summarizer_tools
-from kompend.core.config._configs import LLMConfig, LlmMemoryStore, RlmConfig
+from kompend.core.config._configs import LLMConfig, RlmConfig
 from kompend.core.templates import get_template_loader
 
 #: Requests between discipline reminders (see the generation agent's
@@ -100,9 +100,7 @@ def make_agentic_summarizer_agent(
     instead of dying with the process.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
-    memory_store: DirectoryMemoryStore | None = None
-    if memory_dir is not None and llm is not None and llm.memory_store is LlmMemoryStore.VAULT:
-        memory_store = DirectoryMemoryStore(memory_dir)
+    memory_store = build_notebook_store(llm, memory_dir)
     reminder = _loader.render("chunking/summarizer_reminder.md.j2").strip()
     harness = AgenticHarness(
         context_window=context_window,

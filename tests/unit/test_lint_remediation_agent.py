@@ -59,7 +59,11 @@ class TestFailedPageGeneration:
 
 
 def _vault(tmp_path: Path) -> Any:
-    return types.SimpleNamespace(base_dir=tmp_path, output_dir=tmp_path / "wiki")
+    return types.SimpleNamespace(
+        base_dir=tmp_path,
+        output_dir=tmp_path / "wiki",
+        agent_memory_dir=tmp_path / ".kompend" / "agent-memory",
+    )
 
 
 def _config(model: str | None = "ollama/test-model") -> Any:

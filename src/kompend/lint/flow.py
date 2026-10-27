@@ -267,6 +267,7 @@ def _remediate_phase(
         model_string=model,
         timeout=float(cfg.kompend.lint.llm_timeout),
         llm=cfg.kompend.compile.llm,
+        memory_dir=vp.agent_memory_dir,
     )
     actions = remediate(
         wiki,

@@ -223,6 +223,7 @@ def wiki_distill(
                     model,
                     timeout=float(cfg.kompend.compile.llm.timeout),
                     llm=cfg.kompend.compile.llm,
+                    memory_dir=vp.agent_memory_dir,
                 )
                 if model
                 else None

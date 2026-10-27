@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, ClassVar
 
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import VerificationDeps
+from kompend.agents.vault_memory import build_notebook_store
 from kompend.compilation.verification_tools import build_verification_tools
 from kompend.core.config._configs import LLMConfig, RlmConfig
 
@@ -46,18 +48,24 @@ def make_agentic_verification_agent(
     context_window: int | None = None,
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
+    memory_dir: Path | None = None,
 ) -> AgenticVerificationAgent:
     """Factory for :class:`AgenticVerificationAgent`.
 
     Uses :class:`AgenticHarness` for Memory + SlidingWindowCompaction +
     ClampOversizedMessages. Retry budgets are split: ``retries`` governs
     tool-call retries; ``output_retries`` governs output-validation.
+
+    ``memory_dir`` is the vault's agent-memory directory; the notebook
+    persists under ``memory_dir/verification/`` when ``llm.memory_store``
+    is ``vault``.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
     harness = AgenticHarness(
         context_window=context_window,
         memory_agent_name="verification",
         memory=bool(llm and llm.agent_memory),
+        memory_store=build_notebook_store(llm, memory_dir),
     )
     return AgenticVerificationAgent(
         model_string=model_string,

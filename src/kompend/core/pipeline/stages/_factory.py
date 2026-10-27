@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from kompend.agents.context_chunk_agentic import (
     AgenticContextChunkAgent,
     make_agentic_context_chunk_agent,
@@ -23,7 +21,6 @@ from kompend.compilation.two_phase import TwoPhaseCompiler
 from kompend.compilation.wicer import WiCERCompiler
 from kompend.core.cache.store import CacheStore
 from kompend.core.cancel import CancelState
-from kompend.core.config._configs import LlmMemoryStore
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.pipeline.config import Compiler, PipelineConfig, Tier
 from kompend.core.pipeline.stages._parse import build_resolver_chain
@@ -99,7 +96,7 @@ def build_pipeline(
             requests_per_node=config.budget.summary_requests_per_node,
             rlm=config.llm.rlm,
             llm=config.llm,
-            memory_dir=_vault_memory_dir(config),
+            memory_dir=config.paths.agent_memory_dir,
         )
         if config.search.contextual.enabled:
             enricher_agent = make_agentic_context_chunk_agent(
@@ -185,16 +182,3 @@ def build_pipeline(
         ),
         enricher=ContextualEnricher(agent=enricher_agent) if enricher_agent is not None else None,
     )
-
-
-def _vault_memory_dir(config: PipelineConfig) -> Path | None:
-    """The agent-memory directory, or ``None`` for the in-process notebook.
-
-    Two switches decide: ``compile.llm.agent_memory`` turns the capability
-    on and ``compile.llm.memory_store = "vault"`` moves it under
-    :attr:`VaultPaths.agent_memory_dir`. Anything else keeps a fresh
-    in-process store per stage run.
-    """
-    if not (config.llm.agent_memory and config.llm.memory_store is LlmMemoryStore.VAULT):
-        return None
-    return config.paths.agent_memory_dir

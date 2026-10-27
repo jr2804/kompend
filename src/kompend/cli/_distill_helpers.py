@@ -39,17 +39,30 @@ def pending_notes_message(count: int) -> str:
     return f"{count} note(s) in {zones} are not distilled — run 'kompend distill', or pass --distill."
 
 
-def run_distill(sources_dir: Path, cfg: ResolvedConfig, *, archive: bool = True) -> list[Path]:
+def run_distill(
+    sources_dir: Path,
+    cfg: ResolvedConfig,
+    *,
+    archive: bool = True,
+    memory_dir: Path | None = None,
+) -> list[Path]:
     """Distill the note corpus and return the pages written."""
-    return distill(sources_dir, distill_agent=build_distill_agent(cfg), archive=archive)
+    return distill(sources_dir, distill_agent=build_distill_agent(cfg, memory_dir=memory_dir), archive=archive)
 
 
-def build_distill_agent(cfg: ResolvedConfig) -> DistillAgent | AgenticDistillAgent | None:
+def build_distill_agent(
+    cfg: ResolvedConfig,
+    *,
+    memory_dir: Path | None = None,
+) -> DistillAgent | AgenticDistillAgent | None:
     """Build the distill agent from config.
 
     Prefers the agentic (one session, tool-driven) agent and falls back to the
     per-group ``DistillAgent``; returns ``None`` when no model is configured or
     neither agent can be constructed, which distills deterministically.
+
+    ``memory_dir`` is the vault's agent-memory directory; the agentic agent
+    keeps its notebook there when ``compile.llm.memory_store`` is ``vault``.
     """
     model = cfg.kompend.compile.llm.default_model
     if not model:
@@ -59,6 +72,7 @@ def build_distill_agent(cfg: ResolvedConfig) -> DistillAgent | AgenticDistillAge
             model,
             timeout=float(cfg.kompend.compile.llm.timeout),
             llm=cfg.kompend.compile.llm,
+            memory_dir=memory_dir,
         )
     except Exception:
         try:
