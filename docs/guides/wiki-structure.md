@@ -41,7 +41,7 @@ Generated after every compile — a table of contents with wiki statistics.
 | Article count | `len(wiki.nodes)` | Number of compiled pages |
 | Total words | Sum of `node.content` | Word count across all pages |
 | Last compile | `datetime.utcnow()` | Timestamp of this compile |
-| Health score | `wiki.quality_score` | Quality eval score (if N2 active) |
+| Graph quality | `wiki.quality_score` | Graph completeness/connectivity/richness, 0-100 (distinct from the lint health score) |
 
 ### Topics cloud
 

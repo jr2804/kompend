@@ -136,7 +136,7 @@ def generate_log_entry(wiki: CompiledWiki, *, stage: LogStage) -> str:
         _add_tier_timings_table(b, tier_timings, duration)
 
     if stage == LogStage.LINT and wiki.quality_score:
-        b.paragraph(strong("Health score:"), f" {wiki.quality_score:.0f}/100")
+        b.paragraph(strong("Graph quality:"), f" {wiki.quality_score:.0f}/100")
 
     body = b.render().rstrip("\n")
     return f"{head}\n{body}\n" if body else f"{head}\n"
