@@ -219,6 +219,52 @@ def test_resolve_batches_image_chunks_last(tmp_path: Path) -> None:
     assert types == [ElementType.TEXT, ElementType.TEXT, ElementType.TEXT, ElementType.IMAGE, ElementType.IMAGE]
 
 
+def test_resolve_cache_rekeys_on_chunk_text(tmp_path: Path) -> None:
+    """The resolve layer must not replay a row for changed chunk text.
+
+    Regression (knox-hz4k): chunk ids are positional (``<stem>_tN``), so a
+    chunk-size change keeps the ids while the text moves. The cache key
+    carries the chunk's content hash, so the changed text misses and the
+    resolver runs again instead of replaying stale entities.
+    """
+    config = _make_config(tmp_path, vlm_model="")
+    pipeline = build_pipeline(config)
+
+    class _CountingResolver(_OrderTrackingResolver):
+        def __init__(self) -> None:
+            super().__init__()
+            self.calls: list[str] = []
+
+        def resolve(self, chunk: Chunk) -> ResolvedChunk:
+            self.calls.append(chunk.id)
+            return ResolvedChunk(chunk=chunk, entities=[{"name": f"entity-{chunk.text}"}])
+
+    pipeline.resolver = _CountingResolver()
+    resolver = pipeline.resolver
+    assert isinstance(resolver, _CountingResolver)
+
+    def _single_chunk_tree(chunk: Chunk) -> ChunkTree:
+        root = ChunkNode(id="root", children_ids=["n0"])
+        return ChunkTree(
+            root_id="root",
+            nodes={"root": root, "n0": ChunkNode(id="n0", parent_id="root", chunk=chunk)},
+        )
+
+    resolve_chunks(
+        pipeline,
+        [_single_chunk_tree(Chunk(id="doc_t1", text="alpha", element_types=[ElementType.TEXT], source_elements=[]))],
+    )
+    assert resolver.calls == ["doc_t1"]
+
+    second = resolve_chunks(
+        pipeline,
+        [_single_chunk_tree(Chunk(id="doc_t1", text="beta", element_types=[ElementType.TEXT], source_elements=[]))],
+    )
+
+    assert resolver.calls == ["doc_t1", "doc_t1"]
+    assert second[0].entities == [{"name": "entity-beta"}]
+
+
 def _make_config(tmp_path: Path, *, vlm_model: str) -> PipelineConfig:
     return PipelineConfig(
         source_dir=tmp_path,

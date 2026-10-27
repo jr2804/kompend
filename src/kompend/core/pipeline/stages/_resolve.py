@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import cast
 
 from kompend.core.models import Chunk, ChunkTree, ElementType, ResolvedChunk
+from kompend.core.pipeline.parse_cache import content_hash_prefix
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.resolution.entity_registry import EntityRegistry
 from kompend.core.resolution.xref_checker import CrossReferenceChecker
@@ -24,7 +25,10 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
     (no LLM) across the full tree set.
 
     Resolved chunks are cached under the ``"resolve"`` layer so VLM
-    captioning survives a re-run after a mid-pipeline failure.
+    captioning survives a re-run after a mid-pipeline failure. The cache
+    key carries the chunk's content hash: ids are positional
+    (``<stem>_tN``), so a chunk-size change would otherwise replay stale
+    resolutions under the same id.
     """
     registry = EntityRegistry()
     for tree in trees:
@@ -60,7 +64,14 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
     vlm_model = resolve_vlm_model(pipeline.config.llm.default_model, pipeline.config.llm.vlm_model) or ""
 
     def _resolve_one(chunk: Chunk) -> ResolvedChunk:
-        deps = {"chunk_id": chunk.id, "vlm_model": vlm_model}
+        # ``content`` couples the row to the chunk's text. Ids are positional
+        # (``<stem>_tN``): a chunk-size change keeps the same ids while the
+        # text moves, and an id-only key would replay stale resolutions.
+        deps = {
+            "chunk_id": chunk.id,
+            "content": content_hash_prefix(chunk.text.encode("utf-8")),
+            "vlm_model": vlm_model,
+        }
         cached = pipeline.cache_store.get_dict("resolve", deps)
         if cached is not None:
             # Validate every element, not just the container: a cache entry is

@@ -665,7 +665,15 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             if self.usage_tracker is not None:
                 # The harness reports token usage through an event; keep feeding
                 # the tracker so context usage stays visible in the run summary.
-                capabilities.append(ReportContextUsage(on_usage=self._on_usage_update))
+                # The gauge measures against the same (possibly capped) window
+                # the compaction capability triggers on - reporting the model's
+                # raw window would understate how full the context really is.
+                capabilities.append(
+                    ReportContextUsage(
+                        on_usage=self._on_usage_update,
+                        context_window=self.context_window,
+                    )
+                )
         if self.delta_retry_enabled and type(self).supports_delta_retry:
             capabilities.append(self._make_delta_retry_hook())
         rlm_capability = self._resolve_rlm_capability(top_model)

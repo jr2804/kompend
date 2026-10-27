@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+from pydantic_ai_harness.compaction import ReportContextUsage
 from pydantic_ai_harness.memory import InMemoryStore
 
+import kompend.agents.base as base_module
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.distill_agentic import make_agentic_distill_agent
 from kompend.agents.remediate import make_agentic_remediation_agent
@@ -13,6 +16,7 @@ from kompend.agents.summarizer_agentic import make_agentic_summarizer_agent
 from kompend.agents.vault_memory import DirectoryMemoryStore
 from kompend.agents.verification import make_agentic_verification_agent
 from kompend.core.config._configs import LLMConfig, LlmMemoryStore
+from kompend.llm.usage import UsageTracker
 
 
 class TestAgenticHarnessCapabilities:
@@ -65,6 +69,32 @@ class TestAgentMemoryConfig:
             llm=LLMConfig(agent_memory=False),
         )
         assert not any(cap.__class__.__name__ == "Memory" for cap in agent.extra_capabilities)
+
+
+class TestContextUsageWindow:
+    """The usage gauge must measure the window the agent actually runs in.
+
+    Regression (knox-p719): ``ReportContextUsage`` resolved the window from
+    the request's model (e.g. a provider's 200000) while the compaction
+    capability triggered on the pinned ``compile.llm.context_window`` — the
+    reported percentage understated how full the context really was.
+    """
+
+    def test_usage_gauge_measures_the_configured_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        class _RecorderReportContextUsage(ReportContextUsage):
+            def __init__(self, **kwargs: object) -> None:
+                captured.update(kwargs)
+                super().__init__(**kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(base_module, "ReportContextUsage", _RecorderReportContextUsage)
+        agent = make_agentic_summarizer_agent("ollama/noop", context_window=32768, llm=LLMConfig())
+        agent.usage_tracker = UsageTracker()
+
+        agent._build_agent()  # noqa: SLF001
+
+        assert captured["context_window"] == 32768
 
 
 class TestVaultMemoryStore:
