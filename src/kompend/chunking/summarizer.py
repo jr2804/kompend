@@ -13,8 +13,6 @@ Key design decisions:
 - Internal nodes with a single child are optionally skipped
   (``skip_single_child``) — a single-child wrapper adds no information.
 - LLM calls go through the Jinja2 template ``chunking/node_summary.md.j2``.
-- When no LLM client is provided, an extractive fallback is used (first
-  sentence per child) so the pipeline still functions without an LLM.
 - Summaries are cached by content hash + model name so unchanged subtrees
   are not re-summarised across runs. ``cache_ignore_model`` drops the model
   from the key (``compile.cache_ignore_model``): after a model switch the
@@ -27,7 +25,6 @@ Key design decisions:
 from __future__ import annotations
 
 import hashlib
-import re
 from dataclasses import dataclass, field
 from typing import cast
 
@@ -48,7 +45,6 @@ from kompend.logging import get_logger
 _TEMPLATE = "chunking/node_summary.md.j2"
 _CACHE_LAYER = "summary"
 
-_SENTENCE_SPLIT = re.compile(r"(?<=[.!?])\s+")
 
 logger = get_logger(__name__)
 
@@ -148,9 +144,9 @@ class NodeSummarizer:
 
     Parameters
     ----------
-    llm_client:
-        LLM client for abstractive summaries.  When ``None``, an extractive
-        fallback is used.
+    agent:
+        The summarizer agent. There is no heuristic stand-in: a node summary
+        is model output, and a failed call raises.
     cache_store:
         Optional cache for summary persistence across runs.
     content_policy:
@@ -168,30 +164,25 @@ class NodeSummarizer:
         a previous model are reused after a model switch
         (``compile.cache_ignore_model``). Default off: the model is part of
         the key.
-    memory_fingerprint:
-        Fingerprint of the persistent agent-notebook index
-        (``compile.llm.memory_store = "vault"``), or ``None`` for the
-        session store. When set, cached summaries carry it: editing the
-        notebook invalidates them like a model switch does.
     """
 
     def __init__(
         self,
-        agent: SummarizerAgent | AgenticSummarizerAgent | None = None,
+        agent: SummarizerAgent | AgenticSummarizerAgent | None,
         cache_store: CacheStore | None = None,
         *,
         content_policy: SummarizerContentPolicy,
         session_policy: SummarizerSessionPolicy | None = None,
         cache_ignore_model: bool = False,
-        memory_fingerprint: str | None = None,
     ) -> None:
+        if agent is None:
+            raise ValueError("NodeSummarizer requires an agent - summaries are model output, not a heuristic")
         self._agent = agent
         self._cache = cache_store
         self._policy = content_policy
         self._session_policy = session_policy
         self._payload_chars = session_policy.payload_chars if session_policy else 0
         self._cache_ignore_model = cache_ignore_model
-        self._memory_fingerprint = memory_fingerprint
         self._loader = get_template_loader()
 
     def summarize(self, tree: ChunkTree) -> ChunkTree:
@@ -400,7 +391,7 @@ class NodeSummarizer:
         return progressed
 
     def _summarize_node(self, tree: ChunkTree, node: ChunkNode) -> str:
-        """Build content from children, then summarise via LLM or extractive fallback."""
+        """Build the content of ``node`` from its children and summarise it."""
         parts: list[str] = []
         for child_id in node.children_ids:
             child = tree.nodes.get(child_id)
@@ -426,12 +417,7 @@ class NodeSummarizer:
             if cached is not None:
                 summaries.append(cached)
                 continue
-            if self._agent is not None:
-                summary = self._llm_summarize(window, heading_chain)
-            elif len(windows) == 1:
-                summary = self._extractive_summary(parts)
-            else:
-                summary = self._extractive_summary([window])
+            summary = self._llm_summarize(window, heading_chain)
             self._cache_store(window, heading_chain, summary)
             summaries.append(summary)
         return "\n\n".join(part for part in summaries if part)
@@ -445,14 +431,8 @@ class NodeSummarizer:
             target_chars=self._policy.target_chars,
         )
         deps = PipelineAgentDeps(text=prompt, source_id=heading_chain)
-        try:
-            if self._agent is None:
-                raise RuntimeError("SummarizerAgent not initialized")
-            result = cast("SummarizerAgent", self._agent).run(deps)
-            return result.strip()
-        except Exception as exc:
-            logger.warning("Summarizer failed for '%s': %s", heading_chain, exc)
-            return self._extractive_summary([content])
+        result = cast("SummarizerAgent", self._agent).run(deps)
+        return result.strip()
 
     def _cache_lookup(self, content: str, heading_chain: str) -> str | None:
         if self._cache is None:
@@ -480,8 +460,6 @@ class NodeSummarizer:
         }
         if not self._cache_ignore_model:
             deps["model"] = model  # nocheck: summarizer cache deps, not wiki metadata
-        if self._memory_fingerprint is not None:
-            deps["memory"] = self._memory_fingerprint
         return deps
 
     @staticmethod
@@ -516,20 +494,6 @@ class NodeSummarizer:
         if child.structured is not None:
             return structured_to_text(child.structured)
         return ""
-
-    @staticmethod
-    def _extractive_summary(parts: list[str]) -> str:
-        """Fallback: first sentence from each child part, joined."""
-        sentences: list[str] = []
-        for part in parts:
-            sents = _SENTENCE_SPLIT.split(part.strip())
-            if sents:
-                first = sents[0].strip()
-                if first:
-                    sentences.append(first)
-            if len(sentences) >= 5:
-                break
-        return " ".join(sentences)
 
 
 #: ``structured_to_text`` lives in ``kompend.core.models.structured`` — importing

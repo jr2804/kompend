@@ -26,55 +26,58 @@ from kompend.core.models import (
     StructuredTable,
 )
 
+
+class _StubAgent:
+    """Minimal stand-in for the summarizer agent: returns fixed text."""
+
+    model_string = "test-model"
+
+    def __init__(self, summary: str = "Summary.") -> None:
+        self.summary = summary
+        self.calls: list = []
+
+    def run(self, deps: object) -> str:
+        self.calls.append(deps)
+        return self.summary
+
+
 # ── tests ────────────────────────────────────────────────────────────────
 
 
 class TestSummarizerSkip:
     def test_single_pass_skipped(self, single_pass_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
+        summarizer = NodeSummarizer(agent=_agent(), content_policy=_policy())
         result = summarizer.summarize(single_pass_tree)
         root = result.nodes["root"]
         assert root.summary == ""
 
     def test_single_child_skipped_by_default(self, single_child_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, content_policy=_policy(skip_single_child=True))
+        summarizer = NodeSummarizer(agent=_agent(), content_policy=_policy(skip_single_child=True))
         summarizer.summarize(single_child_tree)
         wrapper = single_child_tree.nodes["w"]
         assert wrapper.summary == ""
 
     def test_single_child_summarized_when_disabled(self, single_child_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, content_policy=_policy(skip_single_child=False))
+        summarizer = NodeSummarizer(agent=_agent(), content_policy=_policy(skip_single_child=False))
         summarizer.summarize(single_child_tree)
         wrapper = single_child_tree.nodes["w"]
         assert wrapper.summary != ""
 
 
-class TestSummarizerExtractiveFallback:
-    def test_internal_nodes_get_summaries(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
-        summarizer.summarize(sample_tree)
-        section1 = sample_tree.nodes["doc_h1"]
-        assert section1.summary != ""
-        assert "SNR" in section1.summary or "threshold" in section1.summary.lower()
+class TestSummarizerRequiresAnAgent:
+    def test_no_agent_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="requires an agent"):
+            NodeSummarizer(agent=None, content_policy=_policy())
 
-    def test_root_gets_summary(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
-        summarizer.summarize(sample_tree)
-        root = sample_tree.nodes["doc_root"]
-        assert root.summary != ""
+    def test_llm_failure_propagates(self, sample_tree: ChunkTree) -> None:
+        failing = MagicMock()
+        failing.model_string = "test-model"
+        failing.run.side_effect = RuntimeError("model exploded")
 
-    def test_leaf_nodes_unchanged(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
-        summarizer.summarize(sample_tree)
-        leaf = sample_tree.nodes["doc_t1"]
-        assert leaf.summary == ""
-        assert leaf.chunk is not None
+        summarizer = NodeSummarizer(agent=failing, content_policy=_policy())
 
-    def test_extractive_max_sentences(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
-        summarizer.summarize(sample_tree)
-        root = sample_tree.nodes["doc_root"]
-        assert len(root.summary.split(". ")) <= 6
+        with pytest.raises(RuntimeError, match="model exploded"):
+            summarizer.summarize(sample_tree)
 
 
 class TestSummarizerLLM:
@@ -104,7 +107,7 @@ class TestSummarizerLLM:
         assert "SNR" in prompt or "threshold" in prompt.lower()
 
     def test_returns_same_tree_object(self, sample_tree: ChunkTree) -> None:
-        summarizer = NodeSummarizer(agent=None, content_policy=_policy())
+        summarizer = NodeSummarizer(agent=_agent(), content_policy=_policy())
         result = summarizer.summarize(sample_tree)
         assert result is sample_tree
 
@@ -182,24 +185,8 @@ class TestSummarizerCache:
             assert "model" not in deps
             assert deps["content_hash"]
 
-    def test_cache_deps_carry_memory_fingerprint(self, sample_tree: ChunkTree) -> None:
-        """The vault notebook index is part of the key: editing it invalidates cached summaries."""
-        mock_llm = MagicMock()
-        mock_llm.model_string = "my-model"
-        mock_llm.run.return_value = "Summary."
-
-        mock_cache = MagicMock()
-        mock_cache.get.return_value = None
-
-        summarizer = NodeSummarizer(agent=mock_llm, cache_store=mock_cache, content_policy=_policy(), memory_fingerprint="a" * 16)
-        summarizer.summarize(sample_tree)
-
-        for call in mock_cache.set.call_args_list:
-            deps = call[0][1]
-            assert deps["memory"] == "a" * 16
-
-    def test_cache_deps_skip_memory_without_vault_store(self, sample_tree: ChunkTree) -> None:
-        """Session-store runs (default) keep the deps shape unchanged."""
+    def test_cache_deps_exclude_the_agent_notebook(self, sample_tree: ChunkTree) -> None:
+        """The agent notebook is not a cache input: the agent writes it mid-run."""
         mock_llm = MagicMock()
         mock_llm.model_string = "my-model"
         mock_llm.run.return_value = "Summary."
@@ -213,6 +200,7 @@ class TestSummarizerCache:
         for call in mock_cache.set.call_args_list:
             deps = call[0][1]
             assert "memory" not in deps
+            assert set(deps) <= {"content_hash", "heading_chain", "model"}
 
 
 class TestSummarizerStructuredLeaf:
@@ -242,7 +230,7 @@ class TestSummarizerStructuredLeaf:
             strategy=ChunkStrategy.TWO_LEVEL,
         )
 
-        summarizer = NodeSummarizer(agent=None, content_policy=_policy(skip_single_child=False))
+        summarizer = NodeSummarizer(agent=_agent(), content_policy=_policy(skip_single_child=False))
         summarizer.summarize(tree)
 
         section_node = tree.nodes["s"]
@@ -499,6 +487,10 @@ class TestSummarizerWindowing:
         # A bigger window means fewer summarize calls — never fewer windows of
         # content.
         assert len(small_window_entries) > len(large_window_entries)
+
+
+def _agent(summary: str = "Summary.") -> _StubAgent:
+    return _StubAgent(summary)
 
 
 def _policy(

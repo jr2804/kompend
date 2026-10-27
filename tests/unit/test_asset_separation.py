@@ -200,6 +200,16 @@ class TestSummarizeAsset:
         # Falls through to fallback "figure".
         assert "figure" in summary
 
+    def test_long_caption_is_not_cropped(self) -> None:
+        caption = "Detailed caption " * 20
+        data = StructuredFigure(caption=caption.strip())
+        summary = summarize_asset(data)
+        assert summary == caption.strip()
+
+    def test_caption_newlines_collapse_but_content_stays(self) -> None:
+        data = StructuredFigure(caption="First line\nsecond line")
+        assert summarize_asset(data) == "First line second line"
+
     def test_equation_returns_equation(self) -> None:
         data = StructuredEquation(latex="E = mc^2")
         summary = summarize_asset(data)

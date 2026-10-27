@@ -84,69 +84,18 @@ def test_summarize_includes_top_concepts() -> None:
     assert "tech" in summary
 
 
-def test_summarize_respects_max_tokens() -> None:
+def test_summarize_keeps_everything() -> None:
+    """The digest is handed to the model in full - no crop, no truncation."""
     memory = ExtractionMemory()
-    for i in range(10):
-        memory.ingest(
-            _extraction(
-                concepts=[Concept(name=f"concept{i}", definition="x" * 200)],
-                tags=[f"tag{i}"],
-            )
-        )
-    unlimited = memory.summarize()
-    limited = memory.summarize(max_tokens=20)
-    assert len(limited) < len(unlimited)
+    definitions = [f"definition-{i}-" + "x" * 200 for i in range(10)]
+    for i, definition in enumerate(definitions):
+        memory.ingest(_extraction(concepts=[Concept(name=f"concept{i}", definition=definition)], tags=[f"tag{i}"]))
 
+    digest = memory.summarize()
 
-# ── compact ───────────────────────────────────────────────────────────────
-
-
-def test_compact_keeps_last_three_section_summaries() -> None:
-    """Compact keeps at most 3 most recent section summaries."""
-    memory = ExtractionMemory()
-    for i in range(5):
-        memory.ingest(
-            _extraction(
-                concepts=[Concept(name=f"c{i}", definition="x")],
-                summary=f"section {i}",
-            )
-        )
-    assert len(memory.section_summaries) == 5
-    memory.compact()
-    assert len(memory.section_summaries) == 3
-    # Last three (most recent) are kept
-    assert memory.section_summaries == ["section 2", "section 3", "section 4"]
-
-
-def test_compact_drops_singleton_concepts() -> None:
-    """Compact drops concepts with ref_count == 1."""
-    memory = ExtractionMemory()
-    memory.ingest(_extraction(concepts=[Concept(name="freq", definition="x")]))
-    memory.ingest(_extraction(concepts=[Concept(name="freq", definition="x")]))
-    memory.ingest(_extraction(concepts=[Concept(name="rare", definition="y")]))
-    memory.compact()
-    assert "freq" in memory.concepts
-    assert "rare" not in memory.concepts
-
-
-def test_compact_reduces_to_title_only() -> None:
-    """Compact clears definitions and context on remaining digests."""
-    memory = ExtractionMemory()
-    memory.ingest(
-        _extraction(
-            concepts=[Concept(name="keep", definition="definition text")],
-            entities=[Entity(name="entity", type="person", context="context text")],
-        )
-    )
-    memory.ingest(
-        _extraction(
-            concepts=[Concept(name="keep", definition="definition text")],
-            entities=[Entity(name="entity", type="person", context="context text")],
-        )
-    )
-    memory.compact()
-    assert memory.concepts["keep"].definition == ""
-    assert memory.entities["entity"].context == ""
+    for definition in definitions:
+        assert definition in digest
+    assert "truncated" not in digest
 
 
 # ── to_extraction ─────────────────────────────────────────────────────────
@@ -177,20 +126,6 @@ def test_to_extraction_empty_memory_returns_empty() -> None:
     assert result.concepts == []
     assert result.entities == []
     assert result.tags == []
-
-
-# ── token_estimate ────────────────────────────────────────────────────────
-
-
-def test_token_estimate_grows_with_content() -> None:
-    memory = ExtractionMemory()
-    assert memory._estimate_tokens() == 0
-    memory.ingest(
-        _extraction(
-            concepts=[Concept(name="foo", definition="bar")],
-        )
-    )
-    assert memory._estimate_tokens() > 0
 
 
 def _extraction(

@@ -1524,13 +1524,14 @@ class TestAgenticVerification:
         assert agent.run.call_count == 1
         assert result.total == 10
 
-    def test_agentic_failure_returns_unverified(self, tmp_path: Path) -> None:
+    def test_agentic_failure_propagates(self, tmp_path: Path) -> None:
+        """A failed verification call is an error, not a silent "unverified" verdict."""
         wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="Some claim text. ^[a.pdf:1-2]" * 5, node_type=NodeType.SECTION)])
         agent = MagicMock(spec=AgenticVerificationAgent)
         agent.run.side_effect = RuntimeError("LLM failed")
-        result = verify_wiki(wiki, tmp_path, agent=agent)
-        assert result.total >= 1
-        assert all(c.verdict == "unverified" for c in result.claims)
+
+        with pytest.raises(RuntimeError, match="LLM failed"):
+            verify_wiki(wiki, tmp_path, agent=agent)
 
     def _fake_agentic_client(self, verdicts: dict[int, str]) -> MagicMock:
         agent = MagicMock(spec=AgenticVerificationAgent)

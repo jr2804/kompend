@@ -3,14 +3,6 @@ from __future__ import annotations
 from kompend.compilation._two_phase_core import Extraction
 from kompend.compilation.schema import Concept, Entity
 
-# Digest budgets: how much of each recorded field survives into the compact
-# text block the agent reasons about. The digest is a running summary of a long
-# extraction, so every field is bounded — the full definitions stay in the
-# extraction result, not in the digest.
-_SUMMARY_CHARS: int = 120
-_DEFINITION_CHARS: int = 100
-_ENTITY_CONTEXT_CHARS: int = 80
-
 # ── Memory digests ─────────────────────────────────────────────────────
 
 
@@ -50,8 +42,8 @@ class ExtractionMemory:
     """Structured cross-section memory for agentic extraction.
 
     Accumulates concepts, entities, and tags as an agent reads a document
-    section by section. Supports deterministic compaction when the
-    estimated token budget is tight.
+    section by section. The digest is handed to the model in full; there is no
+    pruning heuristic.
     """
 
     def __init__(self) -> None:
@@ -60,7 +52,6 @@ class ExtractionMemory:
         self.tags: set[str] = set()
         self.section_summaries: list[str] = []
         self._last_section_titles: list[str] = []
-        self._total_additions = 0
 
     # ── Ingestion ──────────────────────────────────────────────────
 
@@ -113,21 +104,19 @@ class ExtractionMemory:
         if sec_summary:
             self.section_summaries.append(sec_summary)
 
-        self._total_additions += 1
-
     # ── Summarization ──────────────────────────────────────────────
 
-    def summarize(self, max_tokens: int = 4096) -> str:
+    def summarize(self) -> str:
         """Render current memory as a PydanticAI-suitable context string.
 
-        The digest is formatted as a compact, structured text block that
+        The digest is a structured text block that
         the agent can reason about — sorted by ref_count descending so
         that recurring concepts appear first.
         """
         lines: list[str] = []
 
         if self.section_summaries:
-            line = "Section summary: " + " | ".join(s[:_SUMMARY_CHARS] for s in self.section_summaries)
+            line = "Section summary: " + " | ".join(self.section_summaries)
             lines.append(line)
 
         if self.concepts:
@@ -136,7 +125,7 @@ class ExtractionMemory:
             for d in concepts_sorted:
                 label = d.title
                 if d.definition:
-                    label += f": {d.definition[:_DEFINITION_CHARS]}"
+                    label += f": {d.definition}"
                 parts.append(label)
             lines.append("Concepts: " + "; ".join(parts))
 
@@ -148,46 +137,14 @@ class ExtractionMemory:
                 if d.entity_type:
                     label += f" ({d.entity_type})"
                 if d.context:
-                    label += f" — {d.context[:_ENTITY_CONTEXT_CHARS]}"
+                    label += f" — {d.context}"
                 eparts.append(label)
             lines.append("Entities: " + "; ".join(eparts))
 
         if self.tags:
             lines.append("Tags: " + ", ".join(sorted(self.tags)))
 
-        result = "\n".join(lines)
-
-        # Rough token estimate: ~4 chars per token
-        if len(result) <= max_tokens * 4:
-            return result
-        # Truncate from the end (tag list is cheapest to lose)
-        return result[: max_tokens * 4] + "\n[memory truncated]"
-
-    # ── Compaction ─────────────────────────────────────────────────
-
-    def compact(self) -> None:
-        """Deterministic prune of low-value entries.
-
-        - Keeps only the last 3 section summaries.
-        - Drops concepts/entities with ref_count == 1.
-        - For remaining digests, keeps only the title/name
-          (definition/context dropped) to save tokens.
-        """
-        # Trim section summaries
-        if len(self.section_summaries) > 3:
-            self.section_summaries = self.section_summaries[-3:]
-
-        # Drop low-ref concepts
-        self.concepts = {k: v for k, v in self.concepts.items() if v.ref_count > 1}
-        # Strip definitions
-        for d in self.concepts.values():
-            d.definition = ""
-
-        # Drop low-ref entities
-        self.entities = {k: v for k, v in self.entities.items() if v.ref_count > 1}
-        # Strip context
-        for d in self.entities.values():
-            d.context = ""
+        return "\n".join(lines)
 
     # ── Finalization ───────────────────────────────────────────────
 
@@ -225,23 +182,6 @@ class ExtractionMemory:
 
     def __bool__(self) -> bool:
         return bool(self.concepts or self.entities or self.tags)
-
-    def _estimate_tokens(self) -> int:
-        """Rough token estimate based on accumulated content.
-
-        Used by the agentic flow to decide when compaction is needed.
-        This is intentionally a fast approximation (~4 chars/token).
-        """
-        total_chars = 0
-        for d in self.concepts.values():
-            total_chars += len(d.title) + len(d.definition)
-        for d in self.entities.values():
-            total_chars += len(d.name) + len(d.entity_type) + len(d.context)
-        total_chars += sum(len(s) for s in self.section_summaries)
-        total_chars += len(" ".join(self.tags))
-        if not total_chars:
-            return 0
-        return total_chars // 4
 
     # ── Helpers ────────────────────────────────────────────────────
 

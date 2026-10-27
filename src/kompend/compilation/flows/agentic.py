@@ -1,4 +1,4 @@
-"""Agentic extraction flow — structured memory with compaction-managed digests.
+"""Agentic extraction flow — structured memory carried between sections.
 
 ``extract_agentic()`` implements the ``AGENTIC`` extraction strategy.
 Unlike ``INCREMENTAL`` (raw ``message_history`` that grows unbounded),
@@ -103,7 +103,6 @@ def extract_agentic(
     )
 
     memory = ExtractionMemory()
-    compaction_threshold = compiler._context_window.history_budget
     batch_retries = compiler._config.llm.batch_retry_attempts
     overall_succeeded = False
 
@@ -116,7 +115,7 @@ def extract_agentic(
         )
 
         # Build message history with memory digest injected as a system message
-        memory_digest = memory.summarize(max_tokens=compiler._context_window.answer_reserve)
+        memory_digest = memory.summarize()
         message_history: list[ModelMessage] = []
         if tools:
             message_history.append(
@@ -185,17 +184,6 @@ def extract_agentic(
         )
         memory.ingest(section_extraction)
         overall_succeeded = True
-
-        if memory._estimate_tokens() > compaction_threshold:
-            memory.compact()
-            logger.info(
-                "TwoPhase: compacted memory for '%s' (section %d) — %d concepts, %d entities, ~%d tokens",
-                source,
-                section_idx + 1,
-                len(memory.concepts),
-                len(memory.entities),
-                memory._estimate_tokens(),
-            )
 
     if not overall_succeeded:
         logger.warning("TwoPhase: agentic extraction failed for all sections of '%s'", source)

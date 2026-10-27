@@ -31,7 +31,6 @@ _SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
 #: agent judges a claim against this excerpt, so it is a context budget rather
 #: than a display crop — raise it if verdicts start missing support that the
 #: source does contain.
-_EXCERPT_CHARS: int = 5000
 
 logger = get_logger(__name__)
 
@@ -132,15 +131,12 @@ def _verify_wiki_agentic(wiki: CompiledWiki, sources_dir: Path, agent: AgenticVe
             if citation:
                 excerpt = _load_excerpt(citation.source, sources_dir)
                 if excerpt:
-                    sources.append(VerificationSource(slug=citation.source, text=excerpt[:_EXCERPT_CHARS]))
+                    sources.append(VerificationSource(slug=citation.source, text=excerpt))
             pages.append(VerificationPage(slug=node.id, content=node.content or ""))
             claim_id += 1
 
     deps = VerificationDeps(claims=claims, sources=sources, pages=pages)
-    try:
-        agent.run(deps)
-    except Exception:
-        logger.debug("Agentic verification failed", exc_info=True)
+    agent.run(deps)
     verdicts = {v.claim_id: v for v in deps.results}
 
     results: list[ClaimVerification] = []

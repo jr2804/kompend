@@ -21,8 +21,6 @@ from kompend.agents.types import QueryAgentDeps
 from kompend.llm.format import LlmDataFormat, encode_for_llm
 from kompend.types import JSONDict, JSONList
 
-_MAX_PAGE_CHARS = 2000
-
 
 def build_query_tools() -> list[Tool[QueryAgentDeps]]:
     """Return the full toolset for the agentic query agent."""
@@ -54,7 +52,7 @@ async def search_wiki(ctx: RunContext[QueryAgentDeps], question: str, top_k: int
         row: JSONDict = {
             "slug": hit.article_id,
             "title": hit.title,
-            "excerpt": hit.content[:_MAX_PAGE_CHARS],
+            "excerpt": hit.content,
         }
         payload.append(row)
     return encode_for_llm(payload, LlmDataFormat.JSON)
