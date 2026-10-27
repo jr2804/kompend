@@ -72,6 +72,10 @@ dependencies = [
     "lazy-loader>=0.6",
     "rapidfuzz>=3.14.6",
     "charset-normalizer>=3.5.2",
+    # pypdf (via parsecraft's parse tier) probes fontTools to fully decode
+    # embedded CFF Type1 subset fonts; without it, LaTeX-style math/symbol
+    # glyphs map to garbage on every parse of ITU/IEEE-style PDFs.
+    "fonttools>=4.5",
     "parsecraft[docling,web]>=2026.10.12",
     "llmdb>=1.0.0",
 ]
