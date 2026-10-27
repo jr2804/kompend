@@ -34,22 +34,29 @@ calls the right core function, and formats the output. Nothing more.
 ### Lazy command registration
 
 Command modules are NOT imported eagerly at startup. `_registry.py` declares each
-command exactly once — `CommandName`, the `CommandModule` registering it, and its
-`HelpPanel` — and `_group.LazyGroup` imports a module only when one of its commands
-is used. All three are `StrEnum` members: a bare string is the defect the config
-schema bans, and help lists every command from the registry at no import cost.
+command exactly once — `CommandName`, the `CommandModule` registering it, its
+`HelpPanel`, and the `short_help` line `--help` shows — and `_group.LazyGroup`
+imports a module only when one of its commands runs. Every vocabulary is a
+`StrEnum` member: a bare string is the defect the config schema bans. While
+`format_help` runs, the group hands Click stub commands built from
+`CommandSpec`, so help renders the full panel tree without importing a module.
 
 **Why:** eager imports pulled heavy deps (pydantic-ai, parsecraft, MCP SDK)
-into every `kompend` invocation. With lazy registration, `kompend --version` takes
-~1.5s instead of ~23s.
+into every `kompend` invocation. With lazy registration and registry-rendered
+help, `--help` reads only `_registry.py`, and `--version` never loads the config
+engine (pydantic, `pydantic_settings`). `telemetry.py` owns `import logfire`;
+the callback configures it after the `--version` exit, and `kompend/__init__.py`
+disables logfire's pydantic plugin (`PYDANTIC_DISABLE_PLUGINS`), which pydantic's
+plugin loader would otherwise import when the first model class is defined. The
+run log loads on the first real command via `OnDemandModule.RUNLOG`.
 
 **Adding a new command:**
 
 1. Add the name to `CommandName`, its module to `CommandModule` if new, and one
    `CommandSpec` entry to `COMMANDS` in `_registry.py`
 2. Add the module to `_MODULE_NAMES` and `__all__` in `cmds/__init__.py`
-3. Tests: `conftest.py` calls `register_all_commands()` at session start
-4. No other changes needed — the module is imported on first invocation
+3. Tests: `conftest.py` calls `register_all_commands()` at session start; nothing
+   else changes - the module imports on first invocation
 
 ### What does NOT belong in `kompend.cli`
 
@@ -64,16 +71,17 @@ into every `kompend` invocation. With lazy registration, `kompend --version` tak
 
 ### The test
 
-If you can remove `src/kompend/cli/` and `import kompend` still works for
-programmatic use (pipeline, models, config, lint), then the boundary is clean.
+Removing `src/kompend/cli/` must leave `import kompend` working for programmatic
+use (pipeline, models, config, lint); then the boundary is clean.
 
 ### File responsibilities
 
 | File/Directory | Purpose |
 |---|---|
 | `app.py` | Typer app instance, global callback (`--wiki-dir`, `--config`, `--verbose`, `--version`), command registration |
-| `_registry.py` | The command registry: `CommandName` / `CommandModule` / `HelpPanel` StrEnums, `COMMANDS`, `PANEL_ORDER` |
-| `_group.py` | `LazyGroup` — lists every command from the registry, imports each module on first use |
+| `launch.py` | Console entry point: answers a bare `--version` before the command tree loads, delegates everything else to `app.main` |
+| `_registry.py` | The command registry: `CommandName` / `CommandModule` / `HelpPanel` StrEnums, `COMMANDS` with each `CommandSpec` (module, panel, `short_help`), `PANEL_ORDER`, `OnDemandModule` |
+| `_group.py` | `LazyGroup` — lists every command from the registry, renders `--help` from `CommandSpec`, imports each module on first run |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
 | `cmds/` | Command implementations organized by domain (see `cmds/AGENTS.md`) |
 | `_sources.py` | File resolution, glob expansion, copy-to-sources, URL download. |
@@ -155,8 +163,9 @@ Every CLI/MCP entry point resolves paths through `vault_paths()`
 no vault marker (`kompend.toml` / `.kompend/config.toml`). Silent operation on
 arbitrary directories masks misconfiguration (config, vectors, and LLM would
 all degrade invisibly). Only config-introspection commands (`kompend config
-get/list/path/check/set`) opt out via `require_vault=False` — they read
-defaults, not vault data.
+get/list/path/check/set`) opt out via `require_vault=False` — they resolve
+against the explicit `--config` file and the vault base dir when one is given,
+and fall back to the discovered project config; they never require a vault.
 
 ### Progress bars
 
@@ -215,13 +224,8 @@ to a core module.
 
 ## Known violations (do not replicate)
 
-These patterns remain in the codebase — refactor when touched, don't extend:
-
-None at the moment.
-
-Fixed violations (router/wiki/vector-index construction, config path,
-extension set, extension enumeration) are archived in
-`.agents/history/2026-10-23-rationale-archive.md`.
+Fixed violations (router/wiki/vector-index construction, config path, extension
+set, extension enumeration) are archived in `.agents/history/2026-10-23-rationale-archive.md`.
 
 ## Work Guidance
 
@@ -237,8 +241,6 @@ extension set, extension enumeration) are archived in
 - `uv run python -m kompend.cli --help` — app starts and shows commands
 - `uv run pytest tests/unit/ -k "cli" -x --timeout=30` — CLI tests pass
 - `import kompend` works without importing `kompend.cli`
-
----
 
 ## Child DOX Index
 

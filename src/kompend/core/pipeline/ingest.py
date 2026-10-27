@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from kompend.core.cancel import CancelState, KompendCancelled
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     DEDUP_ENABLED,
 )
 from kompend.core.config.rumdl import resolve_rumdl_config

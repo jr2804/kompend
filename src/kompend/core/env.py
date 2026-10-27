@@ -3,7 +3,7 @@
 Lives outside ``kompend.core.config`` on purpose: ``kompend.core.paths`` (which is
 imported before the config package finishes loading) must read env vars
 without triggering ``kompend.core.config/__init__`` -> ``_configs`` -> ``paths``
-circular imports. ``kompend.core.config.keys`` re-exports this enum.
+circular imports. ``kompend.core.keys`` re-exports this enum.
 """
 
 from enum import StrEnum

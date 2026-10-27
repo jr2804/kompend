@@ -17,7 +17,7 @@ from kompend.core.config.engine._loading import (
 )
 from kompend.core.config.engine._schema import DEFAULTS, DEPRECATED_ALIASES, REMOVED_KEYS, flat_keys
 from kompend.core.paths import VaultPaths
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     COMPILE_OUTPUT_DIR,
     COMPILE_SOURCES_DIR,
     PATHS_OUTPUT_DIR,

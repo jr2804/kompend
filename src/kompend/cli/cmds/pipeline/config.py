@@ -35,7 +35,7 @@ from kompend.core.config import (
     set_config_file_value,
     validate_config_key,
 )
-from kompend.core.config.keys import PATHS_WIKI_DIR
+from kompend.core.keys import PATHS_WIKI_DIR
 from kompend.logging import get_console, get_err_console
 from kompend.types import JSON
 

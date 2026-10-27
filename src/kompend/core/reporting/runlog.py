@@ -17,20 +17,20 @@ from __future__ import annotations
 
 import sqlite3
 import uuid
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
 from kompend.core.config import ResolvedConfig, resolve_config
 from kompend.core.config._configs import DisplayConfig
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     DISPLAY_CLI_ARG_PREVIEW,
     DISPLAY_LOG_ERROR_CHARS,
     PATHS_STATE_DIR,
     PATHS_WIKI_DIR,
 )
 from kompend.core.paths import CONFIG_FILE
+from kompend.core.reporting.handle import RunHandle
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import RUNS_TABLE
 from kompend.core.utils.time import iso_local, now_local
@@ -41,17 +41,6 @@ _SOFT_CAP_ROWS = 1000
 _KEEP_ROWS = 500
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class RunHandle:
-    """Handle returned by :func:`log_run_start`, passed to :func:`log_run_end`."""
-
-    run_id: str
-    cmd: str
-    db_path: Path
-    start_iso: str
-    error_chars: int = field(default_factory=lambda: DisplayConfig().log_error_chars)
 
 
 class RunEvent(TypedDict):
@@ -165,7 +154,8 @@ def log_run_end(
     duration = (now_local() - _parse_iso(handle.start_iso)).total_seconds()
     capped_error: str | None = None
     if error:
-        capped_error = error[: handle.error_chars]
+        limit = handle.error_chars if handle.error_chars is not None else DisplayConfig().log_error_chars
+        capped_error = error[:limit]
     try:
         with open_store(handle.db_path) as conn:
             conn.execute(

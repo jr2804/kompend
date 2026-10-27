@@ -6,7 +6,7 @@ from typing import Any
 from kompend.cli._shared import build_cli_overrides
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
-from kompend.core.config.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY
+from kompend.core.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY
 from kompend.core.paths import EXPORTED_DIR_NAME, INDEX_FILE, safe_stem, vault_paths
 from kompend.core.pipeline.export import export_source
 from kompend.core.utils.dicts import as_str

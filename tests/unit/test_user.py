@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 from kompend.core.config import ResolvedConfig, resolve_config
-from kompend.core.config.keys import TRUST_USER_TRACKING
+from kompend.core.keys import TRUST_USER_TRACKING
 from kompend.core.trust.actor import get_current_user, resolve_actor
 
 

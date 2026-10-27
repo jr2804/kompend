@@ -6,8 +6,8 @@ from typing import Annotated
 
 import typer
 
-from kompend.core.config import ExportMode
-from kompend.core.config.keys import EnvVar
+from kompend.core.keys import EnvVar
+from kompend.core.vocab import ExportMode
 
 # ── Q20 tiered compilation ──────────────────────────────────────────────
 

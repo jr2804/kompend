@@ -20,8 +20,9 @@ from typing import Annotated, Any, Final
 
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
-from kompend.core.config.keys import MANDATORY_KINDS, EnvVar
+from kompend.core.keys import MANDATORY_KINDS, EnvVar
 from kompend.core.paths import CACHE_DIR, KOMP_DIR
+from kompend.core.vocab import ExportMode, LintOutput, LlmDataFormat, Verbosity
 
 #: Spellings that disable the context manager — the accepted "off" surface of
 #: ``compile.llm.context_manager`` (env var and TOML arrive as strings).
@@ -39,19 +40,6 @@ class ContextManagerPreset(StrEnum):
     DEFAULT = "default"
     AGGRESSIVE = "aggressive"
     SLIDING = "sliding"
-
-
-class ExportMode(StrEnum):
-    """Where extracted data goes in a ``sources export``.
-
-    - ``OFF``: skip entirely
-    - ``INLINE``: markdown section in the exported file
-    - ``ASSET``: JSON file in the export's assets directory
-    """
-
-    OFF = "off"
-    INLINE = "inline"
-    ASSET = "asset"
 
 
 class ExtractionStrategy(StrEnum):
@@ -89,14 +77,6 @@ class ImageMode(StrEnum):
     BASE64 = "base64"
 
 
-class LintOutput(StrEnum):
-    """Volume of a lint report on the terminal."""
-
-    QUIET = "quiet"
-    SUMMARY = "summary"
-    FULL = "full"
-
-
 class LlmApiType(StrEnum):
     """Wire protocol the LLM endpoint speaks.
 
@@ -110,60 +90,15 @@ class LlmApiType(StrEnum):
     ANTHROPIC = "anthropic"
 
 
-class LlmDataFormat(StrEnum):
-    """Single source of truth for structured data serialization across all LLM communication.
-
-    Covers two distinct use cases that share the same compact formats:
-
-    1. **LLM input** — structured data serialized before injection into LLM prompts
-       (e.g. concept batches in generation, probes in WICER). These use TOON/ISON
-       to reduce prompt token count by 30-70%, leaving more context window for
-       model output and reducing truncation-related malformed responses from
-       small local models.
-
-    2. **Downstream LLM ingestion** — structured data serialized by one agent and
-       consumed by another (e.g. query command output fed to an agent consumer).
-       Even though this is technically "output", the structured encoding is
-       the *input* for subsequent LLM calls, so it benefits from the same
-       token efficiency.
-
-    Formats
-    -------
-    - ``JSON``: Standard JSON (default). Uses API-level ``response_format``
-      guarantee. Always the LLM *output* format — providers enforce valid JSON
-      at the protocol level via ``response_format: {"type": "json_object"}``.
-      TOON/ISON are not yet widely understood by models and are counter-
-      productive as output formats.
-    - ``TOON``: Token-Oriented Object Notation. 30-60% fewer tokens vs JSON.
-    - ``ISON``: Interchange Simple Object Notation. 30-70% fewer tokens vs JSON.
-    - ``MARKDOWN``: Human-readable prose (formerly ``TEXT``). Alias for
-      ``"text"`` — used when the consumer is a human reader, not an LLM.
-
-    Note: ``response_format`` (JSON-enforced output) is orthogonal to this
-    enum. The API-level ``response_format`` always produces JSON regardless
-    of which ``LlmDataFormat`` is configured for prompt input. This enum
-    controls *serialization of structured data before injection*, not the
-    format of the LLM's response.
-    """
-
-    JSON = "json"
-    TOON = "toon"
-    ISON = "ison"
-    MARKDOWN = "text"
-
-    # Legacy alias — kept for backward compat with old "TEXT" references
-    TEXT = "text"
-
-
 class LlmMemoryStore(StrEnum):
     """Where the agent notebook (``compile.llm.agent_memory``) lives.
 
     ``SESSION`` keeps the notebook in-process: it is fresh per stage run and
     dies with the process. ``VAULT`` backs the notebook with a persistent
-    :class:`~pydantic_ai_harness.memory.FileStore` under the vault's
-    :attr:`~kompend.core.paths.VaultPaths.agent_memory_dir` — a
-    ``MEMORY.md`` index the user curates plus topic files the model reads
-    through its memory tools.
+    :class:`~kompend.agents.vault_memory.DirectoryMemoryStore` under the
+    vault's :attr:`~kompend.core.paths.VaultPaths.agent_memory_dir` — a
+    ``MEMORY.md`` index per agent plus topic files the model reads and
+    writes through its memory tools.
     """
 
     SESSION = "session"
@@ -402,19 +337,6 @@ class Tier(StrEnum):
         return {ti.tier: ti for ti in cls.all_tiers()}
 
 
-class Verbosity(StrEnum):
-    """Synthesis verbosity for the ``query`` command.
-
-    Drives both the synthesis system prompt wording and the
-    ``max_tokens`` budget for the synthesis LLM call. Defaults to
-    ``standard``; configurable via ``search.synthesis.verbosity``.
-    """
-
-    BRIEF = "brief"
-    STANDARD = "standard"
-    COMPREHENSIVE = "comprehensive"
-
-
 @dataclass(frozen=True)
 class TierInfo:
     """Metadata for a single pipeline tier."""
@@ -509,15 +431,18 @@ class LLMConfig(_KompendBaseModel):
     #: handles MANY outputs — summarisation, verification, remediation and
     #: distillation. Stages that build a fresh agent per unit (generation,
     #: capture, query, indexing) gain nothing from a notebook: the memory
-    #: dies with the agent.
-    agent_memory: bool = Field(default=False, validation_alias=EnvVar.LLM_AGENT_MEMORY)
-    #: Backend for the agent notebook. ``session`` (default) keeps it in
-    #: process - fresh per stage run. ``vault`` persists it under the
-    #: vault's agent-memory directory: a user-curated ``MEMORY.md`` index
+    #: dies with the agent.  ON by default: a stage that sees many outputs
+    #: in one session is the only place a notebook pays off.
+    agent_memory: bool = Field(default=True, validation_alias=EnvVar.LLM_AGENT_MEMORY)
+    #: Backend for the agent notebook. ``vault`` (default) persists it under
+    #: the vault's agent-memory directory: a ``MEMORY.md`` index per agent
     #: (injected into prompts, capped) plus topic files behind the memory
-    #: tools. Cached summaries carry the index fingerprint, so editing the
-    #: notebook invalidates them like a model switch does.
-    memory_store: LlmMemoryStore = Field(default=LlmMemoryStore.SESSION, validation_alias=EnvVar.LLM_MEMORY_STORE)
+    #: tools. The agent writes that notebook itself, so it is not part of the
+    #: summary cache key - editing it leaves cached summaries as they are.
+    #: ``session`` keeps it in process - fresh per stage run.  The vault
+    #: backend currently backs the summariser's notebook; verification,
+    #: remediation and distillation use the in-process store.
+    memory_store: LlmMemoryStore = Field(default=LlmMemoryStore.VAULT, validation_alias=EnvVar.LLM_MEMORY_STORE)
     #: Rolling window (in output tokens) for the short-term tok/s rate.
     throughput_window_tokens: int = Field(default=1000, validation_alias=EnvVar.LLM_THROUGHPUT_WINDOW_TOKENS)
     delta_retry_enabled: bool = Field(default=True, validation_alias=EnvVar.LLM_DELTA_RETRY_ENABLED)

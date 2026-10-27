@@ -10,7 +10,7 @@ from tomllib import TOMLDecodeError
 from typing import Any
 
 from kompend.core.config.engine._dedupe import strip_duplicate_keys
-from kompend.core.config.keys import PATHS_WIKI_DIR, EnvVar
+from kompend.core.keys import PATHS_WIKI_DIR, EnvVar
 from kompend.core.paths import CONFIG_FILE, KOMP_CONFIG_FILE, PROJECT_CONFIG_FILE, VaultPaths
 from kompend.logging import get_logger
 from kompend.types import JSONDict, JSONValue

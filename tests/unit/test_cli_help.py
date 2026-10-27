@@ -13,6 +13,10 @@ every command in the registry must land in exactly one panel.
 
 from __future__ import annotations
 
+import json
+import subprocess
+import sys
+
 import pytest
 from typer.testing import CliRunner
 
@@ -79,3 +83,76 @@ class TestCommandHelpSafetyNet:
     def test_command_help_exits_zero(self, name: CommandName) -> None:
         result = runner.invoke(app, [name.value, "--help"])
         assert result.exit_code == 0, result.output
+
+    @pytest.mark.parametrize("name", list(COMMANDS), ids=lambda n: n.value)
+    def test_registry_short_help_matches_the_command_help(self, name: CommandName) -> None:
+        """The registry summary is the text the command itself shows.
+
+        ``--help`` renders from ``CommandSpec.short_help`` without importing
+        the command module, so the two must not drift.
+        """
+        result = runner.invoke(app, [name.value, "--help"])
+        assert result.exit_code == 0, result.output
+        assert _squash(COMMANDS[name].short_help) in _squash(result.output)
+
+
+class TestHelpAndVersionStayLight:
+    """``--help`` and ``--version`` must not import command modules or config.
+
+    Both are in a fresh interpreter: the point is what a real invocation
+    loads, not what an earlier test already imported.
+    """
+
+    def test_help_imports_no_command_module(self) -> None:
+        exit_code, modules = _probe_cli("--help")
+        assert exit_code == 0
+        assert [name for name in modules if name.startswith("kompend.cli.cmds")] == []
+        assert "logfire" not in modules
+
+    def test_version_does_not_import_the_config_engine(self) -> None:
+        exit_code, modules = _probe_cli("--version")
+        assert exit_code == 0
+        assert "kompend.core.config" not in modules
+        assert "logfire" not in modules
+
+    def test_launcher_answers_version_without_the_command_tree(self) -> None:
+        probe = (
+            "import json, sys\n"
+            "sys.argv = ['kompend', '--version']\n"
+            "import kompend.cli.launch as launch\n"
+            "launch.main()\n"
+            "print(json.dumps({'app': 'kompend.cli.app' in sys.modules}))\n"
+        )
+        completed = subprocess.run(  # noqa: S603 — fixed interpreter, literal probe, no shell
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        lines = completed.stdout.strip().splitlines()
+        assert lines[0].startswith(("20", "0.0.0")), lines[0]
+        assert json.loads(lines[-1]) == {"app": False}
+
+
+def _squash(text: str) -> str:
+    """Collapse whitespace so wrapped help lines compare equal."""
+    return " ".join(text.split())
+
+
+def _probe_cli(*args: str) -> tuple[int, list[str]]:
+    """Run the CLI in a fresh interpreter; return its exit code and module list."""
+    probe = (
+        "import json, sys\n"
+        "from typer.testing import CliRunner\n"
+        "import kompend.cli.app as app_module\n"
+        "result = CliRunner().invoke(app_module.app, sys.argv[1:])\n"
+        "print(json.dumps({'exit': result.exit_code, 'modules': sorted(sys.modules)}))\n"
+    )
+    completed = subprocess.run(  # noqa: S603 — fixed interpreter, literal probe, no shell
+        [sys.executable, "-c", probe, *args],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    payload = json.loads(completed.stdout.strip().splitlines()[-1])
+    return int(payload["exit"]), list(payload["modules"])

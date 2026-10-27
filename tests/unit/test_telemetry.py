@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import subprocess
+import sys
 from typing import Any
 
 import pytest
@@ -42,6 +44,42 @@ class TestConfigureLogfire:
         monkeypatch.setenv("KOMP_LOGFIRE_DISABLED", "1")
         telemetry.configure_logfire()
         assert recorder.calls == []
+
+
+class TestLogfireIsNotImportedEagerly:
+    """--version must not pay the ~700 ms logfire import (knox-7nc6)."""
+
+    def test_version_invocation_does_not_import_logfire(self) -> None:
+        probe = (
+            "import sys\n"
+            "from typer.testing import CliRunner\n"
+            "from kompend.cli.app import app\n"
+            "result = CliRunner().invoke(app, ['--version'])\n"
+            "print(result.exit_code, 'logfire' in sys.modules)\n"
+        )
+        completed = subprocess.run(  # noqa: S603 — fixed interpreter, no shell
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+        exit_code, imported = completed.stdout.split()
+        assert exit_code == "0"
+        assert imported == "False", "logfire must not load on the --version path"
+
+    def test_package_import_disables_the_logfire_pydantic_plugin(self) -> None:
+        probe = "import os, kompend\nprint(os.environ.get('PYDANTIC_DISABLE_PLUGINS'))\n"
+        completed = subprocess.run(  # noqa: S603 — fixed interpreter, no shell
+            [sys.executable, "-c", probe],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr
+        assert completed.stdout.strip() == "logfire-plugin"
 
 
 @pytest.fixture

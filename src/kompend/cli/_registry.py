@@ -104,57 +104,191 @@ class OnDemandModule(StrEnum):
     telemetry module is the case that motivated this: importing ``logfire``
     costs roughly 700 ms and pulls in ``requests``, so ``kompend --version``,
     ``--help`` and every in-process import of the CLI used to pay for telemetry
-    none of them emit.
+    none of them emit. The run log is the second: it imports the config engine
+    and the vault store, and neither ``--version`` nor ``--help`` records a run.
+    The app module is the third: the console launcher answers a bare
+    ``--version`` without building the Typer tree.
     """
 
     TELEMETRY = "kompend.telemetry"
+    RUNLOG = "kompend.core.reporting.runlog"
+    APP = "kompend.cli.app"
 
 
 @dataclass(frozen=True, slots=True)
 class CommandSpec:
-    """Where a command lives and where help lists it."""
+    """Where a command lives, where help lists it, and its one-line summary.
+
+    ``short_help`` is the summary ``kompend --help`` shows. It lives here so
+    help renders from this table instead of importing the command's module.
+    """
 
     module: CommandModule
     panel: HelpPanel
+    short_help: str
 
 
 #: Every command kompend exposes. A name absent here is not part of the CLI.
 COMMANDS: Final[dict[CommandName, CommandSpec]] = {
     # Build pipeline
-    CommandName.COMPILE: CommandSpec(CommandModule.PIPELINE, HelpPanel.BUILD_PIPELINE),
-    CommandName.INGEST: CommandSpec(CommandModule.PIPELINE, HelpPanel.BUILD_PIPELINE),
-    CommandName.PARSE: CommandSpec(CommandModule.PIPELINE, HelpPanel.BUILD_PIPELINE),
-    CommandName.INDEX: CommandSpec(CommandModule.PIPELINE, HelpPanel.BUILD_PIPELINE),
+    CommandName.COMPILE: CommandSpec(
+        CommandModule.PIPELINE,
+        HelpPanel.BUILD_PIPELINE,
+        "Compile documents into a knowledge wiki.",
+    ),
+    CommandName.INGEST: CommandSpec(
+        CommandModule.PIPELINE,
+        HelpPanel.BUILD_PIPELINE,
+        "Ingest documents into the knowledge graph without compiling a wiki.",
+    ),
+    CommandName.PARSE: CommandSpec(
+        CommandModule.PIPELINE,
+        HelpPanel.BUILD_PIPELINE,
+        "Parse documents and show their structure.",
+    ),
+    CommandName.INDEX: CommandSpec(
+        CommandModule.PIPELINE,
+        HelpPanel.BUILD_PIPELINE,
+        "Rebuild the zvec vector index for semantic search.",
+    ),
     # Capture & synthesis
-    CommandName.CAPTURE: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
-    CommandName.CONSOLIDATE: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
-    CommandName.LEARN: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
-    CommandName.DISTILL: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
-    CommandName.WRITE: CommandSpec(CommandModule.CAPTURE, HelpPanel.CAPTURE_SYNTHESIS),
+    CommandName.CAPTURE: CommandSpec(
+        CommandModule.CAPTURE,
+        HelpPanel.CAPTURE_SYNTHESIS,
+        "Extract knowledge items from text via LLM; save each as a source file.",
+    ),
+    CommandName.CONSOLIDATE: CommandSpec(
+        CommandModule.CAPTURE,
+        HelpPanel.CAPTURE_SYNTHESIS,
+        "Find and archive redundant captured/learned/distilled notes.",
+    ),
+    CommandName.LEARN: CommandSpec(
+        CommandModule.CAPTURE,
+        HelpPanel.CAPTURE_SYNTHESIS,
+        "Store a single fact verbatim as a source file — no LLM involved.",
+    ),
+    CommandName.DISTILL: CommandSpec(
+        CommandModule.CAPTURE,
+        HelpPanel.CAPTURE_SYNTHESIS,
+        "Merge captured notes into coherent wiki pages via LLM.",
+    ),
+    CommandName.WRITE: CommandSpec(
+        CommandModule.CAPTURE,
+        HelpPanel.CAPTURE_SYNTHESIS,
+        "Create a wiki page synthesising content from one or more sources.",
+    ),
     # Knowledge base
-    CommandName.QUERY: CommandSpec(CommandModule.QUERY, HelpPanel.KNOWLEDGE_BASE),
-    CommandName.MEMORY: CommandSpec(CommandModule.MEMORY, HelpPanel.KNOWLEDGE_BASE),
-    CommandName.SOURCES: CommandSpec(CommandModule.SOURCES, HelpPanel.KNOWLEDGE_BASE),
-    CommandName.REFERENCES: CommandSpec(CommandModule.REFERENCES, HelpPanel.KNOWLEDGE_BASE),
-    CommandName.ATTACHMENTS: CommandSpec(CommandModule.ATTACHMENTS, HelpPanel.KNOWLEDGE_BASE),
-    CommandName.ATT: CommandSpec(CommandModule.ATTACHMENTS, HelpPanel.KNOWLEDGE_BASE),
-    CommandName.ORGANIZE: CommandSpec(CommandModule.ORGANIZE, HelpPanel.KNOWLEDGE_BASE),
-    CommandName.PACK_LIST: CommandSpec(CommandModule.PACK, HelpPanel.KNOWLEDGE_BASE),
-    CommandName.PACK_INSTALL: CommandSpec(CommandModule.PACK, HelpPanel.KNOWLEDGE_BASE),
-    CommandName.AGENTS: CommandSpec(CommandModule.AGENTS, HelpPanel.KNOWLEDGE_BASE),
+    CommandName.QUERY: CommandSpec(
+        CommandModule.QUERY,
+        HelpPanel.KNOWLEDGE_BASE,
+        "Ask a natural language question against the compiled wiki.",
+    ),
+    CommandName.MEMORY: CommandSpec(
+        CommandModule.MEMORY,
+        HelpPanel.KNOWLEDGE_BASE,
+        "Manage query memory and context synthesis.",
+    ),
+    CommandName.SOURCES: CommandSpec(
+        CommandModule.SOURCES,
+        HelpPanel.KNOWLEDGE_BASE,
+        "Manage ingested source files and their tags.",
+    ),
+    CommandName.REFERENCES: CommandSpec(
+        CommandModule.REFERENCES,
+        HelpPanel.KNOWLEDGE_BASE,
+        "Manage extracted bibliographic references.",
+    ),
+    CommandName.ATTACHMENTS: CommandSpec(
+        CommandModule.ATTACHMENTS,
+        HelpPanel.KNOWLEDGE_BASE,
+        "Manage source attachments (supplementary files).",
+    ),
+    CommandName.ATT: CommandSpec(
+        CommandModule.ATTACHMENTS,
+        HelpPanel.KNOWLEDGE_BASE,
+        "Manage source attachments (supplementary files).",
+    ),
+    CommandName.ORGANIZE: CommandSpec(
+        CommandModule.ORGANIZE,
+        HelpPanel.KNOWLEDGE_BASE,
+        "Categorise files in ``sources/`` into a hierarchical directory tree.",
+    ),
+    CommandName.PACK_LIST: CommandSpec(
+        CommandModule.PACK,
+        HelpPanel.KNOWLEDGE_BASE,
+        "List installed contribution packs.",
+    ),
+    CommandName.PACK_INSTALL: CommandSpec(
+        CommandModule.PACK,
+        HelpPanel.KNOWLEDGE_BASE,
+        "Install a built-in contribution pack.",
+    ),
+    CommandName.AGENTS: CommandSpec(
+        CommandModule.AGENTS,
+        HelpPanel.KNOWLEDGE_BASE,
+        "Manage TOML-defined conversational agents.",
+    ),
     # Quality & inspection
-    CommandName.LINT: CommandSpec(CommandModule.LINT, HelpPanel.QUALITY_INSPECTION),
-    CommandName.DOCTOR: CommandSpec(CommandModule.DOCTOR, HelpPanel.QUALITY_INSPECTION),
-    CommandName.STATUS: CommandSpec(CommandModule.STATUS, HelpPanel.QUALITY_INSPECTION),
-    CommandName.LOG: CommandSpec(CommandModule.LOG, HelpPanel.QUALITY_INSPECTION),
-    CommandName.REVIEW: CommandSpec(CommandModule.REVIEW, HelpPanel.QUALITY_INSPECTION),
-    CommandName.PROVENANCE: CommandSpec(CommandModule.PROVENANCE, HelpPanel.QUALITY_INSPECTION),
-    CommandName.LIST_PARSERS: CommandSpec(CommandModule.LIST_PARSERS, HelpPanel.QUALITY_INSPECTION),
+    CommandName.LINT: CommandSpec(
+        CommandModule.LINT,
+        HelpPanel.QUALITY_INSPECTION,
+        "Lint a compiled wiki for quality issues and query lint history.",
+    ),
+    CommandName.DOCTOR: CommandSpec(
+        CommandModule.DOCTOR,
+        HelpPanel.QUALITY_INSPECTION,
+        "Validate configuration and connectivity for a wiki.",
+    ),
+    CommandName.STATUS: CommandSpec(
+        CommandModule.STATUS,
+        HelpPanel.QUALITY_INSPECTION,
+        "Show per-wiki statistics.",
+    ),
+    CommandName.LOG: CommandSpec(
+        CommandModule.LOG,
+        HelpPanel.QUALITY_INSPECTION,
+        "Regenerate the pipeline log from structured stores (no LLM calls).",
+    ),
+    CommandName.REVIEW: CommandSpec(
+        CommandModule.REVIEW,
+        HelpPanel.QUALITY_INSPECTION,
+        "Manage the review queue for compiled pages.",
+    ),
+    CommandName.PROVENANCE: CommandSpec(
+        CommandModule.PROVENANCE,
+        HelpPanel.QUALITY_INSPECTION,
+        "Trace compiled wiki page(s) back to their source chunks.",
+    ),
+    CommandName.LIST_PARSERS: CommandSpec(
+        CommandModule.LIST_PARSERS,
+        HelpPanel.QUALITY_INSPECTION,
+        "List all registered parsers (built-in + external + HTTP).",
+    ),
     # Setup
-    CommandName.INIT: CommandSpec(CommandModule.INIT, HelpPanel.SETUP),
-    CommandName.CONFIG: CommandSpec(CommandModule.CONFIG, HelpPanel.SETUP),
+    CommandName.INIT: CommandSpec(
+        CommandModule.INIT,
+        HelpPanel.SETUP,
+        "Scaffold a new kompend wiki project.",
+    ),
+    CommandName.CONFIG: CommandSpec(
+        CommandModule.CONFIG,
+        HelpPanel.SETUP,
+        "Inspect and edit kompend configuration.",
+    ),
     # Serving
-    CommandName.MCP: CommandSpec(CommandModule.SERVE, HelpPanel.SERVING),
-    CommandName.SERVE: CommandSpec(CommandModule.SERVE, HelpPanel.SERVING),
-    CommandName.AGENT: CommandSpec(CommandModule.AGENT, HelpPanel.SERVING),
+    CommandName.MCP: CommandSpec(
+        CommandModule.SERVE,
+        HelpPanel.SERVING,
+        "Start the kompend MCP server over stdio transport.",
+    ),
+    CommandName.SERVE: CommandSpec(
+        CommandModule.SERVE,
+        HelpPanel.SERVING,
+        "Start the kompend web UI server.",
+    ),
+    CommandName.AGENT: CommandSpec(
+        CommandModule.AGENT,
+        HelpPanel.SERVING,
+        "Run kompend as an ACP agent on stdio.",
+    ),
 }

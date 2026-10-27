@@ -11,7 +11,7 @@ from kompend.cli._shared import vault_paths_from_ctx
 from kompend.cli.app import app
 from kompend.cli.args.memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
 from kompend.core.config import ResolvedConfig, resolve_config
-from kompend.core.config.keys import TRUST_USER_TRACKING
+from kompend.core.keys import TRUST_USER_TRACKING
 from kompend.core.paths import MEMORY_CONTEXT_FILE, MEMORY_SUBDIR
 from kompend.core.templates import get_template_loader
 from kompend.core.trust.actor import resolve_actor

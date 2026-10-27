@@ -19,7 +19,7 @@ from kompend.cli._sources import resolve_files
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LLMConfig
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
     ORGANIZE_MIN_SUBCATEGORIES,

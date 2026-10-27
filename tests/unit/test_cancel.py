@@ -28,6 +28,7 @@ from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.pipeline.orchestrator import build_pipeline
 from kompend.core.pipeline.stages._pipeline import WikiPipeline
 from kompend.core.pipeline.state import TierStateStore
+from kompend.core.reporting.handle import RunHandle
 from kompend.preprocessing.parsers.base import BaseParser, FileExtension, ParserRouter
 
 ESC = "\x1b"
@@ -392,7 +393,14 @@ class TestAppCancelledExit:
         monkeypatch.setattr(app_mod, "_configure_logfire", lambda: None)
         monkeypatch.setattr(app_mod, "configure_logging", lambda: None)
         monkeypatch.setattr(app_mod, "_configure_streams_utf8", lambda: None)
-        monkeypatch.setattr(app_mod, "_extract_handle", lambda: None)
+        handle = RunHandle(
+            run_id="run-1",
+            cmd="compile",
+            db_path=Path("runlog.db"),
+            start_iso="2026-10-25T00:00:00",
+            error_chars=200,
+        )
+        monkeypatch.setattr(app_mod, "_extract_handle", lambda: handle)
 
         recorded: dict[str, object] = {}
         monkeypatch.setattr(

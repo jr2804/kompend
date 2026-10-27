@@ -24,7 +24,7 @@ from kompend.cli.cmds.quality._capabilities import (
     probe_raw_json,
 )
 from kompend.core.config import LLMConfig, LlmDataFormat
-from kompend.core.config.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_OUTPUT_RETRIES
+from kompend.core.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_OUTPUT_RETRIES
 from kompend.core.verbosity import is_verbose
 from kompend.llm import catalog
 from kompend.llm.context_window import discover_context_window

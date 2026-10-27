@@ -7,7 +7,7 @@ from typing import Annotated
 
 import typer
 
-from kompend.core.config._configs import LlmDataFormat, Verbosity
+from kompend.core.vocab import LlmDataFormat, Verbosity
 
 # ── Q17 query command ──────────────────────────────────────────────────
 

@@ -77,7 +77,7 @@ dependencies = [
 ]
 
 [project.scripts]
-kompend = "kompend.cli.app:main"
+kompend = "kompend.cli.launch:main"
 
 [project.optional-dependencies]
 

@@ -20,7 +20,7 @@ from kompend.cli.app import app
 from kompend.cli.args.serving import AgentsAction, AgentsName, AgentsTask
 from kompend.core.config import resolve_config, validate_config_key
 from kompend.core.config._core import set_config_file_value
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     AGENTS_CAPTURE,
     AGENTS_COMPILE,
     AGENTS_ORGANIZE,

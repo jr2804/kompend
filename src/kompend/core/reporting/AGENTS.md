@@ -12,8 +12,9 @@ stores into human-readable markdown — no LLM calls.
 
 | Module | Contents |
 |--------|----------|
-| `log.py` | `build_log_report` — the engine behind `kompend log` |
-| `runlog.py` | `RunHandle`, `log_run_start`, `log_run_end` — append-only audit trail in the `runs` table |
+| `log.py` | `build_log_report` - the engine behind `kompend log` |
+| `handle.py` | `RunHandle` - the run identity the CLI holds between start and end |
+| `runlog.py` | `log_run_start`, `log_run_end` - append-only audit trail in the `runs` table |
 
 ## Rules
 

@@ -13,8 +13,7 @@ from typing import Any
 
 import typer
 
-from kompend.core.config._configs import LintOutput
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     COMPILE_CACHE_IGNORE_MODEL,
     COMPILE_EMBEDDING_MODEL,
     COMPILE_FORCE,
@@ -42,6 +41,7 @@ from kompend.core.config.keys import (
     TRUST_USER_TRACKING,
 )
 from kompend.core.paths import VaultPaths, vault_paths
+from kompend.core.vocab import LintOutput
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)

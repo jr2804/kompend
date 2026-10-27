@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, TypedDict
 
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     COMPILE_COMPILER,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,

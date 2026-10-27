@@ -9,7 +9,7 @@ from pydantic import BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
 from kompend.core.config._configs import KompendConfig
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     COMPILE_CACHE_DIR,
     COMPILE_RESPECT_GITIGNORE,
     COMPILE_START_AT_TIER,
@@ -46,7 +46,7 @@ def _build_env_map() -> dict[str, str]:
 
     _walk(KompendConfig)
     # Env aliases not expressible as field validation aliases (surfaced per-run
-    # via CLI overrides). Keys live in ``kompend.core.config.keys``.
+    # via CLI overrides). Keys live in ``kompend.core.keys``.
     env_map.update(
         {
             COMPILE_START_AT_TIER: EnvVar.START_AT_TIER,

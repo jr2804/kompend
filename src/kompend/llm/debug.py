@@ -28,7 +28,7 @@ from pydantic_ai.messages import (
     ToolReturnPart,
 )
 
-from kompend.core.config.keys import EnvVar
+from kompend.core.keys import EnvVar
 from kompend.llm.format import salvage_json
 from kompend.logging import get_logger
 

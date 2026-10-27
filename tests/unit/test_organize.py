@@ -18,7 +18,7 @@ from kompend.core.cache import CacheStore
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import OrganizeConfig, resolve_config
 from kompend.core.config._configs import LlmDataFormat
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,
     ORGANIZE_MAX_DEPTH,
     ORGANIZE_MIN_FILES_PER_CATEGORY,

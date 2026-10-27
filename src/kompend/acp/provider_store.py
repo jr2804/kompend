@@ -15,7 +15,7 @@ from enum import StrEnum
 
 from aenum import MultiValueEnum
 
-from kompend.core.config.keys import EnvVar
+from kompend.core.keys import EnvVar
 
 
 class HttpHeader(StrEnum):

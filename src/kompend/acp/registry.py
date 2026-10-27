@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from kompend.acp.definitions import AgentDefinition, AgentLLMConfig, AgentPromptConfig, AgentTask
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     AGENTS_CAPTURE,
     AGENTS_COMPILE,
     AGENTS_GENERIC,

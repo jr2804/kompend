@@ -17,7 +17,7 @@ import os
 
 import logfire
 
-from kompend.core.config.keys import EnvVar
+from kompend.core.keys import EnvVar
 
 __all__ = ["configure_logfire"]
 

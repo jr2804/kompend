@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from kompend.core.config import resolve_config
-from kompend.core.config.keys import COMPILE_EMBEDDING_MODEL
+from kompend.core.keys import COMPILE_EMBEDDING_MODEL
 from kompend.core.paths import set_default_wiki_dir as _set_default_wiki_dir
 from kompend.core.paths import vault_paths
 from kompend.core.trust.actor import resolve_actor

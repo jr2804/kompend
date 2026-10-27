@@ -22,7 +22,12 @@ through this package — no other module reads config files or env vars directly
 - `__init__.py` — Public API re-exports
 - `_core.py` — Config resolution entry point (merge, precedence, discovery)
 - `generate.py` — Code-driven TOML generation from DEFAULTS
-- `keys.py` — Config dotted-key constants (re-exports `EnvVar`)
+- `../keys.py` - Config dotted-key constants (re-exports `EnvVar`). Lives outside
+  this package so CLI flag types and parsers import keys without triggering the
+  package `__init__` (pydantic models plus the resolution engine).
+- `../vocab.py` - `StrEnum` vocabularies CLI flag types need (`Verbosity`,
+  `ExportMode`, `LintOutput`, `LlmDataFormat`), also outside this package for the
+  same reason. `_configs.py` imports every member, so schema and flags cannot drift.
 - `../env.py` — `EnvVar` StrEnum, the **only** place a `"KOMP_*"` env-var name may be
   defined. Lives outside this package: `paths.py` reads env vars before the config
   package finishes loading. Enforced by `scripts/checks/check_antipatterns.py`

@@ -6,7 +6,7 @@ from typing import Annotated
 
 import typer
 
-from kompend.core.config.keys import EnvVar
+from kompend.core.keys import EnvVar
 
 # Application name used for environment variable prefixes.
 APP_NAME_UPPERCASE = "kompend"

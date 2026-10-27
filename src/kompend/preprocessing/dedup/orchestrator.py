@@ -19,7 +19,7 @@ from pathlib import Path
 from datasketch import MinHash
 
 from kompend.core.config import DEFAULT_MATCHERS, MatcherName, parse_matchers
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     COMPILE_EMBEDDING_MODEL,
     DEDUP_ENABLED,
     DEDUP_MATCHERS,

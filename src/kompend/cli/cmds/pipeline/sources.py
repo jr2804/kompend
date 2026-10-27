@@ -33,7 +33,7 @@ from kompend.cli.args import (
 )
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
-from kompend.core.config.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY
+from kompend.core.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY
 from kompend.core.paths import EXPORTED_DIR_NAME, INDEX_FILE, safe_stem
 from kompend.core.pipeline.export import export_source
 from kompend.core.utils.dicts import as_str

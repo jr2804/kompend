@@ -14,7 +14,7 @@ and should be preferred for new code.
 
 from typing import Final
 
-from kompend.core.env import EnvVar  # noqa: F401  # re-exported: importers use kompend.core.config.keys.EnvVar
+from kompend.core.env import EnvVar  # noqa: F401  # re-exported: importers use kompend.core.keys.EnvVar
 
 # ── paths section ──
 PATHS_WIKI_DIR: Final[str] = "paths.wiki_dir"

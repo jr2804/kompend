@@ -9,7 +9,7 @@ Two rules, both born from real regressions:
    summariser had a hardcoded `window_chars=2000`, and the agent base had a
    `max_tokens` default that shadowed the budget.
 2. **A dotted config key is never a string literal.** Use the constant from
-   `kompend.core.config.keys`; a typo there fails silently at runtime.
+   `kompend.core.keys`; a typo there fails silently at runtime.
 
 Mark a deliberate exception with ``# nocheck`` and say why.
 """
@@ -23,7 +23,7 @@ from typing import Any
 
 from _common import repo_root
 
-from kompend.core.config import keys as key_constants
+from kompend.core import keys as key_constants
 from kompend.core.config._configs import (
     BudgetConfig,
     DisplayConfig,
@@ -42,8 +42,9 @@ CONFIG_MODELS = (
     SearchSynthesisConfig,
 )
 
-#: Config sections whose keys are built or consumed there by definition.
-EXCLUDED_PARTS: tuple[str, ...] = ("core/config",)
+#: Config sections whose keys are built or consumed there by definition, plus
+#: the module that defines the dotted keys.
+EXCLUDED_PARTS: tuple[str, ...] = ("core/config", "core/keys.py")
 
 
 def main() -> int:
@@ -79,7 +80,7 @@ def _config_defaults() -> dict[str, Any]:
 
 
 def _dotted_keys() -> set[str]:
-    """Every ``section.key`` string declared in ``core/config/keys.py``."""
+    """Every ``section.key`` string declared in ``core/keys.py``."""
     return {value for value in vars(key_constants).values() if isinstance(value, str) and "." in value}
 
 
@@ -125,7 +126,7 @@ def _scan(path: Path, defaults: dict[str, Any], dotted: set[str]) -> list[str]:
             if _is_exempt(line):
                 continue
             lineno = getattr(node, "lineno", 0)
-            findings.append(f"{path}:{lineno}: dotted key {node.value!r} is a literal - import the constant from kompend.core.config.keys")
+            findings.append(f"{path}:{lineno}: dotted key {node.value!r} is a literal - import the constant from kompend.core.keys")
 
     return findings
 

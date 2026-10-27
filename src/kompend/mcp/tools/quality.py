@@ -9,12 +9,12 @@ from kompend.cli._shared import build_cli_overrides
 from kompend.cli.cmds.quality.doctor import run_doctor
 from kompend.cli.cmds.quality.lint import CHECK_STEP_RULES, _make_lint_agent, _persist_history
 from kompend.core.config import resolve_config
-from kompend.core.config.keys import (
+from kompend.core.config.rumdl import resolve_rumdl_config
+from kompend.core.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_VLM_MODEL,
 )
-from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import MetadataField, load_wiki_from_files
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, REVIEW_DIR, VaultPaths, vault_paths
 from kompend.core.reporting.log import build_log_report

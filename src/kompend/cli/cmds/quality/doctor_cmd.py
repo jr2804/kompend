@@ -9,7 +9,7 @@ from kompend.cli.app import app
 from kompend.cli.args import JsonOutput, Verbose, WikiDir
 from kompend.cli.cmds.quality.doctor import print_doctor_results, run_doctor
 from kompend.core.config import resolve_config
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     COMPILE_EMBEDDING_MODEL,
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_VLM_MODEL,

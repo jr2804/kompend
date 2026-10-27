@@ -65,8 +65,8 @@ merging and an optional iterative WiCER refinement loop.
 ### Page kinds (category taxonomy)
 
 Every generated page carries a `kind` (OKF `type`): the **mandatory taxonomy**
-(`concept`, `entity`, `summary`, `comparison` — `MANDATORY_KINDS` in
-`core/config/keys.py`) is always allowed and cannot be deactivated; extra
+(`concept`, `entity`, `summary`, `comparison` - `MANDATORY_KINDS` in
+`core/keys.py`) is always allowed and cannot be deactivated; extra
 kinds come from `compile.extraction.categories`. The LLM assigns `kind` per
 page in `generation_prompt.md.j2`; `_allowed_kind` in `flows/generation.py`
 validates it at node creation — anything outside the allowed set falls back

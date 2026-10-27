@@ -46,7 +46,7 @@ from kompend.compilation.step_recovery import (
     scan_segment,
     segment_run_prefix,
 )
-from kompend.core.config.keys import MANDATORY_KINDS
+from kompend.core.keys import MANDATORY_KINDS
 from kompend.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, images_for_provenance, load_cached_wiki
 from kompend.core.models.enums import CacheDeps, ExtractionField, MetadataField, NodeType
 from kompend.core.paths import safe_stem

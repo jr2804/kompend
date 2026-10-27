@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import TypedDict
 
 from kompend.core.config import DEFAULT_MATCHERS, parse_matchers
-from kompend.core.config.keys import (
+from kompend.core.keys import (
     COMPILE_EMBEDDING_MODEL,
     DEDUP_MATCHERS,
     DEDUP_MINHASH_LSH_THRESHOLD,

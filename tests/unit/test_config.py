@@ -33,7 +33,7 @@ from kompend.core.config._core import (
 from kompend.core.config.engine._check import check_config_file
 from kompend.core.config.engine._dedupe import strip_duplicate_keys
 from kompend.core.config.generate import enum_choices, extract_toml_keys, generate_scaffold_config, get_default_keys
-from kompend.core.config.keys import PATHS_WIKI_DIR
+from kompend.core.keys import PATHS_WIKI_DIR
 from kompend.core.paths import KOMP_DIR
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.types import JSONDict

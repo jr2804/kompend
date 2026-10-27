@@ -2,11 +2,11 @@
 
 Typer materialises a command object when ``@app.command()`` runs, which happens
 while its module is imported. This group therefore reports command names from the
-registry without importing anything — so ``kompend --help`` stays fast and still
-names every command — and imports a command's module on first use, attaching the
-command it just registered.
+registry without importing anything — ``kompend --help`` renders names and
+summaries straight from :class:`~kompend.cli._registry.CommandSpec` — and imports
+a command's module only when the command actually runs.
 
-The context parameter of the two overrides below is unused: they decide from the
+The context parameter of the overrides below is unused: they decide from the
 command name and the registry alone. It is declared ``object`` rather than a
 framework type so the signatures do not name something they never read.
 """
@@ -17,6 +17,7 @@ import importlib
 from typing import ClassVar, override
 
 import typer
+from click import Context, HelpFormatter
 from typer.core import TyperCommand, TyperGroup
 from typer.main import get_command_from_info, get_group
 
@@ -31,6 +32,19 @@ class LazyGroup(TyperGroup):
     #: reference is bound once by ``app.py`` rather than passed in.
     app: ClassVar[typer.Typer | None] = None
 
+    #: True while Typer renders help, so ``get_command`` may serve help-only
+    #: stubs instead of importing command modules.
+    _rendering_help: bool = False
+
+    @override
+    def format_help(self, ctx: Context, formatter: HelpFormatter) -> None:
+        """Render help from the registry, without importing command modules."""
+        self._rendering_help = True
+        try:
+            super().format_help(ctx, formatter)
+        finally:
+            self._rendering_help = False
+
     @override
     def list_commands(self, ctx: object) -> list[str]:
         """Command names in workflow order, importing none of their modules."""
@@ -40,15 +54,21 @@ class LazyGroup(TyperGroup):
 
     @override
     def get_command(self, ctx: object, cmd_name: str) -> TyperCommand | TyperGroup | None:
-        """Serve ``cmd_name``, importing its module the first time it is asked for."""
-        owner = self._owner()
+        """Serve ``cmd_name``, importing its module the first time it is used."""
         try:
             name = CommandName(cmd_name)
         except ValueError:
             return None
+        if self._rendering_help and cmd_name not in self.commands:
+            spec = COMMANDS[name]
+            return TyperCommand(
+                name=cmd_name,
+                short_help=spec.short_help,
+                rich_help_panel=spec.panel.value,
+            )
         if cmd_name not in self.commands:
             importlib.import_module(COMMANDS[name].module.value)
-            self._attach(name, owner)
+            self._attach(name, self._owner())
         command = self.commands.get(cmd_name)
         if command is None:
             return None
