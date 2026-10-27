@@ -27,6 +27,7 @@ opt into PydanticAI via a config flag.
 
 from kompend.agents.base import KompendAgentBase
 from kompend.agents.deps import (
+    MemoryConsolidationDeps,
     QueryDeps,
     WicerDiagnoseDeps,
     WicerEvaluateDeps,
@@ -35,6 +36,7 @@ from kompend.agents.deps import (
 from kompend.agents.doctor import DoctorAgent, DoctorDeps
 from kompend.agents.extraction import ExtractionAgent
 from kompend.agents.extraction_reduce import ExtractionReduceAgent
+from kompend.agents.memory_consolidation import MemoryConsolidationAgent
 from kompend.agents.query import QueryAgent
 from kompend.agents.types import (
     PipelineAgentDeps,
@@ -48,6 +50,8 @@ __all__ = [
     "ExtractionAgent",
     "ExtractionReduceAgent",
     "KompendAgentBase",
+    "MemoryConsolidationAgent",
+    "MemoryConsolidationDeps",
     "PipelineAgentDeps",
     "QueryAgent",
     "QueryDeps",

@@ -1,0 +1,28 @@
+---
+variables:
+  - name: previous
+    required: false
+  - name: delta
+    required: true
+  - name: target_tokens
+    required: true
+role: compilation.memory-consolidation
+response_format: text
+temperature: 0.0
+---
+
+You maintain the running context for a document-extraction agent that is working through a long document section by section. The running context no longer fits the model's context window next to the section text, so you consolidate it: merge the new material into the running context so the extraction agent keeps its cross-section memory.
+
+{% if previous %}Running context so far:
+{{ previous }}
+
+{% endif %}New material since the last consolidation:
+{{ delta }}
+
+Produce the consolidated running context. Requirements:
+- Keep every distinct concept, entity and tag; merge duplicates under one entry.
+- Keep definitions and relationships intact; where two entries disagree, prefer the richer definition.
+- Drop section-by-section narrative that no longer adds context — the goal is a dense reference for further extraction, not a retelling.
+- Keep the same structure: "Section summary:", "Concepts:", "Entities:", "Tags:" lines where material for them exists.
+- Stay within {{ target_tokens }} tokens (about {{ target_tokens * 4 }} characters).
+- Output only the consolidated context — no commentary, no markdown fences.

@@ -128,6 +128,53 @@ def test_to_extraction_empty_memory_returns_empty() -> None:
     assert result.tags == []
 
 
+# -- delta_since --------------------------------------------------------------
+
+
+def test_delta_since_returns_only_new_material() -> None:
+    memory = ExtractionMemory()
+    memory.ingest(
+        _extraction(
+            summary="first",
+            concepts=[Concept(name="foo", definition="bar")],
+            entities=[Entity(name="Alice", type="person")],
+            tags=["ai"],
+        )
+    )
+    snapshot_concepts = frozenset(memory.concepts)
+    snapshot_entities = frozenset(memory.entities)
+    snapshot_tags = frozenset(memory.tags)
+    memory.ingest(
+        _extraction(
+            summary="second",
+            concepts=[Concept(name="baz", definition="qux")],
+            entities=[Entity(name="Bob", type="tool", context="drills")],
+            tags=["ml"],
+        )
+    )
+
+    delta = memory.delta_since(1, snapshot_concepts, snapshot_entities, snapshot_tags)
+
+    assert "second" in delta
+    assert "baz: qux" in delta
+    assert "Bob (tool) - drills" in delta
+    assert "Tags: ml" in delta
+    # already-consolidated material is not re-sent
+    assert "first" not in delta
+    assert "foo" not in delta
+    assert "Alice" not in delta
+    assert "ai" not in delta
+
+
+def test_delta_since_empty_when_nothing_new() -> None:
+    memory = ExtractionMemory()
+    memory.ingest(_extraction(summary="only", concepts=[Concept(name="foo")]))
+    state_concepts = frozenset(memory.concepts)
+    state_entities = frozenset(memory.entities)
+    state_tags = frozenset(memory.tags)
+    assert memory.delta_since(1, state_concepts, state_entities, state_tags) == ""
+
+
 def _extraction(
     *,
     summary: str = "",

@@ -23,6 +23,7 @@ from kompend.agents.types import PipelineAgentDeps, RemediationDeps, ToolGenerat
 __all__ = [
     "CategorizeDeps",
     "DistillDeps",
+    "MemoryConsolidationDeps",
     "PipelineAgentDeps",
     "QueryDeps",
     "RemediationDeps",
@@ -31,6 +32,33 @@ __all__ = [
     "WicerEvaluateDeps",
     "WicerProbeDeps",
 ]
+
+
+@dataclass
+class MemoryConsolidationDeps:
+    """Runtime context for the extraction-memory consolidation call.
+
+    The AGENTIC extraction strategy injects the running memory digest into
+    every section request. On long documents the digest outgrows the context
+    window, so when it exceeds the per-section budget it is consolidated by
+    the model (:class:`kompend.agents.memory_consolidation.MemoryConsolidationAgent`)
+    instead of being cropped. The template ``memory_consolidation.md.j2``
+    expects the ``previous``, ``delta`` and ``target_tokens`` variables.
+
+    Attributes:
+        previous: The consolidated running context from the last
+            consolidation call (empty on the first).
+        delta: The material memory gained since the last consolidation —
+            section summaries, concepts, entities and tags.
+        target_tokens: The token budget the consolidated context must fit.
+        source_id: Stable identifier of the source being extracted, for
+            provenance and logging.
+    """
+
+    previous: str = ""
+    delta: str = ""
+    target_tokens: int = 0
+    source_id: str = ""
 
 
 @dataclass

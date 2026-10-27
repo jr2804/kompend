@@ -146,6 +146,66 @@ class ExtractionMemory:
 
         return "\n".join(lines)
 
+    def delta_since(
+        self,
+        section_count: int,
+        concept_keys: frozenset[str] | set[str],
+        entity_keys: frozenset[str] | set[str],
+        tags: frozenset[str] | set[str],
+    ) -> str:
+        """Render only the material gained since the last consolidation.
+
+        Counterpart to :meth:`summarize` for the windowed digest: the full
+        digest is the source of truth, but when it exceeds the per-section
+        token budget the flow consolidates it with a model call, and that
+        call only needs what changed since the last consolidation — new
+        section summaries, new concepts, new entities and new tags.
+
+        Parameters
+        ----------
+        section_count:
+            Number of section summaries already consolidated; summaries
+            beyond this index are the delta.
+        concept_keys, entity_keys, tags:
+            Normalized keys / tag values already consolidated (snapshots
+            of ``self.concepts`` / ``self.entities`` / ``self.tags``).
+        """
+        lines: list[str] = []
+
+        new_summaries = self.section_summaries[section_count:]
+        if new_summaries:
+            lines.append("Section summary: " + " | ".join(new_summaries))
+
+        new_concepts = [d for key, d in self.concepts.items() if key not in concept_keys]
+        if new_concepts:
+            new_concepts.sort(key=lambda d: d.ref_count, reverse=True)
+            parts: list[str] = []
+            for d in new_concepts:
+                label = d.title
+                if d.definition:
+                    label += f": {d.definition}"
+                parts.append(label)
+            lines.append("Concepts: " + "; ".join(parts))
+
+        new_entities = [d for key, d in self.entities.items() if key not in entity_keys]
+        if new_entities:
+            new_entities.sort(key=lambda d: d.ref_count, reverse=True)
+            eparts: list[str] = []
+            for d in new_entities:
+                label = d.name
+                if d.entity_type:
+                    label += f" ({d.entity_type})"
+                if d.context:
+                    label += f" - {d.context}"
+                eparts.append(label)
+            lines.append("Entities: " + "; ".join(eparts))
+
+        new_tags = self.tags - set(tags)
+        if new_tags:
+            lines.append("Tags: " + ", ".join(sorted(new_tags)))
+
+        return "\n".join(lines)
+
     # ── Finalization ───────────────────────────────────────────────
 
     def to_extraction(self, source: str) -> Extraction:

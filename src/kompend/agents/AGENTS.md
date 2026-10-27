@@ -26,6 +26,7 @@ is the **only** layer that talks to pydantic-ai `Agent` directly.
 All agents extend `KompendAgentBase[ResultT, DepsT]` (ABC):
 
 - `ExtractionAgent`, `ExtractionReduceAgent`
+- `MemoryConsolidationAgent` (windowed agentic-extraction digest)
 - `AgenticGenerationAgent`
 - `ReferenceExtractionAgent` (bibliographic reference parsing)
 - `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`
@@ -115,6 +116,7 @@ The base class provides:
   progress
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
+
 ### Construction contract
 
 Agents take their limits from the config, not from the call site. A
@@ -126,14 +128,11 @@ did not spell out:
 | `llm` | the `compile.llm` group — timeout, retries, reasoning effort, context manager, context window, fallback chain, delta-retry switch, data format |
 
 `KompendAgentBase._apply_config_defaults()` fills the gaps: `timeout` ←
-`llm.timeout`, `retries` ← the tool/output split
-(`llm.tool_retries` / `llm.output_retries`, 0 when
-`output_retries_enabled` is false), `reasoning_effort` ←
-`llm.reasoning_effort`, `context_manager` ← `llm.context_manager`,
-`context_window` ← `llm.context_window`, `fallback_models` ←
-`llm.fallback_chain`, `delta_retry_enabled` ← `llm.delta_retry_enabled`,
-`data_format` ← `llm.data_format`. An explicitly passed value always wins
-over the config.
+`llm.timeout`, `retries` ← the tool/output split (`llm.tool_retries` /
+`llm.output_retries`, 0 when `output_retries_enabled` is false),
+`reasoning_effort`, `context_manager`, `context_window`, `fallback_models`,
+`delta_retry_enabled`, `data_format` ← their `compile.llm` twins. An
+explicitly passed value always wins.
 
 There is no `max_tokens` and no `budget` kwarg: an answer is bounded by the
 model's context window minus its prompt (`llm/AGENTS.md`). The exception is
@@ -218,6 +217,7 @@ Agent layer via `SummarizingCompaction` (see `KompendAgentBase`); the old
 | `WicerDiagnoseDeps` | WicerDiagnoseAgent                                                                    |
 | `DoctorDeps`        | DoctorAgent                                                                           |
 | `SummarizerDeps`    | AgenticSummarizerAgent (payload: `SummaryNode`)                                       |
+| `MemoryConsolidationDeps` | MemoryConsolidationAgent (payload: `previous` + `delta` digest material, `target_tokens` budget) |
 | `ContextChunkDeps`  | AgenticContextChunkAgent (payload: `ContextChunk`)                                    |
 | `DistillAgentDeps`  | AgenticDistillAgent (payload: `DistillGroup`, `DistillPage`)                          |
 | `VerificationDeps`  | AgenticVerificationAgent (payload: `VerificationClaim`, `VerificationSource`, `VerificationPage`) |
@@ -237,14 +237,13 @@ it mirrors untrusted model output.
   `kompend.llm.models.build_model()`.
 - **Roles.** Every agent corresponds to an `LLMRole` enum value in
   `kompend.llm.roles`. Add new roles there when adding new agents.
-- **Export new agents** from `__init__.py`.
-- **Result types** are Pydantic models defined in the consuming module
-  (e.g. `kompend.compilation.schema.ExtractionOutput`), not in this package.
+- **Export new agents** from `__init__.py`; **result types** live in the
+  consuming module (e.g. `kompend.compilation.schema.ExtractionOutput`).
 
 ## Relationship to other layers
 
-This package (`agents/`, plural) is distinct from `kompend/acp/` (singular
-`agent/`), the ACP protocol adapter for editors. Stack: editor request →
-`kompend/acp/` → conversational agent → MCP tools → pipeline → **these**
-PydanticAI agents. See `docs/reference/pydantic-ai-agents.md` for per-role
-model overrides, skills and how to write a new agent.
+This package (`agents/`, plural) is distinct from `kompend/acp/`, the ACP
+protocol adapter for editors. Stack: editor request → `kompend/acp/` → MCP
+tools → pipeline → **these** PydanticAI agents. See
+`docs/reference/pydantic-ai-agents.md` for per-role model overrides, skills
+and how to write a new agent.

@@ -27,6 +27,7 @@ merging and an optional iterative WiCER refinement loop.
 | `flows/`                | Flow-based compilation building blocks                                   |
 | `flows/assembly.py`     | Cross-source assembly flow                                               |
 | `flows/extraction.py`   | Extraction flow                                                          |
+| `flows/agentic.py`      | AGENTIC extraction flow — per-section `ExtractionMemory` digest sized against the window (`_digest_budget_tokens`: window − answer reserve − safety − system − section); over budget the digest is model-consolidated (`MemoryConsolidationAgent`, rolling delta, never cropped); provider context-overflow 400s fail the section without a blind retry |
 | `flows/generation.py`   | Generation flow; `build_known_titles` (canonical titles for wikilinks), `learn_wikilink_aliases` (post-generation alias map persisted as `MetadataField.WIKILINK_ALIASES`) |
 | `flows/references.py`   | Reference-extraction flow (pre-extraction pass; retries = `llm.output_retries`; splits oversized sections into windows bounded by the input room and the window's answer reserve (`ContextWindow.answer_reserve`); every window is processed) |
 | `reference_excision.py` | Reference-section detection + excision (regex-based)                     |
