@@ -434,9 +434,8 @@ agent_memory = true
 #     (injected into prompts, capped at ~2000 tokens) plus topic files the
 #     model reads on demand via its memory tools. The agent writes that
 #     notebook itself, so it is not part of the summary cache key: edit it and
-#     cached summaries are reused as they are. It currently backs the
-#     summariser's notebook; verification, remediation and distillation use
-#     the in-process store.
+#     cached summaries are reused as they are. It backs every notebook
+#     stage: summarisation, verification, remediation, distillation.
 #   session: in-process only - fresh per stage run.
 memory_store = "vault"
 

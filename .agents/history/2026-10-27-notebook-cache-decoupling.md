@@ -48,10 +48,9 @@ point: the notebook is agent-written, so an edit means the agent learned
 something new, not that the inputs changed. Use `compile.force` (or a model
 switch) to re-derive summaries.
 
-## Known gap
+## Known gap (closed 2026-10-27)
 
-The vault backend reaches the summariser only. Verification, remediation and
-distillation have no store parameter and keep the in-process store. The
-harness namespaces notebook paths by agent name, so the four stages do not
-collide — wiring the other three to the vault is plumbing, not a redesign
-(bead `knox-lwvw`).
+The vault backend reached the summariser only; verification, remediation and
+distillation kept the in-process store. Closed by `notebook-vault-stages`
+(bead `knox-lwvw`) — the harness namespaces notebook paths by agent name, so
+wiring the other three was plumbing, not a redesign.

@@ -440,8 +440,8 @@ class LLMConfig(_KompendBaseModel):
     #: tools. The agent writes that notebook itself, so it is not part of the
     #: summary cache key - editing it leaves cached summaries as they are.
     #: ``session`` keeps it in process - fresh per stage run.  The vault
-    #: backend currently backs the summariser's notebook; verification,
-    #: remediation and distillation use the in-process store.
+    #: backend backs every notebook stage - summarisation, verification,
+    #: remediation and distillation.
     memory_store: LlmMemoryStore = Field(default=LlmMemoryStore.VAULT, validation_alias=EnvVar.LLM_MEMORY_STORE)
     #: Rolling window (in output tokens) for the short-term tok/s rate.
     throughput_window_tokens: int = Field(default=1000, validation_alias=EnvVar.LLM_THROUGHPUT_WINDOW_TOKENS)

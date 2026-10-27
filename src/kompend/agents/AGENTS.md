@@ -173,12 +173,12 @@ context-chunk, overview) gain nothing: it would be empty every unit.
 
 `compile.llm.memory_store` (default `vault`) picks the backend: `vault`
 roots the notebook at `.kompend/agent-memory/` via `DirectoryMemoryStore`
-(`vault_memory.py`; the harness `FileStore` is POSIX-only locally). The
-harness scopes every notebook path by agent name, so each stage owns
+(`vault_memory.py`; the harness `FileStore` is POSIX-only locally), resolved
+by `build_notebook_store(llm, memory_dir)` — every notebook stage uses it.
+The harness scopes every notebook path by agent name, so each stage owns
 `.kompend/agent-memory/<agent_name>/MEMORY.md`. The notebook is agent-written
 prompt context, not a cache input: it is not part of the summary cache key.
-`session` keeps the notebook in process. The vault backend reaches the
-summariser only; the other notebook stages use the in-process store.
+`session` keeps the notebook in process.
 
 Three more harness capabilities ride on `AgenticHarness` (`agentic_harness.py`),
 first consumed by the generation and summarizer agents: **StepPersistence**

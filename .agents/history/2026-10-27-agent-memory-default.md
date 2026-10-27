@@ -32,10 +32,10 @@ The harness flag stays per-agent (`AgenticHarness(memory=True)`): the config
 decides *which stages* ask for a notebook, and the four stages that handle many
 outputs in one session ask.
 
-## Known gap
+## Known gap (closed 2026-10-27)
 
-The vault backend reaches the summariser only. Verification, remediation and
-distillation have no store parameter and keep the in-process store. The
-harness namespaces notebook paths by agent name, so the stages would not
-collide — wiring the other three to the vault is plumbing, not a redesign
+The vault backend reached the summariser only; verification, remediation and
+distillation kept the in-process store. The harness namespaces notebook paths
+by agent name, so the stages never collided — wiring the other three to the
+vault was plumbing, not a redesign. Closed by `notebook-vault-stages`
 (bead `knox-lwvw`).

@@ -48,6 +48,7 @@ from re-litigating settled questions.
 
 | Archived | Slug | What landed |
 | -------- | ---- | ----------- |
+| 2026-10-27 | `notebook-vault-stages` | The vault notebook reaches every stage that keeps one — summarisation, verification, remediation, distillation — through `build_notebook_store`; the harness namespaces each notebook by agent name, so the stages share a directory and never a file |
 | 2026-10-27 | `notebook-cache-decoupling` | The agent notebook left the summary cache key: the notebook is agent-written prompt context, so it cannot invalidate cached summaries (the old `MEMORY.md` fingerprint never fired and would have thrashed the cache) |
 | 2026-10-27 | `agent-memory-default` | `compile.llm.agent_memory` defaults to `true` and `compile.llm.memory_store` to `"vault"` — the notebook is on for the four stages that handle many outputs in one session; `agent_memory = false` remains the escape hatch for small models |
 | 2026-10-27 | `harness-transcripts` | Generation checkpoints (`compilation/_checkpoints.py`) replaced by harness `StepPersistence` transcripts in `SqliteStepStore` (`.kompend/steps.db`); `step_recovery.py` derives the deterministic keys and resumes/skips segments from the transcript; ConversationSearch + SystemReminders wired onto the agentic generation and summarizer agents |

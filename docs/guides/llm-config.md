@@ -394,8 +394,8 @@ notebook dies with the agent. Those stages deliberately keep it off.
   (injected into prompts, capped at ~2000 tokens) plus topic files the model
   reads on demand. The agent writes that notebook itself, so it is not part of
   the summary cache key — edit it and cached summaries are reused as they are.
-  The vault backend currently backs the summariser's notebook; verification,
-  remediation and distillation use the in-process store.
+  The vault backend backs every notebook stage: summarisation, verification,
+  remediation, distillation.
 - `session` — in-process only, fresh per stage run.
 
 Turn the notebook off for small models. A model that invents a memory file name
