@@ -126,6 +126,8 @@ class AgenticHarness:
         if self.reminder_content is not None or self.reminder_interval is not None:
             if self.reminder_content is None or self.reminder_interval is None:
                 raise ValueError("reminder_content and reminder_interval must be set together")
-            caps.append(SystemReminders(reminders=(Reminder(content=self.reminder_content, interval=self.reminder_interval),)))
+            # tag=None opts into the harness default (request-scoped system
+            # prompt) and silences the HarnessDeprecationWarning.
+            caps.append(SystemReminders(reminders=(Reminder(content=self.reminder_content, interval=self.reminder_interval, tag=None),)))
         caps.extend(self.extra_capabilities)
         return caps
