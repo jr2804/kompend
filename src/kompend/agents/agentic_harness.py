@@ -4,15 +4,17 @@ Agentic agents in kompend share these harness capabilities:
 
 - **Memory** - ``InMemoryStore`` by default: fresh per run (no cross-session
   persistence).  Lets the agent write/read a notebook across turns for
-  long-running tasks.  **Opt-in** (``memory=True``): the notebook is only
-  useful when the agent's prompt tells the model to keep notes.  Offering it
-  unconditionally invites small models to call ``read_memory`` for a file
+  long-running tasks.  **Opt-in per agent** (``memory=True``): the notebook is
+  only useful when the agent's prompt tells the model to keep notes.  Offering
+  it unconditionally invites small models to call ``read_memory`` for a file
   that does not exist - the tool answers with ``ModelRetry`` and, once the
   tool-retry budget is spent, the whole run dies with the node left
-  unsummarized.  A persistent notebook (``compile.llm.memory_store =
-  "vault"``) is wired by passing ``memory_store=DirectoryMemoryStore(...)``
-  from the caller; the injected ``MEMORY.md`` index is capped by the
-  capability, and topic files stay behind the memory tools.
+  unsummarized.  ``compile.llm.agent_memory`` (default on) turns it on for the
+  stages where one agent instance handles many outputs.  A persistent notebook
+  (``compile.llm.memory_store = "vault"``) is wired by passing
+  ``memory_store=DirectoryMemoryStore(...)`` from the caller; the injected
+  ``MEMORY.md`` index is capped by the capability, and topic files stay behind
+  the memory tools.
 - **SlidingWindowCompaction** — ``max_fraction=0.6`` of context window.
   Drops oldest turns when context fills up, avoiding token-limit failures
   on multi-turn tool agents.

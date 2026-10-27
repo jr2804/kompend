@@ -165,27 +165,28 @@ The agentic harness offers the memory capability only on request
 tool pair: an invented file name gets `ModelRetry`, and once the tool budget
 is spent the run dies with the node left unsummarized.
 
-`compile.llm.agent_memory` (default off) decides which stages request it. The
-notebook is an `InMemoryStore` owned by ONE agent instance, so it only helps a
-stage where one instance handles MANY outputs - summarisation, verification,
-remediation, distillation. Fresh-agent-per-unit stages (generation, write,
-query, context-chunk, overview) gain nothing: it would be empty every unit.
+`compile.llm.agent_memory` (default on) decides which stages request it. The
+notebook is owned by ONE agent instance, so it only helps a stage where one
+instance handles MANY outputs - summarisation, verification, remediation,
+distillation. Fresh-agent-per-unit stages (generation, write, query,
+context-chunk, overview) gain nothing: it would be empty every unit.
 
-`compile.llm.memory_store` (default `session`) picks the backend: `vault`
+`compile.llm.memory_store` (default `vault`) picks the backend: `vault`
 roots the notebook at `.kompend/agent-memory/` via `DirectoryMemoryStore`
-(`vault_memory.py`; the harness `FileStore` is POSIX-only locally), and the
-factory fingerprints `MEMORY.md` into the summary cache deps - editing the
-notebook invalidates cached summaries like a model switch.
+(`vault_memory.py`; the harness `FileStore` is POSIX-only locally). The
+harness scopes every notebook path by agent name, so each stage owns
+`.kompend/agent-memory/<agent_name>/MEMORY.md`. The notebook is agent-written
+prompt context, not a cache input: it is not part of the summary cache key.
+`session` keeps the notebook in process. The vault backend reaches the
+summariser only; the other notebook stages use the in-process store.
 
 Three more harness capabilities ride on `AgenticHarness` (`agentic_harness.py`),
 first consumed by the generation and summarizer agents: **StepPersistence**
 (`step_store`) saves every run's transcript after each turn, so a hard kill
-resumes from the last complete snapshot; generation derives its keys in
-`compilation/step_recovery.py` (conversation = gen deps, run =
-`...-segNNN-aNNpNN`). **ConversationSearch** (`search_history`) adds a BM25
-tool over the same store, scoped to the conversation. **SystemReminders**
-(`reminder_content` + `reminder_interval`) appends a cache-safe tail reminder
-rendered from a template - never inlined.
+resumes from the last complete snapshot (keys in `compilation/step_recovery.py`).
+**ConversationSearch** (`search_history`) adds a BM25 tool over the same store,
+scoped to the conversation. **SystemReminders** (`reminder_content` +
+`reminder_interval`) appends a cache-safe tail reminder rendered from a template.
 
 The delta-retry salvage hook is opt-in per class: a subclass sets
 `supports_delta_retry: ClassVar[bool] = True`, and it fires only when

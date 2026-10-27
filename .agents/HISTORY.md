@@ -48,8 +48,10 @@ from re-litigating settled questions.
 
 | Archived | Slug | What landed |
 | -------- | ---- | ----------- |
+| 2026-10-27 | `notebook-cache-decoupling` | The agent notebook left the summary cache key: the notebook is agent-written prompt context, so it cannot invalidate cached summaries (the old `MEMORY.md` fingerprint never fired and would have thrashed the cache) |
+| 2026-10-27 | `agent-memory-default` | `compile.llm.agent_memory` defaults to `true` and `compile.llm.memory_store` to `"vault"` — the notebook is on for the four stages that handle many outputs in one session; `agent_memory = false` remains the escape hatch for small models |
 | 2026-10-27 | `harness-transcripts` | Generation checkpoints (`compilation/_checkpoints.py`) replaced by harness `StepPersistence` transcripts in `SqliteStepStore` (`.kompend/steps.db`); `step_recovery.py` derives the deterministic keys and resumes/skips segments from the transcript; ConversationSearch + SystemReminders wired onto the agentic generation and summarizer agents |
-| 2026-10-26 | `vault-agent-memory` | `compile.llm.memory_store = "vault"` persists the agent notebook at `.kompend/agent-memory/` (first-party `DirectoryMemoryStore` - the harness `FileStore` is sandbox-first with a POSIX-only local backend); `MEMORY.md` fingerprints into summary cache deps |
+| 2026-10-26 | `vault-agent-memory` | `compile.llm.memory_store = "vault"` persists the agent notebook at `.kompend/agent-memory/` (first-party `DirectoryMemoryStore` - the harness `FileStore` is sandbox-first with a POSIX-only local backend) |
 | 2026-10-23 | `rationale-archive` | text-in-code ban, litellm removal, lazy imports (SPEC-0001), `compile.embedding.dim` removal, `_ENV_LIST_VARS` schema derivation, fixed CLI violations table, `functools.cache` over `global` |
 | 2026-10-23 | `dependency-upgrades` | pydantic-ai 2.60.0 / harness 0.60.0 bump, anthropic pin dropped, `[tool.uv]` overrides for openai and typer, sentence-transformers dropped (pydantic-ai-slim, remote embedding providers only) |
 

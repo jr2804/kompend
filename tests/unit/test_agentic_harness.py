@@ -46,22 +46,22 @@ class TestSummarizerAgentHasNoMemory:
 class TestAgentMemoryConfig:
     """``compile.llm.agent_memory`` turns the notebook on for multi-output stages.
 
-    The notebook is an ``InMemoryStore`` owned by one agent instance, so it only
-    helps a stage where a single instance handles many outputs (summarisation,
-    verification, remediation, distillation).
+    The notebook is owned by one agent instance, so it only helps a stage where
+    a single instance handles many outputs (summarisation, verification,
+    remediation, distillation).
     """
 
-    def test_config_off_keeps_the_notebook_off(self) -> None:
+    def test_config_default_offers_the_notebook(self) -> None:
         agent = make_agentic_summarizer_agent("ollama/noop", context_window=8192, llm=LLMConfig())
-        assert not any(cap.__class__.__name__ == "Memory" for cap in agent.extra_capabilities)
+        assert any(cap.__class__.__name__ == "Memory" for cap in agent.extra_capabilities)
 
-    def test_config_on_offers_the_notebook(self) -> None:
+    def test_config_off_keeps_the_notebook_off(self) -> None:
         agent = make_agentic_summarizer_agent(
             "ollama/noop",
             context_window=8192,
-            llm=LLMConfig(agent_memory=True),
+            llm=LLMConfig(agent_memory=False),
         )
-        assert any(cap.__class__.__name__ == "Memory" for cap in agent.extra_capabilities)
+        assert not any(cap.__class__.__name__ == "Memory" for cap in agent.extra_capabilities)
 
 
 class TestVaultMemoryStore:
@@ -87,7 +87,7 @@ class TestVaultMemoryStore:
         agent = make_agentic_summarizer_agent(
             "ollama/noop",
             context_window=8192,
-            llm=LLMConfig(agent_memory=True),
+            llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.SESSION),
             memory_dir=tmp_path,
         )
         memory = next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory")
@@ -108,7 +108,7 @@ class TestVaultMemoryStore:
         agent = make_agentic_summarizer_agent(
             "ollama/noop",
             context_window=8192,
-            llm=LLMConfig(memory_store=LlmMemoryStore.VAULT),
+            llm=LLMConfig(agent_memory=False, memory_store=LlmMemoryStore.VAULT),
             memory_dir=tmp_path,
         )
         assert not any(cap.__class__.__name__ == "Memory" for cap in agent.extra_capabilities)

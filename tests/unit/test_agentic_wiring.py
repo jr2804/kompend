@@ -13,7 +13,6 @@ from __future__ import annotations
 import asyncio
 import math
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
@@ -129,8 +128,7 @@ class TestAgenticSummarizerAgentWiring:
 
     def test_vault_store_gates_the_notebook(self, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
         """``memory_store = "vault"`` backs the summarizer with the vault's
-        agent-memory FileStore and fingerprints MEMORY.md into cache deps
-        (session store — the default — keeps both unset).
+        agent-memory store (the session store keeps it in process).
         """
         monkeypatch.setattr(
             "kompend.core.pipeline.stages._factory.discover_context_window",
@@ -142,13 +140,16 @@ class TestAgenticSummarizerAgentWiring:
         session = PipelineConfig(
             source_dir=source_dir,
             output_dir=output_dir,
-            llm=LLMConfig(default_model="ollama/gpt-oss:20b", vlm_model="vlm"),
+            llm=LLMConfig(default_model="ollama/gpt-oss:20b", vlm_model="vlm", memory_store=LlmMemoryStore.SESSION),
             embedding=EmbeddingConfig(model="hash"),
             compiler=Compiler.GRAPH,
         )
         session_pipeline = build_pipeline(session)
         assert session_pipeline.summarizer is not None
-        assert session_pipeline.summarizer._memory_fingerprint is None  # noqa: SLF001
+        session_agent = session_pipeline.summarizer._agent  # noqa: SLF001
+        assert isinstance(session_agent, AgenticSummarizerAgent)
+        session_memory = next(cap for cap in session_agent.extra_capabilities if cap.__class__.__name__ == "Memory")
+        assert not isinstance(session_memory.store, DirectoryMemoryStore)
 
         vault = PipelineConfig(
             source_dir=source_dir,
@@ -164,13 +165,7 @@ class TestAgenticSummarizerAgentWiring:
         memory = next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory")
         assert isinstance(memory.store, DirectoryMemoryStore)
         assert memory.store.directory == vault.paths.agent_memory_dir
-
-        notebook = vault.paths.agent_memory_dir / "MEMORY.md"
-        notebook.parent.mkdir(parents=True, exist_ok=True)
-        notebook.write_text("# Vault memory\n")
-        fingerprinted = build_pipeline(vault)
-        assert fingerprinted.summarizer is not None
-        assert fingerprinted.summarizer._memory_fingerprint == sha256(notebook.read_bytes()).hexdigest()[:16]  # noqa: SLF001
+        assert memory.agent_name == "summarizer"
 
 
 class TestAgenticSummarizerUsageLimits:

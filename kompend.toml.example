@@ -414,25 +414,31 @@ default_model = "${KOMP_LLM_DEFAULT_MODEL}"
 # Packages (core deps, already installed): toon_format (TOON), ison-py (ISON)
 # data_format = "json"  # toon, ison, text
 
-# Agent notebook (memory capability) for the stages where one agent instance
-# handles many outputs: summarisation, verification, remediation, distillation.
-# Stages that build a fresh agent per unit (generation, capture, query,
-# indexing) gain nothing — the notebook dies with the agent.
 # Mark the conversation prefix for provider-side prompt caching. pydantic-ai's
 # unified `cache` setting is translated per provider (Anthropic breakpoints,
 # OpenAI cache options, OpenRouter pass-through); providers that cache
 # implicitly or not at all are unaffected. A gateway that rejects the field is
 # detected once, logged, and the agent retries without caching.
 prompt_cache = true
-# agent_memory = false
+
+# Agent notebook (memory capability) for the stages where one agent instance
+# handles many outputs: summarisation, verification, remediation, distillation.
+# Stages that build a fresh agent per unit (generation, capture, query,
+# indexing) gain nothing — the notebook dies with the agent.
+# Set it to false for small models: a model that invents a memory file name
+# gets ModelRetry, and once the tool budget is spent the run dies with the
+# node left unsummarized.
+agent_memory = true
 # Where the agent notebook lives when agent_memory is on.
-#   session (default): in-process only - fresh per stage run.
-#   vault: `.kompend/agent-memory/` - a user-curated MEMORY.md index
+#   vault (default): `.kompend/agent-memory/` - a MEMORY.md index per agent
 #     (injected into prompts, capped at ~2000 tokens) plus topic files the
-#     model reads on demand via its memory tools. Cached summaries carry
-#     the MEMORY.md fingerprint, so editing the notebook invalidates them
-#     like a model switch does.
-# memory_store = "session"
+#     model reads on demand via its memory tools. The agent writes that
+#     notebook itself, so it is not part of the summary cache key: edit it and
+#     cached summaries are reused as they are. It currently backs the
+#     summariser's notebook; verification, remediation and distillation use
+#     the in-process store.
+#   session: in-process only - fresh per stage run.
+memory_store = "vault"
 
 # LLM call timeout (seconds)
 timeout = 120.0

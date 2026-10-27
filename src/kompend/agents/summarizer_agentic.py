@@ -95,8 +95,9 @@ def make_agentic_summarizer_agent(
     via :class:`AgenticHarness`.
 
     ``memory_dir`` is the vault's agent-memory directory; it only takes effect
-    when ``llm.memory_store`` is ``vault`` — the notebook then persists as a
-    ``MEMORY.md`` index plus topic files instead of dying with the process.
+    when ``llm.memory_store`` is ``vault`` — the notebook then persists under
+    ``memory_dir/summarizer/`` as a ``MEMORY.md`` index plus topic files
+    instead of dying with the process.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
     memory_store: DirectoryMemoryStore | None = None

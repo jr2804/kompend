@@ -104,10 +104,9 @@ MEMORY_SUBDIR: Final[str] = "_memory"
 #: Synthesized memory context page (sources/_memory/system_context.md).
 MEMORY_CONTEXT_FILE: Final[str] = "system_context.md"
 #: Sub-directory of ``.kompend/`` for the agent notebook (``compile.llm.memory_store = "vault"``):
-#: a user-curated ``MEMORY.md`` index plus topic files behind the agents' memory tools.
+#: one directory per agent, each holding the agent-written ``MEMORY.md`` index plus
+#: the topic files behind the agents' memory tools.
 AGENT_MEMORY_SUBDIR: Final[str] = "agent-memory"
-#: The injected index file inside the agent-notebook directory (harness convention).
-MEMORY_INDEX_FILE: Final[str] = "MEMORY.md"
 
 # ── Step persistence ────────────────────────────────────────────────────
 #: SQLite file backing the harness ``StepPersistence`` capability (generation

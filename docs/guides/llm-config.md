@@ -374,23 +374,33 @@ saving per format (`input-format-size`). A model that fails the
 
 ```toml
 [compile.llm]
-agent_memory = false   # default
+agent_memory = true    # default
+memory_store = "vault" # default
 ```
 
 The agentic harness can give an agent a scratch notebook (`write_memory`,
-`read_memory`, `search_memory`). It is a per-instance `InMemoryStore`, so it
-only helps a stage where **one agent instance handles many outputs**:
-summarisation (one session, many nodes), verification (one pass, many claims),
-remediation (one pass, many findings), distillation (one session, many tag
-groups).
+`read_memory`, `search_memory`). It only helps a stage where **one agent
+instance handles many outputs**: summarisation (one session, many nodes),
+verification (one pass, many claims), remediation (one pass, many findings),
+distillation (one session, many tag groups).
 
 It does not help stages that build a fresh agent per unit — generation per
 segment, page writing per page, query per question, indexing per run: the
 notebook dies with the agent. Those stages deliberately keep it off.
 
-Leave it off for small models. A model that invents a memory file name gets
-`ModelRetry` from `read_memory`; once the tool budget is spent the run dies with
-the node left unsummarized.
+`memory_store` picks where the notebook lives:
+
+- `vault` (default) — `.kompend/agent-memory/`: a `MEMORY.md` index per agent
+  (injected into prompts, capped at ~2000 tokens) plus topic files the model
+  reads on demand. The agent writes that notebook itself, so it is not part of
+  the summary cache key — edit it and cached summaries are reused as they are.
+  The vault backend currently backs the summariser's notebook; verification,
+  remediation and distillation use the in-process store.
+- `session` — in-process only, fresh per stage run.
+
+Turn the notebook off for small models. A model that invents a memory file name
+gets `ModelRetry` from `read_memory`; once the tool budget is spent the run dies
+with the node left unsummarized.
 
 ### Decision model (optional sidecar)
 

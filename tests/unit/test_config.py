@@ -342,25 +342,25 @@ class TestResolveConfig:
         monkeypatch.setenv("KOMP_LLM_TOOL_RETRIES", "5")
         assert resolve_config().get("compile.llm.tool_retries") == 5
 
-    def test_agent_memory_is_opt_in(self, tmp_path: Any, monkeypatch: Any) -> None:
-        """The agent notebook stays off unless the vault asks for it."""
+    def test_agent_memory_defaults_on(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """The agent notebook is on unless the vault switches it off."""
         monkeypatch.chdir(tmp_path)
-        assert resolve_config().get("compile.llm.agent_memory") is False
-
-        (tmp_path / "kompend.toml").write_text("[compile.llm]\nagent_memory = true\n")
         assert resolve_config().get("compile.llm.agent_memory") is True
+
+        (tmp_path / "kompend.toml").write_text("[compile.llm]\nagent_memory = false\n")
+        assert resolve_config().get("compile.llm.agent_memory") is False
 
         monkeypatch.delenv("KOMP_LLM_AGENT_MEMORY", raising=False)
         monkeypatch.setenv("KOMP_LLM_AGENT_MEMORY", "false")
         assert resolve_config().get("compile.llm.agent_memory") is False
 
-    def test_memory_store_defaults_to_session(self, tmp_path: Any, monkeypatch: Any) -> None:
-        """The notebook backend is session until the vault opts into persistence."""
+    def test_memory_store_defaults_to_vault(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """The notebook persists in the vault unless the vault opts out."""
         monkeypatch.chdir(tmp_path)
-        assert resolve_config().get("compile.llm.memory_store") == "session"
-
-        (tmp_path / "kompend.toml").write_text('[compile.llm]\nmemory_store = "vault"\n')
         assert resolve_config().get("compile.llm.memory_store") == "vault"
+
+        (tmp_path / "kompend.toml").write_text('[compile.llm]\nmemory_store = "session"\n')
+        assert resolve_config().get("compile.llm.memory_store") == "session"
 
         monkeypatch.delenv("KOMP_LLM_MEMORY_STORE", raising=False)
         monkeypatch.setenv("KOMP_LLM_MEMORY_STORE", "session")
