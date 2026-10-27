@@ -57,7 +57,7 @@ def make_agentic_context_chunk_agent(
     via :class:`AgenticHarness`.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
-    harness = AgenticHarness(context_window=context_window, memory_agent_name="context_chunk")
+    harness = AgenticHarness(context_window=context_window)
     return AgenticContextChunkAgent(
         model_string=model_string,
         timeout=timeout,

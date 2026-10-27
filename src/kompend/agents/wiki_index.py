@@ -53,7 +53,7 @@ def make_agentic_overview_agent(
     tool-call retries; ``output_retries`` governs output-validation.
     """
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
-    harness = AgenticHarness(context_window=context_window, memory_agent_name="overview")
+    harness = AgenticHarness(context_window=context_window)
     return AgenticOverviewAgent(
         model_string=model_string,
         timeout=timeout,

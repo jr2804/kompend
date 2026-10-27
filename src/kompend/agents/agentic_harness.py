@@ -14,7 +14,8 @@ Agentic agents in kompend share these harness capabilities:
   (``compile.llm.memory_store = "vault"``) is wired by passing
   ``memory_store=DirectoryMemoryStore(...)`` from the caller; the injected
   ``MEMORY.md`` index is capped by the capability, and topic files stay behind
-  the memory tools.
+  the memory tools.  ``memory_agent_name`` is the scope segment of those
+  paths - the harness namespaces them, so stages never share a file.
 - **SlidingWindowCompaction** — ``max_fraction=0.6`` of context window.
   Drops oldest turns when context fills up, avoiding token-limit failures
   on multi-turn tool agents.
@@ -70,6 +71,9 @@ class AgenticHarness:
     """
 
     context_window: int | None = None
+    #: Scope segment for the notebook - the harness namespaces every memory
+    #: path by it, so each stage owns ``<memory_dir>/<memory_agent_name>/``.
+    #: Only meaningful when ``memory`` is on.
     memory_agent_name: str = "agentic"
     memory: bool = False
     #: Backend for the Memory capability. ``None`` (default) uses

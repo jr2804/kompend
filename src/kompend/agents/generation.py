@@ -107,7 +107,6 @@ def make_agentic_generation_agent(
     reminder = _loader.render("compilation/generation_reminder.md.j2").strip()
     harness = AgenticHarness(
         context_window=context_window,
-        memory_agent_name="generation",
         step_store=step_store,
         search_history=step_store is not None,
         reminder_content=reminder or None,

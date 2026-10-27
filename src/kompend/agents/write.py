@@ -54,7 +54,7 @@ def make_agentic_write_agent(
 ) -> AgenticWriteAgent:
     """Build an :class:`AgenticWriteAgent` with the standard agentic capabilities."""
     agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
-    harness = AgenticHarness(context_window=context_window, memory_agent_name="write")
+    harness = AgenticHarness(context_window=context_window)
     return AgenticWriteAgent(
         model_string=model_string,
         timeout=timeout,
