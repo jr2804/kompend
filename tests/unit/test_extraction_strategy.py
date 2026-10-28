@@ -346,6 +346,45 @@ class TestExtractionProgressDetail:
         assert reports[-1][0] == 100
 
 
+class TestGenerationProgressDetail:
+    """The generation line carries counters, not labels.
+
+    A counter without its denominator ("segment 2") and a second unit
+    next to the main one ("4/12 concepts covered") are noise — the
+    numbers must carry the meaning on their own.
+    """
+
+    def test_the_line_carries_two_counters(self) -> None:
+        detail = gen_module.generation_detail(57, 338, 4, 12)
+        assert detail == "generating [57/338] (4/12)"
+
+    def test_the_line_carries_no_labels(self) -> None:
+        detail = gen_module.generation_detail(57, 338, 4, 12)
+        assert "segment" not in detail
+        assert "concept" not in detail
+
+    def test_a_segment_is_not_announced(self) -> None:
+        """No number may sit outside the two counters.
+
+        A bare "segment 2" has no denominator, so it can only confuse.
+        """
+        detail = gen_module.generation_detail(57, 338, 4, 12)
+        residue = detail.replace("[57/338]", "").replace("(4/12)", "")
+        assert not any(character.isdigit() for character in residue)
+
+    def test_the_throughput_suffix_stays_last(self) -> None:
+        detail = gen_module.generation_detail(57, 338, 4, 12, rate=" · 12.3 tok/s")
+        assert detail == "generating [57/338] (4/12) · 12.3 tok/s"
+
+    def test_a_note_names_a_state_not_a_count(self) -> None:
+        detail = gen_module.generation_detail(57, 338, note="(recovered)")
+        assert detail == "generating [57/338] (recovered)"
+
+    def test_without_a_segment_there_is_one_counter(self) -> None:
+        detail = gen_module.generation_detail(57, 338)
+        assert detail == "generating [57/338]"
+
+
 # ── extraction batch sizing ────────────────────────────────────────────
 
 

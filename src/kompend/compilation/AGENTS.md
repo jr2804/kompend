@@ -71,6 +71,14 @@ merging and an optional iterative WiCER refinement loop.
   (`_source_progress` in `flows/extraction.py`); the *activity* names the
   running call (e.g. `consolidating context`). `rate_suffix` is the single
   source of truth for the throughput suffix.
+- **A bar line carries counters, not labels** — `extraction_detail`
+  (`flows/extraction.py`) and `generation_detail` (`flows/generation.py`)
+  build them. A counter without its denominator ("segment 2" — out of how
+  many?) is noise, and so is a second unit beside the main one ("4/12
+  concepts covered" next to a page counter). A sub-counter in another unit
+  names that unit ("12/234 sections"); a sub-counter in the main counter's
+  own unit needs no word ("(4/12)"). A note ("recovered") names a state
+  and stands on its own.
 
 ### Page kinds (category taxonomy)
 

@@ -365,6 +365,34 @@ def run_generation_resumable(
     )
 
 
+def generation_detail(
+    pages_done: int,
+    pages_total: int,
+    segment_done: int | None = None,
+    segment_total: int | None = None,
+    note: str = "",
+    rate: str = "",
+) -> str:
+    """The generation status line for the progress bar.
+
+    Two counters, no labels: the pages done over all, and — while a
+    segment runs — the pages of that segment::
+
+        generating [57/338] (4/12) · 12.3 tok/s
+
+    A counter without its denominator ("segment 2") and a second unit
+    ("4/12 concepts covered") next to a page counter are noise; the
+    numbers speak for themselves. A *note* names a state, not a count
+    ("recovered"), and stands on its own.
+    """
+    detail = f"generating [{pages_done}/{pages_total}]"
+    if segment_done is not None and segment_total is not None:
+        detail += f" ({segment_done}/{segment_total})"
+    if note:
+        detail += f" {note}"
+    return f"{detail}{rate}"
+
+
 def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; long by design
     compiler: TwoPhaseRuntime,
     concepts: list[dict[str, Any]],
@@ -539,7 +567,12 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                 compiler._report(
                     pages_done,
                     gen_progress_total,
-                    f"generating [{pages_done}/{gen_progress_total}] {seg_label} (recovered){rate_suffix(compiler._usage_tracker)}",
+                    generation_detail(
+                        pages_done,
+                        gen_progress_total,
+                        note="(recovered)",
+                        rate=rate_suffix(compiler._usage_tracker),
+                    ),
                 )
                 continue
             logger.info(
@@ -554,7 +587,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                 seg_label,
                 recovery.attempts,
             )
-        compiler._report(pages_done, gen_progress_total, f"generating [{pages_done}/{gen_progress_total}] {seg_label}")
+        compiler._report(pages_done, gen_progress_total, generation_detail(pages_done, gen_progress_total))
         logger.info("TwoPhase: agentic %s", seg_label)
 
         content_block = "\n\n".join(f"### {label}\n{content}" for label, content in segment)
@@ -693,13 +726,15 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
             # pages_done itself must NEVER exceed gen_progress_total, so
             # we cap the running value to avoid the bar overflowing
             # ``[N/338]`` when the model under-produces for a segment.
+            # The bar carries two numbers and no labels: the pages done
+            # overall, and the pages done inside the current segment.
             seg_progress = min(len(seg_titles), start_remaining)
             running = min(pages_done + seg_progress, gen_progress_total)
             rate_s = rate_suffix(compiler._usage_tracker)
             compiler._report(
                 running,
                 gen_progress_total,
-                f"generating [{running}/{gen_progress_total}] {seg_label} ({seg_progress}/{start_remaining} concepts covered){rate_s}",
+                generation_detail(running, gen_progress_total, seg_progress, start_remaining, rate=rate_s),
             )
 
         # Credit the segment with the pages actually produced, not the

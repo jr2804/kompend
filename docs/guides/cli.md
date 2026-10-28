@@ -219,12 +219,13 @@ bars:
   Chunk, Resolve, Compile, Write)
 
 During `kompend compile` the bar names the work in the units the flow actually
-uses — the sections of a document, its batches, the concepts of a generation
-segment — so a long document shows movement instead of a frozen bar:
+uses - the sections of a document, its batches, the concepts of a generation
+segment - so a long document shows movement instead of a frozen bar. Every
+line carries counters only; the numbers carry the meaning:
 
 ```text
 extracting [3/100] PolqaOemLibManualV3.18.pdf (12/234 sections), consolidating context
-generating [57/338] Segment 2 (4/12 concepts covered) · 12.3 tok/s
+generating [57/338] (4/12) · 12.3 tok/s
 ```
 
 When dedup is enabled, `kompend ingest` runs two progress phases — a parse pass
