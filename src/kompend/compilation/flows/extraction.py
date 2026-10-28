@@ -19,9 +19,11 @@ from kompend.agents.extraction_reduce import ExtractionReduceAgent
 from kompend.compilation._two_phase_core import (
     Extraction,
     ExtractionSet,
+    ProgressFn,
     TwoPhaseRuntime,
     context_safety_tokens,
     merge_extractions,
+    rate_suffix,
     tokens_to_chars,
     try_pydanticai_extraction,
 )
@@ -103,30 +105,49 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
         src_start = time.monotonic()
 
         total_chars = source_char_totals[source_idx - 1]
+        chars_before = cumulative_chars
         cumulative_chars += total_chars
         source_name = Path(source).name
-        compiler._report(cumulative_chars, total_chars_all, f"extracting [{source_idx}/{num_sources}] {source_name}")
 
         tree = tree_by_source.get(source)
         id_map = asset_id_maps.get(source) if asset_id_maps else None
         texts = build_tree_texts(tree, asset_mode="ref", asset_id_map=id_map) if tree is not None else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
+        batches_list = batch_texts(texts, extract_char_budget)
+        strategy = compiler._config.llm.extraction_strategy
+        agentic = strategy == ExtractionStrategy.AGENTIC
+
+        # The agentic path walks the document section by section; the batch
+        # paths walk it batch by batch. The bar counts the same units the
+        # flow works in, so a 200-section document shows movement.
+        unit = "sections" if agentic else "batches"
+        units = texts if agentic else batches_list
+        progress = _source_progress(
+            compiler,
+            source_idx=source_idx,
+            num_sources=num_sources,
+            source_name=source_name,
+            chars_before=chars_before,
+            source_chars=total_chars,
+            total_chars_all=total_chars_all,
+            weights=[len(u) for u in units],
+            unit=unit,
+        )
+        progress(0, len(units), "")
 
         if not texts:
             empty_ext = Extraction(source=source)
             _rewrite_extraction_mentions(empty_ext, id_map)
             extractions.add(empty_ext)
             compiler._extraction_stats.append(ExtractionStats(source=source))
+            progress(len(units), len(units), "")
             continue
 
-        batches_list = batch_texts(texts, extract_char_budget)
         batch_extractions: list[Extraction | None] = []
 
-        strategy = compiler._config.llm.extraction_strategy
-
-        if strategy == ExtractionStrategy.AGENTIC:
+        if agentic:
             # Agentic: structured memory with compaction — sections are
             # processed sequentially, not batched/merged.
-            agentic_result = extract_agentic(compiler, source, texts, extraction_system)
+            agentic_result = extract_agentic(compiler, source, texts, extraction_system, progress=progress)
             if agentic_result is not None:
                 _rewrite_extraction_mentions(agentic_result, id_map)
                 extractions.add(agentic_result)
@@ -145,13 +166,17 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
             )
             if compiler._batch_tracker.should_stop():
                 break
+            # Settle the bar at the end of the document — a cache hit
+            # returns before the section loop, so no unit was reported.
+            progress(len(units), len(units), "")
             continue
 
         if strategy == ExtractionStrategy.INCREMENTAL and len(batches_list) > 1:
-            batch_extractions, _ = extract_incremental(compiler, source, batches_list, extraction_system)
+            batch_extractions, _ = extract_incremental(compiler, source, batches_list, extraction_system, progress=progress)
         else:
-            for combined in batches_list:
+            for batch_idx, combined in enumerate(batches_list, start=1):
                 batch_extractions.append(extract_one(compiler, source, combined, extraction_system))
+                progress(batch_idx, len(batches_list), "")
                 if compiler._batch_tracker.should_stop():
                     break
 
@@ -200,6 +225,58 @@ def batch_texts(texts: list[str], char_budget: int) -> list[str]:
     if parts:
         batches.append("\n\n".join(parts))
     return batches
+
+
+def _source_progress(
+    compiler: TwoPhaseRuntime,
+    *,
+    source_idx: int,
+    num_sources: int,
+    source_name: str,
+    chars_before: int,
+    source_chars: int,
+    total_chars_all: int,
+    weights: list[int],
+    unit: str,
+) -> ProgressFn:
+    """A progress callback for the units of one source.
+
+    The bar counts characters, so a document's share is paid out as its
+    units complete: the bar moves *inside* a long document instead of
+    jumping when the document starts. A source without units (nothing to
+    extract) is paid out in full at once.
+    """
+    weight_total = sum(weights)
+
+    def report(units_done: int, units_total: int, activity: str) -> None:
+        done = max(0, min(units_done, len(weights)))
+        chars = chars_before + int(source_chars * (sum(weights[:done]) / weight_total)) if weight_total else chars_before + source_chars
+        detail = extraction_detail(source_idx, num_sources, source_name, done, units_total, unit, activity)
+        compiler._report(chars, total_chars_all, detail + rate_suffix(compiler._usage_tracker))
+
+    return report
+
+
+def extraction_detail(
+    source_idx: int,
+    num_sources: int,
+    source_name: str,
+    units_done: int,
+    units_total: int,
+    unit: str,
+    activity: str = "",
+) -> str:
+    """The extraction status line for the progress bar.
+
+    Names the document, how many of its units are done, and — while a
+    single slow call runs — what that call is doing::
+
+        extracting [3/100] PolqaOemLibManualV3.18.pdf (12/234 sections), consolidating context
+    """
+    detail = f"extracting [{source_idx}/{num_sources}] {source_name} ({units_done}/{units_total} {unit})"
+    if activity:
+        detail += f", {activity}"
+    return detail
 
 
 def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extraction_system: str) -> Extraction | None:
@@ -310,6 +387,8 @@ def extract_incremental(
     source: str,
     batches_list: list[str],
     extraction_system: str,
+    *,
+    progress: ProgressFn | None = None,
 ) -> tuple[list[Extraction | None], bool]:
     """Run extraction with message_history threading between batches.
 
@@ -324,6 +403,9 @@ def extract_incremental(
     guard, long documents with many batches fill the model's context
     window and the model returns empty (``finish_reason: stop``, no
     content) — see commit history for the regression this fixed.
+
+    *progress* is called after every finished batch (cached ones
+    included) so the bar moves with the work.
     """
     compaction_threshold = compiler._context_window.history_budget
     results: list[Extraction | None] = []
@@ -343,6 +425,8 @@ def extract_incremental(
                 # (otherwise the agent loses the document thread).
                 history.append(_synthetic_history_response(extraction))
                 _compact_history_inplace(history, compaction_threshold)
+                if progress is not None:
+                    progress(batch_idx + 1, len(batches_list), "")
                 continue
             logger.info(
                 "TwoPhase: extraction cache miss for '%s' batch %d (text_hash=%.16s)",
@@ -390,6 +474,8 @@ def extract_incremental(
             )
             compiler._batch_tracker.record(failed=True)
             results.append(None)
+        if progress is not None:
+            progress(batch_idx + 1, len(batches_list), "")
         if compiler._batch_tracker.should_stop():
             return results, True
     return results, False

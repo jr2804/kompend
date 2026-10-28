@@ -218,6 +218,15 @@ bars:
 - **Within-file** (compile only): Pipeline steps per file (Download, Parse,
   Chunk, Resolve, Compile, Write)
 
+During `kompend compile` the bar names the work in the units the flow actually
+uses — the sections of a document, its batches, the concepts of a generation
+segment — so a long document shows movement instead of a frozen bar:
+
+```text
+extracting [3/100] PolqaOemLibManualV3.18.pdf (12/234 sections), consolidating context
+generating [57/338] Segment 2 (4/12 concepts covered) · 12.3 tok/s
+```
+
 When dedup is enabled, `kompend ingest` runs two progress phases — a parse pass
 followed by a separate embedding pass — so GPU-bound parsers and the embedding
 model don't compete for GPU memory.

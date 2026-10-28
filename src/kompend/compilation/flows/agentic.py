@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Final
 
@@ -35,7 +36,12 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
 from kompend.agents.deps import MemoryConsolidationDeps, PipelineAgentDeps
 from kompend.agents.extraction import ExtractionAgent
 from kompend.agents.memory_consolidation import MemoryConsolidationAgent
-from kompend.compilation._two_phase_core import Extraction, TwoPhaseRuntime, context_safety_tokens
+from kompend.compilation._two_phase_core import (
+    Extraction,
+    ProgressFn,
+    TwoPhaseRuntime,
+    context_safety_tokens,
+)
 from kompend.compilation.asset_tools import build_asset_tools
 from kompend.compilation.extraction_memory import ExtractionMemory
 from kompend.compilation.schema import ExtractionOutput
@@ -102,6 +108,8 @@ def extract_agentic(
     source: str,
     texts: list[str],
     extraction_system: str,
+    *,
+    progress: ProgressFn | None = None,
 ) -> Extraction | None:
     """Run agentic extraction with structured memory across sections.
 
@@ -116,6 +124,11 @@ def extract_agentic(
         order. Each section is submitted independently (not batched).
     extraction_system:
         The system prompt body (for caching / progress logging).
+    progress:
+        Optional callback ``(sections done, sections total, activity)``.
+        It is called after every finished section and while the running
+        digest is consolidated, so a long document shows movement
+        instead of a frozen bar.
 
     Returns:
     -------
@@ -178,6 +191,12 @@ def extract_agentic(
     static_tokens = compiler._extract_system_tokens + (estimate_tokens(_TOOLS_PREAMBLE) if tools else 0)
     batch_retries = compiler._config.llm.batch_retry_attempts
     overall_succeeded = False
+    sections_done = 0
+
+    def _activity(label: str) -> None:
+        """Name what the running call is doing, for the progress bar."""
+        if progress is not None:
+            progress(sections_done, len(texts), label)
 
     for section_idx, section_text in enumerate(texts):
         logger.debug(
@@ -191,7 +210,7 @@ def extract_agentic(
         # The digest is sized against the window for THIS section; once the
         # full digest outgrows the budget it is model-consolidated, never cropped.
         budget_tokens = _digest_budget_tokens(compiler._context_window, static_tokens, section_text)
-        memory_digest = _running_digest(memory, consolidation, budget_tokens, consolidator, source)
+        memory_digest = _running_digest(memory, consolidation, budget_tokens, consolidator, source, activity=_activity)
         message_history: list[ModelMessage] = []
         if tools:
             message_history.append(ModelRequest(parts=[SystemPromptPart(content=_TOOLS_PREAMBLE)]))
@@ -243,6 +262,9 @@ def extract_agentic(
                 )
 
         compiler._batch_tracker.record(failed=validated is None)
+        sections_done = section_idx + 1
+        if progress is not None:
+            progress(sections_done, len(texts), "")
 
         if validated is None:
             logger.warning(
@@ -322,12 +344,17 @@ def _running_digest(
     budget_tokens: int,
     consolidator: MemoryConsolidationAgent,
     source: str,
+    *,
+    activity: Callable[[str], None] | None = None,
 ) -> str:
     """The prior-section context for the next section request.
 
     While the full digest fits the budget it is injected unchanged (short
     documents never pay a consolidation call). Once it crosses the budget
     the running context is model-consolidated from here on.
+
+    *activity* is called with a label just before the consolidation call,
+    so the progress bar can name the model call it is waiting for.
     """
     if budget_tokens < _MIN_DIGEST_BUDGET_TOKENS:
         logger.warning(
@@ -347,6 +374,8 @@ def _running_digest(
         estimate_tokens(full),
         budget_tokens,
     )
+    if activity is not None:
+        activity("consolidating context")
     return _consolidate_digest(consolidator, memory, state, budget_tokens, source)
 
 

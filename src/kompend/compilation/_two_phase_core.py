@@ -9,6 +9,7 @@ from __future__ import annotations
 import functools
 import hashlib
 from collections import defaultdict
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -77,6 +78,14 @@ CONTEXT_SAFETY_TOKENS: int = 512
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
+
+#: Progress callback: ``(units done, units total, activity)``.
+#:
+#: The two-phase flows report in the units they actually work in - the
+#: sections of a document, the batches of a source - so a long document
+#: shows movement instead of a frozen bar. *activity* names what the
+#: running call is doing ("" when there is nothing to add).
+ProgressFn = Callable[[int, int, str], None]
 
 
 @dataclass
@@ -332,6 +341,21 @@ def _get_chars_per_token(*, default: float | None = None) -> float:
     env override) > ``_DEFAULT_CHARS_PER_TOKEN`` module constant.
     """
     return default if default is not None else _DEFAULT_CHARS_PER_TOKEN
+
+
+def rate_suffix(tracker: UsageTracker | None) -> str:
+    """`` · 12.3 tok/s (avg 9.8)`` from the shared tracker, or ``""``.
+
+    Uses the tracker's real completion-token event log (short-term window
+    + overall average) — the single source of truth for throughput.
+    """
+    if tracker is None:
+        return ""
+    overall = tracker.overall_rate()
+    recent = tracker.recent_rate()
+    if not overall and not recent:
+        return ""
+    return f" · {recent:.1f} tok/s" if recent else f" · avg {overall:.1f} tok/s"
 
 
 def slugify(text: str, max_length: int | None = None) -> str:

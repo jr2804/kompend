@@ -121,6 +121,17 @@ def test_running_digest_without_room_runs_without_context() -> None:
     assert digest == ""
 
 
+def test_running_digest_names_the_consolidation_call() -> None:
+    memory = _memory(sections=50)
+    consolidator = _StubConsolidator(results=["Concepts: consolidated"])
+    activity: list[str] = []
+
+    digest = _running_digest(memory, _RollingConsolidation(), budget_tokens=250, consolidator=consolidator, source="doc", activity=activity.append)
+
+    assert digest == "Concepts: consolidated"
+    assert activity == ["consolidating context"]
+
+
 def test_consolidate_digest_retries_once_with_a_tighter_target() -> None:
     memory = _memory(sections=3)
     state = _RollingConsolidation()

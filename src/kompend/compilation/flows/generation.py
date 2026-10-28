@@ -24,6 +24,7 @@ from kompend.compilation._two_phase_core import (
     compute_quality_score,
     context_safety_tokens,
     extract_images_from_chunks,
+    rate_suffix,
     segment_sources,
     slugify,
     tokens_to_chars,
@@ -57,7 +58,6 @@ from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.lint.base import LintRuleOutcome
 from kompend.lint.structural import BrokenWikilinksRule
 from kompend.llm.decision import ErrorAction
-from kompend.llm.usage import UsageTracker
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 from kompend.rag.zvec_store import make_provider
 
@@ -539,7 +539,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                 compiler._report(
                     pages_done,
                     gen_progress_total,
-                    f"generating [{pages_done}/{gen_progress_total}] {seg_label} (recovered){_rate_suffix(compiler._usage_tracker)}",
+                    f"generating [{pages_done}/{gen_progress_total}] {seg_label} (recovered){rate_suffix(compiler._usage_tracker)}",
                 )
                 continue
             logger.info(
@@ -695,11 +695,11 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
             # ``[N/338]`` when the model under-produces for a segment.
             seg_progress = min(len(seg_titles), start_remaining)
             running = min(pages_done + seg_progress, gen_progress_total)
-            rate_s = _rate_suffix(compiler._usage_tracker)
+            rate_s = rate_suffix(compiler._usage_tracker)
             compiler._report(
                 running,
                 gen_progress_total,
-                f"generating [{running}/{gen_progress_total}] {seg_label}{rate_s}",
+                f"generating [{running}/{gen_progress_total}] {seg_label} ({seg_progress}/{start_remaining} concepts covered){rate_s}",
             )
 
         # Credit the segment with the pages actually produced, not the
@@ -871,21 +871,6 @@ def _agentic_reserved_tokens(
 
 def _token_estimate(text: str, chars_per_token: float) -> int:
     return max(1, int(round(len(text) / chars_per_token)))
-
-
-def _rate_suffix(tracker: UsageTracker | None) -> str:
-    """`` · 12.3 tok/s (avg 9.8)`` from the shared tracker, or ``""``.
-
-    Uses the tracker's real completion-token event log (short-term window
-    + overall average) — the single source of truth for throughput.
-    """
-    if tracker is None:
-        return ""
-    overall = tracker.overall_rate()
-    recent = tracker.recent_rate()
-    if not overall and not recent:
-        return ""
-    return f" · {recent:.1f} tok/s" if recent else f" · avg {overall:.1f} tok/s"
 
 
 def _resolve_page_kind(

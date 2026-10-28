@@ -268,6 +268,83 @@ class TestExtractIncrementalHistoryCompaction:
         synth_mock.assert_called_once_with(results[0])
         compact_mock.assert_called_once()
 
+    def test_progress_is_reported_for_every_batch(self) -> None:
+        """A long document must move the bar inside, not jump at the end."""
+        compiler = _make_compiler()
+        reports: list[tuple[int, int, str]] = []
+
+        with patch.object(ext_module, "extract_one", return_value=Extraction(source="doc.md")):
+            results, stopped = ext_module.extract_incremental(
+                compiler,
+                source="doc.md",
+                batches_list=["batch 1", "batch 2", "batch 3"],
+                extraction_system="sys",
+                progress=lambda done, total, activity: reports.append((done, total, activity)),
+            )
+
+        assert stopped is False
+        assert len(results) == 3
+        assert [(done, total) for done, total, _ in reports] == [(1, 3), (2, 3), (3, 3)]
+
+
+class TestExtractionProgressDetail:
+    """The extraction line names the document and how far inside it we are."""
+
+    def test_names_the_document_and_the_unit_count(self) -> None:
+        detail = ext_module.extraction_detail(3, 100, "PolqaOemLibManualV3.18.pdf", 12, 234, "sections")
+        assert detail == "extracting [3/100] PolqaOemLibManualV3.18.pdf (12/234 sections)"
+
+    def test_names_the_running_call(self) -> None:
+        detail = ext_module.extraction_detail(3, 100, "doc.pdf", 12, 234, "sections", "consolidating context")
+        assert detail == "extracting [3/100] doc.pdf (12/234 sections), consolidating context"
+
+    def test_the_bar_pays_the_document_share_out_in_units(self) -> None:
+        """The bar counts characters: a document's share is paid out as its
+        units complete, so the bar moves inside a long document.
+        """
+        compiler = _make_compiler()
+        reports: list[tuple[int, int, str]] = []
+        compiler.on_progress = lambda current, total, description: reports.append((current, total, description))
+
+        progress = ext_module._source_progress(
+            compiler,
+            source_idx=1,
+            num_sources=2,
+            source_name="doc.pdf",
+            chars_before=100,
+            source_chars=200,
+            total_chars_all=600,
+            weights=[100, 100],
+            unit="sections",
+        )
+
+        progress(1, 2, "")
+        # Half of the document's share is paid out.
+        assert reports[-1][0] == 200
+        progress(2, 2, "")
+        # The document's whole share is paid out.
+        assert reports[-1][0] == 300
+
+    def test_a_source_without_units_is_paid_out_at_once(self) -> None:
+        compiler = _make_compiler()
+        reports: list[tuple[int, int, str]] = []
+        compiler.on_progress = lambda current, total, description: reports.append((current, total, description))
+
+        progress = ext_module._source_progress(
+            compiler,
+            source_idx=1,
+            num_sources=1,
+            source_name="empty.pdf",
+            chars_before=0,
+            source_chars=100,
+            total_chars_all=100,
+            weights=[],
+            unit="sections",
+        )
+
+        progress(0, 0, "")
+        assert reports[-1][0] == 100
+
 
 # ── extraction batch sizing ────────────────────────────────────────────
 

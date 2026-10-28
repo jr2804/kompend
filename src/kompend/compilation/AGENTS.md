@@ -62,6 +62,15 @@ merging and an optional iterative WiCER refinement loop.
   content without any body text is dropped. `wicer_max_iterations = 0` means
   "until the loop converges"; `wicer_max_seconds` is a wall-clock stop that
   keeps the compiled wiki.
+- **The progress bar reports the units the flow works in** — the sections of
+  a document (agentic extraction), its batches (the other strategies), the
+  concepts of a generation segment. `ProgressFn` (`_two_phase_core.py`) is
+  `(units done, units total, activity)`; the flows pass it down so a long
+  document moves the bar instead of freezing it. The bar counts characters,
+  so a document's share is paid out as its units complete
+  (`_source_progress` in `flows/extraction.py`); the *activity* names the
+  running call (e.g. `consolidating context`). `rate_suffix` is the single
+  source of truth for the throughput suffix.
 
 ### Page kinds (category taxonomy)
 
