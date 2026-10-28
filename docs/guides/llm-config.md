@@ -264,6 +264,47 @@ Cap an over-large window (e.g. to bound memory) with `context_window`:
 context_window = 65536    # hard ceiling on effective window
 ```
 
+## Extraction strategies
+
+`compile.llm.extraction_strategy` only affects **multi-chunk sources** — a
+source that fits in one chunk is extracted the same way under all three.
+
+| Strategy       | Mechanics                                                                                                                                                                                                                            | Cache                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------ |
+| `incremental` _(default)_ | One agent conversation per source: batches are fed sequentially via `message_history`, so each batch sees what earlier batches contributed. History is compacted when it exceeds 2× the answer reserve (oldest batches first), so the window never overflows. | Per batch                |
+| `reduce`       | Map-reduce: every batch is extracted independently, then one LLM pass merges the partial results into a document-level extraction. Every request is bounded by construction.                                                           | Per batch (+1 merge call) |
+| `agentic`      | One agent walks the source's sections in order, accumulating a structured memory digest (concepts, entities, tags, recent section summaries). The digest is injected as a compact system-prompt part and model-consolidated when it outgrows its budget — never cropped. | Per source               |
+
+### Choosing a strategy
+
+- **`incremental` is the right default** for mixed corpora and typical PDFs and
+  web pages: cross-batch continuity, per-batch resume, and no model skills
+  beyond ordinary structured output.
+- **`reduce` for small windows and small models** (roughly ≤ 16–32 K, or any
+  model whose tool-calling is shaky). Every request fits by construction; the
+  price is one extra merge call per source and no cross-batch context during
+  extraction.
+- **`agentic` for long, coherent, high-value sources** — manuals, standards,
+  books — with a comfortable window (rule of thumb **≥ 48–64 K**) and a model
+  that keeps multi-turn tool loops on track. It is the most demanding strategy:
+  a rerun re-extracts the whole source (source-level cache only), and the
+  digest must fit beside each section. When it cannot, the run aborts with
+  `increase compile.llm.context_window or lower compile.budget.chunk_size_max`
+  instead of silently cropping — nothing is ever dropped from the digest.
+- **Dense, table-heavy references are the agentic edge case.** An API manual
+  that chunks into 100+ sections can drive the consolidated digest past
+  ~20 K tokens; at a 32 K window that burns. Use `incremental` or `reduce`
+  there, or raise the window (a 64 K window fits the same document with room
+  to spare).
+
+### Local models: match the window to the server, not the metadata
+
+kompend sizes every request from the _discovered_ window, but an Ollama server
+serves whatever context it was launched with (`OLLAMA_CONTEXT_LENGTH`). When
+the two disagree, oversized sections fail per request with
+`request exceeds the available context size`. Point `compile.llm.context_window`
+at the server's real value — and restart Ollama after raising it.
+
 ## Retry and structured output
 
 PydanticAI validates structured output against the result type's schema.

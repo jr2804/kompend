@@ -531,6 +531,20 @@ reasoning_effort = "none"  # minimal, low, medium, high, xhigh, default
 #   digest rather than raw message history, so it stays bounded
 #   regardless of document length. Best coherence for long/high-value
 #   sources; source-level cache only (no per-batch cache).
+#
+# Choosing (full guide: docs/guides/llm-config.md#extraction-strategies):
+#   incremental — the default for mixed corpora: window >= 16-32k, per-batch
+#                 resume, no model skills beyond structured output.
+#   reduce      — small windows (<= 16-32k) or small/weak models: every
+#                 request is bounded by construction; one extra merge call
+#                 per source.
+#   agentic     — long coherent sources (manuals, standards, books) with a
+#                 window >= ~48-64k and a model that keeps multi-turn tool
+#                 loops on track. Dense table-heavy references at <= 32k can
+#                 push the consolidated digest past the budget - the run then
+#                 aborts asking for a larger context_window or a smaller
+#                 chunk_size_max (nothing is cropped). Source-level cache
+#                 only: a rerun re-extracts the whole source.
 extraction_strategy = "incremental"  # reduce, agentic
 
 # Context-window management for multi-turn / multi-batch agents

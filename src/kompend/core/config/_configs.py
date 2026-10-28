@@ -457,6 +457,14 @@ class LLMConfig(_KompendBaseModel):
     #: ``None`` disables. Only the group form is accepted — no scalar
     #: shorthand.
     rlm: RlmConfig | None = None
+    #: How a multi-chunk source is extracted (see the "Extraction strategies"
+    #: section in docs/guides/llm-config.md). ``incremental`` (default) keeps
+    #: one conversation per source with per-batch caching; ``reduce`` extracts
+    #: batches independently and merges once - the bounded choice for small
+    #: windows and small models; ``agentic`` walks sections with a
+    #: consolidated memory digest - best coherence for long sources, but it
+    #: needs a comfortable window (rule of thumb >= ~48-64k) or it aborts
+    #: rather than crop the digest.
     extraction_strategy: ExtractionStrategy = Field(
         default=ExtractionStrategy.INCREMENTAL,
         validation_alias=EnvVar.LLM_EXTRACTION_STRATEGY,
