@@ -16,6 +16,7 @@ They are cheap (no model calls) and cover the surfaces that broke before:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -24,6 +25,22 @@ import pytest
 
 #: A spawned CLI must never print a traceback at the user.
 TRACEBACK = "Traceback (most recent call last)"
+
+
+@pytest.fixture(autouse=True)
+def _isolated_environment(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Run the CLI without the machine's kompend environment.
+
+    The smoke layer promises "no model calls". A global config
+    (``~/.config/kompend/config.toml``) or a ``KOMP_*`` variable in the
+    developer's shell would otherwise hand the CLI a model, and ``doctor``
+    would ping it — slow on a loaded box, and a different outcome on every
+    machine. The spawned CLI must see the vault and nothing else.
+    """
+    for name in list(os.environ):
+        if name.startswith(("KOMP_", "KNOX_")):
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg")))
 
 
 class TestCliSurface:
@@ -67,7 +84,9 @@ class TestScaffoldedVault:
         assert TRACEBACK not in _output(result)
 
     def test_compile_without_sources_is_a_clean_error(self, vault: Path) -> None:
-        result = _run("-w", str(vault), "compile")
+        # A model is named but never called: the empty vault is detected
+        # before the pipeline reaches the model.
+        result = _run("-w", str(vault), "compile", "--set", "compile.llm.default_model=ollama/smoke-model")
 
         assert result.returncode == 1
         assert TRACEBACK not in _output(result)
