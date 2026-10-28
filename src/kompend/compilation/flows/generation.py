@@ -365,34 +365,6 @@ def run_generation_resumable(
     )
 
 
-def generation_detail(
-    pages_done: int,
-    pages_total: int,
-    segment_done: int | None = None,
-    segment_total: int | None = None,
-    note: str = "",
-    rate: str = "",
-) -> str:
-    """The generation status line for the progress bar.
-
-    Two counters, no labels: the pages done over all, and — while a
-    segment runs — the pages of that segment::
-
-        generating [57/338] (4/12) · 12.3 tok/s
-
-    A counter without its denominator ("segment 2") and a second unit
-    ("4/12 concepts covered") next to a page counter are noise; the
-    numbers speak for themselves. A *note* names a state, not a count
-    ("recovered"), and stands on its own.
-    """
-    detail = f"generating [{pages_done}/{pages_total}]"
-    if segment_done is not None and segment_total is not None:
-        detail += f" ({segment_done}/{segment_total})"
-    if note:
-        detail += f" {note}"
-    return f"{detail}{rate}"
-
-
 def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; long by design
     compiler: TwoPhaseRuntime,
     concepts: list[dict[str, Any]],
@@ -791,6 +763,34 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx, caller_progress
+
+
+def generation_detail(
+    pages_done: int,
+    pages_total: int,
+    segment_done: int | None = None,
+    segment_total: int | None = None,
+    note: str = "",
+    rate: str = "",
+) -> str:
+    """The generation status line for the progress bar.
+
+    Two counters, no labels: the pages done over all, and — while a
+    segment runs — the pages of that segment::
+
+        generating [57/338] (4/12) · 12.3 tok/s
+
+    A counter without its denominator ("segment 2") and a second unit
+    ("4/12 concepts covered") next to a page counter are noise; the
+    numbers speak for themselves. A *note* names a state, not a count
+    ("recovered"), and stands on its own.
+    """
+    detail = f"generating [{pages_done}/{pages_total}]"
+    if segment_done is not None and segment_total is not None:
+        detail += f" ({segment_done}/{segment_total})"
+    if note:
+        detail += f" {note}"
+    return f"{detail}{rate}"
 
 
 def _format_uncovered_concepts(
