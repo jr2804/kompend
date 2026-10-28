@@ -161,10 +161,6 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     dedup_orch: DedupOrchestrator | None = DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
     dedup_fps: dict[str, dict[str, Any]] = {}
 
-    # Identity of the parser chain that will produce these entries. Switching
-    # ``[ingest] parser`` changes it, which makes stale entries a cache miss.
-    parser_fingerprint = router.fingerprint()
-
     for idx, source_file in enumerate(files):
         _check_cancel()
         if progress_fn is not None:
@@ -176,7 +172,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         doc_key = document_cache_key(source_file, content_hash)
         prior_data = read_document(db_path, doc_key)
 
-        if not no_cache and prior_data is not None and parse_cache_is_current(prior_data, parser_fingerprint):
+        if not no_cache and prior_data is not None:
             logger.info("Skipping %s — already cached", source_file.name)
             cached += 1
             count += 1
@@ -229,7 +225,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
 
         data = asdict(doc)
         data[MetadataField.SOURCE_FILE] = str(_relative(Path(data[MetadataField.SOURCE_FILE])))
-        data[PARSE_CACHE_PARSER_KEY] = parser_fingerprint
+        data[PARSE_CACHE_PARSER_KEY] = ""
         write_document(db_path, doc_key, data)
         count += 1
         state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)

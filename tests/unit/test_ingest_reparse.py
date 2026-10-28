@@ -1,16 +1,10 @@
-"""Regression: forced re-ingest must preserve user metadata, and a parser
-switch must invalidate both the parse cache and the chunk cache.
+"""Regression: forced re-ingest must preserve user metadata.
 
-Covers the ``kompend ingest --no-cache`` / parser-change path:
+Covers the ``kompend ingest --no-cache`` path:
 
-- :meth:`ParserRouter.fingerprint` — stable identity of the parser chain.
-- :func:`parse_cache_is_current` / :func:`cached_entry_is_current` — a stale
-  parser fingerprint is a cache miss.
 - :func:`preserve_cached_metadata` — tags unioned, attributes merged.
-- :func:`ingest_documents` — re-parses on parser change while keeping tags
-  and attributes; same parser stays a cache hit.
-- :func:`_chunk_cache_deps` — the chunk-cache key carries the parser
-  fingerprint so a re-parse re-chunks on the next compile.
+- :func:`ingest_documents` — same content stays a cache hit; ``--no-cache`` forces re-parse
+  while keeping tags and attributes.
 
 Attachments are intentionally untouched: they live in
 ``.kompend/attachments.jsonl`` + ``attachments/<slug>/`` and ``ingest`` never
@@ -30,7 +24,6 @@ from kompend.core.models import ChunkTree, DocumentElement, ElementType, Metadat
 from kompend.core.pipeline.ingest import (
     PARSE_CACHE_PARSER_KEY,
     ingest_documents,
-    parse_cache_is_current,
     preserve_cached_metadata,
 )
 from kompend.core.pipeline.parse_cache import cache_key, iter_documents, write_document
@@ -141,16 +134,6 @@ def test_fingerprint_changes_with_the_registered_parser() -> None:
 # ── Cache-currency checks ──────────────────────────────────────────────
 
 
-def test_parse_cache_is_current_matches_fingerprint() -> None:
-    assert parse_cache_is_current({PARSE_CACHE_PARSER_KEY: "abc"}, "abc")
-    assert not parse_cache_is_current({PARSE_CACHE_PARSER_KEY: "abc"}, "xyz")
-
-
-def test_parse_cache_is_current_rejects_legacy_entries() -> None:
-    """Entries written before the key existed must be re-parsed once."""
-    assert not parse_cache_is_current({"metadata": {}}, "abc")
-
-
 # ── Metadata preservation ──────────────────────────────────────────────
 
 
@@ -187,7 +170,7 @@ def test_preserve_metadata_ignores_missing_prior_entry() -> None:
     assert doc.metadata is None or MetadataField.TAGS not in doc.metadata
 
 
-def test_same_parser_stays_a_cache_hit(tmp_path: Path) -> None:
+def test_same_content_stays_a_cache_hit(tmp_path: Path) -> None:
     base = _seed_vault(tmp_path)
     src = base / "sources" / "note.md"
 
@@ -199,29 +182,6 @@ def test_same_parser_stays_a_cache_hit(tmp_path: Path) -> None:
     result = ingest_documents(files=[src], base_dir=base, router=second, config=None)
     assert second.parsed == []
     assert result.cached == 1
-
-
-def test_parser_change_forces_reparse_and_preserves_metadata(tmp_path: Path) -> None:
-    base = _seed_vault(tmp_path)
-    src = base / "sources" / "note.md"
-
-    ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), config=None)
-
-    # Simulate ``kompend sources tag`` / ``attr`` writing into the cache entry.
-    key, entry = _cache_entry_with_key(base)
-    entry["metadata"][MetadataField.TAGS] = ["audio"]
-    entry["metadata"][MetadataField.ATTRIBUTES] = {"version": "2"}
-    _write_entry(base, key, entry)
-
-    switched = _IngestRouter("chain-B")
-    result = ingest_documents(files=[src], base_dir=base, router=switched, config=None)
-
-    assert len(switched.parsed) == 1, "parser change must re-parse"
-    assert result.cached == 0
-    fresh = _cache_entry(base)
-    assert fresh[PARSE_CACHE_PARSER_KEY] == "chain-B"
-    assert fresh["metadata"][MetadataField.TAGS] == ["audio"]
-    assert fresh["metadata"][MetadataField.ATTRIBUTES] == {"version": "2"}
 
 
 def test_forced_reingest_preserves_and_merges_cli_metadata(tmp_path: Path) -> None:
@@ -285,12 +245,11 @@ def test_chunk_cache_deps_gate_off_matches_default() -> None:
     """Default (gate off) chunk-cache identity is byte-identical to today."""
     deps = _chunk_cache_deps(_runtime_for_chunk_deps(contextual=False, enricher=None), "abc")
     assert deps["contextual"] == "0"
+    assert "parser" not in deps
 
 
 def test_chunk_cache_deps_gate_on_invalidates() -> None:
-    """Enabling the contextual gate changes the chunk-cache key, so a tree
-    written without enrichment is a miss rather than silently un-enriched.
-    """
+    """Enabling the contextual gate changes the chunk-cache key."""
     off = _chunk_cache_deps(_runtime_for_chunk_deps(contextual=False, enricher=None), "abc")
     on = _chunk_cache_deps(_runtime_for_chunk_deps(contextual=True, enricher=object()), "abc")
     assert off != on

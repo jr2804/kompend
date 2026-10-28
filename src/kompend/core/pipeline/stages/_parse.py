@@ -27,7 +27,6 @@ from kompend.core.pipeline.attachments import (
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.pipeline.ingest import (
     PARSE_CACHE_PARSER_KEY,
-    parse_cache_is_current,
     parse_target_path,
     preserve_cached_metadata,
     relativize_image_paths,
@@ -323,14 +322,11 @@ def _try_load_chunk_cache(pipeline: PipelineRuntime, source_file: Path, content_
 def _chunk_cache_deps(pipeline: PipelineRuntime, content_hash: str) -> dict[str, str]:
     """Cache identity for a chunked tree.
 
-    ``source`` + chunker size identify the chunking; ``parser`` carries the
-    parser-chain fingerprint so a parser switch re-chunks instead of reusing
-    a tree built from the previous backend's output.
+    ``source`` + chunker size identify the chunking.
     """
     return {
         "source": content_hash,
         "chunk_effective_max": str(getattr(pipeline.chunker, "_effective_max", 0)),
-        "parser": pipeline.router.fingerprint() if pipeline.router is not None else "",
         "contextual": "1" if (pipeline.config.search.contextual.enabled and pipeline.enricher is not None) else "0",
     }
 
@@ -341,10 +337,6 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
     key = cache_key(source_file)
     data = read_document(db_path, key)
     if data is None:
-        return None
-    if pipeline.router is not None and not parse_cache_is_current(data, pipeline.router.fingerprint()):
-        # Entry produced by a different parser chain — re-parse so a parser
-        # switch takes effect instead of silently serving stale output.
         return None
     try:
         elements = [
@@ -382,12 +374,11 @@ def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocumen
     db_path = vault_db_path(Path(pipeline.base_directory))
     key = cache_key(source_file)
     try:
-        # Preserve user-set tags/attributes across the overwrite (a --no-cache
-        # compile, or an automatic re-parse after a parser change).
+        # Preserve user-set tags/attributes across the overwrite.
         preserve_cached_metadata(doc, read_document(db_path, key))
         data = {
             str(MetadataField.SOURCE_FILE): pipeline.rel_file(doc.source_file),
-            PARSE_CACHE_PARSER_KEY: pipeline.router.fingerprint() if pipeline.router is not None else "",
+            PARSE_CACHE_PARSER_KEY: "",
             "title": doc.title,
             "author": doc.author,
             "language": doc.language,
