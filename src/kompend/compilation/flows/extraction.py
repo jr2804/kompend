@@ -92,35 +92,54 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
     logger.info("TwoPhase: extracting %d source(s)", num_sources)
 
     extract_char_budget = _extract_char_budget(compiler)
+    strategy = compiler._config.llm.extraction_strategy
+    agentic = strategy == ExtractionStrategy.AGENTIC
 
-    # Pre-compute total chars for weighted progress bar (larger files = more progress)
-    source_char_totals: list[int] = []
-    for _source, source_chunks in by_source.items():
-        source_char_totals.append(sum(len(rc.chunk.text or "") for rc in source_chunks))
-    total_chars_all = sum(source_char_totals) or len(by_source)
+    # The agentic path walks the document section by section; the batch paths
+    # walk it batch by batch. The bar reports the same units the flow works in,
+    # so a 200-section document shows movement.
+    unit = "sections" if agentic else "batches"
+
+    def _source_units(source: str, source_chunks: list[ResolvedChunk]) -> tuple[list[str], list[str]]:
+        """The text blocks of one source and the batches they pack into."""
+        tree = tree_by_source.get(source)
+        id_map = asset_id_maps.get(source) if asset_id_maps else None
+        texts = build_tree_texts(tree, asset_mode="ref", asset_id_map=id_map) if tree is not None else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
+        return texts, batch_texts(texts, extract_char_budget)
+
+    # Pre-compute what each source weighs in the bar from the units the flow
+    # sends, so the document's share and its sections' shares come from one
+    # measurement (larger sections = more progress). The chunk tier built every
+    # tree before this loop, so every count is known before the first call. The
+    # texts are rebuilt per source below - holding them all would keep the
+    # whole corpus in memory.
+    source_unit_totals: list[int] = []
+    source_unit_chars: list[int] = []
+    for source, source_chunks in by_source.items():
+        texts, batches = _source_units(source, source_chunks)
+        units = texts if agentic else batches
+        source_unit_totals.append(len(units))
+        source_unit_chars.append(sum(len(u) for u in units))
+    total_units_all = sum(source_unit_totals) or len(by_source)
+    total_chars_all = sum(source_unit_chars) or len(by_source)
+
     cumulative_chars = 0
+    cumulative_units = 0
 
     for source_idx, (source, source_chunks) in enumerate(by_source.items(), start=1):
         logger.info("TwoPhase: extract [%d/%d] %s", source_idx, num_sources, source)
         src_start = time.monotonic()
 
-        total_chars = source_char_totals[source_idx - 1]
+        total_chars = source_unit_chars[source_idx - 1]
         chars_before = cumulative_chars
         cumulative_chars += total_chars
         source_name = Path(source).name
 
-        tree = tree_by_source.get(source)
         id_map = asset_id_maps.get(source) if asset_id_maps else None
-        texts = build_tree_texts(tree, asset_mode="ref", asset_id_map=id_map) if tree is not None else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
-        batches_list = batch_texts(texts, extract_char_budget)
-        strategy = compiler._config.llm.extraction_strategy
-        agentic = strategy == ExtractionStrategy.AGENTIC
-
-        # The agentic path walks the document section by section; the batch
-        # paths walk it batch by batch. The bar counts the same units the
-        # flow works in, so a 200-section document shows movement.
-        unit = "sections" if agentic else "batches"
+        texts, batches_list = _source_units(source, source_chunks)
         units = texts if agentic else batches_list
+        units_before = cumulative_units
+        cumulative_units += len(units)
         progress = _source_progress(
             compiler,
             source_idx=source_idx,
@@ -131,6 +150,8 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
             total_chars_all=total_chars_all,
             weights=[len(u) for u in units],
             unit=unit,
+            units_before=units_before,
+            units_total_all=total_units_all,
         )
         progress(0, len(units), "")
 
@@ -238,20 +259,34 @@ def _source_progress(
     total_chars_all: int,
     weights: list[int],
     unit: str,
+    units_before: int,
+    units_total_all: int,
 ) -> ProgressFn:
     """A progress callback for the units of one source.
 
     The bar counts characters, so a document's share is paid out as its
     units complete: the bar moves *inside* a long document instead of
     jumping when the document starts. A source without units (nothing to
-    extract) is paid out in full at once.
+    extract) is paid out in full at once. The line carries the corpus-wide
+    unit counter as well, so the position in the whole run is readable in
+    the unit the flow works in.
     """
     weight_total = sum(weights)
 
     def report(units_done: int, units_total: int, activity: str) -> None:
         done = max(0, min(units_done, len(weights)))
         chars = chars_before + int(source_chars * (sum(weights[:done]) / weight_total)) if weight_total else chars_before + source_chars
-        detail = extraction_detail(source_idx, num_sources, source_name, done, units_total, unit, activity)
+        detail = extraction_detail(
+            source_idx,
+            num_sources,
+            source_name,
+            done,
+            units_total,
+            unit,
+            activity,
+            units_before=units_before,
+            units_total_all=units_total_all,
+        )
         compiler._report(chars, total_chars_all, detail + rate_suffix(compiler._usage_tracker))
 
     return report
@@ -265,15 +300,22 @@ def extraction_detail(
     units_total: int,
     unit: str,
     activity: str = "",
+    *,
+    units_before: int = 0,
+    units_total_all: int = 0,
 ) -> str:
     """The extraction status line for the progress bar.
 
     Names the document, how many of its units are done, and — while a
-    single slow call runs — what that call is doing::
+    single slow call runs — what that call is doing. The corpus-wide
+    counter rides in the same parenthesis, in the unit just named::
 
-        extracting [3/100] PolqaOemLibManualV3.18.pdf (12/234 sections), consolidating context
+        extracting [3/100] PolqaOemLibManualV3.18.pdf (12/234 · 2450/9800 sections), consolidating context
     """
-    detail = f"extracting [{source_idx}/{num_sources}] {source_name} ({units_done}/{units_total} {unit})"
+    counter = f"{units_done}/{units_total}"
+    if units_total_all:
+        counter += f" · {units_before + units_done}/{units_total_all}"
+    detail = f"extracting [{source_idx}/{num_sources}] {source_name} ({counter} {unit})"
     if activity:
         detail += f", {activity}"
     return detail

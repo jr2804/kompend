@@ -224,9 +224,16 @@ segment - so a long document shows movement instead of a frozen bar. Every
 line carries counters only; the numbers carry the meaning:
 
 ```text
-extracting [3/100] PolqaOemLibManualV3.18.pdf (12/234 sections), consolidating context
+extracting [3/100] PolqaOemLibManualV3.18.pdf (12/234 · 2450/9800 sections), consolidating context
 generating [57/338] (4/12) · 12.3 tok/s
 ```
+
+The second pair is the run-wide counter: every document's units are counted
+before the first call (the chunk tier already built the trees), so the
+position in the whole run is readable in the same unit as the document's.
+The bar's percentage and ETA stay character-weighted - time follows tokens,
+and a 40 K-token section costs an order of magnitude more than a 2 K one -
+so a document's share is paid out as its units complete.
 
 When dedup is enabled, `kompend ingest` runs two progress phases — a parse pass
 followed by a separate embedding pass — so GPU-bound parsers and the embedding

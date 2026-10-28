@@ -68,9 +68,13 @@ merging and an optional iterative WiCER refinement loop.
   `(units done, units total, activity)`; the flows pass it down so a long
   document moves the bar instead of freezing it. The bar counts characters,
   so a document's share is paid out as its units complete
-  (`_source_progress` in `flows/extraction.py`); the *activity* names the
-  running call (e.g. `consolidating context`). `rate_suffix` is the single
-  source of truth for the throughput suffix.
+  (`_source_progress` in `flows/extraction.py`). Extraction also counts the
+  units of every source up front — the chunk tier built every tree before the
+  loop — so the line carries the run-wide counter next to the document's
+  (`(12/234 · 2450/9800 sections)`); the position in the whole run stays
+  readable in the unit the flow works in. The *activity* names the running
+  call (e.g. `consolidating context`). `rate_suffix` is the single source of
+  truth for the throughput suffix.
 - **A bar line carries counters, not labels** — `extraction_detail`
   (`flows/extraction.py`) and `generation_detail` (`flows/generation.py`)
   build them. A counter without its denominator ("segment 2" — out of how

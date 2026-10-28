@@ -298,6 +298,20 @@ class TestExtractionProgressDetail:
         detail = ext_module.extraction_detail(3, 100, "doc.pdf", 12, 234, "sections", "consolidating context")
         assert detail == "extracting [3/100] doc.pdf (12/234 sections), consolidating context"
 
+    def test_names_the_run_wide_counter_in_the_same_unit(self) -> None:
+        """The document counter alone says nothing about the run."""
+        detail = ext_module.extraction_detail(
+            3,
+            100,
+            "doc.pdf",
+            12,
+            234,
+            "sections",
+            units_before=2438,
+            units_total_all=9800,
+        )
+        assert detail == "extracting [3/100] doc.pdf (12/234 · 2450/9800 sections)"
+
     def test_the_bar_pays_the_document_share_out_in_units(self) -> None:
         """The bar counts characters: a document's share is paid out as its
         units complete, so the bar moves inside a long document.
@@ -316,14 +330,18 @@ class TestExtractionProgressDetail:
             total_chars_all=600,
             weights=[100, 100],
             unit="sections",
+            units_before=2,
+            units_total_all=6,
         )
 
         progress(1, 2, "")
         # Half of the document's share is paid out.
         assert reports[-1][0] == 200
+        assert reports[-1][2].startswith("extracting [1/2] doc.pdf (1/2 · 3/6 sections)")
         progress(2, 2, "")
         # The document's whole share is paid out.
         assert reports[-1][0] == 300
+        assert reports[-1][2].startswith("extracting [1/2] doc.pdf (2/2 · 4/6 sections)")
 
     def test_a_source_without_units_is_paid_out_at_once(self) -> None:
         compiler = _make_compiler()
@@ -340,10 +358,13 @@ class TestExtractionProgressDetail:
             total_chars_all=100,
             weights=[],
             unit="sections",
+            units_before=0,
+            units_total_all=1,
         )
 
         progress(0, 0, "")
         assert reports[-1][0] == 100
+        assert reports[-1][2].startswith("extracting [1/1] empty.pdf (0/0 · 0/1 sections)")
 
 
 class TestGenerationProgressDetail:
