@@ -34,6 +34,7 @@ from kompend.compilation.two_phase import TwoPhaseCompiler
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from kompend.core.models.enums import NodeType
+from kompend.core.models.metadata import meta_dict, meta_str, meta_str_list
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.llm.context_window import ContextSource, ContextWindow
 from tests.conftest import make_tmp_vault
@@ -124,9 +125,9 @@ class TestGraphCompiler:
             metadata={"provenance": [{"chunk": "c2"}, {"chunk": "c1", "quote": "x"}]},
         )
         merged = _merge_node(a, b)  # must not raise
-        # dedup: c1 in both -> 2 unique
-        assert len(merged.metadata["provenance"]) == 2
-        assert len(merged.metadata["related"]) == 1
+        # dedup: c1 in both -> 2 unique (merge stringifies dict entries)
+        assert len(meta_str_list(merged.metadata.get("provenance"))) == 2
+        assert len(meta_str_list(merged.metadata.get("related"))) == 1
 
     def test_entities_create_cross_section_edges(self) -> None:
         chunks = _make_diverse_chunks()
@@ -213,7 +214,7 @@ class TestGraphCompiler:
         rc = ResolvedChunk(chunk=c)
         wiki = GraphCompiler("model").compile([rc])
         assert wiki.nodes[0].node_type == NodeType.OVERVIEW
-        assert wiki.nodes[0].metadata["frontmatter"]["kind"] == "overview"
+        assert meta_str(meta_dict(wiki.nodes[0].metadata.get("frontmatter")).get("kind")) == "overview"
 
     def test_comparison_kind_inferred(self) -> None:
         c = _chunk(text="Comparison text.", heading="Comparison of Methods", chunk_id="c1")

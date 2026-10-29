@@ -26,6 +26,7 @@ from kompend.rag.zvec_store import (
     _content_hash,
     _embed_text,
 )
+from kompend.types import MetadataValue
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
@@ -289,5 +290,5 @@ def _wiki(*nodes: WikiNode) -> CompiledWiki:
 
 
 def _node(node_id: str, content: str = "body", *, source_asset: bool = False) -> WikiNode:
-    metadata: dict[str, object] = {"source_asset": True} if source_asset else {}
+    metadata: dict[str, MetadataValue] = {"source_asset": True} if source_asset else {}
     return WikiNode(id=node_id, title="T", content=content, node_type=NodeType.PAGE, metadata=metadata)

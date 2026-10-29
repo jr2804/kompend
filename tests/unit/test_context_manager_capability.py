@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import cast
 
 import pytest
+from pydantic_ai.tools import RunContext
 from pydantic_ai_harness.compaction import SlidingWindowCompaction, SummarizingCompaction
 
 from kompend.agents.base import _CONTEXT_PRESETS, _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES
 from kompend.agents.context_manager import build_summarizing_compaction
+from kompend.core.config import ContextManagerPreset
 
 
 class TestBuildSummarizingCompaction:
@@ -31,8 +34,8 @@ class TestBuildSummarizingCompaction:
         assert type(capability).__mro__[1] is SummarizingCompaction
 
     def test_presets_are_ordered_by_aggressiveness(self) -> None:
-        default_threshold, _ = _CONTEXT_PRESETS["default"]
-        aggressive_threshold, aggressive_keep = _CONTEXT_PRESETS["aggressive"]
+        default_threshold, _ = _CONTEXT_PRESETS[ContextManagerPreset.DEFAULT]
+        aggressive_threshold, aggressive_keep = _CONTEXT_PRESETS[ContextManagerPreset.AGGRESSIVE]
 
         assert aggressive_threshold < default_threshold
         assert aggressive_keep > 0
@@ -67,7 +70,7 @@ class TestCompactionFailurePropagates:
         monkeypatch.setattr(capability, "_summarize", _broken)
 
         with pytest.raises(RuntimeError, match="exceeded max retries"):
-            await capability._summarize([], ctx=None)  # type: ignore[arg-type]  # noqa: SLF001
+            await capability._summarize([], ctx=cast(RunContext[object], None))  # noqa: SLF001
 
 
 class TestWrittenSummaryCompat:
@@ -91,7 +94,7 @@ class TestWrittenSummaryCompat:
         record = _Record()
         monkeypatch.setattr(SummarizingCompaction, "_summarize", self._returning(record))
 
-        result = await capability._summarize([], ctx=None)  # type: ignore[arg-type]  # noqa: SLF001
+        result = await capability._summarize([], ctx=cast(RunContext[object], None))  # noqa: SLF001
 
         assert result is record
 
@@ -104,7 +107,7 @@ class TestWrittenSummaryCompat:
         )
         monkeypatch.setattr(SummarizingCompaction, "_summarize", self._returning("plain summary"))
 
-        result = await capability._summarize([], ctx=None)  # type: ignore[arg-type]  # noqa: SLF001
+        result = await capability._summarize([], ctx=cast(RunContext[object], None))  # noqa: SLF001
 
         assert result == "plain summary"
 

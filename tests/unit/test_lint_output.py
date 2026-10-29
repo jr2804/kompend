@@ -82,8 +82,11 @@ class TestLintLogArtefact:
         paths = write_lint_log(entry, tmp_path)
 
         payload = read_lint_log(paths.payload)
+        assert isinstance(payload, dict)
         assert payload["timestamp"] == entry["timestamp"]
-        assert payload["report"]["health_score"] == 0.0
+        report = payload["report"]
+        assert isinstance(report, dict)
+        assert report["health_score"] == 0.0
 
     def test_latest_returns_the_newest_report(self, tmp_path: Path) -> None:
         first = self._entry(_report(_fail("a", "one")))
@@ -174,5 +177,5 @@ def _report(*results: LintResult) -> LintReport:
     )
 
 
-def _fail(rule: str, message: str, page: str | None = None) -> LintResult:
+def _fail(rule: str, message: str, page: str = "") -> LintResult:
     return LintResult(rule=rule, outcome=LintRuleOutcome.FAIL, severity=Severity.WARNING, message=message, page_id=page)

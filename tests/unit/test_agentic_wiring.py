@@ -14,10 +14,11 @@ import asyncio
 import math
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Protocol, cast
 
 import pytest
 from pydantic_ai import RunContext, UsageLimits
+from pydantic_ai_harness.memory import MemoryStore
 
 from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent, make_agentic_context_chunk_agent
 from kompend.agents.distill_agentic import make_agentic_distill_agent
@@ -96,6 +97,13 @@ class _ChunkCtx:
     deps: ContextChunkDeps
 
 
+class _MemoryCapability(Protocol):
+    """Test-visible surface of the harness Memory capability (untyped upstream)."""
+
+    store: MemoryStore
+    agent_name: str
+
+
 class TestAgenticSummarizerAgentWiring:
     def test_factory_registers_prompt_declared_tools(self) -> None:
         agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
@@ -165,7 +173,7 @@ class TestAgenticSummarizerAgentWiring:
         assert session_pipeline.summarizer is not None
         session_agent = session_pipeline.summarizer._agent  # noqa: SLF001
         assert isinstance(session_agent, AgenticSummarizerAgent)
-        session_memory = next(cap for cap in session_agent.extra_capabilities if cap.__class__.__name__ == "Memory")
+        session_memory = cast(_MemoryCapability, next(cap for cap in session_agent.extra_capabilities if cap.__class__.__name__ == "Memory"))
         assert not isinstance(session_memory.store, DirectoryMemoryStore)
 
         vault = PipelineConfig(
@@ -179,7 +187,7 @@ class TestAgenticSummarizerAgentWiring:
         assert vault_pipeline.summarizer is not None
         agent = vault_pipeline.summarizer._agent
         assert isinstance(agent, AgenticSummarizerAgent)
-        memory = next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory")
+        memory = cast(_MemoryCapability, next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory"))
         assert isinstance(memory.store, DirectoryMemoryStore)
         assert memory.store.directory == vault.paths.agent_memory_dir
         assert memory.agent_name == "summarizer"

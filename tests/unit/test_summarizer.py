@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
 from pydantic_ai.exceptions import UsageLimitExceeded
 
+from kompend.agents.summarizer import SummarizerAgent
 from kompend.agents.summarizer_agentic import make_agentic_summarizer_agent
 from kompend.agents.types import SummarizerDeps
 from kompend.chunking.summarizer import (
@@ -426,7 +428,7 @@ class TestSummarizerWindowing:
         assert any("TAIL-MARKER" in prompt for prompt in prompts)
         assert tree.nodes["s"].summary != ""
 
-    def test_agentic_payload_carries_every_window(self) -> None:
+    def test_agentic_payload_carries_every_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
         agent = make_agentic_summarizer_agent("test-model")
         seen: list[list[tuple[str, str]]] = []
 
@@ -435,7 +437,7 @@ class TestSummarizerWindowing:
             for entry in deps.nodes:
                 deps.results[entry["id"]] = f"summary {entry['id']}"
 
-        agent.run = _run  # type: ignore[method-assign]
+        monkeypatch.setattr(agent, "run", _run)
         policy = SummarizerSessionPolicy(batch_size=10, stall_retries=1, payload_chars=100_000)
         tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(_long_tree())
 
@@ -445,7 +447,7 @@ class TestSummarizerWindowing:
         assert any("TAIL-MARKER" in content for _, content in entries)
         assert tree.nodes["s"].summary != ""
 
-    def test_agentic_payload_is_bounded_by_the_session_payload_size(self) -> None:
+    def test_agentic_payload_is_bounded_by_the_session_payload_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A payload never exceeds its character budget; the rest is asked later."""
         agent = make_agentic_summarizer_agent("test-model")
         seen: list[list[str]] = []
@@ -457,7 +459,7 @@ class TestSummarizerWindowing:
             for entry in entries:
                 deps.results[entry["id"]] = f"summary {entry['id']}"
 
-        agent.run = _run  # type: ignore[method-assign]
+        monkeypatch.setattr(agent, "run", _run)
         policy = SummarizerSessionPolicy(batch_size=10, stall_retries=1, payload_chars=120)
         tree = NodeSummarizer(agent=agent, content_policy=_policy(window_chars=50), session_policy=policy).summarize(_long_tree())
 
@@ -466,7 +468,7 @@ class TestSummarizerWindowing:
         assert len(seen) > 1
         assert tree.nodes["s"].summary != ""
 
-    def test_agentic_window_size_comes_from_the_config(self) -> None:
+    def test_agentic_window_size_comes_from_the_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         agent = make_agentic_summarizer_agent("test-model")
         seen: list[list[str]] = []
 
@@ -475,7 +477,7 @@ class TestSummarizerWindowing:
             for entry in deps.nodes:
                 deps.results[entry["id"]] = f"summary {entry['id']}"
 
-        agent.run = _run  # type: ignore[method-assign]
+        monkeypatch.setattr(agent, "run", _run)
         policy = SummarizerSessionPolicy(batch_size=100, stall_retries=1, payload_chars=100_000)
         NodeSummarizer(agent=agent, content_policy=_policy(window_chars=40), session_policy=policy).summarize(_long_tree())
         small_window_entries = [entry_id for session in seen for entry_id in session]
@@ -489,8 +491,8 @@ class TestSummarizerWindowing:
         assert len(small_window_entries) > len(large_window_entries)
 
 
-def _agent(summary: str = "Summary.") -> _StubAgent:
-    return _StubAgent(summary)
+def _agent(summary: str = "Summary.") -> SummarizerAgent:
+    return cast(SummarizerAgent, _StubAgent(summary))
 
 
 def _policy(

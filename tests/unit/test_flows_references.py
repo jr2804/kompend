@@ -12,16 +12,20 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
 from kompend.agents.reference_extraction import ReferenceExtractionAgent
+from kompend.compilation._two_phase_core import TwoPhaseRuntime
 from kompend.compilation.flows import references as ref_flow
 from kompend.compilation.flows.references import run_reference_extraction
 from kompend.core.models import Chunk, ElementType, ResolvedChunk
 from kompend.core.models.references import Reference
+from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.text.windows import split_text_windows
 from kompend.llm.context_window import ContextSource, ContextWindow
+from kompend.llm.request_budget import RequestBudget
 
 SOURCE = "doc.docx"
 
@@ -49,12 +53,14 @@ class FakeAgent:
         return FakeOutput(references=[Reference(id=f"r{self.calls}", raw=deps.text[:20])])
 
 
-class FakeStore:
+class FakeStore(ReferenceStore):
+    """In-memory stand-in: skips ReferenceStore's file-backed __init__."""
+
     def __init__(self) -> None:
-        self.saved: dict[str, list] = {}
+        self.saved: dict[str, list[Reference]] = {}
         self.save_calls = 0
 
-    def add_source(self, source: str, refs: list) -> int:
+    def add_source(self, source: str, refs: list[Reference]) -> int:
         self.saved[source] = refs
         return len(refs)
 
@@ -181,11 +187,20 @@ def test_window_budget_follows_the_answer_reserve() -> None:
 
     budget = ref_flow._reference_char_budget(compiler)
     answer_chars = ref_flow.tokens_to_chars(
-        cw.answer_reserve // ref_flow._REFERENCE_JSON_EXPANSION,
+        int(cw.answer_reserve // ref_flow._REFERENCE_JSON_EXPANSION),
         chars_per_token=4.0,
     )
 
-    assert budget == min(ref_flow.tokens_to_chars(cw.input_budget(), chars_per_token=4.0), answer_chars)
+    # The context bound is the planner's: the window minus the answer reserve,
+    # the safety margin and the measured system prompt.
+    plan = RequestBudget(
+        window=cw,
+        reserved={"system": ref_flow._reference_system_tokens(4.0)},
+        answer_tokens=cw.answer_reserve,
+    )
+    context_chars = plan.content_chars(4.0)
+
+    assert budget == min(context_chars, answer_chars)
 
 
 def test_reference_answer_room_comes_from_the_window() -> None:
@@ -245,26 +260,29 @@ def _compiler(
     output_retries: int = 2,
     tool_retries: int = 3,
     output_retries_enabled: bool = True,
-) -> SimpleNamespace:
-    return SimpleNamespace(
-        _model="ollama/test",
-        _timeout=30.0,
-        _context_window=ContextWindow(
-            max_input=max_input,
-            max_output=max_input if max_output is None else max_output,
-            source=ContextSource.OLLAMA,
-        ),
-        _budget=SimpleNamespace(),
-        _config=SimpleNamespace(
-            llm=SimpleNamespace(
-                default_chars_per_token=4.0,
-                output_retries=output_retries,
-                tool_retries=tool_retries,
-                output_retries_enabled=output_retries_enabled,
-                reasoning_effort=None,
-                delta_retry_enabled=True,
+) -> TwoPhaseRuntime:
+    return cast(
+        TwoPhaseRuntime,
+        SimpleNamespace(
+            _model="ollama/test",
+            _timeout=30.0,
+            _context_window=ContextWindow(
+                max_input=max_input,
+                max_output=max_input if max_output is None else max_output,
+                source=ContextSource.OLLAMA,
             ),
-            paths=SimpleNamespace(base_dir=Path(".")),
+            _budget=SimpleNamespace(),
+            _config=SimpleNamespace(
+                llm=SimpleNamespace(
+                    default_chars_per_token=4.0,
+                    output_retries=output_retries,
+                    tool_retries=tool_retries,
+                    output_retries_enabled=output_retries_enabled,
+                    reasoning_effort=None,
+                    delta_retry_enabled=True,
+                ),
+                paths=SimpleNamespace(base_dir=Path(".")),
+            ),
+            _usage_tracker=None,
         ),
-        _usage_tracker=None,
     )

@@ -28,7 +28,7 @@ import kompend.llm.models as _llm_models
 from kompend.chunking import HierarchicalChunker
 from kompend.compilation.graph import GraphCompiler
 from kompend.compilation.wicer import WiCERCompiler
-from kompend.core.config import EmbeddingConfig, LLMConfig
+from kompend.core.config import EmbeddingConfig, Flavor, LLMConfig
 from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ResolvedChunk
 from kompend.core.paths import KOMP_DIR, STATE_FILE
 from kompend.core.pipeline.config import PipelineConfig
@@ -182,7 +182,7 @@ def _make_config(wiki_dir: Path) -> PipelineConfig:
 
 def _vault_for(tmp_path: Path, name: str = "vault") -> MarkdownWriter:
     """MarkdownWriter in vault mode (default)."""
-    return MarkdownWriter(flavor="obsidian", vault_mode=True)
+    return MarkdownWriter(flavor=Flavor.OBSIDIAN, vault_mode=True)
 
 
 def test_deterministic_embedding_provider_runs(

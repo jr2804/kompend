@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from pydantic import BaseModel
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
-from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord, SqliteStepStore
+from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord, SnapshotState, SqliteStepStore
 
 from kompend.compilation.schema import GenerationOutput
 from kompend.compilation.step_recovery import (
@@ -208,8 +208,8 @@ def _tool_return(call_id: str = "call-1") -> ModelMessage:
     return ModelRequest(parts=[ToolReturnPart(tool_name="final_result", content="ok", tool_call_id=call_id)])
 
 
-def _snapshot(run_id: str, messages: list[ModelMessage], *, state: str = "complete") -> ContinuableSnapshot:
-    return ContinuableSnapshot(run_id=run_id, step_index=1, messages=messages, state=state)  # type: ignore[arg-type]
+def _snapshot(run_id: str, messages: list[ModelMessage], *, state: SnapshotState = "complete") -> ContinuableSnapshot:
+    return ContinuableSnapshot(run_id=run_id, step_index=1, messages=messages, state=state)
 
 
 def _seed_run(store: SqliteStepStore, run_id: str, conversation: str, snapshot: ContinuableSnapshot) -> None:

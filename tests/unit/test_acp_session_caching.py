@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from pydantic_ai.capabilities import Caching
+from pydantic_ai_harness.experimental.acp import AcpSession
 
 from kompend.acp import harness_adapter
 
@@ -28,8 +29,8 @@ def test_session_skips_caching_when_disabled(monkeypatch: pytest.MonkeyPatch, tm
     assert config.capabilities is None
 
 
-def _session(tmp_path: Any) -> SimpleNamespace:
-    return SimpleNamespace(cwd=tmp_path)
+def _session(tmp_path: Any) -> AcpSession:
+    return cast(AcpSession, SimpleNamespace(cwd=tmp_path))
 
 
 def _patch(monkeypatch: pytest.MonkeyPatch, *, prompt_cache: bool) -> None:

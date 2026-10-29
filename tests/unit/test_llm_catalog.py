@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -133,7 +134,7 @@ def _provider(provider_id: str, *, api: str = "https://example.test/v1") -> llmd
 
 
 @pytest.fixture(autouse=True)
-def isolated_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+def isolated_cache(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[Path]:
     """Point the cache at a temp file and drop the in-process snapshot."""
     cache_file = tmp_path / "models.json"
     monkeypatch.setattr(catalog, "cache_path", lambda: cache_file)

@@ -33,8 +33,8 @@ class _LoggedSummarizingCompaction(SummarizingCompaction):
     async def _summarize(self, messages: list[ModelMessage], ctx: Any, previous_summary: str | None = None) -> Any:
         logger.info("Context compression starting: %d message(s)", len(messages))
         summary = await super()._summarize(messages, ctx, previous_summary=previous_summary)
-        text = getattr(summary, "text", summary)
-        logger.info("Context compression produced %d-char summary", len(text or ""))
+        text = summary if isinstance(summary, str) else summary.text
+        logger.info("Context compression produced %d-char summary", len(text))
         return summary
 
 

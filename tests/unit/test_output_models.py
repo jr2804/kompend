@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from kompend.core.config import Flavor
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.output.markdown import MarkdownWriter
@@ -70,14 +71,14 @@ class TestDetectFlavor:
 
 class TestDocumentRenderer:
     def test_render_simple(self) -> None:
-        renderer = DocumentRenderer(flavor="obsidian")
+        renderer = DocumentRenderer(flavor=Flavor.OBSIDIAN)
         doc = Document(title="Test Page", body="Some content here.")
         result = renderer.render(doc)
         assert "# Test Page" in result
         assert "Some content here." in result
 
     def test_render_with_frontmatter(self) -> None:
-        renderer = DocumentRenderer(flavor="obsidian")
+        renderer = DocumentRenderer(flavor=Flavor.OBSIDIAN)
         doc = Document(title="Page", body="Content", frontmatter={"lang": "en"})
         result = renderer.render(doc)
         assert "---" in result
@@ -85,7 +86,7 @@ class TestDocumentRenderer:
         assert "# Page" in result
 
     def test_render_all(self) -> None:
-        renderer = DocumentRenderer(flavor="obsidian")
+        renderer = DocumentRenderer(flavor=Flavor.OBSIDIAN)
         docs = [
             Document(title="First", body="First content"),
             Document(title="Second", body="Second content"),
@@ -97,15 +98,15 @@ class TestDocumentRenderer:
         assert "Second content" in result
 
     def test_render_empty_body(self) -> None:
-        renderer = DocumentRenderer(flavor="obsidian")
+        renderer = DocumentRenderer(flavor=Flavor.OBSIDIAN)
         doc = Document(title="Empty Page", body="")
         result = renderer.render(doc)
         assert "# Empty Page" in result
 
     def test_different_flavors(self) -> None:
         """Different flavors should produce different output (if rumdl available)."""
-        renderer_obsidian = DocumentRenderer(flavor="obsidian")
-        renderer_gfm = DocumentRenderer(flavor="gfm")
+        renderer_obsidian = DocumentRenderer(flavor=Flavor.OBSIDIAN)
+        renderer_gfm = DocumentRenderer(flavor=Flavor.GFM)
         doc = Document(title="Test", body="Some **bold** text")
         # Both produce valid markdown (rumdl may or may not be installed)
         result_obs = renderer_obsidian.render(doc)
@@ -114,7 +115,7 @@ class TestDocumentRenderer:
         assert result_gfm
 
     def test_heading_level(self) -> None:
-        renderer = DocumentRenderer(flavor="obsidian")
+        renderer = DocumentRenderer(flavor=Flavor.OBSIDIAN)
         doc = Document(title="Sub Section", body="Content", heading_level=2)
         result = renderer.render(doc)
         assert "## Sub Section" in result
@@ -162,7 +163,7 @@ class TestMarkdownWriterRegression:
             toc=[{"id": "test-page", "title": "Test Page", "level": 1}],
             metadata={"title": "Test Wiki"},
         )
-        writer = MarkdownWriter(flavor="obsidian", vault_mode=False)
+        writer = MarkdownWriter(flavor=Flavor.OBSIDIAN, vault_mode=False)
         output_file = writer.write(wiki, tmp_path)
 
         text = output_file.read_text(encoding="utf-8")

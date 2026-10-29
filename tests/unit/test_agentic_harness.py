@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Protocol, cast
 
 import pytest
 from pydantic_ai_harness.compaction import ReportContextUsage
-from pydantic_ai_harness.memory import InMemoryStore
+from pydantic_ai_harness.memory import InMemoryStore, MemoryStore
 
 import kompend.agents.base as base_module
 from kompend.agents.agentic_harness import AgenticHarness
@@ -17,6 +17,12 @@ from kompend.agents.vault_memory import DirectoryMemoryStore
 from kompend.agents.verification import make_agentic_verification_agent
 from kompend.core.config._configs import LLMConfig, LlmMemoryStore
 from kompend.llm.usage import UsageTracker
+
+
+class _MemoryCapability(Protocol):
+    """Test-visible surface of the harness Memory capability (untyped upstream)."""
+
+    store: MemoryStore
 
 
 class TestAgenticHarnessCapabilities:
@@ -84,9 +90,9 @@ class TestContextUsageWindow:
         captured: dict[str, object] = {}
 
         class _RecorderReportContextUsage(ReportContextUsage):
-            def __init__(self, **kwargs: object) -> None:
+            def __init__(self, **kwargs: Any) -> None:
                 captured.update(kwargs)
-                super().__init__(**kwargs)  # type: ignore[arg-type]
+                super().__init__(**kwargs)
 
         monkeypatch.setattr(base_module, "ReportContextUsage", _RecorderReportContextUsage)
         agent = make_agentic_summarizer_agent("ollama/noop", context_window=32768, llm=LLMConfig())
@@ -107,14 +113,14 @@ class TestVaultMemoryStore:
 
     def test_session_store_is_the_default(self) -> None:
         capabilities = AgenticHarness(context_window=8192, memory=True).build_capabilities()
-        memory = next(cap for cap in capabilities if cap.__class__.__name__ == "Memory")
-        assert isinstance(memory.store, InMemoryStore)  # type: ignore[attr-defined]
+        memory = cast(_MemoryCapability, next(cap for cap in capabilities if cap.__class__.__name__ == "Memory"))
+        assert isinstance(memory.store, InMemoryStore)
 
     def test_memory_store_is_passed_through(self, tmp_path: Any) -> None:
         store = DirectoryMemoryStore(tmp_path)
         capabilities = AgenticHarness(context_window=8192, memory=True, memory_store=store).build_capabilities()
-        memory = next(cap for cap in capabilities if cap.__class__.__name__ == "Memory")
-        assert memory.store is store  # type: ignore[attr-defined]
+        memory = cast(_MemoryCapability, next(cap for cap in capabilities if cap.__class__.__name__ == "Memory"))
+        assert memory.store is store
 
     def test_vault_store_only_with_vault_config(self, tmp_path: Any) -> None:
         agent = make_agentic_summarizer_agent(
@@ -123,8 +129,8 @@ class TestVaultMemoryStore:
             llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.SESSION),
             memory_dir=tmp_path,
         )
-        memory = next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory")
-        assert isinstance(memory.store, InMemoryStore)  # type: ignore[attr-defined]
+        memory = cast(_MemoryCapability, next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory"))
+        assert isinstance(memory.store, InMemoryStore)
 
     def test_vault_config_builds_the_vault_store(self, tmp_path: Any) -> None:
         agent = make_agentic_summarizer_agent(
@@ -133,9 +139,9 @@ class TestVaultMemoryStore:
             llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.VAULT),
             memory_dir=tmp_path,
         )
-        memory = next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory")
-        assert isinstance(memory.store, DirectoryMemoryStore)  # type: ignore[attr-defined]
-        assert memory.store.directory == tmp_path  # type: ignore[attr-defined]
+        memory = cast(_MemoryCapability, next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory"))
+        assert isinstance(memory.store, DirectoryMemoryStore)
+        assert memory.store.directory == tmp_path
 
     def test_store_requires_memory_enabled(self, tmp_path: Any) -> None:
         agent = make_agentic_summarizer_agent(
@@ -196,7 +202,7 @@ class TestNotebookStagesShareTheVault:
             memory_dir=tmp_path,
         )
         memory = self._memory_capability(agent)
-        assert isinstance(memory.store, InMemoryStore)  # type: ignore[attr-defined]
+        assert isinstance(memory.store, InMemoryStore)
 
     @staticmethod
     def _memory_capability(agent: Any) -> Any:

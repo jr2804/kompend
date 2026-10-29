@@ -18,6 +18,7 @@ from kompend.core.config._configs import LlmDataFormat
 from kompend.core.config.rumdl import _shipped_hash, resolve_rumdl_config
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
+from kompend.core.models.metadata import meta_dict, meta_str
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.core.utils.exceptions import LLMTransientError
 from kompend.lint import _remediation_gaps as gaps_module
@@ -287,7 +288,7 @@ class TestMissingFrontmatterRule:
         results = rule.check(wiki)
         failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
         rule.fix(wiki, failures)
-        assert node.metadata["frontmatter"]["title"] == "Alpha"
+        assert meta_str(meta_dict(node.metadata.get("frontmatter")).get("title")) == "Alpha"
 
     def test_empty_wiki_passes(self) -> None:
         wiki = CompiledWiki(nodes=[], edges=[], toc=[])

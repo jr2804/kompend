@@ -111,7 +111,9 @@ class TestFormatRoundTrip:
 
         assert decoded is not None
         assert isinstance(decoded, list)
-        assert decoded[0]["title"] == "alpha"
+        first = decoded[0]
+        assert isinstance(first, dict)
+        assert first["title"] == "alpha"
 
     def test_broken_text_decodes_to_none(self) -> None:
         assert decode_from_llm("}{ not a format", LlmDataFormat.TOON) is None

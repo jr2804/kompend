@@ -47,6 +47,7 @@ from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
 from parsecraft.routing.models import Intent  # noqa: E402 — guarded by the importorskip above
 
+from kompend.core.config import ParsecraftEffort, ParsecraftJudge, ParsecraftPreference
 from kompend.core.models import ElementType
 from kompend.preprocessing.parsers import _registry as registry_module
 from kompend.preprocessing.parsers._registry import KNOWN_BACKENDS
@@ -436,15 +437,15 @@ class TestJudgeWiring:
         opts = registry_module.ParserBuildOptions
         plain = registry_module.build_default_router(opts(), name="parsecraft")
         judged = registry_module.build_default_router(
-            opts(parsecraft_judge="ollama", parsecraft_judge_model="parable-tinyjev"),
+            opts(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="parable-tinyjev"),
             name="parsecraft",
         )
         other_pref = registry_module.build_default_router(
-            opts(parsecraft_judge="ollama", parsecraft_judge_model="parable-tinyjev", parsecraft_preference="quality"),
+            opts(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="parable-tinyjev", parsecraft_preference=ParsecraftPreference.QUALITY),
             name="parsecraft",
         )
         other_model = registry_module.build_default_router(
-            opts(parsecraft_judge="ollama", parsecraft_judge_model="tev1"),
+            opts(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="tev1"),
             name="parsecraft",
         )
 
@@ -462,9 +463,9 @@ class TestJudgeWiring:
         adapter = _adapter()
         router = registry_module.build_default_router(
             registry_module.ParserBuildOptions(
-                parsecraft_judge="ollama",
+                parsecraft_judge=ParsecraftJudge.OLLAMA,
                 parsecraft_judge_model="parable-tinyjev",
-                parsecraft_preference="quality",
+                parsecraft_preference=ParsecraftPreference.QUALITY,
             ),
             name="parsecraft",
         )
@@ -539,14 +540,14 @@ class TestEffortWiring:
         produced at ``flash`` would silently serve under a future ``high`` request.
         """
         opts = registry_module.ParserBuildOptions
-        flash = registry_module.build_default_router(opts(parsecraft_effort="flash"), name="parsecraft")
-        high = registry_module.build_default_router(opts(parsecraft_effort="high"), name="parsecraft")
-        xhigh = registry_module.build_default_router(opts(parsecraft_effort="xhigh"), name="parsecraft")
+        flash = registry_module.build_default_router(opts(parsecraft_effort=ParsecraftEffort.FLASH), name="parsecraft")
+        high = registry_module.build_default_router(opts(parsecraft_effort=ParsecraftEffort.HIGH), name="parsecraft")
+        xhigh = registry_module.build_default_router(opts(parsecraft_effort=ParsecraftEffort.XHIGH), name="parsecraft")
         assert flash.fingerprint() != high.fingerprint()
         assert high.fingerprint() != xhigh.fingerprint()
         # Two separately built flash routers still hash identically — the
         # neutral ``flash`` axis must not split the cache.
-        flash_again = registry_module.build_default_router(opts(parsecraft_effort="flash"), name="parsecraft")
+        flash_again = registry_module.build_default_router(opts(parsecraft_effort=ParsecraftEffort.FLASH), name="parsecraft")
         assert flash_again.fingerprint() == flash.fingerprint()
         # And the default (no effort set) matches an explicitly-flash router.
         default = registry_module.build_default_router(opts(), name="parsecraft")
@@ -560,7 +561,7 @@ class TestEffortWiring:
         """
         adapter = _adapter()
         router = registry_module.build_default_router(
-            registry_module.ParserBuildOptions(parsecraft_effort="xhigh"),
+            registry_module.ParserBuildOptions(parsecraft_effort=ParsecraftEffort.XHIGH),
             name="parsecraft",
         )
         backend: Any = next(p for p in router._parsers if type(p).__name__ == "ParsecraftParser")  # noqa: SLF001 — parser identity is the contract

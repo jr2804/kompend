@@ -211,7 +211,9 @@ def test_encoding_sibling_does_not_leak_into_the_cache_entry(tmp_path: Path) -> 
     content_hash = hashlib.sha256(src.read_bytes()).hexdigest()
     data = read_document(vault_db_path(base), document_cache_key(src, content_hash))
     assert data is not None
-    assert Path(data["source_file"]).as_posix() == "sources/note.md"
+    source_file = data["source_file"]
+    assert isinstance(source_file, str)
+    assert Path(source_file).as_posix() == "sources/note.md"
 
 
 def test_restore_source_path_rewrites_document_and_elements() -> None:

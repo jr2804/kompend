@@ -11,10 +11,11 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
+from typing import cast
 
 import pytest
 
-from kompend.core.config import resolve_config
+from kompend.core.config import ParsecraftEffort, resolve_config
 from kompend.core.models import ParsedDocument
 from kompend.core.models.elements import DocumentElement
 from kompend.core.models.enums import ElementType
@@ -100,7 +101,7 @@ def test_backend_options_are_merged_over_the_derived_ones() -> None:
     """A user option wins over the adapter's derived default for the same key."""
     parser = ParsecraftParser(
         registry=None,
-        parsecraft_effort="high",
+        parsecraft_effort=ParsecraftEffort.HIGH,
         parsecraft_backend_options={"mineru": {"effort": "medium", "extra": 1}},
     )
 
@@ -134,8 +135,8 @@ def test_build_default_router_missing_extra_is_loud(monkeypatch: pytest.MonkeyPa
     # No real known-but-uninstalled backend ships anymore, so fake one: a
     # KNOWN_BACKENDS entry whose module cannot import stays unregistered and
     # must raise with its hint instead of starting an empty router.
-    monkeypatch.setitem(KNOWN_BACKENDS, "_uninstalled", "Uninstalled demo parser (install: uv add demo-parser)")
-    monkeypatch.setitem(_BACKEND_MODULES, "_uninstalled", "kompend.preprocessing.parsers.not_a_module")
+    monkeypatch.setitem(KNOWN_BACKENDS, cast(ParserName, "_uninstalled"), "Uninstalled demo parser (install: uv add demo-parser)")
+    monkeypatch.setitem(_BACKEND_MODULES, cast(ParserName, "_uninstalled"), "kompend.preprocessing.parsers.not_a_module")
     with pytest.raises(ValueError, match="is not installed"):
         build_default_router(name="_uninstalled")
 
@@ -148,7 +149,7 @@ def test_register_backend_rejects_names_outside_the_enum() -> None:
     """
     cls = _dummy_cls()
     with pytest.raises(ValueError, match="ParserName"):
-        register_backend("_test_dummy", lambda _opts: cls(), parser_cls=cls)
+        register_backend(cast(ParserName, "_test_dummy"), lambda _opts: cls(), parser_cls=cls)
     with pytest.raises(ValueError, match="Unknown parser backend"):
         get_backend("_test_dummy")
 

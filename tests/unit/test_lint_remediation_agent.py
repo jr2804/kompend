@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import types
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
+from kompend.agents.remediate import RemediationAgent
 from kompend.core.models import CompiledWiki
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.lint import _remediation_gaps, flow
@@ -53,7 +54,7 @@ class TestFailedPageGeneration:
             def run(self, _deps: object) -> str:
                 raise LLMOutputError("Exceeded maximum output retries (2)")
 
-        content = _remediation_gaps._generate_concept_page(_Failing(), {"name": "ABLE model"})  # type: ignore[arg-type]
+        content = _remediation_gaps._generate_concept_page(cast(RemediationAgent, _Failing()), {"name": "ABLE model"})
 
         assert content is None
 

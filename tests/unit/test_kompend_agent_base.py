@@ -11,7 +11,7 @@ from pydantic_ai_harness.compaction import ContextUsage, SlidingWindowCompaction
 
 from kompend.agents.base import KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
-from kompend.core.config import ContextManagerPreset
+from kompend.core.config import ContextManagerPreset, ReasoningEffort
 from kompend.core.config._configs import LLMConfig, LlmDataFormat
 from kompend.llm.usage import UsageTracker
 
@@ -43,7 +43,7 @@ class TestKompendAgentBaseContract:
 
         agent = DefaultBuilder(
             model_string="test/noop",
-            reasoning_effort="low",
+            reasoning_effort=ReasoningEffort.LOW,
         )
         assert agent.reasoning_effort == "low"
 
@@ -231,18 +231,18 @@ class TestConfigDrivenDefaults:
         """An answer is bounded by the window, so the agent carries no ceiling."""
         assert not hasattr(self._agent(), "max_tokens")
 
-    def test_output_ceiling_is_window_minus_prompt_minus_margin(self) -> None:
+    def test_output_ceiling_is_window_minus_prompt_minus_margin(self, monkeypatch: pytest.MonkeyPatch) -> None:
         agent = self._agent(llm=LLMConfig(), context_window=32_768)
-        agent._estimate_prompt_tokens = lambda messages: 10_000  # type: ignore[method-assign]
-        agent._model_max_output = lambda: None  # type: ignore[method-assign]
+        monkeypatch.setattr(agent, "_estimate_prompt_tokens", lambda messages: 10_000)
+        monkeypatch.setattr(agent, "_model_max_output", lambda: None)
 
         # 32768 - 10000 - max(256, 1638) = 21130
         assert agent._output_ceiling([]) == 21_130
 
-    def test_output_ceiling_is_clamped_by_the_model_limit(self) -> None:
+    def test_output_ceiling_is_clamped_by_the_model_limit(self, monkeypatch: pytest.MonkeyPatch) -> None:
         agent = self._agent(llm=LLMConfig(), context_window=200_000)
-        agent._estimate_prompt_tokens = lambda messages: 1_000  # type: ignore[method-assign]
-        agent._model_max_output = lambda: 64_000  # type: ignore[method-assign]
+        monkeypatch.setattr(agent, "_estimate_prompt_tokens", lambda messages: 1_000)
+        monkeypatch.setattr(agent, "_model_max_output", lambda: 64_000)
 
         assert agent._output_ceiling([]) == 64_000
 

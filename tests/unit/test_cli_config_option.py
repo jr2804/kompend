@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
+import typer
+from typer.main import get_command
 from typer.testing import CliRunner
 
 from kompend.cli._shared import config_file_from_ctx
@@ -36,12 +37,12 @@ class TestConfigOptionIsRootOnly:
 
 class TestConfigFileFromCtx:
     def test_reads_the_root_value(self) -> None:
-        ctx = SimpleNamespace(obj={"config_file": "alt.toml"})
+        ctx = typer.Context(get_command(app), obj={"config_file": "alt.toml"})
 
-        assert config_file_from_ctx(ctx) == "alt.toml"  # type: ignore[arg-type]
+        assert config_file_from_ctx(ctx) == "alt.toml"
 
     def test_missing_value_is_none(self) -> None:
-        assert config_file_from_ctx(SimpleNamespace(obj={})) is None  # type: ignore[arg-type]
+        assert config_file_from_ctx(typer.Context(get_command(app), obj={})) is None
         assert config_file_from_ctx(None) is None
 
     def test_a_nested_command_sees_the_root_file(self, monkeypatch: pytest.MonkeyPatch) -> None:
