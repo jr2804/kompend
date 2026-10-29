@@ -28,6 +28,7 @@ from kompend.core.models import ChunkTree, CompiledWiki, MetadataField, Resolved
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.llm.context_window import ContextWindow, answer_reserve_tokens, discover_context_window
 from kompend.llm.format import encode_payload
+from kompend.llm.request_budget import RequestBudget
 from kompend.logging import get_logger
 
 # Fraction of the available context window (after reserves) allocated to
@@ -111,14 +112,23 @@ class WiCERCompiler(BaseCompiler):
         cpt = config.llm.default_chars_per_token
         if cw is not None:
             self._context_window: ContextWindow | None = cw
-            input_tokens = max(1, int(cw.input_budget(_WICER_PROMPT_RESERVE_TOKENS) * _WICER_CONTEXT_UTILIZATION))
-            self._probe_input_chars = tokens_to_chars(input_tokens, chars_per_token=cpt)
+            budget = RequestBudget(
+                window=cw,
+                reserved={"prompt": _WICER_PROMPT_RESERVE_TOKENS},
+                utilization=_WICER_CONTEXT_UTILIZATION,
+            )
+            self._probe_input_chars = budget.content_chars(cpt)
             self._eval_input_chars = self._probe_input_chars
+            logger.info("WiCER: probe budget (%s) -> %d chars per probe", budget.report(), self._probe_input_chars)
         else:
             self._context_window = None
             fallback_tokens = answer_reserve_tokens(config.llm.fallback_max_input)
             self._probe_input_chars = tokens_to_chars(fallback_tokens, chars_per_token=cpt)
             self._eval_input_chars = self._probe_input_chars
+            logger.warning(
+                "WiCER: no context window discovered — probe budget falls back to %d chars (answer reserve only)",
+                self._probe_input_chars,
+            )
 
     # ------------------------------------------------------------------
     # Public API

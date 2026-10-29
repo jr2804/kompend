@@ -91,7 +91,8 @@ effective  = max(chunk_size_min, min(raw, chunk_size_max))
 
 Every stage that sizes a request against the context window also holds back a
 safety margin, defined once as ``context_safety_tokens()`` in
-`kompend.compilation._two_phase_core`:
+`kompend.llm.request_budget` (re-exported from
+`kompend.compilation._two_phase_core` for the historical import path):
 
 ```text
 margin = max(512, 8% of the context window)
@@ -107,8 +108,55 @@ Two reasons it is not simply "whatever the measured overhead leaves free":
    `request (65762 tokens) exceeds the available context size (65536 tokens)`.
 
 The margin never crops content — the content budget shrinks, so the work
-splits across more batches or segments. Both extraction batching and agentic
-generation segments use it, from the single shared definition.
+splits across more batches or segments.
+
+### One planner for every request
+
+The margin is part of a single shared planner,
+`kompend.llm.request_budget.RequestBudget`. A stage declares the window and
+the **named** payloads it reserves, and reads the content budget from the
+plan:
+
+```python
+budget = RequestBudget(window=cw, reserved={"system": sys_tokens})
+chars = budget.content_chars(chars_per_token)
+```
+
+The answer reserve and the safety margin are paid by default, so a stage
+cannot forget either. When a request cannot fit at all, the planner raises
+`LLMOutputError` naming the components (window, answer reserve, safety
+margin, each reserved payload) — content is never cropped to fit, and the
+failure surfaces at planning time instead of as a provider 400 after minutes
+of upstream work.
+
+Stages that use it: extraction batching, agentic generation segments,
+reference extraction, the agentic section digest, and WiCER probes.
+
+### When the server enforces less than kompend planned for
+
+Discovery reports what a model *can* do. A server may enforce less — it was
+started with `-c 32768` while the configuration asked for 64000 — and the
+mismatch shows up only when a request is rejected. The rejection names the
+server's own limit:
+
+```text
+request (33145 tokens) exceeds the available context size (32768 tokens), try increasing it
+```
+
+kompend reads that number and adapts instead of repeating the same rejected
+request: the window is lowered to the limit for the rest of the run, and the
+work is re-planned against it. Extraction re-batches the source, generation
+re-segments it — the content is split across more requests, never cropped.
+
+Two rules keep this honest:
+
+- **Only the server's limit lowers the window.** The message also carries the
+  size of the request kompend sent; that number is never used as the limit.
+- **The window never goes back up.** A provider that rejected a request of
+  size *N* has rejected the evidence for a larger window.
+
+When the provider names no limit, kompend cannot plan against it and the
+failure surfaces instead of guessing.
 
 ### Concrete Sizing by Model Class
 

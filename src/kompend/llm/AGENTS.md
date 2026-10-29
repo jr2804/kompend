@@ -98,6 +98,88 @@ model therefore shows up after a doctor run, not after a package upgrade. A
 model still missing from the payload makes kompend send the computed ceiling
 without a clamp and take the window from `[providers.<name>]` config.
 
+## Request-fit planner — `kompend.llm.request_budget`
+
+`RequestBudget` is the one place that decides whether a request fits the
+window. A stage declares the window and the **named** payloads it reserves
+(system prompt, known titles, pinned facts, tool framing) and reads the
+content budget from it:
+
+```python
+budget = RequestBudget(window=cw, reserved={"system": sys_tokens})
+chars = budget.content_chars(chars_per_token)
+```
+
+| Member | Meaning |
+|--------|---------|
+| `window` | The `ContextWindow` the request is measured against |
+| `reserved` | Named fixed payloads; only the sum is subtracted |
+| `answer_tokens` | Defaults to `window.answer_reserve` |
+| `safety_tokens` | Defaults to `context_safety_tokens(window.max_input)` |
+| `utilization` | Scales the remainder (a stage needing a second leg takes a fraction) |
+| `available_tokens` | Signed: window − answer − safety − reserved |
+| `content_tokens` / `content_chars()` | What is left for content (≥ 1) |
+| `fits()` / `require()` | Check, or raise `LLMOutputError` naming the components |
+| `report()` | One-line log description of the budget |
+
+Contracts:
+
+- **Content is never cropped to fit.** A too-small budget makes the work split
+  across more batches or segments; it never drops text.
+- The answer reserve and the safety margin are paid by default, so a stage
+  cannot forget either by accident.
+- `context_safety_tokens` is defined **once** here (8% of the window, floor
+  512 tokens). `kompend.compilation._two_phase_core` re-exports it for the
+  historical import path — a second definition is how stages drift apart.
+- `chars_to_tokens` / `tokens_to_chars` are the single chars-per-token
+  conversion; pass the configured `compile.llm.default_chars_per_token`.
+
+Stages that size a request must use this planner rather than their own
+arithmetic: extraction batching, agentic generation segments, reference
+extraction, the agentic section digest, WiCER probes.
+
+## Provider overflow — `kompend.llm.overflow`
+
+Discovery reports what a model *can* do; a server may enforce less. The
+server says so in the rejection, and it usually names its own limit: `request
+(33145 tokens) exceeds the available context size (32768 tokens), try
+increasing it`.
+
+| Member | Meaning |
+|--------|---------|
+| `OVERFLOW_MARKERS` | The provider wordings of "this does not fit" |
+| `is_context_overflow(exc)` | Whether *exc* is that failure (walks the `raise … from …` chain) |
+| `stated_context_size(exc)` | The limit the provider named, or `None` |
+
+Contracts:
+
+- **Only the limit lowers the window, never the request size.** The pattern
+  set matches the *server's* number; a message naming only the requested size
+  yields `None`.
+- A provider that names no limit gives kompend nothing to plan against — the
+  caller must not guess, so the failure propagates.
+- The markers live here and nowhere else. A stage that needs to recognise an
+  overflow imports `is_context_overflow`; it does not carry its own list.
+
+`EffectiveWindow` (`kompend.llm.request_budget`) holds the window a run
+actually plans against and lowers it once, for the rest of the run:
+
+| Member | Meaning |
+|--------|---------|
+| `current` | The window stages size against |
+| `clamp(max_input, reason=…)` | Lower it; returns whether it changed |
+| `clamped` / `discovered` / `reason` / `report()` | What changed, and why |
+
+Lowering is **one-way**: a provider that rejected a request of size *N* has
+rejected the evidence for a larger window. A limit at or above the current
+window is ignored — the provider either repeated the limit kompend already
+planned against, or named a number larger than the real one.
+
+`LLMContextOverflowError` (`kompend.core.utils.exceptions`) carries the
+provider's number in `stated_limit`. `KompendAgentBase` raises it in place of
+the raw provider error, so a stage can lower the window and re-plan instead of
+retrying the same rejected request.
+
 ## Format module
 
 `kompend.llm.format` is the single source of truth for LLM communication
@@ -161,3 +243,5 @@ so the deterministic classification stays the floor.
 
 - `uv run pytest tests/unit/test_llm_models.py -x` — model construction
 - `uv run pytest tests/unit/test_llm_context_window.py -x` — window discovery
+- `uv run pytest tests/unit/test_request_budget.py -x` — request-fit planner
+- `uv run pytest tests/unit/test_llm_overflow.py -x` — provider overflow

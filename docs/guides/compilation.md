@@ -193,12 +193,16 @@ Hook callbacks receive a `HookContext` and exceptions are isolated — a failing
 
 ## Prompt budget
 
-Each concept page in phase 2 sees at most the model's input budget of source
-content (`context_window - answer_reserve - overhead`). When a concept draws
-from many sources, the content is **fair-share truncated** - each source gets
-an equal slice, not first-N-chunks. Excess truncation is logged. To give
-generation more source text, raise the model's context window - a bigger
-`chunk_size_max` alone cannot create room an answer needs:
+Each concept page in phase 2 sees source content as segments sized to fit
+the request budget (`context_window - answer_reserve - safety - named
+payloads`). Content is **windowed, never truncated**: a concept that draws
+from many sources is served its segments across requests, and when even the
+fixed request overhead no longer fits the window, planning fails loudly
+with the component breakdown instead of sending a shortened request. The
+known-titles list is windowed the same way — the head goes inline, the rest
+is served by the `list_known_titles()` tool. To give generation more source
+text, raise the model's context window - a bigger `chunk_size_max` alone
+cannot create room an answer needs:
 
 ```bash
 kompend compile *.pdf --set compile.llm.context_window=65536

@@ -229,6 +229,7 @@ it mirrors untrusted model output.
 
 ## Local Contracts
 
+- **Never crop what the model sees or returns** — a window splits, it never truncates (`.agents/CODE.md` "LLM calls").
 - **No text in code.** All prompts are Jinja2 templates in
   `src/kompend/templates/<module>/`. See parent doc.
 - **No direct pydantic-ai `Agent` construction outside this package.**

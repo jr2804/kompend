@@ -137,6 +137,41 @@ def test_generation_prompt_omits_known_titles_when_empty() -> None:
     assert "KNOWN PAGE TITLES" not in rendered
 
 
+def test_agentic_prompt_pages_titles_instead_of_cropping_them() -> None:
+    """The titles the prompt does not inline stay reachable via the tool.
+
+    The list grows with the corpus, so it is served in windows: the prompt
+    names how many titles it shows, tells the model the tool offset that
+    loads the rest, and never calls the list truncated.
+    """
+    loader = get_template_loader()
+    rendered = loader.render(
+        "compilation/generation_agentic_prompt.md.j2",
+        pinned_facts=[],
+        categories="",
+        known_titles=["Alpha", "Beta", "Gamma"],
+        known_titles_prompt=["Alpha", "Beta"],
+    )
+    assert "- Alpha" in rendered
+    assert "- Beta" in rendered
+    assert "- Gamma" not in rendered
+    assert "2 of 3" in rendered
+    assert "list_known_titles(offset=2)" in rendered
+    assert "truncated" not in rendered.lower()
+
+
+def test_agentic_prompt_omits_the_paging_note_when_all_titles_fit() -> None:
+    loader = get_template_loader()
+    rendered = loader.render(
+        "compilation/generation_agentic_prompt.md.j2",
+        pinned_facts=[],
+        categories="",
+        known_titles=["Alpha", "Beta"],
+        known_titles_prompt=["Alpha", "Beta"],
+    )
+    assert "list_known_titles" not in rendered
+
+
 def test_generation_system_instructs_exact_titles() -> None:
     """The system prompt tells the LLM to use exact full titles in wikilinks."""
     loader = get_template_loader()

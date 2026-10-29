@@ -21,10 +21,8 @@ from kompend.compilation._two_phase_core import (
     ExtractionSet,
     ProgressFn,
     TwoPhaseRuntime,
-    context_safety_tokens,
     merge_extractions,
     rate_suffix,
-    tokens_to_chars,
     try_pydanticai_extraction,
 )
 from kompend.compilation.asset_mention_rewriter import rewrite_asset_mentions as _rewrite_asset_mentions
@@ -37,9 +35,10 @@ from kompend.core.models import ChunkTree, ExtractionStats, ResolvedChunk
 from kompend.core.models.enums import CacheDeps
 from kompend.core.paths import rel_to_vault
 from kompend.core.templates import get_template_loader
-from kompend.core.utils.exceptions import LLMOutputError
-from kompend.core.utils.tokens import estimate_tokens
+from kompend.core.text.windows import split_text_windows
+from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError
 from kompend.llm.format import encode_payload
+from kompend.llm.request_budget import RequestBudget, chars_to_tokens
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 
 logger = get_logger(__name__)
@@ -91,7 +90,6 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
     num_sources = len(by_source)
     logger.info("TwoPhase: extracting %d source(s)", num_sources)
 
-    extract_char_budget = _extract_char_budget(compiler)
     strategy = compiler._config.llm.extraction_strategy
     agentic = strategy == ExtractionStrategy.AGENTIC
 
@@ -105,7 +103,10 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
         tree = tree_by_source.get(source)
         id_map = asset_id_maps.get(source) if asset_id_maps else None
         texts = build_tree_texts(tree, asset_mode="ref", asset_id_map=id_map) if tree is not None else [rc.chunk.text for rc in source_chunks if rc.chunk.text]
-        return texts, batch_texts(texts, extract_char_budget)
+        # Read the budget per source, not once per run: a provider that
+        # lowered the window mid-run must change how the remaining sources
+        # are batched.
+        return texts, batch_texts(texts, _extract_char_budget(compiler))
 
     # Pre-compute what each source weighs in the bar from the units the flow
     # sends, so the document's share and its sections' shares come from one
@@ -120,7 +121,9 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
         units = texts if agentic else batches
         source_unit_totals.append(len(units))
         source_unit_chars.append(sum(len(u) for u in units))
-    total_units_all = sum(source_unit_totals) or len(by_source)
+    # One-slot lists: a re-plan can change a source's unit count mid-run, and
+    # both the corpus-wide total and the bar's weights must follow it.
+    total_units_all = [sum(source_unit_totals) or len(by_source)]
     total_chars_all = sum(source_unit_chars) or len(by_source)
 
     cumulative_chars = 0
@@ -139,6 +142,10 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
         texts, batches_list = _source_units(source, source_chunks)
         units = texts if agentic else batches_list
         units_before = cumulative_units
+        # The pre-pass counted this source before any re-plan; refresh its share
+        # of the run-wide total with the count the flow actually works in.
+        total_units_all[0] += len(units) - source_unit_totals[source_idx - 1]
+        source_unit_totals[source_idx - 1] = len(units)
         cumulative_units += len(units)
         progress = _source_progress(
             compiler,
@@ -193,13 +200,16 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
             continue
 
         if strategy == ExtractionStrategy.INCREMENTAL and len(batches_list) > 1:
-            batch_extractions, _ = extract_incremental(compiler, source, batches_list, extraction_system, progress=progress)
+            batch_extractions, _ = extract_incremental(
+                compiler,
+                source,
+                batches_list,
+                extraction_system,
+                progress=progress,
+                texts=texts,
+            )
         else:
-            for batch_idx, combined in enumerate(batches_list, start=1):
-                batch_extractions.append(extract_one(compiler, source, combined, extraction_system))
-                progress(batch_idx, len(batches_list), "")
-                if compiler._batch_tracker.should_stop():
-                    break
+            batch_extractions = _extract_batches(compiler, source, batches_list, extraction_system, progress, texts=texts)
 
         valid = [e for e in batch_extractions if e is not None]
         if not valid:
@@ -231,21 +241,50 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
     return extractions
 
 
+def _extract_batches(
+    compiler: TwoPhaseRuntime,
+    source: str,
+    batches_list: list[str],
+    extraction_system: str,
+    progress: ProgressFn,
+    *,
+    texts: list[str] | None = None,
+) -> list[Extraction | None]:
+    """Run the batch extraction path, re-planning when the provider overflows.
+
+    A batch that the provider rejects as too large is not lost work: the
+    provider names the limit it enforces, the window is lowered to it, and
+    only the texts not yet extracted are re-planned against the smaller
+    budget. Completed batches are kept, the failing one is split, and no
+    text is dropped or sent twice.
+    """
+    results: list[Extraction | None] = []
+    # The unit of work is a text, not a batch: re-planning must be able to
+    # split a batch that grew past the window, and only a text list can.
+    pending: list[str] = list(texts) if texts is not None else list(batches_list)
+    while pending:
+        # Without the unbatched texts there is no text grouping to recover:
+        # keep the batches the caller already packed.
+        groups = _text_groups(pending, _extract_char_budget(compiler)) if texts is not None else [[batch] for batch in pending]
+        extracted = 0
+        try:
+            for group in groups:
+                results.append(extract_one(compiler, source, "\n\n".join(group), extraction_system))
+                extracted += len(group)
+                progress(len(results), len(groups), "")
+                if compiler._batch_tracker.should_stop():
+                    return results
+            return results
+        except LLMContextOverflowError as exc:
+            # Only the failing batch and the later ones are left: the results
+            # above are kept and never sent again.
+            pending = _replan_after_overflow(compiler, source, pending[extracted:], exc)
+    return results
+
+
 def batch_texts(texts: list[str], char_budget: int) -> list[str]:
     """Group texts into batches that fit within *char_budget* (chars)."""
-    batches: list[str] = []
-    parts: list[str] = []
-    length = 0
-    for text in texts:
-        if length + len(text) > char_budget and parts:
-            batches.append("\n\n".join(parts))
-            parts = []
-            length = 0
-        parts.append(text)
-        length += len(text)
-    if parts:
-        batches.append("\n\n".join(parts))
-    return batches
+    return ["\n\n".join(group) for group in _text_groups(texts, char_budget)]
 
 
 def _source_progress(
@@ -260,7 +299,7 @@ def _source_progress(
     weights: list[int],
     unit: str,
     units_before: int,
-    units_total_all: int,
+    units_total_all: list[int],
 ) -> ProgressFn:
     """A progress callback for the units of one source.
 
@@ -270,12 +309,31 @@ def _source_progress(
     extract) is paid out in full at once. The line carries the corpus-wide
     unit counter as well, so the position in the whole run is readable in
     the unit the flow works in.
+
+    *units_total_all* is the run-wide counter (a one-slot list, mutated in
+    place): a re-plan changes how many units a source works in, and the
+    counter must follow it instead of reporting a total the bar can never
+    reach.
     """
     weight_total = sum(weights)
+    # The unit count the per-unit *weights* describe. A stage that re-plans
+    # reports a different total; the weights are then stale and the document's
+    # share is paid evenly across the units it actually works in.
+    known_total = [len(weights)]
 
     def report(units_done: int, units_total: int, activity: str) -> None:
-        done = max(0, min(units_done, len(weights)))
-        chars = chars_before + int(source_chars * (sum(weights[:done]) / weight_total)) if weight_total else chars_before + source_chars
+        if units_total != known_total[0]:
+            units_total_all[0] += units_total - known_total[0]
+            known_total[0] = units_total
+        if not weight_total:
+            done, fraction = units_done, 1.0
+        elif units_total == len(weights):
+            done = max(0, min(units_done, len(weights)))
+            fraction = sum(weights[:done]) / weight_total
+        else:
+            done = max(0, min(units_done, units_total))
+            fraction = done / units_total if units_total else 1.0
+        chars = chars_before + int(source_chars * fraction)
         detail = extraction_detail(
             source_idx,
             num_sources,
@@ -285,7 +343,7 @@ def _source_progress(
             unit,
             activity,
             units_before=units_before,
-            units_total_all=units_total_all,
+            units_total_all=units_total_all[0],
         )
         compiler._report(chars, total_chars_all, detail + rate_suffix(compiler._usage_tracker))
 
@@ -393,37 +451,6 @@ def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extractio
     return result
 
 
-def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
-    """Character budget for one extraction batch.
-
-    The per-request cost that is NOT source content: the system template, the
-    reserved output, and the shared context safety margin.  Every term is
-    measured from the resolved config, never hard-coded.
-
-    The safety margin matters here: the chars-per-token heuristic undercounts
-    token-dense text (formulas, tables), so a nominally exact-fit batch used to
-    overflow a small local model's window — observed as
-    ``request (65762 tokens) exceeds the available context size (65536)``.
-    Content is never cropped: a smaller budget splits the source across more
-    batches.
-    """
-    cw = compiler._context_window
-    safety_tokens = context_safety_tokens(cw.max_input)
-    overhead = compiler._extract_system_tokens + cw.answer_reserve + safety_tokens
-    logger.info(
-        "TwoPhase: extract budget (cw=%d sys=%d answer_reserve=%d safety=%d) -> %d tokens for content",
-        cw.max_input,
-        compiler._extract_system_tokens,
-        cw.answer_reserve,
-        safety_tokens,
-        max(1, cw.max_input - overhead),
-    )
-    return tokens_to_chars(
-        max(1, cw.max_input - overhead),
-        chars_per_token=compiler._config.llm.default_chars_per_token,
-    )
-
-
 def extract_incremental(
     compiler: TwoPhaseRuntime,
     source: str,
@@ -431,6 +458,7 @@ def extract_incremental(
     extraction_system: str,
     *,
     progress: ProgressFn | None = None,
+    texts: list[str] | None = None,
 ) -> tuple[list[Extraction | None], bool]:
     """Run extraction with message_history threading between batches.
 
@@ -446,81 +474,215 @@ def extract_incremental(
     window and the model returns empty (``finish_reason: stop``, no
     content) — see commit history for the regression this fixed.
 
+    *texts*, when given, are the source's text blocks the batches were packed
+    from. A provider overflow then re-plans only the texts not yet extracted
+    against the lowered window: the results and the threaded history so far
+    are kept, and no text is sent twice.
+
     *progress* is called after every finished batch (cached ones
     included) so the bar moves with the work.
     """
     compaction_threshold = compiler._context_window.history_budget
+    chars_per_token = compiler._config.llm.default_chars_per_token
     results: list[Extraction | None] = []
     history: list[ModelMessage] = []
     agent: ExtractionAgent | None = None
-    for batch_idx, combined in enumerate(batches_list):
-        # Per-batch cache (same key as extract_one).
-        extract_deps = _extract_cache_deps(compiler, combined)
-        if not compiler._config.no_cache:
-            cached = compiler._cache_store.get_dict("extract", extract_deps)
-            if cached is not None:
-                logger.info("TwoPhase: extraction cache hit for '%s' batch %d", source, batch_idx)
-                extraction = Extraction.from_dict(cached)
-                results.append(extraction)
-                # Inject a synthetic summary of the cached result so the
-                # next uncached batch sees coherent cross-batch context
-                # (otherwise the agent loses the document thread).
-                history.append(_synthetic_history_response(extraction))
-                _compact_history_inplace(history, compaction_threshold)
-                if progress is not None:
-                    progress(batch_idx + 1, len(batches_list), "")
-                continue
-            logger.info(
-                "TwoPhase: extraction cache miss for '%s' batch %d (text_hash=%.16s)",
-                source,
-                batch_idx,
-                extract_deps[CacheDeps.SOURCE_TEXT],
-            )
-
-        if agent is None:
-            agent = ExtractionAgent(
-                model_string=compiler._model or "",
-                timeout=compiler._timeout,
-                skills=compiler._config.skills,
-                delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
-                reasoning_effort=compiler._config.llm.reasoning_effort,
-                context_manager=compiler._config.llm.context_manager,
-                context_window=compiler._context_window.max_input,
-                usage_tracker=compiler._usage_tracker,
-                llm=compiler._config.llm,
-            )
-        deps = PipelineAgentDeps(text=combined, source_id=f"{source}:{batch_idx}")
+    # The unit of work is a text, not a batch: only a text list lets a re-plan
+    # split the batch that overflowed without dropping or repeating content.
+    pending: list[str] = list(texts) if texts is not None else list(batches_list)
+    while pending:
+        # Without the unbatched texts there is no text grouping to recover:
+        # keep the batches the caller already packed.
+        groups = _text_groups(pending, _extract_char_budget(compiler)) if texts is not None else [[batch] for batch in pending]
+        extracted = 0
         try:
-            validated, new_messages = agent.run_with_messages(
-                deps,
-                message_history=history if history else None,
-            )
-            history = new_messages
-            _compact_history_inplace(history, compaction_threshold)
-            compiler._batch_tracker.record(failed=False)
-            result = Extraction(
-                source=source,
-                summary=validated.summary,
-                entities=list(validated.entities),
-                concepts=list(validated.concepts),
-                tags=validated.tags,
-            )
-            if not compiler._config.no_cache:
-                compiler._cache_store.set("extract", extract_deps, result.to_dict())
-            results.append(result)
-        except LLMOutputError:
-            logger.warning(
-                "TwoPhase: incremental extraction failed for '%s' batch %d",
-                source,
-                batch_idx,
-            )
-            compiler._batch_tracker.record(failed=True)
-            results.append(None)
-        if progress is not None:
-            progress(batch_idx + 1, len(batches_list), "")
-        if compiler._batch_tracker.should_stop():
-            return results, True
+            for group in groups:
+                combined = "\n\n".join(group)
+                batch_idx = len(results)
+                # Per-batch cache (same key as extract_one).
+                extract_deps = _extract_cache_deps(compiler, combined)
+                if not compiler._config.no_cache:
+                    cached = compiler._cache_store.get_dict("extract", extract_deps)
+                    if cached is not None:
+                        logger.info("TwoPhase: extraction cache hit for '%s' batch %d", source, batch_idx)
+                        extraction = Extraction.from_dict(cached)
+                        results.append(extraction)
+                        # Inject a synthetic summary of the cached result so the
+                        # next uncached batch sees coherent cross-batch context
+                        # (otherwise the agent loses the document thread).
+                        history.append(_synthetic_history_response(extraction))
+                        _compact_history_inplace(history, compaction_threshold, chars_per_token=chars_per_token)
+                        extracted += len(group)
+                        if progress is not None:
+                            progress(len(results), len(groups), "")
+                        continue
+                    logger.info(
+                        "TwoPhase: extraction cache miss for '%s' batch %d (text_hash=%.16s)",
+                        source,
+                        batch_idx,
+                        extract_deps[CacheDeps.SOURCE_TEXT],
+                    )
+
+                if agent is None:
+                    agent = ExtractionAgent(
+                        model_string=compiler._model or "",
+                        timeout=compiler._timeout,
+                        skills=compiler._config.skills,
+                        delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
+                        reasoning_effort=compiler._config.llm.reasoning_effort,
+                        context_manager=compiler._config.llm.context_manager,
+                        context_window=compiler._context_window.max_input,
+                        usage_tracker=compiler._usage_tracker,
+                        llm=compiler._config.llm,
+                    )
+                deps = PipelineAgentDeps(text=combined, source_id=f"{source}:{batch_idx}")
+                try:
+                    validated, new_messages = agent.run_with_messages(
+                        deps,
+                        message_history=history if history else None,
+                    )
+                    history = new_messages
+                    _compact_history_inplace(history, compaction_threshold, chars_per_token=chars_per_token)
+                    compiler._batch_tracker.record(failed=False)
+                    result = Extraction(
+                        source=source,
+                        summary=validated.summary,
+                        entities=list(validated.entities),
+                        concepts=list(validated.concepts),
+                        tags=validated.tags,
+                    )
+                    if not compiler._config.no_cache:
+                        compiler._cache_store.set("extract", extract_deps, result.to_dict())
+                    results.append(result)
+                except LLMContextOverflowError:
+                    # The batch did not fit the provider's window. The re-plan
+                    # below lowers the window and splits the remaining texts -
+                    # the error carries the limit the provider named.
+                    raise
+                except LLMOutputError:
+                    logger.warning(
+                        "TwoPhase: incremental extraction failed for '%s' batch %d",
+                        source,
+                        batch_idx,
+                    )
+                    compiler._batch_tracker.record(failed=True)
+                    results.append(None)
+                extracted += len(group)
+                if progress is not None:
+                    progress(len(results), len(groups), "")
+                if compiler._batch_tracker.should_stop():
+                    return results, True
+        except LLMContextOverflowError as exc:
+            if texts is None:
+                raise
+            # Keep every completed batch and the history it built; re-plan
+            # only what this batch and the later ones cover.
+            pending = _replan_after_overflow(compiler, source, pending[extracted:], exc)
+            continue
+        pending = []
     return results, False
+
+
+def _replan_after_overflow(
+    compiler: TwoPhaseRuntime,
+    source: str,
+    texts: list[str],
+    exc: LLMContextOverflowError,
+) -> list[str]:
+    """Lower the window to the provider's limit and fit *texts* to it.
+
+    Returns the texts that still have to be extracted, each already small
+    enough for the re-planned budget - a text larger than the new window is
+    split into windows instead of being sent whole again. The caller packs
+    them into batches and keeps whatever it already extracted.
+
+    The re-plan works on the source's *texts*, not the batches they were
+    packed into: a joined batch has no text boundaries left to split on, so
+    re-packing it could only hard-split the middle of a text.
+
+    Raises the original error when the provider named no limit or the window
+    is already at that limit - kompend cannot plan against an unknown limit,
+    and re-planning an unchanged budget would produce the same request.
+    """
+    limit = exc.stated_limit
+    if limit is None:
+        raise exc
+    if not compiler._clamp_window(limit, reason=f"provider enforces {limit} tokens"):
+        raise exc
+    char_budget = _extract_char_budget(compiler)
+    fitted = _fit_texts(texts, char_budget)
+    logger.info(
+        "TwoPhase: re-planned '%s' into %d text window(s) for the %d-token window",
+        source,
+        len(fitted),
+        compiler._context_window.max_input,
+    )
+    return fitted
+
+
+def _fit_texts(texts: list[str], char_budget: int) -> list[str]:
+    """Split any text that does not fit *char_budget* into windows.
+
+    Batching can split a source between its texts, but a single text larger
+    than the budget can only be split inside itself. ``split_text_windows``
+    keeps every character (breaking on line boundaries where it can), so a
+    chunk that grew past the window is still extracted in full - and a text
+    that fits is passed through untouched.
+    """
+    fitted: list[str] = []
+    for text in texts:
+        if len(text) > char_budget:
+            fitted.extend(split_text_windows(text, char_budget))
+        elif text:
+            fitted.append(text)
+    return fitted
+
+
+def _text_groups(texts: list[str], char_budget: int) -> list[list[str]]:
+    """Pack *texts* into groups that fit within *char_budget* (chars).
+
+    The groups keep the texts they contain (not the joined strings) so a
+    caller that has to re-plan can tell exactly which texts a group covers.
+    A text larger than the budget still forms its own group; callers that
+    must fit the window split it first (:func:`_fit_texts`).
+    """
+    groups: list[list[str]] = []
+    parts: list[str] = []
+    length = 0
+    for text in texts:
+        if length + len(text) > char_budget and parts:
+            groups.append(parts)
+            parts = []
+            length = 0
+        parts.append(text)
+        length += len(text)
+    if parts:
+        groups.append(parts)
+    return groups
+
+
+def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
+    """Character budget for one extraction batch.
+
+    The per-request cost that is NOT source content: the system template, the
+    reserved output, and the shared context safety margin.  Every term is
+    measured from the resolved config, never hard-coded, and the arithmetic
+    lives in :class:`~kompend.llm.request_budget.RequestBudget` so every
+    stage sizes itself the same way.
+
+    The safety margin matters here: the chars-per-token heuristic undercounts
+    token-dense text (formulas, tables), so a nominally exact-fit batch used to
+    overflow a small local model's window — observed as
+    ``request (65762 tokens) exceeds the available context size (65536)``.
+    Content is never cropped: a smaller budget splits the source across more
+    batches.
+    """
+    budget = RequestBudget(
+        window=compiler._context_window,
+        reserved={"system": compiler._extract_system_tokens},
+    )
+    logger.info("TwoPhase: extract budget (%s)", budget.report())
+    return budget.content_chars(compiler._config.llm.default_chars_per_token)
 
 
 def _extract_cache_deps(compiler: TwoPhaseRuntime, text: str) -> dict[str, str]:
@@ -547,7 +709,7 @@ def _extract_cache_deps(compiler: TwoPhaseRuntime, text: str) -> dict[str, str]:
     return deps
 
 
-def _compact_history_inplace(history: list[ModelMessage], max_tokens: int) -> None:
+def _compact_history_inplace(history: list[ModelMessage], max_tokens: int, *, chars_per_token: float) -> None:
     """Drop the oldest messages from ``history`` until under budget.
 
     Mutates the list in place. Messages come in (request, response) pairs
@@ -557,25 +719,31 @@ def _compact_history_inplace(history: list[ModelMessage], max_tokens: int) -> No
     """
     if not history:
         return
-    while _estimate_history_tokens(history) > max_tokens and len(history) > 2:
+    while _estimate_history_tokens(history, chars_per_token=chars_per_token) > max_tokens and len(history) > 2:
         # Drop the oldest request or response. Remove two at a time when
         # possible to keep request/response pairing intact.
         drop_n = 2 if len(history) > 2 else 1
         del history[:drop_n]
-    if _estimate_history_tokens(history) > max_tokens and len(history) >= 2:
+    if _estimate_history_tokens(history, chars_per_token=chars_per_token) > max_tokens and len(history) >= 2:
         logger.debug(
             "TwoPhase: history still over budget after compaction (%d tokens, %d messages) — keeping tail",
-            _estimate_history_tokens(history),
+            _estimate_history_tokens(history, chars_per_token=chars_per_token),
             len(history),
         )
 
 
-def _estimate_history_tokens(history: list[ModelMessage]) -> int:
+def _estimate_history_tokens(history: list[ModelMessage], *, chars_per_token: float) -> int:
     """Estimate total tokens across all messages in ``history``.
 
     Walks every ``ModelRequest`` / ``ModelResponse`` and sums the string
     length of each part's ``content`` field. Non-string parts (images,
     tool calls) are ignored — they're rare in the extraction path.
+
+    The conversion uses the configured chars-per-token
+    (``compile.llm.default_chars_per_token``), the same heuristic the batch
+    budget is built from: measuring the history with a different ratio than
+    the one the window was sized with is how a compacted history still
+    overflows.
     """
     total = 0
     for msg in history:
@@ -583,7 +751,7 @@ def _estimate_history_tokens(history: list[ModelMessage]) -> int:
         for part in parts:
             content = getattr(part, "content", None)
             if isinstance(content, str):
-                total += estimate_tokens(content)
+                total += chars_to_tokens(len(content), chars_per_token=chars_per_token)
     return total
 
 

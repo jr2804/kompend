@@ -18,11 +18,9 @@ from kompend.agents.decision import decide_error_action
 from kompend.agents.generation import make_agentic_generation_agent
 from kompend.agents.types import ToolGenerationDeps
 from kompend.compilation._two_phase_core import (
-    CONTEXT_SAFETY_FRACTION,
     ExtractionSet,
     TwoPhaseRuntime,
     compute_quality_score,
-    context_safety_tokens,
     extract_images_from_chunks,
     rate_suffix,
     segment_sources,
@@ -54,10 +52,15 @@ from kompend.core.paths import safe_stem
 from kompend.core.pipeline.entity_types import EntityTypeRegistry
 from kompend.core.templates import get_template_loader
 from kompend.core.text.matching import best_match, cosine
-from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
+from kompend.core.utils.exceptions import (
+    LLMContextOverflowError,
+    LLMOutputError,
+    LLMTransientError,
+)
 from kompend.lint.base import LintRuleOutcome
 from kompend.lint.structural import BrokenWikilinksRule
 from kompend.llm.decision import ErrorAction
+from kompend.llm.request_budget import RequestBudget
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 from kompend.rag.zvec_store import make_provider
 
@@ -78,6 +81,27 @@ _COVER_SIMILARITY_THRESHOLD = 85.0
 _AGENTIC_TOOL_FRAMING_TOKENS = 900
 #: Per fetch_concepts round: assistant tool call + result framing.
 _AGENTIC_FETCH_ROUND_TOKENS = 600
+#: Per list_known_titles round: assistant tool call + result framing, on top
+#: of the title window itself.
+_AGENTIC_TITLES_ROUND_TOKENS = 600
+
+#: Share of the context window the known-titles payload may occupy in total,
+#: split evenly between the head inlined in the prompt and one page served by
+#: ``list_known_titles()``. The titles are the one reserved payload that grows
+#: with the corpus (every concept name plus the previous compile's aliases;
+#: observed: 8156 titles ≈ 47K tokens against a 64K window, whose segment
+#: budget collapsed to the 512-token floor and aborted the run). They are
+#: *windowed*, never truncated: half the share is in the prompt, the other
+#: half is the tool page, so every title stays reachable to the model while
+#: the segment budget is bounded at planning time.
+_KNOWN_TITLES_MAX_FRACTION = 0.10
+
+#: How many provider-named window limits one agentic generation run may
+#: re-plan against. A rejection naming a lower limit lowers the window and
+#: re-segments the sources; the loop ends as soon as the provider repeats a
+#: limit kompend already plans against, and this cap stops a provider that
+#: keeps naming new ones from re-segmenting the whole corpus forever.
+_MAX_CONTEXT_CLAMPS: int = 3
 
 
 #: How many retries to attempt when the upstream returns a transient 4xx
@@ -184,33 +208,65 @@ def run_generation(
 
     all_images = extract_images_from_chunks(chunks)
     pinned_clean = list(dict.fromkeys(f.strip() for f in (pinned_facts or []) if f and f.strip()))
+    # Window the titles FIRST so the reservation and the prompt itself are
+    # computed from the same head. The full list stays intact in deps and is
+    # reachable through list_known_titles() — the head is a window, not a cut.
     known_titles = build_known_titles(compiler, concepts)
+    titles_prompt, titles_page_chars = _known_titles_windows(compiler, known_titles)
     # Agentic-conversation fixed cost (everything that lands in the request
     # that is NOT the segment content): system template + rendered user
     # prompt (template + known_titles + pinned_facts) + tool-call framing
-    # (read_segment + fetch_concepts round-trips) + the fetch result + a
-    # safety margin. Subtracting this from the window keeps the full
-    # request (segment content + output budget) inside the context.
-    reserved_tokens = _agentic_reserved_tokens(compiler, known_titles, pinned_clean)
-    source_segments = prepare_source_segments(compiler, chunks, reserved_tokens=reserved_tokens)
+    # (read_segment + fetch_concepts round-trips) + the fetch result. The
+    # planner adds the answer reserve and the safety margin, so the full
+    # request (segment content + output budget) stays inside the context.
+    budget = _agentic_budget(compiler, titles_prompt, titles_page_chars, pinned_clean)
+    source_segments = prepare_source_segments(compiler, chunks, budget=budget)
 
-    try:
-        nodes, slug_to_idx, _caller_progress = run_generation_resumable(
-            compiler,
-            concepts,
-            source_segments,
-            all_images,
-            pinned_clean,
-            known_titles=known_titles,
-        )
-    except LLMOutputError:
-        # Generation produced no pages for at least one segment. The step
-        # store keeps every segment transcript; a re-run recovers finished
-        # segments and resumes the interrupted one mid-conversation.
-        logger.warning(
-            "TwoPhase: agentic generation raised — transcripts persisted. Re-run to retry the failed segment(s) only.",
-        )
-        raise
+    # The provider may enforce a smaller window than kompend planned against,
+    # and it may name a still smaller one on a later attempt (a failover model
+    # with a narrower context). Every rejection that names a lower limit lowers
+    # the window, re-windows the titles, recomputes the segments and runs again -
+    # the content is split across more segments, never cropped. The loop ends
+    # when the provider repeats a limit kompend already plans against
+    # (``_clamp_window`` refuses to move) or the cap is reached.
+    clamps = 0
+    while True:
+        try:
+            nodes, slug_to_idx, _caller_progress = run_generation_resumable(
+                compiler,
+                concepts,
+                source_segments,
+                all_images,
+                pinned_clean,
+                known_titles=known_titles,
+                known_titles_prompt=titles_prompt,
+                known_titles_page_chars=titles_page_chars,
+                budget=budget,
+            )
+            break
+        except LLMContextOverflowError as exc:
+            if (
+                exc.stated_limit is None
+                or clamps >= _MAX_CONTEXT_CLAMPS
+                or not compiler._clamp_window(exc.stated_limit, reason=f"provider enforces {exc.stated_limit} tokens")
+            ):
+                raise
+            clamps += 1
+            # The titles windows are a fraction of the window; after the clamp
+            # they must shrink with it, or the prompt keeps paying the old
+            # window's share and the re-segmentation gains nothing. The full
+            # list is untouched — only the window sizes move.
+            titles_prompt, titles_page_chars = _known_titles_windows(compiler, known_titles)
+            budget = _agentic_budget(compiler, titles_prompt, titles_page_chars, pinned_clean)
+            source_segments = prepare_source_segments(compiler, chunks, budget=budget)
+        except LLMOutputError:
+            # Generation produced no pages for at least one segment. The step
+            # store keeps every segment transcript; a re-run recovers finished
+            # segments and resumes the interrupted one mid-conversation.
+            logger.warning(
+                "TwoPhase: agentic generation raised — transcripts persisted. Re-run to retry the failed segment(s) only.",
+            )
+            raise
 
     return assemble_wiki(compiler, nodes, slug_to_idx, chunks, extractions, concepts=concepts, pinned_clean=pinned_clean)
 
@@ -270,16 +326,16 @@ def prepare_source_segments(
     compiler: TwoPhaseRuntime,
     chunks: list[ResolvedChunk],
     *,
-    reserved_tokens: int = 0,
+    budget: RequestBudget | None = None,
 ) -> list[list[tuple[str, str]]]:
     """Build source segments sized to the context window.
 
-    *reserved_tokens* is the fixed per-request conversation cost that is
-    NOT the segment content: system prompt + rendered user prompt
-    (template + known_titles + pinned_facts) + tool-call framing + the
-    fetch_concepts result + a safety margin. The agentic flow passes the
-    measured value so the segment budget = window - reserved - output
-    budget, guaranteeing the full request (segment + output) fits.
+    *budget* is the fixed per-request conversation cost that is NOT the
+    segment content: system prompt + rendered user prompt (template + the
+    known_titles head + pinned_facts) + tool-call framing + the
+    fetch_concepts result + the safety margin. The agentic flow passes the measured budget
+    so the segment budget = window - reserved - answer reserve, guaranteeing
+    the full request (segment + output) fits.
     Content is preserved: oversized sources are split across more
     segments by :func:`segment_sources` — nothing is cropped.
     """
@@ -300,26 +356,41 @@ def prepare_source_segments(
     # across all sources (segments share it, so this over-reserves slightly).
     cpt = compiler._config.llm.default_chars_per_token
     label_overhead_tokens = int(sum(len(label) + 7 for label, _ in sources) / cpt)
-    if reserved_tokens:
-        # Agentic path: reserved is the complete fixed overhead (system +
-        # prompt + variables + tool framing), so the content budget is the
-        # window minus the output budget minus everything reserved.
-        content_budget = cw.input_budget(reserved_tokens + label_overhead_tokens)
-    else:
+    # Sizing-feasibility invariant, checked at planning time (before any
+    # LLM call): the smallest segment the sizer can emit is
+    # min_segment_tokens (the floor in tokens_to_chars below), and its
+    # rendered block adds label_overhead on top. If even that cannot fit
+    # beside the reservation + answer reserve, every segment would trip
+    # the per-segment request-fit guard and the run would abort after all
+    # upstream work — fail here instead, naming the components.
+    min_floor_tokens = compiler._config.llm.min_segment_tokens
+    if budget is None:
         # Legacy template path: only the system template is pre-known; the
         # content block IS the prompt, so no other reservation applies.
-        content_budget = cw.input_budget(compiler._gen_system_tokens + label_overhead_tokens)
+        budget = RequestBudget(
+            window=cw,
+            reserved={"system": compiler._gen_system_tokens},
+        )
+    if budget.available_tokens - label_overhead_tokens < min_floor_tokens:
+        raise LLMOutputError(
+            f"Segment sizing impossible: {budget.report()} + source labels ({label_overhead_tokens})"
+            + f" leaves {budget.available_tokens - label_overhead_tokens} tokens, below the minimum segment "
+            + f"({min_floor_tokens}). Reduce the reserved payloads (known_titles is served in windows; check "
+            + "pinned_facts/categories) or raise compile.llm.context_window."
+        )
+    # The rendered block carries the label overhead on top of the segment
+    # content, so it is reserved before the content budget is derived.
+    content_budget = max(min_floor_tokens, budget.content_tokens - label_overhead_tokens)
     segment_char_size = tokens_to_chars(
-        max(compiler._config.llm.min_segment_tokens, content_budget),
-        chars_per_token=compiler._config.llm.default_chars_per_token,
+        content_budget,
+        chars_per_token=cpt,
     )
     logger.info(
-        "TwoPhase: segment_char_size=%d chars (cw=%d, sys_tok=%d, answer_reserve=%d, reserved=%d)",
+        "TwoPhase: segment_char_size=%d chars (%s, labels=%d, answer_reserve=%d)",
         segment_char_size,
-        cw.max_input,
-        compiler._gen_system_tokens,
+        budget.report(),
+        label_overhead_tokens,
         cw.answer_reserve,
-        reserved_tokens,
     )
     source_segments = segment_sources(sources, segment_char_size)
     logger.info(
@@ -339,6 +410,9 @@ def run_generation_resumable(
     pinned_clean: list[str],
     *,
     known_titles: list[str] | None = None,
+    known_titles_prompt: list[str] | None = None,
+    known_titles_page_chars: int = 0,
+    budget: RequestBudget | None = None,
 ) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
     """Run agentic generation with transcript-level resume.
 
@@ -361,6 +435,9 @@ def run_generation_resumable(
         all_images,
         pinned_facts=pinned_clean,
         known_titles=known_titles,
+        known_titles_prompt=known_titles_prompt,
+        known_titles_page_chars=known_titles_page_chars,
+        budget=budget,
         step_store=store,
     )
 
@@ -373,6 +450,9 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
     *,
     pinned_facts: list[str],
     known_titles: list[str] | None = None,
+    known_titles_prompt: list[str] | None = None,
+    known_titles_page_chars: int = 0,
+    budget: RequestBudget | None = None,
     step_store: StepStore | None = None,
 ) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
     """Generate wiki pages using per-segment agentic tool loop.
@@ -584,6 +664,8 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
             pinned_facts=pinned_facts,
             categories=categories,
             known_titles=known_titles or [],
+            known_titles_prompt=known_titles_prompt or [],
+            known_titles_page_chars=known_titles_page_chars,
             concept_broker=broker,
         )
 
@@ -608,15 +690,14 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
         # content is preserved by splitting into smaller segments at the
         # sizing stage.
         _segment_content_tokens = _token_estimate(content_block, compiler._config.llm.default_chars_per_token)
-        _estimated_request = _agentic_reserved_tokens(compiler, known_titles or [], pinned_facts or []) + _segment_content_tokens
-        if _estimated_request + compiler._context_window.answer_reserve > compiler._context_window.max_input:
-            raise LLMOutputError(
-                f"Agentic generation for {seg_label}: segment content ({_segment_content_tokens} tokens) + fixed "
-                f"overhead ({_estimated_request - _segment_content_tokens} tokens) + answer reserve "
-                f"({compiler._context_window.answer_reserve} tokens) exceeds the {compiler._context_window.max_input}-token "
-                f"context window. Segments were sized with reserved_tokens; this indicates the conversation "
-                f"grew beyond the reservation. Re-run with a smaller context budget or check config."
-            )
+        segment_budget = budget or RequestBudget(
+            window=compiler._context_window,
+            reserved={"system": compiler._gen_system_tokens},
+        )
+        segment_budget.require(
+            _segment_content_tokens,
+            stage=f"Agentic generation for {seg_label}",
+        )
         while broker.remaining(seg_id) > 0 and passes < cap:
             # One pass = one agent run. The agent base owns the whole-request
             # retry policy (``compile.llm.transient_retries``), so a transient
@@ -633,6 +714,11 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     run_id=pass_run_id(seg_prefix, recovery.attempts + 1, passes) if seg_prefix else None,
                 )
                 resume_history = None  # only the first pass continues the old conversation
+            except LLMContextOverflowError:
+                # The segment did not fit the provider's window. Re-planning
+                # (smaller segments) is the caller's job - the error carries
+                # the limit the provider named.
+                raise
             except (LLMTransientError, LLMOutputError) as exc:
                 transient = isinstance(exc, LLMTransientError)
                 action = _failure_action(
@@ -854,58 +940,51 @@ def _failure_action(
     return ErrorAction.RETRY if transient else ErrorAction.SKIP
 
 
-def _agentic_reserved_tokens(
+def _agentic_budget(
     compiler: TwoPhaseRuntime,
-    known_titles: list[str],
+    known_titles_prompt: list[str],
+    titles_page_chars: int,
     pinned_clean: list[str],
-) -> int:
+) -> RequestBudget:
     """Fixed per-request cost of an agentic generation turn.
 
     Everything that lands in the request that is NOT the segment content:
-    system template + rendered user prompt (template body + known_titles +
-    pinned_facts blocks + categories) + the read_segment/fetch_concepts
-    tool-call framing + one fetch result + a safety margin.
+    system template + rendered user prompt (template body + the inline
+    known_titles head + pinned_facts blocks + categories) + the
+    read_segment/fetch_concepts tool-call framing + one fetch result + one
+    list_known_titles round (its framing and the title window it serves).
 
     Measured from the actual templates and variable payloads (same
     chars-per-token heuristic used for segment sizing), never hard-coded
-    estimates.
+    estimates. The window, the answer reserve and the safety margin are the
+    planner's business — this function only names the payloads.
     """
     cpt = compiler._config.llm.default_chars_per_token
-    system_tokens = _token_estimate(_loader.get_body("compilation/generation_agentic_system.md.j2"), cpt)
-    prompt_tokens = _token_estimate(_loader.get_body("compilation/generation_agentic_prompt.md.j2"), cpt)
-    known_tokens = _token_estimate("\n".join(known_titles), cpt)
-    pinned_tokens = _token_estimate("\n".join(pinned_clean), cpt)
     categories = compiler._config.extraction_categories
-    categories_tokens = _token_estimate("\n".join(f"{k}: {v}" for k, v in categories.items()), cpt)
-    fraction_safety = context_safety_tokens(compiler._context_window.max_input)
-    total = (
-        system_tokens
-        + prompt_tokens
-        + known_tokens
-        + pinned_tokens
-        + categories_tokens
-        + _AGENTIC_TOOL_FRAMING_TOKENS
-        + _AGENTIC_FETCH_ROUND_TOKENS
-        + fraction_safety
-    )
-    logger.info(
-        "TwoPhase: agentic reserved_tokens=%d (sys=%d prompt=%d known=%d pinned=%d cats=%d framing=%d fetch=%d safety=%d [%.0f%% of cw])",
-        total,
-        system_tokens,
-        prompt_tokens,
-        known_tokens,
-        pinned_tokens,
-        categories_tokens,
-        _AGENTIC_TOOL_FRAMING_TOKENS,
-        _AGENTIC_FETCH_ROUND_TOKENS,
-        fraction_safety,
-        100 * CONTEXT_SAFETY_FRACTION,
-    )
-    return total
+    reserved = {
+        "system": _token_estimate(_loader.get_body("compilation/generation_agentic_system.md.j2"), cpt),
+        "prompt": _token_estimate(_loader.get_body("compilation/generation_agentic_prompt.md.j2"), cpt),
+        "known_titles": _token_estimate("\n".join(known_titles_prompt), cpt),
+        "pinned_facts": _token_estimate("\n".join(pinned_clean), cpt),
+        "categories": _token_estimate("\n".join(f"{k}: {v}" for k, v in categories.items()), cpt),
+        "tool_framing": _AGENTIC_TOOL_FRAMING_TOKENS,
+        "fetch_round": _AGENTIC_FETCH_ROUND_TOKENS,
+    }
+    if titles_page_chars > 0:
+        # The model may page through the titles the prompt does not inline:
+        # reserve that round (framing + the window it returns).
+        reserved["titles_round"] = _token_estimate_chars(titles_page_chars, cpt) + _AGENTIC_TITLES_ROUND_TOKENS
+    budget = RequestBudget(window=compiler._context_window, reserved=reserved)
+    logger.info("TwoPhase: agentic budget (%s)", budget.report())
+    return budget
 
 
 def _token_estimate(text: str, chars_per_token: float) -> int:
     return max(1, int(round(len(text) / chars_per_token)))
+
+
+def _token_estimate_chars(chars: int, chars_per_token: float) -> int:
+    return max(1, int(round(chars / chars_per_token)))
 
 
 def _resolve_page_kind(
@@ -1058,6 +1137,52 @@ def _sanitize_entity_type(raw: str) -> str:
     """Normalize an entity type for use as a folder name ("Person" → "person")."""
     sanitized = slugify(raw or "", max_length=40)
     return sanitized or "entity"
+
+
+def _known_titles_windows(compiler: TwoPhaseRuntime, titles: list[str]) -> tuple[list[str], int]:
+    """Split the known-titles payload into windows instead of cropping it.
+
+    The titles are the one reserved payload that grows with the corpus: this
+    compile's concept names plus the previous compile's learned aliases.
+    Unbounded they consumed the whole window (8156 titles ≈ 47K tokens
+    against a 64K window), leaving no room for segment content — every
+    segment then tripped the request-fit guard and the run aborted after all
+    upstream work.
+
+    The share of the window the titles may use is split in two: the head
+    inlined in the prompt and one page served by ``list_known_titles()``.
+    No title is dropped — the tool reaches the rest of the list with the
+    offset the template names. Titles keep their order (this compile's
+    concepts first, previous-compile aliases last), so the most relevant
+    ones are already in the prompt.
+
+    Returns the inline head and the character size of one tool page — 0 when
+    the whole list fits inline, so nothing is reserved for a round the model
+    never needs.
+    """
+    cpt = compiler._config.llm.default_chars_per_token
+    share_tokens = max(1, int(compiler._context_window.max_input * _KNOWN_TITLES_MAX_FRACTION / 2))
+    share_chars = int(share_tokens * cpt)
+    head: list[str] = []
+    used = 0
+    for title in titles:
+        cost = len(title) + 1  # newline separator
+        if head and used + cost > share_chars:
+            break
+        head.append(title)
+        used += cost
+    if len(head) >= len(titles):
+        return head, 0
+    logger.info(
+        "TwoPhase: known_titles windowed — %d of %d titles inline, the rest served by list_known_titles()"
+        " in pages of %d chars (%.0f%% of the %d-token window total)",
+        len(head),
+        len(titles),
+        share_chars,
+        _KNOWN_TITLES_MAX_FRACTION * 100,
+        compiler._context_window.max_input,
+    )
+    return head, share_chars
 
 
 def build_known_titles(compiler: TwoPhaseRuntime, concepts: list[dict[str, Any]]) -> list[str]:

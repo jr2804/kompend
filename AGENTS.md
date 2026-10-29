@@ -9,13 +9,20 @@ entry to the relevant subtree, or fetched from `.agents/` when the task needs it
 
 ## Core Contract
 
+- **Never crop.** Arbitrarily truncating inputs or outputs — shortening a
+  prompt, a source, a message history, a result set or a model answer to make
+  it fit — is the cardinal forbidden antipattern. Split the work into windows
+  instead. Full policy: `.agents/CODE.md` ("LLM calls", "Boundaries"); the
+  rule is repeated at the code rails on purpose.
 - AGENTS.md files are binding work contracts for their subtrees.
 - Work products, source materials, instructions, records, assets, and durable
   docs must stay understandable from the nearest applicable AGENTS.md plus
   every parent AGENTS.md above it.
 - Do not duplicate or restate rules declared elsewhere in the DOX tree
   (parent, child, sibling, or `.agents/`). Reference, don't restate — see
-  **DOX authoring** in `.agents/POLICIES.md`.
+  **DOX authoring** in `.agents/POLICIES.md`. The one sanctioned exception is
+  **Never crop**: every rail repeats it, because a single forgotten stage is
+  how content gets lost.
 
 ## .agents/ index
 

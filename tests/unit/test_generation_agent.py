@@ -13,7 +13,8 @@ from kompend.compilation.schema import GenerationPage
 
 class TestGenerationAgentConstruction:
     def test_agentic_agent_registers_gen_tools(self) -> None:
-        """The agentic generation agent must expose read_segment/fetch_concepts.
+        """The agentic generation agent must expose read_segment/fetch_concepts
+        and list_known_titles (the titles the prompt does not inline).
 
         Regression: the ``tools`` field was never passed to the pydantic-ai
         ``Agent`` constructor, so the model had no tools and generated pages
@@ -22,7 +23,7 @@ class TestGenerationAgentConstruction:
         """
         agent = make_agentic_generation_agent(model_string="ollama/gpt-oss:20b")
         built = agent._build_agent()
-        assert sorted(built._function_toolset.tools.keys()) == ["fetch_concepts", "read_segment"]
+        assert sorted(built._function_toolset.tools.keys()) == ["fetch_concepts", "list_known_titles", "read_segment"]
 
 
 class TestPageKinds:

@@ -25,3 +25,18 @@ class LLMTransientError(LLMOutputError):
     attempt. Callers catch this class before :class:`LLMOutputError` and
     retry with backoff instead of skipping the unit of work.
     """
+
+
+class LLMContextOverflowError(LLMOutputError):
+    """Raised when the provider rejected a request as too large for its window.
+
+    The provider's own limit is carried in *stated_limit* when the message
+    named one (e.g. ``32768`` for "exceeds the available context size
+    (32768 tokens)"). That number is authoritative — it is what the server
+    enforces — so the caller can lower the effective window and re-plan
+    instead of failing the run.
+    """
+
+    def __init__(self, message: str, *, stated_limit: int | None = None) -> None:
+        super().__init__(message)
+        self.stated_limit = stated_limit

@@ -27,9 +27,9 @@ merging and an optional iterative WiCER refinement loop.
 | `flows/`                | Flow-based compilation building blocks                                   |
 | `flows/assembly.py`     | Cross-source assembly flow                                               |
 | `flows/extraction.py`   | Extraction flow                                                          |
-| `flows/agentic.py`      | AGENTIC extraction flow — per-section `ExtractionMemory` digest sized against the window (`_digest_budget_tokens`: window − answer reserve − safety − system − section); over budget the digest is model-consolidated (`MemoryConsolidationAgent`, rolling delta, never cropped); provider context-overflow 400s fail the section without a blind retry |
-| `flows/generation.py`   | Generation flow; `build_known_titles` (canonical titles for wikilinks), `learn_wikilink_aliases` (post-generation alias map persisted as `MetadataField.WIKILINK_ALIASES`) |
-| `flows/references.py`   | Reference-extraction flow (pre-extraction pass; retries = `llm.output_retries`; splits oversized sections into windows bounded by the input room and the window's answer reserve (`ContextWindow.answer_reserve`); every window is processed) |
+| `flows/agentic.py`      | AGENTIC extraction flow — per-section `ExtractionMemory` digest sized by the shared planner (`_digest_budget_tokens`: window − answer reserve − safety − system − section); over budget the digest is model-consolidated (`MemoryConsolidationAgent`, rolling delta, never cropped); provider context-overflow 400s lower the window to the provider's limit and split the section into windows that fit (`_replan_section`), and the section/consolidation agents are rebuilt against the clamped window (`_section_agents` — they turn it into compaction thresholds and the output ceiling at construction); only an overflow that cannot be split skips the section — a rejected payload is never resent unchanged |
+| `flows/generation.py`   | Generation flow; `build_known_titles` (canonical titles for wikilinks) is the only reserved payload that grows with the corpus, so `_known_titles_windows` splits its `_KNOWN_TITLES_MAX_FRACTION` window share into an inline prompt head and a `list_known_titles()` page — windowed, never truncated; `_agentic_budget` declares the request's reserved payloads to the shared planner; `prepare_source_segments` raises when even the minimum segment does not fit the plan (planning-time failure, before any LLM call); `learn_wikilink_aliases` (post-generation alias map persisted as `MetadataField.WIKILINK_ALIASES`) |
+| `flows/references.py`   | Reference-extraction flow (pre-extraction pass; retries = `llm.output_retries`; splits oversized sections into windows bounded by the planner's input room and the window's answer reserve (`ContextWindow.answer_reserve`); every window is processed) |
 | `reference_excision.py` | Reference-section detection + excision (regex-based)                     |
 | `write_tools.py`        | Tools of the agentic write agent — `read_source(stem, offset)` serves a source in windows of `budget.capture_source_char_max` characters and names the next offset, so a long source is paged through, never shortened |
 
@@ -62,6 +62,29 @@ merging and an optional iterative WiCER refinement loop.
   content without any body text is dropped. `wicer_max_iterations = 0` means
   "until the loop converges"; `wicer_max_seconds` is a wall-clock stop that
   keeps the compiled wiki.
+- **Every request is sized by the shared planner**
+  (`kompend.llm.request_budget.RequestBudget`), never by stage-local
+  arithmetic. A stage declares the window and its named reserved payloads
+  (`{"system": …, "known_titles": …}`) and reads the content budget from the
+  plan; the answer reserve and the safety margin are paid by default. A
+  request that cannot fit raises `LLMOutputError` naming the components —
+  content is never cropped to fit. `_two_phase_core.py` re-exports
+  `context_safety_tokens` / `tokens_to_chars` / `chars_to_tokens` from the
+  planner; do not define a second safety margin or conversion here.
+- **A provider that rejects an oversized request lowers the window**
+  (`TwoPhaseCompiler._clamp_window` → `EffectiveWindow.clamp`), and the stage
+  re-plans against it — the source is re-batched, the segments are
+  re-computed, an agentic section is split into windows, and the content is
+  never cropped. The provider's own number
+  (`kompend.llm.overflow.stated_context_size`) is the only thing that may
+  lower the window; a limit kompend cannot read leaves the failure loud.
+  Lowering is one-way for the run, so generation re-plans against every
+  rejection that names a *lower* limit (`_MAX_CONTEXT_CLAMPS` bounds how
+  many) and a repeated limit raises: nothing is left to re-plan. The
+  extraction re-plan keeps the batches already extracted and works on the
+  source's *texts* for the rest — a text that exceeds the new budget is split
+  into windows, so a joined batch never has to be re-sent whole and no text
+  is extracted twice.
 - **The progress bar reports the units the flow works in** — the sections of
   a document (agentic extraction), its batches (the other strategies), the
   concepts of a generation segment. `ProgressFn` (`_two_phase_core.py`) is
@@ -74,7 +97,10 @@ merging and an optional iterative WiCER refinement loop.
   (`(12/234 · 2450/9800 sections)`); the position in the whole run stays
   readable in the unit the flow works in. The *activity* names the running
   call (e.g. `consolidating context`). `rate_suffix` is the single source of
-  truth for the throughput suffix.
+  truth for the throughput suffix. A re-plan changes the unit count a source
+  works in: the bar's weights and the corpus-wide counter follow the new
+  count (`_source_progress`) instead of reporting a total the bar cannot
+  reach.
 - **A bar line carries counters, not labels** — `extraction_detail`
   (`flows/extraction.py`) and `generation_detail` (`flows/generation.py`)
   build them. A counter without its denominator ("segment 2" — out of how

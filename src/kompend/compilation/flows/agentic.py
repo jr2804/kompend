@@ -29,8 +29,9 @@ import hashlib
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Final
+from typing import Final, Protocol
 
+from pydantic_ai import Tool
 from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
 
 from kompend.agents.deps import MemoryConsolidationDeps, PipelineAgentDeps
@@ -40,14 +41,15 @@ from kompend.compilation._two_phase_core import (
     Extraction,
     ProgressFn,
     TwoPhaseRuntime,
-    context_safety_tokens,
 )
 from kompend.compilation.asset_tools import build_asset_tools
 from kompend.compilation.extraction_memory import ExtractionMemory
 from kompend.compilation.schema import ExtractionOutput
 from kompend.core.models.enums import CacheDeps
-from kompend.core.utils.tokens import estimate_tokens
+from kompend.core.text.windows import split_text_windows
 from kompend.llm.context_window import ContextWindow
+from kompend.llm.overflow import is_context_overflow, stated_context_size
+from kompend.llm.request_budget import RequestBudget, chars_to_tokens
 
 #: System part that announces the asset-lookup tools. Module-level so the
 #: budget math and the injected message can never drift apart.
@@ -66,16 +68,6 @@ _MIN_DIGEST_BUDGET_TOKENS: Final[int] = 200
 
 #: Consolidation is retried once with a tighter target before burning.
 _CONSOLIDATION_ATTEMPTS: Final[int] = 2
-
-#: Error-text markers of a context-window overflow across providers
-#: (Ollama, OpenAI-compatible gateways). Matched case-insensitively.
-_OVERFLOW_MARKERS: Final[tuple[str, ...]] = (
-    "exceeds the available context size",
-    "context_length_exceeded",
-    "maximum context length",
-    "reduce the length of the messages",
-    "reduce the length of your input",
-)
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +93,16 @@ class _RollingConsolidation:
         self.concept_keys = frozenset(memory.concepts)
         self.entity_keys = frozenset(memory.entities)
         self.tags = frozenset(memory.tags)
+
+
+class Consolidator(Protocol):
+    """Anything that merges a digest delta in one typed call.
+
+    The flows only need ``run``; :class:`MemoryConsolidationAgent`
+    satisfies this structurally, and so do scripted test doubles.
+    """
+
+    def run(self, deps: MemoryConsolidationDeps) -> str: ...
 
 
 def extract_agentic(
@@ -143,8 +145,11 @@ def extract_agentic(
       section text). While it fits, the full digest is injected; once it
       crosses the budget it is consolidated by a model call and the
       consolidated context rolls forward - never cropped.
-    - A provider context-overflow 400 fails the section without retry:
-      resending an unchanged oversized payload cannot succeed.
+    - A provider context-overflow 400 is never retried unchanged: the window
+      is lowered to the limit the provider named and the section is split
+      into windows that fit, so its content is still extracted. Only a
+      failure that cannot be split (no stated limit, or the window is already
+      at that limit) skips the section.
     """
     full_text_hash = _full_text_hash(texts)
 
@@ -166,61 +171,56 @@ def extract_agentic(
 
     # Build agent — with asset lookup tools when the store is populated
     tools = build_asset_tools(compiler._asset_store) if compiler._asset_store and compiler._asset_store.total_count() > 0 else None
-    agent = ExtractionAgent(
-        model_string=compiler._model or "",
-        timeout=compiler._timeout,
-        skills=compiler._config.skills,
-        delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
-        reasoning_effort=compiler._config.llm.reasoning_effort,
-        context_manager=compiler._config.llm.context_manager,
-        context_window=compiler._context_window.max_input,
-        tools=tools or [],
-        usage_tracker=compiler._usage_tracker,
-        llm=compiler._config.llm,
-    )
+    agent, consolidator = _section_agents(compiler, tools)
 
     memory = ExtractionMemory()
     consolidation = _RollingConsolidation()
-    consolidator = MemoryConsolidationAgent(
-        model_string=compiler._model or "",
-        timeout=compiler._timeout,
-        reasoning_effort=compiler._config.llm.reasoning_effort,
-        context_window=compiler._context_window.max_input,
-        llm=compiler._config.llm,
-    )
-    static_tokens = compiler._extract_system_tokens + (estimate_tokens(_TOOLS_PREAMBLE) if tools else 0)
+    cpt = compiler._config.llm.default_chars_per_token
+    static_tokens = compiler._extract_system_tokens + (chars_to_tokens(len(_TOOLS_PREAMBLE), chars_per_token=cpt) if tools else 0)
     batch_retries = compiler._config.llm.batch_retry_attempts
     overall_succeeded = False
     sections_done = 0
 
+    # Sections still to extract. A section the provider rejects as too large
+    # is split and put back at the front, so this list - and the bar's total -
+    # can grow mid-run.
+    pending: list[str] = list(texts)
+
+    def _section_total() -> int:
+        """Units the bar counts: finished sections plus the pending ones."""
+        return sections_done + len(pending)
+
     def _activity(label: str) -> None:
         """Name what the running call is doing, for the progress bar."""
         if progress is not None:
-            progress(sections_done, len(texts), label)
+            progress(sections_done, _section_total(), label)
 
-    for section_idx, section_text in enumerate(texts):
+    while pending:
+        section_text = pending.pop(0)
         logger.debug(
             "TwoPhase: agentic section %d/%d for '%s'",
-            section_idx + 1,
-            len(texts),
+            sections_done + 1,
+            _section_total(),
             source,
         )
 
-        # Build message history with memory digest injected as a system message.
-        # The digest is sized against the window for THIS section; once the
-        # full digest outgrows the budget it is model-consolidated, never cropped.
-        budget_tokens = _digest_budget_tokens(compiler._context_window, static_tokens, section_text)
-        memory_digest = _running_digest(memory, consolidation, budget_tokens, consolidator, source, activity=_activity)
-        message_history: list[ModelMessage] = []
-        if tools:
-            message_history.append(ModelRequest(parts=[SystemPromptPart(content=_TOOLS_PREAMBLE)]))
-        if memory_digest.strip():
-            msg = ModelRequest(parts=[SystemPromptPart(content=f"=== Context from prior sections ===\n{memory_digest}")])
-            message_history.append(msg)
+        message_history = _section_message_history(
+            compiler,
+            memory,
+            consolidation,
+            consolidator,
+            source,
+            section_text,
+            static_tokens,
+            cpt,
+            include_tool_preamble=bool(tools),
+            activity=_activity,
+        )
 
-        deps = PipelineAgentDeps(text=section_text, source_id=f"{source}:{section_idx}")
+        deps = PipelineAgentDeps(text=section_text, source_id=f"{source}:{sections_done}")
 
         validated: ExtractionOutput | None = None
+        replanned = False
         for attempt in range(1 + batch_retries):
             try:
                 validated, _new_messages = agent.run_with_messages(
@@ -229,14 +229,35 @@ def extract_agentic(
                 )
             except Exception as exc:
                 if _is_context_overflow(exc):
-                    # The unchanged payload can never fit: retrying it is
-                    # guaranteed waste. Fail the section now; the digest
-                    # budget above is what keeps this from recurring.
+                    # The unchanged payload can never fit, but its content can:
+                    # lower the window to the provider's limit and split the
+                    # section into windows that do. Retrying it unchanged is
+                    # the only guaranteed waste.
+                    windows = _replan_section(compiler, section_text, static_tokens, cpt, exc)
+                    if windows is not None:
+                        logger.warning(
+                            "TwoPhase: agentic section %d for '%s' exceeds the %d-token window (%s) - split into %d window(s) and re-planned",
+                            sections_done + 1,
+                            source,
+                            compiler._context_window.max_input,
+                            exc,
+                            len(windows),
+                        )
+                        # The split windows go back to the front of the queue:
+                        # they replace the section that just overflowed.
+                        pending = [*windows, *pending]
+                        replanned = True
+                        validated = None
+                        # Both agents baked the old window in at construction
+                        # (compaction thresholds, output ceiling); rebuild
+                        # them against the window the provider just named.
+                        agent, consolidator = _section_agents(compiler, tools)
+                        break
                     logger.error(
                         "TwoPhase: agentic section %d for '%s' exceeds the context window "
-                        "(%s) - skipping without retry; consider a larger "
+                        "(%s) - cannot split it smaller; skipping; consider a larger "
                         "compile.llm.context_window or smaller chunk sizes",
-                        section_idx + 1,
+                        sections_done + 1,
                         source,
                         exc,
                     )
@@ -244,7 +265,7 @@ def extract_agentic(
                     break
                 logger.debug(
                     "TwoPhase: agentic section %d attempt %d failed: %s",
-                    section_idx + 1,
+                    sections_done + 1,
                     attempt + 1,
                     exc,
                 )
@@ -258,18 +279,22 @@ def extract_agentic(
                     attempt + 1,
                     batch_retries,
                     source,
-                    section_idx,
+                    sections_done,
                 )
 
+        if replanned:
+            # The section is queued as smaller windows; it did not fail.
+            continue
+
         compiler._batch_tracker.record(failed=validated is None)
-        sections_done = section_idx + 1
+        sections_done += 1
         if progress is not None:
-            progress(sections_done, len(texts), "")
+            progress(sections_done, _section_total(), "")
 
         if validated is None:
             logger.warning(
                 "TwoPhase: agentic section %d failed for '%s' — skipping",
-                section_idx + 1,
+                sections_done,
                 source,
             )
             continue
@@ -298,12 +323,59 @@ def extract_agentic(
     return final
 
 
+def _section_message_history(
+    compiler: TwoPhaseRuntime,
+    memory: ExtractionMemory,
+    consolidation: _RollingConsolidation,
+    consolidator: Consolidator,
+    source: str,
+    section_text: str,
+    static_tokens: int,
+    chars_per_token: float,
+    *,
+    include_tool_preamble: bool,
+    activity: Callable[[str], None],
+) -> list[ModelMessage]:
+    """The message history for one section: tool preamble + running digest.
+
+    The digest is sized against the window for THIS section; once the full
+    digest outgrows the budget it is model-consolidated, never cropped.
+    """
+    budget_tokens = _digest_budget_tokens(compiler._context_window, static_tokens, section_text, chars_per_token=chars_per_token)
+    logger.info(
+        "TwoPhase: agentic digest budget (%s) -> %d tokens for the digest",
+        _digest_budget_report(compiler._context_window, static_tokens, section_text, chars_per_token=chars_per_token),
+        budget_tokens,
+    )
+    memory_digest = _running_digest(
+        memory,
+        consolidation,
+        budget_tokens,
+        consolidator,
+        source,
+        chars_per_token=chars_per_token,
+        activity=activity,
+    )
+    history: list[ModelMessage] = []
+    if include_tool_preamble:
+        history.append(ModelRequest(parts=[SystemPromptPart(content=_TOOLS_PREAMBLE)]))
+    if memory_digest.strip():
+        history.append(ModelRequest(parts=[SystemPromptPart(content=f"=== Context from prior sections ===\n{memory_digest}")]))
+    return history
+
+
 def _full_text_hash(texts: list[str]) -> str:
     """SHA-256 of concatenated section texts for cache key."""
     return hashlib.sha256("".join(texts).encode()).hexdigest()
 
 
-def _digest_budget_tokens(context_window: ContextWindow, static_tokens: int, section_text: str) -> int:
+def _digest_budget_tokens(
+    context_window: ContextWindow,
+    static_tokens: int,
+    section_text: str,
+    *,
+    chars_per_token: float,
+) -> int:
     """Tokens the prior-section digest may occupy in one section request.
 
     Mirrors the batch path's :func:`~kompend.compilation.flows.extraction._extract_char_budget`
@@ -311,40 +383,119 @@ def _digest_budget_tokens(context_window: ContextWindow, static_tokens: int, sec
     system prompt and the section text itself - so the agentic path sizes
     against the same physics instead of discovering the window at the
     provider's 400.
+
+    The arithmetic lives in :class:`~kompend.llm.request_budget.RequestBudget`,
+    so this stage cannot drift from the batch path on what the window pays for.
     """
-    return (
-        context_window.max_input
-        - context_window.answer_reserve
-        - context_safety_tokens(context_window.max_input)
-        - static_tokens
-        - estimate_tokens(section_text)
+    budget = RequestBudget(
+        window=context_window,
+        reserved={
+            "static": static_tokens,
+            "section": chars_to_tokens(len(section_text), chars_per_token=chars_per_token),
+        },
     )
+    # Signed: a negative budget means the section itself does not fit the
+    # window, which the caller reports as "no room for prior-section context".
+    return budget.available_tokens
+
+
+def _digest_budget_report(
+    context_window: ContextWindow,
+    static_tokens: int,
+    section_text: str,
+    *,
+    chars_per_token: float,
+) -> str:
+    """One-line description of the digest budget, in the shared report shape."""
+    return RequestBudget(
+        window=context_window,
+        reserved={
+            "static": static_tokens,
+            "section": chars_to_tokens(len(section_text), chars_per_token=chars_per_token),
+        },
+    ).report()
+
+
+def _section_agents(
+    compiler: TwoPhaseRuntime,
+    tools: list[Tool[PipelineAgentDeps]] | None,
+) -> tuple[ExtractionAgent, MemoryConsolidationAgent]:
+    """The section and consolidation agents, sized against the current window.
+
+    Built per window rather than once per source: a provider overflow lowers
+    the window mid-source, and both agents turn it into harness compaction
+    thresholds and the request's output ceiling when they are constructed. A
+    stale value would keep compacting against a window the provider has
+    already rejected.
+    """
+    agent = ExtractionAgent(
+        model_string=compiler._model or "",
+        timeout=compiler._timeout,
+        skills=compiler._config.skills,
+        delta_retry_enabled=compiler._config.llm.delta_retry_enabled,
+        reasoning_effort=compiler._config.llm.reasoning_effort,
+        context_manager=compiler._config.llm.context_manager,
+        context_window=compiler._context_window.max_input,
+        tools=tools or [],
+        usage_tracker=compiler._usage_tracker,
+        llm=compiler._config.llm,
+    )
+    consolidator = MemoryConsolidationAgent(
+        model_string=compiler._model or "",
+        timeout=compiler._timeout,
+        reasoning_effort=compiler._config.llm.reasoning_effort,
+        context_window=compiler._context_window.max_input,
+        llm=compiler._config.llm,
+    )
+    return agent, consolidator
+
+
+def _replan_section(
+    compiler: TwoPhaseRuntime,
+    section_text: str,
+    static_tokens: int,
+    chars_per_token: float,
+    exc: BaseException,
+) -> list[str] | None:
+    """Split an overflowing section against the provider's stated limit.
+
+    Returns the windows to process instead of the section, or ``None`` when
+    the failure cannot be re-planned: the provider named no limit, the window
+    is already at that limit, or the section already fits the re-planned
+    budget. A ``None`` means the unchanged payload cannot be made to fit, so
+    retrying it would only repeat the rejection.
+    """
+    limit = stated_context_size(exc)
+    if limit is None:
+        return None
+    if not compiler._clamp_window(limit, reason=f"provider enforces {limit} tokens"):
+        return None
+    # What the section itself may carry: the window minus the answer reserve,
+    # the safety margin and the static system prompt (the digest is re-sized
+    # against the same window on the next pass).
+    budget = RequestBudget(window=compiler._context_window, reserved={"static": static_tokens})
+    windows = split_text_windows(section_text, budget.content_chars(chars_per_token))
+    return windows if len(windows) > 1 else None
 
 
 def _is_context_overflow(exc: BaseException) -> bool:
     """Whether *exc* is a context-window overflow reported by the provider.
 
-    Walks the exception chain (gateway errors arrive wrapped) and matches
-    the markers providers use for "the request does not fit the window".
+    Delegates to :func:`kompend.llm.overflow.is_context_overflow` — one
+    definition of the provider's markers, shared with the agent base and the
+    window planner.
     """
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        blob = f"{type(current).__name__}: {current}".lower()
-        if any(marker in blob for marker in _OVERFLOW_MARKERS):
-            return True
-        current = current.__cause__ or current.__context__
-    return False
+    return is_context_overflow(exc)
 
 
 def _running_digest(
     memory: ExtractionMemory,
     state: _RollingConsolidation,
     budget_tokens: int,
-    consolidator: MemoryConsolidationAgent,
+    consolidator: Consolidator,
     source: str,
     *,
+    chars_per_token: float,
     activity: Callable[[str], None] | None = None,
 ) -> str:
     """The prior-section context for the next section request.
@@ -364,27 +515,29 @@ def _running_digest(
         )
         return ""
     full = memory.summarize()
-    if estimate_tokens(full) <= budget_tokens:
+    if chars_to_tokens(len(full), chars_per_token=chars_per_token) <= budget_tokens:
         return full
     if not full:
         return ""
     logger.debug(
         "TwoPhase: digest for '%s' (~%d tokens) exceeds the %d-token budget - consolidating",
         source,
-        estimate_tokens(full),
+        chars_to_tokens(len(full), chars_per_token=chars_per_token),
         budget_tokens,
     )
     if activity is not None:
         activity("consolidating context")
-    return _consolidate_digest(consolidator, memory, state, budget_tokens, source)
+    return _consolidate_digest(consolidator, memory, state, budget_tokens, source, chars_per_token=chars_per_token)
 
 
 def _consolidate_digest(
-    consolidator: MemoryConsolidationAgent,
+    consolidator: Consolidator,
     memory: ExtractionMemory,
     state: _RollingConsolidation,
     budget_tokens: int,
     source: str,
+    *,
+    chars_per_token: float,
 ) -> str:
     """Consolidate the running digest down to *budget_tokens* via the model.
 
@@ -414,13 +567,13 @@ def _consolidate_digest(
                 source_id=source,
             )
         ).strip()
-        if estimate_tokens(result) <= budget_tokens:
+        if chars_to_tokens(len(result), chars_per_token=chars_per_token) <= budget_tokens:
             state.consolidated = result
             state.snapshot(memory)
             logger.debug(
                 "TwoPhase: consolidated agentic digest for '%s' to ~%d tokens",
                 source,
-                estimate_tokens(result),
+                chars_to_tokens(len(result), chars_per_token=chars_per_token),
             )
             return result
     raise RuntimeError(

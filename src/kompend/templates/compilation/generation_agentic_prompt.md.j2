@@ -6,6 +6,8 @@ variables:
     required: false
   - name: known_titles
     required: false
+  - name: known_titles_prompt
+    required: false
 role: compile.generate
 response_format: json_object
 ---
@@ -44,7 +46,12 @@ Each page must declare its category ("kind") from this list:
 - "comparison" — evaluates alternatives ("X vs Y", "A versus B"): dimensions of comparison, criteria, outcomes, and sources.
 
 {% if categories %}{{ categories }}{% endif %}
-{% if known_titles %}
-Known page titles (link ONLY to these, verbatim):
-{% for t in known_titles %}- {{ t }}{% endfor %}
+{% if known_titles_prompt %}
+Known page titles (link ONLY to these, verbatim) - {{ known_titles_prompt|length }} of {{ known_titles|length }}:
+{% for t in known_titles_prompt %}
+- {{ t }}
+{% endfor %}
+{% if known_titles_prompt|length < known_titles|length %}
+The list grows with the corpus, so it is served in windows: the rest is not missing, call **list_known_titles(offset={{ known_titles_prompt|length }})** when you need a title that is not above, and keep passing the offset the reply names to page through the rest. Link only a title the list has shown you; a name you know from the source text but that never appears in the list is not a page.
+{% endif %}
 {% endif %}

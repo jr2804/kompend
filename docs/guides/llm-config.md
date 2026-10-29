@@ -233,6 +233,44 @@ Practical effect by window (generation, the binding stage):
 | 32 K           | 8 192          | ~24.5 K tokens              |
 | 128 K          | 8 192          | ~119 K tokens               |
 
+### What the window pays for
+
+The generation stage reserves its fixed cost from the window before it sizes a
+segment: the system template, the rendered user prompt, the tool-call framing
+(one `read_segment` + one `fetch_concepts` round, plus one `list_known_titles`
+round), a safety margin and the answer reserve. One reserved block grows with
+the corpus — the **known-titles list** (every page title the LLM may link to,
+plus the previous compile's learned aliases). It gets **10 % of the window in
+total**, split in two windows: the head is inlined in the prompt and the rest
+is served by the `list_known_titles(offset)` tool, which names the offset of
+the next window. Nothing is dropped — the prompt states how many titles it
+shows (`N of M`) and the model pages through the remainder when it needs a
+title it cannot see.
+
+All of this is sized by the **shared request-fit planner**
+(`kompend.llm.request_budget.RequestBudget`), so every stage — extraction
+batching, generation segments, reference extraction, the agentic section
+digest, WiCER probes — pays the same answer reserve and the same safety
+margin, and declares its fixed payloads by name. See
+[Model and context](model-context.md#one-planner-for-every-request).
+
+If the fixed cost plus the answer reserve leaves no room for even the smallest
+segment, the run stops **before the first LLM call**:
+
+```text
+Segment sizing impossible: fixed request overhead (…) + source labels (…) +
+answer reserve (…) + minimum segment (…) exceeds the …-token context window.
+```
+
+Raise `compile.llm.context_window` (and the Ollama server's `num_ctx`) to match
+the corpus. Content is never cropped to fit — a segment that does not fit is
+split, and a corpus that cannot fit at all fails with the numbers above.
+
+If the server enforces less than the configured window, kompend learns it from
+the rejection and re-plans against the server's limit instead of repeating the
+same request — see
+[When the server enforces less](model-context.md#when-the-server-enforces-less-than-kompend-planned-for).
+
 ### Recommended minimums
 
 | Context window | Verdict                                                                                                      |

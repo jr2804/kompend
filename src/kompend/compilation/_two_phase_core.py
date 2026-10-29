@@ -6,7 +6,6 @@ This module is private API. External callers should import through
 
 from __future__ import annotations
 
-import functools
 import hashlib
 from collections import defaultdict
 from collections.abc import Callable
@@ -28,9 +27,29 @@ from kompend.core.pipeline.assets import AssetStore
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.templates import get_template_loader
 from kompend.core.text.slug import slugify as _canonical_slugify
+from kompend.core.utils.exceptions import LLMContextOverflowError
 from kompend.llm.context_window import ContextWindow
+from kompend.llm.request_budget import (
+    CONTEXT_SAFETY_FRACTION,
+    CONTEXT_SAFETY_TOKENS,
+    DEFAULT_CHARS_PER_TOKEN,
+    chars_to_tokens,
+    context_safety_tokens,
+    tokens_to_chars,
+)
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
+
+# The budget helpers are re-exported here: this module has been the import
+# path for the compilation layer's budget arithmetic since the two-phase
+# compiler was extracted, and the planner now owns the implementation.
+__all__ = [
+    "CONTEXT_SAFETY_FRACTION",
+    "CONTEXT_SAFETY_TOKENS",
+    "chars_to_tokens",
+    "context_safety_tokens",
+    "tokens_to_chars",
+]
 
 # Maximum slug length. Windows limits a single path component to 255 chars;
 # the LLM sometimes emits a full sentence as a page title, which slugifies to
@@ -50,8 +69,10 @@ _FAILURE_THRESHOLD_MIN: int = 5
 MIN_SEGMENT_TOKENS: int = 512
 
 # Default chars-per-token heuristic. Configurable via ``compile.llm.default_chars_per_token``
-# (env override ``KOMP_LLM_DEFAULT_CHARS_PER_TOKEN``).
-_DEFAULT_CHARS_PER_TOKEN: float = 3.85
+# (env override ``KOMP_LLM_DEFAULT_CHARS_PER_TOKEN``). The canonical value
+# lives in :mod:`kompend.llm.request_budget` — the planner that owns the
+# budget arithmetic.
+_DEFAULT_CHARS_PER_TOKEN: float = DEFAULT_CHARS_PER_TOKEN
 
 
 # Internal names injected by VLMEnricher for bookkeeping — must never
@@ -59,6 +80,10 @@ _DEFAULT_CHARS_PER_TOKEN: float = 3.85
 _RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
 
 
+#: Re-exported from :mod:`kompend.llm.request_budget` — the planner owns the
+#: safety margin and the budget arithmetic; this module keeps the historical
+#: import path working. See that module for the rationale.
+#
 #: Fraction of a model's context window held back as headroom beyond the
 #: measured per-request overhead.  Two reasons: a server's *effective* usable
 #: context is smaller than the nominal window (KV cache slotting, prompt-cache
@@ -69,11 +94,6 @@ _RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skippe
 #:
 #: Content is never cropped because of this margin: the content budget shrinks,
 #: so the work splits across more batches/segments instead.
-CONTEXT_SAFETY_FRACTION: float = 0.08
-
-#: Floor for :func:`context_safety_tokens` so a narrow window cannot round the
-#: headroom away to nothing.
-CONTEXT_SAFETY_TOKENS: int = 512
 
 logger = get_logger(__name__)
 
@@ -295,52 +315,12 @@ class TwoPhaseRuntime(Protocol):
     @staticmethod
     def merge_by_concept_key(nodes: list[WikiNode]) -> list[WikiNode]: ...
 
+    def _clamp_window(self, max_input: int, *, reason: str) -> bool: ...
+
     # ── Methods the flows call ───────────────────────────────────────
     def _reduce_extractions(self, source: str, parts: list[Extraction]) -> Extraction: ...
 
     def _report(self, current: int, total: int, description: str) -> None: ...
-
-
-def context_safety_tokens(max_input: int) -> int:
-    """Headroom in tokens to hold back from a *max_input*-token context window.
-
-    The single definition of the safety margin shared by every stage that
-    sizes a request against the context window (extraction batching, agentic
-    generation segments) — so the stages cannot drift apart on how much of the
-    window is actually available for content.
-    """
-    return max(CONTEXT_SAFETY_TOKENS, int(round(CONTEXT_SAFETY_FRACTION * max_input)))
-
-
-def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int:
-    """Convert token count to approximate character count.
-
-    Args:
-        tokens: Token count to convert.
-        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
-    """
-    return int(tokens * _get_chars_per_token(default=chars_per_token))
-
-
-def chars_to_tokens(chars: int, *, chars_per_token: float | None = None) -> int:
-    """Convert character count to approximate token count.
-
-    Args:
-        chars: Character count to convert.
-        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
-    """
-    return max(1, int(chars / _get_chars_per_token(default=chars_per_token)))
-
-
-@functools.cache
-def _get_chars_per_token(*, default: float | None = None) -> float:
-    """Return the characters-per-token heuristic used for budget estimation.
-
-    Priority: *default* argument (the resolved ``compile.llm.default_chars_per_token``
-    config value, which already honours the ``KOMP_LLM_DEFAULT_CHARS_PER_TOKEN``
-    env override) > ``_DEFAULT_CHARS_PER_TOKEN`` module constant.
-    """
-    return default if default is not None else _DEFAULT_CHARS_PER_TOKEN
 
 
 def rate_suffix(tracker: UsageTracker | None) -> str:
@@ -481,6 +461,12 @@ def try_pydanticai_extraction(
     try:
         deps = PipelineAgentDeps(text=text, source_id=source_id)
         return agent.run(deps)
+    except LLMContextOverflowError:
+        # The request did not fit the provider's window. Re-planning (a
+        # smaller batch) is the caller's job - the error carries the limit
+        # the provider named, so swallowing it here would lose the only
+        # number that can fix the request.
+        raise
     except LLMOutputError as exc:
         logger.warning("PydanticAI extraction failed for '%s': %s", source_id, exc)
         return None

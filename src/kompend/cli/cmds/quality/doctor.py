@@ -28,7 +28,14 @@ from kompend.core.keys import COMPILE_LLM_CONTEXT_WINDOW, COMPILE_LLM_OUTPUT_RET
 from kompend.core.verbosity import is_verbose
 from kompend.llm import catalog
 from kompend.llm.context_window import discover_context_window
-from kompend.llm.models import build_model, is_known_provider, requires_output_ceiling, resolve_model_limits, resolve_vlm_model
+from kompend.llm.models import (
+    _query_ollama_num_ctx,
+    build_model,
+    is_known_provider,
+    requires_output_ceiling,
+    resolve_model_limits,
+    resolve_vlm_model,
+)
 from kompend.llm.usage import UsageTracker, tokens_per_second
 from kompend.logging import get_console, get_logger
 from kompend.preprocessing.parsers._registry import get_registered_parsers
@@ -163,6 +170,7 @@ def run_doctor(
     results.append(CheckResult(size_probe.name, size_probe.ok, size_probe.detail))
     results.append(_check_context_window(default_model, "llm", context_window_cap, llm_cfg))
     results.append(_check_window_fit(default_model, context_window_cap, llm_cfg))
+    results.append(_check_server_window(default_model, context_window_cap))
     results.append(_check_output_ceiling(default_model, "llm"))
 
     vlm_effective = resolve_vlm_model(default_model, vlm_model)
@@ -314,6 +322,47 @@ def _check_window_fit(
             f"Window {cw.max_input} tokens leaves {input_budget} for input after the {reserve}-token answer reserve - increase the model's context window",
         )
     return CheckResult(name, True, f"{cw.max_input} ctx: {reserve} answer reserve, {input_budget} input")
+
+
+def _check_server_window(model: str | None, context_window_cap: int | None = None) -> CheckResult:
+    """Warn when the configured window exceeds what the server enforces.
+
+    A local Ollama server started with ``-c 32768`` serves 32768 tokens no
+    matter what the GGUF metadata or the configuration claim. kompend learns
+    the server's real limit from the provider when a request is rejected
+    (and re-plans against it), but the doctor can say so up front: it pings
+    the model first, so the server has it loaded and reports the context it
+    actually serves.
+
+    Only Ollama models are checked — a cloud provider's limit is the one the
+    catalog reports.
+    """
+    name = "server-window"
+    if not model or not model.startswith("ollama/"):
+        return CheckResult(name, True, "Not an Ollama model - skipped")
+    try:
+        server_ctx = _query_ollama_num_ctx(model.removeprefix("ollama/"))
+    except Exception as exc:
+        return CheckResult(name, True, f"Ollama not reachable ({exc}) - skipped")
+    if server_ctx is None:
+        return CheckResult(name, True, "Ollama reports no context limit - skipped")
+
+    try:
+        effective = discover_context_window(model, context_window_cap=context_window_cap)
+    except Exception:
+        return CheckResult(name, True, f"Server serves {server_ctx} tokens - skipped")
+
+    if effective.max_input <= server_ctx:
+        return CheckResult(name, True, f"Server serves {server_ctx} tokens, kompend plans for {effective.max_input}")
+
+    return CheckResult(
+        name,
+        True,
+        f"Server serves {server_ctx} tokens but kompend plans for {effective.max_input} - "
+        f"start the server with a matching -c {server_ctx}, or lower compile.llm.context_window. "
+        f"Requests that do not fit are rejected and re-planned automatically.",
+        warning=True,
+    )
 
 
 def _cfg_get_int(cfg: dict[str, Any], key: str, default: int) -> int:

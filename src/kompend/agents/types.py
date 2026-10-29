@@ -45,12 +45,19 @@ class BaseGenerationDeps:
         pinned_facts: Facts that must appear in the output (WiCER
             refinement input). Empty list when unused.
         known_titles: Canonical page titles the LLM should use verbatim in
-            ``[[wikilinks]]``. Empty list when unknown.
+            ``[[wikilinks]]``. Empty list when unknown. The complete list:
+            it is never shortened — the prompt inlines only its head
+            (``known_titles_prompt``) and the rest is served by the
+            ``list_known_titles()`` tool.
+        known_titles_prompt: The prefix of ``known_titles`` that fits the
+            prompt's share of the window. Its length is the offset that
+            loads the next window through ``list_known_titles()``.
     """
 
     source_id: str
     pinned_facts: list[str] = field(default_factory=list)
     known_titles: list[str] = field(default_factory=list)
+    known_titles_prompt: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -63,11 +70,16 @@ class ToolGenerationDeps(BaseGenerationDeps):
     Attributes:
         source_content: Full source segment content, loaded via
             the ``read_segment()`` tool on demand.
+        known_titles_page_chars: Characters of the ``known_titles`` list
+            served per ``list_known_titles()`` call. 0 serves the whole
+            list. The agent pages through the titles by passing the offset
+            the reply names — no title is dropped.
     """
 
     source_content: str = ""
     categories: str = ""  # rendered extra-category instructions
     concept_broker: ConceptBrokerProtocol | None = None
+    known_titles_page_chars: int = 0
 
 
 @dataclass

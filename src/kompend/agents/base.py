@@ -63,10 +63,15 @@ from kompend.agents.rlm import (
 from kompend.agents.types import PipelineAgentDeps
 from kompend.core.config._configs import ContextManagerPreset, LLMConfig, LlmDataFormat, ReasoningEffort, RlmConfig
 from kompend.core.templates import TemplateLoader, get_template_loader
-from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
+from kompend.core.utils.exceptions import (
+    LLMContextOverflowError,
+    LLMOutputError,
+    LLMTransientError,
+)
 from kompend.llm.errors import is_transient_error
 from kompend.llm.format import salvage_json
 from kompend.llm.models import build_model, requires_output_ceiling, resolve_model_limits
+from kompend.llm.overflow import is_context_overflow, stated_context_size
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 from kompend.types import JSONDict, JSONValue
@@ -172,6 +177,25 @@ def _context_usage_str(tracker: UsageTracker | None) -> str:
         return ""
     pct = 100 * tracker.context_tokens / tracker.context_budget
     return f" (context: {tracker.context_tokens}/{tracker.context_budget} tokens, {pct:.0f}%)"
+
+
+def _map_agent_error(exc: Exception, *, model_string: str, debug_hint: str) -> LLMOutputError:
+    """Map a provider failure to the exception the pipeline understands.
+
+    Three outcomes:
+
+    - a context-window overflow becomes :class:`LLMContextOverflowError`
+      carrying the limit the provider named, so the stage can lower the
+      effective window and re-plan instead of failing the run;
+    - a transient failure becomes :class:`LLMTransientError` (retryable);
+    - everything else becomes :class:`LLMOutputError`.
+    """
+    message = f"Agent failed for model '{model_string}': {exc}{debug_hint}"
+    if is_context_overflow(exc):
+        return LLMContextOverflowError(message, stated_limit=stated_context_size(exc))
+    if is_transient_error(exc):
+        return LLMTransientError(message)
+    return LLMOutputError(message)
 
 
 DepsT = TypeVar("DepsT", bound=AgentDeps)
@@ -365,8 +389,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 debug_hint,
                 ctx_info,
             )
-            error_cls = LLMTransientError if is_transient_error(exc) else LLMOutputError
-            raise error_cls(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
+            raise _map_agent_error(exc, model_string=self.model_string, debug_hint=debug_hint) from exc
         return result.output
 
     def run_with_messages(
@@ -404,8 +427,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 debug_hint,
                 ctx_info,
             )
-            error_cls = LLMTransientError if is_transient_error(exc) else LLMOutputError
-            raise error_cls(f"Agent failed for model '{self.model_string}': {exc}{debug_hint}") from exc
+            raise _map_agent_error(exc, model_string=self.model_string, debug_hint=debug_hint) from exc
         return result.output, result.new_messages()
 
     @property

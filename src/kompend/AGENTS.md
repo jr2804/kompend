@@ -51,6 +51,11 @@ policy — **see `.agents/CODE.md`**. They apply to production code and tests
 alike. Two are enforced by script; run both before committing (see
 `.agents/CHECKS.md`).
 
+**Never crop.** No `text[:N]`, no arbitrary char/token cap on a prompt, a
+source, a model answer or a result set, and no `max_tokens` used to shorten an
+output. A budget shapes the work by splitting it into windows; it never
+shortens or drops it (root AGENTS.md, `.agents/CODE.md`).
+
 ### Output format — OKF v0.2
 
 kompend emits **OKF v0.2** bundles by default; OKF is a compliance spec, not an

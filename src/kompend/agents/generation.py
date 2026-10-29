@@ -45,7 +45,8 @@ class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDe
 
     Unlike a static-prompt generation agent, this agent discovers concepts via
 
-    ``fetch_concepts()`` and source content via ``read_segment()`` tools.
+    ``fetch_concepts()``, source content via ``read_segment()``, and the rest
+    of the canonical title list via ``list_known_titles()``.
     It uses :class:`~kompend.agents.deps.ToolGenerationDeps` and the
     ``generation_agentic_*`` template pair.
 
@@ -105,7 +106,7 @@ def make_agentic_generation_agent(
     Injects standard agentic capabilities via :class:`AgenticHarness`
     (``SlidingWindowCompaction`` + ``ClampOversizedMessages``; the generation
     flow runs without cross-segment memory) and registers the
-    ``read_segment()`` / ``fetch_concepts()`` tools.
+    ``read_segment()`` / ``fetch_concepts()`` / ``list_known_titles()`` tools.
 
     With *step_store*, every run is persisted (``StepPersistence``) and the
     agent gains ``search_conversation_history`` over its own persisted

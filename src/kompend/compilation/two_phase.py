@@ -55,6 +55,7 @@ from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.templates import get_template_loader
 from kompend.core.text.matching import cosine as cosine_similarity
 from kompend.llm.context_window import ContextWindow, discover_context_window
+from kompend.llm.request_budget import EffectiveWindow
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 
@@ -122,7 +123,7 @@ class TwoPhaseCompiler(BaseCompiler):
                 self._model,
                 llm_config=config.llm,
             )
-        self._context_window = cw
+        self._window = EffectiveWindow(cw)
 
         extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
         generation_system = _loader.get_body("compilation/generation_system.md.j2")
@@ -338,6 +339,38 @@ class TwoPhaseCompiler(BaseCompiler):
     ) -> CompiledWiki:
         """Phase 2: merge extractions and generate per-concept pages."""
         return run_generation(self, extractions, chunks, trees=trees, pinned_facts=pinned_facts)
+
+    @property
+    def _context_window(self) -> ContextWindow:
+        """The window every stage sizes its requests against.
+
+        A property, not an attribute: a provider that rejects an oversized
+        request lowers the effective window for the rest of the run, and every
+        stage must see the lowered value without being handed it.
+        """
+        return self._window.current
+
+    @_context_window.setter
+    def _context_window(self, window: ContextWindow) -> None:
+        """Replace the effective window (setup and tests)."""
+        self._window = EffectiveWindow(window)
+
+    def _clamp_window(self, max_input: int, *, reason: str) -> bool:
+        """Lower the effective window after the provider rejected a request.
+
+        Returns whether the window changed. The new value is logged once, so
+        the run's log explains why later requests are smaller.
+        """
+        changed = self._window.clamp(max_input, reason=reason)
+        if changed:
+            logger.warning(
+                "TwoPhase: context window lowered to %d tokens (%s) - the provider enforces a smaller "
+                "limit than the %d-token window kompend planned against; requests are re-planned",
+                self._window.current.max_input,
+                reason,
+                self._window.discovered.max_input if self._window.discovered else max_input,
+            )
+        return changed
 
     def _combine_extractions(self, source: str, parts: list[Extraction]) -> Extraction:
         """Combine per-batch extractions into one document-level Extraction."""

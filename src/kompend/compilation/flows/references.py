@@ -28,7 +28,6 @@ from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.reference_extraction import ReferenceExtractionAgent
 from kompend.compilation._two_phase_core import (
     TwoPhaseRuntime,
-    context_safety_tokens,
     tokens_to_chars,
 )
 from kompend.compilation.reference_excision import excise_references
@@ -38,6 +37,7 @@ from kompend.core.paths import rel_to_vault
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.templates import get_template_loader
 from kompend.core.text.windows import split_text_windows
+from kompend.llm.request_budget import RequestBudget, chars_to_tokens
 from kompend.logging import get_logger
 
 #: System-prompt template of the reference extraction agent. Its rendered
@@ -226,30 +226,34 @@ def _reference_char_budget(compiler: TwoPhaseRuntime) -> int:
        repeats the raw citation text, so a window whose references do not
        fit the ceiling produces a truncated response and a failed
        extraction (``Exceeded maximum output retries``).
+
+    The context bound comes from
+    :class:`~kompend.llm.request_budget.RequestBudget`, so this stage sizes
+    itself the same way every other stage does.
     """
     cw = compiler._context_window  # noqa: SLF001 — flow/runtime contract
-    sys_tokens = _reference_system_tokens()
-    out_tokens = _reference_answer_tokens(compiler)
-    safety_tokens = context_safety_tokens(cw.max_input)
-    content_tokens = max(1, cw.max_input - sys_tokens - out_tokens - safety_tokens)
     chars_per_token = compiler._config.llm.default_chars_per_token  # noqa: SLF001
-    context_chars = tokens_to_chars(content_tokens, chars_per_token=chars_per_token)
+    sys_tokens = _reference_system_tokens(chars_per_token)
+    out_tokens = _reference_answer_tokens(compiler)
+    budget = RequestBudget(
+        window=cw,
+        reserved={"system": sys_tokens},
+        answer_tokens=out_tokens,
+    )
+    context_chars = budget.content_chars(chars_per_token)
     output_chars = tokens_to_chars(
         max(1, int(out_tokens / _REFERENCE_JSON_EXPANSION)),
         chars_per_token=chars_per_token,
     )
-    budget = min(context_chars, output_chars)
+    result = min(context_chars, output_chars)
     logger.info(
-        "TwoPhase: reference budget (cw=%d sys=%d out=%d safety=%d) -> %d chars per window (context %d chars, output %d chars)",
-        cw.max_input,
-        sys_tokens,
-        out_tokens,
-        safety_tokens,
-        budget,
+        "TwoPhase: reference budget (%s) -> %d chars per window (context %d chars, output %d chars)",
+        budget.report(),
+        result,
         context_chars,
         output_chars,
     )
-    return budget
+    return result
 
 
 def _reference_answer_tokens(compiler: TwoPhaseRuntime) -> int:
@@ -263,10 +267,15 @@ def _reference_answer_tokens(compiler: TwoPhaseRuntime) -> int:
 
 
 @functools.lru_cache(maxsize=1)
-def _reference_system_tokens() -> int:
-    """Estimated token cost of the reference-extraction system prompt."""
+def _reference_system_tokens(chars_per_token: float = 3.85) -> int:
+    """Estimated token cost of the reference-extraction system prompt.
+
+    Measured with the configured chars-per-token heuristic
+    (``compile.llm.default_chars_per_token``), the same ratio every other
+    budget in the pipeline is measured with.
+    """
     system = get_template_loader().get_body(_REFERENCE_SYSTEM_TEMPLATE)
-    return max(1, len(system) // 4)
+    return chars_to_tokens(len(system), chars_per_token=chars_per_token)
 
 
 def resolve_unresolved_references(

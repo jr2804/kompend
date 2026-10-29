@@ -349,6 +349,40 @@ class TestRunDoctorOrder:
         if "context-window-llm" in names and "window-fit" in names:
             assert names.index("context-window-llm") < names.index("window-fit")
 
+    def test_server_window_warns_when_the_server_serves_less(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A server started with a smaller -c rejects requests kompend planned for."""
+        monkeypatch.setattr(doctor, "_query_ollama_num_ctx", lambda *a, **k: 32_768)
+        monkeypatch.setattr(
+            doctor,
+            "discover_context_window",
+            lambda *a, **k: ContextWindow(max_input=64_000, max_output=32_768, source=ContextSource.OLLAMA),
+        )
+
+        result = doctor._check_server_window("ollama/test")
+
+        assert result.passed
+        assert result.warning
+        assert "32768" in result.message
+        assert "64000" in result.message
+
+    def test_server_window_is_quiet_when_the_window_fits(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(doctor, "_query_ollama_num_ctx", lambda *a, **k: 32_768)
+        monkeypatch.setattr(
+            doctor,
+            "discover_context_window",
+            lambda *a, **k: ContextWindow(max_input=32_768, max_output=8_192, source=ContextSource.OLLAMA),
+        )
+
+        result = doctor._check_server_window("ollama/test")
+
+        assert result.passed
+        assert not result.warning
+
+    def test_server_window_is_skipped_for_a_cloud_model(self) -> None:
+        result = doctor._check_server_window("openai/gpt-4o")
+        assert result.passed
+        assert "skipped" in result.message
+
     def test_llm_block_precedes_vlm_block(self) -> None:
         """Per-model blocks: every llm check runs before the vlm block starts."""
         names = [r.name for r in run_doctor()]

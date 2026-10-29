@@ -6,23 +6,29 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, Mock, patch
 
 import pytest
+from pydantic_ai import RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
-from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord, SqliteStepStore
+from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord, SnapshotState, SqliteStepStore
 
-from kompend.agents.types import VerificationDeps, VerificationVerdict
+import kompend.compilation.flows.generation as gen_module
+from kompend.agents.types import ToolGenerationDeps, VerificationDeps, VerificationVerdict
 from kompend.agents.verification import AgenticVerificationAgent
 from kompend.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, normalize_concept_key
 from kompend.compilation.flows.generation import (
-    _agentic_reserved_tokens,
+    _agentic_budget,
+    _known_titles_windows,
     generate_all_pages_agentic,
     prepare_source_segments,
 )
+from kompend.compilation.gen_tools import list_known_titles
 from kompend.compilation.schema import Concept, Entity, GenerationOutput, GenerationPage
 from kompend.compilation.step_recovery import generation_conversation, pass_run_id, segment_run_prefix
 from kompend.compilation.two_phase import (
@@ -36,6 +42,7 @@ from kompend.compilation.two_phase import (
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
 from kompend.core.models.enums import NodeType
+from kompend.core.models.metadata import meta_dict_list, meta_int
 from kompend.core.paths import KOMP_DIR, REVIEW_DIR, STATE_FILE
 from kompend.core.pipeline.config import Tier
 from kompend.core.pipeline.orchestrator import (
@@ -57,6 +64,9 @@ from kompend.core.pipeline.state import (
 )
 from kompend.core.store import open_store
 from kompend.core.store.schema import PRIVATE_PAGES_TABLE, PROVENANCE_TABLE, VERIFICATION_TABLE
+from kompend.core.utils.exceptions import LLMContextOverflowError
+from kompend.llm.context_window import ContextSource, ContextWindow
+from kompend.llm.request_budget import RequestBudget
 from kompend.provenance import annotate_wiki_with_provenance
 from kompend.review import ReviewQueue, ReviewStatus, slugify
 from kompend.trust import (
@@ -733,7 +743,8 @@ class TestAgenticSegmentSizing:
     def test_reserved_tokens_measured_not_hardcoded(self) -> None:
         """The agentic reservation measures the real templates + variables."""
         compiler = self._compiler()
-        reserved = _agentic_reserved_tokens(compiler, ["Alpha", "Beta"], ["fact one"])
+        budget = _agentic_budget(compiler, ["Alpha", "Beta"], 4000, ["fact one"])
+        reserved = budget.reserved_total
         # Templates alone are ~1K tokens; known_titles + pinned add more. The
         # reservation must be a few thousand — never zero and never negative.
         assert reserved > 500
@@ -758,9 +769,9 @@ class TestAgenticSegmentSizing:
                 )
             )
         ]
-        empty = prepare_source_segments(compiler, chunks, reserved_tokens=0)
-        reserved = _agentic_reserved_tokens(compiler, [f"Title {i}" for i in range(300)], [])
-        sized = prepare_source_segments(compiler, chunks, reserved_tokens=reserved)
+        empty = prepare_source_segments(compiler, chunks)
+        budget = _agentic_budget(compiler, [f"Title {i}" for i in range(300)], 4000, [])
+        sized = prepare_source_segments(compiler, chunks, budget=budget)
         empty_chars = sum(len(c) for seg in empty for _, c in seg)
         sized_chars = sum(len(c) for seg in sized for _, c in seg)
         # No data loss either way — the content is fully preserved (the
@@ -822,15 +833,257 @@ class TestAgenticSegmentSizing:
                 )
             )
         ]
-        reserved = _agentic_reserved_tokens(compiler, [], [])
-        segments = prepare_source_segments(compiler, chunks, reserved_tokens=reserved)
+        budget = _agentic_budget(compiler, [], 0, [])
+        segments = prepare_source_segments(compiler, chunks, budget=budget)
         # The guard must not raise for a correctly-sized segment: the
         # rendered content + reserved + output budget fits the window.
         # (We only assert the sizing math here — the guard itself is
         # exercised end-to-end in the overflow test above.)
         rendered = sum(len(f"### {label}\n{content}") for seg in segments for label, content in seg)
         rendered_tokens = rendered / compiler._config.llm.default_chars_per_token
-        assert rendered_tokens + reserved + 4096 <= 16384
+        assert rendered_tokens + budget.reserved_total + 4096 <= 16384
+
+    def test_known_titles_under_the_window_are_untouched(self) -> None:
+        """A short titles list is inlined whole, with no paging needed."""
+        compiler = self._compiler(context_window=65536)
+        head, page_chars = _known_titles_windows(compiler, ["Alpha", "Beta"])
+        assert head == ["Alpha", "Beta"]
+        # Nothing to page, so no tool round is reserved either.
+        assert page_chars == 0
+
+    def test_known_titles_are_windowed_to_a_fraction_of_the_window(self) -> None:
+        """The inline head may not grow past its share of the window.
+
+        It is the only reserved payload that grows with the corpus; unbounded
+        it ate the whole window and left no room for segment content.
+        """
+        compiler = self._compiler(context_window=16384)
+        titles = [f"Concept number {i} with a longish name" for i in range(5000)]
+        head, page_chars = _known_titles_windows(compiler, titles)
+        assert 0 < len(head) < len(titles)
+        # The head is a share of the window, not a fixed count.
+        assert sum(len(t) + 1 for t in head) <= page_chars + 1
+        # Order is preserved, so the most relevant titles are already inline.
+        assert head[0] == titles[0]
+
+    def test_every_title_is_reachable_through_the_tool(self) -> None:
+        """Paging through the tool reaches every title — the list is windowed.
+
+        The head is not a crop: the rest is served by ``list_known_titles()``,
+        which names the next offset, so no title is lost to the model.
+        """
+        compiler = self._compiler(context_window=16384)
+        titles = [f"Concept number {i} with a longish name" for i in range(500)]
+        head, page_chars = _known_titles_windows(compiler, titles)
+        served: list[str] = []
+        offset = len(head)
+        pages = 0
+        while offset < len(titles):
+            reply = _title_reply(titles, page_chars, offset)
+            pages += 1
+            for line in reply.splitlines():
+                if line.startswith("- "):
+                    served.append(line[2:])
+            match = re.search(r"list_known_titles\(offset=(\d+)\)", reply)
+            if match is None:  # the last page ends the list
+                break
+            next_offset = int(match.group(1))
+            assert next_offset > offset
+            offset = next_offset
+        # Head + tool pages together cover the list exactly, in order.
+        assert head + served == titles
+        assert pages > 1
+
+    def test_a_corpus_sized_title_list_still_leaves_room_for_segments(self) -> None:
+        """Regression: 8156 titles against a 64K window must stay feasible.
+
+        Unbounded, the titles block reserved ~47K tokens, the segment budget
+        collapsed to its 512-token floor and every segment tripped the
+        request-fit guard — the run aborted after hours of upstream work.
+        """
+        compiler = self._compiler(context_window=64000)
+        titles = [f"Concept {i}" for i in range(8156)]
+        head, page_chars = _known_titles_windows(compiler, titles)
+        assert len(head) < len(titles)
+        budget = _agentic_budget(compiler, head, page_chars, [])
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id="c1",
+                    text="z" * 100_000,
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path("a.pdf"),
+                )
+            )
+        ]
+        # Must not raise: the sizing invariant holds.
+        segments = prepare_source_segments(compiler, chunks, budget=budget)
+        assert segments
+
+    def test_segment_sizing_fails_at_planning_time(self) -> None:
+        """A reservation that leaves no room for the smallest segment must
+        fail before any LLM call, naming the components.
+
+        Without this the run spent hours upstream and died on the first
+        segment with a message about the conversation outgrowing its
+        reservation.
+        """
+        compiler = self._compiler(context_window=8192)
+        chunks = [
+            ResolvedChunk(
+                chunk=Chunk(
+                    id="c1",
+                    text="y" * 40_000,
+                    element_types=[ElementType.TEXT],
+                    source_elements=[0],
+                    heading_context="H",
+                    source_file=Path("a.pdf"),
+                )
+            )
+        ]
+        # A reservation that leaves no room for the smallest segment.
+        budget = RequestBudget(
+            window=compiler._context_window,
+            reserved={"system": 8192},
+        )
+        with pytest.raises(Exception, match="Segment sizing impossible"):
+            prepare_source_segments(compiler, chunks, budget=budget)
+
+    def test_the_window_is_lowered_to_the_providers_limit(self) -> None:
+        """A provider that names its limit wins over the configured window.
+
+        The server enforces 32768 tokens while kompend planned against 65536;
+        the run learns the real limit instead of repeating the same rejected
+        request.
+        """
+        compiler = self._compiler(context_window=65536)
+        # The configured window is a cap on the discovered one; the discovered
+        # one is what a server rejects against.
+        compiler._context_window = ContextWindow(max_input=65536, max_output=8192, source=ContextSource.OLLAMA)
+        exc = LLMContextOverflowError(
+            "request (33145 tokens) exceeds the available context size (32768 tokens)",
+            stated_limit=32768,
+        )
+
+        limit = exc.stated_limit
+        assert limit is not None
+        assert compiler._clamp_window(limit, reason="provider enforces 32768 tokens")
+        assert compiler._context_window.max_input == 32768
+        # The window before the clamp is remembered, so the log can name both.
+        assert compiler._window.discovered is not None
+        assert compiler._window.discovered.max_input == 65536
+
+    def test_the_window_is_never_raised_by_a_later_limit(self) -> None:
+        """A provider that rejected a request has rejected the evidence for more."""
+        compiler = self._compiler(context_window=65536)
+        compiler._context_window = ContextWindow(max_input=65536, max_output=8192, source=ContextSource.OLLAMA)
+        compiler._clamp_window(32768, reason="provider enforces 32768 tokens")
+
+        assert not compiler._clamp_window(65536, reason="provider enforces 65536 tokens")
+        assert compiler._context_window.max_input == 32768
+
+    def test_known_titles_are_re_bounded_after_a_clamp(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The titles block is a window fraction; a clamp must shrink it too.
+
+        Unbounded after a clamp, the block keeps paying the old window's 10%
+        and the re-segmentation gains nothing.
+        """
+        compiler = self._compiler(context_window=65536)
+        compiler._context_window = ContextWindow(max_input=65536, max_output=8192, source=ContextSource.OLLAMA)
+        concepts = [{"name": f"Concept-{i}-with-a-longish-name"} for i in range(3000)]
+        calls: list[tuple[int, bool]] = []
+
+        def fake_generation(
+            _compiler: object,
+            _concepts: object,
+            _segments: object,
+            _images: object,
+            _pinned: object,
+            *,
+            known_titles: list[str] | None = None,
+            known_titles_prompt: list[str] | None = None,
+            known_titles_page_chars: int = 0,
+            budget: object = None,
+        ) -> tuple[list[object], dict[str, int], dict[str, list[str]]]:
+            assert known_titles_prompt is not None
+            calls.append((len(known_titles_prompt), len(known_titles or []) == len(known_titles_prompt)))
+            if len(calls) == 1:
+                raise LLMContextOverflowError("too big", stated_limit=8192)
+            raise RuntimeError("stop after the re-plan")
+
+        monkeypatch.setattr(gen_module, "prepare_concepts", lambda *_args, **_kwargs: concepts)
+        monkeypatch.setattr(gen_module, "run_generation_resumable", fake_generation)
+
+        with pytest.raises(RuntimeError, match="stop after the re-plan"):
+            gen_module.run_generation(compiler, ExtractionSet(), [])
+
+        assert compiler._context_window.max_input == 8192
+        assert len(calls) == 2
+        assert calls[0][1] is False  # 3000 titles do not fit a 64K window inline
+        assert calls[1][0] < calls[0][0]  # the head re-windows to the 8K window
+        assert calls[1][1] is False
+        # The full list stays intact; only the windows moved.
+        assert calls[0][0] > 0
+        assert calls[1][0] > 0
+
+    def test_repeated_clamps_keep_re_planning(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A second, lower limit is honoured instead of raising on the retry.
+
+        The first rejection answers the window kompend planned against, but a
+        later one can still name less (a failover model with a narrower
+        context); the run must re-plan against that too.
+        """
+        compiler = self._compiler(context_window=65536)
+        compiler._context_window = ContextWindow(max_input=65536, max_output=8192, source=ContextSource.OLLAMA)
+        limits = [32768, 16384]
+        windows: list[int] = []
+
+        def fake_generation(
+            _compiler: object,
+            _concepts: object,
+            _segments: object,
+            _images: object,
+            _pinned: object,
+            *,
+            known_titles: list[str] | None = None,
+            known_titles_prompt: list[str] | None = None,
+            known_titles_page_chars: int = 0,
+            budget: object = None,
+        ) -> tuple[list[object], dict[str, int], dict[str, list[str]]]:
+            windows.append(compiler._context_window.max_input)
+            if limits:
+                raise LLMContextOverflowError("too big", stated_limit=limits.pop(0))
+            return [], {}, {}
+
+        monkeypatch.setattr(gen_module, "prepare_concepts", lambda *_args, **_kwargs: [{"name": "Alpha"}])
+        monkeypatch.setattr(gen_module, "run_generation_resumable", fake_generation)
+        monkeypatch.setattr(gen_module, "assemble_wiki", lambda *_args, **_kwargs: "wiki")
+
+        assert gen_module.run_generation(compiler, ExtractionSet(), []) == "wiki"
+        # 65536 -> 32768 -> 16384: each lower limit earns its own re-plan.
+        assert windows == [65536, 32768, 16384]
+        assert compiler._context_window.max_input == 16384
+
+    def test_a_repeated_limit_is_not_re_planned_again(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Only a strictly lower limit earns another attempt."""
+        compiler = self._compiler(context_window=65536)
+        compiler._context_window = ContextWindow(max_input=65536, max_output=8192, source=ContextSource.OLLAMA)
+        attempts: list[int] = []
+
+        def fake_generation(*_args: object, **_kwargs: object) -> tuple[list[object], dict[str, int], dict[str, list[str]]]:
+            attempts.append(compiler._context_window.max_input)
+            raise LLMContextOverflowError("too big", stated_limit=8192)
+
+        monkeypatch.setattr(gen_module, "prepare_concepts", lambda *_args, **_kwargs: [{"name": "Alpha"}])
+        monkeypatch.setattr(gen_module, "run_generation_resumable", fake_generation)
+
+        with pytest.raises(LLMContextOverflowError):
+            gen_module.run_generation(compiler, ExtractionSet(), [])
+
+        assert attempts == [65536, 8192]
+        assert compiler._context_window.max_input == 8192
 
     def _compiler(self, *, context_window: int = 65536) -> TwoPhaseCompiler:
         config = PipelineConfig(
@@ -921,8 +1174,8 @@ class TestTwoPhaseCompiler:
             wiki = compiler.compile(chunks)
         # Threshold fired → flagged incomplete, failures recorded.
         assert wiki.metadata.get("compile_incomplete") is True
-        assert wiki.metadata.get("batch_failures", 0) >= _FAILURE_THRESHOLD_MIN
-        assert wiki.metadata.get("batch_total", 0) >= _FAILURE_THRESHOLD_MIN
+        assert meta_int(wiki.metadata.get("batch_failures")) >= _FAILURE_THRESHOLD_MIN
+        assert meta_int(wiki.metadata.get("batch_total")) >= _FAILURE_THRESHOLD_MIN
 
     def test_extract_returns_extractions(self) -> None:
         config = PipelineConfig(
@@ -1079,7 +1332,7 @@ class TestTwoPhaseCompiler:
         ):
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata
-        stats = wiki.metadata["extraction_stats"]
+        stats = meta_dict_list(wiki.metadata["extraction_stats"])
         assert len(stats) == 1
         assert stats[0]["source"] == "a.pdf"
         assert stats[0]["summary_words"] == 2
@@ -1195,7 +1448,7 @@ class TestStepStoreRecovery:
             )
 
     @staticmethod
-    def _seed_finished_run(compiler: TwoPhaseCompiler, *, pages: list[dict[str, str]], attempt: int = 1, state: str = "complete") -> SqliteStepStore:
+    def _seed_finished_run(compiler: TwoPhaseCompiler, *, pages: list[dict[str, str]], attempt: int = 1, state: SnapshotState = "complete") -> SqliteStepStore:
         store = SqliteStepStore(database=compiler._config.paths.step_db_file)
         conversation = generation_conversation(compiler._active_gen_deps)
         run_id = pass_run_id(segment_run_prefix(conversation, 0), attempt, 1)
@@ -1206,7 +1459,7 @@ class TestStepStoreRecovery:
         ]
 
         def _seed() -> None:
-            snapshot = ContinuableSnapshot(run_id=run_id, step_index=1, messages=messages, state=state)  # type: ignore[arg-type]
+            snapshot = ContinuableSnapshot(run_id=run_id, step_index=1, messages=messages, state=state)
             record = RunRecord(run_id=run_id, conversation_id=conversation)
 
             async def _inner() -> None:
@@ -1545,6 +1798,19 @@ class TestAgenticVerification:
 
 
 # ── helpers ─────────────────────────────────────────────────────────────
+
+
+class _TitleCtx:
+    """Minimal stand-in for ``RunContext`` (the tool only reads ``deps``)."""
+
+    def __init__(self, deps: ToolGenerationDeps) -> None:
+        self.deps = deps
+
+
+def _title_reply(titles: list[str], page_chars: int, offset: int = 0) -> str:
+    """One ``list_known_titles()`` reply for *titles*."""
+    deps = ToolGenerationDeps(source_id="t", known_titles=titles, known_titles_page_chars=page_chars)
+    return asyncio.run(list_known_titles(cast("RunContext[ToolGenerationDeps]", _TitleCtx(deps)), offset))
 
 
 def _wiki(nodes: list[WikiNode] | None = None) -> CompiledWiki:

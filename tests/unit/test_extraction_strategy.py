@@ -13,9 +13,17 @@ from __future__ import annotations
 import hashlib
 from unittest.mock import MagicMock, patch
 
+import pytest
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
-from kompend.compilation._two_phase_core import Extraction, ExtractionSet, chars_to_tokens, context_safety_tokens
+from kompend.compilation._two_phase_core import (
+    Extraction,
+    ExtractionSet,
+    TwoPhaseRuntime,
+    chars_to_tokens,
+    context_safety_tokens,
+    tokens_to_chars,
+)
 from kompend.compilation.flows import extraction as ext_module
 from kompend.compilation.flows import generation as gen_module
 from kompend.compilation.flows.extraction import (
@@ -33,7 +41,7 @@ from kompend.core.config._configs import (
 )
 from kompend.core.models.enums import CacheDeps
 from kompend.core.pipeline.config import PipelineConfig
-from kompend.core.utils.exceptions import LLMOutputError
+from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError
 from kompend.core.utils.tokens import estimate_tokens
 from kompend.llm.context_window import ContextSource, ContextWindow
 from tests.conftest import make_tmp_vault
@@ -177,7 +185,7 @@ class TestHistoryCompaction:
             ModelResponse(parts=[TextPart(content="reply here")]),  # 10 chars → 2 tokens
         ]
         # 22 chars / 4 = 5 tokens
-        assert _estimate_history_tokens(history) == 5
+        assert _estimate_history_tokens(history, chars_per_token=4.0) == 5
 
     def test_compact_drops_oldest_pair_until_under_budget(self) -> None:
 
@@ -190,7 +198,7 @@ class TestHistoryCompaction:
             ModelResponse(parts=[TextPart(content="b" * 40)]),  # 10 tokens
         ]
         # Total = 220 tokens. Budget = 50 → must drop the first pair.
-        _compact_history_inplace(history, max_tokens=50)
+        _compact_history_inplace(history, max_tokens=50, chars_per_token=4.0)
         assert len(history) == 2
         # The most-recent pair is retained.
         first_content = getattr(history[0].parts[0], "content", "")
@@ -205,13 +213,13 @@ class TestHistoryCompaction:
             ModelRequest(parts=[UserPromptPart(content="x" * 1000)]),
             ModelResponse(parts=[TextPart(content="y" * 1000)]),
         ]
-        _compact_history_inplace(history, max_tokens=10)
+        _compact_history_inplace(history, max_tokens=10, chars_per_token=4.0)
         assert len(history) == 2  # nothing dropped
 
     def test_compact_empty_history_is_noop(self) -> None:
 
         history: list[ModelMessage] = []
-        _compact_history_inplace(history, max_tokens=10)
+        _compact_history_inplace(history, max_tokens=10, chars_per_token=4.0)
         assert history == []
 
     def test_synthetic_history_response_summarises_extraction(self) -> None:
@@ -331,7 +339,7 @@ class TestExtractionProgressDetail:
             weights=[100, 100],
             unit="sections",
             units_before=2,
-            units_total_all=6,
+            units_total_all=[6],
         )
 
         progress(1, 2, "")
@@ -359,12 +367,46 @@ class TestExtractionProgressDetail:
             weights=[],
             unit="sections",
             units_before=0,
-            units_total_all=1,
+            units_total_all=[1],
         )
 
         progress(0, 0, "")
         assert reports[-1][0] == 100
         assert reports[-1][2].startswith("extracting [1/1] empty.pdf (0/0 · 0/1 sections)")
+
+    def test_the_bar_and_the_run_counter_follow_a_re_plan(self) -> None:
+        """A re-plan changes how many units the source works in.
+
+        The per-unit weights describe the old units, so the document's share
+        is paid evenly across the new ones; the corpus-wide counter absorbs
+        the difference instead of reporting a total the bar cannot reach.
+        """
+        compiler = _make_compiler()
+        reports: list[tuple[int, int, str]] = []
+        compiler.on_progress = lambda current, total, description: reports.append((current, total, description))
+
+        progress = ext_module._source_progress(
+            compiler,
+            source_idx=1,
+            num_sources=2,
+            source_name="doc.pdf",
+            chars_before=0,
+            source_chars=600,
+            total_chars_all=1200,
+            weights=[300, 300],
+            unit="batches",
+            units_before=0,
+            units_total_all=[4],
+        )
+
+        progress(1, 2, "")
+        progress(2, 6, "")  # the source was re-planned into 6 units
+
+        assert reports[-1][0] == 200  # 2 of 6 units, evenly paid
+        assert reports[-1][2].startswith("extracting [1/2] doc.pdf (2/6 · 2/8 batches)")
+        progress(6, 6, "")
+        assert reports[-1][0] == 600
+        assert reports[-1][2].startswith("extracting [1/2] doc.pdf (6/6 · 6/8 batches)")
 
 
 class TestGenerationProgressDetail:
@@ -446,14 +488,14 @@ class TestExtractCharBudget:
         cw = compiler._context_window.max_input
 
         with_margin = ext_module._extract_char_budget(compiler)
-        without = ext_module.tokens_to_chars(
+        without = tokens_to_chars(
             cw - compiler._extract_system_tokens - compiler._context_window.answer_reserve,
             chars_per_token=cpt,
         )
 
         assert with_margin < without
         # The gap is the safety margin, converted to chars (±2 for int truncation).
-        expected_gap = ext_module.tokens_to_chars(context_safety_tokens(cw), chars_per_token=cpt)
+        expected_gap = tokens_to_chars(context_safety_tokens(cw), chars_per_token=cpt)
         assert abs((without - with_margin) - expected_gap) <= 2
 
 
@@ -543,6 +585,143 @@ class TestGenCacheDeps:
         deps_b = gen_module.gen_cache_deps(second, ExtractionSet())
 
         assert make_cache_key(deps_a) != make_cache_key(deps_b)
+
+
+class TestReplanAfterOverflow:
+    """A provider overflow must re-plan, not drop or duplicate content.
+
+    The provider names the limit it enforces; kompend lowers its window to
+    that limit and re-plans only the texts it has not extracted yet.
+    Completed batches are kept, the failing batch is split, and no text is
+    sent twice.
+    """
+
+    def test_the_window_is_lowered_to_the_providers_limit(self) -> None:
+        compiler = _make_big_window_compiler()
+        exc = LLMContextOverflowError("too big", stated_limit=32768)
+
+        texts = ext_module._replan_after_overflow(compiler, "s.md", ["a" * 100], exc)
+
+        assert compiler._context_window.max_input == 32768
+        assert texts == ["a" * 100]  # the content is re-planned, not dropped
+
+    def test_an_oversized_text_is_split_into_windows_that_fit(self) -> None:
+        """A text bigger than the new budget becomes several windows."""
+        compiler = _make_big_window_compiler()
+        text = "x" * 40_000
+        exc = LLMContextOverflowError("too big", stated_limit=8192)
+
+        windows = ext_module._replan_after_overflow(compiler, "s.md", [text], exc)
+
+        assert len(windows) > 1
+        # Every character survives, and each window fits the lowered budget.
+        assert "".join(windows) == text
+        budget = ext_module._extract_char_budget(compiler)
+        assert all(len(window) <= budget for window in windows)
+
+    def test_an_overflow_without_a_limit_is_raised(self) -> None:
+        """Without a number kompend cannot plan — the failure must surface."""
+        compiler = _make_big_window_compiler()
+        exc = LLMContextOverflowError("too big", stated_limit=None)
+
+        with pytest.raises(LLMContextOverflowError):
+            ext_module._replan_after_overflow(compiler, "s.md", ["a"], exc)
+
+    def test_a_repeated_overflow_at_the_same_limit_is_raised(self) -> None:
+        """Re-planning against an unchanged budget would repeat the request."""
+        compiler = _make_big_window_compiler()
+        exc = LLMContextOverflowError("too big", stated_limit=32768)
+        compiler._clamp_window(32768, reason="provider enforces 32768 tokens")
+
+        with pytest.raises(LLMContextOverflowError):
+            ext_module._replan_after_overflow(compiler, "s.md", ["a"], exc)
+
+    def test_the_re_plan_uses_the_smaller_budget(self) -> None:
+        compiler = _make_big_window_compiler()
+        big = ext_module._extract_char_budget(compiler)
+        exc = LLMContextOverflowError("too big", stated_limit=16384)
+
+        ext_module._replan_after_overflow(compiler, "s.md", ["a" * big], exc)
+
+        assert ext_module._extract_char_budget(compiler) < big
+
+    def test_a_midway_overflow_keeps_completed_batches(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A batch that already succeeded is not sent again after a re-plan."""
+        compiler = _make_big_window_compiler()
+        compiler._context_window = ContextWindow(max_input=16384, max_output=8192, source=ContextSource.OLLAMA)
+        texts = [f"text-{i}" + "x" * 30_000 for i in range(4)]
+        attempts = {"n": 0}
+        extracted: list[str] = []
+
+        def fake_extract_one(_compiler: TwoPhaseRuntime, source: str, combined: str, _system: str) -> Extraction:
+            attempts["n"] += 1
+            if attempts["n"] == 2:
+                raise LLMContextOverflowError("too big", stated_limit=8192)
+            extracted.append(combined)
+            return Extraction(source=source, summary=combined)
+
+        monkeypatch.setattr(ext_module, "extract_one", fake_extract_one)
+        batches = ext_module.batch_texts(texts, ext_module._extract_char_budget(compiler))
+
+        results = ext_module._extract_batches(compiler, "s.md", batches, "sys", lambda *a: None, texts=texts)
+
+        assert len(results) == len(extracted)
+        # Every text was extracted exactly once, even though the source was
+        # re-planned mid-run.
+        for i in range(4):
+            assert sum(result.summary.count(f"text-{i}") for result in results if result is not None) == 1
+        assert compiler._context_window.max_input == 8192
+
+    def test_an_oversized_text_is_processed_in_full(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A single text larger than the server's window is split, not lost."""
+        compiler = _make_big_window_compiler()
+        text = "y" * 40_000
+        attempts = {"n": 0}
+        extracted: list[str] = []
+
+        def fake_extract_one(compiler_: TwoPhaseRuntime, source: str, combined: str, _system: str) -> Extraction:
+            attempts["n"] += 1
+            if attempts["n"] == 1:
+                raise LLMContextOverflowError("too big", stated_limit=8192)
+            assert len(combined) <= ext_module._extract_char_budget(compiler_)
+            extracted.append(combined)
+            return Extraction(source=source, summary=combined)
+
+        monkeypatch.setattr(ext_module, "extract_one", fake_extract_one)
+
+        results = ext_module._extract_batches(compiler, "s.md", [text], "sys", lambda *a: None, texts=[text])
+
+        assert len(extracted) > 1  # split, not retried whole
+        assert "".join(extracted) == text  # every character survives
+        assert len(results) == len(extracted)
+
+    def test_the_incremental_path_keeps_results_across_a_re_plan(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Completed batches and their history survive an incremental re-plan."""
+        compiler = _make_big_window_compiler()
+        compiler._context_window = ContextWindow(max_input=16384, max_output=8192, source=ContextSource.OLLAMA)
+        texts = [f"text-{i}" + "x" * 30_000 for i in range(4)]
+        attempts = {"n": 0}
+
+        class _StubAgent:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def run_with_messages(self, deps: object, message_history: object = None) -> tuple[ExtractionOutput, list[object]]:
+                attempts["n"] += 1
+                if attempts["n"] == 2:
+                    raise LLMContextOverflowError("too big", stated_limit=8192)
+                text = str(getattr(deps, "text", ""))
+                return ExtractionOutput(summary=text, entities=[], concepts=[], tags=[]), []
+
+        monkeypatch.setattr(ext_module, "ExtractionAgent", _StubAgent)
+        batches = ext_module.batch_texts(texts, ext_module._extract_char_budget(compiler))
+
+        results, stopped = ext_module.extract_incremental(compiler, "doc.md", batches, "sys", texts=texts)
+
+        assert stopped is False
+        for i in range(4):
+            assert sum(result.summary.count(f"text-{i}") for result in results if result is not None) == 1
+        assert compiler._context_window.max_input == 8192
 
 
 def _make_big_window_compiler() -> TwoPhaseCompiler:
