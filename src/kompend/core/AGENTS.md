@@ -40,6 +40,7 @@ other kompend subsystems build on.
 | `keys.py` | Config dotted-key constants and the `EnvVar` re-export - the light boundary the CLI imports |
 | `vocab.py` | CLI-facing `StrEnum` vocabularies (verbosity, export, lint output, LLM data format) - no pydantic |
 | `cancel.py` | Cooperative cancellation — `CancelState` token, `KompendCancelled` (BaseException), `CANCEL_WINDOW_SECONDS`, `CANCEL_EXIT_CODE` |
+| `ignore.py` | Central ignore/pattern matching + special-dir exclusion (`.kompend/`, `sources/_archive/`) for all source discovery |
 | `config/AGENTS.md` | Configuration system — resolution, precedence, TOML schema |
 | `models/AGENTS.md` | Data models — enums, elements, chunks, structured data, trees, wiki, citations |
 | `pipeline/AGENTS.md` | Pipeline orchestration — orchestrator, config, state, ingest |

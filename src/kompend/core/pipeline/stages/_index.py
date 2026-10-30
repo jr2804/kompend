@@ -4,17 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.core.paths import ARCHIVE_SUBDIR
+from kompend.core.ignore import is_special_excluded
 from kompend.core.pipeline.config import Tier
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.preprocessing.parsers import DEFAULT_PARSER
 from kompend.preprocessing.parsers._registry import get_all_extensions
-
-#: kompend's own state directory. Never a source, regardless of which extensions
-#: the registered parsers claim — with a broad-capability backend (e.g.
-#: parsecraft claiming ``.toml``), ``.kompend/rumdl.toml`` and cache artifacts
-#: would otherwise be discovered as sources in flat-layout vaults.
-_STATE_DIR = ".kompend"
 
 
 def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
@@ -34,7 +28,7 @@ def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     sources = []
     pattern = "**/*" if pipeline.config.recursive else "*"
     for f in pipeline.config.source_dir.glob(pattern):
-        if _STATE_DIR in f.parts or ARCHIVE_SUBDIR in f.parts:
+        if is_special_excluded(f):
             continue
         if f.suffix.lower() in extensions:
             sources.append(f)

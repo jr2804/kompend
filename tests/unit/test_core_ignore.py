@@ -1,10 +1,10 @@
-"""Tests for CLI ignore pattern matching (_ignore.py)."""
+"""Tests for central ignore pattern matching (core.ignore)."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.cli._ignore import compile_patterns, filter_files, load_gitignore, matches_any
+from kompend.core.ignore import compile_patterns, filter_files, is_special_excluded, load_gitignore, matches_any
 
 
 class TestCompilePatterns:
@@ -87,6 +87,24 @@ class TestFilterFiles:
         assert normal in result
         assert source not in result
 
+
+class TestSpecialExcluded:
+    def test_archive_excluded(self, tmp_path: Path) -> None:
+        archived = tmp_path / "sources" / "_archive" / "learn" / "note.md"
+        assert is_special_excluded(archived) is True
+
+    def test_state_dir_excluded(self, tmp_path: Path) -> None:
+        state = tmp_path / ".kompend" / "rumdl.toml"
+        assert is_special_excluded(state) is True
+
+    def test_distilled_includable(self, tmp_path: Path) -> None:
+        distilled = tmp_path / "sources" / "_distilled" / "page.md"
+        assert is_special_excluded(distilled) is False
+
+    def test_filter_files_skips_archive_without_patterns(self, tmp_path: Path) -> None:
+        archived = tmp_path / "sources" / "_archive" / "learn" / "note.md"
+        live = tmp_path / "sources" / "_distilled" / "page.md"
+        assert filter_files([archived, live]) == [live]
 
 class TestLoadGitignore:
     def test_loads_from_source_dir(self, tmp_path: Path) -> None:

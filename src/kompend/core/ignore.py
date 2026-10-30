@@ -1,10 +1,16 @@
-"""Ignore pattern matching for kompend source scanning.
+"""Central ignore-pattern matching for kompend source discovery.
 
 Supports ``.gitignore``-style glob patterns via ``pathspec``.
 Patterns can come from:
 - ``.kompend/config.yaml`` (``ignore:`` section)
 - ``.gitignore`` in the source directory (respect by default)
 - CLI ``--ignore`` flags
+
+Tool-managed locations that are never sources — the ``.kompend/`` state
+directory and ``sources/_archive/`` (retired notes, superseded in place) —
+are always excluded via :func:`is_special_excluded`, regardless of patterns.
+``sources/_captured/``, ``_learned/`` and ``_distilled/`` stay includable:
+they are legitimate compile inputs.
 """
 
 from __future__ import annotations
@@ -12,10 +18,30 @@ from __future__ import annotations
 import fnmatch
 from pathlib import Path
 
+from kompend.core.paths import ARCHIVE_SUBDIR, KOMP_DIR
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
+
+__all__ = [
+    "compile_patterns",
+    "filter_files",
+    "is_special_excluded",
+    "load_gitignore",
+    "matches_any",
+]
+
+
+def is_special_excluded(path: Path) -> bool:
+    """True if *path* lives under a never-source location.
+
+    Covers the ``.kompend/`` state directory (never a source, even in
+    flat-layout vaults where it sits beside the sources) and
+    ``sources/_archive/`` (notes retired by ``consolidate``/``distill`` —
+    superseded in place, not removed, and must not be re-ingested).
+    """
+    return KOMP_DIR in path.parts or ARCHIVE_SUBDIR in path.parts
 
 
 def compile_patterns(*pattern_lists: list[str] | None) -> list[str]:
@@ -46,13 +72,10 @@ def filter_files(
         gitignore_patterns = load_gitignore(base_dir)
         all_patterns.extend(gitignore_patterns)
 
-    if not all_patterns:
-        return files
-
     result: list[Path] = []
     skipped = 0
     for f in files:
-        if matches_any(f, all_patterns, base_dir=base_dir):
+        if is_special_excluded(f) or (all_patterns and matches_any(f, all_patterns, base_dir=base_dir)):
             skipped += 1
         else:
             result.append(f)

@@ -85,7 +85,6 @@ use (pipeline, models, config, lint); then the boundary is clean.
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
 | `cmds/` | Command implementations organized by domain (see `cmds/AGENTS.md`) |
 | `_sources.py` | File resolution, glob expansion, copy-to-sources, URL download. |
-| `_ignore.py` | Ignore/gitignore pattern matching for source scanning. |
 | `_pipeline_helpers.py` | Pipeline orchestration helpers (progress callback, input resolution, review queue, provenance, lint-fix persistence). |
 | `_distill_helpers.py` | Distill wiring shared by `kompend distill` and `kompend compile --distill` (pending-note count/notice, agent selection, result lines). |
 | `_esc_watch.py` | Double-ESC cancel watcher — polls stdin (msvcrt/termios), two ESC within `CANCEL_WINDOW_SECONDS` requests the cancel token. |

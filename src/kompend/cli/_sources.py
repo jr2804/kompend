@@ -12,12 +12,12 @@ import filecmp
 import shutil
 from pathlib import Path
 
-from kompend.cli._ignore import filter_files
 from kompend.cli._sources_io import (
     download_urls,
     extract_archive,
     looks_like_html_url,
 )
+from kompend.core.ignore import filter_files
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers._registry import get_supported_extensions
 
