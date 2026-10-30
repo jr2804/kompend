@@ -138,6 +138,13 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 
 ## Output
 
+### Decision: Markdown emission escapes prose pipes (generation contract)
+
+**Date:** Oct 18, 2026  
+**Context:** A kompend-distilled page containing math absolute-value notation (`|delay[i] - delay[i-2]|`) as unescaped pipes in list-item paragraph continuations sent docling's markdown backend into an infinite CPU spin (>1 h ingest hang; upstream issue docling#5108 — `Table.match` probing per paragraph line never terminates). The file was kompend's own output, so kompend must never emit this input class again.  
+**Decision:** Every raw-string markdown emission site escapes prose pipes via `kompend.core.text.pipes.escape_prose_pipes` (self-verifying, idempotent; fences, genuine GFM tables, code spans, math, and wikilink aliases untouched). AST-built pages were already covered by wenmode's text-node escaping. Escaping is meaning-preserving: `\|` renders as `|` in every CommonMark renderer.  
+**Consequences:** The generated corpus can no longer re-trigger GFM table-probing pathologies on re-ingest. Legacy pages stay unescaped and rely on ingestion tolerance until parsecraft's native markdown backend lands. rumdl post-format sweeps preserve `\|` (verified empirically).
+
 ### Decision: No custom GUI. Use Open-WebUI
 
 **Date:** Jun 6, 2026  

@@ -38,3 +38,6 @@ patterns across captures.
 - Capture agents (``CaptureAgent``, ``DistillAgent``) live in
   ``kompend.agents.capture`` — this package contains orchestration and
   non-agent logic only.
+- Every page written to ``_captured/`` / ``_learned/`` / ``_distilled/``
+  escapes prose pipes via ``core.text.pipes.escape_prose_pipes`` before the
+  write (generation contract — see `docs/architecture/decisions.md`).

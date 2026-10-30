@@ -32,6 +32,14 @@ builds the wiki index page and serves wiki page previews.
 
 ## Local Contracts
 
+### Generation contract: prose pipes escaped
+
+Raw-string markdown emission (renderer body, vault per-source summaries,
+``overview.md``) runs through ``core.text.pipes.escape_prose_pipes`` before
+the write; AST-built pages get equivalent escaping from wenmode's text-node
+renderer. A literal ``|`` in kompend-emitted prose can never be misread as
+GFM table structure (see `docs/architecture/decisions.md`).
+
 ### OKF v0.2 conformance
 
 kompend emits OKF v0.2 bundles; OKF is a **compliance spec**, not an output
