@@ -32,11 +32,14 @@ uv.lock
 opencode.json
 .opencode
 
-# Skills directory — root-level .agents/*.md framework files are tracked
-/.agents/skills
-/.agents/plans
+# .agents/ — DOX markdown and history are tracked; skills, plans and tool
+# droppings stay ignored (see agents-scaffold INSTALL.md)
+/.agents/*
 !/.agents/*.md
-!/.agents/history/*.md
+!/.agents/history/
+!/.agents/history/**
+/.agents/plans/
+/.agents/skills/
 
 
 skills-lock.json

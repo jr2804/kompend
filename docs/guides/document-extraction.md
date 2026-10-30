@@ -175,7 +175,8 @@ The floor is load-bearing: 2026.10.5 moved `auto`, `liteparse`, `pandoc` and
 into `pymupdf` and `pdf-full`, and 2026.10.8 made `extract_vector_graphics`
 usable — its `VectorGraphics` read was dict-style on a dataclass until then, so
 the option crashed the backend and the table path was unreachable. Raising it
-is a reviewed event (see `.agents/plans/parsecraft-integration.md`). kompend
+is a reviewed event (see `docs/architecture/decisions.md`, "Decision:
+parsecraft as the ingestion backend"). kompend
 never imports parsecraft internals, private modules, or test helpers — only the
 documented public surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
 

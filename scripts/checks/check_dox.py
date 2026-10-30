@@ -36,6 +36,7 @@ CORE_AGENTS_FILES: tuple[str, ...] = (
     "POLICIES.md",
     "CODE.md",
     "FILES.md",
+    "TOOLS.md",
     "CHECKS.md",
     "MAINTENANCE.md",
     "HISTORY.md",

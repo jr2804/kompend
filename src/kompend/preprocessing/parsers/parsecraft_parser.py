@@ -5,8 +5,8 @@ pipeline.
 kompend consumes parsecraft's **public API only** (``parsecraft.pipeline`` /
 ``parsecraft.backends`` / IR). The dependency is pinned and installed as a
 wheel — never the parsecraft checkout. See
-``.agents/plans/parsecraft-integration.md`` for the integration contract and
-the rationale for each mapping below.
+``docs/architecture/decisions.md`` ("Decision: parsecraft as the ingestion
+backend") for the integration contract and the rationale for each mapping below.
 
 Mapping summary:
 

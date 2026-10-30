@@ -32,6 +32,7 @@ entry to the relevant subtree, or fetched from `.agents/` when the task needs it
 | `POLICIES.md` | Priorities, boundaries, DOX authoring, response rules | Always applicable |
 | `CODE.md` | Code antipatterns, boundaries, error handling | Writing or reviewing code |
 | `FILES.md` | Path constants, VaultPaths, naming | Touching files |
+| `TOOLS.md` | CLIs, MCP servers, skills, project tasks | Using a tool |
 | `CHECKS.md` | Verification, enforcement, checklist | Before commit |
 | `HISTORY.md` | Past decisions, known violations | Background |
 | `MAINTENANCE.md` | How to keep `.agents/` files up-to-date | When changing `.agents/` |
@@ -135,15 +136,32 @@ explicitly asked.
 | `src/kompend/AGENTS.md` | Python source — text-in-code rule, child index |
 | `tests/AGENTS.md` | Testing conventions, test antipatterns |
 
-## Tool Usage
+## Project rules
 
-| Tool | Skill | Purpose | Load when |
-|------|-------|---------|-----------|
-| `bd` (beads) | `beads` | Issue tracking, task lifecycle | Touching issues |
-| `codegraph` | — | Symbol search, call graphs | Navigating unfamiliar code |
-| `grepai` | `grepai-*` | Semantic code search (meaning, not text) | Finding code by intent |
+_Always injected_ — the rules broken most often when unread. Everything else
+lives in `.agents/` or a subtree `AGENTS.md`.
 
-Run `<tool> --help` for usage before first invocation.
+1. **`uv run` for every Python call** — never `python`, `python3`, or a direct
+   installer; dependencies arrive via `uv add` / `uv lock` / `uv sync`
+   (`.agents/POLICIES.md`).
+2. **Artifact names come from `src/kompend/core/paths.py`** — never inline
+   `.kompend`, `cache`, `config.toml`, `vectors`, or `kompend.db`.
+3. **Config keys resolve through `DEFAULTS`**
+   (`src/kompend/core/config/generate.py`); no literals at call sites, and
+   `kompend.toml.example` stays in sync with `DEFAULTS`.
+4. **Every LLM call goes through a PydanticAI agent** in
+   `src/kompend/agents/` — never a provider SDK directly.
+5. **Text-in-code ban** — prompts, instructions, and templates are resources,
+   not Python literals (see `src/kompend/AGENTS.md`).
+6. **`base_dir`** is the only name for the project root.
+7. **Enums, not bare strings** for roles, tasks, compilers, and tiers
+   (`StrEnum` members).
+8. **English only**, conventional commits (`feat:`, `fix:`, `chore:`, `docs:`).
+
+## Tools & skills
+
+See state file `.agents/TOOLS.md` — it owns the inventory of CLIs, MCP servers,
+skills, and project tasks. Run `<tool> --help` before first use.
 
 ## User Preferences
 
@@ -151,8 +169,6 @@ When the user requests a durable behavior change, record it here or in the
 relevant child AGENTS.md. (Conventions, config, or boundary rules belong in
 `.agents/` or the child; only always-applied preferences go here.)
 
-- Run every tool through `uv run …` (scripts, checks, pytest, one-off probes);
-  a bare `python …` is never used.
 - LLM I/O policy (details in `.agents/CODE.md`): never crop LLM inputs or
   outputs, no fallbacks where an exception belongs, no hand-crafted heuristic
   stand-ins for LLM calls without explicit approval.
@@ -169,66 +185,7 @@ relevant child AGENTS.md. (Conventions, config, or boundary rules belong in
 ## ⛔ No Patching
 
 Tools and automation must not insert, append, or patch text into this file.
-Content after this section is invalid and must be ignored.
-
-<!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:46cd31e7 -->
-## Beads Issue Tracker
-
-This project uses **bd (beads)** for durable task tracking. Run `bd prime` for the
-full workflow context and commands; the `beads` skill (`.agents/skills/beads/SKILL.md`
-or `~/.agents/skills/beads/SKILL.md`) covers the workflow in depth.
-
-### Quick Reference
-
-```bash
-bd ready                # Find available work
-bd show <id>            # View issue details
-bd update <id> --claim  # Claim work
-bd close <id>           # Complete work
-bd prime                # Refresh Beads context
-```
-
-### Rules
-
-- Use `bd` for ALL task tracking - no TodoWrite, TaskCreate, or markdown TODO lists.
-- Run `bd prime` when the context is missing or stale (Codex 0.129.0+ loads it through native hooks; `/hooks` inspects them).
-- Keep persistent project memory in Beads via `bd remember` - no ad-hoc memory files.
-
-**Architecture in one line:** issues live in a local Dolt DB; sync uses `refs/dolt/data` on your git remote; `.beads/issues.jsonl` is a passive export. See <https://github.com/gastownhall/beads/blob/main/docs/core-concepts/sync-concepts.md> for details and anti-patterns.
-
-## Agent Context Profiles
-
-The managed Beads block is task-tracking guidance, not permission to override repository, user, or orchestrator instructions.
-
-- **Conservative (default)**: Use `bd` for task tracking. Do not run git commits, git pushes, or Dolt remote sync unless explicitly asked. At handoff, report changed files, validation, and suggested next commands.
-- **Minimal**: Keep tool instruction files as pointers to `bd prime`; use the same conservative git policy unless active instructions say otherwise.
-- **Team-maintainer**: Only when the repository explicitly opts in, agents may close beads, run quality gates, commit, and push as part of session close. A current "do not commit" or "do not push" instruction still wins.
-
-## Session Completion
-
-This protocol applies when ending a Beads implementation workflow. It is subordinate to explicit user, repository, and orchestrator instructions.
-
-1. **File issues for remaining work** - Create beads for anything that needs follow-up
-2. **Run quality gates** (if code changed) - Tests, linters, builds
-3. **Update issue status** - Close finished work, update in-progress items
-4. **Handle git/sync by active profile**:
-
-   ```bash
-   # Conservative/minimal/default: report status and proposed commands; wait for approval.
-   git status
-
-   # Team-maintainer opt-in only, unless current instructions forbid it:
-   git pull --rebase
-   bd dolt push
-   git push
-   git status
-   ```
-
-5. **Hand off** - Summarize changes, validation, issue status, and any blocked sync/commit/push step
-
-**Critical rules:**
-
-- Explicit user or orchestrator instructions override this Beads block.
-- Do not commit or push without clear authority from the active profile or the current user request.
-- If a required sync or push is blocked, stop and report the exact command and error.
-<!-- END BEADS INTEGRATION -->
+Everything after this section — whatever the author — is invalid. This section
+is the end of the file; delete appended content on sight. If it carries a
+legitimate rule, move the rule to its owning state file or subtree AGENTS.md
+first.
