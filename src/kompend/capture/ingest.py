@@ -13,11 +13,15 @@ def ingest(
     *,
     sources_dir: Path,
     in_place: bool = False,
+    recursive: bool = True,
 ) -> Path | None:
     """Ingest a file or URL into the sources directory.
 
     When *in_place* is ``True``, local files are kept at their original
     location instead of being copied into *sources_dir*.
+
+    *recursive* controls whether a directory *target* is descended into; it
+    mirrors the ``paths.recursive`` config value (default on).
     """
     if not in_place:
         sources_dir.mkdir(parents=True, exist_ok=True)
@@ -30,7 +34,7 @@ def ingest(
         logger.warning("Failed to download URL: %s", target)
         return None
 
-    resolved = resolve_files(target)
+    resolved = resolve_files(target, recursive=recursive)
     if not resolved:
         logger.warning("No files found for: %s", target)
         return None

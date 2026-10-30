@@ -21,7 +21,7 @@ patterns across captures.
 | ``learn.py`` | ``learn`` — store a verbatim fact into ``_learned/`` |
 | ``distill.py`` | ``distill`` — merge ``_captured/`` + ``_learned/`` notes by tag into ``_distilled/`` pages |
 | ``consolidate.py`` | ``consolidate`` — archive near-duplicate notes across the note zones |
-| ``ingest.py`` | Capture-to-ingest pipeline adapter |
+| ``ingest.py`` | Capture-to-ingest pipeline adapter (``recursive`` defaults to on, callers pass the resolved ``paths.recursive``) |
 | ``_utils.py`` | Capture-specific utilities (titles, slugs, sources index) |
 
 ## Rules

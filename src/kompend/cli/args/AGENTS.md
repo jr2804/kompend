@@ -118,7 +118,7 @@ Verify = Annotated[
 These live in `common.py` and are imported by multiple command modules:
 
 - `WikiDir` — Project root directory
-- `Recursive` — Process subdirectories recursively
+- `RecursiveScan` — Tri-state `--recursive/--no-recursive` for source discovery (`parse`, `compile`, `ingest`, `write`); `None` follows the `paths.recursive` config value
 - `ConfigPath` — Path to config file
 - `Verbose` — Enable verbose output
 - `JsonOutput` — Serialize output as JSON
@@ -161,7 +161,6 @@ when the command actually has options in it.
 - `StartAtTier` — Which compilation tier to begin at
 - `Workers` — Number of parallel workers
 - `NoCacheFlag` — Skip cache and recompile
-- `RecursiveScan` — Tri-state `--recursive/--no-recursive` for pipeline source discovery; `None` follows the `paths.recursive` config value (distinct from common `Recursive`)
 - `JsonProgress` — Machine-readable progress output
 
 ## Verification

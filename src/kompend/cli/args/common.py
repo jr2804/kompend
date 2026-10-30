@@ -29,13 +29,12 @@ WikiDir = Annotated[
     ),
 ]
 
-Recursive = Annotated[
-    bool,
+RecursiveScan = Annotated[
+    bool | None,
     typer.Option(
         "--recursive/--no-recursive",
-        "-r/-R",
-        help="Search source directories recursively.",
-        envvar=EnvVar.RECURSIVE,
+        help="Scan sources/ subdirectories for source files. Default: paths.recursive config value (on).",
+        rich_help_panel="Sources",
     ),
 ]
 

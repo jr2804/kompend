@@ -77,15 +77,6 @@ InPlaceFlag = Annotated[
     ),
 ]
 
-RecursiveScan = Annotated[
-    bool | None,
-    typer.Option(
-        "--recursive/--no-recursive",
-        help="Scan sources/ subdirectories for source files. Default: paths.recursive config value (on).",
-        rich_help_panel="Sources",
-    ),
-]
-
 ListTiers = Annotated[
     bool,
     typer.Option(

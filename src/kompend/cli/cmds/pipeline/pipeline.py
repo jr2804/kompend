@@ -95,20 +95,23 @@ logger = get_logger(__name__)
 def parse_cmd(
     ctx: typer.Context,
     files: ParseFiles,
-    recursive: bool = False,
+    recursive: RecursiveScan = None,
     print_elements: PrintElements = False,
 ) -> None:
     """Parse documents and show their structure.
 
     Accepts one or more file paths, glob patterns (e.g. *.pdf), or directories.
     """
+    vp = vault_paths_from_ctx(ctx, require_vault=False)
+    cfg = resolve_config(
+        base_dir=vp.base_dir,
+        cli_overrides=build_cli_overrides(recursive=recursive),
+    )
     resolved = resolve_files(
         *files,
-        recursive=recursive,
+        recursive=cfg.kompend.paths.recursive,
         ignore_patterns=None,
     )
-    vp = vault_paths_from_ctx(ctx, require_vault=False)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     router: ParserRouter = build_default_router(
         ParserBuildOptions.from_config(cfg, images_dir=vp.images_dir),
     )

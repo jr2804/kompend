@@ -137,7 +137,7 @@ kompend parse [OPTIONS] FILES...
 
 | Flag | Description |
 |------|-------------|
-| `--recursive/--no-recursive`, `-r/-R` | Search source directories recursively |
+| `--recursive/--no-recursive` | Scan subdirectories of a directory argument; overrides `paths.recursive` (default on) |
 | `--elements`, `-e` | Print extracted elements |
 
 ## `kompend compile`
@@ -580,6 +580,11 @@ Because `write` output is not a source, it is **not** re-parsed on subsequent
 compiles — it persists as-is under `wiki/write/` until overwritten by another
 `write`.
 
+`--source` accepts files, glob patterns, and directories; a bare filename is
+searched under `sources/`. `--recursive/--no-recursive` controls whether a
+directory argument is descended into and follows `paths.recursive` when unset
+(default on).
+
 ## `kompend organize`
 
 Re-categorize the files in `sources/` into a hierarchical directory tree
@@ -678,7 +683,7 @@ All environment variables use the `KOMP_` prefix and map to dotted config keys.
 | `KOMP_WIKI_DIR` | `paths.wiki_dir` | Project root directory |
 | `KOMP_SOURCES_DIR` | `paths.sources_dir` | Sources directory (relative to wiki_dir) |
 | `KOMP_OUTPUT_DIR` | `paths.output_dir` | Output directory (relative to wiki_dir) |
-| `KOMP_RECURSIVE` | `compile.recursive` | Default recursive mode (true/false) |
+| `KOMP_PATHS_RECURSIVE` | `paths.recursive` | Discover sources in `sources/` subdirectories (true/false) |
 | `KOMP_LLM_DEFAULT_MODEL` | `compile.llm.default_model` | Default LLM model |
 | `KOMP_VLM_MODEL` | `compile.llm.vlm_model` | Vision model for image captioning |
 | `KOMP_NOTES_FILE` | `notes.file` | User notes filename |

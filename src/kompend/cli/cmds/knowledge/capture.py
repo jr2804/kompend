@@ -25,6 +25,7 @@ from kompend.cli.args import (
     DistillNoArchive,
     Frontmatter,
     LearnText,
+    RecursiveScan,
     SourceAttrs,
     SourceTags,
     WritePageTitle,
@@ -218,6 +219,7 @@ def write_cmd(
     ctx: typer.Context,
     page_title: WritePageTitle,
     source: WriteSourceFiles = WRITE_SOURCES_DEFAULT,
+    recursive: RecursiveScan = None,
     frontmatter: Frontmatter = None,
 ) -> None:
     """Create a wiki page synthesising content from one or more sources.
@@ -234,13 +236,17 @@ def write_cmd(
         kompend write "Transformer architecture" --source attention.pdf --source bert.pdf --frontmatter language=en
     """
     vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(recursive=recursive))
     base_dir = vp.base_dir
 
     # ── Resolve sources through the parse cache ──────────────────────────
     source_texts: list[tuple[str, str]] = []  # (stem, clean_text)
     if source:
-        source_files = resolve_files(*source, sources_dir=vp.sources_dir)
+        source_files = resolve_files(
+            *source,
+            recursive=cfg.kompend.paths.recursive,
+            sources_dir=vp.sources_dir,
+        )
         for sf in source_files:
             stem = sf.stem
             try:

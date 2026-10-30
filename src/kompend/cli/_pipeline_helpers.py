@@ -30,11 +30,7 @@ from kompend.cli._post_compile import (  # noqa: F401  # re-exported for backwar
 )
 from kompend.cli._progress import PipelineProgress
 from kompend.cli._sources import download_urls, ensure_in_sources, resolve_files
-from kompend.cli.args import (
-    Ignore,
-    Recursive,
-    UrlFile,
-)
+from kompend.cli.args import Ignore, UrlFile
 from kompend.core.pipeline.orchestrator import WikiPipeline
 from kompend.logging import get_console, get_err_console, get_logger, set_verbosity
 
@@ -150,7 +146,7 @@ def resolve_compile_inputs(
     online_urls: list[str],
     url_file: UrlFile,
     sources_dir: Path,
-    recursive: Recursive,
+    recursive: bool,
     ignore: Ignore,
     *,
     in_place: bool = False,
