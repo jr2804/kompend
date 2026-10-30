@@ -19,6 +19,10 @@ How to keep `.agents/` files current.
   the rules themselves.
 - **No tree figures.** ASCII directory trees rot immediately. Regenerate on
   demand: `rg --files | tree-cli --fromfile`.
+- **State files stay lean.** When one approaches its size budget, split detail
+  into its matching subdirectory (`.agents/files/`, `.agents/policies/`,
+  `.agents/tools/`, `.agents/maintenance/`) and list every file there in the
+  state file itself.
 
 ### Extension
 
@@ -39,11 +43,13 @@ How to keep `.agents/` files current.
 | `POLICIES.md` | Adding/changing priorities, boundaries, DOX authoring, response format |
 | `CODE.md` | Adding/changing a code antipattern, boundary, or the error-handling policy |
 | `FILES.md` | Renaming/adding path constants in `paths.py` |
+| `TOOLS.md` | Tools, MCP servers, skills, or project tasks added, removed, or changed |
 | `CHECKS.md` | Adding/changing verification commands or checklist items |
 | `HISTORY.md` | Resolving a known violation or making a notable design decision |
 | `ONBOARDING.md` | Project structure or entry points change |
 | `plans/` | New feature implementation starts |
 | `history/` | HISTORY.md overflow or completed plans archived |
+| `files/`, `policies/`, `tools/`, `maintenance/` | A state file split into its subdirectory |
 
 ### Plan naming and dating
 

@@ -19,6 +19,11 @@ from re-litigating settled questions.
   oldest entries to `.agents/history/`, leaving a pointer line.
 - Move resolved entries to a "Resolved" subsection rather than deleting them.
 
+### Do not record
+
+- Routine commits, refactor logs, session activity, release notes.
+- Anything obvious from git, the code, or the current AGENTS.md/state files.
+
 ### Extension
 
 | Who | When | What |

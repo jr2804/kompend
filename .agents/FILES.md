@@ -15,6 +15,11 @@ module.
 Use a path-resolver class that takes a base directory and exposes every artifact
 path as a property. This ensures consistent path construction across the codebase.
 
+### Pattern: Naming
+
+File-addressing variables get a `_file` suffix, directories a `_dir` suffix
+(`compile_state_file`, `cache_dir`). Never a bare noun that hides the kind.
+
 ### Extension
 
 | Who | When | What |
@@ -88,6 +93,12 @@ paths.images_dir  # base_dir/.kompend/cache/images
 | Module has `base_dir: Path` | `VaultPaths(base_dir).cache_dir` |
 | Module has `output_dir: Path` | `VaultPaths(output_dir.parent).cache_dir` |
 | Test with `tmp_path` | `VaultPaths(tmp_path).cache_dir` |
+
+### Subdirectory
+
+If this file grows past its size budget, split detail into `.agents/files/<name>.md`
+— every file there MUST be listed above (see `.agents/POLICIES.md`, **State file
+subdirectories**).
 
 ### Test conventions
 

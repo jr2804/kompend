@@ -47,6 +47,7 @@ Every LLM call routes through PydanticAI agents in `src/kompend/agents/`.
 | `.agents/POLICIES.md` | Priorities, boundaries, DOX authoring, response format |
 | `.agents/CODE.md` | Code antipatterns, boundaries, error handling |
 | `.agents/FILES.md` | Path constants, VaultPaths, naming |
+| `.agents/TOOLS.md` | CLIs, MCP servers, skills, project tasks |
 | `src/kompend/AGENTS.md` | Python-specific: text-in-code, antipatterns |
 | `docs/index.md` | User-facing documentation index |
 | `kompend.toml.example` | All config keys with comments |
@@ -96,6 +97,7 @@ uv run mkdocs build --strict                        # doc build check
 ### 6. Where to dig deeper
 
 - Each `src/kompend/` subdirectory has its own `AGENTS.md` (DOX child doc)
+- `.agents/TOOLS.md` — tools, MCP servers, skills, and mise tasks in use
 - `docs/index.md` — full documentation index
 - `.agents/HISTORY.md` — past design decisions, known issues
 - `bd` (beads) — issue tracking: `bd list`, `bd show <id>`

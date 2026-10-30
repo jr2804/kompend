@@ -1,10 +1,7 @@
 # AGENTS.md — POLICIES
 
-Always applicable. Priorities, boundaries, DOX authoring, response format.
-
-## Priorities
-
-Correctness · Evidence · Safety · Minimal changes · Consistency · Performance
+Always applicable. Priorities: correctness · evidence · safety · minimal changes ·
+consistency · performance. Boundaries, DOX authoring, response format.
 
 ## Boundaries
 
@@ -20,16 +17,17 @@ Correctness · Evidence · Safety · Minimal changes · Consistency · Performan
 - NEVER install with `pip install` or `uv pip install`: uv alone manages the venv
   (`uv add`, `uv lock`, `uv sync`); pip bypasses `uv.lock` — untracked, never relied on.
 - NEVER create temp files outside `tmp/` (gitignored) — never `_tmp_*.py` at the root.
+- NEVER commit, push, or sync a tracker unless the user asked for it.
 
 ## Change constraints
 
-- Minimal, surgical edits. Preserve existing style. No unrelated refactoring.
-- When changing tests, update only directly affected tests.
+- Minimal, surgical edits; preserve existing style; no unrelated refactoring.
+  When changing tests, update only directly affected tests.
 
 ## Code quality
 
-Universal defaults. Antipatterns, boundaries and error handling live in
-`CODE.md`; project-specific standards in child AGENTS.md.
+Antipatterns, boundaries and error handling live in `CODE.md`; project-specific
+standards in child AGENTS.md. Universal defaults:
 
 - **SRP** — one reason to change per module/function. If a name needs "and",
   split it; remove dead branches and unused params/imports before finishing.
@@ -37,84 +35,84 @@ Universal defaults. Antipatterns, boundaries and error handling live in
   the _third_ occurrence (Rule of Three), not earlier.
 - A little duplication beats a premature abstraction; add no new quality tooling by default.
 
-## Completion checklist
+## Completion checklist & verification
 
-Change solves the stated problem · relevant validation ran (or gaps explicitly
-stated, see `CHECKS.md`) · no unintended side effects · no secrets added
+Change solves the stated problem · validation ran (or gaps stated) · no unintended
+side effects · no secrets added. Commands, enforcement scripts, and the new-code
+checklist live in `CHECKS.md` — run the narrowest relevant one before finishing.
 
 ## DOX authoring (keep AGENTS.md lean)
 
-AGENTS.md and `.agents/` files share limited context. Bloat and duplication are
-the failure mode — they waste context on every subtree entry and drift apart as
-rules change.
+AGENTS.md and `.agents/` files share limited context; bloat and duplication are
+the failure mode.
 
 ### Where a rule lives
 
-Ask: **what is the highest (most general) tier that fully applies?** Put the rule
-there and nowhere else.
+Put a rule in the **highest (most general) tier that fully applies**, nowhere else.
 
-- All code in the project → `.agents/POLICIES.md` (universal) or `CODE.md` (code
-  policies). This is the default; when unsure, here.
-- Only inside one subtree (framework-specific template rules) → that subtree's
-  `AGENTS.md`.
-- Only navigation → the parent's Child DOX Index, nothing else.
+- All code in the project → `.agents/POLICIES.md`, or `CODE.md` for code policies
+  (the default; when unsure, here).
+- Only inside one subtree → that subtree's `AGENTS.md`.
+- Only navigation → the parent's Child DOX Index.
 
 ### Reference, don't restate
 
-A rule appears in **exactly one file**; every other file touching it uses a
-**pointer line** — `<topic> — see <file>`. Never copy the rule, its rationale, or
-its example into a second file.
+A rule appears in **exactly one file**; every other file uses a pointer line —
+`<topic> — see <file>`. Never copy the rule, rationale, or example.
 
 ### Rule first, rationale second, never third
 
-A DOX line is the rule. If a rationale is costly to rediscover, add one short
-clause. Never multi-paragraph explanations or more than one ❌/✅ pair per rule —
-those belong in a skill or a `docs/` page, linked once.
+A DOX line is the rule; add one short clause only if the rationale is costly to
+rediscover. Multi-paragraph explanations and ❌/✅ pairs belong in a skill or a
+`docs/` page, linked once.
 
 ### Content rules
 
 - **No tree views** — generate on demand: `rg --files | tree-cli --fromfile`.
-- **No history** — git log has it; record only decisions costly to rediscover,
-  in `HISTORY.md` with commit refs.
+- **No history in AGENTS.md files** — git owns routine history; record only
+  costly-to-rediscover decisions in `HISTORY.md`, or `.agents/history/`.
 - **No TODO lists or trackers** — use beads (`bd`).
 - **Long-form explanation** belongs in `docs/` or a skill: link it, don't inline.
 
+### State file subdirectories
+
+A state file stays a lean index and its matching subdirectory carries the detail
+— created only when the file approaches its budget, with every file in it listed
+from the owning state file.
+
+| State file | Optional subdirectory |
+| ---------- | --------------------- |
+| `FILES.md` | `.agents/files/` |
+| `POLICIES.md` | `.agents/policies/` |
+| `TOOLS.md` | `.agents/tools/` |
+| `MAINTENANCE.md` | `.agents/maintenance/` |
+
+`ONBOARDING.md` and `HISTORY.md` have none — history growth goes to
+`.agents/history/`.
+
 ### Size budget
 
-- `.agents/` files: ≤ **120 lines** (always-injected context).
-- Subtree `AGENTS.md`: ≤ **250 lines** (loaded cumulatively with every parent on
-  entry — deep-path cost adds up).
-
-Over budget means the doc restates instead of pointing, or hoards rationale. Cut
-first; split the subtree only as a last resort.
+`.agents/` files ≤ **120 lines** (always injected); subtree `AGENTS.md` ≤ **250**
+(loaded cumulatively from every parent on entry). Over budget means restating
+instead of pointing — cut first, split a subtree only as a last resort.
 
 ## Response format
 
-Concise and specific. No filler, intros, or restated requirements. Answer direct
-questions directly. For review/debugging/analysis: findings with references,
-conclusion, approach, and caveats.
+Concise and specific. No filler, intros, or restated requirements. For
+review/debugging/analysis: findings with references, conclusion, caveats.
 
-## Project-specific Policies — kompend
+## Implementation plans
 
-### Implementation plans
+- Plans go in `.agents/plans/<YYYY-MM-DD>-<feature-name>/` — gitignored, phase
+  files numbered (`01-design.md`). Shipped docs go in `docs/` and ARE committed.
+- Archive on completion, not at a later pass: consolidate into
+  `.agents/history/<YYYY-MM-DD>-<plan-name>.md`, delete the plan directory, and
+  reference the archive from `HISTORY.md` (procedure: `MAINTENANCE.md`).
 
-- Plans go in `.agents/plans/<feature>/` — gitignored, never committed. Mutable
-  working artifacts, not shipped docs. Prefix filenames with phase numbers so
-  file order matches implementation order; carry `Created:` and `Status:` lines.
-  Shipped docs (user-facing guides, API references) go in `docs/` and ARE
-  committed.
+## Project-specific policies — kompend
 
-### Documentation and archiving
+### User preferences
 
-- `HISTORY.md` over budget → archive older entries to `.agents/history/` with a
-  one-line pointer left behind. `.agents/history/` IS version-controlled; it
-  holds the durable decision records.
-- Completed plans move to `.agents/history/` as `YYYY-MM-DD-<slug>.md`
-  (completion date), with references updated. See `MAINTENANCE.md`.
-
-### User Preferences
-
-- Concise, direct answers with no filler or intros
-- Use `uv run` for all Python execution, never direct `python` calls
+- Concise, direct answers with no filler or intros.
 - English-only for code, docs, and commits; conventional commits (`feat:`, `fix:`,
-  `chore:`, `docs:`)
+  `chore:`, `docs:`).

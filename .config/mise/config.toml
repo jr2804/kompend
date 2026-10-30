@@ -21,17 +21,14 @@ shellcheck = "latest"
 # CLI tools rg and tree-cli -> use `rg --files | tree-cli --fromfile` to get a nice tree view of the project files
 ripgrep = "latest"
 "github:peteretelej/tree" = { version = "latest", rename_exe = "tree-cli" }
-"npm:@jkudish/jev-mcp" = "latest"
 
-"npm:@colbymchenry/codegraph" = "latest"
-"github:1broseidon/ketch" = "latest"
-
-"github:gastownhall/beads" = "latest"
-"github:dolthub/dolt" = "latest"
-"pypi:beads-mcp" = {version = "latest", uvx_args = "-p 3.13"}
+# Dev-feature tools (codegraph, ketch, beads, dolt, beads-mcp, jev-mcp) are
+# pinned in mise.local.toml with `mise use --env local` so that this file stays
+# identical for every checkout. The rows in .config/mise/data/dev-features.csv
+# are their single source of truth; `mise run add-mcp-servers` reconciles them.
 
 [settings.npm]
 package_manager = "bun"
 
-[settings.pipx]
+[settings.pypi]
 uvx = true
