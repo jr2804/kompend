@@ -106,6 +106,7 @@ class TestSpecialExcluded:
         live = tmp_path / "sources" / "_distilled" / "page.md"
         assert filter_files([archived, live]) == [live]
 
+
 class TestLoadGitignore:
     def test_loads_from_source_dir(self, tmp_path: Path) -> None:
         gitignore = tmp_path / ".gitignore"

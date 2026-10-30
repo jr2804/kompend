@@ -33,17 +33,6 @@ __all__ = [
 ]
 
 
-def is_special_excluded(path: Path) -> bool:
-    """True if *path* lives under a never-source location.
-
-    Covers the ``.kompend/`` state directory (never a source, even in
-    flat-layout vaults where it sits beside the sources) and
-    ``sources/_archive/`` (notes retired by ``consolidate``/``distill`` —
-    superseded in place, not removed, and must not be re-ingested).
-    """
-    return KOMP_DIR in path.parts or ARCHIVE_SUBDIR in path.parts
-
-
 def compile_patterns(*pattern_lists: list[str] | None) -> list[str]:
     """Combine multiple pattern lists into one deduplicated list."""
     seen: set[str] = set()
@@ -84,6 +73,17 @@ def filter_files(
         logger.info("Skipped %d file(s) matching ignore patterns", skipped)
 
     return result
+
+
+def is_special_excluded(path: Path) -> bool:
+    """True if *path* lives under a never-source location.
+
+    Covers the ``.kompend/`` state directory (never a source, even in
+    flat-layout vaults where it sits beside the sources) and
+    ``sources/_archive/`` (notes retired by ``consolidate``/``distill`` —
+    superseded in place, not removed, and must not be re-ingested).
+    """
+    return KOMP_DIR in path.parts or ARCHIVE_SUBDIR in path.parts
 
 
 def matches_any(subject: Path, patterns: list[str], base_dir: Path | None = None) -> bool:
