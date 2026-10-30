@@ -16,13 +16,12 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from kompend.core.config import Flavor, resolve_flavor
 from kompend.core.page_builder import PageBuilder
 from kompend.core.text.rumdl import rumdl_available
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
+from kompend.output.frontmatter import okf_frontmatter_yaml
 from kompend.output.models import Document
 
 #: Tail of rumdl's stderr included in the failure warning — enough to show the
@@ -148,12 +147,13 @@ def detect_flavor(output_dir: Path | None = None, configured: Flavor | str | Non
 def render_frontmatter(frontmatter: dict[str, Any]) -> str:
     """Render a dict as YAML frontmatter (``---`` delimited).
 
-    Returns an empty string if the dict is empty.
+    Returns an empty string if the dict is empty. Delegates to
+    :func:`kompend.output.frontmatter.okf_frontmatter_yaml` so OKF keys (a
+    ``StrEnum``) render as their names instead of python-object tags.
     """
     if not frontmatter:
         return ""
-    yaml_str = yaml.dump(frontmatter, default_flow_style=False, allow_unicode=True).strip()
-    return f"---\n{yaml_str}\n---\n\n"
+    return okf_frontmatter_yaml(frontmatter)
 
 
 def format_output(

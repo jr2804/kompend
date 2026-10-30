@@ -8,7 +8,7 @@ import pytest
 
 from kompend.core.config import Flavor
 from kompend.core.models import CompiledWiki, WikiNode
-from kompend.core.models.enums import NodeType
+from kompend.core.models.enums import NodeType, OkfField
 from kompend.output.markdown import MarkdownWriter
 from kompend.output.models import Document
 from kompend.output.renderer import (
@@ -48,6 +48,13 @@ class TestRenderFrontmatter:
         result = render_frontmatter({"lang": "en", "domain": "ml"})
         assert "lang: en" in result
         assert "domain: ml" in result
+
+    def test_okf_enum_keys_render_as_names(self) -> None:
+        """A ``StrEnum`` key must render as its name, not a python-object tag."""
+        result = render_frontmatter({OkfField.KIND: "page", OkfField.TITLE: "T"})
+        assert "kind: page" in result
+        assert "title: T" in result
+        assert "!!python" not in result
 
 
 class TestDetectFlavor:
