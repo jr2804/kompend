@@ -21,6 +21,7 @@ from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote, Di
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug, make_title
 from kompend.core.paths import ARCHIVE_SUBDIR, CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
+from kompend.core.text.pipes import escape_prose_pipes
 from kompend.core.utils.time import display_local
 from kompend.logging import get_logger
 from kompend.output.frontmatter import okf_frontmatter_yaml, source_frontmatter
@@ -334,7 +335,8 @@ def _write_page(
             extra={"synthesized_from": list(source_files)},
         ),
     )
+    content = escape_prose_pipes(page["content"].strip())
     filepath.write_text(
-        f"{frontmatter}# {page['title']}\n\n{page['content'].strip()}\n",
+        f"{frontmatter}# {page['title']}\n\n{content}\n",
         encoding="utf-8",
     )

@@ -40,6 +40,7 @@ from kompend.core.models.structured import structured_to_dict
 from kompend.core.page_builder import PageBuilder, link
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.assets import AssetStore
+from kompend.core.text.pipes import escape_prose_pipes
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 
@@ -274,9 +275,9 @@ def _render_element(el: DocumentElement, state: _RenderState) -> str:  # noqa: P
         return ""
     if el.type is ElementType.HEADING:
         level = max(1, min(el.heading_level or 1, 6))
-        return f"{'#' * level} {text}"
+        return f"{'#' * level} {escape_prose_pipes(text)}"
     if el.type is ElementType.LIST_ITEM:
-        return f"- {text}"
+        return f"- {escape_prose_pipes(text)}"
     if el.type is ElementType.CODE:
         lang = ""
         if el.metadata:
@@ -286,7 +287,7 @@ def _render_element(el: DocumentElement, state: _RenderState) -> str:  # noqa: P
         return f"$$\n{text}\n$$"
     if el.type is ElementType.IMAGE:
         return _render_image(el, state)
-    return text
+    return escape_prose_pipes(text)
 
 
 def _render_table(grid: list[list[str]]) -> str:

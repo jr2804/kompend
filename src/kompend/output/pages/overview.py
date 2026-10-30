@@ -13,6 +13,7 @@ from kompend.core.cache.store import CacheStore
 from kompend.core.models import CompiledWiki
 from kompend.core.paths import OVERVIEW_MD, VaultPaths
 from kompend.core.templates import get_template_loader
+from kompend.core.text.pipes import escape_prose_pipes
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
@@ -53,6 +54,7 @@ def write_overview(
     if not content:
         return None
 
+    content = escape_prose_pipes(content)
     cache_store.set("overview", overview_deps, f"# Wiki Overview\n\n{content}\n")
 
     overview_file = base_dir / OVERVIEW_MD

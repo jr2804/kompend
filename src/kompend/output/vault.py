@@ -57,6 +57,7 @@ from kompend.core.pipeline.assets import AssetStore
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.store import open_store
 from kompend.core.store.schema import VERIFICATION_TABLE
+from kompend.core.text.pipes import escape_prose_pipes
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
 from kompend.output.base import BaseOutputWriter
@@ -520,7 +521,7 @@ class VaultWriter(BaseOutputWriter):
             summary = summary_by_key.get(key)
             if summary:
                 lines.append("## Summary\n")
-                lines.append(summary)
+                lines.append(escape_prose_pipes(summary))
                 lines.append("")
 
             # Backlinks: concepts this source feeds.

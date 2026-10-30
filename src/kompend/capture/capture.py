@@ -8,6 +8,7 @@ from kompend.agents.deps import PipelineAgentDeps
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug, make_title
 from kompend.core.paths import CAPTURED_SUBDIR
+from kompend.core.text.pipes import escape_prose_pipes
 from kompend.core.utils.time import display_local
 from kompend.logging import get_logger
 from kompend.output.frontmatter import okf_frontmatter_yaml, source_frontmatter
@@ -66,7 +67,8 @@ def capture(
             ),
         )
 
-        filepath.write_text(f"{frontmatter}# {item.title}\n\n{item.content.strip()}\n", encoding="utf-8")
+        content = escape_prose_pipes(item.content.strip())
+        filepath.write_text(f"{frontmatter}# {item.title}\n\n{content}\n", encoding="utf-8")
         logger.info("Captured %s -> %s", item.kind, filepath)
         paths.append(filepath)
 

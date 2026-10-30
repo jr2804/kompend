@@ -5,6 +5,7 @@ from pathlib import Path
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug
 from kompend.core.paths import LEARNED_SUBDIR
+from kompend.core.text.pipes import escape_prose_pipes
 from kompend.core.utils.time import display_local
 from kompend.logging import get_logger
 from kompend.output.frontmatter import okf_frontmatter_yaml, source_frontmatter
@@ -41,7 +42,7 @@ def learn(
         ),
     )
 
-    filepath.write_text(f"{frontmatter}{text.strip()}\n", encoding="utf-8")
+    filepath.write_text(f"{frontmatter}{escape_prose_pipes(text.strip())}\n", encoding="utf-8")
     logger.info("Learned fact -> %s", filepath)
     format_sources_markdown(sources_dir)
     return filepath

@@ -18,6 +18,7 @@ from typing import Any
 
 from kompend.core.config import Flavor, resolve_flavor
 from kompend.core.page_builder import PageBuilder
+from kompend.core.text.pipes import escape_prose_pipes
 from kompend.core.text.rumdl import rumdl_available
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
@@ -103,10 +104,12 @@ class DocumentRenderer:
         lines = [""] + b.render().split("\n")
         parts.append("\n".join(lines))
 
-        # Body
+        # Body — escape prose pipes so a literal ``|`` can never be
+        # misread as GFM table structure (generation contract).
         if doc.body:
-            parts.append(doc.body)
-            if not doc.body.endswith("\n"):
+            body = escape_prose_pipes(doc.body)
+            parts.append(body)
+            if not body.endswith("\n"):
                 parts.append("")
 
         return "\n".join(parts).strip() + "\n"
