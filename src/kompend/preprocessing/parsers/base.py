@@ -45,6 +45,7 @@ class FileExtension(StrEnum):
     MARKDOWN = ".markdown"
     TXT = ".txt"
     CSV = ".csv"
+    TSV = ".tsv"
     ADOC = ".adoc"
     EML = ".eml"
     MSG = ".msg"
@@ -81,6 +82,7 @@ _TEXT_EXTENSIONS: frozenset[FileExtension] = frozenset(
         FileExtension.MARKDOWN,
         FileExtension.TXT,
         FileExtension.CSV,
+        FileExtension.TSV,
         FileExtension.ADOC,
         FileExtension.RST,
         FileExtension.TEX,

@@ -805,7 +805,6 @@ class TestBackendOverride:
 
     def test_overrides_reach_the_constraints(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         adapter = _adapter()
-        chosen = self._a_backend()
         seen: dict[str, object] = {}
         real = adapter.constraints_from_environment
 
@@ -817,9 +816,31 @@ class TestBackendOverride:
         parser.parse(markdown_file)
         assert seen.get("preferred_backend") is None
         assert seen.get("only_backend") is None
+        chosen = self._a_markdown_backend()
         adapter.ParsecraftParser(parsecraft_preferred_backend=chosen, parsecraft_only_backend=chosen).parse(markdown_file)
         assert seen["preferred_backend"] == chosen
         assert seen["only_backend"] == chosen
+
+    def test_pinning_a_backend_that_cannot_read_the_source_fails_loudly(self, markdown_file: Path) -> None:
+        """A pin the source rules out is an error, never a silent reroute."""
+        adapter = _adapter()
+        pinned = self._a_non_markdown_backend()
+        with pytest.raises(NoEligibleBackendError):
+            adapter.ParsecraftParser(parsecraft_only_backend=pinned).parse(markdown_file)
+
+    @staticmethod
+    def _a_markdown_backend() -> str:
+        for descriptor in default_registry.list_backends():
+            if _claims_markdown(descriptor):
+                return descriptor.name
+        raise AssertionError("no registered backend claims text/markdown")
+
+    @staticmethod
+    def _a_non_markdown_backend() -> str:
+        for descriptor in default_registry.list_backends():
+            if not _claims_markdown(descriptor):
+                return descriptor.name
+        raise AssertionError("every registered backend claims text/markdown")
 
     @staticmethod
     def _a_backend() -> str:
@@ -993,6 +1014,17 @@ def _exhausted_page(number: int) -> PageResult:
 def parser() -> Any:
 
     return _adapter().ParsecraftParser()
+
+
+def _claims_markdown(descriptor: Any) -> bool:
+    """Whether a registered backend declares ``text/markdown``.
+
+    Read from the backend's own capability table rather than a hardcoded name:
+    which backend leads markdown is parsecraft's decision (2026.10.14 withdrew
+    docling's text routes), and this test is about override plumbing.
+    """
+    formats = {str(fmt) for fmt in (getattr(descriptor.capabilities, "supported_formats", ()) or ())}
+    return "text/markdown" in formats
 
 
 def _adapter() -> Any:

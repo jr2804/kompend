@@ -576,15 +576,15 @@ def _chunk_to_element(
 def _chunk_content(chunk: StructuredChunk) -> str | list[list[str]]:
     """Chunk content in kompend's element shape.
 
-    Tables arrive as Markdown text: parsecraft's IR has no structured row
-    model yet (upstream gap), so kompend consumes the Markdown table — its own
-    markdown converter restores the grid downstream.
+    Tables may arrive as Markdown text or as rows. Rows win when present — the
+    IR hands them over as a tuple of tuples while a TABLE element takes
+    ``list[list[str]]``, so that boundary conversion happens here.
 
-    When parsecraft *did* populate ``StructuredChunk.rows`` from a page's
-    vector graphics (liteparse, opt-in via the ``extract_vector_graphics``
-    backend option), the IR hands rows over as a tuple of tuples while a TABLE
-    element takes ``list[list[str]]`` — that boundary conversion happens here
-    and takes precedence over the Markdown form.
+    Which backends populate ``rows`` is their business: since parsecraft
+    2026.10.14 the CSV/TSV tier always does (header row first, ragged rows
+    preserved), and liteparse does when the opt-in ``extract_vector_graphics``
+    backend option is on. Everything else emits Markdown, which kompend's own
+    markdown converter restores to a grid downstream.
     """
     if chunk.rows is not None:
         return [list(row) for row in chunk.rows]
@@ -595,11 +595,14 @@ def _heading_level(chunk: StructuredChunk) -> int | None:
     """Heading depth for heading chunks.
 
     parsecraft carries the level in chunk metadata as a string (``"1"``,
-    ``"2"``). 2026.10.2 renamed the key to ``n_level`` (the native-markdown
-    adapter emits ``token.tag.removeprefix("h")``); ``heading_level`` is the
-    2026.10.1 name and is still read because the parsecraft extra's floor is
-    ``>=2026.10.1``. The docling path emits no level at all — a level is a
-    native-adapter fact, not an IR-wide guarantee.
+    ``"2"``); 2026.10.2 renamed the key to ``n_level``, and ``heading_level``
+    is the 2026.10.1 name, still read for older wheels.
+
+    The value is the *author* level: a Markdown ``#`` is 1, and 2026.10.14 made
+    docling report the author's own outline level too (its renderer's ``+1``
+    shift stays inside parsecraft). A missing level therefore means the backend
+    had no outline to report, not that the path has no levels. kompend clamps
+    the value to 1..6 where it renders.
     """
     if chunk.kind != "heading":
         return None

@@ -33,9 +33,10 @@ Two opt-in extensions ride on top of parsecraft rather than being kompend
 backends:
 
 - **`kompend[mineru]`** — adds MinerU 4.x as a parsecraft sub-backend
-  (`parsecraft[mineru]>=2026.10.8`), eligible for layout-heavy and OCR
-  pages. The extra opts into MinerU's own licence terms — read the note in
-  `pyproject.toml` before using it commercially.
+  (`parsecraft[mineru]>=2026.10.14`), eligible for layout-heavy and OCR
+  pages. The extra pulls model weights, not the `mineru` package: parsecraft
+  runs MinerU natively. It still opts into MinerU's own licence terms — read
+  the note in `pyproject.toml` before using it commercially.
 - **marker (bring-your-own)** — `marker-pdf` cannot be locked or pinned by
   kompend at all (see [below](#why-marker-cannot-be-a-locked-extra)); install
   it yourself and parsecraft counts it among its routing candidates.
@@ -65,7 +66,10 @@ marker is parsecraft's **bring-your-own** sub-backend.
 
 Discovery takes the registry default (parsecraft) and asks it which suffixes
 it claims; the source directory is scanned for exactly those. parsecraft's
-current 32-suffix table is what a default `kompend ingest` covers. `.kompend/`
+current 34-suffix table is what a default `kompend ingest` covers, plus eight
+legacy suffixes from kompend's own table (`.adoc .bmp .doc .eml .gif .ltx
+.msg .webp`) that parsecraft rejects at parse time — such a file is skipped
+with a message rather than crashing. `.kompend/`
 is excluded regardless of claimed formats, so state artifacts such as
 `.kompend/rumdl.toml` are never ingested even though parsecraft claims `.toml`.
 
@@ -75,6 +79,7 @@ is excluded regardless of claimed formats, so state artifacts such as
 | `.docx`, `.pptx`, `.xlsx` | `parsecraft` | Office formats via its sub-backends |
 | `.epub`, `.odt`, `.rtf` | `parsecraft` | E-book and legacy text containers |
 | `.md`, `.markdown`, `.html`, `.htm` | `parsecraft` | Native text and markup backends |
+| `.csv`, `.tsv` | `parsecraft` | Deterministic table IR: one TABLE element per file, header row first, ragged rows kept |
 | `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff` | `parsecraft` | Images; content comes from an OCR/VLM sub-backend when installed |
 | `.txt`, `.text`, `.log`, `.rst`, `.ini`, `.cfg`, `.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.m`, `.sh`, `.tex` | `parsecraft` | Plain-text source family |
 
@@ -167,14 +172,17 @@ and maps parsecraft's intermediate representation onto kompend's element model.
 It is a core dependency, so installing kompend is all that is required:
 
 ```bash
-uv add kompend    # pulls parsecraft[docling,web]>=2026.10.8
+uv add kompend    # pulls parsecraft[docling,web]>=2026.10.14
 ```
 
 The floor is load-bearing: 2026.10.5 moved `auto`, `liteparse`, `pandoc` and
 `openpyxl` into parsecraft's base install, 2026.10.6 split the old `pdf` extra
 into `pymupdf` and `pdf-full`, and 2026.10.8 made `extract_vector_graphics`
 usable — its `VectorGraphics` read was dict-style on a dataclass until then, so
-the option crashed the backend and the table path was unreachable. Raising it
+the option crashed the backend and the table path was unreachable. 2026.10.14
+withdrew docling's text routes (markdown and plain text are the native family's,
+which is also what takes the docling `Table.match` spin off the markdown path),
+made docling report author heading levels, and added the CSV/TSV tier. Raising it
 is a reviewed event (see `docs/architecture/decisions.md`, "Decision:
 parsecraft as the ingestion backend"). kompend
 never imports parsecraft internals, private modules, or test helpers — only the

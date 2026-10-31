@@ -116,14 +116,15 @@ def test_iter_sources_scans_source_dir_even_with_input_files_set(tmp_path: Path)
 def test_iter_sources_skips_unsupported_extensions(tmp_path: Path) -> None:
     """Discovery follows the configured backend's declared suffixes.
 
-    parsecraft reads source files as plain text (``.py``), so a code file is
-    ingestible; it declares no CSV media type, so ``data.csv`` is skipped.
+    parsecraft reads source files as plain text (``.py``) and, since 2026.10.14,
+    has a CSV/TSV tier (``data.csv``); it declares no media type for ``.xyz``, so
+    that file is skipped.
     """
-    _populate_source_dir(tmp_path, "doc1.pdf", "doc2.md", "notes.html", "data.csv", "script.py")
+    _populate_source_dir(tmp_path, "doc1.pdf", "doc2.md", "notes.html", "data.csv", "script.py", "archive.xyz")
     config = _make_config(tmp_path, vlm_model="")
     pipeline = build_pipeline(config)
     sources = {s.name for s in pipeline.iter_sources()}
-    assert sources == {"doc1.pdf", "doc2.md", "notes.html", "script.py"}
+    assert sources == {"doc1.pdf", "doc2.md", "notes.html", "data.csv", "script.py"}
 
 
 def test_iter_sources_skips_archive_subdir(tmp_path: Path) -> None:

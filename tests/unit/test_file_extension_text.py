@@ -13,6 +13,7 @@ _TEXT = {
     FileExtension.MARKDOWN,
     FileExtension.TXT,
     FileExtension.CSV,
+    FileExtension.TSV,
     FileExtension.ADOC,
     FileExtension.RST,
     FileExtension.TEX,
