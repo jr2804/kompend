@@ -8,6 +8,14 @@ or reviewing code — production or tests.
 Follow the `python-ultimate` skill when in doubt about Python style, structure,
 or conventions — it takes precedence over a conflicting habit or default.
 
+**Ordering is pyreorder's, and it is step-down, not alphabetical.** `mise run
+format` sorts each module: imports → constants → classes → functions, callers
+before callees. Two consequences that look wrong to a human and fail the check
+anyway: a wrapper or predicate must sit ABOVE the function it delegates to, and
+a test helper must sit BELOW the test that uses it (a helper next to its data
+reads naturally and sorts last). Run `mise run format` before committing — never
+hand-order a module and assume it stays.
+
 ## Antipatterns
 
 | Pattern | Verdict | Fix |
