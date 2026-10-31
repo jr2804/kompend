@@ -12,7 +12,7 @@ import pytest
 from kompend.agents.categorize import CategorizeAgent
 from kompend.agents.categorize_models import CategoryNode as PydanticNode
 from kompend.agents.categorize_models import CategoryTree as PydanticTree
-from kompend.cli.app import app
+from kompend.cli.app import app, register_all_commands
 from kompend.compilation._two_phase_core import Extraction
 from kompend.core.cache import CacheStore
 from kompend.core.cache.wiki import write_wiki_cache
@@ -780,8 +780,8 @@ class TestOrganizeConfig:
 
 class TestOrganizeCliCommand:
     def test_organize_command_registered(self) -> None:
-        command_names = {cmd.name for cmd in app.registered_commands if cmd.name}
-        assert "organize" in command_names
+        register_all_commands()
+        assert "organize" in app.resolved_commands()
 
 
 # ── Organized result dataclass ──────────────────────────────────────────

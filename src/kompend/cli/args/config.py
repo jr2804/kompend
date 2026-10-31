@@ -5,11 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-import typer
+from cyclopts import Parameter
 
 ConfigKeyArg = Annotated[
     str,
-    typer.Argument(
+    Parameter(
         help="Dotted config key, e.g. compile.budget.chunk_size_min",
     ),
 ]
@@ -17,7 +17,7 @@ ConfigKeyArg = Annotated[
 
 ConfigValueArg = Annotated[
     str,
-    typer.Argument(
+    Parameter(
         help="Value to set",
     ),
 ]
@@ -25,23 +25,26 @@ ConfigValueArg = Annotated[
 
 ConfigGlobalOpt = Annotated[
     bool,
-    typer.Option(
-        "--global",
+    Parameter(
+        name="--global",
         help="Operate on the global config instead of the project config.",
+        negative="",
     ),
 ]
 
 ConfigCheckPaths = Annotated[
     list[Path] | None,
-    typer.Argument(
-        help=("TOML files to diff. Omit to check the discovered project config. Multiple files merge (later wins); use --no-merge for per-file reports."),
+    Parameter(
+        negative="",
+        help="TOML files to diff. Omit to check the discovered project config. Multiple files merge (later wins); use --no-merge for per-file reports.",
     ),
 ]
 
 ConfigNoMerge = Annotated[
     bool,
-    typer.Option(
-        "--no-merge",
+    Parameter(
+        name="--no-merge",
         help="Report on each file independently instead of merging them.",
+        negative="",
     ),
 ]

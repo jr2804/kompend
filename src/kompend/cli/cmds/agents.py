@@ -1,22 +1,12 @@
-"""CLI commands for managing TOML-defined conversational agents.
-
-- ``kompend agents list`` — list all agents grouped by task
-- ``kompend agents use <task> <name>`` — set active agent for a task
-- ``kompend agents validate <file>`` — validate a TOML agent definition
-- ``kompend agents install <file>`` — install an agent TOML into the vault
-- ``kompend agents remove <name>`` — remove an installed agent from the vault
-"""
+"""CLI commands for managing TOML-defined conversational agents."""
 
 from __future__ import annotations
 
 import shutil
 from pathlib import Path
 
-import typer
-
 from kompend.acp.definitions import AgentDefinition, AgentTask
 from kompend.acp.registry import AgentRegistry
-from kompend.cli.app import app
 from kompend.cli.args.serving import AgentsAction, AgentsName, AgentsTask
 from kompend.core.config import resolve_config, validate_config_key
 from kompend.core.config._core import set_config_file_value
@@ -26,7 +16,7 @@ from kompend.core.keys import (
     AGENTS_ORGANIZE,
     AGENTS_QUERY,
 )
-from kompend.core.paths import KOMP_CONFIG_FILE
+from kompend.core.paths import KOMP_CONFIG_FILE, KOMP_DIR
 from kompend.logging import get_console, get_logger
 
 _TASK_CONFIG_KEY: dict[AgentTask, str] = {
@@ -39,9 +29,9 @@ _TASK_CONFIG_KEY: dict[AgentTask, str] = {
 logger = get_logger(__name__)
 
 
-@app.command(name="agents")
 def agents_cmd(
     action: AgentsAction,
+    *,
     task: AgentsTask = None,
     name: AgentsName = None,
 ) -> None:
@@ -51,26 +41,26 @@ def agents_cmd(
     elif action == "use":
         if task is None or name is None:
             get_console().print("[red]Usage: kompend agents use <task> <name>[/red]")
-            raise typer.Exit(1)
+            raise SystemExit(1)
         _agents_use(task, name)
     elif action == "validate":
         if task is None:
             get_console().print("[red]Usage: kompend agents validate <file>[/red]")
-            raise typer.Exit(1)
+            raise SystemExit(1)
         _agents_validate(task)
     elif action == "install":
         if task is None:
             get_console().print("[red]Usage: kompend agents install <file>[/red]")
-            raise typer.Exit(1)
+            raise SystemExit(1)
         _agents_install(task)
     elif action == "remove":
         if task is None:
             get_console().print("[red]Usage: kompend agents remove <name>[/red]")
-            raise typer.Exit(1)
+            raise SystemExit(1)
         _agents_remove(task)
     else:
         get_console().print(f"[red]Unknown action: {action}. Use list, use, validate, install, or remove.[/red]")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
 def _agents_list() -> None:
@@ -100,23 +90,23 @@ def _agents_use(task_str: str, name: str) -> None:
         task = AgentTask(task_str)
     except ValueError:
         get_console().print(f"[red]Unknown task: {task_str}. Use: {', '.join(t.value for t in AgentTask)}[/red]")
-        raise typer.Exit(1) from None
+        raise SystemExit(1) from None
 
     base_dir = _resolve_base_dir()
     registry = AgentRegistry(base_dir=base_dir)
     agent = registry.get(name)
     if agent is None:
         get_console().print(f"[red]Agent not found: {name}[/red]")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     config_key = _TASK_CONFIG_KEY.get(task)
     if config_key is None:
         get_console().print(f"[red]Cannot set active agent for task: {task}[/red]")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     if not validate_config_key(config_key):
         get_console().print(f"[red]Invalid config key: {config_key}[/red]")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     config_file = Path(base_dir) / KOMP_CONFIG_FILE
     set_config_file_value(config_file, config_key, name)
@@ -128,7 +118,7 @@ def _agents_validate(file: str) -> None:
     source_path = Path(file)
     if not source_path.exists():
         get_console().print(f"[red]File not found: {file}[/red]")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     try:
         agent = AgentDefinition.from_toml(source_path)
@@ -144,7 +134,7 @@ def _agents_validate(file: str) -> None:
             get_console().print("  tools: all")
     except Exception as exc:
         get_console().print(f"[red]✗ Invalid: {exc}[/red]")
-        raise typer.Exit(1) from exc
+        raise SystemExit(1) from exc
 
 
 def _agents_install(file: str) -> None:
@@ -152,16 +142,15 @@ def _agents_install(file: str) -> None:
     agent_file = Path(file)
     if not agent_file.exists():
         get_console().print(f"[red]File not found: {file}[/red]")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     try:
         agent = AgentDefinition.from_toml(agent_file)
     except Exception as exc:
         get_console().print(f"[red]Invalid agent definition: {exc}[/red]")
-        raise typer.Exit(1) from exc
+        raise SystemExit(1) from exc
 
-    base_dir = _resolve_base_dir()
-    vault_dir = Path(base_dir) / ".kompend" / "agents"
+    vault_dir = Path(_resolve_base_dir()) / KOMP_DIR / "agents"
     vault_dir.mkdir(parents=True, exist_ok=True)
     dest = vault_dir / f"{agent.name}.toml"
 
@@ -174,13 +163,12 @@ def _agents_install(file: str) -> None:
 
 def _agents_remove(name: str) -> None:
     """Remove an installed agent from the vault."""
-    base_dir = _resolve_base_dir()
-    vault_dir = Path(base_dir) / ".kompend" / "agents"
+    vault_dir = Path(_resolve_base_dir()) / KOMP_DIR / "agents"
     agent_file = vault_dir / f"{name}.toml"
 
     if not agent_file.exists():
         get_console().print(f"[red]Agent not found in vault: {name}[/red]")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     agent_file.unlink()
     get_console().print(f"[green]Removed agent: {name}[/green]")

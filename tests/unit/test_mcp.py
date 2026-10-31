@@ -23,6 +23,9 @@ from kompend.mcp.tools.query import query_wiki
 # MCP equivalent. They are excluded from the parity assertion.
 _EXCLUDED_CLI_COMMANDS = {"mcp", "serve", "agent", "agents"}
 _MCP_TO_CLI_ALIASES = {"wiki_list_attachments": "attachments_list"}
+# A command-name alias covers the same functionality as its target; the MCP
+# surface needs the tool once, under the canonical name.
+_CLI_COMMAND_ALIASES = {"att": "attachments"}
 
 # ---------------------------------------------------------------------------
 # parse_document
@@ -121,17 +124,7 @@ class TestConfigCheck:
 
 def test_cli_mcp_parity() -> None:
     """Every functional CLI command has a matching MCP tool."""
-    register_all_commands()
-    cli_cmds: set[str] = set()
-    for cmd in cli_app.registered_commands:
-        cli_cmds.add(_normalize_cli(cmd.name or ""))
-    for group in cli_app.registered_groups:
-        sub_app = group.typer_instance
-        assert sub_app is not None
-        gname = sub_app.info.name or str(group.name)
-        gnorm = _normalize_cli(gname)
-        for cmd in sub_app.registered_commands:
-            cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name or '')}")
+    cli_cmds = _cli_command_names()
 
     mcp_norm = {_normalize_mcp(t) for t in _mcp_tool_names()}
     # Apply explicit aliases: remove the aliased CLI command from the
@@ -151,16 +144,7 @@ def test_mcp_cli_parity_reverse() -> None:
     CLI command renamed without updating the MCP side.
     """
     register_all_commands()
-    cli_cmds: set[str] = set()
-    for cmd in cli_app.registered_commands:
-        cli_cmds.add(_normalize_cli(cmd.name or ""))
-    for group in cli_app.registered_groups:
-        sub_app = group.typer_instance
-        assert sub_app is not None
-        gname = sub_app.info.name or str(group.name)
-        gnorm = _normalize_cli(gname)
-        for cmd in sub_app.registered_commands:
-            cli_cmds.add(f"{gnorm}_{_normalize_cli(cmd.name or '')}")
+    cli_cmds = _cli_command_names()
 
     mcp_norm = {_normalize_mcp(t) for t in _mcp_tool_names()}
     # MCP tools that intentionally have no CLI equivalent (server bootstrap,
@@ -168,6 +152,24 @@ def test_mcp_cli_parity_reverse() -> None:
     mcp_only = {"list_attachments", "read_attachment", "attachment_info"}
     orphan = sorted(mcp_norm - cli_cmds - mcp_only)
     assert not orphan, f"MCP tools without a CLI command: {orphan}"
+
+
+def _cli_command_names() -> set[str]:
+    """Flatten the CLI surface: ``group_sub`` for grouped commands, bare names otherwise."""
+    register_all_commands()
+    names: set[str] = set()
+    for name in cli_app.resolved_commands():
+        if name.startswith("-"):
+            continue
+        children = [child for child in cli_app[name].resolved_commands() if not child.startswith("-")]
+        if children:
+            if name in _CLI_COMMAND_ALIASES:
+                continue
+            gnorm = _normalize_cli(name)
+            names.update(f"{gnorm}_{_normalize_cli(child)}" for child in children)
+        else:
+            names.add(_normalize_cli(name))
+    return names
 
 
 def _mcp_tool_names() -> set[str]:

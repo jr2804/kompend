@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import typer
-
 from kompend.agents.categorize import CategorizeAgent
 from kompend.cli._shared import vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args import (
     OrganizeCollapseSingle,
     OrganizeDryRun,
@@ -25,16 +22,15 @@ from kompend.organize.engine import OrganizeResult, organize_sources, resolve_or
 logger = get_logger(__name__)
 
 
-@app.command(name="organize")
 def organize_cmd(
-    ctx: typer.Context,
+    *,
     max_depth: OrganizeMaxDepth = None,
     min_subcategories: OrganizeMinSubcategories = None,
     collapse_single_file: OrganizeCollapseSingle = None,
     dry_run: OrganizeDryRun = False,
 ) -> None:
     """Categorise files in ``sources/`` into a hierarchical directory tree."""
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     overrides: dict[str, object] = {}
     if max_depth is not None:
         overrides[ORGANIZE_MAX_DEPTH] = max_depth
@@ -54,7 +50,7 @@ def organize_cmd(
     default_model = cfg.kompend.compile.llm.default_model
     if not default_model:
         get_err_console().print("No LLM model configured. Set compile.llm.default_model in config.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     categorize_agent = CategorizeAgent(
         default_model,

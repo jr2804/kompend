@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 from pydantic_ai.messages import ModelMessage
-from typer.testing import CliRunner
 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.cli.app import app
@@ -24,6 +23,7 @@ from kompend.core.models.references import (
     ReferenceResolutionOutput,
 )
 from kompend.core.pipeline.references import ReferenceStore
+from tests.helpers.cli import CliRunner
 
 
 class _StubResolver:

@@ -6,24 +6,20 @@ This command rebuilds it from the structured stores (the ``runs``,
 writes it to ``.kompend/log.md`` with ``--write``.
 
 The rendering lives in :mod:`kompend.core.log_report` so it is callable from
-the API (``build_log_report``); this module is a thin Typer wrapper.
+the API (``build_log_report``); this module is a thin CLI wrapper.
 """
 
 from __future__ import annotations
 
-import typer
-
 from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args.quality import LogLast, LogWrite
 from kompend.core.config import resolve_config
 from kompend.core.reporting.log import build_log_report
 from kompend.logging import get_console
 
 
-@app.command(name="log")
 def log_cmd(
-    ctx: typer.Context,
+    *,
     last: LogLast = 25,
     write: LogWrite = False,
 ) -> None:
@@ -33,11 +29,11 @@ def log_cmd(
     lint trend (lint_history.jsonl) into a single report. Print it (default)
     or persist it to ``.kompend/log.md`` with ``--write``.
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_file=config_file_from_ctx(ctx),
+        config_file=config_file_from_ctx(),
     )
     base_dir = vp.base_dir
 

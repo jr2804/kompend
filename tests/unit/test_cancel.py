@@ -412,7 +412,13 @@ class TestAppCancelledExit:
         def _raise_cancelled() -> None:
             raise KompendCancelled("double-ESC")
 
-        monkeypatch.setattr(app_mod, "app", _raise_cancelled)
+        class _RaisingApp:
+            """Stands in for the Cyclopts app: ``main`` drives ``app.meta()``."""
+
+            def meta(self) -> None:
+                _raise_cancelled()
+
+        monkeypatch.setattr(app_mod, "app", _RaisingApp())
 
         with pytest.raises(SystemExit) as excinfo:
             app_mod.main()

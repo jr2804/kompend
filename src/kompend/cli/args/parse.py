@@ -4,22 +4,23 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import typer
+from cyclopts import Parameter
 
 # ── `parse` command surface ─────────────────────────────────────────────
 
 ParseFiles = Annotated[
     list[str],
-    typer.Argument(
+    Parameter(
+        negative="",
         help="Files, glob patterns, or directories to parse.",
     ),
 ]
 
 PrintElements = Annotated[
     bool,
-    typer.Option(
-        "--elements",
-        "-e",
+    Parameter(
+        name=("--elements", "-e"),
         help="Print extracted elements.",
+        negative="",
     ),
 ]

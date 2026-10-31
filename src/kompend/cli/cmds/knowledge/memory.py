@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import typer
+from cyclopts import App
 
+from kompend.cli._context import current_run_context
 from kompend.cli._shared import vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args.memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
 from kompend.core.config import ResolvedConfig, resolve_config
 from kompend.core.keys import TRUST_USER_TRACKING
@@ -18,41 +18,27 @@ from kompend.core.trust.actor import resolve_actor
 from kompend.logging import get_console, get_err_console
 from kompend.memory.store import MemoryStore
 
-memory_app = typer.Typer(
-    name="memory",
-    help="Manage query memory and context synthesis.",
-    no_args_is_help=True,
-)
-app.add_typer(memory_app)
+memory_app = App(name="memory", help="Manage query memory and context synthesis.")
 
 
-@memory_app.command("add", help="Add a query/answer pair to the memory log.")
-def memory_add(
-    ctx: typer.Context,
-    query: MemoryQuery,
-    answer: MemoryAnswer,
-    feedback: MemoryFeedback = None,
-) -> None:
+@memory_app.command(name="add", help="Add a query/answer pair to the memory log.")
+def memory_add(query: MemoryQuery, answer: MemoryAnswer, *, feedback: MemoryFeedback = None) -> None:
     """Add a query, answer, and optional feedback to the memory store."""
-    store, _base_dir, actor, _cfg = _get_memory_store(ctx)
+    store, _base_dir, actor, _cfg = _get_memory_store()
     try:
         store.add_entry(query=query, answer=answer, feedback=feedback, memory_by=actor)
         get_console().print("✓ Memory entry added successfully.")
     except Exception as exc:
         get_err_console().print(f"Error adding memory entry: {exc}")
-        raise typer.Exit(1)
+        raise SystemExit(1)
     finally:
         store.close()
 
 
-@memory_app.command("search", help="Search past memory entries semantically.")
-def memory_search(
-    ctx: typer.Context,
-    query: MemoryQuery,
-    top_k: MemoryTopK = 5,
-) -> None:
+@memory_app.command(name="search", help="Search past memory entries semantically.")
+def memory_search(query: MemoryQuery, *, top_k: MemoryTopK = 5) -> None:
     """Search the memory store for past queries and answers."""
-    store, _base_dir, _actor, _cfg = _get_memory_store(ctx)
+    store, _base_dir, _actor, _cfg = _get_memory_store()
     try:
         results = store.search(query=query, top_k=top_k)
         if not results:
@@ -68,18 +54,15 @@ def memory_search(
             get_console().print(f"    Score: {res['score']:.4f}\n")
     except Exception as exc:
         get_err_console().print(f"Error searching memory: {exc}")
-        raise typer.Exit(1)
+        raise SystemExit(1)
     finally:
         store.close()
 
 
-@memory_app.command("synthesize", help="Synthesize recent memory into a system context file.")
-def memory_synthesize(
-    ctx: typer.Context,
-    limit: MemoryLimit = 20,
-) -> None:
+@memory_app.command(name="synthesize", help="Synthesize recent memory into a system context file.")
+def memory_synthesize(*, limit: MemoryLimit = 20) -> None:
     """Review recent memory entries and generate a system context file."""
-    store, base_dir, _actor, cfg = _get_memory_store(ctx)
+    store, base_dir, _actor, cfg = _get_memory_store()
 
     try:
         entries = store.get_recent_entries(limit=limit)
@@ -102,16 +85,16 @@ def memory_synthesize(
 
     except Exception as exc:
         get_err_console().print(f"Error synthesizing memory: {exc}")
-        raise typer.Exit(1)
+        raise SystemExit(1)
     finally:
         store.close()
 
 
-def _get_memory_store(ctx: typer.Context | None) -> tuple[MemoryStore, Path, str, ResolvedConfig]:
+def _get_memory_store() -> tuple[MemoryStore, Path, str, ResolvedConfig]:
     """Resolve the memory store, project base directory, acting user and config."""
     overrides: dict[str, Any] = {}
-    vp = vault_paths_from_ctx(ctx)
-    if ctx and ctx.obj and ctx.obj.get("no_user_tracking"):
+    vp = vault_paths_from_ctx()
+    if current_run_context().no_user_tracking:
         overrides[TRUST_USER_TRACKING] = False
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=overrides)
     embed_model = cfg.kompend.compile.embedding.model

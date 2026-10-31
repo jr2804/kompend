@@ -10,6 +10,8 @@ Sub-commands
 * ``kompend attachments adopt``  — register orphaned files on disk (compile-hook adoption).
 
 ``att`` is a registered alias for ``attachments`` (e.g. ``kompend att add``).
+Cyclopts requires a sub-app's name to equal the command it is registered
+under, so the group is built twice by :func:`build_attachments_app`.
 """
 
 from __future__ import annotations
@@ -17,11 +19,10 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-import typer
 from binaryornot.check import is_binary
+from cyclopts import App
 
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
-from kompend.cli.app import app as main_app
 from kompend.cli.args import (
     AttachmentAll,
     AttachmentEmbed,
@@ -44,20 +45,26 @@ from kompend.core.paths import attachment_slug
 from kompend.lint.structural import orphan_attachment_dirs
 from kompend.logging import get_console
 
-attachments_app = typer.Typer(
-    name="attachments",
-    help="Manage source attachments (supplementary files).",
-    no_args_is_help=True,
-)
-main_app.add_typer(attachments_app)
-main_app.add_typer(attachments_app, name="att")
+_HELP = "Manage source attachments (supplementary files)."
 
 
-@attachments_app.command("add")
+def build_attachments_app(name: str) -> App:
+    """Build the ``attachments`` group under ``name`` (``attachments`` or ``att``)."""
+    group = App(name=name, help=_HELP)
+    group.command(add_attachment, name="add")
+    group.command(remove_attachment, name="remove")
+    group.command(ingest_attachment, name="ingest")
+    group.command(no_ingest_attachment, name="no-ingest")
+    group.command(list_attachments, name="list")
+    group.command(verify_attachments, name="verify")
+    group.command(adopt_attachments, name="adopt")
+    return group
+
+
 def add_attachment(
-    ctx: typer.Context,
     source: AttachmentSource,
     attachment_file: AttachmentFile,
+    *,
     ingest: AttachmentIngestible = False,
     embed: AttachmentEmbed = None,
 ) -> None:
@@ -66,7 +73,7 @@ def add_attachment(
     The attachment file is copied to ``attachments/<source-slug>/`` and
     recorded in the ``attachment_manifest`` table of ``.kompend/kompend.db``.
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     console = get_console()
 
     # ── Validate source ────────────────────────────────────────────────
@@ -77,11 +84,11 @@ def add_attachment(
     # ── Validate attachment file ───────────────────────────────────────
     if not attachment_file.exists():
         console.print(f"[red]Error:[/red] Attachment file not found: {attachment_file}")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     if attachment_file.is_dir():
         console.print(f"[red]Error:[/red] Attachment must be a file, not a directory: {attachment_file}")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     ext = attachment_file.suffix.lower()
 
@@ -91,7 +98,7 @@ def add_attachment(
             f"[red]Error:[/red] Cannot ingest '{attachment_file.name}': binary files are not ingestible. "
             "Only text files (any extension) and images (via VLM) can be ingested."
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     # ── Warn about VLM requirement for images ──────────────────────────
     if ingest and ext in IMAGE_EXTENSIONS:
@@ -126,17 +133,13 @@ def add_attachment(
         console.print(f"  → {label} (overrides global config)")
 
 
-@attachments_app.command("remove")
-def remove_attachment(
-    ctx: typer.Context,
-    attachment_file: AttachmentPath,
-) -> None:
+def remove_attachment(attachment_file: AttachmentPath) -> None:
     """Remove (tombstone) a registered attachment.
 
     The manifest entry is marked as deleted. The file on disk is NOT
     removed — use ``rm`` manually if needed.
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     console = get_console()
 
     manifest = AttachmentManifest(vp.attachments_manifest_file)
@@ -154,23 +157,22 @@ def remove_attachment(
             for m in matches:
                 console.print(f"  {m}")
             console.print("Use the full path (e.g., 'slug/filename') to disambiguate.")
-            raise typer.Exit(1)
+            raise SystemExit(1)
 
     if resolved_file not in existing:
         console.print(f"[red]Error:[/red] Attachment not found: {resolved_file}")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     if manifest.remove(resolved_file):
         console.print(f"[green]Removed attachment:[/green] {resolved_file}")
     else:
         console.print(f"[red]Error:[/red] Failed to remove attachment: {resolved_file}")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
-@attachments_app.command("ingest")
 def ingest_attachment(
-    ctx: typer.Context,
     attachment_file: AttachmentPathOptional = None,
+    *,
     all_attachments: AttachmentAll = False,
 ) -> None:
     """Mark attachment(s) as ingestible (processed during compile).
@@ -183,13 +185,12 @@ def ingest_attachment(
         kompend attachments ingest report/photo.jpg
         kompend attachments ingest --all
     """
-    _set_ingestible(ctx, attachment_file, all_attachments, ingestible=True)
+    _set_ingestible(attachment_file, all_attachments, ingestible=True)
 
 
-@attachments_app.command("no-ingest")
 def no_ingest_attachment(
-    ctx: typer.Context,
     attachment_file: AttachmentPathOptional = None,
+    *,
     all_attachments: AttachmentAll = False,
 ) -> None:
     """Mark attachment(s) as NOT ingestible (skipped during compile).
@@ -202,57 +203,12 @@ def no_ingest_attachment(
         kompend attachments no-ingest report/photo.jpg
         kompend attachments no-ingest --all
     """
-    _set_ingestible(ctx, attachment_file, all_attachments, ingestible=False)
+    _set_ingestible(attachment_file, all_attachments, ingestible=False)
 
 
-def _set_ingestible(ctx: typer.Context, attachment_file: str | None, all_attachments: bool, *, ingestible: bool) -> None:
-    """Shared implementation for ``ingest`` / ``no-ingest``."""
-    vp = vault_paths_from_ctx(ctx)
-    console = get_console()
-
-    manifest = AttachmentManifest(vp.attachments_manifest_file)
-    existing = manifest.read_all()
-    if not existing:
-        console.print("No attachments registered.")
-        raise typer.Exit(1)
-
-    if all_attachments:
-        targets = list(existing)
-    else:
-        if not attachment_file:
-            console.print("[red]Error:[/red] Provide an attachment path or use --all.")
-            raise typer.Exit(1)
-        resolved = attachment_file
-        if "/" not in attachment_file and "\\" not in attachment_file:
-            matches = [p for p in existing if Path(p).name == attachment_file]
-            if len(matches) == 1:
-                resolved = matches[0]
-            elif len(matches) > 1:
-                console.print(f"[yellow]Multiple matches for '{attachment_file}':[/yellow]")
-                for m in matches:
-                    console.print(f"  {m}")
-                console.print("Use the full path (e.g., 'slug/filename') to disambiguate.")
-                raise typer.Exit(1)
-        if resolved not in existing:
-            console.print(f"[red]Error:[/red] Attachment not found: {resolved}")
-            raise typer.Exit(1)
-        targets = [resolved]
-
-    verb = "ingestible" if ingestible else "not ingestible"
-    for path in targets:
-        manifest.set_ingestible(path, ingestible)
-        console.print(f"  {path:<40} -> {verb}")
-    console.print(f"[green]Marked {len(targets)} attachment(s) {verb}.[/green]")
-
-
-@attachments_app.command("list")
-def list_attachments(
-    ctx: typer.Context,
-    source: AttachmentListSource = None,
-    show_all: AttachmentListAll = False,
-) -> None:
+def list_attachments(*, source: AttachmentListSource = None, show_all: AttachmentListAll = False) -> None:
     """List registered attachments."""
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     console = get_console()
 
     manifest = AttachmentManifest(vp.attachments_manifest_file)
@@ -290,15 +246,14 @@ def list_attachments(
         console.print(f"  {att.path:<40} [{att.source}] {status}")
 
 
-@attachments_app.command("verify")
-def verify_attachments(ctx: typer.Context) -> None:
+def verify_attachments() -> None:
     """Check attachments against sources and disk (read-only; no compile needed).
 
     Reports two findings separately: attachment directories whose slug matches
     no source in ``sources/``, and manifest rows whose file is absent on disk.
     Exits 1 when anything is found, 0 when clean.
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     console = get_console()
 
     orphans = orphan_attachment_dirs(vp.base_dir, vp.sources_dir)
@@ -318,17 +273,16 @@ def verify_attachments(ctx: typer.Context) -> None:
         for rel in missing:
             console.print(f"  {rel}")
     console.print(f"\n{len(orphans)} orphan attachment(s), {len(missing)} missing file(s)")
-    raise typer.Exit(code=1)
+    raise SystemExit(1)
 
 
-@attachments_app.command("adopt")
-def adopt_attachments(ctx: typer.Context) -> None:
+def adopt_attachments() -> None:
     """Register orphaned attachment files on disk (same adoption the compile hook runs).
 
     Idempotent: a second run adopts nothing. Whether adopted files become
     ingestible follows ``attachments.ingest_adopted`` from config.
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     console = get_console()
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
@@ -341,3 +295,47 @@ def adopt_attachments(ctx: typer.Context) -> None:
     for att in adopted:
         flag = " [ingestible]" if att.ingestible else ""
         console.print(f"  {att.path}{flag}")
+
+
+def _set_ingestible(attachment_file: str | None, all_attachments: bool, *, ingestible: bool) -> None:
+    """Shared implementation for ``ingest`` / ``no-ingest``."""
+    vp = vault_paths_from_ctx()
+    console = get_console()
+
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
+    existing = manifest.read_all()
+    if not existing:
+        console.print("No attachments registered.")
+        raise SystemExit(1)
+
+    if all_attachments:
+        targets = list(existing)
+    else:
+        if not attachment_file:
+            console.print("[red]Error:[/red] Provide an attachment path or use --all.")
+            raise SystemExit(1)
+        resolved = attachment_file
+        if "/" not in attachment_file and "\\" not in attachment_file:
+            matches = [p for p in existing if Path(p).name == attachment_file]
+            if len(matches) == 1:
+                resolved = matches[0]
+            elif len(matches) > 1:
+                console.print(f"[yellow]Multiple matches for '{attachment_file}':[/yellow]")
+                for m in matches:
+                    console.print(f"  {m}")
+                console.print("Use the full path (e.g., 'slug/filename') to disambiguate.")
+                raise SystemExit(1)
+        if resolved not in existing:
+            console.print(f"[red]Error:[/red] Attachment not found: {resolved}")
+            raise SystemExit(1)
+        targets = [resolved]
+
+    verb = "ingestible" if ingestible else "not ingestible"
+    for path in targets:
+        manifest.set_ingestible(path, ingestible)
+        console.print(f"  {path:<40} -> {verb}")
+    console.print(f"[green]Marked {len(targets)} attachment(s) {verb}.[/green]")
+
+
+attachments_app = build_attachments_app("attachments")
+att_app = build_attachments_app("att")

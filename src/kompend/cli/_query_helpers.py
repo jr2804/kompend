@@ -8,8 +8,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import typer
-
 from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from kompend.cli.args.query import SearchMode
 from kompend.core.config import ResolvedConfig, RlmConfig
@@ -115,7 +113,7 @@ def execute_query_search(  # noqa: PLR0917
     if mode == SearchMode.RAW:
         if sources_dir is None:
             get_err_console().print("No sources directory found. Use --sources-dir to specify.")
-            raise typer.Exit(1)
+            raise SystemExit(1)
         results = retriever.search(query, top_k=top_k)
         raw = True
     elif mode == SearchMode.HYBRID:
@@ -216,7 +214,7 @@ def run_agentic_query_output(
     model = cfg.kompend.search.agentic.model or cfg.kompend.compile.llm.default_model
     if not model:
         get_err_console().print("error: No LLM model configured for agentic query.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
     retriever = (
         HybridRetriever(wiki, vector_store=vector_store, display=cfg.kompend.display)
         if vector_store is not None
@@ -235,7 +233,7 @@ def run_agentic_query_output(
         )
     except Exception as exc:
         get_err_console().print(f"Agentic query failed: {exc}")
-        raise typer.Exit(1)
+        raise SystemExit(1)
     synthesis = SynthesisResult(answer=answer, citations=[])
     if format == LlmDataFormat.MARKDOWN:
         get_console().print(synthesis.answer)
@@ -301,7 +299,7 @@ def synthesize_and_output(  # noqa: PLR0917
     results = [r for r in results if not is_captured_source(r.source_file)]
     if not results:
         get_console().print("No relevant content found.")
-        raise typer.Exit(0)
+        raise SystemExit(0)
 
     verbosity: str = cfg.kompend.search.synthesis.verbosity.value
 
@@ -329,7 +327,7 @@ def synthesize_and_output(  # noqa: PLR0917
         get_err_console().print(f"LLM synthesis failed: {exc}")
         get_err_console().print("Showing raw context instead:")
         print_raw_results(results, LlmDataFormat.MARKDOWN)
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     if format == LlmDataFormat.MARKDOWN:
         get_console().print(synthesis.answer)

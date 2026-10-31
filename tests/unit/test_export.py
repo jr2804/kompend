@@ -8,9 +8,6 @@ from pathlib import Path
 
 import pytest
 
-# ── --all bulk export ──────────────────────────────────────────────────
-from typer.testing import CliRunner  # noqa: E402
-
 from kompend.cli.app import app as cli_app  # noqa: E402
 from kompend.core.models.attachments import Attachment, AttachmentManifest
 from kompend.core.models.enums import AssetKind
@@ -27,6 +24,9 @@ from kompend.core.pipeline.export import (
 from kompend.core.pipeline.parse_cache import write_document
 from kompend.core.store import vault_db_path
 from kompend.mcp.tools.sources import sources_export as mcp_sources_export  # noqa: E402
+
+# ── --all bulk export ──────────────────────────────────────────────────
+from tests.helpers.cli import CliRunner  # noqa: E402
 
 _cli_runner = CliRunner()
 

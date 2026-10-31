@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-import typer
-
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args import JsonOutput
 from kompend.cli.cmds.pipeline.status import collect_stats, print_status
 from kompend.core.config import resolve_config
 
 
-@app.command(name="status")
 def status_cmd(
-    ctx: typer.Context,
+    *,
     json_output: JsonOutput = False,
 ) -> None:
     """Show per-wiki statistics.
@@ -21,7 +17,7 @@ def status_cmd(
     Displays source count, article count, word count, last compile time,
     and config path.
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     config_file = vp.config_file if vp.config_file.exists() else vp.project_config_file
     stats = collect_stats(

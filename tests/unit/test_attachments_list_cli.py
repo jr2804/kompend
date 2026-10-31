@@ -10,11 +10,11 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli.app import app
 from kompend.core.models.attachments import Attachment, AttachmentManifest
 from kompend.core.paths import VaultPaths
+from tests.helpers.cli import CliRunner
 
 _cli_runner = CliRunner()
 

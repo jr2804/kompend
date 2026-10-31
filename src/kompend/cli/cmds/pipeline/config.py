@@ -7,10 +7,9 @@ import re
 import sys
 from pathlib import Path
 
-import typer
+from cyclopts import App
 
 from kompend.cli._shared import config_file_from_ctx, vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args.common import JsonOutput
 from kompend.cli.args.config import (
     ConfigCheckPaths,
@@ -40,104 +39,80 @@ from kompend.core.keys import PATHS_WIKI_DIR
 from kompend.logging import get_console, get_err_console
 from kompend.types import JSON
 
-config_app = typer.Typer(
-    name="config",
-    help="Inspect and edit kompend configuration.",
-    no_args_is_help=True,
-)
-app.add_typer(config_app)
-
-
 _ENV_REF_RE = re.compile(r"^\$\{\w+\}$")
 
+config_app = App(name="config", help="Inspect and edit kompend configuration.")
 
-@config_app.command("get", help="Print a resolved config value.")
-def config_get(
-    ctx: typer.Context,
-    key: ConfigKeyArg,
-    global_: ConfigGlobalOpt = False,
-) -> None:
+
+@config_app.command(name="get", help="Print a resolved config value.")
+def config_get(key: ConfigKeyArg, *, global_: ConfigGlobalOpt = False) -> None:
     """Print the resolved value of KEY, respecting full precedence."""
     if not validate_config_key(key):
         get_err_console().print(f"error: unknown config key: {key}")
-        raise typer.Exit(code=1)
+        raise SystemExit(1)
 
-    base_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
+    base_dir = vault_paths_from_ctx(require_vault=False).base_dir
     overrides = {PATHS_WIKI_DIR: str(base_dir)} if base_dir else {}
 
-    cfg = resolve_config(cli_overrides=overrides, config_file=config_file_from_ctx(ctx), base_dir=base_dir)
+    cfg = resolve_config(cli_overrides=overrides, config_file=config_file_from_ctx(), base_dir=base_dir)
     value = cfg.get(key)
     get_console().print(_format_value(_redact_api_key(key, value)))
 
 
-@config_app.command("set", help="Set a config value.")
-def config_set(
-    ctx: typer.Context,
-    key: ConfigKeyArg,
-    value: ConfigValueArg,
-    global_: ConfigGlobalOpt = False,
-) -> None:
+@config_app.command(name="set", help="Set a config value.")
+def config_set(key: ConfigKeyArg, value: ConfigValueArg, *, global_: ConfigGlobalOpt = False) -> None:
     """Set KEY to VALUE in the project config (or global config with --global)."""
     if not validate_config_key(key):
         get_err_console().print(f"error: unknown config key: {key}")
-        raise typer.Exit(code=1)
+        raise SystemExit(1)
 
     try:
         coerced = coerce_config_value(value, key)
     except ValueError as exc:
         get_err_console().print(f"error: {exc}")
-        raise typer.Exit(code=1) from exc
+        raise SystemExit(1) from exc
 
     if global_:
         path = get_global_config_file(create=True)
     else:
-        wiki_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
+        wiki_dir = vault_paths_from_ctx(require_vault=False).base_dir
         path = get_project_config_file(start_dir=wiki_dir)
         if not path.exists():
             get_err_console().print("error: not in a kompend vault — run `kompend init` first or use `--global`")
-            raise typer.Exit(code=1)
+            raise SystemExit(1)
 
     try:
         set_config_file_value(path, key, coerced)
     except (OSError, ValueError) as exc:
         get_err_console().print(f"error: failed to write {path}: {exc}")
-        raise typer.Exit(code=1) from exc
+        raise SystemExit(1) from exc
 
     get_console().print(f"set {key} = {_format_value(coerced)} in {path}")
 
 
-@config_app.command("list", help="List all resolved config values with provenance.")
-def config_list(
-    ctx: typer.Context,
-    global_: ConfigGlobalOpt = False,
-) -> None:
+@config_app.command(name="list", help="List all resolved config values with provenance.")
+def config_list(*, global_: ConfigGlobalOpt = False) -> None:
     """Print every resolved config key, value, and source."""
-    base_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
+    base_dir = vault_paths_from_ctx(require_vault=False).base_dir
     overrides = {PATHS_WIKI_DIR: str(base_dir)} if base_dir else {}
 
-    cfg = resolve_config(cli_overrides=overrides, config_file=config_file_from_ctx(ctx), base_dir=base_dir)
+    cfg = resolve_config(cli_overrides=overrides, config_file=config_file_from_ctx(), base_dir=base_dir)
     for key, value in sorted(cfg.flat().items()):
         source = cfg.source_of(key)
         get_console().print(f"{key} = {_format_value(_redact_api_key(key, value))}  # {source}")
 
 
-@config_app.command("path", help="Show the config file path.")
-def config_file(
-    ctx: typer.Context,
-    global_: ConfigGlobalOpt = False,
-) -> None:
+@config_app.command(name="path", help="Show the config file path.")
+def config_path(*, global_: ConfigGlobalOpt = False) -> None:
     """Print the path to the project or global config file."""
-    path = get_global_config_file(create=False) if global_ else get_project_config_file(start_dir=vault_paths_from_ctx(ctx, require_vault=False).base_dir)
+    path = get_global_config_file(create=False) if global_ else get_project_config_file(start_dir=vault_paths_from_ctx(require_vault=False).base_dir)
     get_console().print(str(path), soft_wrap=True)
 
 
-@config_app.command(
-    "check",
-    help="Diff config TOML files against the built-in defaults.",
-)
+@config_app.command(name="check", help="Diff config TOML files against the built-in defaults.")
 def config_check(
-    ctx: typer.Context,
     paths: ConfigCheckPaths = None,
+    *,
     json_output: JsonOutput = False,
     no_merge: ConfigNoMerge = False,
 ) -> None:
@@ -160,14 +135,14 @@ def config_check(
         # (kompend.toml or .kompend/config.toml). A vault with no config file at
         # all is simply all-defaults, so report that cleanly instead of 157
         # "file missing" rows.
-        explicit = config_file_from_ctx(ctx)
-        start_dir = vault_paths_from_ctx(ctx, require_vault=False).base_dir
+        explicit = config_file_from_ctx()
+        start_dir = vault_paths_from_ctx(require_vault=False).base_dir
         project_cfg = Path(explicit) if explicit else get_project_config_file(start_dir=start_dir)
         if not project_cfg.exists():
             get_console().print(
                 f"[yellow]No config file found at {project_cfg}[/yellow] — all values are at built-in defaults.",
             )
-            raise typer.Exit(code=0)
+            raise SystemExit(0)
         paths = [project_cfg]
 
     reports = [check_config_file(p) for p in paths] if no_merge or len(paths) == 1 else [check_config_files(paths)]
@@ -186,7 +161,7 @@ def config_check(
         for r in reports:
             _render_report_text(r)
 
-    raise typer.Exit(code=_exit_code_for(reports))
+    raise SystemExit(_exit_code_for(reports))
 
 
 def _report_payload(report: ConfigCheckReport) -> dict[str, JSON]:

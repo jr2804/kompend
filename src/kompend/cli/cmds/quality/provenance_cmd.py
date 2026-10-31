@@ -10,10 +10,7 @@ import json
 import sys
 from pathlib import Path
 
-import typer
-
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args import JsonOutput
 from kompend.cli.args.quality import ProvenanceSlugs, ProvenanceWithContent
 from kompend.core.config import resolve_config
@@ -21,10 +18,9 @@ from kompend.core.models import MetadataField, WikiNode, load_cached_wiki
 from kompend.logging import get_console, get_err_console
 
 
-@app.command(name="provenance")
 def provenance_cmd(
-    ctx: typer.Context,
     page_slugs: ProvenanceSlugs = None,
+    *,
     with_content: ProvenanceWithContent = False,
     json_output: JsonOutput = False,
 ) -> None:
@@ -40,7 +36,7 @@ def provenance_cmd(
         kompend provenance self-attention bert   # show sources for multiple pages
         kompend provenance self-attention --with-content
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     sources_dir = vp.sources_dir
     base_dir = vp.base_dir
@@ -48,7 +44,7 @@ def provenance_cmd(
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
         get_err_console().print("No compiled wiki found. Run 'kompend compile' first.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     slugs = page_slugs or []
 
@@ -105,7 +101,7 @@ def provenance_cmd(
     for slug in missing:
         get_err_console().print(f"Page '{slug}' not found in compiled wiki.")
     if missing:
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
 
 def _node_sources(node: WikiNode, sources_dir: Path) -> list[str]:

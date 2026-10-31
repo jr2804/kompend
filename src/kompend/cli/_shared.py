@@ -1,18 +1,18 @@
 """Shared CLI helpers used across multiple command modules.
 
 These functions resolve configuration, build CLI override dicts, and manage
-hooks.  They are deliberately kept free of Typer-specific code so they can
+hooks.  They are deliberately kept free of CLI-framework code so they can
 be imported and unit-tested without a running CLI context.
 """
 
 from __future__ import annotations
 
 import logging
+import sys
 import traceback
-from typing import Any
+from typing import Any, NoReturn
 
-import typer
-
+from kompend.cli._context import RunContext, current_run_context
 from kompend.core.keys import (
     COMPILE_CACHE_IGNORE_MODEL,
     COMPILE_EMBEDDING_MODEL,
@@ -62,28 +62,24 @@ logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
 logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
 
 
-def config_file_from_ctx(ctx: typer.Context | None) -> str | None:
+def config_file_from_ctx(ctx: RunContext | None = None) -> str | None:
     """The ``--config`` path given to the root command, if any.
 
     ``--config`` is a run-level input like ``--wiki-dir``: it is declared once
-    on the root app and read from the Typer context here, so a command never
-    has to repeat the flag (and cannot drift from the others).
+    on the root app, published to the run context, and read here, so a command
+    never has to repeat the flag (and cannot drift from the others).
     """
-    if ctx is None or not ctx.obj:
-        return None
-    value = ctx.obj.get("config_file")
-    return value if isinstance(value, str) else None
+    return (ctx or current_run_context()).config_file
 
 
-def vault_paths_from_ctx(ctx: typer.Context | None, *, require_vault: bool = True) -> VaultPaths:
-    """Resolve VaultPaths from a Typer CLI context.
+def vault_paths_from_ctx(ctx: RunContext | None = None, *, require_vault: bool = True) -> VaultPaths:
+    """Resolve VaultPaths from the run context.
 
-    Extracts ``--wiki-dir`` from the callback context and delegates to
+    Reads ``--wiki-dir`` from the ambient context and delegates to
     :func:`kompend.core.paths.vault_paths`. ``require_vault=False`` is for
     config-introspection commands only (see :func:`vault_paths`).
     """
-    wiki_dir = ctx.obj.get("wiki_dir") if ctx and ctx.obj else None
-    return vault_paths(wiki_dir, require_vault=require_vault)
+    return vault_paths((ctx or current_run_context()).wiki_dir, require_vault=require_vault)
 
 
 def resolve_lint_output(configured: LintOutput, *, verbose: bool, quiet: bool) -> LintOutput:
@@ -93,12 +89,18 @@ def resolve_lint_output(configured: LintOutput, *, verbose: bool, quiet: bool) -
     is a usage error rather than one silently winning.
     """
     if verbose and quiet:
-        raise typer.BadParameter("--verbose-lint and --quiet-lint are mutually exclusive")
+        usage_error("--verbose-lint and --quiet-lint are mutually exclusive")
     if verbose:
         return LintOutput.FULL
     if quiet:
         return LintOutput.QUIET
     return configured
+
+
+def usage_error(message: str) -> NoReturn:
+    """Report a usage error and exit 2, matching the parser's own exit code."""
+    sys.stderr.write(f"{message}\n")
+    raise SystemExit(2)
 
 
 def build_cli_overrides(

@@ -18,12 +18,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-import typer
+from cyclopts import App
 
 from kompend.agents.remediate import make_agentic_remediation_agent
 from kompend.cli._pipeline_helpers import write_wiki_cache
 from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, resolve_lint_output, vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args import (
     JsonOutput,
     LintDryRun,
@@ -38,6 +37,7 @@ from kompend.cli.args import (
     LintQuiet,
     LintRule,
     LintSemantic,
+    LintShowRun,
     LintVerbose,
 )
 from kompend.core.config import resolve_config
@@ -75,18 +75,12 @@ from kompend.logging import get_console, get_err_console
 from kompend.output.pages.log import log_stage
 from kompend.output.renderer import format_output
 
-lint_app = typer.Typer(
-    name="lint",
-    help="Lint a compiled wiki for quality issues and query lint history.",
-    no_args_is_help=True,
-)
-app.add_typer(lint_app)
-
-
 # ── Sub-command: run ─────────────────────────────────────────────────────
 
 
 LLM_STEP_WEIGHT = 100
+
+lint_app = App(name="lint", help="Lint a compiled wiki for quality issues and query lint history.")
 """Progress weight per item for LLM-backed lint steps (dominates wall-clock)."""
 
 DETERMINISTIC_STEP_WEIGHT = 1
@@ -101,9 +95,9 @@ DETERMINISTIC_STEP_WEIGHT = 1
 CHECK_STEP_RULES: list[str] = [r.name for r in STRUCTURAL_RULES] + ["duplicate-references"]
 
 
-@lint_app.command("check", help="Run deterministic structural lint rules (no LLM).")
+@lint_app.command(name="check", help="Run deterministic structural lint rules (no LLM).")
 def lint_check(
-    ctx: typer.Context,
+    *,
     fix: LintFix = True,
     fix_destructive: LintFixDestructive = False,
     rule: LintRule = None,
@@ -130,12 +124,12 @@ def lint_check(
         kompend lint check --fix-destructive  # also delete orphan attachments
         kompend lint check --rule broken-wikilinks
     """
-    vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx(ctx))
+    vp = vault_paths_from_ctx()
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx())
     wiki = load_cached_wiki(vp.base_dir)
     if wiki is None:
         get_err_console().print(f"No compiled wiki found in {vp.output_dir}. Run 'kompend compile' first.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     start = time.monotonic()
     runner = LintRunner(
@@ -162,9 +156,9 @@ def lint_check(
     _print_report(report, json_output, vp, resolve_lint_output(cfg.kompend.lint.output, verbose=verbose_lint, quiet=quiet_lint))
 
 
-@lint_app.command("semantic", help="Run LLM-powered lint rules (factual-consistency, clarity, coverage-gap, contradictions).")
+@lint_app.command(name="semantic", help="Run LLM-powered lint rules (factual-consistency, clarity, coverage-gap, contradictions).")
 def lint_semantic(
-    ctx: typer.Context,
+    *,
     json_output: JsonOutput = False,
     verbose_lint: LintVerbose = False,
     quiet_lint: LintQuiet = False,
@@ -178,19 +172,19 @@ def lint_semantic(
     Examples:
         kompend lint semantic               # LLM rules only
     """
-    vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx(ctx))
+    vp = vault_paths_from_ctx()
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx())
     wiki = load_cached_wiki(vp.base_dir)
     if wiki is None:
         get_err_console().print(f"No compiled wiki found in {vp.output_dir}. Run 'kompend compile' first.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     lint_agent, model = _make_lint_agent(cfg)
     if lint_agent is None:
         get_err_console().print(
             "LLM lint rules require a model. Set compile.lint.model or compile.llm.default_model in config.",
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
     llm_meta = {MetadataField.MODEL: model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
@@ -237,9 +231,9 @@ def _print_report(report: LintReport, json_output: bool, vp: Any, level: LintOut
     )
 
 
-@lint_app.command("all", help="Run the full lint pipeline: check, format, semantic, gaps, remediate.")
+@lint_app.command(name="all", help="Run the full lint pipeline: check, format, semantic, gaps, remediate.")
 def lint_all(
-    ctx: typer.Context,
+    *,
     fix: LintFix = True,
     fix_destructive: LintFixDestructive = False,
     json_output: JsonOutput = False,
@@ -270,8 +264,8 @@ def lint_all(
         kompend lint all --no-fix           # report only
         kompend lint all --json
     """
-    vp = vault_paths_from_ctx(ctx)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx(ctx))
+    vp = vault_paths_from_ctx()
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx())
     lint_output = resolve_lint_output(cfg.kompend.lint.output, verbose=verbose_lint, quiet=quiet_lint)
     merged_dict = run_full_lint_flow(vp, cfg, fix=fix, fix_destructive=fix_destructive, lint_output=lint_output)
     if json_output:
@@ -292,9 +286,9 @@ def lint_all(
 # ── Sub-command: history ─────────────────────────────────────────────────
 
 
-@lint_app.command("history", help="Show past lint runs and score trends.")
+@lint_app.command(name="history", help="Show past lint runs and score trends.")
 def lint_history(
-    ctx: typer.Context,
+    *,
     last: LintHistoryLast = 10,
     trend: LintHistoryTrend = False,
     json_output: JsonOutput = False,
@@ -307,11 +301,11 @@ def lint_history(
         kompend lint history --trend      # with score sparkline
         kompend lint history --json       # machine-readable
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_file=config_file_from_ctx(ctx),
+        config_file=config_file_from_ctx(),
     )
     state_dir = vp.kompend_dir
 
@@ -326,10 +320,10 @@ def lint_history(
 # ── Sub-command: prune ───────────────────────────────────────────────────
 
 
-@lint_app.command("show", help="Print the detailed report of a lint run (default: the newest).")
+@lint_app.command(name="show", help="Print the detailed report of a lint run (default: the newest).")
 def lint_show(
-    ctx: typer.Context,
-    run: str | None = typer.Option(None, "--run", help="Report stamp, e.g. 2026-10-24T01-42-11 (default: newest)."),
+    *,
+    run: LintShowRun = None,
     json_output: JsonOutput = False,
 ) -> None:
     """Read a per-run lint report from ``.kompend/lint-log/``.
@@ -338,28 +332,28 @@ def lint_show(
     Markdown report for humans and the JSON entry (same payload as the
     ``lint_runs`` row) for tools.
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     directory = lint_log_dir(vp.base_dir)
     if not directory.is_dir():
         get_err_console().print("No lint report found - run 'kompend lint all' or 'kompend compile' first.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
     if run:
         path = directory / f"{run}.{'json' if json_output else 'md'}"
         if not path.exists():
             get_err_console().print(f"No lint report named '{run}' in {directory}.")
-            raise typer.Exit(1)
+            raise SystemExit(1)
     else:
         markdown = latest_lint_log(vp.base_dir)
         if markdown is None:
             get_err_console().print(f"No lint report found in {directory}.")
-            raise typer.Exit(1)
+            raise SystemExit(1)
         path = markdown.with_suffix(".json") if json_output else markdown
     get_console().print(read_lint_log(path))
 
 
-@lint_app.command("prune", help="Remove old entries from the lint history.")
+@lint_app.command(name="prune", help="Remove old entries from the lint history.")
 def lint_prune(
-    ctx: typer.Context,
+    *,
     keep_last: LintPruneKeep = None,
     max_age_days: LintPruneAgeDays = None,
 ) -> None:
@@ -373,13 +367,13 @@ def lint_prune(
     """
     if keep_last is None and max_age_days is None:
         get_err_console().print("At least one of --keep-last or --max-age-days must be provided.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_file=config_file_from_ctx(ctx),
+        config_file=config_file_from_ctx(),
     )
     state_dir = vp.kompend_dir
 
@@ -394,9 +388,9 @@ def lint_prune(
 # ── Sub-command: gaps ────────────────────────────────────────────────────
 
 
-@lint_app.command("gaps", help="Analyze lint results for knowledge gaps and source recommendations.")
+@lint_app.command(name="gaps", help="Analyze lint results for knowledge gaps and source recommendations.")
 def lint_gaps(
-    ctx: typer.Context,
+    *,
     json_output: JsonOutput = False,
     semantic: LintSemantic = True,
     fix: LintGapsFix = False,
@@ -421,18 +415,18 @@ def lint_gaps(
         kompend lint gaps --json       # machine-readable output
         kompend lint gaps --fix        # generate pages for source-covered topics
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     cfg = resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_file=config_file_from_ctx(ctx),
+        config_file=config_file_from_ctx(),
     )
     state_dir = vp.kompend_dir
 
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
     if not entries:
         get_err_console().print("No lint history found. Run `kompend lint run` or compile with --lint first.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     report_dict = entries[-1].get("report", {})
     report = report_from_dict(report_dict)
@@ -467,7 +461,7 @@ def lint_gaps(
         get_err_console().print("Note: semantic coverage check skipped — no compile.embedding.model configured.\n")
 
     if fix:
-        _run_remediation_for_gaps(ctx, vp, cfg, report)
+        _run_remediation_for_gaps(vp, cfg, report)
 
     if json_output:
         payload: list[dict[str, Any]] = [
@@ -483,7 +477,7 @@ def lint_gaps(
         get_console().print(gaps_to_text(recs))
 
 
-def _run_remediation_for_gaps(ctx: typer.Context, vp: Any, cfg: Any, report: Any) -> None:
+def _run_remediation_for_gaps(vp: Any, cfg: Any, report: Any) -> None:
     """Run the remediation flow (same as `kompend lint remediate`) after analysis."""
     wiki = load_cached_wiki(vp.base_dir)
     if wiki is None:
@@ -516,9 +510,9 @@ def _run_remediation_for_gaps(ctx: typer.Context, vp: Any, cfg: Any, report: Any
 # ── Sub-command: remediate ───────────────────────────────────────────────
 
 
-@lint_app.command("remediate", help="LLM-generate missing pages for lint findings.")
+@lint_app.command(name="remediate", help="LLM-generate missing pages for lint findings.")
 def lint_remediate(
-    ctx: typer.Context,
+    *,
     dry_run: LintDryRun = False,
     json_output: JsonOutput = False,
 ) -> None:
@@ -533,11 +527,11 @@ def lint_remediate(
         kompend lint remediate                          # generate pages
         kompend lint remediate --dry-run                # preview without writing
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     cfg = resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_file=config_file_from_ctx(ctx),
+        config_file=config_file_from_ctx(),
     )
     output_dir = vp.output_dir
     state_dir = vp.kompend_dir
@@ -546,7 +540,7 @@ def lint_remediate(
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
     if not entries:
         get_err_console().print("No lint history found. Run `kompend lint run` or compile with --lint first.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     report_dict = entries[-1].get("report", {})
     report = report_from_dict(report_dict)
@@ -554,7 +548,7 @@ def lint_remediate(
     wiki = load_cached_wiki(base_dir)
     if wiki is None:
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'kompend compile' first.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     default_model = cfg.kompend.compile.llm.default_model
     agent = (
@@ -609,9 +603,9 @@ def lint_remediate(
 # ── Sub-command: format ─────────────────────────────────────────────────
 
 
-@lint_app.command("format", help="Format generated wiki markdown with rumdl fmt.")
+@lint_app.command(name="format", help="Format generated wiki markdown with rumdl fmt.")
 def lint_format(
-    ctx: typer.Context,
+    *,
     check: LintFormatCheck = False,
 ) -> None:
     """Run ``rumdl fmt`` over the compiled output (bundle + root index).
@@ -625,11 +619,11 @@ def lint_format(
         kompend lint format                 # format generated markdown
         kompend lint format --check         # CI: exit 1 if changes needed
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     cfg = resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(),
-        config_file=config_file_from_ctx(ctx),
+        config_file=config_file_from_ctx(),
     )
     rumdl_cfg = resolve_rumdl_config(vp.base_dir, cfg.kompend.compile.output.rumdl_config)
     extra_files: list[Path] = []
@@ -649,7 +643,7 @@ def lint_format(
             get_err_console().print(
                 f"{len(changed)} file(s) need formatting. Run 'kompend lint format' to fix.",
             )
-            raise typer.Exit(1)
+            raise SystemExit(1)
         get_console().print("All generated markdown is formatted.")
         return
     if changed:

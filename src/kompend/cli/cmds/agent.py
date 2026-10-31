@@ -9,9 +9,8 @@ Starts an ACP agent on stdio via ``pydantic-ai-harness``'s
 management, streaming, tool approval, and cancellation. kompend provides
 the agent, tools, and per-session configuration.
 
-Heavy imports (the harness ACP machinery, the MCP server factory) live
-inside the command body: this module is imported eagerly by the CLI so
-Typer can list every command in help — it must stay cheap to import.
+The agent stack is imported at module level: Cyclopts resolves this module
+on demand, so nothing is paid at ``kompend --help`` time.
 """
 
 from __future__ import annotations
@@ -23,13 +22,12 @@ from pydantic_ai import Agent
 from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
 
 from kompend.acp import build_kompend_agent, kompend_session_config
-from kompend.cli.app import app
 from kompend.cli.args.serving import AgentMcpPort
 from kompend.mcp.server import create_mcp_server
 
 
-@app.command(name="agent")
 def agent_cmd(
+    *,
     mcp_port: AgentMcpPort = None,
 ) -> None:
     """Run kompend as an ACP agent on stdio.

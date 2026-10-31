@@ -24,13 +24,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli.app import app
 from kompend.core.config import resolve_config
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.mcp.tools.pipeline import wiki_ingest
 from kompend.preprocessing.parsers import ParserBuildOptions
+from tests.helpers.cli import CliRunner
 
 _cli_runner = CliRunner()
 

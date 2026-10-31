@@ -1,9 +1,14 @@
-"""Typer CLI app.
+"""The kompend CLI application.
 
-Commands come from :mod:`kompend.cli._registry` and are registered lazily by
-:class:`kompend.cli._group.LazyGroup`, so help names every command while only
-the invoked subcommand's module is imported. Command modules keep heavy
+Commands come from :mod:`kompend.cli._registry` and are registered as import
+paths, so ``kompend --help`` names every command (and renders each panel) while
+only the invoked command's module is imported. Command modules keep heavy
 dependencies inside their command bodies so per-command startup stays fast.
+
+The root options (``--wiki-dir``, ``--config``, ``--no-user-tracking``,
+``--verbose``, ``--version``) live on the meta app: they are parsed before a
+command runs and published to :mod:`kompend.cli._context`, which is how
+commands read them without a framework context object in every signature.
 """
 
 from __future__ import annotations
@@ -13,39 +18,102 @@ import importlib
 import sys
 from functools import cache
 from types import ModuleType
+from typing import Annotated, Literal
 
-import typer
+from cyclopts import App, Group, Parameter
 
-from kompend.cli._group import LazyGroup
-from kompend.cli._registry import COMMANDS, OnDemandModule
+from kompend.cli._context import RunContext, use_run_context
+from kompend.cli._registry import COMMANDS, PANEL_ORDER, HelpPanel, OnDemandModule
 from kompend.cli._shared import format_exception_for_cli
-from kompend.cli.args import ConfigPath, NoUserTracking, Verbose, Version, WikiDir
+from kompend.cli.args import ConfigPath, NoUserTracking, Verbose, WikiDir
 from kompend.core.cancel import CANCEL_EXIT_CODE, KompendCancelled
 from kompend.core.reporting.handle import RunHandle
 from kompend.core.verbosity import is_verbose, set_verbose
 from kompend.logging import configure_logging, get_console
 
-app = typer.Typer(
+Version = Annotated[
+    bool,
+    Parameter(
+        name=("--version", "-v"),
+        help="Show version and exit",
+        negative="",
+    ),
+]
+
+app = App(
     name="kompend",
     help="Compile a document corpus into an interlinked, OKF-conformant markdown wiki",
-    add_completion=True,
-    no_args_is_help=True,
-    pretty_exceptions_enable=False,
-    pretty_exceptions_show_locals=False,
-    cls=LazyGroup,
+)
+#: Help flags carry no ``-h`` short form: ``-h`` stays an unknown option so
+#: mistyped short flags fail loudly instead of silently printing help.
+app.help_flags = ["--help"]
+
+
+class _RunHandleSlot:
+    """Single-value holder for the run-log handle of the invocation in flight."""
+
+    __slots__ = ("handle",)
+
+    def __init__(self) -> None:
+        self.handle: RunHandle | None = None
+
+
+#: Single-value holder for the run handle: written by the meta command (where
+#: ``--wiki-dir`` has been resolved) and read by :func:`main`.
+_run_handle_slot: _RunHandleSlot = _RunHandleSlot()
+
+
+#: One ``Group`` instance per help panel — Cyclopts dedupes groups by identity,
+#: so building a new ``Group`` per command collides.
+_PANEL_GROUPS: dict[HelpPanel, Group] = {panel: Group(name=panel.value, sort_key=PANEL_ORDER.index(panel)) for panel in PANEL_ORDER}
+
+
+def _panel_group(panel: HelpPanel) -> Group:
+    """Render a help panel in workflow order, not alphabetical order."""
+    return _PANEL_GROUPS[panel]
+
+
+for _name, _spec in COMMANDS.items():
+    app.command(
+        f"{_spec.module.value}:{_spec.entry}",
+        name=_name.value,
+        help=_spec.short_help,
+        group=_panel_group(_spec.panel),
+    )
+
+# Cyclopts registers help/version as synthetic commands; they belong in the
+# parameter list, not in the command panels (they are flags, not commands).
+for _synthetic in ("--help", "-h", "--version"):
+    if _synthetic in app:
+        app[_synthetic].show = False
+
+# Shell completion: Cyclopts ships the install command; ``--show-completion``
+# prints the same script so the previous CLI surface keeps working.
+app.register_install_completion_command(
+    name="--install-completion",
+    group=_panel_group(HelpPanel.SETUP),
+    help="Install shell completion for the detected shell.",
 )
 
-LazyGroup.bind(app)
+CompletionShell = Annotated[
+    Literal["zsh", "bash", "fish", "powershell"] | None,
+    Parameter(name="--shell", help="Shell to print completion for (default: detect the current shell)."),
+]
 
 
-#: Module-level holder for the run handle, written by :func:`_callback`
-#: (where Typer has resolved ``--wiki-dir``) and read by :func:`main`.
-_run_handle_holder: dict[str, RunHandle | None] = {"handle": None}  # nocheck: str-registry — single-slot Typer callback holder
+@app.command(
+    name="--show-completion",
+    group=_panel_group(HelpPanel.SETUP),
+    help="Print the shell completion script for the detected shell.",
+)
+def _show_completion(*, shell: CompletionShell = None) -> None:
+    """Write the completion script to stdout (redirect it into your shell's rc)."""
+    get_console().print(app.generate_completion(shell=shell))
 
 
-@app.callback(invoke_without_command=True)
-def _callback(
-    ctx: typer.Context,
+@app.meta.default
+def _root(
+    *tokens: Annotated[str, Parameter(show=False, allow_leading_hyphen=True)],
     version: Version = False,
     wiki_dir: WikiDir = None,
     config: ConfigPath = None,
@@ -56,20 +124,15 @@ def _callback(
     set_verbose(verbose)
     if version:
         get_console().print(_get_version())
-        raise typer.Exit()
+        raise SystemExit(0)
     # Telemetry configures here, not in main(): the version early exit above must
     # not pay the ~700 ms logfire import. Cached, so several in-process
-    # invocations configure once. (--help skips this too, but Click still
-    # resolves every command for its short help, and the acp command module
-    # imports logfire itself - see knox-* lazy-help follow-up.)
+    # invocations configure once.
     _configure_logfire()
-    ctx.obj = {"wiki_dir": wiki_dir, "config_file": config, "no_user_tracking": no_user_tracking}
-    # Framework-parsed tokens: the group parser has already consumed its own
-    # options (--wiki-dir, --version, ...), so protected_args + args is
-    # exactly subcommand + its raw args. No argv sniffing.
-    cmd_tokens = [*ctx._protected_args, *ctx.args]
-    handle = log_run_start(wiki_dir=wiki_dir, cmd_tokens=cmd_tokens)
-    _run_handle_holder["handle"] = handle
+    context = RunContext(wiki_dir=wiki_dir, config_file=config, no_user_tracking=no_user_tracking)
+    with use_run_context(context):
+        _run_handle_slot.handle = log_run_start(wiki_dir=wiki_dir, cmd_tokens=list(tokens))
+        app(list(tokens))
 
 
 # Version management
@@ -93,7 +156,7 @@ def main() -> None:
     _configure_streams_utf8()
     handle: RunHandle | None = None
     try:
-        app()
+        app.meta()
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         handle = _extract_handle()
@@ -126,18 +189,14 @@ def main() -> None:
 # logfire-eu. Respects KOMP_LOGFIRE_DISABLED and LOGFIRE_TOKEN.
 @cache
 def _configure_logfire() -> None:
-    """Enable Logfire instrumentation once per process (called from the callback).
+    """Enable Logfire instrumentation once per process (called from the meta command).
 
     kompend.telemetry owns ``import logfire`` (~700 ms, and it pulls in
-    requests) and is loaded here on demand, the same way the lazy command group
-    loads command modules. The call lives in :func:`_callback` — behind the
-    ``--version`` early exit, and after ``--help`` has already been served —
-    so bare invocations that emit no telemetry never import it. ``@cache``
-    keeps a shared process (tests, MCP) at one import and one configure.
-
-    The alternative - importing it at module scope - made every in-process
-    import of this module, including ``kompend --version``, ``--help`` and the
-    whole test suite, pay for telemetry none of them emit.
+    requests) and is loaded here on demand, the same way command modules are
+    loaded on demand. The call lives in :func:`_root` — behind the ``--version``
+    early exit, and after ``--help`` has already been served — so bare
+    invocations that emit no telemetry never import it. ``@cache`` keeps a
+    shared process (tests, MCP) at one import and one configure.
     """
     telemetry = importlib.import_module(OnDemandModule.TELEMETRY.value)
     telemetry.configure_logfire()
@@ -178,8 +237,8 @@ def _runlog() -> ModuleType:
 
 
 def _extract_handle() -> RunHandle | None:
-    """Retrieve the run handle stashed by the callback."""
-    return _run_handle_holder["handle"]
+    """Retrieve the run handle stashed by the meta command."""
+    return _run_handle_slot.handle
 
 
 def _configure_streams_utf8() -> None:
@@ -199,11 +258,11 @@ def _configure_streams_utf8() -> None:
 
 
 def register_all_commands() -> None:
-    """Import every command module (test-support introspection helper).
+    """Resolve every command so its module is imported (test-support helper).
 
-    Dispatch never needs this — :class:`~kompend.cli._group.LazyGroup` imports on demand.
-    Tests that enumerate the full command surface (CLI↔MCP parity) call
-    it so ``app.registered_commands`` is fully populated.
+    Dispatch never needs this — the app resolves an import path on first use.
+    Tests that enumerate the full command surface (CLI↔MCP parity) call it so
+    every command's parameters are bound.
     """
-    for module_name in sorted({spec.module.value for spec in COMMANDS.values()}):
-        importlib.import_module(module_name)
+    for name in COMMANDS:
+        app[name]

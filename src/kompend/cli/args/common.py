@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from collections.abc import Callable
+from typing import Annotated, Any
 
-import typer
+from cyclopts import Parameter
 
 from kompend.core.keys import EnvVar
 
@@ -15,94 +16,112 @@ APP_NAME_UPPERCASE = "kompend"
 
 DEFAULT_START_AT_TIER: str = "index"
 
+# ── Help panel titles ───────────────────────────────────────────────────
+
+PROJECT_GROUP = "Project"
+SOURCES_GROUP = "Sources"
+PIPELINE_GROUP = "Pipeline"
+OUTPUT_GROUP = "Output"
+LLM_GROUP = "LLM"
+
 
 # ── Global / cross-command options ──────────────────────────────────────
 
 WikiDir = Annotated[
     str | None,
-    typer.Option(
-        "--wiki-dir",
-        "-w",
+    Parameter(
+        name=("--wiki-dir", "-w"),
         help="Project root directory. All other paths are resolved relative to it. Default: current working directory.",
-        envvar=EnvVar.WIKI_DIR,
-        rich_help_panel="Project",
+        env_var=EnvVar.WIKI_DIR,
+        group=PROJECT_GROUP,
     ),
 ]
 
 RecursiveScan = Annotated[
     bool | None,
-    typer.Option(
-        "--recursive/--no-recursive",
+    Parameter(
+        name="--recursive",
         help="Scan sources/ subdirectories for source files. Default: paths.recursive config value (on).",
-        rich_help_panel="Sources",
+        group=SOURCES_GROUP,
     ),
 ]
 
 ConfigPath = Annotated[
     str | None,
-    typer.Option(
-        "--config",
-        "-c",
-        help=("Path to configuration file. Default: auto-discover './kompend.toml' (walking up) then ~/.config/kompend/config.toml."),
-        envvar=EnvVar.CONFIG,
-        rich_help_panel="Project",
+    Parameter(
+        name=("--config", "-c"),
+        help="Path to configuration file. Default: auto-discover './kompend.toml' (walking up) then ~/.config/kompend/config.toml.",
+        env_var=EnvVar.CONFIG,
+        group=PROJECT_GROUP,
     ),
 ]
 
 Verbose = Annotated[
     bool,
-    typer.Option(
-        "--verbose",
-        help=("Show full tracebacks for errors (fatal crashes and recoverable parse failures). Env: KOMP_VERBOSE."),
-        envvar=EnvVar.VERBOSE,
+    Parameter(
+        name="--verbose",
+        help="Show full tracebacks for errors (fatal crashes and recoverable parse failures). Env: KOMP_VERBOSE.",
+        env_var=EnvVar.VERBOSE,
+        negative="",
     ),
 ]
 
 JsonOutput = Annotated[
     bool,
-    typer.Option(
-        "--json",
+    Parameter(
+        name="--json",
         help="Output in JSON format for machine readability.",
+        negative="",
     ),
 ]
 
 Progress = Annotated[
     bool | None,
-    typer.Option(
-        "--progress/--no-progress",
+    Parameter(
+        name="--progress",
         help="Show rich progress bars (auto-detected for TTY).",
-        rich_help_panel="Pipeline",
+        group=PIPELINE_GROUP,
     ),
 ]
 
 NoUserTracking = Annotated[
     bool,
-    typer.Option(
-        "--no-user-tracking",
+    Parameter(
+        name="--no-user-tracking",
         help="Do not record the OS user (ingested_by / memory_by) in metadata for this invocation. Env: KOMP_USER_TRACKING=false.",
-    ),
-]
-
-Version = Annotated[
-    bool,
-    typer.Option(
-        "--version",
-        "-v",
-        help="Show version and exit",
-        is_eager=True,
+        negative="",
     ),
 ]
 
 CliSet = Annotated[
     list[str] | None,
-    typer.Option(
-        "--set",
+    Parameter(
+        negative="",
+        name="--set",
         help=(
             "Override a config value for this run only (repeatable). "
             "Format: --set compile.verify=false. Values are coerced to the "
             "key's type. Does NOT persist — use `kompend config set` for a "
             "permanent change."
         ),
-        rich_help_panel="Project",
+        group=PROJECT_GROUP,
     ),
 ]
+
+
+def in_range(low: int, high: int | None = None) -> Callable[[Any, Any], None]:
+    """Return a validator rejecting values outside ``low``..``high``.
+
+    Cyclopts has no declarative bound on :class:`Parameter`, so numeric limits
+    are expressed as validators; raising :class:`ValueError` turns into a usage
+    error (exit code 2).
+    """
+    expected = f"between {low} and {high}" if high is not None else f"{low} or greater"
+
+    def _validate(type_: Any, value: Any) -> None:  # noqa: ANN401 - Cyclopts signature
+        if value is None:
+            return
+        if value < low or (high is not None and value > high):
+            raise ValueError(f"must be {expected}, got {value}")
+
+    return _validate

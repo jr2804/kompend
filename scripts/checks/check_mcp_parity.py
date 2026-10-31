@@ -47,6 +47,11 @@ MCP_TO_CLI_ALIASES: dict[str, str] = {
 }
 
 
+# CLI command groups that are aliases of another group and must not be
+# reported as separate commands (Cyclopts lists each group under every name).
+CLI_COMMAND_ALIASES: dict[str, str] = {"att": "attachments"}
+
+
 def main() -> int:
     print("Checking kompend CLI vs MCP Parity...")
 
@@ -111,38 +116,27 @@ def _normalize_mcp_name(name: str) -> str:
 
 
 def get_cli_commands() -> list[tuple[str, str]]:
-    """Extract all command names from the Typer app with their full path.
+    """Extract all command names from the Cyclopts app with their full path.
 
-    Returns a list of (cli_full_path, normalized_for_compare) tuples.
+    Returns a list of (cli_full_path, normalized_for_compare) tuples. Group
+    commands are expanded one level into ``group verb``; the pseudo commands
+    Cyclopts registers for ``--help``/``--version`` are skipped.
     """
     register_all_commands()
     commands: list[tuple[str, str]] = []
 
-    # Top-level commands
-    for cmd in cli_app.registered_commands:
-        full = cmd.name
-        commands.append((full, _normalize_cli_name(full)))
-
-    # Sub-apps (groups)
-    for group in cli_app.registered_groups:
-        sub_app = group.typer_instance
-        group_name = sub_app.info.name or str(group.name)
-        group_norm = _normalize_cli_name(group_name)
-
-        for cmd in sub_app.registered_commands:
-            full = f"{group_name} {cmd.name}"
-            norm = f"{group_norm}_{_normalize_cli_name(cmd.name)}"
-            commands.append((full, norm))
-
-        # Sub-sub-groups (nested)
-        for sub_group in sub_app.registered_groups:
-            sub_app2 = sub_group.typer_instance
-            sub_name = sub_app2.info.name or str(sub_group.name)
-            sub_norm = _normalize_cli_name(sub_name)
-            for cmd in sub_app2.registered_commands:
-                full = f"{group_name} {sub_name} {cmd.name}"
-                norm = f"{group_norm}_{sub_norm}_{_normalize_cli_name(cmd.name)}"
-                commands.append((full, norm))
+    for name, command in cli_app.resolved_commands().items():
+        if name.startswith("-"):
+            continue
+        if name in CLI_COMMAND_ALIASES:
+            continue
+        resolved = getattr(command, "resolved_commands", None)
+        children = [child for child in (resolved() if resolved else {}) if not child.startswith("-")]
+        if children:
+            for child in sorted(children):
+                commands.append((f"{name} {child}", _normalize_cli_name(f"{name} {child}")))
+        else:
+            commands.append((name, _normalize_cli_name(name)))
 
     return commands
 

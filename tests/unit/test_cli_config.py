@@ -5,10 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli.app import app
 from kompend.core.paths import KOMP_DIR
+from tests.helpers.cli import CliRunner
 
 runner = CliRunner()
 

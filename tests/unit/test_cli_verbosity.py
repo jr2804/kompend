@@ -13,7 +13,6 @@ from typing import Any, cast
 from unittest.mock import MagicMock
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli import app as app_module
 from kompend.cli._shared import format_exception_for_cli
@@ -24,6 +23,7 @@ from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.pipeline.stages._parse import _parse_source
 from kompend.core.verbosity import is_verbose, set_verbose
 from kompend.preprocessing.parsers.base import ParserRouter
+from tests.helpers.cli import CliRunner
 
 _cli_runner = CliRunner()
 
@@ -63,6 +63,13 @@ class _Pipeline:
 
     def cache_directory(self) -> Path:
         return Path("/nonexistent-cache")  # noqa: S108 — never touched: parse raises first
+
+
+class _FatalApp:
+    """Stands in for the Cyclopts app: ``main`` drives ``app.meta()``."""
+
+    def meta(self) -> None:
+        _raise_runtime_error()
 
 
 @pytest.fixture(autouse=True)
@@ -159,7 +166,7 @@ def _ingest_failing_parse(base: Path) -> Any:
 
 def test_main_fatal_is_one_line_without_verbose(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("KOMP_LOGFIRE_DISABLED", "1")
-    monkeypatch.setattr(app_module, "app", _raise_runtime_error)
+    monkeypatch.setattr(app_module, "app", _FatalApp())
     with pytest.raises(SystemExit) as exc_info:
         app_module.main()
     assert exc_info.value.code == 1
@@ -170,7 +177,7 @@ def test_main_fatal_is_one_line_without_verbose(monkeypatch: pytest.MonkeyPatch,
 
 def test_main_fatal_is_traceback_with_verbose(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setenv("KOMP_LOGFIRE_DISABLED", "1")
-    monkeypatch.setattr(app_module, "app", _raise_runtime_error)
+    monkeypatch.setattr(app_module, "app", _FatalApp())
     set_verbose(True)
     with pytest.raises(SystemExit) as exc_info:
         app_module.main()

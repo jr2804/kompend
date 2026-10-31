@@ -11,11 +11,11 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli.app import app
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
+from tests.helpers.cli import CliRunner
 
 runner = CliRunner()
 

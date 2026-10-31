@@ -8,7 +8,6 @@ from typing import cast
 from unittest.mock import patch
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli._shared import build_cli_overrides as _build_cli_overrides
 from kompend.cli.app import app
@@ -22,6 +21,7 @@ from kompend.core.pipeline.stages._resolve import resolve_chunks
 from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.resolution.base import BaseResolver
 from kompend.resolution.chain import ResolverChain
+from tests.helpers.cli import CliRunner
 
 
 class _OrderTrackingResolver(BaseResolver):

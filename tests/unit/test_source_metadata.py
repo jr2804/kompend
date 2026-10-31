@@ -12,13 +12,13 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli.app import app as cli_app
 from kompend.core import source_metadata
 from kompend.core.pipeline.parse_cache import write_document
 from kompend.core.store import vault_db_path
 from kompend.mcp.tools.sources import sources_attr, sources_list, sources_tag, sources_untag
+from tests.helpers.cli import CliRunner
 
 _SOURCE = "sources/doc.pdf"
 

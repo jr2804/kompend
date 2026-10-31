@@ -9,8 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import typer
-
+from kompend.cli._context import current_run_context
 from kompend.cli._query_helpers import (  # noqa: F401  # re-exported for backward compat
     build_enhanced_retriever,
     encode_raw_results,
@@ -32,7 +31,6 @@ from kompend.cli._query_helpers import (  # noqa: F401  # re-exported for backwa
     wiki_link,
 )
 from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args import (
     QueryAdaptive,
     QueryFormatOption,
@@ -61,10 +59,9 @@ from kompend.search.retriever import HybridRetriever, KeywordRetriever
 logger = get_logger(__name__)
 
 
-@app.command(name="query")
-def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
-    ctx: typer.Context,
+def query_cmd(  # noqa: PLR0917 — one parameter per CLI option
     query: QueryText,
+    *,
     wiki_dir: WikiDir = None,
     top_k: QueryTopK = 5,
     raw: QueryRaw = False,
@@ -78,17 +75,17 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
     attr: SourceAttrs = None,
 ) -> None:
     """Ask a natural language question against the compiled wiki."""
-    vp = vault_paths_from_ctx(ctx)
-    # If explicit --wiki-dir was passed to the command (not via global callback),
+    vp = vault_paths_from_ctx()
+    # If explicit --wiki-dir was passed to the command (not via the root options),
     # re-resolve vp from it.
     if wiki_dir:
         vp = vault_paths(wiki_dir)
-    no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
+    no_user_tracking = current_run_context().no_user_tracking
     cli_overrides = build_cli_overrides(
         no_user_tracking=no_user_tracking,
         synthesis_verbosity=verbosity.value if verbosity is not None else None,
     )
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx(ctx))
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx())
     if format is None:
         format = LlmDataFormat(cfg.kompend.query.format)
     sources_dir = vp.sources_dir
@@ -108,7 +105,7 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
         get_err_console().print(
             f"No wiki pages found in {output_dir}. Run 'kompend compile' first.",
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     vector_store = open_vector_store(
         state_dir,
@@ -128,7 +125,7 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
             " Query requires a model to synthesize an answer from the wiki."
             " Use --raw for retrieval-only output."
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     if should_use_agentic(cfg, raw=raw, model=model):
         try:
@@ -172,7 +169,7 @@ def query_cmd(  # noqa: PLR0917 — one param per typer CLI option
 
     if not results:
         get_console().print("No relevant content found.")
-        raise typer.Exit(0)
+        raise SystemExit(0)
 
     if raw or model is None:
         print_raw_results(results, format)

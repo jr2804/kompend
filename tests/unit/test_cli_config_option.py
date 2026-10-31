@@ -5,13 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
-import typer
-from typer.main import get_command
-from typer.testing import CliRunner
 
+from kompend.cli._context import RunContext
 from kompend.cli._shared import config_file_from_ctx
 from kompend.cli.app import app, register_all_commands
 from kompend.cli.cmds.quality import lint as lint_cmd
+from tests.helpers.cli import CliRunner
 
 
 class TestConfigOptionIsRootOnly:
@@ -37,20 +36,18 @@ class TestConfigOptionIsRootOnly:
 
 class TestConfigFileFromCtx:
     def test_reads_the_root_value(self) -> None:
-        ctx = typer.Context(get_command(app), obj={"config_file": "alt.toml"})
-
-        assert config_file_from_ctx(ctx) == "alt.toml"
+        assert config_file_from_ctx(RunContext(config_file="alt.toml")) == "alt.toml"
 
     def test_missing_value_is_none(self) -> None:
-        assert config_file_from_ctx(typer.Context(get_command(app), obj={})) is None
+        assert config_file_from_ctx(RunContext()) is None
         assert config_file_from_ctx(None) is None
 
     def test_a_nested_command_sees_the_root_file(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The value travels through the Typer context, not a command option."""
+        """The value travels through the ambient run context, not a command option."""
         seen: dict[str, Any] = {}
 
-        def _capture(ctx: Any, **_kwargs: Any) -> Any:
-            seen["config_file"] = config_file_from_ctx(ctx)
+        def _capture(**_kwargs: Any) -> Any:
+            seen["config_file"] = config_file_from_ctx()
             raise SystemExit(0)
 
         monkeypatch.setattr(lint_cmd, "vault_paths_from_ctx", _capture)
@@ -63,12 +60,9 @@ class TestConfigFileFromCtx:
 
 
 def _option_names(command: str, *sub: str) -> set[str]:
-    """Option names a command's own ``--help`` advertises."""
+    """Option names the command itself declares (not the root meta flags)."""
     register_all_commands()
-    result = CliRunner().invoke(app, [command, *sub, "--help"])
-    names: set[str] = set()
-    for line in result.output.splitlines():
-        for token in line.replace(",", " ").split():
-            if token.startswith("-") and not token.startswith("---"):
-                names.add(token.rstrip(":"))
-    return names
+    target = app[command]
+    for name in sub:
+        target = target[name]
+    return {name for argument in target.assemble_argument_collection() for name in argument.names if name.startswith("-")}

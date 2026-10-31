@@ -52,7 +52,7 @@ class TestLogfireIsNotImportedEagerly:
     def test_version_invocation_does_not_import_logfire(self) -> None:
         probe = (
             "import sys\n"
-            "from typer.testing import CliRunner\n"
+            "from tests.helpers.cli import CliRunner\n"
             "from kompend.cli.app import app\n"
             "result = CliRunner().invoke(app, ['--version'])\n"
             "print(result.exit_code, 'logfire' in sys.modules)\n"

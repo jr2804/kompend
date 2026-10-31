@@ -5,14 +5,13 @@ from __future__ import annotations
 import json
 import sys
 
-from kompend.cli.app import app
 from kompend.cli.args import JsonOutput
 from kompend.logging import get_console
 from kompend.preprocessing.parsers._registry import get_registered_parsers
 
 
-@app.command(name="list-parsers")
 def list_parsers_cmd(
+    *,
     json_output: JsonOutput = False,
 ) -> None:
     """List all registered parsers (built-in + external + HTTP)."""

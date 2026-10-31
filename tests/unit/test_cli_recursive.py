@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.capture.ingest import ingest
 from kompend.cli.app import app
+from tests.helpers.cli import CliRunner
 
 _cli_runner = CliRunner()
 

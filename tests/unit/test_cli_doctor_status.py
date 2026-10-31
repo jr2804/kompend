@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli.app import app
 from kompend.cli.cmds.pipeline.status import collect_stats, print_status
@@ -17,6 +16,7 @@ from kompend.cli.cmds.quality.doctor import CheckResult, print_doctor_results, r
 from kompend.core.paths import COMPILE_STATE_FILE, KOMP_DB_FILE
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.llm.context_window import ContextSource, ContextWindow
+from tests.helpers.cli import CliRunner
 
 
 class TestCheckResult:

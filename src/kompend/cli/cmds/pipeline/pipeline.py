@@ -8,8 +8,7 @@ import time
 import traceback
 from typing import Any
 
-import typer
-
+from kompend.cli._context import current_run_context
 from kompend.cli._distill_helpers import (
     count_pending_notes,
     distill_result_lines,
@@ -28,9 +27,14 @@ from kompend.cli._pipeline_helpers import (
 )
 from kompend.cli._post_compile import write_wiki_cache
 from kompend.cli._progress import PipelineProgress
-from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, resolve_lint_output, vault_paths_from_ctx
+from kompend.cli._shared import (
+    build_cli_overrides,
+    config_file_from_ctx,
+    resolve_lint_output,
+    usage_error,
+    vault_paths_from_ctx,
+)
 from kompend.cli._sources import resolve_files
-from kompend.cli.app import app
 from kompend.cli.args import (
     DEFAULT_START_AT_TIER,
     BypassReview,
@@ -91,10 +95,9 @@ from kompend.rag import build_vector_index
 logger = get_logger(__name__)
 
 
-@app.command(name="parse")
 def parse_cmd(
-    ctx: typer.Context,
     files: ParseFiles,
+    *,
     recursive: RecursiveScan = None,
     print_elements: PrintElements = False,
 ) -> None:
@@ -102,7 +105,7 @@ def parse_cmd(
 
     Accepts one or more file paths, glob patterns (e.g. *.pdf), or directories.
     """
-    vp = vault_paths_from_ctx(ctx, require_vault=False)
+    vp = vault_paths_from_ctx(require_vault=False)
     cfg = resolve_config(
         base_dir=vp.base_dir,
         cli_overrides=build_cli_overrides(recursive=recursive),
@@ -130,9 +133,8 @@ def parse_cmd(
                 get_console().print(f"  - {el.type}: {content[:element_text_limit]}")
 
 
-@app.command(name="compile")
-def compile_cmd(  # noqa: PLR0915, PLR0917
-    ctx: typer.Context,
+def compile_cmd(  # noqa: PLR0915
+    *,
     wiki_dir: WikiDir = None,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
@@ -185,7 +187,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     if online_urls is None:
         online_urls = []
 
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     if wiki_dir:
         vp = vault_paths(wiki_dir)
     cli_overrides = build_cli_overrides(
@@ -212,7 +214,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
         recursive=recursive,
         cli_set=parse_cli_set(cli_set),
     )
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx(ctx))
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx())
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
 
@@ -240,7 +242,7 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
     source_files = pipeline.iter_sources()
     if not source_files:
         get_err_console().print(f"No supported files found in {sources_dir}.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     console.print(f"Compiling {len(source_files)} document(s) -> {output_dir}")
 
@@ -331,13 +333,12 @@ def compile_cmd(  # noqa: PLR0915, PLR0917
             sys.stdout.flush()
         else:
             get_err_console().print(err_msg)
-        raise typer.Exit(1) from exc
+        raise SystemExit(1) from exc
 
 
-@app.command(name="ingest")
-def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
-    ctx: typer.Context,
+def ingest_cmd(
     files: IngestFiles = None,
+    *,
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
     ignore: Ignore = None,
@@ -362,8 +363,8 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     if online_urls is None:
         online_urls = []
 
-    vp = vault_paths_from_ctx(ctx)
-    no_user_tracking = ctx.obj.get("no_user_tracking") if ctx.obj else None
+    vp = vault_paths_from_ctx()
+    no_user_tracking = current_run_context().no_user_tracking
     cli_overrides = build_cli_overrides(
         no_cache=no_cache,
         workers=workers,
@@ -371,7 +372,7 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
         no_user_tracking=no_user_tracking,
         cli_set=parse_cli_set(cli_set),
     )
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx(ctx))
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx())
     sources_dir = vp.sources_dir
     base_dir = vp.base_dir
 
@@ -387,7 +388,7 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     )
     if not all_input_files:
         get_err_console().print(f"No supported files found in {sources_dir}.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     get_console().print(f"Ingesting {len(all_input_files)} document(s)")
 
@@ -450,9 +451,8 @@ def ingest_cmd(  # noqa: PLR0917 — Typer command with many options
     log_stage(vp, action="Ingest", detail=summary)
 
 
-@app.command(name="index")
 def index_cmd(
-    ctx: typer.Context,
+    *,
     embed_model: EmbedModel = None,
     wiki_dir: WikiDir = None,
     cli_set: CliSet = None,
@@ -471,12 +471,12 @@ def index_cmd(
     newly-added attachments, run ``kompend compile --force --start-at-tier chunk``
     first.
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     if wiki_dir:
         vp = vault_paths(wiki_dir)
 
     cli_overrides = build_cli_overrides(cli_set=parse_cli_set(cli_set))
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx(ctx))
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file_from_ctx())
     output_dir = vp.output_dir
 
     # Index the markdown bundle — the node set ``kompend query`` judges staleness
@@ -486,7 +486,7 @@ def index_cmd(
     wiki = load_wiki_from_files(output_dir) or cached
     if wiki is None:
         get_err_console().print(f"No compiled wiki found in {output_dir}. Run 'kompend compile' first.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     # Resolve embed model (CLI flag > config > compile.embedding.model).
     resolved_model = embed_model or cfg.kompend.compile.embedding.model
@@ -494,7 +494,7 @@ def index_cmd(
         get_err_console().print(
             "No embedding model configured. Set compile.embedding.model in config or pass --embed-model.",
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     embed_attachments = cfg.kompend.attachments.embed
 
@@ -508,7 +508,7 @@ def index_cmd(
         )
     except Exception as exc:
         get_err_console().print(f"Failed to build vector index: {exc}")
-        raise typer.Exit(1) from exc
+        raise SystemExit(1) from exc
 
     # Persist embedding model metadata so ``kompend query`` can open the store.
     # Written through the snapshot wiki, which is what the cache holds (the
@@ -536,15 +536,15 @@ def parse_cli_set(items: list[str] | None) -> dict[str, Any]:
         return result
     for item in items:
         if "=" not in item:
-            raise typer.BadParameter(f"--set expects key=value, got: {item!r}")
+            usage_error(f"--set expects key=value, got: {item!r}")
         key, _, val = item.partition("=")
         key = key.strip()
         if not validate_config_key(key):
-            raise typer.BadParameter(f"unknown config key: {key!r}")
+            usage_error(f"unknown config key: {key!r}")
         try:
             result[key] = coerce_config_value(val, key)
         except ValueError as exc:
-            raise typer.BadParameter(f"--set {key}: {exc}") from exc
+            usage_error(f"--set {key}: {exc}")
     return result
 
 
@@ -555,7 +555,7 @@ def _parse_attrs(items: list[str] | None) -> dict[str, str]:
         return result
     for item in items:
         if "=" not in item:
-            raise typer.BadParameter(f"--attr expects key=value, got: {item!r}")
+            usage_error(f"--attr expects key=value, got: {item!r}")
         key, _, val = item.partition("=")
         result[key.strip()] = val
     return result

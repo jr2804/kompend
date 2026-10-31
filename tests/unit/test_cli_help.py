@@ -18,10 +18,10 @@ import subprocess
 import sys
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli._registry import COMMANDS, PANEL_ORDER, CommandModule, CommandName
 from kompend.cli.app import app
+from tests.helpers.cli import CliRunner
 
 runner = CliRunner()
 
@@ -56,14 +56,19 @@ class TestHelpEverywhere:
             assert panel.value in result.output
 
     def test_unknown_short_help_rejected_regardless_of_position(self) -> None:
-        """``-h`` is not a registered option — same rejection everywhere
-        (pre-existing framework behavior, position-independent).
+        """``-h`` is not a registered flag — same rejection everywhere.
+
+        Cyclopts registers only ``--help`` (``help_flags``), so ``-h`` is an
+        unknown *command* at the root and an unknown *option* inside a command;
+        both are usage errors with exit 2.
         """
         bare = runner.invoke(app, ["-h"])
         after_flag = runner.invoke(app, ["--wiki-dir", "d:/x", "-h"])
-        assert bare.exit_code == after_flag.exit_code != 0
-        assert "No such option" in bare.output
-        assert "No such option" in after_flag.output
+        inside_command = runner.invoke(app, ["compile", "-h"])
+        assert bare.exit_code == after_flag.exit_code == inside_command.exit_code == 2
+        assert "-h" in bare.output
+        assert "-h" in after_flag.output
+        assert "-h" in inside_command.output
 
     def test_subcommand_help_unaffected(self) -> None:
         result = runner.invoke(app, ["-w", "d:/some/wiki", "compile", "--help"])
@@ -135,15 +140,19 @@ class TestHelpAndVersionStayLight:
 
 
 def _squash(text: str) -> str:
-    """Collapse whitespace so wrapped help lines compare equal."""
-    return " ".join(text.split())
+    """Collapse whitespace and drop RST markup so wrapped help compares equal.
+
+    Registry summaries are written in RST (``sources/``); Cyclopts renders the
+    same text as rich inline code, so the backticks disappear from the help.
+    """
+    return " ".join(text.replace("``", "").split())
 
 
 def _probe_cli(*args: str) -> tuple[int, list[str]]:
     """Run the CLI in a fresh interpreter; return its exit code and module list."""
     probe = (
         "import json, sys\n"
-        "from typer.testing import CliRunner\n"
+        "from tests.helpers.cli import CliRunner\n"
         "import kompend.cli.app as app_module\n"
         "result = CliRunner().invoke(app_module.app, sys.argv[1:])\n"
         "print(json.dumps({'exit': result.exit_code, 'modules': sorted(sys.modules)}))\n"

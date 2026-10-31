@@ -16,13 +16,12 @@ the next ``kompend compile``.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
-import typer
+from cyclopts import App, Parameter
 from rich.markup import escape
 
 from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args import (
     ExportAll,
     ExportAnnotations,
@@ -42,34 +41,34 @@ from kompend.output.pages.index import sync_exported_sources_section
 
 logger = get_logger(__name__)
 
-sources_app = typer.Typer(
-    name="sources",
-    help="Manage ingested source files and their tags.",
-    no_args_is_help=True,
-)
-app.add_typer(sources_app)
+sources_app = App(name="sources", help="Manage ingested source files and their tags.")
+
+ExportOutput = Annotated[
+    str,
+    Parameter(
+        name="--output",
+        help="Write to this path (default: the vault's exported/ directory).",
+    ),
+]
 
 
 # ── Sub-command: list ───────────────────────────────────────────────────
 
 
-@sources_app.command("list", help="List ingested source files with their tags.")
-def sources_list(
-    ctx: typer.Context,
-    tags: SourceTags = None,
-) -> None:
+@sources_app.command(name="list", help="List ingested source files with their tags.")
+def sources_list(*, tags: SourceTags = None) -> None:
     """List ingested source files with their tags.
 
     Optionally filter by tag using --tags (same semantics as query --tags).
     """
-    vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
+    vp = vault_paths_from_ctx()
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx())
     cache_dir = vp.cache_dir
 
     cache_data = source_metadata.load_source_entries(cache_dir)
     if not cache_data:
         get_console().print("[yellow]No sources found. Run 'kompend ingest' first.[/]")
-        raise typer.Exit(0)
+        raise SystemExit(0)
 
     # Parse tag filter groups
     tag_groups = []
@@ -94,7 +93,7 @@ def sources_list(
 
     if not results:
         get_console().print("[yellow]No sources match the given tag filter.[/]")
-        raise typer.Exit(0)
+        raise SystemExit(0)
 
     # Display results.
     # Escape user-controlled text (file paths, tag names) so values containing
@@ -112,82 +111,66 @@ def sources_list(
 # ── Sub-command: tag / untag ────────────────────────────────────────────
 
 
-@sources_app.command("tag", help="Add a tag to an ingested source file.")
-def sources_tag(
-    ctx: typer.Context,
-    file: str,
-    tag: str,
-) -> None:
+@sources_app.command(name="tag", help="Add a tag to an ingested source file.")
+def sources_tag(file: str, tag: str) -> None:
     """Add a tag to an ingested source file.
 
     The tag is persisted in the parse cache and will propagate to
     wiki nodes on the next compile.
     """
-    vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
+    vp = vault_paths_from_ctx()
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx())
     _mutate_tags(vp.cache_dir, file, tag, add=True)
 
 
-@sources_app.command("untag", help="Remove a tag from an ingested source file.")
-def sources_untag(
-    ctx: typer.Context,
-    file: str,
-    tag: str,
-) -> None:
+@sources_app.command(name="untag", help="Remove a tag from an ingested source file.")
+def sources_untag(file: str, tag: str) -> None:
     """Remove a tag from an ingested source file.
 
     The tag is removed from the parse cache. Wiki nodes will need
     to be recompiled to reflect the change.
     """
-    vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
+    vp = vault_paths_from_ctx()
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx())
     _mutate_tags(vp.cache_dir, file, tag, add=False)
 
 
 # ── Sub-command: attr / attr-rm ─────────────────────────────────────────
 
 
-@sources_app.command("attr", help="Set a key=value attribute on an ingested source file.")
-def sources_attr(
-    ctx: typer.Context,
-    file: str,
-    key_value: str,
-) -> None:
+@sources_app.command(name="attr", help="Set a key=value attribute on an ingested source file.")
+def sources_attr(file: str, key_value: str) -> None:
     """Set a key=value attribute on an ingested source file.
 
     The attribute is persisted in the parse cache and will propagate to
     wiki nodes on the next compile. Use KEY=VALUE format.
     """
-    vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
+    vp = vault_paths_from_ctx()
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx())
     _mutate_attributes(vp.cache_dir, file, key_value, add=True)
 
 
-@sources_app.command("attr-rm", help="Remove an attribute key from an ingested source file.")
-def sources_attr_rm(
-    ctx: typer.Context,
-    file: str,
-    key: str,
-) -> None:
+@sources_app.command(name="attr-rm", help="Remove an attribute key from an ingested source file.")
+def sources_attr_rm(file: str, key: str) -> None:
     """Remove an attribute key from an ingested source file.
 
     The attribute is removed from the parse cache. Wiki nodes will need
     to be recompiled to reflect the change.
     """
-    vp = vault_paths_from_ctx(ctx)
-    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx(ctx))
+    vp = vault_paths_from_ctx()
+    resolve_config(base_dir=vp.base_dir, config_file=config_file_from_ctx())
     _mutate_attributes(vp.cache_dir, file, key, add=False)
 
 
 # ── Sub-command: export ─────────────────────────────────────────────────
 
 
-@sources_app.command("export", help="Export an ingested source as clean markdown.")
-def sources_export(  # noqa: PLR0917 — one param per typer CLI option
-    ctx: typer.Context,
+@sources_app.command(name="export", help="Export an ingested source as clean markdown.")
+def sources_export(
     source_id: ExportSourceId = "",
+    *,
+    output: ExportOutput = "",
     export_all: ExportAll = False,
-    output: str = "",
     inline: ExportInline = False,
     annotations: ExportAnnotations = None,
     summary: ExportSummary = None,
@@ -204,7 +187,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     any arbitrary file. With --all every ingested source is exported into
     ``exported/`` and the vault-root ``index.md`` is refreshed to list them.
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
 
     cli_set: dict[str, Any] = {}
     if annotations is not None:
@@ -213,7 +196,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
         cli_set[EXPORT_SUMMARY] = summary.value
     cfg = resolve_config(
         base_dir=vp.base_dir,
-        config_file=config_file_from_ctx(ctx),
+        config_file=config_file_from_ctx(),
         cli_overrides=build_cli_overrides(cli_set=cli_set),
     )
     ann = as_str(cfg.get(EXPORT_ANNOTATIONS)) or "off"
@@ -223,14 +206,14 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
     if export_all:
         if source_id:
             get_console().print("[red]SOURCE_ID cannot be combined with --all.[/]")
-            raise typer.Exit(1)
+            raise SystemExit(1)
         if output:
             get_console().print("[red]--all exports into exported/; OUTPUT must be empty.[/]")
-            raise typer.Exit(1)
+            raise SystemExit(1)
         cache_data = source_metadata.load_source_entries(vp.cache_dir)
         if not cache_data:
             get_console().print("[yellow]No sources found. Run 'kompend ingest' first.[/]")
-            raise typer.Exit(0)
+            raise SystemExit(0)
         exported_dir = vp.base_dir / EXPORTED_DIR_NAME
         exported_dir.mkdir(parents=True, exist_ok=True)
         skipped = 0
@@ -252,11 +235,11 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
                 skipped += 1
         sync_exported_sources_section(vp.base_dir / INDEX_FILE, vp.base_dir)
         get_console().print(f"[green]Exported {len(cache_data) - skipped} source(s) -> {exported_dir}[/]")
-        raise typer.Exit(0 if not skipped else 1)
+        raise SystemExit(0 if not skipped else 1)
 
     if not source_id:
         get_console().print("[red]Pass a SOURCE_ID or use --all.[/]")
-        raise typer.Exit(1)
+        raise SystemExit(1)
     if output:
         output_file = Path(output)
     else:
@@ -266,7 +249,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
         get_console().print(f"No OUTPUT given — writing to {output_file}")
     if output_file.suffix.lower() != ".md":
         get_console().print(f"[red]Output file must end in .md, got '{escape(output_file.suffix or '<none>')}'[/]")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     try:
         export_source(
@@ -281,7 +264,7 @@ def sources_export(  # noqa: PLR0917 — one param per typer CLI option
         )
     except FileNotFoundError as exc:
         get_console().print(f"[red]{escape(str(exc))}[/]")
-        raise typer.Exit(1) from exc
+        raise SystemExit(1) from exc
     if not output:
         sync_exported_sources_section(vp.base_dir / INDEX_FILE, vp.base_dir)
     get_console().print(f"[green]Exported {escape(source_id)} -> {escape(str(output_file))}[/]")
@@ -296,7 +279,7 @@ def _mutate_tags(cache_dir: Path, file: str, tag: str, add: bool) -> None:
         change = source_metadata.apply_tag(cache_dir, file, tag, add=add)
     except LookupError:
         get_console().print(f"[red]No cache entry found for '{escape(file)}'. Run 'kompend ingest' first.[/]")
-        raise typer.Exit(1) from None
+        raise SystemExit(1) from None
     colour = "green" if change.changed else "yellow"
     get_console().print(f"[{colour}]{escape(change.message)}[/]")
 
@@ -307,9 +290,9 @@ def _mutate_attributes(cache_dir: Path, file: str, key_value: str, add: bool) ->
         change = source_metadata.apply_attribute(cache_dir, file, key_value, add=add)
     except LookupError:
         get_console().print(f"[red]No cache entry found for '{escape(file)}'. Run 'kompend ingest' first.[/]")
-        raise typer.Exit(1) from None
+        raise SystemExit(1) from None
     except ValueError:
         get_console().print(f"[red]Use KEY=VALUE format for attributes, got: '{escape(key_value)}'[/]")
-        raise typer.Exit(1) from None
+        raise SystemExit(1) from None
     colour = "green" if change.changed else "yellow"
     get_console().print(f"[{colour}]{escape(change.message)}[/]")

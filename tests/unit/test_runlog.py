@@ -10,12 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli.app import app
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import DisplayConfig
 from kompend.core.reporting.runlog import _command_label
+from tests.helpers.cli import CliRunner
 
 
 class TestCommandLabel:
@@ -61,33 +61,31 @@ class TestRunLogNeverFails:
 
 
 class TestCallbackTokens:
-    """What the CLI callback hands the run log.
+    """What the CLI launcher hands the run log.
 
-    KNOWN DEFECT, pinned here rather than hidden: ``cmd_tokens`` is always empty,
-    so the run log's command label is always ``(none)`` and the audit trail never
-    records which command ran. ``TyperGroup.parse_args`` populates
-    ``ctx._protected_args``/``ctx.args``, then ``TyperGroup.invoke`` reads both and
-    clears them *before* it runs the group callback — so by the time ``_callback``
-    reads them they are empty. These are ``xfail(strict=True)``: they document the
-    defect and will fail loudly once it is fixed, prompting their removal.
+    The Cyclopts meta app receives the raw tokens *before* dispatch, so the run
+    log finally records which command ran. (Under Typer those tokens were always
+    empty: ``TyperGroup.invoke`` cleared them before running the group callback,
+    which is why this class used to pin the defect as ``xfail``.)
     """
 
     def test_callback_still_resolves_the_wiki_dir(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The group options the callback *does* own are read correctly."""
+        """The run-level options the launcher owns are read correctly.
+
+        ``--help`` short-circuits before the launcher runs (Cyclopts handles it
+        during meta resolution), so this uses a real command.
+        """
         captured = self._capture_tokens(monkeypatch)
-        result = CliRunner().invoke(app, ["-w", "some/wiki", "compile", "--help"])
-        assert result.exit_code == 0
+        result = CliRunner().invoke(app, ["-w", "some/wiki", "list-parsers"])
+        assert result.exit_code == 0, result.output
         assert captured["wiki_dir"] == "some/wiki"
 
-    @pytest.mark.xfail(strict=True, reason="run-log command label is always empty (see class docstring)")
     @pytest.mark.parametrize(
         ("argv", "expected"),
         [
-            (["compile", "--help"], ["compile", "--help"]),
-            (["--help"], []),
             (["attachments", "add", "s", "f"], ["attachments", "add", "s", "f"]),
-            (["lint", "--help"], ["lint", "--help"]),
-            (["-w", "some/wiki", "compile", "--help"], ["compile", "--help"]),
+            (["config", "path"], ["config", "path"]),
+            (["-w", "some/wiki", "list-parsers"], ["list-parsers"]),
         ],
     )
     def test_records_the_subcommand_and_its_arguments(

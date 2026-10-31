@@ -5,8 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import typer
-
 from kompend.agents.capture import CaptureAgent
 from kompend.agents.types import WriteDeps
 from kompend.agents.write import make_agentic_write_agent
@@ -14,9 +12,8 @@ from kompend.capture.capture import capture
 from kompend.capture.consolidate import consolidate
 from kompend.capture.learn import learn
 from kompend.cli._distill_helpers import distill_result_lines, run_distill
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
+from kompend.cli._shared import build_cli_overrides, usage_error, vault_paths_from_ctx
 from kompend.cli._sources import resolve_files
-from kompend.cli.app import app
 from kompend.cli.args import (
     WRITE_SOURCES_DEFAULT,
     CaptureText,
@@ -51,10 +48,9 @@ from kompend.rag.zvec_store import make_provider
 logger = get_logger(__name__)
 
 
-@app.command(name="capture")
 def capture_cmd(
-    ctx: typer.Context,
     text: CaptureText,
+    *,
     tag: SourceTags = None,
     attr: SourceAttrs = None,
 ) -> None:
@@ -70,7 +66,7 @@ def capture_cmd(
         kompend capture "Discussion about layer norm placement" --tags architecture --tags training
         kompend capture "..." --attr version=2 --attr status=confirmed
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     sources_dir = vp.sources_dir
 
@@ -101,10 +97,9 @@ def capture_cmd(
         get_console().print(f"  {p.name}")
 
 
-@app.command(name="learn")
 def learn_cmd(
-    ctx: typer.Context,
     text: LearnText,
+    *,
     tag: SourceTags = None,
     attr: SourceAttrs = None,
 ) -> None:
@@ -120,7 +115,7 @@ def learn_cmd(
         kompend learn "QKV with RoPE" --tags attention --tags architecture
         kompend learn "..." --attr version=2
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
     path = learn(
@@ -137,15 +132,14 @@ def _parse_attrs(attr: list[str] | None) -> dict[str, str]:
     out: dict[str, str] = {}
     for item in attr or []:
         if "=" not in item:
-            raise typer.BadParameter(f"Use KEY=VALUE format for attributes, got: '{item}'")
+            usage_error(f"Use KEY=VALUE format for attributes, got: '{item}'")
         key, _, value = item.partition("=")
         out[key.strip()] = value.strip()
     return out
 
 
-@app.command(name="consolidate")
 def consolidate_cmd(
-    ctx: typer.Context,
+    *,
     dry_run: ConsolidateDryRun = False,
     no_archive: ConsolidateNoArchive = False,
 ) -> None:
@@ -162,7 +156,7 @@ def consolidate_cmd(
         kompend consolidate
         kompend consolidate --no-archive
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
     matcher: SemanticMatcher | None = None
@@ -186,11 +180,7 @@ def consolidate_cmd(
             get_console().print(f"  {action}: {name}")
 
 
-@app.command(name="distill")
-def distill_cmd(
-    ctx: typer.Context,
-    no_archive: DistillNoArchive = False,
-) -> None:
+def distill_cmd(*, no_archive: DistillNoArchive = False) -> None:
     """Merge captured notes into coherent wiki pages via LLM.
 
     Reads all notes from sources/_captured/ and sources/_learned/, groups
@@ -206,7 +196,7 @@ def distill_cmd(
         kompend distill
         kompend distill --no-archive
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
 
     paths = run_distill(vp.sources_dir, cfg, archive=not no_archive, memory_dir=vp.agent_memory_dir)
@@ -214,10 +204,9 @@ def distill_cmd(
         get_console().print(line)
 
 
-@app.command(name="write")
 def write_cmd(
-    ctx: typer.Context,
     page_title: WritePageTitle,
+    *,
     source: WriteSourceFiles = WRITE_SOURCES_DEFAULT,
     recursive: RecursiveScan = None,
     frontmatter: Frontmatter = None,
@@ -235,7 +224,7 @@ def write_cmd(
 
         kompend write "Transformer architecture" --source attention.pdf --source bert.pdf --frontmatter language=en
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(recursive=recursive))
     base_dir = vp.base_dir
 

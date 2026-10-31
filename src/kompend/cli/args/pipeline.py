@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import Annotated
 
-import typer
+from cyclopts import Parameter
 
+from kompend.cli.args.common import PIPELINE_GROUP, SOURCES_GROUP, in_range
 from kompend.core.keys import EnvVar
 from kompend.core.vocab import ExportMode
 
@@ -13,85 +14,86 @@ from kompend.core.vocab import ExportMode
 
 StartAtTier = Annotated[
     str,
-    typer.Option(
-        "--start-at-tier",
+    Parameter(
+        name="--start-at-tier",
         help=(
             "Pipeline entry point: index | chunk | resolve | compile | output. "
             "Tiers before this are skipped (cached results reused). "
             "Previous tiers must have been completed in a prior run."
         ),
-        envvar=EnvVar.START_AT_TIER,
-        rich_help_panel="Pipeline",
+        env_var=EnvVar.START_AT_TIER,
+        group=PIPELINE_GROUP,
     ),
 ]
 
 NoCacheFlag = Annotated[
     bool | None,
-    typer.Option(
-        "--no-cache/--cache",
-        help=("Force a re-parse of every source (bypass the parse cache). Tags/attributes are preserved; attachments are untouched."),
-        rich_help_panel="Pipeline",
+    Parameter(
+        name="--cache",
+        help="Force a re-parse of every source (bypass the parse cache). Tags/attributes are preserved; attachments are untouched.",
+        group=PIPELINE_GROUP,
     ),
 ]
 
 Workers = Annotated[
     int,
-    typer.Option(
-        "--workers",
-        "-j",
-        help=("Number of parallel parse workers (1 = sequential). Threads only run Python code in parallel on a free-threaded interpreter (CPython 3.14t+)."),
-        min=1,
-        rich_help_panel="Pipeline",
+    Parameter(
+        name=("--workers", "-j"),
+        help="Number of parallel parse workers (1 = sequential). Threads only run Python code in parallel on a free-threaded interpreter (CPython 3.14t+).",
+        validator=in_range(1),
+        group=PIPELINE_GROUP,
     ),
 ]
 
 ForceTier = Annotated[
     bool | None,
-    typer.Option(
-        "--force/--no-force",
+    Parameter(
+        name="--force",
         help="Re-process every source regardless of persisted tier state. Default: off (reuse cached results).",
-        rich_help_panel="Pipeline",
+        group=PIPELINE_GROUP,
     ),
 ]
 
 IgnoreModelFlag = Annotated[
     bool | None,
-    typer.Option(
-        "--ignore-model/--no-ignore-model",
+    Parameter(
+        name="--ignore-model",
         help=(
             "Reuse cached extractions, summaries and generated pages across model switches "
             "(e.g. finish a run on a local model after an online quota ran out). Cached "
             "artifacts are keyed without the model; pages keep the model tag they were "
             "generated with. Default: off (a model switch invalidates cached LLM products)."
         ),
-        rich_help_panel="Pipeline",
+        group=PIPELINE_GROUP,
     ),
 ]
 
 InPlaceFlag = Annotated[
     bool | None,
-    typer.Option(
-        "--in-place/--no-in-place",
+    Parameter(
+        name="--in-place",
         help="Keep source files at their original location instead of copying to sources/. Default: off (copy into sources/).",
-        rich_help_panel="Sources",
+        group=SOURCES_GROUP,
     ),
 ]
 
 ListTiers = Annotated[
     bool,
-    typer.Option(
-        "--list-tiers",
+    Parameter(
+        name="--list-tiers",
         help="Show the available pipeline tiers and their current state, then exit.",
-        rich_help_panel="Pipeline",
+        group=PIPELINE_GROUP,
+        negative="",
     ),
 ]
 
 JsonProgress = Annotated[
     bool,
-    typer.Option(
-        "--json-progress",
+    Parameter(
+        name="--json-progress",
         help="Emit progress as JSONL to stdout (for machine consumers).",
-        rich_help_panel="Pipeline",
+        group=PIPELINE_GROUP,
+        negative="",
     ),
 ]
 
@@ -99,29 +101,33 @@ JsonProgress = Annotated[
 
 ExportAll = Annotated[
     bool,
-    typer.Option("--all", help="Export every ingested source into exported/."),
+    Parameter(
+        name="--all",
+        help="Export every ingested source into exported/.",
+        negative="",
+    ),
 ]
 
 ExportInline = Annotated[
     bool,
-    typer.Option(
-        "--inline/--no-inline",
+    Parameter(
+        name="--inline",
         help="Embed images as data URIs (default: copy to <output stem>_assets/).",
     ),
 ]
 
 ExportAnnotations = Annotated[
     ExportMode | None,
-    typer.Option(
-        "--annotations",
+    Parameter(
+        name="--annotations",
         help="Where extracted table/figure annotations go: off, inline, or asset (default: export.annotations config).",
     ),
 ]
 
 ExportSummary = Annotated[
     ExportMode | None,
-    typer.Option(
-        "--summary",
+    Parameter(
+        name="--summary",
         help="Where the document summary goes: off, inline, or asset (default: export.summary config).",
     ),
 ]
@@ -130,23 +136,24 @@ ExportSummary = Annotated[
 
 IngestFiles = Annotated[
     list[str] | None,
-    typer.Argument(
-        help=("Files, glob patterns, or directories to ingest. If omitted, all supported files in the wiki sources dir are scanned."),
+    Parameter(
+        negative="",
+        help="Files, glob patterns, or directories to ingest. If omitted, all supported files in the wiki sources dir are scanned.",
     ),
 ]
 
 ExportSourceId = Annotated[
     str,
-    typer.Argument(),
+    Parameter(),
 ]
 
 
 MemoryEnabled = Annotated[
     bool | None,
-    typer.Option(
-        "--memory/--no-memory",
-        help=("Track node lifecycle (confidence, tiers, supersession, retention/decay) across compiles. Disabled skips the memory update pass. Default: on."),
-        envvar=EnvVar.MEMORY_ENABLED,
-        rich_help_panel="Pipeline",
+    Parameter(
+        name="--memory",
+        help="Track node lifecycle (confidence, tiers, supersession, retention/decay) across compiles. Disabled skips the memory update pass. Default: on.",
+        env_var=EnvVar.MEMORY_ENABLED,
+        group=PIPELINE_GROUP,
     ),
 ]

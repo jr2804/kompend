@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli.app import app
 from kompend.core.config import (
@@ -19,6 +18,7 @@ from kompend.core.config import (
     check_config_file,
     check_config_files,
 )
+from tests.helpers.cli import CliRunner
 
 runner = CliRunner()
 

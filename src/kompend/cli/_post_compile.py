@@ -10,8 +10,6 @@ import time
 from pathlib import Path
 from typing import Any
 
-import typer
-
 from kompend import __version__ as _KOMP_VERSION
 from kompend.agents.verification import AgenticVerificationAgent, VerificationAgent, make_agentic_verification_agent
 from kompend.agents.wiki_index import make_agentic_overview_agent
@@ -275,7 +273,7 @@ def cli_build_vector_index(
     """Thin CLI wrapper — delegates to kompend.rag and prints status."""
     if not embed_model:
         get_err_console().print("Error: --embed-model must be provided when --index is used.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     count = build_vector_index(
         wiki,

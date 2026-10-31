@@ -15,6 +15,11 @@ from __future__ import annotations
 from .common import (
     APP_NAME_UPPERCASE,
     DEFAULT_START_AT_TIER,
+    LLM_GROUP,
+    OUTPUT_GROUP,
+    PIPELINE_GROUP,
+    PROJECT_GROUP,
+    SOURCES_GROUP,
     CliSet,
     ConfigPath,
     JsonOutput,
@@ -22,8 +27,8 @@ from .common import (
     Progress,
     RecursiveScan,
     Verbose,
-    Version,
     WikiDir,
+    in_range,
 )
 
 # Compile command
@@ -134,6 +139,7 @@ from .quality import (
     LintQuiet,
     LintRule,
     LintSemantic,
+    LintShowRun,
     LintVerbose,
     LogLast,
     LogWrite,
@@ -179,6 +185,11 @@ __all__ = [
     # Common
     "APP_NAME_UPPERCASE",
     "DEFAULT_START_AT_TIER",
+    "LLM_GROUP",
+    "OUTPUT_GROUP",
+    "PIPELINE_GROUP",
+    "PROJECT_GROUP",
+    "SOURCES_GROUP",
     "WRITE_SOURCES_DEFAULT",
     "AgentMcpPort",
     "AgentsAction",
@@ -251,6 +262,7 @@ __all__ = [
     "LintQuiet",
     "LintRule",
     "LintSemantic",
+    "LintShowRun",
     "LintVerbose",
     "ListTiers",
     "LlmDefaultModel",
@@ -313,10 +325,10 @@ __all__ = [
     "UrlFile",
     "Verbose",
     "Verify",
-    "Version",
     "VlmModel",
     "WikiDir",
     "Workers",
     "WritePageTitle",
     "WriteSourceFiles",
+    "in_range",
 ]

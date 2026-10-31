@@ -13,11 +13,11 @@ import json
 from pathlib import Path
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli.app import app
 from kompend.core.models.references import Author, Reference
 from kompend.core.pipeline.references import ReferenceStore
+from tests.helpers.cli import CliRunner
 
 
 class TestReferencesList:
@@ -116,9 +116,12 @@ class TestReferencesHelp:
         assert "export" in result.output
 
     def test_references_no_args_shows_help(self) -> None:
+        # Cyclopts prints the sub-command help and exits 0 when no command is given.
         runner = CliRunner()
         result = runner.invoke(app, ["references"])
-        assert result.exit_code != 0  # no_args_is_help
+        assert result.exit_code == 0
+        assert "list" in result.output
+        assert "export" in result.output
 
 
 @pytest.fixture

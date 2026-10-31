@@ -7,7 +7,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated
 
-import typer
+from cyclopts import Parameter
+
+from kompend.cli.args.common import in_range
 
 #: Default for ``write --source``: an empty list, named so the alias default
 #: is not a bare mutable literal in a signature (B006).
@@ -17,35 +19,35 @@ WRITE_SOURCES_DEFAULT: list[str] = []
 
 OrganizeMaxDepth = Annotated[
     int | None,
-    typer.Option(
-        "--max-depth",
+    Parameter(
+        name="--max-depth",
         help="Maximum category tree depth (1-4). Env: KOMP_ORGANIZE_MAX_DEPTH.",
-        min=1,
-        max=4,
+        validator=in_range(1, 4),
     ),
 ]
 
 OrganizeMinSubcategories = Annotated[
     int | None,
-    typer.Option(
-        "--min-subcategories",
+    Parameter(
+        name="--min-subcategories",
         help="Minimum sub-categories required to justify a new level. Env: KOMP_ORGANIZE_MIN_SUBCATEGORIES.",
-        min=2,
+        validator=in_range(2),
     ),
 ]
 
 OrganizeDryRun = Annotated[
     bool,
-    typer.Option(
-        "--dry-run",
+    Parameter(
+        name="--dry-run",
         help="Show the proposed category tree without moving files or rewriting wiki links.",
+        negative="",
     ),
 ]
 
 OrganizeCollapseSingle = Annotated[
     bool | None,
-    typer.Option(
-        "--collapse-single-file/--no-collapse-single-file",
+    Parameter(
+        name="--collapse-single-file",
         help="Collapse single-file subcategories into the parent directory.",
     ),
 ]
@@ -54,22 +56,23 @@ OrganizeCollapseSingle = Annotated[
 
 CaptureText = Annotated[
     str,
-    typer.Argument(
+    Parameter(
         help="Text to extract knowledge items from.",
     ),
 ]
 
 LearnText = Annotated[
     str,
-    typer.Argument(
+    Parameter(
         help="Fact or snippet to store directly as a source file.",
     ),
 ]
 
 SourceTags = Annotated[
     list[str] | None,
-    typer.Option(
-        "--tags",
+    Parameter(
+        negative="",
+        name="--tags",
         help=(
             "Source tags (repeatable; comma-separated within one option is AND, "
             "multiple --tags flags are OR). Blanks stripped from tag names; quote "
@@ -80,15 +83,16 @@ SourceTags = Annotated[
 
 SourceAttrs = Annotated[
     list[str] | None,
-    typer.Option(
-        "--attr",
-        help=("Source attributes as KEY=VALUE (repeatable). Multiple --attr flags are AND — each sets one key=value pair on the source."),
+    Parameter(
+        negative="",
+        name="--attr",
+        help="Source attributes as KEY=VALUE (repeatable). Multiple --attr flags are AND — each sets one key=value pair on the source.",
     ),
 ]
 
 IngestTarget = Annotated[
     str,
-    typer.Argument(
+    Parameter(
         help="URL or file path to ingest into the sources directory.",
     ),
 ]
@@ -97,106 +101,110 @@ IngestTarget = Annotated[
 
 AttachmentSource = Annotated[
     str,
-    typer.Argument(help="Source file name or relative path (e.g., 'report.pdf')."),
+    Parameter(help="Source file name or relative path (e.g., 'report.pdf')."),
 ]
 
 AttachmentFile = Annotated[
     Path,
-    typer.Argument(help="Path to the attachment file to register."),
+    Parameter(help="Path to the attachment file to register."),
 ]
 
 AttachmentIngestible = Annotated[
     bool,
-    typer.Option("--ingest", help="Mark attachment as ingestible (processed during compile)."),
+    Parameter(name="--ingest", help="Mark attachment as ingestible (processed during compile).", negative=""),
 ]
 
 AttachmentEmbed = Annotated[
     bool | None,
-    typer.Option("--embed/--no-embed", help="Override global embed_attachments setting for this attachment."),
+    Parameter(name="--embed", help="Override global embed_attachments setting for this attachment."),
 ]
 
 AttachmentPath = Annotated[
     str,
-    typer.Argument(help="Attachment relative path (e.g., 'report/photo.jpg') or just filename."),
+    Parameter(help="Attachment relative path (e.g., 'report/photo.jpg') or just filename."),
 ]
 
 AttachmentPathOptional = Annotated[
     str | None,
-    typer.Argument(help="Attachment relative path (e.g., 'report/photo.jpg') or just filename. Omit with --all."),
+    Parameter(help="Attachment relative path (e.g., 'report/photo.jpg') or just filename. Omit with --all."),
 ]
 
 AttachmentAll = Annotated[
     bool,
-    typer.Option("--all", help="Apply to every registered attachment."),
+    Parameter(name="--all", help="Apply to every registered attachment.", negative=""),
 ]
 
 AttachmentListSource = Annotated[
     str | None,
-    typer.Option("--source", "-s", help="Filter by source name."),
+    Parameter(name=("--source", "-s"), help="Filter by source name."),
 ]
 
 AttachmentListAll = Annotated[
     bool,
-    typer.Option("--all", "-a", help="Include deleted entries."),
+    Parameter(name=("--all", "-a"), help="Include deleted entries.", negative=""),
 ]
 
 # ── `references` command surface ────────────────────────────────────────
 
 ReferencesListSource = Annotated[
     str | None,
-    typer.Option("--source", "-s", help="Filter to references from this source file."),
+    Parameter(name=("--source", "-s"), help="Filter to references from this source file."),
 ]
 
 ReferencesExportOutput = Annotated[
     Path,
-    typer.Option("--output", "-o", help="Output file path. Default: references.bib"),
+    Parameter(name=("--output", "-o"), help="Output file path. Default: references.bib"),
 ]
 
 ReferencesExportSource = Annotated[
     str | None,
-    typer.Option("--source", "-s", help="Export only references from this source."),
+    Parameter(name=("--source", "-s"), help="Export only references from this source."),
 ]
 
 ReferencesFetchSource = Annotated[
     str | None,
-    typer.Option("--source", "-s", help="Only resolve references from this source file."),
+    Parameter(name=("--source", "-s"), help="Only resolve references from this source file."),
 ]
 
 ReferencesFetchDryRun = Annotated[
     bool,
-    typer.Option("--dry-run", "-n", help="Resolve but do not save results to disk."),
+    Parameter(name=("--dry-run", "-n"), help="Resolve but do not save results to disk.", negative=""),
 ]
 
 # ── `consolidate` / `distill` / `write` command surface ────────────────
 
 ConsolidateDryRun = Annotated[
     bool,
-    typer.Option("--dry-run", help="Report duplicate groups without moving anything."),
+    Parameter(name="--dry-run", help="Report duplicate groups without moving anything.", negative=""),
 ]
 
 ConsolidateNoArchive = Annotated[
     bool,
-    typer.Option("--no-archive", help="Keep duplicate notes in place (report only)."),
+    Parameter(name="--no-archive", help="Keep duplicate notes in place (report only).", negative=""),
 ]
 
 DistillNoArchive = Annotated[
     bool,
-    typer.Option("--no-archive", help="Keep the source notes in place after distilling (default: archive them to sources/_archive/)."),
+    Parameter(
+        name="--no-archive",
+        help="Keep the source notes in place after distilling (default: archive them to sources/_archive/).",
+        negative="",
+    ),
 ]
 
 WritePageTitle = Annotated[
     str,
-    typer.Argument(help="Title of the page to create."),
+    Parameter(help="Title of the page to create."),
 ]
 
 WriteSourceFiles = Annotated[
     list[str],
-    typer.Option("--source", "-s", help="Source file(s) to include (repeatable)."),
+    Parameter(negative="", name=("--source", "-s"), help="Source file(s) to include (repeatable)."),
 ]
 
 # ── `pack-install` command surface ──────────────────────────────────────
 
 PackName = Annotated[
     str,
-    typer.Argument(help="Pack name to install (e.g. 'academic')."),
+    Parameter(help="Pack name to install (e.g. 'academic')."),
 ]

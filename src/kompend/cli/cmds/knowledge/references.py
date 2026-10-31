@@ -10,11 +10,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import typer
+from cyclopts import App
 
 from kompend.agents.reference_resolver import ReferenceResolverAgent
 from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args import (
     ReferencesExportOutput,
     ReferencesExportSource,
@@ -31,36 +30,28 @@ from kompend.output.bibtex import references_to_bibtex
 
 logger = get_logger(__name__)
 
-references_app = typer.Typer(
-    name="references",
-    help="Manage extracted bibliographic references.",
-    no_args_is_help=True,
-)
-app.add_typer(references_app)
+references_app = App(name="references", help="Manage extracted bibliographic references.")
 
 
-@references_app.command("list", help="List all extracted references.")
-def references_list(
-    ctx: typer.Context,
-    source: ReferencesListSource = None,
-) -> None:
+@references_app.command(name="list", help="List all extracted references.")
+def references_list(*, source: ReferencesListSource = None) -> None:
     """List all references (or those from a specific source)."""
-    store = _resolve_ref_store(ctx)
+    store = _resolve_ref_store()
     if store is None:
         get_console().print("No references found. Run a compile first to extract references.")
-        raise typer.Exit(0)
+        raise SystemExit(0)
 
     if source:
         refs = store.get_source(source)
         if not refs:
             get_console().print(f"No references found for source: {source}")
-            raise typer.Exit(0)
+            raise SystemExit(0)
         get_console().print(f"[bold]References from {source}[/bold] ({len(refs)}):\n")
     else:
         refs = store.all_references()
         if not refs:
             get_console().print("No references found.")
-            raise typer.Exit(0)
+            raise SystemExit(0)
         get_console().print(f"[bold]All references[/bold] ({len(refs)}):\n")
 
     for i, ref in enumerate(refs, 1):
@@ -74,9 +65,9 @@ def references_list(
             get_console().print(f"        {doi_or_url}", markup=False)
 
 
-@references_app.command("export", help="Export references to BibTeX (.bib) or CSL JSON (.json).")
+@references_app.command(name="export", help="Export references to BibTeX (.bib) or CSL JSON (.json).")
 def references_export(
-    ctx: typer.Context,
+    *,
     output: ReferencesExportOutput = Path("references.bib"),
     source: ReferencesExportSource = None,
 ) -> None:
@@ -85,22 +76,22 @@ def references_export(
     The output format is determined by the file extension:
     ``.bib`` → BibTeX, ``.json`` → CSL JSON.
     """
-    store = _resolve_ref_store(ctx)
+    store = _resolve_ref_store()
     if store is None:
         get_err_console().print("No references found. Run a compile first to extract references.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     if source:
         refs = store.get_source(source)
         if not refs:
             get_err_console().print(f"No references found for source: {source}")
-            raise typer.Exit(1)
+            raise SystemExit(1)
     else:
         refs = store.all_references()
 
     if not refs:
         get_err_console().print("No references to export.")
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     suffix = output.suffix.lower()
     if suffix == ".bib":
@@ -111,28 +102,17 @@ def references_export(
         get_err_console().print(
             f"Unknown format '{suffix}'. Use .bib (BibTeX) or .json (CSL JSON).",
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     output.write_text(content, encoding="utf-8")
     get_console().print(f"Exported {len(refs)} reference(s) to {output}")
 
 
-def _resolve_ref_store(ctx: typer.Context) -> ReferenceStore | None:
-    """Resolve the project ``ReferenceStore``, or ``None`` if missing."""
-    vp = vault_paths_from_ctx(ctx)
-    store = ReferenceStore(vp.references_file)
-    return store if store.total_count() > 0 else None
-
-
 @references_app.command(
-    "fetch",
+    name="fetch",
     help="Resolve DOIs/URLs for references missing them, using the configured LLM.",
 )
-def references_fetch(
-    ctx: typer.Context,
-    source: ReferencesFetchSource = None,
-    dry_run: ReferencesFetchDryRun = False,
-) -> None:
+def references_fetch(*, source: ReferencesFetchSource = None, dry_run: ReferencesFetchDryRun = False) -> None:
     """Resolve missing DOIs/URLs for references that lack them.
 
     For every stored reference that has neither a DOI nor a URL (optionally
@@ -143,24 +123,24 @@ def references_fetch(
 
     Requires an LLM model to be configured (``KOMP_LLM_DEFAULT_MODEL``).
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     store = ReferenceStore(vp.references_file)
     if store.total_count() == 0:
         get_console().print("No references found. Run a compile first to extract references.")
-        raise typer.Exit(0)
+        raise SystemExit(0)
 
     pending = store.unresolved_indices(source)
     if not pending:
         get_console().print("All references already have a DOI or URL.")
-        raise typer.Exit(0)
+        raise SystemExit(0)
 
     model = cfg.kompend.compile.llm.default_model
     if not model:
         get_err_console().print(
             "No LLM model configured. Set KOMP_LLM_DEFAULT_MODEL or run 'kompend config set'.",
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     timeout = float(cfg.kompend.compile.llm.timeout)
     try:
@@ -171,7 +151,7 @@ def references_fetch(
         )
     except Exception as exc:  # noqa: BLE001
         get_err_console().print(f"Could not initialise resolver agent: {exc}")
-        raise typer.Exit(1) from exc
+        raise SystemExit(1) from exc
 
     get_console().print(f"Resolving {len(pending)} reference(s) via {model}…")
     resolved = resolve_unresolved_references(
@@ -193,3 +173,10 @@ def references_fetch(
         )
     else:
         get_console().print("No references could be resolved.")
+
+
+def _resolve_ref_store() -> ReferenceStore | None:
+    """Resolve the project ``ReferenceStore``, or ``None`` if missing."""
+    vp = vault_paths_from_ctx()
+    store = ReferenceStore(vp.references_file)
+    return store if store.total_count() > 0 else None

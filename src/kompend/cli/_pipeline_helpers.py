@@ -12,8 +12,6 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-import typer
-
 from kompend.agents.doctor import DoctorAgent, DoctorDeps
 from kompend.cli._post_compile import (  # noqa: F401  # re-exported for backward compat
     PostCompileOptions,
@@ -250,4 +248,4 @@ def check_llm_availability(pipeline: WikiPipeline) -> None:
     except Exception as exc:
         get_err_console().print("[red]LLM not available — not starting compilation.[/red]")
         get_err_console().print(f"  {exc}")
-        raise typer.Exit(1) from exc
+        raise SystemExit(1) from exc

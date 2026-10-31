@@ -5,50 +5,52 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Annotated
 
-import typer
+from cyclopts import Parameter
 
+from kompend.cli.args.common import in_range
 from kompend.core.vocab import LlmDataFormat, Verbosity
 
 # ── Q17 query command ──────────────────────────────────────────────────
 
 QueryText = Annotated[
     str,
-    typer.Argument(
+    Parameter(
         help="Natural language question to ask against the compiled wiki.",
     ),
 ]
 
 QueryTopK = Annotated[
     int,
-    typer.Option(
-        "--top-k",
+    Parameter(
+        name="--top-k",
         help="Number of context chunks to retrieve (default: 5).",
-        min=1,
-        max=50,
+        validator=in_range(1, 50),
     ),
 ]
 
 QueryRaw = Annotated[
     bool,
-    typer.Option(
-        "--raw",
+    Parameter(
+        name="--raw",
         help="Return raw context chunks without LLM synthesis.",
+        negative="",
     ),
 ]
 
 QueryFormatOption = Annotated[
     LlmDataFormat | None,
-    typer.Option(
-        "--format",
+    Parameter(
+        name="--format",
         help="Output format for agents: markdown (default), json, toon, ison. Defaults to query.format from config.",
     ),
 ]
 
 QueryNoClassify = Annotated[
     bool,
-    typer.Option(
-        "--no-classify",
+    Parameter(
+        name="--no-classify",
         help="Skip intent classification (always retrieve).",
+        negative="",
     ),
 ]
 
@@ -62,33 +64,34 @@ class SearchMode(StrEnum):
 
 QuerySearchMode = Annotated[
     SearchMode,
-    typer.Option(
-        "--search-mode",
-        "--scope",
+    Parameter(
+        name=("--search-mode", "--scope"),
         help="Search mode: wiki (compiled pages), raw (source files), hybrid (both), or graph (hybrid + graph traversal expansion).",
     ),
 ]
 
 QueryAdaptive = Annotated[
     bool,
-    typer.Option(
-        "--adaptive",
+    Parameter(
+        name="--adaptive",
         help="Use adaptive retrieval (context-budget-aware zoom-in/zoom-out/targeted).",
+        negative="",
     ),
 ]
 
 QueryRemember = Annotated[
     bool,
-    typer.Option(
-        "--remember",
+    Parameter(
+        name="--remember",
         help="Save this query and synthesized answer to the memory store.",
+        negative="",
     ),
 ]
 
 QueryVerbosity = Annotated[
     Verbosity | None,
-    typer.Option(
-        "--verbosity",
+    Parameter(
+        name="--verbosity",
         help="Answer verbosity: brief, standard, or comprehensive. Defaults to search.synthesis.verbosity from config.",
     ),
 ]

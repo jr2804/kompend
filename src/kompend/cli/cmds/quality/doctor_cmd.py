@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import typer
-
+from kompend.cli._context import current_run_context
 from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
-from kompend.cli.app import app
 from kompend.cli.args import JsonOutput, Verbose, WikiDir
 from kompend.cli.cmds.quality.doctor import print_doctor_results, run_doctor
 from kompend.core.config import resolve_config
@@ -19,9 +17,8 @@ from kompend.core.utils.dicts import as_str
 from kompend.logging import get_err_console
 
 
-@app.command(name="doctor")
 def doctor_cmd(
-    ctx: typer.Context,
+    *,
     wiki_dir: WikiDir = None,
     verbose: Verbose = False,
     json_output: JsonOutput = False,
@@ -32,18 +29,18 @@ def doctor_cmd(
     or the current directory must contain a compiled wiki (i.e. the
     resolved output directory must exist).
     """
-    vp = vault_paths_from_ctx(ctx)
+    vp = vault_paths_from_ctx()
     if wiki_dir:
         vp = vault_paths(wiki_dir)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx(ctx))
+    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx())
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
 
-    if not wiki_dir and not ctx.obj.get("wiki_dir") and not output_dir.exists():
+    if not wiki_dir and not current_run_context().wiki_dir and not output_dir.exists():
         get_err_console().print(
             f"No wiki found at {output_dir}. Use --wiki-dir or run from a wiki directory.",
         )
-        raise typer.Exit(1)
+        raise SystemExit(1)
 
     results = run_doctor(
         sources_dir=sources_dir,
@@ -56,4 +53,4 @@ def doctor_cmd(
     )
     exit_code = print_doctor_results(results, json_output=json_output)
     if exit_code:
-        raise typer.Exit(1)
+        raise SystemExit(1)

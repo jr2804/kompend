@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-import typer
 
 from kompend.cli._shared import resolve_lint_output
 from kompend.core.config._configs import LintConfig, LintOutput
@@ -150,8 +149,9 @@ class TestResolveLintOutput:
         assert resolve_lint_output(LintOutput.FULL, verbose=False, quiet=True) is LintOutput.QUIET
 
     def test_both_flags_is_an_error(self) -> None:
-        with pytest.raises(typer.BadParameter):
+        with pytest.raises(SystemExit) as excinfo:
             resolve_lint_output(LintOutput.SUMMARY, verbose=True, quiet=True)
+        assert excinfo.value.code == 2
 
 
 class TestLintOutputConfig:

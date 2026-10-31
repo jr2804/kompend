@@ -185,8 +185,9 @@ class TestAgentInstallRemove:
         bad_toml = tmp_path / "bad.toml"
         bad_toml.write_text("invalid toml {{{{", encoding="utf-8")
 
-        with pytest.raises(RuntimeError), patch("kompend.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+        with pytest.raises(SystemExit) as excinfo, patch("kompend.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
             _agents_install(str(bad_toml))
+        assert excinfo.value.code == 1
 
     def test_remove_existing_agent(self, tmp_path: Path) -> None:
         """Remove an installed agent from the vault."""
@@ -204,8 +205,9 @@ class TestAgentInstallRemove:
 
     def test_remove_nonexistent_raises(self, tmp_path: Path) -> None:
         """Removing a non-existent agent raises."""
-        with pytest.raises(RuntimeError), patch("kompend.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
+        with pytest.raises(SystemExit) as excinfo, patch("kompend.cli.cmds.agents._resolve_base_dir", return_value=str(tmp_path)):
             _agents_remove("nonexistent")
+        assert excinfo.value.code == 1
 
 
 @pytest.fixture(autouse=True)

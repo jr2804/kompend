@@ -7,7 +7,6 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
-from typer.testing import CliRunner
 
 from kompend.cli._distill_helpers import (
     build_distill_agent,
@@ -18,6 +17,7 @@ from kompend.cli._distill_helpers import (
 )
 from kompend.cli.app import app
 from kompend.core.config import ResolvedConfig
+from tests.helpers.cli import CliRunner
 
 
 class _SentinelAgent:
