@@ -172,7 +172,7 @@ and maps parsecraft's intermediate representation onto kompend's element model.
 It is a core dependency, so installing kompend is all that is required:
 
 ```bash
-uv add kompend    # pulls parsecraft[docling,web]>=2026.10.14
+uv add kompend    # pulls parsecraft[docling,web]>=2026.10.15
 ```
 
 The floor is load-bearing: 2026.10.5 moved `auto`, `liteparse`, `pandoc` and
@@ -182,7 +182,14 @@ usable — its `VectorGraphics` read was dict-style on a dataclass until then, s
 the option crashed the backend and the table path was unreachable. 2026.10.14
 withdrew docling's text routes (markdown and plain text are the native family's,
 which is also what takes the docling `Table.match` spin off the markdown path),
-made docling report author heading levels, and added the CSV/TSV tier. Raising it
+made docling report author heading levels, and added the CSV/TSV tier. 2026.10.15
+swapped the docling engine for `docling-rs`, which takes the Python docling tree
+(`docling`, `docling-ibm-models`, `docling-parse`, `docling-slim`) out of every
+install — torch and transformers stay, because `crawl4ai[all]` is a core
+dependency and pulls them for its own extras. It also reads PDFs through
+parsecraft's byte-stream path, which is text-layer only, so an image-only page
+returns empty instead of OCR'd and kompend warns about it ("Silent empty pages"
+above). Raising it
 is a reviewed event (see `docs/architecture/decisions.md`, "Decision:
 parsecraft as the ingestion backend"). kompend
 never imports parsecraft internals, private modules, or test helpers — only the
@@ -241,7 +248,7 @@ is no second backend behind it to fall through to.
 
 ### Diagnostics carried into kompend metadata
 
-Four classes of parsecraft signal survive the parse into `.kompend/kompend.db`:
+Five classes of parsecraft signal survive the parse into `.kompend/kompend.db`:
 
 - `metadata.parser` — `"parsecraft"`.
 - `metadata.backends` — comma-separated list of parsecraft sub-backends that
@@ -252,6 +259,36 @@ Four classes of parsecraft signal survive the parse into `.kompend/kompend.db`:
   parsecraft (e.g. OCR → native text because no eligible OCR backend was
   installed). This is the trace that proves a parse silently downgraded,
   rather than hiding the choice behind a structurally identical result.
+- `metadata.empty_pages` — page numbers that yielded no text at all. An
+  image-only page read through a text-layer path (docling's byte-stream route
+  since parsecraft 2026.10.15) comes back with zero content instead of raising,
+  so the document "parses" and is simply shorter than the source. kompend
+  records the page numbers and logs one warning per file naming the OCR remedy
+  ([`[ingest] parsecraft_allow_ocr`], the `ocr` extra, or a backend that reads
+  images). See [Silent empty pages](#silent-empty-pages).
+
+### Silent empty pages
+
+A parse that loses pages without complaint is worse than one that fails, so
+empty pages are not left to the log: `metadata.empty_pages` is persisted with
+the document and the warning is emitted once per file, not once per page.
+
+```text
+WARNING  scan-2024.pdf: 3 page(s) produced no text (4, 5, 6). A scanned or
+image-only page needs an OCR-capable backend; check [ingest]
+parsecraft_allow_ocr and the ocr extra, or parse with a backend that reads images.
+```
+
+What to do with it:
+
+- **Expect scanned pages** (contract scans, ITU-T figure-only pages): install the
+  `ocr` extra and set `parsecraft_allow_ocr = true` — parsecraft then routes
+  those pages to the OCR-capable backend instead of the text-layer path.
+- **Genuinely blank pages** (a deliberate separator, an empty annex): nothing to
+  do. The metadata is the record; no content was lost.
+- **Every page empty** on a file that clearly has text: the source is an image
+  bundle, not a document — kompend raises rather than storing an empty document
+  when no element at all survives the parse.
 
 ### Judge tier: model-assisted per-page routing
 

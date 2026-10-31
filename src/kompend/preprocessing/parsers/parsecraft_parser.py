@@ -199,6 +199,8 @@ class ParsecraftParser:
 
         document = result.document
         elements = _map_document(document, source_file)
+        empty_pages = _empty_pages(document)
+        _warn_on_empty_pages(source_file, empty_pages)
         self._warn_on_ignored_backend_options(_winning_backends(result.groups), media_type, elements)
 
         return ParsedDocument(
@@ -214,6 +216,7 @@ class ParsecraftParser:
                 "degraded_pages": sorted(
                     signal.page_number for signal in document.quality if signal.name.startswith("degraded-") and signal.page_number is not None
                 ),
+                "empty_pages": empty_pages,
             },
         )
 
@@ -522,6 +525,34 @@ def _parse_effort(effort: ParsecraftEffort | str) -> ParsecraftEffort:
     raises rather than degrades.
     """
     return ParsecraftEffort(effort)
+
+
+def _warn_on_empty_pages(source_file: Path, empty_pages: list[int]) -> None:
+    """Say out loud when pages contributed nothing at all.
+
+    A text-layer-only route (docling's byte-stream path since parsecraft
+    2026.10.15) returns a page with no content for an image-only page instead of
+    raising, so without this the loss stays invisible: the document parses
+    "successfully" and is simply shorter than the source.
+    """
+    if not empty_pages:
+        return
+    logger.warning(
+        "%s: %d page(s) produced no text (%s). A scanned or image-only page needs an OCR-capable backend; "
+        "check [ingest] parsecraft_allow_ocr and the ocr extra, or parse with a backend that reads images.",
+        source_file.name,
+        len(empty_pages),
+        ", ".join(str(page) for page in empty_pages),
+    )
+
+
+def _empty_pages(document: DocumentResult) -> list[int]:
+    """Page numbers whose blocks carry no content, in document order.
+
+    Content, not block count, decides: a page can hold chunks (headers, an empty
+    figure) and still say nothing.
+    """
+    return [page.page_number for page in document.pages if not any(_chunk_content(chunk) for chunk in page.blocks)]
 
 
 def _map_document(document: DocumentResult, source_file: Path) -> list[DocumentElement]:

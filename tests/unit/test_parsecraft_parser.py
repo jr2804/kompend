@@ -23,6 +23,7 @@ import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -79,10 +80,11 @@ class TestMarkdownFidelity:
         """Heading levels arrive as string metadata and must convert to ints.
 
         2026.10.2 renamed the metadata key ``heading_level`` → ``n_level``, and
-        the docling-led live markdown path emits no level at all (a level is a
-        native-adapter fact), so the conversion contract is asserted on the IR
-        directly — the native-markdown adapter emits ``n_level`` from
-        ``token.tag.removeprefix("h")``.
+        the docling path used to emit no level at all (a level is a native-adapter
+        fact), so the conversion contract is asserted on the IR directly — the
+        native-markdown adapter emits ``n_level`` from
+        ``token.tag.removeprefix("h")``. parsecraft 2026.10.14 made docling report
+        author levels too, which the live-path test below covers.
         """
         elements = _map(
             _document(
@@ -187,6 +189,93 @@ class TestFailureShapes:
         adapter = _adapter()
         with pytest.raises(adapter.ParsecraftParseError):
             _map(_document([_page(1, [])]))
+
+
+# ── Silent losses: pages that produced no text ────────────────────────────
+
+
+class TestEmptyPages:
+    """An image-only page read through a text-layer path returns empty, not an error.
+
+    docling's byte-stream route (parsecraft 2026.10.15) never raises for a
+    scanned page; the document parses "successfully" and is simply shorter than
+    the source. The adapter records the page numbers and says so once per file,
+    because a silent shortfall is the one failure nobody can attribute later.
+    """
+
+    def test_empty_page_is_recorded_and_warned(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        pages = [_page(1, [_chunk(ChunkKind.PARAGRAPH, "Text")]), _page(2, [])]
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            doc = self._parsing(parser, monkeypatch, pages).parse(markdown_file)
+        assert doc.metadata["empty_pages"] == [2]
+        warnings = [r.getMessage() for r in caplog.records if "produced no text" in r.getMessage()]
+        assert len(warnings) == 1, warnings
+        assert "1 page(s)" in warnings[0]
+        assert "(2)" in warnings[0]
+
+    def test_warning_names_every_empty_page_once(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """One record per file, listing the pages — not one record per page."""
+        pages = [
+            _page(1, []),
+            _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)]),
+            _page(3, []),
+            _page(4, []),
+        ]
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            doc = self._parsing(parser, monkeypatch, pages).parse(markdown_file)
+        assert doc.metadata["empty_pages"] == [1, 3, 4]
+        warnings = [r.getMessage() for r in caplog.records if "produced no text" in r.getMessage()]
+        assert len(warnings) == 1, warnings
+        assert "(1, 3, 4)" in warnings[0]
+
+    def test_silent_when_every_page_has_text(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        pages = [_page(1, [_chunk(ChunkKind.PARAGRAPH, "One")]), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Two", 2)])]
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            doc = self._parsing(parser, monkeypatch, pages).parse(markdown_file)
+        assert doc.metadata["empty_pages"] == []
+        assert not [r for r in caplog.records if "produced no text" in r.getMessage()]
+
+    def test_empty_pages_stay_json_serializable(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The metadata lands in the parse cache as JSON: a set or StrEnum breaks it."""
+        doc = self._parsing(parser, monkeypatch, [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "T", 2)])]).parse(markdown_file)
+        assert json.loads(json.dumps(doc.metadata))["empty_pages"] == [1]
+
+    @staticmethod
+    def _parsing(
+        parser: Any,
+        monkeypatch: pytest.MonkeyPatch,
+        pages: list[PageResult],
+    ) -> Any:
+        document = _document(pages)
+        monkeypatch.setattr(
+            parser,
+            "_execute_with_judge",
+            lambda *args, **kwargs: SimpleNamespace(document=document, groups=[]),
+        )
+        return parser
 
 
 # ── Registry contract ────────────────────────────────────────────────────
