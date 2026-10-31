@@ -195,12 +195,14 @@ class TestFailureShapes:
 
 
 class TestEmptyPages:
-    """An image-only page read through a text-layer path returns empty, not an error.
+    """An image-only page returns empty instead of raising, and that must be visible.
 
-    docling's byte-stream route (parsecraft 2026.10.15) never raises for a
-    scanned page; the document parses "successfully" and is simply shorter than
-    the source. The adapter records the page numbers and says so once per file,
-    because a silent shortfall is the one failure nobody can attribute later.
+    A backend can answer a scanned page with zero content rather than an error —
+    for example parsecraft's docling backend on an image-only PDF, which exits
+    clean with an empty page (filed upstream as pc-04u). The document then parses
+    "successfully" and is simply shorter than the source. The adapter records the
+    page numbers and says so once per file, because a silent shortfall is the one
+    failure nobody can attribute later.
     """
 
     def test_empty_page_is_recorded_and_warned(

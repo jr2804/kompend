@@ -530,9 +530,10 @@ def _parse_effort(effort: ParsecraftEffort | str) -> ParsecraftEffort:
 def _warn_on_empty_pages(source_file: Path, empty_pages: list[int]) -> None:
     """Say out loud when pages contributed nothing at all.
 
-    A text-layer-only route (docling's byte-stream path since parsecraft
-    2026.10.15) returns a page with no content for an image-only page instead of
-    raising, so without this the loss stays invisible: the document parses
+    An image-only page can come back with zero content instead of raising: a
+    backend with no OCR path, or an upstream defect such as parsecraft's docling
+    backend returning an empty page for a scanned PDF (filed upstream as
+    pc-04u). Without this the loss stays invisible — the document parses
     "successfully" and is simply shorter than the source.
     """
     if not empty_pages:
