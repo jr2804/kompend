@@ -172,7 +172,7 @@ and maps parsecraft's intermediate representation onto kompend's element model.
 It is a core dependency, so installing kompend is all that is required:
 
 ```bash
-uv add kompend    # pulls parsecraft[docling,web]>=2026.10.15
+uv add kompend    # pulls parsecraft[docling,web]>=2026.10.16
 ```
 
 The floor is load-bearing: 2026.10.5 moved `auto`, `liteparse`, `pandoc` and
@@ -186,25 +186,14 @@ made docling report author heading levels, and added the CSV/TSV tier. 2026.10.1
 swapped the docling engine for `docling-rs`, which takes the Python docling tree
 (`docling`, `docling-ibm-models`, `docling-parse`, `docling-slim`) out of every
 install — torch and transformers stay, because `crawl4ai[all]` is a core
-dependency and pulls them for its own extras. Raising it
+dependency and pulls them for its own extras. 2026.10.16 restores the `docling`
+capability probe (`docling_rs`), which 2026.10.15 had broken, and drops the
+`mineru` package from the `mineru` extra, so the `openai` conflict that forced an
+override is gone. Raising it
 is a reviewed event (see `docs/architecture/decisions.md`, "Decision:
 parsecraft as the ingestion backend"). kompend
 never imports parsecraft internals, private modules, or test helpers — only the
 documented public surface (`parsecraft.pipeline` / `parsecraft.backends` / IR).
-
-!!! warning "2026.10.15 ships a defect: the `docling` extra reads as absent"
-    parsecraft 2026.10.15 probes the `docling` extra by importing `docling`, but
-    the extra now installs `docling-rs` (module `docling_rs`). Nothing installs
-    `docling`, so eligibility drops the backend: PDFs are served by `liteparse`
-    and office files by another eligible backend (`pymupdf` or `pandoc`), with no
-    error and no warning — just weaker tables and shallower structure than the
-    docling tier kompend was verified against. `--no-auto -b docling` fails with
-    "not eligible". The fix is a one-line map
-    change plus a contract test (local to the parsecraft repository, unreleased
-    at the time of writing); a newer parsecraft resolves it with no kompend
-    change. Until then, expect `metadata.backends` to name `liteparse` for PDFs,
-    and note that docling also needs a one-time ~1.4 GB
-    `docling_rs.download_models()` prefetch once it is routable again.
 
 !!! warning "A resolution failure moments after a release is usually a stale index cache"
     `No solution found … because there is no version of kompend[pdf-full]==<version>`
@@ -271,12 +260,11 @@ Five classes of parsecraft signal survive the parse into `.kompend/kompend.db`:
   installed). This is the trace that proves a parse silently downgraded,
   rather than hiding the choice behind a structurally identical result.
 - `metadata.empty_pages` — page numbers that yielded no text at all. An
-  image-only page served by docling comes back with zero content instead of
-  raising (an upstream defect, open at the time of writing), so the document
-  "parses" and is simply shorter than the source. kompend records the page
-  numbers and logs one warning per file naming the OCR remedy
-  ([`[ingest] parsecraft_allow_ocr`], the `ocr` extra, or a backend that reads
-  images). See [Silent empty pages](#silent-empty-pages).
+  image-only page served by a text-layer backend comes back with zero content
+  instead of raising, so the document "parses" and is simply shorter than the
+  source. kompend records the page numbers and logs one warning per file naming
+  the remedy ([`[ingest] parsecraft_allow_ocr`], an OCR-capable backend, or a
+  forced backend that reads images). See [Silent empty pages](#silent-empty-pages).
 
 ### Silent empty pages
 
@@ -292,9 +280,18 @@ parsecraft_allow_ocr and the ocr extra, or parse with a backend that reads image
 
 What to do with it:
 
-- **Expect scanned pages** (contract scans, ITU-T figure-only pages): install the
-  `ocr` extra and set `parsecraft_allow_ocr = true` — parsecraft then routes
-  those pages to an OCR-capable backend instead of a text-layer one.
+- **Expect scanned pages** (contract scans, ITU-T figure-only pages): parsecraft
+  routes an OCR-intent page only to a backend it classifies as an OCR route
+  (`ocr-*`), so installing the `ocr` extra and setting
+  `parsecraft_allow_ocr = true` is necessary but not sufficient — on a machine
+  where those backends are GPU-only, or when none is installed, the page degrades
+  to native text and comes back empty. Measured on a 1-page image-only PDF:
+  auto mode chose `liteparse` (2.2 s, one empty element), while
+  `parsecraft convert -b docling` read the same page correctly in about the same
+  time on CPU. Until parsecraft treats a convert-tier backend's OCR as eligible
+  for OCR intents, naming the backend is the workaround: pass
+  `only_backend = "docling"` (or `preferred_backend`) plus
+  `parsecraft_allow_ocr = true`.
 - **Genuinely blank pages** (a deliberate separator, an empty annex): nothing to
   do. The metadata is the record; no content was lost.
 - **Every page empty** on a file that clearly has text: the source is an image
