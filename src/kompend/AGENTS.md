@@ -33,8 +33,8 @@ review cycle, and unverifiable by tooling.
 | Pack prompts and roles | TOML | `packs/<name>/pack.toml` |
 | Any other human-readable string | TOML / Jinja2 | the appropriate config dir |
 
-**Acceptable exceptions:** short (≤5 words) status messages to `typer.echo()` or
-a logger; error messages that must name code-level constructs (variables,
+**Acceptable exceptions:** short (≤5 words) status messages to a logger or
+`get_console()`; error messages that must name code-level constructs (variables,
 types); single words as enum members, dict keys, or field names; docstrings and
 type annotations.
 
@@ -104,7 +104,7 @@ Commands — see `.agents/CHECKS.md`. For this subtree the relevant ones are
 | `agents/` | PydanticAI agents for every LLM call; `KompendAgentBase`, `KompendModel`, deps |
 | `capture/` | Capture/distill/learn pipeline for URLs, files, stdin |
 | `chunking/` | Tier 2 — split parsed documents into context-window-sized `ChunkTree` |
-| `cli/` | CLI shell over the core library — Typer commands, argument declarations |
+| `cli/` | CLI shell over the core library — Cyclopts commands, argument declarations |
 | `cli/args/` | All CLI argument/option definitions (`Annotated` aliases) |
 | `cli/cmds/` | All CLI command entry points, organized by domain |
 | `compilation/` | Tier 4 — knowledge graph build, WiCER loop, page kinds |

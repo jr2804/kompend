@@ -97,13 +97,14 @@ See `src/kompend/cli/args/AGENTS.md` for detailed argument organization rules.
 
 **Summary:**
 
-- All `typer.Option` / `typer.Argument` live in `args/` as `Annotated` types.
-- Arguments organized by domain into 9 modules: `common.py`, `compile.py`, `parse.py`, `query.py`, `pipeline.py`, `config.py`, `init.py`, `memory.py`, `other.py`.
-- Commands import the types, never call `typer.Option()` inline (B008).
-- Default values are module-level constants (`DEFAULT_CHUNK_SIZE`, etc.).
+- All `Parameter` declarations live in `args/` as `Annotated` types.
+- Arguments organized by domain into 13 modules: `common.py`, `compile.py`, `parse.py`, `query.py`, `pipeline.py`, `knowledge.py`, `quality.py`, `serving.py`, `config.py`, `init.py`, `memory.py`.
+- Commands import the types, never build `Parameter(...)` inline.
+- Default values are module-level constants (`DEFAULT_CHUNK_SIZE`, etc.) or command
+  parameter defaults; aliases never carry a default.
 - **These constants are the CLI's own defaults, not the source of truth.** The
   source of truth is `kompend.core.config.DEFAULTS`. The CLI constants exist only
-  for Typer's `--help` text and as fallback values passed to `resolve_config()`.
+  for `--help` text and as fallback values passed to `resolve_config()`.
 
 ### Command functions (`cmds/` submodule)
 

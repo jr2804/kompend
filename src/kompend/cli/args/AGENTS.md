@@ -7,7 +7,7 @@
 
 Centralize all CLI argument definitions (`Annotated` type aliases) into domain-organized modules for improved discoverability and maintainability.
 
-Every Typer option, argument, and flag definition lives here — never inline in a command function.
+Every Cyclopts option, argument, and flag definition lives here — never inline in a command function.
 
 ## Ownership
 
@@ -43,7 +43,7 @@ Arguments organized by domain/command group:
 
 ### Import rules
 
-- Import only `typer` and `Annotated` from external packages
+- Import only `cyclopts` and `Annotated` from external packages
 - Never import core modules (e.g., `kompend.core`, `kompend.lint`, `kompend.llm`)
 - Cross-module imports within args/ are acceptable (e.g., `from kompend.cli.args.common import Verbose`)
 - Command modules import from this package: `from kompend.cli.args import QueryText, ConfigPath`
@@ -54,24 +54,38 @@ All argument definitions follow this pattern:
 
 ```python
 from typing import Annotated
-import typer
+from cyclopts import Parameter
 
 DEFAULT_CHUNK_SIZE = 512
 
 ChunkSize = Annotated[
     int,
-    typer.Option(
-        DEFAULT_CHUNK_SIZE,
-        "--chunk-size",
+    Parameter(
+        name="--chunk-size",
         help="Size in tokens for document chunks.",
     ),
 ]
 ```
 
 - **Annotated** wraps the Python type (int, str, bool, etc.)
-- **Option/Argument** specifies CLI behavior
-- **Default value** is a module constant, never a literal
+- **Parameter** specifies CLI behaviour (`name=`, `help=`, `env_var=`, `group=`, `validator=`)
+- **Default value** is the command parameter's default, never a literal in the alias
 - **Help text** is mandatory and describes what the flag does
+
+Cyclopts has no `typer.Option(default, ...)`: the default lives on the command
+function. Aliases only describe the *shape* of the flag.
+
+### Positional vs keyword-only
+
+Cyclopts infers positionality from the signature, not the alias:
+
+- A command that takes a value is positional (`ParseFiles`, `MemoryQuery`, `PackName`).
+- Everything declared with a `--name` (or `-x`) in `Parameter(name=...)` must sit
+  **after `*`** in the signature, or Cyclopts will bind it positionally:
+
+```python
+def parse_cmd(files: ParseFiles, *, recursive: RecursiveScan = None) -> None: ...
+```
 
 ### Bool flag pattern
 
@@ -82,26 +96,31 @@ Two flavors, chosen by whether the flag has a config default:
 ```python
 Verify = Annotated[
     bool | None,
-    typer.Option(
-        "--verify/--no-verify",
+    Parameter(
+        name="--verify",
         help="... Default: on; --no-verify skips.",
     ),
 ]
 ```
 
+- Name the alias with the **positive** spelling; Cyclopts generates the
+  `--no-<name>` twin for `bool` and `bool | None`.
 - Default `None` means "not passed" — the resolved value comes from
   `kompend.core.config.DEFAULTS`, never from the flag.
-- Both directions override config: `--flag` → True, `--no-flag` → False.
+- Both directions override config: `--verify` → True, `--no-verify` → False.
 - `build_cli_overrides` (in `_shared.py`) uses `if val is not None:` so a
   `False` from `--no-X` is honored, not swallowed.
 - Exception: negative-idiomatic flags keep the negative form primary —
-  `--no-cache/--cache`, `--no-privacy/--privacy`.
+  `--no-cache/--cache`, `--no-privacy/--privacy` (declare `name="--cache"`).
 
 **One-shot action → plain `bool` with `--flag` (no `--no-*`):**
 
 `verbose`, `json`, `fix`, `dry-run`, `open`, `git`, `bare`, `list-tiers`,
 `elements`, `raw`, `adaptive`, `remember`. These are off by default and
-  represent a single action this run, not a persistent toggle.
+  represent a single action this run, not a persistent toggle. Declare
+  `negative=""` on the `Parameter` to suppress the generated `--no-*` twin
+  (Cyclopts otherwise adds it for every bool, including list-valued options,
+  which would surface as a meaningless `--empty-<name>`).
 
 ### Reuse via re-export
 
@@ -126,7 +145,7 @@ These live in `common.py` and are imported by multiple command modules:
 
 ### Help panels
 
-Options rendered into named groups in `--help` via `rich_help_panel=`.
+Options rendered into named panels in `--help` via `group=`.
 Canonical panel names (compile command):
 
 - `Project` — wiki dir, config path, `--set` overrides

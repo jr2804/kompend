@@ -1,6 +1,6 @@
 # CLI Reference
 
-kompend provides a Typer-based CLI with the following commands:
+kompend provides a Cyclopts-based CLI with the following commands:
 
 | Command | Description |
 |---------|-------------|
@@ -42,17 +42,22 @@ kompend provides a Typer-based CLI with the following commands:
 |------|-------------|
 | `--version`, `-v` | Show version and exit |
 | `--wiki-dir`, `-w` | Set project root — `sources/`, `wiki/`, `.kompend/` resolved from here |
+| `--config`, `-c` | Use an explicit config file instead of the discovered one |
+| `--no-user-tracking` | Do not record the OS user in metadata for this run |
 | `--verbose` | Show full tracebacks for errors (fatal crashes and recoverable parse failures). Default is a one-line error. |
-| `--help` | Show help message and exit |
+| `--help` | Show help message and exit (`-h` is **not** registered, so a mistyped short flag fails instead of printing help) |
+| `--install-completion` | Install shell completion for the detected shell |
+| `--show-completion` | Print the completion script (`--shell bash|zsh|fish|powershell` to choose) |
 
 `--wiki-dir` can also be set via the `KOMP_WIKI_DIR` environment variable,
 `--config` via `KOMP_CONFIG`, and `--verbose` via `KOMP_VERBOSE=1`.
 
-The run-level flags go **before** the sub-command, because they configure the
-whole invocation rather than one command:
+The run-level flags are accepted **before or after** the sub-command, because
+they configure the whole invocation rather than one command:
 
 ```bash
 kompend --wiki-dir ~/notes --config ~/alt.toml lint all
+kompend lint all --wiki-dir ~/notes
 ```
 
 Errors are **quiet by default**: a failed parse logs a single
