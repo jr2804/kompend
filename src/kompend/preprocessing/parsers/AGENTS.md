@@ -15,7 +15,7 @@ imported on demand (`_ensure_backend`), never at package-import time, so CLI
 
 ```text
 base.py            BaseParser, FileExtension (extensions only), known_extension(), ParserRouter,
-                   DPI/IMAGE_SCALE constants
+                   assert_text_source() + BinarySourceError (intake guard), DPI/IMAGE_SCALE constants
 markdown.py        element_to_markdown()/markdown_to_element() — the wrap/unwrap pair used for
                    rumdl whole-part normalisation; no Markdown→element converter lives here
                    anymore (parsecraft maps its IR directly)
@@ -89,6 +89,15 @@ handed to the backend byte-wise (`parse_target_path`, in
 only decides which bytes that backend receives. Upstream issue #3 — a raise
 on an unknown suffix dropped every code file the backend reads.
 
+One gate exists at intake (`assert_text_source`, called from
+`ParserRouter.parse` and `parse_target_path`): a suffix the table knows as
+text whose bytes sniff as binary (binaryornot) is a mislabelled file — a
+PDF named `.md` must fail loudly (`BinarySourceError`, a `ValueError`),
+not succeed as U+FFFD soup (knox-rtmn). The gate is deliberately narrow:
+unknown suffixes and honest binary containers pass untouched; text
+judgement accepts UTF-16, so the encoding layer's charset-normalizer
+fallback keeps working.
+
 ### Registration — cycle avoidance
 
 `_registry.py` imports **no parser class** (that would cycle). Each parser module
@@ -154,5 +163,5 @@ description to `metadata["description"]`, which flows via `extractors.py` →
 
 ## Verification
 
-- `uv run pytest tests/unit/test_parser_registry.py tests/unit/test_parser_options_surfaces.py tests/unit/test_parsecraft_parser.py -x`
+- `uv run pytest tests/unit/test_parser_registry.py tests/unit/test_parser_options_surfaces.py tests/unit/test_parsecraft_parser.py tests/unit/test_intake_binary_guard.py -x`
 - `uv run python -c "from kompend.preprocessing.parsers._registry import PARSER_BACKENDS; print(sorted(PARSER_BACKENDS))"` — registration fires without error
