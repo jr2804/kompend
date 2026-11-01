@@ -11,12 +11,18 @@ declares.
 from __future__ import annotations
 
 import importlib
+import logging
 import os
 import sys
+import threading
+from collections.abc import Callable
+from types import TracebackType
+from typing import Any, Protocol, cast
 
 import kompend
 from kompend.cli._registry import OnDemandModule
 from kompend.core.env import EnvVar
+from kompend.logging import get_logger
 
 #: The flags the meta app's eager version option answers on their own.
 _VERSION_FLAGS = frozenset({"--version", "-v"})
@@ -41,12 +47,26 @@ _THREAD_POOL_ENV_VARS = (
 _DEFAULT_THREAD_CAP = 8
 
 
+#: What ``logging`` calls an exc_info triple: (type, value, traceback).
+_ExcInfo = tuple[type[BaseException] | None, BaseException | None, TracebackType | None]
+
+
+class _Unraisable(Protocol):
+    """The parts of ``sys.UnraisableHookArgs`` this hook reads."""
+
+    exc_type: type[BaseException] | None
+    exc_value: BaseException | None
+    exc_traceback: TracebackType | None
+    object: object
+
+
 def main() -> None:
     """Run the CLI; a lone version flag never imports the command tree."""
     _cap_thread_pools()
     if len(sys.argv) == 2 and sys.argv[1] in _VERSION_FLAGS:
         print(kompend.__version__)
         return
+    _install_failure_hooks()
     importlib.import_module(OnDemandModule.APP.value).main()
 
 
@@ -60,3 +80,56 @@ def _cap_thread_pools() -> None:
     cap = requested.strip() or str(min(_DEFAULT_THREAD_CAP, os.cpu_count() or 1))
     for name in _THREAD_POOL_ENV_VARS:
         os.environ.setdefault(name, cap)
+
+
+def _install_failure_hooks() -> None:
+    """Report a dying thread or an ignored exception through the log.
+
+    CPython's own reporters print a header and then format the traceback. When the
+    failure that killed the thread is an allocation failure, formatting allocates
+    too, so the report never appears: the interpreter falls through to its
+    backstops and prints ``Exception in threading.excepthook:``,
+    ``Exception ignored in thread started by …`` and
+    ``Exception ignored in sys.unraisablehook`` — a spray of headers with no
+    traceback and no thread name. Routing both hooks through the logger makes the
+    next occurrence readable, and costs nothing until something dies.
+    """
+    threading.excepthook = _log_thread_failure
+    sys.unraisablehook = cast("Any", _log_unraisable)
+
+
+def _log_thread_failure(args: threading.ExceptHookArgs) -> None:
+    """Log an uncaught thread failure; never replace it with a reporting failure."""
+    name = args.thread.name if args.thread is not None else "unknown"
+    _report(
+        f"thread {name} died: {args.exc_value!r}",
+        (args.exc_type, args.exc_value, args.exc_traceback),
+        fallback=lambda: threading.__excepthook__(args),
+    )
+
+
+def _log_unraisable(unraisable: _Unraisable) -> None:
+    """Log an exception nobody could catch (a ``__del__`` or a finalizer)."""
+    _report(
+        f"unraisable exception in {unraisable.object!r}: {unraisable.exc_value!r}",
+        (unraisable.exc_type, unraisable.exc_value, unraisable.exc_traceback),
+        fallback=lambda: sys.__unraisablehook__(cast("Any", unraisable)),
+    )
+
+
+def _report(message: str, info: _ExcInfo, *, fallback: Callable[[], object]) -> None:
+    """Write one failure line with its traceback, or hand it to the interpreter.
+
+    The fallback exists for the reporter itself: a log handler that cannot write
+    (a closed stream, a starved allocator) must not swallow the original failure,
+    so the interpreter's own reporter gets a second chance.
+    """
+    try:
+        _failure_logger().error("%s", message, exc_info=cast("Any", info))
+    except BaseException:  # noqa: BLE001 - reporting must not replace the report
+        fallback()
+
+
+def _failure_logger() -> logging.Logger:
+    """The logger, imported here so a bare ``--version`` never pulls in Rich."""
+    return get_logger(__name__)

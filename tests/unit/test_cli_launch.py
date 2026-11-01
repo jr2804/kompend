@@ -1,9 +1,13 @@
-"""The launcher's thread-pool cap and its version fast path."""
+"""The launcher's thread-pool cap, its version fast path and its failure hooks."""
 
 from __future__ import annotations
 
 import os
+import sys
+import threading
 from collections.abc import Callable
+from types import SimpleNamespace
+from typing import cast
 
 import pytest
 
@@ -92,6 +96,77 @@ class TestVersionFastPath:
         launch.main()
 
         assert calls == ["main"]
+
+
+class TestFailureHooks:
+    """A dying thread must name itself and show its traceback.
+
+    The interpreter's own reporter prints a header and *then* formats the
+    traceback, so an allocation failure kills the report as well: all that
+    survives is a spray of ``Exception in thread …`` / ``Exception in
+    threading.excepthook:`` headers with nothing under them.
+    """
+
+    def test_installing_replaces_both_hooks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(threading, "excepthook", threading.__excepthook__)
+        monkeypatch.setattr(sys, "unraisablehook", sys.__unraisablehook__)
+
+        launch._install_failure_hooks()
+
+        assert threading.excepthook is launch._log_thread_failure
+        assert sys.unraisablehook is launch._log_unraisable
+
+    def test_a_dead_thread_is_logged_with_its_name_and_error(self, caplog: pytest.LogCaptureFixture) -> None:
+        error = ValueError("boom")
+        args = SimpleNamespace(
+            exc_type=ValueError,
+            exc_value=error,
+            exc_traceback=error.__traceback__,
+            thread=SimpleNamespace(name="Thread-1"),
+        )
+
+        with caplog.at_level("ERROR", logger="kompend.cli.launch"):
+            launch._log_thread_failure(cast("threading.ExceptHookArgs", args))
+
+        message = caplog.records[0].getMessage()
+        assert "thread Thread-1 died" in message
+        assert "boom" in message
+
+    def test_an_unraisable_exception_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
+        unraisable = SimpleNamespace(
+            exc_type=RuntimeError,
+            exc_value=RuntimeError("no __del__ for you"),
+            exc_traceback=None,
+            object=object(),
+        )
+
+        with caplog.at_level("ERROR", logger="kompend.cli.launch"):
+            launch._log_unraisable(unraisable)
+
+        assert "unraisable exception" in caplog.records[0].getMessage()
+
+    def test_a_failing_report_falls_back_to_the_interpreter(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fallbacks: list[str] = []
+        monkeypatch.setattr(launch, "_failure_logger", _Exploding)
+        args = SimpleNamespace(
+            exc_type=ValueError,
+            exc_value=ValueError("boom"),
+            exc_traceback=None,
+            thread=SimpleNamespace(name="Thread-1"),
+        )
+        monkeypatch.setattr(threading, "__excepthook__", lambda _args: fallbacks.append("excepthook"))
+
+        launch._log_thread_failure(cast("threading.ExceptHookArgs", args))
+
+        assert fallbacks == ["excepthook"]
+
+
+class _Exploding:
+    """A logger whose write fails, as a closed or starved handler would."""
+
+    @staticmethod
+    def error(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("the reporter cannot write")
 
 
 @pytest.fixture(autouse=True)
