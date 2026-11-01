@@ -291,6 +291,26 @@ WARNING  scan-2024.pdf: 2 page(s) hold images but produced no text (4, 5).
          page 5: ... Engine said: OCR models are not installed (docling-ocr-unavailable)
 ```
 
+A page can also come back empty *without* the adapter saying anything, and
+parsecraft reports that on a third surface: a `degraded-empty-output` quality
+signal (`score=0.0`, detail `"<backend> returned no content for a page that
+needs OCR"`) on the document. It has no markdown projection, so the quality
+list is where it has to be read from, and it is suppressed on any page whose
+adapter already explained itself — the same page never reports both. kompend
+quotes it as `Executor said: …` next to the routing reason.
+
+The whole split, in parsecraft's own terms:
+
+| Situation | Surface | Exit |
+|-----------|---------|------|
+| Routing refused OCR or chose native | `degraded-blank-page` page route | 0 |
+| OCR-capable parser ran, returned nothing, adapter silent | `degraded-empty-output` quality signal | 0 |
+| OCR-capable parser ran, returned nothing, adapter explained why | page `diagnostics` (`docling-ocr-unavailable`) | 0 |
+| Every candidate raised (OOM, missing extra) | page `pipeline-all-passes-failed` diagnostic + document quality signal | 1 |
+
+The last row is a hard failure, not an empty page: kompend raises instead of
+storing a placeholder, so a crashed backend never looks like a blank page.
+
 The quoted reason is the router's, so the message names the actual cause
 instead of suggesting a remedy that may already be installed:
 
@@ -308,7 +328,9 @@ instead of suggesting a remedy that may already be installed:
   things decide whether a page is read. *Memory*: the shipped OCR backends
   rasterise at 300 dpi and parsecraft's own benchmarks show 4 of 5 requesting
   52–118 GiB on an 8 GB card (pc-da0), so an eligible harness can still OOM —
-  `docling` reads scans on CPU and is the safe choice there. *Model files*:
+  `docling` reads scans on CPU and is the safe choice there (safe by
+  availability, not by speed: `ocr-qianfan` also completes the fixture set,
+  at 689–939 s per two-page document). *Model files*:
   docling-rs downloads layout and OCR weights separately, so a cache can hold
   `layout_heron.onnx` and none of `ocr_det.onnx`, `ocr_rec.onnx`,
   `ocr_rec_en.onnx`, `ocr_textline_ori.onnx`, `ppocr_keys_v1.txt` — pages then

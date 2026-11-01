@@ -91,6 +91,12 @@ _JUDGE_ERROR_EXCERPT_CHARS = 160
 #: exports no symbol for it, so the literal lives here, once.
 DEGRADED_BLANK_PAGE = "degraded-blank-page"
 
+# The executor's companion to the routing marker: an OCR-capable backend ran and
+# returned nothing without explaining itself. parsecraft uses this literal for the
+# comparison inside its own CLI but does not re-export the constant from
+# ``parsecraft.pipeline`` yet, so the spelling lives here once (pc-1 has the ask).
+DEGRADED_EMPTY_OUTPUT = "degraded-empty-output"
+
 logger = get_logger(__name__)
 
 
@@ -573,13 +579,35 @@ def _warn_on_empty_pages(
     if not unreadable_pages:
         return
     logger.warning(
-        "%s: %d page(s) hold images but produced no text (%s).%s%s",
+        "%s: %d page(s) hold images but produced no text (%s).%s%s%s",
         source_file.name,
         len(unreadable_pages),
         ", ".join(str(page) for page in unreadable_pages),
         _routing_reasons(plan, unreadable_pages),
         _page_diagnostics(document, unreadable_pages),
+        _empty_output_detail(document, unreadable_pages),
     )
+
+
+def _empty_output_detail(document: DocumentResult, page_numbers: list[int]) -> str:
+    """What the executor said when a capable backend simply returned nothing.
+
+    ``degraded-empty-output`` is a *quality signal*, not a page diagnostic: the
+    executor adds it when an ``ocr_capable`` backend produced no content for a
+    page that needs OCR, and it suppresses it on any page whose adapter already
+    explained itself, so the two never describe the same page. It has no
+    markdown projection, which makes ``document.quality`` the only place it can
+    reach a user.
+    """
+    wanted = set(page_numbers)
+    details = {
+        f"{signal.detail} ({signal.name})"
+        for signal in document.quality
+        if signal.page_number in wanted and signal.name == DEGRADED_EMPTY_OUTPUT and signal.detail
+    }
+    if not details:
+        return ""
+    return f" Executor said: {'; '.join(sorted(details))}"
 
 
 def _page_diagnostics(document: DocumentResult, page_numbers: list[int]) -> str:

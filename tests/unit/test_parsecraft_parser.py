@@ -41,6 +41,7 @@ from parsecraft.ir.models import (
     DocumentResult,
     PageResult,
     PageSignal,
+    QualitySignal,
     StructuredChunk,
 )
 from parsecraft.pipeline import MEDIA_TYPES
@@ -365,6 +366,29 @@ class TestEmptyPages:
         warned = "\n".join(r.getMessage() for r in caplog.records if "produced no text" in r.getMessage())
         assert "OCR models are not installed (docling-ocr-unavailable)" in warned
 
+    def test_executor_empty_output_is_quoted(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A silent empty result is a quality signal, not a diagnostic: still say it."""
+        pages = [_page(1, [_chunk(ChunkKind.PARAGRAPH, "Body")]), _page(2, [])]
+        quality = [
+            QualitySignal(
+                name="degraded-empty-output",
+                score=0.0,
+                page_number=2,
+                detail="docling returned no content for a page that needs OCR",
+            )
+        ]
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            self._parsing(parser, monkeypatch, pages, images={2: 1}, quality=quality).parse(markdown_file)
+
+        warned = "\n".join(r.getMessage() for r in caplog.records if "produced no text" in r.getMessage())
+        assert "Executor said: docling returned no content for a page that needs OCR (degraded-empty-output)" in warned
+
     def test_empty_pages_stay_json_serializable(
         self,
         parser: Any,
@@ -392,8 +416,9 @@ class TestEmptyPages:
         images: dict[int, int] | None = None,
         reasons: dict[int, str] | None = None,
         blank: set[int] | None = None,
+        quality: list[QualitySignal] | None = None,
     ) -> Any:
-        document = _document(pages)
+        document = _document(pages, quality)
         analysis = _analysis(pages, images or {})
         plan = _plan(reasons or {}, blank or set())
         monkeypatch.setattr(_adapter(), "analyze_source", lambda *args, **kwargs: analysis)
@@ -1189,7 +1214,7 @@ def _chunk(
     )
 
 
-def _document(pages: list[PageResult]) -> DocumentResult:
+def _document(pages: list[PageResult], quality: list[QualitySignal] | None = None) -> DocumentResult:
     return DocumentResult(
         metadata=DocumentMetadata(
             source_uri="file:///t.txt",
@@ -1202,6 +1227,7 @@ def _document(pages: list[PageResult]) -> DocumentResult:
             schema_version="1",
         ),
         pages=pages,
+        quality=quality or [],
     )
 
 
