@@ -63,5 +63,11 @@ from re-litigating settled questions.
 
 ### Release versioning
 
-Calver `YYYY.M.D` / `YYYY.M.D.N` — no zero-padding, no `v` prefix. See
-`.forgejo/workflows/release.yml`.
+Calver `YYYY.M.N` — no zero-padding, no `v` prefix; `N` is a per-month counter,
+not the day. `.github/workflows/release.yml` cuts a release on EVERY push to
+`main` (unless the head commit contains `[skip release]`): it derives `N` as the
+month's highest tag + 1, creates the tag itself, publishes to PyPI via trusted
+publishing, and opens the GitHub release. **Never hand-create a calver tag** —
+the workflow owns tagging, and a manual tag races the compute step (2026-11-01:
+a hand-pushed `2026.11.1` made the workflow release `2026.11.2` for the same
+commit and left a phantom tag, deleted afterwards).
