@@ -338,6 +338,33 @@ class TestEmptyPages:
         assert doc.metadata["empty_pages"] == []
         assert not [r for r in caplog.records if "produced no text" in r.getMessage()]
 
+    def test_warning_quotes_the_engine_diagnostic(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A half-installed OCR cache is explained by the engine, so quote it."""
+        pages = [
+            _page(1, [_chunk(ChunkKind.PARAGRAPH, "Body")]),
+            PageResult(
+                page_number=2,
+                diagnostics=[
+                    Diagnostic(
+                        level=DiagnosticLevel.WARNING,
+                        code="docling-ocr-unavailable",
+                        message="OCR models are not installed",
+                    )
+                ],
+            ),
+        ]
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            self._parsing(parser, monkeypatch, pages, images={2: 1}).parse(markdown_file)
+
+        warned = "\n".join(r.getMessage() for r in caplog.records if "produced no text" in r.getMessage())
+        assert "OCR models are not installed (docling-ocr-unavailable)" in warned
+
     def test_empty_pages_stay_json_serializable(
         self,
         parser: Any,

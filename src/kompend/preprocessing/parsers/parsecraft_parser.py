@@ -206,7 +206,7 @@ class ParsecraftParser:
         elements = _map_document(document, source_file)
         empty_pages = _empty_pages(document)
         blank_pages, unreadable_pages = _classify_empty_pages(empty_pages, analysis, result.plan)
-        _warn_on_empty_pages(source_file, unreadable_pages, blank_pages, result.plan)
+        _warn_on_empty_pages(source_file, unreadable_pages, blank_pages, result.plan, document)
         self._warn_on_ignored_backend_options(_winning_backends(result.groups), media_type, elements)
 
         return ParsedDocument(
@@ -540,6 +540,7 @@ def _warn_on_empty_pages(
     unreadable_pages: list[int],
     blank_pages: list[int],
     plan: RoutingPlan | None,
+    document: DocumentResult,
 ) -> None:
     """Say out loud when pages that *had something to read* contributed nothing.
 
@@ -557,9 +558,10 @@ def _warn_on_empty_pages(
       engine is not installed on this host)") instead of guessing at the remedy.
 
     Zero content instead of an exception stays possible for either case: a
-    backend with no OCR path, or an upstream defect such as parsecraft's docling
-    backend returning an empty page for a scanned PDF (filed upstream as
-    pc-04u).
+    backend with no OCR path, or an upstream defect that returns an empty page
+    for a scanned PDF (pc-04u). When the engine explains itself on the page —
+    docling-rs reports ``docling-ocr-unavailable`` for a half-installed model
+    cache — that explanation is quoted instead of being replaced by advice.
     """
     if blank_pages:
         logger.debug(
@@ -571,12 +573,35 @@ def _warn_on_empty_pages(
     if not unreadable_pages:
         return
     logger.warning(
-        "%s: %d page(s) hold images but produced no text (%s).%s",
+        "%s: %d page(s) hold images but produced no text (%s).%s%s",
         source_file.name,
         len(unreadable_pages),
         ", ".join(str(page) for page in unreadable_pages),
         _routing_reasons(plan, unreadable_pages),
+        _page_diagnostics(document, unreadable_pages),
     )
+
+
+def _page_diagnostics(document: DocumentResult, page_numbers: list[int]) -> str:
+    """What the engine itself said about these pages, if anything.
+
+    A backend can return an empty page without failing: docling-rs reports a
+    partially installed model cache as ``docling-ocr-unavailable`` on the page
+    and then converts nothing. That diagnostic is the only place a user learns
+    the difference between "this page is unreadable" and "your OCR weights are
+    half-downloaded", so it is quoted rather than replaced by advice.
+    """
+    wanted = set(page_numbers)
+    messages = {
+        f"{diagnostic.message} ({diagnostic.code})"
+        for page in document.pages
+        if page.page_number in wanted
+        for diagnostic in page.diagnostics
+        if diagnostic.message
+    }
+    if not messages:
+        return ""
+    return f" Engine said: {'; '.join(sorted(messages))}"
 
 
 def _routing_reasons(plan: RoutingPlan | None, page_numbers: list[int]) -> str:

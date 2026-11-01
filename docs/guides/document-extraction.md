@@ -287,7 +287,8 @@ still comes back empty without that verdict is treated as unread.
 
 ```text
 WARNING  scan-2024.pdf: 2 page(s) hold images but produced no text (4, 5).
-         Routing said: page 4: no usable native text (blank/garbled); OCR pass docling; ...
+         Routing said: page 4: no usable native text (blank/garbled); OCR pass docling;
+         page 5: ... Engine said: OCR models are not installed (docling-ocr-unavailable)
 ```
 
 The quoted reason is the router's, so the message names the actual cause
@@ -303,6 +304,16 @@ instead of suggesting a remedy that may already be installed:
   A convert-tier backend that reads images itself (`docling`, `mineru`,
   `marker`) is the fallback, named with `only_backend = "docling"` (or
   `preferred_backend`) alongside `parsecraft_allow_ocr = true`.
+- **"But the OCR backends are installed"**: with the `ocr` extra, two further
+  things decide whether a page is read. *Memory*: the shipped OCR backends
+  rasterise at 300 dpi and parsecraft's own benchmarks show 4 of 5 requesting
+  52–118 GiB on an 8 GB card (pc-da0), so an eligible harness can still OOM —
+  `docling` reads scans on CPU and is the safe choice there. *Model files*:
+  docling-rs downloads layout and OCR weights separately, so a cache can hold
+  `layout_heron.onnx` and none of `ocr_det.onnx`, `ocr_rec.onnx`,
+  `ocr_rec_en.onnx`, `ocr_textline_ori.onnx`, `ppocr_keys_v1.txt` — pages then
+  come back empty with no exception. That state is now reported: the warning
+  quotes the engine's own `docling-ocr-unavailable` diagnostic.
 - **Every page empty** on a file that clearly has text: the source is an image
   bundle, not a document — kompend raises rather than storing an empty document
   when no element at all survives the parse.
