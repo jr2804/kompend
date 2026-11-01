@@ -40,13 +40,15 @@ from parsecraft.ir.models import (
     DocumentMetadata,
     DocumentResult,
     PageResult,
+    PageSignal,
     StructuredChunk,
 )
 from parsecraft.pipeline import MEDIA_TYPES
+from parsecraft.pipeline.analysis import AnalysisResult
 from parsecraft.pipeline.models import PageGroup
 from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
-from parsecraft.routing.models import Intent  # noqa: E402 — guarded by the importorskip above
+from parsecraft.routing.models import Intent, PageRoute, RoutingPlan  # noqa: E402 — guarded by the importorskip above
 
 from kompend.core.config import ParsecraftEffort, ParsecraftJudge, ParsecraftPreference
 from kompend.core.models import ElementType
@@ -195,17 +197,23 @@ class TestFailureShapes:
 
 
 class TestEmptyPages:
-    """An image-only page returns empty instead of raising, and that must be visible.
+    """A page that produced no text must be visible — but only when it lost something.
 
     A backend can answer a scanned page with zero content rather than an error —
     for example parsecraft's docling backend on an image-only PDF, which exits
     clean with an empty page (filed upstream as pc-04u). The document then parses
-    "successfully" and is simply shorter than the source. The adapter records the
-    page numbers and says so once per file, because a silent shortfall is the one
-    failure nobody can attribute later.
+    "successfully" and is simply shorter than the source.
+
+    The opposite mistake is loud and useless: ITU-T PDFs are full of deliberate
+    blank separator pages, and warning "install the ocr extra" for a page that
+    holds no text *and no images* accuses a working setup of a bug it cannot fix
+    (knox-dizo). The planner owns that split — `degradation_code ==
+    degraded-blank-page` means "nothing to lose" — with `image_count == 0` only as
+    the fallback for a route that carries no degradation. Unread pages are warned
+    once per file, quoting parsecraft's own routing reason.
     """
 
-    def test_empty_page_is_recorded_and_warned(
+    def test_page_with_images_is_recorded_and_warned(
         self,
         parser: Any,
         markdown_file: Path,
@@ -214,14 +222,73 @@ class TestEmptyPages:
     ) -> None:
         pages = [_page(1, [_chunk(ChunkKind.PARAGRAPH, "Text")]), _page(2, [])]
         with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
-            doc = self._parsing(parser, monkeypatch, pages).parse(markdown_file)
+            doc = self._parsing(parser, monkeypatch, pages, images={1: 0, 2: 3}).parse(markdown_file)
         assert doc.metadata["empty_pages"] == [2]
-        warnings = [r.getMessage() for r in caplog.records if "produced no text" in r.getMessage()]
+        assert doc.metadata["unreadable_pages"] == [2]
+        assert doc.metadata["blank_pages"] == []
+        warnings = [r.getMessage() for r in caplog.records if "hold images but produced no text" in r.getMessage()]
         assert len(warnings) == 1, warnings
         assert "1 page(s)" in warnings[0]
         assert "(2)" in warnings[0]
 
-    def test_warning_names_every_empty_page_once(
+    def test_blank_page_is_recorded_without_a_warning(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """No text and no images: a separator page. Nothing was lost, so say nothing loud."""
+        pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
+        with caplog.at_level("DEBUG", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            doc = self._parsing(parser, monkeypatch, pages, images={1: 0, 2: 0}).parse(markdown_file)
+        assert doc.metadata["empty_pages"] == [1]
+        assert doc.metadata["blank_pages"] == [1]
+        assert doc.metadata["unreadable_pages"] == []
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+        assert [r.getMessage() for r in caplog.records if "blank page(s)" in r.getMessage()]
+
+    def test_planner_blank_marker_wins_over_analysis_signals(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A page the planner marked blank is blank even if it carries images.
+
+        The signals say image_count=1 (which alone would read as "unread"); the
+        planner already decided there is nothing to lose. Recombining the signals
+        here would re-derive a rule it applied, and warn about a page better left
+        alone.
+        """
+        pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            doc = self._parsing(
+                parser,
+                monkeypatch,
+                pages,
+                images={1: 1, 2: 0},
+                reasons={1: "page 1: blank page: no text or images to lose; first pass liteparse"},
+                blank={1},
+            ).parse(markdown_file)
+        assert doc.metadata["blank_pages"] == [1]
+        assert doc.metadata["unreadable_pages"] == []
+        assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+    def test_page_without_a_signal_counts_as_unread(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Silence is not evidence of emptiness — an unanalysed page stays warned."""
+        pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
+        doc = self._parsing(parser, monkeypatch, pages, images={2: 0}).parse(markdown_file)
+        assert doc.metadata["unreadable_pages"] == [1]
+        assert doc.metadata["blank_pages"] == []
+
+    def test_warning_names_every_unreadable_page_once(
         self,
         parser: Any,
         markdown_file: Path,
@@ -236,11 +303,27 @@ class TestEmptyPages:
             _page(4, []),
         ]
         with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
-            doc = self._parsing(parser, monkeypatch, pages).parse(markdown_file)
-        assert doc.metadata["empty_pages"] == [1, 3, 4]
-        warnings = [r.getMessage() for r in caplog.records if "produced no text" in r.getMessage()]
+            doc = self._parsing(parser, monkeypatch, pages, images={1: 1, 2: 0, 3: 2, 4: 1}).parse(markdown_file)
+        assert doc.metadata["unreadable_pages"] == [1, 3, 4]
+        warnings = [r.getMessage() for r in caplog.records if "hold images but produced no text" in r.getMessage()]
         assert len(warnings) == 1, warnings
         assert "(1, 3, 4)" in warnings[0]
+
+    def test_warning_quotes_the_routing_reason(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The remedy comes from the planner, not from a guess in the adapter."""
+        pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
+        reasons = {1: "OCR unavailable (the tesseract engine is not installed on this host); degraded to native"}
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            self._parsing(parser, monkeypatch, pages, images={1: 1, 2: 0}, reasons=reasons).parse(markdown_file)
+        warnings = [r.getMessage() for r in caplog.records if "hold images but produced no text" in r.getMessage()]
+        assert len(warnings) == 1, warnings
+        assert "the tesseract engine is not installed on this host" in warnings[0]
 
     def test_silent_when_every_page_has_text(
         self,
@@ -262,20 +345,35 @@ class TestEmptyPages:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The metadata lands in the parse cache as JSON: a set or StrEnum breaks it."""
-        doc = self._parsing(parser, monkeypatch, [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "T", 2)])]).parse(markdown_file)
-        assert json.loads(json.dumps(doc.metadata))["empty_pages"] == [1]
+        doc = self._parsing(
+            parser,
+            monkeypatch,
+            [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "T", 2)])],
+            images={1: 0, 2: 0},
+        ).parse(markdown_file)
+        payload = json.loads(json.dumps(doc.metadata))
+        assert payload["empty_pages"] == [1]
+        assert payload["blank_pages"] == [1]
+        assert payload["unreadable_pages"] == []
 
     @staticmethod
     def _parsing(
         parser: Any,
         monkeypatch: pytest.MonkeyPatch,
         pages: list[PageResult],
+        *,
+        images: dict[int, int] | None = None,
+        reasons: dict[int, str] | None = None,
+        blank: set[int] | None = None,
     ) -> Any:
         document = _document(pages)
+        analysis = _analysis(pages, images or {})
+        plan = _plan(reasons or {}, blank or set())
+        monkeypatch.setattr(_adapter(), "analyze_source", lambda *args, **kwargs: analysis)
         monkeypatch.setattr(
             parser,
             "_execute_with_judge",
-            lambda *args, **kwargs: SimpleNamespace(document=document, groups=[]),
+            lambda *args, **kwargs: SimpleNamespace(document=document, groups=[], plan=plan),
         )
         return parser
 
@@ -1116,6 +1214,56 @@ def _claims_markdown(descriptor: Any) -> bool:
     """
     formats = {str(fmt) for fmt in (getattr(descriptor.capabilities, "supported_formats", ()) or ())}
     return "text/markdown" in formats
+
+
+def _analysis(pages: list[PageResult], images: dict[int, int]) -> AnalysisResult:
+    """Analysis signals for `pages`, with `images` mapping page number to image count.
+
+    A page missing from `images` deliberately gets no signal — that is how a host
+    that never analysed the page looks to the classifier.
+    """
+    blocks = {page.page_number: page.blocks for page in pages}
+    return AnalysisResult(
+        source_hash="a" * 64,
+        page_count=len(pages),
+        signals=[
+            PageSignal(
+                page_number=number,
+                has_native_text=bool(blocks.get(number)),
+                text_chars=sum(len(chunk.content) for chunk in blocks.get(number, [])),
+                image_count=count,
+                blank=not blocks.get(number) and count == 0,
+            )
+            for number, count in sorted(images.items())
+        ],
+        diagnostics=[],
+    )
+
+
+def _plan(reasons: dict[int, str], blank: set[int]) -> RoutingPlan | None:
+    """A routing plan whose per-page `reason` strings are exactly `reasons`.
+
+    Pages listed in `blank` carry the planner's `degraded-blank-page` verdict; the
+    rest carry no degradation code, which is what a native page normally looks
+    like.
+    """
+    if not reasons:
+        return None
+    return RoutingPlan(
+        primary="liteparse",
+        pages=[
+            PageRoute(
+                page_number=number,
+                intent=Intent.NATIVE,
+                candidates=["liteparse"],
+                chosen="liteparse",
+                reason=reason,
+                degradation_code=_adapter().DEGRADED_BLANK_PAGE if number in blank else None,
+                degradation_score=0.0 if number in blank else None,
+            )
+            for number, reason in sorted(reasons.items())
+        ],
+    )
 
 
 def _adapter() -> Any:

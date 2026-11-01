@@ -46,7 +46,7 @@ from parsecraft.pipeline import (
     media_type_for,
 )
 from parsecraft.pipeline.analysis import AnalysisResult
-from parsecraft.routing import NoEligibleBackendError, RoutingConstraints, RoutingError
+from parsecraft.routing import NoEligibleBackendError, RoutingConstraints, RoutingError, RoutingPlan
 from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from parsecraft.routing.judge_providers import JudgeError, resolve_judge
 from parsecraft.routing.models import RoutingPreference
@@ -85,6 +85,11 @@ _CHUNK_KIND_TO_ELEMENT: dict[ChunkKind, ElementType] = {
 #: provider errors with the full HTTP exchange; the first clause names the
 #: cause and the rest is noise in a per-file warning.
 _JUDGE_ERROR_EXCERPT_CHARS = 160
+
+#: parsecraft's page verdict for "this page holds nothing to lose" (no text and
+#: no images). The planner emits it as ``PageRoute.degradation_code``; parsecraft
+#: exports no symbol for it, so the literal lives here, once.
+DEGRADED_BLANK_PAGE = "degraded-blank-page"
 
 logger = get_logger(__name__)
 
@@ -200,7 +205,8 @@ class ParsecraftParser:
         document = result.document
         elements = _map_document(document, source_file)
         empty_pages = _empty_pages(document)
-        _warn_on_empty_pages(source_file, empty_pages)
+        blank_pages, unreadable_pages = _classify_empty_pages(empty_pages, analysis, result.plan)
+        _warn_on_empty_pages(source_file, unreadable_pages, blank_pages, result.plan)
         self._warn_on_ignored_backend_options(_winning_backends(result.groups), media_type, elements)
 
         return ParsedDocument(
@@ -217,6 +223,8 @@ class ParsecraftParser:
                     signal.page_number for signal in document.quality if signal.name.startswith("degraded-") and signal.page_number is not None
                 ),
                 "empty_pages": empty_pages,
+                "blank_pages": blank_pages,
+                "unreadable_pages": unreadable_pages,
             },
         )
 
@@ -527,24 +535,58 @@ def _parse_effort(effort: ParsecraftEffort | str) -> ParsecraftEffort:
     return ParsecraftEffort(effort)
 
 
-def _warn_on_empty_pages(source_file: Path, empty_pages: list[int]) -> None:
-    """Say out loud when pages contributed nothing at all.
+def _warn_on_empty_pages(
+    source_file: Path,
+    unreadable_pages: list[int],
+    blank_pages: list[int],
+    plan: RoutingPlan | None,
+) -> None:
+    """Say out loud when pages that *had something to read* contributed nothing.
 
-    An image-only page can come back with zero content instead of raising: a
+    Two different losses wear the same face, and only one of them is worth a
+    warning:
+
+    * a page with no text and **no images** is blank in the source — a separator
+      or a deliberately empty page. Nothing was lost, so nothing is said; a
+      warning here reads as a bug report against an OCR setup that cannot help,
+      which is exactly how a vault full of ITU-T separators produced a screenful
+      of "check the ocr extra" for pages that hold no ink (knox-dizo).
+    * a page with no text but **images** is unread: something is there and no
+      backend turned it into text. That is the case the warning exists for, and
+      it quotes parsecraft's own routing reason ("OCR unavailable (the tesseract
+      engine is not installed on this host)") instead of guessing at the remedy.
+
+    Zero content instead of an exception stays possible for either case: a
     backend with no OCR path, or an upstream defect such as parsecraft's docling
     backend returning an empty page for a scanned PDF (filed upstream as
-    pc-04u). Without this the loss stays invisible — the document parses
-    "successfully" and is simply shorter than the source.
+    pc-04u).
     """
-    if not empty_pages:
+    if blank_pages:
+        logger.debug(
+            "%s: %d blank page(s) (%s) — no text and no images, nothing to extract.",
+            source_file.name,
+            len(blank_pages),
+            ", ".join(str(page) for page in blank_pages),
+        )
+    if not unreadable_pages:
         return
     logger.warning(
-        "%s: %d page(s) produced no text (%s). A scanned or image-only page needs an OCR-capable backend; "
-        "check [ingest] parsecraft_allow_ocr and the ocr extra, or parse with a backend that reads images.",
+        "%s: %d page(s) hold images but produced no text (%s).%s",
         source_file.name,
-        len(empty_pages),
-        ", ".join(str(page) for page in empty_pages),
+        len(unreadable_pages),
+        ", ".join(str(page) for page in unreadable_pages),
+        _routing_reasons(plan, unreadable_pages),
     )
+
+
+def _routing_reasons(plan: RoutingPlan | None, page_numbers: list[int]) -> str:
+    """The planner's own words for why these pages produced nothing, if it said any."""
+    if plan is None:
+        return ""
+    reasons = {route.reason.strip() for route in plan.pages if route.page_number in set(page_numbers) and route.reason and route.reason.strip()}
+    if not reasons:
+        return ""
+    return f" Routing said: {'; '.join(sorted(reasons))}"
 
 
 def _empty_pages(document: DocumentResult) -> list[int]:
@@ -554,6 +596,30 @@ def _empty_pages(document: DocumentResult) -> list[int]:
     figure) and still say nothing.
     """
     return [page.page_number for page in document.pages if not any(_chunk_content(chunk) for chunk in page.blocks)]
+
+
+def _classify_empty_pages(empty_pages: list[int], analysis: AnalysisResult, plan: RoutingPlan | None) -> tuple[list[int], list[int]]:
+    """Split empty pages into blank-in-the-source and unread.
+
+    The planner owns this decision: ``degradation_code == degraded-blank-page``
+    means "nothing to lose" (parsecraft measured 527 s of OCR on one such page),
+    and recombining analysis signals here would re-derive a rule it already
+    applied. ``image_count`` is the fallback for a route that carries no
+    degradation at all — a page with neither text nor images cannot be read by
+    any backend. A page with neither a route nor a signal counts as unread:
+    silence is not evidence of emptiness.
+    """
+    codes = {route.page_number: route.degradation_code for route in plan.pages} if plan is not None else {}
+    images = {signal.page_number: signal.image_count for signal in analysis.signals}
+    blank: list[int] = []
+    unreadable: list[int] = []
+    for page_number in empty_pages:
+        code = codes.get(page_number)
+        if code == DEGRADED_BLANK_PAGE or (code is None and images.get(page_number, 1) == 0):
+            blank.append(page_number)
+        else:
+            unreadable.append(page_number)
+    return blank, unreadable
 
 
 def _map_document(document: DocumentResult, source_file: Path) -> list[DocumentElement]:
