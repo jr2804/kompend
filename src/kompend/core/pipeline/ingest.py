@@ -39,7 +39,11 @@ from kompend.core.text.rumdl import normalize_element_markdown
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup import DedupOrchestrator
-from kompend.preprocessing.parsers.base import ParserRouter, known_extension
+from kompend.preprocessing.parsers.base import (
+    ParserRouter,
+    assert_text_source,
+    known_extension,
+)
 from kompend.types import JSONDict
 
 # Length of the content-hash suffix appended to parse-cache keys.
@@ -305,18 +309,21 @@ def parse_target_path(source_file: Path, cache_dir: Path) -> Path:
     """The path a parser must read for *source_file*.
 
     The router has already decided that a backend claims the file, so this
-    never rejects a source — it only decides *which bytes* the parser
-    receives:
+    only decides *which bytes* the parser receives:
 
     - A format the table knows as text (``.md``, ``.txt``, ...) is handed
       over as UTF-8: the source itself when it already is UTF-8, otherwise
-      the normalized sibling in the encoding cache.
+      the normalized sibling in the encoding cache. One refusal: bytes that
+      sniff as binary are rejected via :func:`assert_text_source` — a
+      mislabelled file (a PDF named ``.md``) must not reach the text path
+      where lenient decoding turns it into a successful garbage parse
+      (knox-rtmn).
     - A format the table knows as a binary container (``.pdf``, ``.docx``,
       raster) is handed over byte-wise — charset detection would reject it.
     - A suffix the table does not know (source code: ``.c``, ``.h``,
       ``.py``) is handed over byte-wise as well: the backend that claimed
       it reads the bytes and decides. The format table classifies sources,
-      it never gates parsing.
+      it never gates parsing beyond that one mislabel refusal.
 
     Shared by the ingest tier and the tier-1 parse stage so the two cannot
     drift apart.
@@ -324,6 +331,11 @@ def parse_target_path(source_file: Path, cache_dir: Path) -> Path:
     extension = known_extension(source_file.suffix)
     if extension is None or not extension.is_text:
         return source_file
+    # The bytes check rides the text branch only: a source the table knows as
+    # text whose bytes sniff as binary is a mislabelled file (a PDF named
+    # ``.md``) — refuse it instead of normalizing U+FFFD soup into the parse
+    # (knox-rtmn). Binary containers never reach here.
+    assert_text_source(source_file)
     normalized, _encoding = normalize_to_utf8_path(source_file, cache_dir)
     return normalized
 

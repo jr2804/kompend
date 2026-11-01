@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from enum import StrEnum
 from pathlib import Path
 
+from binaryornot.check import is_binary
+
 from kompend.core.models import ParsedDocument
 from kompend.types import JSONValue
 
@@ -160,10 +162,50 @@ class ParserRouter:
 
     def parse(self, source_file: Path) -> ParsedDocument:
         """Parse *source_file* with the backend that claims it."""
+        assert_text_source(source_file)
         parser = self.route(source_file)
         if parser is None:
             raise ValueError(f"No parser found for {source_file}")
         return scrub_document(parser.parse(source_file))
+
+
+class BinarySourceError(ValueError):
+    """A source the format table classifies as text carries binary bytes.
+
+    Raised where intake can still refuse the file honestly (:meth:`ParserRouter.parse`,
+    :func:`kompend.core.pipeline.ingest.parse_target_path`). A :class:`ValueError`
+    subclass so the established ``except ValueError`` sites keep working, while
+    callers that care about the mislabel case can catch it precisely.
+    """
+
+
+def assert_text_source(source_file: Path) -> None:
+    """Refuse a text-classified source whose bytes are binary.
+
+    The router picks a backend from the extension alone, so a PDF named
+    ``.md`` reaches the text path: bytes are decoded leniently into a
+    U+FFFD soup and the parse *succeeds* with garbage content (were
+    ``except ValueError`` not in the way, it would crash any pipeline).
+    This guard closes the lie: a suffix the format table knows as text
+    (:data:`FileExtension.is_text`) whose first bytes sniff as binary is
+    refused before a backend can produce an untruthful result.
+
+    Deliberately narrow:
+
+    - Unknown suffixes pass — backends read more than the table lists
+      (``.c``, ``.py``; see :func:`known_extension`), and the backend
+      decides what its own extensions mean.
+    - Binary containers pass — their parsers consume bytes as bytes.
+    - Text is judged by :mod:`binaryornot`'s sniff (NUL bytes and
+      control-char ratios over the file head), the documented heuristic
+      for this check (issue knox-rtmn). It accepts UTF-16 text, so the
+      encoding layer keeps its charset-normalizer fallback.
+    """
+    extension = known_extension(source_file.suffix)
+    if extension is None or not extension.is_text:
+        return
+    if is_binary(str(source_file)):
+        raise BinarySourceError(f"{source_file}: extension claims text ({extension.value}) but the bytes are binary — file mislabelled?")
 
 
 def known_extension(suffix: str) -> FileExtension | None:

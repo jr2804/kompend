@@ -89,7 +89,7 @@ from kompend.core.utils.exceptions import LLMOutputError
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.pages.log import log_stage
 from kompend.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
-from kompend.preprocessing.parsers.base import ParserRouter
+from kompend.preprocessing.parsers.base import BinarySourceError, ParserRouter
 from kompend.rag import build_vector_index
 
 logger = get_logger(__name__)
@@ -121,6 +121,11 @@ def parse_cmd(
     for path in resolved:
         try:
             doc = router.parse(path)
+        except BinarySourceError as exc:
+            # The file's extension claims text but its bytes are binary —
+            # say that instead of the generic no-parser wording.
+            get_err_console().print(f"Mislabelled source: {exc}")
+            continue
         except ValueError as exc:
             # No backend claims the file, or every backend failed.
             get_err_console().print(f"No parser for {path}: {exc}")
