@@ -21,6 +21,7 @@ from kompend.core.keys import (
 )
 from kompend.core.models import ElementType, MetadataField, ParsedDocument
 from kompend.core.paths import VaultPaths
+from kompend.core.pipeline.bounded_parse import DeadlineWorker
 from kompend.core.pipeline.parse_cache import (
     PARSE_CACHE_PARSER_KEY,
     extract_text_from_cached,  # noqa: F401 — re-exported for capture.py
@@ -75,6 +76,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     rumdl_config: Path | None = None,
     flavor: str | None = None,
     cancel: CancelState | None = None,
+    parse_timeout_s: float = 0.0,
 ) -> IngestResult:
     """Parse every file and cache the structured documents.
 
@@ -126,6 +128,11 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         cancel: Optional cooperative cancellation token, checked between
             files; on cancel the accumulated tier-1 state is saved before
             ``KompendCancelled`` propagates.
+        parse_timeout_s: Wall-clock budget per file, in seconds. ``0``
+            (default) parses in-process; a positive value parses each file in a
+            child process that is killed on expiry, so a wedged backend costs
+            one file instead of the run (see
+            :mod:`kompend.core.pipeline.bounded_parse`).
 
     Returns:
         :class:`IngestResult` with counts and the cache directory source_file.
@@ -161,6 +168,11 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     dedup_orch: DedupOrchestrator | None = DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
     dedup_fps: dict[str, dict[str, Any]] = {}
 
+    # One deadline worker for the whole run: a child per file would pay the
+    # parser stack's import cost (seconds) on every source. It is a no-op when
+    # no budget is configured.
+    worker = DeadlineWorker(parse_timeout_s)
+
     for idx, source_file in enumerate(files):
         _check_cancel()
         if progress_fn is not None:
@@ -187,7 +199,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
 
         try:
             parse_target = parse_target_path(source_file, cache_dir)
-            doc = parser.parse(parse_target)
+            doc = worker.parse(parser, parse_target)
             restore_source_path(doc, parse_target=parse_target, source_file=source_file)
             normalize_element_markdown(
                 doc.elements,
@@ -229,6 +241,10 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         write_document(db_path, doc_key, data)
         count += 1
         state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
+
+    # Parsing is over; nothing below needs the worker. (A worker left behind by
+    # an abnormal exit is a daemon process and dies with the parent.)
+    worker.close()
 
     # ── Pass 2: Dedup fingerprints (separate from parsing) ─────────
     # Fingerprints are computed AFTER all files are parsed so that GPU-bound

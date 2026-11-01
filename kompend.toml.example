@@ -140,6 +140,15 @@ file = "NOTES.md"
 # Env: KOMP_INGEST_PARSECRAFT_BACKEND_OPTIONS
 # parsecraft_backend_options = { mineru = { effort = "high" } }
 
+# ── Ingest safety net ──────────────────────────────────────────────────
+# Wall-clock budget for parsing ONE source, in seconds. 0 (default) parses
+# in-process with no bound. A positive value runs each parse in a child
+# process that is killed on expiry, so a backend that hangs costs one file
+# (counted as failed, retried next run) instead of the whole run. Each
+# bounded parse pays the child's start-up; leave 0 unless you have seen a
+# stall. Env: KOMP_INGEST_PARSE_TIMEOUT_S
+# parse_timeout_s = 0.0
+
 # ── Downloader settings ─────────────────────────────────────────────────
 # Controls how URLs are fetched. URLs whose path looks like HTML (no
 # extension, .html/.htm/.aspx/.php/.jsp, or trailing /) go through the

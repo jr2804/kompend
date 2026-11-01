@@ -79,7 +79,7 @@ use (pipeline, models, config, lint); then the boundary is clean.
 | File/Directory | Purpose |
 |---|---|
 | `app.py` | Typer app instance, global callback (`--wiki-dir`, `--config`, `--verbose`, `--version`), command registration |
-| `launch.py` | Console entry point: answers a bare `--version` before the command tree loads, delegates everything else to `app.main` |
+| `launch.py` | Console entry point: caps the numeric thread pools (`KOMP_BLAS_THREADS`, default `min(8, cores)`), answers a bare `--version` before the command tree loads, delegates everything else to `app.main` |
 | `_registry.py` | The command registry: `CommandName` / `CommandModule` / `HelpPanel` StrEnums, `COMMANDS` with each `CommandSpec` (module, panel, `short_help`), `PANEL_ORDER`, `OnDemandModule` |
 | `_group.py` | `LazyGroup` — lists every command from the registry, renders `--help` from `CommandSpec`, imports each module on first run |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |

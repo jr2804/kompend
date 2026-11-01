@@ -269,34 +269,76 @@ Five classes of parsecraft signal survive the parse into `.kompend/kompend.db`:
 ### Silent empty pages
 
 A parse that loses pages without complaint is worse than one that fails, so
-empty pages are not left to the log: `metadata.empty_pages` is persisted with
-the document and the warning is emitted once per file, not once per page.
+empty pages are not left to the log: the page numbers are persisted with the
+document and news of them is emitted once per file, not once per page.
+
+Two different things produce an empty page, and they are recorded separately:
+
+| Field | Meaning | Log |
+|-------|---------|-----|
+| `metadata.blank_pages` | Nothing on the page in the source — a separator, an empty annex, an intentional gap. `parsecraft inspect` reports `chars=0 images=0 blank=True`. | DEBUG |
+| `metadata.unreadable_pages` | The page holds images but yielded no text, so content was probably lost. | WARNING |
+
+`metadata.empty_pages` lists both, in page order. The split is not guessed: it
+takes parsecraft's own per-page verdict, `PageRoute.degradation_code ==
+"degraded-blank-page"` with score `0.0`, which the router emits when it
+degrades a page to native because there was *nothing to lose*. A page that
+still comes back empty without that verdict is treated as unread.
 
 ```text
-WARNING  scan-2024.pdf: 3 page(s) produced no text (4, 5, 6). A scanned or
-image-only page needs an OCR-capable backend; check [ingest]
-parsecraft_allow_ocr and the ocr extra, or parse with a backend that reads images.
+WARNING  scan-2024.pdf: 2 page(s) hold images but produced no text (4, 5).
+         Routing said: page 4: no usable native text (blank/garbled); OCR pass docling; ...
 ```
 
-What to do with it:
+The quoted reason is the router's, so the message names the actual cause
+instead of suggesting a remedy that may already be installed:
 
-- **Expect scanned pages** (contract scans, ITU-T figure-only pages): parsecraft
-  routes an OCR-intent page only to a backend it classifies as an OCR route
-  (`ocr-*`), so installing the `ocr` extra and setting
-  `parsecraft_allow_ocr = true` is necessary but not sufficient — on a machine
-  where those backends are GPU-only, or when none is installed, the page degrades
-  to native text and comes back empty. Measured on a 1-page image-only PDF:
-  auto mode chose `liteparse` (2.2 s, one empty element), while
-  `parsecraft convert -b docling` read the same page correctly in about the same
-  time on CPU. Until parsecraft treats a convert-tier backend's OCR as eligible
-  for OCR intents, naming the backend is the workaround: pass
-  `only_backend = "docling"` (or `preferred_backend`) plus
-  `parsecraft_allow_ocr = true`.
-- **Genuinely blank pages** (a deliberate separator, an empty annex): nothing to
-  do. The metadata is the record; no content was lost.
+- **`blank_pages`, nothing in the log**: nothing to do. No content was lost,
+  and a corpus of standards documents is full of such pages.
+- **`unreadable_pages` on a scanned document**: the OCR tier needs a backend
+  that can run on this machine. Installing the `ocr` extra is not enough on
+  its own — a GPU-only harness is excluded when the torch build has no CUDA, and
+  `ocr-tesseract` needs a system engine. Check `parsecraft inspect`: it prints
+  the per-page reason and the host's `installed_extras` / `gpu_usable` facts.
+  A convert-tier backend that reads images itself (`docling`, `mineru`,
+  `marker`) is the fallback, named with `only_backend = "docling"` (or
+  `preferred_backend`) alongside `parsecraft_allow_ocr = true`.
 - **Every page empty** on a file that clearly has text: the source is an image
   bundle, not a document — kompend raises rather than storing an empty document
   when no element at all survives the parse.
+
+### Bounding a stalled parse
+
+A backend can wedge and never return. Nothing inside the parser can interrupt
+that, so `[ingest] parse_timeout_s` puts the bound outside the process: with a
+positive value every ingest parse runs in a worker process that is killed when
+the budget expires. The file is counted as failed, the run continues with the
+next source, and the next run retries it because nothing was written to the
+cache.
+
+```toml
+[ingest]
+parse_timeout_s = 300      # seconds per source; 0 (default) = no bound
+```
+
+The worker is created once per run and reused, so the corpus pays one
+interpreter start-up rather than one per file; a killed worker is replaced on
+the next source. Two consequences worth knowing:
+
+- A parse that legitimately needs longer than the budget is killed, so set it
+  well above the slowest file you expect (a layout-aware parse of a long PDF can
+  take minutes on CPU).
+- `0` keeps the in-process path exactly as before, including its exception
+types. Turn the bound on when a corpus has already stalled once.
+
+Separately, the CLI caps the numeric thread pools before importing any numeric
+library (`OPENBLAS_NUM_THREADS`, `OMP_NUM_THREADS`, `MKL_NUM_THREADS`,
+`NUMEXPR_NUM_THREADS`, `VECLIB_MAXIMUM_THREADS` — default `min(8, cores)`, or
+`KOMP_BLAS_THREADS`). OpenBLAS multiplies every large allocation by its thread
+count, and on an allocation failure it **aborts the process** instead of raising
+`MemoryError` — no handler, no traceback, just `OpenBLAS error: Memory allocation
+still failed after 10 retries, giving up`. Capping the pool turns that abort
+into slower arithmetic.
 
 ### Judge tier: model-assisted per-page routing
 

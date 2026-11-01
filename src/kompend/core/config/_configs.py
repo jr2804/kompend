@@ -872,6 +872,18 @@ class IngestConfig(_KompendBaseModel):
             "pass through unchanged), numeric strings -> int/float."
         ),
     )
+    parse_timeout_s: float = Field(
+        default=0.0,
+        ge=0.0,
+        validation_alias=EnvVar.INGEST_PARSE_TIMEOUT_S,
+        description=(
+            "Wall-clock budget for parsing a single source, in seconds. `0` (default) parses in-process "
+            "with no bound, exactly as before. Any positive value runs each parse in a child process that "
+            "is killed when the budget expires, so one wedged backend cannot stall an ingest: the file is "
+            "counted as failed, the run continues, and the next run retries it. Each bounded parse pays "
+            "the child's interpreter start-up, so prefer the in-process path for corpora you trust."
+        ),
+    )
 
 
 class DownloaderConfig(_KompendBaseModel):

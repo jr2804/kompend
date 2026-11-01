@@ -433,6 +433,7 @@ def ingest_cmd(
             rumdl_config=cfg.kompend.compile.output.rumdl_config,
             flavor=cfg.kompend.compile.output.flavor,
             cancel=cancel,
+            parse_timeout_s=cfg.kompend.ingest.parse_timeout_s,
         )
         time.monotonic() - ingest_start
     finally:

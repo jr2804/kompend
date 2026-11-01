@@ -689,6 +689,8 @@ All environment variables use the `KOMP_` prefix and map to dotted config keys.
 | `KOMP_SOURCES_DIR` | `paths.sources_dir` | Sources directory (relative to wiki_dir) |
 | `KOMP_OUTPUT_DIR` | `paths.output_dir` | Output directory (relative to wiki_dir) |
 | `KOMP_PATHS_RECURSIVE` | `paths.recursive` | Discover sources in `sources/` subdirectories (true/false) |
+| `KOMP_INGEST_PARSE_TIMEOUT_S` | `ingest.parse_timeout_s` | Wall-clock budget per parsed source, in seconds (0 = no bound) |
+| `KOMP_BLAS_THREADS` | — | Cap for the numeric thread pools (default `min(8, cores)`) |
 | `KOMP_LLM_DEFAULT_MODEL` | `compile.llm.default_model` | Default LLM model |
 | `KOMP_VLM_MODEL` | `compile.llm.vlm_model` | Vision model for image captioning |
 | `KOMP_NOTES_FILE` | `notes.file` | User notes filename |
