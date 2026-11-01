@@ -251,12 +251,18 @@ class ParsecraftParser:
         produces. A backend *rename* alone would not need it, but that is the only
         case, and it is indistinguishable from this one at this boundary.
 
+        ``judge_extras:1`` is a one-time marker, not a lever: ``DeterministicJudge``
+        used to be built without the installed-extra set (knox-j5ig), so routing
+        changed while every config value — and this identity — stayed put. The
+        marker invalidates caches that outlived the over-demoting build; it
+        carries no meaning beyond that transition.
+
         The no-judge, balanced-default case keeps an empty *routing* part: it is the
         rule table's neutral axis, and emitting it would re-invalidate every vault
         for no behavioural change.
         """
         env = self._ensure_environment()
-        host = f"extras:{','.join(sorted(env.installed_extras))}|parsecraft:{_parsecraft_version()}"
+        host = f"extras:{','.join(sorted(env.installed_extras))}|parsecraft:{_parsecraft_version()}|judge_extras:1"
         # Routing segments: judge (when configured) or preference (when non-default),
         # plus independent `effort:` and `ocr:` segments when the user set them.
         # Joining with `|` keeps each lever its own slot so the cache key flips when
@@ -357,7 +363,7 @@ class ParsecraftParser:
         return self._environment
 
     def _deterministic_judge(self) -> DeterministicJudge:
-        """The rule-table judge carrying the configured preference axis.
+        """The rule-table judge carrying the configured preference axis and the host's extra set.
 
         parsecraft's table takes the smallest declared ``estimated_vram_gb``
         inside a family for SPEED *and* BALANCED (balanced is the neutral
@@ -365,8 +371,17 @@ class ParsecraftParser:
         families. Speed-vs-balanced is therefore a configured value only,
         never a routing difference — a three-way behavioural test cannot
         exist, only a wiring test plus the speed/quality flip.
+
+        The host's installed extras ride along (parsecraft A10): a candidate
+        whose ``convert_extra`` is present on this host ranks native instead
+        of extra-backed. The set comes from the same probe that feeds
+        ``RoutingConstraints``, so rule table and planner cannot disagree
+        about the host. Omitting it would tell parsecraft "no host facts" —
+        the honest shape for a caller that has none, and a systematic
+        over-demotion of every extra-gated convert for one that has them
+        (knox-j5ig).
         """
-        return DeterministicJudge(self._preference)
+        return DeterministicJudge(self._preference, installed_extras=self._ensure_environment().installed_extras)
 
     def _execute_with_judge(
         self,

@@ -598,6 +598,31 @@ class TestJudgeWiring:
         assert list(speed.rank(Intent.NATIVE, [small, big])) == ["small", "big"]
         assert list(quality.rank(Intent.NATIVE, [small, big])) == ["big", "small"]
 
+    def test_installed_extras_reach_the_deterministic_judge(self) -> None:
+        """Host facts must reach the rule table (knox-j5ig): the judge is built
+        with the same installed-extra set the planner sees. parsecraft's
+        constructor default is the empty set — the honest shape for a caller
+        with *no* host facts, and a systematic over-demotion for kompend,
+        which has them.
+        """
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser()
+        parser._environment = SimpleNamespace(installed_extras=frozenset({"docling", "ocr"}))  # type: ignore[assignment] — the parser reads ``installed_extras`` only
+        assert parser._get_judge()._installed_extras == frozenset({"docling", "ocr"})
+
+    def test_installed_extra_promotes_its_backend_in_the_rule_table(self) -> None:
+        """Behavioural pin: an extra-gated candidate ranks NATIVE once its extra
+        is installed and stays extra-backed while it is missing — the A10
+        demotion must apply only to extras this host actually lacks.
+        """
+        adapter = _adapter()
+        free, gated = _pdf_backend("free", 8.0), _extra_pdf_backend("gated", "docling", 0.5)
+        parser = adapter.ParsecraftParser()
+        parser._environment = SimpleNamespace(installed_extras=frozenset({"docling"}))  # type: ignore[assignment] — the parser reads ``installed_extras`` only
+        assert list(parser._get_judge().rank(Intent.NATIVE, [free, gated])) == ["gated", "free"]
+        without_host_facts = adapter.DeterministicJudge(adapter.RoutingPreference.BALANCED)
+        assert list(without_host_facts.rank(Intent.NATIVE, [free, gated])) == ["free", "gated"]
+
     def test_cache_identity_tracks_a_non_default_preference(self) -> None:
         """A non-default preference changes rule-table routing, so the parse
         cache must invalidate; the balanced default keeps the empty identity so
@@ -608,6 +633,14 @@ class TestJudgeWiring:
         assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="balanced")) == ""
         assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="speed")) == "preference:speed"
         assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="quality")) == "preference:quality"
+
+    def test_cache_identity_marks_the_judge_extras_fix(self) -> None:
+        """knox-j5ig changed default-path routing without any config change, so
+        the identity carries a one-time marker: caches written by the
+        over-demoting build must not survive it.
+        """
+        adapter = _adapter()
+        assert "judge_extras:1" in adapter.ParsecraftParser().cache_identity()
 
     def test_call_time_failure_degrades_to_the_rule_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A judge that resolves but fails on its first ``rank`` must not fail the ingest."""
@@ -1174,19 +1207,40 @@ def _pdf_backend(name: str, vram: float) -> BackendDescriptor:
     return BackendDescriptor(name=name, version="0.1.0", capabilities=caps)
 
 
+def _extra_pdf_backend(name: str, extra: str, vram: float) -> BackendDescriptor:
+    """A minimal PDF candidate gated on *extra* (parsecraft A10): native on hosts
+    that have the extra, extra-backed on hosts that lack it.
+    """
+    caps = BackendCapabilities(
+        supported_formats=["application/pdf"],
+        supports_page_ranges=True,
+        supports_multi_page=True,
+        gpu_requirement=0.0,
+        estimated_vram_gb=vram,
+        optional_dependency_group=None,
+        convert_extra=extra,
+        model_asset=None,
+        languages=(),
+        required_engine=None,
+    )
+    return BackendDescriptor(name=name, version="0.1.0", capabilities=caps)
+
+
 def _routing_part(parser: Any) -> str:
     """The routing segment of a parsecraft ``cache_identity``.
 
-    The whole identity also carries the host's installed extra set, which differs
-    per machine and would make exact-string assertions host-dependent. The routing
-    half is the part these tests are about. Splitting on the host/routing boundary
-    only (the second ``|``) keeps multi-segment routing keys — ``preference:..|effort:..``
-    — intact for assertions, where ``rsplit('|', 1)[1]`` would have stripped the
+    The whole identity also carries the host slice — installed extra set,
+    parsecraft version, and the one-time ``judge_extras`` marker — whose exact
+    text differs per machine and would make exact-string assertions
+    host-dependent. The routing half is the part these tests are about.
+    Splitting on the host/routing boundary only (the third ``|``) keeps
+    multi-segment routing keys — ``preference:..|effort:..`` — intact for
+    assertions, where ``rsplit('|', 1)[1]`` would have stripped the
     leading ``preference:..`` off and made the composition tests falsely green.
     """
     identity = parser.cache_identity()
-    parts = identity.split("|", 2)
-    return parts[2] if len(parts) >= 3 else ""
+    parts = identity.split("|", 3)
+    return parts[3] if len(parts) >= 4 else ""
 
 
 def _map(document: DocumentResult, name: str = "d.txt") -> list:
