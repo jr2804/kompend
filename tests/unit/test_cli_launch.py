@@ -7,6 +7,7 @@ import os
 import sys
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
@@ -117,11 +118,6 @@ class TestFailureHooks:
         assert threading.excepthook is launch._log_thread_failure
         assert sys.unraisablehook is launch._log_unraisable
 
-    @pytest.fixture(autouse=True)
-    def _fresh_failure_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The seen-failure cache is module state; tests start empty."""
-        monkeypatch.setattr(launch, "_THREAD_FAILURE_SEEN", {})
-
     def test_a_dead_thread_is_logged_with_its_name_and_error(self, caplog: pytest.LogCaptureFixture) -> None:
         error = ValueError("boom")
         args = SimpleNamespace(
@@ -209,6 +205,11 @@ class TestFailureHooks:
 
         assert fallbacks == ["excepthook"]
 
+    @pytest.fixture(autouse=True)
+    def _fresh_failure_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The seen-failure cache is module state; tests start empty."""
+        monkeypatch.setattr(launch, "_THREAD_FAILURE_SEEN", {})
+
 
 class _Exploding:
     """A logger whose write fails, as a closed or starved handler would."""
@@ -216,6 +217,37 @@ class _Exploding:
     @staticmethod
     def error(*_args: object, **_kwargs: object) -> None:
         raise RuntimeError("the reporter cannot write")
+
+
+class TestNeverSilent:
+    """A failure must leave a trace even when the process is about to vanish."""
+
+    def test_the_fault_log_is_opened_once_and_names_the_run(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        enabled: list[dict[str, object]] = []
+        monkeypatch.setattr(launch, "_FAULT_LOG", None)
+        monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: str(tmp_path))
+        monkeypatch.setattr(launch.faulthandler, "enable", lambda **kwargs: enabled.append(kwargs))
+        monkeypatch.setattr(launch.sys, "argv", ["kompend", "ingest"])
+
+        launch._enable_fault_handler()
+        launch._enable_fault_handler()
+
+        log = tmp_path / "kompend-faults.log"
+        assert log.exists()
+        assert "argv=['ingest']" in log.read_text(encoding="utf-8")
+        assert len(enabled) == 1
+        assert enabled[0]["all_threads"] is True
+
+    def test_an_unopenable_log_falls_back_to_stderr(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        enabled: list[dict[str, object]] = []
+        monkeypatch.setattr(launch, "_FAULT_LOG", None)
+        monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: "Z:/does-not-exist")
+        monkeypatch.setattr(launch.faulthandler, "enable", lambda **kwargs: enabled.append(kwargs))
+
+        launch._enable_fault_handler()
+
+        assert launch._FAULT_LOG is sys.stderr
+        assert enabled[0]["file"] is sys.stderr
 
 
 @pytest.fixture(autouse=True)

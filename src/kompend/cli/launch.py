@@ -10,12 +10,15 @@ declares.
 
 from __future__ import annotations
 
+import faulthandler
 import importlib
 import logging
 import os
 import sys
+import tempfile
 import threading
 from collections.abc import Callable
+from pathlib import Path
 from types import TracebackType
 from typing import Any, Protocol, cast
 
@@ -47,6 +50,15 @@ _THREAD_POOL_ENV_VARS = (
 _DEFAULT_THREAD_CAP = 8
 
 
+#: First failure per (thread name, exception) pair is reported in full; see
+#: :func:`_log_thread_failure` for why repeats are demoted.
+_THREAD_FAILURE_SEEN: dict[tuple[str, str], int] = {}
+
+#: Kept open for the process lifetime: ``faulthandler`` writes to the object it
+#: was given, so closing it behind its back would silence the dump.
+_FAULT_LOG: Any = None
+
+
 #: What ``logging`` calls an exc_info triple: (type, value, traceback).
 _ExcInfo = tuple[type[BaseException] | None, BaseException | None, TracebackType | None]
 
@@ -67,7 +79,30 @@ def main() -> None:
         print(kompend.__version__)
         return
     _install_failure_hooks()
+    _enable_fault_handler()
     importlib.import_module(OnDemandModule.APP.value).main()
+
+
+def _enable_fault_handler() -> None:
+    """Give a native abort somewhere to speak before the process disappears.
+
+    A Rust or OpenBLAS abort inside a parser exits the process with no
+    ``Exception`` and no message, so a long ingest just stops. ``faulthandler``
+    prints every thread's Python stack when the fatal signal arrives, which names
+    the frame that called into native code. It writes to a file rather than to
+    stderr because the same failure mode can take the console handle with it.
+    """
+    global _FAULT_LOG  # noqa: PLW0603 - the handle must outlive this call
+    if _FAULT_LOG is not None:
+        return
+    path = Path(tempfile.gettempdir()) / "kompend-faults.log"
+    try:
+        _FAULT_LOG = path.open("a", encoding="utf-8", errors="replace")
+        _FAULT_LOG.write(f"\n=== kompend pid={os.getpid()} argv={sys.argv[1:]} ===\n")
+        _FAULT_LOG.flush()
+    except OSError:
+        _FAULT_LOG = sys.stderr
+    faulthandler.enable(file=_FAULT_LOG, all_threads=True)
 
 
 def _cap_thread_pools() -> None:
@@ -98,11 +133,6 @@ def _install_failure_hooks() -> None:
     sys.unraisablehook = cast("Any", _log_unraisable)
 
 
-#: First failure per (thread name, exception) pair is reported in full; see
-#: :func:`_log_thread_failure` for why repeats are demoted.
-_THREAD_FAILURE_SEEN: dict[tuple[str, str], int] = {}
-
-
 def _log_thread_failure(args: threading.ExceptHookArgs) -> None:
     """Log an uncaught thread failure; never replace it with a reporting failure.
 
@@ -119,9 +149,7 @@ def _log_thread_failure(args: threading.ExceptHookArgs) -> None:
     seen = _THREAD_FAILURE_SEEN.get(key, 0)
     _THREAD_FAILURE_SEEN[key] = seen + 1
     if seen:
-        _failure_logger().debug(
-            "thread %s died again (identical failure #%d): %r", name, seen + 1, exc
-        )
+        _failure_logger().debug("thread %s died again (identical failure #%d): %r", name, seen + 1, exc)
         return
     _report(
         f"thread {name} died: {exc!r}",

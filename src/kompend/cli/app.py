@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import contextlib
 import importlib
+import os
 import sys
 from functools import cache
 from types import ModuleType
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from cyclopts import App, Group, Parameter
 
@@ -160,28 +161,55 @@ def main() -> None:
     except SystemExit as exc:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         handle = _extract_handle()
-        log_run_end(handle, status="ok" if code == 0 else "error", exit_code=code)
+        _end_run(handle, status="ok" if code == 0 else "error", exit_code=code)
         raise
     except KompendCancelled as exc:
         # Graceful user abort (double-ESC during a progress bar): the command
         # already saved its progress and unwound cleanly — report and exit
         # 130, no traceback.
         handle = _extract_handle()
-        log_run_end(handle, status="cancelled", exit_code=CANCEL_EXIT_CODE, error=exc.reason)
-        sys.stderr.write(f"\nCancelled ({exc.reason}) — progress saved; rerun the command to resume.\n")
+        _end_run(handle, status="cancelled", exit_code=CANCEL_EXIT_CODE, error=exc.reason)
+        _write_failure(f"\nCancelled ({exc.reason}) — progress saved; rerun the command to resume.")
         raise SystemExit(CANCEL_EXIT_CODE) from exc
     except KeyboardInterrupt:
         # System-level interrupt — keep default Python behaviour (no reformatting).
         handle = _extract_handle()
-        log_run_end(handle, status="error", error="KeyboardInterrupt")
+        _end_run(handle, status="error", error="KeyboardInterrupt")
         raise
     except BaseException as exc:  # noqa: BLE001 — capture any crash for the audit trail
         handle = _extract_handle()
-        log_run_end(handle, status="error", error=repr(exc))
-        sys.stderr.write(format_exception_for_cli(exc, verbose=is_verbose()) + "\n")
+        _end_run(handle, status="error", error=repr(exc))
+        _write_failure(format_exception_for_cli(exc, verbose=is_verbose()))
         raise SystemExit(1) from exc
     handle = _extract_handle()
-    log_run_end(handle, status="ok", exit_code=0)
+    _end_run(handle, status="ok", exit_code=0)
+
+
+def _end_run(handle: RunHandle | None, **fields: Any) -> None:
+    """Close the run record; a broken audit trail must not hide the outcome."""
+    try:
+        log_run_end(handle, **fields)
+    except BaseException:  # noqa: BLE001 - the caller is already on an error path
+        return
+
+
+def _write_failure(text: str) -> None:
+    """Print a failure so the user sees it, whatever the console is doing.
+
+    A dead console handle (``OSError: [WinError 6] The handle is invalid``, seen
+    when a Windows terminal loses its pipe mid-run) makes ``sys.stderr.write``
+    raise, which is how a failing command can exit with no message at all. Each
+    fallback is cheaper than the last and needs less of the process to work.
+    """
+    payload = text if text.endswith("\n") else f"{text}\n"
+    try:
+        sys.stderr.write(payload)
+        sys.stderr.flush()
+        return
+    except BaseException:  # noqa: BLE001, S110 - a dead console is the case this exists for
+        pass
+    with contextlib.suppress(BaseException):
+        os.write(2, payload.encode("utf-8", "replace"))
 
 
 # Logfire instrumentation: configure() must run before instrument_pydantic_ai().
