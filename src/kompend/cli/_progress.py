@@ -70,6 +70,14 @@ class FileProgressTracker:
             console=self.console,
             transient=False,
             refresh_per_second=2,
+            # Live redirects sys.stdout/stderr into proxies by default and
+            # restores them unconditionally on stop. With kompend's own stderr
+            # console plus docling/transformers writing concurrently, that
+            # restore races the refresh thread into "OSError(9): The handle is
+            # invalid" on Windows — and kompend never prints through the swapped
+            # streams, so don't swap them at all.
+            redirect_stdout=False,
+            redirect_stderr=False,
         )
         self._progress.start()
         self._overall_task = self._progress.add_task(

@@ -192,6 +192,12 @@ that isn't completing. The fix lives in `src/kompend/llm/`, the resolver,
 or the model config (`timeout`, `fallback_chain`), not in
 `_progress.py` or `_pipeline_helpers.py`.
 
+**Stream contract:** the `Progress` bar is built with
+`redirect_stdout=False, redirect_stderr=False` — rich's `Live` swaps the std
+streams for proxies by default and restores them unconditionally on stop,
+which races the refresh thread into `OSError(9): The handle is invalid` on
+Windows. Logging goes through the console object, so the swap buys nothing.
+
 **Signal-path contract:** a phase advances only when the core tier calls
 `self._emit(phase, current, total, detail)`. The CLI handler in
 `_pipeline_helpers._make_progress_callback` maps `(current, total, detail)`
