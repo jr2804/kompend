@@ -14,6 +14,7 @@ from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.models.google import GoogleModel
 from pydantic_ai.models.ollama import OllamaModel
 from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
+from pydantic_ai.models.typesafe import TypeSafeModel
 from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
@@ -25,6 +26,7 @@ from kompend.llm.models import (
     OLLAMA_CONTEXT_LENGTH_ENV,
     _resolve_env_ref,
     _split,
+    build_decision_model,
     build_model,
     requires_output_ceiling,
     resolve_model_limits,
@@ -344,6 +346,48 @@ class TestBuildModelUserProvider:
             assert str(m.base_url).rstrip("/") == "https://api.minimax.io/anthropic"
         finally:
             set_user_providers({})
+
+
+# ── build_decision_model ───────────────────────────────────────────────
+
+
+class TestBuildDecisionModel:
+    """The decision sidecar speaks the SystemOne protocol, not chat.
+
+    Regression guard for the zstd trap: the SDK compresses request bodies of
+    1 KiB and more by default, and systemone endpoints other than
+    api.typesafe.ai (e.g. ollama.com) do not strip ``Content-Encoding`` - the
+    server then parses raw zstd bytes as JSON and fails with ``invalid
+    character '(' looking for beginning of value`` (a zstd frame starts with
+    ``0x28``). Decision payloads must therefore travel uncompressed.
+    """
+
+    def teardown_method(self) -> None:
+        set_user_providers({})
+
+    def test_provider_block_client_sends_uncompressed(self) -> None:
+        """A [providers.<name>] block builds a client with compression off."""
+        set_user_providers({"ollama-cloud": {"base_url": "https://ollama.com/v1", "api_key": "sk-key"}})
+        m = build_decision_model("ollama-cloud/clef")
+        assert isinstance(m, TypeSafeModel)
+        assert m.base_url == "https://ollama.com"
+        assert m.provider.client._config.compression is None  # noqa: SLF001 — the compression flag has no public accessor
+
+    def test_default_endpoint_serves_the_sdk_home(self) -> None:
+        """No provider info falls back to the SDK default, which strips zstd natively."""
+        m = build_decision_model("typesafe/jev-latest")
+        assert isinstance(m, TypeSafeModel)
+        assert m.base_url == "https://api.typesafe.ai"
+
+    def test_base_url_version_suffix_is_trimmed(self) -> None:
+        """The provider appends /v1/systemone itself — a /v1 suffix would 404."""
+        set_user_providers({"ollama-cloud": {"base_url": "https://ollama.com/v1", "api_key": "k"}})
+        m = build_decision_model("ollama-cloud/clef")
+        assert m.base_url == "https://ollama.com"
+
+    def test_missing_model_name_raises(self) -> None:
+        with pytest.raises(ValueError, match="provider/model"):
+            build_decision_model("clef")
 
 
 # ── resolve_model_limits ───────────────────────────────────────────────

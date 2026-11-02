@@ -50,6 +50,7 @@ from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.typesafe import TypeSafeProvider
 from pydantic_ai.settings import ModelSettings
+from typesafe_sdk import AsyncTypeSafeClient
 
 from kompend.llm import catalog
 
@@ -506,6 +507,13 @@ def build_decision_model(model_string: str) -> Model:
     uses. Providers that serve one (TypeSafe's Jev, Ollama's Clef) expose that
     endpoint on the same base URL as their other models, so the provider block
     is reused unchanged.
+
+    The client is built with ``compression=False``: the SDK zstd-compresses
+    request bodies of 1 KiB and more, and endpoints other than the SDK's home
+    base URL need not strip ``Content-Encoding`` - ollama.com parses the raw
+    bytes as JSON, and a zstd frame starts with ``0x28`` (``'('``), which
+    surfaces as ``invalid character '(' looking for beginning of value``.
+    Decision payloads are a few KiB, so compression buys nothing here.
     """
     provider_id, _, model_name = model_string.partition("/")
     if not model_name:
@@ -515,7 +523,8 @@ def build_decision_model(model_string: str) -> Model:
     api_key = provider.get("api_key")
     if not base_url and not api_key:
         return TypeSafeModel(model_name)
-    return TypeSafeModel(model_name, provider=TypeSafeProvider(base_url=base_url, api_key=api_key))
+    client = AsyncTypeSafeClient(api_key=api_key, base_url=base_url, compression=False)
+    return TypeSafeModel(model_name, provider=TypeSafeProvider(typesafe_client=client))
 
 
 def _decision_base_url(base_url: str | None) -> str | None:
