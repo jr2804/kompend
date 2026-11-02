@@ -64,7 +64,12 @@ They apply here too: no magic crops, no bare `except` to silence a failure.
    downloads for preprocessing data (no LLM/VLM/embed calls).
 
 5. **No filesystem litter.** Use `tmp_path` fixture for all filesystem
-   operations. Never write to the real project tree.
+   operations. Never write to the real project tree. The suite enforces this
+   structurally: `tests/conftest.py` runs every test from a throwaway cwd
+   (autouse `_isolate_cwd`), so a CLI invocation without `--wiki-dir` cannot
+   grow a phantom `.kompend/` vault in the repository root. A test needing a
+   specific directory chdirs itself; subprocess probes must pass the repo via
+   `PYTHONPATH`, not `cwd`.
 
 6. **No slow tests.** Unit tests should complete in <5s per file. If a test
    needs heavy setup, use `@pytest.fixture(scope="session")`.
@@ -80,14 +85,14 @@ They apply here too: no magic crops, no bare `except` to silence a failure.
 
 - When fixing a bug, add a regression test first (or alongside the fix).
 - When adding a new module, create the test file in the same PR.
-- Run `uv run pytest tests/unit/ -x --timeout=30` before committing.
-- Key flags: `-x` (fail-fast), `--timeout` (prevent hangs), `-k` (filter),
-  `-n auto` (parallel).
+- Run `uv run pytest tests/unit -q` before committing.
+- Key flags: `-x` (fail-fast), `-k` (filter). No `pytest-timeout` or
+  `pytest-xdist` plugin is installed — `--timeout` and `-n auto` fail with
+  "unrecognized arguments".
 
 ## Verification
 
-- `uv run pytest tests/unit/ -x --timeout=30` — unit suite
-- `uv run pytest tests/integration/ -x --timeout=120` — integration suite
-- `uv run pytest tests/ -x --timeout=120 -n auto` — all tests in parallel
+- `uv run pytest tests/unit -q` — unit suite (full run takes ~10 min)
+- `uv run pytest tests/integration -q` — integration suite
 - `cd tests && find . -name "test_*.py" | sort` — before creating a new file,
   check this list first

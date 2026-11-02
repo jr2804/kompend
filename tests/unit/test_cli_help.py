@@ -14,8 +14,10 @@ every command in the registry must land in exactly one panel.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -157,11 +159,16 @@ def _probe_cli(*args: str) -> tuple[int, list[str]]:
         "result = CliRunner().invoke(app_module.app, sys.argv[1:])\n"
         "print(json.dumps({'exit': result.exit_code, 'modules': sorted(sys.modules)}))\n"
     )
+    # The suite runs every test from a throwaway cwd (tests/conftest.py), where
+    # the ``tests`` package is not importable; point PYTHONPATH at the repo so
+    # the probe's import resolves while the cwd stays isolated.
+    env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
     completed = subprocess.run(  # noqa: S603 — fixed interpreter, literal probe, no shell
         [sys.executable, "-c", probe, *args],
         capture_output=True,
         text=True,
         check=True,
+        env=env,
     )
     payload = json.loads(completed.stdout.strip().splitlines()[-1])
     return int(payload["exit"]), list(payload["modules"])

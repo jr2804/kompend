@@ -44,6 +44,22 @@ class DeterministicTestEmbeddingProvider(EmbeddingProvider):
         return [v / norm for v in vec] if norm > 0 else vec
 
 
+@pytest.fixture(autouse=True)
+def _isolate_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Run every test from a throwaway directory.
+
+    The CLI resolves state from the working directory when no ``--wiki-dir``
+    is passed, so one stray ``kompend init`` with a relative target once made
+    the repository root a vault, and the run log then grew
+    ``.kompend/kompend.db`` there on every subsequent test run. This prevents
+    that (``guard_repo_root_vault`` below only detects it, and stays silent
+    when the stray folder already existed at session start). A test that
+    needs a specific directory chdirs itself — its own ``monkeypatch.chdir``
+    simply overrides this one.
+    """
+    monkeypatch.chdir(tmp_path)
+
+
 def as_obj(value: object) -> dict[str, Any]:
     """Narrow *value* to a JSON object, asserting it is one."""
     assert isinstance(value, dict), f"expected a JSON object, got {type(value).__name__}"

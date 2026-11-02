@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -63,6 +65,9 @@ class TestLogfireIsNotImportedEagerly:
             text=True,
             timeout=120,
             check=False,
+            # The suite runs from a throwaway cwd (tests/conftest.py); point
+            # PYTHONPATH at the repo so `tests.helpers` stays importable.
+            env={**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2])},
         )
         assert completed.returncode == 0, completed.stderr
         exit_code, imported = completed.stdout.split()

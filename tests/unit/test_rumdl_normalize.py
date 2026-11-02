@@ -86,16 +86,20 @@ class TestNormalizeElementMarkdown:
 class TestParseTierWiring:
     """The parse tier must call the normaliser so cached content is canonical."""
 
+    # Repo-anchored: the suite runs every test from a throwaway cwd
+    # (tests/conftest.py `_isolate_cwd`), so CWD-relative source reads would miss.
+    _repo = Path(__file__).resolve().parents[2]
+
     def test_parse_source_normalises_elements(self) -> None:
-        source = Path("src/kompend/core/pipeline/stages/_parse.py").read_text(encoding="utf-8")
+        source = (self._repo / "src/kompend/core/pipeline/stages/_parse.py").read_text(encoding="utf-8")
         assert "normalize_element_markdown(" in source
         # must be applied after relativisation, before the cache write
         assert source.index("normalize_element_markdown(") < source.index("_save_cache(pipeline, source_file, parsed)")
 
     def test_ingest_normalises_elements(self) -> None:
-        source = Path("src/kompend/core/pipeline/ingest.py").read_text(encoding="utf-8")
+        source = (self._repo / "src/kompend/core/pipeline/ingest.py").read_text(encoding="utf-8")
         assert "normalize_element_markdown(" in source
 
     def test_attachments_normalise_elements(self) -> None:
-        source = Path("src/kompend/core/pipeline/attachments.py").read_text(encoding="utf-8")
+        source = (self._repo / "src/kompend/core/pipeline/attachments.py").read_text(encoding="utf-8")
         assert "normalize_element_markdown(" in source
