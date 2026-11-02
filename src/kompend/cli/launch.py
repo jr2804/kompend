@@ -98,12 +98,34 @@ def _install_failure_hooks() -> None:
     sys.unraisablehook = cast("Any", _log_unraisable)
 
 
+#: First failure per (thread name, exception) pair is reported in full; see
+#: :func:`_log_thread_failure` for why repeats are demoted.
+_THREAD_FAILURE_SEEN: dict[tuple[str, str], int] = {}
+
+
 def _log_thread_failure(args: threading.ExceptHookArgs) -> None:
-    """Log an uncaught thread failure; never replace it with a reporting failure."""
+    """Log an uncaught thread failure; never replace it with a reporting failure.
+
+    The same thread can die the same way over and over — rich's progress
+    refresh thread loses the console write surface (OSError 9 on ConPTY) and
+    every retry prints an identical full traceback. The first occurrence is
+    reported at ERROR with its traceback; repeats are summarised at DEBUG,
+    because a dead daemon thread cannot recover and the repeats carry no new
+    information.
+    """
     name = args.thread.name if args.thread is not None else "unknown"
+    exc = args.exc_value
+    key = (name, f"{type(exc).__name__}: {exc}")
+    seen = _THREAD_FAILURE_SEEN.get(key, 0)
+    _THREAD_FAILURE_SEEN[key] = seen + 1
+    if seen:
+        _failure_logger().debug(
+            "thread %s died again (identical failure #%d): %r", name, seen + 1, exc
+        )
+        return
     _report(
-        f"thread {name} died: {args.exc_value!r}",
-        (args.exc_type, args.exc_value, args.exc_traceback),
+        f"thread {name} died: {exc!r}",
+        (args.exc_type, exc, args.exc_traceback),
         fallback=lambda: threading.__excepthook__(args),
     )
 

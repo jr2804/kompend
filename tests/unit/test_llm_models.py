@@ -371,7 +371,9 @@ class TestBuildDecisionModel:
         m = build_decision_model("ollama-cloud/clef")
         assert isinstance(m, TypeSafeModel)
         assert m.base_url == "https://ollama.com"
-        assert m.provider.client._config.compression is None  # noqa: SLF001 — the compression flag has no public accessor
+        provider = m.provider
+        assert provider is not None
+        assert provider.client._config.compression is None  # noqa: SLF001 — the compression flag has no public accessor
 
     def test_default_endpoint_serves_the_sdk_home(self) -> None:
         """No provider info falls back to the SDK default, which strips zstd natively."""

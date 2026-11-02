@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import threading
@@ -116,6 +117,11 @@ class TestFailureHooks:
         assert threading.excepthook is launch._log_thread_failure
         assert sys.unraisablehook is launch._log_unraisable
 
+    @pytest.fixture(autouse=True)
+    def _fresh_failure_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The seen-failure cache is module state; tests start empty."""
+        monkeypatch.setattr(launch, "_THREAD_FAILURE_SEEN", {})
+
     def test_a_dead_thread_is_logged_with_its_name_and_error(self, caplog: pytest.LogCaptureFixture) -> None:
         error = ValueError("boom")
         args = SimpleNamespace(
@@ -131,6 +137,49 @@ class TestFailureHooks:
         message = caplog.records[0].getMessage()
         assert "thread Thread-1 died" in message
         assert "boom" in message
+
+    def test_an_identical_repeat_is_demoted_to_debug(self, caplog: pytest.LogCaptureFixture) -> None:
+        def _failure(name: str, message: str) -> SimpleNamespace:
+            error = ValueError(message)
+            return SimpleNamespace(
+                exc_type=ValueError,
+                exc_value=error,
+                exc_traceback=error.__traceback__,
+                thread=SimpleNamespace(name=name),
+            )
+
+        with caplog.at_level("DEBUG", logger="kompend.cli.launch"):
+            launch._log_thread_failure(cast("threading.ExceptHookArgs", _failure("Thread-1", "boom")))
+            launch._log_thread_failure(cast("threading.ExceptHookArgs", _failure("Thread-1", "boom")))
+            launch._log_thread_failure(cast("threading.ExceptHookArgs", _failure("Thread-1", "boom")))
+
+        errors = [r for r in caplog.records if r.levelno == logging.ERROR]
+        debugs = [r for r in caplog.records if r.levelno == logging.DEBUG]
+        assert len(errors) == 1
+        assert len(debugs) == 2
+        assert "died again" in debugs[0].getMessage()
+        assert "#3" in debugs[1].getMessage()
+
+    def test_a_different_failure_is_reported_in_full_again(self, caplog: pytest.LogCaptureFixture) -> None:
+        first = SimpleNamespace(
+            exc_type=ValueError,
+            exc_value=ValueError("boom"),
+            exc_traceback=None,
+            thread=SimpleNamespace(name="Thread-1"),
+        )
+        second = SimpleNamespace(
+            exc_type=OSError,
+            exc_value=OSError(9, "The handle is invalid"),
+            exc_traceback=None,
+            thread=SimpleNamespace(name="Thread-1"),
+        )
+
+        with caplog.at_level("ERROR", logger="kompend.cli.launch"):
+            launch._log_thread_failure(cast("threading.ExceptHookArgs", first))
+            launch._log_thread_failure(cast("threading.ExceptHookArgs", second))
+
+        assert len(caplog.records) == 2
+        assert "The handle is invalid" in caplog.records[1].getMessage()
 
     def test_an_unraisable_exception_is_logged(self, caplog: pytest.LogCaptureFixture) -> None:
         unraisable = SimpleNamespace(
