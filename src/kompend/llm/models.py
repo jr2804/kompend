@@ -50,6 +50,7 @@ from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.providers.typesafe import TypeSafeProvider
 from pydantic_ai.settings import ModelSettings
+from typesafe_sdk import AsyncTypeSafeClient
 
 from kompend.llm import catalog
 
@@ -515,7 +516,17 @@ def build_decision_model(model_string: str) -> Model:
     api_key = provider.get("api_key")
     if not base_url and not api_key:
         return TypeSafeModel(model_name)
-    return TypeSafeModel(model_name, provider=TypeSafeProvider(base_url=base_url, api_key=api_key))
+    if base_url:
+        # The SDK zstd-frames bodies >= 1 KiB by default; systemone endpoints
+        # other than api.typesafe.ai (ollama.com) do not strip Content-Encoding,
+        # so the raw frame reaches them as JSON starting with 0x28 ('(') and the
+        # request dies with "invalid character '('". pydantic-ai 2.64 does not
+        # forward the SDK's `compression` option through its provider, whose
+        # documented escape hatch is a prebuilt client. Decision payloads are a
+        # few KiB, so uncompressed costs nothing anywhere.
+        client = AsyncTypeSafeClient(api_key=api_key, base_url=base_url, compression=False)
+        return TypeSafeModel(model_name, provider=TypeSafeProvider(typesafe_client=client))
+    return TypeSafeModel(model_name, provider=TypeSafeProvider(api_key=api_key))
 
 
 def _decision_base_url(base_url: str | None) -> str | None:
