@@ -57,10 +57,17 @@ def log_stage(vault: VaultPaths, *, action: str, detail: str) -> None:
     """Append a stage entry (``Ingest``/``Query``/``Lint``/…) to the bundle log.
 
     Best-effort: a log-write failure must never break the command that
-    produced the event.
+    produced the event. A bundle that does not exist yet is not a failure —
+    ``ingest`` runs before the first ``compile``, and the log page belongs to
+    the compiled bundle — so it is reported at debug level instead of warning
+    about a missing directory on every run.
     """
+    path = vault.output_dir / LOG_FILE
+    if not path.parent.is_dir():
+        logger.debug("No compiled bundle at %s yet; skipping the %s log entry.", vault.output_dir, action)
+        return
     try:
-        append_log_entry(vault.output_dir / LOG_FILE, action=action, detail=detail)
+        append_log_entry(path, action=action, detail=detail)
     except OSError as exc:
         logger.warning("Could not append %s entry to log: %s", action, exc)
 
