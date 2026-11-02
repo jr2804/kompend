@@ -239,13 +239,6 @@ booleans, never free text). The model itself is an ordinary agent
 timeout`. Every helper returns `None` when the sidecar is off or unreachable,
 so the deterministic classification stays the floor.
 
-`build_decision_model` sends decision payloads uncompressed
-(`compression=False`): the SDK zstd-compresses bodies of 1 KiB and more, and
-third-party systemone endpoints (ollama.com) do not strip `Content-Encoding`
-— a zstd frame starts with `0x28` (`'('`), so the server fails with
-"invalid character '(' looking for beginning of value". api.typesafe.ai
-decompresses natively; nothing else is assumed to.
-
 ## Verification
 
 - `uv run pytest tests/unit/test_llm_models.py -x` — model construction
