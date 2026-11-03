@@ -7,19 +7,26 @@ default and only run when the user passes ``--llm``.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 from pydantic import BaseModel, Field
 
 from kompend.agents.deps import PipelineAgentDeps
+from kompend.agents.failure import UnitFailureLog, record_unit_failure
 from kompend.agents.lint import LintRuleAgent
 from kompend.core.config._configs import LlmDataFormat
 from kompend.core.models import CompiledWiki
 from kompend.core.templates import get_template_loader
 from kompend.core.text.slug import slugify
+from kompend.core.utils.exceptions import LLMOutputError
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from kompend.llm.format import encode_payload
 from kompend.logging import get_logger
+
+#: Fallbacks for ``compile.llm.batch_failure_threshold_*``; the runner passes
+#: the configured values down, these keep a bare rule construction usable.
+_DEFAULT_FAILURE_RATIO: Final[float] = 0.5
+_DEFAULT_FAILURE_MIN: Final[int] = 5
 
 logger = get_logger(__name__)
 
@@ -83,7 +90,7 @@ class ContradictionOutput(BaseModel):
 class LlmLintRule(BaseLintRule):
     """Base class for LLM-powered lint rules.
 
-    Consolidates the shared ``__init__``, ``_call_agent``, and
+    Consolidates the shared ``__init__``, ``_call_agent``, ``_failures`` and
     ``_skip_if_no_agent`` logic duplicated across all LLM lint rules.
     Subclasses must set ``name``, ``description``, and implement ``check``.
     """
@@ -93,37 +100,54 @@ class LlmLintRule(BaseLintRule):
         agent: LintRuleAgent | None = None,
         lint_page_budget: int = 100000,
         data_format: LlmDataFormat = LlmDataFormat.JSON,
+        failure_ratio: float = _DEFAULT_FAILURE_RATIO,
+        failure_min: int = _DEFAULT_FAILURE_MIN,
     ) -> None:
         self._agent = agent
         self.lint_page_budget = lint_page_budget
         #: Format for the structured payloads injected into the rule prompts
         #: (``compile.llm.data_format``).
         self.data_format = data_format
+        #: Stop the rule once more than this share of its units failed. See
+        #: :class:`~kompend.agents.failure.UnitFailureLog`.
+        self.failure_ratio = failure_ratio
+        #: Below this many units the ratio is not trusted (a wiki with three
+        #: pages should not abort because one of them failed).
+        self.failure_min = failure_min
 
-    def _call_agent[T: BaseModel](self, template_name: str, *, result_type: type[T], **kwargs: Any) -> T | None:
-        """Call the LintRuleAgent with a rendered template.
+    def _failures(self) -> UnitFailureLog:
+        """A fresh per-run failure log for this rule."""
+        return UnitFailureLog(stage=self.name, ratio=self.failure_ratio, min_units=self.failure_min)
 
-        Returns the structured pydantic model instance for *result_type*,
-        or ``None`` when no agent is configured or the call failed.
+    def _call_agent[T: BaseModel](self, template_name: str, *, result_type: type[T], **kwargs: Any) -> T:
+        """Call the LintRuleAgent with a rendered template and return its output.
+
+        Raises instead of returning ``None``. A rule that never learns its call
+        failed cannot record a SKIP for the page, and a page with no result is
+        indistinguishable from a page that passed: the report's denominator
+        shrinks, so the health score goes *up* the more the model fails. The
+        caller records the exception against the unit it was working on and
+        decides what a unit without a result means for that rule.
+
+        Returns:
+            The validated ``result_type`` instance.
+
+        Raises:
+            LLMOutputError: No agent is configured.
+            LLMOutputError: The agent returned a different type.
+            Exception: Whatever the agent raised (already classified by
+                :func:`kompend.agents.failure.classify_agent_failure`).
         """
         if self._agent is None:
-            return None
+            message = f"{self.name}: no LLM client available"
+            raise LLMOutputError(message)
         prompt = _loader.render(template_name, **kwargs)
         deps = PipelineAgentDeps(text=prompt, source_id=f"lint-{self.name}")
-        try:
-            result = self._agent.run(deps, result_type=result_type)
-            if isinstance(result, result_type):
-                return result
-            logger.warning(
-                "%s returned unexpected type (expected %s, got %s)",
-                self.name,
-                result_type.__name__,
-                type(result).__name__,
-            )
-            return None
-        except Exception as exc:
-            logger.warning("%s LLM call failed: %s", self.name, exc, exc_info=True)
-            return None
+        result = self._agent.run(deps, result_type=result_type)
+        if not isinstance(result, result_type):
+            message = f"{self.name}: expected {result_type.__name__}, got {type(result).__name__}"
+            raise LLMOutputError(message)
+        return result
 
     def _skip_if_no_agent(self) -> list[LintResult] | None:
         """Return a SKIP result if no agent is configured, else *None*."""
@@ -153,6 +177,7 @@ class FactualConsistencyRule(LlmLintRule):
             return skip
 
         results: list[LintResult] = []
+        failures = self._failures()
         for node in wiki.nodes:
             if not node.content or not node.source_chunks:
                 continue
@@ -161,6 +186,7 @@ class FactualConsistencyRule(LlmLintRule):
             for seg_start in range(0, len(content), self.lint_page_budget):
                 segment = content[seg_start : seg_start + self.lint_page_budget]
                 _loader.render("lint/factual-consistency.md.j2", title=node.title, content=segment)
+                failures.attempted()
                 try:
                     llm_result = self._call_agent(
                         "lint/factual-consistency.md.j2",
@@ -169,18 +195,15 @@ class FactualConsistencyRule(LlmLintRule):
                         content=segment,
                     )
                 except Exception as exc:
-                    logger.warning("factual-consistency LLM call failed: %s", exc, exc_info=True)
+                    failure = failures.record(node.id, exc)
                     results.append(
                         LintResult(
                             rule=self.name,
                             outcome=LintRuleOutcome.SKIP,
-                            message=f"LLM call failed: {exc}",
+                            message=f"No result ({failure.kind.value}): {exc}",
                             page_id=node.id,
                         )
                     )
-                    continue
-
-                if llm_result is None:
                     continue
 
                 issues = llm_result.issues
@@ -196,6 +219,7 @@ class FactualConsistencyRule(LlmLintRule):
                         )
                     )
 
+        failures.check()
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No factual inconsistencies found"))
         return results
@@ -216,17 +240,20 @@ class ClarityScoreRule(LlmLintRule):
             return skip
 
         results: list[LintResult] = []
+        failures = self._failures()
         for node in wiki.nodes:
             if not node.content:
                 continue
             # Chunk-and-iterate: process content in budget-sized segments,
             # keeping the best (highest) score.
             content = node.content
+            best: LintResult | None = None
             best_score = 0
-            best_feedback = ""
+            page_failed = False
             for seg_start in range(0, len(content), self.lint_page_budget):
                 segment = content[seg_start : seg_start + self.lint_page_budget]
                 _loader.render("lint/clarity-score.md.j2", title=node.title, content=segment)
+                failures.attempted()
                 try:
                     llm_result = self._call_agent(
                         "lint/clarity-score.md.j2",
@@ -235,40 +262,48 @@ class ClarityScoreRule(LlmLintRule):
                         content=segment,
                     )
                 except Exception as exc:
-                    logger.warning("clarity-score LLM call failed: %s", exc, exc_info=True)
+                    page_failed = True
+                    failure = failures.record(node.id, exc)
                     results.append(
                         LintResult(
                             rule=self.name,
                             outcome=LintRuleOutcome.SKIP,
-                            message=f"LLM call failed: {exc}",
+                            message=f"No score ({failure.kind.value}): {exc}",
                             page_id=node.id,
                         )
                     )
                     continue
 
-                if llm_result is None:
-                    continue
-
                 score = llm_result.score
                 feedback = llm_result.feedback
-                if score > best_score:
+                if score > best_score or best is None:
                     best_score = score
-                    best_feedback = feedback
-
-            if best_score > 0:
-                outcome = LintRuleOutcome.PASS if best_score >= 6 else LintRuleOutcome.FAIL
-                severity = Severity.INFO if best_score >= 6 else Severity.WARNING
-                results.append(
-                    LintResult(
+                    outcome = LintRuleOutcome.PASS if score >= 6 else LintRuleOutcome.FAIL
+                    severity = Severity.INFO if score >= 6 else Severity.WARNING
+                    best = LintResult(
                         rule=self.name,
                         outcome=outcome,
                         severity=severity,
-                        message=f"Clarity score for '{node.title}': {best_score}/10 — {best_feedback}",
+                        message=f"Clarity score for '{node.title}': {score}/10 — {feedback}",
                         page_id=node.id,
-                        details={"score": best_score, "feedback": best_feedback},
+                        details={"score": score, "feedback": feedback},
+                    )
+
+            if best is not None:
+                results.append(best)
+            elif not page_failed:
+                # The model answered but scored nothing: still a page without a
+                # result, and it must be counted as one.
+                results.append(
+                    LintResult(
+                        rule=self.name,
+                        outcome=LintRuleOutcome.SKIP,
+                        message="No clarity score returned for this page",
+                        page_id=node.id,
                     )
                 )
 
+        failures.check()
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No pages to score"))
         return results
@@ -297,6 +332,7 @@ class CoverageGapRule(LlmLintRule):
         all_gaps: list[dict] = []
         batch_size = max(1, self.lint_page_budget // max(200, len(wiki.nodes)))
         batch_size = min(batch_size, 30)  # cap to keep prompts manageable
+        failures = self._failures()
 
         for batch_start in range(0, len(wiki.nodes), batch_size):
             batch = wiki.nodes[batch_start : batch_start + batch_size]
@@ -304,6 +340,7 @@ class CoverageGapRule(LlmLintRule):
 
             _loader.render("lint/coverage-gap.md.j2", wiki_summary=wiki_summary)
 
+            failures.attempted()
             try:
                 llm_result = self._call_agent(
                     "lint/coverage-gap.md.j2",
@@ -311,15 +348,14 @@ class CoverageGapRule(LlmLintRule):
                     wiki_summary=wiki_summary,
                 )
             except Exception as exc:
-                logger.warning("coverage-gap LLM call failed for batch %d: %s", batch_start, exc, exc_info=True)
-                continue
-
-            if llm_result is None:
+                failures.record(f"batch-{batch_start}", exc)
                 continue
 
             gaps = llm_result.gaps
             if isinstance(gaps, list):
                 all_gaps.extend(gap.model_dump() for gap in gaps)
+
+        failures.check()
 
         # Cross-batch dedup: merge concepts that refer to the same thing
         # under different names (e.g., "ETSI TS 103 558" = "ABLE Model").
@@ -372,7 +408,13 @@ class CoverageGapRule(LlmLintRule):
         return merged
 
     def _dedup_gaps_batch(self, gaps: list[dict]) -> list[dict]:
-        """Single LLM call to merge a gap list that fits in the context window."""
+        """Single LLM call to merge a gap list that fits in the context window.
+
+        A failed dedup returns the input unchanged: deduplication is a
+        best-effort enrichment, and losing the gaps would be worse than
+        reporting duplicates. The failure is still classified and logged by
+        :func:`kompend.agents.failure.record_unit_failure`.
+        """
         if len(gaps) <= 1:
             return gaps
         gaps_data = encode_payload(gaps, self.data_format)
@@ -384,9 +426,7 @@ class CoverageGapRule(LlmLintRule):
                 gaps_data=gaps_data,
             )
         except Exception as exc:
-            logger.warning("coverage-gap dedup failed: %s", exc, exc_info=True)
-            return gaps
-        if llm_result is None:
+            record_unit_failure(stage=f"{self.name}:dedup", unit=f"{len(gaps)} gap(s)", exc=exc)
             return gaps
         merged = llm_result.gaps
         return [g.model_dump() for g in merged] if merged else gaps
@@ -439,6 +479,7 @@ class ContradictionDetectionRule(LlmLintRule):
 
         results: list[LintResult] = []
         seen_pairs: set[frozenset[str]] = set()
+        failures = self._failures()
 
         # Each batch contains multiple pages so the LLM can compare them.
         batch_size = max(2, self.lint_page_budget // 2000)
@@ -450,6 +491,7 @@ class ContradictionDetectionRule(LlmLintRule):
             wiki_summary = "\n\n---\n\n".join(f"Title: {n.title}\n{n.content or ''}" for n in batch)
 
             _loader.render("lint/contradiction-detection.md.j2", wiki_summary=wiki_summary)
+            failures.attempted()
             try:
                 llm_result = self._call_agent(
                     "lint/contradiction-detection.md.j2",
@@ -457,17 +499,14 @@ class ContradictionDetectionRule(LlmLintRule):
                     wiki_summary=wiki_summary,
                 )
             except Exception as exc:
-                logger.warning("contradiction-detection LLM call failed for batch %d: %s", batch_start, exc, exc_info=True)
+                failure = failures.record(f"batch-{batch_start}", exc)
                 results.append(
                     LintResult(
                         rule=self.name,
                         outcome=LintRuleOutcome.SKIP,
-                        message=f"LLM call failed: {exc}",
+                        message=f"No result ({failure.kind.value}): {exc}",
                     )
                 )
-                continue
-
-            if llm_result is None:
                 continue
 
             contradictions = llm_result.contradictions
@@ -510,6 +549,7 @@ class ContradictionDetectionRule(LlmLintRule):
                     )
                 )
 
+        failures.check()
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No contradictions detected"))
         return results

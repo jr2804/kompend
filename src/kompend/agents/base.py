@@ -54,6 +54,7 @@ from pydantic_ai.settings import ModelSettings
 from pydantic_ai_harness.compaction import ContextUsage, ReportContextUsage, SlidingWindowCompaction
 
 from kompend.agents.context_manager import _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES, build_fallback_compaction
+from kompend.agents.failure import EmptyAnswerError
 from kompend.agents.instrument import configure_observability
 from kompend.agents.kompend_model import KompendModel
 from kompend.agents.rlm import (
@@ -181,8 +182,12 @@ def _context_usage_str(tracker: UsageTracker | None) -> str:
 def _map_agent_error(exc: Exception, *, model_string: str, debug_hint: str) -> LLMOutputError:
     """Map a provider failure to the exception the pipeline understands.
 
-    Three outcomes:
+    Four outcomes:
 
+    - an empty answer (:class:`EmptyAnswerError`, raised by the model layer
+      before the output-retry budget is spent) stays an empty answer: the
+      stage and the classifier both need to see *why* the unit has no
+      result, not a generic "agent failed";
     - a context-window overflow becomes :class:`LLMContextOverflowError`
       carrying the limit the provider named, so the stage can lower the
       effective window and re-plan instead of failing the run;
@@ -190,6 +195,8 @@ def _map_agent_error(exc: Exception, *, model_string: str, debug_hint: str) -> L
     - everything else becomes :class:`LLMOutputError`.
     """
     message = f"Agent failed for model '{model_string}': {exc}{debug_hint}"
+    if isinstance(exc, EmptyAnswerError):
+        return EmptyAnswerError(message)
     if is_context_overflow(exc):
         return LLMContextOverflowError(message, stated_limit=stated_context_size(exc))
     if is_transient_error(exc):
@@ -378,17 +385,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         try:
             result = self._invoke(user_prompt, deps, system_prompt, message_history, conversation_id=conversation_id, run_id=run_id)
         except Exception as exc:
-            debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
-            ctx_info = _context_usage_str(self.usage_tracker)
-            logger.warning(
-                "Agent '%s' failed on '%s': %s%s%s",
-                type(self).__name__,
-                deps.source_id,
-                exc,
-                debug_hint,
-                ctx_info,
-            )
-            raise _map_agent_error(exc, model_string=self.model_string, debug_hint=debug_hint) from exc
+            raise self._failure(exc, deps) from exc
         return result.output
 
     def run_with_messages(
@@ -416,17 +413,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         try:
             result = self._invoke(user_prompt, deps, system_prompt, message_history, conversation_id=conversation_id, run_id=run_id)
         except Exception as exc:
-            debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
-            ctx_info = _context_usage_str(self.usage_tracker)
-            logger.warning(
-                "Agent '%s' failed on '%s': %s%s%s",
-                type(self).__name__,
-                deps.source_id,
-                exc,
-                debug_hint,
-                ctx_info,
-            )
-            raise _map_agent_error(exc, model_string=self.model_string, debug_hint=debug_hint) from exc
+            raise self._failure(exc, deps) from exc
         return result.output, result.new_messages()
 
     @property
@@ -461,6 +448,25 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         touch the instance — the base passes the result through unchanged.
         """
         return output
+
+    def _failure(self, exc: Exception, deps: DepsT) -> LLMOutputError:
+        """Log a failed run once and return the exception the stage must see.
+
+        Both entry points (``run`` and ``run_with_messages``) fail the same
+        way, so the log line and the mapping live here instead of in two
+        identical ``except`` blocks that could drift apart.
+        """
+        debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
+        ctx_info = _context_usage_str(self.usage_tracker)
+        logger.warning(
+            "Agent '%s' failed on '%s': %s%s%s",
+            type(self).__name__,
+            deps.source_id,
+            exc,
+            debug_hint,
+            ctx_info,
+        )
+        return _map_agent_error(exc, model_string=self.model_string, debug_hint=debug_hint)
 
     def _invoke(
         self,

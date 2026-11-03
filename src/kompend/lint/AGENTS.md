@@ -32,7 +32,17 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   300 s) governs it, separately from `compile.llm.timeout`. The retry policy is
   not lint's own: `LlmLintRule._call_agent` makes one attempt and the agent base
   retries a transient failure (`compile.llm.transient_retries`). A failed call
-  still yields no findings for the rule, so do not swallow the error.
+  raises — it never returns `None`.
+- **A failed unit becomes a SKIP result, not a missing one.** Every rule opens
+  `UnitFailureLog(stage=self.name)` (vocabulary in `agents/AGENTS.md`), calls
+  `attempted()` per unit, records each exception, emits one `SKIP` result whose
+  message names the kind (`No result (empty_answer): …`), then `check()`s
+  against `compile.llm.batch_failure_threshold_ratio` / `_min` before returning.
+  Dropping a page silently shrinks the denominator and *raises* the health
+  score — never do it.
+- **One scorer.** `flow._rich_report` IS `runner._build_report`
+  (severity-weighted: ERROR=3, WARNING=2, INFO=1, `100*max(0, 1-penalty/max)`).
+  A second formula anywhere means two different numbers for one run.
 - **The terminal shows a bounded report; the file shows everything.** A
   lint run over a big vault yields hundreds of findings, so the console prints
   the verdict plus (at most) one line per failing rule and points at

@@ -27,7 +27,7 @@ from kompend.lint.gap_analysis import analyze_gaps, load_degree_map
 from kompend.lint.history import entry_from_report, save_lint_entry
 from kompend.lint.log import render_report, write_lint_log
 from kompend.lint.remediation import RemediationStatus, remediate
-from kompend.lint.runner import LintRunner
+from kompend.lint.runner import LintRunner, _build_report
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.renderer import format_output
 
@@ -175,6 +175,8 @@ def _run_pass(
         ),
         rumdl_config=resolve_rumdl_config(vp.base_dir, cfg.kompend.compile.output.rumdl_config),
         data_format=cfg.kompend.compile.llm.data_format,
+        failure_ratio=cfg.kompend.compile.llm.batch_failure_threshold_ratio,
+        failure_min=cfg.kompend.compile.llm.batch_failure_threshold_min,
     )
     start = time.monotonic()
     report = runner.run(wiki)
@@ -213,22 +215,17 @@ def _merge_results(
 
 
 def _rich_report(results: list[LintResult]) -> LintReport:
-    """Populate summary fields from a flat result list (single source of
-    truth for the merge; mirrors ``runner._build_report`` aggregation).
+    """Populate summary fields from a flat result list.
+
+    Delegates to :func:`kompend.lint.runner._build_report` — the merge used to
+    recompute the score as a plain pass ratio, so ``lint all`` and
+    ``lint check`` disagreed on the same results, and a rule that produced no
+    result at all made the score go *up* (smaller denominator, same passes).
+
+    Returns:
+        The aggregated report over every merged result.
     """
-    passes = sum(1 for r in results if r.outcome == "pass")
-    failures = sum(1 for r in results if r.outcome == "fail")
-    skips = sum(1 for r in results if r.outcome == "skip")
-    total_checks = len(results)
-    health_score = round(100.0 * passes / total_checks, 1) if total_checks else 0.0
-    return LintReport(
-        results=results,
-        total_checks=total_checks,
-        failures=failures,
-        passes=passes,
-        skips=skips,
-        health_score=health_score,
-    )
+    return _build_report(results)
 
 
 def _format_output_phase(vp: VaultPaths, cfg: Any) -> None:

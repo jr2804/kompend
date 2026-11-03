@@ -20,7 +20,7 @@ from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.core.models.metadata import meta_dict, meta_str
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
-from kompend.core.utils.exceptions import LLMTransientError
+from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.lint import _remediation_gaps as gaps_module
 from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
 from kompend.lint.history import entry_from_report, report_from_dict
@@ -1404,16 +1404,38 @@ class TestOrphanAttachmentsRule:
 
 
 class TestLintCallFailure:
-    """The rule reports nothing when its one call fails - the base retries."""
+    """A failing rule call raises instead of disappearing.
 
-    def test_a_failed_call_yields_no_result_and_no_retry_here(self) -> None:
+    The old ``_call_agent`` returned ``None`` on failure, which turned a page
+    without a result into a page that simply was not there — the report's
+    denominator shrank and the health score went *up*. It now raises, so the
+    rule records a SKIP against the unit it was working on.
+    """
+
+    def test_a_failed_call_raises_and_is_not_retried_here(self) -> None:
         client = MagicMock()
         client.timeout = 300.0
         client.run.side_effect = LLMTransientError("timeout")
         rule = CoverageGapRule(agent=client)
 
-        assert rule._call_agent("lint/coverage-gap-dedup.md.j2", result_type=CoverageGapOutput, gaps_data="[]") is None
+        with pytest.raises(LLMTransientError, match="timeout"):
+            rule._call_agent("lint/coverage-gap-dedup.md.j2", result_type=CoverageGapOutput, gaps_data="[]")
         assert client.run.call_count == 1
+
+    def test_no_agent_raises_instead_of_returning_none(self) -> None:
+        rule = CoverageGapRule(agent=None)
+
+        with pytest.raises(LLMOutputError, match="no LLM client"):
+            rule._call_agent("lint/coverage-gap-dedup.md.j2", result_type=CoverageGapOutput, gaps_data="[]")
+
+    def test_an_unexpected_return_type_raises(self) -> None:
+        client = MagicMock()
+        client.timeout = 300.0
+        client.run.return_value = "not a coverage-gap payload"
+        rule = CoverageGapRule(agent=client)
+
+        with pytest.raises(LLMOutputError, match="expected CoverageGapOutput"):
+            rule._call_agent("lint/coverage-gap-dedup.md.j2", result_type=CoverageGapOutput, gaps_data="[]")
 
 
 def _mock_agentic_remediation(pages: list[tuple[str, str]] | None = None) -> MagicMock:

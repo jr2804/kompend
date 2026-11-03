@@ -48,11 +48,19 @@ class LintRunner:
         lint_config: LintConfig | None = None,
         rumdl_config: Path | None = None,
         data_format: LlmDataFormat = LlmDataFormat.JSON,
+        failure_ratio: float | None = None,
+        failure_min: int | None = None,
     ) -> None:
         self.requested_rules = rules
         self.enable_llm = enable_llm
         self._lint_agent = lint_agent
         self.lint_page_budget = lint_page_budget or 100000
+        #: Batch failure thresholds handed to every LLM rule. ``None`` keeps
+        #: the rule's own default; the CLI passes ``compile.llm
+        #: .batch_failure_threshold_*`` so lint and compilation agree on when
+        #: a broken model stops a batch.
+        self.failure_ratio = failure_ratio
+        self.failure_min = failure_min
         self.fix = fix
         #: Destructive fixes (file deletion) require explicit opt-in — the
         #: post-compile lint and default ``kompend lint check`` pass ``fix=True``
@@ -130,6 +138,10 @@ class LintRunner:
             "lint_page_budget": self.lint_page_budget,
             "data_format": self.data_format,
         }
+        if self.failure_ratio is not None:
+            llm_kwargs["failure_ratio"] = self.failure_ratio
+        if self.failure_min is not None:
+            llm_kwargs["failure_min"] = self.failure_min
 
         # Config-derived values for DuplicateReferencesRule / RumdlRule
         ref_kwargs: dict[str, Any] = {}

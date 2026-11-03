@@ -36,6 +36,15 @@ from kompend.agents.deps import (
 from kompend.agents.doctor import DoctorAgent, DoctorDeps
 from kompend.agents.extraction import ExtractionAgent
 from kompend.agents.extraction_reduce import ExtractionReduceAgent
+from kompend.agents.failure import (
+    AgentFailureKind,
+    EmptyAnswerError,
+    UnitFailure,
+    UnitFailureLog,
+    classify_agent_failure,
+    is_retry_pointless,
+    record_unit_failure,
+)
 from kompend.agents.memory_consolidation import MemoryConsolidationAgent
 from kompend.agents.query import QueryAgent
 from kompend.agents.types import (
@@ -45,8 +54,10 @@ from kompend.agents.types import (
 from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 
 __all__ = [
+    "AgentFailureKind",
     "DoctorAgent",
     "DoctorDeps",
+    "EmptyAnswerError",
     "ExtractionAgent",
     "ExtractionReduceAgent",
     "KompendAgentBase",
@@ -56,10 +67,15 @@ __all__ = [
     "QueryAgent",
     "QueryDeps",
     "ToolGenerationDeps",
+    "UnitFailure",
+    "UnitFailureLog",
     "WicerDiagnoseAgent",
     "WicerDiagnoseDeps",
     "WicerEvaluateAgent",
     "WicerEvaluateDeps",
     "WicerProbeAgent",
     "WicerProbeDeps",
+    "classify_agent_failure",
+    "is_retry_pointless",
+    "record_unit_failure",
 ]

@@ -6,10 +6,8 @@
 ## Purpose
 
 PydanticAI-based agents for every LLM call in the kompend pipeline. Each
-pipeline stage (extraction, generation, query, WiCER, capture, lint,
-search, verification, VLM, organize, doctor) is a single-turn
-structured-output agent that returns a typed Pydantic model. This package
-is the **only** layer that talks to pydantic-ai `Agent` directly.
+pipeline stage is a structured-output agent returning a typed Pydantic model.
+This package is the **only** layer that talks to pydantic-ai `Agent` directly.
 
 ## Ownership
 
@@ -25,22 +23,14 @@ is the **only** layer that talks to pydantic-ai `Agent` directly.
 
 All agents extend `KompendAgentBase[ResultT, DepsT]` (ABC):
 
-- `ExtractionAgent`, `ExtractionReduceAgent`
-- `MemoryConsolidationAgent` (windowed agentic-extraction digest)
-- `AgenticGenerationAgent`
-- `ReferenceExtractionAgent` (bibliographic reference parsing)
-- `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`
-- `QueryAgent`
-- `QueryExpansionAgent`, `CragGradeAgent`, `HydeAgent`
-- `VlmAgent`
-- `CaptureAgent`, `DistillAgent`
-- `CategorizeAgent`
-- `LintRuleAgent`, `RemediationAgent`
-- `VerificationAgent`
-- `SummarizerAgent`
-- `ContextChunkAgent`
-- `DoctorAgent`
-- `DecisionAgent` (TypeSafe decision model, error triage)
+- single-turn structured output: `ExtractionAgent`, `ExtractionReduceAgent`,
+  `AgenticGenerationAgent`, `ReferenceExtractionAgent`, `QueryAgent`,
+  `QueryExpansionAgent`, `CragGradeAgent`, `HydeAgent`, `VlmAgent`,
+  `CaptureAgent`, `DistillAgent`, `CategorizeAgent`, `LintRuleAgent`,
+  `RemediationAgent`, `VerificationAgent`, `ContextChunkAgent`, `DoctorAgent`
+- windowed agentic-extraction digest: `MemoryConsolidationAgent`
+- WiCER probes: `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`
+- `SummarizerAgent`, and `DecisionAgent` (TypeSafe decision model, error triage)
 
 ### KompendAgentBase responsibilities
 
@@ -70,30 +60,24 @@ The base class provides:
   pydantic/pydantic-ai#12307); other errors burn. Disabled at the code-API
   level, enabled by config.
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
-  `[rlm]` extra) attaches from the `compile.llm.rlm` group
-  (`RlmConfig` in `core/config/_configs.py`:
-  `enable`, `preset`, `max_tool_calls`, `code_timeout`, `sub_model`,
-  `max_depth`, `node_budget` — `enable` is the only switch, explicit
-  fields override the preset baseline; no scalar shorthand). It
-  registers an `execute_code` tool (sandboxed REPL, deps context
-  pre-loaded from `rlm_context_field`) and RLM mode instructions; the
-  sub-model powers `llm_query()` inside the REPL and is usage-tracked
-  via `KompendModel`. With `max_depth > 0` the REPL also exposes
-  `rlm_query(prompt, slice)` — a child agent (same main model, own REPL)
-  recursing up to the depth budget, guarded by a per-root-run node
-  budget (default 16) and cycle detection on (depth, prompt, context
-  fingerprint). The per-run REPL cache is keyed by `id(deps)`; a lookup
-  must confirm the entry still belongs to that deps object — ids are
-  recycled once a deps object is collected, and a stale REPL would run
-  the next agent against the previous run's namespace, guard and model.
-  Run
-  tool-calls are bounded by `UsageLimits` from the preset. When RLM is
-  enabled, the `rlm_context_field` deps value is replaced by a
-  placeholder in rendered prompts (`RLM_CONTEXT_PLACEHOLDER`) so the
-  model explores the context via code instead of reading it inline
-  (the deps still carry the full value for the REPL). Composes with
-  context management (compaction bounds the conversation, RLM keeps
-  document data out of it). Disabled by default (`rlm=False`).
+  `[rlm]` extra) attaches from the `compile.llm.rlm` group (`RlmConfig` in
+  `core/config/_configs.py`: `enable`, `preset`, `max_tool_calls`,
+  `code_timeout`, `sub_model`, `max_depth`, `node_budget`; `enable` is the
+  only switch, explicit fields override the preset baseline). It registers
+  an `execute_code` tool (sandboxed REPL, deps context pre-loaded from
+  `rlm_context_field`) plus RLM instructions; the sub-model powers
+  `llm_query()` in the REPL and is usage-tracked via `KompendModel`. With
+  `max_depth > 0` the REPL also exposes `rlm_query(prompt, slice)` — a
+  child agent (same main model, own REPL) recursing to the depth budget,
+  guarded by a per-root-run node budget (default 16) and cycle detection on
+  (depth, prompt, context fingerprint). The per-run REPL cache is keyed by
+  `id(deps)`; a lookup must confirm the entry still belongs to that deps
+  object — ids are recycled once a deps object is collected, and a stale
+  REPL would run the next agent against the previous run's namespace,
+  guard and model. Run tool-calls are bounded by `UsageLimits` from the
+  preset. When RLM is enabled the `rlm_context_field` deps value is replaced
+  in rendered prompts by `RLM_CONTEXT_PLACEHOLDER` (the deps keep the full
+  value for the REPL). Disabled by default (`rlm=False`).
 - **Skill injection** — user-defined skills from `compile.skills` are
   appended to the system prompt under `## Skill: <name>` headings
 - **Output validation + retry** — PydanticAI validates against
@@ -109,12 +93,11 @@ The base class provides:
   retried call), scaled by `headroom_frac`. Only the unit count and per-unit
   cost are per agent: nodes (`budget.summary_requests_per_node`), groups
   (`budget.distill_requests_per_group`), claims, gaps, chunks, concepts — the
-  last four class constants. The budget is a floor: unsummarized nodes are
-  re-requested later (caller-side in `NodeSummarizer`, batched and stall-retried
-  per `SummarizerSessionPolicy` from `budget.summary_session_*`); a session
-  counts as progress only for ids in its own payload, and `summarize_node`
-  rejects unknown ids with `ModelRetry` so a mangled id cannot masquerade as
-  progress
+  last four class constants. A session counts as progress only for ids in its
+  own payload, and `summarize_node` rejects unknown ids with `ModelRetry` so a
+  mangled id cannot masquerade as progress. Unsummarized nodes are
+  re-requested later (caller-side in `NodeSummarizer`, batched and
+  stall-retried per `SummarizerSessionPolicy` from `budget.summary_session_*`).
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
 
@@ -153,6 +136,19 @@ A **transient** failure (timeout, dropped connection, 429/5xx) is retried in
 not add backoff loops of their own (generation and lint had one; both were
 removed). Tool, output-schema and session-progress retries are other axes.
 
+### Failure vocabulary (`failure.py`)
+
+`classify_agent_failure(exc)` maps any raised error onto an `AgentFailureKind`
+(`empty_answer`, `schema_mismatch`, `context_overflow`, `transient`, `other`);
+`is_retry_pointless(kind)` says when re-sending the request cannot help.
+An empty answer never spends the output budget: `KompendModel` raises
+`EmptyAnswerError` on the first blank response, for every output mode except
+`text`. Stages call `record_unit_failure(...)` per failed unit (one log line
+naming unit, kind and request count) and `UnitFailureLog.check()` raises once
+more than `compile.llm.batch_failure_threshold_ratio` of the units failed. A
+stage never swallows a failure into a smaller result set: record it and go on,
+or stop with the kinds in the message.
+
 `resolve_retry_budget(llm, retries=…, output_retries=…)` derives the
 tool/output retry split from the same config — the agentic factories use it so
 a multi-turn agent does not share the single-shot budget. The halves are
@@ -170,7 +166,6 @@ notebook is owned by ONE agent instance, so it only helps a stage where one
 instance handles MANY outputs - summarisation, verification, remediation,
 distillation. Fresh-agent-per-unit stages (generation, write, query,
 context-chunk, overview) gain nothing: it would be empty every unit.
-
 `compile.llm.memory_store` (default `vault`) picks the backend: `vault`
 roots the notebook at `.kompend/agent-memory/` via `DirectoryMemoryStore`
 (`vault_memory.py`; the harness `FileStore` is POSIX-only locally), resolved
@@ -178,7 +173,6 @@ by `build_notebook_store(llm, memory_dir)` — every notebook stage uses it.
 The harness scopes every notebook path by agent name, so each stage owns
 `.kompend/agent-memory/<agent_name>/MEMORY.md`. The notebook is agent-written
 prompt context, not a cache input: it is not part of the summary cache key.
-`session` keeps the notebook in process.
 
 Three more harness capabilities ride on `AgenticHarness` (`agentic_harness.py`),
 first consumed by the generation and summarizer agents: **StepPersistence**
@@ -199,6 +193,8 @@ Thin delegate around any native pydantic-ai `Model`. Adds:
 
 - `_merge_reasoning()` — maps `reasoning_effort` to provider settings
 - `_track_usage()` — records input/output tokens
+- `_fail_on_empty_answer()` — raises `EmptyAnswerError` instead of letting a
+  blank response burn four output retries
 - `_save_debug()` — writes request/response to LLM debug log
 - `_repair_tool_call_args()` / `_repair_text_part()` — `json_repair`
   before the strict validator (fixes malformed JSON from small local models)
@@ -217,11 +213,11 @@ Agent layer (`build_fallback_compaction`, see `KompendAgentBase`).
 | `WicerDiagnoseDeps` | WicerDiagnoseAgent                                                                    |
 | `DoctorDeps`        | DoctorAgent                                                                           |
 | `SummarizerDeps`    | AgenticSummarizerAgent (payload: `SummaryNode`)                                       |
-| `MemoryConsolidationDeps` | MemoryConsolidationAgent (payload: `previous` + `delta` digest material, `target_tokens` budget) |
+| `MemoryConsolidationDeps` | MemoryConsolidationAgent (`previous` + delta digest, `target_tokens`)      |
 | `ContextChunkDeps`  | AgenticContextChunkAgent (payload: `ContextChunk`)                                    |
 | `DistillAgentDeps`  | AgenticDistillAgent (payload: `DistillGroup`, `DistillPage`)                          |
 | `VerificationDeps`  | AgenticVerificationAgent (payload: `VerificationClaim`, `VerificationSource`, `VerificationPage`) |
-| `WriteDeps`         | AgenticWriteAgent (payload: `source_texts` — the full sources, served in windows of `source_char_max` characters) |
+| `WriteDeps`         | AgenticWriteAgent (`source_texts`, served in `source_char_max` windows)                |
 
 Agentic-session payloads are `TypedDict`s in `types.py`, never bare
 `dict[str, Any]` at the agent boundary. `DistillPage` is `total=False` because
