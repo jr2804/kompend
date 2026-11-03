@@ -25,9 +25,9 @@ from kompend.core.keys import (
     COMPILE_LLM_FALLBACK_CHAIN,
     COMPILE_LLM_VLM_MODEL,
     COMPILE_MEMORY_ENABLED,
-    COMPILE_NO_CACHE,
     COMPILE_PRIVATE,
     COMPILE_PROVENANCE,
+    COMPILE_REPARSE,
     COMPILE_REVIEW,
     COMPILE_START_AT_TIER,
     COMPILE_STOP_AT_TIER,
@@ -108,7 +108,7 @@ def build_cli_overrides(
     wiki_dir: str | None = None,
     start_at_tier: str | None = None,
     stop_at_tier: str | None = None,
-    no_cache: bool | None = None,
+    reparse: bool | None = None,
     ignore_model: bool | None = None,
     workers: int | None = None,
     force: bool | None = None,
@@ -159,7 +159,7 @@ def build_cli_overrides(
             overrides[key] = val
 
     _flags: list[tuple[str, bool | None]] = [
-        (COMPILE_NO_CACHE, no_cache),
+        (COMPILE_REPARSE, reparse),
         (COMPILE_CACHE_IGNORE_MODEL, ignore_model),
         (COMPILE_FORCE, force),
         (COMPILE_IN_PLACE_SOURCES, in_place_sources),

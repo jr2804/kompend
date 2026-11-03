@@ -202,7 +202,7 @@ def test_ingest_reports_the_mislabel_as_failed(tmp_path: Path) -> None:
             files=[src],
             base_dir=base,
             router=cast("ParserRouter", MagicMock()),
-            no_cache=True,
+            reparse=True,
             config=None,
         )
 

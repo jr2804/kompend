@@ -280,7 +280,7 @@ Unset, it follows the `paths.recursive` config value (default on).
 
 ### Forced re-ingest (parser setting change)
 
-`kompend ingest --no-cache` forces a re-parse of every selected source. Two
+`kompend ingest --reparse` forces a re-parse of every selected source. Two
 things make this safe and sufficient for a parser-related change:
 
 - **Tags and attributes are preserved.** `kompend sources tag` / `attr add` write
@@ -290,26 +290,21 @@ things make this safe and sufficient for a parser-related change:
 - **Attachments are untouched.** They live in the attachment manifest in
   `.kompend/kompend.db` and `attachments/<slug>/`; `ingest` never writes those.
 
-A parser-related change invalidates automatically: the parse cache keys
-on `ParserRouter.fingerprint()` and the chunk cache keys on the same
-fingerprint. The fingerprint folds in the `[ingest] parsecraft_*` keys
-(`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`,
-`parsecraft_effort`, `parsecraft_allow_ocr`, `parsecraft_engines`,
-`parsecraft_extract_vector_graphics`, `parsecraft_preferred_backend`,
-`parsecraft_only_backend`) and the adapter's `max_passes`, so a change to any of those — and not to
-the backend name, which is no longer selectable — invalidates the cache.
-So after editing an `[ingest]` knob, a plain `kompend ingest` re-parses and
-the next `kompend compile` re-chunks; no `--no-cache` needed. Use `--no-cache`
-only to force a re-parse when nothing changed.
+The parse cache is content-addressed: an entry is reused when the source bytes
+hash to the same key. A parser setting change does not invalidate it by
+itself, so after editing an `[ingest] parsecraft_*` knob, ask for the re-parse
+explicitly:
 
 ```bash
 # change a parser knob: edit [ingest] parsecraft_*, then
-kompend ingest                 # re-parses the affected sources automatically
-kompend compile                # re-chunks from the new parser output
-
-# force a re-parse regardless
-kompend ingest --no-cache
+kompend ingest --reparse        # re-parse every source
+kompend compile                # re-chunk from the new parser output
 ```
+
+`--reparse` re-parses the sources and re-chunks them; cached LLM results are
+kept, so only changed content is recompiled. To drop the LLM results as well,
+set `compile.no_cache` (config file, `kompend config set`, or
+`--set compile.no_cache=true`).
 
 The `[ingest]` block now holds only the parsecraft parameters; the
 backend selector was retired (the parser chain is parsecraft and only

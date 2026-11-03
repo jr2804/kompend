@@ -26,11 +26,15 @@ StartAtTier = Annotated[
     ),
 ]
 
-NoCacheFlag = Annotated[
+ReparseFlag = Annotated[
     bool | None,
     Parameter(
-        name="--cache",
-        help="Force a re-parse of every source (bypass the parse cache). Tags/attributes are preserved; attachments are untouched.",
+        name="--reparse",
+        help=(
+            "Re-parse every source instead of reusing the cached parse. "
+            "Sources are re-extracted and re-chunked; cached LLM results are kept. "
+            "Tags/attributes are preserved; attachments are untouched."
+        ),
         group=PIPELINE_GROUP,
     ),
 ]

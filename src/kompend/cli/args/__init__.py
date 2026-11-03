@@ -118,7 +118,7 @@ from .pipeline import (
     JsonProgress,
     ListTiers,
     MemoryEnabled,
-    NoCacheFlag,
+    ReparseFlag,
     StartAtTier,
     Workers,
 )
@@ -276,7 +276,6 @@ __all__ = [
     "MemoryLimit",
     "MemoryQuery",
     "MemoryTopK",
-    "NoCacheFlag",
     "NoPrivacy",
     "NoUserTracking",
     "OnlineUrls",
@@ -308,6 +307,7 @@ __all__ = [
     "ReferencesFetchDryRun",
     "ReferencesFetchSource",
     "ReferencesListSource",
+    "ReparseFlag",
     "ReviewAction",
     "ReviewAll",
     # Serving

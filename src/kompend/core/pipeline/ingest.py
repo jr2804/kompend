@@ -72,7 +72,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     router: ParserRouter,
     progress_fn: ProgressFn | None = None,
     *,
-    no_cache: bool = False,
+    reparse: bool = False,
     config: dict[str, Any] | None = None,
     ingested_by: str = "",
     tags: list[str] | None = None,
@@ -89,7 +89,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     Tier-1 state is recorded so ``kompend compile --start-at-tier chunk`` can
     verify prerequisites.
 
-    When *no_cache* is ``False`` (default), files whose content hash matches
+    When *reparse* is ``False`` (default), files whose content hash matches
     an existing cache entry are skipped — the cached JSON is reused and the
     file is not re-parsed.
 
@@ -115,7 +115,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         router: Parser router used to select a parser per file.
         progress_fn: Optional callback ``(current, total, detail)``
             invoked before each file is processed.
-        no_cache: When ``True``, re-parse every file even if a cache
+        reparse: When ``True``, re-parse every file even if a cache
             entry with a matching hash already exists.
         config: Resolved config dict (or ``None`` to skip dedup). Used to
             configure content-level duplicate detection.
@@ -188,7 +188,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         doc_key = document_cache_key(source_file, content_hash)
         prior_data = read_document(db_path, doc_key)
 
-        if not no_cache and prior_data is not None:
+        if not reparse and prior_data is not None:
             logger.info("Skipping %s — already cached", source_file.name)
             cached += 1
             count += 1
@@ -373,7 +373,7 @@ def preserve_cached_metadata(doc: ParsedDocument, prior_data: JSONDict | None) -
 
     Called before every parse-cache rewrite. The parser produces content,
     never user metadata; without this a forced re-parse (``kompend ingest
-    --no-cache``) or an automatic re-parse after a parser change would
+    --reparse``) or an automatic re-parse after a parser change would
     silently drop what ``kompend sources tag`` / ``attr`` wrote into the
     previous entry.
 

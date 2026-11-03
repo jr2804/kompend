@@ -108,7 +108,8 @@ This means:
 
 | Control | Mechanism | Effect |
 |---------|-----------|--------|
-| `--no-cache` | `PipelineConfig.no_cache` | Bypasses all cache reads (still writes) |
+| `--reparse` | `PipelineConfig.reparse` | Re-parses every source (bypasses the parse and chunk caches); cached LLM results are kept |
+| `compile.no_cache` | `PipelineConfig.no_cache` | Bypasses all cache reads (still writes), LLM results included |
 | `--ignore-model` | `PipelineConfig.cache_ignore_model` | Drops the model from the extract/generation/summary cache keys, so a model switch keeps cached LLM products (pages keep the model tag they were generated with) |
 | `--force` | `PipelineConfig.force` | Calls `CacheStore.invalidate()` at pipeline start, then re-processes everything |
 | Per-layer | `KOMP_CACHE_DISABLE=chunk,resolve` | Future - env var parsed after tier state work |

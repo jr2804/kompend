@@ -70,7 +70,7 @@ def test_a_deadline_failure_is_counted_and_the_run_continues(tmp_path: Path, mon
         files=[stuck, fine],
         base_dir=base,
         router=cast("ParserRouter", router),
-        no_cache=True,
+        reparse=True,
         config=None,
         parse_timeout_s=5.0,
     )

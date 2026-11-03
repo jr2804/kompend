@@ -56,7 +56,6 @@ from kompend.cli.args import (
     LlmDefaultModel,
     LlmFallbackChain,
     MemoryEnabled,
-    NoCacheFlag,
     NoPrivacy,
     OnlineUrls,
     ParseFiles,
@@ -65,6 +64,7 @@ from kompend.cli.args import (
     Progress,
     Provenance,
     RecursiveScan,
+    ReparseFlag,
     ReviewMode,
     SourceAttrs,
     SourceTags,
@@ -148,7 +148,7 @@ def compile_cmd(  # noqa: PLR0915
     distill: CompileDistill = False,
     show_progress: Progress = None,
     start_at_tier: StartAtTier = DEFAULT_START_AT_TIER,
-    no_cache: NoCacheFlag = None,
+    reparse: ReparseFlag = None,
     ignore_model: IgnoreModelFlag = None,
     workers: Workers = 1,
     force: ForceTier = None,
@@ -197,7 +197,7 @@ def compile_cmd(  # noqa: PLR0915
         vp = vault_paths(wiki_dir)
     cli_overrides = build_cli_overrides(
         start_at_tier=start_at_tier,
-        no_cache=no_cache,
+        reparse=reparse,
         ignore_model=ignore_model,
         workers=workers,
         force=force,
@@ -347,7 +347,7 @@ def ingest_cmd(
     online_urls: OnlineUrls = None,
     url_file: UrlFile = None,
     ignore: Ignore = None,
-    no_cache: NoCacheFlag = None,
+    reparse: ReparseFlag = None,
     workers: Workers = 1,
     in_place: InPlaceFlag = None,
     recursive: RecursiveScan = None,
@@ -371,7 +371,7 @@ def ingest_cmd(
     vp = vault_paths_from_ctx()
     no_user_tracking = current_run_context().no_user_tracking
     cli_overrides = build_cli_overrides(
-        no_cache=no_cache,
+        reparse=reparse,
         workers=workers,
         in_place_sources=in_place,
         no_user_tracking=no_user_tracking,
@@ -430,7 +430,7 @@ def ingest_cmd(
             base_dir=base_dir,
             router=router,
             progress_fn=_progress,
-            no_cache=no_cache or False,
+            reparse=bool(cfg.kompend.compile.reparse or cfg.kompend.compile.no_cache),
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
             ingested_by=resolve_actor(cfg),
             tags=tags,

@@ -162,7 +162,7 @@ def _seed_vault(tmp_path: Path) -> Path:
 def _ingest_failing_parse(base: Path) -> Any:
     src = base / "sources" / "doc.pdf"
     src.write_bytes(b"%PDF fake")
-    return ingest_documents(files=[src], base_dir=base, router=cast("ParserRouter", _FailingRouter()), no_cache=True, config=None)
+    return ingest_documents(files=[src], base_dir=base, router=cast("ParserRouter", _FailingRouter()), reparse=True, config=None)
 
 
 def test_main_fatal_is_one_line_without_verbose(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

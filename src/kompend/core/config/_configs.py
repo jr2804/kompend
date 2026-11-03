@@ -1038,6 +1038,9 @@ class CompileConfig(_KompendBaseModel):
     vlm_context_chars: int = 1200
     workers: int = Field(default=1, validation_alias=EnvVar.WORKERS)
     no_cache: bool = Field(default=False, validation_alias=EnvVar.NO_CACHE)
+    # Re-parse every source instead of reusing the cached parse: sources are
+    # re-extracted and re-chunked, cached LLM results are kept.
+    reparse: bool = Field(default=False, validation_alias=EnvVar.REPARSE)
     # Reuse cached extractions/summaries/pages across model switches: cache
     # keys drop the model component, so prior-model output is replayed as-is.
     # Pages keep the model tag they were generated with (metadata "model").

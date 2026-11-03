@@ -83,7 +83,8 @@ class PipelineConfig:
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
     cache_dir: Path | None = None  # None = base_dir/.kompend/cache
-    no_cache: bool = False  # force re-parse even if cached
+    no_cache: bool = False  # bypass every cache, including LLM results
+    reparse: bool = False  # re-parse sources even if cached (compile.reparse)
     workers: int = 1  # parallel parse+chunk workers
     parse_min_free_commit_mb: int = 10240  # commit headroom a heavy parse requires (ingest.parse_min_free_commit_mb)
     max_concurrent_heavy_parses: int = 1  # heavy parses allowed to run at once (ingest.max_concurrent_heavy_parses)
@@ -205,6 +206,7 @@ class PipelineConfig:
             input_files=input_files,
             cache_dir=Path(kompend.paths.cache_dir) if kompend.paths.cache_dir else None,
             no_cache=kompend.compile.no_cache,
+            reparse=kompend.compile.reparse,
             workers=kompend.compile.workers,
             start_at_tier=Tier(kompend.compile.start_at_tier),
             stop_at_tier=Tier(kompend.compile.stop_at_tier),

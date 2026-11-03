@@ -111,7 +111,7 @@ Verify = Annotated[
 - `build_cli_overrides` (in `_shared.py`) uses `if val is not None:` so a
   `False` from `--no-X` is honored, not swallowed.
 - Exception: negative-idiomatic flags keep the negative form primary —
-  `--no-cache/--cache`, `--no-privacy/--privacy` (declare `name="--cache"`).
+  `--no-privacy/--privacy` (declare `name="--privacy"`).
 
 **One-shot action → plain `bool` with `--flag` (no `--no-*`):**
 
@@ -179,7 +179,7 @@ when the command actually has options in it.
 
 - `StartAtTier` — Which compilation tier to begin at
 - `Workers` — Number of parallel workers
-- `NoCacheFlag` — Skip cache and recompile
+- `ReparseFlag` — Re-parse sources instead of reusing the cached parse
 - `JsonProgress` — Machine-readable progress output
 
 ## Verification

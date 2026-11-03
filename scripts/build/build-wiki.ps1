@@ -191,7 +191,7 @@ $IngestArgs = @(
 
 # $Force no longer forces re-parse. The cache-skip logic in ingest
 # already skips unchanged files (hash-based). To force a full re-parse,
-# run: kompend ingest --no-cache --wiki-dir <dir> manually before this script.
+# run: kompend ingest --reparse --wiki-dir <dir> manually before this script.
 
 Write-Host ""
 Write-Host ($IngestArgs -join " ") -ForegroundColor DarkGray

@@ -61,7 +61,7 @@ merging and an optional iterative WiCER refinement loop.
   generation deps key and each pass gets a deterministic
   `...-segNNN-aNNpNN` run id. A complete snapshot whose final result
   validates as `GenerationOutput` skips the segment; an interrupted one
-  resumes with its history; `--no-cache` ignores both. The store is a
+  resumes with its history; `compile.no_cache` ignores both. The store is a
   separate SQLite file because `kompend.db` is recreated clean-cut on
   schema bumps.
 - **No content is excluded by size or by a threshold** (see the budget rule in

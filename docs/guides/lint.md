@@ -268,7 +268,7 @@ KOMP_LINT_OUTPUT=summary kompend lint all
 **Artefacts.** Every run writes `.kompend/lint-log/<timestamp>.md` (the human
 report, including the header, duration and page count) and `<timestamp>.json`
 (the same payload the `lint_runs` table stores). The Markdown file is the one
-the terminal points at; it survives `--no-cache` and is easy to attach to an
+the terminal points at; it survives `--reparse` and is easy to attach to an
 issue.
 
 ```bash

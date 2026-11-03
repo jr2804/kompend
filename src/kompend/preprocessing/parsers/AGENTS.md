@@ -47,7 +47,9 @@ it.
 backend options. It carries the backend options the user wants to override (a
 mapping of option name → value); `ParserBuildOptions.parsecraft_backend_options`
 hands them to the adapter, which merges them over its derived defaults. The
-options are part of the parser's `cache_identity()`, so changing them re-parses.
+options are part of the parser's `cache_identity()`, a diagnostic identity that
+no cache keys on — changing them does not re-parse by itself; run
+`kompend ingest --reparse` for that.
 One sibling key is NOT a backend option and NOT fingerprinted:
 `ingest.parsecraft_docling_threads` bounds the docling engine's ONNX thread
 count (`DOCLING_RS_PDF_THREADS`, set by the parser before the first
@@ -63,13 +65,15 @@ discovery, the status report and the parsers all read it.
 
 `ParserRouter.fingerprint()` hashes the registered backend class names plus any
 per-backend `cache_identity()` — the identity of the parser *with its routing
-inputs*. The parse and chunk caches key on it, so changing a backend's own
-routing configuration (`ingest.parsecraft_judge` / `_model` / `_preference` / `_effort` / `_allow_ocr` / `_engines` / `_extract_vector_graphics` / `_preferred_backend` / `_only_backend`, or
-the `max_passes` the adapter passes) re-parses instead of silently reusing the
-previous setup. A backend that carries routing inputs defines `cache_identity()`;
-the router looks it up structurally (the parsecraft adapter deliberately is not a
-`BaseParser`), and an absent hook contributes an empty identity, so adding one
-never invalidates a cache by itself.
+inputs*. It is a diagnostic identity, not a cache key: the parse and chunk
+caches are content-addressed (source bytes), so a routing change does not
+re-parse by itself — run `kompend ingest --reparse` after changing
+`[ingest] parsecraft_judge` / `_model` / `_preference` / `_effort` /
+`_allow_ocr` / `_engines` / `_extract_vector_graphics` / `_preferred_backend` /
+`_only_backend` or the `max_passes` the adapter passes. A backend that carries
+routing inputs defines `cache_identity()`; the router looks it up structurally
+(the parsecraft adapter deliberately is not a `BaseParser`), and an absent hook
+contributes an empty identity.
 
 ## Rules
 

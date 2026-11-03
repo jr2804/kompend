@@ -40,6 +40,15 @@ def test_cli_overrides_include_vlm_model() -> None:
     assert overrides["compile.llm.vlm_model"] == "openai/gpt-4o"
 
 
+def test_cli_overrides_include_reparse() -> None:
+    overrides = _build_cli_overrides(reparse=True)
+    assert overrides["compile.reparse"] is True
+
+
+def test_cli_overrides_skip_unset_reparse() -> None:
+    assert "compile.reparse" not in _build_cli_overrides()
+
+
 def test_cli_overrides_include_paths_recursive() -> None:
     assert _build_cli_overrides(recursive=False)["paths.recursive"] is False
 

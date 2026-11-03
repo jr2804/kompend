@@ -189,7 +189,7 @@ def _process_single_source(
     (no parser, cache hit with no tree, or parse failure).
     """
     stem = source_file.stem
-    use_cache = not pipeline.config.no_cache
+    use_cache = not (pipeline.config.no_cache or pipeline.config.reparse)
     content_hash = ""
 
     if use_cache and not pipeline.config.force:

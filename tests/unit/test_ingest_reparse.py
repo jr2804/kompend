@@ -1,9 +1,9 @@
 """Regression: forced re-ingest must preserve user metadata.
 
-Covers the ``kompend ingest --no-cache`` path:
+Covers the ``kompend ingest --reparse`` path:
 
 - :func:`preserve_cached_metadata` — tags unioned, attributes merged.
-- :func:`ingest_documents` — same content stays a cache hit; ``--no-cache`` forces re-parse
+- :func:`ingest_documents` — same content stays a cache hit; ``--reparse`` forces re-parse
   while keeping tags and attributes.
 
 Attachments are intentionally untouched: they live in
@@ -101,8 +101,10 @@ class _StubRuntime:
         self.base_directory = base
         self.config = SimpleNamespace(
             no_cache=False,
+            reparse=False,
             force=False,
             privacy_filter=False,
+            output=SimpleNamespace(rumdl_config=None, flavor=None),
             search=SimpleNamespace(contextual=SimpleNamespace(enabled=enricher is not None)),
         )
         self.router = None
@@ -114,6 +116,9 @@ class _StubRuntime:
 
     def rel_file(self, file: Path) -> str:
         return str(file)
+
+    def cache_directory(self) -> Path:
+        return self.base_directory / ".kompend" / "cache"
 
     def abs_file(self, file_str: str) -> Path:
         p = Path(file_str)
@@ -201,7 +206,7 @@ def test_forced_reingest_preserves_and_merges_cli_metadata(tmp_path: Path) -> No
         files=[src],
         base_dir=base,
         router=forced,
-        no_cache=True,
+        reparse=True,
         config=None,
         tags=["standards"],
         attributes={"status": "draft"},
@@ -237,7 +242,7 @@ def test_attachments_untouched_by_reingest(tmp_path: Path) -> None:
     manifest.write_text('{"filename": "diagram.png"}\n', encoding="utf-8")
     before = manifest.read_text(encoding="utf-8")
 
-    ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), no_cache=True, config=None)
+    ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), reparse=True, config=None)
 
     assert manifest.read_text(encoding="utf-8") == before
 
@@ -311,6 +316,24 @@ def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
     assert cached is not None
     nodes = as_obj(as_obj(cached)["nodes"])
     assert all(node["contextual_context"] == "" for node in nodes.values())
+
+
+def test_reparse_bypasses_the_parse_cache(tmp_path: Path) -> None:
+    """``compile.reparse`` re-parses a source whose parse-cache entry is valid."""
+    base = _seed_vault(tmp_path)
+    source_file = Path("sources/note.md")
+    content_hash = hashlib.sha256((base / "sources" / "note.md").read_bytes()).hexdigest()
+    _seed_parse_cache(base, source_file, content_hash)
+
+    router = _IngestRouter("chain-A")
+    runtime = _StubRuntime(base, enricher=None)
+    runtime.router = router
+    runtime.config.reparse = True
+
+    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard())
+
+    assert tree is not None
+    assert len(router.parsed) == 1
 
 
 def _seed_vault(tmp_path: Path) -> Path:

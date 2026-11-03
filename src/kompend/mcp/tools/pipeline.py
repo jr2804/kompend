@@ -52,7 +52,7 @@ def wiki_ingest(
     url_file: str | None = None,
     recursive: bool | None = None,
     ignore: list[str] | None = None,
-    no_cache: bool = False,
+    reparse: bool | None = None,
     workers: int = 1,
     in_place: bool = False,
     parser: str | None = None,
@@ -67,7 +67,7 @@ def wiki_ingest(
     online_urls = online_urls or []
     vp = vault_paths(wiki_dir)
     cli_overrides = build_cli_overrides(
-        no_cache=no_cache,
+        reparse=reparse,
         workers=workers,
         in_place_sources=in_place,
     )
@@ -97,7 +97,7 @@ def wiki_ingest(
             files=all_input_files,
             base_dir=base_dir,
             router=router,
-            no_cache=no_cache,
+            reparse=bool(cfg.kompend.compile.reparse or cfg.kompend.compile.no_cache),
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
             ingested_by=resolve_actor(cfg),
             tags=tags,

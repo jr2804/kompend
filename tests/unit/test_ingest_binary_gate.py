@@ -72,7 +72,7 @@ def test_binary_pdf_not_funneled_through_normalize(tmp_path: Path) -> None:
             files=[src],
             base_dir=base,
             router=cast("ParserRouter", router),
-            no_cache=True,
+            reparse=True,
             config=None,
         )
 
@@ -99,7 +99,7 @@ def test_text_md_still_normalized(tmp_path: Path) -> None:
             files=[src],
             base_dir=base,
             router=cast("ParserRouter", router),
-            no_cache=True,
+            reparse=True,
             config=None,
         )
 
@@ -122,7 +122,7 @@ def test_code_source_reaches_parser(tmp_path: Path) -> None:
         files=[src],
         base_dir=base,
         router=cast("ParserRouter", router),
-        no_cache=True,
+        reparse=True,
         config=None,
     )
 
@@ -180,7 +180,7 @@ def test_non_utf8_markdown_is_ingested_not_dropped(tmp_path: Path) -> None:
         files=[src],
         base_dir=base,
         router=cast("ParserRouter", router),
-        no_cache=True,
+        reparse=True,
         config=None,
     )
 
@@ -204,7 +204,7 @@ def test_encoding_sibling_does_not_leak_into_the_cache_entry(tmp_path: Path) -> 
         files=[src],
         base_dir=base,
         router=cast("ParserRouter", router),
-        no_cache=True,
+        reparse=True,
         config=None,
     )
 

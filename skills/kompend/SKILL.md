@@ -105,8 +105,8 @@ required.
 | Command | Purpose | Key Flags |
 |---------|---------|-----------|
 | `kompend init` | Scaffold new wiki project | `--bare`, `--force`, `--git`, `--config <toml>` (install a chosen config) |
-| `kompend compile` | Compile sources into wiki | `--start-at-tier`, `--no-cache`, `--workers N`, `--review`, `--verify/--no-verify`, `--synthesize/--no-synthesize`, `--url`, `--url-file`, `--set key=val` (config-only: model, format, compiler, budgets, timeouts) |
-| `kompend ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--no-cache` (force re-parse; tags/attributes preserved, attachments untouched — parser change invalidates automatically), `--tag <name>` (repeatable), `--attr key=value` (repeatable), `--set key=val` |
+| `kompend compile` | Compile sources into wiki | `--start-at-tier`, `--reparse`, `--workers N`, `--review`, `--verify/--no-verify`, `--synthesize/--no-synthesize`, `--url`, `--url-file`, `--set key=val` (config-only: model, format, compiler, budgets, timeouts) |
+| `kompend ingest <files>` | Copy files into sources without compiling | `--recursive`, `--url`, `--url-file`, `--parser <backend>`, `--reparse` (force re-parse; tags/attributes preserved, attachments untouched — parser changes need an explicit re-parse), `--tag <name>` (repeatable), `--attr key=value` (repeatable), `--set key=val` |
 | `kompend index` | Rebuild vector index from cached wiki (recovery) | `--embed-model`, `--set key=val` (reads `compile.embedding.model`, `attachments.embed`) |
 | `kompend organize` | Organize existing wiki content into hierarchy | `--max-depth`, `--min-subcategories`, `--collapse-single-file` |
 | `kompend status` | Show wiki statistics | none |
@@ -474,7 +474,7 @@ export KOMP_LLM_DEFAULT_MODEL="ollama/llama3.2"
 ### Start fresh (force full re-compile)
 
 ```bash
-kompend compile ./sources/*.pdf --force --no-cache
+kompend compile ./sources/*.pdf --force --reparse
 ```
 
 ### Skip to compilation (reuse cached preprocessing)

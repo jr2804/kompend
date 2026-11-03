@@ -38,12 +38,13 @@ persistence, and standalone ingestion.
   expected for an orchestrator.
 - Each stage module keeps its responsibility isolated — stages communicate
   through the `WikiPipeline` state and shared data models.
-- The parse cache is parser-aware: entries carry `PARSE_CACHE_PARSER_KEY`
-  (from `ParserRouter.fingerprint`) and a mismatched fingerprint is a miss,
-  so changing `[ingest] parser` re-parses. Every parse-cache rewrite runs
-  `preserve_cached_metadata` first so user tags/attributes (written by
-  `kompend sources tag`/`attr`) survive a forced re-ingest. The chunk cache
-  keys on the same fingerprint, so a re-parse also re-chunks.
+- The parse cache is content-addressed: an entry is reused when the source
+  bytes hash to the same key. `compile.reparse` (CLI `--reparse`) bypasses the
+  parse and chunk caches — sources are re-extracted and re-chunked, cached
+  LLM results stay; `compile.no_cache` bypasses every cache, LLM results
+  included. Every parse-cache rewrite runs `preserve_cached_metadata` first
+  so user tags/attributes (written by `kompend sources tag`/`attr`) survive a
+  forced re-ingest.
 - The parse tier and the standalone ingest share one decision point for
   *which bytes a parser receives*: `parse_target_path` (in `ingest.py`) hands
   a known text format over as UTF-8 and every other source byte-wise. One

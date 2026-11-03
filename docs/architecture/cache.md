@@ -113,7 +113,7 @@ the kompend project template).
 
 | Cache | When it becomes stale | What to do |
 |-------|----------------------|-----------|
-| parsed-document + LLM caches (`kompend.db`) | Source file modified or `--no-cache` flag | Delete `.kompend/kompend.db` or re-run compile |
+| parsed-document + LLM caches (`kompend.db`) | Source file modified or `--reparse` flag | Delete `.kompend/kompend.db` or re-run compile |
 | `cache/gen_checkpoint/` | After successful generation completes | Auto-deleted on success; persists on crash for resume |
 | tier state (`kompend.db`) | Any source file changes | `--force` flag re-processes everything |
 | run audit (`kompend.db`) | Never (append-only audit trail) | Soft-capped to 1000 records / keep 500 |
@@ -131,7 +131,7 @@ the kompend project template).
 rm -rf .kompend/
 
 # Re-parse everything from scratch
-kompend compile --no-cache --force
+kompend compile --reparse --force
 ```
 
 ## Adding a new cache

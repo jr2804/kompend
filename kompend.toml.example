@@ -284,8 +284,13 @@ respect_gitignore = true
 # Force re-run all stages even if cached
 # force = false
 
-# Bypass cache entirely
+# Bypass cache entirely (parse, chunk and LLM results)
 # no_cache = false
+
+# Re-parse every source instead of reusing the cached parse. Sources are
+# re-extracted and re-chunked; cached LLM results are kept, so only changed
+# content is recompiled.
+# reparse = false
 
 # Reuse cached extractions, summaries and generated pages across model
 # switches (e.g. finish a run on a local model after an online quota ran
