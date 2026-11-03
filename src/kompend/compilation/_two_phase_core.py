@@ -14,11 +14,12 @@ from typing import Any, Protocol
 
 from kompend.agents.base import KompendAgentBase
 from kompend.agents.deps import PipelineAgentDeps
+from kompend.agents.failure import UnitFailureLog, classify_agent_failure
 from kompend.compilation.concept_keys import (
     is_structural_concept,
     normalize_concept_key,
 )
-from kompend.compilation.schema import Concept, Entity, ExtractionOutput, LLMOutputError
+from kompend.compilation.schema import Concept, Entity, ExtractionOutput
 from kompend.core.cache.store import CacheStore
 from kompend.core.config import BudgetConfig
 from kompend.core.models import ElementType, ExtractionStats, GraphEdge, ImageRef, MetadataField, ResolvedChunk, WikiNode
@@ -438,6 +439,7 @@ def try_pydanticai_extraction(
     *,
     text: str,
     source_id: str,
+    failures: UnitFailureLog | None = None,
 ) -> ExtractionOutput | None:
     """Run a PydanticAI :class:`ExtractionAgent` on a chunk of source text.
 
@@ -446,13 +448,17 @@ def try_pydanticai_extraction(
 
     The agent's ``run`` method already does JSON extraction and Pydantic
     validation internally; auto-retry on schema mismatch is built in.
-    We catch and log any exception here so the caller's failure
-    tracker can record the attempt uniformly with the pydantic-ai path.
+    A failure is classified by :func:`kompend.agents.failure.classify_agent_failure`
+    and returned as ``None`` so the caller's batch-retry loop can decide
+    whether repeating it is worth anything — an empty answer is not (the
+    model already proved it had nothing to say), a schema mismatch is.
 
     Args:
         agent: An instantiated :class:`~kompend.agents.ExtractionAgent`.
         text: The combined chunk text to extract from.
         source_id: Provenance tag (file stem / URL).
+        failures: Optional per-source failure log; receives the classified
+            record so the caller can read the kind back.
 
     Returns:
         The validated :class:`~kompend.compilation.schema.ExtractionOutput`
@@ -467,11 +473,10 @@ def try_pydanticai_extraction(
         # the provider named, so swallowing it here would lose the only
         # number that can fix the request.
         raise
-    except LLMOutputError as exc:
-        logger.warning("PydanticAI extraction failed for '%s': %s", source_id, exc)
-        return None
-    except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly as agent failure
-        logger.warning("PydanticAI extraction unexpected error for '%s': %s", source_id, exc)
+    except Exception as exc:  # noqa: BLE001 — the classifier below decides what kind this is
+        failure = failures.record(source_id, exc) if failures is not None else None
+        kind = failure.kind.value if failure is not None else classify_agent_failure(exc).value
+        logger.warning("PydanticAI extraction failed for '%s' (%s): %s", source_id, kind, exc)
         return None
 
 

@@ -25,6 +25,7 @@ from typing import Protocol
 from pydantic_ai.messages import ModelMessage
 
 from kompend.agents.deps import PipelineAgentDeps
+from kompend.agents.failure import UnitFailureLog
 from kompend.agents.reference_extraction import ReferenceExtractionAgent
 from kompend.compilation._two_phase_core import (
     TwoPhaseRuntime,
@@ -91,8 +92,10 @@ def run_reference_extraction(
     window is skipped so the remaining windows still contribute their
     references.
 
-    Logs a summary at the end. Failures are non-fatal — the pipeline
-    continues without reference data for that source.
+    Logs a summary at the end. A failing window is skipped so the
+    remaining windows still contribute their references; the batch stops
+    with an error when more windows failed than
+    ``compile.llm.batch_failure_threshold_ratio`` allows.
     """
     model_string = compiler._model  # noqa: SLF001
     timeout = compiler._timeout  # noqa: SLF001
@@ -107,6 +110,15 @@ def run_reference_extraction(
 
     num_sources = len(by_source)
     total_refs = 0
+
+    # One failure vocabulary for the whole batch: every failed window is
+    # recorded with its kind, and the batch fails loudly when more windows
+    # failed than the configured ratio allows.
+    failures = UnitFailureLog(
+        stage="references.extraction",
+        ratio=compiler._config.llm.batch_failure_threshold_ratio,
+        min_units=compiler._config.llm.batch_failure_threshold_min,
+    )
 
     agent: ReferenceExtractionAgent | None = None
     max_window_chars = 0
@@ -126,7 +138,7 @@ def run_reference_extraction(
                 llm=compiler._config.llm,
             )
             max_window_chars = _reference_char_budget(compiler)
-        except Exception as exc:  # noqa: BLE001 — agent construction may fail without model
+        except Exception as exc:  # agent construction may fail without model
             logger.warning("ReferenceExtractionAgent init failed: %s — skipping reference extraction", exc)
             return
 
@@ -165,32 +177,16 @@ def run_reference_extraction(
             )
 
         refs: list[Reference] = []
-        failed_windows = 0
         for win_idx, window in enumerate(windows, start=1):
+            failures.attempted()
             try:
                 deps = PipelineAgentDeps(text=window, source_id=source)
                 result = agent.run(deps)
-            except Exception as exc:  # noqa: BLE001 — PydanticAI raises many error subclasses
-                failed_windows += 1
-                logger.warning(
-                    "Reference extraction failed for '%s' (window %d/%d): %s",
-                    source,
-                    win_idx,
-                    len(windows),
-                    exc,
-                )
+            except Exception as exc:
+                failures.record(unit=f"{source}#{win_idx}", exc=exc)
                 continue  # keep the references parsed from the other windows
             if result:
                 refs.extend(result.references)
-
-        if failed_windows:
-            logger.warning(
-                "TwoPhase: %d of %d reference window(s) failed for '%s' — %d reference(s) kept",
-                failed_windows,
-                len(windows),
-                source,
-                len(refs),
-            )
 
         # Stamp each reference with the citing source
         for ref in refs:
@@ -210,6 +206,10 @@ def run_reference_extraction(
             total_refs,
             store.source_count(),
         )
+
+    failures.check()
+    if failures.failures:
+        logger.warning("%s", failures.summary())
 
 
 def _reference_char_budget(compiler: TwoPhaseRuntime) -> int:
@@ -285,6 +285,8 @@ def resolve_unresolved_references(
     *,
     source: str | None = None,
     dry_run: bool = False,
+    failure_ratio: float | None = None,
+    failure_min_units: int | None = None,
 ) -> int:
     """Resolve missing DOIs/URLs for references that lack them.
 
@@ -293,8 +295,9 @@ def resolve_unresolved_references(
     canonical identifier, and writes it back to the store. When *dry_run*
     is true, the store is not saved and nothing is persisted.
 
-    Returns the number of references resolved. Failures are non-fatal — the
-    pipeline continues without resolution for that entry.
+    Returns the number of references resolved. A failing entry is skipped
+    so the remaining entries still resolve; the batch stops with an error
+    when more entries failed than *failure_ratio* allows.
 
     Parameters
     ----------
@@ -308,6 +311,16 @@ def resolve_unresolved_references(
         When given, only this source's unresolved references are scanned.
     dry_run:
         When true, do not persist resolved identifiers to disk.
+    failure_ratio:
+        Share of failed entries that ends the batch. Defaults to the
+        shared failure-path default (0.5); pass
+        ``compile.llm.batch_failure_threshold_ratio`` to follow the
+        configured value.
+    failure_min_units:
+        Number of entries below which the ratio is not meaningful.
+        Defaults to the shared failure-path default (5); pass
+        ``compile.llm.batch_failure_threshold_min`` to follow the
+        configured value.
     """
     pairs = store.unresolved_indices(source)
     if not pairs:
@@ -315,6 +328,12 @@ def resolve_unresolved_references(
 
     total = len(pairs)
     resolved = 0
+
+    failures = UnitFailureLog(stage="references.resolution")
+    if failure_ratio is not None:
+        failures.ratio = failure_ratio
+    if failure_min_units is not None:
+        failures.min_units = failure_min_units
 
     for i, (src, idx) in enumerate(pairs, 1):
         refs = store.get_source(src)
@@ -335,10 +354,11 @@ def resolve_unresolved_references(
         )
 
         deps = PipelineAgentDeps(text=query_text, source_id=src)
+        failures.attempted()
         try:
             result = agent.run(deps)
-        except Exception as exc:  # noqa: BLE001 — PydanticAI raises many error subclasses
-            logger.warning("Reference resolution failed for '%s' entry %d: %s", src, idx, exc)
+        except Exception as exc:
+            failures.record(unit=f"{src}#{idx}", exc=exc)
             continue
 
         if not result.resolved:
@@ -359,5 +379,9 @@ def resolve_unresolved_references(
             "TwoPhase: %d reference(s) would be resolved (dry-run, not saved)",
             resolved,
         )
+
+    failures.check()
+    if failures.failures:
+        logger.warning("%s", failures.summary())
 
     return resolved

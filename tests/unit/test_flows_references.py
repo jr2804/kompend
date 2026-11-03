@@ -8,6 +8,7 @@ parsed from windows that succeeded before a failure.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -24,6 +25,7 @@ from kompend.core.models import Chunk, ElementType, ResolvedChunk
 from kompend.core.models.references import Reference
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.text.windows import split_text_windows
+from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.llm.request_budget import RequestBudget
 
@@ -130,6 +132,36 @@ def test_window_failure_keeps_references_from_other_windows(flow_env: Callable[[
     assert agent.calls > 2  # the failed window does not stop the remaining ones
     assert len(store.saved[SOURCE]) == agent.calls - 1  # every successful window contributes
     assert store.save_calls == 1  # partial results are still persisted
+
+
+def test_window_failure_is_recorded_with_its_kind(
+    flow_env: Callable[[FakeAgent], FakeStore],
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A failed window names its unit and the classified kind."""
+    agent = FakeAgent(fail_on={2})
+    store = flow_env(agent)
+    text = "\n".join(f"Reference entry number {i} with some detail." for i in range(120))
+    compiler = _compiler(max_input=1_500)
+
+    with caplog.at_level(logging.WARNING):
+        run_reference_extraction(compiler, _chunks(text), store)
+
+    assert "references.extraction" in caplog.text
+    assert "other" in caplog.text
+
+
+def test_batch_stops_when_more_than_the_ratio_of_windows_fail(
+    flow_env: Callable[[FakeAgent], FakeStore],
+) -> None:
+    """A batch that is mostly failures ends loudly instead of returning a partial result."""
+    agent = FakeAgent(fail_on=set(range(1, 100)))
+    store = flow_env(agent)
+    text = "\n".join(f"Reference entry number {i} with some detail." for i in range(120))
+    compiler = _compiler(max_input=1_500, failure_ratio=0.5, failure_min=2)
+
+    with pytest.raises(LLMOutputError, match="references.extraction"):
+        run_reference_extraction(compiler, _chunks(text), store)
 
 
 def test_agent_receives_configured_limits(flow_env: Callable[[FakeAgent], FakeStore]) -> None:
@@ -260,6 +292,8 @@ def _compiler(
     output_retries: int = 2,
     tool_retries: int = 3,
     output_retries_enabled: bool = True,
+    failure_ratio: float = 0.5,
+    failure_min: int = 5,
 ) -> TwoPhaseRuntime:
     return cast(
         TwoPhaseRuntime,
@@ -280,6 +314,8 @@ def _compiler(
                     output_retries_enabled=output_retries_enabled,
                     reasoning_effort=None,
                     delta_retry_enabled=True,
+                    batch_failure_threshold_ratio=failure_ratio,
+                    batch_failure_threshold_min=failure_min,
                 ),
                 paths=SimpleNamespace(base_dir=Path(".")),
             ),

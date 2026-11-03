@@ -11,6 +11,7 @@ from kompend.core.config import resolve_config
 from kompend.core.models.references import SHORT_LABEL_TITLE_MAX
 from kompend.core.paths import vault_paths
 from kompend.core.pipeline.references import ReferenceStore
+from kompend.core.utils.exceptions import LLMOutputError
 from kompend.logging import get_logger
 from kompend.output.bibtex import references_to_bibtex
 
@@ -122,13 +123,18 @@ def references_fetch(
     except Exception as exc:
         return {"status": "error", "message": f"Could not initialise resolver agent: {exc}"}
 
-    resolved = resolve_unresolved_references(
-        store,
-        agent,
-        timeout,
-        source=source,
-        dry_run=dry_run,
-    )
+    try:
+        resolved = resolve_unresolved_references(
+            store,
+            agent,
+            timeout,
+            source=source,
+            dry_run=dry_run,
+            failure_ratio=cfg.kompend.compile.llm.batch_failure_threshold_ratio,
+            failure_min_units=cfg.kompend.compile.llm.batch_failure_threshold_min,
+        )
+    except LLMOutputError as exc:
+        return {"status": "error", "message": f"Reference resolution failed: {exc}"}
 
     if dry_run:
         return {"status": "ok", "count": resolved, "dry_run": True, "message": f"[dry-run] {resolved} reference(s) would be resolved."}

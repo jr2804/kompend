@@ -25,6 +25,7 @@ from kompend.compilation.flows.references import resolve_unresolved_references
 from kompend.core.config import resolve_config
 from kompend.core.models.references import SHORT_LABEL_TITLE_MAX
 from kompend.core.pipeline.references import ReferenceStore
+from kompend.core.utils.exceptions import LLMOutputError
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.bibtex import references_to_bibtex
 
@@ -154,13 +155,19 @@ def references_fetch(*, source: ReferencesFetchSource = None, dry_run: Reference
         raise SystemExit(1) from exc
 
     get_console().print(f"Resolving {len(pending)} reference(s) via {model}…")
-    resolved = resolve_unresolved_references(
-        store,
-        agent,
-        timeout,
-        source=source,
-        dry_run=dry_run,
-    )
+    try:
+        resolved = resolve_unresolved_references(
+            store,
+            agent,
+            timeout,
+            source=source,
+            dry_run=dry_run,
+            failure_ratio=cfg.kompend.compile.llm.batch_failure_threshold_ratio,
+            failure_min_units=cfg.kompend.compile.llm.batch_failure_threshold_min,
+        )
+    except LLMOutputError as exc:
+        get_err_console().print(f"Reference resolution failed: {exc}")
+        raise SystemExit(1) from exc
 
     if dry_run:
         get_console().print(

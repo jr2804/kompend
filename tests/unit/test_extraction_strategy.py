@@ -16,6 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
+from kompend.agents.failure import EmptyAnswerError
 from kompend.compilation._two_phase_core import (
     Extraction,
     ExtractionSet,
@@ -41,7 +42,7 @@ from kompend.core.config._configs import (
 )
 from kompend.core.models.enums import CacheDeps
 from kompend.core.pipeline.config import PipelineConfig
-from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError
+from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError, LLMTransientError
 from kompend.core.utils.tokens import estimate_tokens
 from kompend.llm.context_window import ContextSource, ContextWindow
 from tests.conftest import make_tmp_vault
@@ -722,6 +723,78 @@ class TestReplanAfterOverflow:
         for i in range(4):
             assert sum(result.summary.count(f"text-{i}") for result in results if result is not None) == 1
         assert compiler._context_window.max_input == 8192
+
+
+class TestExtractionFailurePolicy:
+    """The batch-retry loop stops when repeating the request cannot help."""
+
+    def test_an_empty_answer_is_requested_once_and_not_repeated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        compiler = self._compiler(batch_retries=3)
+        calls: list[str] = []
+        self._stub_agent(monkeypatch, EmptyAnswerError("the model returned nothing"), calls)
+
+        result = ext_module.extract_one(compiler, "doc.md", "body text", "sys")
+
+        assert result is None
+        assert calls == ["doc.md"]
+        assert compiler._batch_tracker.failed == 1
+
+    def test_a_transient_failure_keeps_its_batch_retry_budget(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        compiler = self._compiler(batch_retries=2)
+        calls: list[str] = []
+        self._stub_agent(monkeypatch, LLMTransientError("connection reset"), calls)
+
+        result = ext_module.extract_one(compiler, "doc.md", "body text", "sys")
+
+        assert result is None
+        assert len(calls) == 3  # 1 attempt + batch_retry_attempts
+
+    def test_a_schema_mismatch_keeps_its_batch_retry_budget(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        compiler = self._compiler(batch_retries=1)
+        calls: list[str] = []
+        self._stub_agent(monkeypatch, LLMOutputError("Exceeded maximum output retries (4)"), calls)
+
+        result = ext_module.extract_one(compiler, "doc.md", "body text", "sys")
+
+        assert result is None
+        assert len(calls) == 2
+
+    def test_the_skip_warning_names_the_classified_cause(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        compiler = self._compiler(batch_retries=0)
+        self._stub_agent(monkeypatch, EmptyAnswerError("the model returned nothing"), [])
+
+        with caplog.at_level("WARNING"):
+            ext_module.extract_one(compiler, "doc.md", "body text", "sys")
+
+        assert "doc.md: empty_answer" in caplog.text
+        assert "returned no result after" not in caplog.text
+
+    def _compiler(self, *, batch_retries: int) -> TwoPhaseCompiler:
+        config = _make_config()
+        config.no_cache = True
+        config.llm.batch_retry_attempts = batch_retries
+        return TwoPhaseCompiler(config=config, context_window=_make_cw())
+
+    def _stub_agent(self, monkeypatch: pytest.MonkeyPatch, exc: BaseException, calls: list[str]) -> None:
+        """Replace the extraction agent with one that always raises *exc*.
+
+        The real ``try_pydanticai_extraction`` stays in place: it is what
+        classifies the failure, so patching it would test nothing.
+        """
+
+        class _FailingAgent:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def run(self, deps: object) -> object:
+                calls.append(str(getattr(deps, "source_id", "")))
+                raise exc
+
+        monkeypatch.setattr(ext_module, "ExtractionAgent", _FailingAgent)
 
 
 def _make_big_window_compiler() -> TwoPhaseCompiler:

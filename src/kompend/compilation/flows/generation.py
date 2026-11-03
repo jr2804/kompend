@@ -10,11 +10,12 @@ import hashlib
 import json
 import re
 from collections import defaultdict
-from typing import Any
+from typing import Any, Final
 
 from pydantic_ai_harness.step_persistence import SqliteStepStore, StepStore
 
 from kompend.agents.decision import decide_error_action
+from kompend.agents.failure import AgentFailureKind, classify_agent_failure, record_unit_failure
 from kompend.agents.generation import make_agentic_generation_agent
 from kompend.agents.types import ToolGenerationDeps
 from kompend.compilation._two_phase_core import (
@@ -73,6 +74,13 @@ _SOURCE_WIKILINK_RE = re.compile(r"\[\[\s*(sources/[^\]\n]+?)\s*\]\]")
 #: rapidfuzz-scale (0–100) threshold for "does a produced page title cover
 #: this concept" (T2 string tier).
 _COVER_SIMILARITY_THRESHOLD = 85.0
+
+#: Failure kinds that end one pass but not the segment. An empty answer (or
+#: a request the provider refused for size) says nothing about the next
+#: pass: that pass carries different material — the broker's remaining
+#: concepts and a fresh prompt — so the segment keeps asking instead of
+#: reporting one empty pass as a failed segment.
+_PASS_CONTINUATION_KINDS: Final[frozenset[AgentFailureKind]] = frozenset({AgentFailureKind.EMPTY_ANSWER, AgentFailureKind.CONTEXT_OVERFLOW})
 
 #: Fixed per-turn agentic conversation framing (tool call + result parts)
 #: beyond the content itself. Sized for a full read_segment + fetch_concepts
@@ -705,6 +713,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
             passes += 1
             last_error = None
             action = ErrorAction.SKIP
+            retry_pass = False
             try:
                 gen_output = agent.run(
                     deps,
@@ -720,38 +729,57 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                 # the limit the provider named.
                 raise
             except (LLMTransientError, LLMOutputError) as exc:
-                transient = isinstance(exc, LLMTransientError)
+                kind = classify_agent_failure(exc)
                 action = _failure_action(
                     compiler,
                     exc,
                     stage=f"agentic-generation:{seg_id}",
                     attempt=passes,
                     max_attempts=cap,
-                    transient=transient,
+                    transient=kind is AgentFailureKind.TRANSIENT,
                 )
-                logger.warning("Agentic generation failed for '%s' (%s): %s", seg_id, action, exc)
+                record_unit_failure(stage="agentic-generation", unit=seg_id, exc=exc, attempts=passes)
                 if action is ErrorAction.ABORT:
                     raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
                 gen_output = None
                 last_error = str(exc)
-            except Exception as exc:  # ponytail: PydanticAI raises many subclassed errors; treat uniformly
-                logger.warning("Agentic generation unexpected error for '%s': %s", seg_id, exc)
+                retry_pass = kind in _PASS_CONTINUATION_KINDS or (kind is AgentFailureKind.TRANSIENT and action is ErrorAction.RETRY)
+            except Exception as exc:  # PydanticAI raises many subclassed errors; treat uniformly
+                kind = classify_agent_failure(exc)
+                record_unit_failure(stage="agentic-generation", unit=seg_id, exc=exc, attempts=passes)
                 gen_output = None
                 last_error = str(exc)
+                if kind is AgentFailureKind.TRANSIENT:
+                    action = _failure_action(
+                        compiler,
+                        exc,
+                        stage=f"agentic-generation:{seg_id}",
+                        attempt=passes,
+                        max_attempts=cap,
+                        transient=True,
+                    )
+                    if action is ErrorAction.ABORT:
+                        raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
+                    retry_pass = action is ErrorAction.RETRY
+                else:
+                    retry_pass = kind in _PASS_CONTINUATION_KINDS
             debug_file = getattr(agent, "_last_debug_file", None)
 
             compiler._batch_tracker.record(failed=gen_output is None)
 
             if gen_output is None:
                 logger.warning(
-                    "TwoPhase: agentic %s (caller_id=%s, pass=%d/%d, remaining=%d) failed — skipping (debug: %s)",
+                    "TwoPhase: agentic %s (caller_id=%s, pass=%d/%d, remaining=%d) failed — %s (debug: %s)",
                     seg_label,
                     seg_id,
                     passes,
                     cap,
                     broker.remaining(seg_id),
+                    "retrying" if retry_pass else "skipping",
                     debug_file or "(none)",
                 )
+                if retry_pass:
+                    continue
                 break
 
             empty_pages = [p for p in gen_output.pages if not (p.content or "").strip()]

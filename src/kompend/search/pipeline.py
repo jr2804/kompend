@@ -14,6 +14,7 @@ All default to **disabled** — opt-in only.
 from __future__ import annotations
 
 from kompend.agents.deps import PipelineAgentDeps
+from kompend.agents.failure import record_unit_failure
 from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from kompend.core.config import ReasoningEffort, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LLMConfig
@@ -184,7 +185,9 @@ class EnhancedRetriever:
             expansions.extend(result.semantic_rewrites)
             return expansions[: self._expansion_variants + 1]
         except Exception as exc:
-            logger.warning("Query expansion (%s) failed: %s", type(self._expansion_agent).__name__, exc, exc_info=True)
+            # Best-effort enrichment: the query still has to run, so the
+            # fallback value stays. The failure is recorded with its kind.
+            record_unit_failure(stage="search.expansion", unit=query, exc=exc)
             return [query]
 
     # ── HyDE ──────────────────────────────────────────────────────────────
@@ -201,7 +204,7 @@ class EnhancedRetriever:
                 logger.debug("HyDE generated hypothetical passage (%d chars)", len(result))
                 return result.strip()
         except Exception as exc:
-            logger.warning("HyDE generation (%s) failed: %s", type(self._hyde_agent).__name__, exc, exc_info=True)
+            record_unit_failure(stage="search.hyde", unit=query, exc=exc)
         return query
 
     # ── Neural Re-ranker ──────────────────────────────────────────────────
@@ -255,7 +258,7 @@ class EnhancedRetriever:
             )
             return results
         except Exception as exc:
-            logger.warning("Neural re-ranking failed: %s", exc, exc_info=True)
+            record_unit_failure(stage="search.rerank", unit=query, exc=exc)
             return candidates
 
     # ── CRAG (Corrective RAG) ──────────────────────────────────────────────
@@ -300,8 +303,8 @@ class EnhancedRetriever:
             return max(0.0, min(1.0, grade.relevance))
         except Exception as exc:
             # Retrieval enhancement must stay visible: a silent fallback left CRAG
-            # returning its neutral 0.5 unobserved. Degrade, but log a warning.
-            logger.warning("CRAG grading (%s) failed for %s: %s", type(self._crag_agent).__name__, result.title, exc, exc_info=True)
+            # returning its neutral 0.5 unobserved. Degrade, but record the failure.
+            record_unit_failure(stage="search.crag", unit=result.article_id or result.title, exc=exc)
         return 0.5  # neutral fallback
 
     @staticmethod

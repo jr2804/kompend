@@ -8,6 +8,7 @@ Covers:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from kompend.core.models.references import (
     ReferenceResolutionOutput,
 )
 from kompend.core.pipeline.references import ReferenceStore
+from kompend.core.utils.exceptions import LLMOutputError
 from tests.helpers.cli import CliRunner
 
 
@@ -117,6 +119,30 @@ class TestResolveUnresolvedFlow:
             timeout=10.0,
         )
         assert resolved == 0
+
+    def test_agent_failure_is_recorded(self, store_with_unresolved: ReferenceStore, caplog: pytest.LogCaptureFixture) -> None:
+        class _FailingResolver:
+            def run(self, deps: PipelineAgentDeps, *, message_history: list[ModelMessage] | None = None) -> ReferenceResolutionOutput:
+                raise RuntimeError("boom")
+
+        with caplog.at_level(logging.WARNING):
+            resolve_unresolved_references(store_with_unresolved, _FailingResolver(), timeout=10.0)
+        assert "references.resolution" in caplog.text
+        assert "other" in caplog.text
+
+    def test_batch_raises_when_more_than_the_ratio_of_entries_fail(self, store_with_unresolved: ReferenceStore) -> None:
+        class _FailingResolver:
+            def run(self, deps: PipelineAgentDeps, *, message_history: list[ModelMessage] | None = None) -> ReferenceResolutionOutput:
+                raise RuntimeError("boom")
+
+        with pytest.raises(LLMOutputError, match="references.resolution"):
+            resolve_unresolved_references(
+                store_with_unresolved,
+                _FailingResolver(),
+                timeout=10.0,
+                failure_ratio=0.5,
+                failure_min_units=1,
+            )
 
 
 class TestFetchCli:

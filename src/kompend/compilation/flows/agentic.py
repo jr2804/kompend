@@ -36,6 +36,7 @@ from pydantic_ai.messages import ModelMessage, ModelRequest, SystemPromptPart
 
 from kompend.agents.deps import MemoryConsolidationDeps, PipelineAgentDeps
 from kompend.agents.extraction import ExtractionAgent
+from kompend.agents.failure import UnitFailure, is_retry_pointless, record_unit_failure
 from kompend.agents.memory_consolidation import MemoryConsolidationAgent
 from kompend.compilation._two_phase_core import (
     Extraction,
@@ -220,6 +221,7 @@ def extract_agentic(
         deps = PipelineAgentDeps(text=section_text, source_id=f"{source}:{sections_done}")
 
         validated: ExtractionOutput | None = None
+        last_failure: UnitFailure | None = None
         replanned = False
         for attempt in range(1 + batch_retries):
             try:
@@ -269,7 +271,18 @@ def extract_agentic(
                     attempt + 1,
                     exc,
                 )
+                last_failure = record_unit_failure(
+                    stage="extraction:agentic",
+                    unit=f"{source}:{sections_done + 1}",
+                    exc=exc,
+                    attempts=attempt + 1,
+                )
                 validated = None
+                if is_retry_pointless(last_failure.kind):
+                    # The model answered with nothing, or the provider refused
+                    # the size it already named: re-sending the identical
+                    # section cannot produce a different answer.
+                    break
 
             if validated is not None:
                 break
@@ -292,10 +305,12 @@ def extract_agentic(
             progress(sections_done, _section_total(), "")
 
         if validated is None:
+            cause = last_failure.describe() if last_failure is not None else "no result"
             logger.warning(
-                "TwoPhase: agentic section %d failed for '%s' — skipping",
+                "TwoPhase: agentic section %d failed for '%s' (%s) — skipping",
                 sections_done,
                 source,
+                cause,
             )
             continue
 

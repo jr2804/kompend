@@ -16,6 +16,7 @@ from typing import Final, TypedDict
 
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT
 from kompend.agents.deps import QueryDeps
+from kompend.agents.failure import record_unit_failure
 from kompend.agents.query import QueryAgent
 from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
@@ -211,7 +212,9 @@ class HybridRetriever:
                 attribute_keys=attribute_keys,
             )
         except Exception as exc:
-            logger.warning("Vector search failed: %s", exc, exc_info=True)
+            # The keyword path still has candidates, so the vector half
+            # degrades to "no vector hits" instead of failing the search.
+            record_unit_failure(stage="search.vector-search", unit=query, exc=exc)
             return []
         query_tokens = set(tokenize(query))
         results: list[SearchResult] = []
@@ -471,8 +474,11 @@ def synthesize_results(
         )
         answer = agent.run(deps)
     except Exception as exc:
-        logger.warning("Query synthesis failed: %s", exc, exc_info=True)
-        answer = ""
+        # No fallback answer: an empty string would be returned as if it were
+        # the model's answer. Every caller (CLI, MCP) already handles a
+        # raised synthesis by showing the raw context instead.
+        record_unit_failure(stage="search.synthesis", unit=query, exc=exc)
+        raise
 
     citations_out: list[Citation] = []
     for r in results:

@@ -16,6 +16,7 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.extraction import ExtractionAgent
 from kompend.agents.extraction_reduce import ExtractionReduceAgent
+from kompend.agents.failure import UnitFailure, UnitFailureLog, is_retry_pointless, record_unit_failure
 from kompend.compilation._two_phase_core import (
     Extraction,
     ExtractionSet,
@@ -409,19 +410,33 @@ def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extractio
     )
 
     # Per-batch retry: the agent already retries internally (via PydanticAI's
-    # ``retries``), but this loop retries at the batch level when the entire
-    # agent call returns None (e.g. transient timeout, empty response that
-    # exhausts internal retries). ``compile.llm.batch_retry_attempts`` is
-    # configurable — set to 0 to disable.
+    # ``retries``), but this loop retries at the batch level when the agent
+    # returned no result at all. ``compile.llm.batch_retry_attempts`` is
+    # configurable — set to 0 to disable. The retry is skipped when repeating
+    # the identical request cannot change the answer: an empty answer or a
+    # request too large for the window (``is_retry_pointless``).
     batch_retries = compiler._config.llm.batch_retry_attempts
+    failures = UnitFailureLog(stage="extraction")
     validated: ExtractionOutput | None = None
+    last_failure: UnitFailure | None = None
     for attempt in range(1 + batch_retries):
+        before = len(failures.failures)
         validated = try_pydanticai_extraction(
             agent,
             text=combined,
             source_id=source,
+            failures=failures,
         )
         if validated is not None:
+            break
+        if len(failures.failures) > before:
+            last_failure = failures.failures[-1]
+        if last_failure is not None and is_retry_pointless(last_failure.kind):
+            logger.info(
+                "TwoPhase: not retrying extraction for '%s' — %s cannot be fixed by repeating the request",
+                source,
+                last_failure.kind.value,
+            )
             break
         if attempt < batch_retries:
             logger.info(
@@ -433,10 +448,11 @@ def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extractio
 
     compiler._batch_tracker.record(failed=validated is None)
     if validated is None:
+        cause = last_failure.describe() if last_failure is not None else "no result"
         logger.warning(
-            "TwoPhase: extraction skipped for source '%s' — agent returned no result after %d batch attempt(s)",
+            "TwoPhase: extraction skipped for source '%s' — %s",
             source,
-            1 + batch_retries,
+            cause,
         )
         return None
     result = Extraction(
@@ -559,12 +575,8 @@ def extract_incremental(
                     # below lowers the window and splits the remaining texts -
                     # the error carries the limit the provider named.
                     raise
-                except LLMOutputError:
-                    logger.warning(
-                        "TwoPhase: incremental extraction failed for '%s' batch %d",
-                        source,
-                        batch_idx,
-                    )
+                except Exception as exc:  # noqa: BLE001 — classified into the failure vocabulary below
+                    record_unit_failure(stage="extraction:incremental", unit=f"{source}:{batch_idx}", exc=exc)
                     compiler._batch_tracker.record(failed=True)
                     results.append(None)
                 extracted += len(group)
@@ -811,8 +823,11 @@ def reduce_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extra
     try:
         deps = PipelineAgentDeps(text=partial_data, source_id=f"{source}:reduce")
         validated = agent.run(deps)
-    except LLMOutputError:
-        logger.warning("TwoPhase: reduce failed for '%s' — falling back to naive merge", source)
+    except LLMOutputError as exc:
+        # Reducing is best-effort enrichment: the per-batch extractions are
+        # already complete, so the merge below loses nothing but dedup.
+        failure = record_unit_failure(stage="extraction:reduce", unit=source, exc=exc)
+        logger.warning("TwoPhase: reduce failed for '%s' (%s) — falling back to naive merge", source, failure.kind.value)
         return merge_extractions(source, parts)
     result = Extraction(
         source=source,

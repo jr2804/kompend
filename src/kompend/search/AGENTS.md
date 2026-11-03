@@ -34,4 +34,9 @@ selection, query classification, budget management, and tag filtering.
   (``CONTAIN_ANY``/``CONTAIN_ALL``); ``KeywordRetriever`` applies the same
   predicates in Python (store-less path). The agentic query tools thread the
   caller's filters through ``QueryAgentDeps`` into ``retriever.search``.
-- No LLM calls in the search path — classification is programmatic.
+- ``pipeline.py``'s optional steps (query expansion, HyDE, neural rerank,
+  CRAG grading) DO call LLM agents — classification is programmatic, those
+  steps are not. Each one is best-effort enrichment: on failure it records
+  `record_unit_failure(...)` and keeps the unmodified input (query, candidate
+  list, or a 0.5 grade). Anything that is NOT enrichment (the final
+  synthesis) must burn.

@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from kompend.agents.query import QueryAgent
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.llm.context_window import ContextSource, ContextWindow
-from kompend.search.retriever import HybridRetriever, extract_snippet, synthesize_results
+from kompend.search.retriever import HybridRetriever, SearchResult, extract_snippet, synthesize_results
 
 
 class TestExtractSnippet:
@@ -158,6 +161,45 @@ class _FakeLLMClient:
             content="synthesized answer",
             json_data=None,
         )
+
+
+class _BrokenVectorStore:
+    """Vector store whose search always fails."""
+
+    available = True
+
+    def search(self, query: str, top_k: int = 5, **kwargs: Any) -> list[dict[str, Any]]:  # noqa: ANN401, ARG002
+        msg = "vector store offline"
+        raise RuntimeError(msg)
+
+
+class TestSearchDegradationFailures:
+    """A degraded search stage records its failure instead of hiding it."""
+
+    def test_vector_search_failure_is_recorded_and_returns_no_hits(self, caplog: pytest.LogCaptureFixture) -> None:
+        wiki = CompiledWiki(
+            nodes=[WikiNode(id="alpha", title="Alpha Page", content="alpha content here", node_type=NodeType.SECTION)],
+            edges=[],
+            toc=[],
+        )
+        retriever = HybridRetriever(wiki, vector_store=_BrokenVectorStore())
+        with caplog.at_level(logging.WARNING):
+            assert retriever.search_wiki("alpha", top_k=5) == []
+        assert "search.vector-search" in caplog.text
+        assert "other" in caplog.text
+
+    def test_synthesis_failure_is_recorded_and_raises(self, caplog: pytest.LogCaptureFixture) -> None:
+        """An empty answer would read like an answer - the failure must raise."""
+        agent = MagicMock()
+        agent.run.side_effect = RuntimeError("boom")
+        results = [SearchResult(article_id="alpha", title="Alpha", snippet="snip", score=1.0)]
+        with (
+            caplog.at_level(logging.WARNING),
+            pytest.raises(RuntimeError, match="boom"),
+        ):
+            synthesize_results("alpha", results, model="test-model", query_agent=agent)
+        assert "search.synthesis" in caplog.text
+        assert "other" in caplog.text
 
 
 class TestSynthesizeVerbosity:
