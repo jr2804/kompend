@@ -165,7 +165,9 @@ Image elements set `metadata["image_file"]` (file mode) or
 `IMAGE_BASE64` symbols, never bare literals. The figure's own text rides along
 as `metadata["description"]`, which flows via `extractors.py` →
 `StructuredFigure.description` and via `hierarchical.py` → `chunk.metadata`, so
-the captioning stage can use it instead of calling a VLM.
+the captioning stage can use it instead of calling a VLM. A figure without a
+caption is still a figure: the image is its content, a caption is only ever a
+description.
 
 The figures come from the IR: parsecraft hands a figure crop over as an
 `ExtractedAsset` on the page, and the chunk that owns it names the asset in

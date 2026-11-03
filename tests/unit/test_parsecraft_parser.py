@@ -1217,6 +1217,19 @@ class TestImageExtraction:
         image = next(element for element in elements if element.type is ElementType.IMAGE)
         assert image.metadata["description"] == "Figure 1 — the block diagram"
 
+    def test_a_figure_without_a_caption_still_carries_its_image(self, tmp_path: Path) -> None:
+        # The docling backend emits a figure chunk whose content is the
+        # caption, and the caption may be empty. The image must survive
+        # that: it is the content of the element, the caption is only ever
+        # a description.
+        adapter = _adapter()
+        document = _document([_page_with_asset(_figure_chunk(content=""), "asset-1")])
+        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        image = next(element for element in elements if element.type is ElementType.IMAGE)
+        assert Path(image.metadata["image_file"]).exists()
+        assert image.content == image.metadata["image_file"]
+        assert "description" not in image.metadata
+
     def test_base64_mode_keeps_the_payload_inline(self, tmp_path: Path) -> None:
         adapter = _adapter()
         document = _document([_page_with_asset(_figure_chunk(), "asset-1")])
