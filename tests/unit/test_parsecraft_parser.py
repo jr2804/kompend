@@ -1193,6 +1193,25 @@ class TestIgnoredBackendOptions:
         assert not [r for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
 
 
+class TestDoclingThreadLimit:
+    """The ONNX thread bound reaches the engine before it loads."""
+
+    def test_a_thread_limit_is_applied_at_construction(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The engine reads DOCLING_RS_PDF_THREADS when it builds its
+        # converter (on the first conversion), so the value must be in the
+        # environment before that — the parser does it on construction.
+        monkeypatch.delenv("DOCLING_RS_PDF_THREADS", raising=False)
+        adapter = _adapter()
+        adapter.ParsecraftParser(parsecraft_docling_threads=1)
+        assert os.environ["DOCLING_RS_PDF_THREADS"] == "1"
+
+    def test_no_limit_leaves_the_environment_alone(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("DOCLING_RS_PDF_THREADS", raising=False)
+        adapter = _adapter()
+        adapter.ParsecraftParser()
+        assert "DOCLING_RS_PDF_THREADS" not in os.environ
+
+
 class TestImageExtraction:
     """Figure crops from the IR reach the vault's image cache.
 

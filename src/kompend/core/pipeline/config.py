@@ -85,6 +85,8 @@ class PipelineConfig:
     cache_dir: Path | None = None  # None = base_dir/.kompend/cache
     no_cache: bool = False  # force re-parse even if cached
     workers: int = 1  # parallel parse+chunk workers
+    parse_min_free_commit_mb: int = 10240  # commit headroom a heavy parse requires (ingest.parse_min_free_commit_mb)
+    max_concurrent_heavy_parses: int = 1  # heavy parses allowed to run at once (ingest.max_concurrent_heavy_parses)
     start_at_tier: Tier = Tier.INDEX  # pipeline entry point (T0 by default)
     stop_at_tier: Tier = Tier.OUTPUT  # pipeline exit point (T4 by default; T1 for ingest)
     force: bool = False  # bypass persistent tier state and re-process everything
@@ -217,6 +219,8 @@ class PipelineConfig:
             parsecraft_judge=kompend.ingest.parsecraft_judge,
             parsecraft_judge_model=kompend.ingest.parsecraft_judge_model,
             parsecraft_preference=kompend.ingest.parsecraft_preference,
+            parse_min_free_commit_mb=kompend.ingest.parse_min_free_commit_mb,
+            max_concurrent_heavy_parses=kompend.ingest.max_concurrent_heavy_parses,
             memory_enabled=kompend.compile.memory_enabled,
             memory_half_life_days=kompend.compile.memory_half_life_days,
             memory_decay_threshold=kompend.compile.memory_decay_threshold,

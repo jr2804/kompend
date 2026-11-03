@@ -149,6 +149,24 @@ file = "NOTES.md"
 # stall. Env: KOMP_INGEST_PARSE_TIMEOUT_S
 # parse_timeout_s = 0.0
 
+# ONNX thread bound for the docling engine (engine env DOCLING_RS_PDF_THREADS).
+# One docling pass peaks near 8 GB of commit charge with the engine default
+# (4 threads); bounding it to 1 cuts that to ~5 GB at ~1.7x wall time. Must be
+# set before the first conversion, so it is applied once at construction.
+# Env: KOMP_INGEST_PARSECRAFT_DOCLING_THREADS
+# parsecraft_docling_threads = 1
+
+# Heavy parses (docling, mineru, pandoc, pymupdf on non-text sources) are
+# guarded: a heavy parse only starts with at least this much free commit
+# memory (MB), and at most max_concurrent_heavy_parses run at once — measured
+# 8 GB per docling pass, independent of page count. 0 disables the headroom
+# check (the concurrency cap stays); a blocked source fails loudly as skipped,
+# never silently.
+# Env: KOMP_INGEST_PARSE_MIN_FREE_COMMIT_MB
+# parse_min_free_commit_mb = 10240
+# Env: KOMP_INGEST_MAX_CONCURRENT_HEAVY_PARSES
+# max_concurrent_heavy_parses = 1
+
 # ── Downloader settings ─────────────────────────────────────────────────
 # Controls how URLs are fetched. URLs whose path looks like HTML (no
 # extension, .html/.htm/.aspx/.php/.jsp, or trailing /) go through the

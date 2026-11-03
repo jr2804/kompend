@@ -22,6 +22,7 @@ from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.pipeline.stages._parse import _parse_source
 from kompend.core.verbosity import is_verbose, set_verbose
+from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.parsers.base import ParserRouter
 from tests.helpers.cli import CliRunner
 
@@ -190,7 +191,13 @@ def test_main_fatal_is_traceback_with_verbose(monkeypatch: pytest.MonkeyPatch, c
 def test_parse_source_default_message_carries_cause(caplog: pytest.LogCaptureFixture) -> None:
     set_verbose(False)
     with caplog.at_level(logging.ERROR):
-        out = _parse_source(cast("PipelineRuntime", _Pipeline()), Path("sources/foo.pdf"), use_cache=False, content_hash="h")
+        out = _parse_source(
+            cast("PipelineRuntime", _Pipeline()),
+            Path("sources/foo.pdf"),
+            use_cache=False,
+            content_hash="h",
+            heavy_guard=HeavyParseGuard(),
+        )
     assert out is None
     records = [r for r in caplog.records if "Failed to parse" in r.getMessage()]
     assert records

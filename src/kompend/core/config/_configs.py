@@ -886,6 +886,42 @@ class IngestConfig(_KompendBaseModel):
             "the child's interpreter start-up, so prefer the in-process path for corpora you trust."
         ),
     )
+    parsecraft_docling_threads: int | None = Field(
+        default=None,
+        ge=1,
+        validation_alias=EnvVar.INGEST_PARSECRAFT_DOCLING_THREADS,
+        description=(
+            "ONNX thread count of the docling engine (`DOCLING_RS_PDF_THREADS`). Unset (default) keeps the "
+            "engine's own thread count. Measured on Windows with docling-rs 2.55.4 (2026-11-03): one PDF "
+            "conversion peaks at about 5.4 GB working set and 8.0 GB commit charge with the engine "
+            "default, and at about 3.1 GB / 5.1 GB with a single thread — at the price of roughly 75% "
+            "more wall-clock time. The thread count changes neither the extracted text nor the routing, "
+            "so it is not part of the parse-cache fingerprint."
+        ),
+    )
+    parse_min_free_commit_mb: int = Field(
+        default=10240,
+        ge=0,
+        validation_alias=EnvVar.INGEST_PARSE_MIN_FREE_COMMIT_MB,
+        description=(
+            "Free commit charge (MB) a parse that may load the heavy conversion engine requires. The "
+            "default (10240) sits above the measured peak of one docling conversion (about 8.0 GB) so the "
+            "run stops with an actionable message instead of the OS aborting an allocation inside the "
+            "native extension. `0` disables the check; the concurrency cap stays. Text sources never take "
+            "this budget — only the formats that may load the PDF engine do."
+        ),
+    )
+    max_concurrent_heavy_parses: int = Field(
+        default=1,
+        ge=1,
+        validation_alias=EnvVar.INGEST_MAX_CONCURRENT_HEAVY_PARSES,
+        description=(
+            "How many parses that may load the heavy conversion engine may run at once. `1` (default) "
+            "serializes them: the engine's cost is a fixed several gigabytes per conversion, so N workers "
+            "cost N times the host's commit headroom. Light sources are unaffected and keep parsing in "
+            "parallel."
+        ),
+    )
 
 
 class DownloaderConfig(_KompendBaseModel):

@@ -124,6 +124,7 @@ Commands — see `.agents/CHECKS.md`. For this subtree the relevant ones are
 | `mcp/` | MCP server exposing kompend operations as tools (fastmcp) |
 | `memory/` | Query memory store and compile-time lifecycle |
 | `output/` | Tier 5 — OKF markdown/JSON/Typst writers, indexes, log |
+| `preprocessing/` | `host_memory.py` (heavy-parse memory guard), `dedup/`, `downloaders/` |
 | `preprocessing/parsers/` | Pluggable ingestion backends and their registry |
 | `rag/` | zvec vector store — fields, index build, filters, drift, pruning |
 | `search/` | Multi-retriever semantic search with adaptive selection |

@@ -116,10 +116,6 @@ class TestEncodeRawResults:
         assert parsed[0]["figures"] == [{"caption": "Fig. 1. Layers", "path": "attachments/fig1.png"}]
 
 
-def _figure() -> ImageRef:
-    return {"caption": "Fig. 1. Layers", "path": "attachments/fig1.png", "element_type": "image", "source_file": "f.pdf"}
-
-
 def _synth() -> SynthesisResult:
     return SynthesisResult(
         answer="Neural nets approximate functions via layers.",
@@ -134,3 +130,7 @@ def _synth() -> SynthesisResult:
             },
         ],
     )
+
+
+def _figure() -> ImageRef:
+    return {"caption": "Fig. 1. Layers", "path": "attachments/fig1.png", "element_type": "image", "source_file": "f.pdf"}

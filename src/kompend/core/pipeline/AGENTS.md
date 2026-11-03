@@ -15,7 +15,7 @@ persistence, and standalone ingestion.
 | --------------------- | ---------------------------------------------------------------------------------------- |
 | `stages/_pipeline.py` | `WikiPipeline` — 5-tier orchestrator, `ProgressCallback`                                 |
 | `stages/_factory.py`  | `build_pipeline` — pipeline factory                                                      |
-| `stages/_parse.py`    | Tier 1 parse + chunk orchestration                                                       |
+| `stages/_parse.py`    | Tier 1 parse + chunk orchestration; heavy parses run under `HeavyParseGuard` (`preprocessing/host_memory.py`) |
 | `stages/_index.py`    | Tier 0 source indexing                                                                   |
 | `stages/_resolve.py`  | Tier 3 resolution orchestration                                                          |
 | `stages/_compile.py`  | Tier 4 compilation + Tier 5 output orchestration                                         |
@@ -74,6 +74,17 @@ persistence, and standalone ingestion.
   changed figure or a changed prompt cannot replay a stale caption. The
   context is a per-run value: the chunk cache is written before the
   resolve tier, so it never enters it.
+- Heavy parses are budgeted, not just threaded: a source that may load the
+  heavy conversion engine (non-text `FileExtension` — PDF/office/image)
+  enters `HeavyParseGuard` (`preprocessing/host_memory.py`): at most
+  `ingest.max_concurrent_heavy_parses` run at once and a heavy parse needs
+  `ingest.parse_min_free_commit_mb` of free commit charge (measured peak of
+  one docling conversion: ~8 GB, independent of page count — knox-b9p2). A
+  refused source is skipped loudly per-file; the run continues. `0` disables
+  the headroom check, the cap stays. The docling engine's ONNX thread count
+  (`ingest.parsecraft_docling_threads` → `DOCLING_RS_PDF_THREADS`, set at
+  parser construction, before the first conversion) is the engine-side
+  lever: 1 thread ≈ 5 GB instead of 8 GB at ~1.7× wall time.
 - **Recoverable-log rule:** a log call that attaches a traceback gates it on
   `kompend.core.verbosity.is_verbose()` (`exc_info=is_verbose()`). Removing a
   traceback is only safe when the one-line message carries the cause: bind the

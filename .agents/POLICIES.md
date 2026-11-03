@@ -116,3 +116,5 @@ review/debugging/analysis: findings with references, conclusion, caveats.
 - Concise, direct answers with no filler or intros.
 - English-only for code, docs, and commits; conventional commits (`feat:`, `fix:`,
   `chore:`, `docs:`).
+- Probe/one-off scripts never live in the repo tree (no `scripts/tmp/`, no
+  `tmp/`) — use the OS temp dir, delete after use (user, 2026-11-03).

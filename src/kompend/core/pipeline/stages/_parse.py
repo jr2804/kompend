@@ -47,6 +47,11 @@ from kompend.llm.models import resolve_vlm_model
 from kompend.llm.user_providers import effective_workers
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup import DedupStore
+from kompend.preprocessing.host_memory import (
+    MEGABYTE,
+    HeavyParseGuard,
+    InsufficientHostMemoryError,
+)
 from kompend.preprocessing.parsers.base import scrub_document
 from kompend.resolution.base import BaseResolver
 from kompend.resolution.chain import ResolverChain
@@ -103,6 +108,15 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
     # a warning naming both values.
     workers = effective_workers(pipeline.config.llm.default_model or "", workers)
 
+    # One guard per run: serializes heavy parses (a PDF/office conversion
+    # costs several GB of commit charge — N workers cost N times that) and
+    # refuses one outright when the host cannot back it. A refused source
+    # fails loudly per-file; the run continues with the rest.
+    heavy_guard = HeavyParseGuard(
+        min_free_commit_bytes=pipeline.config.parse_min_free_commit_mb * MEGABYTE,
+        max_concurrent=pipeline.config.max_concurrent_heavy_parses,
+    )
+
     trees: list[ChunkTree] = []
     if workers > 1 and len(source_files) > 1:
         # Say which kind of interpreter this is: a thread pool only runs
@@ -115,7 +129,7 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
         # In-flight workers still finish (bounded by ``workers``) so caches
         # stay consistent.
         executor = ThreadPoolExecutor(max_workers=workers)
-        futures = {executor.submit(_process_single_source, pipeline, sf, dedup_similar): sf for sf in source_files}
+        futures = {executor.submit(_process_single_source, pipeline, sf, dedup_similar, heavy_guard): sf for sf in source_files}
         try:
             for future in as_completed(futures):
                 sf = futures[future]
@@ -132,7 +146,7 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
             executor.shutdown(wait=True, cancel_futures=True)
     else:
         for idx, sf in enumerate(source_files):
-            tree = _process_single_source(pipeline, sf, dedup_similar)
+            tree = _process_single_source(pipeline, sf, dedup_similar, heavy_guard)
             if tree is not None:
                 trees.append(tree)
             pipeline.emit("parse", idx + 1, len(source_files), sf.name)
@@ -167,6 +181,7 @@ def _process_single_source(
     pipeline: PipelineRuntime,
     source_file: Path,
     dedup_similar: dict[str, dict[str, object]],
+    heavy_guard: HeavyParseGuard,
 ) -> ChunkTree | None:
     """Parse a single source file (cache-aware) and chunk it.
 
@@ -183,7 +198,7 @@ def _process_single_source(
     parsed = _try_load_parsed_cache(pipeline, source_file, stem, content_hash, use_cache)
 
     if parsed is None:
-        parsed = _parse_source(pipeline, source_file, use_cache, content_hash)
+        parsed = _parse_source(pipeline, source_file, use_cache, content_hash, heavy_guard)
         if parsed is None:
             return None
         if use_cache and not content_hash:
@@ -252,7 +267,13 @@ def _try_load_parsed_cache(pipeline: PipelineRuntime, source_file: Path, stem: s
     return None
 
 
-def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool, content_hash: str) -> ParsedDocument | None:
+def _parse_source(
+    pipeline: PipelineRuntime,
+    source_file: Path,
+    use_cache: bool,
+    content_hash: str,
+    heavy_guard: HeavyParseGuard,
+) -> ParsedDocument | None:
     """Parse a source file via the router and optionally cache the result."""
     if pipeline.router is None:
         return None
@@ -265,8 +286,12 @@ def _parse_source(pipeline: PipelineRuntime, source_file: Path, use_cache: bool,
         # decides which bytes that backend receives (UTF-8 for known text
         # formats, the raw file otherwise). It never gates parsing.
         parse_target = parse_target_path(source_file, pipeline.cache_directory())
-        parsed = selected.parse(parse_target)
+        with heavy_guard.guard(source_file):
+            parsed = selected.parse(parse_target)
         _ = len(parsed.elements)
+    except InsufficientHostMemoryError as exc:
+        logger.error("Skipped %s: %s", source_file, exc)
+        return None
     except Exception as exc:
         logger.error("Failed to parse %s: %s", source_file, exc, exc_info=is_verbose())
         return None

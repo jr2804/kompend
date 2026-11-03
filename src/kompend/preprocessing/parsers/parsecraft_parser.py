@@ -24,9 +24,10 @@ Mapping summary:
 
 from __future__ import annotations
 
+import os
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from parsecraft.backends import BackendRegistry, default_registry
 from parsecraft.backends.protocol import SourceDocument
@@ -88,6 +89,11 @@ _CHUNK_KIND_TO_ELEMENT: dict[ChunkKind, ElementType] = {
 #: cause and the rest is noise in a per-file warning.
 _JUDGE_ERROR_EXCERPT_CHARS = 160
 
+#: Environment variable the docling engine reads for its ONNX thread count.
+#: The engine builds its converter when the first conversion runs, so the
+#: value has to be in place before that — the parser sets it when it is built.
+DOCLING_THREADS_ENV: Final[str] = "DOCLING_RS_PDF_THREADS"
+
 #: parsecraft's page verdict for "this page holds nothing to lose" (no text and
 #: no images). The planner emits it as ``PageRoute.degradation_code``; parsecraft
 #: exports no symbol for it, so the literal lives here, once.
@@ -132,6 +138,7 @@ class ParsecraftParser:
         parsecraft_preferred_backend: str | None = None,
         parsecraft_only_backend: str | None = None,
         parsecraft_backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
+        parsecraft_docling_threads: int | None = None,
         images_dir: Path | None = None,
         image_mode: ImageMode = ImageMode.FILE,
     ) -> None:
@@ -172,6 +179,11 @@ class ParsecraftParser:
         #: configured mode; the IR carries the crops, this decides where they
         #: land. ``ImageMode.NONE`` extracts no images at all.
         self._images = ImageStore(images_dir, image_mode)
+        #: ONNX thread count for the docling engine. The engine reads it from
+        #: the environment when it builds its converter, so it is applied
+        #: here — before the first conversion of the process.
+        self._docling_threads = parsecraft_docling_threads
+        self._apply_docling_thread_limit()
 
     def can_parse(self, source_file: Path) -> bool:  # noqa: PLR6301 — parser-instance surface
         """True when parsecraft's classifier knows the file's suffix."""
@@ -308,6 +320,29 @@ class ParsecraftParser:
             parts.append(f"images:{self._images.mode.value}")
         routing = "|".join(parts)
         return f"{host}|{routing}"
+
+    def _apply_docling_thread_limit(self) -> None:
+        """Bound the docling engine's ONNX thread count for this process.
+
+        The docling engine loads its layout, table-structure and OCR models
+        plus an ONNX arena; the arena scales with the thread count. Measured
+        on Windows with docling-rs 2.55.4 (2026-11-03): one PDF conversion
+        peaks at about 8.0 GB of commit charge with the engine default and
+        about 5.1 GB with a single thread, at the price of roughly 75% more
+        wall-clock time.
+
+        The value is process-wide because the engine reads it from the
+        environment; it does not change the extracted text, so it is not part
+        of the parse-cache fingerprint.
+        """
+        if self._docling_threads is None:
+            return
+        os.environ[DOCLING_THREADS_ENV] = str(self._docling_threads)
+        logger.info(
+            "docling engine limited to %d ONNX thread(s) via %s",
+            self._docling_threads,
+            DOCLING_THREADS_ENV,
+        )
 
     def _backend_options(self) -> dict[str, dict[str, str | int | float | bool]]:
         """Per-backend constructor options for parsecraft, or ``{}`` when all default.
@@ -919,6 +954,7 @@ def _factory(options: ParserBuildOptions) -> ParsecraftParser:
         parsecraft_preferred_backend=options.parsecraft_preferred_backend,
         parsecraft_only_backend=options.parsecraft_only_backend,
         parsecraft_backend_options=options.parsecraft_backend_options,
+        parsecraft_docling_threads=options.parsecraft_docling_threads,
         images_dir=options.images_dir,
         image_mode=options.image_mode,
     )

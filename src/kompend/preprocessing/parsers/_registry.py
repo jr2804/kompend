@@ -109,6 +109,10 @@ class ParserBuildOptions:
     #: parsecraft's `RoutingConstraints.backend_options`. Empty keeps the
     #: adapter's own derived options untouched.
     parsecraft_backend_options: dict[str, dict[str, str | int | float | bool]] = field(default_factory=dict)
+    #: ONNX thread count of the docling engine. `None` keeps the engine's
+    #: own thread count; a value bounds the engine's memory use (the ONNX
+    #: arena scales with the thread count) at the price of wall-clock time.
+    parsecraft_docling_threads: int | None = None
 
     @classmethod
     def from_config(cls, cfg: ResolvedConfig, *, images_dir: Path | None = None) -> ParserBuildOptions:
@@ -139,6 +143,7 @@ class ParserBuildOptions:
             parsecraft_preferred_backend=kompend.ingest.parsecraft_preferred_backend,
             parsecraft_only_backend=kompend.ingest.parsecraft_only_backend,
             parsecraft_backend_options={backend: dict(options) for backend, options in kompend.ingest.parsecraft_backend_options.items()},
+            parsecraft_docling_threads=kompend.ingest.parsecraft_docling_threads,
         )
 
 

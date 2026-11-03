@@ -43,11 +43,16 @@ is absent must fail loudly instead of starting with an empty router. The `name`
 parameter still exists as registry API — the tests pin it — but no caller passes
 it.
 
-`ingest.parsecraft_backend_options` is the only parser-side config key. It
-carries the backend options the user wants to override (a mapping of option
-name → value); `ParserBuildOptions.parsecraft_backend_options` hands them to
-the adapter, which merges them over its derived defaults. The options are part
-of the parser's `cache_identity()`, so changing them re-parses.
+`ingest.parsecraft_backend_options` is the parser-side config key for
+backend options. It carries the backend options the user wants to override (a
+mapping of option name → value); `ParserBuildOptions.parsecraft_backend_options`
+hands them to the adapter, which merges them over its derived defaults. The
+options are part of the parser's `cache_identity()`, so changing them re-parses.
+One sibling key is NOT a backend option and NOT fingerprinted:
+`ingest.parsecraft_docling_threads` bounds the docling engine's ONNX thread
+count (`DOCLING_RS_PDF_THREADS`, set by the parser before the first
+conversion — a memory lever, ~5 GB instead of ~8 GB per conversion at 1
+thread; it changes neither text nor routing, so it never re-parses).
 
 `get_all_extensions(names)` takes the backend names to union suffixes for.
 Discovery passes `[DEFAULT_PARSER]`, so a vault ingests exactly what its parser can

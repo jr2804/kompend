@@ -31,6 +31,7 @@ from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.pipeline.stages._parse import _chunk_cache_deps, _process_single_source  # noqa: PLC2701
 from kompend.core.pipeline.state import TierState, TierStateStore
 from kompend.core.store import vault_db_path
+from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.parsers.base import BaseParser, ParserRouter
 from tests.conftest import as_obj
 
@@ -284,7 +285,7 @@ def test_enriched_tree_is_what_gets_cached(tmp_path: Path) -> None:
     _seed_parse_cache(base, source_file, content_hash)
 
     runtime = _StubRuntime(base, enricher=_StubEnricher())
-    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {})
+    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard())
 
     assert tree is not None
     cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(cast("PipelineRuntime", runtime), content_hash))
@@ -304,7 +305,7 @@ def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
     _seed_parse_cache(base, source_file, content_hash)
 
     runtime = _StubRuntime(base, enricher=None)
-    _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {})
+    _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard())
 
     cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(cast("PipelineRuntime", runtime), content_hash))
     assert cached is not None
