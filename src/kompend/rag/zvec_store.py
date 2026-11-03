@@ -64,6 +64,12 @@ _FIGURE_DIGEST_CACHE: dict[tuple[str, int, int], str] = {}
 #: Upper bound for the digest cache; cleared wholesale when reached.
 _FIGURE_DIGEST_CACHE_MAX: int = 4096
 
+#: The vector-manifest column naming the embedding model behind the vectors.
+#: It is a store column, not a node-metadata key — the manifest is not a
+#: :class:`~kompend.core.models.MetadataField` carrier — so it carries its own
+#: constant instead of borrowing the metadata member.
+_EMBEDDING_MODEL_COLUMN: str = "embedding_model"
+
 logger = get_logger(__name__)
 
 
@@ -102,6 +108,17 @@ class EmbeddingProvider(ABC):
         """Vector dimensionality."""
         ...
 
+    @property
+    def model_id(self) -> str:
+        """The identity of the model behind the vectors.
+
+        Recorded in the build manifest so a model change invalidates the
+        index: vectors from one model do not describe the same space as the
+        vectors of another. Providers that cannot name their model return
+        the empty string — the index then cannot tell them apart.
+        """
+        return ""
+
     def embed_media(self, text: str, image: bytes) -> list[float]:
         """Return the joint embedding of ``text`` and one image.
 
@@ -138,6 +155,14 @@ class PydanticAIEmbeddingProvider(EmbeddingProvider):
             # Determine dimensionality by embedding a short probe text.
             self._dim = len(self.embed("dimension probe"))
         return self._dim
+
+    @property
+    def model_id(self) -> str:
+        """The model behind the vectors, in the ``provider/model`` config form."""
+        provider, separator, model = self._model_string.partition(":")
+        if not separator:
+            return self._model_string
+        return f"{provider}/{model}"
 
     def embed(self, text: str) -> list[float]:
         result = self._embedder.embed_documents_sync(text)
@@ -426,7 +451,7 @@ class ZvecWikiStore:
         try:
             with open_store(manifest_db) as conn:
                 row = conn.execute(
-                    f"SELECT embed_version, ids, content_hashes FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
+                    f"SELECT embed_version, {_EMBEDDING_MODEL_COLUMN}, ids, content_hashes FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
                 ).fetchone()
         except sqlite3.Error as exc:
             logger.warning("Vector manifest unreadable — treating store as stale: %s", exc)
@@ -440,6 +465,15 @@ class ZvecWikiStore:
                 "Vector manifest embed-text version %r != %d — rebuilding: %s",
                 row["embed_version"],
                 _EMBED_TEXT_VERSION,
+                self.db_file,
+            )
+            return True
+        current_model = self._provider.model_id if self._provider is not None else ""
+        if row[_EMBEDDING_MODEL_COLUMN] != current_model:
+            logger.info(
+                "Vector manifest embedding model %r != %r — rebuilding: %s",
+                row[_EMBEDDING_MODEL_COLUMN],
+                current_model,
                 self.db_file,
             )
             return True
@@ -672,17 +706,19 @@ class ZvecWikiStore:
         return self.db_file.parent / KOMP_DB_FILE
 
     def _write_manifest(self, nodes: list[WikiNode]) -> None:
-        """Record the indexed id set, content hashes and embed-text version."""
+        """Record the indexed id set, content hashes, embed-text version and model."""
         ids = sorted(_safe_id(n.id) for n in nodes)
         hashes = {_safe_id(n.id): _content_hash(n) for n in nodes}
+        model_id = self._provider.model_id if self._provider is not None else ""
         try:
             with open_store(self._manifest_db_path()) as conn:
                 conn.execute(
-                    f"INSERT INTO {VECTOR_MANIFEST_TABLE}(id, embed_version, ids, content_hashes, written_at) "
-                    "VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
-                    "embed_version = excluded.embed_version, ids = excluded.ids, "
-                    "content_hashes = excluded.content_hashes, written_at = excluded.written_at",
-                    (_EMBED_TEXT_VERSION, json.dumps(ids), json.dumps(hashes, sort_keys=True), iso_local()),
+                    f"INSERT INTO {VECTOR_MANIFEST_TABLE}"
+                    "(id, embed_version, embedding_model, ids, content_hashes, written_at) "
+                    "VALUES (1, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
+                    "embed_version = excluded.embed_version, embedding_model = excluded.embedding_model, "
+                    "ids = excluded.ids, content_hashes = excluded.content_hashes, written_at = excluded.written_at",
+                    (_EMBED_TEXT_VERSION, model_id, json.dumps(ids), json.dumps(hashes, sort_keys=True), iso_local()),
                 )
         except (sqlite3.Error, OSError) as exc:
             logger.warning(

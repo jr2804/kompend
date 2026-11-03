@@ -18,15 +18,43 @@ from kompend.rag.zvec_store import EmbeddingProvider, ZvecWikiStore
 
 
 class StubProvider(EmbeddingProvider):
-    def __init__(self, dim: int) -> None:
+    def __init__(self, dim: int, model_id: str = "") -> None:
         self._dim = dim
+        self._model_id = model_id
 
     @property
     def dim(self) -> int:
         return self._dim
 
+    @property
+    def model_id(self) -> str:
+        return self._model_id
+
     def embed(self, text: str) -> list[float]:
         return [0.5] * self._dim
+
+
+def test_wiki_store_is_stale_when_the_embedding_model_changed(tmp_path: Path) -> None:
+    """Vectors from one model do not describe the space of another.
+
+    Switching the embedding model (e.g. to a vision-capable one) must
+    invalidate the index — otherwise the queries keep hitting vectors built
+    by the old model.
+    """
+    db = tmp_path / "vectors"
+    wiki = _wiki(4)
+
+    store = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(4, "ollama:embeddinggemma-2:270m"))
+    store.build_index(wiki)
+    store.close()
+
+    same = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(4, "ollama:embeddinggemma-2:270m"))
+    assert same.is_stale(wiki) is False
+    same.close()
+
+    other = ZvecWikiStore(db_file=db, embedding_provider=StubProvider(4, "ollama:embeddinggemma-2:440m"))
+    assert other.is_stale(wiki) is True
+    other.close()
 
 
 def test_wiki_store_rebuilds_on_dim_change() -> None:

@@ -88,6 +88,10 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
   (`_figure_identity`), because the figure is part of what the embedder saw.
   `_EMBED_TEXT_VERSION` covers the composition; a change to it invalidates
   every index once.
+- **The embedding model is part of the index identity.** The manifest row
+  records the provider's `model_id`; a different model makes `is_stale()` true
+  and the index is rebuilt, because vectors of one model are not vectors of
+  another. Without it, a model switch kept serving the old vectors.
 - **A corrupt indexer is rebuilt, not fatal.** `zvec` can answer
   `RuntimeError: Failed to open scalar indexer` for a directory that a crashed
   run or a long-lived process left behind. The vector index is derived data, so

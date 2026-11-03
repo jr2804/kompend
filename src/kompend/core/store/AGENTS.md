@@ -37,6 +37,10 @@ Design + table mapping live in `.agents/history/2026-09-24-kompend-storage-migra
   for nested/graph content. FTS5 only where the design doc says it earns its
   place (`memory_log`; not `wiki_snapshot`).
 - `references` is a SQLite keyword — the table is `bib_references`.
+- **The vector manifest row names the embedding model** (`embedding_model`).
+  Vectors of one model are not vectors of another, so the store must know which
+  model wrote them. The column is additive: `reconcile_columns` adds it in
+  place, no `SCHEMA_VERSION` bump (a bump would drop the whole store).
 - Paths come from `kompend.core.paths` (`VaultPaths.kompend_db_file`); pathlib only.
 
 ## Verification

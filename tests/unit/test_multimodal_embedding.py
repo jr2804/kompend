@@ -18,7 +18,7 @@ from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import MetadataField, NodeType
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.rag.multimodal import MediaEmbeddingUnsupported, OllamaMediaEmbedder
-from kompend.rag.zvec_store import EmbeddingProvider, ZvecWikiStore, _content_hash
+from kompend.rag.zvec_store import EmbeddingProvider, PydanticAIEmbeddingProvider, ZvecWikiStore, _content_hash
 
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082")
 
@@ -87,6 +87,27 @@ class TestOllamaMediaEmbedder:
             OllamaMediaEmbedder("embed-model").embed("a figure", b"")
 
         assert called is False
+
+
+class TestProviderMediaModel:
+    """The provider addresses Ollama's media endpoint with the bare model name."""
+
+    def test_the_provider_prefix_is_stripped_for_the_media_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        seen: dict[str, Any] = {}
+
+        def _fake_post(url: str, **kwargs: Any) -> _Response:
+            seen["url"] = url
+            seen["body"] = kwargs["json"]
+            return _Response(200, json.dumps({"embeddings": [[0.1, 0.2]]}))
+
+        monkeypatch.setattr("kompend.rag.zvec_store.build_embedder", lambda _model_string: object())
+        monkeypatch.setattr("kompend.rag.multimodal.httpx.post", _fake_post)
+        provider = PydanticAIEmbeddingProvider("ollama:embeddinggemma-2:440m")
+
+        provider.embed_media("a figure", PNG)
+
+        assert seen["body"]["model"] == "embeddinggemma-2:440m"
+        assert seen["url"].endswith("/api/embed")
 
 
 class _FigureProvider(EmbeddingProvider):

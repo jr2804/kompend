@@ -381,6 +381,7 @@ _DDL: Final[tuple[str, ...]] = (
     CREATE TABLE IF NOT EXISTS {VECTOR_MANIFEST_TABLE} (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         embed_version INTEGER NOT NULL DEFAULT 0,
+        embedding_model TEXT NOT NULL DEFAULT '',
         ids TEXT NOT NULL DEFAULT '[]',
         content_hashes TEXT NOT NULL DEFAULT '{{}}',
         written_at TEXT NOT NULL DEFAULT ''
