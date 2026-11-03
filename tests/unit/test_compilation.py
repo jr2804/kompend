@@ -1242,6 +1242,37 @@ class TestTwoPhaseConceptSalvage:
         ):
             compiler.compile(chunks)
 
+    def test_failure_before_the_first_fetch_does_not_blame_tool_calling(self) -> None:
+        """A dead request with zero fetches must read as a sizing problem, not "never called"."""
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="hash"),
+        )
+        config.no_cache = True
+        compiler = TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
+        ext_set = ExtractionSet()
+        ext_set.add(
+            Extraction(
+                source="src.pdf",
+                concepts=[Concept(name="Listening Effort", definition="The effort to understand speech.")],
+            )
+        )
+        failing_agent = MagicMock()
+        failing_agent.run.side_effect = LLMOutputError("Tool 'final_result' exceeded max retries count of 1")
+        with (
+            patch.object(compiler, "extract", return_value=ext_set),
+            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", return_value=failing_agent),
+            pytest.raises(LLMOutputError) as excinfo,
+        ):
+            compiler.compile(_make_chunks(count=3, heading="Some Heading"))
+
+        message = str(excinfo.value)
+        assert "the request failed before it called fetch_concepts" in message
+        assert "never called the fetch_concepts tool" not in message
+        assert "context window" in message
+
 
 class TestVlmArtifactFiltering:
     """knox-ary0: vlm_filtered/vlm_skipped must never become concept pages."""

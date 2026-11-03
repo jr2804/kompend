@@ -819,9 +819,15 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                 # support problem) from one that fetched and then the request
                 # died (timeout/overflow — a sizing or provider problem).
                 fetched = broker.consumed(seg_id)
-                if fetched and last_error:
+                if fetched:
                     cause = f"it called fetch_concepts {len(fetched)}× but the request failed: {last_error}"
                     hint = "This is not a tool-calling problem — check the request size vs the model's context window."
+                elif last_error:
+                    cause = f"the request failed before it called fetch_concepts: {last_error}"
+                    hint = (
+                        "The tool was never reached — check the request size vs the model's context window "
+                        "(a failed context compaction surfaces here) before suspecting tool-calling support."
+                    )
                 else:
                     cause = "it never called the fetch_concepts tool"
                     hint = "The model is not using the fetch_concepts tool; check its tool-calling support."
