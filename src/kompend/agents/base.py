@@ -53,7 +53,7 @@ from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai_harness.compaction import ContextUsage, ReportContextUsage, SlidingWindowCompaction
 
-from kompend.agents.context_manager import build_summarizing_compaction
+from kompend.agents.context_manager import _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES, build_fallback_compaction
 from kompend.agents.instrument import configure_observability
 from kompend.agents.kompend_model import KompendModel
 from kompend.agents.rlm import (
@@ -112,9 +112,8 @@ _CONTEXT_PRESETS: Final[dict[ContextManagerPreset, tuple[float, int]]] = {
     ContextManagerPreset.AGGRESSIVE: (0.7, 5),
 }
 
-#: Sliding-window defaults (zero-cost, no LLM call).
-_SLIDING_MAX_MESSAGES: int = 100
-_SLIDING_KEEP_MESSAGES: int = 50
+#: Sliding-window defaults live in :mod:`kompend.agents.context_manager` so
+#: the ``sliding`` preset and the summarizer's fallback cannot drift apart.
 
 #: Placeholder replacing the inlined context in prompts when RLM is
 #: enabled — the context stays available in the deps (REPL ``context``
@@ -894,7 +893,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 keep_messages=_SLIDING_KEEP_MESSAGES,
             )
         threshold, keep = _CONTEXT_PRESETS[preset]
-        return build_summarizing_compaction(
+        return build_fallback_compaction(
             context_window=self.context_window,
             compress_threshold=threshold,
             keep_messages=keep,

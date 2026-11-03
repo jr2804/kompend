@@ -85,6 +85,10 @@ They apply here too: no magic crops, no bare `except` to silence a failure.
 
 - When fixing a bug, add a regression test first (or alongside the fix).
 - When adding a new module, create the test file in the same PR.
+- Smoke tests spawn the real CLI: assert behaviour (the flag parses, the
+  exit code, no traceback), never help-text wording. Cyclopts' meta app
+  inherits root options into every subcommand's help, so "declared once"
+  is a structural fact (`app.py`), not something `--help` can prove.
 - Run `uv run pytest tests/unit -q` before committing.
 - Key flags: `-x` (fail-fast), `-k` (filter). No `pytest-timeout` or
   `pytest-xdist` plugin is installed — `--timeout` and `-n auto` fail with

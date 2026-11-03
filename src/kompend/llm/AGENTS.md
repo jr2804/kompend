@@ -40,13 +40,11 @@ Resolution order:
 | `google/` | `GoogleModel` | pydantic-ai `infer_model` |
 
 `_parse_model_string(model_string)` splits on the **first** `/` or `:`
-— whichever comes first — into `(provider, model_name)`. The remainder
-is passed verbatim and may contain further slashes or colons (e.g.
-`ollama/hf.co/qwen3.6:latest` → provider `ollama`, model
-`hf.co/qwen3.6:latest`).
-
-Provider ID aliases (`opencode-zen` → `opencode`) are maintained in
-`_PROVIDER_ALIASES` — the only hardcoded mapping in the module.
+— whichever comes first — into `(provider, model_name)`; the remainder is
+passed verbatim and may hold further slashes or colons
+(`ollama/hf.co/qwen3.6:latest` → provider `ollama`,
+model `hf.co/qwen3.6:latest`). Provider ID aliases (`opencode-zen` →
+`opencode`) live in `_PROVIDER_ALIASES`, the module's only hardcoded mapping.
 
 `resolve_model_limits(model_id)` looks up `(max_input, max_output)`
 token limits in the catalogue (`catalog.model(...)`). It raises `KeyError`
@@ -183,11 +181,9 @@ retrying the same rejected request.
 ## Format module
 
 `kompend.llm.format` is the single source of truth for LLM communication
-formats. It owns `salvage_json`, `encode_for_llm`, `decode_from_llm`,
-`format_note` and `encode_payload`.
-
-Supported formats (`LlmDataFormat` enum, config key
-`compile.llm.data_format`):
+formats, owning `salvage_json`, `encode_for_llm`, `decode_from_llm`,
+`format_note` and `encode_payload`. Supported formats
+(`LlmDataFormat` enum, config key `compile.llm.data_format`):
 
 | Value | Token reduction | Package | Scope |
 |-------|----------------|---------|-------|

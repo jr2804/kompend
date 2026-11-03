@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 
 import pytest
 from pydantic_ai import Agent
-from pydantic_ai_harness.compaction import ContextUsage, SlidingWindowCompaction, SummarizingCompaction
+from pydantic_ai_harness.compaction import (
+    ContextUsage,
+    FallbackCompaction,
+    SlidingWindowCompaction,
+    SummarizingCompaction,
+)
 
 from kompend.agents.base import KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
@@ -122,21 +127,27 @@ class TestCompactionCapability:
     def test_default_preset_builds_context_manager(self) -> None:
         agent = self._agent(context_manager=ContextManagerPreset.DEFAULT, context_window=8192)
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, SummarizingCompaction)
-        assert cap.max_fraction == 0.9
-        assert cap.context_window == 8192
+        assert isinstance(cap, FallbackCompaction)
+        summarizer = cap.fallback_chain[0]
+        assert isinstance(summarizer, SummarizingCompaction)
+        assert summarizer.max_fraction == 0.9
+        assert summarizer.context_window == 8192
 
     def test_aggressive_preset_uses_lower_threshold(self) -> None:
         agent = self._agent(context_manager=ContextManagerPreset.AGGRESSIVE)
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, SummarizingCompaction)
-        assert cap.max_fraction == 0.7
+        assert isinstance(cap, FallbackCompaction)
+        summarizer = cap.fallback_chain[0]
+        assert isinstance(summarizer, SummarizingCompaction)
+        assert summarizer.max_fraction == 0.7
 
     def test_true_maps_to_default(self) -> None:
         agent = self._agent(context_manager=True)
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, SummarizingCompaction)
-        assert cap.max_fraction == 0.9
+        assert isinstance(cap, FallbackCompaction)
+        summarizer = cap.fallback_chain[0]
+        assert isinstance(summarizer, SummarizingCompaction)
+        assert summarizer.max_fraction == 0.9
 
     def test_sliding_preset_builds_sliding_window(self) -> None:
         agent = self._agent(context_manager=ContextManagerPreset.SLIDING)

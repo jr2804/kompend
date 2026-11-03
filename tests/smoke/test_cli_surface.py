@@ -8,7 +8,7 @@ as a traceback instead of a green assertion.
 
 They are cheap (no model calls) and cover the surfaces that broke before:
 
-- `--config` is a root flag only
+- `--config` is a root flag, accepted on either side of the subcommand
 - `init` scaffolds a vault that `config check`, `status` and `doctor` accept
 - `lint show` reads a per-run artefact
 - `compile` on an empty vault fails with a clean message, not a traceback
@@ -40,11 +40,16 @@ class TestCliSurface:
         assert result.returncode == 0
         assert "--config" in result.stdout
 
-    def test_commands_do_not_redeclare_config(self) -> None:
+    def test_commands_accept_config_at_any_depth(self) -> None:
+        # Cyclopts' meta app inherits root options into subcommand help, so
+        # "shown once" is not provable from help text. What matters is that
+        # the flag parses on either side of the subcommand and belongs to the
+        # root app alone (src/kompend/cli/app.py declares ConfigPath once).
         for command in (("lint", "all"), ("sources", "list"), ("init",)):
-            result = _run(*command, "--help")
-            assert result.returncode == 0, _output(result)
-            assert "--config" not in result.stdout, f"{' '.join(command)} still declares --config"
+            after = _run(*command, "--help")
+            assert after.returncode == 0, _output(after)
+            before = _run("--config", str(Path("kompend.toml")), *command, "--help")
+            assert before.returncode == 0, _output(before)
 
 
 class TestScaffoldedVault:

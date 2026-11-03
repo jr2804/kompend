@@ -98,13 +98,13 @@ See `src/kompend/cli/args/AGENTS.md` for detailed argument organization rules.
 **Summary:**
 
 - All `Parameter` declarations live in `args/` as `Annotated` types.
-- Arguments organized by domain into 13 modules: `common.py`, `compile.py`, `parse.py`, `query.py`, `pipeline.py`, `knowledge.py`, `quality.py`, `serving.py`, `config.py`, `init.py`, `memory.py`.
+- Arguments are organized by domain into one module per command group.
 - Commands import the types, never build `Parameter(...)` inline.
 - Default values are module-level constants (`DEFAULT_CHUNK_SIZE`, etc.) or command
   parameter defaults; aliases never carry a default.
-- **These constants are the CLI's own defaults, not the source of truth.** The
-  source of truth is `kompend.core.config.DEFAULTS`. The CLI constants exist only
-  for `--help` text and as fallback values passed to `resolve_config()`.
+- **These constants are the CLI's own defaults, not the source of truth.**
+  That is `kompend.core.config.DEFAULTS`; the CLI constants exist only for
+  `--help` text and as fallback values passed to `resolve_config()`.
 
 ### Command functions (`cmds/` submodule)
 
@@ -141,10 +141,9 @@ Output-shape values (`format`, `flavor`, `frontmatter`, `kind`, `compiler`,
 `image_mode`) and tuning numbers (`budget.*`, `llm.timeout`, `embedding.batch_size`,
 `memory_half_life_days`, `memory_decay_threshold`) have **no CLI flag** — they
 are set-once vault properties. Change them with `kompend config set <key> <val>`
-(persistent) or override one run with `--set <key>=<val>` (ephemeral). Never
-re-add a flag for these — use the `--set` escape hatch instead.
+(persistent) or `--set <key>=<val>` (ephemeral). Never re-add a flag for these.
 
-`--set` is parsed by `parse_cli_set()` (in `cmds/pipeline.py`): each `key=value`
+`--set` is parsed by `parse_cli_set()` (`cmds/pipeline.py`): each `key=value`
 is validated via `validate_config_key()` and coerced via `coerce_config_value()`,
 then merged last by `build_cli_overrides(cli_set=...)` so it wins over every
 other flag.
@@ -169,27 +168,21 @@ and fall back to the discovered project config; they never require a vault.
 
 ### Progress bars
 
-**Recurring trap:** a progress bar looks "stuck," gets
-"fixed" with a plumbing change, and still looks stuck — because the real
-cause was a slow/hung backend operation, not the bar. This has happened
-repeatedly. Break the cycle with this diagnostic order:
+**Recurring trap:** a bar looks "stuck," gets "fixed" with a plumbing change,
+and still looks stuck — because the cause was a slow/hung backend operation,
+not the bar. Diagnose in this order:
 
-1. **Confirm the total is correct first.** A bar that shows "Captioning
-   images (171)" means the `reset_for_phase(total, ...)` call worked — the
-   plumbing is wired. A wrong total (e.g. 0) is a real plumbing bug; a
-   correct total is not.
-2. **Confirm the elapsed timer is advancing.** If `0:12:11` keeps climbing,
-   the bar is live and rendering — the loop is just blocked. A frozen
-   timer means the UI thread died (a different bug).
-3. **Then conclude: the bar is correct, the *work* is slow.** 0% with a
-   correct total + advancing timer = the first unit is still running. A
-   single VLM/LLM call that hangs until timeout (a parser or model looping
-   on a degenerate token) will pin the bar at 0% for the full timeout
-   duration × retry count.
+1. **Confirm the total.** "Captioning images (171)" means
+   `reset_for_phase(total, ...)` worked. A wrong total (e.g. 0) is a real
+   plumbing bug; a correct total is not.
+2. **Confirm the elapsed timer advances.** A climbing `0:12:11` means the bar
+   is live and the loop is blocked. A frozen timer means the UI thread died
+   (a different bug).
+3. **Then conclude the bar is correct and the *work* is slow.** One VLM/LLM
+   call hanging until timeout pins the bar at 0% for timeout × retries.
 
-Do NOT "fix" a bar that passes steps 1–2. Investigate the backend call
-that isn't completing. The fix lives in `src/kompend/llm/`, the resolver,
-or the model config (`timeout`, `fallback_chain`), not in
+Do NOT "fix" a bar passing steps 1–2. The fix lives in `src/kompend/llm/`,
+the resolver, or the model config (`timeout`, `fallback_chain`), not in
 `_progress.py` or `_pipeline_helpers.py`.
 
 **Stream contract:** the `Progress` bar is built with
