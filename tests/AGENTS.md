@@ -89,6 +89,10 @@ They apply here too: no magic crops, no bare `except` to silence a failure.
   exit code, no traceback), never help-text wording. Cyclopts' meta app
   inherits root options into every subcommand's help, so "declared once"
   is a structural fact (`app.py`), not something `--help` can prove.
+- A change that touches more than one stage of the image chain belongs in
+  `tests/integration/test_image_pipeline.py` (figure → caption → page →
+  vault), not in a per-stage test: the chain is what broke before, every
+  stage was individually fine.
 - Run `uv run pytest tests/unit -q` before committing.
 - Key flags: `-x` (fail-fast), `-k` (filter). No `pytest-timeout` or
   `pytest-xdist` plugin is installed — `--timeout` and `-n auto` fail with
