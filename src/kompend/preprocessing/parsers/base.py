@@ -156,6 +156,22 @@ class ParserRouter:
             blob += "|" + "|".join(identities)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
+    def backend_identity(self) -> str:
+        """Identity of the parse backends this router would use.
+
+        Names *which* backends can parse here — the available backend set plus
+        the restrictions the configuration puts on it — and nothing else. The
+        parsecraft version, the judge tier and the effort are deliberately
+        absent: a version bump or an unrelated bug fix must not re-parse a
+        vault, while a changed backend set must.
+
+        The parse cache keys on this identity (see
+        :func:`kompend.core.pipeline.parse_cache.parse_cache_is_current`), so
+        it is the only lever that decides whether a cached document survives.
+        """
+        parts = [part for parser in self._parsers if (part := _backend_identity(parser))]
+        return "|".join(parts)
+
     def route(self, source_file: Path) -> BaseParser | None:
         """Return the backend that claims *source_file*, or ``None``."""
         return next((parser for parser in self._parsers if parser.can_parse(source_file)), None)
@@ -222,6 +238,17 @@ def known_extension(suffix: str) -> FileExtension | None:
         return FileExtension(suffix.lower())
     except ValueError:
         return None
+
+
+def _backend_identity(parser: object) -> str:
+    """Optional per-backend identity hook for :meth:`ParserRouter.backend_identity`.
+
+    Returns the backend's own ``backend_identity()`` when it defines one, else
+    an empty string so a backend that names no backends of its own does not
+    change the identity.
+    """
+    identity = getattr(parser, "backend_identity", None)
+    return str(identity()) if callable(identity) else ""
 
 
 def _cache_identity(parser: object) -> str:

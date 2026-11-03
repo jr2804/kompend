@@ -37,7 +37,7 @@ class _Router:
     def __init__(self) -> None:
         self.parsed: list[str] = []
 
-    def fingerprint(self) -> str:
+    def backend_identity(self) -> str:
         return "deadline-chain"
 
     def route(self, source_file: Path) -> _FakeParser:

@@ -63,14 +63,21 @@ read — parsecraft's native-text backend reads `.c/.h/.py/…`.
 `FileExtension` table) and the single answer to "what can this vault ingest":
 discovery, the status report and the parsers all read it.
 
+`ParserRouter.backend_identity()` names which backends can parse here —
+the registered backend set, the extras that make their capabilities
+importable, and the `[ingest]` restrictions on them (`_only_backend` /
+`_preferred_backend` / `_engines` / `_allow_ocr`). It **is** the parse-cache
+key: `ingest.py` stores it in `PARSE_CACHE_PARSER_KEY` and reuses an entry
+only when `parse_cache_is_current` confirms it. The parsecraft version, the
+judge, the preference and the effort are deliberately absent — a version
+bump or an unrelated bug fix must not re-parse a vault, while a changed
+backend set must. A routing-input change that is absent from the identity
+(judge / model / preference / effort, `max_passes`) still needs
+`kompend ingest --reparse` to take effect.
+
 `ParserRouter.fingerprint()` hashes the registered backend class names plus any
 per-backend `cache_identity()` — the identity of the parser *with its routing
-inputs*. It is a diagnostic identity, not a cache key: the parse and chunk
-caches are content-addressed (source bytes), so a routing change does not
-re-parse by itself — run `kompend ingest --reparse` after changing
-`[ingest] parsecraft_judge` / `_model` / `_preference` / `_effort` /
-`_allow_ocr` / `_engines` / `_extract_vector_graphics` / `_preferred_backend` /
-`_only_backend` or the `max_passes` the adapter passes. A backend that carries
+inputs*. It is a diagnostic identity, not a cache key. A backend that carries
 routing inputs defines `cache_identity()`; the router looks it up structurally
 (the parsecraft adapter deliberately is not a `BaseParser`), and an absent hook
 contributes an empty identity.
@@ -186,10 +193,16 @@ and `compile.image_mode` picks the mode (`none` extracts no images at all). A
 figure with no image to point at stays what it is: its text becomes a text
 element, never an image element without a reference.
 
-The image mode is part of the backend's cache identity (`images:file`), because
+The image mode is part of the backend identity (`images:file`), because
 a run that extracts images produces a different document than one that does
 not. The segment is emitted only when the run extracts images, so a vault that
 never had them is not re-parsed for nothing.
+
+Extracted figure files are content-addressed: `ImageStore` names a file
+`<source-stem>__<sha256(bytes)[:16]><suffix>` (stem kept for readability
+only). The same figure re-parsed keeps its file instead of accumulating
+copies, and changed bytes land under a new name instead of overwriting the
+old crop.
 
 ## Verification
 

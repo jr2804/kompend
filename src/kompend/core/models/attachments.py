@@ -15,6 +15,7 @@ Each attachment has an explicit ``ingestible`` flag and an optional
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -24,7 +25,7 @@ from kompend.core.paths import ATTACHMENTS_DIR_NAME, VaultPaths, attachment_slug
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import ATTACHMENT_MANIFEST_TABLE
 
-__all__ = ["Attachment", "AttachmentManifest", "adopt_orphan_attachments", "attachments_relative"]
+__all__ = ["Attachment", "AttachmentManifest", "adopt_orphan_attachments", "attachments_relative", "compute_content_digest"]
 
 # ── Ingestible file types ────────────────────────────────────────────────
 
@@ -106,6 +107,12 @@ class Attachment:
     """Overrides global ``search.embed_attachments`` for this attachment.
     ``None`` = inherit global default."""
 
+    content_digest: str = ""
+    """Digest of the attachment bytes at registration (see
+    :func:`compute_content_digest`). ``''`` when unknown (legacy rows).
+    The cache identity of per-attachment artifacts (captions, embeddings)
+    keys on it, so changed bytes are detected without re-hashing upstream."""
+
     registered_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     """ISO timestamp of registration."""
 
@@ -119,6 +126,7 @@ class Attachment:
             "source": self.source,
             "ingestible": self.ingestible,
             "embed": self.embed,
+            "content_digest": self.content_digest,
             "registered_at": self.registered_at,
             "deleted": self.deleted,
         }
@@ -169,6 +177,7 @@ class Attachment:
             source=d["source"],
             ingestible=d.get("ingestible", False),
             embed=d.get("embed"),
+            content_digest=d.get("content_digest", ""),
             registered_at=d.get("registered_at", ""),
             deleted=d.get("deleted", False),
         )
@@ -216,7 +225,7 @@ class AttachmentManifest:
         where = "" if include_deleted else " WHERE deleted = 0"
         with open_store(self._db_path) as conn:
             rows = conn.execute(
-                f"SELECT path, source, ingestible, embed, registered_at, deleted FROM {ATTACHMENT_MANIFEST_TABLE}{where}",
+                f"SELECT path, source, ingestible, embed, content_digest, registered_at, deleted FROM {ATTACHMENT_MANIFEST_TABLE}{where}",
             ).fetchall()
         return {row["path"]: _attachment_from_row(row) for row in rows}
 
@@ -257,7 +266,11 @@ class AttachmentManifest:
         if key not in existing:
             return False
         att = existing[key]
-        self._upsert(Attachment(path=att.path, source=att.source, ingestible=ingestible, embed=att.embed, registered_at=att.registered_at))
+        self._upsert(
+            Attachment(
+                path=att.path, source=att.source, ingestible=ingestible, embed=att.embed, content_digest=att.content_digest, registered_at=att.registered_at
+            )
+        )
         return True
 
     def list_sources(self) -> list[str]:
@@ -280,12 +293,13 @@ class AttachmentManifest:
         key = attachments_relative(attachment.path)
         with open_store(self._db_path) as conn:
             conn.execute(
-                f"""INSERT INTO {ATTACHMENT_MANIFEST_TABLE}(path, source, ingestible, embed, registered_at, deleted)
-                VALUES (?, ?, ?, ?, ?, ?)
+                f"""INSERT INTO {ATTACHMENT_MANIFEST_TABLE}(path, source, ingestible, embed, content_digest, registered_at, deleted)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(path) DO UPDATE SET
                     source = excluded.source,
                     ingestible = excluded.ingestible,
                     embed = excluded.embed,
+                    content_digest = excluded.content_digest,
                     registered_at = excluded.registered_at,
                     deleted = excluded.deleted""",
                 (
@@ -293,6 +307,7 @@ class AttachmentManifest:
                     attachment.source,
                     int(attachment.ingestible),
                     None if attachment.embed is None else int(attachment.embed),
+                    attachment.content_digest,
                     attachment.registered_at,
                     int(attachment.deleted),
                 ),
@@ -322,6 +337,7 @@ def _attachment_from_row(row: Any) -> Attachment:
         source=row["source"],
         ingestible=bool(row["ingestible"]),
         embed=None if embed is None else bool(embed),
+        content_digest=row["content_digest"],
         registered_at=row["registered_at"],
         deleted=bool(row["deleted"]),
     )
@@ -381,8 +397,19 @@ def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> 
                 path=rel,
                 source=slug_dir.name,
                 ingestible=ingest_adopted and f.suffix.lower() in INGESTIBLE_EXTENSIONS,
+                content_digest=compute_content_digest(f.read_bytes()),
             )
             manifest.append(att)
             known.add(rel)
             adopted.append(att)
     return adopted
+
+
+def compute_content_digest(data: bytes) -> str:
+    """Content digest of an attachment's bytes (sha256, first 16 hex chars).
+
+    Same shape as the figure-image naming in ``preprocessing/images.py``:
+    identical bytes → identical digest, changed bytes → new digest, while
+    the attachment's path stays put.
+    """
+    return hashlib.sha256(data).hexdigest()[:16]

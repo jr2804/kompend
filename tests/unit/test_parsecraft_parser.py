@@ -16,6 +16,7 @@ suite. Default kompend runs never import the module, so the guarantee holds ther
 from __future__ import annotations
 
 import base64
+import hashlib
 import importlib
 import json
 import os
@@ -1286,6 +1287,53 @@ class TestImageExtraction:
         assert [element.type for element in elements] == [ElementType.TEXT]
         assert elements[0].content == "Figure 1"
         assert "image_file" not in elements[0].metadata
+
+    def test_the_file_name_pairs_the_source_stem_with_the_digest(self, tmp_path: Path) -> None:
+        # Content-addressed: the digest of the bytes, with the source stem
+        # kept in front for human readability.
+        adapter = _adapter()
+        document = _document([_page_with_asset(_figure_chunk(), "asset-1")])
+        elements = adapter._map_document(document, Path("report.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        image = next(element for element in elements if element.type is ElementType.IMAGE)
+        digest = hashlib.sha256(_PNG_BYTES).hexdigest()[:16]
+        assert Path(image.metadata["image_file"]).name == f"report__{digest}.png"
+
+    def test_identical_bytes_keep_one_file_across_ids_and_re_parses(self, tmp_path: Path) -> None:
+        # The name keys on the bytes, not the asset id: a re-parse (fresh
+        # ids from the backend) reuses the file instead of accumulating copies.
+        adapter = _adapter()
+        images_dir = tmp_path / "images"
+        first = _document([_page_with_asset(_figure_chunk(), "asset-1")])
+        adapter._map_document(first, Path("doc.pdf"), images=_store(images_dir, ImageMode.FILE))
+        reparsed = _document([_page_with_asset(_figure_chunk(), "asset-99")])
+        elements = adapter._map_document(reparsed, Path("doc.pdf"), images=_store(images_dir, ImageMode.FILE))
+        image = next(element for element in elements if element.type is ElementType.IMAGE)
+        assert [path.name for path in images_dir.iterdir()] == [Path(image.metadata["image_file"]).name]
+        assert (images_dir / Path(image.metadata["image_file"]).name).read_bytes() == _PNG_BYTES
+
+    def test_changed_bytes_get_a_new_file(self, tmp_path: Path) -> None:
+        # A changed figure must not overwrite the old crop — the new bytes
+        # land under their own digest.
+        adapter = _adapter()
+        changed = _PNG_BYTES + b"\x00"
+        rerender = PageResult(
+            page_number=1,
+            blocks=[_figure_chunk()],
+            assets=[
+                ExtractedAsset(
+                    id="asset-1",
+                    kind=AssetKind.IMAGE,
+                    media_type="image/png",
+                    uri=f"data:image/png;base64,{base64.b64encode(changed).decode('ascii')}",
+                )
+            ],
+        )
+        adapter._map_document(_document([_page_with_asset(_figure_chunk(), "asset-1")]), Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        elements = adapter._map_document(_document([rerender]), Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        image = next(element for element in elements if element.type is ElementType.IMAGE)
+        assert len(list(tmp_path.iterdir())) == 2
+        assert Path(image.metadata["image_file"]).read_bytes() == changed
+        assert Path(image.metadata["image_file"]).name != hashlib.sha256(_PNG_BYTES).hexdigest()[:16] + ".png"
 
 
 def _pdf_backend(name: str, vram: float) -> BackendDescriptor:

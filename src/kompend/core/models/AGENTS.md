@@ -23,6 +23,7 @@ defined here. Import from the package root: `from kompend.core.models import Chu
 | `metadata.py`   | Narrowing helpers for `MetadataValue` — `meta_str`, `meta_int`, `meta_float`, `meta_str_list`, `meta_str_dict`, `meta_str_list_dict`, `meta_dict`, `meta_dict_list`, `meta_list_dict`, `meta_float_dict` |
 | `citations.py`  | `Citation`, `extract_citations`, `merge_duplicate_citations`, `LIFECYCLE_*` constants                                                                                     |
 | `references.py` | `Reference`, `Author`, `ReferenceExtractionOutput` — bibliographic refs (CSL JSON-aligned)                                                                                |
+| `attachments.py` | `Attachment`, `AttachmentManifest`, `adopt_orphan_attachments`, `compute_content_digest`, extension tables — attachment registry (store-backed, latest-wins). `content_digest` (sha256\[:16\] of the bytes) is computed at every registration, `''` on legacy rows |
 | `__init__.py`   | Public re-exports — import from here, not from submodules                                                                                                                 |
 
 ## Rules

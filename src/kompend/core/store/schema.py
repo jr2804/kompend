@@ -198,6 +198,7 @@ _DDL: Final[tuple[str, ...]] = (
         source TEXT NOT NULL DEFAULT '',
         ingestible INTEGER NOT NULL DEFAULT 0,
         embed INTEGER,
+        content_digest TEXT NOT NULL DEFAULT '',
         registered_at TEXT NOT NULL DEFAULT '',
         deleted INTEGER NOT NULL DEFAULT 0
     )

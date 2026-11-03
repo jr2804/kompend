@@ -40,6 +40,7 @@ from kompend.core.models.attachments import (
     Attachment,
     AttachmentManifest,
     adopt_orphan_attachments,
+    compute_content_digest,
 )
 from kompend.core.paths import attachment_slug
 from kompend.lint.structural import orphan_attachment_dirs
@@ -122,6 +123,7 @@ def add_attachment(
         source=source_stem,
         ingestible=ingest,
         embed=embed,
+        content_digest=compute_content_digest(dest.read_bytes()),
     )
     manifest.append(att)
 

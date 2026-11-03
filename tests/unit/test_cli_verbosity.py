@@ -33,7 +33,7 @@ _cli_runner = CliRunner()
 
 
 class _FailingRouter:
-    def fingerprint(self) -> str:
+    def backend_identity(self) -> str:
         return "failing-router"
 
     def route(self, source_file: Path) -> MagicMock:  # noqa: ARG002

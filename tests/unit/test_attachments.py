@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import sqlite3
 from pathlib import Path
 
 from kompend.core.models.attachments import (
@@ -11,7 +13,9 @@ from kompend.core.models.attachments import (
     Attachment,
     AttachmentManifest,
     adopt_orphan_attachments,
+    compute_content_digest,
 )
+from kompend.core.store import vault_db_path
 
 # ── Attachment model ────────────────────────────────────────────────────
 
@@ -35,12 +39,14 @@ def test_attachment_to_dict_roundtrip() -> None:
         source="report",
         ingestible=True,
         embed=False,
+        content_digest="0123456789abcdef",
     )
     d = att.to_dict()
     assert d["path"] == "report/data.csv"
     assert d["source"] == "report"
     assert d["ingestible"] is True
     assert d["embed"] is False
+    assert d["content_digest"] == "0123456789abcdef"
     assert d["deleted"] is False
 
     restored = Attachment.from_dict(d)
@@ -48,6 +54,16 @@ def test_attachment_to_dict_roundtrip() -> None:
     assert restored.source == att.source
     assert restored.ingestible == att.ingestible
     assert restored.embed == att.embed
+    assert restored.content_digest == att.content_digest
+
+
+def test_compute_content_digest() -> None:
+    """The digest is content-addressed: stable for the same bytes, new for changed ones."""
+    assert compute_content_digest(b"hello") == hashlib.sha256(b"hello").hexdigest()[:16]
+    assert compute_content_digest(b"hello") == compute_content_digest(b"hello")
+    assert compute_content_digest(b"hello") != compute_content_digest(b"hellx")
+    # Legacy rows and test fixtures default to the empty digest.
+    assert Attachment(path="r/a.txt", source="r").content_digest == ""
 
 
 def test_attachment_embed_override() -> None:
@@ -128,6 +144,55 @@ def test_manifest_latest_entry_wins(tmp_path: Path) -> None:
 
     entries = manifest.read_all()
     assert entries["r/a.txt"].ingestible is True
+
+
+def test_manifest_round_trips_the_content_digest(tmp_path: Path) -> None:
+    """The digest persists and latest-wins, so re-registered bytes are detected."""
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
+    manifest.append(Attachment(path="r/a.txt", source="r", content_digest="deadbeefdeadbeef"))
+    assert manifest.read_all()["r/a.txt"].content_digest == "deadbeefdeadbeef"
+
+    manifest.append(Attachment(path="r/a.txt", source="r", content_digest="0123456789abcdef"))
+    assert manifest.read_all()["r/a.txt"].content_digest == "0123456789abcdef"
+
+
+def test_manifest_set_ingestible_preserves_the_content_digest(tmp_path: Path) -> None:
+    """A flag flip is not a re-registration — the digest rides along."""
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
+    manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True, content_digest="aa"))
+
+    assert manifest.set_ingestible("r/a.txt", False) is True
+    att = manifest.read_all()["r/a.txt"]
+    assert att.ingestible is False
+    assert att.content_digest == "aa"
+
+
+def test_manifest_legacy_rows_gain_the_content_digest_column(tmp_path: Path) -> None:
+    """A store from before the column reconciles and reads an empty digest."""
+    manifest_path = tmp_path / "attachments.jsonl"
+    db_path = vault_db_path(manifest_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            """CREATE TABLE attachment_manifest (
+                path TEXT PRIMARY KEY,
+                source TEXT NOT NULL DEFAULT '',
+                ingestible INTEGER NOT NULL DEFAULT 0,
+                embed INTEGER,
+                registered_at TEXT NOT NULL DEFAULT '',
+                deleted INTEGER NOT NULL DEFAULT 0
+            )"""
+        )
+        conn.execute("INSERT INTO attachment_manifest(path, source, ingestible) VALUES ('r/a.txt', 'r', 1)")
+
+    manifest = AttachmentManifest(manifest_path)
+    att = manifest.read_all()["r/a.txt"]
+    assert att.ingestible is True
+    assert att.content_digest == ""
+
+    # The reconciled column accepts a digest update afterwards.
+    manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True, content_digest="ff"))
+    assert manifest.read_all()["r/a.txt"].content_digest == "ff"
 
 
 def test_manifest_set_ingestible_updates_flag(tmp_path: Path) -> None:
@@ -241,6 +306,10 @@ def test_adopt_registers_orphaned_files(tmp_path: Path) -> None:
     assert by_path["report/diagram.png"].ingestible is True
     # embed inherits global config.
     assert all(a.embed is None for a in adopted)
+    # Adoption digests the bytes it registers.
+    assert by_path["report/diagram.png"].content_digest == compute_content_digest(b"\x89PNG")
+    manifest = AttachmentManifest(base / ".kompend" / "attachments.jsonl")
+    assert manifest.read_all()["report/diagram.png"].content_digest == compute_content_digest(b"\x89PNG")
 
 
 def test_adopt_skips_binary_and_unknown_slug(tmp_path: Path) -> None:

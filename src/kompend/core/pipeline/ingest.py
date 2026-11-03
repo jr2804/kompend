@@ -90,8 +90,11 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     verify prerequisites.
 
     When *reparse* is ``False`` (default), files whose content hash matches
-    an existing cache entry are skipped — the cached JSON is reused and the
-    file is not re-parsed.
+    an existing cache entry produced by the current backend identity are
+    skipped — the cached document is reused and the file is not re-parsed.
+    When the backend identity changes (backends available on the host, the
+    extras installed, or the ``[ingest]`` backend restrictions), the entry is
+    stale and the file is re-parsed even though its content did not change.
 
     When *config* contains ``dedup.enabled = True``, content-level duplicate
     detection runs in two passes:
@@ -177,6 +180,10 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     # no budget is configured.
     worker = DeadlineWorker(parse_timeout_s)
 
+    # One probe per run: the backend identity decides whether a cached parse
+    # is still current for the parser that is running now.
+    backend_identity = router.backend_identity()
+
     for idx, source_file in enumerate(files):
         _check_cancel()
         if progress_fn is not None:
@@ -188,7 +195,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         doc_key = document_cache_key(source_file, content_hash)
         prior_data = read_document(db_path, doc_key)
 
-        if not reparse and prior_data is not None:
+        if not reparse and prior_data is not None and parse_cache_is_current(prior_data, backend_identity):
             logger.info("Skipping %s — already cached", source_file.name)
             cached += 1
             count += 1
@@ -241,7 +248,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
 
         data = asdict(doc)
         data[MetadataField.SOURCE_FILE] = str(_relative(Path(data[MetadataField.SOURCE_FILE])))
-        data[PARSE_CACHE_PARSER_KEY] = ""
+        data[PARSE_CACHE_PARSER_KEY] = backend_identity
         write_document(db_path, doc_key, data)
         count += 1
         state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
@@ -360,10 +367,11 @@ def restore_source_path(doc: ParsedDocument, *, parse_target: Path, source_file:
 
 
 def parse_cache_is_current(data: JSONDict, parser_fingerprint: str) -> bool:
-    """True when a parse-cache entry was produced by the current parser chain.
+    """True when a parse-cache entry was produced by the current backend identity.
 
-    Entries written before this key existed return ``False`` — a one-time
-    re-parse that self-heals the cache.
+    ``parser_fingerprint`` is :meth:`kompend.preprocessing.parsers.base.ParserRouter.backend_identity`.
+    Entries written before the identity existed store an empty string and
+    return ``False`` — a one-time re-parse that self-heals the cache.
     """
     return data.get(PARSE_CACHE_PARSER_KEY) == parser_fingerprint
 

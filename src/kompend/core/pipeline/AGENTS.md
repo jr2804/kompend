@@ -39,7 +39,12 @@ persistence, and standalone ingestion.
 - Each stage module keeps its responsibility isolated — stages communicate
   through the `WikiPipeline` state and shared data models.
 - The parse cache is content-addressed: an entry is reused when the source
-  bytes hash to the same key. `compile.reparse` (CLI `--reparse`) bypasses the
+  bytes hash to the same key **and** the entry was written by the current
+  backend identity (`router.backend_identity()`, stored under
+  `PARSE_CACHE_PARSER_KEY`, checked by `parse_cache_is_current`) — a changed
+  backend set or `[ingest]` restriction re-parses, a parsecraft version bump
+  does not. Entries from before the identity existed store an empty key and
+  re-parse once (self-healing). `compile.reparse` (CLI `--reparse`) bypasses the
   parse and chunk caches — sources are re-extracted and re-chunked, cached
   LLM results stay; `compile.no_cache` bypasses every cache, LLM results
   included. Every parse-cache rewrite runs `preserve_cached_metadata` first

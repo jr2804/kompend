@@ -254,6 +254,32 @@ class ParsecraftParser:
             },
         )
 
+    def backend_identity(self) -> str:
+        """Which backends can parse here, and which ones the config allows.
+
+        The identity names backends, not machinery: the backends registered on
+        this host, the extras that make their capabilities importable, and the
+        restrictions the configuration puts on them (``only``/``preferred``
+        backend, engine list, OCR permission). The parsecraft version, the
+        judge, the preference and the effort are deliberately absent — a
+        version bump or an unrelated bug fix must not re-parse a vault, while a
+        changed backend set must.
+        """
+        env = self._ensure_environment()
+        parts = [
+            f"backends:{','.join(sorted(env.backends))}",
+            f"extras:{','.join(sorted(env.installed_extras))}",
+        ]
+        if self._only_backend is not None:
+            parts.append(f"only:{self._only_backend}")
+        if self._preferred_backend is not None:
+            parts.append(f"preferred:{self._preferred_backend}")
+        if self._engines:
+            parts.append(f"engines:{','.join(sorted(self._engines))}")
+        if self._allow_ocr is not None:
+            parts.append(f"ocr:{'on' if self._allow_ocr else 'off'}")
+        return "|".join(parts)
+
     def cache_identity(self) -> str:
         """Routing inputs that change this backend's output without changing its class.
 

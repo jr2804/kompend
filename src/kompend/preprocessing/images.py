@@ -14,15 +14,17 @@ Two storage modes, one per consumer:
 - :attr:`ImageMode.BASE64` keeps the payload inline in the element metadata,
   for callers that pass bytes to a model instead of a file.
 
-The file name is derived from the source stem and the asset id, so a re-parse
-overwrites its own file instead of accumulating copies, and the name says which
-document and which figure it is.
+The file name is derived from the source stem (for human readability) and
+a digest of the bytes, so it is content-addressed: the same figure across
+re-parses keeps the same file, and a changed figure gets a new one instead
+of overwriting the old crop.
 """
 
 from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
@@ -191,9 +193,15 @@ def _write_file(
     source_stem: str,
     images_dir: Path,
 ) -> Path | None:
-    """Write the bytes into the cache and return the path."""
+    """Write the bytes into the cache and return the path.
+
+    The file name is content-addressed (sha256 of the bytes) so the same
+    figure across re-parses keeps the same file and a changed figure gets a
+    new one. The source stem is kept for human readability only.
+    """
     suffix = _suffix_for(media_type)
-    name = f"{_safe_name(source_stem)}__{_safe_name(asset.id)}{suffix}"
+    digest = hashlib.sha256(data).hexdigest()[:16]
+    name = f"{_safe_name(source_stem)}__{digest}{suffix}"
     target = images_dir / name
     try:
         images_dir.mkdir(parents=True, exist_ok=True)
