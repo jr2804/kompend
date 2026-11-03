@@ -17,6 +17,7 @@ from kompend.cli.cmds.knowledge.query import (
     structured_answer,
 )
 from kompend.core.config._configs import LlmDataFormat
+from kompend.core.models import ImageRef
 from kompend.search.retriever import SearchResult, SynthesisResult
 
 
@@ -26,7 +27,32 @@ class TestStructuredAnswer:
         assert payload["answer"] == "Neural nets approximate functions via layers."
         # wiki_link is None when no wiki is supplied (node_type lookup unavailable)
         assert payload["citations"] == [
-            {"article": "Neural Networks", "wiki_link": None, "source": "src.pdf", "snippet": "A neural net...", "score": 0.9},
+            {
+                "article": "Neural Networks",
+                "wiki_link": None,
+                "source": "src.pdf",
+                "snippet": "A neural net...",
+                "score": 0.9,
+                "figures": [{"caption": "Fig. 1. Layers", "path": "attachments/fig1.png"}],
+            },
+        ]
+
+    def test_a_citation_without_figures_carries_an_empty_list(self) -> None:
+        payload = structured_answer(
+            SynthesisResult(
+                answer="a",
+                citations=[{"article": "A", "article_id": "a", "source": None, "snippet": "s", "score": 1.0}],
+            )
+        )
+        assert payload["citations"] == [
+            {
+                "article": "A",
+                "wiki_link": None,
+                "source": None,
+                "snippet": "s",
+                "score": 1.0,
+                "figures": [],
+            }
         ]
 
 
@@ -75,11 +101,36 @@ class TestEncodeRawResults:
         out = encode_raw_results(results, LlmDataFormat.TOON)
         assert "Title" in out
 
+    def test_raw_results_carry_the_figures_of_the_page(self) -> None:
+        results = [
+            SearchResult(
+                article_id="x",
+                title="Title",
+                source_file="f.pdf",
+                snippet="snip",
+                score=0.5,
+                figures=[_figure()],
+            )
+        ]
+        parsed = json.loads(encode_raw_results(results, LlmDataFormat.JSON))
+        assert parsed[0]["figures"] == [{"caption": "Fig. 1. Layers", "path": "attachments/fig1.png"}]
+
+
+def _figure() -> ImageRef:
+    return {"caption": "Fig. 1. Layers", "path": "attachments/fig1.png", "element_type": "image", "source_file": "f.pdf"}
+
 
 def _synth() -> SynthesisResult:
     return SynthesisResult(
         answer="Neural nets approximate functions via layers.",
         citations=[
-            {"article": "Neural Networks", "article_id": "neural-networks", "source": "src.pdf", "snippet": "A neural net...", "score": 0.9},
+            {
+                "article": "Neural Networks",
+                "article_id": "neural-networks",
+                "source": "src.pdf",
+                "snippet": "A neural net...",
+                "score": 0.9,
+                "figures": [_figure()],
+            },
         ],
     )

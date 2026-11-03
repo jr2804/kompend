@@ -127,7 +127,14 @@ def query_wiki(
                 "raw": False,
                 "synthesis": {
                     "answer": synthesis.answer,
-                    "citations": [{"article": c.get("article", ""), "source": c.get("source", "wiki")} for c in synthesis.citations],
+                    "citations": [
+                        {
+                            "article": c.get("article", ""),
+                            "source": c.get("source", "wiki"),
+                            "figures": c.get("figures", []),
+                        }
+                        for c in synthesis.citations
+                    ],
                 },
             }
         except Exception:

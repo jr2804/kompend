@@ -40,3 +40,9 @@ selection, query classification, budget management, and tag filtering.
   `record_unit_failure(...)` and keeps the unmodified input (query, candidate
   list, or a 0.5 grade). Anything that is NOT enrichment (the final
   synthesis) must burn.
+- **A result carries the figures of the page it points at** (``figures`` on
+  ``SearchResult`` and on a citation). They are read from the page body
+  (``core.text.page_media``), so the path is the one the reader can open —
+  never the cache path the parser wrote. Every stage that rebuilds a result
+  forwards ``content`` and ``figures``; a stage that drops ``content`` hands
+  the synthesis a snippet where the page body was meant.

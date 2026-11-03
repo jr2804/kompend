@@ -15,7 +15,7 @@ from kompend.core.models.metadata import meta_str_list, meta_str_list_dict
 from kompend.logging import get_logger
 from kompend.rag.zvec_store import VectorStoreLike, ZvecField
 from kompend.search.budget import BudgetPlan, ContextBudgetManager
-from kompend.search.retriever import SearchResult, extract_snippet, tokenize
+from kompend.search.retriever import SearchResult, extract_snippet, node_figures, tokenize
 
 logger = get_logger(__name__)
 
@@ -107,6 +107,8 @@ class AdaptiveRetriever:
                     score=1.0,
                     source_file=str(node.metadata.get(MetadataField.SOURCE, "")) if node.metadata else None,
                     tags=set(node.metadata.get(MetadataField.TAGS, [])) if node.metadata else set(),
+                    content=node.content or "",
+                    figures=node_figures(node),
                 )
             )
         results.sort(key=lambda r: r.score, reverse=True)
@@ -159,6 +161,8 @@ class AdaptiveRetriever:
                     source_file=source_file,
                     tags=set(meta_str_list(node.metadata.get(MetadataField.TAGS))) if node and node.metadata else set(),
                     attributes=meta_str_list_dict(node.metadata.get(MetadataField.ATTRIBUTES)) if node and node.metadata else {},
+                    content=node.content or "" if node else "",
+                    figures=node_figures(node),
                 )
             )
         return results

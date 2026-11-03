@@ -370,8 +370,8 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
 
     Returns a list of dicts with keys: path, caption, element_type, source_file.
     Images are collected from:
-    - chunk.metadata["image_file"] (file mode)
-    - chunk.metadata["image_base64"] (base64 mode)
+    - chunk.metadata[MetadataField.IMAGE_FILE] (file mode)
+    - chunk.metadata[MetadataField.IMAGE_BASE64] (base64 mode)
     - VLM captions from resolved.entities with type="image_description"
 
     ``source_file`` is the document the figure came from — callers select the
@@ -388,10 +388,10 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
         if ElementType.IMAGE not in rc.chunk.element_types:
             continue
 
-        img_ref = rc.chunk.metadata.get("image_file") or rc.chunk.metadata.get("image_base64")
+        img_ref = rc.chunk.metadata.get(MetadataField.IMAGE_FILE) or rc.chunk.metadata.get(MetadataField.IMAGE_BASE64)
         if not img_ref:
             # Try resolved metadata
-            img_ref = rc.metadata.get("image_file") or rc.metadata.get("image_base64")
+            img_ref = rc.metadata.get(MetadataField.IMAGE_FILE) or rc.metadata.get(MetadataField.IMAGE_BASE64)
 
         if not img_ref:
             continue

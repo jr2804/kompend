@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol, TypedDict
 
 from kompend.core.config._configs import LlmDataFormat
+from kompend.core.models import ImageRef
 
 
 @dataclass
@@ -376,6 +377,8 @@ class WikiHitProtocol(Protocol):
     article_id: str
     title: str
     content: str
+    figures: list[ImageRef]
+    """The figures the page shows — the published link plus the caption."""
 
 
 class QuerySearchProtocol(Protocol):

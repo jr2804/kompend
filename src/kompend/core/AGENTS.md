@@ -22,7 +22,8 @@ other kompend subsystems build on.
 - `core/text/` holds pure text utilities with no `kompend.*` imports at module
   scope (`matching.py` similarity, `encoding.py` UTF-8 detection,
   `pipes.py` prose-pipe escaping, `rumdl.py` markdown normalisation,
-  `windows.py` line-aligned content windowing). They are the only sanctioned
+  `windows.py` line-aligned content windowing, `page_media.py` the figures
+  and tables a page body shows). They are the only sanctioned
   place for string-in/string-out helpers shared across tiers.
 - One normaliser per concern: markdown formatting goes through
   `core.text.rumdl` (text/batch variants) or `output.renderer.format_output`

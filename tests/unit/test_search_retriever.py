@@ -12,7 +12,7 @@ from kompend.agents.query import QueryAgent
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.llm.context_window import ContextSource, ContextWindow
-from kompend.search.retriever import HybridRetriever, SearchResult, extract_snippet, synthesize_results
+from kompend.search.retriever import HybridRetriever, KeywordRetriever, SearchResult, extract_snippet, synthesize_results
 
 
 class TestExtractSnippet:
@@ -253,3 +253,35 @@ class TestSynthesizeVerbosity:
         with patch("kompend.search.retriever.QueryAgent", return_value=mock_agent):
             result = synthesize_results("q", [], model=fake.default_model, verbosity=verbosity)
         return result, mock_agent
+
+
+class TestPageFigures:
+    """A search result carries the figures its page shows."""
+
+    def test_a_page_with_a_figure_reports_its_caption_and_path(self) -> None:
+        wiki = self._wiki("Prose.\n\n![Fig. 1. Overview](attachments/fig1.png)\n")
+        results = KeywordRetriever(wiki).search("overview", top_k=5)
+        assert len(results) == 1
+        figures = results[0].figures
+        assert len(figures) == 1
+        assert figures[0]["caption"] == "Fig. 1. Overview"
+        assert figures[0]["path"] == "attachments/fig1.png"
+        assert figures[0]["element_type"] == "image"
+
+    def test_a_page_without_a_figure_reports_none(self) -> None:
+        wiki = self._wiki("Only prose here.")
+        results = KeywordRetriever(wiki).search("prose", top_k=5)
+        assert results[0].figures == []
+
+    def test_a_figure_without_a_caption_still_reaches_the_result(self) -> None:
+        wiki = self._wiki("![](/abs/path/img.png)")
+        results = KeywordRetriever(wiki).search("img", top_k=5)
+        assert results[0].figures[0]["caption"] == ""
+        assert results[0].figures[0]["path"] == "/abs/path/img.png"
+
+    def _wiki(self, content: str) -> CompiledWiki:
+        return CompiledWiki(
+            nodes=[WikiNode(id="alpha", title="Alpha Page", content=content, node_type=NodeType.SECTION)],
+            edges=[],
+            toc=[],
+        )

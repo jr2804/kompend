@@ -32,6 +32,7 @@ merging and an optional iterative WiCER refinement loop.
 | `flows/references.py`   | Reference-extraction flow (pre-extraction pass; retries = `llm.output_retries`; splits oversized sections into windows bounded by the planner's input room and the window's answer reserve (`ContextWindow.answer_reserve`); every window is processed) |
 | `reference_excision.py` | Reference-section detection + excision (regex-based)                     |
 | `write_tools.py`        | Tools of the agentic write agent — `read_source(stem, offset)` serves a source in windows of `budget.capture_source_char_max` characters and names the next offset, so a long source is paged through, never shortened |
+| `query_tools.py`        | Tools of the agentic query agent — `search_wiki`, `read_page`, `get_figures`, `get_tables`, `add_finding`. The media tools read the page body (`core.text.page_media`): a figure is a caption and a path, a table is its whole markdown block |
 
 ## Rules
 

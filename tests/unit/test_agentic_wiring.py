@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -63,6 +63,7 @@ class _Hit:
     article_id: str
     title: str
     content: str
+    figures: list = field(default_factory=list)
 
 
 @dataclass
@@ -335,7 +336,7 @@ class TestAgenticQueryAgentWiring:
     def test_factory_registers_prompt_declared_tools(self) -> None:
         agent = make_agentic_query_agent(model_string="ollama/gpt-oss:20b")
         built = agent._build_agent()
-        assert sorted(built._function_toolset.tools.keys()) == ["add_finding", "read_page", "search_wiki"]
+        assert sorted(built._function_toolset.tools.keys()) == ["add_finding", "get_figures", "get_tables", "read_page", "search_wiki"]
 
     def test_factory_injects_harness_capabilities(self) -> None:
         agent = make_agentic_query_agent(model_string="ollama/gpt-oss:20b", context_window=8192)

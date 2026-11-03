@@ -331,6 +331,8 @@ class EnhancedRetriever:
                     source_file=r.source_file,
                     tags=r.tags,
                     attributes=r.attributes,
+                    content=r.content,
+                    figures=r.figures,
                 )
             )
         fused.sort(key=lambda x: x.score, reverse=True)

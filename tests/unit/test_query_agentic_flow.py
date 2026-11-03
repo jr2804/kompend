@@ -17,7 +17,7 @@ from pydantic_ai import RunContext
 
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
 from kompend.cli._query_helpers import should_use_agentic
-from kompend.compilation.query_tools import add_finding, read_page, search_wiki
+from kompend.compilation.query_tools import add_finding, get_figures, get_tables, read_page, search_wiki
 from kompend.core.config import ResolvedConfig
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
@@ -105,19 +105,6 @@ async def test_search_wiki_sends_no_filters_when_deps_empty() -> None:
     assert call["attribute_keys"] is None
 
 
-def _ctx(deps: QueryAgentDeps) -> RunContext[QueryAgentDeps]:
-    return cast(RunContext[QueryAgentDeps], _Ctx(deps))
-
-
-def _deps(retriever: QuerySearchProtocol, **kwargs: Any) -> QueryAgentDeps:
-    return QueryAgentDeps(
-        question="What is P.863?",
-        sub_questions=[],
-        retriever=retriever,
-        **kwargs,
-    )
-
-
 def test_run_agentic_query_builds_deps_and_returns_answer(monkeypatch: pytest.MonkeyPatch) -> None:
     fake = _fake()
     seen: dict[str, object] = {}
@@ -147,14 +134,6 @@ def test_run_agentic_query_builds_deps_and_returns_answer(monkeypatch: pytest.Mo
     )
     assert answer == "SYNTHESIZED ANSWER"
     assert seen["model"] == "ollama/x"
-
-
-def _fake() -> _FakeRetriever:
-    hits = [
-        SearchResult(article_id="p1", title="P.863", snippet="s", score=1.0, content="Full body of p1"),
-        SearchResult(article_id="p2", title="MOS-LQO", snippet="s", score=0.5, content="Full body of p2"),
-    ]
-    return _FakeRetriever(hits, {"p1": "Full body of p1"})
 
 
 def test_keyword_retriever_applies_filters() -> None:
@@ -198,3 +177,54 @@ def test_shared_matchers_unchanged() -> None:
     assert matches_tag_filter({"audio"}, [["audio"], ["paper"]]) is True
     assert matches_attr_filter({"lang": ["en"]}, [("lang", "en")]) is True
     assert matches_attr_filter({}, [("version", None)]) is False
+
+
+async def test_get_figures_lists_the_figures_with_their_captions() -> None:
+    fake = _fake()
+    fake._pages["p1"] = "Prose.\n\n![Fig. 1. Overview](attachments/fig1.png)\n"
+    deps = _deps(fake)
+    out = await get_figures(_ctx(deps), "p1")
+    assert "Fig. 1. Overview" in out
+    assert "attachments/fig1.png" in out
+
+
+async def test_get_figures_reports_a_page_without_figures() -> None:
+    deps = _deps(_fake())
+    assert "no figures" in await get_figures(_ctx(deps), "p1")
+    assert "not found" in await get_figures(_ctx(deps), "nope")
+
+
+async def test_get_tables_reads_the_table_whole() -> None:
+    fake = _fake()
+    fake._pages["p1"] = "Prose.\n\n| Name | Value |\n| --- | --- |\n| a | 1 |\n"
+    deps = _deps(fake)
+    out = await get_tables(_ctx(deps), "p1")
+    assert "| Name | Value |" in out
+    assert "| a | 1 |" in out
+
+
+async def test_get_tables_reports_a_page_without_tables() -> None:
+    deps = _deps(_fake())
+    assert "no tables" in await get_tables(_ctx(deps), "p1")
+    assert "not found" in await get_tables(_ctx(deps), "nope")
+
+
+def _ctx(deps: QueryAgentDeps) -> RunContext[QueryAgentDeps]:
+    return cast(RunContext[QueryAgentDeps], _Ctx(deps))
+
+
+def _deps(retriever: QuerySearchProtocol, **kwargs: Any) -> QueryAgentDeps:
+    return QueryAgentDeps(
+        question="What is P.863?",
+        sub_questions=[],
+        retriever=retriever,
+        **kwargs,
+    )
+
+
+def _fake() -> _FakeRetriever:
+    hits = [
+        SearchResult(article_id="p1", title="P.863", snippet="s", score=1.0, content="Full body of p1"),
+        SearchResult(article_id="p2", title="MOS-LQO", snippet="s", score=0.5, content="Full body of p2"),
+    ]
+    return _FakeRetriever(hits, {"p1": "Full body of p1"})

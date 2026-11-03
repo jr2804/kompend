@@ -12,7 +12,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final, TypedDict
+from typing import Final, NotRequired, TypedDict
 
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT
 from kompend.agents.deps import QueryDeps
@@ -22,8 +22,9 @@ from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
 from kompend.core.config import ReasoningEffort, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LLMConfig
-from kompend.core.models import CompiledWiki, MetadataField, WikiNode
+from kompend.core.models import CompiledWiki, ElementType, ImageRef, MetadataField, WikiNode
 from kompend.core.models.metadata import meta_str_list_dict
+from kompend.core.text.page_media import find_page_figures
 from kompend.logging import get_logger
 from kompend.rag.zvec_store import VectorStoreLike, ZvecField
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
@@ -47,6 +48,12 @@ class SearchResult:
     tags: set[str] = field(default_factory=set)
     attributes: dict[str, list[str]] = field(default_factory=dict)
     content: str = ""  # full page body for LLM synthesis; snippet is display-only
+    figures: list[ImageRef] = field(default_factory=list)
+    """The figures the page shows (published link + caption).
+
+    Read from the page body, so the link is the one the reader can open and
+    the caption is the one the page publishes.
+    """
 
 
 @dataclass
@@ -63,6 +70,11 @@ class Citation(TypedDict):
     source: str | None
     snippet: str
     score: float
+    figures: NotRequired[list[ImageRef]]
+    """The figures the cited page shows — the image the answer talked about.
+
+    Absent when the citation was built without the page body.
+    """
 
 
 class HybridRetriever:
@@ -188,6 +200,7 @@ class HybridRetriever:
             tags=_node_tags(node),
             attributes=_node_attributes(node),
             content=node.content if node else "",
+            figures=node_figures(node),
         )
 
     def _wiki_vector_results(
@@ -262,6 +275,7 @@ class HybridRetriever:
                 tags=_node_tags(node),
                 attributes=_node_attributes(node),
                 content=node.content or "",
+                figures=node_figures(node),
             )
 
         for result in initial_results:
@@ -339,6 +353,7 @@ class KeywordRetriever:
                     tags=_node_tags(node),
                     attributes=_node_attributes(node),
                     content=node.content or "",
+                    figures=node_figures(node),
                 )
             )
         return results
@@ -433,6 +448,7 @@ def synthesize_results(
                     "source": r.source_file,
                     "snippet": r.snippet,
                     "score": round(r.score, 3),
+                    "figures": r.figures,
                 }
             )
         return SynthesisResult(answer="", citations=citations)
@@ -489,6 +505,7 @@ def synthesize_results(
                 "source": r.source_file,
                 "snippet": r.snippet,
                 "score": round(r.score, 3),
+                "figures": r.figures,
             }
         )
 
@@ -591,6 +608,32 @@ def _node_attributes(node: WikiNode | None) -> dict[str, list[str]]:
     if node is None or not node.metadata:
         return {}
     return meta_str_list_dict(node.metadata.get(MetadataField.ATTRIBUTES))
+
+
+def node_figures(node: WikiNode | None) -> list[ImageRef]:
+    """The figures the page shows, read from the page body.
+
+    The body carries the published link (relative to the page) and the
+    caption as the link's alt text — the node metadata still holds the
+    parse-cache path the figure was extracted to, which the reader cannot
+    open. A page without figures yields an empty list.
+    """
+    if node is None or not node.content:
+        return []
+    source_file = ""
+    if node.metadata:
+        raw = node.metadata.get(MetadataField.SOURCE)
+        if raw:
+            source_file = str(raw)
+    return [
+        ImageRef(
+            path=path,
+            caption=caption,
+            element_type=ElementType.IMAGE.value,
+            source_file=source_file,
+        )
+        for caption, path in find_page_figures(node.content)
+    ]
 
 
 def extract_snippet(content: str, query_tokens: set[str], max_chars: int | None = None) -> str:

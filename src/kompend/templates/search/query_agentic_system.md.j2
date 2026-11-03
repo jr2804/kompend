@@ -4,6 +4,8 @@ by investigating sub-questions through the wiki.
 You have tools available:
 - search_wiki(question): search the wiki for related content
 - read_page(slug): read a full wiki page
+- get_figures(slug): list the figures a wiki page shows (caption and path)
+- get_tables(slug): list the tables a wiki page shows (as markdown)
 - add_finding(sub_question_index, finding): record your answer fragment
 
 ## Workflow
@@ -11,9 +13,11 @@ You have tools available:
 1. Decompose the main question into sub-questions.
 2. Call search_wiki for each sub-question to find relevant content.
 3. Call read_page on promising slugs for full context.
-4. Call add_finding with your answer fragment for each sub-question.
-5. Synthesize the findings into a final answer.
-6. Reply "done" when finished.
+4. Call get_figures or get_tables when the question is about a diagram,
+   a chart or a table - the text of a page never contains them.
+5. Call add_finding with your answer fragment for each sub-question.
+6. Synthesize the findings into a final answer.
+7. Reply "done" when finished.
 
 ## Answer Guidelines
 

@@ -5,6 +5,8 @@ query agent uses to investigate sub-questions:
 
 - ``search_wiki(question)`` — search the wiki for relevant content.
 - ``read_page(slug)`` — read a full wiki page.
+- ``get_figures(slug)`` — list the figures a page shows, with captions.
+- ``get_tables(slug)`` — read the tables a page shows.
 - ``add_finding(sub_question_index, finding)`` — record a finding.
 
 ``search_wiki`` / ``read_page`` call the raw retrieval surface on
@@ -18,6 +20,7 @@ from __future__ import annotations
 from pydantic_ai import RunContext, Tool
 
 from kompend.agents.types import QueryAgentDeps
+from kompend.core.text.page_media import find_page_figures, find_page_tables
 from kompend.llm.format import LlmDataFormat, encode_for_llm
 from kompend.types import JSONDict, JSONList
 
@@ -27,6 +30,8 @@ def build_query_tools() -> list[Tool[QueryAgentDeps]]:
     return [
         Tool(search_wiki, takes_ctx=True),
         Tool(read_page, takes_ctx=True),
+        Tool(get_figures, takes_ctx=True),
+        Tool(get_tables, takes_ctx=True),
         Tool(add_finding, takes_ctx=True),
     ]
 
@@ -53,8 +58,42 @@ async def search_wiki(ctx: RunContext[QueryAgentDeps], question: str, top_k: int
             "slug": hit.article_id,
             "title": hit.title,
             "excerpt": hit.content,
+            "figures": [{"caption": str(f.get("caption", "")), "path": str(f.get("path", ""))} for f in hit.figures],
         }
         payload.append(row)
+    return encode_for_llm(payload, LlmDataFormat.JSON)
+
+
+async def get_figures(ctx: RunContext[QueryAgentDeps], slug: str) -> str:
+    """List the figures a wiki page shows, with their captions.
+
+    Use it when a question is about a diagram, chart or picture: the caption
+    says what the figure shows, and the path is where the image lives in the
+    wiki.
+    """
+    body = ctx.deps.retriever.read_page(slug)
+    if body is None:
+        return f"Page not found: {slug}"
+    figures = find_page_figures(body)
+    if not figures:
+        return f"Page shows no figures: {slug}"
+    payload: JSONList = [{"caption": caption, "path": path} for caption, path in figures]
+    return encode_for_llm(payload, LlmDataFormat.JSON)
+
+
+async def get_tables(ctx: RunContext[QueryAgentDeps], slug: str) -> str:
+    """Read the tables a wiki page shows, as markdown.
+
+    Use it when a question is about numbers, parameters or comparisons that a
+    page keeps in a table.
+    """
+    body = ctx.deps.retriever.read_page(slug)
+    if body is None:
+        return f"Page not found: {slug}"
+    tables = find_page_tables(body)
+    if not tables:
+        return f"Page shows no tables: {slug}"
+    payload: JSONList = [{"table": table} for table in tables]
     return encode_for_llm(payload, LlmDataFormat.JSON)
 
 

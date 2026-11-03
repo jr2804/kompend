@@ -12,7 +12,7 @@ from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from kompend.cli.args.query import SearchMode
 from kompend.core.config import ResolvedConfig, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LlmDataFormat
-from kompend.core.models import CompiledWiki, MetadataField, NodeType
+from kompend.core.models import CompiledWiki, ImageRef, MetadataField, NodeType
 from kompend.core.models.metadata import meta_str
 from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, PROTECTED_SOURCE_SUBDIRS, VECTORS_DIR
 from kompend.core.trust.actor import resolve_actor
@@ -338,6 +338,8 @@ def synthesize_and_output(  # noqa: PLR0917
             link = wiki_link(c.get("article_id"), node_types)
             ref = link or f"{DEFAULT_OUTPUT_DIR_NAME}/{c['article']}"
             get_console().print(f"  [{i}] {c['article']} — {ref}", markup=False)
+            for figure in c.get("figures", []):
+                get_console().print(f"        Figure: {_figure_line(figure)}", markup=False)
     else:
         get_console().print(encode_structured(structured_answer(synthesis, wiki), format))
 
@@ -375,6 +377,7 @@ def structured_answer(synthesis: SynthesisResult, wiki: CompiledWiki | None = No
                 "source": c.get("source"),
                 "snippet": c["snippet"],
                 "score": c["score"],
+                "figures": [{"caption": str(f.get("caption", "")), "path": str(f.get("path", ""))} for f in c.get("figures", [])],
             }
             for c in synthesis.citations
         ],
@@ -410,10 +413,21 @@ def print_raw_results(results: list[SearchResult], format: LlmDataFormat) -> Non
             if r.source_file:
                 get_console().print(f"        Source: {r.source_file}")
             get_console().print(f"        {r.snippet}")
+            for figure in r.figures:
+                get_console().print(f"        Figure: {_figure_line(figure)}")
             get_console().print("")
         return
 
     get_console().print(encode_raw_results(results, format))
+
+
+def _figure_line(figure: ImageRef) -> str:
+    """One line describing a figure: its caption and where the image lives."""
+    caption = figure.get("caption") or ""
+    path = figure.get("path") or ""
+    if caption:
+        return f"{caption} ({path})"
+    return path
 
 
 def encode_raw_results(results: list[SearchResult], fmt: LlmDataFormat) -> str:
@@ -425,6 +439,7 @@ def encode_raw_results(results: list[SearchResult], fmt: LlmDataFormat) -> str:
             "source": r.source_file,
             "snippet": r.snippet,
             "score": round(r.score, 3),
+            "figures": [{"caption": str(f.get("caption", "")), "path": str(f.get("path", ""))} for f in r.figures],
         }
         payload.append(row)
     return encode_for_llm(payload, fmt)
