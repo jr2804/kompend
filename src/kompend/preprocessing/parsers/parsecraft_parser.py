@@ -26,6 +26,7 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from typing import Any
 
 from parsecraft.backends import BackendRegistry, default_registry
 from parsecraft.backends.protocol import SourceDocument
@@ -34,7 +35,7 @@ from parsecraft.environment import (
     constraints_from_environment,
     probe_environment,
 )
-from parsecraft.ir.models import ChunkKind, DocumentResult, StructuredChunk
+from parsecraft.ir.models import AssetKind, ChunkKind, DocumentResult, ExtractedAsset, StructuredChunk
 from parsecraft.pipeline import (
     ALL_PASSES_FAILED_CODE,
     MEDIA_TYPES,
@@ -51,9 +52,10 @@ from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from parsecraft.routing.judge_providers import JudgeError, resolve_judge
 from parsecraft.routing.models import RoutingPreference
 
-from kompend.core.config import ParsecraftEffort, ParsecraftJudge, ParsecraftPreference
-from kompend.core.models import DocumentElement, ElementType, ParsedDocument
+from kompend.core.config import ImageMode, ParsecraftEffort, ParsecraftJudge, ParsecraftPreference
+from kompend.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from kompend.logging import get_logger
+from kompend.preprocessing.images import ImageStore, asset_for_chunk, assets_by_id
 from kompend.preprocessing.parsers._registry import (
     ParserBuildOptions,
     ParserName,
@@ -130,6 +132,8 @@ class ParsecraftParser:
         parsecraft_preferred_backend: str | None = None,
         parsecraft_only_backend: str | None = None,
         parsecraft_backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
+        images_dir: Path | None = None,
+        image_mode: ImageMode = ImageMode.FILE,
     ) -> None:
         self._registry = registry
         self._environment: EnvironmentInfo | None = None
@@ -164,6 +168,10 @@ class ParsecraftParser:
         self._judge: RoutingJudge | None = None
         self._judge_fallback: RoutingJudge | None = None  # DeterministicJudge after a real judge failed
         self._judge_degraded = False  # live judge dropped this run (warn once, no retry)
+        #: Figure images. The store holds the vault's image cache and the
+        #: configured mode; the IR carries the crops, this decides where they
+        #: land. ``ImageMode.NONE`` extracts no images at all.
+        self._images = ImageStore(images_dir, image_mode)
 
     def can_parse(self, source_file: Path) -> bool:  # noqa: PLR6301 — parser-instance surface
         """True when parsecraft's classifier knows the file's suffix."""
@@ -209,7 +217,7 @@ class ParsecraftParser:
         result = self._execute_with_judge(analysis, registry, constraints, source)
 
         document = result.document
-        elements = _map_document(document, source_file)
+        elements = _map_document(document, source_file, images=self._images)
         empty_pages = _empty_pages(document)
         blank_pages, unreadable_pages = _classify_empty_pages(empty_pages, analysis, result.plan)
         _warn_on_empty_pages(source_file, unreadable_pages, blank_pages, result.plan, document)
@@ -291,6 +299,13 @@ class ParsecraftParser:
                 for backend, options in sorted(self._backend_options_override.items())
             )
             parts.append(f"backend_options:{rendered}")
+        # The image mode changes what an element carries (a cached file path or
+        # an inline payload), so it belongs to the identity like every other
+        # output-shaping input. It is emitted only when the run actually
+        # extracts images: a run that extracts none produces the same document
+        # as before, and must not re-invalidate a vault for that.
+        if self._images.enabled:
+            parts.append(f"images:{self._images.mode.value}")
         routing = "|".join(parts)
         return f"{host}|{routing}"
 
@@ -690,8 +705,13 @@ def _classify_empty_pages(empty_pages: list[int], analysis: AnalysisResult, plan
     return blank, unreadable
 
 
-def _map_document(document: DocumentResult, source_file: Path) -> list[DocumentElement]:
+def _map_document(document: DocumentResult, source_file: Path, *, images: ImageStore | None = None) -> list[DocumentElement]:
     """Map parsecraft IR pages/chunks to kompend elements, order + pages preserved.
+
+    Figure images travel with their chunk: the IR names the asset a chunk owns
+    in the chunk metadata, the store decides where the crop lands, and the
+    element carries the reference. An asset no chunk claims still belongs to
+    the document and becomes an element of its own.
 
     Raises :class:`ParsecraftParseError` when execution genuinely exhausted —
     discriminated by execution evidence, NOT by ``winner is None`` (a parsecraft
@@ -702,10 +722,25 @@ def _map_document(document: DocumentResult, source_file: Path) -> list[DocumentE
     if exhausted and exhausted == {page.page_number for page in document.pages}:
         raise ParsecraftParseError(source_file, document)
 
+    store = images if images is not None else ImageStore(None, ImageMode.NONE)
+    assets = assets_by_id(document) if store.enabled else {}
+    claimed: set[str] = set()
+
     elements: list[DocumentElement] = []
     for page in document.pages:
         for chunk in page.blocks:
-            element = _chunk_to_element(chunk, source_file, len(elements))
+            asset = asset_for_chunk(chunk, assets)
+            image_metadata: dict[str, str] = {}
+            if asset is not None:
+                claimed.add(asset.id)
+                image_metadata = store.store(asset, source_stem=source_file.stem)
+            element = _chunk_to_element(chunk, source_file, len(elements), image_metadata=image_metadata)
+            if element is not None:
+                elements.append(element)
+        for asset in page.assets:
+            if asset.kind != AssetKind.IMAGE or asset.id in claimed:
+                continue
+            element = _image_element(asset, page.page_number, source_file, len(elements), store)
             if element is not None:
                 elements.append(element)
     if not elements:
@@ -715,14 +750,60 @@ def _map_document(document: DocumentResult, source_file: Path) -> list[DocumentE
     return elements
 
 
+def _image_element(
+    asset: ExtractedAsset,
+    page_number: int,
+    source_file: Path,
+    reading_order: int,
+    store: ImageStore,
+) -> DocumentElement | None:
+    """An image no chunk claimed, as an element of its own."""
+    metadata = store.store(asset, source_stem=source_file.stem)
+    reference = metadata.get(MetadataField.IMAGE_FILE) or metadata.get(MetadataField.IMAGE_BASE64)
+    if not reference:
+        return None
+    return DocumentElement(
+        type=ElementType.IMAGE,
+        content=reference,
+        page=page_number,
+        reading_order=reading_order,
+        metadata=metadata,
+        source_file=source_file,
+    )
+
+
 def _chunk_to_element(
     chunk: StructuredChunk,
     source_file: Path,
     reading_order: int,
+    *,
+    image_metadata: dict[str, str] | None = None,
 ) -> DocumentElement | None:
     """One IR chunk → one kompend element, or ``None`` when it carries no content."""
     element_type = _CHUNK_KIND_TO_ELEMENT.get(chunk.kind, ElementType.TEXT)
     content = _chunk_content(chunk)
+    metadata: dict[str, Any] = {
+        "parsecraft_kind": chunk.kind.value,
+        "confidence": chunk.confidence,
+    }
+    if image_metadata:
+        metadata.update(image_metadata)
+    if element_type is ElementType.IMAGE:
+        # The image reference is the element's content — the chunker reads
+        # it back as the figure reference. The figure's own text rides
+        # along as its description, so nothing the backend said is lost
+        # and the captioning stage can use it instead of a VLM call.
+        reference = image_metadata.get(MetadataField.IMAGE_FILE) or image_metadata.get(MetadataField.IMAGE_BASE64) or "" if image_metadata else ""
+        if reference:
+            if isinstance(content, str) and content.strip():
+                metadata[MetadataField.DESCRIPTION] = content
+            content = reference
+        else:
+            # No image to point at (no cache directory, unreadable payload):
+            # the figure's own text is the content, and it is text, not an
+            # image — an image element without a reference would break the
+            # figure extractor downstream.
+            element_type = ElementType.TEXT
     if not content:
         return None
     return DocumentElement(
@@ -731,10 +812,7 @@ def _chunk_to_element(
         page=chunk.page_number,
         reading_order=reading_order,
         heading_level=_heading_level(chunk),
-        metadata={
-            "parsecraft_kind": chunk.kind.value,
-            "confidence": chunk.confidence,
-        },
+        metadata=metadata,
         source_file=source_file,
     )
 
@@ -841,6 +919,8 @@ def _factory(options: ParserBuildOptions) -> ParsecraftParser:
         parsecraft_preferred_backend=options.parsecraft_preferred_backend,
         parsecraft_only_backend=options.parsecraft_only_backend,
         parsecraft_backend_options=options.parsecraft_backend_options,
+        images_dir=options.images_dir,
+        image_mode=options.image_mode,
     )
 
 

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock, patch
 from PIL import Image
 
 from kompend.agents.vlm import VlmAgent
-from kompend.core.models import Chunk, ElementType, ResolvedChunk
+from kompend.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
 from kompend.resolution import VLMEnricher
 
 
@@ -25,24 +25,28 @@ class TestVLMEnricher:
             assert entity.get("type") != "image_description"
 
     def test_image_chunk_placeholder_when_no_file(self) -> None:
-        """Image chunk without a file path produces a placeholder entity."""
+        """Image chunk without a file path produces a status entity, not a caption."""
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent)
         chunk = _image_chunk(image_file=None)
         resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
-        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
-        assert len(descs) == 1
-        assert "no image path" in descs[0]["context"].lower()
+        statuses = [e for e in resolved.entities if e.get("type") == "image_caption_status"]
+        assert len(statuses) == 1
+        assert "no image path" in statuses[0]["context"].lower()
+        # A status is never published as the figure's caption.
+        assert not [e for e in resolved.entities if e.get("type") == "image_description"]
 
     def test_image_chunk_missing_file_records_error(self, tmp_path: Path) -> None:
-        """Image path pointing to a non-existent file → filtered entity, no LLM call."""
+        """Image path pointing to a non-existent file → status entity, no LLM call."""
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
         chunk = _image_chunk(image_file=str(tmp_path / "missing.png"))
         resolved = enricher.enrich(ResolvedChunk(chunk=chunk))
-        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
-        assert len(descs) == 1
-        assert "missing" in descs[0]["context"].lower()
+        statuses = [e for e in resolved.entities if e.get("type") == "image_caption_status"]
+        assert len(statuses) == 1
+        assert "not found" in statuses[0]["context"].lower()
+        assert not [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert len(enricher.failures.failures) == 1
 
     def test_caption_generated_when_agent_succeeds(self, tmp_path: Path) -> None:
         png_file = tmp_path / "test.png"
@@ -56,8 +60,10 @@ class TestVLMEnricher:
         assert len(descs) == 1
         assert descs[0]["context"] == "A test image caption"
         assert resolved.metadata.get("vlm_enriched") is True
+        assert not enricher.failures.failures
 
-    def test_caption_returns_none_records_error(self, tmp_path: Path) -> None:
+    def test_a_failing_caption_is_recorded_as_a_failed_unit(self, tmp_path: Path) -> None:
+        """A VLM error becomes a recorded failure, not a swallowed exception."""
         png_file = tmp_path / "test.png"
         png_file.write_bytes(b"PNG mock data")
 
@@ -65,9 +71,31 @@ class TestVLMEnricher:
         enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
         with patch.object(agent, "run", side_effect=Exception("VLM failed")):
             resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
-        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
-        assert len(descs) == 1
-        assert "failed" in descs[0]["context"].lower()
+        statuses = [e for e in resolved.entities if e.get("type") == "image_caption_status"]
+        assert len(statuses) == 1
+        assert "failed" in statuses[0]["context"].lower()
+        assert len(enricher.failures.failures) == 1
+        assert enricher.failures.failures[0].unit == "chunk_img_001"
+
+    def test_the_context_reaches_the_caption_prompt(self, tmp_path: Path) -> None:
+        """The surroundings of the figure are handed to the model."""
+        png_file = tmp_path / "test.png"
+        png_file.write_bytes(b"PNG mock data")
+
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
+        chunk = _image_chunk(image_file=str(png_file))
+        chunk.metadata[MetadataField.VLM_CONTEXT] = {
+            "section": "Architecture",
+            "nearby": "The two-stage pipeline.",
+            "document_context": "This chapter describes the pipeline.",
+        }
+        with patch.object(agent, "run", return_value="A pipeline diagram.") as run:
+            enricher.enrich(ResolvedChunk(chunk=chunk))
+        context = run.call_args.args[0].context
+        assert "Architecture" in context
+        assert "The two-stage pipeline." in context
+        assert "This chapter describes the pipeline." in context
 
     def test_pre_existing_description_bypasses_vlm(self) -> None:
         """A figure already carrying a parser/backend description skips the VLM call."""
@@ -89,10 +117,12 @@ class TestVLMEnricher:
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent)  # default thresholds
         resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(tiny))))
-        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
-        assert len(descs) == 1
-        assert "filtered" in descs[0]["context"].lower()
+        statuses = [e for e in resolved.entities if e.get("type") == "image_caption_status"]
+        assert len(statuses) == 1
+        assert "filtered" in statuses[0]["context"].lower()
         assert resolved.metadata.get("vlm_filtered") is True
+        # A filtered image is a deliberate decision, not a failed unit.
+        assert not enricher.failures.failures
 
     def test_pre_filter_allows_large_image(self, tmp_path: Path) -> None:
         """Image above thresholds reaches the VLM."""

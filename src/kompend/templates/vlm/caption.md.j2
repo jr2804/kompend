@@ -1,0 +1,10 @@
+---
+variables:
+  - name: context
+    required: false
+role: vlm.caption
+response_format: text
+---
+{% if context %}{{ context }}
+
+{% endif %}Describe this image in one sentence. If it is a logo, icon, decorative element, background graphic, or contains no substantive information, respond with just SKIP.

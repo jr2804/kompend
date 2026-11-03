@@ -37,9 +37,11 @@ from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.paths import KOMP_DB_FILE, rel_to_vault
 from kompend.core.store import open_store
 from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
+from kompend.core.utils.exceptions import LLMOutputError
 from kompend.core.utils.time import iso_local
 from kompend.llm.models import OLLAMA_DEFAULT_BASE_URL
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
+from kompend.rag.multimodal import MediaEmbeddingUnsupported, OllamaMediaEmbedder
 from kompend.types import ZvecCollection, ZvecDoc
 
 _ZVEC_MAX_ID_LEN = 64
@@ -51,7 +53,16 @@ _ZVEC_COLLECTION_NAME = "kompend_wiki"
 # 3: content is projected through element_text, so a non-prose node embeds
 # differently than it did when the composition passed node.content straight
 # through. Bumped so existing indexes rebuild instead of serving pre-change vectors.
-_EMBED_TEXT_VERSION = 3
+# 4: a node with figures now feeds its figure to the embedder as well (see
+# _embed_node), so a vector built from text alone is not the same vector.
+_EMBED_TEXT_VERSION = 4
+
+#: Cache of figure digests, keyed by (path, size, mtime). The staleness
+#: fingerprint hashes every figure on every check, and a query checks it.
+_FIGURE_DIGEST_CACHE: dict[tuple[str, int, int], str] = {}
+
+#: Upper bound for the digest cache; cleared wholesale when reached.
+_FIGURE_DIGEST_CACHE_MAX: int = 4096
 
 logger = get_logger(__name__)
 
@@ -91,6 +102,16 @@ class EmbeddingProvider(ABC):
         """Vector dimensionality."""
         ...
 
+    def embed_media(self, text: str, image: bytes) -> list[float]:
+        """Return the joint embedding of ``text`` and one image.
+
+        Only models with an image encoder can do this. Providers that cannot
+        raise :class:`~kompend.rag.multimodal.MediaEmbeddingUnsupported`, so
+        the caller can index the text alone and say so, instead of silently
+        dropping the image.
+        """
+        raise MediaEmbeddingUnsupported(f"{type(self).__name__} cannot embed images")
+
 
 class PydanticAIEmbeddingProvider(EmbeddingProvider):
     """Embedding via pydantic-ai's :class:`~pydantic_ai.Embedder`.
@@ -108,6 +129,8 @@ class PydanticAIEmbeddingProvider(EmbeddingProvider):
         #: sites) that already know the dimension, so ``.dim`` does not need a
         #: probe embed. ``None`` keeps the auto-detect path.
         self._dim: int | None = dim
+        self._media: OllamaMediaEmbedder | None = None
+        self._media_checked = False
 
     @property
     def dim(self) -> int:
@@ -122,6 +145,21 @@ class PydanticAIEmbeddingProvider(EmbeddingProvider):
         if self._dim is None:
             self._dim = len(vector)
         return vector
+
+    def embed_media(self, text: str, image: bytes) -> list[float]:
+        """Embed text and one image jointly through Ollama's media endpoint."""
+        if not self._media_checked:
+            self._media = self._build_media_embedder()
+            self._media_checked = True
+        if self._media is None:
+            raise MediaEmbeddingUnsupported(f"Embedding model '{self._model_string}' cannot embed images")
+        return self._media.embed(text, image)
+
+    def _build_media_embedder(self) -> OllamaMediaEmbedder | None:
+        """The Ollama media embedder for this model, or ``None`` for other providers."""
+        if not self._model_string.startswith("ollama:"):
+            return None
+        return OllamaMediaEmbedder(self._model_string.split(":", 1)[1])
 
 
 class VectorStoreLike(Protocol):
@@ -565,13 +603,24 @@ class ZvecWikiStore:
         docs_batch: list[ZvecDoc] = []
         indexed_count = 0
         total_nodes = len(nodes)
+        figure_nodes = 0
+        figure_embedded = 0
+        degraded: list[str] = []
 
         for node in nodes:
             raw_source = str(node.metadata.get(MetadataField.SOURCE, "")) if node.metadata else ""
             source_file = rel_to_vault(raw_source, base_dir) if base_dir else raw_source
+            text = _embed_text(node)
+            vector, note = _embed_node(provider, node, text, base_dir=base_dir)
+            if _figure_paths(node):
+                figure_nodes += 1
+                if note is None:
+                    figure_embedded += 1
+                else:
+                    degraded.append(f"{node.id}: {note}")
             doc = _zvec.Doc(
                 id=_safe_id(node.id),
-                vectors={ZvecField.EMBEDDING: provider.embed(_embed_text(node))},
+                vectors={ZvecField.EMBEDDING: vector},
                 fields={
                     ZvecField.NODE_ID: node.id,
                     ZvecField.TITLE: node.title,
@@ -595,6 +644,19 @@ class ZvecWikiStore:
             collection.upsert(docs_batch)
             indexed_count += len(docs_batch)
 
+        if figure_nodes:
+            logger.info(
+                "Embedded %d of %d node(s) with figures; %d node(s) were indexed from text alone",
+                figure_embedded,
+                figure_nodes,
+                figure_nodes - figure_embedded,
+            )
+        if degraded:
+            logger.warning(
+                "%d node(s) with figures were indexed without their image: %s",
+                len(degraded),
+                "; ".join(degraded[:LOG_SAMPLE_LIMIT]),
+            )
         logger.info("Finished indexing %d nodes in zvec store at %s", indexed_count, self.db_file)
         return indexed_count
 
@@ -693,6 +755,11 @@ def _content_hash(node: WikiNode) -> str:
     metadata (node type, tags, attributes), because search sees all of it: a
     retag that leaves the prose alone still makes the stored document wrong.
 
+    Also covers the node's figures (their content digest): a figure is part of
+    what the embedder sees, so a re-parse that changes one invalidates the
+    vector that was built from it. A node without figures keeps the fingerprint
+    it always had, so a vault that never had them is not re-indexed for nothing.
+
     Deliberately excludes the source path: it is relativized against
     ``base_dir`` at index time, so hashing it would report a stale index for a
     vault move that changed no content. Field order is fixed and tags are
@@ -702,8 +769,117 @@ def _content_hash(node: WikiNode) -> str:
     metadata = node.metadata or {}
     tags = sorted(str(tag) for tag in metadata.get(MetadataField.TAGS, []))
     attributes = sorted(_attributes_to_list(meta_str_list_dict(metadata.get(MetadataField.ATTRIBUTES))))
-    payload = "\n".join([_embed_text(node), node.node_type.value, " ".join(tags), " ".join(attributes)])
+    payload = "\n".join(
+        [
+            _embed_text(node),
+            node.node_type.value,
+            " ".join(tags),
+            " ".join(attributes),
+        ]
+    )
+    figures = _figure_identity(node)
+    if figures:
+        payload = f"{payload}\nfigures:{figures}"
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def _figure_identity(node: WikiNode) -> str:
+    """Content digest of a node's figures — part of the staleness fingerprint.
+
+    Only the bytes count, not the path: a vault move rewrites the path but
+    not the image, and :func:`_content_hash` deliberately excludes paths for
+    that reason. A figure that cannot be read counts as ``missing``, so the
+    index is stale again once it reappears.
+    """
+    return "|".join(_figure_digest(path) for path in _figure_paths(node))
+
+
+def _figure_digest(path: str) -> str:
+    """Digest of a figure file, cached by (path, size, mtime)."""
+    try:
+        stat = os.stat(path)
+    except OSError:
+        return "missing"
+    key = (path, stat.st_size, stat.st_mtime_ns)
+    cached = _FIGURE_DIGEST_CACHE.get(key)
+    if cached is not None:
+        return cached
+    data = _figure_bytes(path)
+    if data is None:
+        return "missing"
+    digest = hashlib.sha256(data).hexdigest()[:16]
+    if len(_FIGURE_DIGEST_CACHE) >= _FIGURE_DIGEST_CACHE_MAX:
+        _FIGURE_DIGEST_CACHE.clear()
+    _FIGURE_DIGEST_CACHE[key] = digest
+    return digest
+
+
+def _embed_node(
+    provider: EmbeddingProvider,
+    node: WikiNode,
+    text: str,
+    *,
+    base_dir: Path | None = None,
+) -> tuple[list[float], str | None]:
+    """Embed *node*, feeding its figure to the embedder when it can take one.
+
+    Returns the vector and a note when a figure could not be embedded. The
+    node is still indexed from its text — the note says which figure was left
+    out, so the degradation is reported instead of being silent.
+
+    Only the first figure is embedded: the endpoint takes one image per
+    request. A node with several figures says so in the note rather than
+    quietly embedding one of them.
+    """
+    paths = _figure_paths(node)
+    if not paths:
+        return provider.embed(text), None
+    notes: list[str] = []
+    if len(paths) > 1:
+        notes.append(f"{len(paths)} figures; only the first was embedded")
+    data = _figure_bytes(paths[0], base_dir=base_dir)
+    if data is None:
+        notes.append(f"figure file is missing: {paths[0]}")
+        return provider.embed(text), "; ".join(notes)
+    try:
+        vector = provider.embed_media(text, data)
+    except MediaEmbeddingUnsupported as exc:
+        notes.append(str(exc))
+        return provider.embed(text), "; ".join(notes)
+    except LLMOutputError as exc:
+        notes.append(f"media embedding failed: {exc}")
+        return provider.embed(text), "; ".join(notes)
+    return vector, "; ".join(notes) if notes else None
+
+
+def _figure_paths(node: WikiNode) -> list[str]:
+    """The figure files a node carries, in page order.
+
+    The figures live in ``node.metadata["images"]`` as ``ImageRef`` mappings
+    (``path``, ``caption``, ``element_type``, ``source_file``) written by the
+    compilation flow.
+    """
+    raw = (node.metadata or {}).get(MetadataField.IMAGES)
+    if not isinstance(raw, list):
+        return []
+    paths: list[str] = []
+    for item in raw:
+        if isinstance(item, dict):
+            path = item.get("path")
+            if isinstance(path, str) and path:
+                paths.append(path)
+    return paths
+
+
+def _figure_bytes(path: str, *, base_dir: Path | None = None) -> bytes | None:
+    """Read a figure file, or ``None`` when it cannot be read."""
+    candidate = Path(path)
+    if not candidate.is_absolute() and base_dir is not None:
+        candidate = base_dir / candidate
+    try:
+        return candidate.read_bytes()
+    except OSError:
+        return None
 
 
 def _embed_text(node: WikiNode) -> str:

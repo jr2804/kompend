@@ -80,6 +80,11 @@ _DEFAULT_CHARS_PER_TOKEN: float = DEFAULT_CHARS_PER_TOKEN
 # become concept pages.
 _RESERVED_CONCEPT_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error"})
 
+#: The same names, used to keep a *status* out of a figure caption. An
+#: entity with one of these names says what happened to the figure, not
+#: what it shows.
+_STATUS_ENTITY_NAMES: frozenset[str] = frozenset({"vlm_filtered", "vlm_skipped", "vlm_error", "vlm_placeholder"})
+
 
 #: Re-exported from :mod:`kompend.llm.request_budget` — the planner owns the
 #: safety margin and the budget arithmetic; this module keeps the historical
@@ -371,6 +376,11 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
 
     ``source_file`` is the document the figure came from — callers select the
     subset belonging to a page with :func:`images_for_provenance`.
+
+    Only a real caption may be published: an entity of type
+    ``image_description`` whose name is not one of the status names
+    (``vlm_error``, ``vlm_filtered``, ``vlm_placeholder``, ``vlm_skipped``).
+    A status entity says what happened to the figure, not what it shows.
     """
     images: list[ImageRef] = []
 
@@ -388,9 +398,13 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
 
         caption = ""
         for entity in rc.entities:
-            if entity.get("type") == "image_description" and entity.get("context"):
-                caption = entity["context"]
-                break
+            if entity.get("type") != "image_description" or not entity.get("context"):
+                continue
+            name = str(entity.get("name") or "")
+            if name in _STATUS_ENTITY_NAMES:
+                continue
+            caption = str(entity["context"])
+            break
 
         images.append(
             {

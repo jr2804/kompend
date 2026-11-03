@@ -100,6 +100,9 @@ The base class provides:
   stall-retried per `SummarizerSessionPolicy` from `budget.summary_session_*`).
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
+- **VLM captioning** — `VlmAgent` sends a LIST user prompt: the rendered
+  template plus the image bytes as `BinaryContent`. Its deps carry the
+  image path and the figure's surroundings, never a ready-made prompt.
 
 ### Construction contract
 
@@ -218,6 +221,7 @@ Agent layer (`build_fallback_compaction`, see `KompendAgentBase`).
 | `DistillAgentDeps`  | AgenticDistillAgent (payload: `DistillGroup`, `DistillPage`)                          |
 | `VerificationDeps`  | AgenticVerificationAgent (payload: `VerificationClaim`, `VerificationSource`, `VerificationPage`) |
 | `WriteDeps`         | AgenticWriteAgent (`source_texts`, served in `source_char_max` windows)                |
+| `VlmDeps`          | VlmAgent (`image_file`, the figure's `context`)                                        |
 
 Agentic-session payloads are `TypedDict`s in `types.py`, never bare
 `dict[str, Any]` at the agent boundary. `DistillPage` is `total=False` because

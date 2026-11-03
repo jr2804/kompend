@@ -143,10 +143,6 @@ def _caption_image(att_file: Path, att: Attachment, vlm_captioner: VlmAgent) -> 
     try:
         caption = vlm_captioner.run(
             VlmDeps(
-                prompt=(
-                    "Describe this image in one sentence for wiki documentation. "
-                    "If it is decorative or contains no substantive information, respond with just SKIP."
-                ),
                 image_file=str(att_file),
                 source_id=f"attachment-{att.filename}",
             )

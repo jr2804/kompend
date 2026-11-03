@@ -64,6 +64,16 @@ persistence, and standalone ingestion.
   cached tree carries `contextual_context`. The chunk-cache key includes the gate
   state, so enabling it invalidates prior un-enriched trees instead of embedding
   stale text. Gate off ⇒ cached output is unchanged.
+- The resolve tier hands the caption prompt its surroundings: for every
+  image chunk it assembles the section (`chunk.heading_context`), the
+  neighbouring text of the same tree and the LLM-written
+  `contextual_context`, and passes them on in
+  `chunk.metadata["vlm_context"]` (`MetadataField.VLM_CONTEXT`). The
+  resolve cache key carries that context's hash and the identity of the
+  caption templates (`vlm/caption.md.j2`, `vlm/context.md.j2`), so a
+  changed figure or a changed prompt cannot replay a stale caption. The
+  context is a per-run value: the chunk cache is written before the
+  resolve tier, so it never enters it.
 - **Recoverable-log rule:** a log call that attaches a traceback gates it on
   `kompend.core.verbosity.is_verbose()` (`exc_info=is_verbose()`). Removing a
   traceback is only safe when the one-line message carries the cause: bind the

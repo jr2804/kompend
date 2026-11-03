@@ -79,6 +79,7 @@ class PipelineConfig:
     image_mode: ImageMode = ImageMode.FILE
     vlm_min_image_bytes: int = 2048
     vlm_min_image_dimension: int = 64
+    vlm_context_chars: int = 1200
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
     cache_dir: Path | None = None  # None = base_dir/.kompend/cache
@@ -197,6 +198,7 @@ class PipelineConfig:
             image_mode=ImageMode(kompend.compile.image_mode),
             vlm_min_image_bytes=kompend.compile.vlm_min_image_bytes,
             vlm_min_image_dimension=kompend.compile.vlm_min_image_dimension,
+            vlm_context_chars=kompend.compile.vlm_context_chars,
             online_sources=[],
             input_files=input_files,
             cache_dir=Path(kompend.paths.cache_dir) if kompend.paths.cache_dir else None,

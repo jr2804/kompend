@@ -2,17 +2,24 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import cast
 
-from kompend.core.models import Chunk, ChunkTree, ElementType, ResolvedChunk
+from kompend.core.models import Chunk, ChunkTree, ElementType, MetadataField, ResolvedChunk
 from kompend.core.pipeline.parse_cache import content_hash_prefix
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.resolution.entity_registry import EntityRegistry
 from kompend.core.resolution.xref_checker import CrossReferenceChecker
+from kompend.core.templates import get_template_loader
 from kompend.llm.models import resolve_vlm_model
 from kompend.logging import get_logger
 from kompend.types import CacheValue
+
+#: The templates whose text decides what the caption prompt says. Their
+#: identity is part of the resolve cache key: a changed prompt must not
+#: replay a caption the old prompt produced.
+_VLM_PROMPT_TEMPLATES = ("vlm/caption.md.j2", "vlm/context.md.j2")
 
 logger = get_logger(__name__)
 
@@ -62,6 +69,8 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
         )
 
     vlm_model = resolve_vlm_model(pipeline.config.llm.default_model, pipeline.config.llm.vlm_model) or ""
+    image_contexts = _collect_image_contexts(trees, max_chars=pipeline.config.vlm_context_chars)
+    prompt_identity = _vlm_prompt_identity()
 
     def _resolve_one(chunk: Chunk) -> ResolvedChunk:
         # ``content`` couples the row to the chunk's text. Ids are positional
@@ -72,6 +81,14 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
             "content": content_hash_prefix(chunk.text.encode("utf-8")),
             "vlm_model": vlm_model,
         }
+        context = image_contexts.get(chunk.id)
+        if context is not None:
+            # The caption is written against the surroundings, so a changed
+            # surrounding (or a changed prompt) must not replay the old
+            # caption.
+            chunk.metadata[MetadataField.VLM_CONTEXT] = context
+            deps["context"] = content_hash_prefix(json.dumps(context, sort_keys=True).encode("utf-8"))
+            deps["prompt"] = prompt_identity
         cached = pipeline.cache_store.get_dict("resolve", deps)
         if cached is not None:
             # Validate every element, not just the container: a cache entry is
@@ -85,6 +102,7 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
             resolved_references = [r for r in refs_raw if isinstance(r, str)] if isinstance(refs_raw, list) else []
             meta_raw = cached.get("metadata", {})
             metadata = dict(meta_raw) if isinstance(meta_raw, dict) else {}
+            chunk.metadata.pop(MetadataField.VLM_CONTEXT, None)
             return ResolvedChunk(
                 chunk=chunk,
                 entities=entities,
@@ -95,6 +113,7 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
         if pipeline.resolver is None:
             raise RuntimeError("Resolver not initialized")
         result = pipeline.resolver.resolve(chunk)
+        chunk.metadata.pop(MetadataField.VLM_CONTEXT, None)
         pipeline.cache_store.set(
             "resolve",
             deps,
@@ -126,7 +145,77 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
     for i, chunk in enumerate(image_chunks):
         resolved.append(_resolve_one(chunk))
         pipeline.emit("resolve", i + 1, len(image_chunks), "captioning")
+    _check_resolver_failures(pipeline.resolver)
     return resolved
+
+
+def _check_resolver_failures(resolver: object) -> None:
+    """Raise when a resolver's batch was mostly failures.
+
+    The resolvers that call a model keep a failure log (the shared
+    vocabulary in :mod:`kompend.agents.failure`). The log knows the
+    thresholds, so this only has to ask.
+    """
+    for member in getattr(resolver, "resolvers", []):
+        log = getattr(member, "failures", None)
+        if log is not None:
+            log.check()
+
+
+def _vlm_prompt_identity() -> str:
+    """A hash of the templates that decide what the caption prompt says."""
+    loader = get_template_loader()
+    parts: list[str] = []
+    for template in _VLM_PROMPT_TEMPLATES:
+        try:
+            parts.append(loader.get_text(template))
+        except FileNotFoundError:
+            parts.append(f"missing:{template}")
+    return content_hash_prefix("\n".join(parts).encode("utf-8"))
+
+
+def _collect_image_contexts(trees: list[ChunkTree], *, max_chars: int) -> dict[str, dict[str, str]]:
+    """What surrounds every image chunk, keyed by chunk id.
+
+    Three pieces, in the order the caption prompt presents them: the
+    section the figure sits in, the neighbouring text of the same
+    document, and the LLM-written summary of the neighbourhood (present
+    only when the contextual enricher ran).
+
+    The neighbouring text is what turns "a diagram" into "a diagram of
+    the two-stage pipeline" — a caption without it is a guess.
+    """
+    contexts: dict[str, dict[str, str]] = {}
+    for tree in trees:
+        leaves = tree.leaves()
+        for index, node in enumerate(leaves):
+            chunk = node.chunk
+            if chunk is None or ElementType.IMAGE not in chunk.element_types:
+                continue
+            nearby_parts: list[str] = []
+            budget = max_chars
+            neighbours = []
+            if index > 0:
+                neighbours.append(leaves[index - 1])
+            if index + 1 < len(leaves):
+                neighbours.append(leaves[index + 1])
+            for neighbour in neighbours:
+                if neighbour.chunk is None or ElementType.IMAGE in neighbour.chunk.element_types:
+                    continue
+                text = neighbour.chunk.text.strip()
+                if not text:
+                    continue
+                excerpt = text[:budget]
+                nearby_parts.append(excerpt)
+                budget -= len(excerpt)
+                if budget <= 0:
+                    break
+            contexts[chunk.id] = {
+                "section": chunk.heading_context,
+                "nearby": "\n".join(nearby_parts),
+                "document_context": node.contextual_context,
+            }
+    return contexts
 
 
 def apply_tags_to_tree(tree: ChunkTree, source_file: Path, source_dir: Path, source_tags: list[str]) -> None:

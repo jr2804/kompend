@@ -175,7 +175,7 @@ class MarkdownWriter(VaultWriter):
                     frontmatter["quality_score"] = quality["quality_score"]  # nocheck: OKF frontmatter key, not wiki metadata
 
             body = node.content or ""
-            images = node.metadata.get("images", [])
+            images = node.metadata.get(MetadataField.IMAGES, [])
             if images:
                 folder = self._folder_for_kind(node.node_type, str(node.metadata.get(MetadataField.ENTITY_TYPE) or ""))
                 images = self.portablize_images(

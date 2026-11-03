@@ -25,6 +25,11 @@ class ResolverChain(BaseResolver):
     def __init__(self, resolvers: list[BaseResolver]) -> None:
         self._resolvers = resolvers
 
+    @property
+    def resolvers(self) -> list[BaseResolver]:
+        """The resolvers in the chain, in the order they run."""
+        return list(self._resolvers)
+
     def resolve(self, chunk: Chunk) -> ResolvedChunk:
         """Run all resolvers in sequence, returning the final result.
 

@@ -74,6 +74,20 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
   shape (`id`, `score`, plus the stored fields).
 - Embeddings route through `make_provider` / `build_embedder` (pydantic-ai);
   zvec's built-in embedders do not cover Ollama.
+- **A node with a figure is embedded with that figure.** `multimodal.py`
+  (`OllamaMediaEmbedder`) calls Ollama's `POST /api/embed` with
+  `input: {text, image}` — the image as raw base64, one per request, the first
+  figure of the node. A model without an image encoder answers
+  `501 model does not support media embeddings`; that is
+  `MediaEmbeddingUnsupported`, not a transport error, so it is never retried.
+  The node is then indexed from its text alone and the degradation is logged
+  (`1 node(s) with figures were indexed without their image: …`) — never
+  silent. Only Ollama has this endpoint; every other provider reports the same
+  way.
+- The staleness fingerprint covers the figures' content digest
+  (`_figure_identity`), because the figure is part of what the embedder saw.
+  `_EMBED_TEXT_VERSION` covers the composition; a change to it invalidates
+  every index once.
 - **A corrupt indexer is rebuilt, not fatal.** `zvec` can answer
   `RuntimeError: Failed to open scalar indexer` for a directory that a crashed
   run or a long-lived process left behind. The vector index is derived data, so
@@ -84,5 +98,5 @@ wraps zvec (embedded vector DB, Apache 2.0) and exposes `ZvecWikiStore`,
 
 ## Verification
 
-- `uv run pytest tests/unit/test_rag.py tests/unit/test_zvec_store_rebuild.py tests/unit/test_zvec_tags_schema.py -q`
+- `uv run pytest tests/unit/test_rag.py tests/unit/test_zvec_store_rebuild.py tests/unit/test_zvec_tags_schema.py tests/unit/test_multimodal_embedding.py -q`
 - `uv run ruff check src/kompend/rag && uv run ty check src/kompend/rag`

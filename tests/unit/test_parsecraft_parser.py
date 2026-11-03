@@ -15,6 +15,7 @@ suite. Default kompend runs never import the module, so the guarantee holds ther
 
 from __future__ import annotations
 
+import base64
 import importlib
 import json
 import os
@@ -34,11 +35,13 @@ from parsecraft import pipeline  # noqa: E402 — guarded by the importorskip ab
 from parsecraft.backends import default_registry  # noqa: E402 — guarded by the importorskip above
 from parsecraft.backends.protocol import BackendCapabilities  # noqa: E402 — guarded by the importorskip above
 from parsecraft.ir.models import (
+    AssetKind,
     ChunkKind,
     Diagnostic,
     DiagnosticLevel,
     DocumentMetadata,
     DocumentResult,
+    ExtractedAsset,
     PageResult,
     PageSignal,
     QualitySignal,
@@ -51,10 +54,14 @@ from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
 from parsecraft.routing.models import Intent, PageRoute, RoutingPlan  # noqa: E402 — guarded by the importorskip above
 
-from kompend.core.config import ParsecraftEffort, ParsecraftJudge, ParsecraftPreference
+from kompend.core.config import ImageMode, ParsecraftEffort, ParsecraftJudge, ParsecraftPreference
 from kompend.core.models import ElementType
+from kompend.preprocessing.images import ImageStore
 from kompend.preprocessing.parsers import _registry as registry_module
 from kompend.preprocessing.parsers._registry import KNOWN_BACKENDS
+
+#: A one-pixel PNG — enough to prove the bytes survive the round trip.
+_PNG_BYTES: bytes = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 
 #: Resolved lazily via importlib: a static ``from ... import parsecraft_parser``
 #: would register the backend at collection time (pyreorder hoists function-level
@@ -1186,6 +1193,69 @@ class TestIgnoredBackendOptions:
         assert not [r for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
 
 
+class TestImageExtraction:
+    """Figure crops from the IR reach the vault's image cache.
+
+    The IR names the asset a chunk owns in the chunk metadata; the store
+    decides where the bytes land, and the element carries the reference.
+    """
+
+    def test_a_figure_chunk_carries_the_stored_image(self, tmp_path: Path) -> None:
+        adapter = _adapter()
+        document = _document([_page_with_asset(_figure_chunk(), "asset-1")])
+        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        image = next(element for element in elements if element.type is ElementType.IMAGE)
+        stored = Path(image.metadata["image_file"])
+        assert stored.parent == tmp_path
+        assert stored.read_bytes() == _PNG_BYTES
+        assert image.content == str(stored)
+
+    def test_the_figures_own_text_rides_along_as_its_description(self, tmp_path: Path) -> None:
+        adapter = _adapter()
+        document = _document([_page_with_asset(_figure_chunk(content="Figure 1 — the block diagram"), "asset-1")])
+        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        image = next(element for element in elements if element.type is ElementType.IMAGE)
+        assert image.metadata["description"] == "Figure 1 — the block diagram"
+
+    def test_base64_mode_keeps_the_payload_inline(self, tmp_path: Path) -> None:
+        adapter = _adapter()
+        document = _document([_page_with_asset(_figure_chunk(), "asset-1")])
+        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.BASE64))
+        image = next(element for element in elements if element.type is ElementType.IMAGE)
+        assert image.metadata["image_base64"].startswith("data:image/png;base64,")
+        assert "image_file" not in image.metadata
+        assert not list(tmp_path.iterdir())
+
+    def test_none_mode_extracts_no_images(self, tmp_path: Path) -> None:
+        adapter = _adapter()
+        document = _document([_page_with_asset(_figure_chunk(content="Figure 1"), "asset-1")])
+        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.NONE))
+        # No image to point at: the figure's own text stays, as text.
+        assert [element.type for element in elements] == [ElementType.TEXT]
+        assert elements[0].content == "Figure 1"
+        assert "image_file" not in elements[0].metadata
+
+    def test_an_asset_no_chunk_claims_becomes_its_own_element(self, tmp_path: Path) -> None:
+        adapter = _adapter()
+        document = _document([_page_with_asset(_text_chunk(), "asset-1")])
+        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        assert [element.type for element in elements] == [ElementType.TEXT, ElementType.IMAGE]
+        assert Path(elements[1].metadata["image_file"]).exists()
+
+    def test_an_unreadable_asset_does_not_lose_the_text(self, tmp_path: Path) -> None:
+        adapter = _adapter()
+        page = PageResult(
+            page_number=1,
+            blocks=[_figure_chunk(content="Figure 1")],
+            assets=[ExtractedAsset(id="asset-1", kind=AssetKind.IMAGE, media_type="image/png", uri="data:image/png;base64,%%%not-base64%%%")],
+        )
+        document = _document([page])
+        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        assert [element.type for element in elements] == [ElementType.TEXT]
+        assert elements[0].content == "Figure 1"
+        assert "image_file" not in elements[0].metadata
+
+
 def _pdf_backend(name: str, vram: float) -> BackendDescriptor:
     """A minimal PDF candidate whose only difference is declared VRAM.
 
@@ -1287,6 +1357,44 @@ def _document(pages: list[PageResult], quality: list[QualitySignal] | None = Non
 
 def _page(number: int, blocks: list[StructuredChunk]) -> PageResult:
     return PageResult(page_number=number, blocks=blocks)
+
+
+def _figure_chunk(content: str = "") -> StructuredChunk:
+    """A figure chunk that owns an image asset."""
+    return StructuredChunk(
+        id="fig-1",
+        kind=ChunkKind.FIGURE,
+        content=content,
+        page_number=1,
+        reading_order=0,
+        metadata={"asset_id": "asset-1"},
+    )
+
+
+def _text_chunk() -> StructuredChunk:
+    """A paragraph chunk — owns no asset."""
+    return StructuredChunk(id="t1", kind=ChunkKind.PARAGRAPH, content="Body text.", page_number=1, reading_order=0)
+
+
+def _page_with_asset(chunk: StructuredChunk, asset_id: str) -> PageResult:
+    """A page whose blocks own one image asset."""
+    return PageResult(
+        page_number=chunk.page_number,
+        blocks=[chunk],
+        assets=[
+            ExtractedAsset(
+                id=asset_id,
+                kind=AssetKind.IMAGE,
+                media_type="image/png",
+                uri=f"data:image/png;base64,{base64.b64encode(_PNG_BYTES).decode('ascii')}",
+            )
+        ],
+    )
+
+
+def _store(images_dir: Path, mode: ImageMode) -> ImageStore:
+    """An image store pointed at *images_dir*."""
+    return ImageStore(images_dir, mode)
 
 
 def _exhausted_page(number: int) -> PageResult:

@@ -26,6 +26,11 @@ parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routi
                    parsecraft's, kompend keeps none of its own
 ```
 
+`../images.py` (sibling module `preprocessing/images.py`) holds the figure
+storage: `ImageStore` turns an IR figure asset into a cached file or an inline
+payload. The parsers subtree owns the mapping, the storage lives one level up
+because the store is also what the captioning stage reads.
+
 `build_pipeline` builds a `ParserRouter` from `config.parser_options`. Exactly
 **one** backend is registered, `DEFAULT_PARSER` (parsecraft). There is no config
 key and no CLI flag selecting a backend: parsecraft routes each page across its
@@ -156,10 +161,24 @@ skipped; figures the backend missed are still VLM-captioned.
 ### Parser output contract
 
 Image elements set `metadata["image_file"]` (file mode) or
-`metadata["image_base64"]` (base64 mode) — use `MetadataField.IMAGE_PATH` /
-`IMAGE_BASE64` symbols, never bare literals. An enriching backend writes its
-description to `metadata["description"]`, which flows via `extractors.py` →
-`StructuredFigure.description` and via `hierarchical.py` → `chunk.metadata`.
+`metadata["image_base64"]` (base64 mode) — use `MetadataField.IMAGE_FILE` /
+`IMAGE_BASE64` symbols, never bare literals. The figure's own text rides along
+as `metadata["description"]`, which flows via `extractors.py` →
+`StructuredFigure.description` and via `hierarchical.py` → `chunk.metadata`, so
+the captioning stage can use it instead of calling a VLM.
+
+The figures come from the IR: parsecraft hands a figure crop over as an
+`ExtractedAsset` on the page, and the chunk that owns it names the asset in
+`metadata["asset_id"]`. `ImageStore` (`preprocessing/images.py`) decides where
+the bytes land — the vault's image cache in file mode, inline in base64 mode —
+and `compile.image_mode` picks the mode (`none` extracts no images at all). A
+figure with no image to point at stays what it is: its text becomes a text
+element, never an image element without a reference.
+
+The image mode is part of the backend's cache identity (`images:file`), because
+a run that extracts images produces a different document than one that does
+not. The segment is emitted only when the run extracts images, so a vault that
+never had them is not re-parsed for nothing.
 
 ## Verification
 

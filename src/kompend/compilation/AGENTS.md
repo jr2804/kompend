@@ -46,6 +46,13 @@ merging and an optional iterative WiCER refinement loop.
   design. `compile.cache_ignore_model` (`--ignore-model`) drops the model
   from all three keys so a run can be finished on another model - the
   per-page `MetadataField.MODEL` tag keeps the result attributable.
+- **A figure caption is an `image_description`; everything else is an
+  `image_caption_status`** (`_two_phase_core.extract_images_from_chunks`):
+  only a real caption (the parser's own description or a successful VLM
+  caption) may be published as the figure's caption. A skipped, filtered,
+  failed or placeholder figure carries a status entity instead. The
+  status names are reserved (`_RESERVED_CONCEPT_NAMES`,
+  `_RESERVED_ENTITY_NAMES`), so a status never becomes a page.
 - **Segment transcripts live in the step store, not in a checkpoint file**
   (`step_recovery.py` + `flows/generation.py`): the harness
   `StepPersistence` capability persists every run into

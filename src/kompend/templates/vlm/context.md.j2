@@ -1,0 +1,15 @@
+---
+variables:
+  - name: section
+    required: false
+  - name: nearby
+    required: false
+  - name: document_context
+    required: false
+role: vlm.context
+response_format: text
+---
+{% if section %}Section: {{ section }}
+{% endif %}{% if nearby %}Nearby text: {{ nearby }}
+{% endif %}{% if document_context %}Document context: {{ document_context }}
+{% endif %}

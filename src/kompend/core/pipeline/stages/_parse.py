@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any, cast
 
+from kompend.agents.failure import UnitFailureLog
 from kompend.agents.vlm import VlmAgent
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import (
@@ -530,9 +531,14 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
                     agent=vlm_agent,
                     min_image_bytes=config.vlm_min_image_bytes,
                     min_image_dimension=config.vlm_min_image_dimension,
+                    failures=UnitFailureLog(
+                        stage="vlm",
+                        ratio=config.llm.batch_failure_threshold_ratio,
+                        min_units=config.llm.batch_failure_threshold_min,
+                    ),
                 )
             )
-            logger.debug("VLMEnricher added to resolver chain (model=%s)", vlm_model)
+            logger.info("VLM image captioning enabled (model=%s)", vlm_model)
         except Exception as exc:
             logger.debug("VLMEnricher not available: %s", exc, exc_info=is_verbose())
 

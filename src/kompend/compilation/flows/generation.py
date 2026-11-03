@@ -565,7 +565,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                 # can be traced back to (and recompiled by) a better model).
                 MetadataField.MODEL: compiler._model or "",
                 # Only this page's sources' figures - see images_for_provenance.
-                "images": images_for_provenance(all_images, page.provenance),
+                MetadataField.IMAGES: images_for_provenance(all_images, page.provenance),
                 MetadataField.FRONTMATTER: {
                     "title": page.title or f"Concept {idx}",
                 },

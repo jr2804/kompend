@@ -233,13 +233,17 @@ search_snippet_chars = 300 # max chars of a search-result snippet (RAG / RRF / h
 # as a pre-pass before the main extraction phase.
 compiler = "graph"  # wicer
 
-# Image handling: file (extract to disk) | base64 (inline)
-image_mode = "file"  # base64
+# Image handling: file (extract to disk) | base64 (inline) | none (skip images)
+image_mode = "file"  # base64 | none
 
 # VLM caption pre-filter: images below these thresholds (bytes / pixels) are
 # skipped as decorative noise (logos, icons, spacers) without a VLM call.
 # vlm_min_image_bytes = 2048
 # vlm_min_image_dimension = 64
+
+# Maximum number of characters of surrounding text handed to the VLM when it
+# captions a figure (section heading, neighbouring text, LLM context).
+# vlm_context_chars = 1200
 
 # Pipeline start tier: index | chunk | resolve | compile | output
 # start_at_tier = "index"  # chunk, resolve, compile, output

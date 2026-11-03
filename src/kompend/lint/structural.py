@@ -262,7 +262,7 @@ class KompendReferenceRule(BaseLintRule):
                         details={"target": target},
                     )
                 )
-            for img in meta_dict_list(node.metadata.get("images")):
+            for img in meta_dict_list(node.metadata.get(MetadataField.IMAGES)):
                 path = meta_str(img.get("path"))
                 if path and KOMP_DIR in PurePosixPath(path).parts:
                     results.append(

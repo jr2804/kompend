@@ -71,10 +71,12 @@ class ImageMode(StrEnum):
 
     - ``FILE``: save images as files (default)
     - ``BASE64``: embed images as base64-encoded data URIs
+    - ``NONE``: extract no images — the text layer only
     """
 
     FILE = "file"
     BASE64 = "base64"
+    NONE = "none"
 
 
 class LlmApiType(StrEnum):
@@ -997,6 +999,7 @@ class CompileConfig(_KompendBaseModel):
     image_mode: ImageMode = Field(default=ImageMode.FILE, validation_alias=EnvVar.IMAGE_MODE)
     vlm_min_image_bytes: int = 2048
     vlm_min_image_dimension: int = 64
+    vlm_context_chars: int = 1200
     workers: int = Field(default=1, validation_alias=EnvVar.WORKERS)
     no_cache: bool = Field(default=False, validation_alias=EnvVar.NO_CACHE)
     # Reuse cached extractions/summaries/pages across model switches: cache

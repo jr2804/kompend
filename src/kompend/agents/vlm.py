@@ -60,10 +60,20 @@ logger = get_logger(__name__)
 
 @dataclass
 class VlmDeps:
-    """Deps for VLM captioning."""
+    """Deps for VLM captioning.
 
-    prompt: str
+    Attributes:
+        image_file: The image to caption.
+        context: What surrounds the image — the section it sits in, the
+            neighbouring text, and (when the contextual enricher ran) the
+            LLM-written summary of its neighbourhood. The caption prompt
+            renders it, so the model describes the figure *in place* instead
+            of guessing what it shows.
+        source_id: Identity of the unit being captioned, for the debug dump.
+    """
+
     image_file: str
+    context: str = ""
     source_id: str = "vlm"
 
 
@@ -75,8 +85,9 @@ class VlmAgent(KompendAgentBase[str, VlmDeps]):
     prompt cannot carry image bytes.
     """
 
-    template_name: ClassVar[str] = ""
+    template_name: ClassVar[str] = "caption.md.j2"
     system_template_name: ClassVar[str] = ""
+    template_prefix: ClassVar[str] = "vlm/"
 
     def __post_init__(self) -> None:
         # Image captioning never benefits from reasoning — force it off so
@@ -108,10 +119,14 @@ class VlmAgent(KompendAgentBase[str, VlmDeps]):
         media_type = _MIME_BY_EXT.get(image_file.suffix.lower(), _DEFAULT_MEDIA_TYPE)
         image_bytes = image_file.read_bytes()
 
+        # The prompt lives in a template (``templates/vlm/caption.md.j2``),
+        # so the instruction and the surrounding context are one resource.
+        instruction = self.render_user_prompt(deps)
+
         # User prompt is a sequence: instruction text + image part. pydantic-ai
         # forwards the BinaryContent to the native model's image handling.
         user_prompt: list[str | BinaryContent] = [
-            deps.prompt,
+            instruction,
             BinaryContent(image_bytes, media_type=media_type),
         ]
 
@@ -129,7 +144,7 @@ class VlmAgent(KompendAgentBase[str, VlmDeps]):
         save_debug_prompt(
             self,
             self.model_string,
-            [{"role": "user", "parts": [{"type": "text", "content": deps.prompt}]}],
+            [{"role": "user", "parts": [{"type": "text", "content": instruction}]}],
             {"model": self.model_string, "image_bytes": len(image_bytes)},  # nocheck: debug log dict, not wiki metadata
             caption,
             "stop",
