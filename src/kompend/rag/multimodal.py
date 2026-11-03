@@ -74,6 +74,11 @@ class OllamaMediaEmbedder:
         """The Ollama model name this embedder calls."""
         return self._model
 
+    @property
+    def endpoint(self) -> str:
+        """The native Ollama media endpoint this embedder calls."""
+        return _media_endpoint(self._base_url)
+
     def embed(self, text: str, image: bytes) -> list[float]:
         """Return the joint embedding of *text* and *image*.
 
@@ -92,7 +97,7 @@ class OllamaMediaEmbedder:
         }
         try:
             response = httpx.post(
-                f"{self._base_url}/api/embed",
+                self.endpoint,
                 json=payload,
                 timeout=self._timeout,
             )
@@ -104,6 +109,19 @@ class OllamaMediaEmbedder:
             body = response.text[:_ERROR_BODY_LIMIT]
             raise LLMOutputError(f"Media embedding failed for model '{self._model}' (HTTP {response.status_code}): {body}")
         return _first_vector(response.json(), model=self._model)
+
+
+def _media_endpoint(base_url: str) -> str:
+    """The native Ollama media endpoint for *base_url*.
+
+    The configured base URL is the OpenAI-compatible one (``.../v1``), but
+    ``/api/embed`` lives at the server root — asking ``.../v1/api/embed``
+    answers ``404 page not found``.
+    """
+    trimmed = base_url.rstrip("/")
+    if trimmed.endswith("/v1"):
+        trimmed = trimmed[: -len("/v1")]
+    return f"{trimmed}/api/embed"
 
 
 def _first_vector(payload: Any, *, model: str) -> list[float]:

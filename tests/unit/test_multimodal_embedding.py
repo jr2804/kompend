@@ -108,6 +108,21 @@ class TestProviderMediaModel:
 
         assert seen["body"]["model"] == "embeddinggemma-2:440m"
         assert seen["url"].endswith("/api/embed")
+        assert "/v1/" not in seen["url"]
+
+
+class TestMediaEndpoint:
+    """Ollama's native API lives at the server root, not under ``/v1``."""
+
+    def test_the_openai_compatible_base_is_stripped(self) -> None:
+        embedder = OllamaMediaEmbedder("embed-model", base_url="http://127.0.0.1:11434/v1")
+
+        assert embedder.endpoint == "http://127.0.0.1:11434/api/embed"
+
+    def test_a_server_root_base_is_kept(self) -> None:
+        embedder = OllamaMediaEmbedder("embed-model", base_url="http://127.0.0.1:11434/")
+
+        assert embedder.endpoint == "http://127.0.0.1:11434/api/embed"
 
 
 class _FigureProvider(EmbeddingProvider):
