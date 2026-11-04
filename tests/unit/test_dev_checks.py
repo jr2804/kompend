@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import ast
+import importlib
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -49,6 +52,96 @@ def test_pip_install_guard_rejects_a_comment() -> None:
         assert "PIP-INSTALL" in result.stdout
     finally:
         shutil.rmtree(sample_dir, ignore_errors=True)
+
+
+def test_noqa_scan_finds_every_spelling_with_a_real_column() -> None:
+    """``#noqa`` / ``#  noqa`` are suppressions too, and the column is real."""
+    module = _antipatterns()
+
+    for line in ("x = 1  # noqa: PLC0415", "x = 1  #noqa: PLC0415", "x = 1  #  noqa: PLC0415"):
+        _, comments = module._split_comments(line)
+        found = module.scan_noqa_bans(Path("a.py"), comments)
+
+        assert [v.line for v in found] == [1], line
+        assert found[0].col == 8, f"column must point at the '#', not -1 (got {found[0].col})"
+
+
+def test_noqa_scan_ignores_prose_and_strings() -> None:
+    """A docstring quoting the rule is documentation, not a suppression."""
+    module = _antipatterns()
+    docstring = 'def f() -> None:\n    """Use `# noqa: PLC0415` as a last resort."""\n'
+
+    _, comments = module._split_comments(docstring)
+
+    assert module.scan_noqa_bans(Path("a.py"), comments) == []
+
+
+def test_noqa_codes_split_on_whitespace_as_ruff_does() -> None:
+    """Ruff accepts space-separated codes, so the ban must see them."""
+    module = _antipatterns()
+
+    assert module._collect_noqa_codes("# noqa: PLC0415 B008") == {"PLC0415", "B008"}
+    assert module._collect_noqa_codes("# noqa: PLC0415, B008") == {"PLC0415", "B008"}
+
+
+def test_magic_crops_honours_a_bare_noqa_and_ignores_string_data() -> None:
+    """A crop in a string is data; a bare ``# noqa`` is a valid opt-out."""
+    module = _antipatterns()
+
+    def crops(source: str) -> int:
+        code, comments = module._split_comments(source)
+        return len(module.scan_magic_crops(Path("a.py"), code, comments))
+
+    assert crops("title = text[:120]  # noqa") == 0
+    assert crops('x = "text[:120]"') == 0
+    assert crops('x = f"{value[:3]}"') == 1, "an f-string expression is still code"
+    assert crops("title = text[:120]") == 1
+
+
+def test_import_error_guard_ignores_an_import_inside_the_handler() -> None:
+    """Only an import in the guarded body makes it an import guard."""
+    module = _antipatterns()
+
+    handler_only = ast.parse("try:\n    risky()\nexcept ImportError:\n    import json\n")
+    real_guard = ast.parse("try:\n    import optional_pkg\nexcept ImportError:\n    optional_pkg = None\n")
+
+    assert module.scan_import_error_guards(Path("a.py"), handler_only) == []
+    assert len(module.scan_import_error_guards(Path("a.py"), real_guard)) == 1
+
+
+# ── check_antipatterns: the scanner must not lie in either direction ────────
+
+
+def _antipatterns() -> Any:
+    """Import the checker module (it lives outside the package tree)."""
+    sys.path.insert(0, str(CHECKS))
+    try:
+        return importlib.import_module("check_antipatterns")
+    finally:
+        sys.path.pop(0)
+
+
+def test_an_empty_source_root_is_not_a_pass(tmp_path: Path) -> None:
+    """Scanning zero Python files must abort, not report success."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    result = _run("check_antipatterns.py", "--src", str(empty))
+
+    assert result.returncode == 2, f"vacuous scan must fail loudly:\n{result.stdout}\n{result.stderr}"
+    assert "nothing to scan" in result.stderr
+
+
+def test_an_unparseable_file_aborts_the_scan(tmp_path: Path) -> None:
+    """A file the gate cannot parse is a blind spot, not a clean bill."""
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    (broken / "bad.py").write_text("def f(:\n", encoding="utf-8")
+
+    result = _run("check_antipatterns.py", "--src", str(broken))
+
+    assert result.returncode == 2
+    assert "cannot parse" in result.stderr
 
 
 def _run(script: str, *args: str) -> subprocess.CompletedProcess[str]:
