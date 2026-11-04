@@ -2,6 +2,6 @@
 description = "Install dev-feature tools and register MCP servers (driven by data/dev-features.csv)"
 depends = ["dev"]
 usage = '''
-arg "<ai_agent>" help="AI assistant: claude, gemini, copilot, opencode, ... (see https://github.com/neondatabase/add-mcp)"
+arg "<ai_agent>" help="AI assistant: claude-code, pi, opencode, ... (claude/gemini/copilot aliases accepted; see https://github.com/neondatabase/add-mcp)"
 '''
 run = "uv run .config/mise/scripts/install_dev_features.py add-mcp-servers {{usage.ai_agent}}"

@@ -22,8 +22,17 @@ import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Final
 
 DATA = Path(__file__).resolve().parents[1] / "data"
+
+# add-mcp names agents after their CLIs (claude-code, gemini-cli, ...); map the
+# friendly spellings the task help advertises onto the canonical ones.
+AGENT_ALIASES: Final[dict[str, str]] = {
+    "claude": "claude-code",
+    "gemini": "gemini-cli",
+    "copilot": "github-copilot-cli",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,11 +224,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     mcp = sub.add_parser("add-mcp-servers", help="install dev-feature tools and register MCP servers")
-    mcp.add_argument("ai_agent", help="target assistant: claude, gemini, copilot, opencode, ...")
+    mcp.add_argument("ai_agent", help="target assistant: claude-code, pi, opencode, ... (claude/gemini/copilot aliases accepted)")
     sub.add_parser("add-skills", help="install agent skills")
     args = parser.parse_args(argv)
 
-    failures = add_mcp_servers(args.ai_agent, mise_env="local") if args.command == "add-mcp-servers" else add_skills()
+    failures = (
+        add_mcp_servers(AGENT_ALIASES.get(args.ai_agent.strip().lower(), args.ai_agent), mise_env="local")
+        if args.command == "add-mcp-servers"
+        else add_skills()
+    )
     if failures:
         print(f"{failures} command(s) failed", file=sys.stderr)
         return 1

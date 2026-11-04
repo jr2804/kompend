@@ -42,6 +42,9 @@ truth and start with an `enabled` column. `mise run add-mcp-servers <agent>` and
 `mise run add-skills` install `enabled=1` rows and *remove* `enabled=0` rows
 (tool via `mise remove --env local`, server via `add-mcp remove`, skill via
 `skills remove`) — a dormant row is an uninstall instruction, not a no-op.
+The `<agent>` names follow `add-mcp` (claude-code, pi, opencode, ...); the
+script's `AGENT_ALIASES` maps the friendly spellings claude/gemini/copilot onto
+them.
 Dev-feature tools are pinned by those tasks into the gitignored `mise.local.toml`,
 so `.config/mise/config.toml` carries no per-checkout tool state.
 
