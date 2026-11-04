@@ -194,6 +194,13 @@ and `compile.image_mode` picks the mode (`none` extracts no images at all). A
 figure with no image to point at stays what it is: its text becomes a text
 element, never an image element without a reference.
 
+The mode also decides whether the backend is asked for crops at all: when the
+run stores figures, `liteparse.extract_images` is derived as `true` (the
+backend behind the default route for a text PDF is liteparse, and its engine
+crops nothing unless asked). No key of its own exists for it —
+`[ingest] parsecraft_backend_options` remains the escape hatch, and a user
+option wins over the derived value.
+
 The image mode is part of the backend identity (`images:file`), because
 a run that extracts images produces a different document than one that does
 not. The segment is emitted only when the run extracts images, so a vault that

@@ -60,10 +60,12 @@ def test_ingest_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: p
     assert options.parsecraft_judge == "ollama"
     assert options.parsecraft_judge_model == "parable-tinyjev"
     assert options.parsecraft_preference == "quality"
-    assert options.parsecraft_effort == "high"
     assert options.parsecraft_allow_ocr is False
     assert options.parsecraft_engines == ["mineru", "marker"]
-    assert options.parsecraft_extract_vector_graphics is True
+    assert options.parsecraft_backend_options == {
+        "mineru": {"effort": "high"},
+        "liteparse": {"extract_vector_graphics": True},
+    }
     # No backend is named any more: parsecraft is the only parser path, so the
     # router takes the registry default and every site passes options only.
     assert "name" not in captured
@@ -83,7 +85,7 @@ def test_parse_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: py
     assert options.parsecraft_judge == "ollama"
     assert options.parsecraft_judge_model == "parable-tinyjev"
     assert options.parsecraft_preference == "speed"
-    assert options.parsecraft_effort == "medium"
+    assert options.parsecraft_backend_options == {"mineru": {"effort": "medium"}}
     assert "name" not in captured
     _assert_full_options(options)
 
@@ -100,7 +102,7 @@ def test_mcp_ingest_passes_the_configured_options(tmp_path: Path, monkeypatch: p
     assert options.parsecraft_judge == "zen"
     assert options.parsecraft_judge_model == "some-model"
     assert options.parsecraft_preference == "balanced"
-    assert options.parsecraft_effort == "xhigh"
+    assert options.parsecraft_backend_options == {"mineru": {"effort": "xhigh"}}
     assert "name" not in captured
     _assert_full_options(options)
 
@@ -135,10 +137,12 @@ def test_pipeline_config_builds_the_same_options_as_the_cli(tmp_path: Path) -> N
 
     assert pc.parser_options == ParserBuildOptions.from_config(cfg, images_dir=pc.paths.images_dir)
     _assert_full_options(pc.parser_options)
-    assert pc.parser_options.parsecraft_effort == "high"
+    assert pc.parser_options.parsecraft_backend_options == {
+        "mineru": {"effort": "high"},
+        "liteparse": {"extract_vector_graphics": True},
+    }
     assert pc.parser_options.parsecraft_allow_ocr is False
     assert pc.parser_options.parsecraft_engines == ["mineru", "marker"]
-    assert pc.parser_options.parsecraft_extract_vector_graphics is True
     assert pc.parser_options.parsecraft_preferred_backend == "liteparse"
     assert pc.parser_options.parsecraft_only_backend is None
 
@@ -177,14 +181,10 @@ def _vault(
         lines.append(f'parsecraft_judge_model = "{judge_model}"')
     if preference is not None:
         lines.append(f'parsecraft_preference = "{preference}"')
-    if effort is not None:
-        lines.append(f'parsecraft_effort = "{effort}"')
     if allow_ocr is not None:
         lines.append(f"parsecraft_allow_ocr = {str(allow_ocr).lower()}")
     if engines is not None:
         lines.append(f"parsecraft_engines = [{engines}]")
-    if vector_graphics is not None:
-        lines.append(f"parsecraft_extract_vector_graphics = {str(vector_graphics).lower()}")
     if preferred_backend is not None:
         lines.append(f'parsecraft_preferred_backend = "{preferred_backend}"')
     if only_backend is not None:
@@ -192,6 +192,12 @@ def _vault(
     # ``PipelineConfig.from_resolved`` refuses an empty default_model; set one
     # so the pipeline-config test does not depend on a global config file.
     lines += ["", "[compile.llm]", 'default_model = "ollama/test-model"']
+    # Backend options are sub-tables, so they go last: a sub-table header would
+    # otherwise swallow every plain key written after it.
+    if effort is not None:
+        lines += ["", "[ingest.parsecraft_backend_options.mineru]", f'effort = "{effort}"']
+    if vector_graphics is not None:
+        lines += ["", "[ingest.parsecraft_backend_options.liteparse]", f"extract_vector_graphics = {str(vector_graphics).lower()}"]
     (base / ".kompend" / "config.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
     (base / "sources" / "note.txt").write_text("hello", encoding="utf-8")
     return base

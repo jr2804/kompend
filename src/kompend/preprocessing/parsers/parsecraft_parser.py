@@ -53,7 +53,7 @@ from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from parsecraft.routing.judge_providers import JudgeError, resolve_judge
 from parsecraft.routing.models import RoutingPreference
 
-from kompend.core.config import ImageMode, ParsecraftEffort, ParsecraftJudge, ParsecraftPreference
+from kompend.core.config import ImageMode, ParsecraftJudge, ParsecraftPreference
 from kompend.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from kompend.logging import get_logger
 from kompend.preprocessing.images import ImageStore, asset_for_chunk, assets_by_id
@@ -131,10 +131,8 @@ class ParsecraftParser:
         parsecraft_judge: ParsecraftJudge = ParsecraftJudge.NONE,
         parsecraft_judge_model: str = "",
         parsecraft_preference: ParsecraftPreference = ParsecraftPreference.BALANCED,
-        parsecraft_effort: ParsecraftEffort = ParsecraftEffort.FLASH,
         parsecraft_allow_ocr: bool | None = None,
         parsecraft_engines: list[str] | None = None,
-        parsecraft_extract_vector_graphics: bool | None = None,
         parsecraft_preferred_backend: str | None = None,
         parsecraft_only_backend: str | None = None,
         parsecraft_backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
@@ -148,20 +146,15 @@ class ParsecraftParser:
         #: ``[ingest] parsecraft_*``. ``"none"`` keeps the deterministic rule
         #: table; any other judge value resolves to a real :class:`RoutingJudge`
         #: once ``parse()`` runs (and only then, so a misconfigured provider
-        #: never costs anything at CLI ``--help`` time). ``parsecraft_effort``
-        #: reaches the mineru backend only once parsecraft's executor threads
-        #: ``BackendConfig.options`` through ``RoutingConstraints.backend_options``.
-        #: Both ``parsecraft_effort`` and ``parsecraft_allow_ocr`` are read,
-        #: validated and fingerprinted here so the cache invalidates the moment
-        #: either changes; ``parsecraft_allow_ocr`` additionally reaches
-        #: parsecraft's planner immediately (it is a plain constraint input).
+        #: never costs anything at CLI ``--help`` time).
+        #: ``parsecraft_allow_ocr`` is read, validated and fingerprinted here so
+        #: the cache invalidates the moment it changes, and it reaches
+        #: parsecraft's planner immediately (a plain constraint input).
         self._judge_name = parsecraft_judge
         self._judge_model = parsecraft_judge_model
         self._judge_preference = parsecraft_preference
-        self._effort = _parse_effort(parsecraft_effort)
         self._allow_ocr = parsecraft_allow_ocr
         self._engines: tuple[str, ...] = tuple(parsecraft_engines or ())
-        self._extract_vector_graphics = parsecraft_extract_vector_graphics
         self._preferred_backend = _parse_backend_name(parsecraft_preferred_backend)
         self._only_backend = _parse_backend_name(parsecraft_only_backend)
         #: Per-backend options the user configured (`[ingest] parsecraft_backend_options`).
@@ -319,14 +312,10 @@ class ParsecraftParser:
             parts.append(f"judge:{self._judge_name}/{self._judge_model}:{self._judge_preference}")
         elif self._preference is not RoutingPreference.BALANCED:
             parts.append(f"preference:{self._judge_preference}")
-        if self._effort is not ParsecraftEffort.FLASH:
-            parts.append(f"effort:{self._effort}")
         if self._allow_ocr is not None:
             parts.append("ocr:on" if self._allow_ocr else "ocr:off")
         if self._engines:
             parts.append(f"engines:{','.join(sorted(self._engines))}")
-        if self._extract_vector_graphics is not None:
-            parts.append(f"vector_graphics:{'on' if self._extract_vector_graphics else 'off'}")
         if self._preferred_backend is not None:
             parts.append(f"preferred_backend:{self._preferred_backend}")
         if self._only_backend is not None:
@@ -390,17 +379,21 @@ class ParsecraftParser:
         conversion cache on upgrade. The same reasoning covers
         ``extract_vector_graphics``, whose backend default is unset.
 
+        ``liteparse.extract_images`` is DERIVED from the image mode, not a knob
+        of its own: a run that stores figures needs the backend to emit them,
+        and the default backend for a text PDF is liteparse, so leaving the
+        option unset is what made the whole figure pipeline look broken for a
+        document that routes natively (issue pc-65e fixed it upstream; this is
+        the consumer side). Asking for figures while storing none would pay the
+        engine's crop cost for nothing, hence the mode is the only input.
+
         The user's ``[ingest] parsecraft_backend_options`` are merged over the
         derived ones — an explicit user option wins over the derived default for
         the same key.
         """
         options: dict[str, dict[str, str | int | float | bool]] = {}
-        if self._effort is not ParsecraftEffort.FLASH:
-            # Plain ``.value`` — parsecraft hashes this options dict verbatim
-            # into its conversion cache key; keep the payload a plain string.
-            options.setdefault("mineru", {})["effort"] = self._effort.value
-        if self._extract_vector_graphics is not None:
-            options.setdefault("liteparse", {})["extract_vector_graphics"] = self._extract_vector_graphics
+        if self._images.enabled:
+            options.setdefault("liteparse", {})["extract_images"] = True
         for backend, backend_options in self._backend_options_override.items():
             merged = options.setdefault(backend, {})
             merged.update(backend_options)
@@ -627,20 +620,6 @@ def _parse_preference(preference: ParsecraftPreference | str) -> RoutingPreferen
     """
     member = preference if isinstance(preference, ParsecraftPreference) else ParsecraftPreference(preference)
     return RoutingPreference(member.value)
-
-
-def _parse_effort(effort: ParsecraftEffort | str) -> ParsecraftEffort:
-    """Normalise and verify the mineru effort value.
-
-    The :class:`ParsecraftEffort` enum on the schema already rejects unknown
-    values at parse time; this second pass covers callers that construct the
-    adapter directly with a raw string (tests, probes) and returns the member.
-    A silent fall-back to ``flash`` would strip a vault of the VLM recovery
-    its user configured (high/xhigh load the mineru checkpoint and emit
-    equations/tables/figures that flash omits), so an unrecognised value
-    raises rather than degrades.
-    """
-    return ParsecraftEffort(effort)
 
 
 def _warn_on_empty_pages(
@@ -975,7 +954,7 @@ def _winning_backends(groups: list[PageGroup]) -> str:
 def _factory(options: ParserBuildOptions) -> ParsecraftParser:
     """Build a parsecraft backend instance from the resolved build options.
 
-    The judge tier, effort, OCR permission and backend options are wired
+    The judge tier, OCR permission and backend options are wired
     through here so the config-level ``[ingest]`` routing inputs land on the
     parser without leaking into the router — the factory is the single point
     where ``ParserBuildOptions`` meets a backend-specific constructor.
@@ -984,10 +963,8 @@ def _factory(options: ParserBuildOptions) -> ParsecraftParser:
         parsecraft_judge=options.parsecraft_judge,
         parsecraft_judge_model=options.parsecraft_judge_model,
         parsecraft_preference=options.parsecraft_preference,
-        parsecraft_effort=options.parsecraft_effort,
         parsecraft_allow_ocr=options.parsecraft_allow_ocr,
         parsecraft_engines=options.parsecraft_engines,
-        parsecraft_extract_vector_graphics=options.parsecraft_extract_vector_graphics,
         parsecraft_preferred_backend=options.parsecraft_preferred_backend,
         parsecraft_only_backend=options.parsecraft_only_backend,
         parsecraft_backend_options=options.parsecraft_backend_options,

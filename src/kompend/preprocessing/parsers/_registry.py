@@ -17,7 +17,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final, TypedDict
 
-from kompend.core.config import ImageMode, ParsecraftEffort, ParsecraftJudge, ParsecraftPreference, ResolvedConfig
+from kompend.core.config import ImageMode, ParsecraftJudge, ParsecraftPreference, ResolvedConfig
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers.base import (
@@ -86,11 +86,6 @@ class ParserBuildOptions:
     #: Ranking axis: `speed` | `balanced` | `quality`. Maps to
     #: parsecraft's `RoutingPreference` and threads through every judge call.
     parsecraft_preference: ParsecraftPreference = ParsecraftPreference.BALANCED
-    #: MinerU conversion effort: `flash` | `medium` | `high` | `xhigh`. Maps to
-    #: parsecraft's `BackendConfig.options["effort"]` and is injected only when
-    #: non-default, because parsecraft hashes the options dict verbatim into the
-    #: conversion cache key.
-    parsecraft_effort: ParsecraftEffort = ParsecraftEffort.FLASH
     #: Whether parsecraft may lead a page with an OCR sub-backend. `None`
     #: (default) keeps parsecraft's own derivation from the installed extras and
     #: the host's usable engines; `False` bans OCR, `True` permits it.
@@ -98,9 +93,6 @@ class ParserBuildOptions:
     #: External engines parsecraft may use, overriding the probed set. Empty
     #: keeps the probe's answer.
     parsecraft_engines: list[str] = field(default_factory=list)
-    #: Whether liteparse recovers table structure from a page's vector graphics.
-    #: `None` leaves the backend option unset.
-    parsecraft_extract_vector_graphics: bool | None = None
     #: Backend ranked first where eligible; a preference, never a guarantee.
     parsecraft_preferred_backend: str | None = None
     #: Backend used exclusively; a hard pin, unreachable pages fail loudly.
@@ -136,10 +128,8 @@ class ParserBuildOptions:
             parsecraft_judge=kompend.ingest.parsecraft_judge,
             parsecraft_judge_model=kompend.ingest.parsecraft_judge_model,
             parsecraft_preference=kompend.ingest.parsecraft_preference,
-            parsecraft_effort=kompend.ingest.parsecraft_effort,
             parsecraft_allow_ocr=kompend.ingest.parsecraft_allow_ocr,
             parsecraft_engines=list(kompend.ingest.parsecraft_engines),
-            parsecraft_extract_vector_graphics=kompend.ingest.parsecraft_extract_vector_graphics,
             parsecraft_preferred_backend=kompend.ingest.parsecraft_preferred_backend,
             parsecraft_only_backend=kompend.ingest.parsecraft_only_backend,
             parsecraft_backend_options={backend: dict(options) for backend, options in kompend.ingest.parsecraft_backend_options.items()},

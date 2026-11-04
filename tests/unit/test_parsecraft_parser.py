@@ -57,7 +57,7 @@ from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
 from parsecraft.routing.models import Intent, PageRoute, RoutingPlan  # noqa: E402 — guarded by the importorskip above
 
-from kompend.core.config import ImageMode, ParsecraftEffort, ParsecraftJudge, ParsecraftPreference
+from kompend.core.config import ImageMode, ParsecraftJudge, ParsecraftPreference
 from kompend.core.models import ElementType
 from kompend.preprocessing.images import ImageStore
 from kompend.preprocessing.parsers import _registry as registry_module
@@ -760,107 +760,48 @@ class TestJudgeWiring:
         assert adapter.ParsecraftParser()._judge_name == "none"
 
 
-class TestEffortWiring:
-    """``[ingest] parsecraft_effort`` is read, validated and fingerprinted here.
+class TestEffortIsABackendOption:
+    """MinerU effort is a parsecraft backend option, not a kompend config key.
 
-    Until parsecraft's executor threads ``BackendConfig.options`` through
-    ``RoutingConstraints.backend_options``, the value is *configured-but-inert*:
-    validated by the schema, surfaced in the cache key, stored on the adapter,
-    but not yet reaching mineru's ``_effort()`` validator. The tests below pin
-    the kompend-side half of that contract so a vault operator flipping the knob
-    sees a real parse-cache invalidation and a real ``ValueError`` on a typo —
-    never a silent fall-back to ``flash``.
+    `[ingest] parsecraft_backend_options` is the single surface for backend
+    options: parsecraft owns the option names and their value domains, so kompend
+    must not mirror `effort` (or liteparse's `extract_vector_graphics`) as typed
+    fields. The cache identity follows the option dict, so flipping effort through
+    the option map still invalidates the parse.
     """
 
-    def test_default_effort_keeps_empty_routing_part(self) -> None:
+    def test_effort_reaches_backend_options_verbatim(self) -> None:
         adapter = _adapter()
-        assert _routing_part(adapter.ParsecraftParser()) == ""
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_effort="flash")) == ""
+        parser = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "high"}})
+        assert parser._backend_options() == {"mineru": {"effort": "high"}}
 
-    def test_non_default_effort_appends_an_effort_segment(self) -> None:
-        adapter = _adapter()
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_effort="medium")) == "effort:medium"
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_effort="high")) == "effort:high"
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_effort="xhigh")) == "effort:xhigh"
-
-    def test_effort_invalid_raises_value_error(self) -> None:
-        """A typo in effort must NOT silently fall back to ``flash`` — that would
-        strip a vault of the VLM recovery its user configured. See
-        ``_parse_effort`` for the rationale (mirrors parsecraft's own loud
-        validator at ``backends/mineru/_impl.py``).
+    def test_effort_changes_the_cache_identity(self) -> None:
+        """The option dict is part of the fingerprint, so a vault that raised
+        effort never serves a parse produced at the old setting.
         """
         adapter = _adapter()
-        with pytest.raises(ValueError, match="not a valid ParsecraftEffort"):
-            adapter.ParsecraftParser(parsecraft_effort="hgih")
-        with pytest.raises(ValueError, match="not a valid ParsecraftEffort"):
-            adapter.ParsecraftParser(parsecraft_effort="hi")
-        with pytest.raises(ValueError, match="not a valid ParsecraftEffort"):
-            adapter._parse_effort("flashy")
+        flash = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "flash"}})
+        high = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "high"}})
+        assert _routing_part(flash) != _routing_part(high)
+        assert "backend_options:" in _routing_part(high)
 
-    def test_effort_composes_with_preference(self) -> None:
-        """When two routing inputs are non-default they coexist as separate
-        segments joined by ``|``, so the cache key reflects the combination.
+    def test_an_unknown_option_value_is_forwarded_and_validated_upstream(self) -> None:
+        """Parsecraft owns the vocabulary; kompend forwards the value untouched.
+
+        Pre-validating here would put a second copy of parsecraft's option
+        domains in kompend — the duplication this design removes. The value
+        reaches ``BackendConfig.options`` verbatim and parsecraft's own
+        validator decides (loudly) whether it is real.
         """
         adapter = _adapter()
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="quality", parsecraft_effort="high")) == "preference:quality|effort:high"
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="speed", parsecraft_effort="xhigh")) == "preference:speed|effort:xhigh"
-
-    def test_effort_composes_with_a_live_judge(self) -> None:
-        """Effort is an independent segment regardless of judge tier — the
-        judge segment already encodes the preference axis, so effort slots in
-        *after* the judge tag without colliding.
-        """
-        adapter = _adapter()
-        parser = adapter.ParsecraftParser(
-            parsecraft_judge="ollama",
-            parsecraft_judge_model="parable-tinyjev",
-            parsecraft_preference="quality",
-            parsecraft_effort="high",
-        )
-        assert _routing_part(parser) == "judge:ollama/parable-tinyjev:quality|effort:high"
-
-    def test_effort_changes_the_router_fingerprint(self) -> None:
-        """The cache must invalidate when the operator flips effort, or a parse
-        produced at ``flash`` would silently serve under a future ``high`` request.
-        """
-        opts = registry_module.ParserBuildOptions
-        flash = registry_module.build_default_router(opts(parsecraft_effort=ParsecraftEffort.FLASH), name="parsecraft")
-        high = registry_module.build_default_router(opts(parsecraft_effort=ParsecraftEffort.HIGH), name="parsecraft")
-        xhigh = registry_module.build_default_router(opts(parsecraft_effort=ParsecraftEffort.XHIGH), name="parsecraft")
-        assert flash.fingerprint() != high.fingerprint()
-        assert high.fingerprint() != xhigh.fingerprint()
-        # Two separately built flash routers still hash identically — the
-        # neutral ``flash`` axis must not split the cache.
-        flash_again = registry_module.build_default_router(opts(parsecraft_effort=ParsecraftEffort.FLASH), name="parsecraft")
-        assert flash_again.fingerprint() == flash.fingerprint()
-        # And the default (no effort set) matches an explicitly-flash router.
-        default = registry_module.build_default_router(opts(), name="parsecraft")
-        assert default.fingerprint() == flash.fingerprint()
-
-    def test_build_options_carry_the_effort_config(self) -> None:
-        """Round-trip: ``ParserBuildOptions(parsecraft_effort=...)`` lands on the
-        ``ParsecraftParser._effort`` attribute via ``_factory``. A typo at the
-        factory boundary is caught by ``_parse_effort``, mirroring the schema's
-        ``Literal`` validation one layer up.
-        """
-        adapter = _adapter()
-        router = registry_module.build_default_router(
-            registry_module.ParserBuildOptions(parsecraft_effort=ParsecraftEffort.XHIGH),
-            name="parsecraft",
-        )
-        backend: Any = next(p for p in router._parsers if type(p).__name__ == "ParsecraftParser")  # noqa: SLF001 — parser identity is the contract
-        assert backend._effort == "xhigh"
-        # Default value at the dataclass level matches the schema default.
-        default_backend = adapter.ParsecraftParser()
-        assert default_backend._effort == "flash"
-        with pytest.raises(ValueError, match="not a valid ParsecraftEffort"):
-            adapter.ParsecraftParser(parsecraft_effort="ULTRA")
+        parser = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "ULTRA"}})
+        assert parser._backend_options() == {"mineru": {"effort": "ULTRA"}}
 
 
 class TestOcrWiring:
     """``[ingest] parsecraft_allow_ocr`` is read, fingerprinted and forwarded.
 
-    Unlike ``parsecraft_effort`` this one acts immediately: the adapter passes
+    Unlike backend options this one acts immediately: the adapter passes
     it straight into ``constraints_from_environment``, whose ``allow_ocr`` input
     the planner already honours. So the wiring is exercised end-to-end, not just
     stored.
@@ -876,10 +817,14 @@ class TestOcrWiring:
         assert _routing_part(adapter.ParsecraftParser(parsecraft_allow_ocr=True)) == "ocr:on"
         assert _routing_part(adapter.ParsecraftParser(parsecraft_allow_ocr=False)) == "ocr:off"
 
-    def test_ocr_composes_with_effort_and_preference(self) -> None:
+    def test_ocr_composes_with_preference_and_backend_options(self) -> None:
         adapter = _adapter()
-        parser = adapter.ParsecraftParser(parsecraft_preference="quality", parsecraft_effort="high", parsecraft_allow_ocr=False)
-        assert _routing_part(parser) == "preference:quality|effort:high|ocr:off"
+        parser = adapter.ParsecraftParser(
+            parsecraft_preference="quality",
+            parsecraft_allow_ocr=False,
+            parsecraft_backend_options={"mineru": {"effort": "high"}},
+        )
+        assert _routing_part(parser) == "preference:quality|ocr:off|backend_options:mineru:effort=high"
 
     def test_allow_ocr_changes_the_router_fingerprint(self) -> None:
         """Flipping OCR permission changes which backend may lead, so the parse
@@ -978,26 +923,51 @@ class TestBackendOptions:
         adapter = _adapter()
         assert adapter.ParsecraftParser()._backend_options() == {}
 
-    def test_effort_injected_only_when_non_default(self) -> None:
+    def test_a_user_option_passes_through_verbatim(self) -> None:
+        """Parsecraft owns the option names, so kompend forwards them unchanged."""
         adapter = _adapter()
-        assert adapter.ParsecraftParser(parsecraft_effort="flash")._backend_options() == {}
-        assert adapter.ParsecraftParser(parsecraft_effort="high")._backend_options() == {"mineru": {"effort": "high"}}
+        parser = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "high"}})
+        assert parser._backend_options() == {"mineru": {"effort": "high"}}
 
-    def test_vector_graphics_injected_when_set(self) -> None:
+    def test_two_backends_land_in_one_dict(self) -> None:
         adapter = _adapter()
-        assert adapter.ParsecraftParser()._backend_options() == {}
-        on = adapter.ParsecraftParser(parsecraft_extract_vector_graphics=True)._backend_options()
-        assert on == {"liteparse": {"extract_vector_graphics": True}}
-        off = adapter.ParsecraftParser(parsecraft_extract_vector_graphics=False)._backend_options()
-        assert off == {"liteparse": {"extract_vector_graphics": False}}
-
-    def test_both_land_in_one_dict(self) -> None:
-        adapter = _adapter()
-        parser = adapter.ParsecraftParser(parsecraft_effort="xhigh", parsecraft_extract_vector_graphics=True)
+        parser = adapter.ParsecraftParser(
+            parsecraft_backend_options={
+                "mineru": {"effort": "xhigh"},
+                "liteparse": {"extract_vector_graphics": True},
+            }
+        )
         assert parser._backend_options() == {
             "mineru": {"effort": "xhigh"},
             "liteparse": {"extract_vector_graphics": True},
         }
+
+    def test_extract_images_is_derived_from_the_image_mode(self, tmp_path: Path) -> None:
+        """A run that stores figures asks the backend for them; nothing else does.
+
+        ``liteparse`` leads the default route for a text PDF and its engine only
+        crops images when asked, so an unset option is what made the figure
+        pipeline silently empty. The mode is the only input: asking for figures
+        while storing none would pay the crop cost for nothing.
+        """
+        adapter = _adapter()
+        file_mode = adapter.ParsecraftParser(images_dir=tmp_path, image_mode=ImageMode.FILE)
+        assert file_mode._backend_options() == {"liteparse": {"extract_images": True}}
+        base64_mode = adapter.ParsecraftParser(images_dir=tmp_path, image_mode=ImageMode.BASE64)
+        assert base64_mode._backend_options() == {"liteparse": {"extract_images": True}}
+        assert adapter.ParsecraftParser(images_dir=tmp_path, image_mode=ImageMode.NONE)._backend_options() == {}
+        # No cache directory means no place to put a crop, so none is requested.
+        assert adapter.ParsecraftParser(images_dir=None, image_mode=ImageMode.FILE)._backend_options() == {}
+
+    def test_a_user_option_wins_over_the_derived_image_flag(self, tmp_path: Path) -> None:
+        """`[ingest.parsecraft_backend_options]` is the escape hatch, not a casualty."""
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser(
+            images_dir=tmp_path,
+            image_mode=ImageMode.FILE,
+            parsecraft_backend_options={"liteparse": {"extract_images": False}},
+        )
+        assert parser._backend_options() == {"liteparse": {"extract_images": False}}
 
     def test_options_reach_the_constraints(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """End-to-end: the built dict must be handed to ``constraints_from_environment``."""
@@ -1012,7 +982,7 @@ class TestBackendOptions:
         monkeypatch.setattr(adapter, "constraints_from_environment", spy)
         parser.parse(markdown_file)
         assert seen[-1] == {}
-        adapter.ParsecraftParser(parsecraft_effort="high").parse(markdown_file)
+        adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "high"}}).parse(markdown_file)
         assert seen[-1] == {"mineru": {"effort": "high"}}
 
 
@@ -1030,10 +1000,12 @@ class TestEnginesWiring:
         parser = adapter.ParsecraftParser(parsecraft_engines=["mineru", "marker"])
         assert _routing_part(parser) == "engines:marker,mineru"
 
-    def test_vector_graphics_segment_only_when_set(self) -> None:
+    def test_backend_options_segment_only_when_set(self) -> None:
         adapter = _adapter()
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_extract_vector_graphics=True)) == "vector_graphics:on"
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_extract_vector_graphics=False)) == "vector_graphics:off"
+        on = adapter.ParsecraftParser(parsecraft_backend_options={"liteparse": {"extract_vector_graphics": True}})
+        assert _routing_part(on) == "backend_options:liteparse:extract_vector_graphics=True"
+        off = adapter.ParsecraftParser(parsecraft_backend_options={"liteparse": {"extract_vector_graphics": False}})
+        assert _routing_part(off) == "backend_options:liteparse:extract_vector_graphics=False"
 
     def test_engines_reach_the_constraints(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         adapter = _adapter()
@@ -1161,7 +1133,7 @@ class TestIgnoredBackendOptions:
         monkeypatch.setattr(adapter, "_winning_backends", lambda groups: "pdf-inspector")
         monkeypatch.setattr(adapter, "_serves_format", lambda name, media_type: True)
         with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
-            adapter.ParsecraftParser(parsecraft_extract_vector_graphics=True).parse(markdown_file)
+            adapter.ParsecraftParser(parsecraft_backend_options={"liteparse": {"extract_vector_graphics": True}}).parse(markdown_file)
         messages = [r.getMessage() for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
         assert len(messages) == 1, messages
         assert "liteparse" in messages[0]
@@ -1182,7 +1154,7 @@ class TestIgnoredBackendOptions:
         assert not adapter._serves_format("liteparse", "text/markdown")
         monkeypatch.setattr(adapter, "_winning_backends", lambda groups: "native-markdown")
         with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
-            adapter.ParsecraftParser(parsecraft_extract_vector_graphics=True).parse(markdown_file)
+            adapter.ParsecraftParser(parsecraft_backend_options={"liteparse": {"extract_vector_graphics": True}}).parse(markdown_file)
         assert not [r for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
 
     def test_silent_for_a_default_run(

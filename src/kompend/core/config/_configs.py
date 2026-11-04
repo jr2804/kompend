@@ -131,20 +131,6 @@ class OutputFormat(StrEnum):
     TYPST = "typst"
 
 
-class ParsecraftEffort(StrEnum):
-    """Conversion effort for the MinerU sub-backend.
-
-    Maps to parsecraft's ``effort`` option. ``flash`` is the verified default
-    (text PDFs, weight-free CPU work); ``high`` and ``xhigh`` engage the VLM path
-    and load MinerU's checkpoint.
-    """
-
-    FLASH = "flash"
-    MEDIUM = "medium"
-    HIGH = "high"
-    XHIGH = "xhigh"
-
-
 class ParsecraftJudge(StrEnum):
     """Judge-tier routing for the parsecraft backend.
 
@@ -799,18 +785,6 @@ class IngestConfig(_KompendBaseModel):
             "default tiebreak — a per-page intent re-ranks over the eligible candidates regardless."
         ),
     )
-    parsecraft_effort: ParsecraftEffort = Field(
-        default=ParsecraftEffort.FLASH,
-        validation_alias=EnvVar.INGEST_PARSECRAFT_EFFORT,
-        description=(
-            "Conversion effort for the MinerU sub-backend. Maps to parsecraft's `effort` backend option "
-            "(`MineruEffort`). `flash` is the verified default (text PDFs, weight-free CPU work). `high` "
-            "and `xhigh` engage the VLM path and emit equations, tables and figure captions at markedly "
-            "higher recovery; they also load MinerU's VLM checkpoint and want a GPU. The value is forwarded "
-            "to parsecraft as a per-backend constructor option and injected only when non-default, so an "
-            "explicit `flash` does not churn the conversion cache."
-        ),
-    )
     parsecraft_allow_ocr: bool | None = Field(
         default=None,
         validation_alias=EnvVar.INGEST_PARSECRAFT_ALLOW_OCR,
@@ -830,17 +804,6 @@ class IngestConfig(_KompendBaseModel):
             "keeps the probe's answer. Names are parsecraft's own engine ids (`marker`, `mineru`, …) — open "
             "capability data, so they are not a closed value domain here; the env form is a comma-separated "
             "list. The value is part of the parse-cache fingerprint, so changing it re-parses."
-        ),
-    )
-    parsecraft_extract_vector_graphics: bool | None = Field(
-        default=None,
-        validation_alias=EnvVar.INGEST_PARSECRAFT_EXTRACT_VECTOR_GRAPHICS,
-        description=(
-            "Ask the liteparse backend to recover table structure from a page's vector graphics. Unset "
-            "(`None`) leaves the option unset; `true` enables the pass, which populates "
-            "`StructuredChunk.rows` so a table reaches kompend as `list[list[str]]` instead of Markdown. "
-            "Pages without vector records still yield no TABLE chunks, and the option is inert on pages "
-            "another backend serves."
         ),
     )
     parsecraft_preferred_backend: str | None = Field(

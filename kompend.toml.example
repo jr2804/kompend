@@ -76,21 +76,12 @@ file = "NOTES.md"
 # Env: KOMP_INGEST_PARSECRAFT_PREFERENCE
 # parsecraft_preference = "balanced"  # speed, quality
 #
-# MinerU conversion effort. The validated set mirrors parsecraft's own
-# `BackendConfig.options["effort"]` choices:
-#   flash    — verified default; weight-free CPU work on text PDFs.
-#   medium   — intermediate; loads parts of the MinerU pipeline.
-#   high     — VLM path; emits equations, tables and figure captions that
-#              `flash` skips. Loads MinerU's VLM checkpoint (~1.2B params).
-#   xhigh    — VLM path at the highest quality setting.
-# `flash` is the schema default. The value is read, validated and fingerprinted
-# at construction, and it reaches the mineru backend as
-# `BackendConfig.options["effort"]` through `RoutingConstraints.backend_options`.
-# It is inert for every other backend - a page the router sends to docling
-# ignores it, and the parse tier says so once per run.
-# Env: KOMP_INGEST_PARSECRAFT_EFFORT
-# parsecraft_effort = "flash"  # medium, high, xhigh
-#
+# MinerU conversion effort belongs to parsecraft's backend options, not to
+# kompend: write it under parsecraft_backend_options (see below).
+#   effort = { mineru = { effort = "high" } }
+#   flash — weight-free CPU work on text PDFs (parsecraft's default)
+#   medium / high / xhigh — MinerU's pipeline; high and xhigh engage its VLM
+#                           path and load the ~1.2B VLM checkpoint
 # Whether parsecraft may route a page to an OCR sub-backend.
 #   unset (default) — parsecraft derives it: OCR is permitted when an `ocr-*`
 #                     extra is installed OR the host has a usable OCR engine.
@@ -107,14 +98,6 @@ file = "NOTES.md"
 # closed enum. The env form is a comma-separated list.
 # Env: KOMP_INGEST_PARSECRAFT_ENGINES
 # parsecraft_engines = ["mineru", "marker"]
-#
-# Ask liteparse to recover table structure from a page's vector graphics.
-# With it on, parsecraft populates StructuredChunk.rows and a table arrives
-# as structured list[list[str]] instead of a Markdown grid. A page with no
-# vector records still yields no table, and the option is inert on pages
-# another backend serves.
-# Env: KOMP_INGEST_PARSECRAFT_EXTRACT_VECTOR_GRAPHICS
-# parsecraft_extract_vector_graphics = true
 #
 # Backend override — rank one backend first where it is eligible, or pin the
 # document to one exclusively. parsecraft owns routing; this passes a single
@@ -134,11 +117,17 @@ file = "NOTES.md"
 
 # Per-backend options forwarded to parsecraft, e.g.
 #   {backend_name: {option_key: option_value}}
-# Keys must match parsecraft's registered backends; values are
-# str | int | float | bool. A user option wins over the option kompend
-# derives from the other [ingest] keys. Part of the parse-cache fingerprint.
+# THIS IS THE ONLY PLACE A BACKEND OPTION IS WRITTEN. parsecraft owns the
+# option names and their value domains; kompend forwards the map verbatim into
+# `RoutingConstraints.backend_options` and never re-declares an option as a key
+# of its own (`effort`, `extract_vector_graphics` and friends used to exist here
+# as duplicated typed fields - do not reintroduce that). Keys must match
+# parsecraft's registered backends; values are str | int | float | bool. A user
+# option wins over the one kompend derives from the image mode
+# (`liteparse.extract_images`). Part of the parse-cache fingerprint.
 # Env: KOMP_INGEST_PARSECRAFT_BACKEND_OPTIONS
 # parsecraft_backend_options = { mineru = { effort = "high" } }
+# parsecraft_backend_options = { liteparse = { extract_vector_graphics = true } }
 
 # ── Ingest safety net ──────────────────────────────────────────────────
 # Wall-clock budget for parsing ONE source, in seconds. 0 (default) parses

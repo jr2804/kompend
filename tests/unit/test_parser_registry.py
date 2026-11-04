@@ -15,7 +15,7 @@ from typing import cast
 
 import pytest
 
-from kompend.core.config import ParsecraftEffort, resolve_config
+from kompend.core.config import resolve_config
 from kompend.core.models import ParsedDocument
 from kompend.core.models.elements import DocumentElement
 from kompend.core.models.enums import ElementType
@@ -74,10 +74,8 @@ def test_parser_build_options_defaults() -> None:
     assert opts.parsecraft_judge == "none"
     assert opts.parsecraft_judge_model == ""
     assert opts.parsecraft_preference == "balanced"
-    assert opts.parsecraft_effort == "flash"
     assert opts.parsecraft_allow_ocr is None
     assert opts.parsecraft_engines == []
-    assert opts.parsecraft_extract_vector_graphics is None
     assert opts.parsecraft_backend_options == {}
 
 
@@ -101,14 +99,13 @@ def test_backend_options_are_merged_over_the_derived_ones() -> None:
     """A user option wins over the adapter's derived default for the same key."""
     parser = ParsecraftParser(
         registry=None,
-        parsecraft_effort=ParsecraftEffort.HIGH,
-        parsecraft_backend_options={"mineru": {"effort": "medium", "extra": 1}},
+        parsecraft_backend_options={"liteparse": {"extract_images": False, "extra": 1}},
     )
 
     options = parser._backend_options()  # noqa: SLF001 — the merged options are the contract
 
-    assert options["mineru"]["effort"] == "medium"
-    assert options["mineru"]["extra"] == 1
+    assert options["liteparse"]["extract_images"] is False
+    assert options["liteparse"]["extra"] == 1
 
 
 @pytest.mark.parametrize(
