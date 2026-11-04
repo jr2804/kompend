@@ -22,8 +22,7 @@ the waiver: it states why this site is legitimate.
 
 | Who | When | What |
 |-----|------|------|
-| Project maintainer | Adding a new verification tool | Verification section |
-| Project maintainer | Adding a new enforcement script | Enforcement table |
+| Project maintainer | Adding a new verification tool | Verification section || Project maintainer | Adding a new enforcement script | Enforcement table |
 | Project maintainer | Adding a new checklist item | New Code Checklist |
 
 The new-code checklist itself lives once, in the project section below.
@@ -37,8 +36,7 @@ The new-code checklist itself lives once, in the project section below.
 - Run `ruff check` on changed Python files before committing
 - Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
 - Run `uv run pytest tests/integration -x --timeout=30` for integration tests (no real-engine calls — must be fast)
-- Run `ty check src/kompend` for type checking (mypy is not used)
-- Run `uv run python scripts/checks/all.py` - the single entry point for every gate
+- Run `ty check src/kompend` for type checking (mypy is not used)- Run `uv run python scripts/checks/all.py` - the single entry point for every gate; run one directly for its detail
 - Run `uv run pytest tests/smoke` after touching the CLI surface: it spawns the real `kompend` (init, config check, status, doctor, lint show, empty-vault compile) and fails on a traceback
 - Verify `kompend.toml.example` stays in sync with `DEFAULTS` when adding config keys
 - After changing `src/kompend/core/paths.py`, verify no hard-coded path strings
@@ -46,11 +44,6 @@ The new-code checklist itself lives once, in the project section below.
 - After changing CLI commands, MCP tools, config keys, or output format, check
   `skills/kompend/SKILL.md` for stale or missing info
 - Run `uv run mkdocs build --strict` when changing documentation files
-
-Individual gates (`check_antipatterns`, `check_enum_cache`, `check_config_literals`,
-`check_cli_surface`, `check_field_consistency`, `check_persisted_paths`) are
-listed with what each catches under **Enforcement scripts**; run one directly to
-see its detail, or `all.py` for the whole set.
 
 ### New Code Checklist
 
@@ -101,16 +94,20 @@ the two AST gates.
 
 ### Gate exit codes
 
-The generic rule above ("a scan that finds no files is an error") has three
+The generic rule above ("a scan that finds no files is an error") has four
 more faces. A gate asserts each before reporting success:
 
 - **Facts** — a rule deciding by facts read elsewhere (declared dependencies, an
-  import→distribution map, a schema) exits 2 when they are unavailable. An
+  import→distribution map, a schema) exits 2 when they are unavailable: an
   empty fact set is "unknown", not "none". `require_facts` sees a count, not a
-  shape: it is correct only where zero is impossible, so each caller needs a
-  test that empties that fact and asserts exit 2.
-- **Errors** — an unreadable or unparseable input exits 2; `except X: return []`
+  shape, so each caller needs a test that empties that fact and asserts exit 2.- **Errors** — an unreadable or unparseable input exits 2; `except X: return []`
   inside a gate disarms it silently. A scan error is no finding and no pass.
+- **Circular evidence** — a probe must not share the assumption it is testing.
+  `callable(info.default)` "showed" no config field used a factory while that
+  same test WAS the bug (a factory leaves `PydanticUndefined`, not a callable),
+  so it confirmed the defect instead of measuring it. Ask what the predicate
+  reports if the assumption is false; "the same" means it tests nothing.
+  Emptiness checks cannot catch this — it is how a reassuring answer is born.
 - **Codes** — `0` clean, `1` violations, `2` could not establish what it needs
   to judge. Never `0` for the last case.
 
