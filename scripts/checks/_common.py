@@ -52,6 +52,16 @@ def require_facts(count: int, what: str, remedy: str) -> None:
 
     *remedy* must name the fix; an unactionable error is only slightly better
     than a false pass.
+
+    Precondition: call this only where zero is *never* a legitimate answer.
+    Zero has three meanings and this helper can only see the count —
+    "declares none" (an honest empty list), "not applicable" (a virtual
+    workspace root with no ``[project]`` table) and "could not derive it".
+    Passing the first two here trades a silent pass for a loud false alarm,
+    so a caller whose facts can legitimately be empty must check the shape
+    first and abort itself. Every current call site derives from a source
+    that cannot honestly be empty (config models, the cache-enum registry,
+    the CLI command tree).
     """
     if count > 0:
         return

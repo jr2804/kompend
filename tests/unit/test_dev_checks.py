@@ -110,6 +110,30 @@ def test_import_error_guard_ignores_an_import_inside_the_handler() -> None:
     assert len(module.scan_import_error_guards(Path("a.py"), real_guard)) == 1
 
 
+def test_require_facts_documents_its_precondition() -> None:
+    """Zero has three meanings; the helper can only see the count.
+
+    "declares none" (an honest empty list) and "not applicable" (a virtual
+    workspace root with no [project] table) must NOT be funnelled through
+    require_facts, or a silent pass becomes a loud false alarm.
+    """
+    sys.path.insert(0, str(CHECKS))
+    try:
+        common = importlib.import_module("_common")
+    finally:
+        sys.path.pop(0)
+
+    doc = common.require_facts.__doc__ or ""
+    assert "declares none" in doc
+    assert "not applicable" in doc
+    assert "shape" in doc
+
+    # The three current callers all derive from a registry that cannot
+    # honestly be empty, which is what makes the guard correct at those sites.
+    for script in ("check_config_literals.py", "check_enum_cache.py", "check_mcp_parity.py"):
+        assert "require_facts" in (CHECKS / script).read_text(encoding="utf-8")
+
+
 def test_a_rule_with_no_facts_refuses_to_judge(monkeypatch: pytest.MonkeyPatch) -> None:
     """Empty facts must abort: no facts, no verdict.
 
