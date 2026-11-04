@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from _common import repo_root
+from _common import repo_root, require_facts
 
 from kompend.core import keys as key_constants
 from kompend.core.config._configs import (
@@ -55,6 +55,12 @@ def main() -> int:
 
     defaults = _config_defaults()
     dotted = _dotted_keys()
+    # Empty facts make every literal look unique, which reads as a clean run.
+    try:
+        require_facts(len(defaults), "config defaults", "Check CONFIG_MODELS: the config models moved or stopped exporting defaults.")
+        require_facts(len(dotted), "dotted config keys", "Check core/keys.py: the dotted-key constants moved or were renamed.")
+    except SystemExit as exc:
+        return int(exc.code)
     findings: list[str] = []
     for path in files:
         findings.extend(_scan(path, defaults, dotted))

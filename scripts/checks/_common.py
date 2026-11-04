@@ -13,7 +13,7 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-__all__ = ["repo_root", "require_scanned"]
+__all__ = ["repo_root", "require_facts", "require_scanned"]
 
 
 def repo_root() -> Path:
@@ -35,6 +35,28 @@ def require_scanned(count: int, roots: Iterable[Path]) -> None:
     joined = ", ".join(str(root) for root in roots)
     print(
         f"ERROR: nothing to scan under {joined} — refusing to report success",
+        file=sys.stderr,
+    )
+    raise SystemExit(2)
+
+
+def require_facts(count: int, what: str, remedy: str) -> None:
+    """Abort when a rule's *facts* came back empty — no facts, no verdict.
+
+    Distinct from :func:`require_scanned`, and needed for the same reason one
+    level deeper: a gate that reads its files but derives its judgement from an
+    empty fact set reports the *absence of facts* as the absence of violations.
+    A glob that matched nothing, a registry that moved, a config model that
+    stopped exporting defaults — none of them raises, all of them disarm the
+    rule silently.
+
+    *remedy* must name the fix; an unactionable error is only slightly better
+    than a false pass.
+    """
+    if count > 0:
+        return
+    print(
+        f"ERROR: could not collect any {what} — the scan would report every violation as absent. {remedy}",
         file=sys.stderr,
     )
     raise SystemExit(2)

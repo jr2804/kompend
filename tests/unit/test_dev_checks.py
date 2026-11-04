@@ -9,6 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -107,6 +108,45 @@ def test_import_error_guard_ignores_an_import_inside_the_handler() -> None:
 
     assert module.scan_import_error_guards(Path("a.py"), handler_only) == []
     assert len(module.scan_import_error_guards(Path("a.py"), real_guard)) == 1
+
+
+def test_a_rule_with_no_facts_refuses_to_judge(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Empty facts must abort: no facts, no verdict.
+
+    The check_persisted_paths shape, one level deeper — the scan reads its
+    files but derives its judgement from an empty fact set, so it reports the
+    absence of facts as the absence of violations.
+    """
+    _antipatterns()
+    common = importlib.import_module("_common")
+
+    with pytest.raises(SystemExit) as exc_info:
+        common.require_facts(0, "widgets", "Fix: rebuild the widget registry.")
+
+    assert exc_info.value.code == 2
+
+    # And a non-empty set is a pass-through, not a no-op that always raises.
+    assert common.require_facts(3, "widgets", "Fix: n/a") is None
+
+
+def test_fact_fed_gates_abort_when_their_facts_vanish(tmp_path: Path) -> None:
+    """All three fact-fed gates return 2 when their fact source is empty."""
+    sys.path.insert(0, str(CHECKS))
+    try:
+        config_literals = importlib.import_module("check_config_literals")
+        enum_cache = importlib.import_module("check_enum_cache")
+        parity = importlib.import_module("check_mcp_parity")
+    finally:
+        sys.path.pop(0)
+
+    with mock.patch.object(config_literals, "_config_defaults", return_value={}):
+        assert config_literals.main() == 2
+
+    with mock.patch.object(enum_cache.store, "_CACHE_DATACLASSES", {}):
+        assert enum_cache.main() == 2
+
+    with mock.patch.object(parity, "get_cli_commands", return_value=[]):
+        assert parity.main() == 2
 
 
 def test_a_missing_project_root_is_not_a_pass(tmp_path: Path) -> None:
