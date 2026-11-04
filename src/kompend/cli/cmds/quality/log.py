@@ -1,6 +1,6 @@
 """``kompend log`` — regenerate the pipeline log report on demand.
 
-The human-readable ``log.md`` is no longer auto-written during builds.
+``log.md`` is produced here, on demand, never by a build.
 This command rebuilds it from the structured stores (the ``runs``,
 ``lint_runs``, and ``wiki_snapshot`` tables in ``.kompend/kompend.db``) and prints it, or
 writes it to ``.kompend/log.md`` with ``--write``.

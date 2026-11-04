@@ -245,18 +245,16 @@ def _harden_console_streams() -> None:
     ``errno 9`` / ``winerror 6``. Unwrapped, that kills rich's refresh thread,
     escapes through the logger into the pipeline, and finally makes
     ``Py_FinalizeEx``'s flush fail — CPython's exit status 120, thrown away
-    without a traceback (captured live on 2026-11-04: 1468 consecutive failed
-    stderr writes while the pipeline itself kept running).
+    without a traceback.
 
     The cause is not a lost console but a *rebound* one: a backend that captures
     native engine output re-points file descriptor 2 with ``os.dup2`` for the
     duration of a conversion, and the C-level stream bound to the old handle
-    value never recovers (reproduced with 12 lines of stdlib, 2026-11-04).
-    Python's buffered stream caches its handle at startup, so the proxy reopens
-    a fresh stream over the *current* descriptor — the console comes back
-    instead of going quiet for the rest of the run. If the descriptor is really
-    gone the death is absorbed and noted once; the vault, not the terminal, is
-    the run's real output.
+    value never recovers. Python's buffered stream caches its handle at startup,
+    so the proxy reopens a fresh stream over the *current* descriptor — the
+    console comes back instead of going quiet for the rest of the run. If the
+    descriptor is really gone the death is absorbed and noted once; the vault,
+    not the terminal, is the run's real output.
     """
     if isinstance(sys.stdout, _HardenedStream):
         return

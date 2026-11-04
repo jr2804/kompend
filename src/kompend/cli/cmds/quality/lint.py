@@ -116,7 +116,7 @@ def lint_check(
     links are rewritten to resolved markdown links, image embeds corrected,
     missing frontmatter filled. Destructive fixes (file deletion, e.g.
     orphan-attachments) require an explicit --fix-destructive — plain
-    --fix never deletes files (p863 wiki roundup 2026-09-10).
+    --fix never deletes files.
 
     Examples:
         kompend lint check                  # structural rules, fix what's possible
@@ -253,8 +253,7 @@ def lint_all(
     | remediate | generate missing pages from extractions | yes |
 
     Destructive fixes (file deletion, e.g. orphan-attachments) require an
-    explicit --fix-destructive — plain --fix never deletes files
-    (p863 wiki roundup 2026-09-10).
+    explicit --fix-destructive — plain --fix never deletes files.
 
     LLM steps are skipped gracefully (with a note) when no model is
     configured (compile.lint.model / compile.llm.default_model).

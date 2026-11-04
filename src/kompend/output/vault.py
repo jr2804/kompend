@@ -262,8 +262,8 @@ class VaultWriter(BaseOutputWriter):
         # Per-node frontmatter overrides config defaults.
         frontmatter.update(meta_dict(node.metadata.get(MetadataField.FRONTMATTER)))
 
-        # OKF v0.2 consolidation: the node ``frontmatter`` override is a legacy
-        # escape hatch and may carry v0.1 bare-string ``sources`` (filename
+        # The per-node ``frontmatter`` override is an escape hatch and may
+        # carry v0.1 bare-string ``sources`` (filename
         # stems) or ``tags`` overloaded with provenance. Drop both so the only
         # ``sources`` that survives is the structured §5.1 list passed in below,
         # and ``tags`` stays topic-only (provenance stems live in ``source_files``).
@@ -280,8 +280,8 @@ class VaultWriter(BaseOutputWriter):
         # OKF lifecycle (§5.4): default stable; absence ⇒ stable per spec.
         frontmatter.setdefault(OkfField.STATUS, _DEFAULT_STATUS)
         # OKF tags (§4.1): cross-cutting topic tags from compilation.
-        # Source-filename provenance no longer overloads ``tags``; it lives in
-        # the ``source_files`` extension to match OKF v0.2 semantics.
+        # Source-filename provenance lives in the ``source_files`` extension (OKF
+        # v0.2 semantics), never in ``tags``.
         if node_tags:
             merged_tags = sorted(set(frontmatter.get(OkfField.TAGS, [])) | {str(t) for t in node_tags})
             frontmatter[OkfField.TAGS] = merged_tags
@@ -860,9 +860,8 @@ class VaultWriter(BaseOutputWriter):
 def okf_frontmatter_yaml(frontmatter: dict[str, Any]) -> str:
     """Render frontmatter as YAML without anchors/aliases.
 
-    Deprecated alias — the implementation moved to
-    :func:`kompend.output.frontmatter.okf_frontmatter_yaml` so the capture
-    writers can use it without importing this module's dependencies.
+    Thin alias of :func:`kompend.output.frontmatter.okf_frontmatter_yaml`, so
+    capture writers can call it without this module's dependencies.
     """
     return _okf_frontmatter_yaml(frontmatter)
 

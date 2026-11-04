@@ -65,9 +65,8 @@ class LintRunner:
         #: Destructive fixes (file deletion) require explicit opt-in — the
         #: post-compile lint and default ``kompend lint check`` pass ``fix=True``
         #: but NOT this flag, so rules marked ``destructive`` only report.
-        #: See p863 wiki roundup 2026-09-10: the orphan-attachments fix
-        #: deleted 248 valid files because the slug check falsely flagged
-        #: them and ``fix=True`` auto-ran the deletion.
+        #: See the orphan-attachments rule: ``fix=True`` once auto-ran its
+        #: deletion and removed 248 valid files.
         self.fix_destructive = fix_destructive
         self.sources_dir = sources_dir
         self._lint_config = lint_config

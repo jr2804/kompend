@@ -109,8 +109,8 @@ _DDL: Final[tuple[str, ...]] = (
         created_at TEXT NOT NULL
     )
     """,
-    # Parsed-document cache (was cache/<stem>-<content-hash>.json). Keyed by the
-    # discriminator so same-stem files with different content never collide.
+    # Parsed-document cache. Keyed by the content discriminator so same-stem
+    # files with different content never collide.
     f"""
     CREATE TABLE IF NOT EXISTS {DOCUMENTS_TABLE} (
         cache_key TEXT PRIMARY KEY,
@@ -310,15 +310,15 @@ _DDL: Final[tuple[str, ...]] = (
         folder_name TEXT NOT NULL
     )
     """,
-    # URL download dedup (was cache/downloaded.json): flat url -> content hash.
+    # URL download dedup: flat url -> content hash.
     f"""
     CREATE TABLE IF NOT EXISTS {DOWNLOADED_TABLE} (
         url TEXT PRIMARY KEY,
         sha256 TEXT NOT NULL
     )
     """,
-    # ``kompend organize`` report (was last_organize.json). Tree/move lists are
-    # nested, so they stay JSON; dry_run and time are queryable scalars.
+    # ``kompend organize`` report. Tree/move lists are nested, so they stay JSON;
+    # dry_run and time are queryable scalars.
     f"""
     CREATE TABLE IF NOT EXISTS {ORGANIZE_REPORTS_TABLE} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -329,8 +329,8 @@ _DDL: Final[tuple[str, ...]] = (
         link_updates TEXT NOT NULL DEFAULT '{{}}'
     )
     """,
-    # Claim/citation verification report (was verification.json). Summary counts
-    # are scalars; the per-claim list is JSON.
+    # Claim/citation verification report. Summary counts are scalars; the
+    # per-claim list is JSON.
     f"""
     CREATE TABLE IF NOT EXISTS {VERIFICATION_TABLE} (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -342,7 +342,7 @@ _DDL: Final[tuple[str, ...]] = (
         claims TEXT NOT NULL DEFAULT '[]'
     )
     """,
-    # Private-page index (was private.json): one row per withheld page.
+    # Private-page index: one row per withheld page.
     f"""
     CREATE TABLE IF NOT EXISTS {PRIVATE_PAGES_TABLE} (
         id TEXT PRIMARY KEY,
@@ -350,8 +350,7 @@ _DDL: Final[tuple[str, ...]] = (
         saved_at TEXT NOT NULL DEFAULT ''
     )
     """,
-    # Per-node provenance (was the provenance/ directory of <id>.json files):
-    # one row per node, citations as a JSON list.
+    # Per-node provenance: one row per node, citations as a JSON list.
     f"""
     CREATE TABLE IF NOT EXISTS {PROVENANCE_TABLE} (
         node_id TEXT PRIMARY KEY,
@@ -369,8 +368,8 @@ _DDL: Final[tuple[str, ...]] = (
         content BLOB NOT NULL
     )
     """,
-    # Review-queue state (was review/_state.json). The human-editable queue
-    # markdown stays on disk; only the approve/reject decisions move here.
+    # Review-queue state. The human-editable queue markdown stays on disk; only
+    # the approve/reject decisions live here.
     f"""
     CREATE TABLE IF NOT EXISTS {REVIEW_STATE_TABLE} (
         slug TEXT PRIMARY KEY,
@@ -381,9 +380,9 @@ _DDL: Final[tuple[str, ...]] = (
         saved_at TEXT NOT NULL DEFAULT ''
     )
     """,
-    # Vector-branch manifest (was vectors.manifest.json): the indexed id set,
-    # their content hashes and the embed-text version of the last build, used to
-    # detect a stale vector store. Single row, id = 1, like schema_version.
+    # Vector-branch manifest: the indexed id set, their content hashes and the
+    # embed-text version of the last build, used to detect a stale vector store.
+    # Single row, id = 1, like schema_version.
     f"""
     CREATE TABLE IF NOT EXISTS {VECTOR_MANIFEST_TABLE} (
         id INTEGER PRIMARY KEY CHECK (id = 1),

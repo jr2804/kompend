@@ -66,9 +66,8 @@ from kompend.logging import get_logger
 # the base URL (the OpenAI SDK appends ``/chat/completions`` to it).
 OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
 
-#: Ollama's server-wide default context length. Renamed from ``OLLAMA_NUM_CTX``
-#: (the old name is gone from the server: ollama 0.35.0 has zero references to
-#: it, one to this name), so reading the old one silently did nothing.
+#: Ollama's server-wide default context length. ``OLLAMA_NUM_CTX`` is not an
+#: alias — the server ignores it, so reading it silently does nothing.
 OLLAMA_CONTEXT_LENGTH_ENV = "OLLAMA_CONTEXT_LENGTH"
 
 # Placeholder satisfies the OpenAI SDK's non-empty api_key requirement for

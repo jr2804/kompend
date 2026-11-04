@@ -75,10 +75,9 @@ _IMAGE_EMBED_RE = re.compile(
 
 #: Threshold above which a broken wikilink is treated as a SHORT-FORM alias
 #: (severity WARNING, the suggested alias is attached) instead of a hard
-#: failure (severity ERROR). Lowered from the default best_match threshold
-#: (0.85) because the p863 wiki roundup showed most "broken" wikilinks
-#: were intentional short-form aliases emitted by small models — the lint
-#: should surface these as guidance, not block the run.
+#: failure (severity ERROR). Below the default best_match threshold (0.85)
+#: because most "broken" wikilinks are intentional short-form aliases emitted by
+#: small models -- surface these as guidance, not as a blocker.
 _WIKILINK_ALIAS_WARN_THRESHOLD: float = 60.0
 
 #: Lower detection bound — anything below this is treated as a genuine
@@ -584,8 +583,8 @@ class UnreferencedAttachmentsRule(BaseLintRule):
     deletes only what a later compile can recreate, and never a file a user
     placed there (whose bytes came from somewhere else — hand-added, or written
     by an earlier run whose cache entry is gone). Auto-adoption registers writer
-    copies in the manifest too, so the manifest row is not consulted for the
-    decision — only for tombstoning what gets deleted.
+    copies in the manifest too, so the manifest row is consulted only for
+    tombstoning what gets deleted, never for the decision.
     """
 
     name = "unreferenced-attachments"

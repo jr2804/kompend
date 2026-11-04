@@ -131,8 +131,7 @@ def load_cache_entry(source_id: str, cache_dir: Path) -> dict[str, Any]:
     list`` (e.g. ``sources/doc.pdf``) or a bare stem. When several same-stem
     entries exist (content-discriminated cache), the entry whose
     ``source_file`` equals *source_id* wins. Read from the ``documents`` table
-    of the single ``.kompend/kompend.db`` store (the former ``cache/<stem>-*.json``
-    files are gone).
+    of the single ``.kompend/kompend.db`` store.
     """
     data = source_metadata.find_entry(cache_dir, source_id)
     if data is None:

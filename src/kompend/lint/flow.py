@@ -217,10 +217,9 @@ def _merge_results(
 def _rich_report(results: list[LintResult]) -> LintReport:
     """Populate summary fields from a flat result list.
 
-    Delegates to :func:`kompend.lint.runner._build_report` — the merge used to
-    recompute the score as a plain pass ratio, so ``lint all`` and
-    ``lint check`` disagreed on the same results, and a rule that produced no
-    result at all made the score go *up* (smaller denominator, same passes).
+    Delegates to :func:`kompend.lint.runner._build_report` so ``lint all`` and
+    ``lint check`` score the same results the same way: recomputing the score as
+    a plain pass ratio lets a rule that produced no result at all raise it.
 
     Returns:
         The aggregated report over every merged result.
@@ -287,10 +286,8 @@ def _lint_model(cfg: Any) -> str | None:
 def persist_lint_fixes(wiki: CompiledWiki, vp: VaultPaths) -> int:
     """Write lint-fixed frontmatter to the written pages and refresh the wiki cache.
 
-    Public because the MCP lint tool needs it too; it used to exist in two
-    copies (here and in the CLI), and the CLI's — three positional args — was
-    the one its callers kept using, so the MCP path called this one with too
-    many arguments and raised TypeError.
+    Public because the MCP lint tool needs it too: one signature, so a caller
+    cannot silently pass the wrong arity.
 
     Returns the number of files updated.
     """

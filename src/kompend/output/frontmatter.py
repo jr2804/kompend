@@ -53,14 +53,13 @@ def source_frontmatter(
 ) -> dict[str, Any]:
     """Build the OKF frontmatter mapping for a source-corpus page.
 
-    ``okf_version`` is included on every source page, which is the point of the
-    migration: source notes are part of the same corpus as the compiled wiki and
-    must declare the spec they were written against, or a reader cannot tell a
-    pre-migration note from a conformant one.
+    ``okf_version`` is included on every source page: source notes are part of the
+    same corpus as the compiled wiki and must declare the spec they were written
+    against, or a reader cannot tell an older note from a conformant one.
 
     Values are returned as a mapping for :func:`okf_frontmatter_yaml` to render,
-    rather than interpolated into a hand-built YAML string — a title or tag
-    containing a colon or newline used to produce invalid frontmatter.
+    never interpolated into a hand-built YAML string — a title or tag containing a
+    colon or newline would produce invalid frontmatter.
     """
     frontmatter: dict[str, Any] = {
         "okf_version": OKF_VERSION,

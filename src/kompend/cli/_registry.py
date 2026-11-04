@@ -102,10 +102,10 @@ class OnDemandModule(StrEnum):
     Unlike :class:`CommandModule`, importing one of these registers no command —
     they exist because their cost is real and their work is occasional. The
     telemetry module is the case that motivated this: importing ``logfire``
-    costs roughly 700 ms and pulls in ``requests``, so ``kompend --version``,
-    ``--help`` and every in-process import of the CLI used to pay for telemetry
-    none of them emit. The run log is the second: it imports the config engine
-    and the vault store, and neither ``--version`` nor ``--help`` records a run.
+    costs roughly 700 ms and pulls in ``requests``, so loading it eagerly would
+    make ``kompend --version`` and ``--help`` pay for telemetry neither emits.
+    The run log is the second: it imports the config engine and the vault store,
+    and neither ``--version`` nor ``--help`` records a run.
     """
 
     TELEMETRY = "kompend.telemetry"

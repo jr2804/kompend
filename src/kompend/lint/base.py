@@ -67,19 +67,14 @@ class LintResult:
 class LintReport:
     """Typed wrapper around a lint report's ``results`` list.
 
-    Single source of truth for the lint-report shape (previously defined
-    twice — here narrow, in ``runner`` with summary fields — and the two
-    drifted apart: consumers importing the narrow one crashed in
-    ``runner.report_to_dict`` with ``AttributeError: 'LintReport' object has
-    no attribute 'health_score'``). Summary fields default to 0/0.0; callers
-    that can compute them (runner, flow) should fill them in.
+    Single source of truth for the lint-report shape: a consumer that imports a
+    narrower copy crashes in ``runner.report_to_dict``. Summary fields default to
+    0/0.0; callers that can compute them (runner, flow) fill them in.
 
     ``results`` holds :class:`LintResult` — the same finding type the rules
-    return. A second, narrower ``LintReportResult`` used to exist for items
-    read back from ``lint_history.jsonl``, which meant every reader of a
-    report had to guess which of the two it held (``fix_applied`` and
-    ``severity`` exist on only one of them). History entries are now parsed
-    back into ``LintResult`` by :func:`kompend.lint.history.report_from_dict`.
+    return. History entries are parsed back into ``LintResult`` by
+    :func:`kompend.lint.history.report_from_dict`; there is no second, narrower
+    result type, so a reader never has to guess which of the two it holds.
     """
 
     results: list[LintResult]

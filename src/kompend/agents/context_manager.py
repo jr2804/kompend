@@ -1,10 +1,7 @@
 """Context compaction for kompend agents, on ``pydantic_ai_harness.compaction``.
 
-The functionality this module used started in the community package
-``summarization-pydantic-ai``; it was upstreamed into pydantic-ai-harness
-(``pydantic_ai_harness.compaction``), which kompend now uses directly:
-``SummarizingCompaction`` for the LLM path, ``SlidingWindowCompaction`` for
-the zero-cost path and ``ReportContextUsage`` for the token accounting.
+``SummarizingCompaction`` covers the LLM path, ``SlidingWindowCompaction`` the
+zero-cost path and ``ReportContextUsage`` the token accounting.
 
 Kompend adds logging and one fallback. The summarizer runs in a nested,
 toolless agent that never gets an explicit retry budget (harness 0.64,

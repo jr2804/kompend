@@ -13,16 +13,14 @@ Two public surfaces:
 
 - :func:`normalize_to_utf8_path` — returns a :class:`pathlib.Path`
   pointing at a UTF-8 sibling of the original file for pipeline stages that
-  hand text-family sources to the parser (the kompend-side binary-expecting
-  parsers — pandoc, docling, marker, liteparse — are gone; parsecraft
-  normalizes internally, but non-UTF-8 text sources still get a UTF-8 path
-  before parse). Materializes a tempfile in the cache only when detection
-  says non-UTF-8; UTF-8-clean files pass through unchanged.
+  hand text-family sources to the parser. Parsecraft normalizes internally, but
+  non-UTF-8 text sources still get a UTF-8 path before parse. Materializes a
+  tempfile in the cache only when detection says non-UTF-8; UTF-8-clean files
+  pass through unchanged.
 
-Detection uses :mod:`charset-normalizer`. The dependency is declared as
-a direct dep in ``pyproject.toml`` even though it was already
-transitive via httpx/pypandoc — auto-conversion is contract, not
-accident.
+Detection uses :mod:`charset-normalizer`, declared as a direct dependency in
+``pyproject.toml``: auto-conversion is contract, not an accident of who else
+depends on the package.
 """
 
 from __future__ import annotations

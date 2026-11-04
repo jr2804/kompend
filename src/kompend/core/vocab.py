@@ -63,8 +63,8 @@ class LlmDataFormat(StrEnum):
       productive as output formats.
     - ``TOON``: Token-Oriented Object Notation. 30-60% fewer tokens vs JSON.
     - ``ISON``: Interchange Simple Object Notation. 30-70% fewer tokens vs JSON.
-    - ``MARKDOWN``: Human-readable prose (formerly ``TEXT``). Alias for
-      ``"text"`` — used when the consumer is a human reader, not an LLM.
+    - ``MARKDOWN``: Human-readable prose (``"text"``) — used when the consumer
+      is a human reader, not an LLM.
 
     Note: ``response_format`` (JSON-enforced output) is orthogonal to this
     enum. The API-level ``response_format`` always produces JSON regardless
@@ -78,7 +78,7 @@ class LlmDataFormat(StrEnum):
     ISON = "ison"
     MARKDOWN = "text"
 
-    # Legacy alias — kept for backward compat with old "TEXT" references
+    # Alias of ``MARKDOWN`` for older call sites.
     TEXT = "text"
 
 

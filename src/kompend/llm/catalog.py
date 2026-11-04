@@ -1,8 +1,8 @@
 """models.dev catalogue access with a local snapshot.
 
-``llmdb`` resolves the same metadata the old bundled ``models-dev`` package
-carried (provider API base URLs, env var names, model limits, modalities), and
-adds an explicit ``refresh()``. That refresh downloads the whole payload
+``llmdb`` resolves provider API base URLs, env var names, model limits and
+modalities, and adds an explicit ``refresh()``. That refresh downloads the whole
+payload
 (≈6 MB) and ``llmdb`` keeps it in memory only, so a CLI that resolved a model
 would pay the download on every invocation.
 

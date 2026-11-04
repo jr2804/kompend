@@ -426,8 +426,8 @@ class ZvecWikiStore:
         (:func:`_content_hash`).  Missing bookkeeping, an unreadable store, or
         any mismatch means the sidecar index is stale and must be rebuilt before
         it can serve the loaded wiki.  ``kompend query`` calls this on every open,
-        so a false positive re-embeds the whole corpus — the id comparison is
-        what made a build/check disagreement cost a full rebuild per query.
+        so a false positive re-embeds the whole corpus: a build/check
+        disagreement must not cost a full rebuild per query.
 
         The content comparison catches the other direction: an edited page keeps
         its id, so an ids-only check would keep serving vectors that describe

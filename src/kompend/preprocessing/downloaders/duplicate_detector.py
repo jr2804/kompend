@@ -1,7 +1,7 @@
 """SHA256-based duplicate detection for downloaded URLs.
 
 The URL → content-hash map lives in the ``downloaded`` table of the single
-``.kompend/kompend.db`` store (was the flat ``cache/downloaded.json`` file).
+``.kompend/kompend.db`` store.
 """
 
 # ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
@@ -30,9 +30,8 @@ class DuplicateDetector:
         """Initialize the detector against the vault store.
 
         Args:
-            db_file: The vault artifact path this detector historically owned
-                (``.kompend/cache/downloaded.json``). Kept so callers need no
-                change; the single store is resolved from it.
+            db_file: Any artifact path inside the vault; the single store is
+                resolved from it.
         """
         self.db_file = db_file
         self._db_path = vault_db_path(db_file)

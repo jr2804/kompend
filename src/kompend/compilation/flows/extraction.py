@@ -683,9 +683,9 @@ def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
     stage sizes itself the same way.
 
     The safety margin matters here: the chars-per-token heuristic undercounts
-    token-dense text (formulas, tables), so a nominally exact-fit batch used to
-    overflow a small local model's window — observed as
-    ``request (65762 tokens) exceeds the available context size (65536)``.
+    token-dense text (formulas, tables), so a nominally exact-fit batch would
+    overflow a small local model's window
+    (``request (65762 tokens) exceeds the available context size (65536)``).
     Content is never cropped: a smaller budget splits the source across more
     batches.
     """

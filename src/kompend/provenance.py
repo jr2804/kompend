@@ -8,11 +8,11 @@ Provenance lives in two places:
 
 The format is intentionally simple and human-readable so it can survive
 a round-trip through the markdown output writer. The per-node record is
-persisted in the ``provenance`` table of ``.kompend/kompend.db``; the legacy
-``.kompend/provenance/`` directory is no longer written or read.
+persisted in the ``provenance`` table of ``.kompend/kompend.db``.
 
-Note: ``Citation``, ``extract_citations``, ``merge_duplicate_citations``,
-and lifecycle constants moved to :mod:`kompend.core.models`. Import from there.
+.. note::
+   ``Citation``, ``extract_citations``, ``merge_duplicate_citations`` and the
+   lifecycle constants live in :mod:`kompend.core.models`; import them there.
 """
 
 # ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;

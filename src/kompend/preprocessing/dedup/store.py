@@ -1,7 +1,7 @@
 """Persistent store for dedup fingerprints with automatic invalidation.
 
 Rows live in the ``dedup_fingerprints`` table of the single ``.kompend/kompend.db``
-store (was ``.kompend/dedup/fingerprints.json``). The bookkeeping record
+store. The bookkeeping record
 (``{stamp, store_version}``) is kept under the reserved slug ``"_meta"`` — its
 JSON payload is stored in the ``embedding`` column.
 """

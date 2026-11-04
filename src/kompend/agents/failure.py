@@ -1,14 +1,5 @@
 """One failure vocabulary for every LLM-backed unit of work.
 
-kompend calls a model in many stages (extraction, generation, lint, search,
-references, verification, capture, ...). Each stage used to grow its own
-``except Exception`` block, and each of those blocks quietly picked a
-different policy: one returned ``None``, one returned the input unchanged,
-one appended a SKIP result, one swallowed the exception and let the
-denominator shrink. The symptom was always the same - a run that "passed"
-while a third of its work had never happened - and the fix was always
-local, so the next stage reintroduced it.
-
 This module is the one place that answers two questions:
 
 - **What kind of failure is this?** :func:`classify_agent_failure` maps the
@@ -298,8 +289,9 @@ class UnitFailureLog:
     run instead of producing a report that looks merely "small".
 
     Below the threshold the batch continues: the SKIP markers the stage
-    recorded stay in the result, which is the point — a swallowed failure
-    used to make the health score go *up* by shrinking the denominator.
+    recorded stay in the result. That is the point — counting only completed
+    units lets a swallowed failure raise the health score by shrinking the
+    denominator.
     """
 
     stage: str

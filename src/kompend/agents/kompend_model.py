@@ -133,11 +133,9 @@ class KompendModel(Model):
         merged_settings = self._merge_reasoning(model_settings)
         # History compression is handled at the pydantic-ai Agent layer by
         # ``SummarizingCompaction`` (attached in KompendAgentBase._build_agent),
-        # which summarises when the conversation nears the context budget.
-        # Previously this method dropped all ModelResponse messages on retry
-        # (``_compact_messages``); that crude workaround lost the model's own
-        # output, defeating pydantic-ai's retry feedback loop. The capability
-        # is strictly better and preserves history on compression failure.
+        # which summarises when the conversation nears the context budget. Do
+        # not drop ``ModelResponse`` messages here: that loses the model's own
+        # output and defeats pydantic-ai's retry feedback loop.
         response = await self._delegate.request(messages, merged_settings, model_request_parameters)
         _fail_on_empty_answer(response, model_request_parameters)
 

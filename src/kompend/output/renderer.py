@@ -3,10 +3,8 @@
 ``DocumentRenderer`` is the single path for all Markdown output in kompend.
 It produces canonical Markdown (frontmatter + heading + body). The heading
 is assembled via :class:`~kompend.core.page_builder.PageBuilder` for
-consistent AST-driven output.
-
-Flavor-specific formatting via ``rumdl fmt`` has been replaced by wenmode's
-AST renderer, which produces consistent formatting without a subprocess.
+consistent AST-driven output, and wenmode's AST renderer handles
+flavor-specific formatting without a subprocess.
 """
 
 from __future__ import annotations
@@ -55,7 +53,7 @@ class DocumentRenderer:
     output_dir:
         Output directory (used for auto-detection).
     rumdl_config:
-        Deprecated — no longer used. Kept for backward compatibility.
+        Accepted for call-site compatibility; unused.
     """
 
     def __init__(

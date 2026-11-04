@@ -1,12 +1,11 @@
 """Detect legacy flat-file ``.kompend/`` artifacts superseded by ``kompend.db``.
 
-This is **detection only, not migration**. Policy B3 is a clean cut: the store
-never reads these files. The helper exists so ``kompend doctor`` (Phase 2) can tell
-a user which old artifacts are now dead weight and safe to delete after a
-``compile --force``.
+The helper is **detection only, not migration**: the store never reads these
+files. ``kompend doctor`` uses it to tell a user which old artifacts are dead
+weight and safe to delete after a ``compile --force``.
 
-Deliberately excluded from the candidate set — they are *not* superseded by the
-single store and must not be reported:
+Deliberately excluded from the candidate set — ``kompend.db`` does not supersede
+them, so reporting them would be wrong:
 
 * ``kompend.db`` itself,
 * ``vectors/`` — the separate, regenerable embedding branch,

@@ -2,9 +2,8 @@
 chronological log.
 
 The chronological/feedback log lives in the ``memory_log`` table of
-``.kompend/kompend.db``; the legacy ``memory.jsonl`` is no longer written or read.
-The zvec collection (``memory.db``) remains the regenerate-from-log embedding
-branch.
+``.kompend/kompend.db``. The zvec collection (``memory.db``) remains the
+regenerate-from-log embedding branch.
 """
 
 # ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;

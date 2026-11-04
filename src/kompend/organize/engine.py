@@ -175,8 +175,7 @@ def _write_report(
 ) -> None:
     """Persist an organize report to the vault store (``organize_reports``).
 
-    The legacy ``.kompend/last_organize.json`` file is no longer written; the
-    report is one row so ``kompend organize`` history survives in ``kompend.db``.
+    One row per run, so ``kompend organize`` history survives in ``kompend.db``.
     """
     db_path = vault_db_path(base_dir)
     with open_store(db_path) as conn:

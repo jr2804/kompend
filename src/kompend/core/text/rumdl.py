@@ -9,9 +9,8 @@ text-level variants:
 - :func:`normalize_element_markdown` — the parse-time pass. Every markdown
   element of a parsed document is wrapped as a standalone block, formatted in
   a **single** subprocess call, then unwrapped. That means the cached parsed
-  content is already canonical and backend differences (docling, liteparse,
-  marker, mineru, web, ...) are levelled at the part level, not only at the
-  final wiki output.
+  content is already canonical and backend differences are levelled at the
+  part level, not only at the final wiki output.
 
 Both are best-effort: a missing ``rumdl`` binary or a formatting failure
 leaves the input untouched rather than breaking a compile.

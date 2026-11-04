@@ -13,7 +13,7 @@ Implements the Rohit-v2 memory lifecycle concepts:
   candidates.
 
 State lives in the single vault store (``.kompend/kompend.db``, ``memory_states``
-table); the legacy ``memory.json`` is no longer written or read.
+table).
 """
 
 # ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;

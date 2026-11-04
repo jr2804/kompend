@@ -9,11 +9,6 @@ Backed by the ``entity_types`` table of the single ``.kompend/kompend.db`` store
 Keys are :func:`kompend.compilation.concept_keys.normalize_concept_key`
 of the concept name; values are sanitized folder names (see
 :func:`kompend.compilation.flows.generation._sanitize_entity_type`).
-
-See p863 wiki roundup (2026-09-10) for the motivating bug — the
-model returned different ``type`` values for POLQA across runs,
-causing its page to land in ``entities/standard/`` one time and
-``entities/polqa/`` the next.
 """
 
 # ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.

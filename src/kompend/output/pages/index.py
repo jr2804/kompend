@@ -38,9 +38,6 @@ def write_index(
 ) -> dict[str, Path]:
     """Write ``index.md`` for a compiled wiki.
 
-    The human-readable pipeline log is no longer auto-written; regenerate it
-    on demand with ``kompend log`` (or ``kompend log --write``).
-
     *description_max_chars* caps the one-line description per catalog entry
     (``display.description_max_chars``); it defaults to the config value.
 

@@ -16,6 +16,14 @@ a test helper must sit BELOW the test that uses it (a helper next to its data
 reads naturally and sorts last). Run `mise run format` before committing — never
 hand-order a module and assume it stays.
 
+## Comments and docstrings
+
+State the rule, not its history. A docstring says what the module does and what
+a caller must know; why it was created, what it replaced, and which incident
+prompted it belong in the commit message. Keep the clause that is costly to
+rediscover — a measured limit, a correctness trap — and delete the narrative
+around it.
+
 ## Antipatterns
 
 | Pattern | Verdict | Fix |

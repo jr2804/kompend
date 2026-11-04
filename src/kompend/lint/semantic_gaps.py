@@ -127,9 +127,8 @@ def verify_topics(
 def _load_leaf_chunks(base_dir: Path) -> list[tuple[str, str, str]]:
     """Load ``(source_stem, text, contextual_context)`` for every leaf chunk.
 
-    Reads the ``chunk`` layer from the single ``.kompend/kompend.db`` store (the
-    former ``cache/chunk/<stem>-<hash8>.json`` files are gone). A missing store
-    or unreadable rows yield fewer chunks, never an error.
+    Reads the ``chunk`` layer from the single ``.kompend/kompend.db`` store. A
+    missing store or unreadable rows yield fewer chunks, never an error.
     """
     chunks: list[tuple[str, str, str]] = []
     for value in CacheStore(base_dir).load_layer("chunk"):

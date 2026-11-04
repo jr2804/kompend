@@ -24,8 +24,7 @@ Agentic agents in kompend share these harness capabilities:
 - **StepPersistence** (``step_store``) — records every agent turn as a
   continuable snapshot in a :class:`~pydantic_ai_harness.step_persistence.SqliteStepStore`.
   The generation flow reads those snapshots to skip finished work and to
-  resume an interrupted segment mid-conversation (replacing the old
-  hand-rolled generation checkpoint).
+  resume an interrupted segment mid-conversation.
 - **ConversationSearch** (``search_history=True``, needs ``step_store``) —
   a BM25 ``search_conversation_history`` tool over the same store, scoped
   to the calling run's conversation, so a segment agent can recall what

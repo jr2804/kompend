@@ -1,8 +1,8 @@
 """Parse under a wall-clock deadline, in a worker process that outlives one file.
 
-A backend can wedge: parsecraft's docling path once spun forever on a 9 KB
-markdown list and held an ingest at 98.5 % of one core for nine hours, with no
-progress on disk. Nothing inside the parser can interrupt that — a thread cannot
+A backend can wedge: parsecraft's docling path spins forever on a small
+markdown list, holding an ingest at one full core with no progress on disk.
+Nothing inside the parser can interrupt that — a thread cannot
 kill code that never returns from C or Rust — so a hard bound has to come from
 outside the process.
 
