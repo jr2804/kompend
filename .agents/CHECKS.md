@@ -106,7 +106,9 @@ more faces. A gate asserts each before reporting success:
 
 - **Facts** — a rule deciding by facts read elsewhere (declared dependencies, an
   import→distribution map, a schema) exits 2 when they are unavailable. An
-  empty fact set is "unknown", not "none".
+  empty fact set is "unknown", not "none". `require_facts` sees a count, not a
+  shape: it is correct only where zero is impossible, so each caller needs a
+  test that empties that fact and asserts exit 2.
 - **Errors** — an unreadable or unparseable input exits 2; `except X: return []`
   inside a gate disarms it silently. A scan error is no finding and no pass.
 - **Codes** — `0` clean, `1` violations, `2` could not establish what it needs

@@ -20,6 +20,18 @@ CHECKS = ROOT / "scripts" / "checks"
 GUARDS = ("check_enum_cache.py", "check_config_literals.py", "check_cli_surface.py")
 
 
+#: How to empty each fact a gate judges by, one entry per ``require_facts``
+#: caller (see ``test_every_require_facts_caller_has_an_empty_fact_case``).
+#: ``(module, attribute, receiver, empty-value)`` — the receiver is ``None`` when
+#: the attribute lives on the module itself and a nested object (e.g.
+#: ``check_enum_cache.store``) otherwise.
+_EMPTY_FACT_CASES: list[tuple[str, str, str | None, object]] = [
+    ("check_config_literals", "_config_defaults", None, {}),
+    ("check_enum_cache", "_CACHE_DATACLASSES", "store", {}),
+    ("check_mcp_parity", "get_cli_commands", None, []),
+]
+
+
 @pytest.mark.parametrize("script", GUARDS)
 def test_guard_passes_on_the_current_tree(script: str) -> None:
     result = _run(script)
@@ -134,6 +146,54 @@ def test_require_facts_documents_its_precondition() -> None:
         assert "require_facts" in (CHECKS / script).read_text(encoding="utf-8")
 
 
+@pytest.mark.parametrize(("module_name", "attribute", "receiver", "empty"), _EMPTY_FACT_CASES)
+def test_a_gate_exits_2_when_its_fact_source_is_empty(
+    module_name: str, attribute: str, receiver: str | None, empty: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Empty the fact, assert exit 2 — the only test that proves the guard works.
+
+    Parametrized from :data:`_EMPTY_FACT_CASES` so the coverage test below can
+    prove every ``require_facts`` caller is exercised here, rather than merely
+    imported by some test in this file.
+    """
+    module = _load_check(module_name)
+    target = getattr(module, receiver) if receiver else module
+    # A callable fact source (the default value is a function) is replaced by
+    # one returning the empty value; a data attribute is replaced outright.
+    replacement = mock.Mock(return_value=empty) if callable(getattr(target, attribute)) else empty
+    monkeypatch.setattr(target, attribute, replacement)
+
+    assert module.main() == 2, f"{module_name}.main() must fail with an empty {attribute}"
+
+
+@pytest.mark.parametrize("module_name", [case[0] for case in _EMPTY_FACT_CASES])
+def test_the_same_gate_still_passes_on_its_real_facts(module_name: str) -> None:
+    """The gate still passes with real facts, so the guard is not blunt.
+
+    Without this, a checker that unconditionally returned 2 would satisfy the
+    emptiness test above.
+    """
+    assert _load_check(module_name).main() == 0
+
+
+def test_every_require_facts_caller_has_an_empty_fact_case() -> None:
+    """A guard cannot detect misuse — only a per-call-site emptying test can.
+
+    ``require_facts`` sees a count, not a shape, so it is correct only where
+    zero is genuinely impossible. Adding a fourth caller without a case in
+    :data:`_EMPTY_FACT_CASES` fails here instead of silently trusting the guard.
+    """
+    callers = {p.stem for p in CHECKS.glob("check_*.py") if "require_facts(" in p.read_text(encoding="utf-8")}
+    assert callers, "no require_facts callers found — did the helper get renamed?"
+
+    covered = {case[0] for case in _EMPTY_FACT_CASES}
+    assert callers == covered, (
+        f"missing empty-fact cases: {sorted(callers - covered)}; stale cases: {sorted(covered - callers)}. "
+        "Add (module, attribute, receiver, empty-value) to _EMPTY_FACT_CASES and prove exit 2 — "
+        "see require_facts' docstring for why that test is the only protection."
+    )
+
+
 def test_a_rule_with_no_facts_refuses_to_judge(monkeypatch: pytest.MonkeyPatch) -> None:
     """Empty facts must abort: no facts, no verdict.
 
@@ -154,14 +214,10 @@ def test_a_rule_with_no_facts_refuses_to_judge(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_fact_fed_gates_abort_when_their_facts_vanish(tmp_path: Path) -> None:
-    """All three fact-fed gates return 2 when their fact source is empty."""
-    sys.path.insert(0, str(CHECKS))
-    try:
-        config_literals = importlib.import_module("check_config_literals")
-        enum_cache = importlib.import_module("check_enum_cache")
-        parity = importlib.import_module("check_mcp_parity")
-    finally:
-        sys.path.pop(0)
+    """All fact-fed gates return 2 when their fact source is empty."""
+    config_literals = _load_check("check_config_literals")
+    enum_cache = _load_check("check_enum_cache")
+    parity = _load_check("check_mcp_parity")
 
     with mock.patch.object(config_literals, "_config_defaults", return_value={}):
         assert config_literals.main() == 2
@@ -171,6 +227,15 @@ def test_fact_fed_gates_abort_when_their_facts_vanish(tmp_path: Path) -> None:
 
     with mock.patch.object(parity, "get_cli_commands", return_value=[]):
         assert parity.main() == 2
+
+
+def _load_check(name: str) -> Any:
+    """Import a gate script by module name (scripts/checks is not a package)."""
+    sys.path.insert(0, str(CHECKS))
+    try:
+        return importlib.import_module(name)
+    finally:
+        sys.path.pop(0)
 
 
 def test_the_verdict_does_not_depend_on_where_the_scanner_stands(tmp_path: Path) -> None:
