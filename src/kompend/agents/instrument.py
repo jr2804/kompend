@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import logging
 import os
+from functools import cache
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
@@ -35,19 +36,28 @@ from kompend.core.env import EnvVar
 
 logger = logging.getLogger(__name__)
 
-# ── idempotency guard ──────────────────────────────────────────────────────
-
-_instrumented: bool = False
-
-
-# ── public API ──────────────────────────────────────────────────────────────
-
 
 def configure_observability() -> None:
     """Configure OpenTelemetry tracing for all pydantic-ai agents.
 
     Called lazily from :meth:`KompendAgentBase._build_agent` on first agent
-    construction. Safe to call multiple times — only configures once.
+    construction. Safe to call multiple times — only configures once (see
+    :func:`_instrument_once`).
+    """
+    _instrument_once()
+
+
+# ── public API ──────────────────────────────────────────────────────────────
+
+
+@cache
+def _instrument_once() -> bool:
+    """Configure OTel tracing at most once per process; ``True`` when enabled.
+
+    A cached getter, not a flagged module variable: the setup either happened
+    or it did not, and that answer is constant for the process lifetime. Caching
+    the function gives idempotency for free, and ``cache_clear()`` is the reset
+    path tests need.
 
     Reads the following environment variables (via :class:`EnvVar`):
 
@@ -59,15 +69,10 @@ def configure_observability() -> None:
     - ``KOMP_OTEL_HEADERS`` — optional HTTP headers for the OTLP endpoint
       (``key=value`` format, used for auth tokens).
     """  # see docs/guides/observability.md
-    global _instrumented  # noqa: PLW0603
-
-    if _instrumented:
-        return
-
     enabled = os.environ.get(EnvVar.OTEL_ENABLED, "").strip().lower()
     if enabled not in ("1", "true", "yes"):
         logger.debug("OTel tracing disabled (KOMP_OTEL_ENABLED not set or false)")
-        return
+        return False
 
     endpoint = os.environ.get(EnvVar.OTEL_ENDPOINT, "http://localhost:4318").rstrip("/")
     service_name = os.environ.get(EnvVar.OTEL_SERVICE_NAME, "kompend")
@@ -86,7 +91,7 @@ def configure_observability() -> None:
     Agent.instrument_all()
 
     logger.info("OTel tracing enabled -> %s  (service: %s)", endpoint, service_name)
-    _instrumented = True
+    return True
 
 
 def _parse_headers(raw: str) -> dict[str, str]:

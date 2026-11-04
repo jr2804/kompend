@@ -21,6 +21,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable
+from functools import cache
 from pathlib import Path
 from types import TracebackType
 from typing import Any, Protocol, cast
@@ -59,7 +60,7 @@ _THREAD_FAILURE_SEEN: dict[tuple[str, str], int] = {}
 
 #: Kept open for the process lifetime: ``faulthandler`` writes to the object it
 #: was given, so closing it behind its back would silence the dump.
-_FAULT_LOG: Any = None
+#: (:func:`_fault_log_stream` owns it — a cached getter, not a module variable.)
 
 #: Where the stream guard and the fault handler both record console deaths.
 _FAULT_LOG_NAME = "kompend-faults.log"
@@ -203,6 +204,7 @@ def main() -> None:
     importlib.import_module(OnDemandModule.APP.value).main()
 
 
+@cache
 def _enable_fault_handler() -> None:
     """Give a native abort somewhere to speak before the process disappears.
 
@@ -211,18 +213,28 @@ def _enable_fault_handler() -> None:
     prints every thread's Python stack when the fatal signal arrives, which names
     the frame that called into native code. It writes to a file rather than to
     stderr because the same failure mode can take the console handle with it.
+
+    Cached, hence idempotent: the handler is enabled once per process.
     """
-    global _FAULT_LOG  # noqa: PLW0603 - the handle must outlive this call
-    if _FAULT_LOG is not None:
-        return
+    faulthandler.enable(file=_fault_log_stream(), all_threads=True)
+
+
+@cache
+def _fault_log_stream() -> Any:
+    """The stream ``faulthandler`` writes to, opened once per process.
+
+    Cached so the handle stays referenced for the life of the process (a closed
+    or collected stream would silence the dump). ``_fault_log_stream.cache_clear()``
+    is the reset path tests use.
+    """
     path = Path(tempfile.gettempdir()) / _FAULT_LOG_NAME
     try:
-        _FAULT_LOG = path.open("a", encoding="utf-8", errors="replace")
-        _FAULT_LOG.write(f"\n=== kompend pid={os.getpid()} argv={sys.argv[1:]} ===\n")
-        _FAULT_LOG.flush()
+        handle = path.open("a", encoding="utf-8", errors="replace")
+        handle.write(f"\n=== kompend pid={os.getpid()} argv={sys.argv[1:]} ===\n")
+        handle.flush()
     except OSError:
-        _FAULT_LOG = sys.stderr
-    faulthandler.enable(file=_FAULT_LOG, all_threads=True)
+        return sys.stderr
+    return handle
 
 
 def _harden_console_streams() -> None:

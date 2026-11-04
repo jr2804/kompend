@@ -119,9 +119,11 @@ See `src/kompend/cli/cmds/AGENTS.md` for detailed command organization rules.
 - `try/except` at the top level is fine for user-facing error messages.
 - Use `get_console().print(msg)` for stdout output, `get_err_console().print(msg)` for stderr. Import from `kompend.logging`.
 - `--json` flag: serialize and print. No other behavior change.
-- `--verbose` / `KOMP_VERBOSE` gates tracebacks globally via
-  `kompend.core.verbosity`; the recoverable-log rule that accompanies it lives in
-  `core/pipeline/AGENTS.md`.
+- `--verbose` / `KOMP_VERBOSE` gates tracebacks via
+  `kompend.core.verbosity`, whose value is a `ContextVar` — cross-thread readers
+  (the parse pool) need the submission wrapped in `copy_context().run(...)`,
+  which `stages/_parse.py` does. The recoverable-log rule that accompanies it
+  lives in `core/pipeline/AGENTS.md`.
 
 ### CLI overrides → config
 

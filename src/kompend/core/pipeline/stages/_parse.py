@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from collections.abc import Callable
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from contextvars import copy_context
 from pathlib import Path
 from typing import Any, cast
 
@@ -129,7 +131,14 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
         # In-flight workers still finish (bounded by ``workers``) so caches
         # stay consistent.
         executor = ThreadPoolExecutor(max_workers=workers)
-        futures = {executor.submit(_process_single_source, pipeline, sf, dedup_similar, heavy_guard): sf for sf in source_files}
+        # Each submission carries a copy of the caller's context: the verbosity
+        # switch lives in a ContextVar, and a fresh thread would read its
+        # default (False) and lose ``--verbose`` for every worker-thread
+        # traceback. ``copy_context()`` per iteration keeps each Context
+        # single-use, which ``Context.run`` requires.
+        futures: dict[Future[ChunkTree | None], Path] = {
+            executor.submit(_context_bound_call(_process_single_source, pipeline, sf, dedup_similar, heavy_guard)): sf for sf in source_files
+        }
         try:
             for future in as_completed(futures):
                 sf = futures[future]
@@ -175,6 +184,17 @@ def tree_label(tree: ChunkTree) -> str:
     """Short label identifying a tree in progress output."""
     source = tree.source_file
     return source.name if source is not None else tree.root_id
+
+
+def _context_bound_call(fn: Callable[..., ChunkTree | None], *args: Any) -> Callable[[], ChunkTree | None]:
+    """Bind *fn* to a copy of the caller's context, for pool submission.
+
+    Called in the submitting thread on purpose: ``copy_context()`` inside the
+    worker would copy the worker's own (empty) context. ``Context.run`` accepts
+    one context object per call, so each submission gets its own copy.
+    """
+    context = copy_context()
+    return lambda: context.run(fn, *args)
 
 
 def _process_single_source(

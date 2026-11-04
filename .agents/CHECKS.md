@@ -72,10 +72,13 @@ Tick these BEFORE writing a function:
   `Tier` enum? Bare strings like `role="compile.extract"` will be rejected.
 - **Import** — at module level? Function-body imports (`PLC0415`) are rejected
   except for `try/except ImportError` probes for explicitly optional deps.
-- **Global state** — no `global` keyword or module-level mutable singleton
-  (`_cache = {}`, `_instance = None`). A genuinely process-wide switch (one-shot
-  setup guard, verbosity toggle) may use `global` with a justified
-  `# noqa: PLW0603` — a contextvar would be wrong for it.
+- **Global state** — no `global` keyword and no module-level mutable
+  singleton (`_cache = {}`, `_instance = None`, or a one-key dict used as a
+  slot). A value that is constant once computed is a `@functools.cache` getter
+  returning a frozen value; a value that changes during the process belongs on
+  an object that is created and passed (or, for a genuinely cross-thread
+  switch, a `ContextVar`). `# noqa: PLW0603` is never allowed — ruff's
+  `PLW0603` is a hard error, not an escape hatch.
 - **Vocabulary** — is a closed set of names (backend, matcher, flavor, preset,
   tier, …) defined as a `StrEnum`? Dict keys, comparisons and defaults use
   members, never their bare string values (`STR-KEYED-REGISTRY` /

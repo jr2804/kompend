@@ -10,10 +10,15 @@ from kompend.core.env import EnvVar
 from tests.conftest import as_obj
 
 
+@pytest.fixture(autouse=True)
+def _fresh_instrumentation() -> None:
+    """Each test starts with the setup not yet attempted."""
+    instrument._instrument_once.cache_clear()
+
+
 def test_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
     """No OTel config when KOMP_OTEL_ENABLED is unset or false."""
     monkeypatch.delenv(EnvVar.OTEL_ENABLED, raising=False)
-    monkeypatch.setattr("kompend.agents.instrument._instrumented", False)
 
     configure_observability()
 
@@ -22,7 +27,6 @@ def test_disabled_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_false_flag_disables(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(EnvVar.OTEL_ENABLED, "false")
-    monkeypatch.setattr("kompend.agents.instrument._instrumented", False)
 
     configure_observability()
 
@@ -36,7 +40,6 @@ def test_enabled_wires_exporter_and_instrumentall(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setenv(EnvVar.OTEL_ENABLED, "true")
     monkeypatch.setenv(EnvVar.OTEL_ENDPOINT, "http://127.0.0.1:4318")
     monkeypatch.setenv(EnvVar.OTEL_SERVICE_NAME, "kompend-test")
-    monkeypatch.setattr("kompend.agents.instrument._instrumented", False)
 
     calls: dict[str, object] = {}
     instrumented_flag: list[bool] = [False]
@@ -77,7 +80,6 @@ def test_enabled_with_headers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(EnvVar.OTEL_ENABLED, "true")
     monkeypatch.setenv(EnvVar.OTEL_ENDPOINT, "http://127.0.0.1:4318/")
     monkeypatch.setenv(EnvVar.OTEL_HEADERS, "Authorization=Bearer tok, X-Foo=bar")
-    monkeypatch.setattr("kompend.agents.instrument._instrumented", False)
 
     exporter_kw: dict[str, object] = {}
     tracker: list[bool] = [False]
@@ -111,7 +113,6 @@ def test_enabled_with_headers(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_idempotent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(EnvVar.OTEL_ENABLED, "true")
     monkeypatch.setenv(EnvVar.OTEL_ENDPOINT, "http://127.0.0.1:1")
-    monkeypatch.setattr("kompend.agents.instrument._instrumented", False)
     calls: list[str] = []
 
     class _FakeProvider:
@@ -147,7 +148,6 @@ def test_disabled_leaves_no_global_tracer_provider(monkeypatch: pytest.MonkeyPat
     install a global tracer provider. Smoke check for the off-path.
     """
     monkeypatch.delenv(EnvVar.OTEL_ENABLED, raising=False)
-    monkeypatch.setattr("kompend.agents.instrument._instrumented", False)
 
     calls: list[object] = []
     monkeypatch.setattr(
@@ -167,7 +167,9 @@ def test_disabled_leaves_no_global_tracer_provider(monkeypatch: pytest.MonkeyPat
 
 
 def _flag() -> bool:
-    return instrument._instrumented
+    """Whether setup ran and turned tracing on, without triggering it."""
+    cached = instrument._instrument_once.cache_info().currsize
+    return cached > 0 and instrument._instrument_once()
 
 
 def test_headers_parse(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -92,7 +92,10 @@ persistence, and standalone ingestion.
   parser construction, before the first conversion) is the engine-side
   lever: 1 thread ≈ 5 GB instead of 8 GB at ~1.7× wall time.
 - **Recoverable-log rule:** a log call that attaches a traceback gates it on
-  `kompend.core.verbosity.is_verbose()` (`exc_info=is_verbose()`). Removing a
+  `kompend.core.verbosity.is_verbose()` (`exc_info=is_verbose()`). The switch is
+  a `ContextVar`, so a worker thread only sees it when the submission carries
+  the context (`_context_bound_call` in `stages/_parse.py` wraps each pool
+  submission in `copy_context().run`). Removing a
   traceback is only safe when the one-line message carries the cause: bind the
   exception (`except X as exc`) and append it (`"...: %s", exc`), never leave a
   bare file/key with no reason. `logger.exception(...)` has no gate-able form —

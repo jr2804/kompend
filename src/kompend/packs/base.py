@@ -5,6 +5,7 @@ from __future__ import annotations
 import importlib.resources as ir
 import tomllib
 from dataclasses import dataclass, field
+from functools import cache
 from typing import Any
 
 from kompend.logging import get_logger
@@ -19,9 +20,6 @@ KNOWN_ROLES: tuple[str, ...] = (
     "lint.coverage-gap",
 )
 
-
-# Module-level singleton
-_REGISTRY: PackRegistry | None = None
 
 logger = get_logger(__name__)
 
@@ -167,8 +165,16 @@ def load_pack_toml(package: str, filename: str = "pack.toml") -> Pack:
 
 
 def get_registry() -> PackRegistry:
-    """Return the global :class:`PackRegistry` singleton."""
-    global _REGISTRY  # noqa: PLW0603
-    if _REGISTRY is None:
-        _REGISTRY = PackRegistry()
-    return _REGISTRY
+    """Return the process-wide :class:`PackRegistry`.
+
+    A cached getter: the registry is built on first use and then constant, so
+    there is no assignable module variable and ``get_registry.cache_clear()``
+    is the reset path tests and long-lived processes need.
+    """
+    return _build_registry()
+
+
+@cache
+def _build_registry() -> PackRegistry:
+    """Build the registry once; see :func:`get_registry`."""
+    return PackRegistry()

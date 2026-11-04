@@ -224,7 +224,7 @@ class TestNeverSilent:
 
     def test_the_fault_log_is_opened_once_and_names_the_run(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         enabled: list[dict[str, object]] = []
-        monkeypatch.setattr(launch, "_FAULT_LOG", None)
+        _fresh_fault_handler(monkeypatch)
         monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: str(tmp_path))
         monkeypatch.setattr(launch.faulthandler, "enable", lambda **kwargs: enabled.append(kwargs))
         monkeypatch.setattr(launch.sys, "argv", ["kompend", "ingest"])
@@ -240,13 +240,13 @@ class TestNeverSilent:
 
     def test_an_unopenable_log_falls_back_to_stderr(self, monkeypatch: pytest.MonkeyPatch) -> None:
         enabled: list[dict[str, object]] = []
-        monkeypatch.setattr(launch, "_FAULT_LOG", None)
+        _fresh_fault_handler(monkeypatch)
         monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: "Z:/does-not-exist")
         monkeypatch.setattr(launch.faulthandler, "enable", lambda **kwargs: enabled.append(kwargs))
 
         launch._enable_fault_handler()
 
-        assert launch._FAULT_LOG is sys.stderr
+        assert launch._fault_log_stream() is sys.stderr
         assert enabled[0]["file"] is sys.stderr
 
 
@@ -391,6 +391,18 @@ class _RecordingStream:
 
     def flush(self) -> None:
         return None
+
+
+def _fresh_fault_handler(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reset the cached fault-handler setup so a test can observe the first call.
+
+    Both the enable call and the stream it writes to are cached; clearing the
+    caches lets each test see a first invocation. ``faulthandler.enable`` is
+    stubbed by every caller, so no real handler is installed.
+    """
+    monkeypatch.setattr(launch, "_enable_fault_handler", launch._enable_fault_handler)
+    launch._enable_fault_handler.cache_clear()
+    launch._fault_log_stream.cache_clear()
 
 
 @pytest.fixture(autouse=True)

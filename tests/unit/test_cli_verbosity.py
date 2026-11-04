@@ -8,6 +8,8 @@ fatal path (``main()`` prints one line instead of a traceback).
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from pathlib import Path
 from typing import Any, cast
 from unittest.mock import MagicMock
@@ -149,6 +151,36 @@ def test_failed_parse_attaches_traceback_when_verbose(tmp_path: Path, caplog: py
     records = [r for r in caplog.records if r.message.startswith("Failed to parse")]
     assert records
     assert records[0].exc_info  # a truthy (type, exc, tb) tuple
+
+
+def test_verbose_survives_the_parse_pool_pattern() -> None:
+    """Verbose must survive the way the parse stage submits to its pool.
+
+    The switch is a ContextVar, and a fresh thread starts with the default
+    (False). ``_parse.py`` therefore submits ``copy_context().run(...)``; this
+    test pins that mechanism, because a plain submit would silently lose
+    ``--verbose`` for exactly the failures users need it for.
+    """
+    set_verbose(True)
+    observed: list[bool] = []
+
+    def _probe(_: int) -> None:
+        observed.append(is_verbose())
+
+    # The copy must happen in the SUBMITTING thread — calling copy_context()
+    # inside the worker would copy the worker's own empty context.
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(copy_context().run, _probe, index) for index in range(4)]
+        [future.result() for future in futures]
+
+    assert observed == [True] * 4
+
+    # A submission without the copied context is the bug this guards against.
+    def _bare_probe() -> bool:
+        return is_verbose()
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        assert executor.submit(_bare_probe).result() is False
 
 
 def _seed_vault(tmp_path: Path) -> Path:

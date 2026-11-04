@@ -164,13 +164,10 @@ _VOCAB_ENUM_NAMES: frozenset[str] = frozenset(
 # Files where module-level state is a documented design choice (singleton
 # registries, plugin tables, etc.). Adding a new path here requires a
 # justification comment in the file.
-_GLOBAL_KEYWORD_ALLOWLIST: frozenset[str] = frozenset(
-    {
-        # PackRegistry singleton: lazy-initialised module-level state,
-        # explicitly documented in the surrounding docstring.
-        "src/kompend/packs/base.py",
-    }
-)
+#
+# Empty on purpose: every former entry (``packs/base.py``) now uses a cached
+# getter, so a ``global`` statement anywhere is a finding again.
+_GLOBAL_KEYWORD_ALLOWLIST: frozenset[str] = frozenset()
 
 
 #: Vendored skill assets quote other projects' instructions - not our policy.

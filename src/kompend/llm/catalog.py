@@ -24,6 +24,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from functools import cache
 from pathlib import Path
 from typing import Final
 
@@ -44,10 +45,10 @@ _FETCHED_KEY: Final[str] = "fetched_at"
 _PROVIDERS_KEY: Final[str] = "providers"
 
 
-#: Module-level holder for the in-process snapshot. A one-key dict keeps the
-#: module free of ``global`` statements (ruff PLW0603) while still caching the
-#: payload across calls.
-_SNAPSHOT: dict[str, CatalogSnapshot] = {}
+#: In-process snapshot holder. A :class:`functools.cache` getter cannot hold a
+#: value that is replaced at runtime (a refresh swaps it), so the payload lives
+#: in a private holder object owned by this module and reached only through the
+#: functions below — never as a module-level variable mutated in place.
 
 logger = get_logger(__name__)
 
@@ -69,6 +70,17 @@ class CatalogSnapshot:
         if provider is None:
             return None
         return provider.models.get(model_id)
+
+
+@dataclass(slots=True)
+class _SnapshotHolder:
+    """The one place the in-process catalogue snapshot is stored.
+
+    A mutable slot on a module-private object rather than a module-level
+    variable: the mutation site is named, greppable, and owned.
+    """
+
+    snapshot: CatalogSnapshot | None = None
 
 
 def model(provider_id: str, model_id: str) -> llmdb.Model | None:
@@ -98,20 +110,23 @@ def age() -> timedelta | None:
 
 def reset() -> None:
     """Drop the in-process snapshot (tests and long-lived processes)."""
-    _install(None)
+    _holder().snapshot = None
+
+
+@cache
+def _holder() -> _SnapshotHolder:
+    """The process-wide snapshot holder (built once, then constant)."""
+    return _SnapshotHolder()
 
 
 def _current() -> CatalogSnapshot | None:
     """Return the in-process snapshot, or ``None`` when none is loaded."""
-    return _SNAPSHOT.get("value")
+    return _holder().snapshot
 
 
 def _install(snapshot: CatalogSnapshot | None) -> None:
     """Replace the in-process snapshot (``None`` clears it)."""
-    if snapshot is None:
-        _SNAPSHOT.pop("value", None)
-    else:
-        _SNAPSHOT["value"] = snapshot
+    _holder().snapshot = snapshot
 
 
 def cache_path() -> Path:
