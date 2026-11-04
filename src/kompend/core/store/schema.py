@@ -34,6 +34,11 @@ import functools
 import sqlite3
 from typing import Final
 
+from kompend.core.identity import IDENTITY_HASH_LEN
+
+#: Scratch name used while rebuilding ``tier_state`` in place.
+_TIER_STATE_LEGACY_TABLE: Final[str] = "tier_state_legacy"
+
 #: Bump when the DDL below changes shape. The store treats a mismatch as a
 #: clean cut: drop everything and recreate (no migration — policy B3).
 SCHEMA_VERSION: Final[int] = 1
@@ -150,7 +155,8 @@ _DDL: Final[tuple[str, ...]] = (
     """,
     f"""
     CREATE TABLE IF NOT EXISTS {TIER_STATE_TABLE} (
-        stem TEXT PRIMARY KEY,
+        key TEXT PRIMARY KEY,
+        stem TEXT NOT NULL,
         source_file TEXT NOT NULL,
         content_hash TEXT NOT NULL,
         current_tier INTEGER NOT NULL DEFAULT 0,
@@ -389,6 +395,44 @@ _DDL: Final[tuple[str, ...]] = (
     )
     """,
 )
+
+
+def migrate_tier_state_identity(conn: sqlite3.Connection) -> bool:
+    """Rekey ``tier_state`` from bare stem to ``<stem>-<hash8>``.
+
+    ``reconcile_columns`` can add columns but cannot change a primary key, so
+    this one shape change is migrated in place instead of dropping the store:
+    state written by an older kompend is real data (tier, hit counters,
+    ``ingested_by``) and losing it would make every source look un-indexed.
+
+    A store whose ``tier_state`` already has a ``key`` column is left alone.
+    Returns ``True`` when the table was rebuilt so the caller can log it.
+    """
+    if not _tier_state_exists(conn):
+        return False
+    if "key" in {row[1] for row in conn.execute(f"PRAGMA table_info({TIER_STATE_TABLE})")}:
+        return False
+    conn.execute(f"ALTER TABLE {TIER_STATE_TABLE} RENAME TO {_TIER_STATE_LEGACY_TABLE}")
+    conn.execute(_TIER_STATE_DDL())
+    conn.execute(
+        f"INSERT OR REPLACE INTO {TIER_STATE_TABLE}(key, stem, source_file, content_hash, current_tier, "
+        f"last_compile, search_hits, last_hit, ingested_by) "
+        f"SELECT stem || '-' || substr(content_hash, 1, {IDENTITY_HASH_LEN}), stem, source_file, content_hash, "
+        f"current_tier, last_compile, search_hits, last_hit, ingested_by FROM {_TIER_STATE_LEGACY_TABLE}"
+    )
+    conn.execute(f"DROP TABLE {_TIER_STATE_LEGACY_TABLE}")
+    return True
+
+
+def _tier_state_exists(conn: sqlite3.Connection) -> bool:
+    """True when the ``tier_state`` table exists in this store."""
+    row = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (TIER_STATE_TABLE,)).fetchone()
+    return row is not None
+
+
+def _TIER_STATE_DDL() -> str:
+    """The ``tier_state`` CREATE statement, taken from the schema itself."""
+    return next(statement for statement in _DDL if TIER_STATE_TABLE in statement and "CREATE TABLE" in statement.upper())
 
 
 def apply_schema(conn: sqlite3.Connection, version: int) -> None:

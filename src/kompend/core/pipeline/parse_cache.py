@@ -21,6 +21,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Final, cast
 
+from kompend.core.identity import IDENTITY_HASH_LEN, source_key
 from kompend.core.models import MetadataField
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import DOCUMENTS_TABLE
@@ -29,12 +30,15 @@ from kompend.types import JSONDict
 #: Key under which the parser fingerprint is stored (cache-validity marker).
 PARSE_CACHE_PARSER_KEY: Final[str] = "_parser_fingerprint"
 
-_CACHE_HASH_LEN: Final[int] = 8
+_CACHE_HASH_LEN: Final[int] = IDENTITY_HASH_LEN
 
 
 def cache_key(source_file: Path, content_hash: str) -> str:
-    """Content-discriminated cache key for *source_file* (``<stem>-<hash8>``)."""
-    return f"{source_file.stem}-{content_hash[:_CACHE_HASH_LEN]}"
+    """Content-discriminated cache key for *source_file* (``<stem>-<hash8>``).
+
+    Same identity rule as the tier state — see :func:`kompend.core.identity.source_key`.
+    """
+    return source_key(source_file.stem, content_hash)
 
 
 def write_document(db_path: Path, key: str, data: JSONDict) -> None:

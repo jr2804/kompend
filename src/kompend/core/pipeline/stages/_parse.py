@@ -39,6 +39,7 @@ from kompend.core.pipeline.parallelism import describe_parallelism
 from kompend.core.pipeline.parse_cache import (
     content_hash_prefix,
     read_document,
+    source_key,
     write_document,
 )
 from kompend.core.pipeline.runtime import PipelineRuntime
@@ -281,7 +282,7 @@ def _try_load_parsed_cache(pipeline: PipelineRuntime, source_file: Path, stem: s
         return parsed
     if pipeline.config.force:
         return None
-    cached_entry = pipeline.state.entries.get(stem)
+    cached_entry = pipeline.state.entries.get(source_key(stem, content_hash))
     if cached_entry and cached_entry.content_hash == content_hash and cached_entry.current_tier >= 1:
         return _load_cache(pipeline, source_file)
     return None
@@ -351,7 +352,12 @@ def _attach_dedup_warning(parsed: ParsedDocument, stem: str, dedup_similar: dict
 
 
 def _try_load_chunk_cache(pipeline: PipelineRuntime, source_file: Path, content_hash: str, use_cache: bool) -> ChunkTree | None:
-    """Try to load a chunked tree from cache. Returns *None* on miss."""
+    """Try to load a chunked tree from cache. Returns *None* on miss.
+
+    The tree is rebound to *source_file*: the chunk-cache identity is the
+    content hash, so a source may be moved or regrouped under ``sources/``
+    and still hit; the path it carries must be the one this run is compiling.
+    """
     if not (use_cache and content_hash):
         return None
     chunk_deps = _chunk_cache_deps(pipeline, content_hash)
@@ -361,6 +367,7 @@ def _try_load_chunk_cache(pipeline: PipelineRuntime, source_file: Path, content_
     stem = source_file.stem
     pipeline.state_store.record(pipeline.state, stem, Path(pipeline.rel_file(source_file)), content_hash, tier=1)
     tree = ChunkTree.from_dict(cached)
+    tree.source_file = source_file
     pipeline.apply_tags_to_tree(tree, source_file)
     return tree
 
@@ -378,7 +385,15 @@ def _chunk_cache_deps(pipeline: PipelineRuntime, content_hash: str) -> dict[str,
 
 
 def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument | None:
-    """Load a cached ParsedDocument from the store if available."""
+    """Load the cached ParsedDocument for *source_file*, or *None* on a miss.
+
+    The cache key is ``<stem>-<hash8>``, so the entry is content-addressed and
+    a source may be moved or regrouped under ``sources/`` without losing it.
+    The stored ``source_file`` is therefore only a historical note: a hit is
+    rebound to *source_file* (the path this run looked the entry up for) so
+    citations, tags and the state store never resurrect a path that no longer
+    exists. See ``tests/unit/test_ingest_reparse.py``.
+    """
     db_path = vault_db_path(Path(pipeline.base_directory))
     key = cache_key(source_file)
     data = read_document(db_path, key)
@@ -400,7 +415,7 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
         # lone \\udXXX escapes that json.loads restores as surrogate chars.
         return scrub_document(
             ParsedDocument(
-                source_file=pipeline.abs_file(cast("str", data.get(MetadataField.SOURCE_FILE, ""))),
+                source_file=source_file,
                 elements=elements,
                 title=cast("str", data.get("title", "")),
                 author=cast("str", data.get("author", "")),
@@ -472,8 +487,13 @@ def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, di
 
 
 def cache_key(source_file: Path) -> str:
-    """Content-discriminated cache key — collision-proof across same-stem files."""
-    return f"{source_file.stem}-{content_hash_prefix(source_file.read_bytes())}"
+    """Content-discriminated cache key — collision-proof across same-named files.
+
+    Delegates to :func:`kompend.core.identity.source_key`, the one definition of
+    a source's identity (file name + content-hash prefix), so the chunk cache
+    and the tier state can never disagree about which source a key names.
+    """
+    return source_key(source_file.stem, content_hash_prefix(source_file.read_bytes()))
 
 
 def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:

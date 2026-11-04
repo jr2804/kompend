@@ -616,7 +616,7 @@ class TestUpdateWikiLinks:
 
     def test_updates_tier_state(self, tmp_path: Path) -> None:
         store = TierStateStore(tmp_path / KOMP_DIR / "compile_state.json")
-        store.save(TierState(entries={"a": SourceState(stem="a", source_file="sources/old.md", content_hash="h")}))
+        store.save(TierState(entries={"a-h": SourceState(stem="a", source_file="sources/old.md", content_hash="h")}))
 
         wiki = tmp_path / "wiki"
         wiki.mkdir()
@@ -625,7 +625,7 @@ class TestUpdateWikiLinks:
         counts = update_wiki_links(tmp_path, wiki, remap)
 
         assert counts["tier_state"] == 1
-        assert store.load().entries["a"].source_file == "sources/new.md"
+        assert store.load().entries["a-h"].source_file == "sources/new.md"
 
     def test_empty_remap_is_noop(self, tmp_path: Path) -> None:
         wiki = tmp_path / "wiki"

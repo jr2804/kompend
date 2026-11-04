@@ -210,7 +210,7 @@ def test_tier_state_round_trip(tmp_path: Path) -> None:
 
     state = TierState(
         entries={
-            "doc1": SourceState(
+            "doc1-abc123": SourceState(
                 stem="doc1",
                 source_file="doc1.pdf",
                 content_hash="abc123",
@@ -222,6 +222,6 @@ def test_tier_state_round_trip(tmp_path: Path) -> None:
     )
     store.save(state)
     loaded = store.load()
-    assert "doc1" in loaded.entries
-    assert loaded.entries["doc1"].current_tier == 3
-    assert loaded.entries["doc1"].content_hash == "abc123"
+    assert "doc1-abc123" in loaded.entries
+    assert loaded.entries["doc1-abc123"].current_tier == 3
+    assert loaded.entries["doc1-abc123"].content_hash == "abc123"

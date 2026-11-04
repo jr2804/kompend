@@ -50,6 +50,16 @@ persistence, and standalone ingestion.
   included. Every parse-cache rewrite runs `preserve_cached_metadata` first
   so user tags/attributes (written by `kompend sources tag`/`attr`) survive a
   forced re-ingest.
+- **A source is identified by its name plus a content-hash prefix** —
+  `kompend.core.identity.source_key(stem, content_hash)` → `<stem>-<hash8>` —
+  never by its path. The parse cache, the chunk cache and `tier_state` all use
+  that one rule, so grouping sources into folders or moving them under
+  `sources/` keeps every cache entry and every state row, while two files
+  sharing a name but differing in content stay two sources. A cache hit is
+  rebound to the path the current run looked it up for (`_load_cache`,
+  `_try_load_chunk_cache`) so no consumer resurrects a path that no longer
+  exists; `tier_state.source_file` is only the last path the source was seen
+  at.
 - The parse tier and the standalone ingest share one decision point for
   *which bytes a parser receives*: `parse_target_path` (in `ingest.py`) hands
   a known text format over as UTF-8 and every other source byte-wise. One

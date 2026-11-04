@@ -81,9 +81,9 @@ def test_binary_pdf_not_funneled_through_normalize(tmp_path: Path) -> None:
     mock_norm.assert_not_called()
     # The parser received the original file path, not an encoding sibling.
     assert router.parsed == [src]
-    # Tier-1 state recorded.
+    # Tier-1 state recorded, keyed by name + content hash (a source's identity).
     state = TierStateStore(base / ".kompend" / "compile_state.json").load()
-    assert "doc" in state.entries
+    assert [entry.stem for entry in state.entries.values()] == ["doc"]
 
 
 def test_text_md_still_normalized(tmp_path: Path) -> None:
