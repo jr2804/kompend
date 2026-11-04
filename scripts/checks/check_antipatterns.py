@@ -422,12 +422,18 @@ def scan_wiki_filenames(path: Path, lines: list[str]) -> list[Violation]:
 
 @cache
 def _path_filename_constants() -> frozenset[str]:
-    """The ``*.md`` file names defined as ``Final[str]`` in ``core/paths.py``."""
+    """The ``*.md`` file names defined as ``Final[str]`` in ``core/paths.py``.
+
+    An unreadable or unparseable ``paths.py`` means the rule has no facts to
+    judge by, so it raises :class:`ScanError` rather than returning an empty
+    set — an empty set reads as "no path constants exist" and disarms
+    WIKI-FILENAME without saying so.
+    """
     try:
         source = _PATHS_MODULE.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(_PATHS_MODULE))
-    except (OSError, SyntaxError):
-        return frozenset()
+    except (OSError, SyntaxError) as exc:
+        raise ScanError(f"cannot collect path constants from {_PATHS_MODULE}: {exc}") from exc
     names: set[str] = set()
     for node in tree.body:
         if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
@@ -567,8 +573,10 @@ def _vocab_enum_values() -> dict[str, set[str]]:
     for py in SRC_ROOT.rglob("*.py"):
         try:
             tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"), filename=str(py))
-        except (OSError, SyntaxError):
-            continue
+        except (OSError, SyntaxError) as exc:
+            # A file the collector cannot parse is a blind spot in its own
+            # fact set: the enum values it defines would silently go missing.
+            raise ScanError(f"cannot collect enum values from {py}: {exc}") from exc
         for node in tree.body:
             if not isinstance(node, ast.ClassDef) or node.name not in _VOCAB_ENUM_NAMES:
                 continue

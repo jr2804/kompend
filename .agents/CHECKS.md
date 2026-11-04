@@ -4,17 +4,6 @@ Verification commands, enforcement scripts, and new-code checklist.
 
 ## General Checks
 
-### Pattern: New Code Checklist
-
-Before writing a function, tick these. If you can't, stop and fix the foundation
-first — the alternatives are all antipatterns:
-
-- **Limit values** — from config/DEFAULTS/field, not a literal slice?
-- **Enum values** — from StrEnum members, not bare strings?
-- **Imports** — at module level, not inside function bodies?
-- **Global state** — no `global` keyword or module-level mutable singletons?
-- **Noqa suppressions** — actually necessary, with a justification comment?
-
 ### Pattern: Enforcement Scripts
 
 A small set of scripts catch what linting misses: bare-string contract keys,
@@ -35,7 +24,9 @@ the waiver: it states why this site is legitimate.
 |-----|------|------|
 | Project maintainer | Adding a new verification tool | Verification section |
 | Project maintainer | Adding a new enforcement script | Enforcement table |
-| Project maintainer | Adding a new checklist item | Checklist |
+| Project maintainer | Adding a new checklist item | New Code Checklist |
+
+The new-code checklist itself lives once, in the project section below.
 
 ---
 
@@ -48,11 +39,6 @@ the waiver: it states why this site is legitimate.
 - Run `uv run pytest tests/integration -x --timeout=30` for integration tests (no real-engine calls — must be fast)
 - Run `ty check src/kompend` for type checking (mypy is not used)
 - Run `uv run python scripts/checks/all.py` - the single entry point for every gate
-- Run `uv run python scripts/checks/check_field_consistency.py` to catch hard-coded contract keys
-- Run `uv run python scripts/checks/check_antipatterns.py` to catch banned-noqa, magic crops, `try/except ImportError` guards, `global` keyword usage, string-keyed registries, bare enum-value literals, and pip-side install instructions
-- Run `uv run python scripts/checks/check_enum_cache.py` to catch a cached payload carrying an unregistered `StrEnum` (an unreadable entry is a silent miss)
-- Run `uv run python scripts/checks/check_config_literals.py` to catch a config default re-typed in code or a dotted config key written as a literal
-- Run `uv run python scripts/checks/check_cli_surface.py` to catch a run-level flag re-declared on a command
 - Run `uv run pytest tests/smoke` after touching the CLI surface: it spawns the real `kompend` (init, config check, status, doctor, lint show, empty-vault compile) and fails on a traceback
 - Verify `kompend.toml.example` stays in sync with `DEFAULTS` when adding config keys
 - After changing `src/kompend/core/paths.py`, verify no hard-coded path strings
@@ -60,6 +46,11 @@ the waiver: it states why this site is legitimate.
 - After changing CLI commands, MCP tools, config keys, or output format, check
   `skills/kompend/SKILL.md` for stale or missing info
 - Run `uv run mkdocs build --strict` when changing documentation files
+
+Individual gates (`check_antipatterns`, `check_enum_cache`, `check_config_literals`,
+`check_cli_surface`, `check_field_consistency`, `check_persisted_paths`) are
+listed with what each catches under **Enforcement scripts**; run one directly to
+see its detail, or `all.py` for the whole set.
 
 ### New Code Checklist
 
@@ -73,12 +64,10 @@ Tick these BEFORE writing a function:
 - **Import** — at module level? Function-body imports (`PLC0415`) are rejected
   except for `try/except ImportError` probes for explicitly optional deps.
 - **Global state** — no `global` keyword and no module-level mutable
-  singleton (`_cache = {}`, `_instance = None`, or a one-key dict used as a
-  slot). A value that is constant once computed is a `@functools.cache` getter
-  returning a frozen value; a value that changes during the process belongs on
-  an object that is created and passed (or, for a genuinely cross-thread
-  switch, a `ContextVar`). `# noqa: PLW0603` is never allowed — ruff's
-  `PLW0603` is a hard error, not an escape hatch.
+  singleton (`_cache = {}`, `_instance = None`, a one-key dict slot). Constant
+  once computed → `@functools.cache` getter returning a frozen value; changes
+  during the process → an object created and passed (or a `ContextVar` for a
+  genuinely cross-thread switch). `# noqa: PLW0603` is never allowed.
 - **Vocabulary** — is a closed set of names (backend, matcher, flavor, preset,
   tier, …) defined as a `StrEnum`? Dict keys, comparisons and defaults use
   members, never their bare string values (`STR-KEYED-REGISTRY` /
@@ -92,7 +81,8 @@ Tick these BEFORE writing a function:
 |---|---|---|
 | `ruff check` | Most lint issues (PLC0415/E402 are warnings, not errors) | ruff.toml |
 | `scripts/checks/check_field_consistency.py` | Bare-string contract keys | scripts/checks/ |
-| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, `global`, string-keyed registries, bare enum-value literals, pip-side installs in code/docs | scripts/checks/ |
+| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, string-keyed registries, bare enum-value literals, pip-side installs in code/docs | scripts/checks/ |
+| `scripts/checks/check_persisted_paths.py` | An absolute filesystem path persisted in `.kompend/` (every text column of `kompend.db` plus loose JSON/JSONL) | scripts/checks/ |
 | `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
 | `scripts/checks/check_enum_cache.py` | A `StrEnum` reachable from a cached dataclass missing from `_CACHE_ENUMS` | scripts/checks/ |
 | `scripts/checks/check_config_literals.py` | A literal repeating a config default, or a dotted config key as a string | scripts/checks/ |
@@ -108,3 +98,21 @@ those, the tools regenerate them. `check_dox.py`'s scope is the DOX files plus
 the core `.agents/` state files; `.agents/skills/**` and `.agents/history/**` are
 not project DOX and are skipped. No CI job runs these; `mise run check-all` runs
 the two AST gates.
+
+### Gate exit codes
+
+The generic rule above ("a scan that finds no files is an error") has three
+more faces. A gate asserts each before reporting success:
+
+- **Facts** — a rule deciding by facts read elsewhere (declared dependencies, an
+  import→distribution map, a schema) exits 2 when they are unavailable. An
+  empty fact set is "unknown", not "none".
+- **Errors** — an unreadable or unparseable input exits 2; `except X: return []`
+  inside a gate disarms it silently. A scan error is no finding and no pass.
+- **Codes** — `0` clean, `1` violations, `2` could not establish what it needs
+  to judge. Never `0` for the last case.
+
+**Migrations disarm gates.** A storage change empties a scanner's input without
+touching the scanner: `check_persisted_paths` read loose JSON under `.kompend/`,
+the state moved into `kompend.db`, and the gate kept exiting 0 reading nothing.
+When a schema or artifact layout moves, re-check every gate that reads it.

@@ -109,18 +109,6 @@ def test_import_error_guard_ignores_an_import_inside_the_handler() -> None:
     assert len(module.scan_import_error_guards(Path("a.py"), real_guard)) == 1
 
 
-# ── check_antipatterns: the scanner must not lie in either direction ────────
-
-
-def _antipatterns() -> Any:
-    """Import the checker module (it lives outside the package tree)."""
-    sys.path.insert(0, str(CHECKS))
-    try:
-        return importlib.import_module("check_antipatterns")
-    finally:
-        sys.path.pop(0)
-
-
 def test_an_empty_source_root_is_not_a_pass(tmp_path: Path) -> None:
     """Scanning zero Python files must abort, not report success."""
     empty = tmp_path / "empty"
@@ -142,6 +130,43 @@ def test_an_unparseable_file_aborts_the_scan(tmp_path: Path) -> None:
 
     assert result.returncode == 2
     assert "cannot parse" in result.stderr
+
+
+def test_a_fact_provider_that_cannot_read_aborts_rather_than_emptying(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """A rule must not lose its facts silently.
+
+    ``_path_filename_constants`` and ``_vocab_enum_values`` decide their rules
+    by reading files outside the one being scanned. Returning an empty set on
+    failure reads as "this project has no such constants", which disarms the
+    rule without a word — the same class as an empty source root.
+    """
+    module = _antipatterns()
+    missing = tmp_path / "nope.py"
+
+    monkeypatch.setattr(module, "_PATHS_MODULE", missing)
+    module._path_filename_constants.cache_clear()
+    with pytest.raises(module.ScanError, match="path constants"):
+        module._path_filename_constants()
+    module._path_filename_constants.cache_clear()
+
+    monkeypatch.setattr(module, "SRC_ROOT", tmp_path)
+    module._vocab_enum_values.cache_clear()
+    (tmp_path / "bad.py").write_text("class X(StrEnum\\n", encoding="utf-8")
+    with pytest.raises(module.ScanError, match="enum values"):
+        module._vocab_enum_values()
+    module._vocab_enum_values.cache_clear()
+
+
+# ── check_antipatterns: the scanner must not lie in either direction ────────
+
+
+def _antipatterns() -> Any:
+    """Import the checker module (it lives outside the package tree)."""
+    sys.path.insert(0, str(CHECKS))
+    try:
+        return importlib.import_module("check_antipatterns")
+    finally:
+        sys.path.pop(0)
 
 
 def _run(script: str, *args: str) -> subprocess.CompletedProcess[str]:
