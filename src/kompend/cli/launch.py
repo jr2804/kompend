@@ -10,13 +10,16 @@ declares.
 
 from __future__ import annotations
 
+import errno
 import faulthandler
 import importlib
+import io
 import logging
 import os
 import sys
 import tempfile
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from types import TracebackType
@@ -58,6 +61,13 @@ _THREAD_FAILURE_SEEN: dict[tuple[str, str], int] = {}
 #: was given, so closing it behind its back would silence the dump.
 _FAULT_LOG: Any = None
 
+#: Where the stream guard and the fault handler both record console deaths.
+_FAULT_LOG_NAME = "kompend-faults.log"
+
+
+#: How often one stream may be rebound; a handle that keeps dying is a dead run.
+_REPAIR_LIMIT = 8
+
 
 #: What ``logging`` calls an exc_info triple: (type, value, traceback).
 _ExcInfo = tuple[type[BaseException] | None, BaseException | None, TracebackType | None]
@@ -72,12 +82,122 @@ class _Unraisable(Protocol):
     object: object
 
 
+class _HardenedStream:
+    """A console stream proxy that survives its own handle dying; see
+    :func:`_harden_console_streams`.
+
+    Console I/O is a trust boundary: a native library may take the handle down
+    at any moment, and the run's durable output (vault, cache, databases) must
+    not be discarded because a progress bar could not be drawn. Only a dead
+    handle is absorbed — every other ``OSError`` (a full disk, a broken pipe a
+    consumer actually reads) still propagates.
+    """
+
+    def __init__(self, raw: Any, *, name: str) -> None:
+        self._raw = raw
+        self._name = name
+        self._noted = False
+        self._repairs = 0
+        self._lock = threading.Lock()
+
+    def write(self, data: str) -> int:
+        """Write, repairing a rebound handle or absorbing a dead one."""
+        try:
+            return self._raw.write(data)
+        except OSError as exc:
+            if not _is_dead_handle(exc):
+                raise
+            with self._lock:
+                if self._repair():
+                    try:
+                        return self._raw.write(data)
+                    except OSError as retry_exc:
+                        if not _is_dead_handle(retry_exc):
+                            raise
+                self._note_death(exc)
+        return len(data)
+
+    def flush(self) -> None:
+        """Flush, repairing a rebound handle or absorbing a dead one.
+
+        Absorbing here is what prevents exit status 120: ``Py_FinalizeEx``
+        flushes the Python-level streams on the way out.
+        """
+        try:
+            self._raw.flush()
+        except OSError as exc:
+            if not _is_dead_handle(exc):
+                raise
+            with self._lock:
+                if self._repair():
+                    try:
+                        self._raw.flush()
+                        return
+                    except OSError as retry_exc:
+                        if not _is_dead_handle(retry_exc):
+                            raise
+                self._note_death(exc)
+
+    def __getattr__(self, attribute: str) -> Any:
+        """Everything else (``isatty``, ``fileno``, ``encoding``, …) is the raw stream."""
+        return getattr(self._raw, attribute)
+
+    def _repair(self) -> bool:
+        """Rebind to a fresh stream over the stream's *current* descriptor.
+
+        Returns ``False`` when the descriptor itself is unusable or the repair
+        budget is spent, in which case the caller notes the death and absorbs.
+        """
+        if self._repairs >= _REPAIR_LIMIT:
+            return False
+        try:
+            descriptor = self._raw.fileno()
+        except (OSError, ValueError, AttributeError, io.UnsupportedOperation):
+            return False
+        encoding = getattr(self._raw, "encoding", None) or "utf-8"
+        errors = getattr(self._raw, "errors", None) or "replace"
+        try:
+            fresh = os.fdopen(
+                os.dup(descriptor),
+                "w",
+                encoding=encoding,
+                errors=errors,
+                buffering=1,
+                closefd=True,
+            )
+        except OSError:
+            return False
+        self._repairs += 1
+        self._raw = fresh
+        return True
+
+    def _note_death(self, exc: BaseException) -> None:
+        """Record the death once: fault log first, then one try on the sibling."""
+        if self._noted:
+            return
+        self._noted = True
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            path = Path(tempfile.gettempdir()) / _FAULT_LOG_NAME
+            with path.open("a", encoding="utf-8", errors="replace") as handle:
+                handle.write(f"{stamp} pid={os.getpid()} console {self._name} died: {exc!r}\n")
+        except OSError:
+            pass
+        sibling = sys.stderr if self._name == "stdout" else sys.stdout
+        try:
+            sibling.write(f"\nkompend: the console {self._name} is no longer writable ({exc!r}); continuing without it.\n")
+            sibling.flush()
+        except OSError:
+            pass
+
+
 def main() -> None:
     """Run the CLI; a lone version flag never imports the command tree."""
     _cap_thread_pools()
     if len(sys.argv) == 2 and sys.argv[1] in _VERSION_FLAGS:
         print(kompend.__version__)
         return
+    _harden_console_streams()
     _install_failure_hooks()
     _enable_fault_handler()
     importlib.import_module(OnDemandModule.APP.value).main()
@@ -95,7 +215,7 @@ def _enable_fault_handler() -> None:
     global _FAULT_LOG  # noqa: PLW0603 - the handle must outlive this call
     if _FAULT_LOG is not None:
         return
-    path = Path(tempfile.gettempdir()) / "kompend-faults.log"
+    path = Path(tempfile.gettempdir()) / _FAULT_LOG_NAME
     try:
         _FAULT_LOG = path.open("a", encoding="utf-8", errors="replace")
         _FAULT_LOG.write(f"\n=== kompend pid={os.getpid()} argv={sys.argv[1:]} ===\n")
@@ -103,6 +223,40 @@ def _enable_fault_handler() -> None:
     except OSError:
         _FAULT_LOG = sys.stderr
     faulthandler.enable(file=_FAULT_LOG, all_threads=True)
+
+
+def _harden_console_streams() -> None:
+    """Wrap stdout/stderr so a dying console handle cannot kill the run.
+
+    On Windows the first heavy parse of a run can invalidate the process's
+    console handles: every later console write raises ``OSError`` with
+    ``errno 9`` / ``winerror 6``. Unwrapped, that kills rich's refresh thread,
+    escapes through the logger into the pipeline, and finally makes
+    ``Py_FinalizeEx``'s flush fail — CPython's exit status 120, thrown away
+    without a traceback (captured live on 2026-11-04: 1468 consecutive failed
+    stderr writes while the pipeline itself kept running).
+
+    The cause is not a lost console but a *rebound* one: a backend that captures
+    native engine output re-points file descriptor 2 with ``os.dup2`` for the
+    duration of a conversion, and the C-level stream bound to the old handle
+    value never recovers (reproduced with 12 lines of stdlib, 2026-11-04).
+    Python's buffered stream caches its handle at startup, so the proxy reopens
+    a fresh stream over the *current* descriptor — the console comes back
+    instead of going quiet for the rest of the run. If the descriptor is really
+    gone the death is absorbed and noted once; the vault, not the terminal, is
+    the run's real output.
+    """
+    if isinstance(sys.stdout, _HardenedStream):
+        return
+    sys.stdout = _HardenedStream(sys.stdout, name="stdout")
+    sys.stderr = _HardenedStream(sys.stderr, name="stderr")
+
+
+def _is_dead_handle(exc: BaseException) -> bool:
+    """True for the two ``OSError`` shapes of an invalidated console handle."""
+    return isinstance(exc, OSError) and (
+        exc.errno == errno.EBADF or getattr(exc, "winerror", None) == 6  # ERROR_INVALID_HANDLE
+    )
 
 
 def _cap_thread_pools() -> None:

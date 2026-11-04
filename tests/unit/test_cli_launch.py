@@ -1,4 +1,4 @@
-"""The launcher's thread-pool cap, its version fast path and its failure hooks."""
+"""The launcher's thread-pool cap, its version fast path, its failure hooks and the console-stream guard."""
 
 from __future__ import annotations
 
@@ -248,6 +248,149 @@ class TestNeverSilent:
 
         assert launch._FAULT_LOG is sys.stderr
         assert enabled[0]["file"] is sys.stderr
+
+
+class TestHardenedStreams:
+    """A console handle that dies mid-run must not take the pipeline with it.
+
+    Captured live on 2026-11-04: after the first heavy parse, every stderr write
+    raised ``OSError(9, 'The handle is invalid', winerror 6)`` — 1468 times —
+    while the pipeline itself kept running. Unwrapped, the same breakage ends a
+    real CLI run as CPython's silent exit status 120.
+    """
+
+    def test_a_dead_handle_write_is_absorbed_and_reports_success(self) -> None:
+        raw = _DeadHandleStream()
+        stream = launch._HardenedStream(raw, name="stderr")
+
+        written = stream.write("progress bar frame\n")
+
+        assert written == len("progress bar frame\n")
+        assert raw.writes == ["progress bar frame\n"]  # the attempt was made; the handle refused it
+
+    def test_a_dead_handle_flush_is_absorbed(self) -> None:
+        stream = launch._HardenedStream(_DeadHandleStream(), name="stderr")
+
+        stream.flush()  # must not raise — this is what prevents exit status 120
+
+    def test_any_other_oserror_still_propagates(self) -> None:
+        raw = _DeadHandleStream(failure=OSError(28, "No space left on device"))
+        stream = launch._HardenedStream(raw, name="stdout")
+
+        with pytest.raises(OSError, match="No space left"):
+            stream.write("data")
+        with pytest.raises(OSError, match="No space left"):
+            stream.flush()
+
+    def test_the_death_is_noted_once_and_the_sibling_is_told(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: str(tmp_path))
+        sibling_writes: list[str] = []
+        monkeypatch.setattr(launch.sys, "stdout", _RecordingStream(sibling_writes), raising=False)
+        stream = launch._HardenedStream(_DeadHandleStream(), name="stderr")
+
+        stream.write("one")
+        stream.write("two")
+        stream.flush()
+
+        fault_log = tmp_path / "kompend-faults.log"
+        assert "console stderr died" in fault_log.read_text(encoding="utf-8")
+        assert len(sibling_writes) == 1
+        assert "no longer writable" in sibling_writes[0]
+
+    def test_a_rebound_handle_is_repaired_and_the_write_succeeds(self, tmp_path: Path) -> None:
+        """A backend rebinding fd 2 must not silence the console for the whole run.
+
+        The captured cause (2026-11-04): a native capture window re-points
+        descriptor 2 with ``os.dup2`` around a conversion; the buffered stream
+        bound to the old handle keeps raising ``OSError 9``. The proxy reopens a
+        fresh stream over the current descriptor, so the console comes back.
+        """
+        target = tmp_path / "console.log"
+        descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        try:
+            stream = launch._HardenedStream(_DeadHandleStream(descriptor=descriptor), name="stderr")
+
+            written = stream.write("after repair\n")
+
+            assert written == len("after repair\n")
+            assert stream._repairs == 1
+            assert stream._noted is False
+            assert "after repair" in target.read_text(encoding="utf-8")
+        finally:
+            os.close(descriptor)
+
+    def test_a_handle_that_never_recovers_is_noted_after_the_repair_budget(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: str(tmp_path))
+        stream = launch._HardenedStream(_DeadHandleStream(), name="stderr")
+        stream._repairs = launch._REPAIR_LIMIT
+
+        assert stream._repair() is False
+        stream.write("gone")
+
+        assert stream._noted is True
+
+    def test_everything_else_delegates_to_the_raw_stream(self) -> None:
+        raw = SimpleNamespace(isatty=lambda: True, fileno=lambda: 2, encoding="utf-8")
+        stream = launch._HardenedStream(raw, name="stderr")
+
+        assert stream.isatty() is True
+        assert stream.fileno() == 2
+        assert stream.encoding == "utf-8"
+
+    def test_hardening_wraps_both_streams_and_is_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(launch.sys, "stdout", SimpleNamespace(), raising=False)
+        monkeypatch.setattr(launch.sys, "stderr", SimpleNamespace(), raising=False)
+
+        launch._harden_console_streams()
+        first_stdout, first_stderr = launch.sys.stdout, launch.sys.stderr
+
+        launch._harden_console_streams()
+
+        assert isinstance(first_stdout, launch._HardenedStream)
+        assert isinstance(first_stderr, launch._HardenedStream)
+        assert launch.sys.stdout is first_stdout
+        assert launch.sys.stderr is first_stderr
+
+    def test_a_dead_handle_is_recognised_in_both_shapes(self) -> None:
+        assert launch._is_dead_handle(OSError(9, "The handle is invalid", None, 6, None))
+        assert launch._is_dead_handle(OSError(9, "Bad file descriptor"))
+        assert not launch._is_dead_handle(OSError(28, "No space left on device"))
+        assert not launch._is_dead_handle(ValueError("not an OS error"))
+
+
+class _DeadHandleStream:
+    """A stream whose handle was invalidated by native code mid-run."""
+
+    def __init__(self, *, failure: OSError | None = None, descriptor: int | None = None) -> None:
+        self.failure = failure or OSError(9, "The handle is invalid", None, 6, None)
+        self.writes: list[str] = []
+        self._descriptor = descriptor
+
+    def write(self, data: str) -> int:
+        self.writes.append(data)
+        raise self.failure
+
+    def flush(self) -> None:
+        raise self.failure
+
+    def fileno(self) -> int:
+        if self._descriptor is None:
+            raise OSError(9, "The handle is invalid")
+        return self._descriptor
+
+
+class _RecordingStream:
+    """A stream that records writes instead of touching a console."""
+
+    def __init__(self, writes: list[str]) -> None:
+        self._writes = writes
+
+    def write(self, data: str) -> int:
+        self._writes.append(data)
+        return len(data)
+
+    def flush(self) -> None:
+        return None
 
 
 @pytest.fixture(autouse=True)

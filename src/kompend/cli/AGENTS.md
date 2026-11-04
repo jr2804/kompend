@@ -79,7 +79,7 @@ use (pipeline, models, config, lint); then the boundary is clean.
 | File/Directory | Purpose |
 |---|---|
 | `app.py` | Typer app instance, global callback (`--wiki-dir`, `--config`, `--verbose`, `--version`), command registration |
-| `launch.py` | Console entry point: caps the numeric thread pools (`KOMP_BLAS_THREADS`, default `min(8, cores)`), answers a bare `--version` before the command tree loads, delegates everything else to `app.main` |
+| `launch.py` | Console entry point: caps the numeric thread pools (`KOMP_BLAS_THREADS`, default `min(8, cores)`), answers a bare `--version` before the command tree loads, hardens both console streams (see the stream contract), delegates everything else to `app.main` |
 | `_registry.py` | The command registry: `CommandName` / `CommandModule` / `HelpPanel` StrEnums, `COMMANDS` with each `CommandSpec` (module, panel, `short_help`), `PANEL_ORDER`, `OnDemandModule` |
 | `_group.py` | `LazyGroup` — lists every command from the registry, renders `--help` from `CommandSpec`, imports each module on first run |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
@@ -170,56 +170,54 @@ and fall back to the discovered project config; they never require a vault.
 
 **Recurring trap:** a bar looks "stuck," gets "fixed" with a plumbing change,
 and still looks stuck — because the cause was a slow/hung backend operation,
-not the bar. Diagnose in this order:
+not the bar. Diagnose: **confirm the total** ("Captioning images (171)" means
+`reset_for_phase(total, ...)` worked; a wrong total such as 0 is a real bug),
+**confirm the elapsed timer advances** (climbing `0:12:11` means the loop is
+blocked; frozen means the UI thread died), **then conclude the bar is correct and
+the *work* is slow** (one VLM/LLM call hanging until timeout pins the bar at 0%
+for timeout × retries). Do NOT "fix" a bar that passes these; the fix lives in
+`src/kompend/llm/`, the resolver, or the model config (`timeout`,
+`fallback_chain`).
 
-1. **Confirm the total.** "Captioning images (171)" means
-   `reset_for_phase(total, ...)` worked. A wrong total (e.g. 0) is a real
-   plumbing bug; a correct total is not.
-2. **Confirm the elapsed timer advances.** A climbing `0:12:11` means the bar
-   is live and the loop is blocked. A frozen timer means the UI thread died
-   (a different bug).
-3. **Then conclude the bar is correct and the *work* is slow.** One VLM/LLM
-   call hanging until timeout pins the bar at 0% for timeout × retries.
-
-Do NOT "fix" a bar passing steps 1–2. The fix lives in `src/kompend/llm/`,
-the resolver, or the model config (`timeout`, `fallback_chain`), not in
-`_progress.py` or `_pipeline_helpers.py`.
-
-**Stream contract:** the `Progress` bar is built with
-`redirect_stdout=False, redirect_stderr=False` — rich's `Live` swaps the std
-streams for proxies by default and restores them unconditionally on stop,
-which races the refresh thread into `OSError(9): The handle is invalid` on
-Windows. Logging goes through the console object, so the swap buys nothing.
+**Stream contract:** the `Progress` bar uses
+edirect_stdout=False,
+`redirect_stderr=False` — rich's `Live` swaps the std streams for proxies by
+default and restores them unconditionally on stop, which races the refresh thread
+into `OSError(9): The handle is invalid`. Logging goes through the console object,
+so the swap buys nothing. `launch._harden_console_streams()` proxies both streams
+at entry for the other cause: a capture window rebinds descriptor 2 around a native
+conversion, and the buffered stream bound to the old handle never recovers — every
+later write raises, the refresh thread dies, and the run ends as CPython's silent
+exit status 120. The proxy reopens a fresh stream over the current descriptor
+(bounded by `_REPAIR_LIMIT`) and absorbs only a descriptor that is really gone;
+any other `OSError` (full disk, a pipe a consumer reads) still propagates. Never
+remove that wrapper to "simplify" output.
 
 **Signal-path contract:** a phase advances only when the core tier calls
-`self._emit(phase, current, total, detail)`. The CLI handler in
-`_pipeline_helpers._make_progress_callback` maps `(current, total, detail)`
-to `tracker.reset_for_phase` / `tracker.update_progress`. When adding a
-sub-phase (like the VLM captioning burst inside resolve), emit a sentinel
-`(0, n, "<phase_name>")` to switch the bar, then `(i+1, n, "<detail>")`
-per unit. The handler must recognize both the sentinel `detail` string and
-the per-unit one.
+`self._emit(phase, current, total, detail)`; the CLI handler in
+`_pipeline_helpers._make_progress_callback` maps that triple to
+`tracker.reset_for_phase` / `tracker.update_progress`. A sub-phase (like the VLM
+captioning burst inside resolve) emits a sentinel `(0, n, "<phase_name>")` then
+`(i+1, n, "<detail>")` per unit; the handler must recognize both.
 
-**Determinate vs indeterminate:** bars with a known `total` (parse,
-summary, resolve, image-captioning) fill as units complete. Bars without one
-(compile, output) are indeterminate and convey activity via description
-updates, not percentage. Never fake a percentage on an indeterminate task.
+**Determinate vs indeterminate:** bars with a known `total` (parse, summary,
+resolve, image-captioning) fill as units complete; the rest (compile, output)
+are indeterminate and convey activity via description, never a faked percentage.
 
 ### Cooperative cancel (double-ESC)
 
 `compile`/`ingest` create a `core.cancel.CancelState` and thread it into
-`build_pipeline` / `ingest_documents` and `PipelineProgress.create`; with a
-bar shown, `start()` runs the `_esc_watch.py` watcher (two ESC within
-`CANCEL_WINDOW_SECONDS` ⇒ cancel request; no bar ⇒ no watcher). Boundary
-contract: `core/pipeline/AGENTS.md`; `app.py` exits 130 with a resume hint.
+`build_pipeline` / `ingest_documents` and `PipelineProgress.create`; with a bar
+shown, `start()` runs the `_esc_watch.py` watcher (two ESC within
+`CANCEL_WINDOW_SECONDS` ⇒ cancel; no bar ⇒ no watcher). Boundary contract:
+`core/pipeline/AGENTS.md`; `app.py` exits 130 with a resume hint.
 
 ### No direct core imports in thin wrappers
 
 Helper functions like `_send_to_review_queue`, `_annotate_provenance`,
-`_verify_claims` are acceptable as thin wrappers — they import the core
-function, call it, and print a status line. The test: if you strip the
-`get_console().print()` line, the remaining code should be a single function call
-to a core module.
+`_verify_claims` are acceptable thin wrappers — they import the core function,
+call it, and print a status line. The test: strip the `get_console().print()` line
+and the rest should be one call to a core module.
 
 ## Known violations (do not replicate)
 
