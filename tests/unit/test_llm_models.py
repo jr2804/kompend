@@ -33,6 +33,10 @@ from kompend.llm.models import (
     set_user_providers,
 )
 
+#: The real, cached vision lookup, captured before any test monkeypatches the
+#: module attribute — so teardown can always clear the genuine cache.
+_REAL_VISION_LOOKUP = mod.model_supports_vision
+
 # ── Catalogue fixture ──────────────────────────────────────────────────
 #
 # The model catalogue is live data (models.dev), so these tests pin it to a
@@ -472,7 +476,7 @@ class SimpleNamespaceLike:
 
 class TestVisionSupport:
     def teardown_method(self) -> None:
-        mod._VISION_CACHE.clear()
+        _REAL_VISION_LOOKUP.cache_clear()
 
     def test_catalog_vision_model_has_image_modality(self) -> None:
         # gpt-5.2 modalities.input includes 'image' in the models-dev catalog.
@@ -494,12 +498,13 @@ class TestVisionSupport:
 
         monkeypatch.setattr(mod.ollama, "show", _fail)
         assert mod.model_supports_vision("ollama/anything") is False
-        assert "ollama/anything" in mod._VISION_CACHE
 
 
 class TestResolveVlmModel:
     def teardown_method(self) -> None:
-        mod._VISION_CACHE.clear()
+        # This class replaces the function with a lambda, so the cached
+        # attribute is gone by then; clear through the pinned original.
+        _REAL_VISION_LOOKUP.cache_clear()
 
     def test_explicit_vlm_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(mod, "model_supports_vision", lambda s: True)
