@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import sqlite3
 import sys
 from pathlib import Path
 from typing import Any
@@ -199,6 +200,88 @@ class TestScanVault:
             encoding="utf-8",
         )
         assert _SCANNER.main(["--vault", str(vault)]) == 0
+
+    def _make_vault(self, tmp_path: Path) -> Path:
+        kompend = tmp_path / ".kompend"
+        kompend.mkdir()
+        return tmp_path
+
+
+class TestSqliteStore:
+    """The vault's durable artifacts live in ``kompend.db``, so the scan must too.
+
+    A JSON-only scanner was green forever after the store migration: zero
+    artifacts read, exit 0. These tests pin that it reads the store and refuses
+    a vacuous pass.
+    """
+
+    def test_a_leak_in_a_store_column_is_found(self, tmp_path: Path) -> None:
+        vault = self._make_vault(tmp_path)
+        self._seed_store(
+            vault,
+            "CREATE TABLE documents (cache_key TEXT, source_file TEXT)",
+            "INSERT INTO documents VALUES ('k1', 'D:/vault/sources/x.pdf')",
+        )
+
+        violations = _SCANNER.scan_vault(vault)
+
+        assert len(violations) == 1
+        assert violations[0].file == "kompend.db"
+        assert "documents" in violations[0].field_path
+        assert "source_file" in violations[0].field_path
+
+    def test_a_leak_nested_in_a_json_payload_column_is_found(self, tmp_path: Path) -> None:
+        vault = self._make_vault(tmp_path)
+        payload = json.dumps([{"metadata": {"image_file": "/home/jan/fig.png"}}])
+        self._seed_store(
+            vault,
+            "CREATE TABLE documents (cache_key TEXT, elements TEXT)",
+            ("INSERT INTO documents VALUES (?, ?)", ("k2", payload)),
+        )
+
+        violations = _SCANNER.scan_vault(vault)
+
+        assert len(violations) == 1
+        assert "elements[0].metadata.image_file" in violations[0].field_path
+
+    def test_relative_paths_in_the_store_are_clean(self, tmp_path: Path) -> None:
+        vault = self._make_vault(tmp_path)
+        self._seed_store(
+            vault,
+            "CREATE TABLE documents (cache_key TEXT, source_file TEXT)",
+            "INSERT INTO documents VALUES ('k3', 'sources/ok.pdf')",
+        )
+
+        assert _SCANNER.scan_vault(vault) == []
+        assert _SCANNER.main(["--vault", str(vault)]) == 0
+
+    def test_an_empty_vault_is_not_a_pass(self, tmp_path: Path) -> None:
+        """Nothing scanned means nothing proved — exit 2, not 0."""
+        vault = self._make_vault(tmp_path)
+
+        assert _SCANNER.main(["--vault", str(vault)]) == 2
+
+    def test_a_non_database_db_file_is_skipped_not_fatal(self, tmp_path: Path) -> None:
+        """A stray ``.db`` with no schema carries nothing to scan."""
+        vault = self._make_vault(tmp_path)
+        (vault / ".kompend" / "memory.db").write_bytes(b"not a database")
+        (vault / ".kompend" / "assets.json").write_text(json.dumps({"source": "sources/x.pdf"}), encoding="utf-8")
+
+        assert _SCANNER.main(["--vault", str(vault)]) == 0
+
+    def _seed_store(self, vault: Path, *statements: tuple[str, tuple[str, ...]] | str) -> None:
+        """Create a ``kompend.db`` with *statements* executed in order."""
+        conn = sqlite3.connect(vault / ".kompend" / "kompend.db")
+        try:
+            for statement in statements:
+                if isinstance(statement, tuple):
+                    sql, params = statement
+                    conn.execute(sql, params)
+                else:
+                    conn.execute(statement)
+            conn.commit()
+        finally:
+            conn.close()
 
     def _make_vault(self, tmp_path: Path) -> Path:
         kompend = tmp_path / ".kompend"
