@@ -307,8 +307,9 @@ def main() -> int:
         print(json.dumps(payload, indent=2))
     else:
         touched = len({v.file for v in all_violations})
-        scanned = f"{len(py_files)} python + {len(doc_files)} doc"
-        print(f"check-antipatterns: {len(all_violations)} violation(s) in {touched} file(s), {scanned} scanned")
+        print(
+            f"check-antipatterns: {len(all_violations)} violation(s) in {touched} file(s) with findings, {len(py_files)} python + {len(doc_files)} doc scanned"
+        )
         if by_rule:
             print("  by rule:")
             for rule, n in sorted(by_rule.items()):

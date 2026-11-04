@@ -301,9 +301,14 @@ def _looks_absolute(value: str) -> bool:
 
 
 def _default_vault() -> Path:
-    """Best-effort default vault: cwd if it contains a .kompend folder."""
-    cwd = Path.cwd()
-    return cwd if (cwd / ".kompend").is_dir() else cwd
+    """The vault to scan when ``--vault`` is not given: the current directory.
+
+    The cwd is reported as-is rather than substituted for something that looks
+    more like a vault: judging one tree against another's artifacts is how a
+    scanner returns a confident wrong answer. If the cwd has no ``.kompend``,
+    the empty scan fails loudly in :func:`main` instead.
+    """
+    return Path.cwd()
 
 
 if __name__ == "__main__":

@@ -149,6 +149,54 @@ def test_fact_fed_gates_abort_when_their_facts_vanish(tmp_path: Path) -> None:
         assert parity.main() == 2
 
 
+def test_the_verdict_does_not_depend_on_where_the_scanner_stands(tmp_path: Path) -> None:
+    """Level 0: identity. A gate must not silently judge some other project.
+
+    Absence is testable by emptying an input; substituting a different source
+    is not. The test is to move the scanner somewhere else and require that it
+    either still reads *this* project or refuses — never a confident verdict
+    about the wrong tree.
+    """
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+
+    def run_from(script: str) -> subprocess.CompletedProcess[str]:
+        return subprocess.run(  # noqa: S603 - fixed argv, no shell
+            [sys.executable, str(CHECKS / script)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=elsewhere,
+            timeout=300,
+            check=False,
+        )
+
+    # `repo_root()` walks up from __file__ to a pyproject marker, so these still
+    # read this repository — the verdict must be identical, not merely non-empty.
+    for script in ("check_antipatterns.py", "check_config_literals.py"):
+        here = run_from(script)
+        assert here.returncode == 0, f"{script} from a foreign cwd: {here.stderr[-400:]}"
+        assert "scanned" in here.stdout
+
+    # These two take a directory that defaults to cwd, so a foreign cwd is a
+    # foreign project: refuse rather than report a clean tree.
+    for script in ("check_dox.py", "check_persisted_paths.py"):
+        there = run_from(script)
+        assert there.returncode == 2, f"{script} must not certify a foreign cwd:\n{there.stdout}\n{there.stderr}"
+
+
+def test_the_default_vault_is_the_cwd_and_nothing_else() -> None:
+    """No plausible substitute: the cwd is reported as-is, or the scan fails."""
+    sys.path.insert(0, str(CHECKS))
+    try:
+        persisted = importlib.import_module("check_persisted_paths")
+    finally:
+        sys.path.pop(0)
+
+    assert persisted._default_vault() == Path.cwd()
+
+
 def test_a_missing_project_root_is_not_a_pass(tmp_path: Path) -> None:
     """``--root`` pointing nowhere must abort, not report a clean DOX tree."""
     result = _run("check_dox.py", "--root", str(tmp_path / "does-not-exist"))
