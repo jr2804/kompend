@@ -212,7 +212,7 @@ def test_an_empty_collection_literal_is_caught_but_a_call_is_not(tmp_path: Path)
         module.CONFIG_MODELS = original
 
 
-def test_a_field_name_shared_by_two_models_keeps_both_defaults() -> None:
+def test_a_field_name_shared_by_two_models_keeps_both_defaults(tmp_path: Path) -> None:
     """A field name is unique per model, not across the merged map.
 
     Keyed by name alone, a second model declaring the same field with a
@@ -220,6 +220,10 @@ def test_a_field_name_shared_by_two_models_keeps_both_defaults() -> None:
     shadowed default would stop being reported — the same silent drop this
     module exists to prevent, one layer down. No name is shared today, so the
     shape must be right before it is needed.
+
+    Asserting the tuple alone would be a shape test: it would pass if the scan
+    still compared against one value. So this also scans literals for *both*
+    defaults, which is the property that actually prevents the dropped finding.
     """
     module = _load_check("check_config_literals")
 
@@ -231,12 +235,17 @@ def test_a_field_name_shared_by_two_models_keeps_both_defaults() -> None:
 
     original = module.CONFIG_MODELS
     module.CONFIG_MODELS = [_First, _Second]
+    probe = tmp_path / "probe.py"
     try:
         defaults = module._config_defaults()
+        assert defaults == {"timeout": (120, 30)}, "one model's default must not shadow another's"
+
+        for literal, expected in ((120, True), (30, True), (99, False)):
+            probe.write_text(f"def f():\n    g(timeout={literal})\n", encoding="utf-8")
+            findings = module._scan(probe, defaults, set())
+            assert bool(findings) is expected, f"timeout={literal} -> {findings}"
     finally:
         module.CONFIG_MODELS = original
-
-    assert defaults == {"timeout": (120, 30)}, "one model's default must not shadow another's"
 
 
 @pytest.mark.parametrize(("module_name", "attribute", "receiver", "empty"), _EMPTY_FACT_CASES)
