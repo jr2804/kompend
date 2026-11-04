@@ -91,7 +91,7 @@ the two AST gates.
 
 ### Gate exit codes
 
-The generic rule above ("a scan that finds no files is an error") has five
+The generic rule above ("a scan that finds no files is an error") has four
 more faces. A gate asserts each before reporting success:
 
 - **Identity** — a scan of the *wrong* source is not empty, so no coverage
