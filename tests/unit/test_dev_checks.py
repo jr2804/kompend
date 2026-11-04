@@ -172,11 +172,12 @@ def test_a_factory_default_enters_the_facts_as_its_empty_collection() -> None:
 
     for model_name, field_name, info in factory_fields:
         built = info.default_factory() if info.default_factory else None
-        assert defaults.get(field_name) is not PydanticUndefined, f"{model_name}.{field_name} stored the sentinel"
+        stored = defaults.get(field_name, ())
+        assert PydanticUndefined not in stored, f"{model_name}.{field_name} stored the sentinel"
         if isinstance(built, (list, dict, set, tuple)) and not built:
-            assert field_name in defaults, f"{model_name}.{field_name} builds an empty {type(built).__name__} that an empty literal repeats"
+            assert built in stored, f"{model_name}.{field_name} builds an empty {type(built).__name__} that an empty literal repeats"
         else:
-            assert field_name not in defaults, f"{model_name}.{field_name} builds a non-literal; no caller can re-type it"
+            assert built not in stored, f"{model_name}.{field_name} builds a non-literal; no caller can re-type it"
 
 
 def test_an_empty_collection_literal_is_caught_but_a_call_is_not(tmp_path: Path) -> None:
@@ -191,7 +192,7 @@ def test_an_empty_collection_literal_is_caught_but_a_call_is_not(tmp_path: Path)
     module.CONFIG_MODELS = [_Probe]
     try:
         defaults = module._config_defaults()
-        assert defaults == {"plain": 7, "listed": []}
+        assert defaults == {"plain": (7,), "listed": ([],)}
 
         cases = {
             "g(plain=7, listed=[])": True,
@@ -209,6 +210,33 @@ def test_an_empty_collection_literal_is_caught_but_a_call_is_not(tmp_path: Path)
                 assert "List(" not in findings[0], "the message must print the literal, not its AST node"
     finally:
         module.CONFIG_MODELS = original
+
+
+def test_a_field_name_shared_by_two_models_keeps_both_defaults() -> None:
+    """A field name is unique per model, not across the merged map.
+
+    Keyed by name alone, a second model declaring the same field with a
+    different default would overwrite the first, and a literal repeating the
+    shadowed default would stop being reported — the same silent drop this
+    module exists to prevent, one layer down. No name is shared today, so the
+    shape must be right before it is needed.
+    """
+    module = _load_check("check_config_literals")
+
+    class _First(BaseModel):
+        timeout: int = 120
+
+    class _Second(BaseModel):
+        timeout: int = 30
+
+    original = module.CONFIG_MODELS
+    module.CONFIG_MODELS = [_First, _Second]
+    try:
+        defaults = module._config_defaults()
+    finally:
+        module.CONFIG_MODELS = original
+
+    assert defaults == {"timeout": (120, 30)}, "one model's default must not shadow another's"
 
 
 @pytest.mark.parametrize(("module_name", "attribute", "receiver", "empty"), _EMPTY_FACT_CASES)

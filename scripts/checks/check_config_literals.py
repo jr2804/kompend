@@ -78,15 +78,24 @@ def main() -> int:
     return 0
 
 
-def _config_defaults() -> dict[str, Any]:
-    """Field name -> comparable default, for every user-facing config model."""
-    defaults: dict[str, Any] = {}
+def _config_defaults() -> dict[str, tuple[Any, ...]]:
+    """Field name -> every default any config model declares for it.
+
+    A tuple per name, not a bare value: the six config models are merged into
+    one map, and a field name is only unique *within* a model. Keyed by name
+    alone, a second model declaring the same field with a different default
+    would overwrite the first, and a literal repeating the shadowed default
+    would stop being reported - the same silent drop this module exists to
+    prevent, one layer down. No name is currently shared, so this is dormant;
+    a tuple costs nothing and makes a future share correct instead of lossy.
+    """
+    defaults: dict[str, tuple[Any, ...]] = {}
     for model in CONFIG_MODELS:
         for name, info in model.model_fields.items():
             value = _comparable_default(info)
             if value is _NO_DEFAULT:
                 continue
-            defaults[name] = value
+            defaults[name] = (*defaults.get(name, ()), value)
     return defaults
 
 
@@ -159,7 +168,7 @@ def _scan(path: Path, defaults: dict[str, Any], dotted: set[str]) -> list[str]:
                 if keyword.arg is None or keyword.arg not in defaults:
                     continue
                 literal = _literal_value(keyword.value)
-                if literal is _NO_DEFAULT or literal != defaults[keyword.arg]:
+                if literal is _NO_DEFAULT or literal not in defaults[keyword.arg]:
                     continue
                 line = line_of(keyword.value)
                 if _is_exempt(line):
