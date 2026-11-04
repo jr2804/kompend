@@ -22,6 +22,7 @@ Every template is checked at render time:
 
 from __future__ import annotations
 
+import functools
 import importlib.resources as ir
 import os
 import re
@@ -51,14 +52,7 @@ _PROJECT_TEMPLATES_NAME: str = "templates"
 
 # ── Frontmatter parsing ─────────────────────────────────────────────────
 
-_FRONTMATTER_RE: re.Pattern[str] | None = None
-
 logger = get_logger(__name__)
-
-# ── Module-level singleton ───────────────────────────────────────────
-
-_loader_instance: list[TemplateLoader] = []  # mutable container avoids global statement
-
 
 # ── Dataclasses ─────────────────────────────────────────────────────────
 
@@ -440,17 +434,19 @@ class TemplateVariable(TypedDict):
     required: NotRequired[bool]
 
 
+@functools.cache
 def get_template_loader() -> TemplateLoader:
     """Return the shared :class:`TemplateLoader` singleton.
 
-    Instantiates on first call, then reuses the same instance for every
-    subsequent call.  This avoids repeated filesystem walks in
-    :func:`find_project_config` when multiple modules create their own
-    ``TemplateLoader()`` at import time.
+    A cached getter, so the instance is built on first use and then constant
+    for the process lifetime — no assignable module variable and no mutable
+    container standing in for one. ``get_template_loader.cache_clear()`` is the
+    reset path tests need.
+
+    Shared because every loader instance walks the template search path on
+    construction, and dozens of modules ask for one at import time.
     """
-    if not _loader_instance:
-        _loader_instance.append(TemplateLoader())
-    return _loader_instance[0]
+    return TemplateLoader()
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
