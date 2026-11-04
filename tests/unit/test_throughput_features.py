@@ -131,11 +131,11 @@ class TestTierStateStore:
     def test_round_trip(self, tmp_path: Path) -> None:
         path = tmp_path / STATE_FILE
         store = TierStateStore(path)
-        state = TierState(entries={"a": SourceState(stem="a", source_file="a", content_hash="x")})
+        state = TierState(entries={"a-x": SourceState(stem="a", source_file="a", content_hash="x")})
         store.save(state)
         loaded = store.load()
-        assert "a" in loaded.entries
-        assert loaded.entries["a"].content_hash == "x"
+        assert "a-x" in loaded.entries
+        assert loaded.entries["a-x"].content_hash == "x"
 
     def test_record_creates_entry(self, tmp_path: Path) -> None:
         store = TierStateStore(tmp_path / STATE_FILE)
@@ -143,29 +143,48 @@ class TestTierStateStore:
         entry = store.record(state, "doc1", Path("doc1.pdf"), "abc123", tier=1)
         assert entry.current_tier == 1
         assert entry.content_hash == "abc123"
-        assert state.entries["doc1"].last_compile
+        assert state.entries["doc1-abc123"].last_compile
 
     def test_record_updates_existing_entry(self, tmp_path: Path) -> None:
         store = TierStateStore(tmp_path / STATE_FILE)
         state = TierState()
         store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=1)
         store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=3)
-        assert state.entries["doc1"].current_tier == 3
-        assert state.entries["doc1"].search_hits == 0
+        assert state.entries["doc1-abc"].current_tier == 3
+        assert state.entries["doc1-abc"].search_hits == 0
 
     def test_record_hit_increments(self, tmp_path: Path) -> None:
         store = TierStateStore(tmp_path / STATE_FILE)
         state = TierState()
         store.record(state, "doc1", Path("d.pdf"), "h", tier=1)
-        store.record_hit(state, "doc1")
-        store.record_hit(state, "doc1")
-        assert state.entries["doc1"].search_hits == 2
+        store.record_hit(state, "doc1-h")
+        store.record_hit(state, "doc1-h")
+        assert state.entries["doc1-h"].search_hits == 2
+
+    def test_same_name_with_other_content_is_a_separate_source(self, tmp_path: Path) -> None:
+        """Two files sharing a name but differing in content must not collide."""
+        store = TierStateStore(tmp_path / STATE_FILE)
+        state = TierState()
+        store.record(state, "P863E", Path("sources/p863-v1.0/P863E.pdf"), "aaaa1111", tier=1)
+        store.record(state, "P863E", Path("sources/p863-v2.0/P863E.pdf"), "bbbb2222", tier=1)
+        assert sorted(state.entries) == ["P863E-aaaa1111", "P863E-bbbb2222"]
+        assert state.entries["P863E-aaaa1111"].source_file == "sources/p863-v1.0/P863E.pdf"
+        assert state.entries["P863E-bbbb2222"].source_file == "sources/p863-v2.0/P863E.pdf"
+
+    def test_moving_a_source_keeps_its_entry(self, tmp_path: Path) -> None:
+        """Regrouping sources into folders is a path change, not a new source."""
+        store = TierStateStore(tmp_path / STATE_FILE)
+        state = TierState()
+        store.record(state, "note", Path("sources/misc/note.md"), "abc", tier=1)
+        store.record(state, "note", Path("sources/paper/note.md"), "abc", tier=1)
+        assert list(state.entries) == ["note-abc"]
+        assert state.entries["note-abc"].source_file == "sources/paper/note.md"
 
     def test_record_sets_ingested_by(self, tmp_path: Path) -> None:
         store = TierStateStore(tmp_path / STATE_FILE)
         state = TierState()
         store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=1, ingested_by="alice")
-        assert state.entries["doc1"].ingested_by == "alice"
+        assert state.entries["doc1-abc"].ingested_by == "alice"
 
     def test_record_preserves_ingested_by_when_unset(self, tmp_path: Path) -> None:
         # The compile path does not pass ingested_by — it must preserve the
@@ -174,14 +193,14 @@ class TestTierStateStore:
         state = TierState()
         store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=1, ingested_by="alice")
         store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=2)
-        assert state.entries["doc1"].ingested_by == "alice"
-        assert state.entries["doc1"].current_tier == 2
+        assert state.entries["doc1-abc"].ingested_by == "alice"
+        assert state.entries["doc1-abc"].current_tier == 2
 
     def test_record_empty_ingested_when_disabled(self, tmp_path: Path) -> None:
         store = TierStateStore(tmp_path / STATE_FILE)
         state = TierState()
         store.record(state, "doc1", Path("doc1.pdf"), "abc", tier=1, ingested_by="")
-        assert state.entries["doc1"].ingested_by == ""
+        assert state.entries["doc1-abc"].ingested_by == ""
 
     def test_ingested_by_round_trip(self, tmp_path: Path) -> None:
         path = tmp_path / STATE_FILE
@@ -190,7 +209,7 @@ class TestTierStateStore:
         store.record(state, "doc1", Path("d.pdf"), "h", tier=1, ingested_by="bob")
         store.save(state)
         loaded = store.load()
-        assert loaded.entries["doc1"].ingested_by == "bob"
+        assert loaded.entries["doc1-h"].ingested_by == "bob"
 
     def test_legacy_state_file_is_not_read(self, tmp_path: Path) -> None:
         # Clean-cut policy (B3): legacy .kompend JSON is never read. A pre-existing
@@ -369,7 +388,7 @@ class TestAutoPromoteDemote:
         )
         changed = auto_promote_demote(state, promote_threshold=3, demote_days=90)
         assert changed == 1
-        assert state.entries["a"].current_tier == 3
+        assert state.entries["a-"].current_tier == 3
 
     def test_no_promote_below_threshold(self) -> None:
         state = TierState(
@@ -402,7 +421,7 @@ class TestAutoPromoteDemote:
         )
         changed = auto_promote_demote(state, promote_threshold=3, demote_days=90)
         assert changed == 1
-        assert state.entries["a"].current_tier == 1
+        assert state.entries["a-"].current_tier == 1
 
 
 class TestWikiPipelineTiered:

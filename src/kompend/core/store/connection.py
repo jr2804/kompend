@@ -28,7 +28,13 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
-from kompend.core.store.schema import SCHEMA_VERSION, apply_schema, current_version, reconcile_columns
+from kompend.core.store.schema import (
+    SCHEMA_VERSION,
+    apply_schema,
+    current_version,
+    migrate_tier_state_identity,
+    reconcile_columns,
+)
 from kompend.logging import get_logger
 
 _BUSY_TIMEOUT_MS = 5000
@@ -87,6 +93,11 @@ def ensure_schema(conn: sqlite3.Connection, db_path: Path) -> None:
         )
         _drop_all(conn)
     apply_schema(conn, SCHEMA_VERSION)
+    if migrate_tier_state_identity(conn):
+        logger.warning(
+            "kompend.db tier state rekeyed at %s: sources are now identified by name + content hash, not by path (no data loss, moves preserve state)",
+            db_path,
+        )
     added = reconcile_columns(conn)
     if added:
         logger.warning(

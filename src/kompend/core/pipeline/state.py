@@ -15,8 +15,9 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
+from kompend.core.identity import source_key
 from kompend.core.models import MetadataField
 from kompend.core.pipeline.config import Tier
 from kompend.core.store import open_store, vault_db_path
@@ -26,6 +27,9 @@ from kompend.logging import get_logger
 
 # Tier level at which a source is considered fully compiled (OUTPUT = 4).
 _OUTPUT_TIER_LEVEL = Tier.level_of(Tier.OUTPUT)
+
+#: Serialized name of :attr:`SourceState.key` (the source's identity).
+SOURCE_KEY_FIELD: Final[str] = "key"
 
 logger = get_logger(__name__)
 
@@ -44,7 +48,14 @@ class CompileStatus(StrEnum):
 
 @dataclass
 class SourceState:
-    """Persistent state for a single source file."""
+    """Persistent state for a single source file.
+
+    A source is identified by its :attr:`key` — file name plus content-hash
+    prefix (see :func:`kompend.core.pipeline.parse_cache.source_key`), never by
+    its path. ``source_file`` is the most recent path the source was seen at,
+    so regrouping or moving files under ``sources/`` does not fork or lose the
+    entry, and two same-named files with different content stay two sources.
+    """
 
     stem: str
     source_file: str
@@ -55,8 +66,15 @@ class SourceState:
     last_hit: str = ""
     ingested_by: str = ""
 
+    @property
+    def key(self) -> str:
+        """Identity of this source: ``<stem>-<hash8>``."""
+        return source_key(self.stem, self.content_hash)
+
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        data = asdict(self)
+        data[SOURCE_KEY_FIELD] = self.key
+        return data
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SourceState:
@@ -74,7 +92,7 @@ class SourceState:
 
 @dataclass
 class TierState:
-    """Aggregate state for all sources."""
+    """Aggregate state for all sources, keyed by :attr:`SourceState.key`."""
 
     entries: dict[str, SourceState] = field(default_factory=dict)
 
@@ -146,17 +164,20 @@ class TierStateStore:
     def load(self) -> TierState:
         """Read tier state from the store.
 
-        Returns an empty state when no rows exist (fresh start).
+        Returns an empty state when no rows exist (fresh start). Entries are
+        keyed by :attr:`SourceState.key`; a row written before the identity
+        carried a content hash falls back to its own ``key`` column, so an old
+        store loads with its stem-keyed entries intact instead of colliding.
         """
         if not self._db_path.exists():
             return TierState()
         with open_store(self._db_path) as conn:
             rows = conn.execute(
-                f"SELECT stem, source_file, content_hash, current_tier, last_compile, search_hits, last_hit, ingested_by FROM {TIER_STATE_TABLE}"
+                f"SELECT key, stem, source_file, content_hash, current_tier, last_compile, search_hits, last_hit, ingested_by FROM {TIER_STATE_TABLE}"
             ).fetchall()
         return TierState(
             entries={
-                row["stem"]: SourceState(
+                row["key"]: SourceState(
                     stem=row["stem"],
                     source_file=row["source_file"],  # nocheck: kompend.db column
                     content_hash=row["content_hash"],
@@ -175,10 +196,11 @@ class TierStateStore:
         with open_store(self._db_path) as conn:
             conn.execute(f"DELETE FROM {TIER_STATE_TABLE}")
             conn.executemany(
-                f"INSERT INTO {TIER_STATE_TABLE}(stem, source_file, content_hash, current_tier, "
-                f"last_compile, search_hits, last_hit, ingested_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO {TIER_STATE_TABLE}(key, stem, source_file, content_hash, current_tier, "
+                f"last_compile, search_hits, last_hit, ingested_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
+                        entry.key,
                         entry.stem,
                         entry.source_file,
                         entry.content_hash,
@@ -201,18 +223,27 @@ class TierStateStore:
         tier: int,
         ingested_by: str | None = None,
     ) -> SourceState:
-        """Insert or update the entry for ``stem`` and return it.
+        """Insert or update the entry for ``stem`` + *content_hash* and return it.
+
+        The entry is keyed by ``<stem>-<hash8>`` (see :func:`source_key`), not
+        by the path: moving or regrouping a source keeps its entry, while two
+        same-named files with different content keep separate ones. The stored
+        path is always the one this call saw.
 
         When *ingested_by* is ``None`` (the compile path) the existing
         value is preserved; any string (including ``""``) overwrites it.
         """
         _ = self  # noqa: PLR6301 — kept as instance method for future per-store config
         now = iso_local()
-        existing = state.entries.get(stem)
+        key = source_key(stem, content_hash)
+        # POSIX form: the state store is portable across platforms and the
+        # vault-relocatable path convention is POSIX (see ``rel_to_vault``).
+        stored_path = Path(source_file).as_posix()
+        existing = state.entries.get(key)
         if existing is None:
             entry = SourceState(
                 stem=stem,
-                source_file=str(source_file),
+                source_file=stored_path,
                 content_hash=content_hash,
                 current_tier=tier,
                 last_compile=now,
@@ -221,7 +252,7 @@ class TierStateStore:
         else:
             entry = SourceState(
                 stem=stem,
-                source_file=str(source_file),
+                source_file=stored_path,
                 content_hash=content_hash,
                 current_tier=tier,
                 last_compile=now,
@@ -229,18 +260,18 @@ class TierStateStore:
                 last_hit=existing.last_hit,
                 ingested_by=ingested_by if ingested_by is not None else existing.ingested_by,
             )
-        state.entries[stem] = entry
+        state.entries[key] = entry
         return entry
 
-    def record_hit(self, state: TierState, stem: str) -> None:
-        """Increment search-hit counter for a source."""
+    def record_hit(self, state: TierState, key: str) -> None:
+        """Increment search-hit counter for the source identified by *key*."""
         _ = self  # noqa: PLR6301 — instance method for future per-store config
-        existing = state.entries.get(stem)
+        existing = state.entries.get(key)
         if existing is None:
             return
         existing.search_hits += 1
         existing.last_hit = iso_local()
-        state.entries[stem] = existing
+        state.entries[key] = existing
 
 
 def classify_compile_status(
@@ -317,7 +348,7 @@ def auto_promote_demote(
     """
     now = now or now_local()
     changed = 0
-    for entry in state.entries.values():
+    for key, entry in list(state.entries.items()):
         new_tier = entry.current_tier
         if entry.search_hits >= promote_threshold and entry.current_tier < 3:
             new_tier = 3
@@ -331,6 +362,10 @@ def auto_promote_demote(
                 new_tier = 1
         if new_tier != entry.current_tier:
             entry.current_tier = new_tier
-            state.entries[entry.stem] = entry
+            # Re-key on the entry's identity, which an older store may not
+            # have used as its map key; drop the stale key in that case.
+            if entry.key != key:
+                del state.entries[key]
+            state.entries[entry.key] = entry
             changed += 1
     return changed

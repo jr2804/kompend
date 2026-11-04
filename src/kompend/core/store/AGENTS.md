@@ -27,6 +27,15 @@ Design + table mapping live in `.agents/history/2026-09-24-kompend-storage-migra
 - **`schema.py` is the only place DDL exists.** Add or change tables there, bump
   `SCHEMA_VERSION`, and reference tables through the `*_TABLE` constants — never
   inline a table literal.
+- **Additive changes ride `reconcile_columns`; a shape change needs a
+  migration.** New columns/tables are picked up on the next open with no
+  version bump. A primary-key change cannot be reconciled, so it is migrated
+  in place instead of dropping the store — `migrate_tier_state_identity`
+  (`schema.py`) is the one example: `tier_state` moved from a bare-stem key to
+  the content-addressed `<stem>-<hash8>` identity
+  (`kompend.core.identity.source_key`) and kept every row's tier, hit counters
+  and `ingested_by`. A `SCHEMA_VERSION` bump remains reserved for incompatible
+  changes.
 - **Clean-cut only (policy B3).** A version mismatch drops and recreates the
   store. There are **no** importers and **no** legacy readers — old
   `.kompend/*.json*` files are never read. `legacy.py` only *reports* them for

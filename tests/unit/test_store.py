@@ -18,6 +18,7 @@ from kompend.core.store.schema import (
     MEMORY_LOG_TABLE,
     REFERENCES_TABLE,
     SCHEMA_VERSION_TABLE,
+    TIER_STATE_TABLE,
 )
 
 _INSERT_CASES: tuple[tuple[str, str, tuple[object, ...]], ...] = (
@@ -25,7 +26,7 @@ _INSERT_CASES: tuple[tuple[str, str, tuple[object, ...]], ...] = (
     ("chunks", "INSERT INTO chunks(cache_key, payload) VALUES (?, ?)", ("c1", "{}")),
     ("extractions", "INSERT INTO extractions(layer, cache_key, payload) VALUES (?, ?, ?)", ("extract", "e1", "{}")),
     ("assets", "INSERT INTO assets(id, kind) VALUES (?, ?)", ("a1", "table")),
-    ("tier_state", "INSERT INTO tier_state(stem, source_file, content_hash) VALUES (?, ?, ?)", ("t1", "s.md", "h")),
+    ("tier_state", "INSERT INTO tier_state(key, stem, source_file, content_hash) VALUES (?, ?, ?, ?)", ("t1-abc", "t1", "s.md", "h")),
     ("wiki_snapshot", "INSERT INTO wiki_snapshot(kind) VALUES (?)", ("last",)),
     ("dedup_fingerprints", "INSERT INTO dedup_fingerprints(slug, closest_score) VALUES (?, ?)", ("d1", 0.5)),
     ("attachment_manifest", "INSERT INTO attachment_manifest(path, source) VALUES (?, ?)", ("x.png", "s")),
@@ -73,7 +74,7 @@ def test_wal_is_enabled(tmp_path: Path) -> None:
 def test_version_mismatch_recreates_clean(tmp_path: Path) -> None:
     db = _db_path(tmp_path)
     with open_store(db) as conn:
-        conn.execute("INSERT INTO tier_state(stem, source_file, content_hash) VALUES ('s', 's.md', 'h')")
+        conn.execute("INSERT INTO tier_state(key, stem, source_file, content_hash) VALUES ('s-h', 's', 's.md', 'h')")
         conn.execute(f"UPDATE {SCHEMA_VERSION_TABLE} SET version = 999")
 
     # Reopening must drop and recreate: the seeded row is gone, version resets.
@@ -89,7 +90,7 @@ def test_additive_schema_adds_missing_table_without_version_bump(tmp_path: Path)
     """
     db = _db_path(tmp_path)
     with open_store(db) as conn:
-        conn.execute("INSERT INTO tier_state(stem, source_file, content_hash) VALUES ('keep', 's.md', 'h')")
+        conn.execute("INSERT INTO tier_state(key, stem, source_file, content_hash) VALUES ('keep-h', 'keep', 's.md', 'h')")
         # Simulate a store created before review_state existed.
         conn.execute("DROP TABLE review_state")
 
@@ -100,6 +101,32 @@ def test_additive_schema_adds_missing_table_without_version_bump(tmp_path: Path)
         # … and existing data survives (no recreate happened).
         assert conn.execute("SELECT COUNT(*) FROM tier_state").fetchone()[0] == 1
         assert conn.execute(f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1").fetchone()[0] == SCHEMA_VERSION
+
+
+def test_tier_state_is_rekeyed_from_stem_to_identity(tmp_path: Path) -> None:
+    """A stem-keyed store is migrated in place: the row keeps its counters."""
+    db = _db_path(tmp_path)
+    with open_store(db) as conn:
+        conn.execute(f"DROP TABLE {TIER_STATE_TABLE}")
+        conn.execute(
+            f"CREATE TABLE {TIER_STATE_TABLE} (stem TEXT PRIMARY KEY, source_file TEXT NOT NULL, "
+            f"content_hash TEXT NOT NULL, current_tier INTEGER NOT NULL DEFAULT 0, "
+            f"last_compile TEXT NOT NULL DEFAULT '', search_hits INTEGER NOT NULL DEFAULT 0, "
+            f"last_hit TEXT NOT NULL DEFAULT '', ingested_by TEXT NOT NULL DEFAULT '')"
+        )
+        conn.execute(
+            f"INSERT INTO {TIER_STATE_TABLE}(stem, source_file, content_hash, current_tier, search_hits, ingested_by) "
+            f"VALUES ('P863E', 'sources/p863-v2.0/P863E.pdf', 'cedd4aee99', 2, 7, 'Jan.Reimes')"
+        )
+
+    with open_store(db) as conn:
+        row = conn.execute(f"SELECT key, stem, current_tier, search_hits, ingested_by FROM {TIER_STATE_TABLE}").fetchone()
+    assert row is not None
+    assert row["key"] == "P863E-cedd4aee"
+    assert row["stem"] == "P863E"
+    assert row["current_tier"] == 2
+    assert row["search_hits"] == 7
+    assert row["ingested_by"] == "Jan.Reimes"
 
 
 @pytest.mark.parametrize(("table", "insert_sql", "params"), _INSERT_CASES)

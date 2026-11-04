@@ -190,6 +190,30 @@ def test_same_content_stays_a_cache_hit(tmp_path: Path) -> None:
     assert result.cached == 1
 
 
+def test_same_content_at_a_new_path_stays_a_cache_hit(tmp_path: Path) -> None:
+    """A source's identity is name + content, so moving it is not a new source.
+
+    The stored ``source_file`` is the path the entry was written at; a hit is
+    rebound to the path being ingested, which is what keeps citations, tags and
+    the state store pointing at a file that exists.
+    """
+    base = _seed_vault(tmp_path)
+    src = base / "sources" / "note.md"
+
+    ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), config=None)
+
+    moved_dir = base / "sources" / "paper"
+    moved_dir.mkdir()
+    moved = moved_dir / "note.md"
+    src.replace(moved)
+
+    second = _IngestRouter("chain-A")
+    result = ingest_documents(files=[moved], base_dir=base, router=second, config=None)
+
+    assert second.parsed == []
+    assert result.cached == 1
+
+
 def test_forced_reingest_preserves_and_merges_cli_metadata(tmp_path: Path) -> None:
     base = _seed_vault(tmp_path)
     src = base / "sources" / "note.md"

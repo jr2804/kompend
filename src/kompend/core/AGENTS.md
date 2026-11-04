@@ -25,6 +25,11 @@ other kompend subsystems build on.
   `windows.py` line-aligned content windowing, `page_media.py` the figures
   and tables a page body shows). They are the only sanctioned
   place for string-in/string-out helpers shared across tiers.
+- `identity.py` owns **how a source is identified**: `source_key(stem,
+  content_hash)` → `<stem>-<hash8>`, never the path. The parse cache, the chunk
+  cache and `tier_state` all derive their keys from it, so a source may be
+  moved or regrouped and stays the same source, while two same-named files with
+  different content stay two. Do not hand-build such a key anywhere else.
 - One normaliser per concern: markdown formatting goes through
   `core.text.rumdl` (text/batch variants) or `output.renderer.format_output`
   (file sweep) — never a second hand-rolled formatter
