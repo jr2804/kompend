@@ -561,9 +561,9 @@ if (-not $Preview) {
 }
 
 # ------ Stage 14: Pipeline Log (on-demand report: compile + runs + lint trend) ----
-# log.md is no longer auto-written; regenerate it on demand from the
-# structured stores (runs.jsonl, lint_history.jsonl, last_wiki.json) and
-# print the full report so the build ends with a complete picture.
+# log.md is produced on demand, never by a build; regenerate it from the
+# structured stores in .kompend/kompend.db and print the full report so the
+# build ends with a complete picture.
 Write-Host ""
 Write-Host "=== Stage 14: Pipeline Log (regenerated report) ===" -ForegroundColor Cyan
 $LogArgs = @(

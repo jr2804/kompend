@@ -2,10 +2,9 @@
 """The CLI surface follows one rule per input class.
 
 - A **run-level** flag (`--wiki-dir`, `--config`, `--verbose`, `--version`) is
-  declared once, on the root meta app. `--config` used to exist on 14 of 63
-  commands, six more had an undocumented one because Typer turns a bare
-  `config: str | None = None` parameter into an option, and
-  `kompend --config x lint all` did not parse at all.
+  declared once, on the root meta app. Declaring a run-level flag per command
+  splits the surface: some commands accept it, some do not, and
+  `kompend --config x lint all` fails to parse.
 - A **command** declares only its own options; `config` is read from the run
   context through `_shared.config_file_from_ctx`. (`wiki_dir` keeps its
   documented per-command `WikiDir` alias - a pre-existing surface, out of
