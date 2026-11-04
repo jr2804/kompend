@@ -175,15 +175,6 @@ _VOCAB_ENUM_NAMES: frozenset[str] = frozenset(
     }
 )
 
-# Files where module-level state is a documented design choice (singleton
-# registries, plugin tables, etc.).
-#
-# Only used by rules that have no ruff equivalent. ``global`` used to be
-# listed here; it is gone, because ``PLW0603`` enforces it and a second
-# implementation with its own allowlist can only drift.
-_GLOBAL_KEYWORD_ALLOWLIST: frozenset[str] = frozenset()
-
-
 #: Vendored skill assets quote other projects' instructions - not our policy.
 _DOC_EXCLUDED_PARTS: tuple[str, ...] = (".agents/skills", "tmp", "node_modules")
 

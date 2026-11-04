@@ -459,6 +459,23 @@ def test_every_vocab_enum_allowlist_entry_still_names_a_strenum() -> None:
     assert not unmatched, f"_VOCAB_ENUM_NAMES entries matching no class in src/: {unmatched}"
 
 
+def test_every_pip_policy_file_actually_exists() -> None:
+    """A stale exemption path stops covering the policy doc that needs it.
+
+    ``scan_pip_installs`` exempts ``_PIP_POLICY_FILES`` by membership. Measured:
+    a *wrong* entry (a path that does not exist) exempts nothing and the policy
+    file it was meant to cover is scanned normally — so the failure is a false
+    finding, loud rather than silent. This test still earns its place: the loud
+    failure would appear in an unrelated file with no hint that an exemption
+    drifted, and pinning existence turns that into a named error here.
+    """
+    module = _antipatterns()
+
+    missing = sorted(str(p.relative_to(module.REPO_ROOT)) for p in module._PIP_POLICY_FILES if not p.is_file())
+
+    assert not missing, f"_PIP_POLICY_FILES entries that no longer exist: {missing}"
+
+
 def test_an_empty_source_root_is_not_a_pass(tmp_path: Path) -> None:
     """Scanning zero Python files must abort, not report success."""
     empty = tmp_path / "empty"
