@@ -12,15 +12,20 @@ LLM-coding mistakes observed in this codebase:
   dependencies must be imported at module level; the only legitimate use
   is probing an explicitly-optional package (declared in pyproject.toml's
   [project.optional-dependencies]). Any other use is a violation.
-- ``global`` keyword usage is flagged. It usually indicates a hacky module
-  state pattern that has a better alternative (a class, a contextvar, or
-  just passing the value).
+- ``global`` keyword usage is **not** checked here: ruff's ``PLW0603`` owns
+  it (``PL`` is selected in ``ruff.toml`` and the rule is not ignored), and
+  the checker previously re-implemented it with an allowlist that is now
+  empty. One rule, one owner.
 - Magic ``[:N]`` and ``[:N].replace(...)`` string/list crops are flagged
   unless the source line also references a ``config.get(...)`` /
-  ``DEFAULTS.get(...)`` / ``cfg.get(...)`` call. This is the
-  "Antipattern 4" enforcement from the project AGENTS.md. A crop whose bound
-  is a *named constant* is not matched by the scanner at all — the constant
-  is the traceable form the rule asks for.
+  ``DEFAULTS.get(...)`` / ``cfg.get(...)`` call. This is the "never crop"
+  rule from the root ``AGENTS.md`` (table row in ``.agents/CODE.md``). A crop
+  whose bound is a *named constant* is not matched by the scanner at all —
+  the constant is the traceable form the rule asks for. No ruff rule covers
+  this: ``PLR2004`` flags a magic value in a *comparison*, never a slice, and
+  it is in the ``ignore`` list here anyway. This checker is the only
+  enforcement of the project's cardinal rule, so do not delete it as
+  "duplicate".
 - Hard-coded wiki file names (``"index.md"``, ``"references.md"``, …) are
   flagged: the file names live once in :mod:`kompend.core.paths` as
   ``Final[str]`` constants and every other site imports them. A hard-coded
@@ -44,7 +49,13 @@ LLM-coding mistakes observed in this codebase:
   ``# nocheck: enum-literal — <reason>``.
 
 Each violation prints ``file:line:col  rule  message`` and the script
-exits non-zero on any violation. Exits 0 when clean.
+exits non-zero on any violation. Exits 0 when clean, and **2** when the scan
+itself could not be trusted (nothing to scan, or a file it could not read or
+parse) — a gate that cannot fail is worse than no gate.
+
+Comment scanning is tokenizer-based, not ``line.split("#")``: a ``#`` inside a
+string or a docstring is not a comment, and ``#noqa`` / ``#  noqa`` are valid
+suppressions that a plain ``str.find`` misses.
 
 Usage::
 
@@ -56,14 +67,17 @@ from __future__ import annotations
 
 import argparse
 import ast
+import io
 import json
 import re
+import sys
+import tokenize
 from collections import defaultdict
 from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
-from _common import repo_root, require_scanned
+from _common import ScanError, repo_root, require_scanned
 
 REPO_ROOT = repo_root()
 SRC_ROOT = REPO_ROOT / "src" / "kompend"
@@ -161,17 +175,44 @@ _VOCAB_ENUM_NAMES: frozenset[str] = frozenset(
     }
 )
 
-# Files where module-level state is a documented design choice (singleton
-# registries, plugin tables, etc.). Adding a new path here requires a
-# justification comment in the file.
-#
-# Empty on purpose: every former entry (``packs/base.py``) now uses a cached
-# getter, so a ``global`` statement anywhere is a finding again.
-_GLOBAL_KEYWORD_ALLOWLIST: frozenset[str] = frozenset()
-
-
 #: Vendored skill assets quote other projects' instructions - not our policy.
 _DOC_EXCLUDED_PARTS: tuple[str, ...] = (".agents/skills", "tmp", "node_modules")
+
+
+# Line-length padding slices are NOT data truncation — they enforce a
+# physical output width (e.g. a Markdown hard line break at 117 chars).
+# Such a crop must use a named constant (or a config-derived limit) and
+# carry a ``noqa:`` justification; the scanner no longer guesses from
+# the surrounding lines, because that guess hid real data crops.
+
+#: A ``noqa`` directive at the start of a comment. Anchored, so prose that
+#: merely mentions the directive mid-sentence does not match; tolerant of the
+#: no-space and double-space spellings ruff accepts. Group 1 is the code list,
+#: empty for a blanket directive.
+_NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*))?$", re.IGNORECASE)
+
+#: Separator inside a code list: ruff accepts commas and whitespace alike.
+_NOQA_CODE_SEP_RE = re.compile(r"[,\s]+")
+
+
+#: Token types whose text is literal, never code. F-string expressions are made
+#: of ordinary tokens between these, so they survive the blanking.
+_STRING_TOKEN_TYPES: frozenset[int] = frozenset(
+    {
+        tokenize.STRING,
+        tokenize.FSTRING_START,
+        tokenize.FSTRING_MIDDLE,
+        tokenize.FSTRING_END,
+    }
+)
+
+
+@dataclass(frozen=True)
+class Comment:
+    """One ``#`` comment token: its column and its text."""
+
+    col: int
+    text: str
 
 
 @dataclass
@@ -215,17 +256,29 @@ def main() -> int:
 
     roots = [Path(p).resolve() for p in args.src] if args.src else [SRC_ROOT, TESTS_ROOT]
 
-    py_files = discover_py_files(roots)
+    try:
+        py_files = discover_py_files(roots)
+    except ScanError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     doc_files = discover_doc_files()
-    require_scanned(len(py_files) + len(doc_files), roots)
+    # Per set, not on the sum: doc files are discovered repo-wide, so a sum
+    # would let ``--src <empty dir>`` scan zero Python files and still pass.
+    require_scanned(len(py_files), roots)
+    require_scanned(len(doc_files), [REPO_ROOT])
     all_violations: list[Violation] = []
-    for f in py_files:
-        all_violations.extend(scan_file(f))
+    try:
+        for f in py_files:
+            all_violations.extend(scan_file(f))
+    except ScanError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     for f in doc_files:
         try:
             lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
-        except OSError:
-            continue
+        except OSError as exc:
+            print(f"ERROR: cannot read {f}: {exc}", file=sys.stderr)
+            return 2
         all_violations.extend(scan_pip_installs(f, lines))
 
     by_rule: dict[str, int] = defaultdict(int)
@@ -241,8 +294,9 @@ def main() -> int:
         print(json.dumps(payload, indent=2))
     else:
         touched = len({v.file for v in all_violations})
-        scanned = f"{len(py_files)} python + {len(doc_files)} doc"
-        print(f"check-antipatterns: {len(all_violations)} violation(s) in {touched} file(s), {scanned} scanned")
+        print(
+            f"check-antipatterns: {len(all_violations)} violation(s) in {touched} file(s) with findings, {len(py_files)} python + {len(doc_files)} doc scanned"
+        )
         if by_rule:
             print("  by rule:")
             for rule, n in sorted(by_rule.items()):
@@ -272,25 +326,32 @@ def discover_doc_files() -> list[Path]:
 
 
 def scan_file(path: Path) -> list[Violation]:
+    """Scan one Python file; unreadable or unparseable files abort the run.
+
+    A file the checker cannot read or parse is not a pass: it is a blind spot
+    in a gate that is supposed to catch a whole bug class. The caller turns the
+    raised :class:`ScanError` into exit code 2.
+    """
     try:
         source = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    lines = source.splitlines()
+    except OSError as exc:
+        raise ScanError(f"cannot read {path}: {exc}") from exc
     try:
         tree = ast.parse(source, filename=str(path))
-    except SyntaxError:
-        return []
+    except SyntaxError as exc:
+        raise ScanError(f"cannot parse {path}:{exc.lineno}: {exc.msg}") from exc
+    code_lines, comments = _split_comments(source)
     out: list[Violation] = []
-    out.extend(scan_noqa_bans(path, lines))
+    out.extend(scan_noqa_bans(path, comments))
     out.extend(scan_import_error_guards(path, tree))
-    out.extend(scan_global_usage(path, tree, lines))
-    out.extend(scan_magic_crops(path, lines))
-    out.extend(scan_env_var_literals(path, lines))
-    out.extend(scan_wiki_filenames(path, lines))
-    out.extend(scan_str_keyed_registries(path, tree, lines))
-    out.extend(scan_enum_value_literals(path, tree, lines))
-    out.extend(scan_pip_installs(path, lines))
+    out.extend(scan_magic_crops(path, code_lines, comments))
+    out.extend(scan_env_var_literals(path, code_lines))
+    out.extend(scan_wiki_filenames(path, code_lines))
+    out.extend(scan_str_keyed_registries(path, tree, code_lines, comments))
+    out.extend(scan_enum_value_literals(path, tree, code_lines, comments))
+    # Comments keep their own scan: a documented install command is still an
+    # install command, and it is the form that actually reaches a reader.
+    out.extend(scan_pip_installs(path, source.splitlines()))
     return out
 
 
@@ -353,12 +414,18 @@ def scan_wiki_filenames(path: Path, lines: list[str]) -> list[Violation]:
 
 @cache
 def _path_filename_constants() -> frozenset[str]:
-    """The ``*.md`` file names defined as ``Final[str]`` in ``core/paths.py``."""
+    """The ``*.md`` file names defined as ``Final[str]`` in ``core/paths.py``.
+
+    An unreadable or unparseable ``paths.py`` means the rule has no facts to
+    judge by, so it raises :class:`ScanError` rather than returning an empty
+    set — an empty set reads as "no path constants exist" and disarms
+    WIKI-FILENAME without saying so.
+    """
     try:
         source = _PATHS_MODULE.read_text(encoding="utf-8")
         tree = ast.parse(source, filename=str(_PATHS_MODULE))
-    except (OSError, SyntaxError):
-        return frozenset()
+    except (OSError, SyntaxError) as exc:
+        raise ScanError(f"cannot collect path constants from {_PATHS_MODULE}: {exc}") from exc
     names: set[str] = set()
     for node in tree.body:
         if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
@@ -396,7 +463,7 @@ def scan_env_var_literals(path: Path, lines: list[str]) -> list[Violation]:
     return out
 
 
-def scan_str_keyed_registries(path: Path, tree: ast.Module, lines: list[str]) -> list[Violation]:
+def scan_str_keyed_registries(path: Path, tree: ast.Module, lines: list[str], comments: dict[int, Comment]) -> list[Violation]:
     """Flag module-level ``dict[str, ...]`` literals with all-bare-string keys.
 
     A string-keyed registry (``KNOWN_BACKENDS = {"parsecraft": ...}``) hides a
@@ -421,8 +488,7 @@ def scan_str_keyed_registries(path: Path, tree: ast.Module, lines: list[str]) ->
             continue  # ** merge — treat as derived
         if not all(isinstance(key, ast.Constant) and isinstance(key.value, str) for key in value.keys):
             continue
-        line = lines[node.lineno - 1]
-        if _NO_CHECK_RE.search(line):
+        if _waived(node.lineno, comments):
             continue
         keys = ", ".join(repr(key.value) for key in value.keys[:4])
         out.append(
@@ -448,7 +514,7 @@ def _is_plain_str_keyed_dict_annotation(annotation: ast.expr) -> bool:
     return isinstance(key_type, ast.Name) and key_type.id == "str"
 
 
-def scan_enum_value_literals(path: Path, tree: ast.Module, lines: list[str]) -> list[Violation]:
+def scan_enum_value_literals(path: Path, tree: ast.Module, lines: list[str], comments: dict[int, Comment]) -> list[Violation]:
     """Flag comparisons against bare string literals duplicating enum values.
 
     ``if preset == "sliding"`` compiles fine and silently desyncs the day the
@@ -474,8 +540,7 @@ def scan_enum_value_literals(path: Path, tree: ast.Module, lines: list[str]) -> 
             enum_names = values.get(comparator.value)
             if not enum_names:
                 continue
-            line_idx = node.lineno - 1
-            if _NO_CHECK_RE.search(lines[line_idx]):
+            if _waived(node.lineno, comments):
                 continue
             names = "/".join(sorted(enum_names))
             out.append(
@@ -500,8 +565,10 @@ def _vocab_enum_values() -> dict[str, set[str]]:
     for py in SRC_ROOT.rglob("*.py"):
         try:
             tree = ast.parse(py.read_text(encoding="utf-8", errors="replace"), filename=str(py))
-        except (OSError, SyntaxError):
-            continue
+        except (OSError, SyntaxError) as exc:
+            # A file the collector cannot parse is a blind spot in its own
+            # fact set: the enum values it defines would silently go missing.
+            raise ScanError(f"cannot collect enum values from {py}: {exc}") from exc
         for node in tree.body:
             if not isinstance(node, ast.ClassDef) or node.name not in _VOCAB_ENUM_NAMES:
                 continue
@@ -519,36 +586,37 @@ def _vocab_enum_values() -> dict[str, set[str]]:
     return dict(value_map)
 
 
-def scan_noqa_bans(path: Path, lines: list[str]) -> list[Violation]:
-    """Find ``# noqa: BANNED_NOQA`` comments — they must not exist."""
+def scan_noqa_bans(path: Path, comments: dict[int, Comment]) -> list[Violation]:
+    """Find ``# noqa: BANNED_NOQA`` comments — they must not exist.
+
+    Reads the tokenizer's comment tokens, so prose in a docstring that quotes
+    ``# noqa: PLC0415`` is documentation, not a suppression.
+    """
     out: list[Violation] = []
-    for i, line in enumerate(lines, start=1):
-        for code in _collect_noqa_codes(line):
-            if code in BANNED_NOQA:
-                out.append(
-                    Violation(
-                        file=path,
-                        line=i,
-                        col=line.find("# noqa"),
-                        rule="BANNED-NOQA",
-                        message=f"# noqa: {code} is banned. Fix the root issue instead of suppressing the lint.",
-                        context=line.strip(),
-                    )
+    for line_no, comment in sorted(comments.items()):
+        for code in sorted(_noqa_codes(comment.text)):
+            if code not in BANNED_NOQA:
+                continue
+            out.append(
+                Violation(
+                    file=path,
+                    line=line_no,
+                    col=comment.col + 1,
+                    rule="BANNED-NOQA",
+                    message=f"# noqa: {code} is banned. Fix the root issue instead of suppressing the lint.",
+                    context=comment.text.strip(),
                 )
+            )
     return out
 
 
 def _collect_noqa_codes(line: str) -> set[str]:
-    """Extract all rule codes named in a ``# noqa:`` comment."""
-    match = _is_noqa_line(line)
-    if not match:
-        return set()
-    raw = match.group(1)
-    return {code.strip() for code in raw.split(",") if code.strip()}
+    """Extract every rule code named in a ``noqa`` comment (whitespace- or comma-separated)."""
+    return _noqa_codes(line)
 
 
 def scan_import_error_guards(path: Path, tree: ast.AST) -> list[Violation]:
-    """Flag ``try: import x / except ImportError: ...`` blocks.
+    r"""Flag ``try: import x / except ImportError: ...`` blocks.
 
     Required dependencies must be imported at module level. The only
     legitimate use is probing an explicitly-optional package (declared
@@ -558,77 +626,42 @@ def scan_import_error_guards(path: Path, tree: ast.AST) -> list[Violation]:
 
     We deliberately do NOT flag ``except ImportError`` raised during
     function calls (e.g. ``try: foo(); except ImportError: ...``) —
-    only ImportError raised around an ``import`` statement.
+    only ImportError raised around an ``import`` statement. The import must be
+    in the *guarded body* (``body`` or ``orelse``); walking the whole ``Try``
+    node would include the handlers, so ``try: risky()\nexcept ImportError:\n
+    import fallback`` would be reported as an import guard although the import
+    is what the handler does, not what it protects.
     """
     out: list[Violation] = []
+    if _is_test_file(path):
+        return out
     for node in ast.walk(tree):
         if not isinstance(node, ast.Try):
             continue
-        for handler in node.handlers:
-            if not isinstance(handler.type, ast.Name) or handler.type.id != "ImportError":
-                continue
-            # Check if the try-block contains an import statement.
-            has_import = any(isinstance(child, (ast.Import, ast.ImportFrom)) for child in ast.walk(node))
-            if not has_import:
-                continue
-            # Skip the test files where ImportError probes are common.
-            if _is_test_file(path):
-                continue
-            out.append(
-                Violation(
-                    file=path,
-                    line=handler.lineno,
-                    col=handler.col_offset + 1,
-                    rule="IMPORT-ERROR-GUARD",
-                    message=(
-                        "try/except ImportError around an import is suspicious. "
-                        "Required dependencies must be imported at module level. "
-                        "If the package is truly optional, declare it in [project.optional-dependencies] "
-                        "in pyproject.toml and document the rationale with a comment."
-                    ),
-                )
+        if not any(isinstance(handler.type, ast.Name) and handler.type.id == "ImportError" for handler in node.handlers):
+            continue
+        guarded = [*node.body, *node.orelse]
+        if not any(isinstance(stmt, (ast.Import, ast.ImportFrom)) for stmt in guarded):
+            continue
+        handler = next(h for h in node.handlers if isinstance(h.type, ast.Name) and h.type.id == "ImportError")
+        out.append(
+            Violation(
+                file=path,
+                line=handler.lineno,
+                col=handler.col_offset + 1,
+                rule="IMPORT-ERROR-GUARD",
+                message=(
+                    "try/except ImportError around an import is suspicious. "
+                    "Required dependencies must be imported at module level. "
+                    "If the package is truly optional, declare it in [project.optional-dependencies] "
+                    "in pyproject.toml and document the rationale with a comment."
+                ),
             )
+        )
     return out
 
 
-def scan_global_usage(path: Path, tree: ast.AST, lines: list[str]) -> list[Violation]:
-    """Flag ``global`` keyword usage — usually a code smell.
-
-    Allowlisted by path when module-level singleton state is a documented
-    design choice (see ``_GLOBAL_KEYWORD_ALLOWLIST``), or per line by a
-    justified ``# noqa: ...`` — the project's general escape hatch, honoured
-    here exactly as ``scan_magic_crops`` honours it. Some switches are
-    genuinely process-wide (a one-shot setup guard, the verbosity toggle) and
-    a contextvar would be wrong for them: a new thread or task context would
-    read the default and lose the value.
-    """
-    if _is_test_file(path):
-        return []
-    posix = path.as_posix()
-    if any(posix.endswith(allow) for allow in _GLOBAL_KEYWORD_ALLOWLIST):
-        return []
-    out: list[Violation] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Global):
-            if 0 < node.lineno <= len(lines) and _is_noqa_line(lines[node.lineno - 1]):
-                continue  # author opted out with a justification
-            names = ", ".join(node.names)
-            out.append(
-                Violation(
-                    file=path,
-                    line=node.lineno,
-                    col=node.col_offset + 1,
-                    rule="GLOBAL",
-                    message=(
-                        f"`global {names}` is a code smell. Pass the value explicitly "
-                        "(function arg, class attribute, contextvar) instead of mutating module state."
-                    ),
-                )
-            )
-    return out
-
-
-def scan_magic_crops(path: Path, lines: list[str]) -> list[Violation]:
+def scan_magic_crops(path: Path, lines: list[str], comments: dict[int, Comment]) -> list[Violation]:
     """Flag ``[:N]`` crops that are not data-driven.
 
     A slice is considered data-driven if the same source line also calls
@@ -640,20 +673,19 @@ def scan_magic_crops(path: Path, lines: list[str]) -> list[Violation]:
     - named constants: a bound that is a module constant (``title[:MAX]``)
       is not matched by the scanner — the constant is the traceable form.
 
-    The scanner also skips:
-    - Comment lines (anything after ``#`` in a source line)
-    - Lines the author opted out of via ``# noqa:`` (a justification for
-      the crop is required in that case).
+    *lines* are code only (comments stripped by the tokenizer), so a ``#``
+    inside a string cannot hide a crop and a crop inside a comment cannot
+    raise one. Any ``noqa`` on the line — with or without codes — opts out;
+    the author then owns the justification.
     """
     if _is_test_file(path):
         return []
     out: list[Violation] = []
-    for i, line in enumerate(lines, start=1):
-        if _is_noqa_line(line):
-            continue  # author already opted out via noqa
-        # Split off any inline comment — the slice inside a comment is
-        # documentation, not a real truncation.
-        code = line.split("#", 1)[0]
+    for i, code in enumerate(lines, start=1):
+        if i in comments and _NOQA_RE.match(comments[i].text.strip()):
+            continue  # author already opted out (bare noqa is enough here)
+        if _is_blank(code):
+            continue
         for match in _MAGIC_SLICE_RE.finditer(code):
             if _HASH_TRUNCATION_RE.search(code):
                 continue
@@ -668,22 +700,80 @@ def scan_magic_crops(path: Path, lines: list[str]) -> list[Violation]:
                     message=(
                         f"Magic crop {match.group()} silently truncates data. "
                         "Derive the limit from config (config.get / DEFAULTS.get / cfg.get) "
-                        "or use a named constant. See AGENTS.md Antipattern 4."
+                        "or use a named constant. Never crop (AGENTS.md, .agents/CODE.md)."
                     ),
-                    context=line.strip(),
+                    context=code.strip(),
                 )
             )
     return out
 
 
-# Line-length padding slices are NOT data truncation — they enforce a
-# physical output width (e.g. a Markdown hard line break at 117 chars).
-# Such a crop must use a named constant (or a config-derived limit) and
-# carry a ``noqa:`` justification; the scanner no longer guesses from
-# the surrounding lines, because that guess hid real data crops.
-def _is_noqa_line(line: str) -> re.Match[str] | None:
-    """Return a match object for ``# noqa: CODE[, CODE...]`` if present."""
-    return re.search(r"#\s*noqa\s*:\s*([A-Z0-9_, ]+)", line)
+def _split_comments(source: str) -> tuple[list[str], dict[int, Comment]]:
+    """Split *source* into code-only lines and a line→comment map.
+
+    Uses :mod:`tokenize`, so a ``#`` inside a string literal or a docstring is
+    code, not a comment — ``line.split("#", 1)[0]`` silently discards real
+    code such as ``tag = "#tag"[:5]``, and a docstring line that quotes
+    ``# noqa: PLC0415`` is not a suppression.
+
+    String literal text is blanked for the same reason: ``x = "text[:120]"`` is
+    data, not a crop. F-string literal parts are blanked too, while the
+    expressions inside them stay visible — ``f"{v[:3]}"`` is still a crop.
+
+    Falls back to a plain split when the source cannot be tokenized (a file
+    whose syntax is not valid Python); the caller reports that case separately.
+    """
+    lines = source.splitlines()
+    code_lines = list(lines)
+    comments: dict[int, Comment] = {}
+    try:
+        for token in tokenize.generate_tokens(io.StringIO(source).readline):
+            if token.type == tokenize.COMMENT:
+                row, col = token.start
+                if 0 < row <= len(code_lines):
+                    code_lines[row - 1] = code_lines[row - 1][:col]
+                comments[row] = Comment(col=col, text=token.string)
+            elif token.type in _STRING_TOKEN_TYPES:
+                _blank_span(code_lines, token.start, token.end)
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        return list(lines), {}
+    return code_lines, comments
+
+
+def _blank_span(code_lines: list[str], start: tuple[int, int], end: tuple[int, int]) -> None:
+    """Blank a token's columns in *code_lines*, keeping later columns aligned."""
+    srow, scol = start
+    erow, ecol = end
+    if srow == erow:
+        if 0 < srow <= len(code_lines):
+            line = code_lines[srow - 1]
+            code_lines[srow - 1] = line[:scol] + " " * max(0, ecol - scol) + line[ecol:]
+        return
+    for row in range(srow, erow + 1):
+        if not (0 < row <= len(code_lines)):
+            continue
+        line = code_lines[row - 1]
+        code_lines[row - 1] = line[:scol] if row == srow else (" " * ecol + line[ecol:] if row == erow else "")
+
+
+def _noqa_codes(comment: str) -> set[str]:
+    """The rule codes a single ``noqa`` comment names (empty for a blanket)."""
+    match = _NOQA_RE.match(comment.strip())
+    if not match:
+        return set()
+    raw = match.group(1) or ""
+    return {code for code in _NOQA_CODE_SEP_RE.split(raw.strip()) if code}
+
+
+def _waived(line_no: int, comments: dict[int, Comment]) -> bool:
+    """Whether the author waived this line with a ``# nocheck:`` comment."""
+    comment = comments.get(line_no)
+    return comment is not None and _NO_CHECK_RE.search(comment.text) is not None
+
+
+def _is_blank(code: str) -> bool:
+    """True when nothing but whitespace is left of a code line."""
+    return not code.strip()
 
 
 def _is_test_file(path: Path) -> bool:
@@ -691,9 +781,21 @@ def _is_test_file(path: Path) -> bool:
 
 
 def discover_py_files(roots: list[Path]) -> list[Path]:
+    """Every ``*.py`` under *roots*; a root that does not exist aborts the scan.
+
+    A typo in a repeated ``--src`` would otherwise shrink the scanned set
+    silently — the run would look clean while covering less than the caller
+    believes it does. A missing root is a misconfiguration, not an empty
+    directory.
+    """
     out: list[Path] = []
     for root in roots:
         if not root.exists():
+            print(f"ERROR: source root does not exist: {root}", file=sys.stderr)
+            msg = f"nothing to scan under {root}"
+            raise ScanError(msg)
+        if root.is_file():
+            out.append(root)
             continue
         out.extend(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
     return sorted(out)

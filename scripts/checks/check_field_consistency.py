@@ -37,7 +37,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from _common import repo_root, require_scanned
+from _common import ScanError, repo_root, require_scanned
 
 REPO_ROOT = repo_root()
 SRC_ROOT = REPO_ROOT / "src" / "kompend"
@@ -207,8 +207,12 @@ def main() -> int:
     require_scanned(len(py_files), [root])
 
     all_violations: list[Violation] = []
-    for f in py_files:
-        all_violations.extend(scan_file(f, entries))
+    try:
+        for f in py_files:
+            all_violations.extend(scan_file(f, entries))
+    except ScanError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
 
     if args.json:
         payload = [
@@ -227,7 +231,7 @@ def main() -> int:
         by_file: dict[Path, list[Violation]] = defaultdict(list)
         for v in all_violations:
             by_file[v.file].append(v)
-        print(f"check-field-consistency: {len(all_violations)} violation(s) in {len(by_file)} file(s), {len(py_files)} file(s) scanned")
+        print(f"check-field-consistency: {len(all_violations)} violation(s) in {len(by_file)} file(s) with findings, {len(py_files)} scanned")
         for f in sorted(by_file):
             print(f"\n{f.relative_to(REPO_ROOT)}:")
             for v in sorted(by_file[f], key=lambda x: (x.line, x.col)):
@@ -271,7 +275,12 @@ def load_enums(enums: list[tuple[str, str, list[str]]]) -> list[EnumEntry]:
 
 
 def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
-    """Return all contract-key violations in *path*."""
+    """Return all contract-key violations in *path*.
+
+    A file this check cannot read or parse is a blind spot, not a clean bill:
+    raise :class:`ScanError` so ``main`` can exit 2. Returning an empty list
+    would let a syntax error masquerade as "no bare-string contract keys".
+    """
     if is_globally_allowlisted(path):
         return []
     # Which enums apply to this file (per their consumer scoping)?
@@ -282,12 +291,14 @@ def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
         return []
     try:
         source = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
+    except OSError as exc:
+        msg = f"cannot read {path}: {exc}"
+        raise ScanError(msg) from exc
     try:
         tree = ast.parse(source, filename=str(path))
-    except SyntaxError:
-        return []
+    except SyntaxError as exc:
+        msg = f"cannot parse {path}:{exc.lineno}: {exc.msg}"
+        raise ScanError(msg) from exc
 
     out: list[Violation] = []
     lines = source.splitlines()

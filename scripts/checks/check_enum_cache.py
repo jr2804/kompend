@@ -14,12 +14,26 @@ import sys
 import typing
 from enum import StrEnum
 
+from _common import require_facts
+
 from kompend.core.cache import store
 
 
 def main() -> int:
     reachable = _reachable_enums()
     registered = set(store._CACHE_ENUMS)
+    # Both sets are derived facts, not scanned files: an empty reachable set
+    # means the walk found no cached dataclass to start from (the registry
+    # moved), and an empty registered set means nothing would be enforced.
+    try:
+        require_facts(len(registered), "registered cache enums", "Check core/cache/store.py::_CACHE_ENUMS.")
+        require_facts(
+            len(store._CACHE_DATACLASSES),
+            "cached dataclasses to walk",
+            "Check core/cache/store.py::_CACHE_DATACLASSES — with no root the reachability walk covers nothing.",
+        )
+    except SystemExit as exc:
+        return int(exc.code)
     missing = sorted(set(reachable) - registered)
 
     print(f"check-enum-cache: {len(reachable)} enum(s) reachable, {len(registered)} registered")

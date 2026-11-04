@@ -42,10 +42,6 @@ CORE_AGENTS_FILES: tuple[str, ...] = (
     "HISTORY.md",
 )
 
-# Files exempt from size budget (root AGENTS.md is always loaded but is the
-# project rail — it's allowed to be larger than a subtree doc).
-SIZE_EXEMPT: set[str] = set()
-
 # ── Duplication detection ────────────────────────────────────────────────
 # Minimum sentence length to consider for dup detection (avoids flagging
 # short common phrases like "## Purpose" or "## Ownership").
@@ -60,8 +56,14 @@ def main() -> int:
     # quotes). A Windows console defaults to cp1252, so printing them raises
     # UnicodeEncodeError — the checker crashed instead of reporting, and a
     # crashed gate reads as "no findings".
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    #
+    # ``getattr`` rather than ``sys.stdout.reconfigure(...)``: a replaced stream
+    # (pytest's capture object, a pipe wrapper) may not be a TextIOWrapper, and
+    # the type checker cannot see the guard on a direct attribute call.
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(description="DOX file size-budget and duplication scanner")
     parser.add_argument(
         "--json",
@@ -77,7 +79,15 @@ def main() -> int:
     args = parser.parse_args()
 
     root = args.root.resolve()
+    if not root.is_dir():
+        # A bad --root would otherwise collect nothing and "pass": the gate
+        # must not confuse "no DOX problems" with "read no DOX".
+        print(f"ERROR: project root does not exist: {root}", file=sys.stderr)
+        return 2
     files = _collect_dox_files(root)
+    if not files:
+        print(f"ERROR: no DOX files under {root} — refusing to report success", file=sys.stderr)
+        return 2
 
     violations: list[str] = []
     for path in files:

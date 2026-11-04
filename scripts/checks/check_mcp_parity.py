@@ -22,6 +22,8 @@ Design notes
 import asyncio
 import sys
 
+from _common import require_facts
+
 from kompend.cli.app import app as cli_app
 from kompend.cli.app import register_all_commands
 from kompend.mcp.server import server as mcp_server
@@ -57,6 +59,14 @@ def main() -> int:
 
     cli_commands = get_cli_commands()
     mcp_tools = get_mcp_tools()
+    # An empty set on either side turns this into "compare nothing to nothing",
+    # which still prints Full Parity achieved. It has happened before: fastmcp
+    # 4.x dropped the private tool store and every CLI command looked missing.
+    try:
+        require_facts(len(cli_commands), "CLI commands", "Check that register_all_commands() ran and resolved sub-commands.")
+        require_facts(len(mcp_tools), "MCP tools", "Check the FastMCP server: list_tools() returned nothing.")
+    except SystemExit as exc:
+        return int(exc.code)
 
     # Map normalized → original CLI path for reporting.
     cli_norm_to_full: dict[str, str] = {}
