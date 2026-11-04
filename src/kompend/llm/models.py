@@ -31,6 +31,7 @@ from the env vars the provider/catalog advertises.
 
 from __future__ import annotations
 
+import functools
 import os
 import pkgutil
 import re
@@ -87,8 +88,8 @@ __all__ = [
 #: Vision capability is cached per model string — the Ollama probe is a
 #: live HTTP call to the local server and must not run on every pipeline
 #: construction. The catalog path is cheap but the cache makes the whole
-#: lookup idempotent.
-_VISION_CACHE: dict[str, bool] = {}
+#: lookup idempotent. (The cache is on the function itself, below:
+#: ``model_supports_vision.cache_clear()`` is the reset path.)
 
 logger = get_logger(__name__)
 
@@ -122,6 +123,7 @@ def resolve_vlm_model(default_model: str | None, vlm_model: str | None) -> str |
     return None
 
 
+@functools.cache
 def model_supports_vision(model_string: str) -> bool:
     """True when *model_string* can consume image input.
 
@@ -142,9 +144,11 @@ def model_supports_vision(model_string: str) -> bool:
 
     Used by :func:`resolve_vlm_model` to fall back to the default model when
     no explicit VLM is configured.
+
+    Cached by :func:`functools.cache`: the answer is a property of the
+    installed catalogue and the running Ollama server, not of the call, so it
+    is constant for the process. ``cache_clear()`` retries the live probe.
     """
-    if model_string in _VISION_CACHE:
-        return _VISION_CACHE[model_string]
     try:
         provider_id, model_name = _split(model_string)
     except ValueError:
@@ -153,7 +157,6 @@ def model_supports_vision(model_string: str) -> bool:
     vision = _vision_from_catalog(provider_id, model_name)
     if vision is None and provider_id == "ollama":  # nocheck: enum-literal — provider id from the model string, not the judge vocabulary
         vision = _vision_from_ollama(model_name)
-    _VISION_CACHE[model_string] = bool(vision)
     return bool(vision)
 
 
