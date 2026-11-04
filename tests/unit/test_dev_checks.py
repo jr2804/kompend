@@ -436,6 +436,29 @@ def test_an_unparseable_file_aborts_the_scan(tmp_path: Path) -> None:
     assert "cannot parse" in result.stderr
 
 
+def test_every_vocab_enum_allowlist_entry_still_names_a_strenum() -> None:
+    """A typo in the allowlist silently disables checking for that enum.
+
+    ``_vocab_enum_values`` skips a name that matches no ``StrEnum`` class, so a
+    renamed or misspelt entry removes that vocabulary from the fact set and
+    every bare-string comparison naming it goes unreported — the silence this
+    module exists to prevent, in its own configuration. (The same rule as the
+    lookup-table clause in ``.agents/CHECKS.md``: a table whose wrong entry can
+    only make the scanner quieter needs a test that its entries still match.)
+    """
+    module = _antipatterns()
+
+    class_names = {
+        node.name
+        for py in module.SRC_ROOT.rglob("*.py")
+        for node in ast.walk(ast.parse(py.read_text(encoding="utf-8", errors="replace")))
+        if isinstance(node, ast.ClassDef)
+    }
+    unmatched = sorted(set(module._VOCAB_ENUM_NAMES) - class_names)
+
+    assert not unmatched, f"_VOCAB_ENUM_NAMES entries matching no class in src/: {unmatched}"
+
+
 def test_an_empty_source_root_is_not_a_pass(tmp_path: Path) -> None:
     """Scanning zero Python files must abort, not report success."""
     empty = tmp_path / "empty"
