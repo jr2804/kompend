@@ -269,7 +269,11 @@ def main() -> int:
 
     roots = [Path(p).resolve() for p in args.src] if args.src else [SRC_ROOT, TESTS_ROOT]
 
-    py_files = discover_py_files(roots)
+    try:
+        py_files = discover_py_files(roots)
+    except ScanError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     doc_files = discover_doc_files()
     # Per set, not on the sum: doc files are discovered repo-wide, so a sum
     # would let ``--src <empty dir>`` scan zero Python files and still pass.
@@ -789,9 +793,21 @@ def _is_test_file(path: Path) -> bool:
 
 
 def discover_py_files(roots: list[Path]) -> list[Path]:
+    """Every ``*.py`` under *roots*; a root that does not exist aborts the scan.
+
+    A typo in a repeated ``--src`` would otherwise shrink the scanned set
+    silently — the run would look clean while covering less than the caller
+    believes it does. A missing root is a misconfiguration, not an empty
+    directory.
+    """
     out: list[Path] = []
     for root in roots:
         if not root.exists():
+            print(f"ERROR: source root does not exist: {root}", file=sys.stderr)
+            msg = f"nothing to scan under {root}"
+            raise ScanError(msg)
+        if root.is_file():
+            out.append(root)
             continue
         out.extend(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
     return sorted(out)

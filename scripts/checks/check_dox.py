@@ -77,7 +77,15 @@ def main() -> int:
     args = parser.parse_args()
 
     root = args.root.resolve()
+    if not root.is_dir():
+        # A bad --root would otherwise collect nothing and "pass": the gate
+        # must not confuse "no DOX problems" with "read no DOX".
+        print(f"ERROR: project root does not exist: {root}", file=sys.stderr)
+        return 2
     files = _collect_dox_files(root)
+    if not files:
+        print(f"ERROR: no DOX files under {root} — refusing to report success", file=sys.stderr)
+        return 2
 
     violations: list[str] = []
     for path in files:

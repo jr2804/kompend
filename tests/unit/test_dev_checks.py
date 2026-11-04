@@ -109,6 +109,42 @@ def test_import_error_guard_ignores_an_import_inside_the_handler() -> None:
     assert len(module.scan_import_error_guards(Path("a.py"), real_guard)) == 1
 
 
+def test_a_missing_project_root_is_not_a_pass(tmp_path: Path) -> None:
+    """``--root`` pointing nowhere must abort, not report a clean DOX tree."""
+    result = _run("check_dox.py", "--root", str(tmp_path / "does-not-exist"))
+
+    assert result.returncode == 2, f"a bad --root must fail loudly:\n{result.stdout}\n{result.stderr}"
+    assert "does not exist" in result.stderr
+
+
+def test_a_root_with_no_dox_files_is_not_a_pass(tmp_path: Path) -> None:
+    """A directory with no DOX at all cannot be certified clean."""
+    empty = tmp_path / "empty"
+    empty.mkdir()
+
+    result = _run("check_dox.py", "--root", str(empty))
+
+    assert result.returncode == 2
+    assert "no DOX files" in result.stderr
+
+
+def test_a_missing_source_root_aborts_rather_than_under_covering(tmp_path: Path) -> None:
+    """A typo in a repeated --src must not shrink the scan silently."""
+    result = _run("check_antipatterns.py", "--src", str(tmp_path / "does-not-exist"))
+
+    assert result.returncode == 2
+    assert "does not exist" in result.stderr
+
+
+def test_a_single_file_source_root_is_scanned(tmp_path: Path) -> None:
+    """``--src`` may name one file, which is scanned rather than skipped."""
+    module = _antipatterns()
+    single = tmp_path / "one.py"
+    single.write_text("x = 1\n", encoding="utf-8")
+
+    assert module.discover_py_files([single]) == [single]
+
+
 def test_an_empty_source_root_is_not_a_pass(tmp_path: Path) -> None:
     """Scanning zero Python files must abort, not report success."""
     empty = tmp_path / "empty"
