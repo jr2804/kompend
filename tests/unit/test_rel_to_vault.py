@@ -20,14 +20,26 @@ from kompend.core.paths import rel_to_vault
 
 
 def _load_scanner() -> Any:
-    """Import the check script as a module (it's not on the package path)."""
-    script = Path(__file__).resolve().parents[2] / "scripts" / "checks" / "check_persisted_paths.py"
+    """Import the check script as a module (it's not on the package path).
+
+    The script imports its sibling ``_common``, so the checks directory must be
+    importable while it executes — the same requirement :func:`main` has when
+    the gate runs from the command line.
+    """
+    checks_dir = Path(__file__).resolve().parents[2] / "scripts" / "checks"
+    script = checks_dir / "check_persisted_paths.py"
     spec = importlib.util.spec_from_file_location("check_persisted_paths", script)
     assert spec is not None
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
+    # Registered before execution: a dataclass reads sys.modules[cls.__module__]
+    # while the class body is being processed, and fails on a missing entry.
     sys.modules["check_persisted_paths"] = mod
-    spec.loader.exec_module(mod)
+    sys.path.insert(0, str(checks_dir))
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        sys.path.pop(0)
     return mod
 
 

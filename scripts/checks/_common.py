@@ -13,7 +13,16 @@ import sys
 from collections.abc import Iterable
 from pathlib import Path
 
-__all__ = ["repo_root", "require_facts", "require_scanned"]
+
+class ScanError(RuntimeError):
+    """The scan itself could not run — unreadable or unparseable input.
+
+    Not a finding, and not a pass: the caller turns it into exit code 2. Shared
+    so every gate raises the same type instead of each defining its own.
+    """
+
+
+__all__ = ["ScanError", "repo_root", "require_facts", "require_scanned"]
 
 
 def repo_root() -> Path:

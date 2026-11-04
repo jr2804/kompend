@@ -59,6 +59,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from _common import ScanError
+
 __all__ = ["Violation", "main", "scan_vault", "scan_vault_with_coverage"]
 
 # Heuristics for detecting an absolute path inside a JSON string value.
@@ -89,10 +91,6 @@ class _ScanAccumulator:
     #: How many artifacts (JSON files + store tables) the scan actually read.
     #: Zero means the scan proved nothing, which is not a pass.
     scanned: int = 0
-
-
-class ScanError(RuntimeError):
-    """The scan itself could not run — an unreadable store, not a finding."""
 
 
 def main(argv: list[str] | None = None) -> int:

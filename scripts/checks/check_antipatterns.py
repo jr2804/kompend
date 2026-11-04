@@ -77,7 +77,7 @@ from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
 
-from _common import repo_root, require_scanned
+from _common import ScanError, repo_root, require_scanned
 
 REPO_ROOT = repo_root()
 SRC_ROOT = REPO_ROOT / "src" / "kompend"
@@ -250,10 +250,6 @@ class Violation:
             "rule": self.rule,
             "message": self.message,
         }
-
-
-class ScanError(RuntimeError):
-    """The scan itself failed — unreadable or unparseable input, not a finding."""
 
 
 def main() -> int:

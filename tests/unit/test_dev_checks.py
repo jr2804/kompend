@@ -257,6 +257,18 @@ def test_a_single_file_source_root_is_scanned(tmp_path: Path) -> None:
     assert module.discover_py_files([single]) == [single]
 
 
+def test_an_unparseable_file_aborts_the_scan(tmp_path: Path) -> None:
+    """A file the gate cannot parse is a blind spot, not a clean bill."""
+    broken = tmp_path / "broken"
+    broken.mkdir()
+    (broken / "bad.py").write_text("def f(:\n", encoding="utf-8")
+
+    result = _run("check_antipatterns.py", "--src", str(broken))
+
+    assert result.returncode == 2
+    assert "cannot parse" in result.stderr
+
+
 def test_an_empty_source_root_is_not_a_pass(tmp_path: Path) -> None:
     """Scanning zero Python files must abort, not report success."""
     empty = tmp_path / "empty"
@@ -268,15 +280,21 @@ def test_an_empty_source_root_is_not_a_pass(tmp_path: Path) -> None:
     assert "nothing to scan" in result.stderr
 
 
-def test_an_unparseable_file_aborts_the_scan(tmp_path: Path) -> None:
-    """A file the gate cannot parse is a blind spot, not a clean bill."""
+def test_field_consistency_aborts_on_an_unparseable_file(tmp_path: Path) -> None:
+    """The same blind spot in the second gate that used to skip it.
+
+    check_field_consistency returned [] on OSError/SyntaxError — the silent-skip
+    class fixed in the other gates, and an earlier audit of mine called it
+    benign. It is not: a file the gate cannot parse is where a bare contract
+    key could hide.
+    """
     broken = tmp_path / "broken"
     broken.mkdir()
     (broken / "bad.py").write_text("def f(:\n", encoding="utf-8")
 
-    result = _run("check_antipatterns.py", "--src", str(broken))
+    result = _run("check_field_consistency.py", "--src", str(broken))
 
-    assert result.returncode == 2
+    assert result.returncode == 2, f"must abort on a syntax error:\n{result.stdout}\n{result.stderr}"
     assert "cannot parse" in result.stderr
 
 
