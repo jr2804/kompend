@@ -46,13 +46,14 @@ The new-code checklist itself lives once, in the project section below.
 ### New Code Checklist
 
 Tick these BEFORE writing a function:
+
 - **Limit value** — from `config.get(...)` / `DEFAULTS` / `PipelineConfig` field?
   Literals like `[:10]` silently drop data. Use `DisplayConfig` for display
   limits or `BudgetConfig` for LLM input/output budgets.
 - **Role / task / compiler / tier** — from `LLMRole` / `AgentTask` / `Compiler` /
   `Tier` enum? Bare strings like `role="compile.extract"` will be rejected.
-- **Import** — at module level? Function-body imports (`PLC0415`) are rejected
-  except for `try/except ImportError` probes for explicitly optional deps.
+- **Import** — at module level; `PLC0415` is banned and cannot be suppressed.
+  Only a `try/except ImportError` probe for an explicitly optional dep is exempt.
 - **Global state** — no `global` keyword and no module-level mutable
   singleton (`_cache = {}`, `_instance = None`, a one-key dict slot). Constant
   once computed → `@functools.cache` getter returning a frozen value; changes
@@ -63,7 +64,6 @@ Tick these BEFORE writing a function:
   members, never their bare string values (`STR-KEYED-REGISTRY` /
   `ENUM-VALUE-LITERAL` reject both).
 - **Noqa suppression** — actually necessary with a justification comment?
-  `PLC0415` and other banned-noqa rules cannot be suppressed.
 
 ### Enforcement scripts
 
@@ -80,25 +80,22 @@ Tick these BEFORE writing a function:
 | `scripts/checks/all.py` | Runs every gate in one command; stops at the first failure | scripts/checks/ |
 | `scripts/analyze/analyze_codebase.py` | Files/submodules exceeding net-line targets (>350 lines/file, >7 files/submodule) | scripts/analyze/ |
 
-**Wiring.** Git honours one `core.hooksPath`; this repo points it at
-`.githooks` (`mise run install-hooks`). `.githooks/pre-commit` runs the
-forbidden ruff rules plus the three gates, then `_delegate.sh` forwards to the
-hook files other tools own in `.beads/hooks` (beads, repowise) — never edit
-those, the tools regenerate them. `check_dox.py`'s scope is the DOX files plus
-the core `.agents/` state files; `.agents/skills/**` and `.agents/history/**` are
-not project DOX and are skipped. No CI job runs these; `mise run check-all` runs
-the two AST gates.
+**Wiring.** The pre-commit hook lives at `.githooks` (`mise run install-hooks`):
+it runs the forbidden ruff rules plus several gates, then `_delegate.sh`
+forwards to hook files other tools own in `.beads/hooks` (beads, repowise) —
+never edit those, the tools regenerate them. `check_dox.py`'s scope is the DOX
+files plus the core `.agents/` state; `.agents/skills/**` and `.agents/history/**`
+are not project DOX and are skipped.
 
 ### Gate exit codes
 
 The generic rule above ("a scan that finds no files is an error") has four
-more faces. A gate asserts each before reporting success:
+more failure faces, plus the exit-code convention. A gate asserts each:
 
-- **Identity** — a scan of the *wrong* source is not empty, so no coverage
-  check sees it: reading one project with another's facts is confident and
-  wrong. Resolve a fact from the caller or from the scanner itself, never from
-  a fallback that guesses. The fix is to make the source non-negotiable, never
-  to make the fallback smarter.
+- **Identity** — a scan of the *wrong* source is not empty, so no coverage check
+  sees it: reading one project with another's facts is confident and wrong.
+  Resolve a fact from the caller or the scanner itself, never a guessing
+  fallback — make the source non-negotiable, not the fallback smarter.
 - **Facts** — a rule deciding by facts read elsewhere (declared dependencies, an
   import→distribution map, a schema) exits 2 when they are unavailable: an
   empty fact set is "unknown", not "none". `require_facts` sees a count, not a
@@ -109,12 +106,15 @@ more faces. A gate asserts each before reporting success:
   `callable(info.default)` "showed" no config field used a factory while that
   same test WAS the bug (a factory leaves `PydanticUndefined`), so it confirmed
   the defect instead of measuring it. Ask what the predicate reports if the
-  assumption is false; "the same" means it tests nothing — and no emptiness
-  check catches it, which is how a reassuring answer is born.
+  assumption is false; "the same" means it tests nothing, and no emptiness check
+  catches it — that is how a reassuring answer is born.
 - **Codes** — `0` clean, `1` violations, `2` could not establish what it needs
-  to judge. Never `0` for the last case.
+  to judge. Never `0` for the last case. The same asymmetry governs every other
+  substrate: guess toward the failure a human sees — the finding-producing value
+  over a `None`/sentinel that compares false, the table entry whose absence is
+  confusing over one whose absence is silent.
 
 **Migrations disarm gates.** A storage change empties a scanner's input without
 touching the scanner: `check_persisted_paths` read loose JSON under `.kompend/`,
-the state moved into `kompend.db`, and the gate kept exiting 0 reading nothing.
-A schema or artifact move means re-checking every gate that reads it.
+the state moved into `kompend.db`, and it kept exiting 0 reading nothing. When a
+schema or artifact layout moves, re-check every gate that reads it.
