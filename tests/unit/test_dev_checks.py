@@ -12,6 +12,8 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from pydantic import BaseModel, Field
+from pydantic_core import PydanticUndefined
 
 from kompend.core.cache import store
 
@@ -144,6 +146,69 @@ def test_require_facts_documents_its_precondition() -> None:
     # honestly be empty, which is what makes the guard correct at those sites.
     for script in ("check_config_literals.py", "check_enum_cache.py", "check_mcp_parity.py"):
         assert "require_facts" in (CHECKS / script).read_text(encoding="utf-8")
+
+
+def test_a_factory_default_enters_the_facts_as_its_empty_collection() -> None:
+    """A factory field's repeatable default is the empty collection it builds.
+
+    ``FieldInfo.default`` is ``PydanticUndefined`` for such a field — neither
+    ``None`` nor callable — so a naive filter stored the sentinel and every
+    comparison against it failed silently, dropping findings. ``LLMConfig
+    .fallback_chain`` was in exactly that state.
+
+    A sentinel is not the same as "no repeatable default" though: ``list()``
+    builds a fresh object per instance, while the value a caller re-types is
+    still an empty list. Both halves are asserted, because excluding the
+    sentinel without adding the empty collection would just trade one silent
+    miss for another.
+    """
+    module = _load_check("check_config_literals")
+    defaults = module._config_defaults()
+
+    factory_fields = [
+        (model.__name__, name, info) for model in module.CONFIG_MODELS for name, info in model.model_fields.items() if info.default_factory is not None
+    ]
+    assert factory_fields, "no factory field left to guard — pick another model or drop this test"
+
+    for model_name, field_name, info in factory_fields:
+        built = info.default_factory() if info.default_factory else None
+        assert defaults.get(field_name) is not PydanticUndefined, f"{model_name}.{field_name} stored the sentinel"
+        if isinstance(built, (list, dict, set, tuple)) and not built:
+            assert field_name in defaults, f"{model_name}.{field_name} builds an empty {type(built).__name__} that an empty literal repeats"
+        else:
+            assert field_name not in defaults, f"{model_name}.{field_name} builds a non-literal; no caller can re-type it"
+
+
+def test_an_empty_collection_literal_is_caught_but_a_call_is_not(tmp_path: Path) -> None:
+    """An empty-list literal repeats the factory default; a call computes it."""
+    module = _load_check("check_config_literals")
+
+    class _Probe(BaseModel):
+        plain: int = 7
+        listed: list[str] = Field(default_factory=list)
+
+    original = module.CONFIG_MODELS
+    module.CONFIG_MODELS = [_Probe]
+    try:
+        defaults = module._config_defaults()
+        assert defaults == {"plain": 7, "listed": []}
+
+        cases = {
+            "g(plain=7, listed=[])": True,
+            "g(listed=list())": False,
+            "g(listed=[])": True,
+            # One non-repeating value does not excuse the repeating one.
+            "g(plain=8, listed=[])": True,
+        }
+        probe = tmp_path / "probe.py"
+        for source, expected in cases.items():
+            probe.write_text(f"def f():\n    {source}\n", encoding="utf-8")
+            findings = module._scan(probe, defaults, set())
+            assert bool(findings) is expected, f"{source} -> {findings}"
+            if findings:
+                assert "List(" not in findings[0], "the message must print the literal, not its AST node"
+    finally:
+        module.CONFIG_MODELS = original
 
 
 @pytest.mark.parametrize(("module_name", "attribute", "receiver", "empty"), _EMPTY_FACT_CASES)
