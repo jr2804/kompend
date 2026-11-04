@@ -12,6 +12,7 @@ fields on ``PipelineConfig``.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import cache
@@ -261,6 +262,13 @@ def parse_matchers(value: object) -> list[MatcherName]:
 
 #: Accepted non-canonical spellings → canonical member.
 FLAVOR_ALIASES: Final[dict[str, Flavor]] = {"github": Flavor.GFM}  # nocheck: str-registry — product-name aliases are an open input domain
+
+
+#: Default ONNX thread bound for the docling engine. Four is the measured knee
+#: (docling-rs 2.65.1, Windows 2026-11-04): the engine default costs 50% more
+#: commit charge for no wall-clock gain, one thread costs 2.3x the time for 16%
+#: less. Bounded further on hosts with fewer cores so the value is never absurd.
+_DEFAULT_DOCLING_THREADS: Final[int] = min(4, os.cpu_count() or 4)
 
 
 # ── Compile section (top-level flags + nested sub-configs) ──────────────
@@ -887,16 +895,18 @@ class IngestConfig(_KompendBaseModel):
         ),
     )
     parsecraft_docling_threads: int | None = Field(
-        default=None,
+        default=_DEFAULT_DOCLING_THREADS,
         ge=1,
         validation_alias=EnvVar.INGEST_PARSECRAFT_DOCLING_THREADS,
         description=(
-            "ONNX thread count of the docling engine (`DOCLING_RS_PDF_THREADS`). Unset (default) keeps the "
-            "engine's own thread count. Measured on Windows with docling-rs 2.55.4 (2026-11-03): one PDF "
-            "conversion peaks at about 5.4 GB working set and 8.0 GB commit charge with the engine "
-            "default, and at about 3.1 GB / 5.1 GB with a single thread — at the price of roughly 75% "
-            "more wall-clock time. The thread count changes neither the extracted text nor the routing, "
-            "so it is not part of the parse-cache fingerprint."
+            "ONNX thread count of the docling engine (`DOCLING_RS_PDF_THREADS`), applied at parser "
+            "construction whether or not the run routes anything to docling. Defaults to 4 (or fewer on a "
+            "smaller host). It is a bound, not a target: the engine still spreads work across its own "
+            "pool, and an explicit `DOCLING_RS_PDF_THREADS` in the environment always wins. Measured on "
+            "Windows with docling-rs 2.65.1 (2026-11-04), one 8-page PDF: engine default 7.1 s / "
+            "2790 MB peak commit, 4 threads 7.4 s / 1830 MB, 1 thread 16.3 s / 1533 MB — 4 is the knee. "
+            "The thread count changes neither the extracted text nor the routing, so it is not part of "
+            "the parse-cache fingerprint."
         ),
     )
     parse_min_free_commit_mb: int = Field(

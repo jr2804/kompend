@@ -150,11 +150,15 @@ file = "NOTES.md"
 # parse_timeout_s = 0.0
 
 # ONNX thread bound for the docling engine (engine env DOCLING_RS_PDF_THREADS).
-# One docling pass peaks near 8 GB of commit charge with the engine default
-# (4 threads); bounding it to 1 cuts that to ~5 GB at ~1.7x wall time. Must be
-# set before the first conversion, so it is applied once at construction.
+# Applied at parser construction whether or not this run routes anything to
+# docling; an explicit DOCLING_RS_PDF_THREADS in the environment wins. Measured
+# on Windows with docling-rs 2.65.1 (2026-11-04), one 8-page PDF: engine default
+# 7.1 s / 2790 MB peak commit, 4 threads 7.4 s / 1830 MB, 1 thread 16.3 s /
+# 1533 MB. For a text-layer PDF, adding do_ocr = false and
+# do_table_structure = false to [ingest.parsecraft_backend_options.docling] took
+# the same file to 10.3 s / 2.9 GB. Must be set before the first conversion.
 # Env: KOMP_INGEST_PARSECRAFT_DOCLING_THREADS
-# parsecraft_docling_threads = 1
+# parsecraft_docling_threads = 4
 
 # Heavy parses (docling, mineru, pandoc, pymupdf on non-text sources) are
 # guarded: a heavy parse only starts with at least this much free commit

@@ -373,6 +373,50 @@ count, and on an allocation failure it **aborts the process** instead of raising
 still failed after 10 retries, giving up`. Capping the pool turns that abort
 into slower arithmetic.
 
+### Bounding a docling pass's memory
+
+A docling conversion is the heaviest thing an ingest does. Its cost is **fixed
+per pass, not per page**: docling-rs loads its layout, table-structure and OCR
+models plus an ONNX arena inside the Rust extension, so one 8-page PDF and one
+113-page PDF both peak around 4.2–5.4 GB of working set. Two knobs bound it,
+and one default assumes them.
+
+```toml
+[ingest]
+parsecraft_docling_threads = 4          # ONNX threads; default 4 on a big host
+parse_min_free_commit_mb = 10240        # refuse a heavy parse below this; 0 = off
+max_concurrent_heavy_parses = 1         # parallel docling/mineru passes
+
+[ingest.parsecraft_backend_options.docling]
+do_ocr = false                          # only when the PDF has a text layer
+do_table_structure = false              # skip the table model (~1.6 GB)
+```
+
+- **`parsecraft_docling_threads`** sets the engine's own
+  `DOCLING_RS_PDF_THREADS` at parser construction, whether or not this run
+  routes a page to docling (setting it late changes nothing — the engine reads
+  it when it builds its converter). The default is `min(4, cores)`. Measured on
+  Windows with docling-rs 2.65.1, one 8-page PDF: engine default 7.1 s /
+  2790 MB peak commit, 4 threads 7.4 s / 1830 MB, 1 thread 16.3 s / 1533 MB —
+  four is the knee. An explicit `DOCLING_RS_PDF_THREADS` in the environment
+  wins over the config key.
+- **`parsecraft_backend_options`** forwards options to one sub-backend's
+  converter. Skipping the OCR and table models on a text-layer PDF is the
+  single biggest win measured: 8.0 GB / 23.6 s down to 2.9 GB / 10.3 s. Only
+  do it for sources with real text; a scan needs both models.
+- **`parse_min_free_commit_mb`** and **`max_concurrent_heavy_parses`** are the
+  guard, not the cure: a heavy parse (a non-text source: docling, mineru,
+  pandoc, pymupdf) only starts with that much free commit charge, and at most
+  that many run at once. A source that does not get the room is logged as
+  skipped (`Skipped <file>: …`) and retried next run — never silently dropped,
+  and never allowed to take the whole run down. Light sources (native text,
+  code) are unaffected.
+
+With GPU-accelerated docling there is nothing to tune yet on Windows: the PyPI
+wheel is CPU-only. `docling-rs-cuda` exists for Linux x86_64 only, and the
+Windows binary ships DirectML DLLs but was built without the provider enabled,
+so `DOCLING_RS_EP=directml` answers `built without that provider … using CPU`.
+
 ### Judge tier: model-assisted per-page routing
 
 By default parsecraft routes with its **deterministic rule table** (format,

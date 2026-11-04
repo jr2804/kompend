@@ -30,6 +30,8 @@ from typing import Any
 
 import pytest
 
+from kompend.core.config._configs import IngestConfig
+
 pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
 
 from parsecraft import pipeline  # noqa: E402 — guarded by the importorskip above
@@ -1211,6 +1213,24 @@ class TestDoclingThreadLimit:
         adapter = _adapter()
         adapter.ParsecraftParser()
         assert "DOCLING_RS_PDF_THREADS" not in os.environ
+
+    def test_the_configured_default_bounds_the_engine(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The default is a bound, not an engine-native value: it reaches the
+        # process even when this run never routes a page to docling.
+        monkeypatch.delenv("DOCLING_RS_PDF_THREADS", raising=False)
+
+        configured = IngestConfig().parsecraft_docling_threads
+        adapter = _adapter()
+        adapter.ParsecraftParser(parsecraft_docling_threads=configured)
+        assert os.environ["DOCLING_RS_PDF_THREADS"] == str(configured)
+
+    def test_an_explicit_engine_value_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Someone who set the engine's own variable by name asked for that
+        # number; overwriting it here would silently undo their choice.
+        monkeypatch.setenv("DOCLING_RS_PDF_THREADS", "2")
+        adapter = _adapter()
+        adapter.ParsecraftParser(parsecraft_docling_threads=4)
+        assert os.environ["DOCLING_RS_PDF_THREADS"] == "2"
 
 
 class TestImageExtraction:

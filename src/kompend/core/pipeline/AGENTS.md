@@ -90,7 +90,9 @@ persistence, and standalone ingestion.
   the headroom check, the cap stays. The docling engine's ONNX thread count
   (`ingest.parsecraft_docling_threads` → `DOCLING_RS_PDF_THREADS`, set at
   parser construction, before the first conversion) is the engine-side
-  lever: 1 thread ≈ 5 GB instead of 8 GB at ~1.7× wall time.
+  lever; the default is `min(4, cores)` — the measured knee (7.4 s / 1830 MB
+  vs 7.1 s / 2790 MB at the engine default and 16.3 s / 1533 MB at one
+  thread).
 - **Recoverable-log rule:** a log call that attaches a traceback gates it on
   `kompend.core.verbosity.is_verbose()` (`exc_info=is_verbose()`). The switch is
   a `ContextVar`, so a worker thread only sees it when the submission carries

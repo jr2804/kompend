@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from kompend.core.config._configs import KompendConfig
+from kompend.core.config._configs import _DEFAULT_DOCLING_THREADS, KompendConfig
 from kompend.core.env import EnvVar
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.preprocessing.host_memory import (
@@ -137,7 +137,8 @@ def test_heavy_parses_are_serialized_at_max_concurrent_one() -> None:
 
 def test_the_config_fields_exist_with_the_measured_defaults() -> None:
     config = KompendConfig()
-    assert config.ingest.parsecraft_docling_threads is None
+    assert config.ingest.parsecraft_docling_threads == _DEFAULT_DOCLING_THREADS
+    assert 1 <= config.ingest.parsecraft_docling_threads <= 4
     assert config.ingest.parse_min_free_commit_mb == 10240
     assert config.ingest.max_concurrent_heavy_parses == 1
 

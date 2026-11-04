@@ -352,16 +352,27 @@ class ParsecraftParser:
 
         The docling engine loads its layout, table-structure and OCR models
         plus an ONNX arena; the arena scales with the thread count. Measured
-        on Windows with docling-rs 2.55.4 (2026-11-03): one PDF conversion
-        peaks at about 8.0 GB of commit charge with the engine default and
-        about 5.1 GB with a single thread, at the price of roughly 75% more
-        wall-clock time.
+        on Windows with docling-rs 2.65.1 (2026-11-04), one 8-page PDF: the
+        engine default costs 7.1 s and 2790 MB of peak commit, four threads
+        7.4 s and 1830 MB, a single thread 16.3 s and 1533 MB. Four is the
+        knee, so it is the configured default. It is applied whether or not
+        this run routes anything to docling: the bound only matters when the
+        engine loads, and setting it late changes nothing.
 
         The value is process-wide because the engine reads it from the
         environment; it does not change the extracted text, so it is not part
-        of the parse-cache fingerprint.
+        of the parse-cache fingerprint. An explicit ``DOCLING_RS_PDF_THREADS``
+        in the environment wins — the caller asked for it by name.
         """
         if self._docling_threads is None:
+            return
+        if os.environ.get(DOCLING_THREADS_ENV):
+            logger.debug(
+                "keeping %s=%s from the environment; the configured %d thread(s) are not applied",
+                DOCLING_THREADS_ENV,
+                os.environ[DOCLING_THREADS_ENV],
+                self._docling_threads,
+            )
             return
         os.environ[DOCLING_THREADS_ENV] = str(self._docling_threads)
         logger.info(

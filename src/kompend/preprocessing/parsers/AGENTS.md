@@ -53,8 +53,9 @@ no cache keys on — changing them does not re-parse by itself; run
 One sibling key is NOT a backend option and NOT fingerprinted:
 `ingest.parsecraft_docling_threads` bounds the docling engine's ONNX thread
 count (`DOCLING_RS_PDF_THREADS`, set by the parser before the first
-conversion — a memory lever, ~5 GB instead of ~8 GB per conversion at 1
-thread; it changes neither text nor routing, so it never re-parses).
+conversion — a memory lever, and the default is `min(4, cores)` whether or not
+the run routes to docling; an explicit env value wins; it changes neither text
+nor routing, so it never re-parses).
 
 `get_all_extensions(names)` takes the backend names to union suffixes for.
 Discovery passes `[DEFAULT_PARSER]`, so a vault ingests exactly what its parser can
