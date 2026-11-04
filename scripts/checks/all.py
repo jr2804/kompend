@@ -69,7 +69,10 @@ def _steps(fast: bool) -> list[tuple[str, list[str]]]:
     steps += [
         ("ruff check", [_binary("ruff"), "check", "src", "tests", "scripts"]),
         ("ruff format", [_binary("ruff"), "format", "--check", "src", "tests", "scripts"]),
-        ("ty", [_binary("ty"), "check", "src/kompend"]),
+        # Same scope as `mise run typecheck` (see .config/mise/conf.d/lint.toml).
+        # A narrower scope let a type error in tests/ pass this runner while the
+        # documented task failed on the same tree — two verdicts for one gate.
+        ("ty", [_binary("ty"), "check", "src/", "tests/", "scripts/"]),
     ]
     if not fast:
         steps.append(("smoke", [python, "-m", "pytest", "tests/smoke", "-q"]))

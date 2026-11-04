@@ -459,6 +459,36 @@ def test_every_vocab_enum_allowlist_entry_still_names_a_strenum() -> None:
     assert not unmatched, f"_VOCAB_ENUM_NAMES entries matching no class in src/: {unmatched}"
 
 
+def test_every_module_constant_is_read_somewhere() -> None:
+    """A module-level constant with no reader is unclassified, not misclassified.
+
+    Coverage checks assume an input set, guess-direction assumes a consumer, and
+    table verification assumes a lookup — all three pass by absence. Found this
+    way: ``SIZE_EXEMPT`` in ``check_dox.py`` had no reader at all (root
+    ``AGENTS.md`` is exempted by a different branch), which no other class can
+    see.
+
+    Deliberate limit: a cross-module re-export would read as an orphan here, so
+    the check stays single-file and skips dunders. No uppercase constant in
+    ``scripts/checks/`` is imported by another module today (verified), which is
+    why the simple form is enough; the docstring says so rather than pretending
+    the check is general.
+    """
+    orphans: list[str] = []
+    for path in sorted(CHECKS.glob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        declared: list[str] = []
+        for node in tree.body:
+            if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
+                declared.append(node.targets[0].id)
+            elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+                declared.append(node.target.id)
+        used = {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)}
+        orphans.extend(f"{path.name}:{name}" for name in declared if name.isupper() and name not in used)
+
+    assert not orphans, f"module-level constants with no reader in their own file: {orphans}"
+
+
 def test_every_pip_policy_file_actually_exists() -> None:
     """A stale exemption path stops covering the policy doc that needs it.
 
