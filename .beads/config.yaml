@@ -10,8 +10,6 @@ issue-prefix: "knox"
 sync:
     remote: "git+https://github.com/jr2804/kompend.git"
 
-# remote: "git+https://github.com/jr2804/kompend.git"
-
 # Use no-db mode: JSONL-only, no Dolt database
 # When true, bd will use .beads/issues.jsonl as the source of truth
 # no-db: false
