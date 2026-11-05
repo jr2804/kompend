@@ -23,7 +23,7 @@ from kompend.core.cache import CacheStore
 from kompend.core.text.embedding_text import embed_text
 from kompend.lint import semantic_gaps
 from kompend.lint.semantic_gaps import _load_vector_cache, _save_vector_cache
-from kompend.rag.vector_store import EmbeddingProvider
+from kompend.rag.embedding_base import EmbeddingProvider
 from kompend.types import CacheValue
 
 

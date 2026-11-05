@@ -54,21 +54,11 @@ from pydantic_ai.settings import ModelSettings
 from typesafe_sdk import AsyncTypeSafeClient
 
 from kompend.llm import catalog
+from kompend.llm.constants import OLLAMA_CONTEXT_LENGTH_ENV, OLLAMA_DEFAULT_BASE_URL
 
 # ── public API ─────────────────────────────────────────────────────────
 from kompend.llm.user_providers import _user_providers, set_user_providers  # noqa: E402  (re-export for build_model)
 from kompend.logging import get_logger
-
-# Default base URL for local Ollama — ``ollama`` is not in the models.dev
-# catalog, and OllamaProvider has no built-in default (it raises UserError
-# when neither ``base_url`` nor ``OLLAMA_BASE_URL`` is given). pydantic-ai's
-# OllamaModel uses the OpenAI-compatible endpoint, so ``/v1`` is required in
-# the base URL (the OpenAI SDK appends ``/chat/completions`` to it).
-OLLAMA_DEFAULT_BASE_URL = "http://127.0.0.1:11434/v1"
-
-#: Ollama's server-wide default context length. ``OLLAMA_NUM_CTX`` is not an
-#: alias — the server ignores it, so reading it silently does nothing.
-OLLAMA_CONTEXT_LENGTH_ENV = "OLLAMA_CONTEXT_LENGTH"
 
 # Placeholder satisfies the OpenAI SDK's non-empty api_key requirement for
 # local / keyless OpenAI-compatible endpoints.

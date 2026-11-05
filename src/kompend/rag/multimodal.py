@@ -32,7 +32,8 @@ from typing import Any, Final
 import httpx
 
 from kompend.core.utils.exceptions import LLMOutputError
-from kompend.llm.models import OLLAMA_DEFAULT_BASE_URL
+from kompend.llm.constants import OLLAMA_DEFAULT_BASE_URL
+from kompend.rag.embedding_base import MediaEmbeddingUnsupported
 
 #: Ollama's own wording for "this model has no image encoder". Matched on the
 #: message, not only the status: 501 alone is too weak a signal.
@@ -40,15 +41,6 @@ _MEDIA_UNSUPPORTED_MARKER: Final[str] = "media embeddings"
 
 #: How much of a failed response body ends up in the error message.
 _ERROR_BODY_LIMIT: Final[int] = 400
-
-
-class MediaEmbeddingUnsupported(RuntimeError):
-    """The embedding model cannot consume images.
-
-    Raised when the server answers that the model does not support media
-    embeddings. Not transient: the same model will answer the same way, so
-    the caller must not retry and must not pretend the image was embedded.
-    """
 
 
 class OllamaMediaEmbedder:

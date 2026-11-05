@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import os
-from abc import ABC, abstractmethod
 from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
@@ -31,6 +30,7 @@ from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.models import OLLAMA_DEFAULT_BASE_URL
 from kompend.logging import get_logger
+from kompend.rag.embedding_base import EmbeddingProvider
 from kompend.rag.multimodal import MediaEmbeddingUnsupported, OllamaMediaEmbedder
 
 # 3: content is projected through element_text, so a non-prose node embeds
@@ -68,42 +68,6 @@ class VectorField(StrEnum):
     ATTRIBUTES = "attributes"
     ATTR_KEYS = "attr_keys"
     EMBEDDING = "embedding"
-
-
-class EmbeddingProvider(ABC):
-    """Interface for embedding text into fixed-dimension vectors."""
-
-    @abstractmethod
-    def embed(self, text: str) -> list[float]:
-        """Return a normalized embedding vector for ``text``."""
-        ...
-
-    @property
-    @abstractmethod
-    def dim(self) -> int:
-        """Vector dimensionality."""
-        ...
-
-    @property
-    def model_id(self) -> str:
-        """The identity of the model behind the vectors.
-
-        Recorded in the build manifest so a model change invalidates the
-        index: vectors from one model do not describe the same space as the
-        vectors of another. Providers that cannot name their model return
-        the empty string — the index then cannot tell them apart.
-        """
-        return ""
-
-    def embed_media(self, text: str, image: bytes) -> list[float]:
-        """Return the joint embedding of ``text`` and one image.
-
-        Only models with an image encoder can do this. Providers that cannot
-        raise :class:`~kompend.rag.multimodal.MediaEmbeddingUnsupported`, so
-        the caller can index the text alone and say so, instead of silently
-        dropping the image.
-        """
-        raise MediaEmbeddingUnsupported(f"{type(self).__name__} cannot embed images")
 
 
 class PydanticAIEmbeddingProvider(EmbeddingProvider):

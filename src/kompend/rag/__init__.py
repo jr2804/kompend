@@ -3,20 +3,33 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import lazy_loader as lazy
 
-from kompend.core.models import CompiledWiki
-from kompend.core.paths import VaultPaths
-from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
-from kompend.rag.vector_store import VectorField, indexable_nodes
+if TYPE_CHECKING:
+    from kompend.core.models import CompiledWiki
 
-# The cross-encoder backend is an optional extra and pulls onnxruntime. It is
-# attached lazily, so importing this package never loads it.
+    # Runtime names arrive via lazy.attach's module __getattr__; these
+    # imports exist so type checkers and ruff see them defined.
+    from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+    from kompend.rag.vector_store import VectorField, indexable_nodes
+
+from kompend.core.paths import VaultPaths
+
+# Everything heavy is attached lazily: importing ``kompend.rag`` — directly
+# or as the package ``__init__`` of any submodule import — must not drag the
+# pydantic-ai provider stack or the sqlite-vec backend into interpreter
+# startup. ``SqliteVecWikiStore`` referenced inside :func:`build_vector_index`
+# resolves through the module ``__getattr__`` on first call. The
+# cross-encoder backend is an optional extra and pulls onnxruntime; it stays
+# lazy for the same reason.
 __getattr__, __dir__, _LAZY_EXPORTS = lazy.attach(
     __name__,
     submod_attrs={
         "flashrank_backend": ["build_request", "load_ranker"],
+        "sqlite_vec_store": ["SqliteVecWikiStore"],
+        "vector_store": ["VectorField", "indexable_nodes"],
     },
 )
 
