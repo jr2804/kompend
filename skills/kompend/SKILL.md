@@ -446,16 +446,18 @@ Key config keys:
 | `compile.workers` | `1` | Parallel worker count |
 | `ingest.parsecraft_judge` | `none` | Judge tier for per-page routing (`none`, `ollama`, `zen`, `typesafe-ai`); with `none` parsecraft uses its deterministic rule table |
 | `ingest.parsecraft_judge_model` | `""` | Model token for the configured judge provider |
-| `ingest.parsecraft_preference` | `balanced` | Tiebreak axis inside a backend family (`speed`, `balanced`, `quality`; speed == balanced, quality inverts) |
-| `ingest.parsecraft_effort` | `flash` | MinerU sub-backend effort (`flash`, `medium`, `high`, `xhigh`); `high`/`xhigh` engage the VLM path for equations/tables/figures. Effective once parsecraft accepts per-backend options |
-| `ingest.parsecraft_allow_ocr` | unset = derive | Whether parsecraft may lead a page with an OCR sub-backend: unset derives from `ocr-*` extras / usable engines, `false` bans OCR, `true` permits regardless. Effective immediately |
-| `ingest.parsecraft_engines` | `[]` | Restrict the external engines parsecraft may use (parsecraft engine ids); empty keeps the probed set. Env form is comma-separated |
-| `ingest.parsecraft_extract_vector_graphics` | unset | Ask liteparse to recover table grids from a page's vector records, so a TABLE element carries `list[list[str]]` instead of Markdown |
-| `ingest.parsecraft_preferred_backend` | unset | Rank one backend first where it is eligible (preference, never a guarantee); validated against parsecraft's registered backends |
-| `ingest.parsecraft_only_backend` | unset | Hard pin: use only this backend; pages it cannot *cover* fail loudly instead of silently falling back |
+| `ingest.parsecraft_docling_threads` | `min(4, cpu_count)` | ONNX intra-op threads a docling pass may use. `1` roughly halves the pass's commit charge and doubles its wall time |
+| `ingest.parse_min_free_commit_mb` | `10240` | Free commit charge a heavy parse (PDF, docx, images) needs before it starts; `0` disables the check |
+| `ingest.max_concurrent_heavy_parses` | `1` | Heavy parses allowed at once, independent of `compile.workers` |
 | `compile.memory_enabled` | `true` | Enable memory store |
 | `dedup.enabled` | `false` | Enable deduplication |
 | `trust.privacy_filter` | `true` | Filter PII from queries |
+
+Routing is parsecraft's own configuration, read from
+`~/.config/parsecraft/config.toml`, `<vault>/.kompend/parsecraft.toml`, then
+`./parsecraft.toml`. `[routing]` carries `preference`, `allow_ocr`, `engines`,
+`preferred_backend`, `only_backend` and `max_passes`; per-backend options live
+in `[routing.backend_options.<backend>]`. None of them are kompend config keys.
 
 Set via:
 
