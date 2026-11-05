@@ -73,9 +73,9 @@ Every LLM call routes through PydanticAI agents in `src/kompend/agents/`.
 ### 4. Essential commands
 
 ```bash
-uv run pytest tests/unit -x --timeout=30          # unit tests
-uv run pytest tests/unit -q --no-cov --tb=line     # unit tests (compact)
-uv run pytest tests/integration -x --timeout=120   # integration tests
+KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/unit/test_<file>.py -q --no-header -p pytest_asyncio.plugin -p pytest_timeout   # T0: tests covering the change (T1: add files from rg -l "kompend\.<module>" tests/)
+KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/unit -q --no-header --tb=short -p pytest_asyncio.plugin -p pytest_timeout    # T2: full unit suite, once before commit — never mid-task unprompted
+KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/integration -q --no-header --tb=short -p pytest_asyncio.plugin -p pytest_timeout   # integration tests, only when the change touches them
 uv run pytest tests/benchmarks/ -q --no-cov        # benchmarks
 ruff check                                           # lint
 ty check src/kompend                                    # type check (not mypy)

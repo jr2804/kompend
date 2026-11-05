@@ -93,14 +93,39 @@ They apply here too: no magic crops, no bare `except` to silence a failure.
   `tests/integration/test_image_pipeline.py` (figure → caption → page →
   vault), not in a per-stage test: the chain is what broke before, every
   stage was individually fine.
-- Run `uv run pytest tests/unit -q` before committing.
-- Key flags: `-x` (fail-fast), `-k` (filter). No `pytest-timeout` or
-  `pytest-xdist` plugin is installed — `--timeout` and `-n auto` fail with
-  "unrecognized arguments".
+- Verify at the tier the change calls for (see **Verification tiers**); T2
+  runs once, before commit — not three to four times per prompt.
+- Key flags: `-x` (fail-fast), `-k` (filter), `-n auto` (pytest-xdist — opt-in
+  for suite-scale runs; startup dominates single files), `-m 'not slow'`
+  (skip tests tagged `slow`, the convention for any single test over 5 s).
+  `timeout = 120` in pyproject (pytest-timeout) fails any hung test.
+
+### Verification tiers (T0/T1/T2)
+
+Agents never run the full unit suite unprompted mid-task. Verify at the
+narrowest tier that covers the change, and state every command exactly as
+it runs — no flags from plugins that are not installed.
+
+- **T0 — changed code:** the test file(s) covering the change.
+  `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/unit/test_<file>.py -q --no-header -p pytest_asyncio.plugin -p pytest_timeout`
+- **T1 — blast radius:** T0 plus the test files that import the changed
+  module (`rg -l "kompend\.<module>" tests/`), same command over that list.
+- **T2 — full unit suite, once before commit:**
+  `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/unit -q --no-header --tb=short -p pytest_asyncio.plugin -p pytest_timeout`.
+  Integration tests only when the change touches them:
+  `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/integration -q --no-header --tb=short -p pytest_asyncio.plugin -p pytest_timeout`.
+- `KOMP_LLM_TRANSIENT_BACKOFF=0` (`src/kompend/core/env.py`) zeroes the
+  transient-retry backoff, so a retry path under test does not really sleep.
+- The `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` + `-p pytest_asyncio.plugin -p
+  pytest_timeout` prefix skips the ~6 s/proc autoload tax (logfire, langsmith,
+  anyio, platformdirs, cov otherwise join every run). `asyncio_mode = "auto"`
+  is still honoured, but the plugin must be named `pytest_asyncio.plugin` —
+  plain `-p pytest_asyncio` does not register it and every async test fails.
+  `--no-cov` is invalid in that form (no cov plugin); drop the prefix for a
+  coverage run (`uv run pytest … --cov=kompend`).
 
 ## Verification
 
-- `uv run pytest tests/unit -q` — unit suite (full run takes ~10 min)
-- `uv run pytest tests/integration -q` — integration suite
+- T0/T1/T2 commands above — the tiered policy is the default verification
 - `cd tests && find . -name "test_*.py" | sort` — before creating a new file,
   check this list first

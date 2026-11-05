@@ -238,7 +238,7 @@ set, extension enumeration) are archived in `.agents/history/2026-10-23-rational
 ## Verification
 
 - `uv run python -m kompend.cli --help` — app starts and shows commands
-- `uv run pytest tests/unit/ -k "cli" -x --timeout=30` — CLI tests pass
+- `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/unit/ -k "cli" -x --no-header -p pytest_asyncio.plugin -p pytest_timeout` — CLI tests pass (T0/T1 tier)
 - `import kompend` works without importing `kompend.cli`
 
 ## Child DOX Index

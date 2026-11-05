@@ -115,6 +115,8 @@ dev = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "uv-dynamic-versioning>=0.14.1",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 [tool.uv]
@@ -139,10 +141,15 @@ pythonpath = ["src", "tests"]
 cache_dir = "tests/test-cache"
 addopts = "-v --tb=short"
 asyncio_mode = "auto"
+# Kill hung tests instead of paying wall-clock tax (knox-a79u; pytest-timeout,
+# active whenever the plugin is loaded — i.e. every autoloaded run).
+timeout = 120
+asyncio_default_fixture_loop_scope = "function"
 markers = [
     "benchmark: Quality benchmarks that report metrics rather than assert pass/fail.",
     "asyncio: mark test as async",
     "integration: Tests that require real files or network access.",
+    "slow: Individual test over 5 s wall; skip with `-m 'not slow'` when iterating.",
 ]
 
 [tool.pytest-cov]

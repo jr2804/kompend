@@ -29,8 +29,8 @@ matching section below.
 ### Verification
 
 - Run `ruff check` on changed Python files before committing
-- Run `uv run pytest tests/unit -x --timeout=30` for unit test coverage
-- Run `uv run pytest tests/integration -x --timeout=30` for integration tests (no real-engine calls — must be fast)
+- pytest runs are tiered — never the full unit suite unprompted mid-task; T0 = the test file(s) covering the change: `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/unit/test_<file>.py -q --no-header -p pytest_asyncio.plugin -p pytest_timeout`, T1 = T0 plus the test files importing the changed module (`rg -l "kompend\.<module>" tests/`)
+- T2 = full unit suite once, before commit: `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/unit -q --no-header --tb=short -p pytest_asyncio.plugin -p pytest_timeout`; integration suite only when the change touches it: `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/integration -q --no-header --tb=short -p pytest_asyncio.plugin -p pytest_timeout` (policy detail: `tests/AGENTS.md`)
 - Run `ty check src/kompend` for type checking (mypy is not used)
 - Run `uv run python scripts/checks/all.py` — every gate; run one directly for its detail
 - Run `uv run pytest tests/smoke` after touching the CLI surface: it spawns the real `kompend` (init, config check, status, doctor, lint show, empty-vault compile) and fails on a traceback
