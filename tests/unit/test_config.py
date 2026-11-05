@@ -33,6 +33,7 @@ from kompend.core.config._core import (
 from kompend.core.config.engine._check import check_config_file
 from kompend.core.config.engine._dedupe import strip_duplicate_keys
 from kompend.core.config.generate import enum_choices, extract_toml_keys, generate_scaffold_config, get_default_keys
+from kompend.core.env import EnvVar
 from kompend.core.keys import PATHS_WIKI_DIR
 from kompend.core.paths import KOMP_DIR
 from kompend.core.pipeline.config import PipelineConfig
@@ -214,6 +215,9 @@ class TestEnvVars:
         """knox-wflz: the flag must survive resolve → from_resolved into the pipeline."""
         (tmp_path / "kompend.toml").write_text("[compile]\ncache_ignore_model = true\n", encoding="utf-8")
         monkeypatch.chdir(tmp_path)
+        # from_resolved refuses an empty default_model; the flag under test is
+        # unrelated to it, so a placeholder model is enough.
+        monkeypatch.setenv(EnvVar.LLM_DEFAULT_MODEL.value, "ollama/gpt-oss:20b")
         cfg = resolve_config(base_dir=tmp_path)
         assert cfg.get("compile.cache_ignore_model") is True
         config = PipelineConfig.from_resolved(cfg, source_dir=tmp_path / "sources", output_dir=tmp_path / "wiki", input_files=None)

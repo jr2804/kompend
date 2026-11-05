@@ -68,8 +68,23 @@ class TestRelToVault:
         assert rel_to_vault(Path("sources/paper.pdf"), tmp_path) == "sources/paper.pdf"
 
     def test_backslash_path_normalized_to_posix(self, tmp_path: Path) -> None:
-        # On any platform, a backslash-bearing relative path becomes POSIX.
-        assert rel_to_vault(Path("sources\\sub\\paper.pdf"), tmp_path) == "sources/sub/paper.pdf"
+        """A backslash means a separator on Windows and a filename character on POSIX.
+
+        ``pathlib`` reads the path per platform, and ``rel_to_vault`` returns
+        the platform's own POSIX form of it — so the expectation differs by
+        platform rather than the helper being wrong on one of them.
+        """
+        raw = "sources\\sub\\paper.pdf"
+        assert rel_to_vault(Path(raw), tmp_path) == Path(raw).as_posix()
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="POSIX: a backslash is a legal filename character")
+    def test_backslash_is_a_filename_character_on_posix(self, tmp_path: Path) -> None:
+        r"""On POSIX the backslash is part of the name, and must survive verbatim.
+
+        Rewriting it would rename a real file — ``a\b.pdf`` is one file on
+        POSIX, not a directory ``a`` holding ``b.pdf``.
+        """
+        assert rel_to_vault(Path("sources\\sub\\paper.pdf"), tmp_path) == "sources\\sub\\paper.pdf"
 
     def test_outside_vault_returned_as_posix(self, tmp_path: Path) -> None:
         """A path not under base_dir degrades to its POSIX form (no crash)."""

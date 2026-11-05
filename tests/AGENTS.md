@@ -74,6 +74,19 @@ They apply here too: no magic crops, no bare `except` to silence a failure.
 6. **No slow tests.** Unit tests should complete in <5s per file. If a test
    needs heavy setup, use `@pytest.fixture(scope="session")`.
 
+7. **No ambient-environment dependence.** The suite must pass in any shell.
+   `tests/conftest.py` strips ambient `KOMP_*` variables before every test
+   (autouse `_isolate_env`), because config resolution reads the environment:
+   with `KOMP_LLM_DEFAULT_MODEL` unset five tests failed (the pipeline
+   refuses an empty default model), and with it set three *other* tests failed
+   (the env alias outranks the project TOML for `compile.llm.default_model`) —
+   no shell made the suite green. A test that needs a variable sets it itself
+   with `monkeypatch`, the canonical pattern being
+   `monkeypatch.setenv(EnvVar.LLM_DEFAULT_MODEL.value, "ollama/gpt-oss:20b")`;
+   the model string must be a well-formed `provider/model` id, because the
+   pipeline parses it when it builds the agents. `KOMP_LLM_TRANSIENT_BACKOFF`
+   is the one exception — the T2 command sets it deliberately.
+
 ### Structure
 
 - Test files are named `test_<module>.py`.
@@ -89,6 +102,12 @@ They apply here too: no magic crops, no bare `except` to silence a failure.
   exit code, no traceback), never help-text wording. Cyclopts' meta app
   inherits root options into every subcommand's help, so "declared once"
   is a structural fact (`app.py`), not something `--help` can prove.
+- Assert on the CLI's *message*, not on the console's wrapping. Rich
+  hard-wraps at the terminal width and can break a filename mid-token
+  (`"AGENTS\n.md"`), so a substring assertion on a printed path depends on how
+  long that path happens to be — and the tmp-path length varies with the
+  pytest run counter. `tests/helpers/cli.py` renders CLI output on a wide
+  canvas (`COLUMNS`), so every token stays on one line.
 - A change that touches more than one stage of the image chain belongs in
   `tests/integration/test_image_pipeline.py` (figure → caption → page →
   vault), not in a per-stage test: the chain is what broke before, every
@@ -129,3 +148,6 @@ it runs — no flags from plugins that are not installed.
 - T0/T1/T2 commands above — the tiered policy is the default verification
 - `cd tests && find . -name "test_*.py" | sort` — before creating a new file,
   check this list first
+- The unit tier runs on every push and every pull request
+  (`.github/workflows/tests.yml`), with the T2 command above — a failing test
+  is a signal, not a surprise found by hand

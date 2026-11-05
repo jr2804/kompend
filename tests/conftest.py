@@ -10,6 +10,7 @@ assertion — these helpers fail loudly if a payload is not what the test claims
 from __future__ import annotations
 
 import hashlib
+import os
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -17,10 +18,16 @@ from typing import Any
 
 import pytest
 
+from kompend.core.env import EnvVar
 from kompend.rag.embedding_base import EmbeddingProvider
 
 _test_dir = Path(__file__).parent
 _data_dir = _test_dir / "data"
+
+#: ``KOMP_*`` variables the suite itself controls. The documented T2 command
+#: (``tests/AGENTS.md``) sets ``KOMP_LLM_TRANSIENT_BACKOFF=0`` so a retry path
+#: under test does not really sleep — that is part of the contract, not a leak.
+_PRESERVED_ENV_VARS = frozenset({EnvVar.LLM_TRANSIENT_BACKOFF.value})
 
 
 class DeterministicTestEmbeddingProvider(EmbeddingProvider):
@@ -58,6 +65,25 @@ def _isolate_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     simply overrides this one.
     """
     monkeypatch.chdir(tmp_path)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip ambient ``KOMP_*`` variables before every test.
+
+    Config resolution reads the environment, so the developer's shell decided
+    whether the suite passed: with ``KOMP_LLM_DEFAULT_MODEL`` unset, five tests
+    failed (the pipeline refuses an empty default model); with it set, three
+    *other* tests failed (the env alias outranks the project TOML for
+    ``compile.llm.default_model``). No shell could make the suite green.
+
+    A test that needs a variable sets it itself, with ``monkeypatch`` — the
+    canonical pattern (``tests/unit/test_notes.py``). What is removed here is
+    the ambient noise, which no test may depend on.
+    """
+    for name in list(os.environ):
+        if name.startswith("KOMP_") and name not in _PRESERVED_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
 
 
 def as_obj(value: object) -> dict[str, Any]:

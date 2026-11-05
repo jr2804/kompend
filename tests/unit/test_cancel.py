@@ -21,6 +21,7 @@ from kompend.cli._esc_watch import DOUBLE_ESC_REASON, EscDoublePressWatcher
 from kompend.cli._progress import PipelineProgress
 from kompend.core.cancel import CANCEL_EXIT_CODE, CANCEL_WINDOW_SECONDS, CancelState, KompendCancelled
 from kompend.core.config import resolve_config
+from kompend.core.env import EnvVar
 from kompend.core.models import ParsedDocument
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.config import PipelineConfig
@@ -29,9 +30,23 @@ from kompend.core.pipeline.orchestrator import build_pipeline
 from kompend.core.pipeline.stages._pipeline import WikiPipeline
 from kompend.core.pipeline.state import TierStateStore
 from kompend.core.reporting.handle import RunHandle
+from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.preprocessing.parsers.base import DocumentParser, FileExtension, ParserBackend
 
 ESC = "\x1b"
+
+
+@pytest.fixture(autouse=True)
+def _set_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the pipeline a compile model.
+
+    ``PipelineConfig.from_resolved`` refuses an empty
+    ``compile.llm.default_model``, and the cancellation tests build a real
+    pipeline. The model is never called — it is only carried through the
+    config — but it must be a well-formed ``provider/model`` id, because the
+    pipeline parses it when it builds the agents.
+    """
+    monkeypatch.setenv(EnvVar.LLM_DEFAULT_MODEL.value, "ollama/gpt-oss:20b")
 
 
 # ── CancelState ──────────────────────────────────────────────────────────
@@ -475,7 +490,17 @@ def _make_pipeline(tmp_path: Path) -> WikiPipeline:
     return WikiPipeline(config=config)
 
 
-def test_build_pipeline_accepts_cancel(tmp_path: Path) -> None:
+def test_build_pipeline_accepts_cancel(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The built pipeline carries the cancel token.
+
+    ``discover_context_window`` is patched out: it resolves the model's token
+    limits from the models.dev catalogue, which is a download and has nothing
+    to do with the cancel wiring.
+    """
+    monkeypatch.setattr(
+        "kompend.core.pipeline.stages._factory.discover_context_window",
+        lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
+    )
     cfg = resolve_config(base_dir=tmp_path)
     config = PipelineConfig.from_resolved(
         cfg,

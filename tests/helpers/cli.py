@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
+from collections.abc import Generator
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -24,6 +26,27 @@ from cyclopts.exceptions import CycloptsError
 
 #: Exit code Cyclopts uses for usage errors (unknown option, bad value).
 _USAGE_ERROR_EXIT_CODE = 2
+
+#: Console width for CLI output. Rich hard-wraps at the terminal width and
+#: breaks long words mid-token ("AGENTS\n.md"), so a substring assertion on a
+#: printed path depends on how long that path happens to be — and the tmp
+#: path length varies with the pytest run counter. A wide canvas keeps every
+#: token on one line, so the assertions test the message, not the wrap.
+_CONSOLE_WIDTH = "500"
+
+
+@contextlib.contextmanager
+def _wide_console() -> Generator[None]:
+    """Render CLI output on a canvas wide enough not to wrap."""
+    previous = os.environ.get("COLUMNS")
+    os.environ["COLUMNS"] = _CONSOLE_WIDTH
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("COLUMNS", None)
+        else:
+            os.environ["COLUMNS"] = previous
 
 
 @dataclass
@@ -60,7 +83,7 @@ class CliRunner:
         argv = [str(item) for item in (args or [])]
         out, err = io.StringIO(), io.StringIO()
         result = CliResult()
-        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+        with _wide_console(), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
             try:
                 result.returned = app.meta(argv, exit_on_error=False, result_action="return_value")
             except SystemExit as exc:
