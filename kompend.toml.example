@@ -784,11 +784,17 @@ enable = false                    # on/off switch
 # crag.enabled = false
 # crag.threshold = 0.3
 
-# Neural re-ranker: bi-encoder cosine-similarity re-ranks top-K
-# candidates. Uses the same embedding model as the vector store; reranker.model
-# is accepted for config compat but unused.
+# Neural re-ranker: re-ranks the top-K candidates.
+# reranker.backend = "bi-encoder"   # bi-encoder | flashrank | none
+#   bi-encoder — cosine re-scoring with the same embedding model as the vector
+#     store. The candidates were ranked by that model already, so this mostly
+#     reorders them.
+#   flashrank — a cross-encoder that reads the query and the passage together.
+#     Needs the optional extra: uv add 'kompend[rerank]'. The model is
+#     downloaded on first use and cached under .kompend/cache.
+#   none — skip the stage.
 # reranker.enabled = false
-# reranker.model = ""
+# reranker.model = ""   # flashrank model name; empty = its default
 # reranker.top_k = 20
 
 # HyDE (Hypothetical Document Embeddings): for sparse queries, generate

@@ -4,10 +4,21 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import lazy_loader as lazy
+
 from kompend.core.models import CompiledWiki
 from kompend.core.paths import VaultPaths
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.rag.vector_store import VectorField, indexable_nodes
+
+# The cross-encoder backend is an optional extra and pulls onnxruntime. It is
+# attached lazily, so importing this package never loads it.
+__getattr__, __dir__, _LAZY_EXPORTS = lazy.attach(
+    __name__,
+    submod_attrs={
+        "flashrank_backend": ["build_request", "load_ranker"],
+    },
+)
 
 __all__ = ["SqliteVecWikiStore", "VectorField", "build_vector_index", "indexable_nodes"]
 

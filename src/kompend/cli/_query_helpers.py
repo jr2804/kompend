@@ -14,7 +14,7 @@ from kompend.core.config import ResolvedConfig, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LlmDataFormat
 from kompend.core.models import CompiledWiki, ImageRef, MetadataField, NodeType
 from kompend.core.models.metadata import meta_str
-from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, PROTECTED_SOURCE_SUBDIRS, VECTORS_DB_FILE
+from kompend.core.paths import CACHE_SUBDIR, DEFAULT_OUTPUT_DIR_NAME, PROTECTED_SOURCE_SUBDIRS, VECTORS_DB_FILE
 from kompend.core.trust.actor import resolve_actor
 from kompend.core.verbosity import is_verbose
 from kompend.llm.context_window import ContextWindow
@@ -274,8 +274,10 @@ def build_enhanced_retriever(
         crag_enabled=cfg.kompend.search.crag.enabled,
         crag_threshold=cfg.kompend.search.crag.threshold,
         reranker_enabled=cfg.kompend.search.reranker.enabled,
+        reranker_backend=cfg.kompend.search.reranker.backend,
         reranker_model=cfg.kompend.search.reranker.model,
         reranker_top_k=cfg.kompend.search.reranker.top_k,
+        reranker_cache_dir=state_dir / CACHE_SUBDIR,
         hyde_enabled=cfg.kompend.search.hyde.enabled,
         llm=_llm,
         display=cfg.kompend.display,

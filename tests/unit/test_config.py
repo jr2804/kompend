@@ -226,6 +226,42 @@ class TestEnvVars:
         assert result["trust"]["user_tracking"] is False
 
 
+class TestRerankerBackend:
+    """``search.reranker.backend`` — the re-rank stage's implementation."""
+
+    def test_default_is_the_bi_encoder(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("search.reranker.backend") == "bi-encoder"
+
+    def test_project_config_overrides_the_default(self, tmp_path: Any, monkeypatch: Any) -> None:
+        (tmp_path / "kompend.toml").write_text('[search.reranker]\nbackend = "flashrank"\n', encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        cfg = resolve_config()
+        assert cfg.get("search.reranker.backend") == "flashrank"
+
+    def test_env_var_overrides_the_project_config(self, tmp_path: Any, monkeypatch: Any) -> None:
+        (tmp_path / "kompend.toml").write_text('[search.reranker]\nbackend = "flashrank"\n', encoding="utf-8")
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KOMP_SEARCH_RERANKER_BACKEND", "none")
+        cfg = resolve_config()
+        assert cfg.get("search.reranker.backend") == "none"
+
+    def test_cli_override_wins(self, tmp_path: Any, monkeypatch: Any) -> None:
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KOMP_SEARCH_RERANKER_BACKEND", "none")
+        cfg = resolve_config(cli_overrides={"search.reranker.backend": "flashrank"})
+        assert cfg.get("search.reranker.backend") == "flashrank"
+
+    def test_an_unknown_backend_is_rejected(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """A typo in the value domain fails when the config model is built."""
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KOMP_SEARCH_RERANKER_BACKEND", "nonsense")
+        cfg = resolve_config()
+        with pytest.raises(ValidationError):
+            _ = cfg.kompend.search.reranker.backend
+
+
 # ── Config file discovery ───────────────────────────────────────────────
 
 

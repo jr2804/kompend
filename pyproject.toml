@@ -82,6 +82,9 @@ kompend = "kompend.cli.launch:main"
 
 [project.optional-dependencies]
 
+# The cross-encoder reranker: flashrank pulls onnxruntime, so it stays opt-in.
+rerank = ["flashrank>=0.2.10"]
+
 # Only heavy ML OCR models and licence-gated backends (pymupdf, mineru) stay opt-in.
 ocr = ["parsecraft[ocr]>=2026.11.5"]
 # parsecraft runs MinerU natively; the extra pulls model weights, not the

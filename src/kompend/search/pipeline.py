@@ -13,15 +13,18 @@ All default to **disabled** — opt-in only.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.failure import record_unit_failure
 from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
 from kompend.core.config import ReasoningEffort, RlmConfig
-from kompend.core.config._configs import DisplayConfig, LLMConfig
+from kompend.core.config._configs import DisplayConfig, LLMConfig, RerankerBackend
 from kompend.core.models import CompiledWiki
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.text.matching import cosine as cosine_similarity
 from kompend.logging import get_logger
+from kompend.rag.rerank import FlashRankReranker, Reranker
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.search.retriever import (
     HybridRetriever,
@@ -57,8 +60,10 @@ class EnhancedRetriever:
         crag_threshold: float = 0.3,
         # Neural re-ranker config
         reranker_enabled: bool = False,
-        reranker_model: str = "",  # kept for config compat; the bi-encoder uses the vector store model
+        reranker_backend: RerankerBackend = RerankerBackend.BI_ENCODER,
+        reranker_model: str = "",  # the cross-encoder model; empty = the reranker's default
         reranker_top_k: int = 20,
+        reranker_cache_dir: Path | None = None,
         # HyDE config
         hyde_enabled: bool = False,
         # LLM/budget config — applied to every agent this retriever owns
@@ -90,7 +95,11 @@ class EnhancedRetriever:
 
         # Neural re-ranker config
         self._reranker_enabled = reranker_enabled
+        self._reranker_backend = reranker_backend
+        self._reranker_model = reranker_model
         self._reranker_top_k = reranker_top_k
+        self._reranker_cache_dir = reranker_cache_dir
+        self._reranker: Reranker | None = None
 
         # HyDE config
         self._hyde_enabled = hyde_enabled
@@ -210,7 +219,20 @@ class EnhancedRetriever:
     # ── Neural Re-ranker ──────────────────────────────────────────────────
 
     def _neural_rerank(self, query: str, candidates: list[SearchResult]) -> list[SearchResult]:
-        """Re-rank the retrieved candidates with bi-encoder cosine similarity."""
+        """Re-rank the retrieved candidates.
+
+        The backend decides how: a bi-encoder re-scores with the vector
+        store's own embedding model, a cross-encoder (flashrank) reads the
+        query and the passage together. The stage is best-effort
+        enrichment: on failure it keeps the candidates unchanged.
+        """
+        if self._reranker_backend == RerankerBackend.NONE:
+            return candidates
+        if self._reranker_backend == RerankerBackend.FLASHRANK:
+            return self._cross_encoder_rerank(query, candidates)
+        return self._bi_encoder_rerank(query, candidates)
+
+    def _bi_encoder_rerank(self, query: str, candidates: list[SearchResult]) -> list[SearchResult]:
         """Re-rank candidates using bi-encoder cosine similarity.
 
         Uses the vector store's embedding provider (pydantic-ai ``Embedder``)
@@ -240,21 +262,43 @@ class EnhancedRetriever:
                 len(candidates),
                 len(reranked),
             )
-            return [
-                SearchResult(
-                    article_id=r.article_id,
-                    title=r.title,
-                    snippet=r.snippet,
-                    score=round(score, 6),
-                    source_file=r.source_file,
-                    tags=r.tags,
-                    attributes=r.attributes,
-                )
-                for score, r in reranked
-            ]
+            return [_reranked_result(score, r) for score, r in reranked]
         except Exception as exc:
             record_unit_failure(stage="search.rerank", unit=query, exc=exc)
             return candidates
+
+    def _cross_encoder_rerank(self, query: str, candidates: list[SearchResult]) -> list[SearchResult]:
+        """Re-rank candidates with a cross-encoder (flashrank).
+
+        The cross-encoder reads the query and the page body together, so it
+        judges a pair rather than two independent vectors. The passage is the
+        page body: the model applies its own context limit, we do not trim.
+        """
+        try:
+            reranker = self._ensure_reranker()
+            passages = [r.content or r.snippet or r.title for r in candidates]
+            scores = reranker.rerank(query, passages)
+            scored = list(zip(scores, candidates, strict=True))
+            scored.sort(key=lambda item: item[0], reverse=True)
+            reranked = scored[: self._reranker_top_k]
+            logger.debug(
+                "Neural re-ranker: %d → %d candidates (cross-encoder)",
+                len(candidates),
+                len(reranked),
+            )
+            return [_reranked_result(score, r) for score, r in reranked]
+        except Exception as exc:
+            record_unit_failure(stage="search.rerank", unit=query, exc=exc)
+            return candidates
+
+    def _ensure_reranker(self) -> Reranker:
+        """Build the cross-encoder once; a missing model is a stage failure."""
+        if self._reranker is None:
+            self._reranker = FlashRankReranker(
+                self._reranker_model,
+                cache_dir=self._reranker_cache_dir,
+            )
+        return self._reranker
 
     # ── CRAG (Corrective RAG) ──────────────────────────────────────────────
 
@@ -334,3 +378,21 @@ class EnhancedRetriever:
         return fused[:top_k]
 
 
+def _reranked_result(score: float, result: SearchResult) -> SearchResult:
+    """A re-ranked copy of *result* — with the page body and figures kept.
+
+    A stage that rebuilds a result forwards ``content`` and ``figures``: a
+    stage that drops them hands the synthesis a snippet where the page body
+    was meant.
+    """
+    return SearchResult(
+        article_id=result.article_id,
+        title=result.title,
+        snippet=result.snippet,
+        score=round(score, 6),
+        source_file=result.source_file,
+        tags=result.tags,
+        attributes=result.attributes,
+        content=result.content,
+        figures=result.figures,
+    )

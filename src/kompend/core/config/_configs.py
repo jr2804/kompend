@@ -115,6 +115,22 @@ class MatcherName(StrEnum):
     MINHASH = "minhash"
 
 
+class RerankerBackend(StrEnum):
+    """How the re-rank stage scores the retrieved candidates.
+
+    - ``BI_ENCODER``: re-score with the vector store's own embedding model.
+      The candidates were ranked by that model already, so this mostly
+      reorders them.
+    - ``FLASHRANK``: re-score with a cross-encoder that reads the query and
+      the passage together. Needs the ``rerank`` extra.
+    - ``NONE``: skip the stage.
+    """
+
+    BI_ENCODER = "bi-encoder"
+    FLASHRANK = "flashrank"
+    NONE = "none"
+
+
 class OutputFormat(StrEnum):
     """Output format for the compiled wiki.
 
@@ -621,6 +637,7 @@ class SearchCragConfig(_KompendBaseModel):
 
 class SearchRerankerConfig(_KompendBaseModel):
     enabled: bool = Field(default=False, validation_alias=EnvVar.SEARCH_RERANKER_ENABLED)
+    backend: RerankerBackend = Field(default=RerankerBackend.BI_ENCODER, validation_alias=EnvVar.SEARCH_RERANKER_BACKEND)
     model: str = Field(default="", validation_alias=EnvVar.SEARCH_RERANKER_MODEL)
     top_k: int = Field(default=20, validation_alias=EnvVar.SEARCH_RERANKER_TOP_K)
 

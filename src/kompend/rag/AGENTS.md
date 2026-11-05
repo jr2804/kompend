@@ -24,6 +24,7 @@ retrievers.
 |--------|----------|
 | `vector_store.py` | `VectorField`, `VectorStoreLike`, `EmbeddingProvider` / `PydanticAIEmbeddingProvider`, `make_provider` / `build_embedder`, and the composition rules (`indexable_nodes`, `content_hash`, `embed_text`, `embed_node`, figure helpers) |
 | `sqlite_vec_store.py` | `SqliteVecWikiStore` — the vec0 table, the side tables, the FTS5 index, the filters, the fusion, the drift guard |
+| `rerank.py` | `Reranker` protocol, `FlashRankReranker` (optional extra) |
 | `multimodal.py` | `OllamaMediaEmbedder`, `MediaEmbeddingUnsupported` |
 
 ## Local Contracts
@@ -121,6 +122,9 @@ retrievers.
   records the provider's `model_id`; a different model makes `is_stale()`
   true and the index is rebuilt. Without it, a model switch kept serving the
   old vectors.
+- **The rerank stage is optional and degrades.** `rerank.py` imports flashrank
+  lazily, so a vault that never enables the stage never pays for onnxruntime.
+  A missing model is a stage failure: the candidates come back unchanged.
 
 ## Work Guidance
 

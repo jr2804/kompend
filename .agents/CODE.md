@@ -67,7 +67,7 @@ installs). Run both before committing — see `CHECKS.md`.
   (vibecheck, sloppylint, aislop) use that tool's own directive, so each
   suppression names the scanner it targets.
 - **Heavy optional dependencies stay lazy** (parsecraft, torch, transformers,
-  datasketch, scipy, crawl4ai, pydantic-ai, MCP SDK, sqlite-vec) so CLI startup stays
+  datasketch, scipy, crawl4ai, pydantic-ai, MCP SDK, sqlite-vec, flashrank) so CLI startup stays
   fast. Package level: `lazy.attach(__name__, submod_attrs={...})`. Function
   level: the registry factory (`get_backend()`), never a module-scope import.
   Canonical pattern: `src/kompend/preprocessing/parsers/__init__.py`.
