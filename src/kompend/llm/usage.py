@@ -12,6 +12,7 @@ from __future__ import annotations
 import threading
 import time
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -43,6 +44,8 @@ class UsageTracker:
     #: (monotonic timestamp, completion tokens) per finished call, oldest first.
     _events: deque[tuple[float, int]] = field(default_factory=deque, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    _clock: Callable[[], float] = field(default=time.monotonic, repr=False)
+    """Monotonic clock used to stamp completion events; injectable for tests."""
 
     def record(self, *, prompt_tokens: int, completion_tokens: int, model: str, ttft_s: float = 0.0) -> None:
         """Record one successful completion. Thread-safe."""
@@ -56,7 +59,7 @@ class UsageTracker:
             entry["completion"] += completion_tokens
             entry["calls"] += 1
             if completion_tokens > 0:
-                self._events.append((time.monotonic(), completion_tokens))
+                self._events.append((self._clock(), completion_tokens))
 
     def record_context_usage(self, current: int, max_tokens: int) -> None:
         """Record the latest context-window utilization.

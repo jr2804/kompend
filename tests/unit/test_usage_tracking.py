@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import threading
-import time
 from collections.abc import Iterator
 
 import pytest
@@ -21,6 +20,19 @@ class TestTokensPerSecond:
         assert tokens_per_second(100, 0.0) == 0.0
 
 
+class _FakeClock:
+    """Deterministic stand-in for ``time.monotonic`` — advance manually."""
+
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        self.now += seconds
+
+
 class TestUsageTracker:
     def test_empty_tracker_rates_zero(self) -> None:
         t = UsageTracker()
@@ -35,30 +47,35 @@ class TestUsageTracker:
         assert t.recent_rate() == 0.0
 
     def test_overall_and_recent_rates(self) -> None:
-        t = UsageTracker()
+        clock = _FakeClock()
+        t = UsageTracker(_clock=clock)
         t.record(prompt_tokens=10, completion_tokens=500, model="m")
-        time.sleep(0.2)
+        clock.advance(2.0)
         t.record(prompt_tokens=10, completion_tokens=1500, model="m")
-        overall = t.overall_rate()
-        assert 2000 / 0.6 < overall < 2000 / 0.1  # sane magnitude; timing-dependent
+        # overall: 2000 tokens over the full 2.0 s span.
+        assert t.overall_rate() == 1000.0
+        # recent (window 1000): only the last 1500-token call, starting after
+        # the first completion -> 1500 tokens over 2.0 s.
+        assert t.recent_rate() == 750.0
         assert t.completion_tokens == 2000
         assert t.call_count == 2
 
     def test_window_limits_events(self) -> None:
-        t = UsageTracker(throughput_window_tokens=100)
-        # First call: 500 tokens, long gap. Then 5 fast calls of 100 tokens.
+        clock = _FakeClock()
+        t = UsageTracker(throughput_window_tokens=100, _clock=clock)
+        # First call: 500 tokens, long gap. Then 5 calls of 100 tokens each
+        # 1 s apart. Events: (0.0, 500), (10..14, 100).
         t.record(prompt_tokens=5, completion_tokens=500, model="m")
-        time.sleep(0.4)
+        clock.advance(10.0)
         for _ in range(5):
             t.record(prompt_tokens=5, completion_tokens=100, model="m")
-            time.sleep(0.01)
-        # Window 100 -> only the last 100-token call(s) inside the window,
-        # which completed within the fast cluster -> recent rate must be
-        # much higher than the overall rate (which spans the 0.4s gap).
-        recent = t.recent_rate()
-        overall = t.overall_rate()
-        assert recent > 0.0
-        assert recent > overall
+            clock.advance(1.0)
+        # Window 100 -> only the newest 100-token call; its interval starts
+        # at the previous completion (t=13) and ends at t=14 -> 100 tok/s.
+        assert t.recent_rate() == 100.0
+        # overall: 1000 tokens across the whole 14 s span.
+        assert t.overall_rate() == pytest.approx(1000 / 14)
+        assert t.recent_rate() > t.overall_rate()
 
     def test_record_is_thread_safe(self) -> None:
         t = UsageTracker()

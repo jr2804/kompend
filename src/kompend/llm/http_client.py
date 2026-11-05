@@ -17,6 +17,7 @@ from tenacity import (
     stop_after_attempt,
     wait_exponential,
 )
+from tenacity.wait import wait_base
 
 # -- retryable status codes ----------------------------------------------------
 
@@ -27,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_ATTEMPTS = 3
 """Default number of retry attempts (3 = 1 initial + 2 retries)."""
+
+DEFAULT_RETRY_WAIT: wait_base = wait_exponential(multiplier=1, min=1, max=30)
+"""Default exponential backoff between attempts (1s floor, 30s ceiling)."""
 
 DEFAULT_RETRY_TIMEOUT: float = 60.0
 """Default total timeout in seconds for the retrying transport."""
@@ -67,7 +71,7 @@ def _log_retry_wait(retry_state: RetryCallState) -> None:
 
 _tenacity_retry = tenacity.AsyncRetrying(
     stop=stop_after_attempt(DEFAULT_MAX_ATTEMPTS),
-    wait=wait_exponential(multiplier=1, min=1, max=30),
+    wait=DEFAULT_RETRY_WAIT,
     retry=retry_if_exception(_retryable_error),
     before_sleep=_log_retry_wait,
     reraise=True,
@@ -90,6 +94,10 @@ class AsyncTenacityTransport(httpx.AsyncBaseTransport):
         ``httpx.AsyncHTTPTransport()``.
     max_attempts:
         Override the default retry count (1 initial + retries).
+    wait:
+        Override the backoff between attempts. Defaults to the production
+        exponential backoff; tests pass ``wait_fixed(0)`` so a retry loop
+        under test does not really sleep.
     """
 
     def __init__(
@@ -97,21 +105,22 @@ class AsyncTenacityTransport(httpx.AsyncBaseTransport):
         base_transport: httpx.AsyncBaseTransport | None = None,
         *,
         max_attempts: int = DEFAULT_MAX_ATTEMPTS,
+        wait: wait_base | None = None,
     ) -> None:
         if base_transport is None:
             base_transport = httpx.AsyncHTTPTransport()
         self._base = base_transport
 
-        if max_attempts != DEFAULT_MAX_ATTEMPTS:
+        if wait is None and max_attempts == DEFAULT_MAX_ATTEMPTS:
+            self._retry = _tenacity_retry
+        else:
             self._retry = tenacity.AsyncRetrying(
                 stop=stop_after_attempt(max_attempts),
-                wait=wait_exponential(multiplier=1, min=1, max=30),
+                wait=wait if wait is not None else DEFAULT_RETRY_WAIT,
                 retry=retry_if_exception(_retryable_error),
                 before_sleep=_log_retry_wait,
                 reraise=True,
             )
-        else:
-            self._retry = _tenacity_retry
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         return await self._retry(self._attempt, request)

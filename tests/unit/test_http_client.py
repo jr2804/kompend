@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
+from tenacity import wait_fixed
 
 from kompend.llm.http_client import (
     RETRYABLE_STATUS_CODES,
@@ -60,7 +61,7 @@ class TestAsyncTenacityTransport:
             httpx.Response(200, text="ok"),
         ]
 
-        transport = AsyncTenacityTransport(inner, max_attempts=2)
+        transport = AsyncTenacityTransport(inner, max_attempts=2, wait=wait_fixed(0))
         request = httpx.Request("POST", "https://example.com/v1/chat")
         response = await transport.handle_async_request(request)
 
@@ -80,7 +81,7 @@ class TestAsyncTenacityTransport:
             httpx.Response(200, text="ok"),
         ]
 
-        transport = AsyncTenacityTransport(inner, max_attempts=2)
+        transport = AsyncTenacityTransport(inner, max_attempts=2, wait=wait_fixed(0))
         request = httpx.Request("POST", "https://example.com/v1/chat")
         response = await transport.handle_async_request(request)
 
@@ -95,7 +96,7 @@ class TestAsyncTenacityTransport:
             httpx.Response(200, text="ok"),
         ]
 
-        transport = AsyncTenacityTransport(inner, max_attempts=2)
+        transport = AsyncTenacityTransport(inner, max_attempts=2, wait=wait_fixed(0))
         request = httpx.Request("POST", "https://example.com/v1/chat")
         response = await transport.handle_async_request(request)
 
@@ -110,7 +111,7 @@ class TestAsyncTenacityTransport:
             httpx.Response(200, text="ok"),
         ]
 
-        transport = AsyncTenacityTransport(inner, max_attempts=2)
+        transport = AsyncTenacityTransport(inner, max_attempts=2, wait=wait_fixed(0))
         request = httpx.Request("POST", "https://example.com/v1/chat")
         response = await transport.handle_async_request(request)
 
@@ -160,7 +161,7 @@ class TestAsyncTenacityTransport:
             response=httpx.Response(429),
         )
 
-        transport = AsyncTenacityTransport(inner, max_attempts=3)
+        transport = AsyncTenacityTransport(inner, max_attempts=3, wait=wait_fixed(0))
         request = httpx.Request("POST", "https://example.com/v1/chat")
 
         with pytest.raises(httpx.HTTPStatusError):
