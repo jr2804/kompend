@@ -54,14 +54,20 @@
 parsecraft_judge = "ollama"
 parsecraft_judge_model = "tev1"
 
-# Prefer the strongest eligible backend over the cheapest one.
-parsecraft_preference = "quality"
-
-# No OCR: every page of the demo corpus has a text layer, and this host has
-# no usable OCR backend (no CUDA torch build, no tesseract). Without this the
+# Routing itself (preference, OCR permission, backend pins, per-backend
+# options) is parsecraft's configuration, not kompend's, so it does not live in
+# this file: build-wiki.ps1 writes `<vault>/.kompend/parsecraft.toml` after the
+# scaffold. Seeded by hand, write it next to this config:
+#
+#   [routing]
+#   preference = "quality"
+#   allow_ocr = false
+#
+# `quality` prefers the strongest eligible backend over the cheapest one. No
+# OCR: every page of the demo corpus has a text layer, and this host has no
+# usable OCR backend (no CUDA torch build, no tesseract). Without it the
 # installed "ocr" extra would let the planner route a page to a GPU VLM that
 # cannot run here.
-parsecraft_allow_ocr = false
 
 [compile]
 # The iterative compiler. The default ("graph") compiles in one pass;

@@ -109,7 +109,21 @@ REMOVED_KEYS: dict[str, list[str]] = {  # nocheck: str-registry — frozen list 
     # are deleted — parsecraft is the only backend and routes internally — so the
     # selector had nothing left to select between. `parser_fallback` was its chain
     # companion and went when the key became single-valued.
-    "ingest": ["parser", "parser_fallback"],
+    # parsecraft's routing vocabulary now lives in parsecraft's own files
+    # (``~/.config/parsecraft/config.toml``, ``<vault>/.kompend/parsecraft.toml``,
+    # ``./parsecraft.toml``), so these six mirrored copies are gone. kompend keeps
+    # only what is genuinely its own: which provider credential the judge spends,
+    # and how much of the host a docling pass may use.
+    "ingest": [
+        "parser",
+        "parser_fallback",
+        "parsecraft_preference",
+        "parsecraft_allow_ocr",
+        "parsecraft_engines",
+        "parsecraft_preferred_backend",
+        "parsecraft_only_backend",
+        "parsecraft_backend_options",
+    ],
     # The whole [eval] section. It held a score threshold and a history size
     # for an evaluation loop that no longer exists.
     "eval": ["threshold", "history_size"],

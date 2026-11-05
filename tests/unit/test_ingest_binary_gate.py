@@ -32,10 +32,10 @@ from kompend.core.pipeline.parse_cache import read_document
 from kompend.core.pipeline.state import TierStateStore
 from kompend.core.store import vault_db_path
 from kompend.core.text.encoding import detect_and_decode
-from kompend.preprocessing.parsers import ParserRouter
+from kompend.preprocessing.parsers import DocumentParser
 
 
-class _FakeRouter:
+class _FakeDocumentParser:
     def __init__(self) -> None:
         self.parsed: list[Path] = []
 
@@ -65,13 +65,13 @@ def test_binary_pdf_not_funneled_through_normalize(tmp_path: Path) -> None:
     base = _seed_vault(tmp_path)
     src = base / "sources" / "doc.pdf"
     src.write_bytes(b"%PDF-1.4\x00\xff\x00binary\x00\x01")  # not valid UTF-8
-    router = _FakeRouter()
+    parser = _FakeDocumentParser()
 
     with patch("kompend.core.pipeline.ingest.normalize_to_utf8_path") as mock_norm:
         result = ingest_documents(
             files=[src],
             base_dir=base,
-            router=cast("ParserRouter", router),
+            parser=cast("DocumentParser", parser),
             reparse=True,
             config=None,
         )
@@ -80,7 +80,7 @@ def test_binary_pdf_not_funneled_through_normalize(tmp_path: Path) -> None:
     assert result.count == 1
     mock_norm.assert_not_called()
     # The parser received the original file path, not an encoding sibling.
-    assert router.parsed == [src]
+    assert parser.parsed == [src]
     # Tier-1 state recorded, keyed by name + content hash (a source's identity).
     state = TierStateStore(base / ".kompend" / "compile_state.json").load()
     assert [entry.stem for entry in state.entries.values()] == ["doc"]
@@ -91,14 +91,14 @@ def test_text_md_still_normalized(tmp_path: Path) -> None:
     base = _seed_vault(tmp_path)
     src = base / "sources" / "note.md"
     src.write_text("# Note\n", encoding="utf-8")
-    router = _FakeRouter()
+    parser = _FakeDocumentParser()
 
     with patch("kompend.core.pipeline.ingest.normalize_to_utf8_path") as mock_norm:
         mock_norm.return_value = (src, None)  # UTF-8-clean → passthrough
         result = ingest_documents(
             files=[src],
             base_dir=base,
-            router=cast("ParserRouter", router),
+            parser=cast("DocumentParser", parser),
             reparse=True,
             config=None,
         )
@@ -116,12 +116,12 @@ def test_code_source_reaches_parser(tmp_path: Path) -> None:
     base = _seed_vault(tmp_path)
     src = base / "sources" / "ACcontextMapping.c"
     src.write_text("int main(void) { return 0; }\n", encoding="utf-8")
-    router = _FakeRouter()
+    parser = _FakeDocumentParser()
 
     result = ingest_documents(
         files=[src],
         base_dir=base,
-        router=cast("ParserRouter", router),
+        parser=cast("DocumentParser", parser),
         reparse=True,
         config=None,
     )
@@ -129,7 +129,7 @@ def test_code_source_reaches_parser(tmp_path: Path) -> None:
     assert result.failed == 0
     assert result.count == 1
     # The parser received the original file — no encoding sibling, no drop.
-    assert router.parsed == [src]
+    assert parser.parsed == [src]
 
 
 def test_parse_target_path_keeps_unknown_suffix_byte_wise(tmp_path: Path) -> None:
@@ -174,19 +174,19 @@ def test_non_utf8_markdown_is_ingested_not_dropped(tmp_path: Path) -> None:
     base = _seed_vault(tmp_path)
     src = base / "sources" / "note.md"
     src.write_bytes("# café\n".encode("latin-1"))
-    router = _FakeRouter()
+    parser = _FakeDocumentParser()
 
     result = ingest_documents(
         files=[src],
         base_dir=base,
-        router=cast("ParserRouter", router),
+        parser=cast("DocumentParser", parser),
         reparse=True,
         config=None,
     )
 
     assert result.failed == 0
     assert result.count == 1
-    (target,) = router.parsed
+    (target,) = parser.parsed
     assert target != src
     assert target.suffix == ".md"
     expected, _encoding = detect_and_decode(src)
@@ -198,12 +198,12 @@ def test_encoding_sibling_does_not_leak_into_the_cache_entry(tmp_path: Path) -> 
     base = _seed_vault(tmp_path)
     src = base / "sources" / "note.md"
     src.write_bytes("# café\n".encode("latin-1"))
-    router = _FakeRouter()
+    parser = _FakeDocumentParser()
 
     ingest_documents(
         files=[src],
         base_dir=base,
-        router=cast("ParserRouter", router),
+        parser=cast("DocumentParser", parser),
         reparse=True,
         config=None,
     )

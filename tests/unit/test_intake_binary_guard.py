@@ -1,6 +1,6 @@
 """Intake guard against extension/content lies (knox-rtmn).
 
-The router picks a backend from the extension alone. A PDF renamed ``.md``
+The parser picks a backend from the extension alone. A PDF renamed ``.md``
 reaches the text path, is decoded leniently and parses *successfully* into
 U+FFFD soup — an untruthful result the user cannot diagnose. The guard
 refuses a source the format table classifies as text whose bytes sniff as
@@ -8,7 +8,7 @@ binary, at the two intake points:
 
 - :func:`kompend.core.pipeline.ingest.parse_target_path` (ingest + tier-1
   parse, before charset normalization)
-- :meth:`kompend.preprocessing.parsers.base.ParserRouter.parse`
+- :meth:`kompend.preprocessing.parsers.base.DocumentParser.parse`
   (``kompend parse``, attachments, MCP knowledge tool)
 
 The guard must stay narrow: unknown suffixes (``.c``) and binary containers
@@ -27,9 +27,8 @@ import pytest
 from kompend.core.models import ParsedDocument
 from kompend.core.pipeline.ingest import ingest_documents, parse_target_path
 from kompend.preprocessing.parsers.base import (
-    BaseParser,
     BinarySourceError,
-    ParserRouter,
+    DocumentParser,
     assert_text_source,
 )
 
@@ -39,11 +38,14 @@ from kompend.preprocessing.parsers.base import (
 _REAL_PDF = Path(__file__).parent.parent / "data" / "batch2" / "T-REC-P.501-202504-I!!PDF-E.pdf"
 
 
-# ── ParserRouter.parse (kompend parse / attachments / MCP knowledge) ────────
+# ── DocumentParser.parse (kompend parse / attachments / MCP knowledge) ─────
 
 
-class _CountingParser(BaseParser):
+class _CountingParser:
     """Claims everything; records whether it was reached."""
+
+    figure_enrichment = False
+    supported_extensions = {".md"}
 
     def __init__(self) -> None:
         self.calls: list[Path] = []
@@ -114,42 +116,40 @@ def test_passes_unknown_suffix_byte_wise(tmp_path: Path) -> None:
     assert_text_source(src)  # must not raise
 
 
-def test_router_parse_refuses_the_mislabel(tmp_path: Path) -> None:
-    router, parser = _router()
+def test_parse_refuses_the_mislabel(tmp_path: Path) -> None:
+    document_parser, parser = _document_parser()
     liar = _mislabelled_pdf(tmp_path)
 
     with pytest.raises(BinarySourceError):
-        router.parse(liar)
+        document_parser.parse(liar)
 
     assert parser.calls == [], "the guard must fire before any backend sees the file"
 
 
-def test_router_parse_still_parses_honest_sources(tmp_path: Path) -> None:
-    router, parser = _router()
+def test_parse_still_parses_honest_sources(tmp_path: Path) -> None:
+    document_parser, parser = _document_parser()
     src = tmp_path / "note.md"
     src.write_text("# Note\n", encoding="utf-8")
 
-    doc = router.parse(src)
+    doc = document_parser.parse(src)
 
     assert parser.calls == [src]
     assert doc.source_file == src
 
 
-def test_router_parse_keeps_binary_container_byte_wise(tmp_path: Path) -> None:
-    router, parser = _router()
+def test_parse_keeps_binary_container_byte_wise(tmp_path: Path) -> None:
+    document_parser, parser = _document_parser()
     src = tmp_path / "doc.pdf"
     shutil.copyfile(_REAL_PDF, src)
 
-    router.parse(src)
+    document_parser.parse(src)
 
     assert parser.calls == [src]
 
 
-def _router() -> tuple[ParserRouter, _CountingParser]:
+def _document_parser() -> tuple[DocumentParser, _CountingParser]:
     parser = _CountingParser()
-    router = ParserRouter()
-    router.register(parser)
-    return router, parser
+    return DocumentParser(parser), parser
 
 
 # ── parse_target_path (ingest + tier-1 parse) ────────────────────────────────
@@ -201,7 +201,7 @@ def test_ingest_reports_the_mislabel_as_failed(tmp_path: Path) -> None:
         result = ingest_documents(
             files=[src],
             base_dir=base,
-            router=cast("ParserRouter", MagicMock()),
+            parser=cast("DocumentParser", MagicMock()),
             reparse=True,
             config=None,
         )

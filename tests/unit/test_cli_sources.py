@@ -12,7 +12,7 @@ from kompend.cli._sources import (
     looks_like_html_url,
     resolve_files,
 )
-from kompend.preprocessing.parsers._registry import get_supported_extensions
+from kompend.preprocessing.parsers.extensions import supported_extensions
 
 # ── resolve_files ───────────────────────────────────────────────────────
 
@@ -60,7 +60,7 @@ class TestResolveFiles:
         (tmp_path / "ignored.exe").write_text("nope")
         result = resolve_files(str(tmp_path))
         assert len(result) == 3
-        assert all(p.suffix in get_supported_extensions() for p in result)
+        assert all(p.suffix in supported_extensions() for p in result)
 
     def test_directory_recursive(self, tmp_path: Path) -> None:
         deep_dir = tmp_path / "deep"

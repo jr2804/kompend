@@ -25,7 +25,7 @@ from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.pipeline.stages._parse import _parse_source
 from kompend.core.verbosity import is_verbose, set_verbose
 from kompend.preprocessing.host_memory import HeavyParseGuard
-from kompend.preprocessing.parsers.base import ParserRouter
+from kompend.preprocessing.parsers.base import DocumentParser
 from tests.helpers.cli import CliRunner
 
 _cli_runner = CliRunner()
@@ -34,9 +34,9 @@ _cli_runner = CliRunner()
 # ── recoverable parse failure ────────────────────────────────────────────
 
 
-class _FailingRouter:
+class _FailingParser:
     def backend_identity(self) -> str:
-        return "failing-router"
+        return "failing-parser"
 
     def route(self, source_file: Path) -> MagicMock:  # noqa: ARG002
         parser = MagicMock()
@@ -56,13 +56,13 @@ class _RaisingParser:
         raise ValueError("docling exploded")
 
 
-class _Router:
+class _Parser:
     def route(self, source_file: Path) -> _RaisingParser:  # noqa: ARG002
         return _RaisingParser()
 
 
 class _Pipeline:
-    router = _Router()
+    parser = _Parser()
 
     def cache_directory(self) -> Path:
         return Path("/nonexistent-cache")  # noqa: S108 — never touched: parse raises first
@@ -194,7 +194,7 @@ def _seed_vault(tmp_path: Path) -> Path:
 def _ingest_failing_parse(base: Path) -> Any:
     src = base / "sources" / "doc.pdf"
     src.write_bytes(b"%PDF fake")
-    return ingest_documents(files=[src], base_dir=base, router=cast("ParserRouter", _FailingRouter()), reparse=True, config=None)
+    return ingest_documents(files=[src], base_dir=base, parser=cast("DocumentParser", _FailingParser()), reparse=True, config=None)
 
 
 def test_main_fatal_is_one_line_without_verbose(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

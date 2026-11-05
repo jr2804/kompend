@@ -2,15 +2,13 @@
 
 Fidelity contract: parsecraft IR → kompend elements must preserve element kind,
 page numbers, reading order, heading levels, and table shape — and must NOT
-emit content when parsecraft genuinely produced none. The registry contract is
-also verified: parsecraft must NOT broaden default discovery (Phase 1's
-byte-identical guarantee), only explicit selection may.
+emit content when parsecraft genuinely produced none. The single-parser surface
+is also verified: parsecraft must NOT broaden what ``supported_extensions()``
+discovers beyond its own descriptors.
 
 The adapter module is imported lazily inside each test/fixture: importing it
-triggers ``register_backend("parsecraft")`` (kompend's module-level
-self-registration convention), which broadens ``get_all_extensions()`` for the
-rest of the process and breaks exact-count discovery tests elsewhere in the
-suite. Default kompend runs never import the module, so the guarantee holds there.
+pulls in parsecraft's native stack, which is slow and unnecessary for the tests
+that never parse.
 """
 
 from __future__ import annotations
@@ -37,6 +35,8 @@ pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
 from parsecraft import pipeline  # noqa: E402 — guarded by the importorskip above
 from parsecraft.backends import default_registry  # noqa: E402 — guarded by the importorskip above
 from parsecraft.backends.protocol import BackendCapabilities  # noqa: E402 — guarded by the importorskip above
+from parsecraft.cli.config import ParsecraftConfig, RoutingSettings
+from parsecraft.config.errors import ConfigError
 from parsecraft.ir.models import (
     AssetKind,
     ChunkKind,
@@ -57,11 +57,11 @@ from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
 from parsecraft.routing.models import Intent, PageRoute, RoutingPlan  # noqa: E402 — guarded by the importorskip above
 
-from kompend.core.config import ImageMode, ParsecraftJudge, ParsecraftPreference
+from kompend.core.config import ImageMode, ParsecraftJudge
 from kompend.core.models import ElementType
 from kompend.preprocessing.images import ImageStore
-from kompend.preprocessing.parsers import _registry as registry_module
-from kompend.preprocessing.parsers._registry import KNOWN_BACKENDS
+from kompend.preprocessing.parsers import PARSER_PARSECRAFT, ParserOptions, build_parser
+from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingConfig
 
 #: A one-pixel PNG — enough to prove the bytes survive the round trip.
 _PNG_BYTES: bytes = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
@@ -69,7 +69,7 @@ _PNG_BYTES: bytes = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFc
 #: Resolved lazily via importlib: a static ``from ... import parsecraft_parser``
 #: would register the backend at collection time (pyreorder hoists function-level
 #: imports to module level — the TYPE_CHECKING incident, commit 010097d) and
-#: broaden ``get_all_extensions()`` for the rest of the test process.
+#: broaden ``supported_extensions()`` for the rest of the test process.
 
 # ── Fidelity: IR → kompend elements (live pipeline, native-markdown) ────────
 
@@ -465,12 +465,12 @@ class TestRegistryContract:
         Verified in a fresh interpreter, so it also covers the lazy
         ``_ensure_backend`` import path.
         """
-        assert "parsecraft" in KNOWN_BACKENDS
+        assert PARSER_PARSECRAFT == "parsecraft"
 
         repo_root = Path(__file__).parents[2]
         probe = (
-            "from kompend.preprocessing.parsers._registry import get_all_extensions; "
-            "ext = get_all_extensions(['parsecraft']); "
+            "from kompend.preprocessing.parsers.extensions import supported_extensions; "
+            "ext = supported_extensions(); "
             "print(all(s in ext for s in ('.c', '.h', '.py', '.txt', '.pdf')))"
         )
         env = {**os.environ, "PYTHONPATH": str(repo_root / "src")}
@@ -560,14 +560,10 @@ class TestJudgeWiring:
         assert parser._get_judge() is sentinel
         assert seen == ["ollama/m"]
 
-    def test_preference_maps_to_the_sdk_enum(self) -> None:
-        adapter = _adapter()
-        assert adapter._parse_preference("speed").value == "speed"
-        assert adapter._parse_preference("quality").value == "quality"
-        # A typo raises instead of silently degrading to BALANCED —
-        # a vocabulary mismatch must not quietly reshape routing.
-        with pytest.raises(ValueError, match="ParsecraftPreference"):
-            adapter._parse_preference("typo")
+    def test_an_unknown_preference_is_rejected_by_parsecraft(self) -> None:
+        """The preference vocabulary is parsecraft's, validated where it is defined."""
+        with pytest.raises(ValueError, match="preference"):
+            _routing(preference="typo")
 
     def test_preference_reaches_the_deterministic_judge(self) -> None:
         """The knob must be honoured on the no-judge path, not only via resolve_judge.
@@ -578,7 +574,7 @@ class TestJudgeWiring:
         """
         adapter = _adapter()
         for name in ("speed", "balanced", "quality"):
-            parser = adapter.ParsecraftParser(parsecraft_preference=name)
+            parser = _routing_parser(preference=name)
             assert parser._get_judge()._preference is adapter.RoutingPreference(name)
 
     def test_degraded_paths_keep_the_preference(self) -> None:
@@ -586,9 +582,13 @@ class TestJudgeWiring:
         fallback with the configured axis, not the enum default.
         """
         adapter = _adapter()
-        unresolvable = adapter.ParsecraftParser(parsecraft_judge="nosuchprovider", parsecraft_judge_model="m", parsecraft_preference="quality")
+        unresolvable = adapter.ParsecraftParser(
+            parsecraft_judge="nosuchprovider",
+            parsecraft_judge_model="m",
+            parsecraft_config=_routing(preference="quality"),
+        )
         assert unresolvable._get_judge()._preference is adapter.RoutingPreference.QUALITY
-        degraded = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="m", parsecraft_preference="quality")
+        degraded = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="m", parsecraft_config=_routing(preference="quality"))
         degraded._degrade_judge(RuntimeError("endpoint died"))
         assert degraded._judge_fallback._preference is adapter.RoutingPreference.QUALITY
 
@@ -601,10 +601,10 @@ class TestJudgeWiring:
         therefore distinguishable only as the configured value (the wiring test
         above), not as routing behaviour.
         """
-        adapter = _adapter()
+        _adapter()
         small, big = _pdf_backend("small", 0.5), _pdf_backend("big", 8.0)
-        speed = adapter.ParsecraftParser(parsecraft_preference="speed")._get_judge()
-        quality = adapter.ParsecraftParser(parsecraft_preference="quality")._get_judge()
+        speed = _routing_parser(preference="speed")._get_judge()
+        quality = _routing_parser(preference="quality")._get_judge()
         assert list(speed.rank(Intent.NATIVE, [small, big])) == ["small", "big"]
         assert list(quality.rank(Intent.NATIVE, [small, big])) == ["big", "small"]
 
@@ -640,9 +640,9 @@ class TestJudgeWiring:
         """
         adapter = _adapter()
         assert _routing_part(adapter.ParsecraftParser()) == ""
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="balanced")) == ""
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="speed")) == "preference:speed"
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_preference="quality")) == "preference:quality"
+        assert _routing_part(_routing_parser(preference="balanced")) == ""
+        assert _routing_part(_routing_parser(preference="speed")) == "preference:speed"
+        assert _routing_part(_routing_parser(preference="quality")) == "preference:quality"
 
     def test_cache_identity_marks_the_judge_extras_fix(self) -> None:
         """knox-j5ig changed default-path routing without any config change, so
@@ -718,70 +718,59 @@ class TestJudgeWiring:
         reuse pages routed under the previous configuration.
         """
         adapter = _adapter()
-        opts = registry_module.ParserBuildOptions
-        plain = registry_module.build_default_router(opts(), name="parsecraft")
-        judged = registry_module.build_default_router(
-            opts(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="parable-tinyjev"),
-            name="parsecraft",
+        plain = _parser_with()
+        judged = _parser_with(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="parable-tinyjev")
+        other_pref = _parser_with(
+            parsecraft_judge=ParsecraftJudge.OLLAMA,
+            parsecraft_judge_model="parable-tinyjev",
+            parsecraft_config=_routing(preference="quality"),
         )
-        other_pref = registry_module.build_default_router(
-            opts(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="parable-tinyjev", parsecraft_preference=ParsecraftPreference.QUALITY),
-            name="parsecraft",
-        )
-        other_model = registry_module.build_default_router(
-            opts(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="tev1"),
-            name="parsecraft",
-        )
+        other_model = _parser_with(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="tev1")
 
-        assert plain.fingerprint() != judged.fingerprint()
-        assert judged.fingerprint() != other_pref.fingerprint()
-        assert judged.fingerprint() != other_model.fingerprint()
+        assert plain.backend_identity() != judged.backend_identity()
+        assert judged.backend_identity() != other_pref.backend_identity()
+        assert judged.backend_identity() != other_model.backend_identity()
         # The default configuration keeps a neutral routing part, and two
         # separately built default routers hash identically.
         assert _routing_part(adapter.ParsecraftParser()) == ""
-        plain_again = registry_module.build_default_router(opts(), name="parsecraft")
-        assert plain_again.fingerprint() == plain.fingerprint()
+        plain_again = _parser_with()
+        assert plain_again.backend_identity() == plain.backend_identity()
 
     def test_build_options_carry_the_judge_config(self) -> None:
-        """The `[ingest]` routing keys reach the backend through ParserBuildOptions."""
+        """The `[ingest]` routing keys reach the backend through ParserOptions."""
         adapter = _adapter()
-        router = registry_module.build_default_router(
-            registry_module.ParserBuildOptions(
-                parsecraft_judge=ParsecraftJudge.OLLAMA,
-                parsecraft_judge_model="parable-tinyjev",
-                parsecraft_preference=ParsecraftPreference.QUALITY,
-            ),
-            name="parsecraft",
-        )
-        backend: Any = next(p for p in router._parsers if type(p).__name__ == "ParsecraftParser")  # noqa: SLF001 — parser identity is the contract
+        backend: Any = _parser_with(
+            parsecraft_judge=ParsecraftJudge.OLLAMA,
+            parsecraft_judge_model="parable-tinyjev",
+        ).parser
+        assert type(backend).__name__ == "ParsecraftParser"
         assert backend._judge_name == "ollama"
         assert backend._judge_model == "parable-tinyjev"
-        assert backend._judge_preference == "quality"
         assert adapter.ParsecraftParser()._judge_name == "none"
 
 
 class TestEffortIsABackendOption:
     """MinerU effort is a parsecraft backend option, not a kompend config key.
 
-    `[ingest] parsecraft_backend_options` is the single surface for backend
-    options: parsecraft owns the option names and their value domains, so kompend
-    must not mirror `effort` (or liteparse's `extract_vector_graphics`) as typed
-    fields. The cache identity follows the option dict, so flipping effort through
-    the option map still invalidates the parse.
+    ``[routing.backend_options]`` is the single surface for backend options:
+    parsecraft owns the option names and their value domains, so kompend must not
+    mirror `effort` (or liteparse's `extract_vector_graphics`) as typed fields. The
+    cache identity follows the option dict, so flipping effort through the option
+    map still invalidates the parse.
     """
 
     def test_effort_reaches_backend_options_verbatim(self) -> None:
-        adapter = _adapter()
-        parser = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "high"}})
+        _adapter()
+        parser = _routing_parser(backend_options={"mineru": {"effort": "high"}})
         assert parser._backend_options() == {"mineru": {"effort": "high"}}
 
     def test_effort_changes_the_cache_identity(self) -> None:
         """The option dict is part of the fingerprint, so a vault that raised
         effort never serves a parse produced at the old setting.
         """
-        adapter = _adapter()
-        flash = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "flash"}})
-        high = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "high"}})
+        _adapter()
+        flash = _routing_parser(backend_options={"mineru": {"effort": "flash"}})
+        high = _routing_parser(backend_options={"mineru": {"effort": "high"}})
         assert _routing_part(flash) != _routing_part(high)
         assert "backend_options:" in _routing_part(high)
 
@@ -793,79 +782,78 @@ class TestEffortIsABackendOption:
         reaches ``BackendConfig.options`` verbatim and parsecraft's own
         validator decides (loudly) whether it is real.
         """
-        adapter = _adapter()
-        parser = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "ULTRA"}})
+        _adapter()
+        parser = _routing_parser(backend_options={"mineru": {"effort": "ULTRA"}})
         assert parser._backend_options() == {"mineru": {"effort": "ULTRA"}}
 
 
 class TestOcrWiring:
-    """``[ingest] parsecraft_allow_ocr`` is read, fingerprinted and forwarded.
+    """``[routing] allow_ocr`` is read from parsecraft's config and forwarded.
 
-    Unlike backend options this one acts immediately: the adapter passes
-    it straight into ``constraints_from_environment``, whose ``allow_ocr`` input
-    the planner already honours. So the wiring is exercised end-to-end, not just
-    stored.
+    The key acts immediately: the adapter passes it straight into
+    ``RoutingSettings.routing_constraints``, whose ``allow_ocr`` input the planner
+    already honours. So the wiring is exercised end-to-end, not just stored.
     """
 
     def test_unset_keeps_empty_routing_part(self) -> None:
         adapter = _adapter()
-        assert adapter.ParsecraftParser()._allow_ocr is None
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_allow_ocr=None)) == ""
+        assert adapter.ParsecraftParser().parsecraft_settings().routing.allow_ocr is None
+        assert _routing_part(_routing_parser(allow_ocr=None)) == ""
 
     def test_explicit_values_add_an_ocr_segment(self) -> None:
-        adapter = _adapter()
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_allow_ocr=True)) == "ocr:on"
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_allow_ocr=False)) == "ocr:off"
+        _adapter()
+        assert _routing_part(_routing_parser(allow_ocr=True)) == "ocr:on"
+        assert _routing_part(_routing_parser(allow_ocr=False)) == "ocr:off"
 
     def test_ocr_composes_with_preference_and_backend_options(self) -> None:
-        adapter = _adapter()
-        parser = adapter.ParsecraftParser(
-            parsecraft_preference="quality",
-            parsecraft_allow_ocr=False,
-            parsecraft_backend_options={"mineru": {"effort": "high"}},
+        _adapter()
+        parser = _routing_parser(
+            preference="quality",
+            allow_ocr=False,
+            backend_options={"mineru": {"effort": "high"}},
         )
         assert _routing_part(parser) == "preference:quality|ocr:off|backend_options:mineru:effort=high"
 
-    def test_allow_ocr_changes_the_router_fingerprint(self) -> None:
+    def test_allow_ocr_changes_the_parser_identity(self) -> None:
         """Flipping OCR permission changes which backend may lead, so the parse
         cache must invalidate — while the unset default keeps existing caches.
         """
-        opts = registry_module.ParserBuildOptions
-        unset = registry_module.build_default_router(opts(), name="parsecraft")
-        off = registry_module.build_default_router(opts(parsecraft_allow_ocr=False), name="parsecraft")
-        on = registry_module.build_default_router(opts(parsecraft_allow_ocr=True), name="parsecraft")
-        assert unset.fingerprint() != off.fingerprint()
-        assert off.fingerprint() != on.fingerprint()
-        unset_again = registry_module.build_default_router(opts(), name="parsecraft")
-        assert unset_again.fingerprint() == unset.fingerprint()
+        unset = _parser_with()
+        off = _parser_with(parsecraft_config=_routing(allow_ocr=False))
+        on = _parser_with(parsecraft_config=_routing(allow_ocr=True))
+        assert unset.backend_identity() != off.backend_identity()
+        assert off.backend_identity() != on.backend_identity()
+        unset_again = _parser_with()
+        assert unset_again.backend_identity() == unset.backend_identity()
 
     def test_build_options_carry_the_allow_ocr_config(self) -> None:
-        adapter = _adapter()
-        router = registry_module.build_default_router(
-            registry_module.ParserBuildOptions(parsecraft_allow_ocr=False),
-            name="parsecraft",
-        )
-        backend: Any = next(p for p in router._parsers if type(p).__name__ == "ParsecraftParser")  # noqa: SLF001 — parser identity is the contract
-        assert backend._allow_ocr is False
-        assert adapter.ParsecraftParser()._allow_ocr is None
+        """``ParserOptions.parsecraft_config`` is the seam an embedding host uses.
+
+        A caller that resolved parsecraft's config itself hands the same object
+        to every parser it builds, so a vault reads its TOML once.
+        """
+        backend: Any = _parser_with(parsecraft_config=_routing(allow_ocr=False)).parser
+        assert type(backend).__name__ == "ParsecraftParser"
+        assert backend.parsecraft_settings().routing.allow_ocr is False
+        assert _adapter().ParsecraftParser().parsecraft_settings().routing.allow_ocr is None
 
     def test_parse_forwards_allow_ocr_to_the_planner(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """The value must reach ``constraints_from_environment`` — this is the
-        knob that acts immediately, so a stored-but-unforwarded regression would
-        be silent otherwise.
+        """The value must reach ``constraints_for`` — this is the knob that
+        acts immediately, so a stored-but-unforwarded regression would be
+        silent otherwise.
         """
         adapter = _adapter()
         seen: list[bool | None] = []
-        real = adapter.constraints_from_environment
+        real = adapter.constraints_for
 
-        def spy(environment: object, **kwargs: Any) -> Any:
-            seen.append(kwargs["allow_ocr"])
-            return real(environment, **kwargs)
+        def spy(config: Any, environment: object, **kwargs: Any) -> Any:
+            seen.append(config.routing.allow_ocr)
+            return real(config, environment, **kwargs)
 
-        monkeypatch.setattr(adapter, "constraints_from_environment", spy)
+        monkeypatch.setattr(adapter, "constraints_for", spy)
         parser.parse(markdown_file)
         assert seen[-1] is None
-        adapter.ParsecraftParser(parsecraft_allow_ocr=False).parse(markdown_file)
+        _routing_parser(allow_ocr=False).parse(markdown_file)
         assert seen[-1] is False
 
 
@@ -925,14 +913,12 @@ class TestBackendOptions:
 
     def test_a_user_option_passes_through_verbatim(self) -> None:
         """Parsecraft owns the option names, so kompend forwards them unchanged."""
-        adapter = _adapter()
-        parser = adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "high"}})
+        parser = _routing_parser(backend_options={"mineru": {"effort": "high"}})
         assert parser._backend_options() == {"mineru": {"effort": "high"}}
 
     def test_two_backends_land_in_one_dict(self) -> None:
-        adapter = _adapter()
-        parser = adapter.ParsecraftParser(
-            parsecraft_backend_options={
+        parser = _routing_parser(
+            backend_options={
                 "mineru": {"effort": "xhigh"},
                 "liteparse": {"extract_vector_graphics": True},
             }
@@ -960,71 +946,74 @@ class TestBackendOptions:
         assert adapter.ParsecraftParser(images_dir=None, image_mode=ImageMode.FILE)._backend_options() == {}
 
     def test_a_user_option_wins_over_the_derived_image_flag(self, tmp_path: Path) -> None:
-        """`[ingest.parsecraft_backend_options]` is the escape hatch, not a casualty."""
+        """``[routing.backend_options]`` is the escape hatch, not a casualty."""
         adapter = _adapter()
         parser = adapter.ParsecraftParser(
             images_dir=tmp_path,
             image_mode=ImageMode.FILE,
-            parsecraft_backend_options={"liteparse": {"extract_images": False}},
+            parsecraft_config=_routing(backend_options={"liteparse": {"extract_images": False}}),
         )
         assert parser._backend_options() == {"liteparse": {"extract_images": False}}
 
     def test_options_reach_the_constraints(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """End-to-end: the built dict must be handed to ``constraints_from_environment``."""
+        """End-to-end: the built dict must be handed to ``constraints_for``."""
         adapter = _adapter()
         seen: list[object] = []
-        real = adapter.constraints_from_environment
+        real = adapter.constraints_for
 
-        def spy(environment: object, **kwargs: Any) -> Any:
-            seen.append(kwargs.get("backend_options"))
-            return real(environment, **kwargs)
+        def spy(config: object, environment: object, **kwargs: Any) -> Any:
+            constraints = real(config, environment, **kwargs)
+            seen.append(constraints.backend_options)
+            return constraints
 
-        monkeypatch.setattr(adapter, "constraints_from_environment", spy)
+        monkeypatch.setattr(adapter, "constraints_for", spy)
         parser.parse(markdown_file)
         assert seen[-1] == {}
-        adapter.ParsecraftParser(parsecraft_backend_options={"mineru": {"effort": "high"}}).parse(markdown_file)
+        _routing_parser(backend_options={"mineru": {"effort": "high"}}).parse(markdown_file)
         assert seen[-1] == {"mineru": {"effort": "high"}}
 
 
 class TestEnginesWiring:
-    """``[ingest] parsecraft_engines`` overrides the probed engine set."""
+    """``[routing] engines`` overrides the probed engine set."""
 
     def test_unset_keeps_the_probe_and_empty_key(self) -> None:
         adapter = _adapter()
         parser = adapter.ParsecraftParser()
-        assert parser._engines == ()
+        assert parser.parsecraft_settings().routing.engines == []
         assert _routing_part(parser) == ""
 
     def test_names_appear_in_the_cache_key_sorted(self) -> None:
-        adapter = _adapter()
-        parser = adapter.ParsecraftParser(parsecraft_engines=["mineru", "marker"])
+        _adapter()
+        parser = _routing_parser(engines=["mineru", "marker"])
         assert _routing_part(parser) == "engines:marker,mineru"
 
     def test_backend_options_segment_only_when_set(self) -> None:
-        adapter = _adapter()
-        on = adapter.ParsecraftParser(parsecraft_backend_options={"liteparse": {"extract_vector_graphics": True}})
+        _adapter()
+        on = _routing_parser(backend_options={"liteparse": {"extract_vector_graphics": True}})
         assert _routing_part(on) == "backend_options:liteparse:extract_vector_graphics=True"
-        off = adapter.ParsecraftParser(parsecraft_backend_options={"liteparse": {"extract_vector_graphics": False}})
+        off = _routing_parser(backend_options={"liteparse": {"extract_vector_graphics": False}})
         assert _routing_part(off) == "backend_options:liteparse:extract_vector_graphics=False"
 
     def test_engines_reach_the_constraints(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         adapter = _adapter()
         seen: list[object] = []
-        real = adapter.constraints_from_environment
+        real = adapter.constraints_for
 
-        def spy(environment: object, **kwargs: Any) -> Any:
-            seen.append(kwargs.get("engines"))
-            return real(environment, **kwargs)
+        def spy(config: object, environment: object, **kwargs: Any) -> Any:
+            constraints = real(config, environment, **kwargs)
+            seen.append(constraints.engines)
+            return constraints
 
-        monkeypatch.setattr(adapter, "constraints_from_environment", spy)
+        monkeypatch.setattr(adapter, "constraints_for", spy)
         parser.parse(markdown_file)
-        assert seen[-1] is None
-        adapter.ParsecraftParser(parsecraft_engines=["mineru"]).parse(markdown_file)
-        assert seen[-1] == ("mineru",)
+        # No `[routing] engines` in the config, so kompend's probed set fills in.
+        assert seen[-1] == frozenset(parser._ensure_environment().engines)
+        _routing_parser(engines=["tesseract"]).parse(markdown_file)
+        assert seen[-1] == frozenset({"tesseract"})
 
 
 class TestBackendOverride:
-    """``[ingest] parsecraft_preferred_backend`` / ``_only_backend``.
+    """``[routing] preferred_backend`` / ``only_backend``.
 
     parsecraft owns routing, so these pass a single preference or pin through
     to its own parameters — they are not a kompend-side routing list.
@@ -1033,56 +1022,63 @@ class TestBackendOverride:
     def test_unset_leaves_both_none(self) -> None:
         adapter = _adapter()
         parser = adapter.ParsecraftParser()
-        assert parser._preferred_backend is None
-        assert parser._only_backend is None
+        assert parser.parsecraft_settings().routing.preferred_backend is None
+        assert parser.parsecraft_settings().routing.only_backend is None
         assert _routing_part(parser) == ""
 
     def test_unknown_backend_names_the_registered_set(self) -> None:
-        adapter = _adapter()
         known = {descriptor.name for descriptor in default_registry.list_backends()}
-        with pytest.raises(ValueError, match="unknown parsecraft backend 'not-a-backend'"):
-            adapter.ParsecraftParser(parsecraft_preferred_backend="not-a-backend")
-        with pytest.raises(ValueError, match="unknown parsecraft backend") as caught:
-            adapter.ParsecraftParser(parsecraft_only_backend="also-not-a-backend")
+        # parsecraft validates the names when the constraints are built — at the
+        # first parse, not at construction, so the TOML stays the single place a
+        # typo has to be caught.
+        with pytest.raises(ConfigError, match="preferred_backend") as caught:
+            _routing_parser(preferred_backend="not-a-backend").parsecraft_settings().routing.routing_constraints(
+                installed_extras=set(),
+                formats={"text/markdown"},
+            )
         for name in known:
             assert name in str(caught.value)
+        with pytest.raises(ConfigError, match="only_backend"):
+            _routing_parser(only_backend="also-not-a-backend").parsecraft_settings().routing.routing_constraints(
+                installed_extras=set(),
+                formats={"text/markdown"},
+            )
 
     def test_registered_names_are_accepted(self) -> None:
-        adapter = _adapter()
         chosen = self._a_backend()
-        assert adapter.ParsecraftParser(parsecraft_preferred_backend=chosen)._preferred_backend == chosen
-        assert adapter.ParsecraftParser(parsecraft_only_backend=chosen)._only_backend == chosen
+        assert _routing_parser(preferred_backend=chosen).parsecraft_settings().routing.preferred_backend == chosen
+        assert _routing_parser(only_backend=chosen).parsecraft_settings().routing.only_backend == chosen
 
     def test_each_names_its_own_cache_segment(self) -> None:
-        adapter = _adapter()
         chosen = self._a_backend()
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_preferred_backend=chosen)) == f"preferred_backend:{chosen}"
-        assert _routing_part(adapter.ParsecraftParser(parsecraft_only_backend=chosen)) == f"only_backend:{chosen}"
+        assert _routing_part(_routing_parser(preferred_backend=chosen)) == f"preferred_backend:{chosen}"
+        assert _routing_part(_routing_parser(only_backend=chosen)) == f"only_backend:{chosen}"
 
     def test_overrides_reach_the_constraints(self, parser: Any, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         adapter = _adapter()
         seen: dict[str, object] = {}
-        real = adapter.constraints_from_environment
+        real = adapter.constraints_for
 
-        def spy(environment: object, **kwargs: Any) -> Any:
-            seen.update(kwargs)
-            return real(environment, **kwargs)
+        def spy(config: object, environment: object, **kwargs: Any) -> Any:
+            constraints = real(config, environment, **kwargs)
+            seen["preferred_backend"] = constraints.preferred_backend
+            seen["only_backend"] = constraints.only_backend
+            return constraints
 
-        monkeypatch.setattr(adapter, "constraints_from_environment", spy)
+        monkeypatch.setattr(adapter, "constraints_for", spy)
         parser.parse(markdown_file)
-        assert seen.get("preferred_backend") is None
-        assert seen.get("only_backend") is None
+        assert seen["preferred_backend"] is None
+        assert seen["only_backend"] is None
         chosen = self._a_markdown_backend()
-        adapter.ParsecraftParser(parsecraft_preferred_backend=chosen, parsecraft_only_backend=chosen).parse(markdown_file)
+        _routing_parser(preferred_backend=chosen, only_backend=chosen).parse(markdown_file)
         assert seen["preferred_backend"] == chosen
         assert seen["only_backend"] == chosen
 
     def test_pinning_a_backend_that_cannot_read_the_source_fails_loudly(self, markdown_file: Path) -> None:
         """A pin the source rules out is an error, never a silent reroute."""
-        adapter = _adapter()
         pinned = self._a_non_markdown_backend()
         with pytest.raises(NoEligibleBackendError):
-            adapter.ParsecraftParser(parsecraft_only_backend=pinned).parse(markdown_file)
+            _routing_parser(only_backend=pinned).parse(markdown_file)
 
     @staticmethod
     def _a_markdown_backend() -> str:
@@ -1133,7 +1129,7 @@ class TestIgnoredBackendOptions:
         monkeypatch.setattr(adapter, "_winning_backends", lambda groups: "pdf-inspector")
         monkeypatch.setattr(adapter, "_serves_format", lambda name, media_type: True)
         with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
-            adapter.ParsecraftParser(parsecraft_backend_options={"liteparse": {"extract_vector_graphics": True}}).parse(markdown_file)
+            _routing_parser(backend_options={"liteparse": {"extract_vector_graphics": True}}).parse(markdown_file)
         messages = [r.getMessage() for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
         assert len(messages) == 1, messages
         assert "liteparse" in messages[0]
@@ -1154,7 +1150,7 @@ class TestIgnoredBackendOptions:
         assert not adapter._serves_format("liteparse", "text/markdown")
         monkeypatch.setattr(adapter, "_winning_backends", lambda groups: "native-markdown")
         with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
-            adapter.ParsecraftParser(parsecraft_backend_options={"liteparse": {"extract_vector_graphics": True}}).parse(markdown_file)
+            _routing_parser(backend_options={"liteparse": {"extract_vector_graphics": True}}).parse(markdown_file)
         assert not [r for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
 
     def test_silent_for_a_default_run(
@@ -1553,9 +1549,31 @@ def _plan(reasons: dict[int, str], blank: set[int]) -> RoutingPlan | None:
     )
 
 
+def _parser_with(**options: Any) -> Any:
+    """A :class:`DocumentParser` built from *options*, for identity assertions."""
+    return build_parser(ParserOptions(**options))
+
+
+def _routing_parser(**routing: Any) -> Any:
+    """The adapter wired to a config carrying *routing*."""
+    return _adapter().ParsecraftParser(parsecraft_config=_routing(**routing))
+
+
 def _adapter() -> Any:
     """Lazy accessor for the adapter module (see module docstring)."""
     return importlib.import_module("kompend.preprocessing.parsers.parsecraft_parser")
+
+
+def _routing(**routing: Any) -> ParsecraftRoutingConfig:
+    """A parsecraft config whose ``[routing]`` table carries *routing*.
+
+    Routing is parsecraft's config now, so a test that exercises a routing
+    lever builds the settings object rather than passing a kompend kwarg. Only
+    the keys passed count as *written*, exactly as a TOML file listing them
+    would: an omitted key stays unwritten, which is what lets the host facts
+    fill it in.
+    """
+    return ParsecraftRoutingConfig(settings=ParsecraftConfig(routing=RoutingSettings(**routing)), written=frozenset(routing))
 
 
 @pytest.fixture

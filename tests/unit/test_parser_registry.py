@@ -1,9 +1,9 @@
-"""Tests for the pluggable ingestion backend registry.
+"""Tests for the single-parser surface.
 
-Backends self-register at import time via ``register_backend``; importing the
-``kompend.preprocessing.parsers`` package (done by the imports below) triggers
-registration before any assertion runs. Exactly one backend is registered per
-router.
+kompend ships one ingestion backend (parsecraft), so there is no registry: no
+``ParserName``, no dynamic backend lookup, no chain. These tests pin what
+replaced it — :func:`build_parser`, :class:`DocumentParser` and
+:class:`ParserOptions`.
 """
 
 from __future__ import annotations
@@ -11,96 +11,66 @@ from __future__ import annotations
 import json
 from dataclasses import asdict
 from pathlib import Path
-from typing import cast
 
 import pytest
+from parsecraft.cli.config import ParsecraftConfig, RoutingSettings
 
 from kompend.core.config import resolve_config
 from kompend.core.models import ParsedDocument
 from kompend.core.models.elements import DocumentElement
 from kompend.core.models.enums import ElementType
-from kompend.preprocessing.parsers._registry import (
-    _BACKEND_MODULES,
-    KNOWN_BACKENDS,
-    ParserBuildOptions,
-    ParserName,
-    build_default_router,
-    get_all_extensions,
-    get_backend,
-    get_registered_parsers,
-    register_backend,
+from kompend.core.paths import PARSECRAFT_PROJECT_FILE, VaultPaths
+from kompend.preprocessing.parsers import (
+    PARSER_PARSECRAFT,
+    DocumentParser,
+    FileExtension,
+    ParserOptions,
+    build_parser,
+    known_extension,
+    scrub_document,
 )
-from kompend.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT, BaseParser, ParserRouter, scrub_document
+from kompend.preprocessing.parsers.extensions import supported_extensions
 from kompend.preprocessing.parsers.parsecraft_parser import ParsecraftParser
+from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingConfig
 
 
-def test_known_backends_are_the_surviving_set() -> None:
-    """The registry ships no duplicate of a parsecraft capability.
-
-    docling, liteparse, pandoc and glm-ocr were removed once parsecraft
-    provided them; web followed when parsecraft's trafilatura backend landed
-    (pc-axb); mineru went when kompend declared the parsecraft[mineru] extra.
-    marker stays a bring-your-own engine, never a kompend backend: parsecraft's
-    marker backend detects a manual marker-pdf install by import (ADR-0006),
-    and no marker-pdf release can be locked in kompend's graph (1.x collides
-    with pydantic-ai's anthropic pin; 2.0.0 forces graph-wide downgrades).
-    """
-    assert set(KNOWN_BACKENDS) == {"parsecraft"}
+def test_the_one_parser_is_the_configured_one() -> None:
+    """``build_parser`` returns the parsecraft adapter, guarded."""
+    parser = build_parser()
+    assert isinstance(parser, DocumentParser)
+    assert isinstance(parser.parser, ParsecraftParser)
+    assert PARSER_PARSECRAFT == "parsecraft"
 
 
-@pytest.mark.parametrize(
-    ("name", "expected_cls_name"),
-    [
-        ("parsecraft", "ParsecraftParser"),
-    ],
-)
-def test_get_backend_factory_builds_expected_class(name: str, expected_cls_name: str) -> None:
-    parser = get_backend(name)(ParserBuildOptions())
-    assert type(parser).__name__ == expected_cls_name
-
-
-def test_get_backend_unknown_raises_value_error() -> None:
-    with pytest.raises(ValueError, match="Unknown parser backend"):
-        get_backend("does-not-exist")
-
-
-def test_parser_build_options_defaults() -> None:
-    opts = ParserBuildOptions()
+def test_parser_options_defaults() -> None:
+    opts = ParserOptions()
     assert opts.images_dir is None
     assert opts.image_mode == "file"
-    assert opts.images_scale == IMAGE_SCALE_DEFAULT
-    # The four [ingest].parsecraft_* knobs all carry schema-driven defaults so
-    # a brand-new parser behaves identically with or without `from_config`.
+    assert opts.images_scale > 0
+    # Only what is kompend's own lives here; every routing lever belongs to
+    # parsecraft's config files.
     assert opts.parsecraft_judge == "none"
     assert opts.parsecraft_judge_model == ""
-    assert opts.parsecraft_preference == "balanced"
-    assert opts.parsecraft_allow_ocr is None
-    assert opts.parsecraft_engines == []
-    assert opts.parsecraft_backend_options == {}
+    assert opts.parsecraft_config_files == ()
 
 
-def test_backend_options_reach_the_parser(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """``[ingest] parsecraft_backend_options`` is wired to the adapter.
+def test_the_vault_parsecraft_file_is_part_of_the_parser_options(tmp_path: Path) -> None:
+    """``from_config`` points the adapter at the vault's own parsecraft.toml.
 
-    The key used to exist without a reader: the parser built its own options
-    and the user's setting was silently ignored.
+    The vault file is a PROJECT-layer file for parsecraft's engine, so it must be
+    the one that outranks the global file — passing only the global path would
+    make a vault-local routing table silently inert.
     """
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "kompend.toml").write_text(
-        '[ingest]\nparsecraft_backend_options = { mineru = { effort = "high" } }\n',
-    )
+    options = ParserOptions.from_config(resolve_config(), base_dir=tmp_path)
 
-    options = ParserBuildOptions.from_config(resolve_config())
-
-    assert options.parsecraft_backend_options == {"mineru": {"effort": "high"}}
+    assert options.parsecraft_config_files[0] == VaultPaths(tmp_path).parsecraft_config_file
+    assert options.parsecraft_config_files[1].name == PARSECRAFT_PROJECT_FILE
 
 
 def test_backend_options_are_merged_over_the_derived_ones() -> None:
     """A user option wins over the adapter's derived default for the same key."""
-    parser = ParsecraftParser(
-        registry=None,
-        parsecraft_backend_options={"liteparse": {"extract_images": False, "extra": 1}},
-    )
+    settings = ParsecraftConfig(routing=RoutingSettings(backend_options={"liteparse": {"extract_images": False, "extra": 1}}))
+    parser = ParsecraftParser(parsecraft_config=ParsecraftRoutingConfig.from_settings(settings))
 
     options = parser._backend_options()  # noqa: SLF001 — the merged options are the contract
 
@@ -108,88 +78,31 @@ def test_backend_options_are_merged_over_the_derived_ones() -> None:
     assert options["liteparse"]["extra"] == 1
 
 
-@pytest.mark.parametrize(
-    ("name", "expected_cls"),
-    [
-        ("parsecraft", ParsecraftParser),
-    ],
-)
-def test_build_default_router_registers_exactly_the_named_backend(name: str, expected_cls: type) -> None:
-    """One backend, no chain: kompend keeps no second level of hand-off."""
-    router = build_default_router(name=name)
-    assert len(router) == 1
-    assert isinstance(router._parsers[0], expected_cls)  # noqa: SLF001 — parser identity is the contract
+def test_from_options_builds_the_adapter() -> None:
+    """``ParsecraftParser.from_options`` is the one bridge from config to constructor."""
+    parser = ParsecraftParser.from_options(
+        ParserOptions(
+            parsecraft_judge_model="parable-tinyjev",
+            parsecraft_config=ParsecraftRoutingConfig.from_settings(ParsecraftConfig(routing=RoutingSettings(allow_ocr=False))),
+        ),
+    )
+    assert parser._judge_model == "parable-tinyjev"  # noqa: SLF001 — the wiring is the contract
 
 
-def test_build_default_router_rejects_a_chain() -> None:
-    """The comma-separated backend chain is gone; a chain name is just unknown."""
-    with pytest.raises(ValueError, match="Unknown parser backend"):
-        build_default_router(name="liteparse,docling")
-
-
-def test_build_default_router_missing_extra_is_loud(monkeypatch: pytest.MonkeyPatch) -> None:
-    """A configured backend that is not installed fails with the install hint."""
-    # No real known-but-uninstalled backend ships anymore, so fake one: a
-    # KNOWN_BACKENDS entry whose module cannot import stays unregistered and
-    # must raise with its hint instead of starting an empty router.
-    monkeypatch.setitem(KNOWN_BACKENDS, cast(ParserName, "_uninstalled"), "Uninstalled demo parser (install: uv add demo-parser)")
-    monkeypatch.setitem(_BACKEND_MODULES, cast(ParserName, "_uninstalled"), "kompend.preprocessing.parsers.not_a_module")
-    with pytest.raises(ValueError, match="is not installed"):
-        build_default_router(name="_uninstalled")
-
-
-def test_register_backend_rejects_names_outside_the_enum() -> None:
-    """The registry vocabulary is closed — only ``ParserName`` members register.
-
-    Arbitrary string keys were the original antipattern: they let backend
-    names drift between the registry, the config schema and the CLI.
-    """
-    cls = _dummy_cls()
-    with pytest.raises(ValueError, match="ParserName"):
-        register_backend(cast(ParserName, "_test_dummy"), lambda _opts: cls(), parser_cls=cls)
-    with pytest.raises(ValueError, match="Unknown parser backend"):
-        get_backend("_test_dummy")
-
-
-def test_real_backend_metadata_is_populated() -> None:
-    """Importing the canonical backend populates registry metadata."""
-    entries = {entry["name"]: entry for entry in get_registered_parsers()}
-    assert "parsecraft" in entries
-    entry = entries["parsecraft"]
-    assert entry["type"] == "built-in"
-    assert ".pdf" in entry["extensions"]
-
-
-def _dummy_cls() -> type[BaseParser]:
-    class _Dummy(BaseParser):
-        supported_extensions = set()
-        figure_enrichment = True
-
-        def parse(self, source_file: Path) -> ParsedDocument:
-            raise NotImplementedError
-
-    return _Dummy
-
-
-def test_figure_enrichment_metadata_matches_class_attr() -> None:
-    by_name = {entry["name"]: entry for entry in get_registered_parsers()}
-    assert by_name["parsecraft"]["figure_enrichment"] is ParsecraftParser.figure_enrichment
-
-
-def test_get_all_extensions_follows_the_named_backend() -> None:
-    """Discovery is the named backend's suffix set, not the union of every
-    backend the registry knows — a vault should only ingest what its parser can
-    actually read.
-    """
-    parsecraft = get_all_extensions([ParserName.PARSECRAFT])
-    assert parsecraft == {str(ext).lower() for ext in ParsecraftParser.supported_extensions}
-    assert ".pdf" in parsecraft
-    assert ".docx" in parsecraft
+def test_supported_extensions_union_the_table_with_the_parser() -> None:
+    """Discovery is the parser's own suffix set plus kompend's format table."""
+    extensions = supported_extensions()
+    assert {str(ext) for ext in FileExtension} <= extensions
+    assert ".pdf" in extensions
+    assert ".docx" in extensions
     # parsecraft reads source files as plain text through its native-text
-    # backend, so a vault configured for it can ingest code.
-    assert ".c" in parsecraft
-    # Unknown or uninstalled names contribute nothing (documented skip).
-    assert get_all_extensions(["_unregistered"]) == set()
+    # backend, so a vault can ingest code.
+    assert ".c" in extensions
+
+
+def test_a_known_text_suffix_resolves_and_an_unknown_one_does_not() -> None:
+    assert known_extension(".MD") is FileExtension.MD
+    assert known_extension(".c") is None
 
 
 def test_scrub_document_replaces_lone_surrogates() -> None:
@@ -204,21 +117,56 @@ def test_scrub_document_replaces_lone_surrogates() -> None:
     json.dumps(asdict(doc), ensure_ascii=False, default=str).encode("utf-8")
 
 
-def test_router_parse_scrubs_parser_output(tmp_path: Path) -> None:
-    class FakeParser(BaseParser):
+def test_document_parser_scrubs_the_parser_output(tmp_path: Path) -> None:
+    class _FakeParser:
+        figure_enrichment = False
+        supported_extensions = {".pdf"}
+
         def can_parse(self, source_file: Path) -> bool:
             return True
 
         def parse(self, source_file: Path) -> ParsedDocument:
             return _make_doc_with_surrogates()
 
-    router = ParserRouter()
-    router.register(FakeParser())
-    doc = router.parse(tmp_path / "broken.pdf")
+    parser = DocumentParser(_FakeParser())
+    doc = parser.parse(tmp_path / "broken.pdf")
     assert doc.elements[0].content == "ok \ufffd mid \ufffd end"
 
 
-# ── Surrogate scrubbing (ParserRouter.parse boundary) ─────────────────────
+def test_document_parser_does_not_claim_a_suffix_its_parser_refuses(tmp_path: Path) -> None:
+    class _FakeParser:
+        figure_enrichment = False
+        supported_extensions = {".pdf"}
+
+        def can_parse(self, source_file: Path) -> bool:
+            return False
+
+        def parse(self, source_file: Path) -> ParsedDocument:
+            raise AssertionError("must not parse")
+
+    assert DocumentParser(_FakeParser()).route(tmp_path / "x.pdf") is None
+
+
+def test_document_parser_refuses_a_mislabelled_text_source(tmp_path: Path) -> None:
+    """A binary file named ``.md`` is refused before the parser sees it."""
+    mislabelled = tmp_path / "notes.md"
+    mislabelled.write_bytes(b"%PDF-1.4\x00\x01\x02\x03binary payload")
+
+    class _FakeParser:
+        figure_enrichment = False
+        supported_extensions = {".pdf"}
+
+        def can_parse(self, source_file: Path) -> bool:
+            return True
+
+        def parse(self, source_file: Path) -> ParsedDocument:
+            raise AssertionError("must not parse")
+
+    with pytest.raises(ValueError, match="claims text"):
+        DocumentParser(_FakeParser()).parse(mislabelled)
+
+
+# ── Surrogate scrubbing fixture ───────────────────────────────────────────
 
 
 def _make_doc_with_surrogates() -> ParsedDocument:

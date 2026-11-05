@@ -17,7 +17,7 @@ import pytest
 from kompend.core.models import ParsedDocument
 from kompend.core.pipeline.bounded_parse import ParseDeadlineExceeded
 from kompend.core.pipeline.ingest import ingest_documents
-from kompend.preprocessing.parsers import ParserRouter
+from kompend.preprocessing.parsers import DocumentParser
 
 _ingest = importlib.import_module("kompend.core.pipeline.ingest")
 
@@ -33,7 +33,7 @@ class _FakeParser:
         return _document(Path(target))
 
 
-class _Router:
+class _Parser:
     def __init__(self) -> None:
         self.parsed: list[str] = []
 
@@ -54,7 +54,7 @@ def test_a_deadline_failure_is_counted_and_the_run_continues(tmp_path: Path, mon
     fine = base / "sources" / "fine.md"
     stuck.write_text("# stuck\n", encoding="utf-8")
     fine.write_text("# fine\n", encoding="utf-8")
-    router = _Router()
+    parser = _Parser()
 
     def _parse(self: object, parser: _FakeParser, target: Path) -> ParsedDocument:
         if Path(target).name == "stuck.md":
@@ -69,7 +69,7 @@ def test_a_deadline_failure_is_counted_and_the_run_continues(tmp_path: Path, mon
     result = ingest_documents(
         files=[stuck, fine],
         base_dir=base,
-        router=cast("ParserRouter", router),
+        parser=cast("DocumentParser", parser),
         reparse=True,
         config=None,
         parse_timeout_s=5.0,
@@ -77,7 +77,7 @@ def test_a_deadline_failure_is_counted_and_the_run_continues(tmp_path: Path, mon
 
     assert result.failed == 1
     assert result.count == 1
-    assert "fine.md" in router.parsed
+    assert "fine.md" in parser.parsed
 
 
 def _seed_vault(tmp_path: Path) -> Path:

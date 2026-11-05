@@ -57,8 +57,8 @@ def test_cli_overrides_skip_unset_paths_recursive() -> None:
     assert "paths.recursive" not in _build_cli_overrides()
 
 
-def test_build_pipeline_wires_the_parsecraft_router(tmp_path: Path) -> None:
-    """build_pipeline wires the parsecraft router from the config options.
+def test_build_pipeline_wires_the_parsecraft_parser(tmp_path: Path) -> None:
+    """build_pipeline wires the parsecraft parser from the config options.
 
     There is no backend selector any more: parsecraft is the only parser path.
     """
@@ -68,11 +68,11 @@ def test_build_pipeline_wires_the_parsecraft_router(tmp_path: Path) -> None:
         return_value=ContextWindow(max_input=128000, max_output=32768, source=ContextSource.FALLBACK),
     ):
         pipeline = build_pipeline(config)
-    assert pipeline.router is not None
+    assert pipeline.parser is not None
     # The default backend is parsecraft, which claims PDFs through its own
     # native/docling/liteparse sub-backends.
-    assert pipeline.router.route(Path("a.pdf")) is not None
-    assert type(pipeline.router.route(Path("a.pdf"))).__name__ == "ParsecraftParser"
+    assert pipeline.parser.route(Path("a.pdf")) is not None
+    assert type(pipeline.parser.route(Path("a.pdf"))).__name__ == "ParsecraftParser"
 
 
 def test_build_pipeline_adds_vlm_enricher_when_configured(tmp_path: Path) -> None:

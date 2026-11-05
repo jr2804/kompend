@@ -44,7 +44,7 @@ def test_iter_ingestible_attachments_skips_missing(vault: VaultPaths) -> None:
 
 
 def test_ingest_text_attachment(vault: VaultPaths) -> None:
-    """Text attachments are parsed via the router."""
+    """Text attachments are parsed via the parser."""
     att = Attachment(path="r/notes.md", source="r", ingestible=True)
     att_dir = vault.attachments_dir / "r"
     att_dir.mkdir(parents=True)
@@ -54,15 +54,15 @@ def test_ingest_text_attachment(vault: VaultPaths) -> None:
     manifest = AttachmentManifest(vault.attachments_manifest_file)
     manifest.append(att)
 
-    mock_router = MagicMock()
+    mock_parser = MagicMock()
     expected_doc = ParsedDocument(
         source_file=att_file,
         title="notes",
         elements=[DocumentElement(type=ElementType.TEXT, content="Some content.")],
     )
-    mock_router.parse.return_value = expected_doc
+    mock_parser.parse.return_value = expected_doc
 
-    result = ingest_attachment(vault, att, mock_router)
+    result = ingest_attachment(vault, att, mock_parser)
     assert result is not None
     assert result.metadata.get("source_asset") is True
     assert result.metadata.get("parent_source") == "r"
@@ -79,9 +79,9 @@ def test_ingest_image_attachment_no_vlm(vault: VaultPaths) -> None:
     att_dir.mkdir(parents=True)
     (att_dir / "photo.jpg").write_bytes(b"\xff\xd8\xff\xe0")  # JPEG header
 
-    mock_router = MagicMock()
+    mock_parser = MagicMock()
 
-    result = ingest_attachment(vault, att, mock_router, vlm_captioner=None)
+    result = ingest_attachment(vault, att, mock_parser, vlm_captioner=None)
     assert result is None
 
 
@@ -92,11 +92,11 @@ def test_ingest_image_attachment_with_vlm(vault: VaultPaths) -> None:
     att_dir.mkdir(parents=True)
     (att_dir / "photo.jpg").write_bytes(b"\xff\xd8\xff\xe0")
 
-    mock_router = MagicMock()
+    mock_parser = MagicMock()
     mock_captioner = MagicMock()
     mock_captioner.run.return_value = "A landscape photo."
 
-    result = ingest_attachment(vault, att, mock_router, vlm_captioner=mock_captioner)
+    result = ingest_attachment(vault, att, mock_parser, vlm_captioner=mock_captioner)
     assert result is not None
     assert result.metadata.get("asset_type") == "image_caption"
     content = result.elements[0].content
@@ -118,7 +118,7 @@ def test_process_attachments_gate_off_skips_all(vault: VaultPaths) -> None:
     pipeline.config.attachments_ingest_adopted = False
 
     assert _process_attachments(pipeline) == []
-    pipeline.router.parse.assert_not_called()
+    pipeline.parser.parse.assert_not_called()
 
 
 def test_process_attachments_gate_on_uses_manifest(vault: VaultPaths) -> None:
@@ -134,10 +134,10 @@ def test_process_attachments_gate_on_uses_manifest(vault: VaultPaths) -> None:
     pipeline.config.llm.default_model = None
     pipeline.config.llm.vlm_model = None
     pipeline.config.llm.timeout = 120.0
-    pipeline.router = MagicMock()
+    pipeline.parser = MagicMock()
     pipeline.chunker = None
 
-    # ingest_attachment returns None for a text file without a router parse
+    # ingest_attachment returns None for a text file without a parser pass
     # result; the loop must still run (emit called) rather than early-return.
     trees = _process_attachments(pipeline)
     assert trees == []
@@ -151,9 +151,9 @@ def test_ingest_unsupported_type(vault: VaultPaths) -> None:
     att_dir.mkdir(parents=True)
     (att_dir / "binary.exe").write_bytes(b"\x00\x01")
 
-    mock_router = MagicMock()
+    mock_parser = MagicMock()
 
-    result = ingest_attachment(vault, att, mock_router)
+    result = ingest_attachment(vault, att, mock_parser)
     assert result is None
 
 
@@ -173,12 +173,12 @@ def test_ingest_unknown_text_extension(vault: VaultPaths) -> None:
         title="module.c",
         elements=[DocumentElement(type=ElementType.TEXT, content="int main(void) { return 0; }")],
     )
-    mock_router = MagicMock()
-    mock_router.parse.return_value = expected_doc
+    mock_parser = MagicMock()
+    mock_parser.parse.return_value = expected_doc
 
-    result = ingest_attachment(vault, att, mock_router)
+    result = ingest_attachment(vault, att, mock_parser)
     assert result is not None
-    mock_router.parse.assert_called_once()
+    mock_parser.parse.assert_called_once()
 
 
 @pytest.fixture

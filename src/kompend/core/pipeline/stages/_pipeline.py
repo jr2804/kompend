@@ -42,7 +42,7 @@ from kompend.logging import get_logger
 from kompend.memory.lifecycle import update_memory_for_compile
 from kompend.output.base import BaseOutputWriter
 from kompend.preprocessing.downloaders.base import BaseDownloader
-from kompend.preprocessing.parsers.base import ParserRouter
+from kompend.preprocessing.parsers.base import DocumentParser
 from kompend.resolution.base import BaseResolver
 from kompend.trust import filter_wiki
 from kompend.types import MetadataValue
@@ -73,7 +73,7 @@ class WikiPipeline:
         self,
         config: PipelineConfig,
         downloader: BaseDownloader | None = None,
-        router: ParserRouter | None = None,
+        parser: DocumentParser | None = None,
         chunker: HierarchicalChunker | None = None,
         resolver: BaseResolver | None = None,
         compiler: BaseCompiler | None = None,
@@ -86,7 +86,7 @@ class WikiPipeline:
         self.config = config
         set_user_providers(config.providers)
         self.downloader = downloader
-        self.router = router
+        self.parser = parser
         self.chunker = chunker
         self.resolver = resolver
         self.compiler = compiler

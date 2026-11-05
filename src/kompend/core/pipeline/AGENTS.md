@@ -40,7 +40,7 @@ persistence, and standalone ingestion.
   through the `WikiPipeline` state and shared data models.
 - The parse cache is content-addressed: an entry is reused when the source
   bytes hash to the same key **and** the entry was written by the current
-  backend identity (`router.backend_identity()`, stored under
+  backend identity (`parser.backend_identity()`, stored under
   `PARSE_CACHE_PARSER_KEY`, checked by `parse_cache_is_current`) — a changed
   backend set or `[ingest]` restriction re-parses, a parsecraft version bump
   does not. Entries from before the identity existed store an empty key and
@@ -68,7 +68,7 @@ persistence, and standalone ingestion.
   raise `BinarySourceError` via `assert_text_source`
   (`preprocessing/parsers/base.py`) instead of normalizing U+FFFD soup into
   a successful garbage parse (knox-rtmn). Everything else passes — the
-  router already picked a backend, and the format table classifies bytes,
+  parser already picked a backend, and the format table classifies bytes,
   it does not gate parsing. The UTF-8 sibling keeps the source suffix
   (`<hash><suffix>`), so the backend still classifies it, and every caller
   of `parse_target_path` runs `restore_source_path` straight after parsing:

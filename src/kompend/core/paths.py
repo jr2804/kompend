@@ -59,6 +59,13 @@ PROJECT_CONFIG_FILE: Final[str] = "kompend.toml"
 # :func:`vault_paths` to fail fast when pointed at a non-vault directory.
 VAULT_MARKERS: Final[tuple[str, ...]] = (PROJECT_CONFIG_FILE, KOMP_CONFIG_FILE)
 RUMDL_CONFIG_FILE: Final[str] = f"{KOMP_DIR}/rumdl.toml"
+#: parsecraft's own configuration file inside a vault. parsecraft owns its
+#: routing vocabulary, so the file sits in the same tool directory as kompend's
+#: ``config.toml`` and is read by parsecraft's engine, not by kompend.
+PARSECRAFT_CONFIG_FILE: Final[str] = f"{KOMP_DIR}/parsecraft.toml"
+#: parsecraft's project-layer file name. Its engine reads the one in the
+#: current directory above the vault file and below the environment.
+PARSECRAFT_PROJECT_FILE: Final[str] = "parsecraft.toml"
 
 # ── Cache ───────────────────────────────────────────────────────────────
 CACHE_SUBDIR: Final[str] = "cache"
@@ -89,7 +96,8 @@ WIKI_MARKDOWN_FILE: Final[str] = "wiki.md"
 
 # ── Vector store ────────────────────────────────────────────────────────
 VECTORS_DIR: Final[str] = "vectors"
-#: Legacy loose-JSON vector manifest; superseded by the ``vector_manifest`` row.
+#: Loose-JSON vector manifest the ``vector_manifest`` row replaced; kept so
+#: :func:`kompend.core.store.legacy.obsolete_artifacts` can find the file.
 VECTORS_MANIFEST_FILE: Final[str] = "vectors.manifest.json"
 
 # ── Download tracking ───────────────────────────────────────────────────
@@ -97,8 +105,8 @@ DOWNLOADED_FILE: Final[str] = "downloaded.json"
 
 # ── Memory ──────────────────────────────────────────────────────────────
 MEMORY_DB_FILE: Final[str] = "memory.db"  # zvec collection dir (rebuildable from the log)
-MEMORY_LOG_FILE: Final[str] = "memory.jsonl"  # legacy — superseded by kompend.db
-MEMORY_STORE_FILE: Final[str] = "memory.json"  # legacy — superseded by kompend.db
+MEMORY_LOG_FILE: Final[str] = "memory.jsonl"  # obsolete artifact, see VaultPaths docstring
+MEMORY_STORE_FILE: Final[str] = "memory.json"  # obsolete artifact, see VaultPaths docstring
 #: Subdirectory under ``sources/`` that holds the synthesized memory context.
 MEMORY_SUBDIR: Final[str] = "_memory"
 #: Synthesized memory context page (sources/_memory/system_context.md).
@@ -116,7 +124,7 @@ AGENT_MEMORY_SUBDIR: Final[str] = "agent-memory"
 STEP_DB_FILE: Final[str] = "steps.db"
 
 # ── Provenance ──────────────────────────────────────────────────────────
-PROVENANCE_DIR: Final[str] = "provenance"  # legacy — superseded by kompend.db
+PROVENANCE_DIR: Final[str] = "provenance"  # obsolete artifact, see VaultPaths docstring
 
 # ── Verification ────────────────────────────────────────────────────────
 VERIFICATION_FILE: Final[str] = "verification.json"
@@ -149,7 +157,7 @@ ASSETS_FILE: Final[str] = "assets.json"
 
 # ── Attachments (user-provided supplementary files per source) ───────────
 ATTACHMENTS_DIR_NAME: Final[str] = "attachments"
-ATTACHMENTS_MANIFEST: Final[str] = "attachments.jsonl"  # legacy — manifest now backed by kompend.db
+ATTACHMENTS_MANIFEST: Final[str] = "attachments.jsonl"  # obsolete artifact, see VaultPaths docstring
 
 # ── Dedup (content-level duplicate detection) ────────────────────────────
 DEDUP_DIR: Final[str] = "dedup"
@@ -171,7 +179,7 @@ _SLUG_UNDERSCORE_RE: Final = __import__("re").compile(r"_+")
 #: outside this set is preserved verbatim — protects ITU-T filenames like
 #: ``T-REC-P.10-201906-I!Amd1!PDF-E.pdf`` where ``.stem`` would mistakenly
 #: chop off ``T-REC-P`` because Python treats ``.10-201906-…`` as the
-#: extension when ``.pdf`` is absent. See p863 lint roundup 2026-09-10.
+#: extension when ``.pdf`` is absent.
 _SAFE_STEM_EXTENSIONS: Final[frozenset[str]] = frozenset(
     {
         ".pdf",
@@ -222,45 +230,26 @@ class VaultPaths:
         base_dir/
         ├── .kompend/                  ← kompend_dir
         │   ├── cache/              ← cache_dir
-        │   │   ├── images/         ← images_dir
-        │   │   ├── extract/        ← extract_dir (legacy)
-        │   │   └── downloaded.json ← downloaded_file (legacy)
-        │   ├── dedup/              ← dedup_dir (legacy)
-        │   ├── provenance/         ← provenance_dir (legacy)
+        │   │   └── images/         ← images_dir
         │   ├── review/             ← review_dir
         │   ├── vectors/            ← vectors_dir (zvec directory store)
-        │   ├── kompend.db             ← kompend_db_file (single non-vector store)
+        │   ├── kompend.db          ← kompend_db_file (single non-vector store)
         │   │                            └ vector_manifest row = zvec id sidecar
+        │   ├── memory.db           ← memory_db_file (zvec dir, NOT SQLite)
         │   ├── config.toml         ← config_file
         │   ├── rumdl.toml          ← RUMDL_CONFIG_FILE
-        │   ├── compile_state.json  ← compile_state_file (legacy)
-        │   ├── last_wiki.json      ← wiki_cache_file (legacy)
-        │   ├── compiled_wiki.json  ← compiled_wiki_file (legacy)
-        │   ├── memory.db           ← memory_db_file (zvec dir, NOT SQLite)
-        │   ├── memory.jsonl        ┆ memory_log_file (legacy)
-        │   ├── memory.json         ← memory_store_file (legacy)
-        │   ├── verification.json   ← verification_file (legacy)
-        │   ├── private.json        ← private_file (legacy)
-        │   ├── last_organize.json  ← organize_report_file (legacy)
-        │   ├── lint_history.jsonl  ← lint_history_file (legacy)
-        │   ├── runs.jsonl          ← runs_file (legacy)
-        │   ├── log.md              ← log_file
-        │   ├── references.json     ← references_file (legacy)
-        │   ├── entity_types.json   ← ENTITY_TYPES_FILE (legacy)
-        │   ├── assets.json         ← assets_file (legacy)
-        │   ├── attachments.jsonl   ← attachments_manifest_file (legacy)
-        │   └── state.json          ← state_file (unused placeholder)
+        │   └── log.md              ← log_file
         ├── sources/                ← sources_dir
         ├── attachments/            ← attachments_dir (per-source)
         ├── exported/               ← full-source markdown exports (on demand)
-        ├── wiki/                   ← output_dir
-        │   ├── summaries/          ← per-source summary pages
-        │   └── index.md            ← index_file
+        └── wiki/                   ← output_dir
+            ├── summaries/          ← per-source summary pages
+            └── index.md            ← index_file
 
-    Entries marked ``(legacy)`` are flat-file artifacts superseded by the single
-    ``kompend.db`` store and are no longer written or read. Their path names remain
-    only so existing vaults can be detected and cleaned
-    (:func:`kompend.core.store.legacy.obsolete_artifacts`).
+    Properties whose docstring names a ``kompend.db`` row (``wiki_snapshot``,
+    ``tier_state``, ``provenance``, …) resolve a path that store replaced, so an
+    existing vault can be detected and cleaned
+    (:func:`kompend.core.store.legacy.obsolete_artifacts`); nothing writes them.
     """
 
     base_dir: Path
@@ -333,7 +322,7 @@ class VaultPaths:
 
     @property
     def provenance_dir(self) -> Path:
-        """Path handle for provenance - the store resolves it to :attr:`kompend_db_file` (``provenance``); the flat directory is no longer written."""
+        """Provenance — ``provenance`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / PROVENANCE_DIR
 
     @property
@@ -377,18 +366,23 @@ class VaultPaths:
         return self.kompend_dir / CONFIG_FILE
 
     @property
+    def parsecraft_config_file(self) -> Path:
+        """Parsecraft's routing config inside the vault (``.kompend/parsecraft.toml``)."""
+        return self.base_dir / PARSECRAFT_CONFIG_FILE
+
+    @property
     def compile_state_file(self) -> Path:
-        """Path handle for tier state — the store resolves it to :attr:`kompend_db_file` (``tier_state``); the flat file is no longer written."""
+        """Tier state — ``tier_state`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / COMPILE_STATE_FILE
 
     @property
     def wiki_cache_file(self) -> Path:
-        """Path handle for the compiled-wiki snapshot — resolves to :attr:`kompend_db_file` (``wiki_snapshot``); flat file no longer written."""
+        """The compiled-wiki snapshot — ``wiki_snapshot`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / WIKI_CACHE_FILE
 
     @property
     def compiled_wiki_file(self) -> Path:
-        """Path handle for the compiled-wiki snapshot — resolves to :attr:`kompend_db_file` (``wiki_snapshot``); flat file no longer written."""
+        """The compiled-wiki snapshot — ``wiki_snapshot`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / COMPILED_WIKI_FILE
 
     @property
@@ -403,22 +397,22 @@ class VaultPaths:
 
     @property
     def memory_log_file(self) -> Path:
-        """Path handle for the query-memory log — the store resolves it to :attr:`kompend_db_file` (``memory_log``); the flat file is no longer written."""
+        """The query-memory log — ``memory_log`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / MEMORY_LOG_FILE
 
     @property
     def memory_store_file(self) -> Path:
-        """Path handle for memory lifecycle state — the store resolves it to :attr:`kompend_db_file` (``memory_states``); the flat file is no longer written."""
+        """Memory lifecycle state — ``memory_states`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / MEMORY_STORE_FILE
 
     @property
     def verification_file(self) -> Path:
-        """Path handle for the verification report — the store resolves it to :attr:`kompend_db_file` (``verification``); the flat file is no longer written."""
+        """The verification report — ``verification`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / VERIFICATION_FILE
 
     @property
     def private_file(self) -> Path:
-        """Path handle for the private-page index — the store resolves it to :attr:`kompend_db_file` (``private_pages``); the flat file is no longer written."""
+        """The private-page index — ``private_pages`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / PRIVATE_FILE
 
     @property
@@ -433,15 +427,14 @@ class VaultPaths:
 
     @property
     def references_file(self) -> Path:
-        """Path handle for bibliographic references — the store resolves it to
-        :attr:`kompend_db_file` (``bib_references``); the flat file is no longer
-        written.
+        """Bibliographic references — ``bib_references`` row in
+        :attr:`kompend_db_file`.
         """
         return self.kompend_dir / REFERENCES_FILE
 
     @property
     def entity_types_file(self) -> Path:
-        """Path handle for the entity-kind registry — the store resolves it to :attr:`kompend_db_file` (``entity_types``); the flat file is no longer written.
+        """Entity-kind registry — ``entity_types`` row in :attr:`kompend_db_file`.
 
         Stable per-concept entity-kind registry.
 
@@ -450,18 +443,18 @@ class VaultPaths:
         by the vault writer for ``entities/<type>/<id>.md`` paths.
         Persisted across recompiles so a concept's folder does not
         flicker between runs when the model gives a slightly different
-        type for the same name. See p863 wiki roundup 2026-09-10.
+        type for the same name.
         """
         return self.kompend_dir / ENTITY_TYPES_FILE
 
     @property
     def assets_file(self) -> Path:
-        """Path handle for structured assets — the store resolves it to :attr:`kompend_db_file` (``assets``); the flat file is no longer written."""
+        """Structured assets — ``assets`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / ASSETS_FILE
 
     @property
     def attachments_manifest_file(self) -> Path:
-        """Path handle for the attachment manifest — resolves to :attr:`kompend_db_file` (``attachment_manifest``); flat file no longer written."""
+        """The attachment manifest — ``attachment_manifest`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / ATTACHMENTS_MANIFEST
 
     @property
@@ -476,12 +469,12 @@ class VaultPaths:
 
     @property
     def lint_history_file(self) -> Path:
-        """Path handle for lint-run history — the store resolves it to :attr:`kompend_db_file` (``lint_runs``); the flat file is no longer written."""
+        """Lint-run history — ``lint_runs`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / LINT_HISTORY_FILE
 
     @property
     def runs_file(self) -> Path:
-        """Path handle for the command audit trail — the store resolves it to :attr:`kompend_db_file` (``runs``); the flat file is no longer written."""
+        """The command audit trail — ``runs`` row in :attr:`kompend_db_file`."""
         return self.kompend_dir / RUNS_FILE
 
     # ── Files inside output_dir/ ────────────────────────────────────────
@@ -544,9 +537,7 @@ def attachment_slugs_for_source(source_rel: Path | str) -> set[str]:
     ``kompend attachments add`` command passes the user's string verbatim.
     Orphan detection and auto-adoption must match BOTH forms, otherwise
     every attachment for a source under a subdirectory is falsely flagged
-    as orphaned (p863 wiki roundup 2026-09-10: 248 files deleted by the
-    post-compile lint's ``--fix`` because ``p862_...`` never matched
-    ``t-rec-p_862-...``).
+    as orphaned, and the post-compile lint's ``--fix`` deletes 248 valid files.
     """
     rel = Path(source_rel)
     return {attachment_slug(rel), attachment_slug(rel.name)}

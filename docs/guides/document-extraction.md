@@ -13,13 +13,12 @@ See also:
 
 ## Parser Backends
 
-parsecraft is the only parser path; the selector is gone. The remaining
-`[ingest]` keys are the parsecraft parameters
-(`parsecraft_judge`, `parsecraft_judge_model`, `parsecraft_preference`,
-`parsecraft_effort`, `parsecraft_allow_ocr`, `parsecraft_engines`,
-`parsecraft_extract_vector_graphics`, `parsecraft_preferred_backend`,
-`parsecraft_only_backend` —
-see [Judge tier](#judge-tier-model-assisted-per-page-routing)).
+parsecraft is the only parser path; the selector is gone. The only parser
+decision that stays kompend's is which provider credential may be spent on the
+routing judge (`[ingest] parsecraft_judge`, `parsecraft_judge_model`) plus the
+host-resource bounds on a heavy pass — see [Routing settings](#routing-settings).
+Everything else about routing is parsecraft's own configuration, read from
+parsecraft's files, never mirrored into `[ingest]`.
 
 - `parsecraft` — an external document-intelligence pipeline that routes each
   page across its own sub-backends (native text/markdown/HTML, LiteParse,
@@ -44,10 +43,9 @@ backends:
 The judge tier needs no extra: `typesafe-sdk` — shared by the `ollama`, `zen`
 and `typesafe-ai` providers — is base-install in parsecraft ≥ 2026.10.5, so it
 arrives with kompend itself. The judge is enabled purely by config
-(`[ingest] parsecraft_judge`, `parsecraft_judge_model`,
-`parsecraft_preference`, `parsecraft_effort`, `parsecraft_allow_ocr`,
-`parsecraft_engines`, `parsecraft_extract_vector_graphics`,
-`parsecraft_preferred_backend`, `parsecraft_only_backend`).
+(`[ingest] parsecraft_judge`, `parsecraft_judge_model`; the ranking axis it
+works against is `[routing] preference` in parsecraft's config —
+see [Judge tier](#judge-tier-model-assisted-per-page-routing)).
 
 ### Why `marker` cannot be a locked extra
 
@@ -107,10 +105,52 @@ to native text) surface as kompend metadata (`degraded_pages`), so the choice st
 visible after the parse.
 
 A second kompend-side level of ordering and hand-off would compete with that
-routing rather than complement it, so kompend keeps none. An unknown backend name
-raises; a known backend whose optional dependency is missing raises with its
-install command — a vault whose configured parser is absent fails loudly
+routing rather than complement it, so kompend keeps none. The routing inputs
+(judge, preference, engine list, backend pins) are parsecraft's own
+configuration — see [Routing settings](#routing-settings). An unknown backend
+name raises; a known backend whose optional dependency is missing raises with
+its install command — a vault whose configured parser is absent fails loudly
 instead of parsing nothing.
+
+## Routing settings
+
+kompend builds one parser — parsecraft's — and hands it the two decisions that
+are genuinely kompend's: which provider credential may be spent on the routing
+judge (`ingest.parsecraft_judge`, `ingest.parsecraft_judge_model`) and how much
+of the host a docling pass may use (`ingest.parsecraft_docling_threads`,
+`ingest.parse_min_free_commit_mb`, `ingest.max_concurrent_heavy_parses`).
+Everything else about routing is parsecraft's config, not a kompend key.
+
+The precedence, lowest first:
+
+1. parsecraft's schema defaults
+2. `~/.config/parsecraft/config.toml` (global)
+3. `<wiki>/.kompend/parsecraft.toml` (this vault)
+4. `./parsecraft.toml` (working directory)
+5. `PARSECRAFT_CONFIG_*` environment variables
+
+Within the project layer a later file wins per key (deep merge), and
+`parsecraft config show` names the exact file that supplied each value. An
+unknown key is a config error — parsecraft's `[routing]` section forbids
+extras — so a typo fails at load instead of silently doing nothing.
+
+```toml
+# <wiki>/.kompend/parsecraft.toml
+[routing]
+preference = "quality"            # speed | balanced | quality
+preferred_backend = "docling"     # a preference; ineligible pages route elsewhere
+max_passes = 2                    # fallback-pass budget
+# allow_ocr = true                # omit the key to let eligibility derive it
+
+[routing.backend_options.docling] # forwarded verbatim; keys are backend-owned
+do_ocr = false
+```
+
+kompend keeps no copy of these keys. A vault that still sets one of the six
+retired `[ingest] parsecraft_*` routing keys (preference, allow_ocr, engines,
+preferred_backend, only_backend, backend_options) loads, is warned by
+`kompend config check`, and ignores it — they live in `REMOVED_KEYS`, and the
+table above is the only place they are read from now.
 
 ## Sub-Backends: what parsecraft routes between
 
@@ -226,7 +266,7 @@ other backend's.
 
 parsecraft speaks MIME (`text/plain`, `application/pdf`, `image/jpeg`, …);
 kompend discovers files by extension, and asks the configured backend which
-suffixes it handles (`get_all_extensions([config.parser])`). With parsecraft
+suffixes it handles (`supported_extensions()`). With parsecraft
 that is its 32-suffix table — `.txt`, `.text`, `.log`, `.rst`, `.ini`, `.cfg`,
 `.toml`, `.c`, `.h`, `.hpp`, `.cpp`, `.cc`, `.py`, `.m`, `.sh`, `.tex`, plus the
 usual PDF/HTML/image set — so a parsecraft vault can ingest source files. A
@@ -263,7 +303,7 @@ Five classes of parsecraft signal survive the parse into `.kompend/kompend.db`:
   image-only page served by a text-layer backend comes back with zero content
   instead of raising, so the document "parses" and is simply shorter than the
   source. kompend records the page numbers and logs one warning per file naming
-  the remedy ([`[ingest] parsecraft_allow_ocr`], an OCR-capable backend, or a
+  the remedy ([`[routing] allow_ocr = true`], an OCR-capable backend, or a
   forced backend that reads images). See [Silent empty pages](#silent-empty-pages).
 
 ### Silent empty pages
@@ -281,7 +321,7 @@ Two different things produce an empty page, and they are recorded separately:
 
 `metadata.empty_pages` lists both, in page order. The split is not guessed: it
 takes parsecraft's own per-page verdict, `PageRoute.degradation_code ==
-"degraded-blank-page"` with score `0.0`, which the router emits when it
+"degraded-blank-page"` with score `0.0`, which parsecraft emits when it
 degrades a page to native because there was *nothing to lose*. A page that
 still comes back empty without that verdict is treated as unread.
 
@@ -311,7 +351,7 @@ The whole split, in parsecraft's own terms:
 The last row is a hard failure, not an empty page: kompend raises instead of
 storing a placeholder, so a crashed backend never looks like a blank page.
 
-The quoted reason is the router's, so the message names the actual cause
+The quoted reason is parsecraft's, so the message names the actual cause
 instead of suggesting a remedy that may already be installed:
 
 - **`blank_pages`, nothing in the log**: nothing to do. No content was lost,
@@ -323,7 +363,7 @@ instead of suggesting a remedy that may already be installed:
   the per-page reason and the host's `installed_extras` / `gpu_usable` facts.
   A convert-tier backend that reads images itself (`docling`, `mineru`,
   `marker`) is the fallback, named with `only_backend = "docling"` (or
-  `preferred_backend`) alongside `parsecraft_allow_ocr = true`.
+  `preferred_backend`) in `[routing]` alongside `allow_ocr = true`.
 - **"But the OCR backends are installed"**: with the `ocr` extra, two further
   things decide whether a page is read. *Memory*: the shipped OCR backends
   rasterise at 300 dpi and parsecraft's own benchmarks show 4 of 5 requesting
@@ -387,7 +427,8 @@ parsecraft_docling_threads = 4          # ONNX threads; default 4 on a big host
 parse_min_free_commit_mb = 10240        # refuse a heavy parse below this; 0 = off
 max_concurrent_heavy_parses = 1         # parallel docling/mineru passes
 
-[ingest.parsecraft_backend_options.docling]
+# ~/.config/parsecraft/config.toml or <wiki>/.kompend/parsecraft.toml
+[routing.backend_options.docling]
 do_ocr = false                          # only when the PDF has a text layer
 do_table_structure = false              # skip the table model (~1.6 GB)
 ```
@@ -400,10 +441,11 @@ do_table_structure = false              # skip the table model (~1.6 GB)
   2790 MB peak commit, 4 threads 7.4 s / 1830 MB, 1 thread 16.3 s / 1533 MB —
   four is the knee. An explicit `DOCLING_RS_PDF_THREADS` in the environment
   wins over the config key.
-- **`parsecraft_backend_options`** forwards options to one sub-backend's
-  converter. Skipping the OCR and table models on a text-layer PDF is the
-  single biggest win measured: 8.0 GB / 23.6 s down to 2.9 GB / 10.3 s. Only
-  do it for sources with real text; a scan needs both models.
+- **`[routing.backend_options]`** (in parsecraft's config) forwards options to
+  one sub-backend's converter. Skipping the OCR and table models on a
+  text-layer PDF is the single biggest win measured: 8.0 GB / 23.6 s down to
+  2.9 GB / 10.3 s. Only do it for sources with real text; a scan needs both
+  models.
 - **`parse_min_free_commit_mb`** and **`max_concurrent_heavy_parses`** are the
   guard, not the cure: a heavy parse (a non-text source: docling, mineru,
   pandoc, pymupdf) only starts with that much free commit charge, and at most
@@ -431,11 +473,17 @@ decided per page instead of per configuration.
 [ingest]
 parsecraft_judge = "ollama"            # none | ollama | zen | typesafe-ai
 parsecraft_judge_model = "parable-tinyjev"
-parsecraft_preference = "balanced"     # speed | balanced | quality
-parsecraft_effort = "flash"            # flash | medium | high | xhigh (MinerU sub-backend)
-# parsecraft_allow_ocr = false         # unset = derive from extras/engine; false bans OCR
-# parsecraft_engines = ["mineru"]      # empty = keep the probed engine set
-# parsecraft_extract_vector_graphics = true  # recover table grids from vector records
+
+# ~/.config/parsecraft/config.toml or <wiki>/.kompend/parsecraft.toml
+[routing]
+preference = "balanced"                # speed | balanced | quality
+# allow_ocr = false                    # unset = derive from extras/engine; false bans OCR
+# engines = ["pandoc"]                 # unset = the engines this host has
+
+[routing.backend_options.mineru]
+effort = "flash"                       # flash | medium | high | xhigh
+[routing.backend_options.liteparse]
+extract_vector_graphics = true         # recover table grids from vector records
 ```
 
 - **`ollama`** is the offline choice: it talks to your local daemon
@@ -449,32 +497,31 @@ parsecraft_effort = "flash"            # flash | medium | high | xhigh (MinerU s
   extra is needed.
 - **`zen`** (`OPENCODE_API_KEY`) and **`typesafe-ai`** (`TYPESAFE_API_KEY`) are
   the cloud choices; the credential is read from the environment only.
-- **`parsecraft_preference`** is the tiebreak axis *inside* a backend family,
+- **`[routing] preference`** is the tiebreak axis *inside* a backend family,
   after the hard constraints (format, GPU/VRAM budget, installed extras) have
   admitted the candidates. `speed` and `balanced` coincide by design — both
   take the candidate with the smallest `estimated_vram_gb` — while `quality`
   inverts the tiebreak to the strongest. Two routing outcomes, not three. The
   axis applies with or without a provider judge: parsecraft's own
   `resolve_judge(None, preference=…)` constructs the deterministic judge with
-  it, and kompend passes it through on the no-judge path too.
-- **`parsecraft_effort`** picks the MinerU sub-backend's conversion effort
-  (`flash` | `medium` | `high` | `xhigh`, default `flash`). `flash` is the
-  weight-free CPU path for text PDFs; `high` and `xhigh` engage MinerU's VLM
-  path and recover equations, tables and figure captions `flash` omits, at the
-  cost of loading the VLM checkpoint. The key is schema-validated and folds
-  into the parse-cache fingerprint (a change re-parses). It reaches the backend
-  as a per-backend constructor option, injected only when non-default so an
-  explicit `flash` does not churn the conversion cache.
-- **`parsecraft_allow_ocr`** overrides whether parsecraft may route a page to an
-  OCR sub-backend. Unset, parsecraft derives it: OCR is permitted when an
-  `ocr-*` extra is installed **or** the host has a usable OCR engine. Set
-  `false` to ban OCR outright — an all-native corpus should, because a blank or
-  faint page otherwise pays a full GPU VLM pass — or `true` to permit it
-  regardless of the derivation. The value is part of the parse-cache
-  fingerprint, and it reaches the planner immediately.
-- **`parsecraft_preferred_backend`** ranks one backend first where it is
+  it, and it is read from the same config either way.
+- **`[routing.backend_options.mineru] effort`** picks the MinerU sub-backend's
+  conversion effort (`flash` | `medium` | `high` | `xhigh`, default `flash`).
+  `flash` is the weight-free CPU path for text PDFs; `high` and `xhigh` engage
+  MinerU's VLM path and recover equations, tables and figure captions `flash`
+  omits, at the cost of loading the VLM checkpoint. It is part of the
+  parse-cache fingerprint (a change re-parses) and reaches the backend as a
+  per-backend constructor option.
+- **`[routing] allow_ocr`** decides whether parsecraft may route a page to an
+  OCR sub-backend. Unset, kompend supplies the probe's answer: OCR is permitted
+  when an `ocr-*` extra is installed **or** the host has a usable OCR engine.
+  Set `false` to ban OCR outright — an all-native corpus should, because a blank
+  or faint page otherwise pays a full GPU VLM pass — or `true` to permit it
+  regardless of the probe. The value is part of the parse-cache fingerprint
+  whenever it is written.
+- **`[routing] preferred_backend`** ranks one backend first where it is
   eligible — a preference, never a guarantee: a page the named backend cannot
-  serve still falls back. **`parsecraft_only_backend`** is the hard pin: pages
+  serve still falls back. **`[routing] only_backend`** is the hard pin: pages
   the named backend cannot *cover* fail loudly instead of silently falling
   back, while a blank page still degrades (coverage and content are different
   things). Both are validated against parsecraft's registered backends at
@@ -485,18 +532,21 @@ parsecraft_effort = "flash"            # flash | medium | high | xhigh (MinerU s
   where the weights are not cached — which can be tens of seconds per page.
   That is warmup, not steady state; subsequent documents run at the backend's
   normal per-page cost. Judge the setting by the second run, not the first.
-- **`parsecraft_engines`** restricts the external engines parsecraft may use,
-  overriding the probed set. Empty (the default) keeps the probe's answer.
-  Names are parsecraft's own engine ids and the env form is a comma-separated
-  list — this is open capability data, not a closed value domain, so it is a
-  list of strings rather than an enum. Part of the parse-cache fingerprint.
-- **`parsecraft_extract_vector_graphics`** asks the liteparse backend to recover
-  table structure from a page's vector graphics. With it on, parsecraft
-  populates `StructuredChunk.rows` and a table arrives as structured
-  `list[list[str]]` instead of a Markdown grid; without it, tables stay
-  Markdown and the markdown converter rebuilds the grid downstream. A page with
-  no vector records still yields no table, and the option is inert on pages
-  another backend serves.
+- **`[routing] engines`** restricts the external engines parsecraft may use,
+  overriding the probed set. Unset (the default) keeps the probe's answer.
+  Names are parsecraft's own engine ids — this is open capability data, not a
+  closed value domain, so it is a list of strings rather than an enum, and an
+  unknown name fails at load. Part of the parse-cache fingerprint.
+- **`[routing.backend_options.liteparse] extract_vector_graphics`** asks the
+  liteparse backend to recover table structure from a page's vector graphics.
+  With it on, parsecraft populates `StructuredChunk.rows` and a table arrives
+  as structured `list[list[str]]` instead of a Markdown grid; without it,
+  tables stay Markdown and the markdown converter rebuilds the grid
+  downstream. A page with no vector records still yields no table, and the
+  option is inert on pages another backend serves. Keys and value domains
+  belong to each sub-backend; kompend forwards them verbatim and declares no
+  option of its own except the derived `liteparse.extract_images`, which
+  follows `compile.image_mode` and yields to a written value.
 
 A judge never turns a routing problem into a failed ingest: an unresolvable
 provider or missing credential degrades to the rule table at resolution time,

@@ -25,7 +25,7 @@ from kompend.core.pipeline.config import Compiler, ImageMode, OutputConfig, Outp
 from kompend.core.pipeline.orchestrator import build_pipeline
 from kompend.core.text.matching import SemanticMatcher
 from kompend.logging import get_logger
-from kompend.preprocessing.parsers import build_default_router
+from kompend.preprocessing.parsers import build_parser
 from kompend.rag.zvec_store import make_provider
 
 logger = get_logger(__name__)
@@ -37,14 +37,11 @@ def parse_document(file: str) -> dict[str, Any]:
     if not doc_file.exists():
         return {"status": "error", "message": f"File not found: {file}"}
 
-    try:
-        router = build_default_router()
-    except ValueError as exc:
-        return {"status": "error", "message": str(exc)}
+    parser = build_parser()
 
     element_limit = resolve_config(base_dir=doc_file.parent).kompend.display.mcp_element_chars
     try:
-        doc = router.parse(doc_file)
+        doc = parser.parse(doc_file)
         return {
             "status": "ok",
             "title": doc.title or doc_file.name,

@@ -32,7 +32,7 @@ from kompend.preprocessing.downloaders.url_resolver import (
     ArxivSourceResolver,
     UrlResolverChain,
 )
-from kompend.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
+from kompend.preprocessing.parsers import ParserOptions, build_parser
 from kompend.preprocessing.parsers.parsecraft_parser import ParsecraftParser
 
 ARXIV_PAPER_ID = "2405.17364"
@@ -86,8 +86,7 @@ def test_arxiv_pdf_downloads_and_parses(tmp_path: Path) -> None:
     assert pdf_file is not None, "PDF download failed"
     assert pdf_file.suffix.lower() == ".pdf", f"Expected .pdf, got {pdf_file.suffix}"
 
-    router = build_default_router(options=ParserBuildOptions())
-    parser = router.route(pdf_file)
+    parser = build_parser(ParserOptions()).parser
     assert parser is not None
     doc = parser.parse(pdf_file)
 
@@ -123,8 +122,7 @@ def test_arxiv_html_downloads_and_parses_via_parsecraft(tmp_path: Path) -> None:
     assert html_file is not None, "HTML download failed"
     assert html_file.suffix.lower() in {".html", ".htm"}, f"Expected .html, got {html_file}"
 
-    router = build_default_router(options=ParserBuildOptions())
-    parser = router.route(html_file)
+    parser = build_parser(ParserOptions()).parser
     assert isinstance(parser, ParsecraftParser), f"Expected ParsecraftParser for .html, got {type(parser).__name__}"
 
     doc = parser.parse(html_file)
@@ -187,8 +185,7 @@ def test_arxiv_source_tex_parses_with_pandoc(tmp_path: Path) -> None:
     assert extracted.suffix.lower() == ".tex"
 
     # Route through the configured backend; parsecraft drives pandoc for .tex.
-    router = build_default_router(name="parsecraft")
-    parser = router.route(extracted)
+    parser = build_parser(ParserOptions()).parser
     assert parser is not None, "Expected a backend for .tex, got none"
 
     doc = parser.parse(extracted)

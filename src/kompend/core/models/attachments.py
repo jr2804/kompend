@@ -351,7 +351,7 @@ def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> 
 
     - ``ingestible`` — with *ingest_adopted* set (config key
       ``attachments.ingest_adopted``), text/image extensions are ingestible
-      (text via the parser router, images via VLM at compile); binaries are
+      (text via the parser, images via VLM at compile); binaries are
       never ingestible. Without it, adoption only registers the file.
     - ``embed`` — ``None`` (inherits the global ``attachments.embed``).
 

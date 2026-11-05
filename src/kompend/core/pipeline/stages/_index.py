@@ -7,8 +7,7 @@ from pathlib import Path
 from kompend.core.ignore import is_special_excluded
 from kompend.core.pipeline.config import Tier
 from kompend.core.pipeline.runtime import PipelineRuntime
-from kompend.preprocessing.parsers import DEFAULT_PARSER
-from kompend.preprocessing.parsers._registry import get_all_extensions
+from kompend.preprocessing.parsers.extensions import supported_extensions
 
 
 def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
@@ -24,7 +23,7 @@ def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     Excludes the URL list file — it is processed via
     ``--url-file``, not a document to parse.
     """
-    extensions = get_all_extensions([DEFAULT_PARSER])
+    extensions = supported_extensions()
     sources = []
     pattern = "**/*" if pipeline.config.recursive else "*"
     for f in pipeline.config.source_dir.glob(pattern):

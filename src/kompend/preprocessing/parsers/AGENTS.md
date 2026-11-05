@@ -5,214 +5,192 @@
 
 ## Purpose
 
-Pluggable ingestion backends. Each backend is a `BaseParser` subclass plus a
-factory that builds an instance from `ParserBuildOptions`. Backends
-self-register at import time via `register_backend`; a backend's module is
-imported on demand (`_ensure_backend`), never at package-import time, so CLI
-`--help` stays free of the heavy optional dependencies.
+The ingestion backend: parsecraft, and nothing else. parscraft routes each page
+across its own sub-backends (native text/markdown/HTML, liteparse, docling,
+pandoc, OCR extras, mineru), so a kompend-side backend selector or chain would
+have nothing left to select between. This subtree maps parsecraft's IR onto
+kompend tier-1 elements and owns the construction path from kompend config to a
+ready adapter.
 
 ## Architecture
 
 ```text
-base.py            BaseParser, FileExtension (extensions only), known_extension(), ParserRouter,
-                   assert_text_source() + BinarySourceError (intake guard), DPI/IMAGE_SCALE constants
-markdown.py        element_to_markdown()/markdown_to_element() — the wrap/unwrap pair used for
-                   rumdl whole-part normalisation; no Markdown→element converter lives here
-                   anymore (parsecraft maps its IR directly)
-_registry.py       ParserName, ParserBuildOptions, PARSER_BACKENDS, KNOWN_BACKENDS, register_backend/get_backend,
-                   build_default_router() — the single factory for a ready-to-use router,
-                   get_supported_extensions() — the ingestible suffix set
-parsecraft_parser.py  ParsecraftParser — THE ingestion backend; per-page routing is
-                   parsecraft's, kompend keeps none of its own
+base.py              FileExtension (+ is_text), known_extension(), ParserBackend Protocol,
+                     DocumentParser (guard + identity), assert_text_source()/BinarySourceError,
+                     scrub_document(), DPI_DEFAULT/IMAGE_SCALE_DEFAULT
+options.py           PARSER_PARSECRAFT, ParserOptions (+ from_config) — the construction inputs
+document_parser.py   build_parser(options) — the single factory, returns a guarded DocumentParser
+extensions.py        supported_extensions() — the ingestible suffix set
+parsecraft_routing.py  load_parsecraft_config(), constraints_for(), ParsecraftRoutingConfig —
+                     parsecraft's own routing config, read through parsecraft's engine
+parsecraft_parser.py ParsecraftParser — the adapter: IR → elements, figures, diagnostics
+markdown.py          element_to_markdown()/markdown_to_element() — the wrap/unwrap pair used for
+                     rumdl whole-part normalisation
 ```
 
-`../images.py` (sibling module `preprocessing/images.py`) holds the figure
-storage: `ImageStore` turns an IR figure asset into a cached file or an inline
-payload. The parsers subtree owns the mapping, the storage lives one level up
-because the store is also what the captioning stage reads.
+`../images.py` (sibling module `preprocessing/images.py`) holds figure storage:
+`ImageStore` turns an IR figure asset into a cached file or an inline payload.
+The mapping lives here; the store lives one level up because the captioning
+stage reads it too.
 
-`build_pipeline` builds a `ParserRouter` from `config.parser_options`. Exactly
-**one** backend is registered, `DEFAULT_PARSER` (parsecraft). There is no config
-key and no CLI flag selecting a backend: parsecraft routes each page across its
-own sub-backends, so a kompend-side selector would have nothing to choose between.
-kompend keeps no chain, no ordering and no hand-off.
+`PARSER_PARSECRAFT` is a plain constant, not an enum: there is nothing to select
+between, and a name vocabulary would invite a second backend.
 
-`build_default_router` raises for an unknown name, and for a known backend whose
-optional dependency is missing (naming the install command). A vault whose parser
-is absent must fail loudly instead of starting with an empty router. The `name`
-parameter still exists as registry API — the tests pin it — but no caller passes
-it.
+## Local Contracts
 
-`ingest.parsecraft_backend_options` is the parser-side config key for
-backend options. It carries the backend options the user wants to override (a
-mapping of option name → value); `ParserBuildOptions.parsecraft_backend_options`
-hands them to the adapter, which merges them over its derived defaults. The
-options are part of the parser's `cache_identity()`, a diagnostic identity that
-no cache keys on — changing them does not re-parse by itself; run
-`kompend ingest --reparse` for that.
-One sibling key is NOT a backend option and NOT fingerprinted:
-`ingest.parsecraft_docling_threads` bounds the docling engine's ONNX thread
-count (`DOCLING_RS_PDF_THREADS`, set by the parser before the first
-conversion — a memory lever, and the default is `min(4, cores)` whether or not
-the run routes to docling; an explicit env value wins; it changes neither text
-nor routing, so it never re-parses).
+### Routing is parsecraft's configuration
 
-`get_all_extensions(names)` takes the backend names to union suffixes for.
-Discovery passes `[DEFAULT_PARSER]`, so a vault ingests exactly what its parser can
-read — parsecraft's native-text backend reads `.c/.h/.py/…`.
-`get_supported_extensions()` is the merged set (that union plus the canonical
-`FileExtension` table) and the single answer to "what can this vault ingest":
-discovery, the status report and the parsers all read it.
+kompend keeps no copy of parsecraft's routing vocabulary. Three files, in
+ascending priority, are read by parsecraft's own engine:
 
-`ParserRouter.backend_identity()` names which backends can parse here —
-the registered backend set, the extras that make their capabilities
-importable, and the `[ingest]` restrictions on them (`_only_backend` /
-`_preferred_backend` / `_engines` / `_allow_ocr`). It **is** the parse-cache
-key: `ingest.py` stores it in `PARSE_CACHE_PARSER_KEY` and reuses an entry
-only when `parse_cache_is_current` confirms it. The parsecraft version, the
-judge, the preference and the effort are deliberately absent — a version
-bump or an unrelated bug fix must not re-parse a vault, while a changed
-backend set must. A routing-input change that is absent from the identity
-(judge / model / preference / effort, `max_passes`) still needs
-`kompend ingest --reparse` to take effect.
+1. parsecraft's schema defaults
+2. `~/.config/parsecraft/config.toml`
+3. `<wiki>/.kompend/parsecraft.toml` (the vault path comes from
+   `VaultPaths.parsecraft_config_file`; the `<cwd>/parsecraft.toml` project file
+   is appended after it, so the vault outranks a file in the working directory)
+4. `PARSECRAFT_CONFIG_*` environment variables
 
-`ParserRouter.fingerprint()` hashes the registered backend class names plus any
-per-backend `cache_identity()` — the identity of the parser *with its routing
-inputs*. It is a diagnostic identity, not a cache key. A backend that carries
-routing inputs defines `cache_identity()`; the router looks it up structurally
-(the parsecraft adapter deliberately is not a `BaseParser`), and an absent hook
-contributes an empty identity.
+`ParserOptions.parsecraft_config_files` carries the file list;
+`parsecraft_routing.load_parsecraft_config()` builds the engine, injects
+kompend's one policy value (`KOMPEND_MAX_PASSES = 3`, at the default layer), and
+returns a `ParsecraftRoutingConfig` — parsecraft's settings plus the set of
+`routing.*` keys a config layer actually wrote. Never read parsecraft's TOML
+here by hand, and never re-declare a parsecraft key as a kompend config field:
+the six mirrored `[ingest] parsecraft_*` routing keys are in `REMOVED_KEYS` for
+exactly that reason.
 
-## Rules
+### Host facts fill blanks, they never overwrite
 
-### One backend, ever
+`constraints_for()` resolves four host-fact keys — `engines`, `allow_ocr`,
+`vram_budget_gb`, `gpu_usable` — and only when the config layers left them
+unwritten. Two of them are load-bearing, not cosmetic:
 
-A second kompend-side backend competes with parsecraft's own per-page routing
-rather than complementing it. Add capabilities to parsecraft, not to kompend. The
-kompend-side backends that duplicated it (`docling`, `liteparse`, `pandoc`,
-`glm-ocr`, `web`, `marker`, `mineru`) are all deleted. Two engines stay
-reachable without kompend backends: `marker` is bring-your-own — parsecraft's
-marker backend detects a manual `marker-pdf` install by import (ADR-0006; no
-marker-pdf release can enter kompend's graph: 1.x pins anthropic<0.47 against
-pydantic-ai's ≥0.108, and 2.0.0 resolves only by downgrading anthropic and
-pillow graph-wide) — and `mineru` enters through kompend's `parsecraft[mineru]`
-extra (licence opt-in, ADR-0007 — see the comment in `pyproject.toml`).
-Extraction-pass defaults now live in parsecraft.
+- `engines` gates every backend that requires an external tool. An empty set
+  (the unwritten default) would silently disable `pandoc` and the tesseract OCR
+  backend on a host that has them.
+- `allow_ocr` is `None` when unwritten, and `RoutingSettings.routing_constraints`
+  omits the kwarg rather than deriving it, so `RoutingConstraints`' own `True`
+  applies. The derivation the settings meant is `bool(environment.ocr_backends)`.
+
+The loaded settings themselves stay exactly what the files say. The parse-cache
+identity is derived from them, so folding a probe result in would make every
+vault re-parse whenever the local machine gained a tool.
+
+### `build_parser` is the only factory, and it defers the native stack
+
+`build_parser(options)` imports the adapter through
+`importlib.import_module(_ADAPTER_MODULE)` at the call site. That is the
+runtime-only import `.agents/CODE.md` requires (no `TYPE_CHECKING` block, no
+`# noqa: PLC0415` — the latter is a BANNED-NOQA violation): parsecraft's native
+stack costs ~1.4 s, which `kompend --help` must not pay. Callers that only need
+the suffix table (`list-parsers`, extension discovery) pass no options and never
+instantiate a backend.
+
+### Identity: what a change re-parses
+
+`DocumentParser.backend_identity()` composes the backend's
+`backend_identity()` with its `cache_identity()`, and that string — not
+`cache_identity()` alone — is the parse-cache key
+(`PARSE_CACHE_PARSER_KEY`). The adapter's `backend_identity()` names what can
+parse here (registered backends, installed extras, the resolved
+`[routing]` pins); `cache_identity()` names the routing inputs (judge, model,
+preference, OCR permission, engines, backend options, image mode). A parsecraft
+version bump is deliberately absent: a bug-fix release must not re-parse a
+vault, while a changed backend set or a changed routing value must.
 
 ### The format table classifies, it never gates
 
-`FileExtension` lists the formats kompend knows about; a backend may know
-more (parsecraft's native-text backend reads `.c/.h/.py/…`). Suffix
-resolution therefore goes through `known_extension()`, which returns `None`
-for a suffix outside the table instead of raising — an unknown suffix is a
-fact about the format, not an error. A source the table does not know is
-handed to the backend byte-wise (`parse_target_path`, in
-`core/pipeline/ingest.py`): the router already picked a backend, the table
-only decides which bytes that backend receives. Upstream issue #3 — a raise
-on an unknown suffix dropped every code file the backend reads.
+`FileExtension` lists the formats kompend knows about; parsecraft knows more
+(its native-text backend reads `.c/.h/.py/…`). Suffix resolution goes through
+`known_extension()`, which returns `None` for a suffix outside the table instead
+of raising: an unknown suffix is a fact about the format, not an error. Upstream
+issue #3 — a raise on an unknown suffix dropped every code file the backend
+reads.
 
-One gate exists at intake (`assert_text_source`, called from
-`ParserRouter.parse` and `parse_target_path`): a suffix the table knows as
-text whose bytes sniff as binary (binaryornot) is a mislabelled file — a
-PDF named `.md` must fail loudly (`BinarySourceError`, a `ValueError`),
-not succeed as U+FFFD soup (knox-rtmn). The gate is deliberately narrow:
-unknown suffixes and honest binary containers pass untouched; text
-judgement accepts UTF-16, so the encoding layer's charset-normalizer
-fallback keeps working.
+`supported_extensions()` merges the adapter's own suffix set with the canonical
+`FileExtension` table and is the single answer to "what can this vault ingest":
+discovery, the status report and `list-parsers` all read it.
 
-### Registration — cycle avoidance
-
-`_registry.py` imports **no parser class** (that would cycle). Each parser module
-imports `register_backend, ParserBuildOptions` from `_registry` and calls
-`register_backend(...)` at module level. `_ensure_backend` imports the module on
-demand, so a backend whose optional dependency is missing simply stays
-unregistered — and selecting it then raises with its install hint.
-
-### No per-backend Markdown converters
-
-A backend that produces Markdown MUST NOT walk it with a local converter.
-The per-backend copies this project once carried (each recognising only
-headings, images, tables and paragraphs — `$$…$$` equations, fenced code and
-list items silently folded into `TEXT`) are the cautionary tale; the shared
-converter that replaced them (`markdown_to_elements` + `MarkdownContext`)
-was deleted together with the last kompend-side markdown backend. parsecraft
-maps its IR to elements directly. If a future backend emits Markdown, the
-walk belongs in `markdown.py` beside the shared patterns — never next to the
-SDK call.
+One gate exists, at intake: `assert_text_source()` — called at the top of
+`DocumentParser.parse()` — rejects a suffix the table knows as *text* whose bytes
+sniff as binary (binaryornot). A PDF named `.md` must fail loudly
+(`BinarySourceError`, a `ValueError`), not succeed as U+FFFD soup (knox-rtmn).
+The gate is deliberately narrow: unknown suffixes and honest binary containers
+pass untouched, and text judgement accepts UTF-16 so the encoding layer's
+charset-normalizer fallback keeps working.
 
 ### Parse-time markdown normalisation (rumdl)
 
-After parsing, `kompend.core.text.rumdl.normalize_element_markdown()` rewrites
-markdown element contents through **one batched `rumdl` call per document**, so
-cached content is canonical and backend formatting differences are levelled at
-the part level. Called from the parse tier, `ingest_documents`, and text
-attachments. Content-only: page/reading-order/metadata are preserved; tables and
-images are skipped. Best-effort — failure keeps the original content.
+`kompend.core.text.rumdl.normalize_element_markdown()` rewrites markdown element
+contents through **one batched `rumdl` call per document**, so cached content is
+canonical and formatting differences are levelled at the part level. Called from
+the parse tier, `ingest_documents`, and text attachments. Content-only: page,
+reading order and metadata are preserved; tables and images are skipped.
+Best-effort — a failure keeps the original content.
 
-### Adding a backend
+### No per-backend Markdown converters
 
-Only when parsecraft cannot host the capability.
+A backend that produces Markdown must not walk it with a local converter. The
+per-backend copies this project once carried (each recognising only headings,
+images, tables and paragraphs — `$$…$$` equations, fenced code and list items
+silently folded into `TEXT`) are the cautionary tale. parsecraft maps its IR to
+elements directly. If a future backend emits Markdown, the walk belongs in
+`markdown.py` beside the shared patterns — never next to the SDK call.
 
-1. Create `preprocessing/parsers/<name>_parser.py` with a `BaseParser`
-   subclass. Set `supported_extensions` (a set of `FileExtension`) and
-   `figure_enrichment` (capability flag, see below).
-2. Add a `ParserName` member, a module-level
-   `_factory(options: ParserBuildOptions) -> <Parser>`, call
-   `register_backend(ParserName.<NAME>, _factory, parser_cls=<Parser>)`, and add
-   the member to `KNOWN_BACKENDS` / `_BACKEND_MODULES` in `_registry.py`. The
-   registry vocabulary is closed: a bare string name raises `ValueError`.
-3. Declare the dependency as an **optional** extra or a manual install. No
-   parser backend may be a main dependency — parsecraft is the ingestion path,
-   and the backends it drives arrive transitively through it.
-4. Add tests to `tests/unit/test_parser_registry.py`.
+### `figure_enrichment` is informational, not a hard VLM skip
 
-### `figure_enrichment` is informational, NOT a hard VLM skip
-
-`BaseParser.figure_enrichment: bool` advertises whether a backend emits figure
-descriptions. It is shown in `kompend list-parsers` and metadata only. `VLMEnricher`
-(Tier 2) **always** runs when `compile.llm.vlm_model` is set and does
+`ParserBackend.figure_enrichment: bool` advertises whether a backend emits
+figure descriptions. It is shown in `kompend list-parsers` and metadata only.
+`VLMEnricher` (Tier 2) always runs when `compile.llm.vlm_model` is set and does
 **per-figure** bypass instead: a figure carrying `chunk.metadata["description"]`
-(set by an enriching backend) is attached as an `image_description` entity and
-skipped; figures the backend missed are still VLM-captioned.
+is attached as an `image_description` entity and skipped; figures the backend
+missed are still VLM-captioned.
 
 ### Parser output contract
 
 Image elements set `metadata["image_file"]` (file mode) or
 `metadata["image_base64"]` (base64 mode) — use `MetadataField.IMAGE_FILE` /
-`IMAGE_BASE64` symbols, never bare literals. The figure's own text rides along
-as `metadata["description"]`, which flows via `extractors.py` →
-`StructuredFigure.description` and via `hierarchical.py` → `chunk.metadata`, so
-the captioning stage can use it instead of calling a VLM. A figure without a
-caption is still a figure: the image is its content, a caption is only ever a
-description.
+`MetadataField.IMAGE_BASE64`, never bare literals. The figure's own text rides
+along as `metadata["description"]`, which reaches `StructuredFigure.description`
+and `chunk.metadata`, so the captioning stage can use it instead of calling a
+VLM. A figure without a caption is still a figure: the image is its content, a
+caption is only ever a description.
 
-The figures come from the IR: parsecraft hands a figure crop over as an
-`ExtractedAsset` on the page, and the chunk that owns it names the asset in
-`metadata["asset_id"]`. `ImageStore` (`preprocessing/images.py`) decides where
-the bytes land — the vault's image cache in file mode, inline in base64 mode —
-and `compile.image_mode` picks the mode (`none` extracts no images at all). A
-figure with no image to point at stays what it is: its text becomes a text
-element, never an image element without a reference.
+Figures come from the IR: parsecraft hands a crop over as an `ExtractedAsset` on
+the page, and the chunk that owns it names the asset in `metadata["asset_id"]`
+(`MetadataField.ASSET_ID`). `ImageStore` decides where the bytes land, and
+`compile.image_mode` picks the mode (`none` extracts no images at all). A figure
+with no image to point at stays what it is: its text becomes a text element,
+never an image element without a reference.
 
 The mode also decides whether the backend is asked for crops at all: when the
-run stores figures, `liteparse.extract_images` is derived as `true` (the
-backend behind the default route for a text PDF is liteparse, and its engine
-crops nothing unless asked). No key of its own exists for it —
-`[ingest] parsecraft_backend_options` remains the escape hatch, and a user
-option wins over the derived value.
+run stores figures, `liteparse.extract_images` is derived as `true` (liteparse is
+the backend behind the default route for a text PDF, and crops nothing unless
+asked). No kompend key exists for it — `[routing.backend_options]` in
+parsecraft's config is the escape hatch, and a written value wins over the
+derived one.
 
-The image mode is part of the backend identity (`images:file`), because
-a run that extracts images produces a different document than one that does
-not. The segment is emitted only when the run extracts images, so a vault that
-never had them is not re-parsed for nothing.
+The image mode is part of the parse-cache identity (`images:file`), because a run
+that extracts images produces a different document than one that does not. The
+segment is emitted only when the run extracts images, so a vault that never had
+them is not re-parsed for nothing.
 
-Extracted figure files are content-addressed: `ImageStore` names a file
-`<source-stem>__<sha256(bytes)[:16]><suffix>` (stem kept for readability
-only). The same figure re-parsed keeps its file instead of accumulating
-copies, and changed bytes land under a new name instead of overwriting the
-old crop.
+Extracted figure files are content-addressed:
+`<source-stem>__<sha256(bytes)[:16]><suffix>` (the stem is for readability only).
+The same figure re-parsed keeps its file instead of accumulating copies, and
+changed bytes land under a new name instead of overwriting the old crop.
+
+## Work Guidance
+
+Adding a capability means adding it to parsecraft, not to kompend. Only when
+parsecraft genuinely cannot host it: create `<name>_parser.py` implementing
+`ParserBackend` (`can_parse`, `parse`, `supported_extensions`,
+`figure_enrichment`), extend `build_parser` to choose it, declare the dependency
+as an optional extra, and add tests to `tests/unit/test_parser_registry.py`. Do
+not reintroduce a name vocabulary or a registry: one factory, one adapter.
 
 ## Verification
 
 - `uv run pytest tests/unit/test_parser_registry.py tests/unit/test_parser_options_surfaces.py tests/unit/test_parsecraft_parser.py tests/unit/test_intake_binary_guard.py -x`
-- `uv run python -c "from kompend.preprocessing.parsers._registry import PARSER_BACKENDS; print(sorted(PARSER_BACKENDS))"` — registration fires without error
+- `uv run python -c "from kompend.preprocessing.parsers.extensions import supported_extensions; print(sorted(supported_extensions()))"` — discovery works without instantiating a backend
+- `uv run python scripts/checks/all.py` (`antipatterns`, `enum_cache`, `field_consistency`)

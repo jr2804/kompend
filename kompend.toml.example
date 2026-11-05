@@ -43,13 +43,48 @@ file = "NOTES.md"
 
 [ingest]
 
-# ── parsecraft judge tier (only used when parser = "parsecraft") ────────
-# parsecraft routes each page across its own backends. With the judge
-# disabled it uses a deterministic rule table (format + VRAM + intent). With
-# a judge enabled it asks a System One model to re-rank the candidates the
-# hard constraints already admitted, weighting speed against quality per
-# page. That is what keeps a text-native PDF on the fast path while a
-# scanned, table-heavy one moves to a strong backend.
+# ── Routing: parsecraft's own configuration ────────────────
+# Everything about HOW parsecraft routes a page — ranking axis, OCR
+# permission, external engines, backend pins, per-backend options — is
+# parsecraft's configuration, not kompend's. It is read from parsecraft's own
+# files, in this order (lowest priority first):
+#
+#   1. parsecraft's schema defaults
+#   2. global          ~/.config/parsecraft/config.toml
+#   3. vault           <vault>/.kompend/parsecraft.toml
+#   4. project         ./parsecraft.toml (in the directory kompend runs from)
+#   5. environment     PARSECRAFT_CONFIG_*
+#
+# Write a vault-local file when one wiki needs its own routing; write the
+# global file when every vault should share it. Kompend adds exactly one
+# default — max_passes = 3, because a wiki build prefers a degraded parse to a
+# failed one — which your file overrides by writing max_passes = 1.
+#
+#   [routing]
+#   preference = "quality"        # speed, balanced (default), quality
+#   allow_ocr = false             # unset: permit OCR when the host can do it
+#   engines = ["pandoc"]          # unset: use the engines this host has
+#   preferred_backend = "docling" # rank it first where it is eligible
+#   only_backend = "docling"      # hard pin; pages it cannot serve fail loudly
+#   max_passes = 1                # parsecraft's own default; kompend uses 3
+#
+#   [routing.backend_options.mineru]
+#   effort = "high"
+#   [routing.backend_options.liteparse]
+#   extract_vector_graphics = true
+#
+# Kompend derives one backend option itself and lets yours win:
+# liteparse.extract_images follows [compile] image_mode. Everything written in
+# these files is part of the parse-cache fingerprint, so changing it re-parses.
+# Unknown backend or engine names fail loudly, naming the accepted set. See
+# docs/guides/document-extraction.md for the precedence table and the recipes.
+
+# ── parsecraft judge tier ───────────────────────
+# Kompend-side only: the judge spec is a per-vault, per-run choice rather than a
+# routing default. A judge asks a System One model to re-rank the candidates
+# the hard constraints already admitted, weighting speed against quality per
+# page; with it disabled the deterministic rule table (format + VRAM + intent)
+# decides.
 #
 #   none        (default) — deterministic rule table, no model, no network
 #   ollama      — local ollama daemon; the model MUST advertise the
@@ -68,66 +103,6 @@ file = "NOTES.md"
 # parsecraft_judge = "none"  # ollama, zen, typesafe-ai
 # Env: KOMP_INGEST_PARSECRAFT_JUDGE_MODEL
 # parsecraft_judge_model = ""
-#
-# Ranking axis when several candidates tie on the constraint check:
-#   speed    — prefer the cheapest eligible backend
-#   balanced (default) — prefer capability, bounded by the host budget
-#   quality  — prefer the strongest eligible backend
-# Env: KOMP_INGEST_PARSECRAFT_PREFERENCE
-# parsecraft_preference = "balanced"  # speed, quality
-#
-# MinerU conversion effort belongs to parsecraft's backend options, not to
-# kompend: write it under parsecraft_backend_options (see below).
-#   effort = { mineru = { effort = "high" } }
-#   flash — weight-free CPU work on text PDFs (parsecraft's default)
-#   medium / high / xhigh — MinerU's pipeline; high and xhigh engage its VLM
-#                           path and load the ~1.2B VLM checkpoint
-# Whether parsecraft may route a page to an OCR sub-backend.
-#   unset (default) — parsecraft derives it: OCR is permitted when an `ocr-*`
-#                     extra is installed OR the host has a usable OCR engine.
-#   false           — ban OCR outright. An all-native corpus should: a blank
-#                     or faint page otherwise pays a full GPU VLM pass.
-#   true            — permit OCR regardless of the derivation.
-# The value is part of the parse-cache fingerprint, so changing it re-parses.
-# Env: KOMP_INGEST_PARSECRAFT_ALLOW_OCR
-# parsecraft_allow_ocr = false
-#
-# Restrict the external engines parsecraft may use, overriding the probed
-# set. Empty (the default) keeps the probe's answer. Names are parsecraft's
-# own engine ids — open capability data, so a list of strings rather than a
-# closed enum. The env form is a comma-separated list.
-# Env: KOMP_INGEST_PARSECRAFT_ENGINES
-# parsecraft_engines = ["mineru", "marker"]
-#
-# Backend override — rank one backend first where it is eligible, or pin the
-# document to one exclusively. parsecraft owns routing; this passes a single
-# preference or pin through to it rather than rebuilding a routing list.
-#   preferred_backend — a preference, never a guarantee: a page the named
-#                       backend cannot serve still falls back.
-#   only_backend      — a hard pin: pages it cannot *cover* fail loudly; a
-#                       blank page still degrades (coverage ≠ content).
-# Names are validated against parsecraft's registered backends at config load,
-# and both are part of the parse-cache fingerprint. Useful to pin a
-# layout-aware backend for a table-heavy corpus, or to route around a defect
-# in the leading backend without uninstalling anything.
-# Env: KOMP_INGEST_PARSECRAFT_PREFERRED_BACKEND
-# parsecraft_preferred_backend = "mineru"
-# Env: KOMP_INGEST_PARSECRAFT_ONLY_BACKEND
-# parsecraft_only_backend = "mineru"
-
-# Per-backend options forwarded to parsecraft, e.g.
-#   {backend_name: {option_key: option_value}}
-# THIS IS THE ONLY PLACE A BACKEND OPTION IS WRITTEN. parsecraft owns the
-# option names and their value domains; kompend forwards the map verbatim into
-# `RoutingConstraints.backend_options` and never re-declares an option as a key
-# of its own (`effort`, `extract_vector_graphics` and friends used to exist here
-# as duplicated typed fields - do not reintroduce that). Keys must match
-# parsecraft's registered backends; values are str | int | float | bool. A user
-# option wins over the one kompend derives from the image mode
-# (`liteparse.extract_images`). Part of the parse-cache fingerprint.
-# Env: KOMP_INGEST_PARSECRAFT_BACKEND_OPTIONS
-# parsecraft_backend_options = { mineru = { effort = "high" } }
-# parsecraft_backend_options = { liteparse = { extract_vector_graphics = true } }
 
 # ── Ingest safety net ──────────────────────────────────────────────────
 # Wall-clock budget for parsing ONE source, in seconds. 0 (default) parses
@@ -144,8 +119,9 @@ file = "NOTES.md"
 # on Windows with docling-rs 2.65.1 (2026-11-04), one 8-page PDF: engine default
 # 7.1 s / 2790 MB peak commit, 4 threads 7.4 s / 1830 MB, 1 thread 16.3 s /
 # 1533 MB. For a text-layer PDF, adding do_ocr = false and
-# do_table_structure = false to [ingest.parsecraft_backend_options.docling] took
-# the same file to 10.3 s / 2.9 GB. Must be set before the first conversion.
+# do_table_structure = false to [routing.backend_options.docling] (in
+# parsecraft's config) took the same file to 10.3 s / 2.9 GB. Must be set
+# before the first conversion.
 # Env: KOMP_INGEST_PARSECRAFT_DOCLING_THREADS
 # parsecraft_docling_threads = 4
 

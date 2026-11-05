@@ -173,7 +173,13 @@ class CompiledWiki:
 
 ### 1. Parser-Agnostic
 
-No parser is baked into kompend's core. The `BaseParser` interface accepts raw documents and produces `ParsedDocument`. The `ParserRouter` selects by file extension and user preference. If a new parser emerges (`docu-sonic-9000`), add a module implementing `BaseParser()` — no other tier changes.
+No parser is baked into kompend's core. Everything downstream of parsing consumes
+a `ParsedDocument`, and one adapter (`preprocessing/parsers/parsecraft_parser.py`)
+produces it — parsecraft routes each page across its own sub-backends (docling,
+liteparse, pandoc, native text, OCR), so kompend keeps no selector, no chain and
+no per-backend preference of its own. If a second parser is ever needed, it
+implements the `ParserBackend` protocol and `build_parser` returns it — no other
+tier changes.
 
 ### 2. Structure-Preserving
 

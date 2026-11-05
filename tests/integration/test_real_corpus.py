@@ -35,8 +35,7 @@ from kompend.chunking import HierarchicalChunker
 from kompend.compilation.graph import GraphCompiler
 from kompend.core.models import ParsedDocument, ResolvedChunk
 from kompend.preprocessing.downloaders.http_downloader import HTTPDownloader
-from kompend.preprocessing.parsers import build_default_router
-from kompend.preprocessing.parsers.base import BaseParser
+from kompend.preprocessing.parsers import ParserBackend, build_parser
 
 #: Number of smallest PDFs to use as the corpus sample. Kept low so the
 #: suite stays under 30 seconds.
@@ -48,7 +47,7 @@ logger = logging.getLogger(__name__)
 def _parser_available() -> bool:
     """The configured ingestion backend resolves and is installed."""
     try:
-        build_default_router()
+        build_parser()
     except Exception:
         return False
     return True
@@ -167,13 +166,9 @@ def parsed_docs_sample(source_pdfs_sample: list[Path]) -> dict[Path, ParsedDocum
     return cache
 
 
-def _make_parser() -> BaseParser:
+def _make_parser() -> ParserBackend:
     """Construct the ingestion parser via its normal factory."""
-    parser = build_default_router().route(Path("sample.pdf"))
-    if parser is None:
-        msg = "no installed parser handles .pdf; install an extraction extra to run the corpus tests"
-        raise RuntimeError(msg)
-    return parser
+    return build_parser().parser
 
 
 @pytest.fixture(scope="session")

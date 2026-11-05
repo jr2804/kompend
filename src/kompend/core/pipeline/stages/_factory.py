@@ -28,7 +28,7 @@ from kompend.core.pipeline.stages._pipeline import WikiPipeline
 from kompend.llm.context_window import discover_context_window
 from kompend.logging import get_logger
 from kompend.output.base import BaseOutputWriter
-from kompend.preprocessing.parsers._registry import build_default_router
+from kompend.preprocessing.parsers import build_parser
 from kompend.resolution.base import BaseResolver
 
 logger = get_logger(__name__)
@@ -65,7 +65,7 @@ def build_pipeline(
         msg = f"Unknown output format {config.output.format!r}. Available: {available}"
         raise ValueError(msg)
 
-    router = build_default_router(config.parser_options)
+    parser = build_parser(config.parser_options)
 
     # T0 (index) and T1 (parse) run without an LLM — ``kompend ingest``
     # stops here. T2 (chunk) and beyond need the LLM for context-window
@@ -143,7 +143,7 @@ def build_pipeline(
 
     return WikiPipeline(
         config=config,
-        router=router,
+        parser=parser,
         cancel=cancel,
         chunker=HierarchicalChunker(
             context_window=chunker_context_window,

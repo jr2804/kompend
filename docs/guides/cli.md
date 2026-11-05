@@ -12,7 +12,7 @@ kompend provides a Cyclopts-based CLI with the following commands:
 | `kompend query` | Query the compiled wiki with natural language |
 | `kompend doctor` | Validate configuration and connectivity |
 | `kompend status` | Show per-wiki statistics |
-| `kompend list-parsers` | List all registered parsers |
+| `kompend list-parsers` | Show the ingestion backend and the formats it claims |
 | `kompend lint all` | Full lint pipeline: check → format → semantic → gaps → remediate (single weighted progress bar; LLM steps skipped without a model) |
 | `kompend lint check` | Deterministic structural rules, auto-fix on |
 | `kompend lint semantic` | LLM-powered rules (factual-consistency, clarity, coverage-gap, contradictions) |
@@ -306,24 +306,46 @@ kept, so only changed content is recompiled. To drop the LLM results as well,
 set `compile.no_cache` (config file, `kompend config set`, or
 `--set compile.no_cache=true`).
 
-The `[ingest]` block now holds only the parsecraft parameters; the
-backend selector was retired (the parser chain is parsecraft and only
-parsecraft, with per-page routing inside it). A vault that still sets
-the old `ingest.parser` key loads and is warned by `kompend config check`;
-the key lives in `REMOVED_KEYS`. The live shape is:
+The `[ingest]` block holds only what is kompend's own. The parser selector is
+retired (the parser chain is parsecraft and only parsecraft, with per-page
+routing inside it), and so is every routing key kompend used to mirror from
+parsecraft: those are parsecraft's settings and are read from parsecraft's own
+files. A vault that still sets `ingest.parser` or one of the six retired
+`ingest.parsecraft_*` routing keys loads, is warned by `kompend config check`,
+and ignores the key; they live in `REMOVED_KEYS`. The live shape is:
 
 ```toml
 [ingest]
-parsecraft_judge         = "none"        # none | ollama | zen | typesafe-ai
-parsecraft_judge_model   = ""            # model token for the configured provider
-parsecraft_preference    = "balanced"    # tiebreak: speed | balanced | quality (speed == balanced; quality inverts)
-parsecraft_effort        = "flash"       # MinerU effort: flash | medium | high | xhigh
-# parsecraft_allow_ocr   = false       # optional; unset derives from OCR extras/engine, false bans OCR
-# parsecraft_engines      = ["mineru"]  # optional; empty keeps the probed engine set
-# parsecraft_extract_vector_graphics = true  # optional; recover table grids from vector records
-# parsecraft_preferred_backend = "mineru"   # optional; rank first where eligible
-# parsecraft_only_backend = "mineru"        # optional; hard pin, uncovered pages fail loudly
+parsecraft_judge         = "none"   # none | ollama | zen | typesafe-ai
+parsecraft_judge_model   = ""       # model token for the configured provider
+# parse_timeout_s       = 0.0      # 0 parses in-process, no bound
+# parsecraft_docling_threads = 4  # ONNX thread bound for the docling engine
 ```
+
+Routing lives in parsecraft's configuration instead, lowest priority first:
+schema defaults, `~/.config/parsecraft/config.toml`, then the vault's
+`<vault>/.kompend/parsecraft.toml`, then `./parsecraft.toml` in the directory
+kompend runs from, then `PARSECRAFT_CONFIG_*`:
+
+```toml
+[routing]
+preference        = "balanced"   # speed | balanced | quality
+allow_ocr         = false        # unset: permitted when the host can do OCR
+engines           = ["pandoc"]   # unset: the engines this host has
+preferred_backend = "docling"    # rank first where eligible
+only_backend      = "mineru"     # hard pin; uncovered pages fail loudly
+max_passes        = 1            # parsecraft's default; kompend injects 3
+
+[routing.backend_options.mineru]
+effort = "high"                  # flash | medium | high | xhigh
+[routing.backend_options.liteparse]
+extract_vector_graphics = true
+```
+
+Every value written there is part of the parse-cache fingerprint, so changing
+one re-parses; the derived `liteparse.extract_images` follows
+`compile.image_mode` and a written option wins over it. Unknown backend or
+engine names fail loudly, naming the accepted set.
 
 parsecraft is a core dependency — stock kompend already has it, its
 sub-backends and the judge tier's SDK (no extra since parsecraft 2026.10.5);
@@ -447,9 +469,10 @@ Displays:
 
 ## `kompend list-parsers`
 
-List all registered parsers (built-in, external, and HTTP). External
-backends appear only when their package is installed — `parsecraft` is a
-core dependency and shows up in a stock install.
+Show the ingestion backend and the formats it claims. There is one backend:
+parsecraft, which routes each page across its own sub-backends. The command
+reports the suffixes it can read and, when `compile.image_mode` extracts figures,
+whether the backend crops images itself.
 
 ```text
 kompend list-parsers [OPTIONS]

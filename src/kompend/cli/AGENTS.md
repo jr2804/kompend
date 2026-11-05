@@ -66,7 +66,7 @@ run log loads on the first real command via `OnDemandModule.RUNLOG`.
 | Data models and constants | `kompend.core.models` |
 | Config defaults and resolution logic | `kompend.core.config` |
 | LLM calls or LLM client construction | `kompend.llm` |
-| Parser registry / router construction | `kompend.preprocessing.parsers` |
+| Parser construction | `kompend.preprocessing.parsers` |
 | Hard-coded magic numbers (chunk sizes, thresholds) | `kompend.core.config` DEFAULTS |
 
 ### The test
@@ -223,7 +223,7 @@ and the rest should be one call to a core module.
 
 ## Known violations (do not replicate)
 
-Fixed violations (router/wiki/vector-index construction, config path, extension
+Fixed violations (parser/wiki/vector-index construction, config path, extension
 set, extension enumeration) are archived in `.agents/history/2026-10-23-rationale-archive.md`.
 
 ## Work Guidance

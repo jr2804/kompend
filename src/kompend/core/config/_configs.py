@@ -145,19 +145,6 @@ class ParsecraftJudge(StrEnum):
     TYPESAFE_AI = "typesafe-ai"
 
 
-class ParsecraftPreference(StrEnum):
-    """Tiebreak axis when several candidates tie on the constraint check.
-
-    Maps directly to parsecraft's ``RoutingPreference``: ``speed`` favours the
-    cheapest eligible backend, ``quality`` the strongest, ``balanced`` the
-    default tiebreak.
-    """
-
-    SPEED = "speed"
-    BALANCED = "balanced"
-    QUALITY = "quality"
-
-
 class ReasoningEffort(StrEnum):
     """Reasoning effort for providers with an explicit effort control.
 
@@ -773,76 +760,6 @@ class IngestConfig(_KompendBaseModel):
             "ollama tag tokens like `parable-tinyjev:latest`. Empty string is rejected at parse "
             "time when `parsecraft_judge` is set to a non-`none` value — a provider without a model "
             "is a misconfiguration, not a sensible default."
-        ),
-    )
-    parsecraft_preference: ParsecraftPreference = Field(
-        default=ParsecraftPreference.BALANCED,
-        validation_alias=EnvVar.INGEST_PARSECRAFT_PREFERENCE,
-        description=(
-            "Ranking axis the judge applies when several candidates tie on the constraint check. "
-            "Maps directly to parsecraft's `RoutingPreference`: `speed` favours lower-VRAM backends "
-            "(~native-fast first), `quality` favours the highest-VRAM strong backend, `balanced` is the "
-            "default tiebreak — a per-page intent re-ranks over the eligible candidates regardless."
-        ),
-    )
-    parsecraft_allow_ocr: bool | None = Field(
-        default=None,
-        validation_alias=EnvVar.INGEST_PARSECRAFT_ALLOW_OCR,
-        description=(
-            "Whether parsecraft may route a page to an OCR sub-backend. Unset (`None`) keeps parsecraft's own "
-            "derivation: OCR is permitted when an `ocr-*` extra is installed OR the host has a usable OCR engine. "
-            "Set `false` to ban OCR outright — an all-native corpus should, since a blank or faint page otherwise "
-            "pays a full GPU VLM pass — or `true` to permit it regardless of the derivation. The value is part "
-            "of the parse-cache fingerprint, so changing it re-parses."
-        ),
-    )
-    parsecraft_engines: list[str] = Field(
-        default_factory=list,
-        validation_alias=EnvVar.INGEST_PARSECRAFT_ENGINES,
-        description=(
-            "Restrict the external engines parsecraft may use, overriding the probed set. Empty (the default) "
-            "keeps the probe's answer. Names are parsecraft's own engine ids (`marker`, `mineru`, …) — open "
-            "capability data, so they are not a closed value domain here; the env form is a comma-separated "
-            "list. The value is part of the parse-cache fingerprint, so changing it re-parses."
-        ),
-    )
-    parsecraft_preferred_backend: str | None = Field(
-        default=None,
-        validation_alias=EnvVar.INGEST_PARSECRAFT_PREFERRED_BACKEND,
-        description=(
-            "Rank a backend first where it is eligible (parsecraft's `preferred_backend`) — a preference, "
-            "never a guarantee: a page the named backend cannot serve still falls back. Use it to pin a "
-            "layout-aware backend for a table-heavy corpus, or to route around a defect in the leading "
-            "backend without uninstalling anything. Unknown names are a usage error naming the registered "
-            "backends; the value is part of the parse-cache fingerprint."
-        ),
-    )
-    parsecraft_only_backend: str | None = Field(
-        default=None,
-        validation_alias=EnvVar.INGEST_PARSECRAFT_ONLY_BACKEND,
-        description=(
-            "Use only this backend — a hard pin (parsecraft's `only_backend`), unlike "
-            "`parsecraft_preferred_backend`. Pages it cannot *cover* fail loudly instead of silently "
-            "falling back; a blank page still degrades, because coverage and content are different "
-            "things. The value is part of the parse-cache fingerprint."
-        ),
-    )
-    #: Per-backend constructor options (`{backend: {key: value}}`) forwarded to
-    #: parsecraft's `RoutingConstraints.backend_options`. Only non-default values
-    #: are injected, since parsecraft hashes the dict verbatim into the
-    #: conversion-cache key. Keys must be registered backend names
-    #: (`mineru`, `liteparse`, `marker`, ...); values must be `str | int | float | bool`.
-    parsecraft_backend_options: dict[str, dict[str, str | int | float | bool]] = Field(
-        default_factory=dict,
-        validation_alias=EnvVar.INGEST_PARSECRAFT_BACKEND_OPTIONS,
-        description=(
-            "Per-backend options (`{backend_name: {option_key: option_value}}`) forwarded to parsecraft's "
-            "`RoutingConstraints.backend_options`. Only non-default values are injected, so an empty dict "
-            "(`{}`) produces no `backend_options:` routing segment and the conversion cache stays stable. "
-            'Example: ``{"mineru": {"effort": "high"}, "liteparse": {"extract_vector_graphics": true}}``. '
-            "Keys must match parsecraft's registered backends; unknown backend names are a usage error at "
-            "dispatch time. Values are coerced by the adapter's option-coercion site: `str -> bool` (real bools "
-            "pass through unchanged), numeric strings -> int/float."
         ),
     )
     parse_timeout_s: float = Field(

@@ -10,7 +10,7 @@ testable, and has a clear `Base` interface.
 
 **Input:** Raw source files (PDF, DOCX, XLSX, PPTX, EPUB, MD, TXT, URLs)  
 **Output:** `ParsedDocument` with structured JSON sidecar  
-**Interface:** `BaseParser` in `src/kompend/preprocessing/parsers/base.py`
+**Interface:** `ParserBackend` protocol in `src/kompend/preprocessing/parsers/base.py`
 
 ``` mermaid
 flowchart LR
@@ -37,11 +37,12 @@ flowchart LR
 
 | Class | File | Purpose |
 |-------|------|---------|
-| `BaseParser` | `parsers/base.py` | Abstract interface: `parse(path) → ParsedDocument` |
+| `ParserBackend` | `parsers/base.py` | Protocol: `can_parse(path)`, `parse(path) → ParsedDocument` |
+| `DocumentParser` | `parsers/base.py` | The guards around every parse: mislabel refusal, surrogate scrubbing, backend identity |
 | `ParsecraftParser` | `parsers/parsecraft_parser.py` | The one backend; per-page routing across parsecraft's sub-backends |
 | `HTTPDownloader` | `downloaders/http.py` | Direct file URLs |
 | `WebCrawler` | `downloaders/crawler.py` | Web pages via crawl4ai |
-| `ParserRouter` | `parsers/_registry.py` | Extension-based dispatch |
+| `build_parser` | `parsers/document_parser.py` | The single construction point; takes `ParserOptions` |
 
 ## Tier 2: Chunking
 

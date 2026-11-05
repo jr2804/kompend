@@ -113,7 +113,7 @@ deprecated, not as an unknown key); new configs use `[attachments] embed`.
 
 | Type | Extensions | Ingestible via |
 |------|------------|----------------|
-| Text | `.md`, `.txt`, `.csv`, `.json`, `.yaml`, `.xml`, `.html`, ... | Standard parser router |
+| Text | `.md`, `.txt`, `.csv`, `.json`, `.yaml`, `.xml`, `.html`, ... | Standard parser |
 | Image | `.png`, `.jpg` | VLM captioner (requires VLM model configured) |
 | Other | `.pdf`, `.docx`, ... | **Rejected** — these are sources, not attachments |
 | Binary | `.exe`, `.bin`, ... | Registered only; never ingested |
@@ -122,7 +122,7 @@ deprecated, not as an unknown key); new configs use `[attachments] embed`.
 
 When `--ingest` is set on an attachment:
 
-1. **Parse tier**: text attachments are parsed through the standard router;
+1. **Parse tier**: text attachments are parsed through the standard parser;
    image attachments are captioned via VLM (if `compile.llm.vlm_model` is set,
    otherwise skipped with a warning).
 2. **Chunk/compile**: attachment content becomes wiki nodes tagged with

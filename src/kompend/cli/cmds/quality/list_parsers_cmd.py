@@ -1,4 +1,4 @@
-"""``kompend list-parsers`` — list all registered parsers."""
+"""``kompend list-parsers`` — the one ingestion parser and the formats it reads."""
 
 from __future__ import annotations
 
@@ -7,27 +7,38 @@ import sys
 
 from kompend.cli.args import JsonOutput
 from kompend.logging import get_console
-from kompend.preprocessing.parsers._registry import get_registered_parsers
+from kompend.preprocessing.parsers import PARSER_PARSECRAFT, build_parser
 
 
 def list_parsers_cmd(
     *,
     json_output: JsonOutput = False,
 ) -> None:
-    """List all registered parsers (built-in + external + HTTP)."""
-    parsers = get_registered_parsers()
+    """Show the ingestion parser and the suffixes it claims.
+
+    There is one parser — parsecraft — which routes each page across its own
+    sub-backends. The command stays because the format list it prints is the
+    honest answer to "what can this vault ingest", and it differs per install
+    (a parsecraft extra adds a backend, which can add a format).
+    """
+    parser = build_parser().parser
+    extensions = sorted(str(extension) for extension in parser.supported_extensions)
+    payload = [
+        {
+            "name": PARSER_PARSECRAFT,
+            "type": "built-in",
+            "extensions": extensions,
+            "figure_enrichment": parser.figure_enrichment,
+            "metadata": {},
+        }
+    ]
 
     if json_output:
-        json.dump(parsers, sys.stdout, indent=2, default=str)
+        json.dump(payload, sys.stdout, indent=2, default=str)
         sys.stdout.write("\n")
         return
 
-    if not parsers:
-        get_console().print("No parsers registered.")
-        return
-
-    get_console().print(f"Registered parsers ({len(parsers)}):")
-    for p in parsers:
-        exts = ", ".join(p.get("extensions", []) or [])
-        ptype = p.get("type", "built-in")
-        get_console().print(f"  \u2022 {p['name']} ({ptype})  [{exts}]", markup=False)
+    get_console().print(f"Ingestion parser: {PARSER_PARSECRAFT} (built-in)")
+    get_console().print(f"Formats ({len(extensions)}): {', '.join(extensions)}", markup=False)
+    if parser.figure_enrichment:
+        get_console().print("Figures: extracted when the winning backend emits them", markup=False)

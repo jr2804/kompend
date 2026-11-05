@@ -80,7 +80,7 @@ from kompend.core.cancel import CancelState, KompendCancelled
 from kompend.core.config import coerce_config_value, resolve_config, validate_config_key
 from kompend.core.config._configs import LintConfig
 from kompend.core.models import MetadataField, WikiField, load_cached_wiki, load_wiki_from_files
-from kompend.core.paths import VaultPaths, vault_paths
+from kompend.core.paths import vault_paths
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.pipeline.orchestrator import build_pipeline
@@ -88,8 +88,7 @@ from kompend.core.trust.actor import resolve_actor
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.pages.log import log_stage
-from kompend.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
-from kompend.preprocessing.parsers.base import BinarySourceError, ParserRouter
+from kompend.preprocessing.parsers import BinarySourceError, ParserOptions, build_parser
 from kompend.rag import build_vector_index
 
 logger = get_logger(__name__)
@@ -115,12 +114,10 @@ def parse_cmd(
         recursive=cfg.kompend.paths.recursive,
         ignore_patterns=None,
     )
-    router: ParserRouter = build_default_router(
-        ParserBuildOptions.from_config(cfg, images_dir=vp.images_dir),
-    )
+    parser = build_parser(ParserOptions.from_config(cfg, base_dir=vp.base_dir))
     for path in resolved:
         try:
-            doc = router.parse(path)
+            doc = parser.parse(path)
         except BinarySourceError as exc:
             # The file's extension claims text but its bytes are binary —
             # say that instead of the generic no-parser wording.
@@ -397,10 +394,7 @@ def ingest_cmd(
 
     get_console().print(f"Ingesting {len(all_input_files)} document(s)")
 
-    images_dir = VaultPaths(base_dir).images_dir
-    router: ParserRouter = build_default_router(
-        ParserBuildOptions.from_config(cfg, images_dir=images_dir),
-    )
+    parser = build_parser(ParserOptions.from_config(cfg, base_dir=base_dir))
     cancel = CancelState()
     tracker = PipelineProgress.create(
         total_files=len(all_input_files),
@@ -428,7 +422,7 @@ def ingest_cmd(
         result = ingest_documents(
             files=all_input_files,
             base_dir=base_dir,
-            router=router,
+            parser=parser,
             progress_fn=_progress,
             reparse=bool(cfg.kompend.compile.reparse or cfg.kompend.compile.no_cache),
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,

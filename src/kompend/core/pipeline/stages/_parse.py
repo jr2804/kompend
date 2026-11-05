@@ -295,15 +295,15 @@ def _parse_source(
     content_hash: str,
     heavy_guard: HeavyParseGuard,
 ) -> ParsedDocument | None:
-    """Parse a source file via the router and optionally cache the result."""
-    if pipeline.router is None:
+    """Parse a source file via the parser and optionally cache the result."""
+    if pipeline.parser is None:
         return None
     try:
-        selected = pipeline.router.route(source_file)
+        selected = pipeline.parser.route(source_file)
         if selected is None:
             logger.warning("No parser backend for %s, skipping", source_file)
             return None
-        # The router has already picked a backend: the format table only
+        # The parser has already picked a backend: the format table only
         # decides which bytes that backend receives (UTF-8 for known text
         # formats, the raw file otherwise). It never gates parsing.
         parse_target = parse_target_path(source_file, pipeline.cache_directory())
@@ -499,7 +499,7 @@ def cache_key(source_file: Path) -> str:
 def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
     """Process ingestible attachments and return their ChunkTrees.
 
-    Attachments are parsed via the same parser router as sources.
+    Attachments are parsed via the same parser as sources.
     Image attachments (PNG/JPG) are captioned via VLM if configured.
     Each resulting tree carries ``source_asset=True`` and ``parent_source``
     metadata so the rest of the pipeline can distinguish them.
@@ -520,9 +520,9 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
     if not ingestible:
         return []
 
-    router = pipeline.router
-    if router is None:
-        logger.warning("No parser router available — skipping attachment ingestion")
+    parser = pipeline.parser
+    if parser is None:
+        logger.warning("No parser available — skipping attachment ingestion")
         return []
     vlm_captioner = None
     vlm_model = resolve_vlm_model(pipeline.config.llm.default_model, pipeline.config.llm.vlm_model)
@@ -542,7 +542,7 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
         pipeline.emit("parse", idx + 1, len(ingestible), f"asset: {att.filename}")
 
         try:
-            doc = ingest_attachment(vp, att, router, vlm_captioner=vlm_captioner)
+            doc = ingest_attachment(vp, att, parser, vlm_captioner=vlm_captioner)
             if doc is None:
                 continue
 

@@ -49,7 +49,7 @@ class ParseDeadlineExceeded(RuntimeError):
         super().__init__(
             f"parsing did not finish within {timeout_s:g} s and was killed. "
             f"Raise [ingest] parse_timeout_s (0 disables the bound) or route this file to a "
-            f"faster backend (parsecraft_preferred_backend / parsecraft_only_backend)."
+            f"faster backend (``[routing] preferred_backend`` / ``only_backend`` in parsecraft's config)."
         )
         self.source_file = source_file
         self.timeout_s = timeout_s

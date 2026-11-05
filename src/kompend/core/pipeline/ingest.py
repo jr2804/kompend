@@ -40,7 +40,7 @@ from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup import DedupOrchestrator
 from kompend.preprocessing.parsers.base import (
-    ParserRouter,
+    DocumentParser,
     assert_text_source,
     known_extension,
 )
@@ -69,7 +69,7 @@ class IngestResult:
 def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest flow
     files: Sequence[Path],
     base_dir: Path,
-    router: ParserRouter,
+    parser: DocumentParser,
     progress_fn: ProgressFn | None = None,
     *,
     reparse: bool = False,
@@ -115,7 +115,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         base_dir: Project root directory (the ``--wiki-dir``). Cache and
             state live under ``base_dir / .kompend`` — the same location the
             pipeline reads from.
-        router: Parser router used to select a parser per file.
+        parser: Document parser used to read each file.
         progress_fn: Optional callback ``(current, total, detail)``
             invoked before each file is processed.
         reparse: When ``True``, re-parse every file even if a cache
@@ -182,7 +182,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
 
     # One probe per run: the backend identity decides whether a cached parse
     # is still current for the parser that is running now.
-    backend_identity = router.backend_identity()
+    backend_identity = parser.backend_identity()
 
     for idx, source_file in enumerate(files):
         _check_cancel()
@@ -202,15 +202,15 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
             continue
 
-        parser = router.route(source_file)
-        if parser is None:
+        backend = parser.route(source_file)
+        if backend is None:
             logger.info("Skipping %s — no parser available", source_file.name)
             skipped += 1
             continue
 
         try:
             parse_target = parse_target_path(source_file, cache_dir)
-            doc = worker.parse(parser, parse_target)
+            doc = worker.parse(backend, parse_target)
             restore_source_path(doc, parse_target=parse_target, source_file=source_file)
             normalize_element_markdown(
                 doc.elements,
@@ -315,7 +315,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
 def parse_target_path(source_file: Path, cache_dir: Path) -> Path:
     """The path a parser must read for *source_file*.
 
-    The router has already decided that a backend claims the file, so this
+    The parser has already decided that it claims the file, so this
     only decides *which bytes* the parser receives:
 
     - A format the table knows as text (``.md``, ``.txt``, ...) is handed
@@ -369,7 +369,7 @@ def restore_source_path(doc: ParsedDocument, *, parse_target: Path, source_file:
 def parse_cache_is_current(data: JSONDict, parser_fingerprint: str) -> bool:
     """True when a parse-cache entry was produced by the current backend identity.
 
-    ``parser_fingerprint`` is :meth:`kompend.preprocessing.parsers.base.ParserRouter.backend_identity`.
+    ``parser_fingerprint`` is :meth:`kompend.preprocessing.parsers.parsecraft_parser.ParsecraftParser.backend_identity`.
     Entries written before the identity existed store an empty string and
     return ``False`` — a one-time re-parse that self-heals the cache.
     """

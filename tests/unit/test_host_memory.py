@@ -36,7 +36,7 @@ from kompend.preprocessing.parsers.base import FileExtension
         ("page.htm", False),
         ("page.html", False),
         ("source.py", False),
-        ("unknown.z9", False),  # unparseable today: the router never reaches the guard
+        ("unknown.z9", False),  # unparseable today: no parser reaches the guard
     ],
 )
 def test_classification_matches_the_extension_table(name: str, heavy: bool) -> None:

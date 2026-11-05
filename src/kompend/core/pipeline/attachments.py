@@ -7,7 +7,7 @@ by the ``attachment_manifest`` table of ``.kompend/kompend.db`` and live under
 
 Only attachments explicitly marked ``ingestible`` are processed at compile
 time. Non-binary (text) attachments — markdown, plain text, source code, any
-unknown text suffix — are parsed through the standard parser router; PNG/JPG
+unknown text suffix — are parsed through the standard parser; PNG/JPG
 attachments are captioned via a VLM (if configured).
 """
 
@@ -27,7 +27,7 @@ from kompend.core.text.encoding import normalize_to_utf8_path
 from kompend.core.text.rumdl import normalize_element_markdown
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
-from kompend.preprocessing.parsers.base import ParserRouter
+from kompend.preprocessing.parsers.base import DocumentParser
 
 __all__ = [
     "ingest_attachment",
@@ -64,13 +64,13 @@ def iter_ingestible_attachments(vp: VaultPaths) -> list[Attachment]:
 def ingest_attachment(
     vp: VaultPaths,
     att: Attachment,
-    router: ParserRouter,
+    parser: DocumentParser,
     *,
     vlm_captioner: VlmAgent | None = None,
 ) -> ParsedDocument | None:
     """Ingest a single attachment through the parser pipeline.
 
-    Text/markdown files are parsed via the standard router after
+    Text/markdown files are parsed via the standard parser after
     auto-normalizing their encoding (UTF-8 pass-through; non-UTF-8
     re-encoded to ``vp.cache_dir / "encoding" / <hash>.utf8``).
     PNG/JPG files are captioned via the VLM captioner (which must be
@@ -79,7 +79,7 @@ def ingest_attachment(
     Args:
         vp: Vault paths.
         att: The attachment to ingest.
-        router: Parser router for text files.
+        parser: Document parser for text files.
         vlm_captioner: Optional VLM captioner for image files.
 
     Returns:
@@ -105,15 +105,15 @@ def ingest_attachment(
     # is what decides which text extensions it claims — parsecraft's native-text
     # backend covers the whole text family (.c/.h/.cpp, source code, unknown
     # suffixes). A non-binary attachment whose extension the backend does not
-    # claim raises in the router and is skipped by the handler below.
+    # claim raises in the parser and is skipped by the handler below.
     if is_binary(str(att_file)):
         logger.warning("Unsupported attachment type '%s', skipping: %s", ext, att.filename)
         return None
-    return _parse_text(att_file, att, router, vp.cache_dir)
+    return _parse_text(att_file, att, parser, vp.cache_dir)
 
 
-def _parse_text(att_file: Path, att: Attachment, router: ParserRouter, cache_dir: Path) -> ParsedDocument | None:
-    """Parse a text/markdown attachment via the standard router.
+def _parse_text(att_file: Path, att: Attachment, parser: DocumentParser, cache_dir: Path) -> ParsedDocument | None:
+    """Parse a text/markdown attachment via the standard parser.
 
     The path passed to the parser is the UTF-8-normalized sibling of
     *att_file* (see :func:`normalize_to_utf8_path`); the document is
@@ -122,7 +122,7 @@ def _parse_text(att_file: Path, att: Attachment, router: ParserRouter, cache_dir
     """
     try:
         parse_target, _encoding = normalize_to_utf8_path(att_file, cache_dir)
-        doc = router.parse(parse_target)
+        doc = parser.parse(parse_target)
         restore_source_path(doc, parse_target=parse_target, source_file=att_file)
         # Same part-level markdown normalisation as parse-tier sources.
         normalize_element_markdown(doc.elements, rumdl_config=resolve_rumdl_config(cache_dir.parent.parent))

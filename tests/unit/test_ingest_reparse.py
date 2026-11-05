@@ -32,14 +32,17 @@ from kompend.core.pipeline.stages._parse import _chunk_cache_deps, _process_sing
 from kompend.core.pipeline.state import TierState, TierStateStore
 from kompend.core.store import vault_db_path
 from kompend.preprocessing.host_memory import HeavyParseGuard
-from kompend.preprocessing.parsers.base import BaseParser, ParserRouter
+from kompend.preprocessing.parsers.base import DocumentParser
 from tests.conftest import as_obj
 
-# ── Router fingerprint ─────────────────────────────────────────────────
+# ── Parser identity ─────────────────────────────────────────────────
 
 
-class _StubParser(BaseParser):
-    """Minimal parser so a real :class:`ParserRouter` can be built."""
+class _StubParser:
+    """Minimal parser so a real :class:`DocumentParser` can be built."""
+
+    figure_enrichment = False
+    supported_extensions = {".md"}
 
     def can_parse(self, source_file: Path) -> bool:  # noqa: PLR6301
         return False
@@ -51,8 +54,11 @@ class _StubParser(BaseParser):
 # ── ingest_documents: parser-change re-parse + preservation ────────────
 
 
-class _RecordingParser(BaseParser):
+class _RecordingParser:
     """Parser that records each parse call and returns a fixed document."""
+
+    figure_enrichment = False
+    supported_extensions = {".md"}
 
     def __init__(self, parsed_log: list[Path]) -> None:
         self._parsed_log = parsed_log
@@ -70,19 +76,16 @@ class _RecordingParser(BaseParser):
         )
 
 
-class _IngestRouter(ParserRouter):
-    """Router double that reports a settable fingerprint and records parses."""
+class _IngestParser(DocumentParser):
+    """Parser double that reports a settable backend identity and records parses."""
 
     def __init__(self, fingerprint: str) -> None:
-        super().__init__()
-        self._fingerprint_value = fingerprint
         self.parsed: list[Path] = []
+        super().__init__(_RecordingParser(self.parsed))
+        self._fingerprint_value = fingerprint
 
-    def fingerprint(self) -> str:
+    def backend_identity(self) -> str:
         return self._fingerprint_value
-
-    def route(self, source_file: Path) -> BaseParser | None:
-        return _RecordingParser(self.parsed)
 
 
 class _StubEnricher:
@@ -107,7 +110,7 @@ class _StubRuntime:
             output=SimpleNamespace(rumdl_config=None, flavor=None),
             search=SimpleNamespace(contextual=SimpleNamespace(enabled=enricher is not None)),
         )
-        self.router = None
+        self.parser = None
         self.chunker = HierarchicalChunker(max_tokens=512)
         self.enricher = enricher
         self.state = TierState()
@@ -128,13 +131,12 @@ class _StubRuntime:
         return
 
 
-def test_fingerprint_is_stable() -> None:
-    assert _router_of("Alpha").fingerprint() == _router_of("Alpha").fingerprint()
+def test_backend_identity_is_stable() -> None:
+    assert _parser_of("Alpha").backend_identity() == _parser_of("Alpha").backend_identity()
 
 
-def test_fingerprint_changes_with_the_registered_parser() -> None:
-    assert _router_of("Alpha").fingerprint() != _router_of("Beta").fingerprint()
-    assert _router_of("Alpha").fingerprint() != _router_of("Alpha", "Beta").fingerprint()
+def test_backend_identity_changes_with_the_registered_parser() -> None:
+    assert _parser_of("Alpha").backend_identity() != _parser_of("Beta").backend_identity()
 
 
 # ── Cache-currency checks ──────────────────────────────────────────────
@@ -180,12 +182,12 @@ def test_same_content_stays_a_cache_hit(tmp_path: Path) -> None:
     base = _seed_vault(tmp_path)
     src = base / "sources" / "note.md"
 
-    first = _IngestRouter("chain-A")
-    ingest_documents(files=[src], base_dir=base, router=first, config=None)
+    first = _IngestParser("chain-A")
+    ingest_documents(files=[src], base_dir=base, parser=first, config=None)
     assert len(first.parsed) == 1
 
-    second = _IngestRouter("chain-A")
-    result = ingest_documents(files=[src], base_dir=base, router=second, config=None)
+    second = _IngestParser("chain-A")
+    result = ingest_documents(files=[src], base_dir=base, parser=second, config=None)
     assert second.parsed == []
     assert result.cached == 1
 
@@ -200,15 +202,15 @@ def test_same_content_at_a_new_path_stays_a_cache_hit(tmp_path: Path) -> None:
     base = _seed_vault(tmp_path)
     src = base / "sources" / "note.md"
 
-    ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), config=None)
+    ingest_documents(files=[src], base_dir=base, parser=_IngestParser("chain-A"), config=None)
 
     moved_dir = base / "sources" / "paper"
     moved_dir.mkdir()
     moved = moved_dir / "note.md"
     src.replace(moved)
 
-    second = _IngestRouter("chain-A")
-    result = ingest_documents(files=[moved], base_dir=base, router=second, config=None)
+    second = _IngestParser("chain-A")
+    result = ingest_documents(files=[moved], base_dir=base, parser=second, config=None)
 
     assert second.parsed == []
     assert result.cached == 1
@@ -218,18 +220,18 @@ def test_forced_reingest_preserves_and_merges_cli_metadata(tmp_path: Path) -> No
     base = _seed_vault(tmp_path)
     src = base / "sources" / "note.md"
 
-    ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), config=None)
+    ingest_documents(files=[src], base_dir=base, parser=_IngestParser("chain-A"), config=None)
 
     key, entry = _cache_entry_with_key(base)
     entry["metadata"][MetadataField.TAGS] = ["audio"]
     entry["metadata"][MetadataField.ATTRIBUTES] = {"version": "2", "status": "old"}
     _write_entry(base, key, entry)
 
-    forced = _IngestRouter("chain-A")
+    forced = _IngestParser("chain-A")
     result = ingest_documents(
         files=[src],
         base_dir=base,
-        router=forced,
+        parser=forced,
         reparse=True,
         config=None,
         tags=["standards"],
@@ -266,7 +268,7 @@ def test_attachments_untouched_by_reingest(tmp_path: Path) -> None:
     manifest.write_text('{"filename": "diagram.png"}\n', encoding="utf-8")
     before = manifest.read_text(encoding="utf-8")
 
-    ingest_documents(files=[src], base_dir=base, router=_IngestRouter("chain-A"), reparse=True, config=None)
+    ingest_documents(files=[src], base_dir=base, parser=_IngestParser("chain-A"), reparse=True, config=None)
 
     assert manifest.read_text(encoding="utf-8") == before
 
@@ -291,17 +293,14 @@ def _runtime_for_chunk_deps(*, contextual: bool, enricher: object | None) -> Any
     config = SimpleNamespace(search=SimpleNamespace(contextual=SimpleNamespace(enabled=contextual)))
     return SimpleNamespace(
         chunker=SimpleNamespace(_effective_max=512),
-        router=_router_of("chain-A"),
+        parser=_parser_of("chain-A"),
         config=config,
         enricher=enricher,
     )
 
 
-def _router_of(*parser_names: str) -> ParserRouter:
-    router = ParserRouter()
-    for name in parser_names:
-        router.register(type(name, (_StubParser,), {})())
-    return router
+def _parser_of(name: str) -> DocumentParser:
+    return _IngestParser(name)
 
 
 def test_enriched_tree_is_what_gets_cached(tmp_path: Path) -> None:
@@ -349,15 +348,15 @@ def test_reparse_bypasses_the_parse_cache(tmp_path: Path) -> None:
     content_hash = hashlib.sha256((base / "sources" / "note.md").read_bytes()).hexdigest()
     _seed_parse_cache(base, source_file, content_hash)
 
-    router = _IngestRouter("chain-A")
+    parser = _IngestParser("chain-A")
     runtime = _StubRuntime(base, enricher=None)
-    runtime.router = router
+    runtime.parser = parser
     runtime.config.reparse = True
 
     tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard())
 
     assert tree is not None
-    assert len(router.parsed) == 1
+    assert len(parser.parsed) == 1
 
 
 def _seed_vault(tmp_path: Path) -> Path:

@@ -38,7 +38,7 @@ from kompend.llm.models import (
 )
 from kompend.llm.usage import UsageTracker, tokens_per_second
 from kompend.logging import get_console, get_logger
-from kompend.preprocessing.parsers._registry import get_registered_parsers
+from kompend.preprocessing.parsers import PARSER_PARSECRAFT, build_parser
 from kompend.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
 from kompend.types import JSON
 
@@ -231,9 +231,11 @@ def _check_output_dir(output_dir: Path | None) -> CheckResult:
 
 
 def _check_parsers() -> CheckResult:
-    """Check parser availability via the shared registry."""
+    """Check that the ingestion parser builds."""
     name = "parsers"
-    return CheckResult(name, True, f"{len(get_registered_parsers())} parser(s) registered")
+    parser = build_parser().parser
+    formats = len(parser.supported_extensions)
+    return CheckResult(name, True, f"{PARSER_PARSECRAFT}: {formats} format(s)")
 
 
 def _check_context_window(

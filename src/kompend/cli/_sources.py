@@ -19,13 +19,12 @@ from kompend.cli._sources_io import (
 )
 from kompend.core.ignore import filter_files
 from kompend.logging import get_logger
-from kompend.preprocessing.parsers._registry import get_supported_extensions
+from kompend.preprocessing.parsers.extensions import supported_extensions
 
 __all__ = [
     "download_urls",
     "ensure_in_sources",
     "extract_archive",
-    "get_supported_extensions",
     "looks_like_html_url",
     "resolve_files",
 ]
@@ -194,7 +193,7 @@ def _resolve_by_name(
 
 
 def _is_supported(candidate_file: Path) -> bool:
-    return candidate_file.suffix.lower() in get_supported_extensions()
+    return candidate_file.suffix.lower() in supported_extensions()
 
 
 def _scan_dir(
@@ -204,7 +203,7 @@ def _scan_dir(
     results: list[Path],
 ) -> None:
     glob_func = scan_dir.rglob if recursive else scan_dir.glob
-    for ext in sorted(get_supported_extensions()):
+    for ext in sorted(supported_extensions()):
         for match in sorted(glob_func(f"*{ext}")):
             if match.is_file():
                 _add(match, seen, results)

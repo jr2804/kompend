@@ -35,7 +35,7 @@ from kompend.core.models.enums import NodeType
 from kompend.core.models.structured import structured_to_text
 from kompend.core.resolution.entity_registry import EntityRegistry
 from kompend.core.resolution.xref_checker import CrossReferenceChecker
-from kompend.preprocessing.parsers import build_default_router
+from kompend.preprocessing.parsers import build_parser
 from kompend.search.adaptive_retriever import AdaptiveRetriever
 from kompend.search.budget import ContextBudgetManager, RetrievalMode
 from tests.fixtures.documents import make_test_doc
@@ -432,7 +432,7 @@ class TestWikiNodeHierarchy:
         if not source_pdfs:
             pytest.skip("No PDFs in tests/data/sources/")
         try:
-            parser = build_default_router().route(source_pdfs[0])
+            parser = build_parser().route(source_pdfs[0])
         except Exception:
             pytest.skip("No PDF parser backend installed")
         if parser is None:

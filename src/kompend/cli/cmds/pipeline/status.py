@@ -19,7 +19,7 @@ from kompend.core.paths import (
 )
 from kompend.core.pipeline.state import TierStateStore, classify_compile_status
 from kompend.logging import get_console
-from kompend.preprocessing.parsers._registry import get_supported_extensions
+from kompend.preprocessing.parsers.extensions import supported_extensions
 
 #: Root files of a compiled bundle that carry the bundle, not a page.
 _BUNDLE_FILES: frozenset[str] = frozenset({INDEX_FILE, LOG_FILE, QUALITY_FILE, REFERENCES_MD, OVERVIEW_MD})
@@ -48,7 +48,7 @@ def collect_stats(
     # Source stats
     if sources_dir and sources_dir.exists():
         source_files: list[Path] = []
-        for ext in get_supported_extensions():
+        for ext in supported_extensions():
             source_files.extend(sources_dir.rglob(f"*{ext}"))
         stats["sources"]["count"] = len(source_files)
         stats["sources"]["total_size_bytes"] = sum(f.stat().st_size for f in source_files if f.is_file())

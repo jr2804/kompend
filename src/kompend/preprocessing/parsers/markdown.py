@@ -6,15 +6,11 @@ wrapper again — the pair used when an external markdown formatter (rumdl) must
 run over individual element contents. Only the content changes: page, reading
 order and metadata stay on the element.
 
-This module used to also host the backend-neutral Markdown→element converter
-(``markdown_to_elements`` + ``MarkdownContext``) shared by kompend-side
-markdown-producing backends (liteparse, marker, mineru, glm-ocr, web). Those
-backends are gone — parsecraft maps its IR to elements directly — and with
-them the converter. Do not reintroduce a per-backend copy of that walk: the
-copies this module replaced recognised only headings, images, tables and
-paragraphs, silently swallowing equations, fenced code and list items into
-TEXT. If a future backend produces Markdown, the conversion belongs beside
-these patterns — never next to the SDK call.
+This module hosts no Markdown->element converter of its own. A per-backend copy of
+that walk recognises only headings, images, tables and paragraphs, and silently
+swallows equations, fenced code and list items into TEXT. If a backend produces
+Markdown, the conversion belongs beside these patterns — never next to the SDK
+call.
 """
 
 from __future__ import annotations

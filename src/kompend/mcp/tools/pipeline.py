@@ -27,7 +27,7 @@ from kompend.core.keys import (
 from kompend.core.models import MetadataField, load_cached_wiki, load_wiki_from_files
 from kompend.core.models.enums import NodeType, OkfField
 from kompend.core.models.metadata import meta_str_list
-from kompend.core.paths import VaultPaths, vault_paths
+from kompend.core.paths import vault_paths
 from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.templates import get_template_loader
 from kompend.core.text.slug import slugify
@@ -39,7 +39,7 @@ from kompend.logging import get_logger
 from kompend.organize.engine import organize_sources, resolve_organize_config
 from kompend.output.markdown import MarkdownWriter
 from kompend.output.models import Document
-from kompend.preprocessing.parsers._registry import ParserBuildOptions, build_default_router
+from kompend.preprocessing.parsers import ParserOptions, build_parser
 from kompend.rag import build_vector_index
 
 logger = get_logger(__name__)
@@ -55,7 +55,6 @@ def wiki_ingest(
     reparse: bool | None = None,
     workers: int = 1,
     in_place: bool = False,
-    parser: str | None = None,
     tags: list[str] | None = None,
     config_file: str | None = None,
 ) -> dict[str, Any]:
@@ -88,15 +87,14 @@ def wiki_ingest(
     if not all_input_files:
         return {"status": "error", "message": f"No supported files found in {sources_dir}."}
 
-    images_dir = VaultPaths(base_dir).images_dir
-    router = build_default_router(ParserBuildOptions.from_config(cfg, images_dir=images_dir))
+    document_parser = build_parser(ParserOptions.from_config(cfg, base_dir=base_dir))
 
     try:
         ingest_start = time.monotonic()
         result = ingest_documents(
             files=all_input_files,
             base_dir=base_dir,
-            router=router,
+            parser=document_parser,
             reparse=bool(cfg.kompend.compile.reparse or cfg.kompend.compile.no_cache),
             config=dict(cfg.flat()) if hasattr(cfg, "flat") else None,
             ingested_by=resolve_actor(cfg),

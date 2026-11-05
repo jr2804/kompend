@@ -25,14 +25,13 @@ from kompend.core.config import (
     OutputConfig,
     OutputFormat,
     ParsecraftJudge,
-    ParsecraftPreference,
     ResolvedConfig,
     Tier,
     TierInfo,
 )
 from kompend.core.config._configs import DecisionConfig, SearchConfig
 from kompend.core.paths import VaultPaths
-from kompend.preprocessing.parsers._registry import ParserBuildOptions
+from kompend.preprocessing.parsers.options import ParserOptions
 
 __all__ = [
     "Compiler",
@@ -107,13 +106,12 @@ class PipelineConfig:
     images_scale: float = 200.0 / 72.0  # Image resolution multiplier (200 DPI base)
     parsecraft_judge: ParsecraftJudge = ParsecraftJudge.NONE  # judge tier for the parsecraft backend
     parsecraft_judge_model: str = ""  # provider-specific model token (e.g. parable-tinyjev for ollama)
-    parsecraft_preference: ParsecraftPreference = ParsecraftPreference.BALANCED  # judge ranking axis
-    #: Parser-construction inputs, built by :meth:`ParserBuildOptions.from_config`
+    #: Parser-construction inputs, built by :meth:`ParserOptions.from_config`
     #: in :meth:`from_resolved`. ``build_pipeline`` reads this rather than
     #: reassembling the fields, so the pipeline, the CLI and the MCP server all
-    #: hand the router an identical option set — they share one parse cache
+    #: hand the parser an identical option set — they share one parse cache
     #: whose key does not cover these fields.
-    parser_options: ParserBuildOptions = field(default_factory=ParserBuildOptions)
+    parser_options: ParserOptions = field(default_factory=ParserOptions)
     source_tags: list[str] = field(default_factory=list)  # CLI-provided source tags
     search: SearchConfig = field(default_factory=SearchConfig)  # search config (contextual enrichment gate lives here)
     attachments_ingest_adopted: bool = False  # attachments.ingest_adopted: global gate — manifest flag AND this gate decides ingestion
@@ -220,7 +218,6 @@ class PipelineConfig:
             privacy_filter=kompend.trust.privacy_filter,
             parsecraft_judge=kompend.ingest.parsecraft_judge,
             parsecraft_judge_model=kompend.ingest.parsecraft_judge_model,
-            parsecraft_preference=kompend.ingest.parsecraft_preference,
             parse_min_free_commit_mb=kompend.ingest.parse_min_free_commit_mb,
             max_concurrent_heavy_parses=kompend.ingest.max_concurrent_heavy_parses,
             memory_enabled=kompend.compile.memory_enabled,
@@ -242,7 +239,7 @@ class PipelineConfig:
         )
         # Assigned after construction because ``paths`` needs a bound instance;
         # re-deriving the vault layout here would duplicate it.
-        pipeline_config.parser_options = ParserBuildOptions.from_config(cfg, images_dir=pipeline_config.paths.images_dir)
+        pipeline_config.parser_options = ParserOptions.from_config(cfg, base_dir=pipeline_config.paths.base_dir)
         return pipeline_config
 
     # Sub-configs (additive for backward compatibility)

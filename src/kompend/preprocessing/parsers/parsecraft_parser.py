@@ -33,12 +33,12 @@ from parsecraft.backends import BackendRegistry, default_registry
 from parsecraft.backends.protocol import SourceDocument
 from parsecraft.environment import (
     EnvironmentInfo,
-    constraints_from_environment,
     probe_environment,
 )
 from parsecraft.ir.models import AssetKind, ChunkKind, DocumentResult, ExtractedAsset, StructuredChunk
 from parsecraft.pipeline import (
     ALL_PASSES_FAILED_CODE,
+    DEGRADED_EMPTY_OUTPUT_CODE,
     MEDIA_TYPES,
     PageGroup,
     PipelineResult,
@@ -53,15 +53,12 @@ from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from parsecraft.routing.judge_providers import JudgeError, resolve_judge
 from parsecraft.routing.models import RoutingPreference
 
-from kompend.core.config import ImageMode, ParsecraftJudge, ParsecraftPreference
+from kompend.core.config import ImageMode, ParsecraftJudge
 from kompend.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from kompend.logging import get_logger
 from kompend.preprocessing.images import ImageStore, asset_for_chunk, assets_by_id
-from kompend.preprocessing.parsers._registry import (
-    ParserBuildOptions,
-    ParserName,
-    register_backend,
-)
+from kompend.preprocessing.parsers.options import PARSER_PARSECRAFT, ParserOptions
+from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingConfig, constraints_for, load_parsecraft_config
 
 #: parsecraft chunk kind → kompend element type. Kinds without a kompend equivalent
 #: (header/footer/quote/unknown/caption) map to TEXT — they carry content and
@@ -99,12 +96,6 @@ DOCLING_THREADS_ENV: Final[str] = "DOCLING_RS_PDF_THREADS"
 #: exports no symbol for it, so the literal lives here, once.
 DEGRADED_BLANK_PAGE = "degraded-blank-page"
 
-# The executor's companion to the routing marker: an OCR-capable backend ran and
-# returned nothing without explaining itself. parsecraft uses this literal for the
-# comparison inside its own CLI but does not re-export the constant from
-# ``parsecraft.pipeline`` yet, so the spelling lives here once (pc-1 has the ask).
-DEGRADED_EMPTY_OUTPUT = "degraded-empty-output"
-
 logger = get_logger(__name__)
 
 
@@ -115,7 +106,7 @@ class ParsecraftParser:
     subclass: it carries parsecraft-specific constructor state (the backend
     registry) that the kompend base has no business knowing about. The registry
     binds it through an explicit factory, and ``supported_extensions`` /
-    ``can_parse`` / ``parse`` satisfy the structural surface the router needs.
+    ``can_parse`` / ``parse`` satisfy the structural surface ``DocumentParser`` needs.
     """
 
     #: Derived from parsecraft's own capability table (``MEDIA_TYPES``), not
@@ -130,41 +121,31 @@ class ParsecraftParser:
         *,
         parsecraft_judge: ParsecraftJudge = ParsecraftJudge.NONE,
         parsecraft_judge_model: str = "",
-        parsecraft_preference: ParsecraftPreference = ParsecraftPreference.BALANCED,
-        parsecraft_allow_ocr: bool | None = None,
-        parsecraft_engines: list[str] | None = None,
-        parsecraft_preferred_backend: str | None = None,
-        parsecraft_only_backend: str | None = None,
-        parsecraft_backend_options: dict[str, dict[str, str | int | float | bool]] | None = None,
+        parsecraft_config_files: tuple[Path, ...] = (),
+        parsecraft_config: ParsecraftRoutingConfig | None = None,
         parsecraft_docling_threads: int | None = None,
         images_dir: Path | None = None,
         image_mode: ImageMode = ImageMode.FILE,
     ) -> None:
         self._registry = registry
         self._environment: EnvironmentInfo | None = None
-        #: Routing inputs — the same five keys the config exposes under
-        #: ``[ingest] parsecraft_*``. ``"none"`` keeps the deterministic rule
-        #: table; any other judge value resolves to a real :class:`RoutingJudge`
-        #: once ``parse()`` runs (and only then, so a misconfigured provider
-        #: never costs anything at CLI ``--help`` time).
-        #: ``parsecraft_allow_ocr`` is read, validated and fingerprinted here so
-        #: the cache invalidates the moment it changes, and it reaches
-        #: parsecraft's planner immediately (a plain constraint input).
+        #: An already-loaded parsecraft config, for a caller that resolved it
+        #: itself (tests, or a host that wants several parsers to share one
+        #: read). ``None`` loads it lazily from ``_config_files`` on first use.
+        self._parsecraft_config: ParsecraftRoutingConfig | None = parsecraft_config
+        #: Which provider credential to spend on the routing judge, and its model
+        #: token. ``none`` keeps the deterministic rule table; any other judge
+        #: value resolves to a real :class:`RoutingJudge` once ``parse()`` runs
+        #: (and only then, so a misconfigured provider never costs anything at CLI
+        #: ``--help`` time). Everything else about routing — preference, OCR
+        #: permission, engines, backend pins and per-backend options — is read from
+        #: parsecraft's own config files, never mirrored here.
         self._judge_name = parsecraft_judge
         self._judge_model = parsecraft_judge_model
-        self._judge_preference = parsecraft_preference
-        self._allow_ocr = parsecraft_allow_ocr
-        self._engines: tuple[str, ...] = tuple(parsecraft_engines or ())
-        self._preferred_backend = _parse_backend_name(parsecraft_preferred_backend)
-        self._only_backend = _parse_backend_name(parsecraft_only_backend)
-        #: Per-backend options the user configured (`[ingest] parsecraft_backend_options`).
-        #: They are merged over the derived ones, so a user option wins over the
-        #: adapter's default for the same key.
-        self._backend_options_override = {backend: dict(options) for backend, options in (parsecraft_backend_options or {}).items()}
-        #: Parsed once — every deterministic-path construction reuses it, so the
-        #: knob reaches the rule table even when no provider judge is configured
-        #: (parsecraft's ``DeterministicJudge`` tilts its VRAM tiebreak by it).
-        self._preference = _parse_preference(parsecraft_preference)
+        #: The config files to read, lowest priority first. Resolved once per
+        #: instance alongside the environment probe, so a hundred vault files do
+        #: not re-read the same TOML a hundred times.
+        self._config_files = tuple(parsecraft_config_files)
         self._judge: RoutingJudge | None = None
         self._judge_fallback: RoutingJudge | None = None  # DeterministicJudge after a real judge failed
         self._judge_degraded = False  # live judge dropped this run (warn once, no retry)
@@ -190,26 +171,12 @@ class ParsecraftParser:
         """Parse *source_file* through parsecraft and map the IR to kompend."""
         registry = self._registry if self._registry is not None else default_registry
         media_type = media_type_for(source_file)
-        self._ensure_environment()
-        assert self._environment is not None  # noqa: S101 — ty cannot narrow through _ensure_environment
-        # ``max_passes`` caps ``PageRoute.candidates`` (planner keeps the ranked
-        # order up to it). parsecraft's default of 1 means one attempt with no
-        # fallback entry, so a backend that is missing, broken or excluded by the
-        # GPU gate fails the document. Upstream chose 1 to fail loud, which is the
-        # honest library default. kompend's policy is the opposite — a wiki build is
-        # best-effort extraction and prefers a degraded parse to a failed one —
-        # so pass 3 explicitly rather than reimplementing fallback outside the
-        # API. pc-1's ruling (2026-10-11): upstream keeps 1; this is a caller's
-        # policy value, not a fork.
-        constraints = constraints_from_environment(
-            self._environment,
+        environment = self._ensure_environment()
+        constraints = constraints_for(
+            self.parsecraft_settings(),
+            environment,
             formats={media_type},
-            max_passes=3,
-            allow_ocr=self._allow_ocr,
-            engines=self._engines or None,
-            backend_options=self._backend_options(),
-            preferred_backend=self._preferred_backend,
-            only_backend=self._only_backend,
+            cached_assets=environment.cached_assets,
         )
 
         source = SourceDocument(uri=source_file.resolve().as_uri())
@@ -235,7 +202,7 @@ class ParsecraftParser:
             author="",
             page_count=len(document.pages),
             metadata={
-                "parser": ParserName.PARSECRAFT,
+                "parser": PARSER_PARSECRAFT,
                 "backends": _winning_backends(result.groups),
                 "quality_signals": [signal.name for signal in document.quality],
                 "degraded_pages": sorted(
@@ -257,20 +224,26 @@ class ParsecraftParser:
         judge, the preference and the effort are deliberately absent — a
         version bump or an unrelated bug fix must not re-parse a vault, while a
         changed backend set must.
+
+        The restrictions are read off the *resolved* routing config, not off
+        kompend's own attributes: they are parsecraft's settings now, so a
+        change in ``parsecraft.toml`` has to show up here or the parse cache
+        would serve documents the new routing never produced.
         """
         env = self._ensure_environment()
+        routing = self.parsecraft_settings().routing
         parts = [
             f"backends:{','.join(sorted(env.backends))}",
             f"extras:{','.join(sorted(env.installed_extras))}",
         ]
-        if self._only_backend is not None:
-            parts.append(f"only:{self._only_backend}")
-        if self._preferred_backend is not None:
-            parts.append(f"preferred:{self._preferred_backend}")
-        if self._engines:
-            parts.append(f"engines:{','.join(sorted(self._engines))}")
-        if self._allow_ocr is not None:
-            parts.append(f"ocr:{'on' if self._allow_ocr else 'off'}")
+        if routing.only_backend is not None:
+            parts.append(f"only:{routing.only_backend}")
+        if routing.preferred_backend is not None:
+            parts.append(f"preferred:{routing.preferred_backend}")
+        if routing.engines:
+            parts.append(f"engines:{','.join(sorted(routing.engines))}")
+        if routing.allow_ocr is not None:
+            parts.append(f"ocr:{'on' if routing.allow_ocr else 'off'}")
         return "|".join(parts)
 
     def cache_identity(self) -> str:
@@ -301,6 +274,8 @@ class ParsecraftParser:
         for no behavioural change.
         """
         env = self._ensure_environment()
+        settings = self.parsecraft_settings()
+        routing = settings.routing
         host = f"extras:{','.join(sorted(env.installed_extras))}|parsecraft:{_parsecraft_version()}|judge_extras:1"
         # Routing segments: judge (when configured) or preference (when non-default),
         # plus independent `effort:` and `ocr:` segments when the user set them.
@@ -309,21 +284,21 @@ class ParsecraftParser:
         # the leading empty join renders as `""`, not `"|"`.
         parts: list[str] = []
         if self._judge_name is not ParsecraftJudge.NONE:
-            parts.append(f"judge:{self._judge_name}/{self._judge_model}:{self._judge_preference}")
-        elif self._preference is not RoutingPreference.BALANCED:
-            parts.append(f"preference:{self._judge_preference}")
-        if self._allow_ocr is not None:
-            parts.append("ocr:on" if self._allow_ocr else "ocr:off")
-        if self._engines:
-            parts.append(f"engines:{','.join(sorted(self._engines))}")
-        if self._preferred_backend is not None:
-            parts.append(f"preferred_backend:{self._preferred_backend}")
-        if self._only_backend is not None:
-            parts.append(f"only_backend:{self._only_backend}")
-        if self._backend_options_override:
+            parts.append(f"judge:{self._judge_name}/{self._judge_model}:{routing.preference}")
+        elif routing.preference is not RoutingPreference.BALANCED:
+            parts.append(f"preference:{routing.preference}")
+        if routing.allow_ocr is not None:
+            parts.append("ocr:on" if routing.allow_ocr else "ocr:off")
+        if routing.engines:
+            parts.append(f"engines:{','.join(sorted(routing.engines))}")
+        if routing.preferred_backend is not None:
+            parts.append(f"preferred_backend:{routing.preferred_backend}")
+        if routing.only_backend is not None:
+            parts.append(f"only_backend:{routing.only_backend}")
+        if routing.backend_options:
             rendered = ",".join(
                 f"{backend}:{','.join(f'{key}={value}' for key, value in sorted(options.items()))}"
-                for backend, options in sorted(self._backend_options_override.items())
+                for backend, options in sorted(routing.backend_options.items())
             )
             parts.append(f"backend_options:{rendered}")
         # The image mode changes what an element carries (a cached file path or
@@ -335,6 +310,36 @@ class ParsecraftParser:
             parts.append(f"images:{self._images.mode.value}")
         routing = "|".join(parts)
         return f"{host}|{routing}"
+
+    def parsecraft_settings(self) -> ParsecraftRoutingConfig:
+        """Parsecraft's own configuration, read once per instance.
+
+        Reading it here rather than per file matters for the same reason the
+        probe does: a vault of a hundred documents must not read the same TOML
+        a hundred times. It is also what makes the parse-cache identity and the
+        planner see the same values — both read this one object.
+        """
+        if self._parsecraft_config is None:
+            self._parsecraft_config = load_parsecraft_config(self._config_files)
+        return self._parsecraft_config
+
+    @classmethod
+    def from_options(cls, options: ParserOptions) -> ParsecraftParser:
+        """Build a parser from the resolved construction options.
+
+        The single place where :class:`ParserOptions` meets this backend's
+        constructor, so the config-level inputs land on the parser without
+        leaking a second option vocabulary into the pipeline.
+        """
+        return cls(
+            parsecraft_judge=options.parsecraft_judge,
+            parsecraft_judge_model=options.parsecraft_judge_model,
+            parsecraft_config_files=options.parsecraft_config_files,
+            parsecraft_config=options.parsecraft_config,
+            parsecraft_docling_threads=options.parsecraft_docling_threads,
+            images_dir=options.images_dir,
+            image_mode=options.image_mode,
+        )
 
     def _apply_docling_thread_limit(self) -> None:
         """Bound the docling engine's ONNX thread count for this process.
@@ -387,14 +392,14 @@ class ParsecraftParser:
         the consumer side). Asking for figures while storing none would pay the
         engine's crop cost for nothing, hence the mode is the only input.
 
-        The user's ``[ingest] parsecraft_backend_options`` are merged over the
-        derived ones — an explicit user option wins over the derived default for
-        the same key.
+        The user's ``[routing] backend_options`` (parsecraft's config) are merged
+        over the derived ones — an explicit user option wins over the derived
+        default for the same key.
         """
         options: dict[str, dict[str, str | int | float | bool]] = {}
         if self._images.enabled:
             options.setdefault("liteparse", {})["extract_images"] = True
-        for backend, backend_options in self._backend_options_override.items():
+        for backend, backend_options in self.parsecraft_settings().routing.backend_options.items():
             merged = options.setdefault(backend, {})
             merged.update(backend_options)
         return options
@@ -461,7 +466,7 @@ class ParsecraftParser:
         over-demotion of every extra-gated convert for one that has them
         (knox-j5ig).
         """
-        return DeterministicJudge(self._preference, installed_extras=self._ensure_environment().installed_extras)
+        return DeterministicJudge(self.parsecraft_settings().routing.preference, installed_extras=self._ensure_environment().installed_extras)
 
     def _execute_with_judge(
         self,
@@ -556,7 +561,7 @@ class ParsecraftParser:
         try:
             self._judge = resolve_judge(
                 f"{self._judge_name}/{self._judge_model}",
-                preference=_parse_preference(self._judge_preference),
+                preference=self.parsecraft_settings().routing.preference,
             )
         except JudgeError as exc:
             # Every resolution failure is a JudgeError subclass: JudgeSpecError
@@ -607,19 +612,6 @@ def _parsecraft_version() -> str:
         return version("parsecraft")
     except PackageNotFoundError:  # pragma: no cover — parsecraft is an extra
         return "unknown"
-
-
-def _parse_preference(preference: ParsecraftPreference | str) -> RoutingPreference:
-    """Map the config enum to parsecraft's ``RoutingPreference``.
-
-    Both vocabularies are closed and validated —
-    :class:`~kompend.core.config.ParsecraftPreference` at the config schema,
-    ``RoutingPreference`` here — so an unresolvable value is a vocabulary
-    drift between the layers and raises instead of silently degrading to
-    BALANCED (a mismatch must not quietly reshape routing).
-    """
-    member = preference if isinstance(preference, ParsecraftPreference) else ParsecraftPreference(preference)
-    return RoutingPreference(member.value)
 
 
 def _warn_on_empty_pages(
@@ -684,7 +676,7 @@ def _empty_output_detail(document: DocumentResult, page_numbers: list[int]) -> s
     details = {
         f"{signal.detail} ({signal.name})"
         for signal in document.quality
-        if signal.page_number in wanted and signal.name == DEGRADED_EMPTY_OUTPUT and signal.detail
+        if signal.page_number in wanted and signal.name == DEGRADED_EMPTY_OUTPUT_CODE and signal.detail
     }
     if not details:
         return ""
@@ -922,56 +914,7 @@ def _serves_format(backend_name: str, media_type: str) -> bool:
     return False
 
 
-def _parse_backend_name(name: str | None) -> str | None:
-    """Validate a backend override against parsecraft's registered backends.
-
-    parsecraft raises its own usage error for an unknown name, but only once the
-    source is opened — a typo would surface as a failed run rather than a bad
-    config. Validating here keeps the failure at the router boundary and names
-    what is actually available. kompend's ``KNOWN_BACKENDS`` is *not* the source
-    of truth here: it holds kompend's own parser adapters (exactly one, the
-    parsecraft adapter), not parsecraft's sub-backends.
-
-    ``None`` passes through untouched.
-    """
-    if name is None:
-        return None
-    # ``list_backends()`` yields descriptors, not names. Comparing a bare string
-    # against a list of descriptors would reject every valid backend.
-    known = {descriptor.name for descriptor in default_registry.list_backends()}
-    if name not in known:
-        msg = f"unknown parsecraft backend {name!r}; expected one of: {', '.join(sorted(known))}"
-        raise ValueError(msg)
-    return name
-
-
 def _winning_backends(groups: list[PageGroup]) -> str:
     """Comma-separated backends that won page groups — parse provenance."""
     names = {group.winner for group in groups if group.winner is not None}
     return ",".join(sorted(names))
-
-
-def _factory(options: ParserBuildOptions) -> ParsecraftParser:
-    """Build a parsecraft backend instance from the resolved build options.
-
-    The judge tier, OCR permission and backend options are wired
-    through here so the config-level ``[ingest]`` routing inputs land on the
-    parser without leaking into the router — the factory is the single point
-    where ``ParserBuildOptions`` meets a backend-specific constructor.
-    """
-    return ParsecraftParser(
-        parsecraft_judge=options.parsecraft_judge,
-        parsecraft_judge_model=options.parsecraft_judge_model,
-        parsecraft_preference=options.parsecraft_preference,
-        parsecraft_allow_ocr=options.parsecraft_allow_ocr,
-        parsecraft_engines=options.parsecraft_engines,
-        parsecraft_preferred_backend=options.parsecraft_preferred_backend,
-        parsecraft_only_backend=options.parsecraft_only_backend,
-        parsecraft_backend_options=options.parsecraft_backend_options,
-        parsecraft_docling_threads=options.parsecraft_docling_threads,
-        images_dir=options.images_dir,
-        image_mode=options.image_mode,
-    )
-
-
-register_backend(ParserName.PARSECRAFT, _factory, parser_cls=ParsecraftParser)  # ty: ignore[invalid-argument-type] — duck-typed BaseParser protocol

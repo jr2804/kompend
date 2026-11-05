@@ -29,7 +29,7 @@ from kompend.core.pipeline.orchestrator import build_pipeline
 from kompend.core.pipeline.stages._pipeline import WikiPipeline
 from kompend.core.pipeline.state import TierStateStore
 from kompend.core.reporting.handle import RunHandle
-from kompend.preprocessing.parsers.base import BaseParser, FileExtension, ParserRouter
+from kompend.preprocessing.parsers.base import DocumentParser, FileExtension, ParserBackend
 
 ESC = "\x1b"
 
@@ -265,24 +265,27 @@ class TestPipelineRunCancel:
 # ── ingest_documents cancellation ────────────────────────────────────────
 
 
-class _FakeParser(BaseParser):
+class _FakeParser:
     """Claims ``.md`` sources and returns empty documents (no elements)."""
 
-    supported_extensions = {FileExtension.MD}
+    figure_enrichment = False
+    supported_extensions = {FileExtension.MD.value}
+
+    def can_parse(self, source_file: Path) -> bool:
+        return source_file.suffix.lower() in self.supported_extensions
 
     def parse(self, source_file: Path) -> ParsedDocument:
         return ParsedDocument(source_file=source_file, elements=[])
 
 
-class _FakeRouter(ParserRouter):
-    """Real router subclass that records every routed path."""
+class _FakeDocumentParser(DocumentParser):
+    """Real parser wrapper that records every routed path."""
 
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(_FakeParser())
         self.routed: list[Path] = []
-        self.register(_FakeParser())
 
-    def route(self, source_file: Path) -> BaseParser | None:
+    def route(self, source_file: Path) -> ParserBackend | None:
         self.routed.append(source_file)
         return super().route(source_file)
 
@@ -290,7 +293,7 @@ class _FakeRouter(ParserRouter):
 class TestIngestCancel:
     def test_stops_at_file_boundary_and_saves_state(self, tmp_path: Path) -> None:
         files = self._make_files(tmp_path)
-        router = _FakeRouter()
+        parser = _FakeDocumentParser()
         state = CancelState()
 
         def progress(current: int, total: int, detail: str) -> None:
@@ -298,9 +301,9 @@ class TestIngestCancel:
                 state.request("double-ESC")
 
         with pytest.raises(KompendCancelled, match="double-ESC"):
-            ingest_documents(files, tmp_path, router, progress, cancel=state)
+            ingest_documents(files, tmp_path, parser, progress, cancel=state)
         # First file was fully processed; the second never started.
-        assert len(router.routed) == 1
+        assert len(parser.routed) == 1
         # Tier records for completed files were persisted before the raise
         # (graceful-cancel contract).
         reloaded = TierStateStore(VaultPaths(tmp_path).compile_state_file).load()
@@ -308,10 +311,10 @@ class TestIngestCancel:
 
     def test_completes_without_cancel(self, tmp_path: Path) -> None:
         files = self._make_files(tmp_path)
-        router = _FakeRouter()
-        result = ingest_documents(files, tmp_path, router, None)
+        parser = _FakeDocumentParser()
+        result = ingest_documents(files, tmp_path, parser, None)
         assert result.count == 3
-        assert len(router.routed) == 3
+        assert len(parser.routed) == 3
 
     @staticmethod
     def _make_files(tmp_path: Path, n: int = 3) -> list[Path]:

@@ -1,15 +1,12 @@
 """Dotted-key constants for config lookups.
 
-After the typed-config migration, most code paths use ``cfg.kompend.<path>``
-attribute access on :class:`ResolvedConfig` instead of importing these
-constants. The remaining usages are:
+The typed config (:mod:`kompend.core.config._configs`) is the canonical schema;
+reach for ``cfg.kompend.<path>`` unless a dotted string is what you need. These
+constants exist for the three call sites that cannot use attribute access:
 
 - CLI override dicts (``overrides[KEY] = value``) — key identifier needed
 - DEFAULTS dict lookups (``DEFAULTS.get(KEY)``) — key identifier needed
 - Tests that build resolved configs and want the dotted string explicitly
-
-The typed config (:mod:`kompend.core.config._configs`) is the canonical schema
-and should be preferred for new code.
 """
 
 from typing import Final
@@ -24,19 +21,12 @@ PATHS_STATE_DIR: Final[str] = "paths.state_dir"
 PATHS_RECURSIVE: Final[str] = "paths.recursive"
 
 # ── ingest section ──
-
-#: The parser-backend vocabulary lives in
-#: :mod:`kompend.preprocessing.parsers._registry` (``ParserName`` /
-#: ``DEFAULT_PARSER``): it is a registry domain, not a config key — there is no
-#: ``ingest.parser`` setting because parsecraft routes internally, so there is
-#: nothing left for a selector to select between.
+#: The parser vocabulary lives in :mod:`kompend.preprocessing.parsers`
+#: (``PARSER_PARSECRAFT``): it is a parser domain, not a config key — there is no
+#: ``ingest.parser`` setting because there is one parser and parsecraft routes
+#: inside it, so there is nothing left for a selector to select between.
 INGEST_PARSECRAFT_JUDGE: Final[str] = "ingest.parsecraft_judge"
 INGEST_PARSECRAFT_JUDGE_MODEL: Final[str] = "ingest.parsecraft_judge_model"
-INGEST_PARSECRAFT_PREFERENCE: Final[str] = "ingest.parsecraft_preference"
-INGEST_PARSECRAFT_ALLOW_OCR: Final[str] = "ingest.parsecraft_allow_ocr"
-INGEST_PARSECRAFT_ENGINES: Final[str] = "ingest.parsecraft_engines"
-INGEST_PARSECRAFT_PREFERRED_BACKEND: Final[str] = "ingest.parsecraft_preferred_backend"
-INGEST_PARSECRAFT_ONLY_BACKEND: Final[str] = "ingest.parsecraft_only_backend"
 
 # ── downloader section ──
 DOWNLOADER_UNDETECTED: Final[str] = "downloader.undetected"

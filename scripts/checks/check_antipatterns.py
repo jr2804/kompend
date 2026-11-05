@@ -167,8 +167,6 @@ _VOCAB_ENUM_NAMES: frozenset[str] = frozenset(
         "NodeType",
         "OutputFormat",
         "ParsecraftJudge",
-        "ParsecraftPreference",
-        "ParserName",
         "ReasoningEffort",
         "Tier",
     }

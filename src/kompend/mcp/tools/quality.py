@@ -36,7 +36,7 @@ from kompend.lint.remediation import remediate, remediation_to_text
 from kompend.lint.runner import report_to_text
 from kompend.logging import get_logger
 from kompend.output.renderer import format_output
-from kompend.preprocessing.parsers._registry import get_registered_parsers
+from kompend.preprocessing.parsers import PARSER_PARSECRAFT, build_parser
 from kompend.review import ReviewQueue
 
 logger = get_logger(__name__)
@@ -572,18 +572,20 @@ def log(
 def list_parsers(
     json_output: bool = False,
 ) -> dict[str, Any]:
-    """List all registered parsers (built-in + external + HTTP)."""
-    parsers = get_registered_parsers()
+    """Show the ingestion parser and the suffixes it claims."""
+    parser = build_parser().parser
+    extensions = sorted(str(extension) for extension in parser.supported_extensions)
+    parsers = [
+        {
+            "name": PARSER_PARSECRAFT,
+            "type": "built-in",
+            "extensions": extensions,
+            "figure_enrichment": parser.figure_enrichment,
+            "metadata": {},
+        }
+    ]
 
     if json_output:
         return {"status": "ok", "parsers": parsers}
 
-    if not parsers:
-        return {"status": "ok", "message": "No parsers registered."}
-
-    lines = [f"Registered parsers ({len(parsers)}):"]
-    for p in parsers:
-        exts = ", ".join(p.get("extensions", []) or [])
-        ptype = p.get("type", "built-in")
-        lines.append(f"  - {p['name']} ({ptype})  [{exts}]")
-    return {"status": "ok", "parsers_text": "\n".join(lines)}
+    return {"status": "ok", "parsers_text": f"Ingestion parser: {PARSER_PARSECRAFT} (built-in)\nFormats ({len(extensions)}): {', '.join(extensions)}"}

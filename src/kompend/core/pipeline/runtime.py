@@ -28,7 +28,7 @@ from kompend.core.pipeline.state import TierState, TierStateStore
 from kompend.core.resolution.xref_checker import CrossReferenceResult
 from kompend.output.base import BaseOutputWriter
 from kompend.preprocessing.downloaders.base import BaseDownloader
-from kompend.preprocessing.parsers.base import ParserRouter
+from kompend.preprocessing.parsers.base import DocumentParser
 from kompend.resolution.base import BaseResolver
 from kompend.types import MetadataValue
 
@@ -51,7 +51,7 @@ class PipelineRuntime(Protocol):
     base_directory: Path
 
     # ── Processing components ──────────────────────────────────────────
-    router: ParserRouter | None
+    parser: DocumentParser | None
     chunker: HierarchicalChunker | None
     resolver: BaseResolver | None
     compiler: BaseCompiler | None

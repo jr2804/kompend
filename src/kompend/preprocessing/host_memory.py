@@ -110,7 +110,7 @@ class HeavyParseGuard:
             f"(one docling conversion peaks at about {MEASURED_DOCLING_COMMIT_BYTES / MEGABYTE:.0f} MB). "
             "Free memory and run again, lower [ingest] parse_min_free_commit_mb, or bound the engine "
             "itself with [ingest] parsecraft_docling_threads = 1 and "
-            "[ingest] parsecraft_backend_options.docling = { do_ocr = false, do_table_structure = false }.",
+            "[routing.backend_options.docling] in parsecraft's config (do_ocr = false, do_table_structure = false).",
         )
 
 
