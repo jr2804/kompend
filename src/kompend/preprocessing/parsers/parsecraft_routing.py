@@ -28,7 +28,9 @@ kompend mirrors neither the provider vocabulary nor the model token. The one
 thing kompend adds is precedence: it reads the *vault* file, which parsecraft's
 own ``select_judge_spec`` cannot see (it loads the cwd project file only), so a
 ``kompend`` run honours ``<vault>/.kompend/parsecraft.toml`` exactly as it
-honours every other routing key.
+honours every other routing key. That gap is upstream's
+(https://github.com/jr2804/parsecraft/issues/9); when it closes, this module
+drops the mirror and calls ``select_judge_spec(None, settings)``.
 
 When kompend grows a decision model of its own (``[decision]``), it will reach
 parsecraft through ``register_judge_provider``: a loader that answers
