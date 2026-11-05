@@ -93,7 +93,7 @@ instantiate a backend.
 `cache_identity()` alone — is the parse-cache key
 (`PARSE_CACHE_PARSER_KEY`). The adapter's `backend_identity()` names what can
 parse here (registered backends, installed extras, the resolved
-`[routing]` pins); `cache_identity()` names the routing inputs (judge, model,
+`[routing]` pins); `cache_identity()` names the routing inputs (judge spec,
 preference, OCR permission, engines, backend options, image mode). A parsecraft
 version bump is deliberately absent: a bug-fix release must not re-parse a
 vault, while a changed backend set or a changed routing value must.

@@ -25,8 +25,6 @@ PATHS_RECURSIVE: Final[str] = "paths.recursive"
 #: (``PARSER_PARSECRAFT``): it is a parser domain, not a config key — there is no
 #: ``ingest.parser`` setting because there is one parser and parsecraft routes
 #: inside it, so there is nothing left for a selector to select between.
-INGEST_PARSECRAFT_JUDGE: Final[str] = "ingest.parsecraft_judge"
-INGEST_PARSECRAFT_JUDGE_MODEL: Final[str] = "ingest.parsecraft_judge_model"
 
 # ── downloader section ──
 DOWNLOADER_UNDETECTED: Final[str] = "downloader.undetected"

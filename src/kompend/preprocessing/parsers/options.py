@@ -8,10 +8,10 @@ settings — ``kompend ingest`` once passed only ``images_dir`` while ``kompend
 compile`` also passed the config-derived ``image_mode``.
 
 The routing vocabulary (preference, OCR permission, engine list, backend pins,
-per-backend options) is NOT here: it belongs to parsecraft, and its files are
-the ones that hold it (see :mod:`kompend.preprocessing.parsers.parsecraft_routing`
-for the precedence order). Only what is genuinely kompend's remains below —
-which provider credential to spend on the routing judge, how much of the host a
+per-backend options, and which judge model to ask) is NOT here: it belongs to
+parsecraft, and its files are the ones that hold it (see
+:mod:`kompend.preprocessing.parsers.parsecraft_routing` for the precedence
+order). Only what is genuinely kompend's remains below — how much of the host a
 docling pass may use, and where figures land.
 """
 
@@ -21,7 +21,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from kompend.core.config import ImageMode, ParsecraftJudge, ResolvedConfig
+from kompend.core.config import ImageMode, ResolvedConfig
 from kompend.core.paths import PARSECRAFT_PROJECT_FILE, VaultPaths
 from kompend.preprocessing.parsers.base import IMAGE_SCALE_DEFAULT
 from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingConfig
@@ -39,13 +39,6 @@ class ParserOptions:
     images_dir: Path | None = None
     image_mode: ImageMode = ImageMode.FILE
     images_scale: float = IMAGE_SCALE_DEFAULT
-    #: Judge-tier routing for the parsecraft backend. `none` leaves the
-    #: deterministic rule table in place. Any non-`none` value is the SDK
-    #: provider name (`ollama`, `zen`, `typesafe-ai`).
-    parsecraft_judge: ParsecraftJudge = ParsecraftJudge.NONE
-    #: Provider-specific model token for the judge (e.g. `parable-tinyjev` for
-    #: ollama). Empty when the judge is `none`.
-    parsecraft_judge_model: str = ""
     #: parsecraft's own config files for this run, lowest priority first: the
     #: vault's ``.kompend/parsecraft.toml``, then ``./parsecraft.toml``.
     #: parsecraft's engine layers its global file below them and the
@@ -73,8 +66,6 @@ class ParserOptions:
         return cls(
             images_dir=paths.images_dir,
             image_mode=kompend.compile.image_mode,
-            parsecraft_judge=kompend.ingest.parsecraft_judge,
-            parsecraft_judge_model=kompend.ingest.parsecraft_judge_model,
             parsecraft_config_files=(paths.parsecraft_config_file, Path.cwd() / PARSECRAFT_PROJECT_FILE),
             parsecraft_docling_threads=kompend.ingest.parsecraft_docling_threads,
         )

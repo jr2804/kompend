@@ -13,7 +13,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 import pytest
-from parsecraft.cli.config import ParsecraftConfig, RoutingSettings
+from parsecraft.cli.config import JudgeSettings, ParsecraftConfig, RoutingSettings
 
 from kompend.core.config import resolve_config
 from kompend.core.models import ParsedDocument
@@ -49,8 +49,6 @@ def test_parser_options_defaults() -> None:
     assert opts.images_scale > 0
     # Only what is kompend's own lives here; every routing lever belongs to
     # parsecraft's config files.
-    assert opts.parsecraft_judge == "none"
-    assert opts.parsecraft_judge_model == ""
     assert opts.parsecraft_config_files == ()
 
 
@@ -80,13 +78,11 @@ def test_backend_options_are_merged_over_the_derived_ones() -> None:
 
 def test_from_options_builds_the_adapter() -> None:
     """``ParsecraftParser.from_options`` is the one bridge from config to constructor."""
+    settings = ParsecraftConfig(routing=RoutingSettings(allow_ocr=False), judge=JudgeSettings(model="ollama/parable-tinyjev"))
     parser = ParsecraftParser.from_options(
-        ParserOptions(
-            parsecraft_judge_model="parable-tinyjev",
-            parsecraft_config=ParsecraftRoutingConfig.from_settings(ParsecraftConfig(routing=RoutingSettings(allow_ocr=False))),
-        ),
+        ParserOptions(parsecraft_config=ParsecraftRoutingConfig.from_settings(settings)),
     )
-    assert parser._judge_model == "parable-tinyjev"  # noqa: SLF001 — the wiring is the contract
+    assert parser.parsecraft_settings().judge_spec == "ollama/parable-tinyjev"
 
 
 def test_supported_extensions_union_the_table_with_the_parser() -> None:

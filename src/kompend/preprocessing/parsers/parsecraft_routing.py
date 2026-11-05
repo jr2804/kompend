@@ -22,6 +22,21 @@ Two rules shape it:
   than parsecraft's fail-loud 1. It is injected at the default layer, so a user
   who wants the upstream behaviour writes ``max_passes = 1``.
 
+The routing judge is parsecraft's setting too. ``[judge] model`` in one of the
+files above names it, and ``PARSECRAFT_JUDGE_MODEL`` overrides it for one run;
+kompend mirrors neither the provider vocabulary nor the model token. The one
+thing kompend adds is precedence: it reads the *vault* file, which parsecraft's
+own ``select_judge_spec`` cannot see (it loads the cwd project file only), so a
+``kompend`` run honours ``<vault>/.kompend/parsecraft.toml`` exactly as it
+honours every other routing key.
+
+When kompend grows a decision model of its own (``[decision]``), it will reach
+parsecraft through ``register_judge_provider``: a loader that answers
+``RoutingJudge.rank`` from the kompend decision model, addressed by
+``[judge] model = "kompend/<name>"``. That keeps the direction of dependency
+one-way — parsecraft never imports kompend — and means no kompend key has to
+name a provider.
+
 ``allow_ocr`` is where the two rules meet. Left unset it is ``None``, which reads
 as "let the eligibility derivation decide" — but ``RoutingSettings``'
 ``routing_constraints`` then omits the key entirely and ``RoutingConstraints``'
@@ -33,6 +48,7 @@ OCR is permitted. An explicit ``allow_ocr`` still wins.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -48,6 +64,10 @@ from parsecraft.routing import RoutingConstraints
 #: gate fails the document; a wiki build prefers a degraded parse to a failed
 #: one. Injected at the default layer — a user file overrides it.
 KOMPEND_MAX_PASSES: Final[int] = 3
+
+#: parsecraft's own override for ``[judge] model``. kompend mirrors the name, not
+#: the setting: it is parsecraft's environment variable and parsecraft's spec.
+PARSECRAFT_JUDGE_MODEL_ENV: Final[str] = "PARSECRAFT_JUDGE_MODEL"
 
 #: ``[routing]`` keys that describe the host rather than a choice. Everything a
 #: user writes for them is honoured; the rest is answered by the probe.
@@ -82,6 +102,22 @@ class ParsecraftRoutingConfig:
     def was_written(self, key: str) -> bool:
         """Whether a config layer supplied ``routing.<key>``."""
         return key in self.written
+
+    @property
+    def judge_spec(self) -> str | None:
+        """The routing judge this run should use, or ``None`` for the rule table.
+
+        ``PARSECRAFT_JUDGE_MODEL`` first, then the loaded ``[judge] model`` —
+        parsecraft's own order, minus the CLI flag, which has no kompend
+        equivalent. Reading the *loaded* settings (rather than calling
+        parsecraft's ``select_judge_spec``) is what lets a vault's
+        ``.kompend/parsecraft.toml`` select the judge: that function loads the
+        cwd project file alone.
+        """
+        from_env = os.environ.get(PARSECRAFT_JUDGE_MODEL_ENV, "").strip()
+        if from_env:
+            return from_env
+        return (self.settings.judge.model or "").strip() or None
 
     @classmethod
     def from_settings(cls, settings: ParsecraftConfig) -> ParsecraftRoutingConfig:

@@ -13,11 +13,11 @@ See also:
 
 ## Parser Backends
 
-parsecraft is the only parser path; the selector is gone. The only parser
-decision that stays kompend's is which provider credential may be spent on the
-routing judge (`[ingest] parsecraft_judge`, `parsecraft_judge_model`) plus the
-host-resource bounds on a heavy pass — see [Routing settings](#routing-settings).
-Everything else about routing is parsecraft's own configuration, read from
+parsecraft is the only parser path; the selector is gone. No parser decision is
+kompend's any more: routing *and* the judge are parsecraft's configuration, read
+from parsecraft's own files. What stays kompend's is the host-resource bounds on
+a heavy pass — see [Routing settings](#routing-settings). Everything else about
+routing is parsecraft's own configuration, read from
 parsecraft's files, never mirrored into `[ingest]`.
 
 - `parsecraft` — an external document-intelligence pipeline that routes each
@@ -42,9 +42,8 @@ backends:
 
 The judge tier needs no extra: `typesafe-sdk` — shared by the `ollama`, `zen`
 and `typesafe-ai` providers — is base-install in parsecraft ≥ 2026.10.5, so it
-arrives with kompend itself. The judge is enabled purely by config
-(`[ingest] parsecraft_judge`, `parsecraft_judge_model`; the ranking axis it
-works against is `[routing] preference` in parsecraft's config —
+arrives with kompend itself. The judge is enabled purely by parsecraft's config
+(`[judge] model`; the ranking axis it works against is `[routing] preference` —
 see [Judge tier](#judge-tier-model-assisted-per-page-routing)).
 
 ### Why `marker` cannot be a locked extra
@@ -114,12 +113,11 @@ instead of parsing nothing.
 
 ## Routing settings
 
-kompend builds one parser — parsecraft's — and hands it the two decisions that
-are genuinely kompend's: which provider credential may be spent on the routing
-judge (`ingest.parsecraft_judge`, `ingest.parsecraft_judge_model`) and how much
-of the host a docling pass may use (`ingest.parsecraft_docling_threads`,
-`ingest.parse_min_free_commit_mb`, `ingest.max_concurrent_heavy_parses`).
-Everything else about routing is parsecraft's config, not a kompend key.
+kompend builds one parser — parsecraft's — and hands it one option that is
+genuinely kompend's: how much of the host a docling pass may use
+(`ingest.parsecraft_docling_threads`, `ingest.parse_min_free_commit_mb`,
+`ingest.max_concurrent_heavy_parses`) plus where figures land. Routing and the
+judge are parsecraft's config, not kompend keys.
 
 The precedence, lowest first:
 
@@ -148,7 +146,8 @@ do_ocr = false
 
 kompend keeps no copy of these keys. A vault that still sets one of the six
 retired `[ingest] parsecraft_*` routing keys (preference, allow_ocr, engines,
-preferred_backend, only_backend, backend_options) loads, is warned by
+preferred_backend, only_backend, backend_options) or the retired judge pair
+(`parsecraft_judge`, `parsecraft_judge_model`) loads, is warned by
 `kompend config check`, and ignores it — they live in `REMOVED_KEYS`, and the
 table above is the only place they are read from now.
 
@@ -462,19 +461,19 @@ so `DOCLING_RS_EP=directml` answers `built without that provider … using CPU`.
 ### Judge tier: model-assisted per-page routing
 
 By default parsecraft routes with its **deterministic rule table** (format,
-VRAM budget, page intent) and never calls a model. `[ingest] parsecraft_judge`
-opts into a *judge*: a System One model that re-ranks the candidates the hard
-constraints already admitted, so a text-native PDF stays on the fast path
-while a scanned, table-heavy one is sent to a strong backend — the speed vs.
-accuracy trade-off in [Parser Strategy](#parser-strategy-speed-vs-accuracy),
-decided per page instead of per configuration.
+VRAM budget, page intent) and never calls a model. `[judge] model` opts into a
+*judge*: a System One model that re-ranks the candidates the hard constraints
+already admitted, so a text-native PDF stays on the fast path while a scanned,
+table-heavy one is sent to a strong backend — the speed vs. accuracy trade-off
+in [Parser Strategy](#parser-strategy-speed-vs-accuracy), decided per page
+instead of per configuration.
 
 ```toml
-[ingest]
-parsecraft_judge = "ollama"            # none | ollama | zen | typesafe-ai
-parsecraft_judge_model = "parable-tinyjev"
+# ~/.config/parsecraft/config.toml, <wiki>/.kompend/parsecraft.toml or
+# ./parsecraft.toml — the vault file outranks the global one.
+[judge]
+model = "ollama/parable-tinyjev"       # <provider>/<model>; omit for the rule table
 
-# ~/.config/parsecraft/config.toml or <wiki>/.kompend/parsecraft.toml
 [routing]
 preference = "balanced"                # speed | balanced | quality
 # allow_ocr = false                    # unset = derive from extras/engine; false bans OCR
@@ -485,6 +484,12 @@ effort = "flash"                       # flash | medium | high | xhigh
 [routing.backend_options.liteparse]
 extract_vector_graphics = true         # recover table grids from vector records
 ```
+
+`PARSECRAFT_JUDGE_MODEL` overrides `[judge] model` for one run. Provider
+endpoints and credentials live in parsecraft's `[providers.<name>]` blocks
+(`api_key` must reference a secret, e.g. `api_key = "${TYPESAFE_API_KEY}"`).
+kompend has no judge key of its own: the spec is a parsecraft setting like every
+other routing lever.
 
 - **`ollama`** is the offline choice: it talks to your local daemon
   (`http://localhost:11434`), needs no credential, and the model must be a

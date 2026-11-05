@@ -195,7 +195,7 @@ The main configuration sections:
 | `[compile.embedding]` | Embedding model for the vector index (`<provider>:<model>`, e.g. `ollama:granite-embedding:278m`; empty disables) |
 | `[compile.memory]` | Memory lifecycle (confidence decay, tiers) |
 | `[display]` | Output limits (excerpts, snippets, description length, CLI previews) |
-| `[ingest]` | Ingestion settings: judge credentials and heavy-parse limits; routing itself is parsecraft's config (`~/.config/parsecraft/config.toml`, `<wiki>/.kompend/parsecraft.toml`, `./parsecraft.toml`) |
+| `[ingest]` | Ingestion settings: heavy-parse limits and where figures land; routing *and* the judge are parsecraft's config (`~/.config/parsecraft/config.toml`, `<wiki>/.kompend/parsecraft.toml`, `./parsecraft.toml`) |
 | `[providers.<id>]` | User-defined OpenAI-compatible endpoints (self-hosted llama.cpp, vLLM, TGI). See [LLM Configuration](llm-config.md#user-defined-providers) |
 | `[export]` | `kompend sources export` placement of extracted data (`annotations` / `summary`: `off` \| `inline` \| `asset`) |
 | `[notes]` | User notes file configuration |

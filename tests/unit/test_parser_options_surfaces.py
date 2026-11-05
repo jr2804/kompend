@@ -4,8 +4,8 @@ Three rounds of the same failure mode:
 
 1. ``[ingest] parser_fallback`` reached only some construction sites, so the
    flag silently did not apply.
-2. The ``[ingest] parsecraft_*`` judge keys did the same — and because the
-   parsecraft backend folds the judge into its ``cache_identity()``, the two
+2. The ``[ingest] parsecraft_*`` routing keys did the same — and because the
+   parsecraft backend folds them into its ``cache_identity()``, the two
    paths hashed to *different* parser identities and invalidated each other's
    parse cache on every alternate run.
 3. ``kompend ingest`` passed ``images_dir`` alone while ``kompend compile`` also
@@ -17,11 +17,12 @@ Three rounds of the same failure mode:
 tests capture the options at each site and assert the whole set arrives, so a
 site that builds a narrower set fails here rather than in a cache.
 
-Routing is the one part of the option set kompend no longer copies: the parser
-receives parsecraft's config *file paths* and reads the values itself, so a site
-that omits them would silently drop a vault's ``.kompend/parsecraft.toml``. The
-first assertion of every site test is therefore about the path list, and one
-end-to-end test proves the values behind those paths actually land.
+Routing — including which judge model to ask — is the part of the option set
+kompend no longer copies: the parser receives parsecraft's config *file paths*
+and reads the values itself, so a site that omits them would silently drop a
+vault's ``.kompend/parsecraft.toml``. The first assertion of every site test is
+therefore about the path list, and one end-to-end test proves the values behind
+those paths actually land.
 """
 
 from __future__ import annotations
@@ -38,6 +39,7 @@ from kompend.core.pipeline.config import PipelineConfig
 from kompend.mcp.tools.pipeline import wiki_ingest
 from kompend.preprocessing.parsers import ParserOptions, build_parser
 from kompend.preprocessing.parsers.parsecraft_parser import ParsecraftParser
+from kompend.preprocessing.parsers.parsecraft_routing import load_parsecraft_config
 from tests.helpers.cli import CliRunner
 
 _cli_runner = CliRunner()
@@ -65,8 +67,7 @@ def test_ingest_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: p
         _cli_runner.invoke(app, ["--wiki-dir", str(base), "ingest"], catch_exceptions=False)
 
     options = captured["args"][0]
-    assert options.parsecraft_judge == "ollama"
-    assert options.parsecraft_judge_model == "parable-tinyjev"
+    assert _judge_spec(options) == "ollama/parable-tinyjev"
     assert options.parsecraft_config_files[0] == VaultPaths(base).parsecraft_config_file
     # No backend is named any more: parsecraft is the only parser path, so every
     # site passes options and nothing else.
@@ -84,8 +85,7 @@ def test_parse_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: py
         _cli_runner.invoke(app, ["--wiki-dir", str(base), "parse", str(doc)], catch_exceptions=False)
 
     options = captured["args"][0]
-    assert options.parsecraft_judge == "ollama"
-    assert options.parsecraft_judge_model == "parable-tinyjev"
+    assert _judge_spec(options) == "ollama/parable-tinyjev"
     assert options.parsecraft_config_files[0] == VaultPaths(base).parsecraft_config_file
     assert "name" not in captured
     _assert_full_options(options)
@@ -100,11 +100,21 @@ def test_mcp_ingest_passes_the_configured_options(tmp_path: Path, monkeypatch: p
         wiki_ingest(wiki_dir=str(base))
 
     options = captured["args"][0]
-    assert options.parsecraft_judge == "zen"
-    assert options.parsecraft_judge_model == "some-model"
+    assert _judge_spec(options) == "zen/some-model"
     assert options.parsecraft_config_files[0] == VaultPaths(base).parsecraft_config_file
     assert "name" not in captured
     _assert_full_options(options)
+
+
+def _judge_spec(options: ParserOptions) -> str | None:
+    """The judge the config files behind *options* actually name.
+
+    Read through parsecraft's engine rather than off a kompend attribute: the
+    point of these tests is that the *paths* a site hands over carry the
+    settings, so anything else would test kompend's copy of a value it no
+    longer keeps.
+    """
+    return load_parsecraft_config(options.parsecraft_config_files).judge_spec
 
 
 def _capturing_factory(captured: dict[str, Any]) -> Any:
@@ -150,6 +160,8 @@ def test_the_vault_routing_values_reach_the_parser(tmp_path: Path) -> None:
     """
     base = _vault(
         tmp_path,
+        judge="ollama",
+        judge_model="parable-tinyjev",
         preference="quality",
         effort="high",
         allow_ocr=False,
@@ -162,6 +174,7 @@ def test_the_vault_routing_values_reach_the_parser(tmp_path: Path) -> None:
 
     parser = build_parser(options).parser
     assert isinstance(parser, ParsecraftParser)
+    assert _judge_spec(options) == "ollama/parable-tinyjev"
     routing = parser.parsecraft_settings().routing
 
     assert routing.preference.value == "quality"
@@ -202,20 +215,20 @@ def _vault(
     base = tmp_path / "vault"
     (base / "sources").mkdir(parents=True)
     (base / ".kompend").mkdir(parents=True)
-    lines = ["[ingest]"]
-    if judge is not None:
-        lines.append(f'parsecraft_judge = "{judge}"')
-    if judge_model is not None:
-        lines.append(f'parsecraft_judge_model = "{judge_model}"')
+    lines = ["[compile.llm]", 'default_model = "ollama/test-model"']
     # ``PipelineConfig.from_resolved`` refuses an empty default_model; set one
     # so the pipeline-config test does not depend on a global config file.
-    lines += ["", "[compile.llm]", 'default_model = "ollama/test-model"']
     (base / ".kompend" / "config.toml").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     # Routing lives in parsecraft's own file, which is a PROJECT-layer file for
     # its engine: plain keys first, sub-tables last (a sub-table header swallows
     # every plain key written after it).
-    routing = ["[routing]"]
+    routing = []
+    if judge is not None and judge_model is not None:
+        # The judge is parsecraft's setting too: ``[judge] model``, in the same
+        # file as ``[routing]``, ahead of it only for readability.
+        routing += ["[judge]", f'model = "{judge}/{judge_model}"', ""]
+    routing.append("[routing]")
     if preference is not None:
         routing.append(f'preference = "{preference}"')
     if allow_ocr is not None:

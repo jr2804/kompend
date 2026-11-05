@@ -444,8 +444,6 @@ Key config keys:
 | `compile.output.format` | `okf` | Output format (okf, markdown, json, typst) |
 | `compile.compiler` | `graph` | Compiler backend (graph, wicer) |
 | `compile.workers` | `1` | Parallel worker count |
-| `ingest.parsecraft_judge` | `none` | Judge tier for per-page routing (`none`, `ollama`, `zen`, `typesafe-ai`); with `none` parsecraft uses its deterministic rule table |
-| `ingest.parsecraft_judge_model` | `""` | Model token for the configured judge provider |
 | `ingest.parsecraft_docling_threads` | `min(4, cpu_count)` | ONNX intra-op threads a docling pass may use. `1` roughly halves the pass's commit charge and doubles its wall time |
 | `ingest.parse_min_free_commit_mb` | `10240` | Free commit charge a heavy parse (PDF, docx, images) needs before it starts; `0` disables the check |
 | `ingest.max_concurrent_heavy_parses` | `1` | Heavy parses allowed at once, independent of `compile.workers` |
@@ -457,7 +455,10 @@ Routing is parsecraft's own configuration, read from
 `~/.config/parsecraft/config.toml`, `<vault>/.kompend/parsecraft.toml`, then
 `./parsecraft.toml`. `[routing]` carries `preference`, `allow_ocr`, `engines`,
 `preferred_backend`, `only_backend` and `max_passes`; per-backend options live
-in `[routing.backend_options.<backend>]`. None of them are kompend config keys.
+in `[routing.backend_options.<backend>]`. The routing judge
+(`[judge] model = "ollama/tev1"`, overridable per run with
+`PARSECRAFT_JUDGE_MODEL`) and the `[providers.<name>]` endpoints live there
+too. None of them are kompend config keys.
 
 Set via:
 

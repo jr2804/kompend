@@ -316,18 +316,23 @@ and ignores the key; they live in `REMOVED_KEYS`. The live shape is:
 
 ```toml
 [ingest]
-parsecraft_judge         = "none"   # none | ollama | zen | typesafe-ai
-parsecraft_judge_model   = ""       # model token for the configured provider
 # parse_timeout_s       = 0.0      # 0 parses in-process, no bound
 # parsecraft_docling_threads = 4  # ONNX thread bound for the docling engine
+# parse_min_free_commit_mb = 10240  # free commit charge a heavy parse needs
+# max_concurrent_heavy_parses = 1   # heavy parses running at once
 ```
 
 Routing lives in parsecraft's configuration instead, lowest priority first:
 schema defaults, `~/.config/parsecraft/config.toml`, then the vault's
 `<vault>/.kompend/parsecraft.toml`, then `./parsecraft.toml` in the directory
-kompend runs from, then `PARSECRAFT_CONFIG_*`:
+kompend runs from, then `PARSECRAFT_CONFIG_*`. The routing *judge* is one of
+those settings (`[judge] model = "ollama/tev1"`; `PARSECRAFT_JUDGE_MODEL`
+overrides it for one run) — kompend has no judge key:
 
 ```toml
+[judge]
+model = "ollama/tev1"             # <provider>/<model>; omit for the rule table
+
 [routing]
 preference        = "balanced"   # speed | balanced | quality
 allow_ocr         = false        # unset: permitted when the host can do OCR

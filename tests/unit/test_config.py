@@ -1104,7 +1104,6 @@ class TestGenerateScaffoldConfig:
         text = generate_scaffold_config()
         assert 'compiler = "graph"  # wicer' in text
         assert 'data_format = "json"  # toon, ison, text' in text
-        assert 'parsecraft_judge = "none"  # ollama, zen, typesafe-ai' in text
         assert 'annotations = "inline"  # off, asset' in text
 
     def test_enum_annotation_excludes_shown_value(self) -> None:
@@ -1134,7 +1133,6 @@ class TestGenerateScaffoldConfig:
             "compile.output.format",
             "query.format",
             "search.synthesis.verbosity",
-            "ingest.parsecraft_judge",
             "export.annotations",
             "export.summary",
         ):

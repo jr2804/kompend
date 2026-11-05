@@ -131,20 +131,6 @@ class OutputFormat(StrEnum):
     TYPST = "typst"
 
 
-class ParsecraftJudge(StrEnum):
-    """Judge-tier routing for the parsecraft backend.
-
-    - ``none`` (default): the deterministic rule table; fast, no model call.
-    - ``ollama``: local ollama daemon, needs a decision-capable model.
-    - ``zen`` / ``typesafe-ai``: cloud providers, credentialed via env.
-    """
-
-    NONE = "none"
-    OLLAMA = "ollama"
-    ZEN = "zen"
-    TYPESAFE_AI = "typesafe-ai"
-
-
 class ReasoningEffort(StrEnum):
     """Reasoning effort for providers with an explicit effort control.
 
@@ -739,29 +725,6 @@ class NotesConfig(_KompendBaseModel):
 
 
 class IngestConfig(_KompendBaseModel):
-    parsecraft_judge: ParsecraftJudge = Field(
-        default=ParsecraftJudge.NONE,
-        validation_alias=EnvVar.INGEST_PARSECRAFT_JUDGE,
-        description=(
-            "Judge-tier routing for the parsecraft backend. `none` (default) leaves the "
-            "deterministic rule table in place — fast, but it cannot re-rank candidates per "
-            "page on a model signal. `ollama` requires a local ollama daemon running a "
-            "decision-capable model (capability `decision` in ollama's `details.capabilities`); "
-            "the SDK rejects completion-only models with 400. `zen` and `typesafe-ai` are "
-            "cloud providers that need credentials via `TYPESAFE_API_KEY` (or per-provider env)."
-        ),
-    )
-    parsecraft_judge_model: str = Field(
-        default="",
-        validation_alias=EnvVar.INGEST_PARSECRAFT_JUDGE_MODEL,
-        description=(
-            "Provider-specific model token for the judge. For `ollama` the bare model name as "
-            "ollama lists it (e.g. `parable-tinyjev`, `tev1`); the SDK validator rejects colon-suffixed "
-            "ollama tag tokens like `parable-tinyjev:latest`. Empty string is rejected at parse "
-            "time when `parsecraft_judge` is set to a non-`none` value — a provider without a model "
-            "is a misconfiguration, not a sensible default."
-        ),
-    )
     parse_timeout_s: float = Field(
         default=0.0,
         ge=0.0,

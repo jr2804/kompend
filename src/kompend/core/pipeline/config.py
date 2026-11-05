@@ -24,7 +24,6 @@ from kompend.core.config import (
     LLMConfig,
     OutputConfig,
     OutputFormat,
-    ParsecraftJudge,
     ResolvedConfig,
     Tier,
     TierInfo,
@@ -104,8 +103,6 @@ class PipelineConfig:
     memory_decay_threshold: float = 0.3  # Retention below this = stale
     notes_file: Path | None = None  # User notes file path (None = no notes)
     images_scale: float = 200.0 / 72.0  # Image resolution multiplier (200 DPI base)
-    parsecraft_judge: ParsecraftJudge = ParsecraftJudge.NONE  # judge tier for the parsecraft backend
-    parsecraft_judge_model: str = ""  # provider-specific model token (e.g. parable-tinyjev for ollama)
     #: Parser-construction inputs, built by :meth:`ParserOptions.from_config`
     #: in :meth:`from_resolved`. ``build_pipeline`` reads this rather than
     #: reassembling the fields, so the pipeline, the CLI and the MCP server all
@@ -216,8 +213,6 @@ class PipelineConfig:
             recursive=kompend.paths.recursive,
             compiler=Compiler(kompend.compile.compiler),
             privacy_filter=kompend.trust.privacy_filter,
-            parsecraft_judge=kompend.ingest.parsecraft_judge,
-            parsecraft_judge_model=kompend.ingest.parsecraft_judge_model,
             parse_min_free_commit_mb=kompend.ingest.parse_min_free_commit_mb,
             max_concurrent_heavy_parses=kompend.ingest.max_concurrent_heavy_parses,
             memory_enabled=kompend.compile.memory_enabled,

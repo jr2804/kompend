@@ -35,7 +35,7 @@ pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
 from parsecraft import pipeline  # noqa: E402 — guarded by the importorskip above
 from parsecraft.backends import default_registry  # noqa: E402 — guarded by the importorskip above
 from parsecraft.backends.protocol import BackendCapabilities  # noqa: E402 — guarded by the importorskip above
-from parsecraft.cli.config import ParsecraftConfig, RoutingSettings
+from parsecraft.cli.config import JudgeSettings, ParsecraftConfig, RoutingSettings
 from parsecraft.config.errors import ConfigError
 from parsecraft.ir.models import (
     AssetKind,
@@ -57,7 +57,7 @@ from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
 from parsecraft.routing.models import Intent, PageRoute, RoutingPlan  # noqa: E402 — guarded by the importorskip above
 
-from kompend.core.config import ImageMode, ParsecraftJudge
+from kompend.core.config import ImageMode
 from kompend.core.models import ElementType
 from kompend.preprocessing.images import ImageStore
 from kompend.preprocessing.parsers import PARSER_PARSECRAFT, ParserOptions, build_parser
@@ -523,24 +523,52 @@ class TestJudgeWiring:
         parser = adapter.ParsecraftParser()
         assert isinstance(parser._get_judge(), adapter.DeterministicJudge)
 
-    def test_judge_without_model_warns_and_degrades(
-        self,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
+    def test_judge_without_a_spec_uses_the_rule_table(self) -> None:
+        """No ``[judge] model`` and no env override means the deterministic table."""
         adapter = _adapter()
-        parser = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="")
-        with caplog.at_level("WARNING"):
-            judge = parser._get_judge()
-        assert isinstance(judge, adapter.DeterministicJudge)
-        assert "parsecraft_judge_model is empty" in caplog.text
+        parser = _judged_parser(None)
+        assert isinstance(parser._get_judge(), adapter.DeterministicJudge)
+
+    def test_the_judge_spec_is_parsecrafts_setting(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``[judge] model`` reaches ``resolve_judge`` verbatim and unparsed.
+
+        kompend neither splits the spec nor validates the provider: that
+        vocabulary belongs to parsecraft, and a provider kompend has never
+        heard of must still resolve.
+        """
+        adapter = _adapter()
+        sentinel = _SentinelJudge()
+        seen: list[str] = []
+
+        def fake_resolve(spec: str, **kwargs: object) -> object:
+            seen.append(spec)
+            return sentinel
+
+        monkeypatch.setattr(adapter, "resolve_judge", fake_resolve)
+        assert _judged_parser("ollama/parable-tinyjev")._get_judge() is sentinel
+        assert _judged_parser("typesafe-ai/jev-latest")._get_judge() is sentinel
+        assert seen == ["ollama/parable-tinyjev", "typesafe-ai/jev-latest"]
+
+    def test_the_judge_model_env_var_overrides_the_file(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``PARSECRAFT_JUDGE_MODEL`` wins over ``[judge] model``, as upstream."""
+        _adapter()
+        monkeypatch.setenv("PARSECRAFT_JUDGE_MODEL", "zen/some-model")
+        assert _judged_parser("ollama/parable-tinyjev").parsecraft_settings().judge_spec == "zen/some-model"
+        assert _judged_parser(None).parsecraft_settings().judge_spec == "zen/some-model"
+
+    def test_an_empty_judge_section_is_no_judge(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("PARSECRAFT_JUDGE_MODEL", raising=False)
+        assert _judged_parser("").parsecraft_settings().judge_spec is None
+        assert _judged_parser(None).parsecraft_settings().judge_spec is None
 
     def test_unresolvable_provider_degrades(self, caplog: pytest.LogCaptureFixture) -> None:
         adapter = _adapter()
-        parser = adapter.ParsecraftParser(parsecraft_judge="nosuchprovider", parsecraft_judge_model="m")
+        parser = _judged_parser("nosuchprovider/m")
         with caplog.at_level("WARNING"):
             judge = parser._get_judge()
         assert isinstance(judge, adapter.DeterministicJudge)
         assert "could not be resolved" in caplog.text
+        assert "nosuchprovider/m" in caplog.text
 
     def test_live_judge_is_resolved_once_per_instance(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """One resolution per parser: the SDK memoises per page class on the
@@ -555,7 +583,7 @@ class TestJudgeWiring:
             return sentinel
 
         monkeypatch.setattr(adapter, "resolve_judge", fake_resolve)
-        parser = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="m")
+        parser = _judged_parser("ollama/m")
         assert parser._get_judge() is sentinel
         assert parser._get_judge() is sentinel
         assert seen == ["ollama/m"]
@@ -568,7 +596,7 @@ class TestJudgeWiring:
     def test_preference_reaches_the_deterministic_judge(self) -> None:
         """The knob must be honoured on the no-judge path, not only via resolve_judge.
 
-        With the default ``parsecraft_judge = "none"`` every vault routes through
+        With no judge configured every vault routes through
         the rule table; a preference that only reaches provider judges is
         silently inert for the default configuration.
         """
@@ -582,13 +610,9 @@ class TestJudgeWiring:
         fallback with the configured axis, not the enum default.
         """
         adapter = _adapter()
-        unresolvable = adapter.ParsecraftParser(
-            parsecraft_judge="nosuchprovider",
-            parsecraft_judge_model="m",
-            parsecraft_config=_routing(preference="quality"),
-        )
+        unresolvable = _judged_parser("nosuchprovider/m", preference="quality")
         assert unresolvable._get_judge()._preference is adapter.RoutingPreference.QUALITY
-        degraded = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="m", parsecraft_config=_routing(preference="quality"))
+        degraded = _judged_parser("ollama/m", preference="quality")
         degraded._degrade_judge(RuntimeError("endpoint died"))
         assert degraded._judge_fallback._preference is adapter.RoutingPreference.QUALITY
 
@@ -672,7 +696,7 @@ class TestJudgeWiring:
 
         monkeypatch.setattr(adapter, "resolve_judge", fake_resolve)
         monkeypatch.setattr(adapter, "execute", fake_execute)
-        parser = adapter.ParsecraftParser(parsecraft_judge="zen", parsecraft_judge_model="m")
+        parser = _judged_parser("zen/m")
         result = parser._execute_with_judge(object(), object(), object(), object())
         assert result.groups == []
         assert parser._judge_degraded is True
@@ -693,7 +717,7 @@ class TestJudgeWiring:
             raise NoEligibleBackendError(None, "no backend can parse this")
 
         monkeypatch.setattr(adapter, "execute", fake_execute)
-        parser = adapter.ParsecraftParser(parsecraft_judge="ollama", parsecraft_judge_model="m")
+        parser = _judged_parser("ollama/m")
         with pytest.raises(NoEligibleBackendError):
             parser._execute_with_judge(object(), object(), object(), object())
 
@@ -718,35 +742,22 @@ class TestJudgeWiring:
         reuse pages routed under the previous configuration.
         """
         adapter = _adapter()
-        plain = _parser_with()
-        judged = _parser_with(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="parable-tinyjev")
-        other_pref = _parser_with(
-            parsecraft_judge=ParsecraftJudge.OLLAMA,
-            parsecraft_judge_model="parable-tinyjev",
-            parsecraft_config=_routing(preference="quality"),
-        )
-        other_model = _parser_with(parsecraft_judge=ParsecraftJudge.OLLAMA, parsecraft_judge_model="tev1")
+        plain = _judged_parser(None)
+        judged = _judged_parser("ollama/parable-tinyjev")
+        other_pref = _judged_parser("ollama/parable-tinyjev", preference="quality")
+        other_model = _judged_parser("ollama/tev1")
 
-        assert plain.backend_identity() != judged.backend_identity()
-        assert judged.backend_identity() != other_pref.backend_identity()
-        assert judged.backend_identity() != other_model.backend_identity()
+        assert plain.cache_identity() != judged.cache_identity()
+        assert judged.cache_identity() != other_pref.cache_identity()
+        assert judged.cache_identity() != other_model.cache_identity()
         # The default configuration keeps a neutral routing part, and two
-        # separately built default routers hash identically.
+        # separately built default parsers hash identically.
         assert _routing_part(adapter.ParsecraftParser()) == ""
-        plain_again = _parser_with()
-        assert plain_again.backend_identity() == plain.backend_identity()
+        assert _judged_parser(None).cache_identity() == plain.cache_identity()
 
-    def test_build_options_carry_the_judge_config(self) -> None:
-        """The `[ingest]` routing keys reach the backend through ParserOptions."""
-        adapter = _adapter()
-        backend: Any = _parser_with(
-            parsecraft_judge=ParsecraftJudge.OLLAMA,
-            parsecraft_judge_model="parable-tinyjev",
-        ).parser
-        assert type(backend).__name__ == "ParsecraftParser"
-        assert backend._judge_name == "ollama"
-        assert backend._judge_model == "parable-tinyjev"
-        assert adapter.ParsecraftParser()._judge_name == "none"
+    def test_the_judge_spec_is_part_of_the_cache_identity(self) -> None:
+        """The identity names the spec, so a provider swap invalidates the cache."""
+        assert "judge:ollama/tev1:" in _judged_parser("ollama/tev1").cache_identity()
 
 
 class TestEffortIsABackendOption:
@@ -1557,6 +1568,17 @@ def _parser_with(**options: Any) -> Any:
 def _routing_parser(**routing: Any) -> Any:
     """The adapter wired to a config carrying *routing*."""
     return _adapter().ParsecraftParser(parsecraft_config=_routing(**routing))
+
+
+def _judged_parser(spec: str | None, **routing: Any) -> Any:
+    """The adapter wired to a config whose ``[judge] model`` names *spec*.
+
+    The judge spec is parsecraft's setting, so the test writes it where a user
+    writes it — in ``[judge]`` — rather than passing a kompend kwarg that no
+    longer exists. ``None`` leaves the section empty, i.e. the rule table.
+    """
+    settings = ParsecraftConfig(routing=RoutingSettings(**routing), judge=JudgeSettings(model=spec))
+    return _adapter().ParsecraftParser(parsecraft_config=ParsecraftRoutingConfig(settings=settings, written=frozenset(routing)))
 
 
 def _adapter() -> Any:

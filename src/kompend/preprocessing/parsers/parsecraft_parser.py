@@ -53,7 +53,7 @@ from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from parsecraft.routing.judge_providers import JudgeError, resolve_judge
 from parsecraft.routing.models import RoutingPreference
 
-from kompend.core.config import ImageMode, ParsecraftJudge
+from kompend.core.config import ImageMode
 from kompend.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
 from kompend.logging import get_logger
 from kompend.preprocessing.images import ImageStore, asset_for_chunk, assets_by_id
@@ -119,8 +119,6 @@ class ParsecraftParser:
         self,
         registry: BackendRegistry | None = None,
         *,
-        parsecraft_judge: ParsecraftJudge = ParsecraftJudge.NONE,
-        parsecraft_judge_model: str = "",
         parsecraft_config_files: tuple[Path, ...] = (),
         parsecraft_config: ParsecraftRoutingConfig | None = None,
         parsecraft_docling_threads: int | None = None,
@@ -133,15 +131,6 @@ class ParsecraftParser:
         #: itself (tests, or a host that wants several parsers to share one
         #: read). ``None`` loads it lazily from ``_config_files`` on first use.
         self._parsecraft_config: ParsecraftRoutingConfig | None = parsecraft_config
-        #: Which provider credential to spend on the routing judge, and its model
-        #: token. ``none`` keeps the deterministic rule table; any other judge
-        #: value resolves to a real :class:`RoutingJudge` once ``parse()`` runs
-        #: (and only then, so a misconfigured provider never costs anything at CLI
-        #: ``--help`` time). Everything else about routing — preference, OCR
-        #: permission, engines, backend pins and per-backend options — is read from
-        #: parsecraft's own config files, never mirrored here.
-        self._judge_name = parsecraft_judge
-        self._judge_model = parsecraft_judge_model
         #: The config files to read, lowest priority first. Resolved once per
         #: instance alongside the environment probe, so a hundred vault files do
         #: not re-read the same TOML a hundred times.
@@ -283,8 +272,9 @@ class ParsecraftParser:
         # any of them changes, but stays stable for the all-default combination —
         # the leading empty join renders as `""`, not `"|"`.
         parts: list[str] = []
-        if self._judge_name is not ParsecraftJudge.NONE:
-            parts.append(f"judge:{self._judge_name}/{self._judge_model}:{routing.preference}")
+        judge_spec = settings.judge_spec
+        if judge_spec is not None:
+            parts.append(f"judge:{judge_spec}:{routing.preference}")
         elif routing.preference is not RoutingPreference.BALANCED:
             parts.append(f"preference:{routing.preference}")
         if routing.allow_ocr is not None:
@@ -332,8 +322,6 @@ class ParsecraftParser:
         leaking a second option vocabulary into the pipeline.
         """
         return cls(
-            parsecraft_judge=options.parsecraft_judge,
-            parsecraft_judge_model=options.parsecraft_judge_model,
             parsecraft_config_files=options.parsecraft_config_files,
             parsecraft_config=options.parsecraft_config,
             parsecraft_docling_threads=options.parsecraft_docling_threads,
@@ -512,9 +500,8 @@ class ParsecraftParser:
         self._judge_fallback = self._deterministic_judge()
         self._judge_degraded = True
         logger.warning(
-            "parsecraft judge %s/%s failed at call time (%s: %s); falling back to the deterministic rule table for the rest of this run.",
-            self._judge_name,
-            self._judge_model,
+            "parsecraft judge %s failed at call time (%s: %s); falling back to the deterministic rule table for the rest of this run.",
+            self.parsecraft_settings().judge_spec or "(unresolved)",
             type(exc).__name__,
             str(exc)[:_JUDGE_ERROR_EXCERPT_CHARS],
         )
@@ -524,13 +511,15 @@ class ParsecraftParser:
 
         Three exit paths, in order:
 
-        1. ``parsecraft_judge == "none"`` (default): return a fresh
-           :class:`DeterministicJudge` every call. Cheap (in-process rule
-           table) and avoids sharing state between documents.
-        2. ``parsecraft_judge`` was configured: resolve via the SDK's
-           :func:`resolve_judge`, cache the verdict. A second parse reuses
+        1. Neither ``PARSECRAFT_JUDGE_MODEL`` nor ``[judge] model`` names a
+           judge (the default): return a fresh :class:`DeterministicJudge`
+           every call. Cheap (in-process rule table) and avoids sharing state
+           between documents.
+        2. A spec is configured: resolve it through parsecraft's
+           :func:`resolve_judge` and cache the verdict. A second parse reuses
            the same judge instance, so the SDK's intra-instance memo (per
-           page class) survives across the run.
+           page class) survives across the run. The spec is parsecraft's —
+           kompend neither parses nor names its provider.
         3. Resolver raised (spec error, missing credential, unreachable
            endpoint, missing `decision` capability on the ollama model):
            warn once and fall back to :class:`DeterministicJudge`. A dead
@@ -546,21 +535,13 @@ class ParsecraftParser:
             return self._judge
         if self._judge_fallback is not None:
             return self._judge_fallback
-        if self._judge_name is ParsecraftJudge.NONE:
-            self._judge_fallback = self._deterministic_judge()
-            return self._judge_fallback
-        if not self._judge_model:
-            msg = (
-                f"parsecraft_judge is {str(self._judge_name)!r} but parsecraft_judge_model is empty; "
-                "falling back to the deterministic rule table. Set [ingest] parsecraft_judge_model "
-                "to the SDK's model token for the configured provider."
-            )
-            logger.warning(msg)
+        spec = self.parsecraft_settings().judge_spec
+        if spec is None:
             self._judge_fallback = self._deterministic_judge()
             return self._judge_fallback
         try:
             self._judge = resolve_judge(
-                f"{self._judge_name}/{self._judge_model}",
+                spec,
                 preference=self.parsecraft_settings().routing.preference,
             )
         except JudgeError as exc:
@@ -568,9 +549,8 @@ class ParsecraftParser:
             # (malformed spec), JudgeProviderUnavailableError (no loader / missing
             # credential), JudgeProviderLoadError (extra not installed).
             logger.warning(
-                "parsecraft judge %s/%s could not be resolved (%s: %s); falling back to the deterministic rule table.",
-                self._judge_name,
-                self._judge_model,
+                "parsecraft judge %s could not be resolved (%s: %s); falling back to the deterministic rule table.",
+                spec,
                 type(exc).__name__,
                 str(exc)[:_JUDGE_ERROR_EXCERPT_CHARS],
             )

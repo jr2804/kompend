@@ -79,30 +79,28 @@ file = "NOTES.md"
 # Unknown backend or engine names fail loudly, naming the accepted set. See
 # docs/guides/document-extraction.md for the precedence table and the recipes.
 
-# ── parsecraft judge tier ───────────────────────
-# Kompend-side only: the judge spec is a per-vault, per-run choice rather than a
-# routing default. A judge asks a System One model to re-rank the candidates
-# the hard constraints already admitted, weighting speed against quality per
-# page; with it disabled the deterministic rule table (format + VRAM + intent)
-# decides.
+# ── parsecraft judge tier ──────────────────────────────────────────────
+# The routing judge is a parsecraft setting, not a kompend one: name it with
+# `[judge] model = "<provider>/<model>"` in parsecraft.toml (the vault file
+# `<wiki>/.kompend/parsecraft.toml`, the global
+# `~/.config/parsecraft/config.toml`, or ./parsecraft.toml), or for one run
+# with `PARSECRAFT_JUDGE_MODEL`. There is no kompend key for it and no env
+# var with the KOMP_ prefix.
 #
-#   none        (default) — deterministic rule table, no model, no network
-#   ollama      — local ollama daemon; the model MUST advertise the
-#                 "decision" capability (ollama show <model>), e.g.
-#                 parable-tinyjev or tev1. Completion-only GGUFs are
-#                 rejected by the daemon with HTTP 400.
-#   zen         — https://opencode.ai/zen; needs OPENCODE_API_KEY
-#   typesafe-ai — TypeSafe cloud; needs TYPESAFE_API_KEY
+# A judge asks a System One model to re-rank the candidates the hard
+# constraints already admitted, weighting speed against quality per page;
+# with no judge configured the deterministic rule table (format + VRAM +
+# intent) decides. Providers parsecraft ships loaders for: ollama (local
+# daemon; the model MUST advertise the "decision" capability, e.g. tev1 —
+# a completion-only GGUF is rejected with HTTP 400), zen (needs
+# OPENCODE_API_KEY) and typesafe-ai (needs TYPESAFE_API_KEY). Provider
+# endpoints and credentials go in parsecraft's `[providers.<name>]` blocks.
 #
-# The model token is the SDK's name for the provider: for ollama the bare
-# ollama model name (no ":tag" suffix — the SDK reads that as a variant and
-# rejects it), for the cloud providers their published model id.
-# A judge that cannot be reached, or that fails mid-run, degrades to the
-# rule table with a WARNING instead of failing the ingest.
-# Env: KOMP_INGEST_PARSECRAFT_JUDGE
-# parsecraft_judge = "none"  # ollama, zen, typesafe-ai
-# Env: KOMP_INGEST_PARSECRAFT_JUDGE_MODEL
-# parsecraft_judge_model = ""
+#   [judge]
+#   model = "ollama/tev1"
+#
+# A judge that cannot be resolved or that fails mid-run degrades to the rule
+# table with a WARNING instead of failing the ingest.
 
 # ── Ingest safety net ──────────────────────────────────────────────────
 # Wall-clock budget for parsing ONE source, in seconds. 0 (default) parses

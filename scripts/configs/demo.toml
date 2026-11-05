@@ -38,26 +38,27 @@
 # The parse tier, tuned for the demo corpus (15 native-text PDFs + 6 URLs,
 # 123 PDF pages - every page carries a text layer).
 #
-# parsecraft_judge / parsecraft_judge_model - a live System One judge
-# re-ranks, per page, the backends the hard constraints already admitted.
-# Measured on the 34-page paper in the corpus
+# The routing judge and its model are parsecraft's settings, so they live in
+# parsecraft.toml next to the routing table below - `[judge] model =
+# "ollama/tev1"`. A judge re-ranks, per page, the backends the hard
+# constraints already admitted. Measured on the 34-page paper in the corpus
 # (tests/data/sources/dnn_speech_intelligibility_2022.pdf):
 #
-#   judge "none" -> liteparse   1.5s  147 elements  4 headings, no tables
-#   judge tev1   -> docling  59-90s  215 elements  22 headings, 53 list
+#   no judge     -> liteparse   1.5s  147 elements  4 headings, no tables
+#   judge ollama/tev1 -> docling  59-90s  215 elements  22 headings, 53 list
 #                                               items, 4 tables with cells
 #
-# The judge model must be a Tev/Nimble GGUF (the ollama System One endpoint
-# rejects anything else with HTTP 400) and must be reachable under its BARE
-# name: "tev1" resolves to "tev1:latest". The build script aliases the tag
-# when only "tev1:0.8b" is installed.
-parsecraft_judge = "ollama"
-parsecraft_judge_model = "tev1"
-
-# Routing itself (preference, OCR permission, backend pins, per-backend
-# options) is parsecraft's configuration, not kompend's, so it does not live in
-# this file: build-wiki.ps1 writes `<vault>/.kompend/parsecraft.toml` after the
-# scaffold. Seeded by hand, write it next to this config:
+# Tev/Nimble is served by a System One endpoint (the ollama daemon rejects
+# anything else with HTTP 400) and must be reachable under its BARE name:
+# "tev1" resolves to "tev1:latest". The build script aliases the tag when
+# only "tev1:0.8b" is installed.
+# Routing (preference, OCR permission, backend pins, per-backend options) and
+# the judge are parsecraft's configuration, not kompend's, so they do not live
+# in this file: build-wiki.ps1 writes `<vault>/.kompend/parsecraft.toml` after
+# the scaffold. Seeded by hand, write it next to this config:
+#
+#   [judge]
+#   model = "ollama/tev1"
 #
 #   [routing]
 #   preference = "quality"

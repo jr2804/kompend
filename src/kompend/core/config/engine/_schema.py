@@ -111,9 +111,11 @@ REMOVED_KEYS: dict[str, list[str]] = {  # nocheck: str-registry — frozen list 
     # companion and went when the key became single-valued.
     # parsecraft's routing vocabulary now lives in parsecraft's own files
     # (``~/.config/parsecraft/config.toml``, ``<vault>/.kompend/parsecraft.toml``,
-    # ``./parsecraft.toml``), so these six mirrored copies are gone. kompend keeps
-    # only what is genuinely its own: which provider credential the judge spends,
-    # and how much of the host a docling pass may use.
+    # ``./parsecraft.toml``), so these six mirrored copies are gone — and so are
+    # the judge pair (``parsecraft_judge`` / ``parsecraft_judge_model``): the judge
+    # is a parsecraft setting too, spelled ``[judge] model = "<provider>/<model>"``
+    # there. kompend keeps only what is genuinely its own: how much of the host a
+    # docling pass may use.
     "ingest": [
         "parser",
         "parser_fallback",
@@ -123,6 +125,8 @@ REMOVED_KEYS: dict[str, list[str]] = {  # nocheck: str-registry — frozen list 
         "parsecraft_preferred_backend",
         "parsecraft_only_backend",
         "parsecraft_backend_options",
+        "parsecraft_judge",
+        "parsecraft_judge_model",
     ],
     # The whole [eval] section. It held a score threshold and a history size
     # for an evaluation loop that no longer exists.
