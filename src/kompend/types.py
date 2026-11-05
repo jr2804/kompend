@@ -74,7 +74,3 @@ Jinja2Loader = ChoiceLoader  # Jinja2 template loader
 AgentResult = BaseModel | str  # Structured pydantic output or raw text response
 
 # Parser results are ParsedDocument (see kompend.core.models) — no alias needed.
-
-# External library types
-ZvecCollection = Any  # ponytail: optional-dep type unavailable when zvec missing; revisit if zvec ships stubs
-ZvecDoc = Any

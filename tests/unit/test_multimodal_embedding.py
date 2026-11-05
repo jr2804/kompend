@@ -1,7 +1,7 @@
 """Multimodal embedding: text + figure into one vector.
 
 Covers the two halves: the Ollama media endpoint (``kompend.rag.multimodal``)
-and the store's use of it (``kompend.rag.zvec_store``).
+and the store's use of it (``kompend.rag.vector_store``).
 """
 
 from __future__ import annotations
@@ -18,7 +18,8 @@ from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import MetadataField, NodeType
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.rag.multimodal import MediaEmbeddingUnsupported, OllamaMediaEmbedder
-from kompend.rag.zvec_store import EmbeddingProvider, PydanticAIEmbeddingProvider, ZvecWikiStore, _content_hash
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+from kompend.rag.vector_store import EmbeddingProvider, PydanticAIEmbeddingProvider, content_hash
 
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082")
 
@@ -100,7 +101,7 @@ class TestProviderMediaModel:
             seen["body"] = kwargs["json"]
             return _Response(200, json.dumps({"embeddings": [[0.1, 0.2]]}))
 
-        monkeypatch.setattr("kompend.rag.zvec_store.build_embedder", lambda _model_string: object())
+        monkeypatch.setattr("kompend.rag.vector_store.build_embedder", lambda _model_string: object())
         monkeypatch.setattr("kompend.rag.multimodal.httpx.post", _fake_post)
         provider = PydanticAIEmbeddingProvider("ollama:embeddinggemma-2:440m")
 
@@ -150,7 +151,7 @@ class _FigureProvider(EmbeddingProvider):
 class TestStoreUsesTheFigure:
     def test_a_node_with_a_figure_is_embedded_with_the_image(self, tmp_path: Path) -> None:
         provider = _FigureProvider()
-        store = ZvecWikiStore(db_file=tmp_path / "vectors", embedding_provider=provider)
+        store = SqliteVecWikiStore(db_file=tmp_path / "vectors", embedding_provider=provider)
 
         assert store.build_index(_wiki_with_figure(_figure(tmp_path))) == 1
         store.close()
@@ -160,7 +161,7 @@ class TestStoreUsesTheFigure:
 
     def test_a_model_without_an_image_encoder_indexes_the_text_and_reports_it(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         provider = _FigureProvider(supports_media=False)
-        store = ZvecWikiStore(db_file=tmp_path / "vectors", embedding_provider=provider)
+        store = SqliteVecWikiStore(db_file=tmp_path / "vectors", embedding_provider=provider)
 
         with caplog.at_level(logging.WARNING):
             assert store.build_index(_wiki_with_figure(_figure(tmp_path))) == 1
@@ -171,7 +172,7 @@ class TestStoreUsesTheFigure:
 
     def test_a_missing_figure_is_reported_and_does_not_stop_the_build(self, tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
         provider = _FigureProvider()
-        store = ZvecWikiStore(db_file=tmp_path / "vectors", embedding_provider=provider)
+        store = SqliteVecWikiStore(db_file=tmp_path / "vectors", embedding_provider=provider)
         wiki = _wiki_with_figure(tmp_path / "gone.png")
 
         with caplog.at_level(logging.WARNING):
@@ -187,9 +188,9 @@ class TestStalenessCoversTheFigure:
         figure = _figure(tmp_path)
         node = _wiki_with_figure(figure).nodes[0]
 
-        before = _content_hash(node)
+        before = content_hash(node)
         figure.write_bytes(PNG + b"changed")
-        after = _content_hash(node)
+        after = content_hash(node)
 
         assert before != after
 
@@ -197,9 +198,9 @@ class TestStalenessCoversTheFigure:
         figure = _figure(tmp_path)
         node = _wiki_with_figure(figure).nodes[0]
 
-        before = _content_hash(node)
+        before = content_hash(node)
         figure.unlink()
-        after = _content_hash(node)
+        after = content_hash(node)
 
         assert before != after
 

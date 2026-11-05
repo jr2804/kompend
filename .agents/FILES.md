@@ -36,7 +36,7 @@ File-addressing variables get a `_file` suffix, directories a `_dir` suffix
 
 All on-disk artifact names are `Final[str]` constants in **`src/kompend/core/paths.py`**.
 
-**Rule:** `".kompend"`, `"cache"`, `"config.toml"`, `"vectors"`, `"memory.db"`,
+**Rule:** `".kompend"`, `"cache"`, `"config.toml"`, `"vectors.db"`, `"memory.db"`,
 `"last_wiki.json"`, etc. must **never** appear as a literal in
 any `.py` file outside `paths.py`. Always import from `kompend.core.paths`.
 
@@ -47,10 +47,10 @@ any `.py` file outside `paths.py`. Always import from `kompend.core.paths`.
 | `CACHE_SUBDIR` | `"cache"` | Cache component within `KOMP_DIR` |
 | `CACHE_DIR` | `".kompend/cache"` | Full relative cache path (for DEFAULTS) |
 | `CONFIG_FILE` | `"config.toml"` | Project-local config |
-| `VECTORS_DIR` | `"vectors"` | Embedding vector store |
+| `VECTORS_DB_FILE` | `"vectors.db"` | Embedding vector store (sqlite-vec) — the regenerable vector branch |
 | `VECTORS_MANIFEST_FILE` | `"vectors.manifest.json"` | Vector id sidecar (legacy — now the `vector_manifest` row) |
 | `DOWNLOADED_FILE` | `"downloaded.json"` | URL download manifest (legacy — now `downloaded` table) |
-| `MEMORY_DB_FILE` | `"memory.db"` | Semantic query-memory collection **directory** (zvec, not SQLite) |
+| `MEMORY_DB_FILE` | `"memory.db"` | Semantic query-memory index (sqlite-vec over `memory_log`) |
 | `MEMORY_LOG_FILE` | `"memory.jsonl"` | Memory append-only log (legacy — now `memory_log` table) |
 | `MEMORY_STORE_FILE` | `"memory.json"` | Memory state export (legacy — now `memory_states` table) |
 | `PROVENANCE_DIR` | `"provenance"` | Provenance trace directory (legacy — now `provenance` table) |

@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from kompend.rag.zvec_store import EmbeddingProvider
+from kompend.rag.vector_store import EmbeddingProvider
 
 _test_dir = Path(__file__).parent
 _data_dir = _test_dir / "data"

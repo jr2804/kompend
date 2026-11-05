@@ -15,8 +15,8 @@ _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
 class TestMemoryStore:
     """Tests for MemoryStore."""
 
-    def test_add_entry_writes_log_and_zvec(self, temp_wiki_dir: Path) -> None:
-        """Adding an entry should write to both the memory_log table and zvec."""
+    def test_add_entry_writes_log_and_index(self, temp_wiki_dir: Path) -> None:
+        """Adding an entry should write to both the memory_log table and the index."""
         store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
         try:
             store.add_entry(query="What is the capital of France?", answer="Paris", feedback="Correct and concise.")
@@ -29,7 +29,7 @@ class TestMemoryStore:
             assert data[MemoryField.FEEDBACK.value] == "Correct and concise."
             assert MemoryField.TIMESTAMP in data
 
-            # Check zvec search works
+            # Check the semantic search works
             results = store.search(query="capital france", top_k=1)
             assert len(results) == 1
             assert results[0][MemoryField.QUERY.value] == "What is the capital of France?"

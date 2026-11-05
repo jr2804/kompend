@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from kompend.core.config import MatcherName
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup.base import ContentMatcher, require_json_number
-from kompend.rag.zvec_store import EmbeddingProvider
+from kompend.rag.vector_store import EmbeddingProvider
 from kompend.types import JSONValue
 
 logger = get_logger(__name__)

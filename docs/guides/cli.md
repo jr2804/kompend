@@ -164,8 +164,8 @@ kompend compile [OPTIONS] FILES...
 | Flag | Default | Description |
 |------|---------|------------|
 | Output shape (`--format`, `--image-mode`, `--flavor`, `--compiler`, `--kind`) and tuning values (budgets, timeouts, decay params) are **config-only** — set them with `kompend config set compile.<key> <val>` or override per-run with `--set compile.<key>=<val>`. |  |  |
-| `--index/--no-index` | on | Index compiled wiki in zvec for semantic search |
-| `--embed-model` | — | Embedding model for zvec indexing |
+| `--index/--no-index` | on | Index compiled wiki in the vector store for semantic search |
+| `--embed-model` | — | Embedding model for the vector store |
 | `--vlm-model` | — | Vision model for captioning images during resolution |
 | `--verify/--no-verify` | on | Run grounding verification on each claim |
 | `--synthesize/--no-synthesize` | on | Generate LLM-synthesized overview.md |
@@ -362,7 +362,7 @@ kompend metadata.
 
 ## `kompend index`
 
-Rebuild the zvec vector index for semantic search from the cached wiki.
+Rebuild the vector index for semantic search from the cached wiki.
 
 ```text
 kompend index [OPTIONS]
@@ -373,7 +373,7 @@ index automatically (unless `--no-index`); you only need `kompend index` when
 the index is missing, stale, or you changed `compile.embedding.model` or
 `attachments.embed` and want to re-embed without a full LLM recompile.
 
-It reads the compiled-wiki snapshot from `.kompend/kompend.db` and rebuilds the zvec
+It reads the compiled-wiki snapshot from `.kompend/kompend.db` and rebuilds the
 store in place. It does **not** re-ingest attachments or recompile the wiki —
 for that use `kompend compile --force --start-at-tier chunk`.
 
@@ -381,7 +381,7 @@ for that use `kompend compile --force --start-at-tier chunk`.
 
 | Flag | Default | Description |
 |------|---------|------------|
-| `--embed-model` | `compile.embedding.model` | Embedding model for zvec indexing (overrides config) |
+| `--embed-model` | `compile.embedding.model` | Embedding model for the vector store (overrides config) |
 | `--set key=val` | — | Override any config key for this run |
 
 The `attachments.embed` setting (and per-attachment `--embed`/`--no-embed`

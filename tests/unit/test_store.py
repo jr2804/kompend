@@ -152,7 +152,7 @@ def test_memory_log_fts_search(tmp_path: Path) -> None:
     db = _db_path(tmp_path)
     with open_store(db) as conn:
         conn.execute(f"INSERT INTO {MEMORY_LOG_TABLE}(ts, query, answer, feedback) VALUES (?, ?, ?, ?)", ("t1", "perceptual audio quality", "POLQA", "good"))
-        conn.execute(f"INSERT INTO {MEMORY_LOG_TABLE}(ts, query, answer, feedback) VALUES (?, ?, ?, ?)", ("t2", "vector database", "zvec", ""))
+        conn.execute(f"INSERT INTO {MEMORY_LOG_TABLE}(ts, query, answer, feedback) VALUES (?, ?, ?, ?)", ("t2", "vector database", "sqlite-vec", ""))
 
     with open_store(db) as conn:
         hits = conn.execute(
@@ -198,7 +198,7 @@ def test_obsolete_artifacts_finds_legacy_and_ignores_kept(tmp_path: Path) -> Non
     vault.kompend_dir.mkdir(parents=True)
     vault.dedup_dir.mkdir(parents=True)
     vault.cache_dir.mkdir(parents=True)
-    vault.vectors_dir.mkdir(parents=True)
+    vault.vectors_db_file.write_text("", encoding="utf-8")
 
     legacy_files = (
         vault.compile_state_file,
@@ -226,7 +226,7 @@ def test_obsolete_artifacts_finds_legacy_and_ignores_kept(tmp_path: Path) -> Non
     vault.kompend_db_file.write_text("", encoding="utf-8")
     vault.config_file.write_text("", encoding="utf-8")
     (vault.kompend_dir / "rumdl.toml").write_text("", encoding="utf-8")
-    vault.memory_db_file.mkdir(parents=True, exist_ok=True)
+    vault.memory_db_file.write_text("", encoding="utf-8")
 
     found = obsolete_artifacts(tmp_path)
     found_set = {path.name for path in found}
@@ -239,7 +239,7 @@ def test_obsolete_artifacts_finds_legacy_and_ignores_kept(tmp_path: Path) -> Non
     assert "kompend.db" not in found_set
     assert "config.toml" not in found_set
     assert "rumdl.toml" not in found_set
-    assert "vectors" not in found_set
+    assert "vectors.db" not in found_set
     assert "memory.db" not in found_set
 
 

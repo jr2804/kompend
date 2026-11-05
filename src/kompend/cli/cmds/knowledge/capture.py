@@ -43,7 +43,7 @@ from kompend.llm.format import strip_reasoning
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.markdown import MarkdownWriter
 from kompend.output.models import Document
-from kompend.rag.zvec_store import make_provider
+from kompend.rag.vector_store import make_provider
 
 logger = get_logger(__name__)
 

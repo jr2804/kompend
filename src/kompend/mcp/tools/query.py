@@ -9,9 +9,9 @@ from kompend.cli.cmds.knowledge.query import _parse_attr_filters
 from kompend.cli.cmds.pipeline.status import collect_stats
 from kompend.core.config import RlmConfig, resolve_config
 from kompend.core.models import load_wiki_from_files
-from kompend.core.paths import VECTORS_DIR, vault_paths
+from kompend.core.paths import VECTORS_DB_FILE, vault_paths
 from kompend.logging import get_logger
-from kompend.rag.zvec_store import ZvecWikiStore
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.search.retriever import HybridRetriever, KeywordRetriever, run_agentic_query
 
 logger = get_logger(__name__)
@@ -44,11 +44,11 @@ def query_wiki(
     if wiki is None:
         return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
-    vector_store: ZvecWikiStore | None = None
-    if state_dir and (state_dir / VECTORS_DIR).exists():
+    vector_store: SqliteVecWikiStore | None = None
+    if state_dir and (state_dir / VECTORS_DB_FILE).exists():
         try:
             embed_model = cfg.kompend.compile.embedding.model
-            vector_store = ZvecWikiStore.open(state_dir / VECTORS_DIR, embedding_model=embed_model or "hash")
+            vector_store = SqliteVecWikiStore.open(state_dir / VECTORS_DB_FILE, embedding_model=embed_model or "hash")
         except Exception:
             vector_store = None
 

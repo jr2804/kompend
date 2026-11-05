@@ -20,7 +20,7 @@ Both persist to the single vault store (`.kompend/kompend.db`): the query log in
 
 | Module | Contents |
 |--------|----------|
-| `store.py` | `MemoryStore`, `MemoryField` — zvec-backed semantic query memory |
+| `store.py` | `MemoryStore`, `MemoryField` — sqlite-vec-backed semantic query memory |
 | `lifecycle.py` | `MemoryTier`, `NodeState`, `MemoryStore` (lifecycle), `update_memory_for_compile`, `CompileReport` |
 | `__init__.py` | Re-exports `MemoryStore`, `MemoryField`, `update_memory_for_compile` |
 
@@ -33,10 +33,8 @@ Both persist to the single vault store (`.kompend/kompend.db`): the query log in
   `kompend.core.store`; it still depends on `kompend.core.paths` and
   `kompend.core.utils.time`.
 - `store.py` depends on `kompend.core.config`, `kompend.core.paths`, `kompend.core.utils.time`,
-  `kompend.core.store` (the `memory_log` table), and `kompend.rag.zvec_store`.
-- `store.py` keeps zvec's default **flat** index for
-  `MemoryField.QUERY_EMBEDDING` — it is built inline on insert, always
-  complete, with zero insert overhead. Do NOT add `HnswIndexParam` or per-insert
-  `optimize()` here: `add_entry()` runs once per user query, so HNSW's ~40 ms
-  `optimize()` cost would make every query slower than the ~8 ms flat search it
-  saves. HNSW belongs on the bulk-built wiki store, not this one.
+  `kompend.core.store` (the `memory_log` table), and `kompend.rag.vector_store`.
+- **The memory index is brute-force exact.** `vec0` scans the candidates —
+  there is no approximate index to add, and none should be: `add_entry()` runs
+  once per user query, so an index build would tax every query to save a few
+  milliseconds of search. The wiki store is the bulk-built one.

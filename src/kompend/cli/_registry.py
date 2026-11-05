@@ -156,7 +156,7 @@ COMMANDS: Final[dict[CommandName, CommandSpec]] = {
         CommandModule.PIPELINE,
         "index_cmd",
         HelpPanel.BUILD_PIPELINE,
-        "Rebuild the zvec vector index for semantic search.",
+        "Rebuild the vector index for semantic search.",
     ),
     # Capture & synthesis
     CommandName.CAPTURE: CommandSpec(

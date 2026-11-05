@@ -6,7 +6,7 @@ kompend includes a lightweight, native memory layer that allows the system to le
 
 The memory layer operates on a dual-storage model for optimal performance and flexibility:
 
-1. **Semantic Search (`zvec`)**: Past queries and answers are embedded and stored in `.kompend/memory.db`, allowing the system to retrieve highly relevant past interactions based on semantic similarity.
+1. **Semantic Search (sqlite-vec)**: Past queries and answers are embedded and stored in `.kompend/memory.db`, allowing the system to retrieve highly relevant past interactions based on semantic similarity.
 2. **Chronological Log**: An append-only log in the `memory_log` table of `.kompend/kompend.db` maintains a strict timeline of interactions, which is essential for periodic context synthesis.
 
 ## CLI Usage

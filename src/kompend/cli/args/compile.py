@@ -57,7 +57,7 @@ IndexStore = Annotated[
     bool | None,
     Parameter(
         name="--index",
-        help="Index compiled wiki in zvec for semantic search. Default: on.",
+        help="Index compiled wiki in the vector store for semantic search. Default: on.",
         group=OUTPUT_GROUP,
     ),
 ]
@@ -66,7 +66,7 @@ EmbedModel = Annotated[
     str | None,
     Parameter(
         name="--embed-model",
-        help="Embedding model for zvec indexing. Default: config compile.embedding.model (empty = no vector index).",
+        help="Embedding model for the vector store. Default: config compile.embedding.model (empty = no vector index).",
         group=OUTPUT_GROUP,
     ),
 ]

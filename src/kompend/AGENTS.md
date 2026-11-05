@@ -126,5 +126,5 @@ Commands — see `.agents/CHECKS.md`. For this subtree the relevant ones are
 | `output/` | Tier 5 — OKF markdown/JSON/Typst writers, indexes, log |
 | `preprocessing/` | `host_memory.py` (heavy-parse memory guard), `dedup/`, `downloaders/` |
 | `preprocessing/parsers/` | The one ingestion parser (parsecraft) and its routing bridge |
-| `rag/` | zvec vector store — fields, index build, filters, drift, pruning |
+| `rag/` | sqlite-vec vector store — fields, index build, filters, drift, pruning |
 | `search/` | Multi-retriever semantic search with adaptive selection |

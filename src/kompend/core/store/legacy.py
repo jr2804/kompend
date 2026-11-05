@@ -8,8 +8,8 @@ Deliberately excluded from the candidate set — ``kompend.db`` does not superse
 them, so reporting them would be wrong:
 
 * ``kompend.db`` itself,
-* ``vectors/`` — the separate, regenerable embedding branch,
-* ``memory.db`` — a zvec collection directory (rebuildable from ``memory_log``),
+* ``vectors.db`` — the separate, regenerable embedding branch,
+* ``memory.db`` — the semantic index over ``memory_log`` (rebuildable from it),
 * ``config.toml`` / ``rumdl.toml`` — user-editable TOML, and vault markers,
 * ``sources/`` / ``wiki/`` / ``attachments/`` — user content.
 """

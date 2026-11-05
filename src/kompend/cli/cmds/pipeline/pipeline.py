@@ -457,7 +457,7 @@ def index_cmd(
     wiki_dir: WikiDir = None,
     cli_set: CliSet = None,
 ) -> None:
-    """Rebuild the zvec vector index for semantic search.
+    """Rebuild the vector index for semantic search.
 
     Uses the cached :class:`CompiledWiki` from the ``wiki_snapshot`` table in ``.kompend/kompend.db``.
     This is a recovery command — a normal ``kompend compile`` already builds
@@ -518,7 +518,7 @@ def index_cmd(
         write_wiki_cache(cached, vp.base_dir)
 
     if count > 0:
-        get_console().print(f"Indexed {count} nodes in zvec store for semantic search.")
+        get_console().print(f"Indexed {count} nodes in the vector store for semantic search.")
     else:
         get_err_console().print("Warning: no nodes indexed — vector index is empty.")
 

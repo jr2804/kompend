@@ -12,7 +12,7 @@ from kompend.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from kompend.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from kompend.preprocessing.dedup.orchestrator import DedupOrchestrator
 from kompend.preprocessing.dedup.store import DedupStore, StoreEntry
-from kompend.rag.zvec_store import PydanticAIEmbeddingProvider, make_provider, to_pydantic_ai_embedding_string
+from kompend.rag.vector_store import PydanticAIEmbeddingProvider, make_provider, to_pydantic_ai_embedding_string
 from kompend.types import JSONDict
 from tests.conftest import DeterministicTestEmbeddingProvider
 

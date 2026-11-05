@@ -10,7 +10,7 @@ Design rules applied below:
   a ``TEXT`` column holding JSON for nested / graph-shaped content that is only
   round-tripped as a whole (``elements``, ``nodes``, ``report`` …).
 * **FTS5 only where it earns its place.** ``memory_log`` gets an external-content
-  FTS index (query / answer / feedback keyword fallback alongside the zvec
+  FTS index (query / answer / feedback keyword fallback alongside the
   semantic path). ``wiki_snapshot`` deliberately does **not**: the primary wiki
   query path is the LLM reading markdown, so an FTS copy would only duplicate
   the vault. Bibliographic FTS is deferred (its ``(source, ref_id)`` text PK
@@ -259,7 +259,7 @@ _DDL: Final[tuple[str, ...]] = (
     )
     """,
     # External-content FTS5 over the chronological query memory — the keyword
-    # fallback beside zvec semantic recall.
+    # fallback beside the semantic recall.
     f"""
     CREATE VIRTUAL TABLE IF NOT EXISTS {MEMORY_LOG_FTS_TABLE} USING fts5(
         query, answer, feedback,
@@ -383,11 +383,15 @@ _DDL: Final[tuple[str, ...]] = (
     # Vector-branch manifest: the indexed id set, their content hashes and the
     # embed-text version of the last build, used to detect a stale vector store.
     # Single row, id = 1, like schema_version.
+    # `backend` names the store that wrote the vectors ("sqlite-vec"): vectors
+    # of one backend are not readable by another, so a manifest written by a
+    # different backend must not validate the current store.
     f"""
     CREATE TABLE IF NOT EXISTS {VECTOR_MANIFEST_TABLE} (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         embed_version INTEGER NOT NULL DEFAULT 0,
         embedding_model TEXT NOT NULL DEFAULT '',
+        backend TEXT NOT NULL DEFAULT '',
         ids TEXT NOT NULL DEFAULT '[]',
         content_hashes TEXT NOT NULL DEFAULT '{{}}',
         written_at TEXT NOT NULL DEFAULT ''

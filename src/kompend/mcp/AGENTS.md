@@ -25,7 +25,7 @@ Use ``from fastmcp import FastMCP`` — never the SDK's renamed
 | ``tools/config.py`` | ``config_get``, ``config_set``, ``config_check`` — wiki config inspection/mutation/diff |
 | ``tools/knowledge.py`` | ``wiki_capture``, ``wiki_distill``, ``wiki_learn``, ``query_wiki`` |
 | ``tools/memory.py`` | ``memory_add``, ``memory_search``, ``memory_synthesize`` |
-| ``tools/query.py`` | ``query_wiki`` — markdown-first search (zvec vectors optional, keyword fallback) |
+| ``tools/query.py`` | ``query_wiki`` — markdown-first search (vector search optional, keyword fallback) |
 | ``tools/_helpers.py`` | Shared tool utilities (wiki dir resolution, error formatting) |
 
 ## Rules

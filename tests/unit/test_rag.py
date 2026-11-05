@@ -1,4 +1,4 @@
-"""Tests for kompend Hybrid RAG — zvec vector store."""
+"""Tests for kompend Hybrid RAG — the sqlite-vec vector store."""
 
 import gc
 import shutil
@@ -9,39 +9,40 @@ import pytest
 
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
-from kompend.rag.zvec_store import PydanticAIEmbeddingProvider, ZvecWikiStore, make_provider, to_pydantic_ai_embedding_string
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+from kompend.rag.vector_store import PydanticAIEmbeddingProvider, make_provider, to_pydantic_ai_embedding_string
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)
 
 
-class TestZvecWikiStore:
-    """Tests for ZvecWikiStore."""
+class TestSqliteVecWikiStore:
+    """Tests for SqliteVecWikiStore."""
 
     def test_empty_store_returns_empty_search(self) -> None:
-        store = ZvecWikiStore()
+        store = SqliteVecWikiStore()
         assert store.search("anything") == []
         assert store.available is False
 
     def test_empty_wiki_returns_zero_indexed(self) -> None:
         empty = CompiledWiki(nodes=[], edges=[], toc=[])
-        store = ZvecWikiStore(embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(embedding_provider=_TEST_PROVIDER)
         assert store.build_index(empty) == 0
 
-    def test_build_index_works(self, zvec_db: Path) -> None:
+    def test_build_index_works(self, vectors_db: Path) -> None:
         wiki = CompiledWiki(
             nodes=[WikiNode(id="n1", title="Test", content="...", node_type=NodeType.SECTION)],
             edges=[],
             toc=[],
         )
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         assert store.build_index(wiki) == 1
         store.close()
 
-    def test_search_after_build_returns_results(self, zvec_db: Path) -> None:
+    def test_search_after_build_returns_results(self, vectors_db: Path) -> None:
         """Integration test: build index and search."""
         try:
-            store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+            store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
             wiki = CompiledWiki(
                 nodes=[
                     WikiNode(id="n1", title="Testing", content="test content here", node_type=NodeType.SECTION),
@@ -57,12 +58,12 @@ class TestZvecWikiStore:
             store.close()
         finally:
             gc.collect()
-            shutil.rmtree(zvec_db, ignore_errors=True)
+            shutil.rmtree(vectors_db, ignore_errors=True)
 
-    def test_build_index_creates_parent_dir(self, zvec_db: Path) -> None:
-        db = zvec_db / "nested" / "deep" / "store"
+    def test_build_index_creates_parent_dir(self, vectors_db: Path) -> None:
+        db = vectors_db / "nested" / "deep" / "store"
         try:
-            store = ZvecWikiStore(db_file=str(db), embedding_provider=_TEST_PROVIDER)
+            store = SqliteVecWikiStore(db_file=str(db), embedding_provider=_TEST_PROVIDER)
             wiki = CompiledWiki(
                 nodes=[
                     WikiNode(id="n1", title="Test", content="...", node_type=NodeType.SECTION),
@@ -76,10 +77,10 @@ class TestZvecWikiStore:
             store.close()
         finally:
             gc.collect()
-            shutil.rmtree(zvec_db, ignore_errors=True)
+            shutil.rmtree(vectors_db, ignore_errors=True)
 
     def test_close_then_search_returns_empty(self) -> None:
-        store = ZvecWikiStore()
+        store = SqliteVecWikiStore()
         store.close()
         assert store.search("anything") == []
 
@@ -98,37 +99,37 @@ class TestZvecWikiStore:
         assert abs(norm - 1.0) < 0.001
 
     def test_available_property_before_build(self) -> None:
-        store = ZvecWikiStore()
+        store = SqliteVecWikiStore()
         assert store.available is False
         store.close()
 
     def test_close_is_idempotent(self) -> None:
-        store = ZvecWikiStore()
+        store = SqliteVecWikiStore()
         store.close()
         store.close()  # should not raise
 
-    def test_open_existing_store_and_search(self, zvec_db: Path) -> None:
+    def test_open_existing_store_and_search(self, vectors_db: Path) -> None:
         """Opening an existing collection allows querying without rebuilding."""
         wiki = CompiledWiki(
             nodes=[WikiNode(id="n1", title="Testing", content="test content here", node_type=NodeType.SECTION)],
             edges=[],
             toc=[],
         )
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         store.build_index(wiki)
         store.close()
 
         try:
-            reopened = ZvecWikiStore.open(str(zvec_db), embedding_provider=_TEST_PROVIDER)
+            reopened = SqliteVecWikiStore.open(str(vectors_db), embedding_provider=_TEST_PROVIDER)
             assert reopened.available
             results = reopened.search("test")
             assert any(r["id"] == "n1" for r in results)
             reopened.close()
         finally:
             gc.collect()
-            shutil.rmtree(zvec_db, ignore_errors=True)
+            shutil.rmtree(vectors_db, ignore_errors=True)
 
-    def test_source_file_is_preserved_in_search_results(self, zvec_db: Path) -> None:
+    def test_source_file_is_preserved_in_search_results(self, vectors_db: Path) -> None:
         """Node source metadata is stored as a searchable field."""
         wiki = CompiledWiki(
             nodes=[
@@ -143,7 +144,7 @@ class TestZvecWikiStore:
             edges=[],
             toc=[],
         )
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         store.build_index(wiki)
         try:
             results = store.search("methods")
@@ -152,7 +153,7 @@ class TestZvecWikiStore:
         finally:
             store.close()
             gc.collect()
-            shutil.rmtree(zvec_db, ignore_errors=True)
+            shutil.rmtree(vectors_db, ignore_errors=True)
 
 
 class TestEmbeddingStringConversion:
@@ -239,6 +240,6 @@ def sample_wiki() -> CompiledWiki:
 
 
 @pytest.fixture
-def zvec_db(tmp_path: Path) -> Path:
-    """Provide a temp directory for zvec test databases."""
-    return tmp_path / "zvec_test_store"
+def vectors_db(tmp_path: Path) -> Path:
+    """Provide a temp directory for the vector-store test databases."""
+    return tmp_path / "vector_test_store"

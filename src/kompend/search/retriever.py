@@ -1,6 +1,6 @@
 """Vector-only retriever for semantic search over compiled wikis.
 
-All retrieval goes through the zvec vector store. FTS5, token overlap,
+All retrieval goes through the vector store. FTS5, token overlap,
 and BM25 raw-source fallbacks have been removed — if no vector store is
 available, search returns empty results (the markdown wiki is still
 browsable directly).
@@ -26,7 +26,7 @@ from kompend.core.models import CompiledWiki, ElementType, ImageRef, MetadataFie
 from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.text.page_media import find_page_figures
 from kompend.logging import get_logger
-from kompend.rag.zvec_store import VectorStoreLike, ZvecField
+from kompend.rag.vector_store import VectorField, VectorStoreLike
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
 
 TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
@@ -78,7 +78,7 @@ class Citation(TypedDict):
 
 
 class HybridRetriever:
-    """Semantic search over compiled wikis via zvec vector store.
+    """Semantic search over compiled wikis via the vector store.
 
     Retrieval is purely vector-based. If no vector store is available,
     all search methods return empty lists.
@@ -182,13 +182,13 @@ class HybridRetriever:
         """
         node_id = str(hit.get("id", ""))
         node = self._node_by_id.get(node_id)
-        title = _hit_str(hit, ZvecField.TITLE) or (node.title if node else node_id)
+        title = _hit_str(hit, VectorField.TITLE) or (node.title if node else node_id)
         snippet = (
             extract_snippet(node.content, query_tokens, self._display.search_snippet_chars)
             if node and node.content
-            else _hit_str(hit, ZvecField.CONTENT_PREVIEW) or title
+            else _hit_str(hit, VectorField.CONTENT_PREVIEW) or title
         )
-        source_file = _hit_opt_str(hit, ZvecField.SOURCE_FILE)
+        source_file = _hit_opt_str(hit, VectorField.SOURCE_FILE)
         if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
             source_file = str(node.metadata[MetadataField.SOURCE])
         return SearchResult(
@@ -570,10 +570,10 @@ def _node_matches_filters(
     attributes_all: Sequence[str] | None = None,
     attribute_keys: Sequence[str] | None = None,
 ) -> bool:
-    """Portable (store-less) equivalent of the zvec server-side filter.
+    """Portable (store-less) equivalent of the store-side filter.
 
     Used by :class:`KeywordRetriever`; the store-backed
-    :class:`HybridRetriever` pushes the same filters into zvec instead.
+    :class:`HybridRetriever` pushes the same filters into the store instead.
     """
     node_tags = _node_tags(node)
     if tags_all and not all(tag in node_tags for tag in tags_all):

@@ -134,7 +134,7 @@ def wiki_index(
     embed_model: str | None = None,
     config_file: str | None = None,
 ) -> dict[str, Any]:
-    """Rebuild the zvec vector index for semantic search."""
+    """Rebuild the vector index for semantic search."""
     vp = vault_paths(wiki_dir)
     cli_overrides = build_cli_overrides()
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=cli_overrides, config_file=config_file)
@@ -172,7 +172,7 @@ def wiki_index(
         write_wiki_cache(cached, vp.base_dir)
 
     if count > 0:
-        return {"status": "ok", "count": count, "message": f"Indexed {count} nodes in zvec store for semantic search."}
+        return {"status": "ok", "count": count, "message": f"Indexed {count} nodes in the vector store for semantic search."}
     return {"status": "ok", "count": 0, "message": "Warning: no nodes indexed — vector index is empty."}
 
 

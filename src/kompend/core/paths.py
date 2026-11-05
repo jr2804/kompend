@@ -95,7 +95,10 @@ QUALITY_FILE: Final[str] = "quality.md"
 WIKI_MARKDOWN_FILE: Final[str] = "wiki.md"
 
 # ── Vector store ────────────────────────────────────────────────────────
-VECTORS_DIR: Final[str] = "vectors"
+#: The vector branch: one SQLite file holding the vectors, the lexical index
+#: and the filterable metadata. Separate from the vault store and
+#: regenerable — the manifest of the last build lives in ``kompend.db``.
+VECTORS_DB_FILE: Final[str] = "vectors.db"
 #: Loose-JSON vector manifest the ``vector_manifest`` row replaced; kept so
 #: :func:`kompend.core.store.legacy.obsolete_artifacts` can find the file.
 VECTORS_MANIFEST_FILE: Final[str] = "vectors.manifest.json"
@@ -104,7 +107,7 @@ VECTORS_MANIFEST_FILE: Final[str] = "vectors.manifest.json"
 DOWNLOADED_FILE: Final[str] = "downloaded.json"
 
 # ── Memory ──────────────────────────────────────────────────────────────
-MEMORY_DB_FILE: Final[str] = "memory.db"  # zvec collection dir (rebuildable from the log)
+MEMORY_DB_FILE: Final[str] = "memory.db"  # sqlite-vec index over the log (rebuildable)
 MEMORY_LOG_FILE: Final[str] = "memory.jsonl"  # obsolete artifact, see VaultPaths docstring
 MEMORY_STORE_FILE: Final[str] = "memory.json"  # obsolete artifact, see VaultPaths docstring
 #: Subdirectory under ``sources/`` that holds the synthesized memory context.
@@ -232,10 +235,10 @@ class VaultPaths:
         │   ├── cache/              ← cache_dir
         │   │   └── images/         ← images_dir
         │   ├── review/             ← review_dir
-        │   ├── vectors/            ← vectors_dir (zvec directory store)
+        │   ├── vectors.db          ← vectors_db_file (sqlite-vec vector branch)
         │   ├── kompend.db          ← kompend_db_file (single non-vector store)
-        │   │                            └ vector_manifest row = zvec id sidecar
-        │   ├── memory.db           ← memory_db_file (zvec dir, NOT SQLite)
+        │   │                            └ vector_manifest row = index manifest
+        │   ├── memory.db           ← memory_db_file (sqlite-vec index over the log)
         │   ├── config.toml         ← config_file
         │   ├── rumdl.toml          ← RUMDL_CONFIG_FILE
         │   └── log.md              ← log_file
@@ -341,9 +344,9 @@ class VaultPaths:
         return self.kompend_dir / REVIEW_DIR
 
     @property
-    def vectors_dir(self) -> Path:
-        """Embedding vector store directory."""
-        return self.kompend_dir / VECTORS_DIR
+    def vectors_db_file(self) -> Path:
+        """Embedding vector store file (the regenerable vector branch)."""
+        return self.kompend_dir / VECTORS_DB_FILE
 
     @property
     def vectors_manifest_file(self) -> Path:
@@ -387,10 +390,10 @@ class VaultPaths:
 
     @property
     def memory_db_file(self) -> Path:
-        """Semantic query-memory collection directory (zvec, not SQLite).
+        """Semantic query-memory index file (sqlite-vec over ``memory_log``).
 
-        Despite the ``.db`` suffix this is a zvec directory store opened via
-        ``memory.store.MemoryStore._ensure_collection``; the rebuildable
+        Despite the ``.db`` suffix this is a SQLite file opened via
+        ``memory.store.MemoryStore._ensure_store``; the rebuildable
         chronological twin is ``memory_log_file``.
         """
         return self.kompend_dir / MEMORY_DB_FILE
@@ -497,8 +500,10 @@ class VaultPaths:
         """Create all standard directories if they do not exist.
 
         Creates: ``sources_dir``, ``output_dir``, ``kompend_dir``, ``cache_dir``,
-        ``images_dir``, ``extract_dir``, ``provenance_dir``, ``review_dir``,
-        ``vectors_dir``.
+        ``images_dir``, ``extract_dir``, ``provenance_dir``, ``review_dir``.
+
+        The vector branch is a *file* (``vectors.db``); the store creates it
+        on demand, so no directory is pre-created for it.
         """
         for directory in (
             self.sources_dir,
@@ -510,7 +515,6 @@ class VaultPaths:
             self.extract_dir,
             self.provenance_dir,
             self.review_dir,
-            self.vectors_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 

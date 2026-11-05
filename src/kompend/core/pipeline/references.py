@@ -22,7 +22,7 @@ from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import REFERENCES_TABLE
 from kompend.core.text.matching import cosine
 from kompend.logging import get_logger
-from kompend.rag.zvec_store import make_provider
+from kompend.rag.vector_store import make_provider
 
 __all__ = ["ReferenceStore", "consolidate_references", "merge_similar_references"]
 

@@ -65,17 +65,19 @@ cat ./wiki/wiki.json | jq '.nodes[] | select(.title | test("performance"))'
 | Direct CLI (`kompend compile`, `kompend query`) | Batch processing, cron jobs, scripts |
 | MCP server | Agent integration (Hermes, Claude Code, etc.) |
 | Open-WebUI + JSON graph | Chat interface with RAG over the compiled wiki |
-| zvec vector store | Semantic search without an external vector DB |
+| Embedded vector store | Semantic search without an external vector DB |
 
-## zvec — Embedded Vector Search
+## Embedded Vector Search
 
-[zvec](https://zvec.org) is Alibaba's in-process vector database (Apache 2.0).
-It stores vectors directly on disk — no server, no Docker, no API keys.
+The vector store is [sqlite-vec](https://github.com/asg017/sqlite-vec), an
+embedded vector extension for SQLite (Apache 2.0). The vectors, the lexical
+index and the filterable metadata live in one file under `.kompend/` — no
+server, no Docker, no API keys.
 
 ```python
-from kompend.rag.zvec_store import ZvecWikiStore
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 
-store = ZvecWikiStore("./.kompend/vectors")
+store = SqliteVecWikiStore.open("./.kompend/vectors.db")
 results = store.search("performance requirements", top_k=5)
 for r in results:
     print(f"[{r['score']:.2f}] {r['title']}: {r.get('content_preview')[:100]}")

@@ -23,9 +23,9 @@ project root — **not** inside `wiki/`.
 │   │   ├── encoding/           # Normalized UTF-8 copies
 │   │   ├── downloaded.json     # URL download manifest
 │   │   └── gen_checkpoint/     # Per-batch generation checkpoints (resumable)
-│   ├── vectors/                # Zvec vector index (RAG) — regenerable
-│   ├── kompend.db                 # Single SQLite store; `vector_manifest` row = zvec id sidecar
-│   ├── memory.db               # Zvec collection dir for semantic query memory (NOT SQLite)
+│   ├── vectors.db              # sqlite-vec vector index (RAG) — regenerable
+│   ├── kompend.db                 # Single SQLite store; `vector_manifest` row = index manifest
+│   ├── memory.db               # sqlite-vec index over the query-memory log
 │   ├── dedup/                  # Content-level dedup fingerprints
 │   │   └── fingerprints.json   # Per-document fingerprints (embedding + minhash)
 │   ├── review/                 # Review queue entries (markdown + _state.json)

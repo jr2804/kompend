@@ -9,7 +9,7 @@ Two tiers:
 - **T2 — string similarity** (:func:`similarity`, :func:`best_match`):
   rapidfuzz token-set ratio. Deterministic, fast, no model needed.
 - **T3 — semantic matching** (:class:`SemanticMatcher`): embedding
-  cosine via the zvec embedder. Used as a *conditional* fallback when
+  cosine via the embedding provider. Used as a *conditional* fallback when
   string similarity is below threshold and an embedding model is
   configured. Skipped silently when no embedder is available — T2
   alone always bounds the caller's work.
@@ -97,7 +97,7 @@ class SemanticMatcher:
 
 
 class Embedder(Protocol):
-    """Minimal embedder surface — satisfied by zvec's ``build_embedder``."""
+    """Minimal embedder surface — satisfied by ``build_embedder``."""
 
     def embed(self, text: str) -> list[float]: ...
 

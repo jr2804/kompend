@@ -63,7 +63,7 @@ from kompend.lint.structural import BrokenWikilinksRule
 from kompend.llm.decision import ErrorAction
 from kompend.llm.request_budget import RequestBudget
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
-from kompend.rag.zvec_store import make_provider
+from kompend.rag.vector_store import make_provider
 
 # Matches wikilink-wrapped source citations like [[sources/foo.pdf]] so they
 # can be normalized to the intended [sources/foo.pdf] inline citation format

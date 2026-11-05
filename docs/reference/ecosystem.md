@@ -77,7 +77,7 @@ A living survey of compiled LLM-wiki tools, PDF pre-processors, chunking librari
 
 | Tool | Type | Stars | License | Purpose |
 |---|---|---|---|---|
-| **alibaba/zvec** | Vector DB | NEW | Apache 2.0 | Lightweight in-process vector store |
+| **sqlite-vec** | Vector DB | NEW | Apache 2.0 | Embedded vector extension for SQLite |
 | **tobi/qmd** | CLI search | ~200 | MIT | Local full-text search over wiki corpus |
 | **VectifyAI/PageIndex** | Doc index | 32.3k | — | Vectorless, reasoning-based RAG. 98.7% FinanceBench |
 
@@ -177,7 +177,7 @@ No custom GUI. Use **open-webui/open-webui** as the query/work interface. kompen
 - Marker: <https://github.com/datalab-to/marker>
 - MinerU: <https://github.com/opendatalab/MinerU>
 - Chonkie: <https://github.com/feyninc/chonkie>
-- zvec: <https://github.com/alibaba/zvec>
+- sqlite-vec: <https://github.com/asg017/sqlite-vec>
 - qmd: <https://github.com/tobi/qmd>
 - open-webui: <https://github.com/open-webui/open-webui>
 - Oxide Office: <https://office.oxide.fyi/>

@@ -1,6 +1,6 @@
 """Unit tests for the ``kompend index`` CLI command.
 
-``kompend index`` is a recovery command that rebuilds the zvec vector index
+``kompend index`` is a recovery command that rebuilds the vector index
 from the compiled-wiki snapshot in the vault store. These tests mock the wiki
 loader and the index builder so no real embedding provider is required.
 """

@@ -16,7 +16,7 @@ selection, query classification, budget management, and tag filtering.
 
 | Module | Contents |
 |--------|----------|
-| ``retriever.py`` | ``HybridRetriever`` (zvec-backed, server-side filters), ``KeywordRetriever`` (store-less), ``SearchResult``, ``synthesize_results``, ``run_agentic_query`` |
+| ``retriever.py`` | ``HybridRetriever`` (vector-store-backed, server-side filters), ``KeywordRetriever`` (store-less), ``SearchResult``, ``synthesize_results``, ``run_agentic_query`` |
 | ``filters.py`` | ``matches_tag_filter`` / ``matches_attr_filter`` — canonical tag/attribute predicates |
 | ``adaptive_retriever.py`` | ``AdaptiveRetriever`` — multi-strategy retriever with auto-selection |
 | ``classifier.py`` | ``QueryClassifier`` — classify queries by type/domain for retriever selection |
@@ -30,10 +30,12 @@ selection, query classification, budget management, and tag filtering.
 - Tag/attribute predicates live in ``filters.py`` (canonical; re-exported by
   ``cli._query_helpers``). Tags are an **OR of ANDs** (DNF); attributes are an
   **AND** of ``(key, value)`` and key-presence (``value is None``) checks.
-- ``HybridRetriever.search`` pushes filters down into zvec
-  (``CONTAIN_ANY``/``CONTAIN_ALL``); ``KeywordRetriever`` applies the same
-  predicates in Python (store-less path). The agentic query tools thread the
-  caller's filters through ``QueryAgentDeps`` into ``retriever.search``.
+- ``HybridRetriever.search`` pushes filters down into the vector store, which
+  evaluates them as SQL (``EXISTS`` subqueries over the tag/attribute side
+  tables); ``KeywordRetriever`` applies the same predicates in Python
+  (store-less path). The two must agree — ``filters.py`` holds the canonical
+  semantics and a test pins the store to it. The agentic query tools thread
+  the caller's filters through ``QueryAgentDeps`` into ``retriever.search``.
 - ``pipeline.py``'s optional steps (query expansion, HyDE, neural rerank,
   CRAG grading) DO call LLM agents — classification is programmatic, those
   steps are not. Each one is best-effort enrichment: on failure it records

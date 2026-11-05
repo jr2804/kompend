@@ -1,6 +1,6 @@
 """Context-budget-aware retrieval using the ChunkTree hierarchy.
 
-Retrieval is purely vector-based. Wraps the zvec store with three
+Retrieval is purely vector-based. Wraps the vector store with three
 adaptive modes:
 - ZOOM_IN: retrieve summaries -> identify hot sections -> expand to full leaves
 - ZOOM_OUT: too many leaf hits -> collapse to section summaries
@@ -13,7 +13,7 @@ from kompend.core.config._configs import DisplayConfig
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.core.models.metadata import meta_str_list, meta_str_list_dict
 from kompend.logging import get_logger
-from kompend.rag.zvec_store import VectorStoreLike, ZvecField
+from kompend.rag.vector_store import VectorField, VectorStoreLike
 from kompend.search.budget import BudgetPlan, ContextBudgetManager
 from kompend.search.retriever import SearchResult, extract_snippet, node_figures, tokenize
 
@@ -143,13 +143,13 @@ class AdaptiveRetriever:
         for hit in hits:
             node_id = hit.get("id", "")
             node = self._node_by_id.get(node_id)
-            title = hit.get(ZvecField.TITLE) or (node.title if node else node_id)
+            title = hit.get(VectorField.TITLE) or (node.title if node else node_id)
             snippet = (
                 extract_snippet(node.content, query_tokens, self._display.search_snippet_chars)
                 if node and node.content
-                else hit.get(ZvecField.CONTENT_PREVIEW, "") or title
+                else hit.get(VectorField.CONTENT_PREVIEW, "") or title
             )
-            source_file: str | None = hit.get(ZvecField.SOURCE_FILE)
+            source_file: str | None = hit.get(VectorField.SOURCE_FILE)
             if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
                 source_file = str(node.metadata[MetadataField.SOURCE])
             results.append(

@@ -39,7 +39,7 @@ from kompend.llm.models import (
 from kompend.llm.usage import UsageTracker, tokens_per_second
 from kompend.logging import get_console, get_logger
 from kompend.preprocessing.parsers import PARSER_PARSECRAFT, build_parser
-from kompend.rag.zvec_store import build_embedder, to_pydantic_ai_embedding_string
+from kompend.rag.vector_store import build_embedder, to_pydantic_ai_embedding_string
 from kompend.types import JSON
 
 #: Smallest input budget a window may leave before the doctor calls it unusable.

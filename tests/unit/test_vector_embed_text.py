@@ -1,6 +1,6 @@
-"""Tests for the zvec embed-text composition and its staleness guard.
+"""Tests for the embed-text composition and its staleness guard.
 
-``_embed_text`` decides what text the vector store embeds for a page, and
+``embed_text`` decides what text the vector store embeds for a page, and
 ``is_stale`` decides whether an existing index may still be served. Both are
 invisible at query time when they are wrong — a changed composition silently
 keeps serving old vectors, and a dropped ``description`` silently narrows what
@@ -20,11 +20,11 @@ import pytest
 
 from kompend.core.models import CompiledWiki, WikiNode, load_wiki_from_files
 from kompend.core.models.enums import NodeType
-from kompend.rag.zvec_store import (
-    _EMBED_TEXT_VERSION,
-    ZvecWikiStore,
-    _content_hash,
-    _embed_text,
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+from kompend.rag.vector_store import (
+    EMBED_TEXT_VERSION,
+    content_hash,
+    embed_text,
 )
 from kompend.types import MetadataValue
 from tests.conftest import DeterministicTestEmbeddingProvider
@@ -38,15 +38,15 @@ class TestEmbedTextComposition:
     def test_includes_title_description_and_content(self) -> None:
         node = _node("a", content="## Definition\n\nP.863 is a standard.")
         assert node.description == "P.863 is a standard."
-        assert _embed_text(node) == "T\nP.863 is a standard.\n## Definition\n\nP.863 is a standard."
+        assert embed_text(node) == "T\nP.863 is a standard.\n## Definition\n\nP.863 is a standard."
 
     def test_headings_only_falls_back_to_title_and_content(self) -> None:
         node = _node("a", content="## A\n### B")
         assert node.description == ""
-        assert _embed_text(node) == "T\n## A\n### B"
+        assert embed_text(node) == "T\n## A\n### B"
 
     def test_empty_content_falls_back_to_title(self) -> None:
-        assert _embed_text(_node("a", content="")) == "T\n"
+        assert embed_text(_node("a", content="")) == "T\n"
 
     def test_binary_content_never_reaches_the_embedder_as_a_repr(self) -> None:
         """A payload that is not text must not embed as a bytes repr.
@@ -57,7 +57,7 @@ class TestEmbedTextComposition:
         """
         payload = b"\x89PNG\r\n\x1a\n" + bytes(2048)
         node = replace(_node("a", content="placeholder"), content=payload)  # type: ignore[arg-type]
-        embedded = _embed_text(node)
+        embedded = embed_text(node)
         assert "b'" not in embedded
         assert "x89" not in embedded
         assert "binary content" in embedded
@@ -65,7 +65,7 @@ class TestEmbedTextComposition:
 
     def test_structured_table_content_embeds_as_rows(self) -> None:
         node = replace(_node("a", content="placeholder"), content=[["Rate", "Value"], ["1", "2"]])  # type: ignore[arg-type]
-        embedded = _embed_text(node)
+        embedded = embed_text(node)
         assert "Rate | Value" in embedded
         assert "1 | 2" in embedded
         assert "[['Rate'" not in embedded
@@ -96,8 +96,8 @@ class TestIndexEligibilityParity:
     because ``embed_attachments`` filtered the build but not the comparison.
     """
 
-    def test_attachment_filter_is_symmetric(self, zvec_db: Path) -> None:
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+    def test_attachment_filter_is_symmetric(self, vectors_db: Path) -> None:
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         wiki = _wiki(_node("page"), _node("att", source_asset=True))
 
         # Built without attachments: the index covers one node, and the check
@@ -121,7 +121,7 @@ class TestIndexEligibilityParity:
         assert bundle is not None
         assert sorted(n.id for n in bundle.nodes) == ["itu-p862", "loudness"]
 
-        store = ZvecWikiStore(db_file=str(tmp_path / "vectors"), embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(db_file=str(tmp_path / "vectors"), embedding_provider=_TEST_PROVIDER)
         assert store.build_index(bundle) == 2
         assert store.is_stale(bundle) is False
         store.close()
@@ -131,34 +131,34 @@ class TestIndexEligibilityParity:
 class TestManifestStaleness:
     """A manifest must prove both its ids AND its embed-text version."""
 
-    def test_build_records_the_current_version(self, zvec_db: Path) -> None:
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+    def test_build_records_the_current_version(self, vectors_db: Path) -> None:
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         wiki = _wiki(_node("n1"))
         assert store.build_index(wiki) == 1
         manifest = _manifest_row(store)
-        assert manifest["embed_version"] == _EMBED_TEXT_VERSION
+        assert manifest["embed_version"] == EMBED_TEXT_VERSION
         assert manifest["ids"] == ["n1"]
         assert store.is_stale(wiki) is False
         store.close()
         gc.collect()
 
-    def test_version_mismatch_is_stale(self, zvec_db: Path) -> None:
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+    def test_version_mismatch_is_stale(self, vectors_db: Path) -> None:
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         wiki = _wiki(_node("n1"))
         store.build_index(wiki)
-        _set_manifest_version(store, _EMBED_TEXT_VERSION - 1)
+        _set_manifest_version(store, EMBED_TEXT_VERSION - 1)
         assert store.is_stale(wiki) is True
         store.close()
         gc.collect()
 
-    def test_legacy_json_sidecar_is_ignored(self, zvec_db: Path) -> None:
+    def test_legacy_json_sidecar_is_ignored(self, vectors_db: Path) -> None:
         """A pre-migration vault's loose JSON manifest is never read.
 
         Policy: ``kompend.db`` holds all non-vector state. A ``vectors.manifest.json``
         left by an older kompend is dead weight (reported by ``kompend doctor``) and
         its store is rebuilt rather than trusted.
         """
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         wiki = _wiki(_node("n1"))
         store.build_index(wiki)
         _delete_manifest_row(store)
@@ -167,41 +167,41 @@ class TestManifestStaleness:
         store.close()
         gc.collect()
 
-    def test_id_mismatch_is_stale(self, zvec_db: Path) -> None:
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+    def test_id_mismatch_is_stale(self, vectors_db: Path) -> None:
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         store.build_index(_wiki(_node("n1")))
         assert store.is_stale(_wiki(_node("n1"), _node("n2"))) is True
         store.close()
         gc.collect()
 
-    def test_build_records_content_hashes(self, zvec_db: Path) -> None:
+    def test_build_records_content_hashes(self, vectors_db: Path) -> None:
         """One digest per indexed id — the fingerprint a later check compares."""
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         wiki = _wiki(_node("n1"))
         store.build_index(wiki)
 
         hashes = _manifest_row(store)["hashes"]
         assert list(hashes) == ["n1"]
-        assert hashes["n1"] == _content_hash(_node("n1"))
+        assert hashes["n1"] == content_hash(_node("n1"))
         assert store.is_stale(wiki) is False
         store.close()
         gc.collect()
 
-    def test_content_change_is_stale(self, zvec_db: Path) -> None:
+    def test_content_change_is_stale(self, vectors_db: Path) -> None:
         """An edited page invalidates the index even though its id is unchanged.
 
         The id set cannot see this: a lint fix, a hand edit or a recompile that
         reworded a page leaves the vectors describing text search no longer
         returns.
         """
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         store.build_index(_wiki(_node("n1", "original body")))
         assert store.is_stale(_wiki(_node("n1", "rewritten body"))) is True
         assert store.is_stale(_wiki(_node("n1", "original body"))) is False
         store.close()
         gc.collect()
 
-    def test_tag_change_is_stale(self, zvec_db: Path) -> None:
+    def test_tag_change_is_stale(self, vectors_db: Path) -> None:
         """Tags are filterable index fields, so retagging is a content change."""
         tagged = WikiNode(
             id="n1",
@@ -211,17 +211,17 @@ class TestManifestStaleness:
             metadata={"tags": ["a"]},
         )
         retagged = replace(tagged, metadata={"tags": ["a", "b"]})
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         store.build_index(_wiki(tagged))
 
         assert store.is_stale(_wiki(retagged)) is True
         store.close()
         gc.collect()
 
-    def test_manifest_without_hashes_is_stale(self, zvec_db: Path) -> None:
+    def test_manifest_without_hashes_is_stale(self, vectors_db: Path) -> None:
         """A store built before hashing is stale once, then records them."""
         wiki = _wiki(_node("n1"))
-        store = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        store = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         store.build_index(wiki)
         _clear_manifest_hashes(store)
         assert store.is_stale(wiki) is True
@@ -229,20 +229,20 @@ class TestManifestStaleness:
         gc.collect()
 
         # Rebuild through a fresh store — the shape `open_vector_store` uses.
-        rebuilt = ZvecWikiStore(db_file=str(zvec_db), embedding_provider=_TEST_PROVIDER)
+        rebuilt = SqliteVecWikiStore(db_file=str(vectors_db), embedding_provider=_TEST_PROVIDER)
         rebuilt.build_index(wiki)
         assert rebuilt.is_stale(wiki) is False
         rebuilt.close()
         gc.collect()
 
-    def test_hash_is_stable_for_a_fixed_node(self, zvec_db: Path) -> None:
+    def test_hash_is_stable_for_a_fixed_node(self, vectors_db: Path) -> None:
         """The digest is a contract: the payload cannot change silently.
 
         A mismatch here means the hashed payload changed — update the expected
-        value deliberately, and bump ``_EMBED_TEXT_VERSION`` if the embedded
+        value deliberately, and bump ``EMBED_TEXT_VERSION`` if the embedded
         text itself moved.
         """
-        assert _content_hash(_node("n1")) == "893fa586f558d6e1"
+        assert content_hash(_node("n1")) == "893fa586f558d6e1"
 
 
 class _ManifestRow(TypedDict):
@@ -254,12 +254,12 @@ class _ManifestRow(TypedDict):
 
 
 @pytest.fixture
-def zvec_db(tmp_path: Path) -> Path:
-    """Provide a temp directory for zvec test databases."""
-    return tmp_path / "zvec_test_store"
+def vectors_db(tmp_path: Path) -> Path:
+    """Provide a temp directory for the vector-store test databases."""
+    return tmp_path / "vector_test_store"
 
 
-def _manifest_row(store: ZvecWikiStore) -> _ManifestRow:
+def _manifest_row(store: SqliteVecWikiStore) -> _ManifestRow:
     """The vector manifest recorded by the last build (kompend.db row)."""
     with sqlite3.connect(store._manifest_db_path()) as conn:
         row = conn.execute("SELECT embed_version, ids, content_hashes FROM vector_manifest WHERE id = 1").fetchone()
@@ -267,19 +267,19 @@ def _manifest_row(store: ZvecWikiStore) -> _ManifestRow:
     return {"embed_version": row[0], "ids": json.loads(row[1]), "hashes": json.loads(row[2])}
 
 
-def _set_manifest_version(store: ZvecWikiStore, version: int) -> None:
+def _set_manifest_version(store: SqliteVecWikiStore, version: int) -> None:
     """Overwrite the recorded embed-text version (simulates an older build)."""
     with sqlite3.connect(store._manifest_db_path()) as conn:
         conn.execute("UPDATE vector_manifest SET embed_version = ? WHERE id = 1", (version,))
 
 
-def _clear_manifest_hashes(store: ZvecWikiStore) -> None:
+def _clear_manifest_hashes(store: SqliteVecWikiStore) -> None:
     """Blank the recorded hashes, as a build from before they were tracked has."""
     with sqlite3.connect(store._manifest_db_path()) as conn:
         conn.execute("UPDATE vector_manifest SET content_hashes = '{}' WHERE id = 1")
 
 
-def _delete_manifest_row(store: ZvecWikiStore) -> None:
+def _delete_manifest_row(store: SqliteVecWikiStore) -> None:
     """Drop the manifest row, as a store built before the migration has none."""
     with sqlite3.connect(store._manifest_db_path()) as conn:
         conn.execute("DELETE FROM vector_manifest")

@@ -68,13 +68,13 @@ ENFORCED_ENUMS: list[tuple[str, str, list[str]]] = [
         "MemoryField",
         ["memory/store.py", "memory/__init__.py", "cli/cmds/memory.py"],
     ),
-    # zvec collection schema — module-local to zvec_store.py (the DDL contract).
-    # Retrievers read hit dicts but also build unrelated dicts with "title" keys,
-    # so consumer files are not policed.
+    # Vector-store field contract — module-local to vector_store.py (the schema
+    # and hit-dict contract). Retrievers read hit dicts but also build
+    # unrelated dicts with "title" keys, so consumer files are not policed.
     (
-        "kompend.rag.zvec_store",
-        "ZvecField",
-        ["rag/zvec_store.py", "rag/__init__.py"],
+        "kompend.rag.vector_store",
+        "VectorField",
+        ["rag/vector_store.py", "rag/__init__.py"],
     ),
 ]
 

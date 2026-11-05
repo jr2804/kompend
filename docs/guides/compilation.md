@@ -100,7 +100,7 @@ The `kompend query` command fuses four result channels via reciprocal rank fusio
 ```mermaid
 graph LR
     Q[Query] --> FTS[FTS5 index]
-    Q --> VEC[zvec vector store]
+    Q --> VEC[vector store]
     Q --> TOK[Token overlap]
     Q --> RAW[Raw sources]
     FTS --> RRF[RRF fusion]

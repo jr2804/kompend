@@ -20,7 +20,7 @@ flowchart TD
     T4[Tier 4<br/>Compilation<br/>Graph / TwoPhase / WiCER]
     T5[Tier 5<br/>Output<br/>Markdown / JSON / Typst / MCP]
     CACHE[Cache<br/>.kompend/cache/]
-    IDX[Index<br/>FTS + zvec vectors]
+    IDX[Index<br/>FTS + vectors]
 
     SRC --> T1
     T1 --> T2
@@ -247,11 +247,11 @@ No custom GUI. kompend exposes a queryable JSON graph / SQLite database. Open-We
 `kompend query` fuses multiple signals when an index has been built with `kompend compile --index`:
 
 - **FTS5** over compiled wiki pages
-- **zvec vector search** over chunk embeddings
+- **vector search** over chunk embeddings
 - **Token overlap** fallback
 - **BM25** over raw-source files for hybrid scope
 
-Results are combined with reciprocal rank fusion (RRF) so that each signal can rescue results the others miss. A sidecar zvec index is stored in `.kompend/vectors/`; an FTS index is stored in `.kompend/search.db`.
+Results are combined with reciprocal rank fusion (RRF) so that each signal can rescue results the others miss. A sidecar vector index is stored in `.kompend/vectors.db`; an FTS index is stored in `.kompend/search.db`.
 
 The `query` command supports a `--search-mode` (or `--scope`) option:
 
@@ -262,7 +262,7 @@ The `query` command supports a `--search-mode` (or `--scope`) option:
 
 Optional extras:
 
-- **alibaba/zvec** — embedded vector database for similarity search
+- **sqlite-vec** — embedded vector extension for similarity search
 - **tobi/qmd** — local CLI search engine over the wiki corpus
 
 ## File Flow

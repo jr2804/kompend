@@ -11,12 +11,12 @@ from typing import Any, cast
 
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
-from kompend.rag.zvec_store import VectorStoreLike
+from kompend.rag.vector_store import VectorStoreLike
 from kompend.search.adaptive_retriever import AdaptiveRetriever
 
 
 class _FakeVectorStore:
-    """In-memory stand-in for ZvecWikiStore. Returns canned hits keyed by node id."""
+    """In-memory stand-in for SqliteVecWikiStore. Returns canned hits keyed by node id."""
 
     def __init__(self, hits: list[dict[str, Any]] | None = None) -> None:
         self._hits = hits or []

@@ -14,7 +14,7 @@ from kompend.core.config import ResolvedConfig, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LlmDataFormat
 from kompend.core.models import CompiledWiki, ImageRef, MetadataField, NodeType
 from kompend.core.models.metadata import meta_str
-from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, PROTECTED_SOURCE_SUBDIRS, VECTORS_DIR
+from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, PROTECTED_SOURCE_SUBDIRS, VECTORS_DB_FILE
 from kompend.core.trust.actor import resolve_actor
 from kompend.core.verbosity import is_verbose
 from kompend.llm.context_window import ContextWindow
@@ -23,7 +23,7 @@ from kompend.logging import get_console, get_err_console, get_logger
 from kompend.memory import MemoryStore
 from kompend.output.vault import VaultWriter
 from kompend.rag import build_vector_index
-from kompend.rag.zvec_store import ZvecWikiStore
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.search.adaptive_retriever import AdaptiveRetriever
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
 from kompend.search.pipeline import EnhancedRetriever
@@ -50,8 +50,8 @@ def open_vector_store(
     *,
     embed_model: str | None = None,
     embed_attachments: bool = False,
-) -> ZvecWikiStore | None:
-    """Open the zvec sidecar index built during compile, if it exists.
+) -> SqliteVecWikiStore | None:
+    """Open the sidecar vector index built during compile, if it exists.
 
     The embedding model comes from wiki metadata when available (cache
     path) or falls back to *embed_model* (config value) — a files-loaded
@@ -60,7 +60,7 @@ def open_vector_store(
     *embed_attachments* must be the value the index was built with: it is part
     of which nodes the index covers, so a mismatch would rebuild on every query.
     """
-    db_file = kompend_dir / VECTORS_DIR
+    db_file = kompend_dir / VECTORS_DB_FILE
     if not db_file.exists():
         return None
 
@@ -72,7 +72,7 @@ def open_vector_store(
     # Sidecar index can go stale when a wiki is recompiled (new/changed pages)
     # without a matching re-index. Detect via the build-time id manifest and
     # rebuild transparently so queries never silently fall back to keyword.
-    if ZvecWikiStore(db_file=db_file).is_stale(wiki, embed_attachments=embed_attachments):
+    if SqliteVecWikiStore(db_file=db_file).is_stale(wiki, embed_attachments=embed_attachments):
         logger.info("Vector index stale (wiki changed) — rebuilding with %s", model)
         try:
             build_vector_index(
@@ -90,7 +90,7 @@ def open_vector_store(
                 exc_info=is_verbose(),
             )
     try:
-        return ZvecWikiStore.open(db_file, embedding_model=model)
+        return SqliteVecWikiStore.open(db_file, embedding_model=model)
     except Exception as exc:
         logger.warning("Could not open vector store at %s: %s", db_file, exc, exc_info=is_verbose())
         return None
@@ -132,7 +132,7 @@ def handle_adaptive_search(  # noqa: PLR0917
     query: str,
     top_k: int,
     search_mode: str,
-    vector_store: ZvecWikiStore | None,
+    vector_store: SqliteVecWikiStore | None,
     sources_dir: Path | None,
     wiki: CompiledWiki,
     state_dir: Path,
@@ -156,7 +156,7 @@ def handle_enhanced_search(  # noqa: PLR0917
     top_k: int,
     search_mode: str,
     sources_dir: Path | None,
-    vector_store: ZvecWikiStore | None,
+    vector_store: SqliteVecWikiStore | None,
     state_dir: Path,
     wiki: CompiledWiki,
     cfg: ResolvedConfig,
@@ -197,7 +197,7 @@ def should_use_agentic(cfg: ResolvedConfig, *, raw: bool, model: str | None) -> 
 def run_agentic_query_output(
     query: str,
     wiki: CompiledWiki,
-    vector_store: ZvecWikiStore | None,
+    vector_store: SqliteVecWikiStore | None,
     format: LlmDataFormat,
     cfg: ResolvedConfig,
     cw: ContextWindow | None,
@@ -252,7 +252,7 @@ def run_agentic_query_output(
 
 def build_enhanced_retriever(
     wiki: CompiledWiki,
-    vector_store: ZvecWikiStore | None,
+    vector_store: SqliteVecWikiStore | None,
     state_dir: Path,
     cfg: ResolvedConfig,
     model: str,

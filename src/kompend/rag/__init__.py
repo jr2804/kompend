@@ -6,9 +6,10 @@ from pathlib import Path
 
 from kompend.core.models import CompiledWiki
 from kompend.core.paths import VaultPaths
-from kompend.rag.zvec_store import ZvecField, ZvecWikiStore, indexable_nodes
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+from kompend.rag.vector_store import VectorField, indexable_nodes
 
-__all__ = ["ZvecField", "ZvecWikiStore", "build_vector_index", "indexable_nodes"]
+__all__ = ["SqliteVecWikiStore", "VectorField", "build_vector_index", "indexable_nodes"]
 
 
 def build_vector_index(
@@ -41,7 +42,7 @@ def build_vector_index(
         raise ValueError("An explicit 'embed_model' must be provided to build the vector index.")
 
     resolved_base = base_dir if base_dir is not None else output_dir.parent
-    store = ZvecWikiStore(db_file=VaultPaths(resolved_base).vectors_dir)
+    store = SqliteVecWikiStore(db_file=VaultPaths(resolved_base).vectors_db_file)
     count = store.build_index(
         wiki,
         embedding_model=embed_model,

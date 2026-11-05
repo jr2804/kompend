@@ -4,7 +4,7 @@ Wraps the existing :class:`HybridRetriever` with configurable plug-in steps:
 
 1. **Multi-Query Expansion (RAG-Fusion)** — N query variants + RRF merge
 2. **CRAG (Corrective RAG)** — LLM relevance grading, drop noise
-3. **Neural Re-ranker** — bi-encoder cosine-similarity post-fusion ranking
+3. **Neural Re-ranker** — post-fusion ranking, by bi-encoder or cross-encoder
 4. **HyDE** — hypothetical answer embeddings for sparse queries
 
 Each step is optional and configurable via ``kompend.toml`` under ``[search]``.
@@ -22,7 +22,7 @@ from kompend.core.models import CompiledWiki
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.text.matching import cosine as cosine_similarity
 from kompend.logging import get_logger
-from kompend.rag.zvec_store import ZvecWikiStore
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.search.retriever import (
     HybridRetriever,
     SearchResult,
@@ -45,7 +45,7 @@ class EnhancedRetriever:
         self,
         wiki: CompiledWiki,
         *,
-        vector_store: ZvecWikiStore | None = None,
+        vector_store: SqliteVecWikiStore | None = None,
         expansion_agent: QueryExpansionAgent | None = None,
         crag_agent: CragGradeAgent | None = None,
         hyde_agent: HydeAgent | None = None,
@@ -57,7 +57,7 @@ class EnhancedRetriever:
         crag_threshold: float = 0.3,
         # Neural re-ranker config
         reranker_enabled: bool = False,
-        reranker_model: str = "",  # kept for config compat; bi-encoder uses vector store model
+        reranker_model: str = "",  # kept for config compat; the bi-encoder uses the vector store model
         reranker_top_k: int = 20,
         # HyDE config
         hyde_enabled: bool = False,
@@ -210,6 +210,7 @@ class EnhancedRetriever:
     # ── Neural Re-ranker ──────────────────────────────────────────────────
 
     def _neural_rerank(self, query: str, candidates: list[SearchResult]) -> list[SearchResult]:
+        """Re-rank the retrieved candidates with bi-encoder cosine similarity."""
         """Re-rank candidates using bi-encoder cosine similarity.
 
         Uses the vector store's embedding provider (pydantic-ai ``Embedder``)
@@ -218,10 +219,7 @@ class EnhancedRetriever:
         """
         try:
             store = self._retriever._vector_store
-            if not isinstance(store, ZvecWikiStore):
-                logger.debug("Neural re-rank skipped — no zvec store")
-                return candidates
-            provider = store._provider
+            provider = store.embedding_provider if isinstance(store, SqliteVecWikiStore) else None
             if provider is None:
                 logger.debug("Neural re-rank skipped — no embedding provider")
                 return candidates
@@ -237,26 +235,23 @@ class EnhancedRetriever:
 
             scored.sort(key=lambda x: x[0], reverse=True)
             reranked = scored[: self._reranker_top_k]
-
-            results: list[SearchResult] = []
-            for score, r in reranked:
-                results.append(
-                    SearchResult(
-                        article_id=r.article_id,
-                        title=r.title,
-                        snippet=r.snippet,
-                        score=round(score, 6),
-                        source_file=r.source_file,
-                        tags=r.tags,
-                        attributes=r.attributes,
-                    )
-                )
             logger.debug(
                 "Neural re-ranker: %d → %d candidates (bi-encoder cosine)",
                 len(candidates),
-                len(results),
+                len(reranked),
             )
-            return results
+            return [
+                SearchResult(
+                    article_id=r.article_id,
+                    title=r.title,
+                    snippet=r.snippet,
+                    score=round(score, 6),
+                    source_file=r.source_file,
+                    tags=r.tags,
+                    attributes=r.attributes,
+                )
+                for score, r in reranked
+            ]
         except Exception as exc:
             record_unit_failure(stage="search.rerank", unit=query, exc=exc)
             return candidates
@@ -337,3 +332,5 @@ class EnhancedRetriever:
             )
         fused.sort(key=lambda x: x.score, reverse=True)
         return fused[:top_k]
+
+

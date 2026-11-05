@@ -283,7 +283,7 @@ def cli_build_vector_index(
         embed_attachments=embed_attachments,
     )
     if count > 0:
-        get_console().print(f"Indexed {count} nodes in zvec store for semantic search")
+        get_console().print(f"Indexed {count} nodes in the vector store for semantic search")
     else:
         get_err_console().print("Warning: no nodes indexed — vector index skipped")
 
