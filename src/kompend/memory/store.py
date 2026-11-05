@@ -27,7 +27,8 @@ from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import MEMORY_LOG_TABLE
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
-from kompend.rag.vector_store import EmbeddingProvider, make_provider
+from kompend.rag.embedding_base import EmbeddingProvider
+from kompend.rag.embedding_pydantic import make_provider
 
 #: The vec0 table holding the memory entries and their query embeddings.
 _MEMORY_TABLE: Final[str] = "memory_entries"

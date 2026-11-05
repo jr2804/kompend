@@ -9,8 +9,9 @@ import pytest
 
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
+from kompend.rag.embedding_pydantic import PydanticAIEmbeddingProvider, make_provider
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
-from kompend.rag.vector_store import PydanticAIEmbeddingProvider, make_provider, to_pydantic_ai_embedding_string
+from kompend.rag.vector_store import to_pydantic_ai_embedding_string
 from tests.conftest import DeterministicTestEmbeddingProvider
 
 _TEST_PROVIDER = DeterministicTestEmbeddingProvider(dim=384)

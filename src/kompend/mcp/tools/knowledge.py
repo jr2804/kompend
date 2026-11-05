@@ -26,7 +26,7 @@ from kompend.core.pipeline.orchestrator import build_pipeline
 from kompend.core.text.matching import SemanticMatcher
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers import build_parser
-from kompend.rag.vector_store import make_provider
+from kompend.rag.embedding_pydantic import make_provider
 
 logger = get_logger(__name__)
 

@@ -12,8 +12,9 @@ from pathlib import Path
 
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
+from kompend.rag.embedding_base import EmbeddingProvider
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
-from kompend.rag.vector_store import EmbeddingProvider, VectorField
+from kompend.rag.vector_store import VectorField
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
 
 

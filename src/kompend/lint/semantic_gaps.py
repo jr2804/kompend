@@ -28,7 +28,7 @@ from kompend.core.paths import safe_stem
 from kompend.core.text.embedding_text import embed_text
 from kompend.core.text.matching import cosine
 from kompend.logging import get_logger
-from kompend.rag.vector_store import make_provider
+from kompend.rag.embedding_pydantic import make_provider
 
 #: Cosine similarity above which a source chunk is considered to "cover" a
 #: missing topic. Short topic names vs. long chunks rarely score extremely

@@ -17,7 +17,7 @@ from kompend.core.models.enums import EdgeType, MetadataField
 from kompend.core.models.structured import StructuredEquation, structured_to_text
 from kompend.core.text.matching import cosine, similarity
 from kompend.logging import get_logger
-from kompend.rag.vector_store import make_provider
+from kompend.rag.embedding_pydantic import make_provider
 
 logger = get_logger(__name__)
 

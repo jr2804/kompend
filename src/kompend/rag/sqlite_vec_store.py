@@ -31,6 +31,7 @@ from typing import Any, Final
 import sqlite_vec
 from sqlite_vec_client import SQLiteVecClient
 
+import kompend.rag
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.paths import KOMP_DB_FILE, rel_to_vault
@@ -38,9 +39,9 @@ from kompend.core.store import open_store
 from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
 from kompend.core.utils.time import iso_local
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
+from kompend.rag.embedding_base import EmbeddingProvider
 from kompend.rag.vector_store import (
     EMBED_TEXT_VERSION,
-    EmbeddingProvider,
     VectorField,
     attributes_to_list,
     content_hash,
@@ -48,7 +49,6 @@ from kompend.rag.vector_store import (
     embed_text,
     figure_paths,
     indexable_nodes,
-    make_provider,
 )
 
 #: Identifies this backend in the manifest row and in the store's own meta
@@ -158,7 +158,9 @@ class SqliteVecWikiStore:
         if self._provider is None:
             if not embedding_model:
                 raise ValueError("embedding_model is required when no provider was injected")
-            self._provider = make_provider(embedding_model)
+            # Resolved through the package's lazy export: the pydantic-ai
+            # provider stack must not load when this module is imported.
+            self._provider = kompend.rag.make_provider(embedding_model)
 
         self._open_for_write()
         count = self._index_nodes(nodes, batch_size, base_dir=base_dir)
@@ -590,7 +592,7 @@ class SqliteVecWikiStore:
         Either pass ``embedding_provider`` directly, or pass
         ``embedding_model`` to create one via :func:`make_provider`.
         """
-        provider = embedding_provider or make_provider(embedding_model or "")
+        provider = embedding_provider or kompend.rag.make_provider(embedding_model or "")
         store = cls(db_file=db_file, embedding_provider=provider)
         if not store.db_file.exists():
             logger.warning("No vector store found at %s. Rebuild with build_index().", store.db_file)

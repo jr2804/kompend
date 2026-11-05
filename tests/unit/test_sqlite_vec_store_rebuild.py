@@ -22,8 +22,8 @@ from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
 from kompend.memory.store import MemoryStore
+from kompend.rag.embedding_base import EmbeddingProvider
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
-from kompend.rag.vector_store import EmbeddingProvider
 
 
 class StubProvider(EmbeddingProvider):

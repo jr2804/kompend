@@ -1,14 +1,19 @@
-"""Backend-independent vector-store layer: the field contract, the embedding
-providers, and the rules that decide *what* gets indexed.
+"""Backend-independent vector-store layer: the field contract and the rules
+that decide *what* gets indexed.
 
 This module names no vector database. The store that implements
 :class:`VectorStoreLike` lives beside it (``sqlite_vec_store.py``); everything
 here is shared by every backend — the field names a hit dict carries, the
-embedding provider interface, and the composition rules whose fingerprints
-decide whether an index is still current.
+store protocol, and the composition rules whose fingerprints decide whether an
+index is still current.
 
 The split is deliberate: the composition rules are a DOX contract
 (``src/kompend/rag/AGENTS.md``) and must not drift with the backend.
+
+**This module stays import-light.** It must not pull pydantic-ai, the
+provider SDKs or ``kompend.llm.models``: a module that only needs the
+protocol or the composition rules must not pay the provider stack. The
+pydantic-ai-backed provider lives in ``embedding_pydantic.py``.
 """
 
 from __future__ import annotations
@@ -20,18 +25,13 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol
 
-from pydantic_ai import Embedder
-from pydantic_ai.embeddings import infer_embedding_model
-from pydantic_ai.providers.ollama import OllamaProvider
-
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.core.models.elements import element_text
 from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.utils.exceptions import LLMOutputError
-from kompend.llm.models import OLLAMA_DEFAULT_BASE_URL
 from kompend.logging import get_logger
 from kompend.rag.embedding_base import EmbeddingProvider
-from kompend.rag.multimodal import MediaEmbeddingUnsupported, OllamaMediaEmbedder
+from kompend.rag.multimodal import MediaEmbeddingUnsupported
 
 # 3: content is projected through element_text, so a non-prose node embeds
 # differently than it did when the composition passed node.content straight
@@ -70,63 +70,6 @@ class VectorField(StrEnum):
     EMBEDDING = "embedding"
 
 
-class PydanticAIEmbeddingProvider(EmbeddingProvider):
-    """Embedding via pydantic-ai's :class:`~pydantic_ai.Embedder`.
-
-    Supports every remote embedding provider pydantic-ai ships (openai,
-    ollama, google, cohere, bedrock).
-    The *model_string* uses the same ``provider:model`` convention as
-    :func:`kompend.llm.models.build_model`.
-    """
-
-    def __init__(self, model_string: str, *, dim: int | None = None) -> None:
-        self._model_string = model_string
-        self._embedder = build_embedder(model_string)
-        #: Known vector dimensionality shortcut — set by callers (tests, factory
-        #: sites) that already know the dimension, so ``.dim`` does not need a
-        #: probe embed. ``None`` keeps the auto-detect path.
-        self._dim: int | None = dim
-        self._media: OllamaMediaEmbedder | None = None
-        self._media_checked = False
-
-    @property
-    def dim(self) -> int:
-        if self._dim is None:
-            # Determine dimensionality by embedding a short probe text.
-            self._dim = len(self.embed("dimension probe"))
-        return self._dim
-
-    @property
-    def model_id(self) -> str:
-        """The model behind the vectors, in the ``provider/model`` config form."""
-        provider, separator, model = self._model_string.partition(":")
-        if not separator:
-            return self._model_string
-        return f"{provider}/{model}"
-
-    def embed(self, text: str) -> list[float]:
-        result = self._embedder.embed_documents_sync(text)
-        vector = list(result.embeddings[0])
-        if self._dim is None:
-            self._dim = len(vector)
-        return vector
-
-    def embed_media(self, text: str, image: bytes) -> list[float]:
-        """Embed text and one image jointly through Ollama's media endpoint."""
-        if not self._media_checked:
-            self._media = self._build_media_embedder()
-            self._media_checked = True
-        if self._media is None:
-            raise MediaEmbeddingUnsupported(f"Embedding model '{self._model_string}' cannot embed images")
-        return self._media.embed(text, image)
-
-    def _build_media_embedder(self) -> OllamaMediaEmbedder | None:
-        """The Ollama media embedder for this model, or ``None`` for other providers."""
-        if not self._model_string.startswith("ollama:"):
-            return None
-        return OllamaMediaEmbedder(self._model_string.split(":", 1)[1])
-
-
 class VectorStoreLike(Protocol):
     """Vector-store surface used by the retrievers.
 
@@ -150,35 +93,6 @@ class VectorStoreLike(Protocol):
 
 
 # ── Embedding provider interface ────────────────────────────────────────
-
-
-def build_embedder(model_string: str) -> Embedder:
-    """Build a pydantic-ai ``Embedder`` with Ollama base_url support.
-
-    Mirrors the pattern in :mod:`kompend.llm.models`: when the provider is
-    Ollama, explicitly construct ``OllamaProvider`` with the local default
-    ``base_url`` so it works out-of-the-box without ``OLLAMA_BASE_URL``.
-    """
-    if model_string.startswith("ollama:"):
-        base_url = os.getenv("OLLAMA_BASE_URL") or OLLAMA_DEFAULT_BASE_URL
-        provider = OllamaProvider(base_url=base_url)
-        model = infer_embedding_model(model_string, provider_factory=lambda _: provider)
-        return Embedder(model)
-    return Embedder(model_string)
-
-
-def make_provider(
-    embedding_model: str,
-    dim: int | None = None,
-) -> EmbeddingProvider:
-    """Select an embedding provider based on model name.
-
-    Uses the same ``provider/model`` or ``provider:model`` convention as
-    :func:`kompend.llm.models.build_model`. An explicit provider prefix is
-    required — there is no fallback to a local embedding provider.
-    """
-    pydantic_ai_string = to_pydantic_ai_embedding_string(embedding_model)
-    return PydanticAIEmbeddingProvider(model_string=pydantic_ai_string, dim=dim)
 
 
 def to_pydantic_ai_embedding_string(embedding_model: str) -> str:

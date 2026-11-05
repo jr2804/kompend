@@ -33,7 +33,7 @@ from kompend.preprocessing.dedup.base import ContentMatcher, DedupVerdict, class
 from kompend.preprocessing.dedup.embedding_matcher import EmbeddingMatcher
 from kompend.preprocessing.dedup.minhash_matcher import MinhashMatcher
 from kompend.preprocessing.dedup.store import DedupStore, StoreEntry
-from kompend.rag.vector_store import make_provider
+from kompend.rag.embedding_pydantic import make_provider
 from kompend.types import JSONDict
 
 ProgressFn = Callable[[int, int], None]  # (completed, total)

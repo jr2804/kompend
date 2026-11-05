@@ -16,7 +16,7 @@ from kompend.core.models.metadata import meta_str_list
 from kompend.core.paths import safe_stem
 from kompend.core.text.matching import cosine as cosine_similarity
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
-from kompend.rag.vector_store import make_provider
+from kompend.rag.embedding_pydantic import make_provider
 
 #: Generic group key — compilers key groups by heading/source tuples.
 K = TypeVar("K")

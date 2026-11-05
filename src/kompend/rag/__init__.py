@@ -27,6 +27,7 @@ from kompend.core.paths import VaultPaths
 __getattr__, __dir__, _LAZY_EXPORTS = lazy.attach(
     __name__,
     submod_attrs={
+        "embedding_pydantic": ["PydanticAIEmbeddingProvider", "build_embedder", "make_provider"],
         "flashrank_backend": ["build_request", "load_ranker"],
         "sqlite_vec_store": ["SqliteVecWikiStore"],
         "vector_store": ["VectorField", "indexable_nodes"],

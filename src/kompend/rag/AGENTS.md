@@ -6,10 +6,10 @@ Vector-store sidecar for semantic search over compiled wikis.
 `sqlite_vec_store.py` wraps [sqlite-vec](https://github.com/asg017/sqlite-vec)
 (embedded vector extension for SQLite, Apache 2.0) and exposes
 `SqliteVecWikiStore`; `vector_store.py` holds the backend-independent layer —
-`VectorField`, the `EmbeddingProvider` ABC (defined in `embedding_base.py`)
-/ `VectorStoreLike` protocol, and
-the composition rules that decide *what* is indexed; `rerank.py` holds the
-optional cross-encoder.
+`VectorField`, the `VectorStoreLike` protocol and the composition rules that
+decide *what* is indexed; `embedding_base.py` holds the `EmbeddingProvider`
+ABC; `embedding_pydantic.py` holds the pydantic-ai-backed provider;
+`rerank.py` holds the optional cross-encoder.
 
 The backend is one implementation of `VectorStoreLike`, not the contract. A
 second implementation (an ANN engine, say) slots in without touching the
@@ -24,12 +24,24 @@ retrievers.
 | Module | Contents |
 |--------|----------|
 | `embedding_base.py` | `EmbeddingProvider` ABC, `MediaEmbeddingUnsupported` — the import-light interface; heavy implementations depend on it, never the reverse |
-| `vector_store.py` | `VectorField`, `VectorStoreLike`, `PydanticAIEmbeddingProvider`, `make_provider` / `build_embedder`, and the composition rules (`indexable_nodes`, `content_hash`, `embed_text`, `embed_node`, figure helpers) |
+| `vector_store.py` | `VectorField`, `VectorStoreLike`, `to_pydantic_ai_embedding_string`, and the composition rules (`indexable_nodes`, `content_hash`, `embed_text`, `embed_node`, figure helpers) — **import-light** |
+| `embedding_pydantic.py` | `PydanticAIEmbeddingProvider`, `make_provider`, `build_embedder` — the pydantic-ai stack lives here and nowhere else |
 | `sqlite_vec_store.py` | `SqliteVecWikiStore` — the vec0 table, the side tables, the FTS5 index, the filters, the fusion, the drift guard |
 | `rerank.py` | `Reranker` protocol, `FlashRankReranker` (optional extra) |
 | `multimodal.py` | `OllamaMediaEmbedder` |
 
 ## Local Contracts
+
+- **The contract layer stays import-light.** `vector_store.py` and
+  `embedding_base.py` must not import pydantic-ai, the provider SDKs or
+  `kompend.llm.models`: a module that only needs the protocol, the field
+  names or the composition rules must not pay the provider stack (measured:
+  ~20 s of interpreter startup). The pydantic-ai provider lives in
+  `embedding_pydantic.py`, and a module that builds a provider imports it
+  from there. The store resolves its provider through the package's lazy
+  export (`kompend.rag.make_provider`) so importing the store stays light
+  too. A string constant like `OLLAMA_DEFAULT_BASE_URL` comes from
+  `kompend.llm.constants`, never from `kompend.llm.models`.
 
 - **The index is built from the markdown bundle, and staleness is judged by the
   same rule.** `indexable_nodes()` (in `vector_store.py`) defines which nodes
