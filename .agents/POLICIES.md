@@ -16,7 +16,9 @@ consistency · performance. Boundaries, DOX authoring, response format.
   no new dependency, without explicit instruction.
 - NEVER install with `pip install` or `uv pip install`: uv alone manages the venv
   (`uv add`, `uv lock`, `uv sync`); pip bypasses `uv.lock` — untracked, never relied on.
-- NEVER create temp files outside `tmp/` (gitignored) — never `_tmp_*.py` at the root.
+- NEVER create temp files inside the repo — never `_tmp_*.py` at the root, never
+  `scripts/tmp/` or `tmp/`. Probes and one-off scripts use the OS temp dir and
+  are deleted after use (user, 2026-11-03).
 - NEVER commit, push, or sync a tracker unless the user asked for it.
 
 ## Change constraints
@@ -116,5 +118,3 @@ review/debugging/analysis: findings with references, conclusion, caveats.
 - Concise, direct answers with no filler or intros.
 - English-only for code, docs, and commits; conventional commits (`feat:`, `fix:`,
   `chore:`, `docs:`).
-- Probe/one-off scripts never live in the repo tree (no `scripts/tmp/`, no
-  `tmp/`) — use the OS temp dir, delete after use (user, 2026-11-03).
