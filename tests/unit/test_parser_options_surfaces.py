@@ -106,17 +106,6 @@ def test_mcp_ingest_passes_the_configured_options(tmp_path: Path, monkeypatch: p
     _assert_full_options(options)
 
 
-def _judge_spec(options: ParserOptions) -> str | None:
-    """The judge the config files behind *options* actually name.
-
-    Read through parsecraft's engine rather than off a kompend attribute: the
-    point of these tests is that the *paths* a site hands over carry the
-    settings, so anything else would test kompend's copy of a value it no
-    longer keeps.
-    """
-    return load_parsecraft_config(options.parsecraft_config_files).judge_spec
-
-
 def _capturing_factory(captured: dict[str, Any]) -> Any:
     def _factory(*args: Any, **kwargs: Any) -> Any:
         captured.update(kwargs)
@@ -186,6 +175,17 @@ def test_the_vault_routing_values_reach_the_parser(tmp_path: Path) -> None:
         "mineru": {"effort": "high"},
         "liteparse": {"extract_vector_graphics": True},
     }
+
+
+def _judge_spec(options: ParserOptions) -> str | None:
+    """The judge the config files behind *options* actually name.
+
+    Read through parsecraft's engine rather than off a kompend attribute: the
+    point of these tests is that the *paths* a site hands over carry the
+    settings, so anything else would test kompend's copy of a value it no
+    longer keeps.
+    """
+    return load_parsecraft_config(options.parsecraft_config_files).judge_spec
 
 
 def _assert_full_options(options: ParserOptions) -> None:
