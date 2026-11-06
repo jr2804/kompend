@@ -151,6 +151,14 @@ decision and a stable entry point).
   typically "which settings a run uses" plus "how a fault reaches the user".
 - **Prefer moving to a home over re-exporting.** A shim keeps two homes and
   both rot.
+- **One module per registered command, when the registry imports lazily.** The
+  command tree already loads a module on first use, so one file per command
+  narrows what each command pulls in: `kompend index` no longer imports the
+  compile path, the distill workflow or the post-compile actions. A module
+  holding four commands cannot offer that.
+- **A wrapper that only forwards keywords is not a split.** Moving a 20-argument
+  call into a 20-argument helper neither reduces statements nor creates a seam;
+  it duplicates the signature. Extract a phase only when it names a step.
 - **A name that crosses a boundary loses its underscore.** Privacy markers are
   for module-local names only.
 - **Derive, don't declare**, wherever the vocabulary already exists as an
@@ -210,6 +218,12 @@ Pitfalls that cost real time:
   marker on a moved line disappears when the body is re-typed or rebuilt, and
   the repo's own custom gate is usually the only thing that notices. Grep the
   moved body for markers before pasting, then run the gates.
+- **Check the working tree is yours before a repo-wide formatter.** Another
+  session, a background job or a half-finished stash can own files in the same
+  checkout, and `ruff format .` / `check --fix` / `gofmt ./...` will rewrite
+  them mid-edit. `git status` first, then scope the command to the paths the
+  loop owns; gates that scan the whole tree stay red until their work lands,
+  which is not your regression.
 - **Never mix a move with a behaviour change.** If the split reveals a bug,
   commit the move, then the fix; otherwise the diff cannot be reviewed and the
   bisect cannot find the fix.
@@ -337,3 +351,16 @@ Kept for calibration; do not copy the specifics into another project.
   importing both from the CLI command module (moved to `lint/flow.py` +
   `lint/history.py`), and a dropped `# nocheck` marker that only the custom
   field-consistency gate caught.
+- Third loop: `cli/cmds/pipeline/pipeline.py` 555 → `parse.py` 51,
+  `index.py` 84, `ingest.py` 140, `compile.py` 380 (of which 35 lines are the
+  command's keyword options and 5 helpers carry its phases). The old
+  `compile_cmd` carried `# noqa: PLR0915`, which is now gone: extracting
+  `_publish_pending_notes`, `_start_progress`, `_run_pipeline`, `_post_compile`
+  and `_report_failure` removed the suppression rather than widening it. The
+  move also exposed two pieces of dead code — `time.monotonic() - ingest_start`
+  computed and discarded, and an `if isinstance(exc, LLMOutputError)` whose two
+  branches built the same string — and one duplication: `--attr key=value` was
+  parsed in two modules with two different messages, now one `parse_attrs` in
+  `cli/settings.py`. A cross-command inconsistency was found and deliberately
+  NOT fixed here (``parse`` never passed ``config_file`` to ``resolve_config``,
+  so ``--config-file`` was ignored): a behaviour fix is its own commit.
