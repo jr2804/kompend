@@ -30,6 +30,10 @@ class ErrorDecision(BaseModel):
     """A decision model's verdict on a failed pipeline step."""
 
     action: ErrorAction = Field(description="What the pipeline should do next with the failed unit of work.")
+    shrink: bool = Field(
+        default=False,
+        description="Retry the unit at half size. Only the generation shrink loop reads this; every other caller ignores it.",
+    )
 
 
 def decision_model_string(config: DecisionConfig | None) -> str | None:

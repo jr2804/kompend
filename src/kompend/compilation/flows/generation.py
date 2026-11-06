@@ -14,7 +14,7 @@ from typing import Any, Final, NamedTuple
 
 from pydantic_ai_harness.step_persistence import SqliteStepStore, StepStore
 
-from kompend.agents.decision import decide_error_action
+from kompend.agents.decision import decide_error_action, decide_unit_adaptation
 from kompend.agents.failure import AgentFailureKind, classify_agent_failure, record_unit_failure
 from kompend.agents.generation import make_agentic_generation_agent
 from kompend.agents.types import ToolGenerationDeps
@@ -29,7 +29,7 @@ from kompend.compilation._two_phase_core import (
     tokens_to_chars,
     upsert_node,
 )
-from kompend.compilation.adaptation import AdaptationSignal, plan_adaptation, split_unit
+from kompend.compilation.adaptation import AdaptationSignal, ShrinkOutcome, plan_adaptation, split_unit
 from kompend.compilation.concept_broker import ConceptBroker
 from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.compilation.flows.assembly import (
@@ -61,7 +61,7 @@ from kompend.core.utils.exceptions import (
 )
 from kompend.lint.base import LintRuleOutcome
 from kompend.lint.structural import BrokenWikilinksRule
-from kompend.llm.decision import ErrorAction
+from kompend.llm.decision import ErrorAction, ErrorDecision
 from kompend.llm.request_budget import RequestBudget
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 from kompend.rag.embedding_pydantic import make_provider
@@ -742,7 +742,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                 # The unit did not fit the provider's window. Loop 1 earns
                 # it a smaller re-plan; only a unit that cannot shrink keeps
                 # the loud failure the error carries.
-                if _shrink_and_requeue(
+                outcome = _shrink_and_requeue(
                     broker,
                     coverage,
                     compiler,
@@ -753,8 +753,15 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     max_splits=max_splits,
                     kind=AgentFailureKind.CONTEXT_OVERFLOW,
                     err=str(exc),
-                ):
+                )
+                if outcome is ShrinkOutcome.SPLIT:
                     gen_output = None
+                    break
+                if outcome is ShrinkOutcome.ABORT:
+                    raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
+                if outcome is ShrinkOutcome.SKIP:
+                    gen_output = None
+                    last_error = str(exc)
                     break
                 raise
             except (LLMTransientError, LLMOutputError) as exc:
@@ -772,7 +779,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
                 gen_output = None
                 last_error = str(exc)
-                if _shrink_and_requeue(
+                outcome = _shrink_and_requeue(
                     broker,
                     coverage,
                     compiler,
@@ -783,9 +790,14 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     max_splits=max_splits,
                     kind=kind,
                     err=str(exc),
-                ):
+                )
+                if outcome is ShrinkOutcome.SPLIT:
                     break
+                if outcome is ShrinkOutcome.ABORT:
+                    raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
                 retry_pass = kind in _PASS_CONTINUATION_KINDS or (kind is AgentFailureKind.TRANSIENT and action is ErrorAction.RETRY)
+                if outcome is ShrinkOutcome.SKIP:
+                    retry_pass = False
             except Exception as exc:  # PydanticAI raises many subclassed errors; treat uniformly
                 kind = classify_agent_failure(exc)
                 record_unit_failure(stage="agentic-generation", unit=seg_id, exc=exc, attempts=passes)
@@ -805,7 +817,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     retry_pass = action is ErrorAction.RETRY
                 else:
                     retry_pass = kind in _PASS_CONTINUATION_KINDS
-                if _shrink_and_requeue(
+                outcome = _shrink_and_requeue(
                     broker,
                     coverage,
                     compiler,
@@ -816,8 +828,13 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     max_splits=max_splits,
                     kind=kind,
                     err=str(exc),
-                ):
+                )
+                if outcome is ShrinkOutcome.SPLIT:
                     break
+                if outcome is ShrinkOutcome.ABORT:
+                    raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
+                if outcome is ShrinkOutcome.SKIP:
+                    retry_pass = False
             debug_file = getattr(agent, "_last_debug_file", None)
 
             compiler._batch_tracker.record(failed=gen_output is None)
@@ -833,6 +850,14 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     "retrying" if retry_pass else "skipping",
                     debug_file or "(none)",
                 )
+                # Stranded work check: fetched-but-unpaged concepts sit in
+                # the consumed region past the cursor — put them back at the
+                # front so the next pass (or the tail below) accounts for
+                # every assigned concept instead of reporting an empty pool
+                # for a unit that did work.
+                stranded = [c for c in broker.consumed(seg_id) if not coverage.covered(str(c.get(ExtractionField.NAME, "")), seg_titles)]
+                if stranded:
+                    broker.requeue(seg_id, stranded)
                 if retry_pass:
                     continue
                 break
@@ -975,13 +1000,15 @@ def _shrink_and_requeue(
     max_splits: int,
     kind: AgentFailureKind,
     err: str,
-) -> bool:
-    """Loop-1 deterministic shrink: halve *unit*, re-queue the halves.
+) -> ShrinkOutcome:
+    """Shrink a failed unit: Loop 1 decides, Loop 2 gets the ambiguous rest.
 
-    Returns True when the split was enqueued — the caller then leaves its
-    pass loop. The parent pool is drained, so the tail sees no uncovered
+    SPLIT means the halves were enqueued — the caller leaves its pass
+    loop. DECLINED keeps today's path. SKIP/ABORT carry the decision
+    model's verdict for a failure the deterministic policy declined.
+    The parent pool is drained on a split, so the tail sees no uncovered
     remainder; the halves carry their own broker pools and transcript
-    prefixes. False keeps today's path.
+    prefixes.
     """
     # Fetched-but-unpaged concepts are stranded in the parent pool once it
     # drains — they move to the halves with the unfetched remainder, or the
@@ -1000,12 +1027,27 @@ def _shrink_and_requeue(
         context_budget=tracker.context_budget or None,
         last_error=err,
     )
+    reason = ""
     plan = plan_adaptation(signal, max_adaptations=max_splits)
-    if not plan.split:
-        return False
+    if plan.split:
+        reason = plan.reason
+    else:
+        # Loop 2: the deterministic policy declined an ambiguous failure.
+        # The decision model may still earn it one more halving — or stop
+        # the retries, or fail loudly. Anything else keeps today's path.
+        decision = _consult_loop2(compiler, unit, signal, max_splits)
+        if decision is None:
+            return ShrinkOutcome.DECLINED
+        if decision.action is ErrorAction.ABORT:
+            return ShrinkOutcome.ABORT
+        if decision.action is ErrorAction.SKIP:
+            return ShrinkOutcome.SKIP
+        if not decision.shrink:
+            return ShrinkOutcome.DECLINED
+        reason = f"{unit.seg_id}: decision model overrode the decline — halving"
     halves = split_unit(unit.segment, unfinished)
     if halves is None:
-        return False
+        return ShrinkOutcome.DECLINED
     (sources_a, concepts_a), (sources_b, concepts_b) = halves
     broker.drain_caller(unit.seg_id)
     for sub, sub_sources, sub_concepts in (("a", sources_a, concepts_a), ("b", sources_b, concepts_b)):
@@ -1025,11 +1067,38 @@ def _shrink_and_requeue(
         "TwoPhase: agentic %s exceeds the window (%s) — %s; re-queued as 2 sub-units (%d/%d concepts).",
         unit.label,
         err,
-        plan.reason,
+        reason,
         len(concepts_a),
         len(concepts_b),
     )
-    return True
+    return ShrinkOutcome.SPLIT
+
+
+#: Failure kinds whose remedy is a judgment call: Loop 2 may be consulted
+#: when the deterministic policy declines them. Transport failures and
+#: provider overflows are arithmetic — the model is never asked about those.
+_AMBIGUOUS_KINDS: Final[frozenset[AgentFailureKind]] = frozenset({AgentFailureKind.SCHEMA_MISMATCH, AgentFailureKind.OTHER, AgentFailureKind.EMPTY_ANSWER})
+
+
+def _consult_loop2(
+    compiler: TwoPhaseRuntime,
+    unit: _SegmentUnit,
+    signal: AdaptationSignal,
+    max_splits: int,
+) -> ErrorDecision | None:
+    """Ask the decision model about an ambiguous failure Loop 1 declined.
+
+    ``None`` keeps today's path: the kind is not ambiguous, the budget is
+    spent, no decision model is configured, or the sidecar call failed.
+    """
+    if signal.kind not in _AMBIGUOUS_KINDS or signal.adaptations_used >= max_splits:
+        return None
+    return decide_unit_adaptation(
+        compiler._config.decision,
+        signal=signal,
+        stage=f"agentic-generation:{unit.seg_id}",
+        max_adaptations=max_splits,
+    )
 
 
 def generation_detail(

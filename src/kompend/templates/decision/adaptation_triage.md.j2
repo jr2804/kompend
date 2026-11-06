@@ -1,0 +1,40 @@
+---
+variables:
+  - name: stage
+    required: true
+  - name: error
+    required: true
+  - name: attempt
+    required: true
+  - name: max_attempts
+    required: true
+  - name: context
+    required: false
+role: decision.error-triage
+response_format: text
+temperature: 0.0
+---
+Pipeline stage: {{ stage }}
+Adaptation attempt: {{ attempt }} of {{ max_attempts }}
+{% if context %}
+Failure record: {{ context }}
+{% endif %}
+A generation unit in this pipeline step failed with:
+
+{{ error }}
+
+The deterministic policy declined to split it (no size pressure was measured).
+Answer with exactly one action:
+
+- retry: the failure looks transient (a timeout, a dropped connection, an
+  overloaded or rate-limited server). The same request is likely to succeed.
+- skip: the request itself is the problem (contradictory instructions,
+  output that keeps failing validation). Retrying wastes time; the pipeline
+  continues with the remaining work.
+- abort: the failure makes the whole run pointless (authentication,
+  billing, an unusable model, a missing source).
+
+When you answer retry, also say whether the unit should be retried at half
+size (shrink: true) or unchanged (shrink: false). Prefer shrink: true when
+the record shows many concepts or fetch rounds for one unit — halving it is
+cheap and may fit what the whole unit did not.

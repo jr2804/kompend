@@ -17,6 +17,7 @@ never request content, which by definition does not fit.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Final
 
 from kompend.agents.failure import AgentFailureKind
@@ -51,6 +52,29 @@ class AdaptationSignal:
         if not self.context_tokens or not self.context_budget:
             return False
         return self.context_tokens >= _WINDOW_PRESSURE_THRESHOLD * self.context_budget
+
+    def describe(self) -> str:
+        """Render the compact failure record for the Loop-2 decision model.
+
+        Counts and kinds only — never request content, which by definition
+        does not fit the window it failed in.
+        """
+        window = f"{self.context_tokens}/{self.context_budget} tokens" if self.context_tokens is not None and self.context_budget else "no usage snapshot"
+        return (
+            f"unit={self.seg_id} kind={self.kind.value} "
+            f"adaptations={self.adaptations_used} "
+            f"concepts_assigned={self.concepts_assigned} concepts_remaining={self.concepts_remaining} "
+            f"fetches={self.fetches} window={window} last_error={self.last_error}"
+        )
+
+
+class ShrinkOutcome(StrEnum):
+    """What the shrink loop decided for a failed unit."""
+
+    SPLIT = "split"  #: halves enqueued; the caller leaves its pass loop.
+    DECLINED = "declined"  #: no split and no model verdict; the caller's logic stands.
+    SKIP = "skip"  #: the decision model says stop retrying this unit.
+    ABORT = "abort"  #: the decision model says fail loudly.
 
 
 @dataclass(frozen=True)

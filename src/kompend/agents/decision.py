@@ -15,13 +15,16 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from kompend.agents.base import KompendAgentBase
 from kompend.core.config._configs import DecisionConfig
 from kompend.llm.decision import ErrorAction, ErrorDecision, decision_model_string
 from kompend.llm.models import build_decision_model
 from kompend.logging import get_logger
+
+if TYPE_CHECKING:
+    from kompend.compilation.adaptation import AdaptationSignal
 
 logger = get_logger(__name__)
 
@@ -95,3 +98,48 @@ def decide_error_action(
         return None
     logger.info("Decision model: %s for %s after attempt %d/%d", decision.action, stage, attempt, max_attempts)
     return decision.action
+
+
+class AdaptationAgent(DecisionAgent):
+    """Decision model for ambiguous generation failures (Loop 2).
+
+    Same verdict schema as error triage plus the shrink remedy: the model
+    sees the compact failure record and decides whether one more halving
+    is worth trying.
+    """
+
+    template_name: ClassVar[str] = "adaptation_triage.md.j2"
+
+
+def decide_unit_adaptation(
+    config: DecisionConfig | None,
+    *,
+    signal: AdaptationSignal,
+    stage: str,
+    max_adaptations: int,
+) -> ErrorDecision | None:
+    """Ask the decision model whether a declined unit deserves one more split.
+
+    Returns the model's verdict, or ``None`` when no decision model is
+    configured or the call failed - the caller then keeps its deterministic
+    path. Consumes only the compact failure record, never request content.
+    """
+    model_string = decision_model_string(config)
+    if model_string is None or config is None:
+        return None
+
+    agent = AdaptationAgent(model_string=model_string, timeout=config.timeout, retries=0)
+    try:
+        return agent.run(
+            DecisionDeps(
+                stage=stage,
+                error=signal.last_error,
+                attempt=signal.adaptations_used + 1,
+                max_attempts=max_adaptations,
+                context=signal.describe(),
+                timeout=config.timeout,
+            )
+        )
+    except Exception as exc:  # ponytail: a sidecar failure must never break the pipeline
+        logger.warning("Decision model unavailable (%s) - falling back to the deterministic path", exc)
+        return None
