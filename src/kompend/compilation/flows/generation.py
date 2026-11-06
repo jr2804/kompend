@@ -133,6 +133,12 @@ _UPSTREAM_TRANSIENT_BACKOFF_BASE: float = 1.0
 #: drops a concept's page, so the bar sits above lint's topic-vs-chunk 0.55.
 _COVER_SEMANTIC_THRESHOLD = 0.65
 
+
+#: Failure kinds whose remedy is a judgment call: Loop 2 may be consulted
+#: when the deterministic policy declines them. Transport failures and
+#: provider overflows are arithmetic — the model is never asked about those.
+_AMBIGUOUS_KINDS: Final[frozenset[AgentFailureKind]] = frozenset({AgentFailureKind.SCHEMA_MISMATCH, AgentFailureKind.OTHER, AgentFailureKind.EMPTY_ANSWER})
+
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
@@ -188,6 +194,17 @@ class _CoverageCredit:
             return None
         self._vectors[text] = vec
         return vec
+
+
+class _SegmentUnit(NamedTuple):
+    """One generation work unit: Loop 1 splits a segment into smaller ones."""
+
+    label: str
+    seg_id: str
+    segment: list[tuple[str, str]]
+    run_prefix: str | None
+    seg_idx: int
+    depth: int
 
 
 def run_generation(
@@ -977,17 +994,6 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
     return nodes, slug_to_idx, caller_progress
 
 
-class _SegmentUnit(NamedTuple):
-    """One generation work unit: Loop 1 splits a segment into smaller ones."""
-
-    label: str
-    seg_id: str
-    segment: list[tuple[str, str]]
-    run_prefix: str | None
-    seg_idx: int
-    depth: int
-
-
 def _shrink_and_requeue(
     broker: ConceptBroker,
     coverage: _CoverageCredit,
@@ -1072,12 +1078,6 @@ def _shrink_and_requeue(
         len(concepts_b),
     )
     return ShrinkOutcome.SPLIT
-
-
-#: Failure kinds whose remedy is a judgment call: Loop 2 may be consulted
-#: when the deterministic policy declines them. Transport failures and
-#: provider overflows are arithmetic — the model is never asked about those.
-_AMBIGUOUS_KINDS: Final[frozenset[AgentFailureKind]] = frozenset({AgentFailureKind.SCHEMA_MISMATCH, AgentFailureKind.OTHER, AgentFailureKind.EMPTY_ANSWER})
 
 
 def _consult_loop2(

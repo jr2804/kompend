@@ -17,20 +17,6 @@ from dataclasses import dataclass, field
 from typing import TypedDict
 
 
-class UsageSnapshot(TypedDict):
-    """Wire shape of :meth:`UsageTracker.to_dict` — one snapshot of token accounts."""
-
-    prompt_tokens: int
-    completion_tokens: int
-    call_count: int
-    avg_ttft: float
-    overall_tok_s: float
-    recent_tok_s: float
-    per_model: dict[str, dict[str, int]]
-    context_tokens: int
-    context_budget: int
-
-
 @dataclass
 class UsageTracker:
     """Accumulates LLM usage statistics across complete() calls.
@@ -140,6 +126,20 @@ class UsageTracker:
             "context_tokens": self.context_tokens,
             "context_budget": self.context_budget,
         }
+
+
+class UsageSnapshot(TypedDict):
+    """Wire shape of :meth:`UsageTracker.to_dict` — one snapshot of token accounts."""
+
+    prompt_tokens: int
+    completion_tokens: int
+    call_count: int
+    avg_ttft: float
+    overall_tok_s: float
+    recent_tok_s: float
+    per_model: dict[str, dict[str, int]]
+    context_tokens: int
+    context_budget: int
 
 
 def tokens_per_second(tokens: int, elapsed_s: float) -> float:

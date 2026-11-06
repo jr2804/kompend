@@ -59,6 +59,16 @@ _PLACEHOLDERS_SQL: Final[str] = ", ".join("?" * len(_COLUMNS))
 _SPARK_GLYPHS = "▁▂▃▄▅▆▇█"
 
 
+LintConfigSnapshot = TypedDict(
+    "LintConfigSnapshot",
+    {
+        "compile.compiler": str | None,
+        "compile.llm.default_model": str | None,
+        "compile.llm.fallback_chain": list[str] | None,
+    },
+)
+
+
 class LintRunOptions(TypedDict):
     """Which slice of the lint run this entry records."""
 
@@ -71,16 +81,6 @@ class LintLlmMeta(TypedDict, total=False):
 
     model: str
     usage: UsageSnapshot
-
-
-LintConfigSnapshot = TypedDict(
-    "LintConfigSnapshot",
-    {
-        "compile.compiler": str | None,
-        "compile.llm.default_model": str | None,
-        "compile.llm.fallback_chain": list[str] | None,
-    },
-)
 
 
 class LintWikiMeta(TypedDict):

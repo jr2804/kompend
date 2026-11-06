@@ -248,22 +248,6 @@ class TestShrinkLoop:
         return TwoPhaseCompiler(config=config)
 
 
-def _signal(kind: AgentFailureKind, **overrides: Any) -> AdaptationSignal:
-    base: dict[str, Any] = {
-        "seg_id": "seg_0",
-        "kind": kind,
-        "adaptations_used": 0,
-        "concepts_assigned": 12,
-        "concepts_remaining": 12,
-        "fetches": 10,
-        "context_tokens": None,
-        "context_budget": None,
-        "last_error": "boom",
-    }
-    base.update(overrides)
-    return AdaptationSignal(**base)  # type: ignore[arg-type]
-
-
 class TestDescribe:
     def test_record_holds_counts_not_content(self) -> None:
         text = _signal(
@@ -301,19 +285,7 @@ class TestErrorDecisionShrink:
         assert (decision.action, decision.shrink) == (ErrorAction.RETRY, True)
 
 
-def _loop2_signal(kind: AgentFailureKind, **overrides: Any) -> AdaptationSignal:
-    return _signal(kind, **overrides)
-
-
 class TestConsultGate:
-    def _compiler(self) -> MagicMock:
-        compiler = MagicMock()
-        compiler._config.decision = None
-        return compiler
-
-    def _unit(self, depth: int = 0) -> _SegmentUnit:
-        return _SegmentUnit(label="segment 1/1", seg_id="seg_0", segment=[], run_prefix=None, seg_idx=0, depth=depth)
-
     @pytest.mark.parametrize("kind", [AgentFailureKind.TRANSIENT, AgentFailureKind.CONTEXT_OVERFLOW])
     def test_arithmetic_failures_never_reach_the_model(self, kind: AgentFailureKind) -> None:
         with patch.object(gen_module, "decide_unit_adaptation") as decide:
@@ -338,9 +310,55 @@ class TestConsultGate:
             signal = _loop2_signal(AgentFailureKind.OTHER)
             assert _consult_loop2(self._compiler(), self._unit(), signal, 2) is verdict
 
+    def _compiler(self) -> MagicMock:
+        compiler = MagicMock()
+        compiler._config.decision = None
+        return compiler
+
+    def _unit(self, depth: int = 0) -> _SegmentUnit:
+        return _SegmentUnit(label="segment 1/1", seg_id="seg_0", segment=[], run_prefix=None, seg_idx=0, depth=depth)
+
 
 class TestLoop2Shrink:
     """An ambiguous failure Loop 1 declines can still earn a split."""
+
+    def test_model_shrink_splits_what_loop1_declined(self) -> None:
+        def _fail(source_id: str, batch: list[dict[str, Any]]) -> None:
+            if source_id == "seg_0":
+                raise EmptyAnswerError("Please return text or include your response in a tool call")
+
+        def _decide(signal: AdaptationSignal) -> ErrorDecision:
+            return ErrorDecision(action=ErrorAction.RETRY, shrink=True)
+
+        calls, seen_signals, result = self._run_loop(_fail, _decide)
+        assert calls[0] == "seg_0"
+        assert sorted(calls[1:]) == ["seg_0/sa", "seg_0/sb"]
+        assert any("kind=empty_answer" in s and "unit=seg_0" in s for s in seen_signals)
+        assert all(("x" * 100) not in s for s in seen_signals)
+        nodes, _, caller_progress = result
+        assert sorted(caller_progress.keys()) == ["seg_0"]
+        assert len(nodes) == 4
+
+    def test_model_skip_stops_the_retries(self) -> None:
+        def _fail(source_id: str, batch: list[dict[str, Any]]) -> None:
+            raise EmptyAnswerError("Please return text or include your response in a tool call")
+
+        def _decide(signal: AdaptationSignal) -> ErrorDecision:
+            return ErrorDecision(action=ErrorAction.SKIP)
+
+        calls, seen_signals, exc = self._run_loop(_fail, _decide)
+        assert calls == ["seg_0"]
+        assert isinstance(exc, LLMOutputError)
+
+    def test_no_model_keeps_todays_retry_path(self) -> None:
+        def _fail(source_id: str, batch: list[dict[str, Any]]) -> None:
+            raise EmptyAnswerError("Please return text or include your response in a tool call")
+
+        calls, seen_signals, exc = self._run_loop(_fail, lambda signal: None)
+        # EMPTY_ANSWER is a continuation kind: 4 concepts + 1 = 5 passes, no split.
+        assert calls == ["seg_0"] * 5
+        assert not [c for c in calls if "/s" in c]
+        assert isinstance(exc, LLMOutputError)
 
     def _compiler(self) -> TwoPhaseCompiler:
         vault = make_tmp_vault()
@@ -399,40 +417,22 @@ class TestLoop2Shrink:
             return calls, seen_signals, result
         raise AssertionError("unreachable")
 
-    def test_model_shrink_splits_what_loop1_declined(self) -> None:
-        def _fail(source_id: str, batch: list[dict[str, Any]]) -> None:
-            if source_id == "seg_0":
-                raise EmptyAnswerError("Please return text or include your response in a tool call")
 
-        def _decide(signal: AdaptationSignal) -> ErrorDecision:
-            return ErrorDecision(action=ErrorAction.RETRY, shrink=True)
+def _loop2_signal(kind: AgentFailureKind, **overrides: Any) -> AdaptationSignal:
+    return _signal(kind, **overrides)
 
-        calls, seen_signals, result = self._run_loop(_fail, _decide)
-        assert calls[0] == "seg_0"
-        assert sorted(calls[1:]) == ["seg_0/sa", "seg_0/sb"]
-        assert any("kind=empty_answer" in s and "unit=seg_0" in s for s in seen_signals)
-        assert all(("x" * 100) not in s for s in seen_signals)
-        nodes, _, caller_progress = result
-        assert sorted(caller_progress.keys()) == ["seg_0"]
-        assert len(nodes) == 4
 
-    def test_model_skip_stops_the_retries(self) -> None:
-        def _fail(source_id: str, batch: list[dict[str, Any]]) -> None:
-            raise EmptyAnswerError("Please return text or include your response in a tool call")
-
-        def _decide(signal: AdaptationSignal) -> ErrorDecision:
-            return ErrorDecision(action=ErrorAction.SKIP)
-
-        calls, seen_signals, exc = self._run_loop(_fail, _decide)
-        assert calls == ["seg_0"]
-        assert isinstance(exc, LLMOutputError)
-
-    def test_no_model_keeps_todays_retry_path(self) -> None:
-        def _fail(source_id: str, batch: list[dict[str, Any]]) -> None:
-            raise EmptyAnswerError("Please return text or include your response in a tool call")
-
-        calls, seen_signals, exc = self._run_loop(_fail, lambda signal: None)
-        # EMPTY_ANSWER is a continuation kind: 4 concepts + 1 = 5 passes, no split.
-        assert calls == ["seg_0"] * 5
-        assert not [c for c in calls if "/s" in c]
-        assert isinstance(exc, LLMOutputError)
+def _signal(kind: AgentFailureKind, **overrides: Any) -> AdaptationSignal:
+    base: dict[str, Any] = {
+        "seg_id": "seg_0",
+        "kind": kind,
+        "adaptations_used": 0,
+        "concepts_assigned": 12,
+        "concepts_remaining": 12,
+        "fetches": 10,
+        "context_tokens": None,
+        "context_budget": None,
+        "last_error": "boom",
+    }
+    base.update(overrides)
+    return AdaptationSignal(**base)  # type: ignore[arg-type]
