@@ -31,6 +31,7 @@ from typing import Any, Final
 
 from parsecraft.backends import BackendRegistry, default_registry
 from parsecraft.backends.protocol import SourceDocument
+from parsecraft.cli.config import config_scope
 from parsecraft.environment import (
     EnvironmentInfo,
     probe_environment,
@@ -157,7 +158,16 @@ class ParsecraftParser:
         return True
 
     def parse(self, source_file: Path) -> ParsedDocument:
-        """Parse *source_file* through parsecraft and map the IR to kompend."""
+        """Parse *source_file* through parsecraft and map the IR to kompend.
+
+        The parsecraft calls run inside
+        :func:`~parsecraft.cli.config.config_scope`, so the judge spec, the
+        judge's provider endpoint and the request timeout read the same
+        configuration the routing constraints were derived from. Without it
+        they would read the default layer set — the global file and the cwd
+        project file — and a vault's ``.kompend/parsecraft.toml`` would route
+        pages one way while the judge it names was never even resolved.
+        """
         registry = self._registry if self._registry is not None else default_registry
         media_type = media_type_for(source_file)
         environment = self._ensure_environment()
@@ -169,13 +179,14 @@ class ParsecraftParser:
         )
 
         source = SourceDocument(uri=source_file.resolve().as_uri())
-        analysis = analyze_source(
-            source,
-            registry,
-            media_type=media_type,
-            installed_extras=constraints.installed_extras,
-        )
-        result = self._execute_with_judge(analysis, registry, constraints, source)
+        with config_scope(self.parsecraft_settings().settings):
+            analysis = analyze_source(
+                source,
+                registry,
+                media_type=media_type,
+                installed_extras=constraints.installed_extras,
+            )
+            result = self._execute_with_judge(analysis, registry, constraints, source)
 
         document = result.document
         elements = _map_document(document, source_file, images=self._images)
@@ -526,8 +537,10 @@ class ParsecraftParser:
            judge endpoint must never fail an ingest — the fallback is a
            degraded parse, not a hard error.
 
-        Resolution is only half the story: ``resolve_judge`` validates the
-        *spec*, never the *endpoint* (a cloud provider accepts any model token
+        Resolution happens inside the caller's ``config_scope`` (see
+        :meth:`parse`), so the spec and the provider endpoint are read from the
+        run's configuration. ``resolve_judge`` validates the *spec*, never the
+        *endpoint* (a cloud provider accepts any model token
         and 400s on the first call). The call-time failure is handled by
         :meth:`_execute_with_judge`.
         """

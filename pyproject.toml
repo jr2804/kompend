@@ -73,7 +73,7 @@ dependencies = [
     # embedded CFF Type1 subset fonts; without it, LaTeX-style math/symbol
     # glyphs map to garbage on every parse of ITU/IEEE-style PDFs.
     "fonttools>=4.5",
-    "parsecraft[docling,web]>=2026.11.5",
+    "parsecraft[docling,web]>=2026.11.6",
     "llmdb>=1.0.0",
 ]
 
@@ -86,16 +86,16 @@ kompend = "kompend.cli.launch:main"
 rerank = ["flashrank>=0.2.10"]
 
 # Only heavy ML OCR models and licence-gated backends (pymupdf, mineru) stay opt-in.
-ocr = ["parsecraft[ocr]>=2026.11.5"]
+ocr = ["parsecraft[ocr]>=2026.11.6"]
 # parsecraft runs MinerU natively; the extra pulls model weights, not the
 # `mineru` package, so it resolves beside the model stack.
-mineru = ["parsecraft[mineru]>=2026.11.5"]
-pymupdf = ["parsecraft[pymupdf]>=2026.11.5"]
+mineru = ["parsecraft[mineru]>=2026.11.6"]
+pymupdf = ["parsecraft[pymupdf]>=2026.11.6"]
 # docling is already a base dependency; pdf-full adds the licensed pymupdf
 # backend and stays free of mineru (see the note above).
 pdf-full = [
-    "parsecraft[pymupdf]>=2026.11.5",
-    "parsecraft[docling]>=2026.11.5",
+    "parsecraft[pymupdf]>=2026.11.6",
+    "parsecraft[docling]>=2026.11.6",
 ]
 
 # marker-pdf is bring-your-own: uv add marker-pdf

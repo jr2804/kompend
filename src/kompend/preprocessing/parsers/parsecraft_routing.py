@@ -24,13 +24,12 @@ Two rules shape it:
 
 The routing judge is parsecraft's setting too. ``[judge] model`` in one of the
 files above names it, and ``PARSECRAFT_JUDGE_MODEL`` overrides it for one run;
-kompend mirrors neither the provider vocabulary nor the model token. The one
-thing kompend adds is precedence: it reads the *vault* file, which parsecraft's
-own ``select_judge_spec`` cannot see (it loads the cwd project file only), so a
-``kompend`` run honours ``<vault>/.kompend/parsecraft.toml`` exactly as it
-honours every other routing key. That gap is upstream's
-(https://github.com/jr2804/parsecraft/issues/9); when it closes, this module
-drops the mirror and calls ``select_judge_spec(None, settings)``.
+kompend mirrors neither the provider vocabulary nor the model token. It does not
+have to: the loader below is always paired with
+:func:`parsecraft.cli.config.config_scope`, which installs the same settings for
+the judge, the provider endpoints and the request timeout to read. That pairing
+is what lets a ``kompend`` run honour ``<vault>/.kompend/parsecraft.toml``
+exactly as it honours every other routing key.
 
 When kompend grows a decision model of its own (``[decision]``), it will reach
 parsecraft through ``register_judge_provider``: a loader that answers
@@ -50,15 +49,15 @@ OCR is permitted. An explicit ``allow_ocr`` still wins.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-from parsecraft.cli.config import ParsecraftConfig, RoutingSettings, build_engine
+from parsecraft.cli.config import ParsecraftConfig, RoutingSettings, build_engine, config_scope
 from parsecraft.config import ConfigLayer
 from parsecraft.environment import EnvironmentInfo
+from parsecraft.providers._endpoints import select_judge_spec
 from parsecraft.routing import RoutingConstraints
 
 #: kompend's fallback depth. parsecraft's default of 1 means one attempt with no
@@ -66,10 +65,6 @@ from parsecraft.routing import RoutingConstraints
 #: gate fails the document; a wiki build prefers a degraded parse to a failed
 #: one. Injected at the default layer — a user file overrides it.
 KOMPEND_MAX_PASSES: Final[int] = 3
-
-#: parsecraft's own override for ``[judge] model``. kompend mirrors the name, not
-#: the setting: it is parsecraft's environment variable and parsecraft's spec.
-PARSECRAFT_JUDGE_MODEL_ENV: Final[str] = "PARSECRAFT_JUDGE_MODEL"
 
 #: ``[routing]`` keys that describe the host rather than a choice. Everything a
 #: user writes for them is honoured; the rest is answered by the probe.
@@ -109,17 +104,17 @@ class ParsecraftRoutingConfig:
     def judge_spec(self) -> str | None:
         """The routing judge this run should use, or ``None`` for the rule table.
 
-        ``PARSECRAFT_JUDGE_MODEL`` first, then the loaded ``[judge] model`` —
-        parsecraft's own order, minus the CLI flag, which has no kompend
-        equivalent. Reading the *loaded* settings (rather than calling
-        parsecraft's ``select_judge_spec``) is what lets a vault's
-        ``.kompend/parsecraft.toml`` select the judge: that function loads the
-        cwd project file alone.
+        Asked of parsecraft, not re-derived: ``PARSECRAFT_JUDGE_MODEL`` first,
+        then ``[judge] model``. ``select_judge_spec`` reads the *effective*
+        configuration, so the settings this object holds are installed for the
+        duration of the question — otherwise the answer would come from the
+        ambient layer set (the global file and the cwd project file) and a
+        vault's ``.kompend/parsecraft.toml`` would name a judge nothing ever
+        resolves. ``config_scope`` is thread-local, so this cannot disturb a
+        parse running on another worker.
         """
-        from_env = os.environ.get(PARSECRAFT_JUDGE_MODEL_ENV, "").strip()
-        if from_env:
-            return from_env
-        return (self.settings.judge.model or "").strip() or None
+        with config_scope(self.settings):
+            return select_judge_spec(None)
 
     @classmethod
     def from_settings(cls, settings: ParsecraftConfig) -> ParsecraftRoutingConfig:

@@ -128,7 +128,7 @@ class TestFilterParityWithCanonicalPredicates:
 
     def test_attribute_filter_parity(self, tmp_path: Path) -> None:
         store = _built_store(tmp_path)
-        checks = [("lang", "rust"), ("lang", None)]
+        checks: list[tuple[str, str | None]] = [("lang", "rust"), ("lang", None)]
         expected = {node_id for node_id, attrs in _attrs_by_id().items() if matches_attr_filter(attrs, checks)}
         ids = {hit["id"] for hit in store.search("q", top_k=10, attribute_keys=["lang"], attributes_all=["lang=rust"])}
         assert ids == expected

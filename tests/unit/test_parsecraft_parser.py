@@ -53,6 +53,7 @@ from parsecraft.ir.models import (
 from parsecraft.pipeline import MEDIA_TYPES
 from parsecraft.pipeline.analysis import AnalysisResult
 from parsecraft.pipeline.models import PageGroup
+from parsecraft.providers._endpoints import select_judge_spec  # noqa: E402 — guarded by the importorskip above
 from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
 from parsecraft.routing.models import Intent, PageRoute, RoutingPlan  # noqa: E402 — guarded by the importorskip above
@@ -560,6 +561,42 @@ class TestJudgeWiring:
         monkeypatch.delenv("PARSECRAFT_JUDGE_MODEL", raising=False)
         assert _judged_parser("").parsecraft_settings().judge_spec is None
         assert _judged_parser(None).parsecraft_settings().judge_spec is None
+
+    def test_the_judge_spec_ignores_a_project_file_kompend_did_not_load(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The settings object decides, not whatever file the cwd happens to hold.
+
+        parsecraft resolves the judge through ``effective_settings()``, which
+        reads the global file and ``./parsecraft.toml`` unless the caller
+        installed a scope. A vault's judge would be invisible that way, and a
+        stray project file would silently win — so the property installs its
+        own settings for the question.
+        """
+        monkeypatch.delenv("PARSECRAFT_JUDGE_MODEL", raising=False)
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "parsecraft.toml").write_text('[judge]\nmodel = "zen/some-model"\n', encoding="utf-8")
+        settings = ParsecraftConfig(judge=JudgeSettings(model="ollama/parable-tinyjev"))
+        assert ParsecraftRoutingConfig.from_settings(settings).judge_spec == "ollama/parable-tinyjev"
+
+    def test_the_parse_installs_the_configuration_parsecraft_resolves_from(self, markdown_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Parsecraft's judge, endpoint and timeout read the *scoped* settings.
+
+        Proven from inside the parse: the spec that ``select_judge_spec``
+        answers there is the vault's, and it is gone again afterwards.
+        """
+        adapter = _adapter()
+        monkeypatch.delenv("PARSECRAFT_JUDGE_MODEL", raising=False)
+        monkeypatch.chdir(markdown_file.parent)
+        seen: list[str | None] = []
+        real_analyze = adapter.analyze_source
+
+        def spy_analyze(*args: object, **kwargs: object) -> object:
+            seen.append(select_judge_spec(None))
+            return real_analyze(*args, **kwargs)
+
+        monkeypatch.setattr(adapter, "analyze_source", spy_analyze)
+        _judged_parser("ollama/parable-tinyjev").parse(markdown_file)
+        assert seen == ["ollama/parable-tinyjev"]
+        assert select_judge_spec(None) is None
 
     def test_unresolvable_provider_degrades(self, caplog: pytest.LogCaptureFixture) -> None:
         adapter = _adapter()

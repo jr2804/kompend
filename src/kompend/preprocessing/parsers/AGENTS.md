@@ -59,6 +59,16 @@ here by hand, and never re-declare a parsecraft key as a kompend config field:
 the six mirrored `[ingest] parsecraft_*` routing keys are in `REMOVED_KEYS` for
 exactly that reason.
 
+**Those settings must also be installed, not just read.** The judge spec, the
+judge's provider endpoint and the request timeout are resolved by parsecraft
+through `effective_settings()`, which answers with the ambient layer set (the
+global file and the cwd project file) unless the caller installs a scope. So the
+adapter wraps every `analyze_source`/`execute` pair in
+`parsecraft.cli.config.config_scope(settings)`, and `judge_spec` re-installs the
+same scope for its own question. One consequence to respect: the scope is a
+`ContextVar`, hence thread-local — a `ThreadPoolExecutor` worker starts empty and
+must not be handed a judgement resolved on the parent thread.
+
 ### Host facts fill blanks, they never overwrite
 
 `constraints_for()` resolves four host-fact keys — `engines`, `allow_ocr`,
