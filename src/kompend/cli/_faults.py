@@ -34,12 +34,12 @@ from kompend.logging import get_logger
 #: Where the fault handler and a dying console both record what happened.
 FAULT_LOG_NAME: Final[str] = "kompend-faults.log"
 
-#: What ``logging`` calls an exc_info triple: (type, value, traceback).
-ExcInfo = tuple[type[BaseException] | None, BaseException | None, TracebackType | None]
-
 #: First failure per (thread name, exception) pair is reported in full; see
 #: :func:`log_thread_failure` for why repeats are demoted.
 _THREAD_FAILURE_SEEN: dict[tuple[str, str], int] = {}
+
+#: What ``logging`` calls an exc_info triple: (type, value, traceback).
+ExcInfo = tuple[type[BaseException] | None, BaseException | None, TracebackType | None]
 
 
 class Unraisable(Protocol):
