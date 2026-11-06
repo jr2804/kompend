@@ -115,9 +115,20 @@ def _lint_entry(ts: str, score: float) -> LintEntry:
     return {
         "timestamp": ts,
         "duration_seconds": 1.0,
-        "options": {"fix": False},
+        "options": {"context": "check", "fix": False},
         "llm": None,
-        "config_snapshot": {"compile.compiler": "graph"},
+        "config_snapshot": {
+            "compile.compiler": "graph",
+            "compile.llm.default_model": "test-model",
+            "compile.llm.fallback_chain": [],
+        },
         "wiki_meta": {"node_count": 1},
-        "report": {"health_score": score},
+        "report": {
+            "health_score": score,
+            "total_checks": 0,
+            "failures": 0,
+            "passes": 0,
+            "skips": 0,
+            "results": [],
+        },
     }

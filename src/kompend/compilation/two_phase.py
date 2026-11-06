@@ -20,6 +20,7 @@ Implementation split into :mod:`kompend.compilation.flows` submodules:
 from __future__ import annotations
 
 import time
+from typing import Any, cast
 
 from kompend.compilation._two_phase_core import (
     BatchFailureTracker,
@@ -287,7 +288,10 @@ class TwoPhaseCompiler(BaseCompiler):
         wiki.metadata["llm_calls"] = len(self._llm_stats)
         wiki.metadata["llm_prompt_tokens"] = total_prompt
         wiki.metadata["llm_completion_tokens"] = total_comp
-        wiki.metadata[str(WikiField.LLM_USAGE)] = self._usage_tracker.to_dict()
+        # The metadata store is heterogeneous — copy the snapshot into a plain
+        # dict at this boundary; the JSON shape is unchanged.
+        stored = cast("dict[str, Any]", dict(self._usage_tracker.to_dict()))
+        wiki.metadata[str(WikiField.LLM_USAGE)] = stored
         wiki.metadata[str(WikiField.LLM_MODEL)] = self._model
         wiki.metadata["compile_duration_s"] = round(time.monotonic() - compile_start, 1)
 

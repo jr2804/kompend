@@ -636,7 +636,7 @@ class TestEntryFromReport:
                 ],
             ),
             duration_seconds=0.0,
-            options={},
+            options={"context": "check", "fix": False},
             config={},
             node_count=1,
         )

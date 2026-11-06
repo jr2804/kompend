@@ -108,7 +108,7 @@ class TestLintLogArtefact:
         return entry_from_report(
             report,
             duration_seconds=1.5,
-            options={"context": "pipeline"},
+            options={"context": "pipeline", "fix": False},
             config={},
             node_count=12,
         )
@@ -120,7 +120,7 @@ class TestRenderReport:
         entry = entry_from_report(
             _report(_fail("rumdl", "MD024", "log.md")),
             duration_seconds=1.0,
-            options={"context": "pipeline"},
+            options={"context": "pipeline", "fix": False},
             config={},
             node_count=3,
         )

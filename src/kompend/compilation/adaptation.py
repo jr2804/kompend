@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from typing import Any, Final
 
 from kompend.agents.failure import AgentFailureKind
 
@@ -26,6 +26,15 @@ from kompend.agents.failure import AgentFailureKind
 #: window even when the provider's words were not recognized: at 95% the
 #: remaining headroom cannot cover another fetch round plus the answer.
 _WINDOW_PRESSURE_THRESHOLD: Final[float] = 0.95
+
+
+class ShrinkOutcome(StrEnum):
+    """What the shrink loop decided for a failed unit."""
+
+    SPLIT = "split"  #: halves enqueued; the caller leaves its pass loop.
+    DECLINED = "declined"  #: no split and no model verdict; the caller's logic stands.
+    SKIP = "skip"  #: the decision model says stop retrying this unit.
+    ABORT = "abort"  #: the decision model says fail loudly.
 
 
 @dataclass(frozen=True)
@@ -68,15 +77,6 @@ class AdaptationSignal:
         )
 
 
-class ShrinkOutcome(StrEnum):
-    """What the shrink loop decided for a failed unit."""
-
-    SPLIT = "split"  #: halves enqueued; the caller leaves its pass loop.
-    DECLINED = "declined"  #: no split and no model verdict; the caller's logic stands.
-    SKIP = "skip"  #: the decision model says stop retrying this unit.
-    ABORT = "abort"  #: the decision model says fail loudly.
-
-
 @dataclass(frozen=True)
 class Adaptation:
     """What the failed unit should become."""
@@ -115,8 +115,8 @@ def plan_adaptation(signal: AdaptationSignal, *, max_adaptations: int) -> Adapta
 
 def split_unit(
     segment: list[tuple[str, str]],
-    concepts: list[dict[str, object]],
-) -> tuple[tuple[list[tuple[str, str]], list[dict[str, object]]], tuple[list[tuple[str, str]], list[dict[str, object]]]] | None:
+    concepts: list[dict[str, Any]],
+) -> tuple[tuple[list[tuple[str, str]], list[dict[str, Any]]], tuple[list[tuple[str, str]], list[dict[str, Any]]]] | None:
     """Split one failed unit into two strictly smaller halves, or ``None``.
 
     Halves always partition the text. Concepts split contiguously; a lone
@@ -162,8 +162,12 @@ def split_sources(segment: list[tuple[str, str]]) -> tuple[list[tuple[str, str]]
     return list(segment[:-1]), [segment[-1]]
 
 
-def split_concepts(concepts: list[dict[str, object]]) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
-    """Halve a concept list contiguously, mirroring the broker's fair split."""
+def split_concepts(concepts: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Halve a concept list contiguously, mirroring the broker's fair split.
+
+    Concepts are opaque to the shrink loop — partitioned, never inspected —
+    so the value type stays ``Any``, matching the broker's concept maps.
+    """
     if not concepts:
         return [], []
     cut = max(1, len(concepts) // 2)
