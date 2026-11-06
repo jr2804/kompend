@@ -15,7 +15,7 @@ from typing import cast
 import pytest
 
 import kompend
-from kompend.cli import launch
+from kompend.cli import _console, _faults, _thread_pools, launch
 from kompend.cli._registry import OnDemandModule
 from kompend.core.env import EnvVar
 
@@ -48,21 +48,21 @@ class TestConsoleCodePage:
     def test_an_oem_code_page_is_switched_to_utf8(self) -> None:
         api = _CodePage(850)
 
-        launch._ensure_utf8_code_page(api)
+        _console.ensure_utf8_code_page(api)
 
         assert api.set_to == 65001
 
     def test_a_host_without_a_console_is_left_alone(self) -> None:
         api = _CodePage(0)
 
-        launch._ensure_utf8_code_page(api)
+        _console.ensure_utf8_code_page(api)
 
         assert api.set_to is None
 
     def test_an_already_utf8_console_is_left_alone(self) -> None:
         api = _CodePage(65001)
 
-        launch._ensure_utf8_code_page(api)
+        _console.ensure_utf8_code_page(api)
 
         assert api.set_to is None
 
@@ -71,12 +71,12 @@ class TestConsoleCodePage:
             def SetConsoleOutputCP(self, code_page: int) -> int:
                 raise OSError(errno.EINVAL, "nope")
 
-        launch._ensure_utf8_code_page(_Broken(850))
+        _console.ensure_utf8_code_page(_Broken(850))
 
 
 class TestThreadCap:
     def test_every_numeric_pool_is_bounded(self) -> None:
-        launch._cap_thread_pools()
+        _thread_pools.cap_thread_pools()
 
         for name in _THREAD_VARS:
             assert 1 <= int(os.environ[name]) <= 8
@@ -84,14 +84,14 @@ class TestThreadCap:
     def test_an_explicit_cap_is_honoured(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(EnvVar.BLAS_THREADS.value, "2")
 
-        launch._cap_thread_pools()
+        _thread_pools.cap_thread_pools()
 
         assert all(os.environ[name] == "2" for name in _THREAD_VARS)
 
     def test_an_already_pinned_pool_is_not_overwritten(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("OPENBLAS_NUM_THREADS", "1")
 
-        launch._cap_thread_pools()
+        _thread_pools.cap_thread_pools()
 
         assert os.environ["OPENBLAS_NUM_THREADS"] == "1"
         assert os.environ["OMP_NUM_THREADS"] != ""
@@ -99,7 +99,7 @@ class TestThreadCap:
     def test_blank_override_falls_back_to_the_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(EnvVar.BLAS_THREADS.value, "   ")
 
-        launch._cap_thread_pools()
+        _thread_pools.cap_thread_pools()
 
         assert int(os.environ["OPENBLAS_NUM_THREADS"]) >= 1
 
@@ -117,7 +117,7 @@ class TestVersionFastPath:
             return real_import(name, package)
 
         monkeypatch.setattr(launch.importlib, "import_module", _guarded)
-        monkeypatch.setattr(launch.sys, "argv", ["kompend", "--version"])
+        monkeypatch.setattr(sys, "argv", ["kompend", "--version"])
 
         launch.main()
 
@@ -125,7 +125,7 @@ class TestVersionFastPath:
         assert OnDemandModule.APP.value not in imported
 
     def test_short_version_flag_is_answered_too(self, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-        monkeypatch.setattr(launch.sys, "argv", ["kompend", "-v"])
+        monkeypatch.setattr(sys, "argv", ["kompend", "-v"])
 
         launch.main()
 
@@ -140,7 +140,7 @@ class TestVersionFastPath:
                 calls.append("main")
 
         monkeypatch.setattr(launch.importlib, "import_module", lambda _name: _FakeApp)
-        monkeypatch.setattr(launch.sys, "argv", ["kompend", "status"])
+        monkeypatch.setattr(sys, "argv", ["kompend", "status"])
 
         launch.main()
 
@@ -160,10 +160,10 @@ class TestFailureHooks:
         monkeypatch.setattr(threading, "excepthook", threading.__excepthook__)
         monkeypatch.setattr(sys, "unraisablehook", sys.__unraisablehook__)
 
-        launch._install_failure_hooks()
+        _faults.install_failure_hooks()
 
-        assert threading.excepthook is launch._log_thread_failure
-        assert sys.unraisablehook is launch._log_unraisable
+        assert threading.excepthook is _faults.log_thread_failure
+        assert sys.unraisablehook is _faults.log_unraisable
 
     def test_a_dead_thread_is_logged_with_its_name_and_error(self, caplog: pytest.LogCaptureFixture) -> None:
         error = ValueError("boom")
@@ -174,8 +174,8 @@ class TestFailureHooks:
             thread=SimpleNamespace(name="Thread-1"),
         )
 
-        with caplog.at_level("ERROR", logger="kompend.cli.launch"):
-            launch._log_thread_failure(cast("threading.ExceptHookArgs", args))
+        with caplog.at_level("ERROR", logger="kompend.cli._faults"):
+            _faults.log_thread_failure(cast("threading.ExceptHookArgs", args))
 
         message = caplog.records[0].getMessage()
         assert "thread Thread-1 died" in message
@@ -191,10 +191,10 @@ class TestFailureHooks:
                 thread=SimpleNamespace(name=name),
             )
 
-        with caplog.at_level("DEBUG", logger="kompend.cli.launch"):
-            launch._log_thread_failure(cast("threading.ExceptHookArgs", _failure("Thread-1", "boom")))
-            launch._log_thread_failure(cast("threading.ExceptHookArgs", _failure("Thread-1", "boom")))
-            launch._log_thread_failure(cast("threading.ExceptHookArgs", _failure("Thread-1", "boom")))
+        with caplog.at_level("DEBUG", logger="kompend.cli._faults"):
+            _faults.log_thread_failure(cast("threading.ExceptHookArgs", _failure("Thread-1", "boom")))
+            _faults.log_thread_failure(cast("threading.ExceptHookArgs", _failure("Thread-1", "boom")))
+            _faults.log_thread_failure(cast("threading.ExceptHookArgs", _failure("Thread-1", "boom")))
 
         errors = [r for r in caplog.records if r.levelno == logging.ERROR]
         debugs = [r for r in caplog.records if r.levelno == logging.DEBUG]
@@ -217,9 +217,9 @@ class TestFailureHooks:
             thread=SimpleNamespace(name="Thread-1"),
         )
 
-        with caplog.at_level("ERROR", logger="kompend.cli.launch"):
-            launch._log_thread_failure(cast("threading.ExceptHookArgs", first))
-            launch._log_thread_failure(cast("threading.ExceptHookArgs", second))
+        with caplog.at_level("ERROR", logger="kompend.cli._faults"):
+            _faults.log_thread_failure(cast("threading.ExceptHookArgs", first))
+            _faults.log_thread_failure(cast("threading.ExceptHookArgs", second))
 
         assert len(caplog.records) == 2
         assert "The handle is invalid" in caplog.records[1].getMessage()
@@ -232,14 +232,14 @@ class TestFailureHooks:
             object=object(),
         )
 
-        with caplog.at_level("ERROR", logger="kompend.cli.launch"):
-            launch._log_unraisable(unraisable)
+        with caplog.at_level("ERROR", logger="kompend.cli._faults"):
+            _faults.log_unraisable(unraisable)
 
         assert "unraisable exception" in caplog.records[0].getMessage()
 
     def test_a_failing_report_falls_back_to_the_interpreter(self, monkeypatch: pytest.MonkeyPatch) -> None:
         fallbacks: list[str] = []
-        monkeypatch.setattr(launch, "_failure_logger", _Exploding)
+        monkeypatch.setattr(_faults, "_failure_logger", _Exploding)
         args = SimpleNamespace(
             exc_type=ValueError,
             exc_value=ValueError("boom"),
@@ -248,14 +248,14 @@ class TestFailureHooks:
         )
         monkeypatch.setattr(threading, "__excepthook__", lambda _args: fallbacks.append("excepthook"))
 
-        launch._log_thread_failure(cast("threading.ExceptHookArgs", args))
+        _faults.log_thread_failure(cast("threading.ExceptHookArgs", args))
 
         assert fallbacks == ["excepthook"]
 
     @pytest.fixture(autouse=True)
     def _fresh_failure_cache(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """The seen-failure cache is module state; tests start empty."""
-        monkeypatch.setattr(launch, "_THREAD_FAILURE_SEEN", {})
+        monkeypatch.setattr(_faults, "_THREAD_FAILURE_SEEN", {})
 
 
 class _Exploding:
@@ -272,12 +272,12 @@ class TestNeverSilent:
     def test_the_fault_log_is_opened_once_and_names_the_run(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         enabled: list[dict[str, object]] = []
         _fresh_fault_handler(monkeypatch)
-        monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: str(tmp_path))
-        monkeypatch.setattr(launch.faulthandler, "enable", lambda **kwargs: enabled.append(kwargs))
-        monkeypatch.setattr(launch.sys, "argv", ["kompend", "ingest"])
+        monkeypatch.setattr(_faults.tempfile, "gettempdir", lambda: str(tmp_path))
+        monkeypatch.setattr(_faults.faulthandler, "enable", lambda **kwargs: enabled.append(kwargs))
+        monkeypatch.setattr(sys, "argv", ["kompend", "ingest"])
 
-        launch._enable_fault_handler()
-        launch._enable_fault_handler()
+        _faults.enable_fault_handler()
+        _faults.enable_fault_handler()
 
         log = tmp_path / "kompend-faults.log"
         assert log.exists()
@@ -288,12 +288,12 @@ class TestNeverSilent:
     def test_an_unopenable_log_falls_back_to_stderr(self, monkeypatch: pytest.MonkeyPatch) -> None:
         enabled: list[dict[str, object]] = []
         _fresh_fault_handler(monkeypatch)
-        monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: "Z:/does-not-exist")
-        monkeypatch.setattr(launch.faulthandler, "enable", lambda **kwargs: enabled.append(kwargs))
+        monkeypatch.setattr(_faults.tempfile, "gettempdir", lambda: "Z:/does-not-exist")
+        monkeypatch.setattr(_faults.faulthandler, "enable", lambda **kwargs: enabled.append(kwargs))
 
-        launch._enable_fault_handler()
+        _faults.enable_fault_handler()
 
-        assert launch._fault_log_stream() is sys.stderr
+        assert _faults.fault_log_stream() is sys.stderr
         assert enabled[0]["file"] is sys.stderr
 
 
@@ -308,7 +308,7 @@ class TestHardenedStreams:
 
     def test_a_dead_handle_write_is_absorbed_and_reports_success(self) -> None:
         raw = _DeadHandleStream()
-        stream = launch._HardenedStream(raw, name="stderr")
+        stream = _console.HardenedStream(raw, name="stderr")
 
         written = stream.write("progress bar frame\n")
 
@@ -316,13 +316,13 @@ class TestHardenedStreams:
         assert raw.writes == ["progress bar frame\n"]  # the attempt was made; the handle refused it
 
     def test_a_dead_handle_flush_is_absorbed(self) -> None:
-        stream = launch._HardenedStream(_DeadHandleStream(), name="stderr")
+        stream = _console.HardenedStream(_DeadHandleStream(), name="stderr")
 
         stream.flush()  # must not raise — this is what prevents exit status 120
 
     def test_any_other_oserror_still_propagates(self) -> None:
         raw = _DeadHandleStream(failure=OSError(28, "No space left on device"))
-        stream = launch._HardenedStream(raw, name="stdout")
+        stream = _console.HardenedStream(raw, name="stdout")
 
         with pytest.raises(OSError, match="No space left"):
             stream.write("data")
@@ -330,10 +330,10 @@ class TestHardenedStreams:
             stream.flush()
 
     def test_the_death_is_noted_once_and_the_sibling_is_told(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: str(tmp_path))
+        monkeypatch.setattr(_faults.tempfile, "gettempdir", lambda: str(tmp_path))
         sibling_writes: list[str] = []
-        monkeypatch.setattr(launch.sys, "stdout", _RecordingStream(sibling_writes), raising=False)
-        stream = launch._HardenedStream(_DeadHandleStream(), name="stderr")
+        monkeypatch.setattr(sys, "stdout", _RecordingStream(sibling_writes), raising=False)
+        stream = _console.HardenedStream(_DeadHandleStream(), name="stderr")
 
         stream.write("one")
         stream.write("two")
@@ -355,7 +355,7 @@ class TestHardenedStreams:
         target = tmp_path / "console.log"
         descriptor = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
         try:
-            stream = launch._HardenedStream(_DeadHandleStream(descriptor=descriptor), name="stderr")
+            stream = _console.HardenedStream(_DeadHandleStream(descriptor=descriptor), name="stderr")
 
             written = stream.write("after repair\n")
 
@@ -367,9 +367,9 @@ class TestHardenedStreams:
             os.close(descriptor)
 
     def test_a_handle_that_never_recovers_is_noted_after_the_repair_budget(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-        monkeypatch.setattr(launch.tempfile, "gettempdir", lambda: str(tmp_path))
-        stream = launch._HardenedStream(_DeadHandleStream(), name="stderr")
-        stream._repairs = launch._REPAIR_LIMIT
+        monkeypatch.setattr(_faults.tempfile, "gettempdir", lambda: str(tmp_path))
+        stream = _console.HardenedStream(_DeadHandleStream(), name="stderr")
+        stream._repairs = _console.REPAIR_LIMIT
 
         assert stream._repair() is False
         stream.write("gone")
@@ -378,31 +378,31 @@ class TestHardenedStreams:
 
     def test_everything_else_delegates_to_the_raw_stream(self) -> None:
         raw = SimpleNamespace(isatty=lambda: True, fileno=lambda: 2, encoding="utf-8")
-        stream = launch._HardenedStream(raw, name="stderr")
+        stream = _console.HardenedStream(raw, name="stderr")
 
         assert stream.isatty() is True
         assert stream.fileno() == 2
         assert stream.encoding == "utf-8"
 
     def test_hardening_wraps_both_streams_and_is_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(launch.sys, "stdout", SimpleNamespace(), raising=False)
-        monkeypatch.setattr(launch.sys, "stderr", SimpleNamespace(), raising=False)
+        monkeypatch.setattr(sys, "stdout", SimpleNamespace(), raising=False)
+        monkeypatch.setattr(sys, "stderr", SimpleNamespace(), raising=False)
 
-        launch._harden_console_streams()
-        first_stdout, first_stderr = launch.sys.stdout, launch.sys.stderr
+        _console.harden_console_streams()
+        first_stdout, first_stderr = sys.stdout, sys.stderr
 
-        launch._harden_console_streams()
+        _console.harden_console_streams()
 
-        assert isinstance(first_stdout, launch._HardenedStream)
-        assert isinstance(first_stderr, launch._HardenedStream)
-        assert launch.sys.stdout is first_stdout
-        assert launch.sys.stderr is first_stderr
+        assert isinstance(first_stdout, _console.HardenedStream)
+        assert isinstance(first_stderr, _console.HardenedStream)
+        assert sys.stdout is first_stdout
+        assert sys.stderr is first_stderr
 
     def test_a_dead_handle_is_recognised_in_both_shapes(self) -> None:
-        assert launch._is_dead_handle(OSError(9, "The handle is invalid", None, 6, None))
-        assert launch._is_dead_handle(OSError(9, "Bad file descriptor"))
-        assert not launch._is_dead_handle(OSError(28, "No space left on device"))
-        assert not launch._is_dead_handle(ValueError("not an OS error"))
+        assert _console.is_dead_handle(OSError(9, "The handle is invalid", None, 6, None))
+        assert _console.is_dead_handle(OSError(9, "Bad file descriptor"))
+        assert not _console.is_dead_handle(OSError(28, "No space left on device"))
+        assert not _console.is_dead_handle(ValueError("not an OS error"))
 
 
 class _DeadHandleStream:
@@ -447,9 +447,9 @@ def _fresh_fault_handler(monkeypatch: pytest.MonkeyPatch) -> None:
     caches lets each test see a first invocation. ``faulthandler.enable`` is
     stubbed by every caller, so no real handler is installed.
     """
-    monkeypatch.setattr(launch, "_enable_fault_handler", launch._enable_fault_handler)
-    launch._enable_fault_handler.cache_clear()
-    launch._fault_log_stream.cache_clear()
+    monkeypatch.setattr(_faults, "enable_fault_handler", _faults.enable_fault_handler)
+    _faults.enable_fault_handler.cache_clear()
+    _faults.fault_log_stream.cache_clear()
 
 
 @pytest.fixture(autouse=True)

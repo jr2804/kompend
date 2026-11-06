@@ -79,7 +79,10 @@ use (pipeline, models, config, lint); then the boundary is clean.
 | File/Directory | Purpose |
 |---|---|
 | `app.py` | Typer app instance, global callback (`--wiki-dir`, `--config`, `--verbose`, `--version`), command registration |
-| `launch.py` | Console entry point: caps the numeric thread pools (`KOMP_BLAS_THREADS`, default `min(8, cores)`), answers a bare `--version` before the command tree loads, hardens both console streams (see the stream contract), delegates everything else to `app.main` |
+| `launch.py` | Console entry point: bounds the numeric thread pools, makes the console decode UTF-8, answers a bare `--version` before the command tree loads, installs the console proxy + failure hooks + fault handler, delegates everything else to `app.main` |
+| `_thread_pools.py` | `cap_thread_pools()` — `KOMP_BLAS_THREADS`, default `min(8, cores)`, applied before any native library is imported |
+| `_console.py` | The console boundary: `HardenedStream` (a handle that dies mid-run cannot kill the run), `ensure_utf8_code_page()`. See the stream contract |
+| `_faults.py` | Never-silent reporting: `faulthandler` to `%TEMP%\kompend-faults.log`, `threading.excepthook` / `sys.unraisablehook` routed through the log |
 | `_registry.py` | The command registry: `CommandName` / `CommandModule` / `HelpPanel` StrEnums, `COMMANDS` with each `CommandSpec` (module, panel, `short_help`), `PANEL_ORDER`, `OnDemandModule` |
 | `_group.py` | `LazyGroup` — lists every command from the registry, renders `--help` from `CommandSpec`, imports each module on first run |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
@@ -146,47 +149,39 @@ are set-once vault properties. Change them with `kompend config set <key> <val>`
 (persistent) or `--set <key>=<val>` (ephemeral). Never re-add a flag for these.
 
 `--set` is parsed by `parse_cli_set()` (`cmds/pipeline.py`): each `key=value`
-is validated via `validate_config_key()` and coerced via `coerce_config_value()`,
-then merged last by `build_cli_overrides(cli_set=...)` so it wins over every
-other flag.
+is validated via `validate_config_key()`, coerced via `coerce_config_value()`, then
+merged last by `build_cli_overrides(cli_set=...)` so it wins over every flag.
 
 ### Vault config discovery
 
 `kompend --wiki-dir <vault> ...` reads *that* vault's config (`.kompend/config.toml`),
-not the cwd's. See `core/config/AGENTS.md`: Project config discovery. Seed a
-vault with a chosen config at creation time via `kompend init <dir> --seed-config <toml>`
-(the file is copied verbatim into the vault).
+not the cwd's. See `core/config/AGENTS.md`: Project config discovery. Seed a vault
+with a chosen config at creation time via `kompend init <dir> --seed-config <toml>`.
 
 ### Fail-fast vault validation
 
 Every CLI/MCP entry point resolves paths through `vault_paths()`
 (`core/paths.py`), which **raises LookupError** when the resolved directory has
 no vault marker (`kompend.toml` / `.kompend/config.toml`). Silent operation on
-arbitrary directories masks misconfiguration (config, vectors, and LLM would
-all degrade invisibly). Only config-introspection commands (`kompend config
-get/list/path/check/set`) opt out via `require_vault=False` — they resolve
-against the explicit `--config` file and the vault base dir when one is given,
-and fall back to the discovered project config; they never require a vault.
+arbitrary directories masks misconfiguration. Only config-introspection commands
+(`kompend config get/list/path/check/set`) opt out via `require_vault=False`;
+they resolve against the explicit `--config` file and never require a vault.
 
 ### Progress bars
 
-**Recurring trap:** a bar looks "stuck," gets "fixed" with a plumbing change,
-and still looks stuck — because the cause was a slow/hung backend operation,
-not the bar. Diagnose: **confirm the total** ("Captioning images (171)" means
-`reset_for_phase(total, ...)` worked; a wrong total such as 0 is a real bug),
-**confirm the elapsed timer advances** (climbing `0:12:11` means the loop is
-blocked; frozen means the UI thread died), **then conclude the bar is correct and
-the *work* is slow** (one VLM/LLM call hanging until timeout pins the bar at 0%
-for timeout × retries). Do NOT "fix" a bar that passes these; the fix lives in
-`src/kompend/llm/`, the resolver, or the model config (`timeout`,
-`fallback_chain`).
+**Recurring trap:** a bar looks "stuck" and a plumbing change does not help — the
+cause was a slow/hung backend operation. Diagnose: **confirm the total**
+("Captioning images (171)" means `reset_for_phase(total, ...)` worked; a 0 is a
+real bug), **confirm the elapsed timer advances** (climbing `0:12:11` = the loop
+is blocked; frozen = the UI thread died), then conclude the *work* is slow (one
+VLM/LLM call hanging pins the bar at 0% for timeout × retries). The fix lives in
+`src/kompend/llm/`, the resolver, or the model config, never in the bar.
 
-**Stream contract:** the `Progress` bar uses
-edirect_stdout=False,
+**Stream contract:** the `Progress` bar uses `redirect_stdout=False`,
 `redirect_stderr=False` — rich's `Live` swaps the std streams for proxies by
 default and restores them unconditionally on stop, which races the refresh thread
 into `OSError(9): The handle is invalid`. Logging goes through the console object,
-so the swap buys nothing. `launch._harden_console_streams()` proxies both streams
+so the swap buys nothing. `_console.harden_console_streams()` proxies both streams
 at entry for the other cause: a capture window rebinds descriptor 2 around a native
 conversion, and the buffered stream bound to the old handle never recovers — every
 later write raises, the refresh thread dies, and the run ends as CPython's silent
@@ -194,6 +189,12 @@ exit status 120. The proxy reopens a fresh stream over the current descriptor
 (bounded by `_REPAIR_LIMIT`) and absorbs only a descriptor that is really gone;
 any other `OSError` (full disk, a pipe a consumer reads) still propagates. Never
 remove that wrapper to "simplify" output.
+
+**Never-silent contract:** a dying thread, an unraisable exception and a native
+abort must each leave a trace. `_faults.py` installs the hooks and enables
+`faulthandler` against `%TEMP%\kompend-faults.log`; the first failure per
+(thread, exception) pair is reported at ERROR with its traceback, repeats at DEBUG.
+Never report through `print`/`Console` — the console is exactly what fails.
 
 **Signal-path contract:** a phase advances only when the core tier calls
 `self._emit(phase, current, total, detail)`; the CLI handler in

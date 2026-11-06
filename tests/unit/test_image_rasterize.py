@@ -20,12 +20,6 @@ from kompend.preprocessing.images import (
 _SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}"><rect width="{width}" height="{height}" fill="#336699"/></svg>'
 
 
-def _svg(path: Path, width: int = 200, height: int = 120) -> Path:
-    """Write a solid-rectangle SVG and return its path."""
-    path.write_text(_SVG.format(width=width, height=height), encoding="utf-8")
-    return path
-
-
 class TestIsRasterImage:
     """Which suffixes already carry pixels."""
 
@@ -110,3 +104,9 @@ class TestRasteriseBytes:
 
     def test_a_missing_figure_is_none(self, tmp_path: Path) -> None:
         assert rasterise_bytes(tmp_path / "gone.png") is None
+
+
+def _svg(path: Path, width: int = 200, height: int = 120) -> Path:
+    """Write a solid-rectangle SVG and return its path."""
+    path.write_text(_SVG.format(width=width, height=height), encoding="utf-8")
+    return path
