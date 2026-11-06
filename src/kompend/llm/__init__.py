@@ -36,6 +36,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
             "register_postprocessor",
         ],
         "models": ["build_model"],
+        "model_id": ["model_slug", "provider_id_of"],
         "request_budget": [
             "EffectiveWindow",
             "RequestBudget",

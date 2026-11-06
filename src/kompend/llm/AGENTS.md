@@ -39,17 +39,20 @@ Resolution order:
 | `anthropic/` | `AnthropicModel` | pydantic-ai `infer_model` |
 | `google/` | `GoogleModel` | pydantic-ai `infer_model` |
 
-`_parse_model_string(model_string)` splits on the **first** `/` or `:`
-— whichever comes first — into `(provider, model_name)`; the remainder is
-passed verbatim and may hold further slashes or colons
-(`ollama/hf.co/qwen3.6:latest` → provider `ollama`,
-model `hf.co/qwen3.6:latest`). Provider ID aliases (`opencode-zen` →
-`opencode`) live in `_PROVIDER_ALIASES`, the module's only hardcoded mapping.
+`_split(model_string)` applies the `kompend.llm.model_id` rule (first `/` or `:` — whichever
+comes first — into `(provider, model_name)`, remainder verbatim). Provider ID aliases
+(`opencode-zen` → `opencode`) live in `_PROVIDER_ALIASES`, the module's only hardcoded mapping.
 
-`resolve_model_limits(model_id)` looks up `(max_input, max_output)`
-token limits in the catalogue (`catalog.model(...)`). It raises `KeyError`
-when the model is not listed and `LookupError` when it carries no limit
-data; the caller (`discover_context_window`) decides how to handle the miss.
+`resolve_model_limits(model_id)` looks up `(max_input, max_output)` limits in the catalogue
+(`catalog.model(...)`); raises `KeyError` when the model is unlisted, `LookupError` when it
+carries no limit data — the caller (`discover_context_window`) handles the miss.
+
+## Model string parsing — `kompend.llm.model_id`
+
+`provider_id_of(model_string)` → provider, `None` when bare; `model_slug(model_string)` → model part.
+One rule for every consumer (`user_providers`, `debug`, `diagnostics`, `rag.vector_store`):
+first `/` or `:` wins (never position 0); model part may hold further separators
+(`ollama/hf.co/qwen3.6:latest` → `ollama`, `hf.co/qwen3.6:latest`). No call site keeps its own split.
 
 ## Context-window discovery
 
@@ -244,7 +247,4 @@ decompresses natively; nothing else is assumed to.
 
 ## Verification
 
-- `uv run pytest tests/unit/test_llm_models.py -x` — model construction
-- `uv run pytest tests/unit/test_llm_context_window.py -x` — window discovery
-- `uv run pytest tests/unit/test_request_budget.py -x` — request-fit planner
-- `uv run pytest tests/unit/test_llm_overflow.py -x` — provider overflow
+- `uv run pytest tests/unit/test_llm_models.py tests/unit/test_llm_context_window.py tests/unit/test_request_budget.py tests/unit/test_llm_overflow.py -x` — model construction, window discovery, request-fit planner, provider overflow
