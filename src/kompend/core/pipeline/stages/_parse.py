@@ -38,6 +38,7 @@ from kompend.core.pipeline.ingest import (
 from kompend.core.pipeline.parallelism import describe_parallelism
 from kompend.core.pipeline.parse_cache import (
     content_hash_prefix,
+    parse_cache_is_current,
     read_document,
     source_key,
     write_document,
@@ -393,11 +394,20 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
     rebound to *source_file* (the path this run looked the entry up for) so
     citations, tags and the state store never resurrect a path that no longer
     exists. See ``tests/unit/test_ingest_reparse.py``.
+
+    Content alone does not make an entry current: the parser identity decides
+    whether this run would produce the same document. A changed backend set, or
+    a changed routing input (judge, preference, backend options), makes the
+    stored entry a miss — otherwise a vault would keep serving parses that the
+    configuration no longer asks for.
     """
     db_path = vault_db_path(Path(pipeline.base_directory))
     key = cache_key(source_file)
     data = read_document(db_path, key)
     if data is None:
+        return None
+    if not parse_cache_is_current(data, parse_identity(pipeline)):
+        logger.info("Re-parsing %s: cached parse is not from the current parser", source_file.name)
         return None
     try:
         elements = [
@@ -431,7 +441,7 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
 
 
 def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocument) -> None:
-    """Write a ParsedDocument to the store."""
+    """Write a ParsedDocument to the store, stamped with the parser identity."""
     db_path = vault_db_path(Path(pipeline.base_directory))
     key = cache_key(source_file)
     try:
@@ -439,7 +449,7 @@ def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocumen
         preserve_cached_metadata(doc, read_document(db_path, key))
         data = {
             str(MetadataField.SOURCE_FILE): pipeline.rel_file(doc.source_file),
-            PARSE_CACHE_PARSER_KEY: "",
+            PARSE_CACHE_PARSER_KEY: parse_identity(pipeline),
             "title": doc.title,
             "author": doc.author,
             "language": doc.language,
@@ -462,6 +472,19 @@ def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocumen
         write_document(db_path, key, cast("JSONDict", data))
     except Exception as exc:
         logger.debug("Cache write failed for %s — ignoring: %s", key, exc, exc_info=is_verbose())
+
+
+def parse_identity(pipeline: PipelineRuntime) -> str:
+    """The identity of the parse this run would produce.
+
+    ``DocumentParser.backend_identity()`` composes both halves: the backends that
+    can read here, and the routing inputs that change what they emit (judge tier,
+    preference, per-backend options, upstream version). The parse cache stores it
+    and compares it on read, so a configuration change re-parses instead of being
+    silently ignored for every document already in the cache.
+    """
+    parser = pipeline.parser
+    return parser.backend_identity() if parser is not None else ""
 
 
 def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, dict[str, object]]]:

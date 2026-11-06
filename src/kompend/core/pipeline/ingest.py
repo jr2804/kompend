@@ -26,6 +26,7 @@ from kompend.core.pipeline.parse_cache import (
     PARSE_CACHE_PARSER_KEY,
     extract_text_from_cached,  # noqa: F401 — re-exported for capture.py
     extract_text_from_data,
+    parse_cache_is_current,
     read_document,
     write_document,
 )
@@ -364,16 +365,6 @@ def restore_source_path(doc: ParsedDocument, *, parse_target: Path, source_file:
     for element in doc.elements:
         if element.source_file == parse_target:
             element.source_file = source_file
-
-
-def parse_cache_is_current(data: JSONDict, parser_fingerprint: str) -> bool:
-    """True when a parse-cache entry was produced by the current backend identity.
-
-    ``parser_fingerprint`` is :meth:`kompend.preprocessing.parsers.parsecraft_parser.ParsecraftParser.backend_identity`.
-    Entries written before the identity existed store an empty string and
-    return ``False`` — a one-time re-parse that self-heals the cache.
-    """
-    return data.get(PARSE_CACHE_PARSER_KEY) == parser_fingerprint
 
 
 def preserve_cached_metadata(doc: ParsedDocument, prior_data: JSONDict | None) -> None:

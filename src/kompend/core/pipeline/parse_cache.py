@@ -107,6 +107,18 @@ def normalize_key(name: str) -> str:
     return name.removesuffix(".json")
 
 
+def parse_cache_is_current(data: JSONDict, parser_identity: str) -> bool:
+    """True when a parse-cache entry was produced by *parser_identity*.
+
+    The identity is :meth:`kompend.preprocessing.parsers.base.DocumentParser.backend_identity`,
+    which composes the backends that can read here with the routing inputs that
+    change their output. An entry written before the identity existed stores an
+    empty string and returns ``False``: one re-parse that self-heals the cache,
+    which is why an empty identity never counts as current.
+    """
+    return bool(parser_identity) and data.get(PARSE_CACHE_PARSER_KEY) == parser_identity
+
+
 def read_document(db_path: Path, key: str) -> JSONDict | None:
     """Read a parse-cache record, or ``None`` when absent.
 
@@ -165,6 +177,7 @@ __all__ = [
     "extract_text_from_data",
     "iter_documents",
     "normalize_key",
+    "parse_cache_is_current",
     "read_document",
     "write_document",
 ]
