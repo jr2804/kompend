@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import lazy_loader as lazy
 
-if TYPE_CHECKING:
-    from kompend.core.models import CompiledWiki
-
-    # Runtime names arrive via lazy.attach's module __getattr__; these
-    # imports exist so type checkers and ruff see them defined.
-    from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
-    from kompend.rag.vector_store import VectorField, indexable_nodes
-
+from kompend.core.models import CompiledWiki
 from kompend.core.paths import VaultPaths
+
+# Runtime names arrive via lazy.attach's module __getattr__; these
+# imports exist so type checkers and ruff see them defined.
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+from kompend.rag.vector_store import VectorField, indexable_nodes
 
 # Everything heavy is attached lazily: importing ``kompend.rag`` — directly
 # or as the package ``__init__`` of any submodule import — must not drag the
