@@ -9,10 +9,12 @@ import threading
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine
 
 from kompend.core.paths import VaultPaths
 from kompend.core.store import SCHEMA_VERSION, TABLE_NAMES, connect, obsolete_artifacts, open_store
 from kompend.core.store.schema import (
+    _DDL,
     BLOBS_TABLE,
     MEMORY_LOG_FTS_TABLE,
     MEMORY_LOG_TABLE,
@@ -20,6 +22,7 @@ from kompend.core.store.schema import (
     SCHEMA_VERSION_TABLE,
     TIER_STATE_TABLE,
 )
+from kompend.core.store.tables import METADATA
 
 _INSERT_CASES: tuple[tuple[str, str, tuple[object, ...]], ...] = (
     ("documents", "INSERT INTO documents(cache_key, source_file) VALUES (?, ?)", ("doc-1", "s.md")),
@@ -252,6 +255,70 @@ def test_schema_is_usable_without_fk_violations(tmp_path: Path) -> None:
     with open_store(_db_path(tmp_path)) as conn:
         assert conn.execute("PRAGMA foreign_keys").fetchone()[0] == 1
         assert isinstance(conn, sqlite3.Connection)
+
+
+def test_core_metadata_generates_the_current_ddl() -> None:
+    """The Core metadata must produce the schema the store has on disk.
+
+    Textual DDL comparison is impossible: SQLAlchemy renders ``DEFAULT``
+    before ``NOT NULL`` and always emits table-level ``PRIMARY KEY``
+    constraints. Both schemas are therefore created in scratch in-memory
+    databases and compared through ``PRAGMA table_info`` — column name, type,
+    nullability, default value and primary-key position — the same trick
+    ``schema._expected_columns`` uses to keep the expected column set honest.
+
+    The hand-written statements are frozen verbatim below (asserted fresh
+    against ``_DDL``) so the guard outlives the DDL it protects: once
+    ``schema.py`` generates its DDL from the metadata, this test is what
+    proves the generated schema still means what the hand-written one meant.
+    """
+    hand_written = (
+        """
+        CREATE TABLE IF NOT EXISTS documents (
+            cache_key TEXT PRIMARY KEY,
+            source_file TEXT NOT NULL,
+            parser_fingerprint TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            author TEXT NOT NULL DEFAULT '',
+            language TEXT NOT NULL DEFAULT 'en',
+            page_count INTEGER NOT NULL DEFAULT 0,
+            metadata TEXT NOT NULL DEFAULT '{}',
+            elements TEXT NOT NULL DEFAULT '[]'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS extractions (
+            layer TEXT NOT NULL,
+            cache_key TEXT NOT NULL,
+            deps TEXT NOT NULL DEFAULT '{}',
+            payload TEXT NOT NULL,
+            PRIMARY KEY (layer, cache_key)
+        )
+        """,
+    )
+    live = {_normalise_ddl(statement) for statement in _DDL}
+    for statement in hand_written:
+        assert _normalise_ddl(statement) in live
+
+    hand = sqlite3.connect(":memory:")
+    core = create_engine("sqlite://")
+    try:
+        for statement in hand_written:
+            hand.execute(statement)
+        METADATA.create_all(core)
+        with core.connect() as conn:
+            for table in ("documents", "extractions"):
+                expected = [tuple(row)[1:] for row in hand.execute(f"PRAGMA table_info({table})")]
+                generated = [tuple(row)[1:] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")]
+                assert generated == expected, table
+    finally:
+        core.dispose()
+        hand.close()
+
+
+def _normalise_ddl(statement: str) -> str:
+    """Collapse whitespace and upper-case — compare DDL by meaning, not layout."""
+    return " ".join(statement.split()).upper()
 
 
 def _db_path(tmp_path: Path) -> Path:

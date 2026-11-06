@@ -76,6 +76,7 @@ dependencies = [
     "parsecraft[docling,web]>=2026.11.6",
     "llmdb>=1.0.0",
     "resvg-py>=0.5",
+    "sqlalchemy>=2.0,<2.2",
 ]
 
 [project.scripts]
