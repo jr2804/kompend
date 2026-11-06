@@ -23,7 +23,7 @@ from kompend.cli.settings import (
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LintConfig
 from kompend.core.config.rumdl import resolve_rumdl_config
-from kompend.core.models import MetadataField, load_cached_wiki
+from kompend.core.models import load_cached_wiki
 from kompend.lint.flow import (
     CHECK_STEP_RULES,
     _make_lint_agent,
@@ -34,7 +34,7 @@ from kompend.lint.flow import (
 from kompend.lint.flow import (
     _run_pass as _run_rules_pass,
 )
-from kompend.lint.history import persist_history
+from kompend.lint.history import LintLlmMeta, persist_history
 from kompend.lint.llm_rules import LLM_RULE_BY_NAME
 from kompend.lint.runner import LintRunner
 from kompend.logging import get_console, get_err_console
@@ -142,7 +142,7 @@ def lint_semantic(
         raise SystemExit(1)
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
-    llm_meta = {MetadataField.MODEL: model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
+    llm_meta = LintLlmMeta(model=model, usage=lint_agent.usage.to_dict()) if model is not None and lint_agent.usage is not None else None
     persist_history(
         report,
         vp=vp,

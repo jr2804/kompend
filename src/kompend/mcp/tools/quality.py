@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Any
 
 from kompend.agents.remediate import make_agentic_remediation_agent
-from kompend.cli.cmds.quality.doctor import run_doctor
 from kompend.cli.settings import build_cli_overrides
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
@@ -18,11 +17,13 @@ from kompend.core.models import MetadataField, load_wiki_from_files
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, REVIEW_DIR, VaultPaths, vault_paths
 from kompend.core.reporting.log import build_log_report
 from kompend.core.utils.dicts import as_str
+from kompend.diagnostics import run_doctor
 from kompend.lint.base import RemediationStatus
 from kompend.lint.flow import CHECK_STEP_RULES, _make_lint_agent, persist_lint_fixes, run_full_lint_flow
 from kompend.lint.flow import _run_pass as _run_rules_pass
 from kompend.lint.gap_analysis import analyze_gaps, gaps_to_text
 from kompend.lint.history import (
+    LintLlmMeta,
     history_to_json,
     history_to_text,
     load_lint_history,
@@ -118,7 +119,7 @@ def lint_semantic(
         return {"status": "error", "message": "LLM lint rules require a model. Set compile.lint.model or compile.llm.default_model."}
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
-    llm_meta = {MetadataField.MODEL: model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
+    llm_meta = LintLlmMeta(model=model, usage=lint_agent.usage.to_dict()) if model is not None and lint_agent.usage is not None else None
     persist_history(report, vp=vp, config=cfg.raw, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm=llm_meta)
     return {
         "status": "ok",
@@ -373,7 +374,7 @@ def doctor(
         default_model=as_str(cfg.get(COMPILE_LLM_DEFAULT_MODEL)),
         vlm_model=as_str(cfg.get(COMPILE_LLM_VLM_MODEL)),
         embed_model=as_str(cfg.get(COMPILE_EMBEDDING_MODEL)),
-        cfg=cfg.raw,
+        config=cfg,
         verbose=verbose,
     )
     # We can't easily capture print_doctor_results output, so return the raw results

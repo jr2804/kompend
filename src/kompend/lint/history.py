@@ -1,7 +1,9 @@
 """Persistent lint history — one row per lint run in the ``lint_runs`` table.
 
 Each row holds: timestamp, duration_seconds, options, llm, config_snapshot,
-wiki_meta, report.
+wiki_meta, report. Every JSON column stores the matching record below, so the
+table shape and the type shape cannot drift apart: add a column by adding a
+field to :class:`LintEntry` and a name to :data:`_COLUMNS`.
 
 The :class:`LintEntry` TypedDict is the schema for one row — it types
 key access without a runtime wrapper. Use save_lint_entry()/
@@ -14,9 +16,10 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, Final, TypedDict
 
 from kompend.core.keys import (
     COMPILE_COMPILER,
@@ -28,7 +31,8 @@ from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import LINT_RUNS_TABLE
 from kompend.core.utils.time import iso_local, now_local
 from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, Severity
-from kompend.lint.runner import report_to_dict
+from kompend.lint.runner import ReportDict, report_to_dict
+from kompend.llm.usage import UsageSnapshot
 
 # Config keys captured in the snapshot
 _SNAPSHOT_KEYS = (
@@ -37,56 +41,76 @@ _SNAPSHOT_KEYS = (
     COMPILE_LLM_FALLBACK_CHAIN,
 )
 
+_COLUMNS: Final[tuple[str, ...]] = (
+    "timestamp",
+    "duration_seconds",
+    "options",
+    "llm",
+    "config_snapshot",
+    "wiki_meta",
+    "report",
+)
+_COLUMNS_SQL: Final[str] = ", ".join(_COLUMNS)
+_PLACEHOLDERS_SQL: Final[str] = ", ".join("?" * len(_COLUMNS))
+
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 _SPARK_GLYPHS = "▁▂▃▄▅▆▇█"
 
 
+class LintRunOptions(TypedDict):
+    """Which slice of the lint run this entry records."""
+
+    context: str
+    fix: bool
+
+
+class LintLlmMeta(TypedDict, total=False):
+    """Model identity for a lint run that used LLM rules."""
+
+    model: str
+    usage: UsageSnapshot
+
+
+LintConfigSnapshot = TypedDict(
+    "LintConfigSnapshot",
+    {
+        "compile.compiler": str | None,
+        "compile.llm.default_model": str | None,
+        "compile.llm.fallback_chain": list[str] | None,
+    },
+)
+
+
+class LintWikiMeta(TypedDict):
+    """Corpus size the lint run evaluated."""
+
+    node_count: int
+
+
 class LintEntry(TypedDict):
-    """Schema for one JSONL line in the lint history file."""
+    """Schema for one row in the ``lint_runs`` table."""
 
     timestamp: str
     duration_seconds: float
-    options: dict[str, Any]
-    llm: dict[str, Any] | None
-    config_snapshot: dict[str, Any]
-    wiki_meta: dict[str, Any]
-    report: dict[str, Any]
-
-
-def entry_from_report(
-    report: LintReport,
-    *,
-    duration_seconds: float,
-    options: dict[str, Any],
-    config: dict[str, Any],
-    node_count: int,
-    llm: dict[str, Any] | None = None,
-    timestamp: str | None = None,
-) -> LintEntry:
-    """Build a lint history entry from a lint run."""
-    return {
-        "timestamp": timestamp or iso_local(),
-        "duration_seconds": round(duration_seconds, 3),  # nocheck — lint-history schema, not WikiField
-        "options": dict(options),
-        "llm": llm,
-        "config_snapshot": _build_config_snapshot(config),
-        "wiki_meta": {"node_count": node_count},  # nocheck: lint-history schema, not wiki metadata
-        "report": report_to_dict(report),
-    }
+    options: LintRunOptions
+    llm: LintLlmMeta | None
+    config_snapshot: LintConfigSnapshot
+    wiki_meta: LintWikiMeta
+    report: ReportDict
 
 
 def persist_history(  # noqa: PLR0917 — a history entry needs every run fact
     report: LintReport,
     *,
     vp: VaultPaths,
-    config: dict[str, Any],
+    config: Mapping[str, Any],
     context: str,
     elapsed: float,
     fix: bool,
     node_count: int,
-    llm: dict[str, Any] | None,
+    llm: LintLlmMeta | None,
 ) -> None:
     """Append the run as a history entry, so ``lint history`` and ``lint gaps`` see it.
 
@@ -104,8 +128,30 @@ def persist_history(  # noqa: PLR0917 — a history entry needs every run fact
     save_lint_entry(entry, vp.kompend_dir / LINT_HISTORY_FILE)
 
 
-def report_from_dict(report_dict: dict[str, Any]) -> LintReport:
-    """Parse a ``lint_history.jsonl`` report dict back into :class:`LintReport`.
+def entry_from_report(
+    report: LintReport,
+    *,
+    duration_seconds: float,
+    options: LintRunOptions,
+    config: Mapping[str, Any],
+    node_count: int,
+    llm: LintLlmMeta | None = None,
+    timestamp: str | None = None,
+) -> LintEntry:
+    """Build a lint history entry from a lint run."""
+    return {
+        "timestamp": timestamp or iso_local(),
+        "duration_seconds": round(duration_seconds, 3),  # nocheck — lint-history schema, not WikiField
+        "options": options,
+        "llm": llm,
+        "config_snapshot": _build_config_snapshot(config),
+        "wiki_meta": {"node_count": node_count},  # nocheck: lint-history schema, not wiki metadata
+        "report": report_to_dict(report),
+    }
+
+
+def report_from_dict(report_dict: ReportDict) -> LintReport:
+    """Parse a ``lint_runs`` report payload back into :class:`LintReport`.
 
     The inverse of :func:`kompend.lint.runner.report_to_dict`, and the one place
     history entries become typed findings again — the CLI and MCP each carried
@@ -114,39 +160,44 @@ def report_from_dict(report_dict: dict[str, Any]) -> LintReport:
     """
     results = [
         LintResult(
-            rule=str(r.get("rule", "")),
+            rule=r.get("rule", ""),
             outcome=LintRuleOutcome(r.get("outcome", "") or "skip"),
             severity=Severity(r.get("severity", "") or "warning"),
-            message=str(r.get("message", "")),
-            page_id=str(r.get("page_id", "")),
-            fix_applied=bool(r.get("fix_applied", False)),
+            message=r.get("message", ""),
+            page_id=r.get("page_id", ""),
+            fix_applied=r.get("fix_applied", False),
             details=dict(r.get("details") or {}),
         )
         for r in report_dict.get("results", [])
     ]
     return LintReport(
         results=results,
-        total_checks=int(report_dict.get("total_checks", 0) or 0),
-        failures=int(report_dict.get("failures", 0) or 0),
-        passes=int(report_dict.get("passes", 0) or 0),
-        skips=int(report_dict.get("skips", 0) or 0),
-        health_score=float(report_dict.get("health_score", 0.0) or 0.0),
+        total_checks=report_dict.get("total_checks", 0) or 0,
+        failures=report_dict.get("failures", 0) or 0,
+        passes=report_dict.get("passes", 0) or 0,
+        skips=report_dict.get("skips", 0) or 0,
+        health_score=report_dict.get("health_score", 0.0) or 0.0,
     )
 
 
-def _build_config_snapshot(cfg: dict[str, Any]) -> dict[str, Any]:
+def _build_config_snapshot(cfg: Mapping[str, Any]) -> LintConfigSnapshot:
     """Extract the lint-relevant subset of a resolved config."""
-    return {key: getattr(cfg, "get", lambda k: None)(key) for key in _SNAPSHOT_KEYS}
+    raw = {key: cfg.get(key) for key in _SNAPSHOT_KEYS}
+    return {
+        "compile.compiler": raw[COMPILE_COMPILER],
+        "compile.llm.default_model": raw[COMPILE_LLM_DEFAULT_MODEL],
+        "compile.llm.fallback_chain": raw[COMPILE_LLM_FALLBACK_CHAIN],
+    }
 
 
 def save_lint_entry(entry: LintEntry, path: Path) -> None:
     """Append *entry* as one row in the ``lint_runs`` table for the vault at *path*."""
     with open_store(vault_db_path(path)) as conn:
         conn.execute(
-            f"INSERT INTO {LINT_RUNS_TABLE} (timestamp, duration_seconds, options, llm, config_snapshot, wiki_meta, report) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            f"INSERT INTO {LINT_RUNS_TABLE} ({_COLUMNS_SQL}) VALUES ({_PLACEHOLDERS_SQL})",
             (
                 entry["timestamp"],
-                entry["duration_seconds"],  # nocheck: lint_history column/payload key
+                entry["duration_seconds"],  # nocheck — lint_history column/payload key
                 json.dumps(entry["options"], default=str, ensure_ascii=False),
                 json.dumps(entry["llm"], default=str, ensure_ascii=False) if entry["llm"] is not None else None,
                 json.dumps(entry["config_snapshot"], default=str, ensure_ascii=False),
@@ -178,6 +229,9 @@ def prune_lint_history(
         if not rows:
             return 0
 
+        # The survivor computation stays in Python: stored timestamps carry
+        # the machine's local offset, and only parsed datetimes compare
+        # mixed offsets correctly. The DELETE itself is one statement.
         surviving = [(r["id"], r["timestamp"]) for r in rows]
         if max_age_days is not None:
             cutoff = now_local() - timedelta(days=max_age_days)
@@ -187,9 +241,11 @@ def prune_lint_history(
 
         keep_ids = {rid for rid, _ in surviving}
         doomed = [r["id"] for r in rows if r["id"] not in keep_ids]
-        if doomed:
-            conn.executemany(f"DELETE FROM {LINT_RUNS_TABLE} WHERE id = ?", [(rid,) for rid in doomed])
-        return len(doomed)
+        if not doomed:
+            return 0
+        placeholders = ", ".join("?" * len(doomed))
+        cursor = conn.execute(f"DELETE FROM {LINT_RUNS_TABLE} WHERE id IN ({placeholders})", doomed)
+        return cursor.rowcount
 
 
 def load_lint_history(
@@ -201,17 +257,20 @@ def load_lint_history(
 
     A missing store returns an empty list.
     """
+    if last_n is not None and last_n <= 0:
+        return []
+
     db_path = vault_db_path(path)
     entries: list[LintEntry] = []
     if db_path.is_file():
         with open_store(db_path) as conn:
-            rows = conn.execute(
-                f"SELECT timestamp, duration_seconds, options, llm, config_snapshot, wiki_meta, report FROM {LINT_RUNS_TABLE} ORDER BY id"
-            ).fetchall()
+            if last_n is None:
+                rows = conn.execute(f"SELECT {_COLUMNS_SQL} FROM {LINT_RUNS_TABLE} ORDER BY id").fetchall()
+            else:
+                rows = conn.execute(f"SELECT {_COLUMNS_SQL} FROM {LINT_RUNS_TABLE} ORDER BY id DESC LIMIT ?", (last_n,)).fetchall()
+                rows = rows[::-1]
         entries = [_row_to_entry(row) for row in rows]
 
-    if last_n is not None and last_n >= 0:
-        entries = entries[-last_n:] if last_n > 0 else []
     return entries
 
 
@@ -247,17 +306,17 @@ def history_to_text(
     lines.append("")
 
     for entry in entries:
-        report = entry.get("report", {})
-        score = report.get("health_score", 0.0)
-        fails = report.get("failures", 0)
-        passes = report.get("passes", 0)
-        skips = report.get("skips", 0)
-        llm = entry.get("llm")
-        model_tag = f"  [{llm.get('model')}]" if llm else ""  # nocheck: lint-history schema, not wiki metadata
+        report = entry["report"]
+        score = report["health_score"]
+        fails = report["failures"]
+        passes = report["passes"]
+        skips = report["skips"]
+        llm = entry["llm"]
+        model_tag = f"  [{llm['model']}]" if llm else ""  # nocheck: lint-history schema, not wiki metadata
         lines.append(f"  {entry['timestamp']}  score={score:.0f}%  {passes} pass / {fails} fail / {skips} skip{model_tag}")
 
     if show_trend and len(entries) >= 2:
-        scores = [e.get("report", {}).get("health_score", 0.0) for e in entries]
+        scores = [e["report"]["health_score"] for e in entries]
         lines.append("")
         lines.append(f"  Trend: {_sparkline(scores)}")
         lines.append(f"  Range: {min(scores):.0f}% — {max(scores):.0f}%")

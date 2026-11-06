@@ -24,7 +24,7 @@ from kompend.core.models import CompiledWiki, MetadataField, load_cached_wiki
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, VaultPaths
 from kompend.lint.base import LintReport, LintResult
 from kompend.lint.gap_analysis import analyze_gaps, load_degree_map
-from kompend.lint.history import entry_from_report, save_lint_entry
+from kompend.lint.history import LintLlmMeta, ReportDict, entry_from_report, save_lint_entry
 from kompend.lint.log import render_report, write_lint_log
 from kompend.lint.remediation import RemediationStatus, remediate
 from kompend.lint.runner import LintRunner, _build_report
@@ -52,7 +52,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     json_output: bool = False,
     show_progress: bool = True,
     lint_output: LintOutput = LintOutput.QUIET,
-) -> dict[str, Any]:
+) -> ReportDict:
     """Run every lint phase; return the merged report dict.
 
     Called by `kompend lint all` and `kompend compile --lint-all`. One merged
@@ -114,11 +114,11 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     merged_results = _merge_results(check_report, semantic_report)
     merged_report = _rich_report(merged_results)
 
-    llm_meta: dict[str, Any] | None = None
+    llm_meta: LintLlmMeta | None = None
     if lint_agent is not None:
-        usage = getattr(lint_agent, "usage", None)
-        llm_meta = {MetadataField.MODEL: lint_model}
-        if usage is not None and hasattr(usage, "to_dict"):
+        usage = lint_agent.usage
+        llm_meta = LintLlmMeta(model=lint_model or "")
+        if usage is not None:
             llm_meta["usage"] = usage.to_dict()
 
     entry = entry_from_report(

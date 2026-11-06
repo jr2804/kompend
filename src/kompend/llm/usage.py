@@ -14,7 +14,21 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TypedDict
+
+
+class UsageSnapshot(TypedDict):
+    """Wire shape of :meth:`UsageTracker.to_dict` — one snapshot of token accounts."""
+
+    prompt_tokens: int
+    completion_tokens: int
+    call_count: int
+    avg_ttft: float
+    overall_tok_s: float
+    recent_tok_s: float
+    per_model: dict[str, dict[str, int]]
+    context_tokens: int
+    context_budget: int
 
 
 @dataclass
@@ -113,7 +127,7 @@ class UsageTracker:
         span = events[-1][0] - span_start
         return tokens_per_second(accumulated, span)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> UsageSnapshot:
         """Serialize to a plain dict for wiki.metadata storage."""
         return {
             "prompt_tokens": self.prompt_tokens,

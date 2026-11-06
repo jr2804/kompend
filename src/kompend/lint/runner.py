@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TypedDict
 
 from kompend.agents.lint import LintRuleAgent
 from kompend.core.config._configs import LintConfig, LlmDataFormat
@@ -16,6 +16,33 @@ from kompend.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES, DuplicateRef
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+class ReportResultDict(TypedDict):
+    """Wire shape of one serialized :class:`LintResult` — the ``lint_runs`` payload.
+
+    ``details`` stays open: each rule records its own structured payload
+    (broken targets, counts, nested findings), so no finite shape covers it.
+    """
+
+    rule: str
+    outcome: str
+    severity: str
+    message: str
+    page_id: str
+    fix_applied: bool
+    details: dict[str, Any]
+
+
+class ReportDict(TypedDict):
+    """Wire shape of :func:`report_to_dict` — the report half of a history entry."""
+
+    health_score: float
+    total_checks: int
+    failures: int
+    passes: int
+    skips: int
+    results: list[ReportResultDict]
 
 
 class LintRunner:
@@ -244,7 +271,7 @@ def report_to_json(report: LintReport) -> str:
     return json.dumps(report_to_dict(report), indent=2, default=str)
 
 
-def report_to_dict(report: LintReport) -> dict[str, Any]:
+def report_to_dict(report: LintReport) -> ReportDict:
     """Serialize a lint report to a plain dict (the ``lint_history`` shape)."""
     return {
         "health_score": report.health_score,

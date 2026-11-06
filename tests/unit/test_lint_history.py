@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -20,16 +19,7 @@ from kompend.lint.history import (
     save_lint_entry,
 )
 from kompend.lint.runner import LintReport, _build_report, report_to_dict
-
-
-class _StubConfig:
-    """Minimal stand-in for ResolvedConfig — only .get() is needed."""
-
-    def __init__(self, data: dict[str, Any] | None = None) -> None:
-        self._data: dict[str, Any] = data or {}
-
-    def get(self, key: str, default: Any = None) -> Any:
-        return self._data.get(key, default)
+from kompend.llm.usage import UsageSnapshot
 
 
 class TestSaveLoad:
@@ -148,27 +138,27 @@ class TestEntryFromReport:
         entry = entry_from_report(
             report,
             duration_seconds=2.5,
-            options={"rules": ["orphan-page"], "enable_llm": True, "fix": False, "threshold": 80},
+            options={"context": "check", "fix": False},
             config={
                 "compile.compiler": "wicer",
                 "compile.llm.default_model": "openai/gpt-4o",
                 "compile.llm.fallback_chain": ["anthropic/claude-3.5-sonnet"],
             },
             node_count=42,
-            llm={"model": "openai/gpt-4o", "usage": {"prompt_tokens": 100}},
+            llm={"model": "openai/gpt-4o", "usage": _usage()},
         )
         assert entry["duration_seconds"] == 2.5
-        assert entry["options"]["rules"] == ["orphan-page"]
+        assert entry["options"] == {"context": "check", "fix": False}
         assert entry["config_snapshot"]["compile.compiler"] == "wicer"
         assert entry["config_snapshot"]["compile.llm.default_model"] == "openai/gpt-4o"
         assert entry["wiki_meta"]["node_count"] == 42
-        assert entry["llm"] == {"model": "openai/gpt-4o", "usage": {"prompt_tokens": 100}}
+        assert entry["llm"] == {"model": "openai/gpt-4o", "usage": _usage()}
         assert entry["report"]["health_score"] == report.health_score
         assert "T" in entry["timestamp"]
 
     def test_auto_timestamp(self) -> None:
         report = _make_report()
-        entry = entry_from_report(report, duration_seconds=0.1, options={}, config={}, node_count=1)
+        entry = entry_from_report(report, duration_seconds=0.1, options={"context": "check", "fix": False}, config={}, node_count=1)
         assert "+" in entry["timestamp"]
 
     def test_custom_timestamp(self) -> None:
@@ -176,7 +166,7 @@ class TestEntryFromReport:
         entry = entry_from_report(
             report,
             duration_seconds=0.1,
-            options={},
+            options={"context": "check", "fix": False},
             config={},
             node_count=1,
             timestamp="2020-01-01T00:00:00+00:00",
@@ -223,7 +213,7 @@ class TestFormatting:
 
     def test_history_to_text_shows_model_tag(self) -> None:
         entry = _make_entry()
-        entry["llm"] = {"model": "openai/gpt-4o", "usage": {}}
+        entry["llm"] = {"model": "openai/gpt-4o", "usage": _usage()}
         text = history_to_text([entry])
         assert "openai/gpt-4o" in text
 
@@ -243,11 +233,30 @@ def _make_entry(*, timestamp: str = "2025-01-01T00:00:00+00:00", score: float = 
     return {
         "timestamp": timestamp,
         "duration_seconds": 1.5,
-        "options": {"rules": None, "enable_llm": False, "fix": False, "threshold": None},
+        "options": {"context": "check", "fix": False},
         "llm": None,
-        "config_snapshot": {"compile.compiler": "graph", "compile.llm.default_model": "test-model"},
+        "config_snapshot": {
+            "compile.compiler": "graph",
+            "compile.llm.default_model": "test-model",
+            "compile.llm.fallback_chain": [],
+        },
         "wiki_meta": {"node_count": 10},
         "report": report_to_dict(report),
+    }
+
+
+def _usage() -> UsageSnapshot:
+    """A fully-populated usage snapshot in the :class:`UsageTracker` wire shape."""
+    return {
+        "prompt_tokens": 100,
+        "completion_tokens": 50,
+        "call_count": 1,
+        "avg_ttft": 0.1,
+        "overall_tok_s": 20.0,
+        "recent_tok_s": 20.0,
+        "per_model": {"openai/gpt-4o": {"prompt": 100, "completion": 50, "calls": 1}},
+        "context_tokens": 1000,
+        "context_budget": 128000,
     }
 
 
