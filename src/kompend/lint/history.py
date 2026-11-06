@@ -21,7 +21,7 @@ import sqlite3
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Final, TypedDict
+from typing import Any, Final, TypedDict, cast
 
 from pydantic import TypeAdapter
 
@@ -66,9 +66,10 @@ _SPARK_GLYPHS = "▁▂▃▄▅▆▇█"
 LintConfigSnapshot = TypedDict(
     "LintConfigSnapshot",
     {
-        "compile.compiler": str | None,
-        "compile.llm.default_model": str | None,
-        "compile.llm.fallback_chain": list[str] | None,
+        # nocheck: a TypedDict's keys must be literals for the type checker
+        "compile.compiler": str | None,  # nocheck: TypedDict keys are literals
+        "compile.llm.default_model": str | None,  # nocheck: TypedDict keys are literals
+        "compile.llm.fallback_chain": list[str] | None,  # nocheck: TypedDict keys are literals
     },
 )
 
@@ -190,11 +191,7 @@ def report_from_dict(report_dict: ReportDict) -> LintReport:
 def _build_config_snapshot(cfg: Mapping[str, Any]) -> LintConfigSnapshot:
     """Extract the lint-relevant subset of a resolved config."""
     raw = {key: cfg.get(key) for key in _SNAPSHOT_KEYS}
-    return {
-        "compile.compiler": raw[COMPILE_COMPILER],
-        "compile.llm.default_model": raw[COMPILE_LLM_DEFAULT_MODEL],
-        "compile.llm.fallback_chain": raw[COMPILE_LLM_FALLBACK_CHAIN],
-    }
+    return cast("LintConfigSnapshot", raw)
 
 
 def save_lint_entry(entry: LintEntry, path: Path) -> None:
