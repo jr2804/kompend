@@ -29,6 +29,7 @@ from pydantic_ai.messages import (
 )
 
 from kompend.core.keys import EnvVar
+from kompend.llm import model_slug
 from kompend.llm.format import salvage_json
 from kompend.logging import get_logger
 
@@ -105,12 +106,11 @@ def save_debug_prompt(
         return
     debug_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    # Normalise model string for filename: strip provider prefix (e.g. "ollama/")
-    # so the same model always produces the same slug regardless of how it was
-    # passed (with or without provider prefix).
-    model_slug = model_string.split("/", 1)[-1] if "/" in model_string else model_string
-    model_slug = model_slug.replace("/", "_").replace(":", "")
-    filepath = debug_dir / f"llm_{ts}_{model_slug}.json"
+    # Normalise model string for filename: strip provider prefix (either the
+    # "ollama/" or the "ollama:" spelling) so the same model always produces
+    # the same slug regardless of how it was passed.
+    slug = model_slug(model_string).replace("/", "_").replace(":", "")
+    filepath = debug_dir / f"llm_{ts}_{slug}.json"
 
     parsed = salvage_json(response_content)
     parsed_obj = parsed if isinstance(parsed, (dict, list)) else None

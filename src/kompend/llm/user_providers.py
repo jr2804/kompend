@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from kompend.llm import provider_id_of
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
@@ -80,7 +81,7 @@ def effective_workers(model_string: str, requested: int) -> int:
     connection budgets — every parallel stage (parse today, future
     parallel LLM stages) calls it.
     """
-    provider_id = model_string.split("/", 1)[0] if "/" in model_string else model_string
+    provider_id = provider_id_of(model_string) or model_string
     limit = provider_max_connections(provider_id)
     if limit is None or requested <= limit:
         return requested
