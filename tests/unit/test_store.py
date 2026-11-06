@@ -13,8 +13,8 @@ from sqlalchemy import create_engine
 
 from kompend.core.paths import VaultPaths
 from kompend.core.store import SCHEMA_VERSION, TABLE_NAMES, connect, obsolete_artifacts, open_store
+from kompend.core.store.connection import _drop_all
 from kompend.core.store.schema import (
-    _DDL,
     BLOBS_TABLE,
     MEMORY_LOG_FTS_TABLE,
     MEMORY_LOG_TABLE,
@@ -59,13 +59,6 @@ def test_create_on_missing(tmp_path: Path) -> None:
     for table in TABLE_NAMES:
         assert table in names
     assert SCHEMA_VERSION_TABLE in names
-
-
-def row_version(db: Path) -> int:
-    with open_store(db) as conn:
-        row = conn.execute(f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1").fetchone()
-    assert row is not None
-    return int(row["version"])
 
 
 def test_wal_is_enabled(tmp_path: Path) -> None:
@@ -261,18 +254,26 @@ def test_core_metadata_generates_the_current_ddl() -> None:
     """The Core metadata must produce the schema the store has on disk.
 
     Textual DDL comparison is impossible: SQLAlchemy renders ``DEFAULT``
-    before ``NOT NULL`` and always emits table-level ``PRIMARY KEY``
-    constraints. Both schemas are therefore created in scratch in-memory
-    databases and compared through ``PRAGMA table_info`` — column name, type,
-    nullability, default value and primary-key position — the same trick
+    before ``NOT NULL`` and emits table-level ``PRIMARY KEY`` constraints.
+    Both schemas are therefore created in scratch in-memory databases and
+    compared through ``PRAGMA table_info`` — column name, type, nullability,
+    default value and primary-key position — the same trick
     ``schema._expected_columns`` uses to keep the expected column set honest.
 
-    The hand-written statements are frozen verbatim below (asserted fresh
-    against ``_DDL``) so the guard outlives the DDL it protects: once
-    ``schema.py`` generates its DDL from the metadata, this test is what
-    proves the generated schema still means what the hand-written one meant.
+    The hand-written statements are frozen verbatim below (they were the
+    store's only DDL for years, and were asserted fresh against ``_DDL`` at
+    the moment it was retired) so the guard outlives the DDL it protects:
+    this test is what proves the generated schema still means what the
+    hand-written one meant.
     """
     hand_written = (
+        """
+        CREATE TABLE IF NOT EXISTS schema_version (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            version INTEGER NOT NULL,
+            created_at TEXT NOT NULL
+        )
+        """,
         """
         CREATE TABLE IF NOT EXISTS documents (
             cache_key TEXT PRIMARY KEY,
@@ -287,6 +288,13 @@ def test_core_metadata_generates_the_current_ddl() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS chunks (
+            cache_key TEXT PRIMARY KEY,
+            deps TEXT NOT NULL DEFAULT '{}',
+            payload TEXT NOT NULL
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS extractions (
             layer TEXT NOT NULL,
             cache_key TEXT NOT NULL,
@@ -295,10 +303,208 @@ def test_core_metadata_generates_the_current_ddl() -> None:
             PRIMARY KEY (layer, cache_key)
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS assets (
+            id TEXT PRIMARY KEY,
+            kind TEXT NOT NULL DEFAULT '',
+            source TEXT NOT NULL DEFAULT '',
+            summary TEXT NOT NULL DEFAULT '',
+            ref_count INTEGER NOT NULL DEFAULT 0,
+            data TEXT NOT NULL DEFAULT '{}'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS tier_state (
+            key TEXT PRIMARY KEY,
+            stem TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            content_hash TEXT NOT NULL,
+            current_tier INTEGER NOT NULL DEFAULT 0,
+            last_compile TEXT NOT NULL DEFAULT '',
+            search_hits INTEGER NOT NULL DEFAULT 0,
+            last_hit TEXT NOT NULL DEFAULT '',
+            ingested_by TEXT NOT NULL DEFAULT ''
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS wiki_snapshot (
+            kind TEXT PRIMARY KEY,
+            nodes TEXT NOT NULL DEFAULT '[]',
+            edges TEXT NOT NULL DEFAULT '[]',
+            toc TEXT NOT NULL DEFAULT '[]',
+            quality_score REAL NOT NULL DEFAULT 0.0,
+            iteration INTEGER NOT NULL DEFAULT 0,
+            metadata TEXT NOT NULL DEFAULT '{}',
+            written_at TEXT NOT NULL DEFAULT ''
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS dedup_fingerprints (
+            slug TEXT PRIMARY KEY,
+            verdict TEXT NOT NULL DEFAULT '',
+            closest_match TEXT,
+            closest_score REAL NOT NULL DEFAULT 0.0,
+            closest_method TEXT NOT NULL DEFAULT '',
+            embedding_score REAL,
+            minhash_score REAL,
+            embedding TEXT,
+            minhash TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS attachment_manifest (
+            path TEXT PRIMARY KEY,
+            source TEXT NOT NULL DEFAULT '',
+            ingestible INTEGER NOT NULL DEFAULT 0,
+            embed INTEGER,
+            content_digest TEXT NOT NULL DEFAULT '',
+            registered_at TEXT NOT NULL DEFAULT '',
+            deleted INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS lint_runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp TEXT NOT NULL,
+            duration_seconds REAL NOT NULL DEFAULT 0.0,
+            options TEXT NOT NULL DEFAULT '{}',
+            llm TEXT,
+            config_snapshot TEXT NOT NULL DEFAULT '{}',
+            wiki_meta TEXT NOT NULL DEFAULT '{}',
+            report TEXT NOT NULL DEFAULT '{}'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            event TEXT NOT NULL,
+            run_id TEXT NOT NULL,
+            cmd TEXT NOT NULL DEFAULT '',
+            ts TEXT NOT NULL,
+            status TEXT,
+            duration_s REAL,
+            exit INTEGER,
+            error TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS memory_states (
+            node_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            confidence REAL NOT NULL DEFAULT 0.5,
+            tier TEXT NOT NULL DEFAULT 'working',
+            birth_at TEXT NOT NULL DEFAULT '',
+            review_at TEXT NOT NULL DEFAULT '',
+            review_count INTEGER NOT NULL DEFAULT 0,
+            superseded_by TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS memory_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            mem_id TEXT,
+            ts TEXT NOT NULL,
+            query TEXT NOT NULL DEFAULT '',
+            answer TEXT NOT NULL DEFAULT '',
+            feedback TEXT NOT NULL DEFAULT '',
+            memory_by TEXT NOT NULL DEFAULT ''
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS bib_references (
+            source TEXT NOT NULL,
+            ref_id TEXT NOT NULL,
+            type TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            authors TEXT NOT NULL DEFAULT '[]',
+            issued TEXT NOT NULL DEFAULT '',
+            container_title TEXT NOT NULL DEFAULT '',
+            doi TEXT NOT NULL DEFAULT '',
+            url TEXT NOT NULL DEFAULT '',
+            raw TEXT NOT NULL DEFAULT '',
+            citing_source TEXT NOT NULL DEFAULT '',
+            in_text_keys TEXT NOT NULL DEFAULT '[]',
+            payload TEXT NOT NULL DEFAULT '{}',
+            PRIMARY KEY (source, ref_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS entity_types (
+            concept_key TEXT PRIMARY KEY,
+            folder_name TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS downloaded (
+            url TEXT PRIMARY KEY,
+            sha256 TEXT NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS organize_reports (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            written_at TEXT NOT NULL DEFAULT '',
+            dry_run INTEGER NOT NULL DEFAULT 0,
+            categories TEXT NOT NULL DEFAULT '[]',
+            moves TEXT NOT NULL DEFAULT '[]',
+            link_updates TEXT NOT NULL DEFAULT '{}'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS verification (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            written_at TEXT NOT NULL DEFAULT '',
+            total INTEGER NOT NULL DEFAULT 0,
+            verified INTEGER NOT NULL DEFAULT 0,
+            unsupported INTEGER NOT NULL DEFAULT 0,
+            average_confidence REAL NOT NULL DEFAULT 0.0,
+            claims TEXT NOT NULL DEFAULT '[]'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS private_pages (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            saved_at TEXT NOT NULL DEFAULT ''
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS provenance (
+            node_id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            citations TEXT NOT NULL DEFAULT '[]'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS blobs (
+            path TEXT PRIMARY KEY,
+            mime TEXT NOT NULL DEFAULT '',
+            size INTEGER NOT NULL DEFAULT 0,
+            content BLOB NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS review_state (
+            slug TEXT PRIMARY KEY,
+            status TEXT NOT NULL DEFAULT '',
+            title TEXT NOT NULL DEFAULT '',
+            reason TEXT NOT NULL DEFAULT '',
+            source_node_id TEXT NOT NULL DEFAULT '',
+            saved_at TEXT NOT NULL DEFAULT ''
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS vector_manifest (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            embed_version INTEGER NOT NULL DEFAULT 0,
+            embedding_model TEXT NOT NULL DEFAULT '',
+            backend TEXT NOT NULL DEFAULT '',
+            ids TEXT NOT NULL DEFAULT '[]',
+            content_hashes TEXT NOT NULL DEFAULT '{}',
+            written_at TEXT NOT NULL DEFAULT ''
+        )
+        """,
     )
-    live = {_normalise_ddl(statement) for statement in _DDL}
-    for statement in hand_written:
-        assert _normalise_ddl(statement) in live
 
     hand = sqlite3.connect(":memory:")
     core = create_engine("sqlite://")
@@ -307,18 +513,60 @@ def test_core_metadata_generates_the_current_ddl() -> None:
             hand.execute(statement)
         METADATA.create_all(core)
         with core.connect() as conn:
-            for table in ("documents", "extractions"):
+            for table in (*TABLE_NAMES, SCHEMA_VERSION_TABLE):
                 expected = [tuple(row)[1:] for row in hand.execute(f"PRAGMA table_info({table})")]
                 generated = [tuple(row)[1:] for row in conn.exec_driver_sql(f"PRAGMA table_info({table})")]
                 assert generated == expected, table
+            # Table-level meanings PRAGMA cannot see: AUTOINCREMENT, the
+            # single-row CHECK, the FTS5 index and its triggers.
+            autoincrement = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%AUTOINCREMENT%'")}
+            assert autoincrement == {"lint_runs", "runs", "memory_log", "organize_reports", "verification"}
+            checked = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%CHECK (id = 1)%'")}
+            assert checked == {SCHEMA_VERSION_TABLE, "vector_manifest"}
+            indexes = [row[1] for row in conn.exec_driver_sql("PRAGMA index_list(runs)")]
+            assert "idx_runs_run_id" in indexes
+            fts_columns = [row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({MEMORY_LOG_FTS_TABLE})")]
+            assert fts_columns == ["query", "answer", "feedback"]
+            triggers = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = 'trigger'")}
+            assert triggers == {"memory_log_ai", "memory_log_ad", "memory_log_au"}
     finally:
         core.dispose()
         hand.close()
 
 
-def _normalise_ddl(statement: str) -> str:
-    """Collapse whitespace and upper-case — compare DDL by meaning, not layout."""
-    return " ".join(statement.split()).upper()
+def test_an_existing_store_reopens_without_drift(tmp_path: Path) -> None:
+    """Reopening an existing store must not recreate, migrate, or lose rows."""
+    db = _db_path(tmp_path)
+    with open_store(db) as conn:
+        conn.execute("INSERT INTO lint_runs(timestamp) VALUES (?)", ("2026-01-01T00:00:00",))
+    with open_store(db) as conn:
+        rows = conn.execute("SELECT id, timestamp FROM lint_runs").fetchall()
+    assert len(rows) == 1
+    assert rows[0]["timestamp"] == "2026-01-01T00:00:00"
+    assert row_version(db) == SCHEMA_VERSION
+
+
+def row_version(db: Path) -> int:
+    with open_store(db) as conn:
+        row = conn.execute(f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1").fetchone()
+    assert row is not None
+    return int(row["version"])
+
+
+def test_drop_all_removes_the_fts_shadow_tables(tmp_path: Path) -> None:
+    """A clean cut must remove FTS5 shadow tables, triggers, and every user object."""
+    db = _db_path(tmp_path)
+    with open_store(db) as conn:
+        shadow = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE name LIKE 'memory_log_fts_%'")}
+    assert shadow, "expected the FTS5 shadow tables to exist"
+    conn = connect(db)
+    try:
+        _drop_all(conn)
+        conn.commit()
+        remaining = {row["name"] for row in conn.execute("SELECT name FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'")}
+    finally:
+        conn.close()
+    assert remaining == set()
 
 
 def _db_path(tmp_path: Path) -> Path:

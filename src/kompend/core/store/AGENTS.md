@@ -17,16 +17,26 @@ Design + table mapping live in `.agents/history/2026-09-24-kompend-storage-migra
 
 | Module | Contents |
 |--------|----------|
-| `schema.py` | DDL, `SCHEMA_VERSION`, all table-name constants, `apply_schema`, `current_version` |
-| `connection.py` | `connect`, `open_store`, `ensure_schema`, clean-cut recreate |
+| `tables.py` | Core `METADATA` — the schema's single source of truth; FTS5/trigger/index DDL via `AFTER_CREATE_DDL` |
+| `schema.py` | Applies the metadata to a connection (`apply_schema`), `SCHEMA_VERSION`, table-name constants, `current_version`, `reconcile_columns` |
+| `connection.py` | `connect`, `open_store`, `ensure_schema`, clean-cut recreate (`_drop_all`) |
 | `legacy.py` | `obsolete_artifacts` — detect superseded flat files (not migration) |
 | `__init__.py` | Public API re-exports |
 
 ## Local Contracts
 
-- **`schema.py` is the only place DDL exists.** Add or change tables there, bump
-  `SCHEMA_VERSION`, and reference tables through the `*_TABLE` constants — never
-  inline a table literal.
+- **`tables.py` (`METADATA`) is the only place schema exists.** Add or change
+  tables there — never hand-write `CREATE TABLE`. Nullability (including
+  SQLite's bare-`PRIMARY KEY` notnull-0 quirk), `AUTOINCREMENT`, and
+  server-default conventions are documented in `tables.py`'s module docstring;
+  `tests/unit/test_store.py` freezes the generated schema against the retired
+  hand-written DDL. Reference tables through the `*_TABLE` constants — never
+  inline a table literal. FTS5/trigger/index DDL that has no Core object rides
+  `AFTER_CREATE_DDL` (fires on every `create_all`, so repair-on-reopen holds).
+- **Core DDL reaches a raw connection through `schema._core_engine`.** The
+  throwaway engine binds the caller's `sqlite3` connection and is never
+  `dispose()`d — disposing would close the caller's handle. Consumers still
+  receive a raw `sqlite3.Connection` from `open_store`.
 - **Additive changes ride `reconcile_columns`; a shape change needs a
   migration.** New columns/tables are picked up on the next open with no
   version bump. A primary-key change cannot be reconciled, so it is migrated

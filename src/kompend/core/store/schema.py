@@ -34,7 +34,14 @@ import functools
 import sqlite3
 from typing import Final
 
+from sqlalchemy import create_engine
+from sqlalchemy.dialects import sqlite as sqlite_dialect
+from sqlalchemy.engine import Engine
+from sqlalchemy.pool import StaticPool
+from sqlalchemy.schema import CreateTable
+
 from kompend.core.identity import IDENTITY_HASH_LEN
+from kompend.core.store.tables import METADATA, tier_state
 
 #: Scratch name used while rebuilding ``tier_state`` in place.
 _TIER_STATE_LEGACY_TABLE: Final[str] = "tier_state_legacy"
@@ -100,305 +107,6 @@ TABLE_NAMES: Final[tuple[str, ...]] = (
     VECTOR_MANIFEST_TABLE,
 )
 
-# ── DDL ─────────────────────────────────────────────────────────────────
-_DDL: Final[tuple[str, ...]] = (
-    f"""
-    CREATE TABLE IF NOT EXISTS {SCHEMA_VERSION_TABLE} (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        version INTEGER NOT NULL,
-        created_at TEXT NOT NULL
-    )
-    """,
-    # Parsed-document cache. Keyed by the content discriminator so same-stem
-    # files with different content never collide.
-    f"""
-    CREATE TABLE IF NOT EXISTS {DOCUMENTS_TABLE} (
-        cache_key TEXT PRIMARY KEY,
-        source_file TEXT NOT NULL,
-        parser_fingerprint TEXT NOT NULL DEFAULT '',
-        title TEXT NOT NULL DEFAULT '',
-        author TEXT NOT NULL DEFAULT '',
-        language TEXT NOT NULL DEFAULT 'en',
-        page_count INTEGER NOT NULL DEFAULT 0,
-        metadata TEXT NOT NULL DEFAULT '{{}}',
-        elements TEXT NOT NULL DEFAULT '[]'
-    )
-    """,
-    # Chunking cache (CacheStore "chunk" layer). Payload is the ChunkTree dict.
-    f"""
-    CREATE TABLE IF NOT EXISTS {CHUNKS_TABLE} (
-        cache_key TEXT PRIMARY KEY,
-        deps TEXT NOT NULL DEFAULT '{{}}',
-        payload TEXT NOT NULL
-    )
-    """,
-    # LLM / resolve / generate / summary cache layers (CacheStore). Layer-scoped
-    # because the same dependency key can appear under different layers.
-    f"""
-    CREATE TABLE IF NOT EXISTS {EXTRACTIONS_TABLE} (
-        layer TEXT NOT NULL,
-        cache_key TEXT NOT NULL,
-        deps TEXT NOT NULL DEFAULT '{{}}',
-        payload TEXT NOT NULL,
-        PRIMARY KEY (layer, cache_key)
-    )
-    """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {ASSETS_TABLE} (
-        id TEXT PRIMARY KEY,
-        kind TEXT NOT NULL DEFAULT '',
-        source TEXT NOT NULL DEFAULT '',
-        summary TEXT NOT NULL DEFAULT '',
-        ref_count INTEGER NOT NULL DEFAULT 0,
-        data TEXT NOT NULL DEFAULT '{{}}'
-    )
-    """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {TIER_STATE_TABLE} (
-        key TEXT PRIMARY KEY,
-        stem TEXT NOT NULL,
-        source_file TEXT NOT NULL,
-        content_hash TEXT NOT NULL,
-        current_tier INTEGER NOT NULL DEFAULT 0,
-        last_compile TEXT NOT NULL DEFAULT '',
-        search_hits INTEGER NOT NULL DEFAULT 0,
-        last_hit TEXT NOT NULL DEFAULT '',
-        ingested_by TEXT NOT NULL DEFAULT ''
-    )
-    """,
-    # last_wiki.json ("last") and compiled_wiki.json ("compiled") share this
-    # table, discriminated by kind.
-    f"""
-    CREATE TABLE IF NOT EXISTS {WIKI_SNAPSHOT_TABLE} (
-        kind TEXT PRIMARY KEY,
-        nodes TEXT NOT NULL DEFAULT '[]',
-        edges TEXT NOT NULL DEFAULT '[]',
-        toc TEXT NOT NULL DEFAULT '[]',
-        quality_score REAL NOT NULL DEFAULT 0.0,
-        iteration INTEGER NOT NULL DEFAULT 0,
-        metadata TEXT NOT NULL DEFAULT '{{}}',
-        written_at TEXT NOT NULL DEFAULT ''
-    )
-    """,
-    # One row per slug. The dedup store's bookkeeping ({stamp, store_version})
-    # is kept under the reserved slug "_meta".
-    f"""
-    CREATE TABLE IF NOT EXISTS {DEDUP_FINGERPRINTS_TABLE} (
-        slug TEXT PRIMARY KEY,
-        verdict TEXT NOT NULL DEFAULT '',
-        closest_match TEXT,
-        closest_score REAL NOT NULL DEFAULT 0.0,
-        closest_method TEXT NOT NULL DEFAULT '',
-        embedding_score REAL,
-        minhash_score REAL,
-        embedding TEXT,
-        minhash TEXT
-    )
-    """,
-    # Latest-wins per path; deleted = 1 is a tombstone carrying an explicit user
-    # removal. A row with deleted = 0 is read-equivalent to the legacy
-    # append-only JSONL. See attachment_manifest semantics.
-    f"""
-    CREATE TABLE IF NOT EXISTS {ATTACHMENT_MANIFEST_TABLE} (
-        path TEXT PRIMARY KEY,
-        source TEXT NOT NULL DEFAULT '',
-        ingestible INTEGER NOT NULL DEFAULT 0,
-        embed INTEGER,
-        content_digest TEXT NOT NULL DEFAULT '',
-        registered_at TEXT NOT NULL DEFAULT '',
-        deleted INTEGER NOT NULL DEFAULT 0
-    )
-    """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {LINT_RUNS_TABLE} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT NOT NULL,
-        duration_seconds REAL NOT NULL DEFAULT 0.0,
-        options TEXT NOT NULL DEFAULT '{{}}',
-        llm TEXT,
-        config_snapshot TEXT NOT NULL DEFAULT '{{}}',
-        wiki_meta TEXT NOT NULL DEFAULT '{{}}',
-        report TEXT NOT NULL DEFAULT '{{}}'
-    )
-    """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {RUNS_TABLE} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event TEXT NOT NULL,
-        run_id TEXT NOT NULL,
-        cmd TEXT NOT NULL DEFAULT '',
-        ts TEXT NOT NULL,
-        status TEXT,
-        duration_s REAL,
-        exit INTEGER,
-        error TEXT
-    )
-    """,
-    f"CREATE INDEX IF NOT EXISTS idx_{RUNS_TABLE}_run_id ON {RUNS_TABLE}(run_id)",
-    f"""
-    CREATE TABLE IF NOT EXISTS {MEMORY_STATES_TABLE} (
-        node_id TEXT PRIMARY KEY,
-        title TEXT NOT NULL DEFAULT '',
-        confidence REAL NOT NULL DEFAULT 0.5,
-        tier TEXT NOT NULL DEFAULT 'working',
-        birth_at TEXT NOT NULL DEFAULT '',
-        review_at TEXT NOT NULL DEFAULT '',
-        review_count INTEGER NOT NULL DEFAULT 0,
-        superseded_by TEXT
-    )
-    """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {MEMORY_LOG_TABLE} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        mem_id TEXT,
-        ts TEXT NOT NULL,
-        query TEXT NOT NULL DEFAULT '',
-        answer TEXT NOT NULL DEFAULT '',
-        feedback TEXT NOT NULL DEFAULT '',
-        memory_by TEXT NOT NULL DEFAULT ''
-    )
-    """,
-    # External-content FTS5 over the chronological query memory — the keyword
-    # fallback beside the semantic recall.
-    f"""
-    CREATE VIRTUAL TABLE IF NOT EXISTS {MEMORY_LOG_FTS_TABLE} USING fts5(
-        query, answer, feedback,
-        content='{MEMORY_LOG_TABLE}', content_rowid='id', tokenize='unicode61'
-    )
-    """,
-    f"""
-    CREATE TRIGGER IF NOT EXISTS {MEMORY_LOG_TABLE}_ai AFTER INSERT ON {MEMORY_LOG_TABLE} BEGIN
-        INSERT INTO {MEMORY_LOG_FTS_TABLE}(rowid, query, answer, feedback)
-        VALUES (new.id, new.query, new.answer, new.feedback);
-    END
-    """,
-    f"""
-    CREATE TRIGGER IF NOT EXISTS {MEMORY_LOG_TABLE}_ad AFTER DELETE ON {MEMORY_LOG_TABLE} BEGIN
-        INSERT INTO {MEMORY_LOG_FTS_TABLE}({MEMORY_LOG_FTS_TABLE}, rowid, query, answer, feedback)
-        VALUES ('delete', old.id, old.query, old.answer, old.feedback);
-    END
-    """,
-    f"""
-    CREATE TRIGGER IF NOT EXISTS {MEMORY_LOG_TABLE}_au AFTER UPDATE ON {MEMORY_LOG_TABLE} BEGIN
-        INSERT INTO {MEMORY_LOG_FTS_TABLE}({MEMORY_LOG_FTS_TABLE}, rowid, query, answer, feedback)
-        VALUES ('delete', old.id, old.query, old.answer, old.feedback);
-        INSERT INTO {MEMORY_LOG_FTS_TABLE}(rowid, query, answer, feedback)
-        VALUES (new.id, new.query, new.answer, new.feedback);
-    END
-    """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {REFERENCES_TABLE} (
-        source TEXT NOT NULL,
-        ref_id TEXT NOT NULL,
-        type TEXT NOT NULL DEFAULT '',
-        title TEXT NOT NULL DEFAULT '',
-        authors TEXT NOT NULL DEFAULT '[]',
-        issued TEXT NOT NULL DEFAULT '',
-        container_title TEXT NOT NULL DEFAULT '',
-        doi TEXT NOT NULL DEFAULT '',
-        url TEXT NOT NULL DEFAULT '',
-        raw TEXT NOT NULL DEFAULT '',
-        citing_source TEXT NOT NULL DEFAULT '',
-        in_text_keys TEXT NOT NULL DEFAULT '[]',
-        payload TEXT NOT NULL DEFAULT '{{}}',
-        PRIMARY KEY (source, ref_id)
-    )
-    """,
-    f"""
-    CREATE TABLE IF NOT EXISTS {ENTITY_TYPES_TABLE} (
-        concept_key TEXT PRIMARY KEY,
-        folder_name TEXT NOT NULL
-    )
-    """,
-    # URL download dedup: flat url -> content hash.
-    f"""
-    CREATE TABLE IF NOT EXISTS {DOWNLOADED_TABLE} (
-        url TEXT PRIMARY KEY,
-        sha256 TEXT NOT NULL
-    )
-    """,
-    # ``kompend organize`` report. Tree/move lists are nested, so they stay JSON;
-    # dry_run and time are queryable scalars.
-    f"""
-    CREATE TABLE IF NOT EXISTS {ORGANIZE_REPORTS_TABLE} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        written_at TEXT NOT NULL DEFAULT '',
-        dry_run INTEGER NOT NULL DEFAULT 0,
-        categories TEXT NOT NULL DEFAULT '[]',
-        moves TEXT NOT NULL DEFAULT '[]',
-        link_updates TEXT NOT NULL DEFAULT '{{}}'
-    )
-    """,
-    # Claim/citation verification report. Summary counts are scalars; the
-    # per-claim list is JSON.
-    f"""
-    CREATE TABLE IF NOT EXISTS {VERIFICATION_TABLE} (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        written_at TEXT NOT NULL DEFAULT '',
-        total INTEGER NOT NULL DEFAULT 0,
-        verified INTEGER NOT NULL DEFAULT 0,
-        unsupported INTEGER NOT NULL DEFAULT 0,
-        average_confidence REAL NOT NULL DEFAULT 0.0,
-        claims TEXT NOT NULL DEFAULT '[]'
-    )
-    """,
-    # Private-page index: one row per withheld page.
-    f"""
-    CREATE TABLE IF NOT EXISTS {PRIVATE_PAGES_TABLE} (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL DEFAULT '',
-        saved_at TEXT NOT NULL DEFAULT ''
-    )
-    """,
-    # Per-node provenance: one row per node, citations as a JSON list.
-    f"""
-    CREATE TABLE IF NOT EXISTS {PROVENANCE_TABLE} (
-        node_id TEXT PRIMARY KEY,
-        title TEXT NOT NULL DEFAULT '',
-        citations TEXT NOT NULL DEFAULT '[]'
-    )
-    """,
-    # Extracted images and re-encoded .utf8 copies. ``path`` is relative to
-    # .kompend/ so the same row is valid across a vault move.
-    f"""
-    CREATE TABLE IF NOT EXISTS {BLOBS_TABLE} (
-        path TEXT PRIMARY KEY,
-        mime TEXT NOT NULL DEFAULT '',
-        size INTEGER NOT NULL DEFAULT 0,
-        content BLOB NOT NULL
-    )
-    """,
-    # Review-queue state. The human-editable queue markdown stays on disk; only
-    # the approve/reject decisions live here.
-    f"""
-    CREATE TABLE IF NOT EXISTS {REVIEW_STATE_TABLE} (
-        slug TEXT PRIMARY KEY,
-        status TEXT NOT NULL DEFAULT '',
-        title TEXT NOT NULL DEFAULT '',
-        reason TEXT NOT NULL DEFAULT '',
-        source_node_id TEXT NOT NULL DEFAULT '',
-        saved_at TEXT NOT NULL DEFAULT ''
-    )
-    """,
-    # Vector-branch manifest: the indexed id set, their content hashes and the
-    # embed-text version of the last build, used to detect a stale vector store.
-    # Single row, id = 1, like schema_version.
-    # `backend` names the store that wrote the vectors ("sqlite-vec"): vectors
-    # of one backend are not readable by another, so a manifest written by a
-    # different backend must not validate the current store.
-    f"""
-    CREATE TABLE IF NOT EXISTS {VECTOR_MANIFEST_TABLE} (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        embed_version INTEGER NOT NULL DEFAULT 0,
-        embedding_model TEXT NOT NULL DEFAULT '',
-        backend TEXT NOT NULL DEFAULT '',
-        ids TEXT NOT NULL DEFAULT '[]',
-        content_hashes TEXT NOT NULL DEFAULT '{{}}',
-        written_at TEXT NOT NULL DEFAULT ''
-    )
-    """,
-)
-
 
 def migrate_tier_state_identity(conn: sqlite3.Connection) -> bool:
     """Rekey ``tier_state`` from bare stem to ``<stem>-<hash8>``.
@@ -434,23 +142,22 @@ def _tier_state_exists(conn: sqlite3.Connection) -> bool:
 
 
 def _TIER_STATE_DDL() -> str:
-    """The ``tier_state`` CREATE statement, taken from the schema itself."""
-    return next(statement for statement in _DDL if TIER_STATE_TABLE in statement and "CREATE TABLE" in statement.upper())
+    """The ``tier_state`` CREATE statement, compiled from the Core metadata."""
+    return str(CreateTable(tier_state).compile(dialect=sqlite_dialect.dialect()))
 
 
 def apply_schema(conn: sqlite3.Connection, version: int) -> None:
     """Create every table/index/trigger and stamp *version*.
 
-    Every statement is ``IF NOT EXISTS``, so this is fully idempotent: calling
-    it on an existing store adds only missing tables/triggers and never touches
-    existing rows. This is why :func:`kompend.core.store.ensure_schema` can apply
-    the schema on every open instead of early-returning on a version match —
-    additive changes (new tables/columns) need no version bump. A version bump
-    is reserved for *incompatible* changes (drops, retypes), where the caller
-    recreates first.
+    ``create_all`` is fully idempotent (``checkfirst`` throughout), so calling
+    this on an existing store adds only missing tables/triggers and never
+    touches existing rows. This is why :func:`kompend.core.store.ensure_schema`
+    can apply the schema on every open instead of early-returning on a version
+    match — additive changes (new tables/columns) need no version bump. A
+    version bump is reserved for *incompatible* changes (drops, retypes),
+    where the caller recreates first.
     """
-    for statement in _DDL:
-        conn.execute(statement)
+    METADATA.create_all(_core_engine(conn))
     conn.execute(
         f"INSERT INTO {SCHEMA_VERSION_TABLE}(id, version, created_at) VALUES (1, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET version = excluded.version",
         (version,),
@@ -500,8 +207,7 @@ def _expected_columns() -> dict[str, dict[str, str]]:
     """
     scratch = sqlite3.connect(":memory:")
     try:
-        for statement in _DDL:
-            scratch.execute(statement)
+        METADATA.create_all(_core_engine(scratch))
         expected: dict[str, dict[str, str]] = {}
         for table in TABLE_NAMES:
             columns: dict[str, str] = {}
@@ -515,3 +221,18 @@ def _expected_columns() -> dict[str, dict[str, str]]:
         return expected
     finally:
         scratch.close()
+
+# ── DDL ─────────────────────────────────────────────────────────────────
+# The DDL itself lives in ``tables.METADATA`` — the single source of truth.
+# This module only *applies* it to a raw connection.
+
+
+def _core_engine(conn: sqlite3.Connection) -> Engine:
+    """A throwaway engine bound to *conn*, so Core DDL runs on the caller's connection.
+
+    ``StaticPool`` holds exactly one connection — the caller's — and the
+    engine is never ``dispose()``d: disposing closes pooled connections, which
+    here would close the caller's handle. Dropping the engine is enough; the
+    caller's reference keeps the connection open.
+    """
+    return create_engine("sqlite+pysqlite://", creator=lambda: conn, poolclass=StaticPool)
