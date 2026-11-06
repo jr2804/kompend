@@ -127,11 +127,15 @@ decision and a stable entry point).
    registration; config resolution next to error rendering.)
 4. Which helpers are local (one caller, same module) and which are shared
    (three or more callers)? Shared ones are the real seams.
-5. What does the documentation claim? Every mismatch between a responsibility
+5. Who imports it from a layer that should not know it? A surface layer
+   reaching into another surface layer (`mcp/tools` importing a CLI command
+   module) is a boundary defect, and the move is when you can finally see it.
+   Such a helper belongs in the library both layers already depend on.
+6. What does the documentation claim? Every mismatch between a responsibility
    table and the code is a decision someone forgot to write down.
-6. What is the public surface? Entry points, `__init__` names, external
+7. What is the public surface? Entry points, `__init__` names, external
    string references in manifests, config, CLI wiring, docs.
-7. What shape does the repo already use? Copy it (`commands/` + `args/`
+8. What shape does the repo already use? Copy it (`commands/` + `args/`
    packages) instead of inventing a parallel structure.
 
 ### 4.3 Plan — the target shape
@@ -202,6 +206,10 @@ Pitfalls that cost real time:
   from the new file, never from the pre-move revision.
 - **A big-bang rename hides stragglers.** Grep the old name afterwards across
   source, tests, docs, scripts, ignore files and CI config.
+- **A move silently drops annotations.** A `# nocheck`/`# noqa`/`# TODO`
+  marker on a moved line disappears when the body is re-typed or rebuilt, and
+  the repo's own custom gate is usually the only thing that notices. Grep the
+  moved body for markers before pasting, then run the gates.
 - **Never mix a move with a behaviour change.** If the split reveals a bug,
   commit the move, then the fix; otherwise the diff cannot be reviewed and the
   bisect cannot find the fix.
@@ -269,6 +277,15 @@ Rules of verification:
     know whether it broke.
 14. Re-inventory between loops; the tree you finish with is not the one you
     planned against.
+15. Treat the move as an audit: duplicates surface (the same constant declared
+    twice), reach-throughs surface, lost annotations surface. Delete the
+    duplicates instead of relocating them — a move that carries dead weight is
+    a missed opportunity.
+16. When a parent must learn its children (a sub-app, a registry, a router),
+    register them imperatively in the parent with their names and help text.
+    Decorators in the children need the parent (cycle) and a side-effect import
+    barrel needs an allowlist; one explicit registration keeps the metadata in
+    one place.
 
 ## 6. Anti-patterns observed
 
@@ -312,3 +329,11 @@ Kept for calibration; do not copy the specifics into another project.
 - Two incidents worth remembering, both in §4.4: an ignore rule swallowing the
   new `sources/` package, and shell string replacement corrupting a file with a
   stray control byte.
+- Second loop: `cli/cmds/quality/lint.py` 559 → a `lint/` package of six
+  modules (`run` 206, `gaps` 141, `history` 113, `remediate` 108, `formatting`
+  63, `reporting` 29) plus a 48-line `__init__` that registers nine
+  sub-commands imperatively. The move surfaced three things a size count could
+  not: two constants declared twice (deleted, not relocated), an MCP tool
+  importing both from the CLI command module (moved to `lint/flow.py` +
+  `lint/history.py`), and a dropped `# nocheck` marker that only the custom
+  field-consistency gate caught.
