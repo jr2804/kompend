@@ -8,13 +8,14 @@ directory on disk) and return :class:`LintResult` findings.
 from __future__ import annotations
 
 import contextlib
-import json
 import os
 import re
 import shutil
 import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar
+
+from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.core.models import KIND_FOLDERS, CompiledWiki, MetadataField
@@ -998,6 +999,31 @@ class DuplicateReferencesRule(BaseLintRule):
 # ── Rule 10: rumdl ───────────────────────────────────────────────────────
 
 
+class RumdlFinding(BaseModel, extra="ignore"):
+    """One diagnostic from ``rumdl check --output-format json``.
+
+    rumdl owns this schema — unknown keys are ignored, so a rumdl upgrade
+    that adds fields cannot break the lint run. Every field we read is
+    optional: a diagnostic that omits one still converts.
+    """
+
+    file: str | None = None
+    line: int | None = None
+    column: int | None = None
+    rule: str | None = None
+    message: str | None = None
+    severity: str | None = None
+    fixable: bool = False
+
+
+_RUMDL_FINDINGS = TypeAdapter(list[RumdlFinding])
+
+#: Log-line bound for the unexpected-JSON warning below. The payload itself
+#: is discarded by contract (empty list on failure) — this only keeps the
+#: warning readable, it truncates no data that flows downstream.
+_UNEXPECTED_JSON_PREVIEW_CHARS = 200
+
+
 class RumdlRule(BaseLintRule):
     """Markdown style via ``rumdl check`` on all vault folders except sources.
 
@@ -1029,7 +1055,7 @@ class RumdlRule(BaseLintRule):
         if not files:
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No markdown files to check")]
 
-        findings: list[dict[str, Any]] = []
+        findings: list[RumdlFinding] = []
         for batch in _batched(files, self._BATCH_SIZE):
             findings.extend(self._run_rumdl(exe, ["check", *self._config_args(), "--output-format", "json", *batch]))
         if not findings:
@@ -1055,20 +1081,20 @@ class RumdlRule(BaseLintRule):
         """``--config`` args when a custom rumdl config is set (else auto-discovery)."""
         return ["--config", str(self.rumdl_config)] if self.rumdl_config else []
 
-    def _to_result(self, finding: dict[str, Any]) -> LintResult:
-        severity = Severity.ERROR if finding.get("severity") == "error" else Severity.WARNING
+    def _to_result(self, finding: RumdlFinding) -> LintResult:
+        severity = Severity.ERROR if finding.severity == "error" else Severity.WARNING
         return LintResult(
             rule=self.name,
             outcome=LintRuleOutcome.FAIL,
             severity=severity,
-            message=f"{finding.get('file')}:{finding.get('line')} {finding.get('rule')}: {finding.get('message')}",
+            message=f"{finding.file}:{finding.line} {finding.rule}: {finding.message}",
             page_id="",
             details={
-                "file": finding.get("file", ""),
-                "line": finding.get("line"),
-                "column": finding.get("column"),
-                "rumdl_rule": finding.get("rule"),
-                "fixable": bool(finding.get("fixable")),
+                "file": finding.file or "",
+                "line": finding.line,
+                "column": finding.column,
+                "rumdl_rule": finding.rule,
+                "fixable": finding.fixable,
             },
         )
 
@@ -1089,7 +1115,7 @@ class RumdlRule(BaseLintRule):
         return sorted(files)
 
     @staticmethod
-    def _run_rumdl(exe: str, cmd: list[str]) -> list[dict[str, Any]]:
+    def _run_rumdl(exe: str, cmd: list[str]) -> list[RumdlFinding]:
         """Run rumdl and return its JSON diagnostics (empty list on failure)."""
         try:
             result = subprocess.run(  # noqa: S603 — internally constructed cmd list
@@ -1103,8 +1129,9 @@ class RumdlRule(BaseLintRule):
             logger.warning("rumdl invocation failed: %s", cmd[:_CMD_PREVIEW_ARGS])
             return []
         try:
-            return json.loads(result.stdout or "[]")
-        except json.JSONDecodeError:
+            return _RUMDL_FINDINGS.validate_json(result.stdout or "[]")
+        except ValidationError:
+            logger.warning("rumdl emitted unexpected JSON: %s", (result.stdout or "")[:_UNEXPECTED_JSON_PREVIEW_CHARS])
             return []
 
 

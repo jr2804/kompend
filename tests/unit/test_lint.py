@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from pydantic import ValidationError
 
 from kompend.agents.lint import LintRuleAgent
 from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
@@ -34,6 +36,7 @@ from kompend.lint.llm_rules import (
 from kompend.lint.remediation import remediate
 from kompend.lint.runner import LintRunner, _build_report, report_to_dict, report_to_json, report_to_text
 from kompend.lint.structural import (
+    _RUMDL_FINDINGS,
     RULE_BY_NAME,
     STRUCTURAL_RULES,
     BrokenWikilinksRule,
@@ -45,6 +48,7 @@ from kompend.lint.structural import (
     MissingFrontmatterRule,
     OrphanAttachmentsRule,
     OrphanPageRule,
+    RumdlFinding,
     RumdlRule,
     SourceNotFoundRule,
     StalePageRule,
@@ -783,6 +787,43 @@ class TestRumdlRule:
         (tmp_path / "wiki").mkdir()
         (tmp_path / ".kompend").mkdir()
         return tmp_path
+
+
+class TestRumdlFindings:
+    """The rumdl JSON boundary validates through pydantic, not bare dicts."""
+
+    def test_validate_json_ignores_unknown_keys(self) -> None:
+        (finding,) = _RUMDL_FINDINGS.validate_json(
+            '[{"file": "a.md", "line": 3, "rule": "MD001", "message": "m", "severity": "error", "fixable": true, "future_key": 1}]'
+        )
+        assert finding.file == "a.md"
+        assert finding.line == 3
+        assert finding.fixable is True
+
+    def test_validate_json_rejects_wrong_shape(self) -> None:
+        with pytest.raises(ValidationError):
+            _RUMDL_FINDINGS.validate_json('[{"line": {"nested": true}}]')
+
+    def test_run_rumdl_returns_empty_on_malformed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "kompend.lint.structural.subprocess.run",
+            lambda *a, **k: SimpleNamespace(stdout="not json"),
+        )
+        assert RumdlRule._run_rumdl("rumdl", ["check"]) == []
+
+    def test_run_rumdl_returns_empty_on_wrong_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "kompend.lint.structural.subprocess.run",
+            lambda *a, **k: SimpleNamespace(stdout='[{"line": {"nested": true}}]'),
+        )
+        assert RumdlRule._run_rumdl("rumdl", ["check"]) == []
+
+    def test_to_result_reads_model_attributes(self) -> None:
+        result = RumdlRule()._to_result(RumdlFinding(file="a.md", line=3, column=1, rule="MD001", message="m", severity="error", fixable=True))
+        assert result.outcome == LintRuleOutcome.FAIL
+        assert result.message == "a.md:3 MD001: m"
+        assert result.details["file"] == "a.md"
+        assert result.details["fixable"] is True
 
 
 class TestEdgeCases:

@@ -3,7 +3,9 @@
 Each row holds: timestamp, duration_seconds, options, llm, config_snapshot,
 wiki_meta, report. Every JSON column stores the matching record below, so the
 table shape and the type shape cannot drift apart: add a column by adding a
-field to :class:`LintEntry` and a name to :data:`_COLUMNS`.
+field to :class:`LintEntry` and a name to :data:`_COLUMNS`. Rows are
+validated on load, so a corrupt store fails here with the field name
+instead of downstream with a KeyError.
 
 The :class:`LintEntry` TypedDict is the schema for one row — it types
 key access without a runtime wrapper. Use save_lint_entry()/
@@ -20,6 +22,8 @@ from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any, Final, TypedDict
+
+from pydantic import TypeAdapter
 
 from kompend.core.keys import (
     COMPILE_COMPILER,
@@ -99,6 +103,9 @@ class LintEntry(TypedDict):
     config_snapshot: LintConfigSnapshot
     wiki_meta: LintWikiMeta
     report: ReportDict
+
+
+_LINT_ENTRY_ADAPTER = TypeAdapter(LintEntry)
 
 
 def persist_history(  # noqa: PLR0917 — a history entry needs every run fact
@@ -274,17 +281,24 @@ def load_lint_history(
     return entries
 
 
-def _row_to_entry(row: sqlite3.Row) -> LintEntry:
-    """Rebuild a :class:`LintEntry` from a ``lint_runs`` row."""
-    return {
-        "timestamp": row["timestamp"],
-        "duration_seconds": row["duration_seconds"],  # nocheck: lint_history column/payload key
-        "options": json.loads(row["options"]),
-        "llm": json.loads(row["llm"]) if row["llm"] is not None else None,
-        "config_snapshot": json.loads(row["config_snapshot"]),
-        "wiki_meta": json.loads(row["wiki_meta"]),
-        "report": json.loads(row["report"]),
-    }
+def _row_to_entry(row: sqlite3.Row | Mapping[str, Any]) -> LintEntry:
+    """Rebuild a :class:`LintEntry` from a ``lint_runs`` row.
+
+    The assembled entry is validated — including the nested report and
+    usage records — so a corrupt row raises here instead of poisoning
+    every history consumer.
+    """
+    return _LINT_ENTRY_ADAPTER.validate_python(
+        {
+            "timestamp": row["timestamp"],
+            "duration_seconds": row["duration_seconds"],  # nocheck: lint_history column/payload key
+            "options": json.loads(row["options"]),
+            "llm": json.loads(row["llm"]) if row["llm"] is not None else None,
+            "config_snapshot": json.loads(row["config_snapshot"]),
+            "wiki_meta": json.loads(row["wiki_meta"]),
+            "report": json.loads(row["report"]),
+        }
+    )
 
 
 def history_to_json(entries: list[LintEntry]) -> str:

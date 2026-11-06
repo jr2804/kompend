@@ -7,10 +7,12 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from kompend.lint.base import LintResult, LintRuleOutcome, Severity
 from kompend.lint.history import (
     LintEntry,
+    _row_to_entry,
     entry_from_report,
     history_to_json,
     history_to_text,
@@ -172,6 +174,20 @@ class TestEntryFromReport:
             timestamp="2020-01-01T00:00:00+00:00",
         )
         assert entry["timestamp"] == "2020-01-01T00:00:00+00:00"
+
+    def test_row_to_entry_rejects_wrong_shape(self) -> None:
+        """A corrupt row fails at the boundary, not downstream with a KeyError."""
+        row = {
+            "timestamp": "2020-01-01T00:00:00+00:00",
+            "duration_seconds": 1.0,
+            "options": '"just a string, not an object"',
+            "llm": None,
+            "config_snapshot": "{}",
+            "wiki_meta": '{"node_count": 1}',
+            "report": '{"health_score": 1.0, "total_checks": 0, "failures": 0, "passes": 0, "skips": 0, "results": []}',
+        }
+        with pytest.raises(ValidationError):
+            _row_to_entry(row)
 
 
 class TestFormatting:
