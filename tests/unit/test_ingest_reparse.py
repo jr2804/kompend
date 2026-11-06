@@ -100,7 +100,7 @@ class _StubEnricher:
 class _StubRuntime:
     """Minimal PipelineRuntime for the chunk+enrich+cache path."""
 
-    def __init__(self, base: Path, *, enricher: object | None) -> None:
+    def __init__(self, base: Path, *, enricher: object | None, parser: object | None = None) -> None:
         self.base_directory = base
         self.config = SimpleNamespace(
             no_cache=False,
@@ -110,7 +110,9 @@ class _StubRuntime:
             output=SimpleNamespace(rumdl_config=None, flavor=None),
             search=SimpleNamespace(contextual=SimpleNamespace(enabled=enricher is not None)),
         )
-        self.parser = None
+        # The parser decides whether a cached parse is current: without one the
+        # identity is empty, and an empty identity never counts as current.
+        self.parser = parser
         self.chunker = HierarchicalChunker(max_tokens=512)
         self.enricher = enricher
         self.state = TierState()
@@ -312,7 +314,7 @@ def test_enriched_tree_is_what_gets_cached(tmp_path: Path) -> None:
     content_hash = hashlib.sha256((base / "sources" / "note.md").read_bytes()).hexdigest()
     _seed_parse_cache(base, source_file, content_hash)
 
-    runtime = _StubRuntime(base, enricher=_StubEnricher())
+    runtime = _StubRuntime(base, enricher=_StubEnricher(), parser=_parser_of("chain-A"))
     tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard())
 
     assert tree is not None
@@ -332,7 +334,7 @@ def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
     content_hash = hashlib.sha256((base / "sources" / "note.md").read_bytes()).hexdigest()
     _seed_parse_cache(base, source_file, content_hash)
 
-    runtime = _StubRuntime(base, enricher=None)
+    runtime = _StubRuntime(base, enricher=None, parser=_parser_of("chain-A"))
     _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard())
 
     cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(cast("PipelineRuntime", runtime), content_hash))
@@ -368,10 +370,16 @@ def _seed_vault(tmp_path: Path) -> Path:
     return base
 
 
-def _seed_parse_cache(base: Path, source_file: Path, content_hash: str) -> None:
+def _seed_parse_cache(base: Path, source_file: Path, content_hash: str, parser_identity: str = "chain-A") -> None:
+    """Seed a parse-cache entry the pipeline will accept as current.
+
+    The entry carries the parser's backend identity: an entry without one
+    never counts as current (one re-parse self-heals it), so a seeded entry
+    with an empty identity would be re-parsed instead of read.
+    """
     data: dict[str, Any] = {
         str(MetadataField.SOURCE_FILE): str(source_file),
-        PARSE_CACHE_PARSER_KEY: "",
+        PARSE_CACHE_PARSER_KEY: parser_identity,
         "title": "Note",
         "author": "",
         "language": "en",

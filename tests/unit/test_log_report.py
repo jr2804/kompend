@@ -57,11 +57,33 @@ def _write_runs(state_dir: Path, events: list[dict]) -> None:
 
 
 def _write_lint(state_dir: Path, entries: list[dict]) -> None:
+    """Write lint rows in the shape the writer produces.
+
+    Every row kompend writes carries the full report and the full snapshot;
+    the row is validated on load, so a hand-made partial row would be
+    rejected as corrupt rather than read.
+    """
     with open_store(state_dir / "kompend.db") as conn:
         for e in entries:
+            report = {
+                "total_checks": 0,
+                "passes": 0,
+                "failures": 0,
+                "skips": 0,
+                "results": [],
+                **e["report"],
+            }
             conn.execute(
                 f"INSERT INTO {LINT_RUNS_TABLE} (timestamp, duration_seconds, options, llm, config_snapshot, wiki_meta, report) VALUES (?, ?, ?, ?, ?, ?, ?)",  # noqa: S608
-                (e["timestamp"], e.get("duration_seconds", 0.0), "{}", None, "{}", "{}", json.dumps(e["report"], default=str)),
+                (
+                    e["timestamp"],
+                    e.get("duration_seconds", 0.0),
+                    json.dumps(e.get("options", {"context": "structural", "fix": False})),
+                    None,
+                    json.dumps(e.get("config_snapshot", {"compile.compiler": None, "compile.llm.default_model": None, "compile.llm.fallback_chain": None})),
+                    json.dumps(e.get("wiki_meta", {"node_count": 0})),
+                    json.dumps(report, default=str),
+                ),
             )
 
 
