@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import logging
 import os
 import sys
@@ -25,6 +26,52 @@ _THREAD_VARS = (
     "NUMEXPR_NUM_THREADS",
     "VECLIB_MAXIMUM_THREADS",
 )
+
+
+class _CodePage:
+    """A ``kernel32`` stand-in recording the code page it was given."""
+
+    def __init__(self, current: int) -> None:
+        self.current = current
+        self.set_to: int | None = None
+
+    def GetConsoleOutputCP(self) -> int:
+        return self.current
+
+    def SetConsoleOutputCP(self, code_page: int) -> int:
+        self.set_to = code_page
+        self.current = code_page
+        return 1
+
+
+class TestConsoleCodePage:
+    def test_an_oem_code_page_is_switched_to_utf8(self) -> None:
+        api = _CodePage(850)
+
+        launch._ensure_utf8_code_page(api)
+
+        assert api.set_to == 65001
+
+    def test_a_host_without_a_console_is_left_alone(self) -> None:
+        api = _CodePage(0)
+
+        launch._ensure_utf8_code_page(api)
+
+        assert api.set_to is None
+
+    def test_an_already_utf8_console_is_left_alone(self) -> None:
+        api = _CodePage(65001)
+
+        launch._ensure_utf8_code_page(api)
+
+        assert api.set_to is None
+
+    def test_a_failing_console_call_does_not_raise(self) -> None:
+        class _Broken(_CodePage):
+            def SetConsoleOutputCP(self, code_page: int) -> int:
+                raise OSError(errno.EINVAL, "nope")
+
+        launch._ensure_utf8_code_page(_Broken(850))
 
 
 class TestThreadCap:

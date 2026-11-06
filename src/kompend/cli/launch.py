@@ -10,6 +10,7 @@ declares.
 
 from __future__ import annotations
 
+import ctypes
 import errno
 import faulthandler
 import importlib
@@ -195,6 +196,7 @@ class _HardenedStream:
 def main() -> None:
     """Run the CLI; a lone version flag never imports the command tree."""
     _cap_thread_pools()
+    _ensure_utf8_code_page()
     if len(sys.argv) == 2 and sys.argv[1] in _VERSION_FLAGS:
         print(kompend.__version__)
         return
@@ -235,6 +237,45 @@ def _fault_log_stream() -> Any:
     except OSError:
         return sys.stderr
     return handle
+
+
+class _ConsoleCodePageApi(Protocol):
+    """The two ``kernel32`` calls the code-page switch needs."""
+
+    def GetConsoleOutputCP(self) -> int:
+        """Return the attached console's output code page, 0 when there is none."""
+
+    def SetConsoleOutputCP(self, code_page: int) -> int:
+        """Set the console's output code page; returns non-zero on success."""
+
+
+#: The console code page that decodes UTF-8 (``chcp 65001``).
+_CP_UTF8 = 65001
+
+
+def _ensure_utf8_code_page(api: _ConsoleCodePageApi | None = None) -> None:
+    """Make an attached Windows console decode output as UTF-8.
+
+    Rich draws the progress bar with glyphs no OEM code page holds (``⠼``,
+    ``━``), and outside a real console handle the stream carries them as UTF-8
+    bytes. The console then decodes those bytes with its active code page and
+    the bar reads ``Ôá╝Ôöü`` instead of ``⠼ ━``. Switching the output code page
+    to UTF-8 leaves the Unicode console API untouched and makes the byte path
+    agree with it; a host without a console (code page 0) is left alone.
+    """
+    if api is None:
+        if sys.platform != "win32":
+            return
+        win_dll = getattr(ctypes, "WinDLL", None)
+        if win_dll is None:
+            return
+        api = cast("_ConsoleCodePageApi", win_dll("kernel32", use_last_error=True))
+    try:
+        if api.GetConsoleOutputCP() in (0, _CP_UTF8):
+            return
+        api.SetConsoleOutputCP(_CP_UTF8)
+    except OSError:
+        return
 
 
 def _harden_console_streams() -> None:
