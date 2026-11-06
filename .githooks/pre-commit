@@ -21,10 +21,19 @@ set -e
 
 root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
+# uv is a mise tool. A git hook inherits whatever environment git was
+# started with, and uv is only on the PATH in a mise-activated shell - so
+# reach it through mise when it is not there, and the hook works anywhere.
+if command -v uv >/dev/null 2>&1; then
+    UV=uv
+else
+    UV="mise exec -- uv"
+fi
+
 staged=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')
 if [ -n "$staged" ]; then
     echo "--- ruff: checking forbidden rules (ANN001, ANN201, ANN202, PLC0415) ---"
-    if ! echo "$staged" | tr '\n' '\0' | xargs -0 uv run ruff check \
+    if ! echo "$staged" | tr '\n' '\0' | xargs -0 $UV run ruff check \
         --select ANN001,ANN201,ANN202,PLC0415 \
         --no-fix \
         --quiet; then
@@ -37,9 +46,9 @@ if [ -n "$staged" ]; then
 fi
 
 echo "--- gates: field consistency, antipatterns, DOX budgets ---"
-uv run "$root/scripts/checks/check_field_consistency.py" || exit 1
-uv run "$root/scripts/checks/check_antipatterns.py" || exit 1
-uv run "$root/scripts/checks/check_dox.py" || exit 1
+$UV run "$root/scripts/checks/check_field_consistency.py" || exit 1
+$UV run "$root/scripts/checks/check_antipatterns.py" || exit 1
+$UV run "$root/scripts/checks/check_dox.py" || exit 1
 echo "✓ No field-consistency, antipattern, or DOX violations."
 
 exec "$(dirname "$0")/_delegate.sh" pre-commit "$@"

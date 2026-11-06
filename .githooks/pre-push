@@ -1,3 +1,32 @@
 #!/usr/bin/env sh
 # See _delegate.sh — beads and repowise own their hook files; this forwards.
-exec "$(dirname "$0")/_delegate.sh" "pre-push" "$@"
+#
+# Before forwarding, refuse a push that would delete the beads data ref.
+#
+# `git push --mirror` rewrites every ref on the remote to match the pushing
+# clone, and a normal clone does not carry refs/dolt/data — the issue history
+# lives in a Dolt ref, not in a branch. So a mirror push silently deletes it
+# (it happened on 2026-11-06: `bd sync` then failed with "no branches found
+# in remote 'origin'"). Push branches and tags instead:
+#
+#     git push origin main --tags
+#
+# Recovery, if it happens again: `bd dolt push` re-creates the ref from the
+# local database — the local store is never touched by a remote push.
+set -e
+
+zero=0000000000000000000000000000000000000000
+refs=$(mktemp)
+trap 'rm -f "$refs"' EXIT
+cat >"$refs"
+
+# pre-push feeds one "<local ref> <local sha> <remote ref> <remote sha>" line
+# per ref; a deletion carries an all-zero local sha.
+if awk -v z="$zero" '$2 == z && $3 == "refs/dolt/data" { found = 1 } END { exit !found }' "$refs"; then
+	echo "refusing to delete refs/dolt/data — that is the beads issue history." >&2
+	echo "Push branches and tags (git push origin main --tags). A --mirror push" >&2
+	echo "deletes it, because a normal clone does not carry the Dolt ref." >&2
+	exit 1
+fi
+
+exec "$(dirname "$0")/_delegate.sh" "pre-push" "$@" <"$refs"
