@@ -78,7 +78,16 @@ def pass_run_id(prefix: str, attempt: int, passes: int) -> str:
 
 def scan_segment(store: StepStore, conversation: str, seg_idx: int) -> SegmentRecovery:
     """Recover the newest state of one segment from the step store."""
-    prefix = segment_run_prefix(conversation, seg_idx)
+    return scan_prefix(store, conversation, segment_run_prefix(conversation, seg_idx))
+
+
+def scan_prefix(store: StepStore, conversation: str, prefix: str) -> SegmentRecovery:
+    """Recover the newest state of one work unit by its run-id prefix.
+
+    Loop-1 sub-segments carry derived prefixes (``"<seg-prefix>/sh<depth>-<sub>"``);
+    they recover exactly like their parent — a finished sub-transcript
+    replays, an interrupted one resumes.
+    """
     runs = asyncio.run(store.list_runs(conversation_id=conversation))
     mine = [r for r in runs if r.run_id.startswith(prefix)]
     if not mine:

@@ -515,6 +515,12 @@ class BudgetConfig(_KompendBaseModel):
     #: the segment loop re-sends the segment content, so a segment that owns
     #: a whole document's concept list costs one prefill per batch of pages.
     concepts_per_segment: int = Field(default=12, validation_alias=EnvVar.BUDGET_CONCEPTS_PER_SEGMENT)
+    #: How many times a generation segment that overflows the context window
+    #: is halved and re-queued (Loop-1 deterministic shrink) before it fails
+    #: loudly. ``0`` disables the shrink — an oversized segment fails like
+    #: it used to. Each split strictly reduces the unit, so the loop
+    #: terminates by construction.
+    segment_shrink_attempts: int = Field(default=2, ge=0, validation_alias=EnvVar.BUDGET_SEGMENT_SHRINK_ATTEMPTS)
     summary_session_batch_size: int = Field(default=20, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_BATCH_SIZE)
     summary_session_stall_retries: int = Field(default=1, ge=0, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_STALL_RETRIES)
     #: Characters served per ``read_source()`` call in the write-page

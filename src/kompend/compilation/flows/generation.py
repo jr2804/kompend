@@ -9,8 +9,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-from collections import defaultdict
-from typing import Any, Final
+from collections import defaultdict, deque
+from typing import Any, Final, NamedTuple
 
 from pydantic_ai_harness.step_persistence import SqliteStepStore, StepStore
 
@@ -29,6 +29,7 @@ from kompend.compilation._two_phase_core import (
     tokens_to_chars,
     upsert_node,
 )
+from kompend.compilation.adaptation import AdaptationSignal, plan_adaptation, split_unit
 from kompend.compilation.concept_broker import ConceptBroker
 from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.compilation.flows.assembly import (
@@ -43,7 +44,7 @@ from kompend.compilation.step_recovery import (
     extract_final_output,
     generation_conversation,
     pass_run_id,
-    scan_segment,
+    scan_prefix,
     segment_run_prefix,
 )
 from kompend.core.keys import MANDATORY_KINDS
@@ -595,16 +596,30 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
     if num_segments > 0:
         compiler._report(0, gen_progress_total, f"generating wiki ({num_concepts} concepts, {num_segments} segments)")
 
-    for seg_idx, segment in enumerate(segment_plan):
-        seg_label = f"segment {seg_idx + 1}/{num_segments}"
-        seg_id = ConceptBroker.caller_id(seg_idx)
-        # Transcript recovery: probe the step store for this segment's
-        # prior attempts. A finished conversation replays its pages into
-        # ``nodes`` without an LLM call; an interrupted one resumes its
-        # own conversation instead of restarting from scratch.
-        seg_prefix = segment_run_prefix(step_conversation, seg_idx) if step_conversation else None
+    # Loop-1 work queue: a unit that overflows the window is halved and its
+    # halves re-queued in its place, so the loop below processes strictly
+    # smaller units until every concept is paged or the adaptation budget
+    # (``budget.segment_shrink_attempts``) is spent.
+    max_splits = max(0, int(compiler._config.budget.segment_shrink_attempts))
+    pending: deque[_SegmentUnit] = deque(
+        _SegmentUnit(
+            label=f"segment {i + 1}/{num_segments}",
+            seg_id=ConceptBroker.caller_id(i),
+            segment=segment,
+            run_prefix=segment_run_prefix(step_conversation, i) if step_conversation else None,
+            seg_idx=i,
+            depth=0,
+        )
+        for i, segment in enumerate(segment_plan)
+    )
+    while pending:
+        unit = pending.popleft()
+        seg_label, seg_id, segment, seg_prefix, seg_idx, depth = unit
+        # Transcript recovery: a finished unit replays its pages without an
+        # LLM call; an interrupted one resumes its own conversation.
+        # Sub-units carry derived run prefixes and recover like their parent.
         recovery = (
-            scan_segment(step_store, step_conversation, seg_idx)
+            scan_prefix(step_store, step_conversation, seg_prefix)
             if step_store is not None and resume_enabled and seg_prefix is not None
             else SegmentRecovery(snapshot=None, interrupted=False, attempts=0)
         )
@@ -668,7 +683,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
 
         deps = ToolGenerationDeps(
             source_content=content_block,
-            source_id=ConceptBroker.caller_id(seg_idx),
+            source_id=seg_id,
             pinned_facts=pinned_facts,
             categories=categories,
             known_titles=known_titles or [],
@@ -723,10 +738,24 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     run_id=pass_run_id(seg_prefix, recovery.attempts + 1, passes) if seg_prefix else None,
                 )
                 resume_history = None  # only the first pass continues the old conversation
-            except LLMContextOverflowError:
-                # The segment did not fit the provider's window. Re-planning
-                # (smaller segments) is the caller's job - the error carries
-                # the limit the provider named.
+            except LLMContextOverflowError as exc:
+                # The unit did not fit the provider's window. Loop 1 earns
+                # it a smaller re-plan; only a unit that cannot shrink keeps
+                # the loud failure the error carries.
+                if _shrink_and_requeue(
+                    broker,
+                    coverage,
+                    compiler,
+                    pending,
+                    unit,
+                    start_remaining=start_remaining,
+                    seg_titles=seg_titles,
+                    max_splits=max_splits,
+                    kind=AgentFailureKind.CONTEXT_OVERFLOW,
+                    err=str(exc),
+                ):
+                    gen_output = None
+                    break
                 raise
             except (LLMTransientError, LLMOutputError) as exc:
                 kind = classify_agent_failure(exc)
@@ -743,6 +772,19 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
                 gen_output = None
                 last_error = str(exc)
+                if _shrink_and_requeue(
+                    broker,
+                    coverage,
+                    compiler,
+                    pending,
+                    unit,
+                    start_remaining=start_remaining,
+                    seg_titles=seg_titles,
+                    max_splits=max_splits,
+                    kind=kind,
+                    err=str(exc),
+                ):
+                    break
                 retry_pass = kind in _PASS_CONTINUATION_KINDS or (kind is AgentFailureKind.TRANSIENT and action is ErrorAction.RETRY)
             except Exception as exc:  # PydanticAI raises many subclassed errors; treat uniformly
                 kind = classify_agent_failure(exc)
@@ -763,6 +805,19 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     retry_pass = action is ErrorAction.RETRY
                 else:
                     retry_pass = kind in _PASS_CONTINUATION_KINDS
+                if _shrink_and_requeue(
+                    broker,
+                    coverage,
+                    compiler,
+                    pending,
+                    unit,
+                    start_remaining=start_remaining,
+                    seg_titles=seg_titles,
+                    max_splits=max_splits,
+                    kind=kind,
+                    err=str(exc),
+                ):
+                    break
             debug_file = getattr(agent, "_last_debug_file", None)
 
             compiler._batch_tracker.record(failed=gen_output is None)
@@ -881,8 +936,100 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     debug_hint,
                 )
 
+    # Merge Loop-1 sub-unit progress back into the parent segment keys, so
+    # the run's return value keeps one entry per segment. The transcripts
+    # stay per-unit in the step store — that is the durable resume record.
+    for i in range(num_segments):
+        parent = ConceptBroker.caller_id(i)
+        subs = sorted(k for k in caller_progress if k.startswith(parent + "/"))
+        if subs:
+            merged = list(dict.fromkeys(caller_progress.get(parent, []) + [n for k in subs for n in caller_progress[k]]))
+            caller_progress[parent] = merged
+            for k in subs:
+                del caller_progress[k]
+
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx, caller_progress
+
+
+class _SegmentUnit(NamedTuple):
+    """One generation work unit: Loop 1 splits a segment into smaller ones."""
+
+    label: str
+    seg_id: str
+    segment: list[tuple[str, str]]
+    run_prefix: str | None
+    seg_idx: int
+    depth: int
+
+
+def _shrink_and_requeue(
+    broker: ConceptBroker,
+    coverage: _CoverageCredit,
+    compiler: TwoPhaseRuntime,
+    pending: deque[_SegmentUnit],
+    unit: _SegmentUnit,
+    *,
+    start_remaining: int,
+    seg_titles: set[str],
+    max_splits: int,
+    kind: AgentFailureKind,
+    err: str,
+) -> bool:
+    """Loop-1 deterministic shrink: halve *unit*, re-queue the halves.
+
+    Returns True when the split was enqueued — the caller then leaves its
+    pass loop. The parent pool is drained, so the tail sees no uncovered
+    remainder; the halves carry their own broker pools and transcript
+    prefixes. False keeps today's path.
+    """
+    # Fetched-but-unpaged concepts are stranded in the parent pool once it
+    # drains — they move to the halves with the unfetched remainder, or the
+    # split silently drops work.
+    unfinished = [c for c in broker.consumed(unit.seg_id) if not coverage.covered(str(c.get(ExtractionField.NAME, "")), seg_titles)]
+    unfinished.extend(broker.remaining_concepts(unit.seg_id))
+    tracker = compiler._usage_tracker
+    signal = AdaptationSignal(
+        seg_id=unit.seg_id,
+        kind=kind,
+        adaptations_used=unit.depth,
+        concepts_assigned=start_remaining,
+        concepts_remaining=broker.remaining(unit.seg_id),
+        fetches=len(broker.consumed(unit.seg_id)),
+        context_tokens=tracker.context_tokens or None,
+        context_budget=tracker.context_budget or None,
+        last_error=err,
+    )
+    plan = plan_adaptation(signal, max_adaptations=max_splits)
+    if not plan.split:
+        return False
+    halves = split_unit(unit.segment, unfinished)
+    if halves is None:
+        return False
+    (sources_a, concepts_a), (sources_b, concepts_b) = halves
+    broker.drain_caller(unit.seg_id)
+    for sub, sub_sources, sub_concepts in (("a", sources_a, concepts_a), ("b", sources_b, concepts_b)):
+        sub_id = f"{unit.seg_id}/s{sub}"
+        broker.adopt_caller(sub_id, sub_concepts)
+        pending.append(
+            _SegmentUnit(
+                label=f"{unit.label} (split {unit.depth + 1}{sub})",
+                seg_id=sub_id,
+                segment=sub_sources,
+                run_prefix=f"{unit.run_prefix}/sh{unit.depth + 1}-{sub}" if unit.run_prefix else None,
+                seg_idx=unit.seg_idx,
+                depth=unit.depth + 1,
+            )
+        )
+    logger.warning(
+        "TwoPhase: agentic %s exceeds the window (%s) — %s; re-queued as 2 sub-units (%d/%d concepts).",
+        unit.label,
+        err,
+        plan.reason,
+        len(concepts_a),
+        len(concepts_b),
+    )
+    return True
 
 
 def generation_detail(

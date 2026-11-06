@@ -71,6 +71,29 @@ class ConceptBroker:
         cursor = self._cursors.get(caller_id, 0)
         return list(pool[:cursor])
 
+    def adopt_caller(self, caller_id: str, concepts: list[dict[str, Any]]) -> None:
+        """Register a new caller pool mid-run (Loop-1 sub-segments).
+
+        The pool starts unconsumed. Colliding with an existing caller is a
+        programming error, never a merge — fail loudly instead of mixing
+        two units' work under one id.
+        """
+        if caller_id in self._per_caller:
+            raise ValueError(f"ConceptBroker: caller already registered: {caller_id!r}")
+        self._per_caller[caller_id] = list(concepts)
+        self._cursors[caller_id] = 0
+
+    def drain_caller(self, caller_id: str) -> None:
+        """Mark every remaining concept of *caller_id* as handed out.
+
+        Used when a unit splits: its unfinished work moves to sub-pools,
+        so the parent pool must read empty afterwards — a later fetch for
+        the parent id hands out nothing instead of re-serving moved work.
+        """
+        pool = self._per_caller.get(caller_id)
+        if pool is not None:
+            self._cursors[caller_id] = len(pool)
+
     def mark_caller_consumed(self, caller_id: str, names: Collection[str]) -> None:
         """Advance *caller_id*'s cursor past the concepts whose *names* are given.
 

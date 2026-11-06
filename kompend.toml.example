@@ -371,6 +371,10 @@ distill_requests_per_group = 3
 # segment content, so a segment that owns a whole document's concept list
 # pays one full prefill per batch of pages.
 concepts_per_segment = 12
+# How many times a generation segment that overflows the context window is
+# halved and re-queued (Loop-1 deterministic shrink) before it fails loudly.
+# 0 disables the shrink — an oversized segment fails like it used to.
+segment_shrink_attempts = 2
 summary_session_batch_size = 20
 summary_session_stall_retries = 1
 
