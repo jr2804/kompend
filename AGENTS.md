@@ -36,6 +36,7 @@ entry to the relevant subtree, or fetched from `.agents/` when the task needs it
 | `CHECKS.md` | Verification, enforcement, checklist | Before commit |
 | `HISTORY.md` | Past decisions, known violations | Background |
 | `MAINTENANCE.md` | How to keep `.agents/` files up-to-date | When changing `.agents/` |
+| `REFACTORING.md` | Inputs for a refactoring/splitting skill: signals, loops, mechanics, verification | Planning or executing a refactor |
 | `plans/` | Implementation plans (gitignored) | Working on a feature |
 | `history/` | Archived decisions + completed plans | HISTORY.md overflow |
 
