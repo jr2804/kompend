@@ -46,11 +46,14 @@ pulls in). `parse_cli_set` and `parse_attrs` — the `--set`/`--attr` flags ever
 command shares — live in `cli/settings.py` beside `build_cli_overrides`, which
 consumes them.
 
-`quality/_capabilities.py` holds the doctor's model probes (native tool-call
-output, schema-in-prompt output, raw JSON, the configured compact format, and
-the deterministic input-format size comparison). Each probe returns a
-`CapabilityProbe` and never raises: an unreachable model is a failed probe, not
-a crashed doctor.
+`quality/_capabilities.py` is gone: `doctor.py` renders and nothing else.
+`kompend doctor` is a library: the checks, the result type and the run order
+live in `kompend.diagnostics` (`run_doctor`), which is why `doctor.py` holds
+only `print_doctor_results` and the MCP `doctor` tool calls the package instead
+of importing a CLI command module. A new check belongs in
+`kompend/diagnostics/` (`environment.py` for host facts, `providers.py` for
+model endpoints, `models.py` for a model's own properties) and is wired into
+`runner.run_doctor` in the order its neighbours impose.
 
 ### Command function patterns
 

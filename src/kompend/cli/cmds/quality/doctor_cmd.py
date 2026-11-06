@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from kompend.cli.args import JsonOutput, Verbose, WikiDir
-from kompend.cli.cmds.quality.doctor import print_doctor_results, run_doctor
+from kompend.cli.cmds.quality.doctor import print_doctor_results
 from kompend.cli.context import current_run_context
 from kompend.cli.settings import (
     build_cli_overrides,
@@ -18,6 +18,7 @@ from kompend.core.keys import (
 )
 from kompend.core.paths import vault_paths
 from kompend.core.utils.dicts import as_str
+from kompend.diagnostics import run_doctor
 from kompend.logging import get_err_console
 
 
@@ -52,7 +53,7 @@ def doctor_cmd(
         default_model=as_str(cfg.get(COMPILE_LLM_DEFAULT_MODEL)),
         vlm_model=as_str(cfg.get(COMPILE_LLM_VLM_MODEL)),
         embed_model=as_str(cfg.get(COMPILE_EMBEDDING_MODEL)),
-        cfg=cfg.raw,
+        config=cfg,
         verbose=verbose,
     )
     exit_code = print_doctor_results(results, json_output=json_output)

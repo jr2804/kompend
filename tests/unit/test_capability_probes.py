@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
-from kompend.cli.cmds.quality import _capabilities
 from kompend.core.config._configs import LlmDataFormat
+from kompend.diagnostics import capabilities as _capabilities
 from kompend.llm.format import decode_from_llm, encode_for_llm
 
 _MODEL = "test/model"

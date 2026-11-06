@@ -11,10 +11,14 @@ import pytest
 
 from kompend.cli.app import app
 from kompend.cli.cmds.pipeline.status import collect_stats, print_status
-from kompend.cli.cmds.quality import doctor
-from kompend.cli.cmds.quality.doctor import CheckResult, print_doctor_results, run_doctor
+from kompend.cli.cmds.quality.doctor import print_doctor_results
+from kompend.core.config import ProviderEndpoint
 from kompend.core.paths import COMPILE_STATE_FILE, KOMP_DB_FILE
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
+from kompend.diagnostics import models, providers
+from kompend.diagnostics import runner as diag_runner
+from kompend.diagnostics.base import CheckResult
+from kompend.diagnostics.runner import run_doctor
 from kompend.llm.context_window import ContextSource, ContextWindow
 from tests.helpers.cli import CliRunner
 
@@ -263,21 +267,21 @@ class TestRunDoctorOrder:
             assert names.index("connectivity-vlm") < names.index("context-window-vlm")
 
     def test_output_ceiling_reports_the_protocol_rule(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(doctor, "build_model", lambda model: object())
-        monkeypatch.setattr(doctor, "requires_output_ceiling", lambda model: True)
-        monkeypatch.setattr(doctor, "resolve_model_limits", lambda model: (1_000_000, 524_288))
+        monkeypatch.setattr(models, "build_model", lambda model: object())
+        monkeypatch.setattr(models, "requires_output_ceiling", lambda model: True)
+        monkeypatch.setattr(models, "resolve_model_limits", lambda model: (1_000_000, 524_288))
 
-        result = doctor._check_output_ceiling("minimax/MiniMax-M3.1-Flash", "llm")
+        result = models.check_output_ceiling("minimax/MiniMax-M3.1-Flash", "llm")
 
         assert result.name == "output-ceiling-llm"
         assert result.passed
         assert "524288-token output limit" in result.message
 
     def test_output_ceiling_absent_for_openai_protocols(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(doctor, "build_model", lambda model: object())
-        monkeypatch.setattr(doctor, "requires_output_ceiling", lambda model: False)
+        monkeypatch.setattr(models, "build_model", lambda model: object())
+        monkeypatch.setattr(models, "requires_output_ceiling", lambda model: False)
 
-        result = doctor._check_output_ceiling("ollama/qwen3", "llm")
+        result = models.check_output_ceiling("ollama/qwen3", "llm")
 
         assert result.passed
         assert "provider default" in result.message
@@ -285,10 +289,10 @@ class TestRunDoctorOrder:
     def test_catalog_reports_the_cached_snapshot(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A usable cache is reported with its age and TTL."""
         snapshot = _catalog_snapshot()
-        monkeypatch.setattr(doctor.catalog, "ensure_fresh", lambda ttl_hours=None: False)
-        monkeypatch.setattr(doctor.catalog, "snapshot", lambda refresh=False: snapshot)
+        monkeypatch.setattr(providers.catalog, "ensure_fresh", lambda ttl_hours=None: False)
+        monkeypatch.setattr(providers.catalog, "snapshot", lambda refresh=False: snapshot)
 
-        result = doctor._check_catalog()
+        result = providers.check_catalogue()
 
         assert result.passed
         assert "1 providers" in result.message
@@ -298,10 +302,10 @@ class TestRunDoctorOrder:
         """A stale cache is refreshed once and reported as refreshed."""
         snapshot = _catalog_snapshot()
         called: list[bool] = []
-        monkeypatch.setattr(doctor.catalog, "ensure_fresh", lambda ttl_hours=None: called.append(True) or True)
-        monkeypatch.setattr(doctor.catalog, "snapshot", lambda refresh=False: snapshot)
+        monkeypatch.setattr(providers.catalog, "ensure_fresh", lambda ttl_hours=None: called.append(True) or True)
+        monkeypatch.setattr(providers.catalog, "snapshot", lambda refresh=False: snapshot)
 
-        result = doctor._check_catalog()
+        result = providers.check_catalogue()
 
         assert called == [True]
         assert result.passed
@@ -309,10 +313,10 @@ class TestRunDoctorOrder:
 
     def test_catalog_without_snapshot_is_a_warning(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """No cache and a failed download must not fail the doctor run."""
-        monkeypatch.setattr(doctor.catalog, "ensure_fresh", lambda ttl_hours=None: False)
-        monkeypatch.setattr(doctor.catalog, "snapshot", lambda refresh=False: None)
+        monkeypatch.setattr(providers.catalog, "ensure_fresh", lambda ttl_hours=None: False)
+        monkeypatch.setattr(providers.catalog, "snapshot", lambda refresh=False: None)
 
-        result = doctor._check_catalog()
+        result = providers.check_catalogue()
 
         assert not result.passed
         assert result.warning
@@ -320,12 +324,12 @@ class TestRunDoctorOrder:
 
     def test_window_fit_reports_a_usable_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            doctor,
+            models,
             "discover_context_window",
             lambda *a, **k: ContextWindow(max_input=32_768, max_output=32_768, source=ContextSource.OLLAMA),
         )
 
-        result = doctor._check_window_fit("ollama/test")
+        result = models.check_window_fit("ollama/test")
 
         assert result.passed
         assert "8192 answer reserve" in result.message
@@ -333,12 +337,12 @@ class TestRunDoctorOrder:
     def test_window_fit_rejects_a_window_without_input_room(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A window whose answer reserve leaves no room for input cannot compile."""
         monkeypatch.setattr(
-            doctor,
+            models,
             "discover_context_window",
             lambda *a, **k: ContextWindow(max_input=600, max_output=600, source=ContextSource.OLLAMA),
         )
 
-        result = doctor._check_window_fit("ollama/test")
+        result = models.check_window_fit("ollama/test")
 
         assert not result.passed
         assert "increase the model's context window" in result.message
@@ -351,14 +355,14 @@ class TestRunDoctorOrder:
 
     def test_server_window_warns_when_the_server_serves_less(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A server started with a smaller -c rejects requests kompend planned for."""
-        monkeypatch.setattr(doctor, "_query_ollama_num_ctx", lambda *a, **k: 32_768)
+        monkeypatch.setattr(models, "_query_ollama_num_ctx", lambda *a, **k: 32_768)
         monkeypatch.setattr(
-            doctor,
+            models,
             "discover_context_window",
             lambda *a, **k: ContextWindow(max_input=64_000, max_output=32_768, source=ContextSource.OLLAMA),
         )
 
-        result = doctor._check_server_window("ollama/test")
+        result = models.check_server_window("ollama/test")
 
         assert result.passed
         assert result.warning
@@ -366,20 +370,20 @@ class TestRunDoctorOrder:
         assert "64000" in result.message
 
     def test_server_window_is_quiet_when_the_window_fits(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(doctor, "_query_ollama_num_ctx", lambda *a, **k: 32_768)
+        monkeypatch.setattr(models, "_query_ollama_num_ctx", lambda *a, **k: 32_768)
         monkeypatch.setattr(
-            doctor,
+            models,
             "discover_context_window",
             lambda *a, **k: ContextWindow(max_input=32_768, max_output=8_192, source=ContextSource.OLLAMA),
         )
 
-        result = doctor._check_server_window("ollama/test")
+        result = models.check_server_window("ollama/test")
 
         assert result.passed
         assert not result.warning
 
     def test_server_window_is_skipped_for_a_cloud_model(self) -> None:
-        result = doctor._check_server_window("openai/gpt-4o")
+        result = models.check_server_window("openai/gpt-4o")
         assert result.passed
         assert "skipped" in result.message
 
@@ -420,11 +424,11 @@ class TestPingModelWarmup:
                 return "ok"
 
         ticks = iter([10.0, 11.0])
-        monkeypatch.setattr(doctor, "DoctorAgent", _FakeAgent)
-        monkeypatch.setattr(doctor, "UsageTracker", _FakeTracker)
-        monkeypatch.setattr(doctor, "monotonic", lambda: next(ticks))
+        monkeypatch.setattr(models, "DoctorAgent", _FakeAgent)
+        monkeypatch.setattr(models, "UsageTracker", _FakeTracker)
+        monkeypatch.setattr(models, "monotonic", lambda: next(ticks))
 
-        result = doctor._ping_model("ollama/foo", "llm")
+        result = models.ping_model("ollama/foo", "llm")
 
         assert runs == 2  # warm-up + measured run
         assert result.passed is True
@@ -436,7 +440,7 @@ class TestCheckOllamaDevice:
 
     def test_skipped_without_ollama_model(self) -> None:
 
-        result = doctor._check_ollama_device(default_model="openai/gpt-4o", vlm_model=None)
+        result = providers.check_ollama_device(default_model="openai/gpt-4o", vlm_model=None)
         assert result.passed is True
         assert result.warning is False
         assert "skipped" in result.message
@@ -444,11 +448,11 @@ class TestCheckOllamaDevice:
     def test_reports_full_gpu_offload(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
         monkeypatch.setattr(
-            doctor,
-            "_ollama_ps_lookup",
-            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 100 * 1024 * 1024, "context_length": 65536, "digest": "x"},
+            providers,
+            "ollama_ps_lookup",
+            lambda name: providers.OllamaLoadedModel(size=100 * 1024 * 1024, size_vram=100 * 1024 * 1024, context_length=65536, digest="x"),
         )
-        result = doctor._check_ollama_device("ollama/foo", None)
+        result = providers.check_ollama_device("ollama/foo", None)
         assert result.passed is True
         assert result.warning is False
         assert "GPU" in result.message
@@ -456,11 +460,11 @@ class TestCheckOllamaDevice:
     def test_warns_on_partial_offload(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
         monkeypatch.setattr(
-            doctor,
-            "_ollama_ps_lookup",
-            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 30 * 1024 * 1024, "context_length": 65536, "digest": "x"},
+            providers,
+            "ollama_ps_lookup",
+            lambda name: providers.OllamaLoadedModel(size=100 * 1024 * 1024, size_vram=30 * 1024 * 1024, context_length=65536, digest="x"),
         )
-        result = doctor._check_ollama_device("ollama/foo", None)
+        result = providers.check_ollama_device("ollama/foo", None)
         assert result.passed is True
         assert result.warning is True
         assert "partial" in result.message
@@ -468,29 +472,29 @@ class TestCheckOllamaDevice:
     def test_warns_on_cpu_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
         monkeypatch.setattr(
-            doctor,
-            "_ollama_ps_lookup",
-            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 0, "context_length": 65536, "digest": "x"},
+            providers,
+            "ollama_ps_lookup",
+            lambda name: providers.OllamaLoadedModel(size=100 * 1024 * 1024, size_vram=0, context_length=65536, digest="x"),
         )
-        result = doctor._check_ollama_device("ollama/foo", None)
+        result = providers.check_ollama_device("ollama/foo", None)
         assert result.passed is True
         assert result.warning is True
         assert "CPU" in result.message
 
     def test_reports_not_loaded(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
-        monkeypatch.setattr(doctor, "_ollama_ps_lookup", lambda name: None)
-        result = doctor._check_ollama_device("ollama/foo", None)
+        monkeypatch.setattr(providers, "ollama_ps_lookup", lambda name: None)
+        result = providers.check_ollama_device("ollama/foo", None)
         assert "not loaded" in result.message
 
     def test_same_llm_and_vlm_model_merged_into_one_line(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """One model serving both roles is loaded once — report it once."""
         monkeypatch.setattr(
-            doctor,
-            "_ollama_ps_lookup",
-            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 100 * 1024 * 1024, "context_length": 65536, "digest": "d1"},
+            providers,
+            "ollama_ps_lookup",
+            lambda name: providers.OllamaLoadedModel(size=100 * 1024 * 1024, size_vram=100 * 1024 * 1024, context_length=65536, digest="d1"),
         )
-        result = doctor._check_ollama_device("ollama/foo:8b", "ollama/foo:8b")
+        result = providers.check_ollama_device("ollama/foo:8b", "ollama/foo:8b")
         assert result.passed is True
         assert result.warning is False
         assert "llm+vlm: GPU (100/100 MiB VRAM, 100%)" in result.message
@@ -498,33 +502,33 @@ class TestCheckOllamaDevice:
     def test_distinct_llm_and_vlm_models_not_merged(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Different digests keep separate per-role lines."""
         entries = {
-            "foo:8b": {"size": 100 * 1024 * 1024, "size_vram": 100 * 1024 * 1024, "context_length": 65536, "digest": "d1"},
-            "bar:2b": {"size": 30 * 1024 * 1024, "size_vram": 15 * 1024 * 1024, "context_length": 4096, "digest": "d2"},
+            "foo:8b": providers.OllamaLoadedModel(size=100 * 1024 * 1024, size_vram=100 * 1024 * 1024, context_length=65536, digest="d1"),
+            "bar:2b": providers.OllamaLoadedModel(size=30 * 1024 * 1024, size_vram=15 * 1024 * 1024, context_length=4096, digest="d2"),
         }
-        monkeypatch.setattr(doctor, "_ollama_ps_lookup", entries.get)
-        result = doctor._check_ollama_device("ollama/foo:8b", "ollama/bar:2b")
+        monkeypatch.setattr(providers, "ollama_ps_lookup", entries.get)
+        result = providers.check_ollama_device("ollama/foo:8b", "ollama/bar:2b")
         assert "llm: GPU (100/100 MiB VRAM, 100%)" in result.message
         assert "vlm: partial (15/30 MiB VRAM, 50%)" in result.message
 
     def test_unloaded_same_name_shared_line(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Not-loaded entries group by name only."""
-        monkeypatch.setattr(doctor, "_ollama_ps_lookup", lambda name: None)
-        result = doctor._check_ollama_device("ollama/foo:8b", "ollama/foo:8b")
+        monkeypatch.setattr(providers, "ollama_ps_lookup", lambda name: None)
+        result = providers.check_ollama_device("ollama/foo:8b", "ollama/foo:8b")
         assert result.message.startswith("llm+vlm: not loaded")
 
     def test_nvidia_unused_is_flagged(self, monkeypatch: pytest.MonkeyPatch) -> None:
 
         monkeypatch.setattr(
-            doctor,
-            "_ollama_ps_lookup",
-            lambda name: {"size": 100 * 1024 * 1024, "size_vram": 0, "context_length": 65536, "digest": "x"},
+            providers,
+            "ollama_ps_lookup",
+            lambda name: providers.OllamaLoadedModel(size=100 * 1024 * 1024, size_vram=0, context_length=65536, digest="x"),
         )
         monkeypatch.setattr(
-            doctor,
-            "_nvidia_smi_probe",
-            lambda: {"name": "RTX 4090", "memory_total_mib": 24576, "memory_used_mib": 0},
+            providers,
+            "nvidia_smi_probe",
+            lambda: providers.NvidiaReport(name="RTX 4090", memory_total_mib=24576, memory_used_mib=0),
         )
-        result = doctor._check_ollama_device("ollama/foo", None)
+        result = providers.check_ollama_device("ollama/foo", None)
         assert "RTX 4090" in result.message
         assert "not using it" in result.message
 
@@ -533,37 +537,37 @@ class TestCheckOllamaDevice:
 
 
 class TestOllamaPsLookupTagMatching:
-    """``_ollama_ps_lookup`` matches by full name; bare-name fallback only when untagged."""
+    """``ollama_ps_lookup`` matches by full name; bare-name fallback only when untagged."""
 
     def test_exact_tag_match_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._patch_ps(
             monkeypatch,
             [self._MODEL | {"model": "qwen3:8b", "digest": "d8"}, self._MODEL | {"model": "qwen3:4b", "name": "qwen3:4b", "digest": "d4"}],
         )
-        entry = doctor._ollama_ps_lookup("qwen3:4b")
+        entry = providers.ollama_ps_lookup("qwen3:4b")
         assert entry is not None
-        assert entry["digest"] == "d4"
+        assert entry.digest == "d4"
 
     def test_tagged_name_does_not_absorb_other_variant(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Configured ``qwen3:4b`` must not report ``qwen3:8b``'s stats."""
         self._patch_ps(monkeypatch, [self._MODEL | {"model": "qwen3:8b", "digest": "d8"}])
-        assert doctor._ollama_ps_lookup("qwen3:4b") is None
+        assert providers.ollama_ps_lookup("qwen3:4b") is None
 
     def test_untagged_name_falls_back_to_base(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._patch_ps(monkeypatch, [self._MODEL | {"model": "qwen3:latest", "digest": "dl"}])
-        entry = doctor._ollama_ps_lookup("qwen3")
+        entry = providers.ollama_ps_lookup("qwen3")
         assert entry is not None
-        assert entry["digest"] == "dl"
+        assert entry.digest == "dl"
 
     def test_untagged_name_matches_any_loaded_tag(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._patch_ps(monkeypatch, [self._MODEL | {"model": "qwen3:4b", "digest": "d4"}])
-        entry = doctor._ollama_ps_lookup("qwen3")
+        entry = providers.ollama_ps_lookup("qwen3")
         assert entry is not None
-        assert entry["digest"] == "d4"
+        assert entry.digest == "d4"
 
     def _patch_ps(self, monkeypatch: pytest.MonkeyPatch, entries: list[dict]) -> None:
         ps = SimpleNamespace(models=[SimpleNamespace(**e) for e in entries])
-        monkeypatch.setattr(doctor.ollama, "ps", lambda: ps)
+        monkeypatch.setattr(providers.ollama, "ps", lambda: ps)
 
     _MODEL = {"name": "qwen3:8b", "size": 100, "size_vram": 100, "context_length": 65536}
 
@@ -577,19 +581,19 @@ class TestVlmFallbackIndication:
             calls.append((default, vlm))
             return "openai/gpt-5.2" if vlm is None else vlm
 
-        monkeypatch.setattr(doctor, "resolve_vlm_model", _fake_resolve)
-        monkeypatch.setattr(doctor, "_check_sources_dir", lambda *a, **k: CheckResult("sources", True))
-        monkeypatch.setattr(doctor, "_check_output_dir", lambda *a, **k: CheckResult("output", True))
-        monkeypatch.setattr(doctor, "_check_parsers", lambda *a, **k: CheckResult("parsers", True))
-        monkeypatch.setattr(doctor, "_check_git_repo", lambda *a, **k: CheckResult("git", True))
-        monkeypatch.setattr(doctor, "_check_disk_space", lambda *a, **k: CheckResult("disk", True))
-        monkeypatch.setattr(doctor, "_ping_model", lambda *a, **k: CheckResult("ping", True))
-        monkeypatch.setattr(doctor, "_ping_embed_model", lambda *a, **k: CheckResult("embed", True))
-        monkeypatch.setattr(doctor, "_check_context_window", lambda *a, **k: CheckResult("ctx", True))
-        monkeypatch.setattr(doctor, "_check_window_fit", lambda *a, **k: CheckResult("window-fit", True))
-        monkeypatch.setattr(doctor, "_check_model_capabilities", lambda *a, **k: [CheckResult("struct", True)])
-        monkeypatch.setattr(doctor, "_check_custom_providers", lambda *a, **k: CheckResult("providers", True))
-        monkeypatch.setattr(doctor, "_check_ollama_device", lambda *a, **k: CheckResult("device", True))
+        monkeypatch.setattr(diag_runner, "resolve_vlm_model", _fake_resolve)
+        monkeypatch.setattr(diag_runner, "check_sources_dir", lambda *a, **k: CheckResult("sources", True))
+        monkeypatch.setattr(diag_runner, "check_output_dir", lambda *a, **k: CheckResult("output", True))
+        monkeypatch.setattr(diag_runner, "check_parsers", lambda *a, **k: CheckResult("parsers", True))
+        monkeypatch.setattr(diag_runner, "check_git_repo", lambda *a, **k: CheckResult("git", True))
+        monkeypatch.setattr(diag_runner, "check_disk_space", lambda *a, **k: CheckResult("disk", True))
+        monkeypatch.setattr(diag_runner, "ping_model", lambda *a, **k: CheckResult("ping", True))
+        monkeypatch.setattr(diag_runner, "ping_embed_model", lambda *a, **k: CheckResult("embed", True))
+        monkeypatch.setattr(diag_runner, "check_context_window", lambda *a, **k: CheckResult("ctx", True))
+        monkeypatch.setattr(diag_runner, "check_window_fit", lambda *a, **k: CheckResult("window-fit", True))
+        monkeypatch.setattr(diag_runner, "check_model_capabilities", lambda *a, **k: [CheckResult("struct", True)])
+        monkeypatch.setattr(diag_runner, "check_custom_providers", lambda *a, **k: CheckResult("providers", True))
+        monkeypatch.setattr(diag_runner, "check_ollama_device", lambda *a, **k: CheckResult("device", True))
 
         results = run_doctor(default_model="openai/gpt-5.2", vlm_model=None)
 
@@ -612,19 +616,19 @@ class TestVlmFallbackIndication:
             pings.append((model, model_label))
             return CheckResult(f"connectivity-{model_label}", True, f"{model_label} OK")
 
-        monkeypatch.setattr(doctor, "resolve_vlm_model", lambda default, vlm: vlm or default)
-        monkeypatch.setattr(doctor, "_check_sources_dir", lambda *a, **k: CheckResult("sources", True))
-        monkeypatch.setattr(doctor, "_check_output_dir", lambda *a, **k: CheckResult("output", True))
-        monkeypatch.setattr(doctor, "_check_parsers", lambda *a, **k: CheckResult("parsers", True))
-        monkeypatch.setattr(doctor, "_check_git_repo", lambda *a, **k: CheckResult("git", True))
-        monkeypatch.setattr(doctor, "_check_disk_space", lambda *a, **k: CheckResult("disk", True))
-        monkeypatch.setattr(doctor, "_ping_model", _fake_ping)
-        monkeypatch.setattr(doctor, "_ping_embed_model", lambda *a, **k: CheckResult("embed", True))
-        monkeypatch.setattr(doctor, "_check_context_window", lambda *a, **k: CheckResult("ctx", True))
-        monkeypatch.setattr(doctor, "_check_window_fit", lambda *a, **k: CheckResult("window-fit", True))
-        monkeypatch.setattr(doctor, "_check_model_capabilities", lambda *a, **k: [CheckResult("struct", True)])
-        monkeypatch.setattr(doctor, "_check_custom_providers", lambda *a, **k: CheckResult("providers", True))
-        monkeypatch.setattr(doctor, "_check_ollama_device", lambda *a, **k: CheckResult("device", True))
+        monkeypatch.setattr(diag_runner, "resolve_vlm_model", lambda default, vlm: vlm or default)
+        monkeypatch.setattr(diag_runner, "check_sources_dir", lambda *a, **k: CheckResult("sources", True))
+        monkeypatch.setattr(diag_runner, "check_output_dir", lambda *a, **k: CheckResult("output", True))
+        monkeypatch.setattr(diag_runner, "check_parsers", lambda *a, **k: CheckResult("parsers", True))
+        monkeypatch.setattr(diag_runner, "check_git_repo", lambda *a, **k: CheckResult("git", True))
+        monkeypatch.setattr(diag_runner, "check_disk_space", lambda *a, **k: CheckResult("disk", True))
+        monkeypatch.setattr(diag_runner, "ping_model", _fake_ping)
+        monkeypatch.setattr(diag_runner, "ping_embed_model", lambda *a, **k: CheckResult("embed", True))
+        monkeypatch.setattr(diag_runner, "check_context_window", lambda *a, **k: CheckResult("ctx", True))
+        monkeypatch.setattr(diag_runner, "check_window_fit", lambda *a, **k: CheckResult("window-fit", True))
+        monkeypatch.setattr(diag_runner, "check_model_capabilities", lambda *a, **k: [CheckResult("struct", True)])
+        monkeypatch.setattr(diag_runner, "check_custom_providers", lambda *a, **k: CheckResult("providers", True))
+        monkeypatch.setattr(diag_runner, "check_ollama_device", lambda *a, **k: CheckResult("device", True))
 
         results = run_doctor(default_model="openai/gpt-5.2", vlm_model="ollama/llava")
 
@@ -637,20 +641,20 @@ class TestCheckCustomProviders:
     """`[providers.<name>]` override-only blocks must not require base_url."""
 
     def test_override_only_block_for_native_provider_passes(self) -> None:
-        cfg = {"providers": {"ollama": {"context_window": 65536}}}
-        result = doctor._check_custom_providers(cfg, {"ollama"})
+        endpoints = {"ollama": ProviderEndpoint(context_window=65536)}
+        result = providers.check_custom_providers(endpoints, {"ollama"})
         assert result.passed is True
         assert "missing base_url" not in result.message
 
     def test_standalone_provider_without_base_url_fails(self) -> None:
-        cfg = {"providers": {"totally-unknown-xyz": {"context_window": 1}}}
-        result = doctor._check_custom_providers(cfg, {"totally-unknown-xyz"})
+        endpoints = {"totally-unknown-xyz": ProviderEndpoint(context_window=1)}
+        result = providers.check_custom_providers(endpoints, {"totally-unknown-xyz"})
         assert result.passed is False
         assert "missing base_url" in result.message
 
     def test_no_base_url_unreferenced_skipped(self) -> None:
-        cfg = {"providers": {"ollama": {"context_window": 65536}}}
-        result = doctor._check_custom_providers(cfg, {"openai"})
+        endpoints = {"ollama": ProviderEndpoint(context_window=65536)}
+        result = providers.check_custom_providers(endpoints, {"openai"})
         assert result.passed is True
 
 

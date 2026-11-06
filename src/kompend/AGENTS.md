@@ -119,6 +119,7 @@ Commands — see `.agents/CHECKS.md`. For this subtree the relevant ones are
 | `core/templates/` | Jinja2 loading, frontmatter parsing, variable validation |
 | `core/trust/` | Actor identity and trust/privacy concerns |
 | `core/utils/` | Pure helpers, zero domain logic |
+| `diagnostics/` | Host/config checks behind `kompend doctor` — environment, providers, models |
 | `lint/` | Structural + LLM lint rules, gap analysis, remediation |
 | `llm/` | Model construction, context-window discovery, formats, usage tracking |
 | `mcp/` | MCP server exposing kompend operations as tools (fastmcp) |
