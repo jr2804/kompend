@@ -259,7 +259,10 @@ dispatch with fallback passes → aggregate `DocumentResult` — so routing,
 selective OCR escalation, and per-range fallback passes are inherited rather
 than reimplemented in kompend. Figure enrichment is on (`figure_enrichment = True`)
 and parsecraft's own figure extraction flows through `VLMEnricher` like every
-other backend's.
+other backend's. A vector figure — the SVG that `extract_vector_graphics`
+writes for tables and diagrams, and that modern `.docx` files embed — is
+rendered to a PNG next to it before the captioner or the media embedder sees
+it; the vector original stays the artifact the vault publishes.
 
 ### Formats parsecraft claims
 

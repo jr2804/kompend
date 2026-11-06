@@ -25,16 +25,22 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import io
 from collections.abc import Mapping
 from enum import StrEnum
 from pathlib import Path
 from typing import Final
+from xml.etree import ElementTree
 
+import resvg_py
 from parsecraft.ir.models import AssetKind, DocumentResult, ExtractedAsset, StructuredChunk
+from PIL import Image
 
 from kompend.core.config import ImageMode
 from kompend.core.models import MetadataField
 from kompend.logging import get_logger
+
+logger = get_logger(__name__)
 
 
 class ImageMediaType(StrEnum):
@@ -47,6 +53,10 @@ class ImageMediaType(StrEnum):
     BMP = "image/bmp"
     TIFF = "image/tiff"
     SVG = "image/svg+xml"
+
+
+class VectorRasterError(RuntimeError):
+    """A vector figure could not be rendered to pixels."""
 
 
 #: Media type → file suffix. Only the raster types the VLM and the embedders
@@ -64,6 +74,21 @@ _SUFFIX_BY_MEDIA_TYPE: Final[dict[ImageMediaType, str]] = {
 
 #: Characters that may not appear in a file name on any supported platform.
 _UNSAFE_NAME_CHARS: str = '<>:"/\\|?*'
+
+#: Suffixes carrying pixels. Anything outside this set and :data:`_VECTOR_SUFFIXES`
+#: is passed through untouched, so a caller's own renderer still sees it.
+_RASTER_SUFFIXES: Final[frozenset[str]] = frozenset(suffix for media_type, suffix in _SUFFIX_BY_MEDIA_TYPE.items() if media_type is not ImageMediaType.SVG)
+
+#: Suffixes holding vector geometry rather than pixels.
+_VECTOR_SUFFIXES: Final[frozenset[str]] = frozenset({".svg", ".svgz"})
+
+#: Long edge of a rasterized vector figure, in pixels. Vision models work well
+#: around 1.5k, and a vector table can be arbitrarily large — capping the long
+#: edge is what keeps a render from becoming a canvas of many thousands of rows.
+MAX_RASTER_LONG_EDGE: Final[int] = 1600
+
+#: Ceiling on the rendered canvas: one pathological SVG must not allocate gigabytes.
+MAX_RASTER_PIXELS: Final[int] = 4_000_000
 
 #: Chunk metadata key a backend uses to name the asset a chunk owns.
 _ASSET_ID_KEY: str = "asset_id"
@@ -210,6 +235,117 @@ def _write_file(
         logger.warning("Could not write image '%s' to the cache: %s", target, exc)
         return None
     return target
+
+
+def rasterise_bytes(image_file: str | Path) -> bytes | None:
+    """Raster bytes for a figure, or ``None`` when it cannot be produced."""
+    try:
+        return rasterise_image(image_file).read_bytes()
+    except (VectorRasterError, OSError):
+        return None
+
+
+def rasterise_image(image_file: str | Path) -> Path:
+    """A raster copy of *image_file* that a vision model or embedder can read.
+
+    A raster file is returned as it is. A vector figure (``.svg``/``.svgz`` —
+    what ``extract_vector_graphics`` writes for tables and diagrams, and what
+    modern ``.docx`` files embed) is rendered to a PNG beside it on first use
+    and reused afterwards while the source is unchanged; the vector original
+    stays the artifact the vault publishes.
+
+    Raises:
+        VectorRasterError: the figure could not be rendered — the caller
+            records it as a failed unit instead of silently dropping a figure.
+    """
+    source = Path(image_file)
+    if is_raster_image(source):
+        return source
+    if source.suffix.lower() not in _VECTOR_SUFFIXES:
+        msg = f"{source.suffix or 'no extension'} is neither a raster nor a vector image: {source}"
+        raise VectorRasterError(msg)
+    rendered = source.with_suffix(".png")
+    if rendered.is_file() and rendered.stat().st_mtime >= source.stat().st_mtime:
+        return rendered
+    try:
+        pixels = _render_vector(source)
+    except Exception as exc:
+        msg = f"could not render {source.name}: {exc}"
+        raise VectorRasterError(msg) from exc
+    try:
+        rendered.write_bytes(pixels)
+    except OSError as exc:
+        msg = f"could not write the rendered figure {rendered.name}: {exc}"
+        raise VectorRasterError(msg) from exc
+    logger.debug("Rendered %s to %s (%d bytes)", source.name, rendered.name, len(pixels))
+    return rendered
+
+
+def is_raster_image(image_file: str | Path) -> bool:
+    """Whether *image_file* already holds pixels."""
+    return Path(image_file).suffix.lower() in _RASTER_SUFFIXES
+
+
+def _render_vector(source: Path) -> bytes:
+    """Render a vector figure to PNG bytes, bounded by :data:`MAX_RASTER_LONG_EDGE`."""
+    width, height = _vector_canvas(source)
+    if width <= 0 or height <= 0:
+        # Unknown geometry: let the renderer pick the aspect, then shrink a
+        # canvas that came back too large for a model request.
+        return _shrink(resvg_py.svg_to_bytes(svg_path=str(source), width=MAX_RASTER_LONG_EDGE))
+    scale = min(MAX_RASTER_LONG_EDGE / max(width, height), _pixel_budget_scale(width, height))
+    if width >= height:
+        return bytes(resvg_py.svg_to_bytes(svg_path=str(source), width=max(1, round(width * scale))))
+    return bytes(resvg_py.svg_to_bytes(svg_path=str(source), height=max(1, round(height * scale))))
+
+
+def _pixel_budget_scale(width: int, height: int) -> float:
+    """Scale that keeps ``width * height`` under :data:`MAX_RASTER_PIXELS`."""
+    area = width * height
+    if area <= MAX_RASTER_PIXELS:
+        return float("inf")
+    return (MAX_RASTER_PIXELS / area) ** 0.5
+
+
+def _shrink(pixels: bytes | bytearray) -> bytes:
+    """Downscale rendered pixels that came back over the canvas budget."""
+    data = bytes(pixels)
+    with Image.open(io.BytesIO(data)) as image:
+        if image.width * image.height <= MAX_RASTER_PIXELS:
+            return data
+        resized = image.copy()
+    resized.thumbnail((MAX_RASTER_LONG_EDGE, MAX_RASTER_LONG_EDGE))
+    buffer = io.BytesIO()
+    resized.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def _vector_canvas(source: Path) -> tuple[int, int]:
+    """The figure's own pixel geometry, or ``(0, 0)`` when it does not state one."""
+    try:
+        root = ElementTree.parse(source).getroot()  # noqa: S314 — the parser stage produced this file
+    except (ElementTree.ParseError, OSError):
+        return 0, 0
+    view_box = root.get("viewBox")
+    if view_box:
+        parts = view_box.replace(",", " ").split()
+        if len(parts) == 4:
+            try:
+                return round(float(parts[2])), round(float(parts[3]))
+            except ValueError:
+                pass
+    return _length(root.get("width")), _length(root.get("height"))
+
+
+def _length(raw: str | None) -> int:
+    """A CSS length in whole pixels, ignoring the unit (an SVG renders in user units)."""
+    if not raw:
+        return 0
+    digits = "".join(char for char in raw if char.isdigit() or char == ".")
+    try:
+        return round(float(digits))
+    except ValueError:
+        return 0
 
 
 def _suffix_for(media_type: str) -> str:

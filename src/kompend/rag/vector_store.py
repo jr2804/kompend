@@ -30,6 +30,7 @@ from kompend.core.models.elements import element_text
 from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.logging import get_logger
+from kompend.preprocessing.images import is_raster_image, rasterise_bytes
 from kompend.rag.embedding_base import EmbeddingProvider
 from kompend.rag.multimodal import MediaEmbeddingUnsupported
 
@@ -239,7 +240,7 @@ def embed_node(
     notes: list[str] = []
     if len(paths) > 1:
         notes.append(f"{len(paths)} figures; only the first was embedded")
-    data = figure_bytes(paths[0], base_dir=base_dir)
+    data = media_bytes(paths[0], base_dir=base_dir)
     if data is None:
         notes.append(f"figure file is missing: {paths[0]}")
         return provider.embed(text), "; ".join(notes)
@@ -302,6 +303,22 @@ def _figure_digest(path: str) -> str:
         _FIGURE_DIGEST_CACHE.clear()
     _FIGURE_DIGEST_CACHE[key] = digest
     return digest
+
+
+def media_bytes(path: str, *, base_dir: Path | None = None) -> bytes | None:
+    """Bytes a media embedder can take: a vector figure rendered to pixels.
+
+    The endpoint accepts raster payloads only, and extraction yields vector
+    graphics for tables and diagrams, so the figure is rendered rather than
+    dropped. :func:`figure_bytes` keeps reading the original, because the
+    content digest identifies the figure itself.
+    """
+    candidate = Path(path)
+    if not candidate.is_absolute() and base_dir is not None:
+        candidate = base_dir / candidate
+    if not is_raster_image(candidate):
+        return rasterise_bytes(candidate)
+    return figure_bytes(path, base_dir=base_dir)
 
 
 def figure_bytes(path: str, *, base_dir: Path | None = None) -> bytes | None:

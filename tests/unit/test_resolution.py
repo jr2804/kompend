@@ -124,24 +124,29 @@ class TestVLMEnricher:
         # A filtered image is a deliberate decision, not a failed unit.
         assert not enricher.failures.failures
 
-    def test_pre_filter_skips_a_vector_graphic_without_a_vlm_call(self, tmp_path: Path) -> None:
-        """A ``.svg`` carries no pixels: skipping it is not a failed figure.
+    def test_a_vector_graphic_is_rasterized_then_captioned(self, tmp_path: Path) -> None:
+        """An SVG figure is rendered to PNG and the raster goes to the model.
 
         Vector extraction (``extract_vector_graphics``) writes tables and
-        diagrams as SVG; a vision model answers those with an HTTP 400, which
-        used to surface as one VLM failure warning per graphic.
+        diagrams as SVG, and modern ``.docx`` files embed SVG too; a vision
+        model answers those with an HTTP 400, so the figure is rendered instead
+        of being dropped.
         """
         graphic = tmp_path / "table.svg"
-        graphic.write_text('<svg xmlns="http://www.w3.org/2000/svg"><rect width="200" height="120"/></svg>', encoding="utf-8")
+        graphic.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="200" height="120"><rect width="200" height="120" fill="#336699"/></svg>',
+            encoding="utf-8",
+        )
         agent = _make_agent()
         enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
-        with patch.object(agent, "run") as run:
+        with patch.object(agent, "run", return_value="A blue rectangle.") as run:
             resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(graphic))))
-        run.assert_not_called()
-        statuses = [e for e in resolved.entities if e.get("type") == "image_caption_status"]
-        assert len(statuses) == 1
-        assert ".svg" in statuses[0]["context"]
-        assert resolved.metadata.get("vlm_filtered") is True
+        rendered = tmp_path / "table.png"
+        assert rendered.is_file()
+        assert run.call_args.args[0].image_file == str(rendered)
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert descs[0]["context"] == "A blue rectangle."
+        assert resolved.metadata.get("vlm_filtered") is None
         assert not enricher.failures.failures
 
     def test_pre_filter_allows_large_image(self, tmp_path: Path) -> None:

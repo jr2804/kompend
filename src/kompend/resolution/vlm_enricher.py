@@ -25,11 +25,12 @@ from pathlib import Path
 from PIL import Image
 
 from kompend.agents.failure import UnitFailureLog
-from kompend.agents.vlm import VlmAgent, VlmDeps, is_captionable_image
+from kompend.agents.vlm import VlmAgent, VlmDeps
 from kompend.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
 from kompend.core.templates import get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.logging import get_logger
+from kompend.preprocessing.images import VectorRasterError, rasterise_image
 from kompend.resolution.base import BaseResolver
 
 #: The entity type a real caption carries. The compiler publishes an
@@ -119,20 +120,21 @@ class VLMEnricher(BaseResolver):
             )
             return resolved
 
-        if not Path(str(image_file)).is_file():
-            # The producer promised an image that is not there: a broken
-            # unit, not a decorative one.
-            self._record(resolved, FileNotFoundError(f"image file not found: {image_file}"))
+        try:
+            caption_source = _caption_source(image_file)
+        except (FileNotFoundError, VectorRasterError) as exc:
+            logger.debug("No capturable figure for %s: %s", resolved.chunk.id, exc)
+            self._record(resolved, exc)
             resolved.entities.append(
                 {
                     "name": "vlm_error",
                     "type": STATUS_ENTITY_TYPE,
-                    "context": f"Image file not found: {image_file}",
+                    "context": f"Figure unavailable: {exc}",
                 }
             )
             return resolved
 
-        skip, reason = self._should_skip(image_file)
+        skip, reason = self._should_skip(caption_source)
         if skip:
             logger.debug("VLM pre-filter skipping %s: %s", resolved.chunk.id, reason)
             resolved.entities.append(
@@ -146,7 +148,7 @@ class VLMEnricher(BaseResolver):
             return resolved
 
         try:
-            caption = self._generate_caption(image_file, context=_render_context(resolved.chunk))
+            caption = self._generate_caption(caption_source, context=_render_context(resolved.chunk))
         except Exception as exc:
             self._record(resolved, exc)
             resolved.entities.append(
@@ -189,15 +191,10 @@ class VLMEnricher(BaseResolver):
         file size and pixel dimensions. These are the bulk of extraction
         noise and would otherwise each consume a slow VLM call.
 
-        Formats that carry no pixels are filtered here too: the extraction
-        yields vector graphics (``.svg`` tables and diagrams), and the vision
-        model rejects those with an HTTP 400 rather than answering — a
-        per-figure failure warning that says nothing about the document.
+        Called with the rasterized copy, so a vector figure is measured by the
+        pixels the model will actually see.
         """
         p = Path(image_file)
-        if not is_captionable_image(p):
-            suffix = p.suffix.lower()
-            return True, f"{suffix or 'no extension'} is not a raster image a vision model can read"
         size = p.stat().st_size
         if size < self._min_bytes:
             return True, f"too small ({size} bytes < {self._min_bytes})"
@@ -242,3 +239,21 @@ def _render_context(chunk: Chunk) -> str:
         nearby=nearby,
         document_context=document_context,
     )
+
+
+def _caption_source(image_file: str | Path) -> Path:
+    """The file the VLM is handed: the figure as pixels.
+
+    A raster is used as it is; a vector figure is rendered to a PNG beside it,
+    because a vision model answers ``.svg`` with an HTTP 400.
+
+    Raises:
+        FileNotFoundError: the producer named an image that is not there — a
+            broken unit, not a decorative one.
+        VectorRasterError: the figure exists but cannot become pixels.
+    """
+    path = Path(str(image_file))
+    if not path.is_file():
+        msg = f"image file not found: {image_file}"
+        raise FileNotFoundError(msg)
+    return rasterise_image(path)
