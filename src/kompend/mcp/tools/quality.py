@@ -5,7 +5,6 @@ from typing import Any
 
 from kompend.agents.remediate import make_agentic_remediation_agent
 from kompend.cli.cmds.quality.doctor import run_doctor
-from kompend.cli.cmds.quality.lint import CHECK_STEP_RULES, _make_lint_agent, _persist_history
 from kompend.cli.settings import build_cli_overrides
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
@@ -20,13 +19,14 @@ from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, REVIE
 from kompend.core.reporting.log import build_log_report
 from kompend.core.utils.dicts import as_str
 from kompend.lint.base import RemediationStatus
+from kompend.lint.flow import CHECK_STEP_RULES, _make_lint_agent, persist_lint_fixes, run_full_lint_flow
 from kompend.lint.flow import _run_pass as _run_rules_pass
-from kompend.lint.flow import persist_lint_fixes, run_full_lint_flow
 from kompend.lint.gap_analysis import analyze_gaps, gaps_to_text
 from kompend.lint.history import (
     history_to_json,
     history_to_text,
     load_lint_history,
+    persist_history,
     prune_lint_history,
     report_from_dict,
 )
@@ -91,7 +91,7 @@ def lint_check(
     fixes_applied = 0
     if fix and any(r.fix_applied for r in report.results):
         fixes_applied = persist_lint_fixes(wiki, vp)
-    _persist_history(report, vp=vp, cfg=cfg, context="check", elapsed=elapsed, fix=fix, node_count=len(wiki.nodes), llm_meta=None)
+    persist_history(report, vp=vp, config=cfg.raw, context="check", elapsed=elapsed, fix=fix, node_count=len(wiki.nodes), llm=None)
     return {
         "status": "ok",
         "health_score": report.health_score,
@@ -119,7 +119,7 @@ def lint_semantic(
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
     llm_meta = {MetadataField.MODEL: model, "usage": lint_agent.usage.to_dict()} if lint_agent.usage is not None else None
-    _persist_history(report, vp=vp, cfg=cfg, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm_meta=llm_meta)
+    persist_history(report, vp=vp, config=cfg.raw, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm=llm_meta)
     return {
         "status": "ok",
         "health_score": report.health_score,

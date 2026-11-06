@@ -23,6 +23,7 @@ from kompend.core.keys import (
     COMPILE_LLM_DEFAULT_MODEL,
     COMPILE_LLM_FALLBACK_CHAIN,
 )
+from kompend.core.paths import LINT_HISTORY_FILE, VaultPaths
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import LINT_RUNS_TABLE
 from kompend.core.utils.time import iso_local, now_local
@@ -74,6 +75,33 @@ def entry_from_report(
         "wiki_meta": {"node_count": node_count},  # nocheck: lint-history schema, not wiki metadata
         "report": report_to_dict(report),
     }
+
+
+def persist_history(  # noqa: PLR0917 — a history entry needs every run fact
+    report: LintReport,
+    *,
+    vp: VaultPaths,
+    config: dict[str, Any],
+    context: str,
+    elapsed: float,
+    fix: bool,
+    node_count: int,
+    llm: dict[str, Any] | None,
+) -> None:
+    """Append the run as a history entry, so ``lint history`` and ``lint gaps`` see it.
+
+    The CLI commands and the MCP tools both record runs; this is the one place
+    that entry is built and stored.
+    """
+    entry = entry_from_report(
+        report,
+        duration_seconds=elapsed,
+        options={"context": context, "fix": fix},
+        config=config,
+        node_count=node_count,
+        llm=llm,
+    )
+    save_lint_entry(entry, vp.kompend_dir / LINT_HISTORY_FILE)
 
 
 def report_from_dict(report_dict: dict[str, Any]) -> LintReport:

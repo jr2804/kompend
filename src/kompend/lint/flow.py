@@ -28,11 +28,16 @@ from kompend.lint.history import entry_from_report, save_lint_entry
 from kompend.lint.log import render_report, write_lint_log
 from kompend.lint.remediation import RemediationStatus, remediate
 from kompend.lint.runner import LintRunner, _build_report
+from kompend.lint.structural import STRUCTURAL_RULES
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.renderer import format_output
 
 LLM_STEP_WEIGHT = 100
 DETERMINISTIC_STEP_WEIGHT = 1
+
+#: The deterministic rules of the ``check`` step: everything structural except
+#: rumdl (which is the separate ``format`` step).
+CHECK_STEP_RULES: list[str] = [rule.name for rule in STRUCTURAL_RULES] + ["duplicate-references"]
 
 logger = get_logger(__name__)
 

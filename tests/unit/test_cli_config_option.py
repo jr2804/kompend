@@ -7,7 +7,7 @@ from typing import Any
 import pytest
 
 from kompend.cli.app import app, register_all_commands
-from kompend.cli.cmds.quality import lint as lint_cmd
+from kompend.cli.cmds.quality.lint import history as lint_history_cmd
 from kompend.cli.context import RunContext
 from kompend.cli.settings import config_file_from_ctx
 from tests.helpers.cli import CliRunner
@@ -50,7 +50,7 @@ class TestConfigFileFromCtx:
             seen["config_file"] = config_file_from_ctx()
             raise SystemExit(0)
 
-        monkeypatch.setattr(lint_cmd, "vault_paths_from_ctx", _capture)
+        monkeypatch.setattr(lint_history_cmd, "vault_paths_from_ctx", _capture)
         register_all_commands()
 
         result = CliRunner().invoke(app, ["--config", "alt.toml", "lint", "history"])

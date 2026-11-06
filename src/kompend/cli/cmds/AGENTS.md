@@ -33,6 +33,11 @@ are subpackages:
 | `pipeline/` | Parse, compile, ingest, index, config, sources | `/kompend parse`, `/kompend compile`, `/kompend ingest`, `/kompend index`, `/kompend config`, `/kompend sources` |
 | `quality/` | Doctor, lint, review, log, status, provenance, list-parsers | `/kompend doctor`, `/kompend lint`, `/kompend review`, `/kompend log`, `/kompend status`, `/kompend provenance`, `/kompend list-parsers` |
 
+`quality/lint/` is the one nested package below a domain subpackage: the
+sub-command families (`run`, `history`, `gaps`, `remediate`, `formatting`)
+each own a module and `__init__.py` registers them on the sub-app, so the
+`lint` help text has one source.
+
 `quality/_capabilities.py` holds the doctor's model probes (native tool-call
 output, schema-in-prompt output, raw JSON, the configured compact format, and
 the deterministic input-format size comparison). Each probe returns a

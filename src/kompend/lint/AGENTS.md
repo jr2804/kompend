@@ -20,11 +20,12 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 | ``base.py`` | ``Severity``, ``LintRuleOutcome``, ``LintResult``, ``BaseLintRule`` ABC |
 | ``runner.py`` | ``LintRunner``, ``LintReport`` — orchestrates rule execution |
 | ``structural.py`` | ``STRUCTURAL_RULES`` — programmatic rules (image embeds, broken links, etc.); ``broken-wikilinks`` lookup is alias-aware (slug/acronym/normalized forms + fuzzy fallback tagged ``alias_of``) |
+| ``flow.py`` | ``run_full_lint_flow``/``_run_pass`` (one pass over a rule set, fixes persisted), ``persist_lint_fixes``, ``_make_lint_agent``, and ``CHECK_STEP_RULES`` — the deterministic rules of the ``check`` step |
 | ``llm_rules.py`` | ``LLM_RULE_BY_NAME`` — LLM-powered semantic rules |
 | ``remediation.py`` | ``RemediationAutoFixer`` — auto-fix for structural + LLM findings |
 | ``gap_analysis.py`` | Gap recommendations from lint reports; broken-wikilink findings stratified into ``alias`` vs ``missing`` resolutions |
 | ``_remediation_gaps.py`` | Gap-specific remediation logic; generated pages route through ``MarkdownWriter`` (→ ``concepts/`` + index regen) |
-| ``history.py`` | ``LintEntry`` + ``save_lint_entry``/``load_lint_history``/``prune_lint_history`` — lint run history in the ``lint_runs`` table of ``.kompend/kompend.db`` |
+| ``history.py`` | ``LintEntry`` + ``save_lint_entry``/``load_lint_history``/``prune_lint_history``/``report_from_dict`` and ``persist_history`` (one run → one entry) — lint run history in the ``lint_runs`` table of ``.kompend/kompend.db`` |
 
 ## Rules
 
@@ -52,6 +53,11 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   `AgenticRemediationAgent` (free-text page writer); the lint-rule agent's
   `BaseModel | str` output cannot produce a page and fails validation. A single
   failed page is a skipped action, never an exception that ends `lint all`.
+- **One definition per question.** Which rules count as the deterministic
+  ``check`` step (``flow.CHECK_STEP_RULES``) and how a finished run becomes a
+  history entry (``history.persist_history``) live here, never in a caller: the
+  CLI commands and the MCP tools both consume them, and a copy in either layer
+  drifts (the MCP tools used to import both from the CLI command module).
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.
