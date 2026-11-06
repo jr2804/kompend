@@ -41,8 +41,11 @@ class CommandModule(StrEnum):
     AGENTS = "kompend.cli.cmds.agents"
     ATTACHMENTS = "kompend.cli.cmds.knowledge.attachments"
     CAPTURE = "kompend.cli.cmds.knowledge.capture"
+    COMPILE = "kompend.cli.cmds.pipeline.compile"
     CONFIG = "kompend.cli.cmds.pipeline.config"
     DOCTOR = "kompend.cli.cmds.quality.doctor_cmd"
+    INDEX = "kompend.cli.cmds.pipeline.index"
+    INGEST = "kompend.cli.cmds.pipeline.ingest"
     INIT = "kompend.cli.cmds.init"
     LINT = "kompend.cli.cmds.quality.lint"
     LIST_PARSERS = "kompend.cli.cmds.quality.list_parsers_cmd"
@@ -50,7 +53,7 @@ class CommandModule(StrEnum):
     MEMORY = "kompend.cli.cmds.knowledge.memory"
     ORGANIZE = "kompend.cli.cmds.knowledge.organize"
     PACK = "kompend.cli.cmds.knowledge.pack"
-    PIPELINE = "kompend.cli.cmds.pipeline.pipeline"
+    PARSE = "kompend.cli.cmds.pipeline.parse"
     PROVENANCE = "kompend.cli.cmds.quality.provenance_cmd"
     QUERY = "kompend.cli.cmds.knowledge.query"
     REFERENCES = "kompend.cli.cmds.knowledge.references"
@@ -135,25 +138,25 @@ class CommandSpec:
 COMMANDS: Final[dict[CommandName, CommandSpec]] = {
     # Build pipeline
     CommandName.COMPILE: CommandSpec(
-        CommandModule.PIPELINE,
+        CommandModule.COMPILE,
         "compile_cmd",
         HelpPanel.BUILD_PIPELINE,
         "Compile documents into a knowledge wiki.",
     ),
     CommandName.INGEST: CommandSpec(
-        CommandModule.PIPELINE,
+        CommandModule.INGEST,
         "ingest_cmd",
         HelpPanel.BUILD_PIPELINE,
         "Ingest documents into the knowledge graph without compiling a wiki.",
     ),
     CommandName.PARSE: CommandSpec(
-        CommandModule.PIPELINE,
+        CommandModule.PARSE,
         "parse_cmd",
         HelpPanel.BUILD_PIPELINE,
         "Parse documents and show their structure.",
     ),
     CommandName.INDEX: CommandSpec(
-        CommandModule.PIPELINE,
+        CommandModule.INDEX,
         "index_cmd",
         HelpPanel.BUILD_PIPELINE,
         "Rebuild the vector index for semantic search.",

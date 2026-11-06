@@ -25,9 +25,9 @@ from kompend.cli.args import (
     WritePageTitle,
     WriteSourceFiles,
 )
-from kompend.cli.errors import usage_error
 from kompend.cli.settings import (
     build_cli_overrides,
+    parse_attrs,
     vault_paths_from_ctx,
 )
 from kompend.cli.sources.resolve import resolve_files
@@ -91,7 +91,7 @@ def capture_cmd(
         sources_dir=sources_dir,
         capture_agent=capture_agent,
         tags=tag,
-        attributes=_parse_attrs(attr),
+        attributes=parse_attrs(attr),
     )
     if not paths:
         get_console().print("[yellow]Nothing captured — the input contained no extractable knowledge items.[/]")
@@ -126,20 +126,9 @@ def learn_cmd(
         text,
         sources_dir=vp.sources_dir,
         tags=tag,
-        attributes=_parse_attrs(attr),
+        attributes=parse_attrs(attr),
     )
     get_console().print(f"Learned fact -> {path.name}")
-
-
-def _parse_attrs(attr: list[str] | None) -> dict[str, str]:
-    """Parse ``KEY=VALUE`` --attr flags into a dict."""
-    out: dict[str, str] = {}
-    for item in attr or []:
-        if "=" not in item:
-            usage_error(f"Use KEY=VALUE format for attributes, got: '{item}'")
-        key, _, value = item.partition("=")
-        out[key.strip()] = value.strip()
-    return out
 
 
 def consolidate_cmd(

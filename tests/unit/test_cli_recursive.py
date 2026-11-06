@@ -41,7 +41,7 @@ def test_parse_follows_paths_recursive(
     expected: bool,
 ) -> None:
     base = _vault(tmp_path, recursive=config_recursive)
-    captured = _capture_resolve(monkeypatch, "kompend.cli.cmds.pipeline.pipeline")
+    captured = _capture_resolve(monkeypatch, "kompend.cli.cmds.pipeline.parse")
 
     with pytest.raises(_Captured):
         _cli_runner.invoke(

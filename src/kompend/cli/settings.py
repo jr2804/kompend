@@ -11,6 +11,7 @@ from typing import Any
 
 from kompend.cli.context import RunContext, current_run_context
 from kompend.cli.errors import usage_error
+from kompend.core.config import coerce_config_value, validate_config_key
 from kompend.core.keys import (
     COMPILE_CACHE_IGNORE_MODEL,
     COMPILE_EMBEDDING_MODEL,
@@ -175,3 +176,37 @@ def build_cli_overrides(
         # --set values are already coerced and validated; merged last = highest precedence.
         overrides.update(cli_set)
     return overrides
+
+
+def parse_cli_set(items: list[str] | None) -> dict[str, Any]:
+    """Parse repeated ``--set key=value`` items into a coerced override dict.
+
+    Each value is validated against the known config schema and coerced to the
+    type declared in :data:`kompend.core.config.DEFAULTS`. Unknown keys or bad
+    values abort the run with a clear error; the result is what
+    :func:`build_cli_overrides` merges last.
+    """
+    result: dict[str, Any] = {}
+    for item in items or []:
+        if "=" not in item:
+            usage_error(f"--set expects key=value, got: {item!r}")
+        key, _, val = item.partition("=")
+        key = key.strip()
+        if not validate_config_key(key):
+            usage_error(f"unknown config key: {key!r}")
+        try:
+            result[key] = coerce_config_value(val, key)
+        except ValueError as exc:
+            usage_error(f"--set {key}: {exc}")
+    return result
+
+
+def parse_attrs(items: list[str] | None) -> dict[str, str]:
+    """Parse repeated ``--attr key=value`` items into a plain string dict."""
+    result: dict[str, str] = {}
+    for item in items or []:
+        if "=" not in item:
+            usage_error(f"--attr expects key=value, got: {item!r}")
+        key, _, val = item.partition("=")
+        result[key.strip()] = val.strip()
+    return result

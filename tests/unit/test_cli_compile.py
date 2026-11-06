@@ -309,8 +309,8 @@ def test_compile_shows_traceback_on_unexpected_error(tmp_path: Path, monkeypatch
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg, cancel=None: _BoomPipeline())
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.build_pipeline", lambda cfg, cancel=None: _BoomPipeline())
 
     runner = CliRunner()
     result = runner.invoke(app, ["compile"])
@@ -334,10 +334,10 @@ def test_compile_prints_pending_notes_notice_without_distilling(tmp_path: Path, 
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg, cancel=None: _BoomPipeline())
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.build_pipeline", lambda cfg, cancel=None: _BoomPipeline())
     monkeypatch.setattr(
-        "kompend.cli.cmds.pipeline.pipeline.run_distill",
+        "kompend.cli.cmds.pipeline.compile.run_distill",
         lambda sources_dir, cfg, **kwargs: distill_calls.append(sources_dir) or [],
     )
 
@@ -377,9 +377,9 @@ def test_compile_distill_flag_distills_before_pipeline(tmp_path: Path, monkeypat
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg, cancel=None: _BoomPipeline())
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.run_distill", _fake_distill)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.build_pipeline", lambda cfg, cancel=None: _BoomPipeline())
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.run_distill", _fake_distill)
 
     result = CliRunner().invoke(app, ["compile", "--distill"])
 
@@ -405,9 +405,9 @@ def test_compile_distill_flag_reports_empty_corpus(tmp_path: Path, monkeypatch: 
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", lambda cfg, cancel=None: _BoomPipeline())
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.run_distill", lambda sources_dir, cfg, **kwargs: [])
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.build_pipeline", lambda cfg, cancel=None: _BoomPipeline())
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.run_distill", lambda sources_dir, cfg, **kwargs: [])
 
     result = CliRunner().invoke(app, ["compile", "--distill"])
 
@@ -437,8 +437,8 @@ def test_compile_lists_no_archive_files_in_source_count(tmp_path: Path, monkeypa
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("KOMP_LLM_DEFAULT_MODEL", "test-model")
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.check_llm_availability", lambda p: None)
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_pipeline", _real_iter_sources_pipeline)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.check_llm_availability", lambda p: None)
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.compile.build_pipeline", _real_iter_sources_pipeline)
 
     result = CliRunner().invoke(app, ["compile"])
 

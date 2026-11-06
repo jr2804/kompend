@@ -38,6 +38,14 @@ sub-command families (`run`, `history`, `gaps`, `remediate`, `formatting`)
 each own a module and `__init__.py` registers them on the sub-app, so the
 `lint` help text has one source.
 
+**One module per pipeline command.** `parse.py`, `compile.py`, `ingest.py` and
+`index.py` hold one plain command each, because the registry imports a command
+module only when that command runs: a `kompend index` never loads the compile
+path (and the pipeline, the distill workflow and the post-compile actions it
+pulls in). `parse_cli_set` and `parse_attrs` — the `--set`/`--attr` flags every
+command shares — live in `cli/settings.py` beside `build_cli_overrides`, which
+consumes them.
+
 `quality/_capabilities.py` holds the doctor's model probes (native tool-call
 output, schema-in-prompt output, raw JSON, the configured compact format, and
 the deterministic input-format size comparison). Each probe returns a

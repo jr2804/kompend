@@ -61,7 +61,7 @@ def test_ingest_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: p
         vector_graphics=True,
     )
     captured: dict[str, Any] = {}
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_parser", _capturing_factory(captured))
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.ingest.build_parser", _capturing_factory(captured))
 
     with pytest.raises(_Captured):
         _cli_runner.invoke(app, ["--wiki-dir", str(base), "ingest"], catch_exceptions=False)
@@ -79,7 +79,7 @@ def test_parse_cli_passes_the_configured_options(tmp_path: Path, monkeypatch: py
     base = _vault(tmp_path, judge="ollama", judge_model="parable-tinyjev", preference="speed", effort="medium")
     doc = base / "sources" / "note.txt"
     captured: dict[str, Any] = {}
-    monkeypatch.setattr("kompend.cli.cmds.pipeline.pipeline.build_parser", _capturing_factory(captured))
+    monkeypatch.setattr("kompend.cli.cmds.pipeline.parse.build_parser", _capturing_factory(captured))
 
     with pytest.raises(_Captured):
         _cli_runner.invoke(app, ["--wiki-dir", str(base), "parse", str(doc)], catch_exceptions=False)

@@ -27,9 +27,9 @@ def test_index_rebuilds_vector_index(tmp_path: Path, monkeypatch: pytest.MonkeyP
 
     wiki = _make_wiki()
     with (
-        patch("kompend.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=wiki) as mock_load,
-        patch("kompend.cli.cmds.pipeline.pipeline.build_vector_index", return_value=1) as mock_build,
-        patch("kompend.cli.cmds.pipeline.pipeline.write_wiki_cache") as mock_write,
+        patch("kompend.cli.cmds.pipeline.index.load_cached_wiki", return_value=wiki) as mock_load,
+        patch("kompend.cli.cmds.pipeline.index.build_vector_index", return_value=1) as mock_build,
+        patch("kompend.cli.cmds.pipeline.index.write_wiki_cache") as mock_write,
     ):
         result = runner.invoke(app, ["index"])
 
@@ -53,7 +53,7 @@ def test_index_no_wiki_exits_error(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     base = _setup_vault(tmp_path)
     monkeypatch.chdir(base)
 
-    with patch("kompend.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=None):
+    with patch("kompend.cli.cmds.pipeline.index.load_cached_wiki", return_value=None):
         result = runner.invoke(app, ["index"])
 
     assert result.exit_code == 1
@@ -78,9 +78,9 @@ def test_index_respects_embed_attachments_config(tmp_path: Path, monkeypatch: py
 
     wiki = _make_wiki()
     with (
-        patch("kompend.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=wiki),
-        patch("kompend.cli.cmds.pipeline.pipeline.build_vector_index", return_value=5) as mock_build,
-        patch("kompend.cli.cmds.pipeline.pipeline.write_wiki_cache"),
+        patch("kompend.cli.cmds.pipeline.index.load_cached_wiki", return_value=wiki),
+        patch("kompend.cli.cmds.pipeline.index.build_vector_index", return_value=5) as mock_build,
+        patch("kompend.cli.cmds.pipeline.index.write_wiki_cache"),
     ):
         result = runner.invoke(app, ["index"])
 
@@ -99,9 +99,9 @@ def test_index_no_embedding_model_errors(tmp_path: Path, monkeypatch: pytest.Mon
 
     wiki = _make_wiki()
     with (
-        patch("kompend.cli.cmds.pipeline.pipeline.load_cached_wiki", return_value=wiki),
-        patch("kompend.cli.cmds.pipeline.pipeline.build_vector_index", return_value=1) as mock_build,
-        patch("kompend.cli.cmds.pipeline.pipeline.write_wiki_cache"),
+        patch("kompend.cli.cmds.pipeline.index.load_cached_wiki", return_value=wiki),
+        patch("kompend.cli.cmds.pipeline.index.build_vector_index", return_value=1) as mock_build,
+        patch("kompend.cli.cmds.pipeline.index.write_wiki_cache"),
     ):
         result = runner.invoke(app, ["index", "--embed-model", "custom/model"])
 
