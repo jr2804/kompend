@@ -159,6 +159,14 @@ decision and a stable entry point).
 - **A wrapper that only forwards keywords is not a split.** Moving a 20-argument
   call into a 20-argument helper neither reduces statements nor creates a seam;
   it duplicates the signature. Extract a phase only when it names a step.
+- **A command module is a surface; an engine belongs under the package tree.**
+  When a module's body answers questions about the world (is this host ready, is
+  that model reachable, what does this file contain), it is a library that
+  happens to have a CLI: move it to `kompend/<domain>/` and leave the command
+  with rendering and argument plumbing. Splitting it into
+  `cli/cmds/<domain>/<thing>/` keeps it unreachable for every other surface,
+  and the second surface then imports a command module — the boundary defect
+  this loop exists to remove.
 - **A name that crosses a boundary loses its underscore.** Privacy markers are
   for module-local names only.
 - **Derive, don't declare**, wherever the vocabulary already exists as an
@@ -224,6 +232,17 @@ Pitfalls that cost real time:
   them mid-edit. `git status` first, then scope the command to the paths the
   loop owns; gates that scan the whole tree stay red until their work lands,
   which is not your regression.
+- **A hand-written record re-lists its own fields.** `__init__` plus `to_dict`
+  over four attributes is a `@dataclass(frozen=True, slots=True)` plus one
+  method. The two sides drift the first time a field is added, and only a
+  field-consistency gate notices. When a move touches such a class, declare it
+  as a dataclass instead of relocating the constructor.
+- **A `dict[str, Any]` boundary parameter is a record nobody named.** A config,
+  an options bag or a metadata mapping walked with `cfg.get("dotted.key", 300)`
+  carries a literal default that no schema knows (the real default was 120) and
+  a key string that duplicates a constant — sometimes one that does not exist
+  yet. Read the typed model at the boundary (`resolved.kompend.<section>`) and
+  keep the mapping only where the data is genuinely dynamic.
 - **Never mix a move with a behaviour change.** If the split reveals a bug,
   commit the move, then the fix; otherwise the diff cannot be reviewed and the
   bisect cannot find the fix.
@@ -364,3 +383,17 @@ Kept for calibration; do not copy the specifics into another project.
   `cli/settings.py`. A cross-command inconsistency was found and deliberately
   NOT fixed here (``parse`` never passed ``config_file`` to ``resolve_config``,
   so ``--config-file`` was ignored): a behaviour fix is its own commit.
+- Fourth loop: `cli/cmds/quality/doctor.py` 746 → a library of seven modules
+  (`run_doctor` in `diagnostics/runner.py` 134, `providers.py` 312,
+  `models.py` 279, `environment.py` 82, `base.py` 33, `capabilities.py` moved
+  unchanged) plus a `doctor.py` that is 51 lines of rendering. The size was
+  never the argument — the argument is that the command module answered
+  questions about the host, the provider endpoints and five model properties,
+  and that the MCP `doctor` tool had to import a CLI command module to get
+  them. The loop produced the antipattern inventory the owner asked for: a
+  hand-written record class, `cfg: dict[str, Any]` with a stale literal default
+  and a hand-written dotted key, `LLMConfig(**cfg.get(...).get(...))`
+  dict-splatting, a `# nocheck: enum-literal` hiding a provider id, three
+  copies of provider-string parsing across the repo, a dead offload branch, and
+  a check documented as the only catalogue refresher that `run_doctor` never
+  called (left unwired: that is a behaviour change, reported instead).
