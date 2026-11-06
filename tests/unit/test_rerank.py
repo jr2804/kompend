@@ -46,7 +46,7 @@ def test_flashrank_reranker_reports_a_missing_dependency(
     def _missing(*args: object, **kwargs: object) -> object:
         raise ImportError("No module named 'flashrank'")
 
-    monkeypatch.setattr(kompend.rag, "load_ranker", _missing)
+    _stub_loader(monkeypatch, _missing)
     with pytest.raises(RerankerUnavailable):
         _build_reranker(tmp_path)
 
@@ -60,7 +60,7 @@ def test_flashrank_reranker_reports_a_model_that_will_not_load(
     def _broken(*args: object, **kwargs: object) -> object:
         raise RuntimeError("model download failed")
 
-    monkeypatch.setattr(kompend.rag, "load_ranker", _broken)
+    _stub_loader(monkeypatch, _broken)
     with pytest.raises(RerankerUnavailable):
         _build_reranker(tmp_path)
 
@@ -71,11 +71,13 @@ def test_scores_come_back_in_the_input_order(tmp_path: Path, monkeypatch: pytest
     The model returns the passages in its own order; the stage maps them back
     onto the input.
     """
+    # This one builds a real flashrank request, so it needs the extra.
+    pytest.importorskip("flashrank", reason="the 'rerank' extra is not installed")
 
     def _loader(*args: object, **kwargs: object) -> _FakeRanker:
         return _FakeRanker([{"id": "2", "score": 0.9}, {"id": "0", "score": 0.1}])
 
-    monkeypatch.setattr(kompend.rag, "load_ranker", _loader)
+    _stub_loader(monkeypatch, _loader)
     scores = _build_reranker(tmp_path).rerank("q", ["a", "bb", "ccc"])
     assert scores == [0.1, 0.0, 0.9]
 
@@ -83,6 +85,29 @@ def test_scores_come_back_in_the_input_order(tmp_path: Path, monkeypatch: pytest
 def _build_reranker(tmp_path: Path) -> FlashRankReranker:
     """A reranker whose model is already stubbed out — never a download."""
     return FlashRankReranker(cache_dir=tmp_path)
+
+
+def _stub_loader(monkeypatch: pytest.MonkeyPatch, loader: object) -> None:
+    """Replace the lazy ``kompend.rag.load_ranker`` without importing flashrank.
+
+    The attribute is served by ``lazy_loader``, so *reading* it imports the
+    backend module — which imports flashrank, and fails when the 'rerank'
+    extra is not installed. Patching the module dict shadows the lazy lookup
+    without triggering the import, so these tests behave the same with and
+    without the extra.
+    """
+    monkeypatch.setitem(kompend.rag.__dict__, "load_ranker", loader)
+
+
+def test_the_backend_module_imports_when_the_extra_is_installed() -> None:
+    """The lazy backend module must import cleanly when the extra is present.
+
+    Without the extra it is never imported — that is what the lazy boundary
+    buys — so this is the one test that catches a typo in the module itself.
+    """
+    pytest.importorskip("flashrank", reason="the 'rerank' extra is not installed")
+    assert callable(kompend.rag.load_ranker)
+    assert callable(kompend.rag.build_request)
 
 
 def test_cross_encoder_stage_reorders_the_candidates(monkeypatch: pytest.MonkeyPatch) -> None:

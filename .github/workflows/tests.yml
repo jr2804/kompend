@@ -60,10 +60,17 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        # `--frozen` keeps CI on the committed lock file: a resolution that
-        # drifts from it is a change the repository owner has to make
-        # deliberately, not something a CI run may introduce.
-        run: uv sync --frozen
+        # `uv.lock` is gitignored, so there is no committed lock file to pin:
+        # `uv sync` resolves the dependency set from pyproject.toml. The
+        # project plus its dev group is all the unit tier needs, plus the
+        # 'rerank' extra — the flashrank backend is an optional dependency
+        # the unit tier exercises, and CI is where its real import gets
+        # covered.
+        # `--python 3.13` pins the interpreter to the one setup-python put on
+        # PATH: uv would otherwise pick its own default, and several
+        # dependencies (unrar2-cffi) ship cp313 wheels only, so a different
+        # minor version means building them from source.
+        run: uv sync --python 3.13 --extra rerank
 
       - name: Unit suite
         # The documented T2 command (tests/AGENTS.md): the retry backoff is

@@ -151,3 +151,9 @@ it runs — no flags from plugins that are not installed.
 - The unit tier runs on every push and every pull request
   (`.github/workflows/tests.yml`), with the T2 command above — a failing test
   is a signal, not a surprise found by hand
+- The flashrank backend is an optional extra (`uv add 'kompend[rerank]'`). The
+  suite passes without it — two rerank tests skip — and CI installs it, so the
+  backend's real import is covered there. A test that needs the extra says so
+  with `pytest.importorskip`; a test that only needs the *loader* patched
+  shadows `kompend.rag.__dict__` instead of the lazy attribute, because
+  reading the attribute imports the backend module
