@@ -27,6 +27,7 @@ retrievers.
 | `vector_store.py` | `VectorField`, `VectorStoreLike`, `to_pydantic_ai_embedding_string`, and the composition rules (`indexable_nodes`, `content_hash`, `embed_text`, `embed_node`, figure helpers) — **import-light** |
 | `embedding_pydantic.py` | `PydanticAIEmbeddingProvider`, `make_provider`, `build_embedder` — the pydantic-ai stack lives here and nowhere else |
 | `sqlite_vec_store.py` | `SqliteVecWikiStore` — the vec0 table, the side tables, the FTS5 index, the filters, the fusion, the drift guard |
+| `build.py` | `build_vector_index` — the index builder; it lives here, not in the package `__init__`, because it needs the sqlite-vec backend |
 | `rerank.py` | `Reranker` protocol, `FlashRankReranker` (optional extra) |
 | `multimodal.py` | `OllamaMediaEmbedder` |
 
@@ -118,15 +119,21 @@ retrievers.
 - **The embedding provider is untouched by the store.** `EmbeddingProvider`,
   `make_provider` and `build_embedder` are backend-independent and unchanged;
   no store embeds images.
-- **The import chain stays light.** `kompend/rag/__init__.py` attaches the
-  heavy attrs (`SqliteVecWikiStore`, `VectorField`, `indexable_nodes`) via
-  `lazy_loader` — importing `kompend.rag` or any of its light submodules
-  (`embedding_base`, `multimodal`) must not pull the pydantic-ai provider
-  stack into interpreter startup. Code that only handles providers
-  abstractly (dedup, memory, test fixtures) imports `EmbeddingProvider`
-  from `embedding_base.py`, not `vector_store.py`. New heavy imports go
-  behind `lazy.attach`, never into the package `__init__` top level
-  (function-level imports are banned repo-wide — see `.agents/CODE.md`).
+- **The import chain stays light.** `kompend/rag/__init__.py` attaches every
+  name via `lazy_loader` — importing `kompend.rag` or any of its light
+  submodules (`embedding_base`, `multimodal`) must not pull the pydantic-ai
+  provider stack into interpreter startup, and it must not pull the sqlite-vec
+  backend either (measured: 2.3 s for the backend alone, so an eager import
+  there made `import kompend.rag` 100× heavier). Code that only handles
+  providers abstractly (dedup, memory, test fixtures) imports
+  `EmbeddingProvider` from `embedding_base.py`, not `vector_store.py`. New
+  heavy imports go behind `lazy.attach`, never into the package `__init__`
+  top level (function-level imports are banned repo-wide — see
+  `.agents/CODE.md`). A *function* that needs a lazy name lives in the
+  submodule that owns it (`build.py` next to the store) — it may not sit in
+  the package `__init__`, where the name would have to be imported to be
+  visible. The package exports its names through `lazy.attach`'s `__all__`,
+  not a literal one, so no name is declared twice.
 - **A node with a figure is embedded with that figure.** `multimodal.py`
   (`OllamaMediaEmbedder`) calls Ollama's `POST /api/embed` with
   `input: {text, image}` — the image as raw base64, one per request, the first
