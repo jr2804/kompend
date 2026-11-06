@@ -55,6 +55,16 @@ _MIME_BY_EXT: dict[_ImageExt, str] = {
 # rare case of an unrecognised extension.
 _DEFAULT_MEDIA_TYPE = "image/png"
 
+
+def is_captionable_image(image_file: str | Path) -> bool:
+    """Whether this file carries pixels the VLM agent can be handed.
+
+    The check is the captioner's own suffix table: anything outside it (a
+    vector graphic such as ``.svg``, or a non-image) has no raster payload, and
+    the model answers it with an HTTP 400 rather than a caption.
+    """
+    return Path(image_file).suffix.lower() in _MIME_BY_EXT
+
 logger = get_logger(__name__)
 
 

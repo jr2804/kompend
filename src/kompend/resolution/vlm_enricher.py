@@ -25,7 +25,7 @@ from pathlib import Path
 from PIL import Image
 
 from kompend.agents.failure import UnitFailureLog
-from kompend.agents.vlm import VlmAgent, VlmDeps
+from kompend.agents.vlm import VlmAgent, VlmDeps, is_captionable_image
 from kompend.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
 from kompend.core.templates import get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError
@@ -139,7 +139,7 @@ class VLMEnricher(BaseResolver):
                 {
                     "name": "vlm_filtered",
                     "type": STATUS_ENTITY_TYPE,
-                    "context": f"Image filtered (decorative/too small): {reason}",
+                    "context": f"Image filtered: {reason}",
                 }
             )
             resolved.metadata["vlm_filtered"] = True
@@ -188,8 +188,16 @@ class VLMEnricher(BaseResolver):
         Filters tiny/decorative images (logos, icons, spacers, bullets) via
         file size and pixel dimensions. These are the bulk of extraction
         noise and would otherwise each consume a slow VLM call.
+
+        Formats that carry no pixels are filtered here too: the extraction
+        yields vector graphics (``.svg`` tables and diagrams), and the vision
+        model rejects those with an HTTP 400 rather than answering — a
+        per-figure failure warning that says nothing about the document.
         """
         p = Path(image_file)
+        if not is_captionable_image(p):
+            suffix = p.suffix.lower()
+            return True, f"{suffix or 'no extension'} is not a raster image a vision model can read"
         size = p.stat().st_size
         if size < self._min_bytes:
             return True, f"too small ({size} bytes < {self._min_bytes})"
