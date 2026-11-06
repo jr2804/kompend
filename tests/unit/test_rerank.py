@@ -37,29 +37,6 @@ class _FakeRanker:
         return self._ranked
 
 
-def _result(article_id: str, content: str = "body") -> SearchResult:
-    return SearchResult(
-        article_id=article_id,
-        title=f"title {article_id}",
-        snippet=f"snippet {article_id}",
-        score=0.5,
-        content=content,
-    )
-
-
-def _wiki() -> CompiledWiki:
-    return CompiledWiki(
-        nodes=[WikiNode(id="n1", title="t", content="c", node_type=NodeType.SECTION)],
-        edges=[],
-        toc=[],
-    )
-
-
-def _build_reranker(tmp_path: Path) -> FlashRankReranker:
-    """A reranker whose model is already stubbed out — never a download."""
-    return FlashRankReranker(cache_dir=tmp_path)
-
-
 def test_flashrank_reranker_reports_a_missing_dependency(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -101,6 +78,11 @@ def test_scores_come_back_in_the_input_order(tmp_path: Path, monkeypatch: pytest
     monkeypatch.setattr(kompend.rag, "load_ranker", _loader)
     scores = _build_reranker(tmp_path).rerank("q", ["a", "bb", "ccc"])
     assert scores == [0.1, 0.0, 0.9]
+
+
+def _build_reranker(tmp_path: Path) -> FlashRankReranker:
+    """A reranker whose model is already stubbed out — never a download."""
+    return FlashRankReranker(cache_dir=tmp_path)
 
 
 def test_cross_encoder_stage_reorders_the_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -155,3 +137,21 @@ def test_the_none_backend_skips_the_stage() -> None:
     )
     candidates = [_result("a")]
     assert retriever._neural_rerank("query", candidates) == candidates
+
+
+def _result(article_id: str, content: str = "body") -> SearchResult:
+    return SearchResult(
+        article_id=article_id,
+        title=f"title {article_id}",
+        snippet=f"snippet {article_id}",
+        score=0.5,
+        content=content,
+    )
+
+
+def _wiki() -> CompiledWiki:
+    return CompiledWiki(
+        nodes=[WikiNode(id="n1", title="t", content="c", node_type=NodeType.SECTION)],
+        edges=[],
+        toc=[],
+    )

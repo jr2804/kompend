@@ -36,19 +36,6 @@ from kompend.preprocessing.parsers.base import DocumentParser, FileExtension, Pa
 ESC = "\x1b"
 
 
-@pytest.fixture(autouse=True)
-def _set_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Give the pipeline a compile model.
-
-    ``PipelineConfig.from_resolved`` refuses an empty
-    ``compile.llm.default_model``, and the cancellation tests build a real
-    pipeline. The model is never called — it is only carried through the
-    config — but it must be a well-formed ``provider/model`` id, because the
-    pipeline parses it when it builds the agents.
-    """
-    monkeypatch.setenv(EnvVar.LLM_DEFAULT_MODEL.value, "ollama/gpt-oss:20b")
-
-
 # ── CancelState ──────────────────────────────────────────────────────────
 
 
@@ -447,6 +434,19 @@ class TestAppCancelledExit:
         assert recorded.get("error") == "double-ESC"
         err = capsys.readouterr().err
         assert "Cancelled (double-ESC)" in err
+
+
+@pytest.fixture(autouse=True)
+def _set_default_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Give the pipeline a compile model.
+
+    ``PipelineConfig.from_resolved`` refuses an empty
+    ``compile.llm.default_model``, and the cancellation tests build a real
+    pipeline. The model is never called — it is only carried through the
+    config — but it must be a well-formed ``provider/model`` id, because the
+    pipeline parses it when it builds the agents.
+    """
+    monkeypatch.setenv(EnvVar.LLM_DEFAULT_MODEL.value, "ollama/gpt-oss:20b")
 
 
 def _wait_until(predicate: Callable[[], bool], timeout: float = 2.0) -> bool:

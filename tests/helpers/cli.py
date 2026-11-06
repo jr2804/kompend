@@ -35,20 +35,6 @@ _USAGE_ERROR_EXIT_CODE = 2
 _CONSOLE_WIDTH = "500"
 
 
-@contextlib.contextmanager
-def _wide_console() -> Generator[None]:
-    """Render CLI output on a canvas wide enough not to wrap."""
-    previous = os.environ.get("COLUMNS")
-    os.environ["COLUMNS"] = _CONSOLE_WIDTH
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop("COLUMNS", None)
-        else:
-            os.environ["COLUMNS"] = previous
-
-
 @dataclass
 class CliResult:
     """Outcome of one in-process CLI invocation."""
@@ -101,3 +87,17 @@ class CliRunner:
         if isinstance(result.returned, int):
             result.exit_code = result.returned
         return result
+
+
+@contextlib.contextmanager
+def _wide_console() -> Generator[None]:
+    """Render CLI output on a canvas wide enough not to wrap."""
+    previous = os.environ.get("COLUMNS")
+    os.environ["COLUMNS"] = _CONSOLE_WIDTH
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("COLUMNS", None)
+        else:
+            os.environ["COLUMNS"] = previous

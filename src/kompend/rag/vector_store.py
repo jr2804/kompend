@@ -254,6 +254,17 @@ def embed_node(
     return vector, "; ".join(notes) if notes else None
 
 
+def figure_identity(node: WikiNode) -> str:
+    """Content digest of a node's figures — part of the staleness fingerprint.
+
+    Only the bytes count, not the path: a vault move rewrites the path but
+    not the image, and :func:`content_hash` deliberately excludes paths for
+    that reason. A figure that cannot be read counts as ``missing``, so the
+    index is stale again once it reappears.
+    """
+    return "|".join(_figure_digest(path) for path in figure_paths(node))
+
+
 def figure_paths(node: WikiNode) -> list[str]:
     """The figure files a node carries, in page order.
 
@@ -271,28 +282,6 @@ def figure_paths(node: WikiNode) -> list[str]:
             if isinstance(path, str) and path:
                 paths.append(path)
     return paths
-
-
-def figure_bytes(path: str, *, base_dir: Path | None = None) -> bytes | None:
-    """Read a figure file, or ``None`` when it cannot be read."""
-    candidate = Path(path)
-    if not candidate.is_absolute() and base_dir is not None:
-        candidate = base_dir / candidate
-    try:
-        return candidate.read_bytes()
-    except OSError:
-        return None
-
-
-def figure_identity(node: WikiNode) -> str:
-    """Content digest of a node's figures — part of the staleness fingerprint.
-
-    Only the bytes count, not the path: a vault move rewrites the path but
-    not the image, and :func:`content_hash` deliberately excludes paths for
-    that reason. A figure that cannot be read counts as ``missing``, so the
-    index is stale again once it reappears.
-    """
-    return "|".join(_figure_digest(path) for path in figure_paths(node))
 
 
 def _figure_digest(path: str) -> str:
@@ -313,3 +302,14 @@ def _figure_digest(path: str) -> str:
         _FIGURE_DIGEST_CACHE.clear()
     _FIGURE_DIGEST_CACHE[key] = digest
     return digest
+
+
+def figure_bytes(path: str, *, base_dir: Path | None = None) -> bytes | None:
+    """Read a figure file, or ``None`` when it cannot be read."""
+    candidate = Path(path)
+    if not candidate.is_absolute() and base_dir is not None:
+        candidate = base_dir / candidate
+    try:
+        return candidate.read_bytes()
+    except OSError:
+        return None

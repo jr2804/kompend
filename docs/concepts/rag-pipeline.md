@@ -59,7 +59,6 @@ Re-ranks the top-K candidates from hybrid retrieval. The `backend` decides how:
 - **`bi-encoder`** (default) — embeds the query and each candidate with the vector store's embedding provider and sorts by cosine similarity. The candidates were ranked by that model already, so this mostly reorders them.
 - **`flashrank`** — a cross-encoder that reads the query and the page body together, and judges the pair. Needs the optional extra (`uv add 'kompend[rerank]'`); the model is downloaded on first use and cached under `.kompend/cache`.
 - **`none`** — skip the stage.
-
 - **When to enable:** When ranking quality matters more than latency. Bi-encoder re-ranking adds one embedding call per candidate; the cross-encoder adds one inference per candidate.
 - **Model:** the cross-encoder's model name (`reranker.model`, empty = its default). The bi-encoder uses the vector store's model (`compile.embedding.model`).
 - **top_k:** 20 (default). Higher = more candidates re-ranked but slower.

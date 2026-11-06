@@ -21,13 +21,13 @@ import pytest
 from kompend.core.env import EnvVar
 from kompend.rag.embedding_base import EmbeddingProvider
 
-_test_dir = Path(__file__).parent
-_data_dir = _test_dir / "data"
-
 #: ``KOMP_*`` variables the suite itself controls. The documented T2 command
 #: (``tests/AGENTS.md``) sets ``KOMP_LLM_TRANSIENT_BACKOFF=0`` so a retry path
 #: under test does not really sleep — that is part of the contract, not a leak.
 _PRESERVED_ENV_VARS = frozenset({EnvVar.LLM_TRANSIENT_BACKOFF.value})
+
+_test_dir = Path(__file__).parent
+_data_dir = _test_dir / "data"
 
 
 class DeterministicTestEmbeddingProvider(EmbeddingProvider):

@@ -17,11 +17,11 @@ from typing import Protocol
 import kompend.rag
 from kompend.logging import get_logger
 
-logger = get_logger(__name__)
-
 #: The model flashrank uses when the user names none. A cross-encoder
 #: distilled from ms-marco — ~3 MB, no torch.
 DEFAULT_FLASHRANK_MODEL = "ms-marco-TinyBERT-L-2-v2"
+
+logger = get_logger(__name__)
 
 
 class RerankerUnavailable(RuntimeError):
@@ -60,9 +60,7 @@ class FlashRankReranker:
         try:
             self._ranker = kompend.rag.load_ranker(self._model_name, cache_dir=cache_dir)
         except ImportError as exc:
-            raise RerankerUnavailable(
-                "The flashrank reranker needs the 'rerank' extra (uv add 'kompend[rerank]')"
-            ) from exc
+            raise RerankerUnavailable("The flashrank reranker needs the 'rerank' extra (uv add 'kompend[rerank]')") from exc
         except Exception as exc:
             raise RerankerUnavailable(f"Could not load the rerank model {self._model_name!r}: {exc}") from exc
 

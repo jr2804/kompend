@@ -40,17 +40,6 @@ class _StubProvider(EmbeddingProvider):
         return [v / norm for v in raw]
 
 
-def _tokens(text: str) -> list[str]:
-    """The word tokens of *text* — case-folded, punctuation split off."""
-    return [token for token in re.split(r"[^\w]+", text.lower()) if token]
-
-
-def _bucket(token: str, dim: int) -> int:
-    """The stable bucket a token falls into."""
-    digest = hashlib.sha256(token.encode("utf-8")).digest()
-    return int.from_bytes(digest[:4], "big") % dim
-
-
 class TestFtsSchema:
     def test_lexical_index_covers_title_and_preview(self, tmp_path: Path) -> None:
         """Both lexical fields are indexed, so a page matches on either."""
@@ -191,6 +180,17 @@ class TestFtsDegradation:
         store._require_conn().execute("DROP TABLE vec_fts")
         store.close()
         return SqliteVecWikiStore.open(str(db), embedding_provider=_StubProvider())
+
+
+def _tokens(text: str) -> list[str]:
+    """The word tokens of *text* — case-folded, punctuation split off."""
+    return [token for token in re.split(r"[^\w]+", text.lower()) if token]
+
+
+def _bucket(token: str, dim: int) -> int:
+    """The stable bucket a token falls into."""
+    digest = hashlib.sha256(token.encode("utf-8")).digest()
+    return int.from_bytes(digest[:4], "big") % dim
 
 
 def _store(tmp_path: Path, name: str = "vectors.db") -> SqliteVecWikiStore:

@@ -167,6 +167,220 @@ class SqliteVecWikiStore:
         self._write_manifest(nodes)
         return count
 
+    # ── Querying ─────────────────────────────────────────────────────────
+
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Search indexed wiki content by semantic similarity.
+
+        Optional keyword filters are pushed down into SQL: the tag and
+        attribute side tables are consulted with ``EXISTS`` subqueries, so the
+        filter is evaluated per candidate instead of scanning the corpus.
+        Omitting them reproduces the unfiltered result set.
+
+        The returned ``score`` is the cosine similarity (``1 - distance``),
+        higher is better.
+        """
+        if not self.available or self._provider is None:
+            return []
+        hits = self._vector_hits(
+            query,
+            top_k,
+            tags_all=tags_all,
+            tags_dnf=tags_dnf,
+            attributes_all=attributes_all,
+            attribute_keys=attribute_keys,
+        )
+        return [_hit_to_dict(hit) for hit in hits]
+
+    def fts_search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+    ) -> list[dict[str, object]]:
+        """Lexical (BM25) search over the FTS-indexed ``title`` + ``content_preview``.
+
+        Both lexical fields are searched and fused with reciprocal rank
+        fusion, so a page matches on its title or on its preview.
+
+        Returns the same dict shape as :meth:`search`; ``score`` is the fused
+        BM25 relevance (higher = better, no distance conversion). Returns ``[]``
+        when the store is closed or the lexical index cannot answer the query
+        (logged once) — never raises into the query path.
+        """
+        if not self.available:
+            return []
+        filters = {
+            "tags_all": tags_all,
+            "tags_dnf": tags_dnf,
+            "attributes_all": attributes_all,
+            "attribute_keys": attribute_keys,
+        }
+        try:
+            title_hits = self._fts_ranked(query, top_k, column="title", **filters)
+            preview_hits = self._fts_ranked(query, top_k, column="content_preview", **filters)
+        except sqlite3.Error as exc:
+            self._note_fts_unavailable(exc)
+            return []
+        fused = _fuse(((title_hits, 1.0), (preview_hits, 1.0)), top_k)
+        return [_hit_to_dict(hit) for hit in fused]
+
+    def hybrid_search(
+        self,
+        query: str,
+        top_k: int = 5,
+        *,
+        tags_all: Sequence[str] | None = None,
+        tags_dnf: Sequence[Sequence[str]] | None = None,
+        attributes_all: Sequence[str] | None = None,
+        attribute_keys: Sequence[str] | None = None,
+        vector_weight: float = 1.0,
+        fts_weight: float = 0.3,
+    ) -> list[dict[str, object]]:
+        """Fuse vector similarity and lexical BM25.
+
+        The two signals are retrieved separately — the vector candidate pool
+        and the two lexical indexes (``title``, ``content_preview``) — and
+        fused with weighted reciprocal rank fusion: a document's score is the
+        sum of ``weight / (60 + rank)`` over the lists it appears in. The
+        weights are ``[vector_weight, fts_weight, fts_weight]``.
+
+        When the lexical index cannot answer, the vector-only result is
+        returned (logged once).
+        """
+        if not self.available or self._provider is None:
+            return []
+        filters = {
+            "tags_all": tags_all,
+            "tags_dnf": tags_dnf,
+            "attributes_all": attributes_all,
+            "attribute_keys": attribute_keys,
+        }
+        vector_hits = self._vector_hits(query, top_k, **filters)
+        try:
+            title_hits = self._fts_ranked(query, top_k, column="title", **filters)
+            preview_hits = self._fts_ranked(query, top_k, column="content_preview", **filters)
+        except sqlite3.Error as exc:
+            self._note_fts_unavailable(exc)
+            return [_hit_to_dict(hit) for hit in vector_hits]
+
+        fused = _fuse(
+            (
+                (vector_hits, vector_weight),
+                (title_hits, fts_weight),
+                (preview_hits, fts_weight),
+            ),
+            top_k,
+        )
+        return [_hit_to_dict(hit) for hit in fused]
+
+    # ── Lifecycle ────────────────────────────────────────────────────────
+
+    def close(self) -> None:
+        """Close the store file.
+
+        SQLite holds the file open until the connection is closed, so a later
+        rebuild of the same path races the open handle.
+        """
+        if self._conn is not None:
+            with contextlib.suppress(Exception):
+                self._conn.close()
+            self._conn = None
+
+    # ── Staleness ────────────────────────────────────────────────────────
+
+    def is_stale(self, wiki: CompiledWiki, *, embed_attachments: bool = False) -> bool:
+        """Return True when the store's last build doesn't match ``wiki``.
+
+        Compares the ids the index covers (:func:`indexable_nodes`) against the
+        ids recorded by the last build, then their content hashes
+        (:func:`content_hash`). Missing bookkeeping, an unreadable store, or
+        any mismatch means the sidecar index is stale and must be rebuilt
+        before it can serve the loaded wiki. ``kompend query`` calls this on
+        every open, so a false positive re-embeds the whole corpus: a
+        build/check disagreement must not cost a full rebuild per query.
+
+        The content comparison catches the other direction: an edited page keeps
+        its id, so an ids-only check would keep serving vectors that describe
+        text the wiki no longer contains.
+
+        *embed_attachments* must match the value the index was built with — the
+        eligibility rule is part of what "up to date" means, so a config flip
+        makes the index stale.
+
+        The manifest row also records the embed-text version and the backend.
+        A row written by an older composition is stale even when the ids and
+        hashes match, because its vectors were built from different text; a
+        row written by another backend is stale because those vectors are not
+        readable here at all.
+        """
+        nodes = indexable_nodes(wiki, embed_attachments=embed_attachments)
+        expected = {node.id for node in nodes}
+        if not expected:
+            return True
+        if not self.db_file.exists():
+            return True
+        manifest_db = self._manifest_db_path()
+        if not manifest_db.is_file():
+            return True
+        row = self._read_manifest(manifest_db)
+        if row is None:
+            return True
+        reason = self._manifest_mismatch(row)
+        if reason is not None:
+            logger.info("Vector manifest %s — rebuilding: %s", reason, self.db_file)
+            return True
+        stored = {str(i) for i in json.loads(row["ids"])}
+        if stored != expected:
+            return True
+        return self._content_changed(row["content_hashes"], nodes)
+
+    @classmethod
+    def open(
+        cls,
+        db_file: str | Path,
+        embedding_model: str | None = None,
+        *,
+        embedding_provider: EmbeddingProvider | None = None,
+    ) -> SqliteVecWikiStore:
+        """Open an existing store for querying.
+
+        The store must have been created previously with :meth:`build_index`.
+        Either pass ``embedding_provider`` directly, or pass
+        ``embedding_model`` to create one via :func:`make_provider`.
+        """
+        provider = embedding_provider or kompend.rag.make_provider(embedding_model or "")
+        store = cls(db_file=db_file, embedding_provider=provider)
+        if not store.db_file.exists():
+            logger.warning("No vector store found at %s. Rebuild with build_index().", store.db_file)
+            return store
+        try:
+            store._conn = store._connect()
+        except Exception as exc:
+            logger.warning("Could not open the vector store at %s: %s", store.db_file, exc, exc_info=True)
+            return store
+        if not store._meta_matches():
+            logger.warning(
+                "Vector store at %s was written by another schema or backend — rebuild it",
+                store.db_file,
+            )
+            store.close()
+            return store
+        return store
+
     def _open_for_write(self) -> None:
         """Open (or recreate) the store file and lay out the schema."""
         self.close()
@@ -337,126 +551,6 @@ class SqliteVecWikiStore:
         logger.info("Finished indexing %d nodes in the vector store at %s", indexed_count, self.db_file)
         return indexed_count
 
-    # ── Querying ─────────────────────────────────────────────────────────
-
-    def search(
-        self,
-        query: str,
-        top_k: int = 5,
-        *,
-        tags_all: Sequence[str] | None = None,
-        tags_dnf: Sequence[Sequence[str]] | None = None,
-        attributes_all: Sequence[str] | None = None,
-        attribute_keys: Sequence[str] | None = None,
-    ) -> list[dict[str, Any]]:
-        """Search indexed wiki content by semantic similarity.
-
-        Optional keyword filters are pushed down into SQL: the tag and
-        attribute side tables are consulted with ``EXISTS`` subqueries, so the
-        filter is evaluated per candidate instead of scanning the corpus.
-        Omitting them reproduces the unfiltered result set.
-
-        The returned ``score`` is the cosine similarity (``1 - distance``),
-        higher is better.
-        """
-        if not self.available or self._provider is None:
-            return []
-        hits = self._vector_hits(
-            query,
-            top_k,
-            tags_all=tags_all,
-            tags_dnf=tags_dnf,
-            attributes_all=attributes_all,
-            attribute_keys=attribute_keys,
-        )
-        return [_hit_to_dict(hit) for hit in hits]
-
-    def fts_search(
-        self,
-        query: str,
-        top_k: int = 5,
-        *,
-        tags_all: Sequence[str] | None = None,
-        tags_dnf: Sequence[Sequence[str]] | None = None,
-        attributes_all: Sequence[str] | None = None,
-        attribute_keys: Sequence[str] | None = None,
-    ) -> list[dict[str, object]]:
-        """Lexical (BM25) search over the FTS-indexed ``title`` + ``content_preview``.
-
-        Both lexical fields are searched and fused with reciprocal rank
-        fusion, so a page matches on its title or on its preview.
-
-        Returns the same dict shape as :meth:`search`; ``score`` is the fused
-        BM25 relevance (higher = better, no distance conversion). Returns ``[]``
-        when the store is closed or the lexical index cannot answer the query
-        (logged once) — never raises into the query path.
-        """
-        if not self.available:
-            return []
-        filters = {
-            "tags_all": tags_all,
-            "tags_dnf": tags_dnf,
-            "attributes_all": attributes_all,
-            "attribute_keys": attribute_keys,
-        }
-        try:
-            title_hits = self._fts_ranked(query, top_k, column="title", **filters)
-            preview_hits = self._fts_ranked(query, top_k, column="content_preview", **filters)
-        except sqlite3.Error as exc:
-            self._note_fts_unavailable(exc)
-            return []
-        fused = _fuse(((title_hits, 1.0), (preview_hits, 1.0)), top_k)
-        return [_hit_to_dict(hit) for hit in fused]
-
-    def hybrid_search(
-        self,
-        query: str,
-        top_k: int = 5,
-        *,
-        tags_all: Sequence[str] | None = None,
-        tags_dnf: Sequence[Sequence[str]] | None = None,
-        attributes_all: Sequence[str] | None = None,
-        attribute_keys: Sequence[str] | None = None,
-        vector_weight: float = 1.0,
-        fts_weight: float = 0.3,
-    ) -> list[dict[str, object]]:
-        """Fuse vector similarity and lexical BM25.
-
-        The two signals are retrieved separately — the vector candidate pool
-        and the two lexical indexes (``title``, ``content_preview``) — and
-        fused with weighted reciprocal rank fusion: a document's score is the
-        sum of ``weight / (60 + rank)`` over the lists it appears in. The
-        weights are ``[vector_weight, fts_weight, fts_weight]``.
-
-        When the lexical index cannot answer, the vector-only result is
-        returned (logged once).
-        """
-        if not self.available or self._provider is None:
-            return []
-        filters = {
-            "tags_all": tags_all,
-            "tags_dnf": tags_dnf,
-            "attributes_all": attributes_all,
-            "attribute_keys": attribute_keys,
-        }
-        vector_hits = self._vector_hits(query, top_k, **filters)
-        try:
-            title_hits = self._fts_ranked(query, top_k, column="title", **filters)
-            preview_hits = self._fts_ranked(query, top_k, column="content_preview", **filters)
-        except sqlite3.Error as exc:
-            self._note_fts_unavailable(exc)
-            return [_hit_to_dict(hit) for hit in vector_hits]
-
-        fused = _fuse(
-            (
-                (vector_hits, vector_weight),
-                (title_hits, fts_weight),
-                (preview_hits, fts_weight),
-            ),
-            top_k,
-        )
-        return [_hit_to_dict(hit) for hit in fused]
-
     def _vector_hits(
         self,
         query: str,
@@ -564,112 +658,6 @@ class SqliteVecWikiStore:
                 self.db_file,
                 exc,
             )
-
-    # ── Lifecycle ────────────────────────────────────────────────────────
-
-    def close(self) -> None:
-        """Close the store file.
-
-        SQLite holds the file open until the connection is closed, so a later
-        rebuild of the same path races the open handle.
-        """
-        if self._conn is not None:
-            with contextlib.suppress(Exception):
-                self._conn.close()
-            self._conn = None
-
-    @classmethod
-    def open(
-        cls,
-        db_file: str | Path,
-        embedding_model: str | None = None,
-        *,
-        embedding_provider: EmbeddingProvider | None = None,
-    ) -> SqliteVecWikiStore:
-        """Open an existing store for querying.
-
-        The store must have been created previously with :meth:`build_index`.
-        Either pass ``embedding_provider`` directly, or pass
-        ``embedding_model`` to create one via :func:`make_provider`.
-        """
-        provider = embedding_provider or kompend.rag.make_provider(embedding_model or "")
-        store = cls(db_file=db_file, embedding_provider=provider)
-        if not store.db_file.exists():
-            logger.warning("No vector store found at %s. Rebuild with build_index().", store.db_file)
-            return store
-        try:
-            store._conn = store._connect()
-        except Exception as exc:
-            logger.warning("Could not open the vector store at %s: %s", store.db_file, exc, exc_info=True)
-            return store
-        if not store._meta_matches():
-            logger.warning(
-                "Vector store at %s was written by another schema or backend — rebuild it",
-                store.db_file,
-            )
-            store.close()
-            return store
-        return store
-
-    # ── Staleness ────────────────────────────────────────────────────────
-
-    def is_stale(self, wiki: CompiledWiki, *, embed_attachments: bool = False) -> bool:
-        """Return True when the store's last build doesn't match ``wiki``.
-
-        Compares the ids the index covers (:func:`indexable_nodes`) against the
-        ids recorded by the last build, then their content hashes
-        (:func:`content_hash`). Missing bookkeeping, an unreadable store, or
-        any mismatch means the sidecar index is stale and must be rebuilt
-        before it can serve the loaded wiki. ``kompend query`` calls this on
-        every open, so a false positive re-embeds the whole corpus: a
-        build/check disagreement must not cost a full rebuild per query.
-
-        The content comparison catches the other direction: an edited page keeps
-        its id, so an ids-only check would keep serving vectors that describe
-        text the wiki no longer contains.
-
-        *embed_attachments* must match the value the index was built with — the
-        eligibility rule is part of what "up to date" means, so a config flip
-        makes the index stale.
-
-        The manifest row also records the embed-text version and the backend.
-        A row written by an older composition is stale even when the ids and
-        hashes match, because its vectors were built from different text; a
-        row written by another backend is stale because those vectors are not
-        readable here at all.
-        """
-        nodes = indexable_nodes(wiki, embed_attachments=embed_attachments)
-        expected = {node.id for node in nodes}
-        if not expected:
-            return True
-        if not self.db_file.exists():
-            return True
-        manifest_db = self._manifest_db_path()
-        if not manifest_db.is_file():
-            return True
-        row = self._read_manifest(manifest_db)
-        if row is None:
-            return True
-        reason = self._manifest_mismatch(row)
-        if reason is not None:
-            logger.info("Vector manifest %s — rebuilding: %s", reason, self.db_file)
-            return True
-        stored = {str(i) for i in json.loads(row["ids"])}
-        if stored != expected:
-            return True
-        return self._content_changed(row["content_hashes"], nodes)
-
-    @staticmethod
-    def _read_manifest(manifest_db: Path) -> sqlite3.Row | None:
-        """The manifest row of the last build, or ``None`` when there is none."""
-        try:
-            with open_store(manifest_db) as conn:
-                return conn.execute(
-                    f"SELECT embed_version, {_EMBEDDING_MODEL_COLUMN}, {_BACKEND_COLUMN}, ids, content_hashes FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
-                ).fetchone()
-        except sqlite3.Error as exc:
-            logger.warning("Vector manifest unreadable — treating store as stale: %s", exc)
-            return None
 
     def _manifest_mismatch(self, row: sqlite3.Row) -> str | None:
         """Why the manifest does not describe the current vectors, or ``None``.
@@ -822,6 +810,18 @@ class SqliteVecWikiStore:
         except sqlite3.Error:
             return False
         return row is not None
+
+    @staticmethod
+    def _read_manifest(manifest_db: Path) -> sqlite3.Row | None:
+        """The manifest row of the last build, or ``None`` when there is none."""
+        try:
+            with open_store(manifest_db) as conn:
+                return conn.execute(
+                    f"SELECT embed_version, {_EMBEDDING_MODEL_COLUMN}, {_BACKEND_COLUMN}, ids, content_hashes FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
+                ).fetchone()
+        except sqlite3.Error as exc:
+            logger.warning("Vector manifest unreadable — treating store as stale: %s", exc)
+            return None
 
 
 class _Hit:
