@@ -71,6 +71,8 @@ sources/
 # …but the CLI package that deals with them is source code
 !src/kompend/cli/sources/
 !src/kompend/cli/sources/**
+# …except its bytecode: the negation above re-includes everything below it
+src/kompend/cli/sources/**/__pycache__/
 .claude/
 /.commandcode
 *.log
