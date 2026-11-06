@@ -38,7 +38,7 @@ class TestUsageTracker:
         t = UsageTracker()
         assert t.overall_rate() == 0.0
         assert t.recent_rate() == 0.0
-        assert t.to_dict()["overall_tok_s"] == 0.0
+        assert t.to_snapshot().overall_tok_s == 0.0
 
     def test_single_call_has_no_recent_interval(self) -> None:
         t = UsageTracker()
@@ -97,13 +97,13 @@ class TestUsageTracker:
         assert t.completion_tokens == 800
         assert t.call_count == 80
 
-    def test_to_dict_includes_rates(self) -> None:
+    def test_to_snapshot_includes_rates(self) -> None:
         t = UsageTracker()
         t.record(prompt_tokens=5, completion_tokens=50, model="m")
-        d = t.to_dict()
-        assert "overall_tok_s" in d
-        assert "recent_tok_s" in d
-        assert d["completion_tokens"] == 50
+        snapshot = t.to_snapshot()
+        assert snapshot.overall_tok_s >= 0.0
+        assert snapshot.recent_tok_s >= 0.0
+        assert snapshot.completion_tokens == 50
 
 
 class TestProviderMaxConnections:

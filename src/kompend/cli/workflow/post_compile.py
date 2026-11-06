@@ -24,9 +24,9 @@ from kompend.core.paths import LINT_HISTORY_FILE, VaultPaths
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.utils.time import iso_local
 from kompend.lint.flow import run_full_lint_flow, run_runner_with_progress
-from kompend.lint.history import ReportDict, entry_from_report, save_lint_entry
+from kompend.lint.history import LintRunOptions, entry_from_report, save_lint_entry
 from kompend.lint.log import render_report, write_lint_log
-from kompend.lint.runner import LintRunner
+from kompend.lint.runner import LintReportPayload, LintRunner
 from kompend.llm.context_window import discover_context_window
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.wiki_index import write_index, write_overview
@@ -210,7 +210,7 @@ def run_post_compile_lint_all(
     pipeline_config: PipelineConfig,
     show_progress: bool | None = None,
     lint_output: LintOutput = LintOutput.QUIET,
-) -> ReportDict:
+) -> LintReportPayload:
 
     paths = VaultPaths(base_dir)
     cfg = resolve_config(base_dir=base_dir)
@@ -247,7 +247,7 @@ def run_post_compile_lint(
     entry = entry_from_report(
         report,
         duration_seconds=lint_elapsed,
-        options={"context": "pipeline", "fix": False},
+        options=LintRunOptions(context="pipeline", fix=False),
         config=dict[str, Any](),
         node_count=len(wiki.nodes),
     )

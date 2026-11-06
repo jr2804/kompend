@@ -68,11 +68,11 @@ def lint_all(
         return {"status": "error", "message": str(exc)}
     return {
         "status": "ok",
-        "health_score": merged.get("health_score", 0.0),
-        "passes": merged.get("passes", 0),
-        "failures": merged.get("failures", 0),
-        "skips": merged.get("skips", 0),
-        "report": merged,
+        "health_score": merged.health_score,
+        "passes": merged.passes,
+        "failures": merged.failures,
+        "skips": merged.skips,
+        "report": merged.model_dump(mode="json"),
     }
 
 
@@ -119,7 +119,7 @@ def lint_semantic(
         return {"status": "error", "message": "LLM lint rules require a model. Set compile.lint.model or compile.llm.default_model."}
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
-    llm_meta = LintLlmMeta(model=model, usage=lint_agent.usage.to_dict()) if model is not None and lint_agent.usage is not None else None
+    llm_meta = LintLlmMeta(model=model, usage=lint_agent.usage.to_snapshot()) if model is not None and lint_agent.usage is not None else None
     persist_history(report, vp=vp, config=cfg.raw, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm=llm_meta)
     return {
         "status": "ok",
@@ -221,20 +221,20 @@ def lint_gaps(
     if not entries:
         return {"status": "error", "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
 
-    report_dict = entries[-1].get("report", {})
-    report = report_from_dict(report_dict)
+    report_payload = entries[-1].report
+    report = report_from_dict(report_payload)
     recs = analyze_gaps(report, display=cfg.kompend.display)
 
     if json_output:
         return {
             "status": "ok",
             "recommendations": [{"priority": r.priority, "category": r.category, "finding": r.finding, "action": r.action} for r in recs],
-            "based_on": {"timestamp": entries[-1].get("timestamp", "unknown"), "score": report_dict.get("health_score", 0.0)},
+            "based_on": {"timestamp": entries[-1].timestamp, "score": report_payload.health_score},
         }
     return {
         "status": "ok",
         "recommendations_text": gaps_to_text(recs),
-        "based_on": {"timestamp": entries[-1].get("timestamp", "unknown"), "score": report_dict.get("health_score", 0.0)},
+        "based_on": {"timestamp": entries[-1].timestamp, "score": report_payload.health_score},
     }
 
 
@@ -258,8 +258,8 @@ def lint_remediate(
     if not entries:
         return {"status": "error", "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
 
-    report_dict = entries[-1].get("report", {})
-    report = report_from_dict(report_dict)
+    report_payload = entries[-1].report
+    report = report_from_dict(report_payload)
 
     wiki = load_wiki_from_files(VaultPaths(base_dir).output_dir)
     if wiki is None:
@@ -310,7 +310,7 @@ def lint_remediate(
         "actions_text": remediation_to_text(actions),
         "applied": applied_count,
         "dry_run": dry_run,
-        "based_on": {"timestamp": entries[-1].get("timestamp", "unknown"), "score": report_dict.get("health_score", 0.0)},
+        "based_on": {"timestamp": entries[-1].timestamp, "score": report_payload.health_score},
     }
 
 

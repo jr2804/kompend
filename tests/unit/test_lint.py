@@ -25,7 +25,7 @@ from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.lint import _remediation_gaps as gaps_module
 from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
-from kompend.lint.history import entry_from_report, report_from_dict
+from kompend.lint.history import LintRunOptions, entry_from_report, report_from_dict
 from kompend.lint.llm_rules import (
     Contradiction,
     ContradictionOutput,
@@ -34,7 +34,7 @@ from kompend.lint.llm_rules import (
     CoverageGapRule,
 )
 from kompend.lint.remediation import remediate
-from kompend.lint.runner import LintRunner, _build_report, report_to_dict, report_to_json, report_to_text
+from kompend.lint.runner import LintRunner, _build_report, report_to_json, report_to_payload, report_to_text
 from kompend.lint.structural import (
     _RUMDL_FINDINGS,
     RULE_BY_NAME,
@@ -624,7 +624,7 @@ class TestReportFormatting:
 class TestEntryFromReport:
     def test_entry_from_report_survives_uncomputed_summary(self) -> None:
         """Regression: flow.py builds a LintReport without summary fields and
-        passes it to entry_from_report -> report_to_dict, which must not crash
+        passes it to entry_from_report -> report_to_payload, which must not crash
         (previously the narrow base.LintReport had no health_score:
         AttributeError) and must keep defaults.
         """
@@ -640,18 +640,18 @@ class TestEntryFromReport:
                 ],
             ),
             duration_seconds=0.0,
-            options={"context": "check", "fix": False},
+            options=LintRunOptions(context="check", fix=False),
             config={},
             node_count=1,
         )
-        report = entry["report"]
-        assert report["health_score"] == 0.0  # no crash: field exists
-        assert report["total_checks"] == 0  # summary defaults when not computed
-        assert report["results"][0]["rule"] == "broken-wikilinks"
-        assert report["results"][0]["outcome"] == "fail"
+        report = entry.report
+        assert report.health_score == 0.0  # no crash: field exists
+        assert report.total_checks == 0  # summary defaults when not computed
+        assert report.results[0].rule == "broken-wikilinks"
+        assert report.results[0].outcome == "fail"
 
-    def test_report_dict_round_trips_every_field(self) -> None:
-        """report_to_dict -> report_from_dict keeps severity and fix_applied.
+    def test_report_payload_round_trips_every_field(self) -> None:
+        """report_to_payload -> report_from_dict keeps severity and fix_applied.
 
         Both used to be lost on the way back from history, because the
         deserializer built a narrower finding type that has neither.
@@ -673,10 +673,10 @@ class TestEntryFromReport:
             health_score=0.0,
         )
 
-        data = report_to_dict(report)
-        assert data["results"][0]["outcome"] == "fail"
-        assert data["results"][0]["severity"] == "error"
-        assert data["results"][0]["fix_applied"] is True
+        data = report_to_payload(report)
+        assert data.results[0].outcome == "fail"
+        assert data.results[0].severity == "error"
+        assert data.results[0].fix_applied is True
 
         restored = report_from_dict(data)
         assert restored.total_checks == 1

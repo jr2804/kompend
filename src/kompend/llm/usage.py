@@ -14,7 +14,8 @@ import time
 from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import TypedDict
+
+from pydantic import BaseModel
 
 
 @dataclass
@@ -113,23 +114,23 @@ class UsageTracker:
         span = events[-1][0] - span_start
         return tokens_per_second(accumulated, span)
 
-    def to_dict(self) -> UsageSnapshot:
-        """Serialize to a plain dict for wiki.metadata storage."""
-        return {
-            "prompt_tokens": self.prompt_tokens,
-            "completion_tokens": self.completion_tokens,
-            "call_count": self.call_count,
-            "avg_ttft": round(self.avg_ttft, 2),
-            "overall_tok_s": round(self.overall_rate(), 2),
-            "recent_tok_s": round(self.recent_rate(), 2),
-            "per_model": dict(self.per_model),
-            "context_tokens": self.context_tokens,
-            "context_budget": self.context_budget,
-        }
+    def to_snapshot(self) -> UsageSnapshot:
+        """Serialize to a validated snapshot for ``wiki.metadata`` / lint history."""
+        return UsageSnapshot(
+            prompt_tokens=self.prompt_tokens,
+            completion_tokens=self.completion_tokens,
+            call_count=self.call_count,
+            avg_ttft=round(self.avg_ttft, 2),
+            overall_tok_s=round(self.overall_rate(), 2),
+            recent_tok_s=round(self.recent_rate(), 2),
+            per_model={model: dict(counts) for model, counts in self.per_model.items()},
+            context_tokens=self.context_tokens,
+            context_budget=self.context_budget,
+        )
 
 
-class UsageSnapshot(TypedDict):
-    """Wire shape of :meth:`UsageTracker.to_dict` — one snapshot of token accounts."""
+class UsageSnapshot(BaseModel):
+    """One snapshot of token accounts — the wire shape of :meth:`UsageTracker.to_snapshot`."""
 
     prompt_tokens: int
     completion_tokens: int

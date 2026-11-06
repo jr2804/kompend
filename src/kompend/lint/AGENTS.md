@@ -18,14 +18,14 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 | Module | Contents |
 |--------|----------|
 | ``base.py`` | ``Severity``, ``LintRuleOutcome``, ``LintResult``, ``BaseLintRule`` ABC |
-| ``runner.py`` | ``LintRunner``, ``LintReport`` — orchestrates rule execution |
+| ``runner.py`` | ``LintRunner``, ``LintReport`` — orchestrates rule execution; ``LintReportPayload``/``LintResultPayload`` are the validated wire shapes (dumped to JSON, loaded from history) |
 | ``structural.py`` | ``STRUCTURAL_RULES`` — programmatic rules (image embeds, broken links, etc.); ``broken-wikilinks`` lookup is alias-aware (slug/acronym/normalized forms + fuzzy fallback tagged ``alias_of``) |
 | ``flow.py`` | ``run_full_lint_flow``/``_run_pass`` (one pass over a rule set, fixes persisted), ``persist_lint_fixes``, ``_make_lint_agent``, and ``CHECK_STEP_RULES`` — the deterministic rules of the ``check`` step |
 | ``llm_rules.py`` | ``LLM_RULE_BY_NAME`` — LLM-powered semantic rules |
 | ``remediation.py`` | ``RemediationAutoFixer`` — auto-fix for structural + LLM findings |
 | ``gap_analysis.py`` | Gap recommendations from lint reports; broken-wikilink findings stratified into ``alias`` vs ``missing`` resolutions |
 | ``_remediation_gaps.py`` | Gap-specific remediation logic; generated pages route through ``MarkdownWriter`` (→ ``concepts/`` + index regen) |
-| ``history.py`` | ``LintEntry`` + ``save_lint_entry``/``load_lint_history``/``prune_lint_history``/``report_from_dict`` and ``persist_history`` (one run → one entry) — lint run history in the ``lint_runs`` table of ``.kompend/kompend.db`` |
+| ``history.py`` | Nested pydantic records (``LintEntry``/``LintRunOptions``/``LintLlmMeta``/``LintConfigSnapshot``/``LintWikiMeta``) + ``save_lint_entry``/``load_lint_history``/``prune_lint_history``/``report_from_dict`` and ``persist_history`` (one run → one entry) — lint run history in the ``lint_runs`` table of ``.kompend/kompend.db``. ``LintEntry.from_row()``/``to_columns()`` are the only owners of the table's 7-column shape; adding a column means adding a field and a ``_COLUMNS`` name |
 
 ## Rules
 

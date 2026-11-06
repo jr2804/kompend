@@ -68,7 +68,7 @@ class LintReport:
     """Typed wrapper around a lint report's ``results`` list.
 
     Single source of truth for the lint-report shape: a consumer that imports a
-    narrower copy crashes in ``runner.report_to_dict``. Summary fields default to
+    narrower copy crashes in ``runner.report_to_payload``. Summary fields default to
     0/0.0; callers that can compute them (runner, flow) fill them in.
 
     ``results`` holds :class:`LintResult` — the same finding type the rules

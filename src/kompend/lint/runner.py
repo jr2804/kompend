@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 from kompend.agents.lint import LintRuleAgent
 from kompend.core.config._configs import LintConfig, LlmDataFormat
@@ -18,7 +20,7 @@ from kompend.logging import get_logger
 logger = get_logger(__name__)
 
 
-class ReportResultDict(TypedDict):
+class LintResultPayload(BaseModel):
     """Wire shape of one serialized :class:`LintResult` — the ``lint_runs`` payload.
 
     ``details`` stays open: each rule records its own structured payload
@@ -31,18 +33,18 @@ class ReportResultDict(TypedDict):
     message: str
     page_id: str
     fix_applied: bool
-    details: dict[str, Any]
+    details: dict[str, Any] = Field(default_factory=dict)
 
 
-class ReportDict(TypedDict):
-    """Wire shape of :func:`report_to_dict` — the report half of a history entry."""
+class LintReportPayload(BaseModel):
+    """Wire shape of :func:`report_to_payload` — the report half of a history entry."""
 
     health_score: float
     total_checks: int
     failures: int
     passes: int
     skips: int
-    results: list[ReportResultDict]
+    results: list[LintResultPayload]
 
 
 class LintRunner:
@@ -268,30 +270,30 @@ def _build_report(results: list[LintResult]) -> LintReport:
 
 def report_to_json(report: LintReport) -> str:
     """Serialize a lint report to a JSON string."""
-    return json.dumps(report_to_dict(report), indent=2, default=str)
+    return json.dumps(report_to_payload(report).model_dump(mode="json"), indent=2, default=str)
 
 
-def report_to_dict(report: LintReport) -> ReportDict:
-    """Serialize a lint report to a plain dict (the ``lint_history`` shape)."""
-    return {
-        "health_score": report.health_score,
-        "total_checks": report.total_checks,
-        "failures": report.failures,
-        "passes": report.passes,
-        "skips": report.skips,
-        "results": [
-            {
-                "rule": r.rule,
-                "outcome": r.outcome.value,
-                "severity": r.severity.value,
-                "message": r.message,
-                "page_id": r.page_id,
-                "fix_applied": r.fix_applied,
-                "details": r.details,
-            }
+def report_to_payload(report: LintReport) -> LintReportPayload:
+    """Serialize a lint report to the validated ``lint_history`` payload."""
+    return LintReportPayload(
+        health_score=report.health_score,
+        total_checks=report.total_checks,
+        failures=report.failures,
+        passes=report.passes,
+        skips=report.skips,
+        results=[
+            LintResultPayload(
+                rule=r.rule,
+                outcome=r.outcome.value,
+                severity=r.severity.value,
+                message=r.message,
+                page_id=r.page_id,
+                fix_applied=r.fix_applied,
+                details=dict(r.details),
+            )
             for r in report.results
         ],
-    }
+    )
 
 
 def report_to_compact(report: LintReport, *, max_rules: int = 6, max_examples: int = 1) -> str:

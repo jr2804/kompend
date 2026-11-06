@@ -62,8 +62,8 @@ def lint_gaps(
         get_err_console().print("No lint history found. Run `kompend lint run` or compile with --lint first.")
         raise SystemExit(1)
 
-    report_dict = entries[-1].get("report", {})
-    report = report_from_dict(report_dict)
+    report_payload = entries[-1].report
+    report = report_from_dict(report_payload)
 
     # Coverage weighting: node degree from the cached wiki graph.
     degree_map = load_degree_map(vp.base_dir)
@@ -105,8 +105,8 @@ def lint_gaps(
             payload.append({"category": "_semantic_coverage", "topics": covered_topics})
         get_console().print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
-        ts = entries[-1].get("timestamp", "unknown")
-        score = report_dict.get("health_score", 0.0)
+        ts = entries[-1].timestamp
+        score = report_payload.health_score
         get_console().print(f"\nBased on lint run from {ts} (score: {score:.0f}%)\n")
         get_console().print(gaps_to_text(recs))
 

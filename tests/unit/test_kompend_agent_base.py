@@ -177,7 +177,7 @@ class TestCompactionCapability:
         agent._on_usage_update(ContextUsage(used_tokens=4096, window_tokens=8192, resolved=True))  # noqa: SLF001
         assert tracker.context_tokens == 4096
         assert tracker.context_budget == 8192
-        assert tracker.to_dict()["context_tokens"] == 4096
+        assert tracker.to_snapshot().context_tokens == 4096
 
     def test_usage_update_noop_without_tracker(self) -> None:
         agent = self._agent()  # no usage_tracker

@@ -142,7 +142,7 @@ def lint_semantic(
         raise SystemExit(1)
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
-    llm_meta = LintLlmMeta(model=model, usage=lint_agent.usage.to_dict()) if model is not None and lint_agent.usage is not None else None
+    llm_meta = LintLlmMeta(model=model, usage=lint_agent.usage.to_snapshot()) if model is not None and lint_agent.usage is not None else None
     persist_history(
         report,
         vp=vp,
@@ -190,17 +190,17 @@ def lint_all(
     vp = vault_paths_from_ctx()
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file_from_ctx())
     lint_output = resolve_lint_output(cfg.kompend.lint.output, verbose=verbose_lint, quiet=quiet_lint)
-    merged_dict = run_full_lint_flow(vp, cfg, fix=fix, fix_destructive=fix_destructive, lint_output=lint_output)
+    merged_payload = run_full_lint_flow(vp, cfg, fix=fix, fix_destructive=fix_destructive, lint_output=lint_output)
     if json_output:
-        get_console().print(json.dumps(merged_dict, indent=2, ensure_ascii=False))
+        get_console().print(json.dumps(merged_payload.model_dump(mode="json"), indent=2, ensure_ascii=False))
     else:
         get_console().print(
-            f"Lint complete: health {merged_dict.get('health_score', 0.0):.1f}% "
-            f"({merged_dict.get('passes', 0)} pass / {merged_dict.get('failures', 0)} fail / "
-            f"{merged_dict.get('skips', 0)} skip)"
+            f"Lint complete: health {merged_payload.health_score:.1f}% "
+            f"({merged_payload.passes} pass / {merged_payload.failures} fail / "
+            f"{merged_payload.skips} skip)"
         )
         log_stage(
             vp,
             action="Lint",
-            detail=f"Health score {merged_dict.get('health_score', 0.0):.1f}% ({merged_dict.get('passes', 0)} checks passed)",
+            detail=f"Health score {merged_payload.health_score:.1f}% ({merged_payload.passes} checks passed)",
         )

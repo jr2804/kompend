@@ -14,7 +14,8 @@ from kompend.core.models.enums import NodeType
 from kompend.core.reporting.runlog import log_run_end, log_run_start
 from kompend.core.store import open_store
 from kompend.core.store.schema import PRIVATE_PAGES_TABLE, RUNS_TABLE, VERIFICATION_TABLE
-from kompend.lint.history import LintEntry, load_lint_history, save_lint_entry
+from kompend.lint.history import LintConfigSnapshot, LintEntry, LintRunOptions, LintWikiMeta, load_lint_history, save_lint_entry
+from kompend.lint.runner import LintReportPayload
 from kompend.trust import mark_wiki_private
 from kompend.verification import ClaimVerification, VerificationResult, _persist_verification
 
@@ -49,8 +50,8 @@ class TestLintRunsRoundTrip:
         for i in range(3):
             save_lint_entry(_lint_entry(f"2025-01-0{i + 1}T00:00:00+00:00", 40.0 + i), path)
         loaded = load_lint_history(path)
-        assert [e["report"]["health_score"] for e in loaded] == [40.0, 41.0, 42.0]
-        assert [e["timestamp"] for e in loaded] == sorted(e["timestamp"] for e in loaded)
+        assert [e.report.health_score for e in loaded] == [40.0, 41.0, 42.0]
+        assert [e.timestamp for e in loaded] == sorted(e.timestamp for e in loaded)
 
 
 class TestVerificationRoundTrip:
@@ -112,23 +113,23 @@ def _vault(tmp_path: Path) -> Path:
 
 
 def _lint_entry(ts: str, score: float) -> LintEntry:
-    return {
-        "timestamp": ts,
-        "duration_seconds": 1.0,
-        "options": {"context": "check", "fix": False},
-        "llm": None,
-        "config_snapshot": {
-            "compile.compiler": "graph",
-            "compile.llm.default_model": "test-model",
-            "compile.llm.fallback_chain": [],
-        },
-        "wiki_meta": {"node_count": 1},
-        "report": {
-            "health_score": score,
-            "total_checks": 0,
-            "failures": 0,
-            "passes": 0,
-            "skips": 0,
-            "results": [],
-        },
-    }
+    return LintEntry(
+        timestamp=ts,
+        duration_seconds=1.0,
+        options=LintRunOptions(context="check", fix=False),
+        llm=None,
+        config_snapshot=LintConfigSnapshot(
+            compiler="graph",
+            default_model="test-model",
+            fallback_chain=[],
+        ),
+        wiki_meta=LintWikiMeta(node_count=1),
+        report=LintReportPayload(
+            health_score=score,
+            total_checks=0,
+            failures=0,
+            passes=0,
+            skips=0,
+            results=[],
+        ),
+    )

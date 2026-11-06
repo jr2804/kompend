@@ -20,6 +20,7 @@ from kompend.core.models.enums import NodeType
 from kompend.core.paths import VaultPaths
 from kompend.lint.flow import run_full_lint_flow
 from kompend.lint.gap_analysis import load_degree_map
+from kompend.lint.runner import LintReportPayload
 
 
 def test_load_degree_map_reads_store_snapshot(tmp_path: Path) -> None:
@@ -44,7 +45,7 @@ def test_run_full_lint_flow_succeeds_on_seeded_store(tmp_path: Path, monkeypatch
     monkeypatch.setattr("kompend.lint.flow._make_lint_agent", lambda cfg: (None, None))
     monkeypatch.setattr("kompend.lint.flow._plan", lambda *args, **kwargs: [])
     result = run_full_lint_flow(VaultPaths(tmp_path), types.SimpleNamespace(raw={}), show_progress=False, json_output=True)
-    assert isinstance(result, dict)
+    assert isinstance(result, LintReportPayload)
 
 
 def _seed_wiki(base_dir: Path) -> None:

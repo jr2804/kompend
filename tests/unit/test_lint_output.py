@@ -9,7 +9,7 @@ import pytest
 from kompend.cli.settings import resolve_lint_output
 from kompend.core.config._configs import LintConfig, LintOutput
 from kompend.lint.base import LintResult, LintRuleOutcome, Severity
-from kompend.lint.history import LintEntry, entry_from_report
+from kompend.lint.history import LintEntry, LintRunOptions, entry_from_report
 from kompend.lint.log import (
     LINT_LOG_DIR,
     latest_lint_log,
@@ -82,16 +82,16 @@ class TestLintLogArtefact:
 
         payload = read_lint_log(paths.payload)
         assert isinstance(payload, dict)
-        assert payload["timestamp"] == entry["timestamp"]
+        assert payload["timestamp"] == entry.timestamp
         report = payload["report"]
         assert isinstance(report, dict)
         assert report["health_score"] == 0.0
 
     def test_latest_returns_the_newest_report(self, tmp_path: Path) -> None:
         first = self._entry(_report(_fail("a", "one")))
-        first["timestamp"] = "2026-10-24T01:00:00+02:00"
+        first.timestamp = "2026-10-24T01:00:00+02:00"
         second = self._entry(_report(_fail("b", "two")))
-        second["timestamp"] = "2026-10-24T02:00:00+02:00"
+        second.timestamp = "2026-10-24T02:00:00+02:00"
 
         write_lint_log(first, tmp_path)
         write_lint_log(second, tmp_path)
@@ -108,7 +108,7 @@ class TestLintLogArtefact:
         return entry_from_report(
             report,
             duration_seconds=1.5,
-            options={"context": "pipeline", "fix": False},
+            options=LintRunOptions(context="pipeline", fix=False),
             config={},
             node_count=12,
         )
@@ -120,7 +120,7 @@ class TestRenderReport:
         entry = entry_from_report(
             _report(_fail("rumdl", "MD024", "log.md")),
             duration_seconds=1.0,
-            options={"context": "pipeline", "fix": False},
+            options=LintRunOptions(context="pipeline", fix=False),
             config={},
             node_count=3,
         )

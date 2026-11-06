@@ -24,10 +24,10 @@ from kompend.core.models import CompiledWiki, MetadataField, load_cached_wiki
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, VaultPaths
 from kompend.lint.base import LintReport, LintResult
 from kompend.lint.gap_analysis import analyze_gaps, load_degree_map
-from kompend.lint.history import LintLlmMeta, ReportDict, entry_from_report, save_lint_entry
+from kompend.lint.history import LintLlmMeta, LintRunOptions, entry_from_report, save_lint_entry
 from kompend.lint.log import render_report, write_lint_log
 from kompend.lint.remediation import RemediationStatus, remediate
-from kompend.lint.runner import LintRunner, _build_report
+from kompend.lint.runner import LintReportPayload, LintRunner, _build_report
 from kompend.lint.structural import STRUCTURAL_RULES
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.renderer import format_output
@@ -52,8 +52,8 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     json_output: bool = False,
     show_progress: bool = True,
     lint_output: LintOutput = LintOutput.QUIET,
-) -> ReportDict:
-    """Run every lint phase; return the merged report dict.
+) -> LintReportPayload:
+    """Run every lint phase; return the merged report payload.
 
     Called by `kompend lint all` and `kompend compile --lint-all`. One merged
     history entry per call.
@@ -117,27 +117,25 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     llm_meta: LintLlmMeta | None = None
     if lint_agent is not None:
         usage = lint_agent.usage
-        llm_meta = LintLlmMeta(model=lint_model or "")
-        if usage is not None:
-            llm_meta["usage"] = usage.to_dict()
+        llm_meta = LintLlmMeta(model=lint_model or "", usage=usage.to_snapshot() if usage is not None else None)
 
     entry = entry_from_report(
         merged_report,
         duration_seconds=time.monotonic() - flow_start,
-        options={"context": "all", "fix": fix},
+        options=LintRunOptions(context="all", fix=fix),
         config=cfg.raw,
         node_count=node_count,
         llm=llm_meta,
     )
     save_lint_entry(entry, vp.kompend_dir / LINT_HISTORY_FILE)
 
-    merged_dict = entry["report"]
+    merged_payload = entry.report
     paths = write_lint_log(entry, vp.base_dir)
     if json_output:
-        get_console().print_json(data=merged_dict)
+        get_console().print_json(data=merged_payload.model_dump(mode="json"))
     else:
         render_report(merged_report, lint_output, paths)
-    return merged_dict
+    return merged_payload
 
 
 def _make_lint_agent(cfg: Any) -> tuple[LintRuleAgent | None, str | None]:

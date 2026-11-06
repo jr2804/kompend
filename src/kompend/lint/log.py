@@ -16,7 +16,6 @@ from pathlib import Path
 from typing import Final
 
 from kompend.core.config._configs import LintOutput
-from kompend.core.models.enums import MetadataField
 from kompend.core.paths import VaultPaths
 from kompend.lint.history import LintEntry, report_from_dict
 from kompend.lint.runner import LintReport, report_to_compact, report_to_summary, report_to_text
@@ -44,25 +43,26 @@ def write_lint_log(entry: LintEntry, base_dir: Path) -> LintLogPaths:
     """
     directory = lint_log_dir(base_dir)
     directory.mkdir(parents=True, exist_ok=True)
-    stamp = _stamp(str(entry["timestamp"]))
+    stamp = _stamp(entry.timestamp)
     paths = LintLogPaths(markdown=directory / f"{stamp}.md", payload=directory / f"{stamp}.json")
 
-    report = report_from_dict(entry["report"])
-    options = entry.get("options") or {}
-    wiki_meta = entry.get("wiki_meta") or {}
-    duration = entry["duration_seconds"]  # nocheck - lint-history schema, not WikiField
-    page_count = wiki_meta.get(MetadataField.NODE_COUNT, 0)
+    report = report_from_dict(entry.report)
+    options = entry.options
+    wiki_meta = entry.wiki_meta
+    duration = entry.duration_seconds  # nocheck - lint-history schema, not WikiField
+    page_count = wiki_meta.node_count
     header = [
         "# Lint report",
         "",
-        f"- Run: {entry['timestamp']} ({options.get('context', 'lint')})",
+        f"- Run: {entry.timestamp} ({options.context})",
         f"- Duration: {duration:.1f}s over {page_count} page(s)",
     ]
-    model = (entry.get("llm") or {}).get(MetadataField.MODEL)
+    model = entry.llm.model if entry.llm is not None else None
     if model:
         header.append(f"- Model: {model}")
     paths.markdown.write_text("\n".join(header) + "\n\n" + report_to_text(report) + "\n", encoding="utf-8")
-    paths.payload.write_text(json.dumps(entry, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+    payload = entry.model_dump(mode="json", by_alias=True)
+    paths.payload.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
     return paths
 
 
