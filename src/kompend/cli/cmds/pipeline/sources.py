@@ -21,7 +21,6 @@ from typing import Annotated, Any
 from cyclopts import App, Parameter
 from rich.markup import escape
 
-from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.args import (
     ExportAll,
     ExportAnnotations,
@@ -29,6 +28,11 @@ from kompend.cli.args import (
     ExportSourceId,
     ExportSummary,
     SourceTags,
+)
+from kompend.cli.settings import (
+    build_cli_overrides,
+    config_file_from_ctx,
+    vault_paths_from_ctx,
 )
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config

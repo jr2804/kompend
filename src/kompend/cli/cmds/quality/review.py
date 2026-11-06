@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.args import JsonOutput
 from kompend.cli.args.quality import (
     ReviewAction,
     ReviewAll,
     ReviewReason,
     ReviewSlug,
+)
+from kompend.cli.settings import (
+    build_cli_overrides,
+    vault_paths_from_ctx,
 )
 from kompend.core.config import resolve_config
 from kompend.core.paths import REVIEW_DIR

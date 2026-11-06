@@ -8,7 +8,7 @@ from pathlib import Path
 
 import py7zr
 
-from kompend.cli._sources import extract_archive
+from kompend.cli.sources.resolve import extract_archive
 from kompend.preprocessing.downloaders.url_resolver import (
     ArxivHtmlResolver,
     ArxivPdfResolver,

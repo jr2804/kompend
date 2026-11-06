@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from kompend.agents.reference_resolver import ReferenceResolverAgent
-from kompend.cli._shared import build_cli_overrides
+from kompend.cli.settings import build_cli_overrides
 from kompend.compilation.flows.references import resolve_unresolved_references
 from kompend.core.config import resolve_config
 from kompend.core.models.references import SHORT_LABEL_TITLE_MAX

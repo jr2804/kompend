@@ -29,7 +29,7 @@ patterns across captures.
 - Import: ``from kompend.capture.capture import capture``,
   ``from kompend.capture.distill import distill``.
 - Distill wiring (agent selection, pending-note counting, result lines) used by
-  the CLI lives in ``kompend.cli._distill_helpers`` — this package exposes the
+  the CLI lives in ``kompend.cli.workflow.distill`` — this package exposes the
   flow, not the CLI presentation.
 - ``_distill_agentic`` resumes: a session that exhausts its request budget
   keeps the pages it saved, and a further session runs for the tag groups still

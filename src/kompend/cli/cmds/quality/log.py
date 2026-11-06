@@ -11,8 +11,12 @@ the API (``build_log_report``); this module is a thin CLI wrapper.
 
 from __future__ import annotations
 
-from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.args.quality import LogLast, LogWrite
+from kompend.cli.settings import (
+    build_cli_overrides,
+    config_file_from_ctx,
+    vault_paths_from_ctx,
+)
 from kompend.core.config import resolve_config
 from kompend.core.reporting.log import build_log_report
 from kompend.logging import get_console

@@ -5,7 +5,8 @@ Verifies AND/OR boolean logic for tag-based filtering of search results.
 
 from __future__ import annotations
 
-from kompend.cli.cmds.knowledge.query import _parse_attr_filters, matches_attr_filter, matches_tag_filter
+from kompend.cli.cmds.knowledge.query import _parse_attr_filters
+from kompend.search.filters import matches_attr_filter, matches_tag_filter
 
 
 class TestMatchesTagFilter:

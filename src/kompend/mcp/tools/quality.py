@@ -4,10 +4,10 @@ from pathlib import Path
 from typing import Any
 
 from kompend.agents.remediate import make_agentic_remediation_agent
-from kompend.cli._post_compile import write_wiki_cache
-from kompend.cli._shared import build_cli_overrides
 from kompend.cli.cmds.quality.doctor import run_doctor
 from kompend.cli.cmds.quality.lint import CHECK_STEP_RULES, _make_lint_agent, _persist_history
+from kompend.cli.settings import build_cli_overrides
+from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.keys import (

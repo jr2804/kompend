@@ -1,13 +1,13 @@
 """The kompend CLI application.
 
-Commands come from :mod:`kompend.cli._registry` and are registered as import
+Commands come from :mod:`kompend.cli.tree.registry` and are registered as import
 paths, so ``kompend --help`` names every command (and renders each panel) while
 only the invoked command's module is imported. Command modules keep heavy
 dependencies inside their command bodies so per-command startup stays fast.
 
 The root options (``--wiki-dir``, ``--config``, ``--no-user-tracking``,
 ``--verbose``, ``--version``) live on the meta app: they are parsed before a
-command runs and published to :mod:`kompend.cli._context`, which is how
+command runs and published to :mod:`kompend.cli.context`, which is how
 commands read them without a framework context object in every signature.
 """
 
@@ -23,10 +23,10 @@ from typing import Annotated, Any, Literal
 
 from cyclopts import App, Group, Parameter
 
-from kompend.cli._context import RunContext, use_run_context
-from kompend.cli._registry import COMMANDS, PANEL_ORDER, HelpPanel, OnDemandModule
-from kompend.cli._shared import format_exception_for_cli
 from kompend.cli.args import ConfigPath, NoUserTracking, Verbose, WikiDir
+from kompend.cli.context import RunContext, use_run_context
+from kompend.cli.errors import format_exception_for_cli
+from kompend.cli.tree.registry import COMMANDS, PANEL_ORDER, HelpPanel, OnDemandModule
 from kompend.core.cancel import CANCEL_EXIT_CODE, KompendCancelled
 from kompend.core.reporting.handle import RunHandle
 from kompend.core.verbosity import is_verbose, set_verbose

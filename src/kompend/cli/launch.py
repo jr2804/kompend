@@ -16,10 +16,10 @@ import sys
 from typing import Final
 
 import kompend
-from kompend.cli._console import ensure_utf8_code_page, harden_console_streams
-from kompend.cli._faults import enable_fault_handler, install_failure_hooks
-from kompend.cli._registry import OnDemandModule
-from kompend.cli._thread_pools import cap_thread_pools
+from kompend.cli.runtime.console import ensure_utf8_code_page, harden_console_streams
+from kompend.cli.runtime.faults import enable_fault_handler, install_failure_hooks
+from kompend.cli.runtime.thread_pools import cap_thread_pools
+from kompend.cli.tree.registry import OnDemandModule
 
 #: The flags the meta app's eager version option answers on their own.
 VERSION_FLAGS: Final[frozenset[str]] = frozenset({"--version", "-v"})

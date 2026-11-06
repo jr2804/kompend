@@ -6,10 +6,10 @@ from typing import Any
 
 import pytest
 
-from kompend.cli._context import RunContext
-from kompend.cli._shared import config_file_from_ctx
 from kompend.cli.app import app, register_all_commands
 from kompend.cli.cmds.quality import lint as lint_cmd
+from kompend.cli.context import RunContext
+from kompend.cli.settings import config_file_from_ctx
 from tests.helpers.cli import CliRunner
 
 

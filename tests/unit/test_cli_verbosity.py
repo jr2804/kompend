@@ -17,8 +17,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from kompend.cli import app as app_module
-from kompend.cli._shared import format_exception_for_cli
 from kompend.cli.app import app
+from kompend.cli.errors import format_exception_for_cli
 from kompend.core.pipeline.export import _load_asset_store
 from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.pipeline.runtime import PipelineRuntime

@@ -6,12 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from kompend.cli._sources import (
-    _unique_file,
-    ensure_in_sources,
-    looks_like_html_url,
-    resolve_files,
-)
+from kompend.cli.sources.resolve import _unique_file, ensure_in_sources, looks_like_html_url, resolve_files
 from kompend.preprocessing.parsers.extensions import supported_extensions
 
 # ── resolve_files ───────────────────────────────────────────────────────

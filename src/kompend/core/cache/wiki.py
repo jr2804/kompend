@@ -2,7 +2,7 @@
 
 Single source of truth for writing the ``last`` wiki snapshot — kept here so
 that pure-core modules (e.g. ``kompend.lint.flow``) can persist wiki state
-without depending on ``kompend.cli._post_compile``.
+without depending on ``kompend.cli.workflow.post_compile``.
 """
 
 from __future__ import annotations

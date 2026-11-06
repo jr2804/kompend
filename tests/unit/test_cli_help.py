@@ -21,8 +21,8 @@ from pathlib import Path
 
 import pytest
 
-from kompend.cli._registry import COMMANDS, PANEL_ORDER, CommandModule, CommandName
 from kompend.cli.app import app
+from kompend.cli.tree.registry import COMMANDS, PANEL_ORDER, CommandModule, CommandName
 from tests.helpers.cli import CliRunner
 
 runner = CliRunner()

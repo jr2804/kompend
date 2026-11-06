@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from kompend.cli._pipeline_helpers import make_progress_callback
-from kompend.cli._progress import PipelineProgress, _should_show_progress
+from kompend.cli.runtime.progress import PipelineProgress, _should_show_progress
+from kompend.cli.workflow.pipeline import make_progress_callback
 
 
 class TestShowProgress:

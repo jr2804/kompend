@@ -11,11 +11,7 @@ import json
 
 import toon_format as _toon
 
-from kompend.cli.cmds.knowledge.query import (
-    encode_raw_results,
-    encode_structured,
-    structured_answer,
-)
+from kompend.cli.query.render import encode_raw_results, encode_structured, structured_answer
 from kompend.core.config._configs import LlmDataFormat
 from kompend.core.models import ImageRef
 from kompend.search.retriever import SearchResult, SynthesisResult

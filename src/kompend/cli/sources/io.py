@@ -1,6 +1,6 @@
 """Archive extraction and URL downloading for kompend source resolution.
 
-Extracted from :mod:`kompend.cli._sources` — I/O-heavy operations that don't
+Extracted from :mod:`kompend.cli.sources.resolve` — I/O-heavy operations that don't
 depend on the file-resolution logic.
 """
 

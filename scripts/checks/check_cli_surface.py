@@ -6,7 +6,7 @@
   splits the surface: some commands accept it, some do not, and
   `kompend --config x lint all` fails to parse.
 - A **command** declares only its own options; `config` is read from the run
-  context through `_shared.config_file_from_ctx`. (`wiki_dir` keeps its
+  context through `settings.config_file_from_ctx`. (`wiki_dir` keeps its
   documented per-command `WikiDir` alias - a pre-existing surface, out of
   scope here.)
 

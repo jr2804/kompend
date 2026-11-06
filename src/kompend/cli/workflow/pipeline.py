@@ -1,5 +1,4 @@
 """Internal helpers for pipeline CLI commands.
-
 Private API — external callers should use ``kompend.cli.cmds.pipeline``.
 """
 
@@ -13,22 +12,9 @@ from collections.abc import Callable
 from pathlib import Path
 
 from kompend.agents.doctor import DoctorAgent, DoctorDeps
-from kompend.cli._post_compile import (  # noqa: F401  # re-exported for backward compat
-    PostCompileOptions,
-    annotate_provenance,
-    cli_build_vector_index,
-    mark_private,
-    post_compile_actions,
-    print_compile_summary,
-    run_overview_synthesis,
-    run_post_compile_lint,
-    send_to_review_queue,
-    verify_claims,
-    write_wiki_cache,
-)
-from kompend.cli._progress import PipelineProgress
-from kompend.cli._sources import download_urls, ensure_in_sources, resolve_files
 from kompend.cli.args import Ignore, UrlFile
+from kompend.cli.runtime.progress import PipelineProgress
+from kompend.cli.sources.resolve import download_urls, ensure_in_sources, resolve_files
 from kompend.core.pipeline.orchestrator import WikiPipeline
 from kompend.logging import get_console, get_err_console, get_logger, set_verbosity
 
@@ -36,11 +22,8 @@ logger = get_logger(__name__)
 
 
 # ── progress callbacks ─────────────────────────────────────────────────
-
-
 def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int, str], None]:  # noqa: PLR0915
     """Build a progress callback that translates pipeline events into Rich updates.
-
     The overall bar resets per phase. Each phase has a flat handler keyed by
     name in the dispatch table — no nested phase if/elif chain.
     - **parse**: bar tracks files (0 → N)
@@ -151,7 +134,6 @@ def resolve_compile_inputs(
     undetected: bool = True,
 ) -> list[Path]:
     """Resolve file arguments and URLs into a deduplicated input file list.
-
     When *in_place* is ``True``, local files outside *sources_dir* are
     kept at their original location instead of being copied.
     """
@@ -160,13 +142,10 @@ def resolve_compile_inputs(
             stripped = raw_line.strip()
             if stripped and not stripped.startswith("#"):
                 online_urls.append(stripped)
-
     resolved = resolve_files(*files, recursive=recursive, ignore_patterns=ignore)
-
     sources_dir.mkdir(parents=True, exist_ok=True)
     local_files = ensure_in_sources(resolved, sources_dir, in_place=in_place)
     downloaded = download_urls(online_urls, sources_dir, base_dir=sources_dir.parent, undetected=undetected)
-
     all_input_files = list(dict.fromkeys(local_files + downloaded))
     if not all_input_files:
         all_input_files = resolve_files(
@@ -182,19 +161,15 @@ def print_tier_listing(pipeline: WikiPipeline) -> None:
     if not hasattr(pipeline, "list_tiers"):
         get_err_console().print("Pipeline does not support tier listing.")
         return
-
     get_console().print(json.dumps(pipeline.list_tiers(), indent=2, default=str))
     # ── JSON progress callback ──────────────────────────────────────────────
 
 
 def make_json_progress_callback() -> Callable[[str, int, int, str], None]:
     """Build a progress callback that writes JSONL events to stdout.
-
     Each event is one JSON line::
-
         {"event": "progress", "phase": "parse", "current": 5, "total": 40, "message": "[5/40] file.pdf"}
         {"event": "done", "duration": 123.4, "message": "Compiled wiki written to ..."}
-
     The callback also sets INFO verbosity so pipeline log messages are visible.
     """
     set_verbosity(logging.INFO)

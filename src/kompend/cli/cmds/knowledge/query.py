@@ -1,7 +1,7 @@
 """Query command.
 
 Search infrastructure and output formatting helpers live in
-:mod:`kompend.cli._query_helpers`.
+:mod:`kompend.cli.query_helpers`.
 """
 
 from __future__ import annotations
@@ -9,28 +9,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from kompend.cli._context import current_run_context
-from kompend.cli._query_helpers import (  # noqa: F401  # re-exported for backward compat
-    build_enhanced_retriever,
-    encode_raw_results,
-    encode_structured,
-    execute_query_search,
-    handle_adaptive_search,
-    handle_enhanced_search,
-    is_captured_source,
-    matches_attr_filter,
-    matches_tag_filter,
-    node_type_index,
-    open_vector_store,
-    print_raw_results,
-    run_agentic_query_output,
-    save_query_memory,
-    should_use_agentic,
-    structured_answer,
-    synthesize_and_output,
-    wiki_link,
-)
-from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.args import (
     QueryAdaptive,
     QueryFormatOption,
@@ -45,6 +23,28 @@ from kompend.cli.args import (
     SourceAttrs,
     SourceTags,
     WikiDir,
+)
+from kompend.cli.context import current_run_context
+from kompend.cli.query.render import (
+    encode_structured,
+    print_raw_results,
+)
+from kompend.cli.query.search import (
+    build_enhanced_retriever,
+    execute_query_search,
+    handle_adaptive_search,
+    handle_enhanced_search,
+    open_vector_store,
+    should_use_agentic,
+)
+from kompend.cli.query.synthesize import (
+    run_agentic_query_output,
+    synthesize_and_output,
+)
+from kompend.cli.settings import (
+    build_cli_overrides,
+    config_file_from_ctx,
+    vault_paths_from_ctx,
 )
 from kompend.core.config import LLMConfig, resolve_config
 from kompend.core.config._configs import LlmDataFormat

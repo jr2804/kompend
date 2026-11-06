@@ -68,6 +68,9 @@ wiki/
 .kompend/
 demo-wiki*/
 sources/
+# …but the CLI package that deals with them is source code
+!src/kompend/cli/sources/
+!src/kompend/cli/sources/**
 .claude/
 /.commandcode
 *.log

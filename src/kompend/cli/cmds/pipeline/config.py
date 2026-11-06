@@ -9,7 +9,6 @@ from pathlib import Path
 
 from cyclopts import App
 
-from kompend.cli._shared import config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.args.common import JsonOutput
 from kompend.cli.args.config import (
     ConfigCheckPaths,
@@ -17,6 +16,10 @@ from kompend.cli.args.config import (
     ConfigKeyArg,
     ConfigNoMerge,
     ConfigValueArg,
+)
+from kompend.cli.settings import (
+    config_file_from_ctx,
+    vault_paths_from_ctx,
 )
 from kompend.core.config import (
     STATUS_DEPRECATED,

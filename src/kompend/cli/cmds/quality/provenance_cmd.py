@@ -10,9 +10,12 @@ import json
 import sys
 from pathlib import Path
 
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.args import JsonOutput
 from kompend.cli.args.quality import ProvenanceSlugs, ProvenanceWithContent
+from kompend.cli.settings import (
+    build_cli_overrides,
+    vault_paths_from_ctx,
+)
 from kompend.core.config import resolve_config
 from kompend.core.models import MetadataField, WikiNode, load_cached_wiki
 from kompend.logging import get_console, get_err_console

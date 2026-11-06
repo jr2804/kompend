@@ -27,8 +27,8 @@ selection, query classification, budget management, and tag filtering.
 
 - Import: ``from kompend.search.retriever import HybridRetriever``,
   ``from kompend.search.pipeline import EnhancedRetriever``.
-- Tag/attribute predicates live in ``filters.py`` (canonical; re-exported by
-  ``cli._query_helpers``). Tags are an **OR of ANDs** (DNF); attributes are an
+- Tag/attribute predicates live in ``filters.py`` (canonical; the CLI query
+  paths import them from there). Tags are an **OR of ANDs** (DNF); attributes are an
   **AND** of ``(key, value)`` and key-presence (``value is None``) checks.
 - ``HybridRetriever.search`` pushes filters down into the vector store, which
   evaluates them as SQL (``EXISTS`` subqueries over the tag/attribute side

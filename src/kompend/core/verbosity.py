@@ -13,7 +13,7 @@ child thread or task inherits the value it was started with.
 
 The default Python behaviour is unchanged: tracebacks are attached where a log
 call passes ``exc_info=is_verbose()``, and fatal crashes are formatted by
-:func:`kompend.cli._shared.format_exception_for_cli`.
+:func:`kompend.cli.shared.format_exception_for_cli`.
 """
 
 from __future__ import annotations

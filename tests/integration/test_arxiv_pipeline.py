@@ -23,7 +23,7 @@ from pathlib import Path
 
 import pytest
 
-from kompend.cli._sources import extract_archive
+from kompend.cli.sources.resolve import extract_archive
 from kompend.core.models import ParsedDocument
 from kompend.preprocessing.downloaders.http_downloader import HTTPDownloader
 from kompend.preprocessing.downloaders.url_resolver import (

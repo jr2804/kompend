@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from kompend.cli._pipeline_helpers import write_wiki_cache
+from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.models import CompiledWiki, WikiNode, load_cached_wiki
 from kompend.core.models.enums import NodeType
 from kompend.core.paths import KOMP_DIR

@@ -12,11 +12,11 @@ from typing import Any
 from kompend.agents.categorize import CategorizeAgent
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.write import WriteAgent
-from kompend.cli._pipeline_helpers import resolve_compile_inputs
-from kompend.cli._post_compile import write_wiki_cache
-from kompend.cli._shared import build_cli_overrides
-from kompend.cli._sources import resolve_files
+from kompend.cli.settings import build_cli_overrides
+from kompend.cli.sources.resolve import resolve_files
+from kompend.cli.workflow.pipeline import resolve_compile_inputs
 from kompend.core import source_metadata
+from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LLMConfig
 from kompend.core.keys import (

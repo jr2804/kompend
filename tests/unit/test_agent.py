@@ -17,8 +17,8 @@ from kompend.acp.provider_store import (
     ProviderConfig,
     ProviderCredentials,
 )
-from kompend.cli._pipeline_helpers import emit_json_done, make_json_progress_callback
 from kompend.cli.cmds.agents import _agents_install, _agents_remove
+from kompend.cli.workflow.pipeline import emit_json_done, make_json_progress_callback
 from kompend.core.env import EnvVar
 
 

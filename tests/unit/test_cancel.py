@@ -17,8 +17,8 @@ from queue import Empty, SimpleQueue
 import pytest
 
 import kompend.cli.app as app_mod
-from kompend.cli._esc_watch import DOUBLE_ESC_REASON, EscDoublePressWatcher
-from kompend.cli._progress import PipelineProgress
+from kompend.cli.runtime.esc_watch import DOUBLE_ESC_REASON, EscDoublePressWatcher
+from kompend.cli.runtime.progress import PipelineProgress
 from kompend.core.cancel import CANCEL_EXIT_CODE, CANCEL_WINDOW_SECONDS, CancelState, KompendCancelled
 from kompend.core.config import resolve_config
 from kompend.core.env import EnvVar
@@ -337,7 +337,7 @@ class TestProgressWatcherWiring:
         started: list[bool] = []
         stopped: list[bool] = []
         monkeypatch.setattr(
-            "kompend.cli._progress.EscDoublePressWatcher",
+            "kompend.cli.runtime.progress.EscDoublePressWatcher",
             self._fake_watcher_class(started, stopped),
         )
         tracker = PipelineProgress(enabled=True, _file_tracker=None, cancel=CancelState())
@@ -350,7 +350,7 @@ class TestProgressWatcherWiring:
         started: list[bool] = []
         stopped: list[bool] = []
         monkeypatch.setattr(
-            "kompend.cli._progress.EscDoublePressWatcher",
+            "kompend.cli.runtime.progress.EscDoublePressWatcher",
             self._fake_watcher_class(started, stopped),
         )
         tracker = PipelineProgress(enabled=True, _file_tracker=None)
@@ -363,7 +363,7 @@ class TestProgressWatcherWiring:
         started: list[bool] = []
         stopped: list[bool] = []
         monkeypatch.setattr(
-            "kompend.cli._progress.EscDoublePressWatcher",
+            "kompend.cli.runtime.progress.EscDoublePressWatcher",
             self._fake_watcher_class(started, stopped),
         )
         tracker = PipelineProgress(enabled=False, cancel=CancelState())

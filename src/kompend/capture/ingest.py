@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.cli._sources import download_urls, ensure_in_sources, resolve_files
+from kompend.cli.sources.resolve import download_urls, ensure_in_sources, resolve_files
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)

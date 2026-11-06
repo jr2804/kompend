@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from kompend.cli._shared import build_cli_overrides
+from kompend.cli.settings import build_cli_overrides
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
 from kompend.core.keys import EXPORT_ANNOTATIONS, EXPORT_SUMMARY

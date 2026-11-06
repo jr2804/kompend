@@ -3,7 +3,6 @@
 import dataclasses
 from typing import Any
 
-from kompend.cli._query_helpers import matches_attr_filter
 from kompend.cli.args.query import SearchMode
 from kompend.cli.cmds.knowledge.query import _parse_attr_filters
 from kompend.cli.cmds.pipeline.status import collect_stats
@@ -12,6 +11,7 @@ from kompend.core.models import load_wiki_from_files
 from kompend.core.paths import VECTORS_DB_FILE, vault_paths
 from kompend.logging import get_logger
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+from kompend.search.filters import matches_attr_filter
 from kompend.search.retriever import HybridRetriever, KeywordRetriever, run_agentic_query
 
 logger = get_logger(__name__)

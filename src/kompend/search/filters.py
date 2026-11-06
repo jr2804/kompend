@@ -7,10 +7,9 @@ Canonical home for the filter semantics used across the query paths:
 - Attributes are an **AND of checks**: ``(key, value)`` requires the value to
   be present; ``(key, None)`` requires only that the key exists.
 
-Declared here (rather than in ``cli._query_helpers``) so the portable
-:class:`kompend.search.retriever.KeywordRetriever` can apply the same predicates
-without importing the CLI (which imports the search package — a cycle).
-``cli._query_helpers`` re-exports both for its callers.
+Declared here so the portable :class:`kompend.search.retriever.KeywordRetriever`
+can apply the same predicates without importing the CLI (which imports the
+search package — a cycle). The CLI query paths import them from here.
 """
 
 from __future__ import annotations

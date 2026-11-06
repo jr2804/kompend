@@ -24,7 +24,7 @@ calls the right core function, and formats the output. Nothing more.
 
 ### What belongs in `kompend.cli`
 
-- Typer command definitions (`@app.command`)
+- Cyclopts command definitions (`app.command(...)`, one per `CommandSpec`)
 - `Annotated` argument/option declarations (`args/` submodule)
 - Input validation at the string level (file exists? flag parsing?)
 - Output formatting (print, `--json`, progress bars, `typer.Exit`)
@@ -33,13 +33,18 @@ calls the right core function, and formats the output. Nothing more.
 
 ### Lazy command registration
 
-Command modules are NOT imported eagerly at startup. `_registry.py` declares each
-command exactly once — `CommandName`, the `CommandModule` registering it, its
-`HelpPanel`, and the `short_help` line `--help` shows — and `_group.LazyGroup`
-imports a module only when one of its commands runs. Every vocabulary is a
-`StrEnum` member: a bare string is the defect the config schema bans. While
-`format_help` runs, the group hands Click stub commands built from
-`CommandSpec`, so help renders the full panel tree without importing a module.
+Command modules are NOT imported eagerly at startup. `tree/registry.py` declares
+each command exactly once — `CommandName`, the `CommandModule` owning it, its
+`HelpPanel`, and the `short_help` line `--help` shows — and `app.py` registers
+each as `app.command("<module>:<entry>", ...)`, which Cyclopts resolves only when
+that command runs. Every vocabulary is a `StrEnum` member: a bare string is the
+defect the config schema bans. Help renders the full panel tree from
+`CommandSpec`, without importing a command module.
+
+The directory is a package per concern, not a flat pile of helpers:
+`runtime/` (process), `tree/` (declaration), `sources/` (file IO), `workflow/`
+(a pipeline run), `query/` (one query end to end), plus `args/` and `cmds/`.
+A module that fits none of those is a sign the concern is new — name it.
 
 **Why:** eager imports pulled heavy deps (pydantic-ai, parsecraft, MCP SDK)
 into every `kompend` invocation. With lazy registration and registry-rendered
@@ -53,7 +58,7 @@ run log loads on the first real command via `OnDemandModule.RUNLOG`.
 **Adding a new command:**
 
 1. Add the name to `CommandName`, its module to `CommandModule` if new, and one
-   `CommandSpec` entry to `COMMANDS` in `_registry.py`
+   `CommandSpec` entry to `COMMANDS` in `tree/registry.py`
 2. Add the module to `_MODULE_NAMES` and `__all__` in `cmds/__init__.py`
 3. Tests: `conftest.py` calls `register_all_commands()` at session start; nothing
    else changes - the module imports on first invocation
@@ -72,7 +77,7 @@ run log loads on the first real command via `OnDemandModule.RUNLOG`.
 ### The test
 
 Removing `src/kompend/cli/` must leave `import kompend` working for programmatic
-use (pipeline, models, config, lint); then the boundary is clean.
+use; then the boundary is clean.
 
 ### File responsibilities
 
@@ -80,19 +85,25 @@ use (pipeline, models, config, lint); then the boundary is clean.
 |---|---|
 | `app.py` | Typer app instance, global callback (`--wiki-dir`, `--config`, `--verbose`, `--version`), command registration |
 | `launch.py` | Console entry point: bounds the numeric thread pools, makes the console decode UTF-8, answers a bare `--version` before the command tree loads, installs the console proxy + failure hooks + fault handler, delegates everything else to `app.main` |
-| `_thread_pools.py` | `cap_thread_pools()` — `KOMP_BLAS_THREADS`, default `min(8, cores)`, applied before any native library is imported |
-| `_console.py` | The console boundary: `HardenedStream` (a handle that dies mid-run cannot kill the run), `ensure_utf8_code_page()`. See the stream contract |
-| `_faults.py` | Never-silent reporting: `faulthandler` to `%TEMP%\kompend-faults.log`, `threading.excepthook` / `sys.unraisablehook` routed through the log |
-| `_registry.py` | The command registry: `CommandName` / `CommandModule` / `HelpPanel` StrEnums, `COMMANDS` with each `CommandSpec` (module, panel, `short_help`), `PANEL_ORDER`, `OnDemandModule` |
-| `_group.py` | `LazyGroup` — lists every command from the registry, renders `--help` from `CommandSpec`, imports each module on first run |
+| `context.py` | `RunContext` + its `ContextVar`: the `--wiki-dir` / `--config` a run was started with |
+| `settings.py` | What a command derives from that context: `vault_paths_from_ctx`, `config_file_from_ctx`, `build_cli_overrides`, `resolve_lint_output` |
+| `errors.py` | `usage_error` (exit 2) and `format_exception_for_cli` (traceback only under `--verbose`) |
+| `runtime/thread_pools.py` | `cap_thread_pools()` — `KOMP_BLAS_THREADS`, default `min(8, cores)`, applied before any native library is imported |
+| `runtime/console.py` | The console boundary: `HardenedStream` (a handle that dies mid-run cannot kill the run), `ensure_utf8_code_page()`. See the stream contract |
+| `runtime/faults.py` | Never-silent reporting: `faulthandler` to `%TEMP%\kompend-faults.log`, `threading.excepthook` / `sys.unraisablehook` routed through the log |
+| `runtime/progress.py` | Rich progress bar wrappers; owns the watcher lifecycle (`cancel=` token in, watcher started with the bar, stopped on finish/stop) |
+| `runtime/esc_watch.py` | Double-ESC cancel watcher — polls stdin (msvcrt/termios), two ESC within `CANCEL_WINDOW_SECONDS` requests the cancel token |
+| `tree/registry.py` | The command registry: `CommandName` / `CommandModule` / `HelpPanel` StrEnums, `COMMANDS` with each `CommandSpec` (module, entry, panel, `short_help`), `PANEL_ORDER`, `OnDemandModule` |
+| `sources/resolve.py` | File resolution, glob expansion, copy-to-sources, URL download |
+| `sources/io.py` | Reading and writing those source files (archives, encodings, atomic copies) |
+| `workflow/pipeline.py` | Pipeline orchestration: progress callback, input resolution |
+| `workflow/post_compile.py` | What runs after a compile: review queue, provenance, lint, vector index, overview |
+| `workflow/distill.py` | Distill wiring shared by `kompend distill` and `kompend compile --distill` (pending-note count/notice, agent selection, result lines) |
+| `query/search.py` | Retrieval for `kompend query`: vector store, keyword/semantic/adaptive search, agentic choice |
+| `query/synthesize.py` | Answer synthesis, agentic output, query memory |
+| `query/render.py` | Raw and structured rendering, wiki links, figure lines |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
 | `cmds/` | Command implementations organized by domain (see `cmds/AGENTS.md`) |
-| `_sources.py` | File resolution, glob expansion, copy-to-sources, URL download. |
-| `_pipeline_helpers.py` | Pipeline orchestration helpers (progress callback, input resolution, review queue, provenance, lint-fix persistence). |
-| `_distill_helpers.py` | Distill wiring shared by `kompend distill` and `kompend compile --distill` (pending-note count/notice, agent selection, result lines). |
-| `_esc_watch.py` | Double-ESC cancel watcher — polls stdin (msvcrt/termios), two ESC within `CANCEL_WINDOW_SECONDS` requests the cancel token. |
-| `_progress.py` | Rich progress bar wrappers; owns the watcher lifecycle (`cancel=` token in, watcher started with the bar, stopped on finish/stop). |
-| `_shared.py` | Shared utilities: config resolution + `config_file_from_ctx`, CLI overrides, hook loading. |
 
 ### Argument declarations (`args/` submodule)
 
@@ -100,11 +111,8 @@ See `src/kompend/cli/args/AGENTS.md` for detailed argument organization rules.
 
 **Summary:**
 
-- All `Parameter` declarations live in `args/` as `Annotated` types.
-- Arguments are organized by domain into one module per command group.
-- Commands import the types, never build `Parameter(...)` inline.
-- Default values are module-level constants (`DEFAULT_CHUNK_SIZE`, etc.) or command
-  parameter defaults; aliases never carry a default.
+- All `Parameter` declarations live in `args/` as `Annotated` types, one module
+  per command group; commands import the types, never build `Parameter(...)`.
 - **These constants are the CLI's own defaults, not the source of truth.**
   That is `kompend.core.config.DEFAULTS`; the CLI constants exist only for
   `--help` text and as fallback values passed to `resolve_config()`.
@@ -115,10 +123,9 @@ See `src/kompend/cli/cmds/AGENTS.md` for detailed command organization rules.
 
 **Summary:**
 
-- One file per command group organized by domain. Groups are cohesive sets of related commands.
+- One file per command group organized by domain.
 - Each command function is thin: parse args → resolve config → call core → print.
-- Never put a `for` loop that iterates over wiki nodes and does real work.
-  That's business logic — move it to a core module.
+  Never put a `for` loop that iterates over wiki nodes and does real work.
 - `try/except` at the top level is fine for user-facing error messages.
 - Use `get_console().print(msg)` for stdout output, `get_err_console().print(msg)` for stderr. Import from `kompend.logging`.
 - `--json` flag: serialize and print. No other behavior change.
@@ -154,34 +161,31 @@ merged last by `build_cli_overrides(cli_set=...)` so it wins over every flag.
 
 ### Vault config discovery
 
-`kompend --wiki-dir <vault> ...` reads *that* vault's config (`.kompend/config.toml`),
-not the cwd's. See `core/config/AGENTS.md`: Project config discovery. Seed a vault
-with a chosen config at creation time via `kompend init <dir> --seed-config <toml>`.
+`kompend --wiki-dir <vault> ...` reads *that* vault's config
+(`.kompend/config.toml`), not the cwd's. See `core/config/AGENTS.md`: Project
+config discovery; `kompend init <dir> --seed-config <toml>` seeds one.
 
 ### Fail-fast vault validation
 
 Every CLI/MCP entry point resolves paths through `vault_paths()`
-(`core/paths.py`), which **raises LookupError** when the resolved directory has
-no vault marker (`kompend.toml` / `.kompend/config.toml`). Silent operation on
-arbitrary directories masks misconfiguration. Only config-introspection commands
-(`kompend config get/list/path/check/set`) opt out via `require_vault=False`;
-they resolve against the explicit `--config` file and never require a vault.
+(`core/paths.py`), which **raises LookupError** when the directory has no vault
+marker (`kompend.toml` / `.kompend/config.toml`). Silent operation on arbitrary
+directories masks misconfiguration; only `kompend config get/list/path/check/set`
+opt out via `require_vault=False`.
 
 ### Progress bars
 
 **Recurring trap:** a bar looks "stuck" and a plumbing change does not help — the
-cause was a slow/hung backend operation. Diagnose: **confirm the total**
-("Captioning images (171)" means `reset_for_phase(total, ...)` worked; a 0 is a
-real bug), **confirm the elapsed timer advances** (climbing `0:12:11` = the loop
-is blocked; frozen = the UI thread died), then conclude the *work* is slow (one
-VLM/LLM call hanging pins the bar at 0% for timeout × retries). The fix lives in
-`src/kompend/llm/`, the resolver, or the model config, never in the bar.
+cause was a slow/hung backend operation. Diagnose: **confirm the total** (a 0 is
+a real bug), **confirm the elapsed timer advances** (climbing = the loop is
+blocked; frozen = the UI thread died), then conclude the *work* is slow. The fix
+lives in `src/kompend/llm/`, the resolver, or the model config, never in the bar.
 
 **Stream contract:** the `Progress` bar uses `redirect_stdout=False`,
 `redirect_stderr=False` — rich's `Live` swaps the std streams for proxies by
 default and restores them unconditionally on stop, which races the refresh thread
 into `OSError(9): The handle is invalid`. Logging goes through the console object,
-so the swap buys nothing. `_console.harden_console_streams()` proxies both streams
+so the swap buys nothing. `runtime/console.harden_console_streams()` proxies both streams
 at entry for the other cause: a capture window rebinds descriptor 2 around a native
 conversion, and the buffered stream bound to the old handle never recovers — every
 later write raises, the refresh thread dies, and the run ends as CPython's silent
@@ -191,14 +195,14 @@ any other `OSError` (full disk, a pipe a consumer reads) still propagates. Never
 remove that wrapper to "simplify" output.
 
 **Never-silent contract:** a dying thread, an unraisable exception and a native
-abort must each leave a trace. `_faults.py` installs the hooks and enables
+abort must each leave a trace. `runtime/faults.py` installs the hooks and enables
 `faulthandler` against `%TEMP%\kompend-faults.log`; the first failure per
 (thread, exception) pair is reported at ERROR with its traceback, repeats at DEBUG.
 Never report through `print`/`Console` — the console is exactly what fails.
 
 **Signal-path contract:** a phase advances only when the core tier calls
 `self._emit(phase, current, total, detail)`; the CLI handler in
-`_pipeline_helpers._make_progress_callback` maps that triple to
+`workflow/pipeline.make_progress_callback` maps that triple to
 `tracker.reset_for_phase` / `tracker.update_progress`. A sub-phase (like the VLM
 captioning burst inside resolve) emits a sentinel `(0, n, "<phase_name>")` then
 `(i+1, n, "<detail>")` per unit; the handler must recognize both.
@@ -211,30 +215,25 @@ are indeterminate and convey activity via description, never a faked percentage.
 
 `compile`/`ingest` create a `core.cancel.CancelState` and thread it into
 `build_pipeline` / `ingest_documents` and `PipelineProgress.create`; with a bar
-shown, `start()` runs the `_esc_watch.py` watcher (two ESC within
-`CANCEL_WINDOW_SECONDS` ⇒ cancel; no bar ⇒ no watcher). Boundary contract:
-`core/pipeline/AGENTS.md`; `app.py` exits 130 with a resume hint.
+shown, `start()` runs the `runtime/esc_watch.py` watcher (no bar, no watcher).
+Boundary contract: `core/pipeline/AGENTS.md`; `app.py` exits 130 with a hint.
 
 ### No direct core imports in thin wrappers
 
-Helper functions like `_send_to_review_queue`, `_annotate_provenance`,
-`_verify_claims` are acceptable thin wrappers — they import the core function,
-call it, and print a status line. The test: strip the `get_console().print()` line
-and the rest should be one call to a core module.
+Thin wrappers (`send_to_review_queue`, `annotate_provenance`, `verify_claims`) are
+acceptable: strip their `get_console().print()` line and one core call remains.
 
 ## Known violations (do not replicate)
 
 Fixed violations (parser/wiki/vector-index construction, config path, extension
-set, extension enumeration) are archived in `.agents/history/2026-10-23-rationale-archive.md`.
+set) are archived in `.agents/history/2026-10-23-rationale-archive.md`.
 
 ## Work Guidance
 
 - Never expand the CLI's role beyond input/output formatting and thin delegation.
-- When adding a new command: add `Annotated` types to `args/` submodule, add the
-  `@app.command` function to the appropriate `cmds/` module file (create one
-  if no cohesive group exists), add argument → config mapping in
-  `_build_cli_overrides()`.
-- Use `get_console()` / `get_err_console()` from `kompend.logging` for all output — not `typer.echo()` or `print()`.
+- New command: `Annotated` types in `args/`, the `@app.command` function in the
+  matching `cmds/` module, the flag → config mapping in `build_cli_overrides()`.
+- Use `get_console()` / `get_err_console()` from `kompend.logging` for all output.
 
 ## Verification
 

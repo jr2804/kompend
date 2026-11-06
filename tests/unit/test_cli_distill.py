@@ -8,14 +8,8 @@ from typing import cast
 
 import pytest
 
-from kompend.cli._distill_helpers import (
-    build_distill_agent,
-    count_pending_notes,
-    distill_result_lines,
-    pending_notes_message,
-    run_distill,
-)
 from kompend.cli.app import app
+from kompend.cli.workflow.distill import build_distill_agent, count_pending_notes, distill_result_lines, pending_notes_message, run_distill
 from kompend.core.config import ResolvedConfig
 from tests.helpers.cli import CliRunner
 
@@ -72,8 +66,8 @@ def test_build_distill_agent_without_model_returns_none() -> None:
 
 def test_build_distill_agent_prefers_agentic(monkeypatch: pytest.MonkeyPatch) -> None:
     sentinel = _SentinelAgent()
-    monkeypatch.setattr("kompend.cli._distill_helpers.make_agentic_distill_agent", lambda *a, **k: sentinel)
-    monkeypatch.setattr("kompend.cli._distill_helpers.DistillAgent", lambda *a, **k: pytest.fail("fallback used"))
+    monkeypatch.setattr("kompend.cli.workflow.distill.make_agentic_distill_agent", lambda *a, **k: sentinel)
+    monkeypatch.setattr("kompend.cli.workflow.distill.DistillAgent", lambda *a, **k: pytest.fail("fallback used"))
 
     assert build_distill_agent(_cfg("ollama/test-model")) is sentinel
 
@@ -84,8 +78,8 @@ def test_build_distill_agent_falls_back_when_agentic_fails(monkeypatch: pytest.M
     def _boom(*args: object, **kwargs: object) -> object:
         raise ValueError("no agentic support")
 
-    monkeypatch.setattr("kompend.cli._distill_helpers.make_agentic_distill_agent", _boom)
-    monkeypatch.setattr("kompend.cli._distill_helpers.DistillAgent", lambda *a, **k: sentinel)
+    monkeypatch.setattr("kompend.cli.workflow.distill.make_agentic_distill_agent", _boom)
+    monkeypatch.setattr("kompend.cli.workflow.distill.DistillAgent", lambda *a, **k: sentinel)
 
     assert build_distill_agent(_cfg("ollama/test-model")) is sentinel
 
@@ -94,8 +88,8 @@ def test_build_distill_agent_returns_none_when_both_fail(monkeypatch: pytest.Mon
     def _boom(*args: object, **kwargs: object) -> object:
         raise ValueError("unavailable")
 
-    monkeypatch.setattr("kompend.cli._distill_helpers.make_agentic_distill_agent", _boom)
-    monkeypatch.setattr("kompend.cli._distill_helpers.DistillAgent", _boom)
+    monkeypatch.setattr("kompend.cli.workflow.distill.make_agentic_distill_agent", _boom)
+    monkeypatch.setattr("kompend.cli.workflow.distill.DistillAgent", _boom)
 
     assert build_distill_agent(_cfg("ollama/test-model")) is None
 
@@ -109,7 +103,7 @@ def test_run_distill_archives_by_default(tmp_path: Path, monkeypatch: pytest.Mon
         seen["archive"] = archive
         return [sources_dir / "_distilled" / "page.md"]
 
-    monkeypatch.setattr("kompend.cli._distill_helpers.distill", _fake_distill)
+    monkeypatch.setattr("kompend.cli.workflow.distill.distill", _fake_distill)
 
     paths = run_distill(sources, _cfg(None))
 
@@ -125,7 +119,7 @@ def test_run_distill_honours_no_archive(tmp_path: Path, monkeypatch: pytest.Monk
         seen["archive"] = archive
         return []
 
-    monkeypatch.setattr("kompend.cli._distill_helpers.distill", _fake_distill)
+    monkeypatch.setattr("kompend.cli.workflow.distill.distill", _fake_distill)
 
     assert run_distill(sources, _cfg(None), archive=False) == []
     assert seen == {"archive": False}
@@ -139,7 +133,7 @@ def test_build_distill_agent_passes_the_group_budget(monkeypatch: pytest.MonkeyP
         seen.update(kwargs)
         return _SentinelAgent()
 
-    monkeypatch.setattr("kompend.cli._distill_helpers.make_agentic_distill_agent", _fake)
+    monkeypatch.setattr("kompend.cli.workflow.distill.make_agentic_distill_agent", _fake)
     cfg = _cfg("ollama/test-model")
     cfg.kompend.compile.budget.distill_requests_per_group = 7  # type: ignore[union-attr]
 
@@ -167,7 +161,7 @@ def test_distill_cmd_prints_page_summary(tmp_path: Path, monkeypatch: pytest.Mon
     page = sources / "_distilled" / "distilled-20261019T101112-stage-3.md"
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("kompend.cli._distill_helpers.distill", lambda *a, **k: [page])
+    monkeypatch.setattr("kompend.cli.workflow.distill.distill", lambda *a, **k: [page])
 
     result = CliRunner().invoke(app, ["distill"])
 
@@ -181,7 +175,7 @@ def test_distill_cmd_reports_empty_corpus(tmp_path: Path, monkeypatch: pytest.Mo
     _make_vault(tmp_path)
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("kompend.cli._distill_helpers.distill", lambda *a, **k: [])
+    monkeypatch.setattr("kompend.cli.workflow.distill.distill", lambda *a, **k: [])
 
     result = CliRunner().invoke(app, ["distill"])
 
@@ -199,7 +193,7 @@ def test_distill_cmd_no_archive_flag_reaches_the_core(tmp_path: Path, monkeypatc
         return []
 
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setattr("kompend.cli._distill_helpers.distill", _fake_distill)
+    monkeypatch.setattr("kompend.cli.workflow.distill.distill", _fake_distill)
 
     result = CliRunner().invoke(app, ["distill", "--no-archive"])
 

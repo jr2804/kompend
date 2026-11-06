@@ -3,7 +3,7 @@
 Handles glob expansion, scan_dir scanning, and file copying into the sources
 scan_dir — shared by both ``parse`` and ``compile``.
 
-Archive extraction and URL downloading live in :mod:`kompend.cli._sources_io`.
+Archive extraction and URL downloading live in :mod:`kompend.cli.sources.io`.
 """
 
 from __future__ import annotations
@@ -12,11 +12,7 @@ import filecmp
 import shutil
 from pathlib import Path
 
-from kompend.cli._sources_io import (
-    download_urls,
-    extract_archive,
-    looks_like_html_url,
-)
+from kompend.cli.sources.io import download_urls, extract_archive, looks_like_html_url
 from kompend.core.ignore import filter_files
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers.extensions import supported_extensions

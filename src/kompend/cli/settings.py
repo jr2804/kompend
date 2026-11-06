@@ -1,18 +1,16 @@
-"""Shared CLI helpers used across multiple command modules.
+"""The settings a command derives from its run context.
 
-These functions resolve configuration, build CLI override dicts, and manage
-hooks.  They are deliberately kept free of CLI-framework code so they can
-be imported and unit-tested without a running CLI context.
+Turns the parsed options and the run context into the vault paths, the
+config file and the override bag the pipeline consumes.
 """
 
 from __future__ import annotations
 
 import logging
-import sys
-import traceback
-from typing import Any, NoReturn
+from typing import Any
 
-from kompend.cli._context import RunContext, current_run_context
+from kompend.cli.context import RunContext, current_run_context
+from kompend.cli.errors import usage_error
 from kompend.core.keys import (
     COMPILE_CACHE_IGNORE_MODEL,
     COMPILE_EMBEDDING_MODEL,
@@ -46,11 +44,6 @@ from kompend.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Silence noisy third-party loggers that flood CLI output with
-# model-loading chatter, empty-OCR warnings, and full ONNX/docling
-# traceback boxes.  CRITICAL suppresses everything below — these
-# errors are not actionable by the user; kompend logs its own parse
-# failures at the appropriate level.
 logging.getLogger("docling").setLevel(logging.CRITICAL)
 logging.getLogger("RapidOCR").setLevel(logging.CRITICAL)
 logging.getLogger("rapidocr").setLevel(logging.CRITICAL)
@@ -95,12 +88,6 @@ def resolve_lint_output(configured: LintOutput, *, verbose: bool, quiet: bool) -
     if quiet:
         return LintOutput.QUIET
     return configured
-
-
-def usage_error(message: str) -> NoReturn:
-    """Report a usage error and exit 2, matching the parser's own exit code."""
-    sys.stderr.write(f"{message}\n")
-    raise SystemExit(2)
 
 
 def build_cli_overrides(
@@ -188,16 +175,3 @@ def build_cli_overrides(
         # --set values are already coerced and validated; merged last = highest precedence.
         overrides.update(cli_set)
     return overrides
-
-
-def format_exception_for_cli(exc: BaseException, *, verbose: bool) -> str:
-    """Format a fatal exception for the CLI.
-
-    Default: a single ``error: <Type>: <message>`` line, no traceback. With
-    *verbose*, the full traceback. Deliberately does NOT use
-    ``traceback.format_exc()`` to build the short form — a compressed trace is
-    uglier than the trace it replaces.
-    """
-    if verbose:
-        return "".join(traceback.format_exception(type(exc), exc, exc.__traceback__)).rstrip()
-    return f"error: {type(exc).__name__}: {exc}"

@@ -22,7 +22,6 @@ from pathlib import Path
 from binaryornot.check import is_binary
 from cyclopts import App
 
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.args import (
     AttachmentAll,
     AttachmentEmbed,
@@ -33,6 +32,10 @@ from kompend.cli.args import (
     AttachmentPath,
     AttachmentPathOptional,
     AttachmentSource,
+)
+from kompend.cli.settings import (
+    build_cli_overrides,
+    vault_paths_from_ctx,
 )
 from kompend.core.config import resolve_config
 from kompend.core.models.attachments import (

@@ -11,9 +11,6 @@ from kompend.agents.write import make_agentic_write_agent
 from kompend.capture.capture import capture
 from kompend.capture.consolidate import consolidate
 from kompend.capture.learn import learn
-from kompend.cli._distill_helpers import distill_result_lines, run_distill
-from kompend.cli._shared import build_cli_overrides, usage_error, vault_paths_from_ctx
-from kompend.cli._sources import resolve_files
 from kompend.cli.args import (
     WRITE_SOURCES_DEFAULT,
     CaptureText,
@@ -28,6 +25,13 @@ from kompend.cli.args import (
     WritePageTitle,
     WriteSourceFiles,
 )
+from kompend.cli.errors import usage_error
+from kompend.cli.settings import (
+    build_cli_overrides,
+    vault_paths_from_ctx,
+)
+from kompend.cli.sources.resolve import resolve_files
+from kompend.cli.workflow.distill import distill_result_lines, run_distill
 from kompend.core import source_metadata
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LLMConfig

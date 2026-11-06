@@ -7,9 +7,9 @@ from typing import Any
 
 from cyclopts import App
 
-from kompend.cli._context import current_run_context
-from kompend.cli._shared import vault_paths_from_ctx
 from kompend.cli.args.memory import MemoryAnswer, MemoryFeedback, MemoryLimit, MemoryQuery, MemoryTopK
+from kompend.cli.context import current_run_context
+from kompend.cli.settings import vault_paths_from_ctx
 from kompend.core.config import ResolvedConfig, resolve_config
 from kompend.core.keys import TRUST_USER_TRACKING
 from kompend.core.paths import MEMORY_CONTEXT_FILE, MEMORY_SUBDIR

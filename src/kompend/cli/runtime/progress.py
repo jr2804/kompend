@@ -27,7 +27,7 @@ from rich.progress import (
 from rich.table import Column
 from rich.text import Text
 
-from kompend.cli._esc_watch import EscDoublePressWatcher
+from kompend.cli.runtime.esc_watch import EscDoublePressWatcher
 from kompend.core.cancel import CancelState
 from kompend.logging import get_err_console
 

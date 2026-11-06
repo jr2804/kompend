@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-from kompend.cli._context import current_run_context
-from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.cli.args import JsonOutput, Verbose, WikiDir
 from kompend.cli.cmds.quality.doctor import print_doctor_results, run_doctor
+from kompend.cli.context import current_run_context
+from kompend.cli.settings import (
+    build_cli_overrides,
+    config_file_from_ctx,
+    vault_paths_from_ctx,
+)
 from kompend.core.config import resolve_config
 from kompend.core.keys import (
     COMPILE_EMBEDDING_MODEL,

@@ -8,33 +8,6 @@ import time
 import traceback
 from typing import Any
 
-from kompend.cli._context import current_run_context
-from kompend.cli._distill_helpers import (
-    count_pending_notes,
-    distill_result_lines,
-    pending_notes_message,
-    run_distill,
-)
-from kompend.cli._pipeline_helpers import (
-    PostCompileOptions,
-    check_llm_availability,
-    emit_json_done,
-    make_json_progress_callback,
-    make_progress_callback,
-    post_compile_actions,
-    print_tier_listing,
-    resolve_compile_inputs,
-)
-from kompend.cli._post_compile import write_wiki_cache
-from kompend.cli._progress import PipelineProgress
-from kompend.cli._shared import (
-    build_cli_overrides,
-    config_file_from_ctx,
-    resolve_lint_output,
-    usage_error,
-    vault_paths_from_ctx,
-)
-from kompend.cli._sources import resolve_files
 from kompend.cli.args import (
     DEFAULT_START_AT_TIER,
     BypassReview,
@@ -76,6 +49,27 @@ from kompend.cli.args import (
     WikiDir,
     Workers,
 )
+from kompend.cli.context import current_run_context
+from kompend.cli.errors import usage_error
+from kompend.cli.runtime.progress import PipelineProgress
+from kompend.cli.settings import (
+    build_cli_overrides,
+    config_file_from_ctx,
+    resolve_lint_output,
+    vault_paths_from_ctx,
+)
+from kompend.cli.sources.resolve import resolve_files
+from kompend.cli.workflow.distill import count_pending_notes, distill_result_lines, pending_notes_message, run_distill
+from kompend.cli.workflow.pipeline import (
+    check_llm_availability,
+    emit_json_done,
+    make_json_progress_callback,
+    make_progress_callback,
+    print_tier_listing,
+    resolve_compile_inputs,
+)
+from kompend.cli.workflow.post_compile import PostCompileOptions, post_compile_actions
+from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.cancel import CancelState, KompendCancelled
 from kompend.core.config import coerce_config_value, resolve_config, validate_config_key
 from kompend.core.config._configs import LintConfig

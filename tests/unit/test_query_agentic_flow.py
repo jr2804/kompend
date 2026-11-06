@@ -16,7 +16,7 @@ import pytest
 from pydantic_ai import RunContext
 
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
-from kompend.cli._query_helpers import should_use_agentic
+from kompend.cli.query.search import should_use_agentic
 from kompend.compilation.query_tools import add_finding, get_figures, get_tables, read_page, search_wiki
 from kompend.core.config import ResolvedConfig
 from kompend.core.models import CompiledWiki, WikiNode

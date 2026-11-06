@@ -13,13 +13,16 @@ from pathlib import Path
 from cyclopts import App
 
 from kompend.agents.reference_resolver import ReferenceResolverAgent
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.args import (
     ReferencesExportOutput,
     ReferencesExportSource,
     ReferencesFetchDryRun,
     ReferencesFetchSource,
     ReferencesListSource,
+)
+from kompend.cli.settings import (
+    build_cli_overrides,
+    vault_paths_from_ctx,
 )
 from kompend.compilation.flows.references import resolve_unresolved_references
 from kompend.core.config import resolve_config

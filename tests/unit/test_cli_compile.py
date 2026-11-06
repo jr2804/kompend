@@ -9,8 +9,8 @@ from unittest.mock import patch
 
 import pytest
 
-from kompend.cli._shared import build_cli_overrides as _build_cli_overrides
 from kompend.cli.app import app
+from kompend.cli.settings import build_cli_overrides as _build_cli_overrides
 from kompend.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from kompend.core.models import Chunk, ChunkNode, ChunkTree, ElementType, ResolvedChunk
 from kompend.core.pipeline.config import Compiler, ImageMode, PipelineConfig

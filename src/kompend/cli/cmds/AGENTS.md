@@ -45,7 +45,7 @@ Every command follows the thin-wrapper pattern:
 
 ```python
 from kompend.cli.args import CompileFiles, TargetFormat
-from kompend.cli._shared import resolve_project_paths
+from kompend.cli.settings import vault_paths_from_ctx
 from kompend.logging import get_console, get_err_console
 
 
@@ -77,8 +77,8 @@ Options are keyword-only (`*`); positional parameters come first.
 ### Import rules
 
 - Import command arguments from `kompend.cli.args`
-- Import helpers from `kompend.cli._sources`, `kompend.cli._shared`, `kompend.cli._pipeline_helpers`
-- Never import the root `app` from `kompend.cli.app` (it would import every command module and create a cycle); `_registry.py` names the module attribute to register
+- Import helpers from `kompend.cli.settings`, `kompend.cli.sources`, `kompend.cli.workflow`
+- Never import the root `app` from `kompend.cli.app` (it would import every command module and create a cycle); `tree/registry.py` names the module and entry point to register
 - Import core business logic from `kompend.core`, `kompend.lint`, `kompend.llm`, etc. as needed
 - Never define business logic in a command file — import and delegate
 

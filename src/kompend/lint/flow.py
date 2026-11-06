@@ -16,7 +16,7 @@ from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeEl
 
 from kompend.agents.lint import LintRuleAgent
 from kompend.agents.remediate import make_agentic_remediation_agent
-from kompend.cli._progress import EtaColumn, PercentageColumn, _should_show_progress
+from kompend.cli.runtime.progress import EtaColumn, PercentageColumn, _should_show_progress
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config._configs import LintConfig, LintOutput
 from kompend.core.config.rumdl import resolve_rumdl_config

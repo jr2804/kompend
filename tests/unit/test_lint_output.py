@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from kompend.cli._shared import resolve_lint_output
+from kompend.cli.settings import resolve_lint_output
 from kompend.core.config._configs import LintConfig, LintOutput
 from kompend.lint.base import LintResult, LintRuleOutcome, Severity
 from kompend.lint.history import LintEntry, entry_from_report

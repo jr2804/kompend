@@ -21,8 +21,6 @@ from typing import Any
 from cyclopts import App
 
 from kompend.agents.remediate import make_agentic_remediation_agent
-from kompend.cli._pipeline_helpers import write_wiki_cache
-from kompend.cli._shared import build_cli_overrides, config_file_from_ctx, resolve_lint_output, vault_paths_from_ctx
 from kompend.cli.args import (
     JsonOutput,
     LintDryRun,
@@ -40,6 +38,13 @@ from kompend.cli.args import (
     LintShowRun,
     LintVerbose,
 )
+from kompend.cli.settings import (
+    build_cli_overrides,
+    config_file_from_ctx,
+    resolve_lint_output,
+    vault_paths_from_ctx,
+)
+from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LintConfig, LintOutput
 from kompend.core.config.rumdl import resolve_rumdl_config

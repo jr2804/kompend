@@ -21,7 +21,7 @@ import sys
 import threading
 from typing import Any, Final, Protocol, cast
 
-from kompend.cli._faults import append_fault
+from kompend.cli.runtime.faults import append_fault
 
 #: How often one stream may be rebound; a handle that keeps dying is a dead run.
 REPAIR_LIMIT: Final[int] = 8

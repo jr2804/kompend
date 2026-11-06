@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 from kompend.agents.categorize import CategorizeAgent
-from kompend.cli._shared import vault_paths_from_ctx
 from kompend.cli.args import (
     OrganizeCollapseSingle,
     OrganizeDryRun,
     OrganizeMaxDepth,
     OrganizeMinSubcategories,
 )
+from kompend.cli.settings import vault_paths_from_ctx
 from kompend.core.config import resolve_config
 from kompend.core.keys import (
     ORGANIZE_COLLAPSE_SINGLE_FILE,

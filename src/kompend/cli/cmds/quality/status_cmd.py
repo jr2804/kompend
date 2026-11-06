@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from kompend.cli._shared import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.args import JsonOutput
 from kompend.cli.cmds.pipeline.status import collect_stats, print_status
+from kompend.cli.settings import (
+    build_cli_overrides,
+    vault_paths_from_ctx,
+)
 from kompend.core.config import resolve_config
 
 

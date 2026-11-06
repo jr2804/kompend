@@ -1,6 +1,6 @@
 """Post-compilation actions — review, provenance, lint, vector index, overview.
 
-Extracted from :mod:`kompend.cli._pipeline_helpers` to reduce module size.
+Extracted from :mod:`kompend.cli.workflow.pipeline` to reduce module size.
 """
 
 from __future__ import annotations
@@ -13,9 +13,9 @@ from typing import Any
 from kompend import __version__ as _KOMP_VERSION
 from kompend.agents.verification import AgenticVerificationAgent, VerificationAgent, make_agentic_verification_agent
 from kompend.agents.wiki_index import make_agentic_overview_agent
-from kompend.cli._progress import PipelineProgress
+from kompend.cli.runtime.progress import PipelineProgress
 from kompend.compilation._two_phase_core import tokens_to_chars
-from kompend.core.cache.wiki import write_wiki_cache  # noqa: F401 — re-export
+from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LintConfig, LintOutput
 from kompend.core.models import CompiledWiki, MetadataField, WikiField, load_wiki_from_files
