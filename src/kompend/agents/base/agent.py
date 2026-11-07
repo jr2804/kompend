@@ -45,9 +45,8 @@ from pydantic_ai.agent import AgentModelSettings
 from pydantic_ai.agent.abstract import AgentRetries
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
-from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelResponse
+from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models import Model
-from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai_harness.compaction import ContextUsage, ReportContextUsage
@@ -72,6 +71,13 @@ from kompend.agents.base.deps import (
     ResultT,
     _coerce_type,
 )
+from kompend.agents.base.models import (
+    build_top_level_model,
+    ceiling_model_settings,
+    estimate_prompt_tokens,
+    model_max_output,
+    output_ceiling,
+)
 from kompend.agents.base.retries import (
     _DEFAULT_TRANSIENT_BACKOFF_SECONDS,
     _DEFAULT_TRANSIENT_RETRIES,
@@ -80,7 +86,6 @@ from kompend.agents.base.retries import (
     _map_agent_error,
 )
 from kompend.agents.instrument import configure_observability
-from kompend.agents.kompend_model import KompendModel
 from kompend.agents.rlm import (
     RLMCapability,
 )
@@ -92,7 +97,7 @@ from kompend.core.utils.exceptions import (
 )
 from kompend.llm.errors import is_transient_error
 from kompend.llm.format import salvage_json
-from kompend.llm.models import build_model, requires_output_ceiling, resolve_model_limits
+from kompend.llm.models import requires_output_ceiling
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 from kompend.types import JSONValue
@@ -100,16 +105,6 @@ from kompend.types import JSONValue
 #: Per-stage timeout floor. Agents in kompend are synchronous single-turn;
 #: PydanticAI's run_sync is fast but provider-side latency can spike.
 _DEFAULT_TIMEOUT_SECONDS: float = 120.0
-
-#: Share of the window kept free on top of the estimated prompt when a
-#: protocol demands an explicit output ceiling.
-_CEILING_MARGIN_FRACTION: float = 0.05
-
-#: Floor for that margin, in tokens.
-_CEILING_MARGIN_MIN: int = 256
-
-#: Chars-per-token used when the agent has no ``compile.llm`` config group.
-_FALLBACK_CHARS_PER_TOKEN: float = 4.0
 
 #: Sliding-window defaults live in :mod:`kompend.agents.context_manager` so
 #: the ``sliding`` preset and the summarizer's fallback cannot drift apart.
@@ -652,81 +647,24 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         return agent
 
     def _ceiling_model_settings(self, base: ModelSettings) -> AgentModelSettings[DepsT]:
-        """Per-request settings that add the protocol-mandated ``max_tokens``.
-
-        Only protocols that reject an unset value use this (see
-        :func:`kompend.llm.models.requires_output_ceiling`); everything else
-        keeps the plain dict and sends no ceiling at all.
-        """
-
-        def _settings(ctx: RunContext[DepsT]) -> ModelSettings:
-            ceiling = self._output_ceiling(ctx.messages)
-            if ceiling is None:
-                return base
-            return {**base, "max_tokens": ceiling}
-
-        return _settings
+        """Delegate to :func:`kompend.agents.base.models.ceiling_model_settings`."""
+        return ceiling_model_settings(self, base)
 
     def _output_ceiling(self, messages: Sequence[ModelMessage]) -> int | None:
-        """Tokens this request may generate, or ``None`` when nothing is sent.
-
-        The value is the physical maximum, not a configured cap: the model's
-        window minus the prompt about to be sent, minus a margin, clamped by
-        the model's own output limit when the catalog knows it.
-        """
-        window = self.context_window
-        if not window:
-            return None
-        prompt_tokens = self._estimate_prompt_tokens(messages)
-        if prompt_tokens is None:
-            return None
-        margin = max(_CEILING_MARGIN_MIN, int(window * _CEILING_MARGIN_FRACTION))
-        available = window - prompt_tokens - margin
-        limit = self._model_max_output()
-        if limit is not None:
-            available = min(available, limit)
-        return max(1, available)
+        """Delegate to :func:`kompend.agents.base.models.output_ceiling`."""
+        return output_ceiling(self, messages)
 
     def _estimate_prompt_tokens(self, messages: Sequence[ModelMessage]) -> int | None:
-        """Rough token count of the request payload, ``None`` when unknown."""
-        try:
-            payload = ModelMessagesTypeAdapter.dump_json(list(messages))
-        except Exception:  # noqa: BLE001 - an unmeasurable prompt must not break the call
-            return None
-        chars_per_token = self.llm.default_chars_per_token if self.llm is not None else _FALLBACK_CHARS_PER_TOKEN
-        return max(1, int(len(payload) / chars_per_token))
+        """Delegate to :func:`kompend.agents.base.models.estimate_prompt_tokens`."""
+        return estimate_prompt_tokens(self, messages)
 
     def _model_max_output(self) -> int | None:
-        """The model's own output limit from the catalog, or ``None`` if unknown."""
-        try:
-            _, max_output = resolve_model_limits(self.model_string)
-        except (KeyError, LookupError, ValueError):
-            return None
-        return max_output or None
+        """Delegate to :func:`kompend.agents.base.models.model_max_output`."""
+        return model_max_output(self)
 
     def _build_top_level_model(self) -> Model:
-        """Build the model (with failover + kompend wrapper) for the Agent."""
-        primary = KompendModel(
-            build_model(self.model_string),
-            usage_tracker=self.usage_tracker,
-            agent=self,
-            reasoning_effort=self.reasoning_effort,
-        )
-        if not self.fallback_models:
-            return primary
-
-        return FallbackModel(
-            primary,
-            *(
-                KompendModel(
-                    build_model(m),
-                    usage_tracker=self.usage_tracker,
-                    agent=self,
-                    reasoning_effort=self.reasoning_effort,
-                )
-                for m in self.fallback_models
-            ),
-        )
+        """Delegate to :func:`kompend.agents.base.models.build_top_level_model`."""
+        return build_top_level_model(self)
 
     def _make_delta_retry_hook(self) -> Hooks:
         """Create an ``after_model_request`` hook for delta-retry.
