@@ -23,6 +23,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from importlib.metadata import version as package_version
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -1665,3 +1666,86 @@ def markdown_file(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return path
+
+
+class TestIdentityGoldenStrings:
+    """Byte-exact golden strings for both identity halves (knox-tsr4, step 0).
+
+    The identity strings are the parse-cache key's raw material, and the
+    planned split of this module moves their code twice. A refactor that
+    silently reorders segments, drops one, or changes a separator would pass
+    every existing test (they only assert that the identity *changes* on a
+    change) while invalidating every vault's parse cache. These pins freeze
+    the exact bytes for a fully pinned configuration.
+
+    The one legitimate variable is the parsecraft version segment — it comes
+    from the installed wheel and a bump flipping ``cache_identity`` is the
+    documented contract, so the test sources that one segment from the same
+    authority the code uses instead of freezing a stale version in.
+    """
+
+    def _pinned_parser(self, judge_model: str | None) -> Any:
+        """A parser whose every routing lever is set, on a fixed fake host.
+
+        The environment is a stand-in, not a probe: backends and extras are
+        explicit, so the golden string cannot drift when the test host's
+        parsecraft extras change. Images point at a fixed path with
+        ``ImageMode.FILE`` so the ``images:file`` segment is deterministic.
+        """
+        routing = {
+            "preference": "quality",
+            "only_backend": "mineru",
+            "preferred_backend": "docling",
+            "engines": ["pandoc", "tesseract"],
+            "allow_ocr": True,
+            "backend_options": {"mineru": {"effort": "flash"}},
+        }
+        settings = ParsecraftConfig(routing=RoutingSettings(**routing), judge=JudgeSettings(model=judge_model))
+        parser = _adapter().ParsecraftParser(
+            parsecraft_config=ParsecraftRoutingConfig(settings=settings, written=frozenset(routing)),
+            images_dir=Path("/tmp/kompend-golden-images"),
+            image_mode=ImageMode.FILE,
+        )
+        parser._environment = SimpleNamespace(  # type: ignore[assignment] — the identities read these two names only
+            backends={"docling", "liteparse", "native-text"},
+            installed_extras=frozenset({"docling", "pandoc"}),
+        )
+        return parser
+
+    def test_backend_identity_is_byte_stable(self) -> None:
+        expected = (
+            "backends:docling,liteparse,native-text"
+            "|extras:docling,pandoc"
+            "|only:mineru"
+            "|preferred:docling"
+            "|engines:pandoc,tesseract"
+            "|ocr:on"
+        )
+        assert self._pinned_parser("ollama/parable-tinyjev").backend_identity() == expected
+
+    def test_cache_identity_is_byte_stable(self) -> None:
+        installed = package_version("parsecraft")
+        expected = (
+            "extras:docling,pandoc"
+            f"|parsecraft:{installed}"
+            "|judge_extras:1"
+            "|judge:ollama/parable-tinyjev:quality"
+            "|ocr:on"
+            "|engines:pandoc,tesseract"
+            "|preferred_backend:docling"
+            "|only_backend:mineru"
+            "|backend_options:mineru:effort=flash"
+            "|images:file"
+        )
+        assert self._pinned_parser("ollama/parable-tinyjev").cache_identity() == expected
+
+    def test_a_judge_only_change_flips_the_cache_identity_and_not_the_backend_identity(self) -> None:
+        """The trap the package AGENTS.md documents: the judge is a routing
+        input (``[judge] model``), not a backend capability, so swapping the
+        judge must invalidate the parse cache while leaving the backend
+        identity — and therefore the backend selection key — untouched.
+        """
+        judged = self._pinned_parser("ollama/parable-tinyjev")
+        unjudged = self._pinned_parser(None)
+        assert judged.cache_identity() != unjudged.cache_identity()
+        assert judged.backend_identity() == unjudged.backend_identity()
