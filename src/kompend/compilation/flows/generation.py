@@ -19,17 +19,6 @@ from kompend.agents.decision import decide_error_action, decide_unit_adaptation
 from kompend.agents.failure import AgentFailureKind, EmptyAnswerError, classify_agent_failure, record_unit_failure
 from kompend.agents.generation import make_agentic_generation_agent
 from kompend.agents.types import ToolGenerationDeps
-from kompend.compilation._two_phase_core import (
-    ExtractionSet,
-    TwoPhaseRuntime,
-    compute_quality_score,
-    extract_images_from_chunks,
-    rate_suffix,
-    segment_sources,
-    slugify,
-    tokens_to_chars,
-    upsert_node,
-)
 from kompend.compilation.adaptation import AdaptationSignal, ShrinkOutcome, plan_adaptation, split_unit
 from kompend.compilation.concept_broker import ConceptBroker
 from kompend.compilation.concept_keys import normalize_concept_key
@@ -47,6 +36,17 @@ from kompend.compilation.step_recovery import (
     pass_run_id,
     scan_prefix,
     segment_run_prefix,
+)
+from kompend.compilation.two_phase import (
+    ExtractionSet,
+    TwoPhaseRuntime,
+    compute_quality_score,
+    extract_images_from_chunks,
+    rate_suffix,
+    segment_sources,
+    slugify,
+    tokens_to_chars,
+    upsert_node,
 )
 from kompend.core.keys import MANDATORY_KINDS
 from kompend.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, images_for_provenance, load_cached_wiki

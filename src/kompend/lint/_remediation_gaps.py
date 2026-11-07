@@ -12,7 +12,7 @@ from typing import Any
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
 from kompend.agents.types import RemediationDeps
-from kompend.compilation._two_phase_core import Extraction, ExtractionSet
+from kompend.compilation.two_phase import Extraction, ExtractionSet
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.core.templates import get_template_loader

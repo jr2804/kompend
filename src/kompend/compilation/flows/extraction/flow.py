@@ -17,7 +17,12 @@ from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.extraction import ExtractionAgent
 from kompend.agents.extraction_reduce import ExtractionReduceAgent
 from kompend.agents.failure import UnitFailure, UnitFailureLog, is_retry_pointless, record_unit_failure
-from kompend.compilation._two_phase_core import (
+from kompend.compilation.asset_mention_rewriter import rewrite_asset_mentions as _rewrite_asset_mentions
+from kompend.compilation.asset_registry import AssetIdMap
+from kompend.compilation.flows.agentic import extract_agentic
+from kompend.compilation.flows.assembly import build_tree_texts
+from kompend.compilation.schema import ExtractionOutput
+from kompend.compilation.two_phase import (
     Extraction,
     ExtractionSet,
     ProgressFn,
@@ -26,11 +31,6 @@ from kompend.compilation._two_phase_core import (
     rate_suffix,
     try_pydanticai_extraction,
 )
-from kompend.compilation.asset_mention_rewriter import rewrite_asset_mentions as _rewrite_asset_mentions
-from kompend.compilation.asset_registry import AssetIdMap
-from kompend.compilation.flows.agentic import extract_agentic
-from kompend.compilation.flows.assembly import build_tree_texts
-from kompend.compilation.schema import ExtractionOutput
 from kompend.core.config._configs import ExtractionStrategy
 from kompend.core.models import ChunkTree, ExtractionStats, ResolvedChunk
 from kompend.core.models.enums import CacheDeps

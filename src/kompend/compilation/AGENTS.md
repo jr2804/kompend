@@ -19,7 +19,6 @@ merging and an optional iterative WiCER refinement loop.
 | ----------------------- | ------------------------------------------------------------------------ |
 | `base.py`               | `BaseCompiler` ABC — compiler interface with progress hook               |
 | `two_phase/`            | `TwoPhaseCompiler` package — `compiler.py` extract-first then generate with cross-source merge; `state.py` extraction data, failure policy, runtime protocol; `core.py` planning/measurement helpers + budget re-exports; `writer.py` page upsert/merge |
-| `_two_phase_core.py`    | Compatibility shim: re-exports `two_phase/` for callers not yet repointed |
 | `wicer.py`              | `WiCERCompiler` — iterative correctness/entity/consistency refinement    |
 | `graph.py`              | `GraphCompiler` — dependency-graph-aware compilation                     |
 | `schema.py`             | Wiki graph schema: predicates, entity types, relation types              |
@@ -39,8 +38,7 @@ merging and an optional iterative WiCER refinement loop.
 - Import from the package root: `from kompend.compilation import GraphCompiler`,
   `from kompend.compilation.wicer import WiCERCompiler`.
 - `two_phase/` is the package; `TwoPhaseCompiler` is the entry point. Import
-  from its root. `_two_phase_core.py` is a compatibility shim only — new code
-  imports `kompend.compilation.two_phase`.
+  from its root, never from a submodule.
 - `WiCERCompiler` wraps a `TwoPhaseCompiler` and adds iterative probing.
 - No prompt text belongs here - templates live in `src/kompend/templates/`.
 - **LLM-product cache keys carry the model** (extraction deps, generation
@@ -78,10 +76,9 @@ merging and an optional iterative WiCER refinement loop.
   (`{"system": …, "known_titles": …}`) and reads the content budget from the
   plan; the answer reserve and the safety margin are paid by default. A
   request that cannot fit raises `LLMOutputError` naming the components —
-  content is never cropped to fit. `two_phase/core.py` re-exports
+  content is never cropped to fit. `two_phase` re-exports
   `context_safety_tokens` / `tokens_to_chars` / `chars_to_tokens` from the
-  planner (the `_two_phase_core.py` shim keeps the historical path); do not
-  define a second safety margin or conversion here.
+  planner; do not define a second safety margin or conversion here.
 - **A provider that rejects an oversized request lowers the window**
   (`TwoPhaseCompiler._clamp_window` → `EffectiveWindow.clamp`), and the stage
   re-plans against it — the source is re-batched, the segments are

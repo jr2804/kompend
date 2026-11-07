@@ -298,9 +298,9 @@ class UnitFailureLog:
     failures: list[UnitFailure] = field(default_factory=list)
     #: How many units the stage tried to process (see :meth:`attempted`).
     total: int = 0
-    #: See :data:`kompend.compilation._two_phase_core._FAILURE_THRESHOLD_RATIO`.
+    #: See :data:`kompend.compilation.two_phase.state._FAILURE_THRESHOLD_RATIO`.
     ratio: float = 0.5
-    #: See :data:`kompend.compilation._two_phase_core._FAILURE_THRESHOLD_MIN`.
+    #: See :data:`kompend.compilation.two_phase.state._FAILURE_THRESHOLD_MIN`.
     min_units: int = 5
 
     def attempted(self, count: int = 1) -> None:

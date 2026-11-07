@@ -9,9 +9,9 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from kompend.compilation._two_phase_core import ExtractionSet
 from kompend.compilation.asset_registry import AssetIdMap
 from kompend.compilation.asset_summarizer import summarize_asset
+from kompend.compilation.two_phase import ExtractionSet
 from kompend.core.models import ChunkTree, GraphEdge, ResolvedChunk, WikiNode
 from kompend.core.models.enums import EdgeType, MetadataField
 from kompend.core.models.structured import StructuredEquation, structured_to_text
