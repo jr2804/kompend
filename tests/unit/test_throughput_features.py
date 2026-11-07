@@ -7,7 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import cast
@@ -1470,7 +1470,13 @@ class TestStepStoreRecovery:
             )
 
     @staticmethod
-    def _seed_finished_run(compiler: TwoPhaseCompiler, *, pages: list[dict[str, str]], attempt: int = 1, state: SnapshotState = "complete") -> SqliteStepStore:
+    def _seed_finished_run(
+        compiler: TwoPhaseCompiler,
+        *,
+        pages: Sequence[Mapping[str, object]],
+        attempt: int = 1,
+        state: SnapshotState = "complete",
+    ) -> SqliteStepStore:
         store = SqliteStepStore(database=compiler._config.paths.step_db_file)
         conversation = generation_conversation(compiler._active_gen_deps)
         run_id = pass_run_id(segment_run_prefix(conversation, 0), attempt, 1)
