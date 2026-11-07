@@ -336,6 +336,13 @@ wicer_max_seconds = 1800
 # are still compiled; only pages without any body text are dropped.
 min_content_length = 50        # warn below this many body chars (after stripping headings)
 min_concept_sources = 2        # min distinct sources for an entity to get a concept page
+# Minimum distinct sources an entity must span before it gets a standalone
+# page in the two-phase compiler. Entities below it stay folded into their
+# source summary pages. 1 keeps every entity (the old behaviour).
+entity_min_sources = 2
+# Per entity-type overrides; unlisted types use entity_min_sources.
+# Example: { Organization = 1, Standard = 1, Product = 1 }
+entity_min_sources_by_type = {}
 max_concept_pages = 50         # warn above this many auto-generated concept pages
 
 # Chunk sizing safety rails (tokens)

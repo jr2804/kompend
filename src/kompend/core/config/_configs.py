@@ -486,6 +486,14 @@ class BudgetConfig(_KompendBaseModel):
     #: it is kept — the value never excludes anything.
     min_content_length: int = Field(default=50, validation_alias=EnvVar.BUDGET_MIN_CONTENT_LENGTH)
     min_concept_sources: int = Field(default=2, validation_alias=EnvVar.BUDGET_MIN_CONCEPT_SOURCES)
+    #: Minimum distinct sources an entity must span before the two-phase
+    #: compiler emits a standalone entity page. Entities below it stay folded
+    #: into their source summary pages — the mention is not lost.
+    entity_min_sources: int = Field(default=2, ge=1)
+    #: Per entity-type overrides of :attr:`entity_min_sources`, e.g.
+    #: ``{"Organization": 1}``. Types are matched case-insensitively; types
+    #: not listed use the default.
+    entity_min_sources_by_type: dict[str, Annotated[int, Field(ge=1)]] = Field(default_factory=dict)
     #: Warning threshold for the number of concept pages. Above it every
     #: candidate is compiled — the value never drops a candidate.
     max_concept_pages: int = Field(default=50, validation_alias=EnvVar.BUDGET_MAX_CONCEPT_PAGES)

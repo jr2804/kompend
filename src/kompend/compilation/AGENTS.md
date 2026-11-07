@@ -139,7 +139,10 @@ kinds come from `compile.extraction.categories`. The LLM assigns `kind` per
 page in `generation_prompt.md.j2`; `_allowed_kind` in `flows/generation/writer.py`
 validates it at node creation — anything outside the allowed set falls back
 to `concept` (permissive-consumption model, never a hard failure).
-Exception: extracted entities become mandatory pages — `ExtractionSet.entity_pages()`
+Exception: extracted entities become pages — `ExtractionSet.entity_pages()`
 merges them with a pre-assigned `kind: entity`, and `_resolve_page_kind` in `flows/generation/writer.py`
-overrides the LLM's label for those entries. Entity specs colliding with an existing
-concept key are dropped to avoid duplicate pages.
+overrides the LLM's label for those entries. Only entities spanning at least
+`compile.budget.entity_min_sources` distinct sources (or the
+`entity_min_sources_by_type` override for their type) get a standalone page;
+the rest stay folded into their source summary pages, so no mention is lost.
+Entity specs colliding with an existing concept key are dropped to avoid duplicate pages.

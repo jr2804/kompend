@@ -215,9 +215,29 @@ def _with_entity_pages(
     extractions: ExtractionSet,
     concepts: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Append mandatory entity pages not already covered by a concept."""
+    """Append entity pages that pass the per-type source gate.
+
+    An entity spec reaches generation only when it spans at least
+    ``compile.budget.entity_min_sources`` distinct sources, or the override
+    for its ``type``. Entities below the gate stay folded into their source
+    summary pages — their mentions are still part of the source content.
+    """
     concept_keys = {normalize_concept_key(str(c.get(ExtractionField.NAME, ""))) for c in concepts}
-    entities = [e for e in extractions.entity_pages() if normalize_concept_key(str(e.get("name", ""))) not in concept_keys]
+    budget = compiler._config.budget
+    thresholds = {str(kind).strip().casefold(): minimum for kind, minimum in budget.entity_min_sources_by_type.items()}
+    entities: list[dict[str, Any]] = []
+    folded = 0
+    for entity in extractions.entity_pages():
+        if normalize_concept_key(str(entity.get(ExtractionField.NAME, ""))) in concept_keys:
+            continue
+        entity_type = str(entity.get(ExtractionField.TYPE, "")).strip().casefold()
+        required = thresholds.get(entity_type, budget.entity_min_sources)
+        if len(entity.get("sources", [])) < required:
+            folded += 1
+            continue
+        entities.append(entity)
+    if folded:
+        logger.info("TwoPhase: %d entity page(s) below the source gate folded into source summaries", folded)
     if entities:
         logger.info("TwoPhase: %d entity page(s) queued for generation", len(entities))
         concepts.extend(entities)

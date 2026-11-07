@@ -17,13 +17,15 @@ import pytest
 
 from kompend.agents.failure import EmptyAnswerError
 from kompend.compilation import GraphCompiler
+from kompend.compilation.flows.generation import prepare_concepts
 from kompend.compilation.schema import (
     Concept,
+    Entity,
     GenerationOutput,
     GenerationPage,
 )
 from kompend.compilation.two_phase import Extraction, ExtractionSet, TwoPhaseCompiler
-from kompend.core.config import EmbeddingConfig, LLMConfig
+from kompend.core.config import BudgetConfig, EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, ElementType, ResolvedChunk
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.utils.exceptions import LLMOutputError
@@ -101,15 +103,44 @@ class TestAgenticPassLoop:
         assert agent.run.call_count == 2
 
 
-def _compiler() -> TwoPhaseCompiler:
-    config = PipelineConfig(
-        source_dir=make_tmp_vault(),
-        output_dir=make_tmp_vault(),
-        llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
-        embedding=EmbeddingConfig(model="hash"),
+class TestEntityPageSourceGate:
+    """A single mention does not earn an entity its own page."""
+
+    @pytest.mark.parametrize(
+        "entity_type",
+        ["Function", "Struct", "Path", "Organization", "Standard", "Product", "Term"],
     )
-    config.no_cache = True
-    return TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
+    def test_single_source_entity_is_folded(self, entity_type: str) -> None:
+        """One source stays in the source summary; no standalone page."""
+        concepts = prepare_concepts(_compiler(), _entity_extraction_set(entity_type, sources=1))
+        assert concepts == []
+
+    @pytest.mark.parametrize(
+        "entity_type",
+        ["Function", "Struct", "Path", "Organization", "Standard", "Product", "Term"],
+    )
+    def test_multi_source_entity_gets_a_page(self, entity_type: str) -> None:
+        """Two sources clear the default gate and keep the entity page."""
+        concepts = prepare_concepts(_compiler(), _entity_extraction_set(entity_type, sources=2))
+        assert [(c["name"], c["kind"]) for c in concepts] == [(f"FUN_{entity_type.upper()}", "entity")]
+
+    def test_threshold_boundary_uses_the_configured_minimum(self) -> None:
+        """The gate is inclusive: exactly ``entity_min_sources`` is enough."""
+        compiler = _compiler(budget=BudgetConfig(entity_min_sources=3))
+        assert prepare_concepts(compiler, _entity_extraction_set("Function", sources=2)) == []
+
+        concepts = prepare_concepts(compiler, _entity_extraction_set("Function", sources=3))
+        assert [c["name"] for c in concepts] == ["FUN_FUNCTION"]
+
+    def test_per_type_override_beats_the_default(self) -> None:
+        """Organization may be promoted without promoting every entity type."""
+        compiler = _compiler(budget=BudgetConfig(entity_min_sources_by_type={"Organization": 1}))
+
+        organization = prepare_concepts(compiler, _entity_extraction_set("Organization", sources=1))
+        function = prepare_concepts(compiler, _entity_extraction_set("Function", sources=1))
+
+        assert [c["name"] for c in organization] == ["FUN_ORGANIZATION"]
+        assert function == []
 
 
 def _extraction_set() -> ExtractionSet:
@@ -142,3 +173,27 @@ def _chunks(count: int = 3) -> list[ResolvedChunk]:
         )
         for i in range(count)
     ]
+
+
+def _compiler(*, budget: BudgetConfig | None = None) -> TwoPhaseCompiler:
+    config = PipelineConfig(
+        source_dir=make_tmp_vault(),
+        output_dir=make_tmp_vault(),
+        llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
+        embedding=EmbeddingConfig(model="hash"),
+        budget=budget or BudgetConfig(),
+    )
+    config.no_cache = True
+    return TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
+
+
+def _entity_extraction_set(entity_type: str, *, sources: int) -> ExtractionSet:
+    ext_set = ExtractionSet()
+    for index in range(sources):
+        ext_set.add(
+            Extraction(
+                source=f"src{index}.pdf",
+                entities=[Entity(name=f"FUN_{entity_type.upper()}", type=entity_type, context="mention")],
+            )
+        )
+    return ext_set
