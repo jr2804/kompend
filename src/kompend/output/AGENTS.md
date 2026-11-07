@@ -20,7 +20,7 @@ builds the wiki index page and serves wiki page previews.
 | ``base.py`` | ``BaseOutputWriter`` ABC with plugin registry (``register`` / ``get``) |
 | ``renderer.py`` | ``DocumentRenderer`` — canonical Markdown rendering (wenmode AST, deterministic output); ``format_output`` — explicit ``kompend lint format`` helper |
 | ``markdown.py`` | ``MarkdownWriter`` — the single markdown writer (OKF v0.2-compliant bundle, portable relative links, §5.1 footnote attribution) |
-| ``vault.py`` | ``VaultWriter`` — the per-page vault algorithm: page routing, stale-clearing, link resolution, index/log orchestration, copy-on-embed image portability |
+| ``vault.py`` | ``VaultWriter`` — the vault-wide algorithm: stale-clearing, related-edge resolution, per-page write loop, index/log orchestration, copy-on-embed image portability |
 | ``page.py`` | ``OkfPageMixin`` (canonical OKF v0.2 frontmatter, description cap, node quality) + body conversion (wikilinks, inline citations → footnotes, source/asset footnote definitions, provenance → ``sources``) |
 | ``page_paths.py`` | Page layout vocabulary: ``PageLayoutMixin`` (``_KIND_FOLDERS`` / ``_folder_for_kind``), ``bundle_path``, ``page_stem`` |
 | ``surfaces.py`` | ``GeneratedSurfaceMixin`` — per-source summary pages (``summaries/``), ``references.md``, ``quality.md`` |
