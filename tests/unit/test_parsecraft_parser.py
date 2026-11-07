@@ -60,6 +60,7 @@ from parsecraft.providers._endpoints import select_judge_spec  # noqa: E402 — 
 from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
 from parsecraft.routing.models import Intent, PageRoute, RoutingPlan, RoutingPreference  # noqa: E402 — guarded by the importorskip above
+from parsecraft.routing.rules import DEGRADED_BLANK_PAGE_CODE  # noqa: E402 — guarded by the importorskip above
 
 from kompend.core.config import ImageMode
 from kompend.core.models import ElementType
@@ -225,6 +226,16 @@ class TestEmptyPages:
     the fallback for a route that carries no degradation. Unread pages are warned
     once per file, quoting parsecraft's own routing reason.
     """
+
+    def test_degraded_blank_page_is_parsecrafts_symbol(self) -> None:
+        """The verdict is imported, never re-declared (knox-udom).
+
+        An upstream rename fails the import at load time; an upstream value
+        change fails this pin before a vault is parsed with two different
+        notions of "blank".
+        """
+        assert _pages().DEGRADED_BLANK_PAGE is DEGRADED_BLANK_PAGE_CODE
+        assert DEGRADED_BLANK_PAGE_CODE == "degraded-blank-page"
 
     def test_page_with_images_is_recorded_and_warned(
         self,

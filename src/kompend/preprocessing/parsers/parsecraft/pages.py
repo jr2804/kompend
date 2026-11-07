@@ -16,13 +16,15 @@ from parsecraft.pipeline import DEGRADED_EMPTY_OUTPUT_CODE
 from parsecraft.pipeline.analysis import AnalysisResult
 from parsecraft.routing import RoutingPlan
 
+# parsecraft's page verdict for "this page holds nothing to lose" (no text and
+# no images); the planner emits it as ``PageRoute.degradation_code``. Imported
+# from upstream so the vocabulary exists exactly once (knox-udom); a pin test
+# catches an upstream value change before a vault is parsed with two notions
+# of "blank".
+from parsecraft.routing.rules import DEGRADED_BLANK_PAGE_CODE as DEGRADED_BLANK_PAGE
+
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers.parsecraft.assets import chunk_content
-
-#: parsecraft's page verdict for "this page holds nothing to lose" (no text and
-#: no images). The planner emits it as ``PageRoute.degradation_code``; parsecraft
-#: exports no symbol for it, so the literal lives here, once.
-DEGRADED_BLANK_PAGE = "degraded-blank-page"
 
 logger = get_logger(__name__)
 
