@@ -21,14 +21,19 @@ from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
 from kompend.core.config import ReasoningEffort, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LLMConfig
-from kompend.core.models import CompiledWiki, ElementType, ImageRef, MetadataField, WikiNode
-from kompend.core.models.metadata import meta_str_list_dict
-from kompend.core.text.page_media import find_page_figures
+from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.logging import get_logger
-from kompend.rag.vector_store import VectorField, VectorStoreLike
+from kompend.rag.vector_store import VectorStoreLike
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
+from kompend.search.retrieval.assemble import (
+    extract_snippet,
+    node_attributes,
+    node_figures,
+    node_tags,
+    result_from_hit,
+)
 from kompend.search.retrieval.results import Citation, SearchResult, SynthesisResult
-from kompend.search.retrieval.vector import hit_float, hit_opt_str, hit_str, vector_search
+from kompend.search.retrieval.vector import vector_search
 
 TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
 _TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
@@ -143,26 +148,11 @@ class HybridRetriever:
         the compiled node when the id resolves.
         """
         node_id = str(hit.get("id", ""))
-        node = self._node_by_id.get(node_id)
-        title = hit_str(hit, VectorField.TITLE) or (node.title if node else node_id)
-        snippet = (
-            extract_snippet(node.content, query_tokens, self._display.search_snippet_chars)
-            if node and node.content
-            else hit_str(hit, VectorField.CONTENT_PREVIEW) or title
-        )
-        source_file = hit_opt_str(hit, VectorField.SOURCE_FILE)
-        if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
-            source_file = str(node.metadata[MetadataField.SOURCE])
-        return SearchResult(
-            article_id=node_id,
-            title=title,
-            snippet=snippet,
-            score=hit_float(hit, "score"),
-            source_file=source_file,
-            tags=_node_tags(node),
-            attributes=_node_attributes(node),
-            content=node.content if node else "",
-            figures=node_figures(node),
+        return result_from_hit(
+            self._node_by_id.get(node_id),
+            hit,
+            query_tokens,
+            snippet_chars=self._display.search_snippet_chars,
         )
 
     def _wiki_vector_results(
@@ -229,8 +219,8 @@ class HybridRetriever:
                 snippet=node.content[:max_chars] + "..." if node.content else "",
                 score=seed_score * decay_factor,
                 source_file=str(node.metadata.get(MetadataField.SOURCE)) if node.metadata and node.metadata.get(MetadataField.SOURCE) else None,
-                tags=_node_tags(node),
-                attributes=_node_attributes(node),
+                tags=node_tags(node),
+                attributes=node_attributes(node),
                 content=node.content or "",
                 figures=node_figures(node),
             )
@@ -307,8 +297,8 @@ class KeywordRetriever:
                     snippet=snippet,
                     score=score,
                     source_file=source_file,
-                    tags=_node_tags(node),
-                    attributes=_node_attributes(node),
+                    tags=node_tags(node),
+                    attributes=node_attributes(node),
                     content=node.content or "",
                     figures=node_figures(node),
                 )
@@ -511,10 +501,10 @@ def _node_matches_filters(
     Used by :class:`KeywordRetriever`; the store-backed
     :class:`HybridRetriever` pushes the same filters into the store instead.
     """
-    node_tags = _node_tags(node)
-    if tags_all and not all(tag in node_tags for tag in tags_all):
+    tags = node_tags(node)
+    if tags_all and not all(tag in tags for tag in tags_all):
         return False
-    if tags_dnf and not matches_tag_filter(node_tags, [list(g) for g in tags_dnf]):
+    if tags_dnf and not matches_tag_filter(tags, [list(g) for g in tags_dnf]):
         return False
     attr_filters: list[tuple[str, str | None]] = []
     for pair in attributes_all or ():
@@ -522,82 +512,7 @@ def _node_matches_filters(
         attr_filters.append((key, value))
     for key in attribute_keys or ():
         attr_filters.append((key, None))
-    return matches_attr_filter(_node_attributes(node), attr_filters)
+    return matches_attr_filter(node_attributes(node), attr_filters)
 
 
-def _node_tags(node: WikiNode | None) -> set[str]:
-    """Tags from node metadata, guarded against missing node/non-list shapes.
-
-    ``node`` is ``None`` when a vector-store hit references an id absent
-    from the loaded wiki (stale index after recompile/rename).
-    """
-    if node is None or not node.metadata:
-        return set()
-    raw = node.metadata.get(MetadataField.TAGS)
-    if isinstance(raw, list):
-        return {str(t) for t in raw}
-    return set()
-
-
-def _node_attributes(node: WikiNode | None) -> dict[str, list[str]]:
-    """Attributes from node metadata, guarded against missing node."""
-    if node is None or not node.metadata:
-        return {}
-    return meta_str_list_dict(node.metadata.get(MetadataField.ATTRIBUTES))
-
-
-def node_figures(node: WikiNode | None) -> list[ImageRef]:
-    """The figures the page shows, read from the page body.
-
-    The body carries the published link (relative to the page) and the
-    caption as the link's alt text — the node metadata still holds the
-    parse-cache path the figure was extracted to, which the reader cannot
-    open. A page without figures yields an empty list.
-    """
-    if node is None or not node.content:
-        return []
-    source_file = ""
-    if node.metadata:
-        raw = node.metadata.get(MetadataField.SOURCE)
-        if raw:
-            source_file = str(raw)
-    return [
-        ImageRef(
-            path=path,
-            caption=caption,
-            element_type=ElementType.IMAGE.value,
-            source_file=source_file,
-        )
-        for caption, path in find_page_figures(node.content)
-    ]
-
-
-def extract_snippet(content: str, query_tokens: set[str], max_chars: int | None = None) -> str:
-    """Extract a snippet around the first query token match."""
-    if max_chars is None:
-        max_chars = DisplayConfig().search_snippet_chars
-    if not content or not query_tokens:
-        if content and len(content) > max_chars:
-            return content[:max_chars] + "..."
-        return content if content else ""
-
-    lower = content.lower()
-    best_pos = len(content)
-    for token in query_tokens:
-        pos = lower.find(token)
-        if 0 <= pos < best_pos:
-            best_pos = pos
-
-    if best_pos >= len(content):
-        if len(content) > max_chars:
-            return content[:max_chars] + "..."
-        return content
-
-    start = max(0, best_pos - max_chars // 3)
-    end = min(len(content), start + max_chars)
-    snippet = content[start:end]
-    if start > 0:
-        snippet = "..." + snippet
-    if end < len(content):
-        snippet = snippet + "..."
-    return snippet
+# ── Synthesis (context formatting + LLM call) ──────────────────────────
