@@ -8,15 +8,8 @@ from kompend.cli.settings import build_cli_overrides
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
 from kompend.core.config.rumdl import resolve_rumdl_config
-from kompend.core.keys import (
-    COMPILE_EMBEDDING_MODEL,
-    COMPILE_LLM_DEFAULT_MODEL,
-    COMPILE_LLM_VLM_MODEL,
-)
 from kompend.core.models import MetadataField, load_wiki_from_files
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, REVIEW_DIR, VaultPaths, vault_paths
-from kompend.core.utils.dicts import as_str
-from kompend.diagnostics import run_doctor
 from kompend.lint.base import RemediationStatus
 from kompend.lint.flow import CHECK_STEP_RULES, _make_lint_agent, persist_lint_fixes, run_full_lint_flow
 from kompend.lint.flow import _run_pass as _run_rules_pass
@@ -35,9 +28,12 @@ from kompend.lint.log import latest_lint_log, lint_log_dir, read_lint_log
 from kompend.lint.remediation import remediate, remediation_to_text
 from kompend.lint.runner import report_to_text
 from kompend.logging import get_logger
+from kompend.mcp.tools.quality.doctor import doctor as doctor
+from kompend.mcp.tools.quality.list_parsers import list_parsers as list_parsers
 from kompend.mcp.tools.quality.log import log as log
 from kompend.output.renderer import format_output
-from kompend.preprocessing.parsers import PARSER_PARSECRAFT, build_parser
+from kompend.preprocessing.parsers import PARSER_PARSECRAFT as PARSER_PARSECRAFT
+from kompend.preprocessing.parsers import build_parser as build_parser
 from kompend.review import ReviewQueue
 
 logger = get_logger(__name__)
@@ -351,47 +347,6 @@ def lint_format(
     return {"status": "ok", "message": "No formatting changes needed."}
 
 
-# ── doctor ────────────────────────────────────────────────────────────────
-
-
-def doctor(
-    wiki_dir: str | None = None,
-    verbose: bool = False,
-    json_output: bool = False,
-    config_file: str | None = None,
-) -> dict[str, Any]:
-    """Validate configuration and connectivity for a wiki."""
-    vp = vault_paths(wiki_dir)
-    cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
-    sources_dir = vp.sources_dir
-    output_dir = vp.output_dir
-
-    if not wiki_dir and not output_dir.exists():
-        return {"status": "error", "message": f"No wiki found at {output_dir}. Use wiki_dir parameter."}
-    results = run_doctor(
-        sources_dir=sources_dir,
-        output_dir=output_dir,
-        default_model=as_str(cfg.get(COMPILE_LLM_DEFAULT_MODEL)),
-        vlm_model=as_str(cfg.get(COMPILE_LLM_VLM_MODEL)),
-        embed_model=as_str(cfg.get(COMPILE_EMBEDDING_MODEL)),
-        config=cfg,
-        verbose=verbose,
-    )
-    # We can't easily capture print_doctor_results output, so return the raw results
-    if json_output:
-        return {"status": "ok", "results": [r.to_dict() for r in results]}
-    # Build a text summary
-    lines = []
-    all_ok = True
-    for r in results:
-        if not r.passed:
-            all_ok = False
-        lines.append(f"{r.name}: {'OK' if r.passed else 'FAIL'}")
-        if verbose and r.message:
-            lines.append(f"  {r.message}")
-    return {"status": "ok" if all_ok else "error", "summary": "\n".join(lines)}
-
-
 # ── review ────────────────────────────────────────────────────────────────
 
 
@@ -542,28 +497,3 @@ def _shorten(source: str, sources_dir: Path) -> str:
         return source_path.relative_to(sources_dir).as_posix()
     except ValueError:
         return source_path.name
-
-
-# ── list_parsers ──────────────────────────────────────────────────────────
-
-
-def list_parsers(
-    json_output: bool = False,
-) -> dict[str, Any]:
-    """Show the ingestion parser and the suffixes it claims."""
-    parser = build_parser().parser
-    extensions = sorted(str(extension) for extension in parser.supported_extensions)
-    parsers = [
-        {
-            "name": PARSER_PARSECRAFT,
-            "type": "built-in",
-            "extensions": extensions,
-            "figure_enrichment": parser.figure_enrichment,
-            "metadata": {},
-        }
-    ]
-
-    if json_output:
-        return {"status": "ok", "parsers": parsers}
-
-    return {"status": "ok", "parsers_text": f"Ingestion parser: {PARSER_PARSECRAFT} (built-in)\nFormats ({len(extensions)}): {', '.join(extensions)}"}
