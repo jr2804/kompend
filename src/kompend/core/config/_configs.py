@@ -529,6 +529,15 @@ class BudgetConfig(_KompendBaseModel):
     capture_source_char_max: int = Field(default=4000, validation_alias=EnvVar.BUDGET_CAPTURE_SOURCE_CHAR_MAX)
     concept_merge_threshold: float = Field(default=0.82, validation_alias=EnvVar.BUDGET_CONCEPT_MERGE_THRESHOLD)
     concept_string_merge_threshold: float = Field(default=0.70, validation_alias=EnvVar.BUDGET_CONCEPT_STRING_MERGE_THRESHOLD)
+    #: Largest fraction of the concept pool one merge may absorb. A merge
+    #: that would remove more than this is refused: same-domain text sits above
+    #: the threshold for clearly distinct concepts, so a transitive chain can
+    #: swallow most of the corpus in one go. ``1.0`` disables the guard.
+    concept_merge_max_reduction: float = Field(default=0.5, gt=0.0, le=1.0, validation_alias=EnvVar.BUDGET_CONCEPT_MERGE_MAX_REDUCTION)
+    #: Largest number of sources one merged concept may hold. A cluster that
+    #: spans more sources than this is refused - the p863 corpus absorbed 98
+    #: sources under one canonical name. ``0`` disables the guard.
+    concept_merge_max_sources: int = Field(default=24, ge=0, validation_alias=EnvVar.BUDGET_CONCEPT_MERGE_MAX_SOURCES)
     jaccard_min_token_len: int = Field(default=1, validation_alias=EnvVar.BUDGET_JACCARD_MIN_TOKEN_LEN)
     edge_min_title_len: int = Field(default=4, validation_alias=EnvVar.BUDGET_EDGE_MIN_TITLE_LEN)
 

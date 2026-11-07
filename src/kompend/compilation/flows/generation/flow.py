@@ -187,6 +187,8 @@ def prepare_concepts(compiler: TwoPhaseRuntime, extractions: ExtractionSet) -> l
         threshold=budget.concept_merge_threshold,
         string_threshold=budget.concept_string_merge_threshold,
         jaccard_min_token_len=budget.jaccard_min_token_len,
+        max_reduction=budget.concept_merge_max_reduction,
+        max_sources=budget.concept_merge_max_sources,
     )
     concepts = _with_entity_pages(compiler, extractions, concepts)
     if concepts:

@@ -29,12 +29,17 @@ def merge_similar_concepts(
     threshold: float,
     string_threshold: float,
     jaccard_min_token_len: int,
+    max_reduction: float = 1.0,
+    max_sources: int = 0,
 ) -> list[dict[str, Any]]:
     """Merge concept pages whose name+definition embeddings exceed *threshold*.
 
-    Uses the configured embedding provider. Groups concepts greedily:
-    for every pair with cosine similarity >= threshold, sources and
-    definitions are unioned and the longest name is kept as canonical.
+    Uses the configured embedding provider. Concepts are grouped by
+    **centroid linkage**: a concept joins the cluster whose centroid it is
+    closest to, and the cluster centroid moves to the mean of its members.
+    Centroid linkage, not transitive closure: two concepts that are each
+    similar to a third are not thereby similar to each other, and a chain
+    of such pairs cannot absorb the whole corpus through a pairwise rule.
 
     When embeddings are unavailable (``embedding_model == "hash"`` or
     provider creation/embedding fails), falls back to rapidfuzz string
@@ -42,6 +47,13 @@ def merge_similar_concepts(
     *string_threshold* so dedup still works offline. *string_threshold*
     stays on the legacy 0–1 Jaccard scale for config compatibility and
     is scaled to the 0–100 rapidfuzz scale internally.
+
+    Two guards bound the damage a merge can do, both disabled by default
+    (``max_reduction=1.0``, ``max_sources=0``):
+    *max_reduction* is the largest fraction of the pool one merge may
+    remove, and *max_sources* the largest number of sources one merged
+    concept may hold. A merge that would exceed either is refused and
+    logged - the concepts stay separate rather than silently collapsing.
     """
     if len(concepts) < 2:
         return concepts
@@ -63,9 +75,8 @@ def merge_similar_concepts(
 
     if vecs is not None:
         n = len(concepts)
-        similar = [(i, j) for i in range(n) for j in range(i + 1, n) if cosine(vecs[i], vecs[j]) >= threshold]
-        groups = _union_find_groups(n, similar)
-        result = _merge_groups(concepts, groups)
+        groups = _centroid_groups(n, vecs, threshold)
+        result = _merge_groups(concepts, groups, max_reduction=max_reduction, max_sources=max_sources)
         merged_count = n - len(result)
         if merged_count:
             logger.info(
@@ -83,7 +94,7 @@ def merge_similar_concepts(
     fuzzy_threshold = string_threshold * 100.0
     similar = [(i, j) for i in range(n) for j in range(i + 1, n) if similarity(names[i], names[j]) >= fuzzy_threshold]
     groups = _union_find_groups(n, similar)
-    result = _merge_groups(concepts, groups)
+    result = _merge_groups(concepts, groups, max_reduction=max_reduction, max_sources=max_sources)
     merged_count = n - len(result)
     if merged_count:
         logger.info(
@@ -119,6 +130,44 @@ def _concept_embed_text(concept: dict[str, Any]) -> str:
     return combined or name
 
 
+def _centroid_groups(n: int, vecs: list[list[float]], threshold: float) -> dict[int, list[int]]:
+    """Group concepts by centroid linkage: leader → member-index mapping.
+
+    Each concept joins the cluster whose centroid it is closest to, and that
+    cluster's centroid becomes the mean of its members. Unlike transitive
+    closure, a pair that is only *indirectly* connected never ends up in the
+    same cluster: "PESQ" and "POLQA" can each be close to "speech quality"
+    without being close to each other, and a chain of such pairs cannot
+    absorb the corpus through a pairwise rule.
+
+    The first concept seeds the first cluster; every later concept either
+    joins the closest centroid within *threshold* or seeds a new cluster.
+    """
+    members: list[list[int]] = []
+    for index in range(n):
+        vec = vecs[index]
+        best = -1
+        best_score = threshold
+        for c_index, cluster in enumerate(members):
+            score = cosine(vec, _centroid(vecs, cluster))
+            if score >= best_score:
+                best = c_index
+                best_score = score
+        if best < 0:
+            members.append([index])
+            continue
+        members[best].append(index)
+    return dict(enumerate(members))
+
+
+def _centroid(vecs: list[list[float]], cluster: list[int]) -> list[float]:
+    """The centroid of a cluster: the component-wise mean of its members."""
+    if len(cluster) == 1:
+        return vecs[cluster[0]]
+    size = len(cluster)
+    return [sum(vecs[index][axis] for index in cluster) / size for axis in range(len(vecs[cluster[0]]))]
+
+
 def _union_find_groups(n: int, similar: list[tuple[int, int]]) -> dict[int, list[int]]:
     """Union-Find clustering: return leader → member-index mapping."""
     parent = list(range(n))
@@ -148,12 +197,39 @@ def _union_find_groups(n: int, similar: list[tuple[int, int]]) -> dict[int, list
 def _merge_groups(
     concepts: list[dict[str, Any]],
     groups: dict[int, list[int]],
+    *,
+    max_reduction: float = 1.0,
+    max_sources: int = 0,
 ) -> list[dict[str, Any]]:
-    """Merge concept groups: longest name wins, sources/definitions unioned."""
+    """Merge concept groups: longest name wins, sources/definitions unioned.
+
+    The guards bound what a merge may do. Two limits apply:
+
+    * *max_sources* — one merged concept may hold at most this many
+      sources. A cluster spanning dozens of sources is a cluster of distinct
+      concepts, not one concept seen from many angles.
+    * *max_reduction* — the whole merge may remove at most this fraction of
+      the pool. A collapse of that size means the threshold is matching a
+      domain rather than a concept.
+
+    A group that breaks either limit is refused: its members are kept as
+    separate concepts and the refusal is logged. Refusing keeps the
+    concepts visible; merging them silently is what turned 340 candidates
+    into 31 pages. When the reduction limit is what was broken, the groups
+    that absorb the most are refused first, so the merge gives back as
+    little as it has to.
+    """
+    total = len(concepts)
+    mergeable = [members for members in groups.values() if len(members) > 1]
+    refused = _groups_over_budget(mergeable, concepts, total, max_reduction, max_sources)
+
     result: list[dict[str, Any]] = []
     for members in groups.values():
         if len(members) == 1:
             result.append(concepts[members[0]])
+            continue
+        if members[0] in refused:
+            result.extend(concepts[m] for m in members)
             continue
         merged: dict[str, Any] = {
             "name": max((concepts[m]["name"] for m in members), key=len),
@@ -173,6 +249,61 @@ def _merge_groups(
                     seen_defs.add(d)
         result.append(merged)
     return result
+
+
+def _groups_over_budget(
+    mergeable: list[list[int]],
+    concepts: list[dict[str, Any]],
+    total: int,
+    max_reduction: float,
+    max_sources: int,
+) -> set[int]:
+    """The groups a merge must refuse, keyed by each group's first member.
+
+    A group holding more than *max_sources* sources is always refused. When
+    the whole merge would remove more than *max_reduction* of the pool, the
+    groups that absorb the most are refused first until the merge fits the
+    budget - refusing the smallest absorbers instead would leave the
+    collapse in place.
+    """
+    refused: set[int] = set()
+    for members in mergeable:
+        if max_sources > 0 and len(_group_sources(concepts, members)) > max_sources:
+            refused.add(members[0])
+
+    if max_reduction < 1.0 and total > 0:
+        budget = max_reduction * total
+        absorbed = sum(len(members) - 1 for members in mergeable if members[0] not in refused)
+        for members in sorted(mergeable, key=len, reverse=True):
+            if absorbed <= budget:
+                break
+            if members[0] in refused:
+                continue
+            refused.add(members[0])
+            absorbed -= len(members) - 1
+
+    for members in mergeable:
+        if members[0] not in refused:
+            continue
+        sources = len(_group_sources(concepts, members))
+        logger.warning(
+            "Concept merge refused: merging %d concepts holding %d sources would exceed the budget; keeping them separate",
+            len(members),
+            sources,
+        )
+    return refused
+
+
+def _group_sources(concepts: list[dict[str, Any]], members: list[int]) -> list[str]:
+    """The distinct sources the group's members contribute."""
+    sources: list[str] = []
+    seen: set[str] = set()
+    for m in members:
+        for s in concepts[m].get("sources", []):
+            if s not in seen:
+                seen.add(s)
+                sources.append(s)
+    return sources
 
 
 # ── Tree text building ──────────────────────────────────────────────────

@@ -385,6 +385,12 @@ capture_source_char_max = 4000
 # Concept dedup thresholds (Phase 1 — name+definition embedding merge)
 concept_merge_threshold = 0.82       # cosine similarity to merge concepts
 concept_string_merge_threshold = 0.70  # Jaccard fallback when no embeddings
+# Guard: the largest fraction of the concept pool one merge may absorb. A merge
+# that would remove more than this is refused and logged, not applied — a
+# collapse of that size means the threshold is matching a domain, not a concept.
+concept_merge_max_reduction = 0.5
+# Guard: the largest number of sources one merged concept may hold. 0 disables it.
+concept_merge_max_sources = 24
 jaccard_min_token_len = 1            # ignore tokens shorter than this in Jaccard
 edge_min_title_len = 4               # min title chars to create a cross-source edge
 
