@@ -14,26 +14,28 @@ from kompend.compilation.flows.generation.flow import (
     PlaceholderMarker,
     PlaceholderPageError,
     _allowed_kind,
-    _consult_loop2,
-    _format_uncovered_concepts,
     _placeholder_reasons,
     _reject_placeholder_pages,
     _resolve_page_kind,
     _sanitize_entity_type,
-    _SegmentUnit,
     assemble_wiki,
     gen_cache_deps,
     generate_all_pages_agentic,
     generation_detail,
     learn_wikilink_aliases,
     prepare_concepts,
-    prepare_source_segments,
     run_generation,
     run_generation_resumable,
 )
 from kompend.compilation.flows.generation.prompt import (
     _categories_block,
     build_known_titles,
+)
+from kompend.compilation.flows.generation.segments import (
+    _consult_loop2,
+    _format_uncovered_concepts,
+    _SegmentUnit,
+    prepare_source_segments,
 )
 
 __all__ = [

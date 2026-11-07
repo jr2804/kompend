@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import kompend.compilation.flows.generation.flow as gen_module
+import kompend.compilation.flows.generation.segments as segments_module
 from kompend.agents.failure import AgentFailureKind, EmptyAnswerError
 from kompend.compilation.adaptation import (
     AdaptationSignal,
@@ -290,25 +290,25 @@ class TestErrorDecisionShrink:
 class TestConsultGate:
     @pytest.mark.parametrize("kind", [AgentFailureKind.TRANSIENT, AgentFailureKind.CONTEXT_OVERFLOW])
     def test_arithmetic_failures_never_reach_the_model(self, kind: AgentFailureKind) -> None:
-        with patch.object(gen_module, "decide_unit_adaptation") as decide:
+        with patch.object(segments_module, "decide_unit_adaptation") as decide:
             assert _consult_loop2(self._compiler(), self._unit(), _loop2_signal(kind), 2) is None
             decide.assert_not_called()
 
     def test_spent_budget_never_reaches_the_model(self) -> None:
-        with patch.object(gen_module, "decide_unit_adaptation") as decide:
+        with patch.object(segments_module, "decide_unit_adaptation") as decide:
             signal = _loop2_signal(AgentFailureKind.OTHER, adaptations_used=2)
             assert _consult_loop2(self._compiler(), self._unit(depth=2), signal, 2) is None
             decide.assert_not_called()
 
     def test_no_model_keeps_todays_path(self) -> None:
-        with patch.object(gen_module, "decide_unit_adaptation", return_value=None) as decide:
+        with patch.object(segments_module, "decide_unit_adaptation", return_value=None) as decide:
             signal = _loop2_signal(AgentFailureKind.OTHER)
             assert _consult_loop2(self._compiler(), self._unit(), signal, 2) is None
             decide.assert_called_once()
 
     def test_verdict_passes_through(self) -> None:
         verdict = ErrorDecision(action=ErrorAction.RETRY, shrink=True)
-        with patch.object(gen_module, "decide_unit_adaptation", return_value=verdict):
+        with patch.object(segments_module, "decide_unit_adaptation", return_value=verdict):
             signal = _loop2_signal(AgentFailureKind.OTHER)
             assert _consult_loop2(self._compiler(), self._unit(), signal, 2) is verdict
 
@@ -405,7 +405,7 @@ class TestLoop2Shrink:
 
         with (
             patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", side_effect=_factory),
-            patch.object(gen_module, "decide_unit_adaptation", side_effect=_decide),
+            patch.object(segments_module, "decide_unit_adaptation", side_effect=_decide),
         ):
             try:
                 result = generate_all_pages_agentic(
