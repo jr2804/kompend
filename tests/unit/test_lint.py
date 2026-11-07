@@ -37,7 +37,6 @@ from kompend.lint.llm_rules import (
 from kompend.lint.remediation import remediate
 from kompend.lint.runner import LintRunner, _build_report, report_to_json, report_to_payload, report_to_text
 from kompend.lint.structural import (
-    _RUMDL_FINDINGS,
     RULE_BY_NAME,
     STRUCTURAL_RULES,
     BrokenWikilinksRule,
@@ -54,6 +53,7 @@ from kompend.lint.structural import (
     SourceNotFoundRule,
     StalePageRule,
 )
+from kompend.lint.structural.markdown import _RUMDL_FINDINGS
 
 # ── Rule 1: broken-wikilinks ────────────────────────────────────────────
 
@@ -757,7 +757,7 @@ class TestRumdlRule:
 
     def test_skips_when_rumdl_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         base = self._vault(tmp_path)
-        monkeypatch.setattr("kompend.lint.structural.shutil.which", lambda _: None)
+        monkeypatch.setattr("kompend.lint.structural.markdown.shutil.which", lambda _: None)
         results = RumdlRule().check(_make_wiki([]), sources_dir=str(base / "sources"))
         assert all(r.outcome == LintRuleOutcome.SKIP for r in results)
 
@@ -807,14 +807,14 @@ class TestRumdlFindings:
 
     def test_run_rumdl_returns_empty_on_malformed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "kompend.lint.structural.subprocess.run",
+            "kompend.lint.structural.markdown.subprocess.run",
             lambda *a, **k: SimpleNamespace(stdout="not json"),
         )
         assert RumdlRule._run_rumdl("rumdl", ["check"]) == []
 
     def test_run_rumdl_returns_empty_on_wrong_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "kompend.lint.structural.subprocess.run",
+            "kompend.lint.structural.markdown.subprocess.run",
             lambda *a, **k: SimpleNamespace(stdout='[{"line": {"nested": true}}]'),
         )
         assert RumdlRule._run_rumdl("rumdl", ["check"]) == []

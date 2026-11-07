@@ -10,36 +10,21 @@ from __future__ import annotations
 import contextlib
 import os
 import re
-import shutil
-import subprocess
 from pathlib import Path, PurePosixPath
 from typing import Any, ClassVar
-
-from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.core.models import KIND_FOLDERS, CompiledWiki, MetadataField
 from kompend.core.models.attachments import AttachmentManifest
 from kompend.core.models.metadata import meta_dict_list, meta_str
-from kompend.core.paths import KOMP_DIR, REFERENCES_FILE, VaultPaths, attachment_slugs_for_source, is_protected_source
-from kompend.core.pipeline.references import ReferenceStore, consolidate_references
+from kompend.core.paths import KOMP_DIR, VaultPaths, attachment_slugs_for_source, is_protected_source
 from kompend.core.pipeline.state import TierStateStore
 from kompend.core.text.matching import best_match
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from kompend.lint.structural.markdown import RumdlFinding as RumdlFinding
+from kompend.lint.structural.markdown import RumdlRule
+from kompend.lint.structural.references import DuplicateReferencesRule
 from kompend.logging import get_logger
-
-#: Max chars of a reference title used for display labels in lint findings.
-_REF_LABEL_TITLE_MAX = 40
-
-#: Max chars of a duplicate title kept in a duplicate finding as evidence.
-_DUPLICATE_TITLE_MAX = 60
-
-#: Max chars of a duplicated raw reference kept in a duplicate finding.
-_DUPLICATE_RAW_MAX = 80
-
-#: Leading argv entries of the rumdl command shown in a failure warning —
-#: enough to identify the invocation without echoing every path.
-_CMD_PREVIEW_ARGS = 4
 
 # ── Helpers ──────────────────────────────────────────────────────────────
 
@@ -841,297 +826,6 @@ class OrphanAttachmentsRule(BaseLintRule):
         return updated
 
 
-# ── Rule 9: duplicate-references ────────────────────────────────────────
-
-
-class DuplicateReferencesRule(BaseLintRule):
-    """Detect duplicate bibliographic references across sources.
-
-    Loads ``.kompend/references.json`` and checks for references that appear
-    in multiple source files — same DOI, same title+first-author pair, or
-    identical ``raw`` string. When ``embedding_model`` is set, also
-    detects near-duplicates via cosine similarity on title embeddings
-    (same pattern as concept merging in ``assembly.py``).
-
-    Duplicates are informational (not errors) because they are expected
-    in multi-source corpora.
-    """
-
-    name = "duplicate-references"
-    description = "Bibliographic references cited by more than one source"
-
-    def __init__(
-        self,
-        *,
-        embedding_model: str = "",
-        fuzzy_threshold: float = 0.85,
-    ) -> None:
-        """Initialize the rule.
-
-        Parameters
-        ----------
-        embedding_model:
-            When non-empty, enables fuzzy dedup via embedding cosine similarity.
-        fuzzy_threshold:
-            Similarity threshold for fuzzy matching (0.0–1.0).
-        """
-        self.embedding_model = embedding_model
-        self.fuzzy_threshold = fuzzy_threshold
-
-    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
-        results: list[LintResult] = []
-        if sources_dir is None:
-            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
-            return results
-
-        base_dir = Path(sources_dir).parent
-        store = ReferenceStore(VaultPaths(base_dir).references_file)
-        raw_data = store.to_dict()
-        if not raw_data:
-            msg = f"No {REFERENCES_FILE} found — run 'kompend compile' with reference extraction"
-            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message=msg))
-            return results
-
-        duplicates = self._find_exact_duplicates(raw_data)
-        near_dupes = self._find_fuzzy_duplicates(store)
-
-        if duplicates or near_dupes:
-            all_findings = duplicates + near_dupes
-            msg = f"{len(all_findings)} reference finding(s) ({len(duplicates)} exact, {len(near_dupes)} fuzzy) across {store.source_count()} source(s)"
-            results.append(
-                LintResult(
-                    rule=self.name,
-                    outcome=LintRuleOutcome.FAIL,
-                    severity=Severity.INFO,
-                    message=msg,
-                    details={"duplicates": duplicates, "near_duplicates": near_dupes},
-                )
-            )
-        else:
-            msg = f"No cross-source duplicate references ({store.total_count()} refs across {store.source_count()} source(s))"
-            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message=msg))
-        return results
-
-    def _find_fuzzy_duplicates(self, store: ReferenceStore) -> list[dict[str, Any]]:
-        """Find near-duplicate references via embedding cosine similarity."""
-        near_dupes: list[dict[str, Any]] = []
-        if not self.embedding_model:
-            return near_dupes
-
-        all_refs = store.all_references()
-        consolidated = consolidate_references(
-            all_refs,
-            self.embedding_model,
-            threshold=self.fuzzy_threshold,
-        )
-        fuzzy_removed = len(all_refs) - len(consolidated)
-        if fuzzy_removed > 0:
-            near_dupes.append(
-                {
-                    "type": "fuzzy",
-                    "removed": fuzzy_removed,
-                    "threshold": self.fuzzy_threshold,
-                    "remaining": len(consolidated),
-                }
-            )
-        return near_dupes
-
-    @staticmethod
-    def _find_exact_duplicates(
-        raw_data: dict[str, list[dict[str, Any]]],
-    ) -> list[dict[str, Any]]:
-        """Find exact-duplicate references (DOI, title+author, raw)."""
-        by_doi: dict[str, list[tuple[str, str]]] = {}
-        by_title_author: dict[str, list[tuple[str, str]]] = {}
-        by_raw: list[tuple[str, str, str]] = []
-
-        for source, ref_list in raw_data.items():
-            source_name = Path(source).name
-            for ref_dict in ref_list:
-                label = ref_dict.get("id") or ref_dict.get("title", "")[:_REF_LABEL_TITLE_MAX]
-                doi = ref_dict.get("doi", "").strip().lower()
-                title = ref_dict.get("title", "").strip().lower()
-                raw = ref_dict.get("raw", "").strip()
-                authors = ref_dict.get("author", [])
-                first_family = ""
-                if authors and isinstance(authors, list):
-                    first_family = authors[0].get("family", "") if isinstance(authors[0], dict) else ""
-
-                if doi:
-                    by_doi.setdefault(doi, []).append((source_name, label))
-                if title and first_family:
-                    key = f"{first_family.lower()}|{title}"
-                    by_title_author.setdefault(key, []).append((source_name, label))
-                if raw:
-                    by_raw.append((raw.lower(), source_name, label))
-
-        duplicates: list[dict[str, Any]] = []
-
-        for doi, entries in by_doi.items():
-            sources_seen = {s for s, _ in entries}
-            if len(sources_seen) > 1:
-                refs = [lbl for _, lbl in entries]
-                duplicates.append({"type": "doi", "doi": doi, "sources": sorted(sources_seen), "refs": refs})
-
-        for key, entries in by_title_author.items():
-            sources_seen = {s for s, _ in entries}
-            if len(sources_seen) > 1:
-                family, title = key.split("|", 1)
-                refs = [lbl for _, lbl in entries]
-                duplicates.append(
-                    {"type": "title-author", "author": family, "title": title[:_DUPLICATE_TITLE_MAX], "sources": sorted(sources_seen), "refs": refs}
-                )
-
-        raw_seen: dict[str, list[str]] = {}
-        for raw_text, source_name, _ in by_raw:
-            raw_seen.setdefault(raw_text, []).append(source_name)
-        for raw_text, sources_for_raw in raw_seen.items():
-            unique_sources = set(sources_for_raw)
-            if len(unique_sources) > 1:
-                duplicates.append({"type": "raw", "raw": raw_text[:_DUPLICATE_RAW_MAX], "sources": sorted(unique_sources)})
-
-        return duplicates
-
-
-# ── Rule 10: rumdl ───────────────────────────────────────────────────────
-
-
-class RumdlFinding(BaseModel, extra="ignore"):
-    """One diagnostic from ``rumdl check --output-format json``.
-
-    rumdl owns this schema — unknown keys are ignored, so a rumdl upgrade
-    that adds fields cannot break the lint run. Every field we read is
-    optional: a diagnostic that omits one still converts.
-    """
-
-    file: str | None = None
-    line: int | None = None
-    column: int | None = None
-    rule: str | None = None
-    message: str | None = None
-    severity: str | None = None
-    fixable: bool = False
-
-
-_RUMDL_FINDINGS = TypeAdapter(list[RumdlFinding])
-
-#: Log-line bound for the unexpected-JSON warning below. The payload itself
-#: is discarded by contract (empty list on failure) — this only keeps the
-#: warning readable, it truncates no data that flows downstream.
-_UNEXPECTED_JSON_PREVIEW_CHARS = 200
-
-
-class RumdlRule(BaseLintRule):
-    """Markdown style via ``rumdl check`` on all vault folders except sources.
-
-    Scans every ``*.md`` file under the vault root (derived from
-    *sources_dir*'s parent), excluding ``sources/``, ``.kompend/``, and
-    ``attachments/``. Sources are never read or modified. Files are passed
-    explicitly to bypass rumdl's ignore-file filtering — self-written notes
-    that are gitignored still get checked. rumdl auto-discovers a
-    ``.rumdl.toml`` in the vault.
-    """
-
-    name = "rumdl"
-    description = "Markdown style issues found by rumdl (all vault folders except sources)"
-
-    #: Explicit paths bypass rumdl's ignore-file filtering, but the Windows
-    #: command line caps at ~32k chars — batch to stay well under it.
-    _BATCH_SIZE = 100
-
-    def __init__(self, rumdl_config: Path | None = None) -> None:
-        self.rumdl_config = rumdl_config
-
-    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
-        exe = shutil.which("rumdl")
-        if not exe:
-            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="rumdl is not installed")]
-        if not sources_dir:
-            return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="Sources directory unknown — cannot derive vault root")]
-        files = self._md_files(sources_dir)
-        if not files:
-            return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No markdown files to check")]
-
-        findings: list[RumdlFinding] = []
-        for batch in _batched(files, self._BATCH_SIZE):
-            findings.extend(self._run_rumdl(exe, ["check", *self._config_args(), "--output-format", "json", *batch]))
-        if not findings:
-            return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All markdown files pass rumdl checks")]
-        return [self._to_result(f) for f in findings]
-
-    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
-        """Apply ``rumdl check --fix`` to the files with fixable findings."""
-        exe = shutil.which("rumdl")
-        if not exe:
-            return results
-        fixable_files = sorted(
-            {r.details.get("file", "") for r in results if r.outcome == LintRuleOutcome.FAIL and r.details.get("fixable") and r.details.get("file")}
-        )
-        for batch in _batched(fixable_files, self._BATCH_SIZE):
-            self._run_rumdl(exe, ["check", "--fix", *self._config_args(), "--output-format", "json", *batch])
-        for r in results:
-            if r.outcome == LintRuleOutcome.FAIL and r.details.get("fixable"):
-                r.fix_applied = True
-        return results
-
-    def _config_args(self) -> list[str]:
-        """``--config`` args when a custom rumdl config is set (else auto-discovery)."""
-        return ["--config", str(self.rumdl_config)] if self.rumdl_config else []
-
-    def _to_result(self, finding: RumdlFinding) -> LintResult:
-        severity = Severity.ERROR if finding.severity == "error" else Severity.WARNING
-        return LintResult(
-            rule=self.name,
-            outcome=LintRuleOutcome.FAIL,
-            severity=severity,
-            message=f"{finding.file}:{finding.line} {finding.rule}: {finding.message}",
-            page_id="",
-            details={
-                "file": finding.file or "",
-                "line": finding.line,
-                "column": finding.column,
-                "rumdl_rule": finding.rule,
-                "fixable": finding.fixable,
-            },
-        )
-
-    @staticmethod
-    def _md_files(sources_dir: str) -> list[str]:
-        """All ``*.md`` files under the vault root, excluding sources/.kompend/attachments."""
-        base = Path(sources_dir).parent
-        sources_path = Path(sources_dir)
-        excluded_names = {".kompend", "attachments"}
-        files: list[str] = []
-        for path in base.rglob("*.md"):
-            rel = path.relative_to(base)
-            if sources_path in path.parents:
-                continue
-            if any(part in excluded_names for part in rel.parts[:-1]):
-                continue
-            files.append(str(path))
-        return sorted(files)
-
-    @staticmethod
-    def _run_rumdl(exe: str, cmd: list[str]) -> list[RumdlFinding]:
-        """Run rumdl and return its JSON diagnostics (empty list on failure)."""
-        try:
-            result = subprocess.run(  # noqa: S603 — internally constructed cmd list
-                [exe, *cmd],
-                capture_output=True,
-                encoding="utf-8",
-                timeout=120,  # nocheck: rumdl subprocess timeout, unrelated to any model request timeout
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            logger.warning("rumdl invocation failed: %s", cmd[:_CMD_PREVIEW_ARGS])
-            return []
-        try:
-            return _RUMDL_FINDINGS.validate_json(result.stdout or "[]")
-        except ValidationError:
-            logger.warning("rumdl emitted unexpected JSON: %s", (result.stdout or "")[:_UNEXPECTED_JSON_PREVIEW_CHARS])
-            return []
-
-
 def unreferenced_attachment_files(base_dir: Path) -> list[str]:
     """Vault-relative regenerable media in live source dirs that no page links.
 
@@ -1331,11 +1025,6 @@ def _node_lookup_index(wiki: CompiledWiki) -> dict[str, str]:
         folder = KIND_FOLDERS.get(n.node_type.value, "concepts")
         alias_index.setdefault(f"{folder}/{n.id}", n.id)
     return alias_index
-
-
-def _batched(items: list[str], size: int) -> list[list[str]]:
-    """Split *items* into consecutive batches of at most *size*."""
-    return [items[i : i + size] for i in range(0, len(items), size)]
 
 
 # ── Registry ────────────────────────────────────────────────────────────
