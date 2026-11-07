@@ -14,15 +14,17 @@ from kompend.agents.base.agent import (
     _SLIDING_KEEP_MESSAGES,
     _SLIDING_MAX_MESSAGES,
     RLM_CONTEXT_PLACEHOLDER,
+    KompendAgentBase,
+)
+from kompend.agents.base.deps import (
     UNSET_RETRIES,
     UNSET_TIMEOUT,
     AgentDeps,
     DepsT,
-    KompendAgentBase,
     ResultT,
-    _is_cache_rejection,
     resolve_retry_budget,
 )
+from kompend.agents.base.retries import _is_cache_rejection
 
 __all__ = [
     "RLM_CONTEXT_PLACEHOLDER",

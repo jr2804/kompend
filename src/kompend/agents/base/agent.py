@@ -37,24 +37,44 @@ from abc import ABC
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Final, Protocol, TypeVar, cast, runtime_checkable
+from typing import Any, ClassVar, Final, cast
 
 from pydantic import BaseModel
-from pydantic.fields import FieldInfo
 from pydantic_ai import Agent, ModelRequestContext, NativeOutput, RunContext, Tool, UsageLimits
 from pydantic_ai.agent import AgentModelSettings
 from pydantic_ai.agent.abstract import AgentRetries
 from pydantic_ai.capabilities import AbstractCapability, Hooks
 from pydantic_ai.exceptions import ModelRetry
-from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelResponse, TextPart
+from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter, ModelResponse
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai_harness.compaction import ContextUsage, ReportContextUsage, SlidingWindowCompaction
 
+from kompend.agents.base.delta_retry import (
+    _build_delta_message,
+    _get_response_text,
+    _merge_valid_data,
+    _set_response_text,
+)
+from kompend.agents.base.deps import (
+    _DEFAULT_RETRIES,
+    UNSET_RETRIES,
+    UNSET_TIMEOUT,
+    AgentDeps,
+    DepsT,
+    ResultT,
+    _coerce_type,
+)
+from kompend.agents.base.retries import (
+    _DEFAULT_TRANSIENT_BACKOFF_SECONDS,
+    _DEFAULT_TRANSIENT_RETRIES,
+    _context_usage_str,
+    _is_cache_rejection,
+    _map_agent_error,
+)
 from kompend.agents.context_manager import _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES, build_fallback_compaction
-from kompend.agents.failure import EmptyAnswerError
 from kompend.agents.instrument import configure_observability
 from kompend.agents.kompend_model import KompendModel
 from kompend.agents.rlm import (
@@ -65,17 +85,14 @@ from kompend.agents.types import PipelineAgentDeps
 from kompend.core.config._configs import ContextManagerPreset, LLMConfig, LlmDataFormat, ReasoningEffort, RlmConfig
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.utils.exceptions import (
-    LLMContextOverflowError,
     LLMOutputError,
-    LLMTransientError,
 )
 from kompend.llm.errors import is_transient_error
 from kompend.llm.format import salvage_json
 from kompend.llm.models import build_model, requires_output_ceiling, resolve_model_limits
-from kompend.llm.overflow import is_context_overflow, stated_context_size
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
-from kompend.types import JSONDict, JSONValue
+from kompend.types import JSONValue
 
 #: Per-stage timeout floor. Agents in kompend are synchronous single-turn;
 #: PydanticAI's run_sync is fast but provider-side latency can spike.
@@ -90,19 +107,6 @@ _CEILING_MARGIN_MIN: int = 256
 
 #: Chars-per-token used when the agent has no ``compile.llm`` config group.
 _FALLBACK_CHARS_PER_TOKEN: float = 4.0
-
-#: Fallback retries when neither the construction site nor the config set a
-#: budget (``compile.llm.output_retries`` defaults to 2).
-_DEFAULT_RETRIES: int = 2
-
-#: Transient retries when no config is handed over (``compile.llm`` unset).
-_DEFAULT_TRANSIENT_RETRIES: int = 2
-_DEFAULT_TRANSIENT_BACKOFF_SECONDS: float = 5.0
-
-#: Sentinels for "the construction site did not set this limit" — the
-#: config (``compile.llm``) or the base default decides.
-UNSET_TIMEOUT: float = -1.0
-UNSET_RETRIES: int = -1
 
 #: Compaction presets: preset -> (compress threshold, messages kept verbatim).
 #: Keys are the validated :class:`~kompend.core.config.ContextManagerPreset`
@@ -124,87 +128,6 @@ RLM_CONTEXT_PLACEHOLDER: str = (
 )
 
 logger = get_logger(__name__)
-
-ResultT = TypeVar("ResultT")
-
-
-@runtime_checkable
-class AgentDeps(Protocol):
-    """Structural type for deps objects passed to :class:`KompendAgentBase`.
-
-    Any dataclass with a ``source_id: str`` field
-    satisfies this protocol.
-    """
-
-    source_id: str
-
-
-def resolve_retry_budget(
-    llm: LLMConfig | None,
-    *,
-    retries: int | AgentRetries | None,
-    output_retries: int | None,
-) -> int | AgentRetries:
-    """Resolve the tool/output retry split from the config.
-
-    ``retries`` bounds tool-call retries (``compile.llm.tool_retries``),
-    ``output_retries`` bounds output validation
-    (``compile.llm.agentic_output_retries`` for agentic agents). Both come
-    from ``compile.llm`` when the caller left them unset;
-    ``compile.llm.output_retries_enabled = false`` switches retries off
-    entirely.
-    """
-    if llm is not None:
-        if retries is None or retries == UNSET_RETRIES:
-            retries = llm.tool_retries if llm.output_retries_enabled else 0
-        if output_retries is None:
-            output_retries = llm.agentic_output_retries if llm.output_retries_enabled else 0
-    if retries is None or retries == UNSET_RETRIES:
-        retries = _DEFAULT_RETRIES
-    if output_retries is not None:
-        tool_retries = retries if isinstance(retries, int) else retries.get("tools", _DEFAULT_RETRIES)
-        return {"tools": tool_retries, "output": output_retries}
-    return retries
-
-
-def _context_usage_str(tracker: UsageTracker | None) -> str:
-    """Format the last-known context-window utilization for failure logs.
-
-    Returns an empty string when no context snapshot was recorded (capability
-    disabled or no request reached ``before_model_request``).
-    """
-    if tracker is None or tracker.context_budget <= 0:
-        return ""
-    pct = 100 * tracker.context_tokens / tracker.context_budget
-    return f" (context: {tracker.context_tokens}/{tracker.context_budget} tokens, {pct:.0f}%)"
-
-
-def _map_agent_error(exc: Exception, *, model_string: str, debug_hint: str) -> LLMOutputError:
-    """Map a provider failure to the exception the pipeline understands.
-
-    Four outcomes:
-
-    - an empty answer (:class:`EmptyAnswerError`, raised by the model layer
-      before the output-retry budget is spent) stays an empty answer: the
-      stage and the classifier both need to see *why* the unit has no
-      result, not a generic "agent failed";
-    - a context-window overflow becomes :class:`LLMContextOverflowError`
-      carrying the limit the provider named, so the stage can lower the
-      effective window and re-plan instead of failing the run;
-    - a transient failure becomes :class:`LLMTransientError` (retryable);
-    - everything else becomes :class:`LLMOutputError`.
-    """
-    message = f"Agent failed for model '{model_string}': {exc}{debug_hint}"
-    if isinstance(exc, EmptyAnswerError):
-        return EmptyAnswerError(message)
-    if is_context_overflow(exc):
-        return LLMContextOverflowError(message, stated_limit=stated_context_size(exc))
-    if is_transient_error(exc):
-        return LLMTransientError(message)
-    return LLMOutputError(message)
-
-
-DepsT = TypeVar("DepsT", bound=AgentDeps)
 
 
 @dataclass
@@ -640,8 +563,8 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             args = typing.get_args(base)
             if len(args) >= 2:
                 result_arg, deps_arg = args[0], args[1]
-                self.result_type = self._coerce_type(result_arg, str)
-                self.deps_type = cast("type[AgentDeps]", self._coerce_type(deps_arg, PipelineAgentDeps))
+                self.result_type = _coerce_type(result_arg, str)
+                self.deps_type = cast("type[AgentDeps]", _coerce_type(deps_arg, PipelineAgentDeps))
                 return
         self.result_type = str
         self.deps_type = PipelineAgentDeps
@@ -952,22 +875,6 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             self.usage_tracker.record_context_usage(usage.used_tokens, usage.window_tokens)
 
     @staticmethod
-    def _coerce_type(arg: type[Any], fallback: type) -> type:
-        """Resolve a TypeVar arg to a usable runtime type.
-
-        Handles plain types (``str``), generic aliases (``dict[str, Any]``),
-        and TypeVars (falls back to *fallback*).
-        """
-        # Plain class — use directly
-        if isinstance(arg, type):
-            return arg
-        # Generic alias like dict[str, Any] — get_origin returns dict
-        origin = typing.get_origin(arg)
-        if origin is not None and isinstance(origin, type):
-            return origin
-        return fallback
-
-    @staticmethod
     def _deps_to_template_vars(deps: DepsT) -> dict[str, object]:
         """Convert a Deps dataclass instance to a dict for Jinja2 rendering."""
         if dataclasses.is_dataclass(deps) and not isinstance(deps, type):
@@ -986,130 +893,3 @@ def _agent_name(class_name: str) -> str:
     Logfire's ``gen_ai.agent.name`` attribute identifies each agent.
     """
     return re.sub(r"(?<!^)(?=[A-Z])", "-", class_name).lower()
-
-
-# ── Delta-retry helpers ────────────────────────────────────────────────
-
-
-def _get_response_text(response: ModelResponse) -> str | None:
-    """Extract the text content from a ModelResponse."""
-    for part in response.parts:
-        if isinstance(part, TextPart) and part.content:
-            return part.content
-    return None
-
-
-def _set_response_text(response: ModelResponse, data: str) -> None:
-    """Replace the text content of a ModelResponse with JSON text."""
-    for part in response.parts:
-        if isinstance(part, TextPart):
-            part.content = data
-            return
-    response.parts = [*response.parts, TextPart(content=data)]
-
-
-def _build_delta_message(parsed: JSONValue, schema: type[BaseModel]) -> str | None:
-    """Build a delta-retry message describing what needs fixing.
-
-    Examines the parsed (but invalid) output against the schema and
-    produces a message that tells the model exactly which parts are
-    broken and what the expected structure looks like.
-    """
-    issues: list[str] = []
-
-    # Check if the model returned a list when the schema expects an object.
-    if isinstance(parsed, list):
-        expected = _format_schema_fields(schema)
-        issues.append(f"- You returned a JSON array, but the expected output is a single JSON object with fields {expected}. Return one object, not a list.")
-
-    if isinstance(parsed, dict):
-        # Check each field against the schema
-        for field_name, field_info in schema.model_fields.items():
-            _check_field(parsed, field_name, field_info, issues)
-
-    if not issues:
-        return None
-
-    issue_text = "\n".join(issues)
-    return (
-        "[CORRECTION REQUEST — This is NOT a new task. Your previous output had "
-        "the following structural issues. Fix them and return the COMPLETE corrected "
-        "output, keeping all valid parts unchanged.]\n\n"
-        f"{issue_text}\n\n"
-        "Return the COMPLETE corrected output as a single valid JSON object matching "
-        "the expected schema exactly. Do not add explanations, markdown formatting, "
-        "or extra fields. If this keeps failing, your model may not support structured "
-        "JSON output — consider disabling delta-retry in the config "
-        "(`compile.llm.delta_retry_enabled = false`)."
-    )
-
-
-def _check_field(
-    parsed: dict[str, JSONValue],
-    field_name: str,
-    field_info: FieldInfo,
-    issues: list[str],
-) -> None:
-    """Compare one parsed output field against its schema declaration."""
-    if field_name not in parsed:
-        issues.append(f"- missing field '{field_name}'")
-        return
-    value = parsed[field_name]
-    inner_type = _get_list_inner_type(field_info.annotation)
-    if not (inner_type and isinstance(value, list)):
-        return
-    expected = _format_schema_fields(inner_type)
-    for i, item in enumerate(value):
-        if not isinstance(item, dict):
-            issues.append(f"- {field_name}[{i}]: expected an object with fields {expected}, got {type(item).__name__} ({json.dumps(str(item))})")
-
-
-def _get_list_inner_type(annotation: Any) -> type[BaseModel] | None:
-    """Extract the inner pydantic-model type from a ``list[X]`` annotation."""
-    origin = typing.get_origin(annotation)
-    if origin is not list:
-        return None
-    args = typing.get_args(annotation)
-    inner = args[0] if args else None
-    if isinstance(inner, type) and issubclass(inner, BaseModel):
-        return inner
-    return None
-
-
-def _format_schema_fields(model: object) -> str:
-    """Format the field names of a Pydantic model for display."""
-    if isinstance(model, type) and issubclass(model, BaseModel):
-        return "{" + ", ".join(model.model_fields) + "}"
-    return "{...}"
-
-
-def _merge_valid_data(previous: JSONValue, current: JSONDict, schema: type[BaseModel]) -> JSONDict | None:
-    """Merge valid data from a previous retry attempt with the current one.
-
-    When the model returns fewer items on retry (e.g., only the corrected
-    pages), merge them with the previously valid items by replacing the
-    tail of the previous list with the new items.
-    """
-    if not isinstance(previous, dict):
-        return None
-
-    merged = dict(current)
-    for field_name in schema.model_fields:
-        if field_name not in previous or field_name not in current:
-            continue
-        prev_val = previous[field_name]
-        curr_val = current[field_name]
-        if isinstance(prev_val, list) and isinstance(curr_val, list) and len(curr_val) < len(prev_val):
-            # New response has fewer items — replace the tail of previous
-            merged[field_name] = prev_val[: len(prev_val) - len(curr_val)] + curr_val
-
-    return merged
-
-
-def _is_cache_rejection(exc: BaseException) -> bool:
-    """True when an error says the provider does not accept the cache field."""
-    status = getattr(exc, "status_code", None)
-    if status not in (400, 404, 422):
-        return False
-    text = str(exc).lower()
-    return "cache" in text or "unknown field" in text or "extra inputs" in text
