@@ -204,10 +204,10 @@ class BatchFailureTracker:
 class TwoPhaseRuntime(Protocol):
     """Structural interface for the compiler passed to the two-phase flows.
 
-    Flow modules (``flows/extraction.py``, ``flows/generation.py``,
+    Flow modules (``flows/extraction/``, ``flows/generation/``,
     ``flows/agentic.py``, ``flows/references.py``) receive the compiler as
     a parameter but cannot import :class:`TwoPhaseCompiler` directly
-    (circular import — ``two_phase.py`` imports the flows). This Protocol
+    (circular import — ``two_phase/compiler.py`` imports the flows). This Protocol
     breaks the cycle: flows type-hint against the abstraction, and
     :class:`TwoPhaseCompiler` satisfies it structurally.
 
