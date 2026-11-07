@@ -264,6 +264,13 @@ class OrphanAttachmentsRule(BaseLintRule):
         return updated
 
 
+#: The rules this family contributes to the structural registry.
+ATTACHMENT_RULES: tuple[BaseLintRule, ...] = (
+    OrphanAttachmentsRule(),
+    UnreferencedAttachmentsRule(),
+)
+
+
 def unreferenced_attachment_files(base_dir: Path) -> list[str]:
     """Vault-relative regenerable media in live source dirs that no page links.
 

@@ -136,3 +136,7 @@ class SourceNotFoundRule(BaseLintRule):
         if not results:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All referenced sources exist"))
         return results
+
+
+#: The rules this family contributes to the structural registry.
+SOURCE_RULES: tuple[BaseLintRule, ...] = (StalePageRule(), SourceNotFoundRule())

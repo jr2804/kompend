@@ -17,20 +17,26 @@ from typing import Any
 
 from kompend.lint.base import BaseLintRule
 from kompend.lint.base import Severity as Severity
+from kompend.lint.structural.attachments import ATTACHMENT_RULES
 from kompend.lint.structural.attachments import OrphanAttachmentsRule as OrphanAttachmentsRule
 from kompend.lint.structural.attachments import UnreferencedAttachmentsRule as UnreferencedAttachmentsRule
 from kompend.lint.structural.attachments import orphan_attachment_dirs as orphan_attachment_dirs
 from kompend.lint.structural.attachments import unreferenced_attachment_files as unreferenced_attachment_files
+from kompend.lint.structural.images import IMAGE_RULES
 from kompend.lint.structural.images import ImageEmbedRule as ImageEmbedRule
+from kompend.lint.structural.links import LINK_RULES
 from kompend.lint.structural.links import BrokenWikilinksRule as BrokenWikilinksRule
 from kompend.lint.structural.links import KompendReferenceRule as KompendReferenceRule
 from kompend.lint.structural.links import _node_lookup_index as _node_lookup_index
 from kompend.lint.structural.markdown import RumdlFinding as RumdlFinding
 from kompend.lint.structural.markdown import RumdlRule as RumdlRule
+from kompend.lint.structural.metadata import METADATA_RULES
 from kompend.lint.structural.metadata import MissingFrontmatterRule as MissingFrontmatterRule
 from kompend.lint.structural.references import DuplicateReferencesRule as DuplicateReferencesRule
+from kompend.lint.structural.sources import SOURCE_RULES
 from kompend.lint.structural.sources import SourceNotFoundRule as SourceNotFoundRule
 from kompend.lint.structural.sources import StalePageRule as StalePageRule
+from kompend.lint.structural.structure import PAGE_STRUCTURE_RULES
 from kompend.lint.structural.structure import DuplicateTitleRule as DuplicateTitleRule
 from kompend.lint.structural.structure import EmptyPageRule as EmptyPageRule
 from kompend.lint.structural.structure import HeadingSkipRule as HeadingSkipRule
@@ -62,18 +68,12 @@ __all__ = [
 # ── Registry ────────────────────────────────────────────────────────────
 
 STRUCTURAL_RULES: list[BaseLintRule] = [
-    ImageEmbedRule(),
-    BrokenWikilinksRule(),
-    KompendReferenceRule(),
-    MissingFrontmatterRule(),
-    OrphanPageRule(),
-    DuplicateTitleRule(),
-    EmptyPageRule(),
-    HeadingSkipRule(),
-    StalePageRule(),
-    SourceNotFoundRule(),
-    OrphanAttachmentsRule(),
-    UnreferencedAttachmentsRule(),
+    *IMAGE_RULES,
+    *LINK_RULES,
+    *METADATA_RULES,
+    *PAGE_STRUCTURE_RULES,
+    *SOURCE_RULES,
+    *ATTACHMENT_RULES,
 ]
 
 RULE_BY_NAME: dict[str, Any] = {r.name: r for r in STRUCTURAL_RULES}

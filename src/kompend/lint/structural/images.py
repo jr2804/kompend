@@ -70,3 +70,7 @@ class ImageEmbedRule(BaseLintRule):
                 if r.page_id == node.id and r.outcome == LintRuleOutcome.FAIL:
                     r.fix_applied = True
         return fixed
+
+
+#: The rules this family contributes to the structural registry.
+IMAGE_RULES: tuple[BaseLintRule, ...] = (ImageEmbedRule(),)

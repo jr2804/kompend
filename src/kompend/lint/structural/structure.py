@@ -151,6 +151,15 @@ class HeadingSkipRule(BaseLintRule):
         return results
 
 
+#: The rules this family contributes to the structural registry.
+PAGE_STRUCTURE_RULES: tuple[BaseLintRule, ...] = (
+    OrphanPageRule(),
+    DuplicateTitleRule(),
+    EmptyPageRule(),
+    HeadingSkipRule(),
+)
+
+
 def _incoming_link_counts(wiki: CompiledWiki) -> dict[str, int]:
     """Count incoming ``[[wikilinks]]`` per node id."""
     counts: dict[str, int] = {}

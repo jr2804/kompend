@@ -185,6 +185,10 @@ class KompendReferenceRule(BaseLintRule):
         return results
 
 
+#: The rules this family contributes to the structural registry.
+LINK_RULES: tuple[BaseLintRule, ...] = (BrokenWikilinksRule(), KompendReferenceRule())
+
+
 def _extract_wikilinks(content: str) -> list[str]:
     """Return all ``[[target]]`` strings from *content*."""
     return _WIKILINK_RE.findall(content)

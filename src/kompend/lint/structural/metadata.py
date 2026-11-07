@@ -61,3 +61,7 @@ class MissingFrontmatterRule(BaseLintRule):
             node.metadata[MetadataField.FRONTMATTER] = fm
             r.fix_applied = True
         return fixed
+
+
+#: The rules this family contributes to the structural registry.
+METADATA_RULES: tuple[BaseLintRule, ...] = (MissingFrontmatterRule(),)
