@@ -21,14 +21,6 @@ from __future__ import annotations
 
 import time
 
-from kompend.compilation._two_phase_core import (
-    BatchFailureTracker,
-    Extraction,
-    ExtractionSet,
-    chars_to_tokens,
-    segment_sources,
-    tokens_to_chars,
-)
 from kompend.compilation.asset_registry import AssetIdMap, assign_asset_ids
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.flows.assembly import (
@@ -46,6 +38,8 @@ from kompend.compilation.flows.generation import (
 )
 from kompend.compilation.flows.references import run_reference_extraction
 from kompend.compilation.graph import GraphCompiler
+from kompend.compilation.two_phase.core import chars_to_tokens, segment_sources, tokens_to_chars
+from kompend.compilation.two_phase.state import BatchFailureTracker, Extraction, ExtractionSet
 from kompend.core.cache.store import CacheStore
 from kompend.core.models import ChunkTree, CompiledWiki, ExtractionStats, MetadataField, ResolvedChunk, WikiField
 from kompend.core.paths import rel_to_vault

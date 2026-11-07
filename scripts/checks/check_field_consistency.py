@@ -101,7 +101,8 @@ ALLOWLIST_SUFFIXES: list[str] = [
     "core/config/_core.py",
     "core/config/_configs.py",
     "core/keys.py",
-    "compilation/_two_phase_core.py",  # parses extraction JSON from LLM
+    "compilation/two_phase/state.py",  # parses extraction JSON from LLM
+    "compilation/two_phase/core.py",  # ImageRef TypedDict literal
     "mcp/server.py",  # JSON-RPC protocol keys
     "llm/__init__.py",  # lazy_loader submod_attrs table: keys are module names
 ]
