@@ -41,11 +41,15 @@ retrievers.
   staleness rules; `store.py` the public operations and the lifecycle that
   wires them. The SQL is hand-written by contract — `vec0` and FTS5 are
   virtual-table grammars SQLAlchemy Core cannot express (bead knox-97pg), so
-  splitting this store into ORM calls is out of scope. The modules take the
-  connection (and the provider/model id) as arguments: no module below
-  `store.py` opens a file or owns a connection. `sqlite_vec_store.py` is a
-  compatibility surface only — it keeps the documented import resolving; new
-  code imports from the package root.
+  splitting this store into ORM calls is out of scope. `schema.py`, `index.py`,
+  `query.py` and `filters.py` take an open connection as an argument and never
+  open one — `store.py` owns the store's connection and its lifecycle.
+  `manifest.py` is the exception and opens `kompend.db` itself: the manifest row
+  is read by `recorded_embedding_model()` before any store is opened (the
+  doctor calls it on another generation's store), so it cannot depend on a
+  `SqliteVecWikiStore` instance. `sqlite_vec_store.py` is a compatibility
+  surface only — it keeps the documented import resolving; new code imports
+  from the package root.
 - **The contract layer stays import-light.** `vector_store.py` and
   `embedding_base.py` must not import pydantic-ai, the provider SDKs or
   `kompend.llm.models`: a module that only needs the protocol, the field
