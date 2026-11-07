@@ -26,7 +26,8 @@ import functools
 import logging
 import sys
 from collections import deque
-from dataclasses import dataclass
+from collections.abc import Mapping
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Final
 
@@ -65,6 +66,7 @@ class _LoggingState:
 
     terminal_handler: RichHandler | None = None
     run_log_handler: RunLogHandler | None = None
+    module_levels: dict[str, int] = field(default_factory=dict)
 
 
 _state: Final[_LoggingState] = _LoggingState()
@@ -271,3 +273,39 @@ def set_verbosity(level: int | str) -> None:
         configure_logging()
     if _state.terminal_handler is not None:
         _state.terminal_handler.setLevel(level)
+
+
+def set_module_levels(levels: Mapping[str, int | str]) -> None:
+    """Set the level of named loggers, taming third-party chatter per module.
+
+    Called after :func:`configure_logging` with the resolved
+    ``logging.modules`` mapping. A logger's own level gates both the terminal
+    handler and the flight recorder, so ``{"docling": "DEBUG"}`` records its
+    detail in ``.kompend/logs/run-<id>.log`` while the terminal handler's
+    WARNING threshold keeps it off screen.
+
+    Replacing the mapping resets the loggers the previous call touched, so a
+    second in-process invocation does not inherit the first one's overrides.
+
+    Args:
+        levels: Logger name → level name (case-insensitive) or integer level.
+
+    Raises:
+        ValueError: If a level name is not recognised. Nothing is applied in
+            that case, so a typo cannot leave a half-configured run.
+    """
+    resolved: dict[str, int] = {}
+    for name, level in levels.items():
+        if isinstance(level, str):
+            level_int = logging.getLevelNamesMapping().get(level.upper())
+            if level_int is None:
+                msg = f"Invalid logging level {level!r} for module {name!r}"
+                raise ValueError(msg)
+            resolved[name] = level_int
+        else:
+            resolved[name] = level
+    for name in _state.module_levels:
+        logging.getLogger(name).setLevel(logging.NOTSET)
+    for name, level_int in resolved.items():
+        logging.getLogger(name).setLevel(level_int)
+    _state.module_levels = resolved
