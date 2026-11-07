@@ -44,7 +44,14 @@ stores into human-readable markdown — no LLM calls.
   `log_run_start` (root logger, run id minted there) and detached by
   `log_run_end`: INFO+ straight to `.kompend/logs/run-<id>.log`, DEBUG held
   in a bounded ring dumped into the same file only when `status != "ok"`.
-  `RunHandle.log_file` carries the path. The handler lives in
+  `RunHandle.log_file` carries the path. Each side also writes one INFO
+  bookend (command, status, duration), so a run that logs nothing else still
+  yields a file that explains itself. The handler lives in
   `kompend.logging` (the module that owns logging configuration); root runs
   at DEBUG and the terminal handler's own level gates the console — never
   the other way round.
+- `kompend.logging.route_third_party_loggers` raises `docling`,
+  `transformers`, `httpx` and `ollama` to DEBUG so their records reach the
+  recorder's ring; the terminal handler's level keeps them off screen.
+  `logging.modules` overlays that map. Native stderr from docling-rs and
+  tqdm progress bars bypasses `logging` entirely and is not captured here.
