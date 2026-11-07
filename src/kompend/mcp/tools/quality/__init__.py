@@ -15,7 +15,6 @@ from kompend.core.keys import (
 )
 from kompend.core.models import MetadataField, load_wiki_from_files
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, REVIEW_DIR, VaultPaths, vault_paths
-from kompend.core.reporting.log import build_log_report
 from kompend.core.utils.dicts import as_str
 from kompend.diagnostics import run_doctor
 from kompend.lint.base import RemediationStatus
@@ -36,6 +35,7 @@ from kompend.lint.log import latest_lint_log, lint_log_dir, read_lint_log
 from kompend.lint.remediation import remediate, remediation_to_text
 from kompend.lint.runner import report_to_text
 from kompend.logging import get_logger
+from kompend.mcp.tools.quality.log import log as log
 from kompend.output.renderer import format_output
 from kompend.preprocessing.parsers import PARSER_PARSECRAFT, build_parser
 from kompend.review import ReviewQueue
@@ -542,29 +542,6 @@ def _shorten(source: str, sources_dir: Path) -> str:
         return source_path.relative_to(sources_dir).as_posix()
     except ValueError:
         return source_path.name
-
-
-# ── log ───────────────────────────────────────────────────────────────────
-
-
-def log(
-    wiki_dir: str | None = None,
-    last: int = 25,
-    write: bool = False,
-    config_file: str | None = None,
-) -> dict[str, Any]:
-    """Regenerate the pipeline log from structured stores."""
-    vp = vault_paths(wiki_dir)
-    resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
-    base_dir = vp.base_dir
-    report = build_log_report(base_dir, last_n=last if (last is not None and last > 0) else 25)
-
-    if write:
-        log_file = vp.log_file
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        log_file.write_text(report, encoding="utf-8")
-        return {"status": "ok", "message": f"Wrote log report to {log_file}"}
-    return {"status": "ok", "report": report}
 
 
 # ── list_parsers ──────────────────────────────────────────────────────────
