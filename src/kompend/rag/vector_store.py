@@ -2,7 +2,7 @@
 that decide *what* gets indexed.
 
 This module names no vector database. The store that implements
-:class:`VectorStoreLike` lives beside it (``sqlite_vec_store.py``); everything
+:class:`VectorStoreLike` lives beside it (``sqlite_vec/``); everything
 here is shared by every backend — the field names a hit dict carries, the
 store protocol, and the composition rules whose fingerprints decide whether an
 index is still current.

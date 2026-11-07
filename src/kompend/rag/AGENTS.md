@@ -3,7 +3,7 @@
 ## Purpose
 
 Vector-store sidecar for semantic search over compiled wikis.
-`sqlite_vec_store.py` wraps [sqlite-vec](https://github.com/asg017/sqlite-vec)
+`sqlite_vec/` wraps [sqlite-vec](https://github.com/asg017/sqlite-vec)
 (embedded vector extension for SQLite, Apache 2.0) and exposes
 `SqliteVecWikiStore`; `vector_store.py` holds the backend-independent layer —
 `VectorField`, the `VectorStoreLike` protocol and the composition rules that
@@ -26,13 +26,26 @@ retrievers.
 | `embedding_base.py` | `EmbeddingProvider` ABC, `MediaEmbeddingUnsupported` — the import-light interface; heavy implementations depend on it, never the reverse |
 | `vector_store.py` | `VectorField`, `VectorStoreLike`, `to_pydantic_ai_embedding_string`, and the composition rules (`indexable_nodes`, `content_hash`, `embed_text`, `embed_node`, figure helpers) — **import-light** |
 | `embedding_pydantic.py` | `PydanticAIEmbeddingProvider`, `make_provider`, `build_embedder` — the pydantic-ai stack lives here and nowhere else |
-| `sqlite_vec_store.py` | `SqliteVecWikiStore` — the vec0 table, the side tables, the FTS5 index, the filters, the fusion, the drift guard |
+| `sqlite_vec/` | `SqliteVecWikiStore` (public ops + lifecycle), `schema.py` (DDL, table vocabulary, fingerprint), `index.py` (embed + insert), `query.py` (vector/FTS SQL, hit shape, RRF), `filters.py` (filter SQL), `manifest.py` (manifest row + staleness) |
+| `sqlite_vec_store.py` | compatibility module — re-exports the two names the published docs import; new code uses the package root |
 | `build.py` | `build_vector_index` — the index builder; it lives here, not in the package `__init__`, because it needs the sqlite-vec backend |
 | `rerank.py` | `Reranker` protocol, `FlashRankReranker` (optional extra) |
 | `multimodal.py` | `OllamaMediaEmbedder` |
 
 ## Local Contracts
 
+- **The backend is a package with one seam per job.** `sqlite_vec/schema.py`
+  owns the DDL, the table vocabulary and the fingerprint; `index.py` the
+  embed-and-insert path; `query.py` the vec0/FTS5 SQL, the hit shape and the
+  RRF; `filters.py` the filter SQL; `manifest.py` the manifest row and the
+  staleness rules; `store.py` the public operations and the lifecycle that
+  wires them. The SQL is hand-written by contract — `vec0` and FTS5 are
+  virtual-table grammars SQLAlchemy Core cannot express (bead knox-97pg), so
+  splitting this store into ORM calls is out of scope. The modules take the
+  connection (and the provider/model id) as arguments: no module below
+  `store.py` opens a file or owns a connection. `sqlite_vec_store.py` is a
+  compatibility surface only — it keeps the documented import resolving; new
+  code imports from the package root.
 - **The contract layer stays import-light.** `vector_store.py` and
   `embedding_base.py` must not import pydantic-ai, the provider SDKs or
   `kompend.llm.models`: a module that only needs the protocol, the field
@@ -88,7 +101,8 @@ retrievers.
   over the candidates, so `k` is raised before they apply). Otherwise a
   restrictive filter returns fewer than `top_k` rows.
 - **The lexical index is FTS5 over `title` + `content_preview`, and it is
-  preview-bounded** (`content_preview` is capped at `_PREVIEW_LEN`). Page
+  preview-bounded** (`content_preview` is capped at `_PREVIEW_LEN`, a class
+  attribute of `SqliteVecWikiStore`, passed into `index.py`). Page
   bodies live in the wiki markdown the LLM reads for synthesis, so lexical
   search only has to *find* the right pages — do not grow the stored payload
   to full text.
@@ -168,5 +182,7 @@ retrievers.
 
 ## Verification
 
-- `uv run pytest tests/unit/test_sqlite_vec_filters.py tests/unit/test_sqlite_vec_hybrid.py tests/unit/test_sqlite_vec_store_rebuild.py tests/unit/test_vector_embed_text.py tests/unit/test_multimodal_embedding.py -q`
+- `uv run pytest tests/unit/test_sqlite_vec_filters.py tests/unit/test_sqlite_vec_hybrid.py tests/unit/test_sqlite_vec_store_rebuild.py tests/unit/test_vector_embed_text.py tests/unit/test_multimodal_embedding.py tests/unit/test_rag.py -q`
 - `uv run ruff check src/kompend/rag && uv run ty check src/kompend/rag`
+- Every module in `sqlite_vec/` must import on its own:
+  `uv run python -c "import kompend.rag.sqlite_vec.<module>"`.
