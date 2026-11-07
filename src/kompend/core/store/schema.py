@@ -34,14 +34,15 @@ import functools
 import sqlite3
 from typing import Final
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, literal_column, select
 from sqlalchemy.dialects import sqlite as sqlite_dialect
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.pool import StaticPool
 from sqlalchemy.schema import CreateTable
 
 from kompend.core.identity import IDENTITY_HASH_LEN
-from kompend.core.store.tables import METADATA, tier_state
+from kompend.core.store.tables import METADATA, schema_version, tier_state
 
 #: Scratch name used while rebuilding ``tier_state`` in place.
 _TIER_STATE_LEGACY_TABLE: Final[str] = "tier_state_legacy"
@@ -159,11 +160,15 @@ def apply_schema(conn: sqlite3.Connection, version: int) -> None:
     version bump is reserved for *incompatible* changes (drops, retypes),
     where the caller recreates first.
     """
-    METADATA.create_all(_core_engine(conn))
-    conn.execute(
-        f"INSERT INTO {SCHEMA_VERSION_TABLE}(id, version, created_at) VALUES (1, ?, datetime('now')) ON CONFLICT(id) DO UPDATE SET version = excluded.version",
-        (version,),
-    )
+    engine = _core_engine(conn)
+    METADATA.create_all(engine)
+    with engine.begin() as core:
+        core.execute(
+            sqlite_insert(schema_version)
+            .values(id=1, version=version, created_at=literal_column("datetime('now')"))
+            .on_conflict_do_update(index_elements=[schema_version.c.id], set_={"version": version})
+        )
+    engine.dispose(close=False)
 
 
 def current_version(conn: sqlite3.Connection) -> int | None:
@@ -174,8 +179,11 @@ def current_version(conn: sqlite3.Connection) -> int | None:
     ).fetchone()
     if exists is None:
         return None
-    row = conn.execute(f"SELECT version FROM {SCHEMA_VERSION_TABLE} WHERE id = 1").fetchone()
-    return int(row["version"]) if row is not None else None
+    engine = _core_engine(conn)
+    with engine.connect() as core:
+        row = core.execute(select(schema_version.c.version).where(schema_version.c.id == 1)).fetchone()
+    engine.dispose(close=False)
+    return int(row.version) if row is not None else None
 
 
 def reconcile_columns(conn: sqlite3.Connection) -> list[str]:
@@ -233,9 +241,10 @@ def _expected_columns() -> dict[str, dict[str, str]]:
 def _core_engine(conn: sqlite3.Connection) -> Engine:
     """A throwaway engine bound to *conn*, so Core DDL runs on the caller's connection.
 
-    ``StaticPool`` holds exactly one connection — the caller's — and the
-    engine is never ``dispose()``d: disposing closes pooled connections, which
-    here would close the caller's handle. Dropping the engine is enough; the
-    caller's reference keeps the connection open.
+    ``StaticPool`` holds exactly one connection — the caller's. A caller that
+    finishes with the engine must ``dispose(close=False)`` it (dropping the
+    pooled reference without closing the caller's handle); never a plain
+    ``dispose()``. :func:`kompend.core.store.connection.core_connection` is
+    the ready-made wrapper for query sites.
     """
     return create_engine("sqlite+pysqlite://", creator=lambda: conn, poolclass=StaticPool)

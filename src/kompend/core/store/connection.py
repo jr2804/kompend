@@ -28,8 +28,11 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
 
+from sqlalchemy import Connection as CoreConnection
+
 from kompend.core.store.schema import (
     SCHEMA_VERSION,
+    _core_engine,
     apply_schema,
     current_version,
     migrate_tier_state_identity,
@@ -72,6 +75,25 @@ def connect(db_path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys=ON")
     conn.execute(f"PRAGMA busy_timeout={_BUSY_TIMEOUT_MS}")
     return conn
+
+
+@contextmanager
+def core_connection(conn: sqlite3.Connection) -> Generator[CoreConnection]:
+    """A SQLAlchemy Core connection over the caller's raw ``sqlite3`` handle.
+
+    The single bridge for typed query sites: statements execute on the
+    caller's connection inside the caller's transaction; the Core block
+    commits on clean exit (``open_store``'s own commit is then a no-op) and
+    rolls back on exception. Only the Core wrapper is torn down — the pooled
+    raw handle is never closed (``dispose(close=False)``), matching
+    :func:`kompend.core.store.schema._core_engine`.
+    """
+    engine = _core_engine(conn)
+    try:
+        with engine.begin() as core:
+            yield core
+    finally:
+        engine.dispose(close=False)
 
 
 def ensure_schema(conn: sqlite3.Connection, db_path: Path) -> None:
