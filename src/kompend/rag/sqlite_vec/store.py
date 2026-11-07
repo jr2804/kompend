@@ -39,6 +39,7 @@ from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.paths import rel_to_vault
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 from kompend.rag.embedding_base import EmbeddingProvider
+from kompend.rag.sqlite_vec.filters import filter_clause
 from kompend.rag.sqlite_vec.manifest import (
     content_changed,
     manifest_db_path,
@@ -508,7 +509,7 @@ class SqliteVecWikiStore:
         """Run the vector query and return the hits in rank order."""
         provider = self._require_provider()
         conn = self._require_conn()
-        clause, params = _filter_clause(
+        clause, params = filter_clause(
             "v",
             tags_all=tags_all,
             tags_dnf=tags_dnf,
@@ -561,7 +562,7 @@ class SqliteVecWikiStore:
         match = _fts_match_expression(query)
         if match is None:
             return []
-        clause, params = _filter_clause(
+        clause, params = filter_clause(
             "f",
             tags_all=tags_all,
             tags_dnf=tags_dnf,
@@ -752,60 +753,6 @@ def _fts_match_expression(query: str) -> str | None:
     if not terms:
         return None
     return " ".join(f'"{term}"' for term in terms)
-
-
-def _filter_clause(
-    alias: str,
-    *,
-    tags_all: Sequence[str] | None = None,
-    tags_dnf: Sequence[Sequence[str]] | None = None,
-    attributes_all: Sequence[str] | None = None,
-    attribute_keys: Sequence[str] | None = None,
-) -> tuple[str, list[str]]:
-    """Compose the SQL for the requested filters, with bound parameters.
-
-    *alias* is the table alias the filter correlates against (``v`` for the
-    vector query, ``f`` for the lexical one).
-
-    ``tags_all``/``attributes_all``/``attribute_keys`` mean "the node has
-    *every* one of these" — one ``EXISTS`` per value, ANDed.
-    ``tags_dnf`` is an OR of ANDs (DNF): each group is a set of tags the node
-    must all have, and the groups are OR-joined inside one parenthesised
-    clause.
-
-    Every value travels as a bound parameter — never as SQL text.
-    """
-    clauses: list[str] = []
-    params: list[str] = []
-
-    for tag in tags_all or ():
-        clauses.append(f"EXISTS (SELECT 1 FROM {VEC_TAGS} t WHERE t.item_id = {alias}.id AND t.tag = ?)")
-        params.append(str(tag))
-
-    groups: list[str] = []
-    group_params: list[str] = []
-    for group in tags_dnf or ():
-        members = [str(tag) for tag in group]
-        if not members:
-            continue
-        group_clauses = [f"EXISTS (SELECT 1 FROM {VEC_TAGS} t WHERE t.item_id = {alias}.id AND t.tag = ?)" for _ in members]
-        groups.append(" AND ".join(group_clauses))
-        group_params.extend(members)
-    if groups:
-        clauses.append(f"({' OR '.join(groups)})")
-        params.extend(group_params)
-
-    for token in attributes_all or ():
-        clauses.append(f"EXISTS (SELECT 1 FROM {VEC_ATTRIBUTES} a WHERE a.item_id = {alias}.id AND a.token = ?)")
-        params.append(str(token))
-
-    for key in attribute_keys or ():
-        clauses.append(f"EXISTS (SELECT 1 FROM {VEC_ATTR_KEYS} k WHERE k.item_id = {alias}.id AND k.key = ?)")
-        params.append(str(key))
-
-    if not clauses:
-        return "", []
-    return "AND " + " AND ".join(clauses), params
 
 
 def _fuse(
