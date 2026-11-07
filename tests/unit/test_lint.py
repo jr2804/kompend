@@ -25,6 +25,7 @@ from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.lint import _remediation_gaps as gaps_module
 from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
+from kompend.lint.flow import CHECK_STEP_RULES
 from kompend.lint.history import LintRunOptions, entry_from_report, report_from_dict
 from kompend.lint.llm_rules import (
     Contradiction,
@@ -877,6 +878,34 @@ class TestEdgeCases:
             "duplicate-references",
         }
         assert set(RULE_BY_NAME.keys()) == expected
+
+    def test_check_step_rules_derive_from_registry(self) -> None:
+        """``CHECK_STEP_RULES`` is the structural registry plus duplicate-references.
+
+        Pins the derivation, not a literal copy: the ``check`` step runs
+        every structural rule except ``rumdl`` (the separate ``format``
+        step), and ``duplicate-references`` is appended by ``flow.py``.
+        """
+        assert [rule.name for rule in STRUCTURAL_RULES] + ["duplicate-references"] == CHECK_STEP_RULES
+        assert "rumdl" not in CHECK_STEP_RULES
+
+    def test_golden_health_score_and_counts(self) -> None:
+        """Behaviour tripwire: a fixed synthetic wiki scores identically.
+
+        Runs the full structural registry (no LLM, no rumdl, no vault on
+        disk) and pins the aggregate numbers. Any split or move of the
+        rule code that changes what a rule reports must update these
+        numbers deliberately, never silently.
+        """
+        alpha = _make_node("a", "Alpha", "# Alpha\n\nSee [[Beta]] and [[Ghost]].\n\n### Skipped level\n\n[[img.png]] bad embed.\n")
+        beta = _make_node("b", "beta", "# Beta\n\nBack to [[alpha]].\n")
+        runner = LintRunner(rules=[rule.name for rule in STRUCTURAL_RULES])
+        report = runner.run(_make_wiki([alpha, beta]))
+        assert report.total_checks == 13
+        assert report.failures == 5
+        assert report.passes == 5
+        assert report.skips == 3
+        assert report.health_score == 71.8
 
 
 class TestContradictionDetectionRule:
