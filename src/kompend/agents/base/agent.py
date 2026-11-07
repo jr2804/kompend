@@ -28,7 +28,6 @@ The base class handles:
 from __future__ import annotations
 
 import dataclasses
-import json
 import math
 import re
 import time
@@ -39,13 +38,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, ClassVar, cast
 
-from pydantic import BaseModel
-from pydantic_ai import Agent, ModelRequestContext, NativeOutput, RunContext, Tool, UsageLimits
+from pydantic_ai import Agent, NativeOutput, RunContext, Tool, UsageLimits
 from pydantic_ai.agent import AgentModelSettings
 from pydantic_ai.agent.abstract import AgentRetries
 from pydantic_ai.capabilities import AbstractCapability, Hooks
-from pydantic_ai.exceptions import ModelRetry
-from pydantic_ai.messages import ModelMessage, ModelResponse
+from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import Model
 from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
@@ -57,10 +54,7 @@ from kompend.agents.base.context import (
     resolve_rlm_capability,
 )
 from kompend.agents.base.delta_retry import (
-    _build_delta_message,
-    _get_response_text,
-    _merge_valid_data,
-    _set_response_text,
+    make_delta_retry_hook,
 )
 from kompend.agents.base.deps import (
     _DEFAULT_RETRIES,
@@ -96,7 +90,6 @@ from kompend.core.utils.exceptions import (
     LLMOutputError,
 )
 from kompend.llm.errors import is_transient_error
-from kompend.llm.format import salvage_json
 from kompend.llm.models import requires_output_ceiling
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
@@ -667,71 +660,8 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         return build_top_level_model(self)
 
     def _make_delta_retry_hook(self) -> Hooks:
-        """Create an ``after_model_request`` hook for delta-retry.
-
-        When the model returns partially valid structured output, this hook
-        extracts the valid parts and raises ``ModelRetry`` with a message
-        that tells the model exactly which parts need fixing and what the
-        expected structure looks like.  On retry, valid parts from previous
-        attempts are accumulated and merged.
-
-        Only fires for agents with ``supports_delta_retry = True`` and a
-        Pydantic ``result_type`` (structured output).
-        """
-        state = self._delta_retry_state
-        hooks = Hooks()
-
-        @hooks.on.after_model_request
-        async def _delta_retry_hook(
-            ctx: RunContext[DepsT],
-            *,
-            request_context: ModelRequestContext,
-            response: ModelResponse,
-        ) -> ModelResponse:
-            # Only handle structured output (TextPart with JSON)
-            schema = self.result_type
-            if not isinstance(schema, type) or not issubclass(schema, BaseModel):
-                return response  # text output — nothing to salvage
-            text = _get_response_text(response)
-            if not text:
-                return response
-
-            # Try to parse with schema-aware salvage
-            parsed = salvage_json(text, schema=schema)
-            if parsed is None:
-                return response  # Can't parse — let PydanticAI handle it
-
-            # Try to validate against the schema
-            try:
-                validated = schema.model_validate(parsed)
-            except Exception:
-                # Validation failed — build a delta message
-                step = ctx.run_step
-                delta_msg = _build_delta_message(parsed, schema)
-                if delta_msg:
-                    # Store the partial data for potential merge on retry
-                    state[step] = parsed
-                    raise ModelRetry(delta_msg)
-                return response
-
-            # Fully valid — replace response text with corrected JSON so
-            # PydanticAI validates the fixed version, not the original broken one.
-            # salvage_json may have restructured fields, added defaults, or coerced
-            # types — without this, PydanticAI re-validates the original text.
-            corrected_json = validated.model_dump_json()
-            if corrected_json != text:
-                _set_response_text(response, corrected_json)
-
-            # Merge with any accumulated state from previous retries
-            step = ctx.run_step
-            if step in state:
-                merged = _merge_valid_data(state[step], validated.model_dump(mode="json"), schema)
-                if merged is not None:
-                    _set_response_text(response, json.dumps(merged, ensure_ascii=False, default=str))
-                del state[step]
-            return response
-
-        return hooks
+        """Delegate to :func:`kompend.agents.base.delta_retry.make_delta_retry_hook`."""
+        return make_delta_retry_hook(self)
 
     def _resolve_context_capability(self, model: Model) -> AbstractCapability[DepsT] | None:
         """Delegate to :func:`kompend.agents.base.context.resolve_context_capability`."""

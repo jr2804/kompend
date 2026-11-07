@@ -12,13 +12,20 @@ from __future__ import annotations
 
 import json
 import typing
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel
 from pydantic.fields import FieldInfo
+from pydantic_ai import ModelRequestContext, RunContext
+from pydantic_ai.capabilities import Hooks
+from pydantic_ai.exceptions import ModelRetry
 from pydantic_ai.messages import ModelResponse, TextPart
 
+from kompend.llm.format import salvage_json
 from kompend.types import JSONDict, JSONValue
+
+if TYPE_CHECKING:
+    from kompend.agents.base.agent import KompendAgentBase
 
 # ── Delta-retry helpers ────────────────────────────────────────────────
 
@@ -145,3 +152,71 @@ def _is_cache_rejection(exc: BaseException) -> bool:
         return False
     text = str(exc).lower()
     return "cache" in text or "unknown field" in text or "extra inputs" in text
+
+
+def make_delta_retry_hook(agent: KompendAgentBase) -> Hooks:
+    """Create an ``after_model_request`` hook for delta-retry.
+
+    When the model returns partially valid structured output, this hook
+    extracts the valid parts and raises ``ModelRetry`` with a message
+    that tells the model exactly which parts need fixing and what the
+    expected structure looks like.  On retry, valid parts from previous
+    attempts are accumulated and merged.
+
+    Only fires for agents with ``supports_delta_retry = True`` and a
+    Pydantic ``result_type`` (structured output).
+    """
+    state = agent._delta_retry_state
+    hooks = Hooks()
+
+    @hooks.on.after_model_request
+    async def _delta_retry_hook(
+        ctx: RunContext,
+        *,
+        request_context: ModelRequestContext,
+        response: ModelResponse,
+    ) -> ModelResponse:
+        # Only handle structured output (TextPart with JSON)
+        schema = agent.result_type
+        if not isinstance(schema, type) or not issubclass(schema, BaseModel):
+            return response  # text output — nothing to salvage
+        text = _get_response_text(response)
+        if not text:
+            return response
+
+        # Try to parse with schema-aware salvage
+        parsed = salvage_json(text, schema=schema)
+        if parsed is None:
+            return response  # Can't parse — let PydanticAI handle it
+
+        # Try to validate against the schema
+        try:
+            validated = schema.model_validate(parsed)
+        except Exception:
+            # Validation failed — build a delta message
+            step = ctx.run_step
+            delta_msg = _build_delta_message(parsed, schema)
+            if delta_msg:
+                # Store the partial data for potential merge on retry
+                state[step] = parsed
+                raise ModelRetry(delta_msg)
+            return response
+
+        # Fully valid — replace response text with corrected JSON so
+        # PydanticAI validates the fixed version, not the original broken one.
+        # salvage_json may have restructured fields, added defaults, or coerced
+        # types — without this, PydanticAI re-validates the original text.
+        corrected_json = validated.model_dump_json()
+        if corrected_json != text:
+            _set_response_text(response, corrected_json)
+
+        # Merge with any accumulated state from previous retries
+        step = ctx.run_step
+        if step in state:
+            merged = _merge_valid_data(state[step], validated.model_dump(mode="json"), schema)
+            if merged is not None:
+                _set_response_text(response, json.dumps(merged, ensure_ascii=False, default=str))
+            del state[step]
+        return response
+
+    return hooks
