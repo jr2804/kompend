@@ -16,8 +16,9 @@ from kompend.agents.failure import record_unit_failure
 from kompend.agents.query import QueryAgent
 from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
-from kompend.core.config import ReasoningEffort, RlmConfig
+from kompend.core.config import DEFAULTS, ReasoningEffort, RlmConfig
 from kompend.core.config._configs import LLMConfig
+from kompend.core.vocab import Verbosity
 from kompend.search.retrieval.results import Citation, SearchResult, SynthesisResult
 
 _SOURCE_MARKER_RE = re.compile(r"\[sources/[^\]]+\]|\[\^[^\]]+\]")
@@ -28,7 +29,7 @@ def synthesize_results(
     results: list[SearchResult],
     model: str = "",
     *,
-    verbosity: str = "standard",
+    verbosity: str = Verbosity.STANDARD,
     skills: dict[str, str] | None = None,
     reasoning_effort: ReasoningEffort | None = None,
     rlm: RlmConfig | None = None,
@@ -122,7 +123,7 @@ def run_agentic_query(
     *,
     retriever: QuerySearchProtocol,
     model: str,
-    max_sub_questions: int = 5,
+    max_sub_questions: int = int(DEFAULTS["search"]["agentic"]["max_sub_questions"]),
     timeout: float = UNSET_TIMEOUT,
     retries: int = UNSET_RETRIES,
     context_window: int | None = None,

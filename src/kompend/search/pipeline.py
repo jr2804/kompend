@@ -23,6 +23,7 @@ from kompend.core.config._configs import DisplayConfig, LLMConfig, RerankerBacke
 from kompend.core.models import CompiledWiki
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.text.matching import cosine as cosine_similarity
+from kompend.core.vocab import Verbosity
 from kompend.logging import get_logger
 from kompend.rag.rerank import FlashRankReranker, Reranker
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
@@ -160,7 +161,7 @@ class EnhancedRetriever:
         query: str,
         results: list[SearchResult],
         *,
-        verbosity: str = "standard",
+        verbosity: str = Verbosity.STANDARD,
         skills: dict[str, str] | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         rlm: RlmConfig | None = None,

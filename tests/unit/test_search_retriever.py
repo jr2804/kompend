@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import logging
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -9,9 +10,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from kompend.agents.query import QueryAgent
+from kompend.core.config import DEFAULTS
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
+from kompend.core.vocab import Verbosity
 from kompend.llm.context_window import ContextSource, ContextWindow
+from kompend.search.retrieval.synthesis import run_agentic_query
 from kompend.search.retriever import HybridRetriever, KeywordRetriever, SearchResult, extract_snippet, synthesize_results
 
 
@@ -285,3 +289,20 @@ class TestPageFigures:
             edges=[],
             toc=[],
         )
+
+
+class TestSynthesisDefaults:
+    """Parameter defaults must track the typed config, not re-declare it."""
+
+    def test_verbosity_default_is_the_enum_member(self) -> None:
+        default = inspect.signature(synthesize_results).parameters["verbosity"].default
+        assert default is Verbosity.STANDARD
+        assert DEFAULTS["search"]["synthesis"]["verbosity"] == Verbosity.STANDARD
+
+    def test_retriever_synthesize_verbosity_default_is_the_enum_member(self) -> None:
+        default = inspect.signature(HybridRetriever.synthesize).parameters["verbosity"].default
+        assert default is Verbosity.STANDARD
+
+    def test_max_sub_questions_default_is_the_config_default(self) -> None:
+        default = inspect.signature(run_agentic_query).parameters["max_sub_questions"].default
+        assert default == DEFAULTS["search"]["agentic"]["max_sub_questions"]

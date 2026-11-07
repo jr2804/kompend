@@ -18,6 +18,7 @@ from pathlib import Path
 from kompend.core.config import RlmConfig
 from kompend.core.config._configs import DisplayConfig
 from kompend.core.models import CompiledWiki, WikiNode
+from kompend.core.vocab import Verbosity
 from kompend.logging import get_logger
 from kompend.rag.vector_store import VectorStoreLike
 from kompend.search.retrieval.assemble import extract_snippet, node_figures, result_from_hit
@@ -40,8 +41,6 @@ __all__ = [
     "tokenize",
 ]
 
-_TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
-
 logger = get_logger(__name__)
 
 
@@ -51,8 +50,6 @@ class HybridRetriever:
     Retrieval is purely vector-based. If no vector store is available,
     all search methods return empty lists.
     """
-
-    _RRF_K: int = 60
 
     def __init__(
         self,
@@ -135,7 +132,7 @@ class HybridRetriever:
         query: str,
         results: list[SearchResult],
         *,
-        verbosity: str = "standard",
+        verbosity: str = Verbosity.STANDARD,
         skills: dict[str, str] | None = None,
         model: str = "",
         rlm: RlmConfig | None = None,
