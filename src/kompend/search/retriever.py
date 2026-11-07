@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Final, NotRequired, TypedDict
+from typing import Final
 
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT
 from kompend.agents.deps import QueryDeps
@@ -28,6 +27,7 @@ from kompend.core.text.page_media import find_page_figures
 from kompend.logging import get_logger
 from kompend.rag.vector_store import VectorField, VectorStoreLike
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
+from kompend.search.retrieval.results import Citation, SearchResult, SynthesisResult
 
 TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
 _TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
@@ -36,45 +36,6 @@ _TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
 _SOURCE_MARKER_RE = re.compile(r"\[sources/[^\]]+\]|\[\^[^\]]+\]")
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class SearchResult:
-    article_id: str
-    title: str
-    snippet: str
-    score: float
-    source_file: str | None = None
-    tags: set[str] = field(default_factory=set)
-    attributes: dict[str, list[str]] = field(default_factory=dict)
-    content: str = ""  # full page body for LLM synthesis; snippet is display-only
-    figures: list[ImageRef] = field(default_factory=list)
-    """The figures the page shows (published link + caption).
-
-    Read from the page body, so the link is the one the reader can open and
-    the caption is the one the page publishes.
-    """
-
-
-@dataclass
-class SynthesisResult:
-    answer: str
-    citations: list[Citation] = field(default_factory=list)
-
-
-class Citation(TypedDict):
-    """Schema for one citation in a synthesis result."""
-
-    article: str
-    article_id: str | None
-    source: str | None
-    snippet: str
-    score: float
-    figures: NotRequired[list[ImageRef]]
-    """The figures the cited page shows — the image the answer talked about.
-
-    Absent when the citation was built without the page body.
-    """
 
 
 class HybridRetriever:
