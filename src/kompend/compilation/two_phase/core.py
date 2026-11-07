@@ -26,23 +26,6 @@ from kompend.llm.request_budget import (
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 
-# The budget helpers are re-exported here: the compilation layer's budget
-# arithmetic has always been importable from the two-phase writer, and the
-# planner now owns the implementation.
-__all__ = [
-    "CONTEXT_SAFETY_FRACTION",
-    "CONTEXT_SAFETY_TOKENS",
-    "chars_to_tokens",
-    "compute_quality_score",
-    "context_safety_tokens",
-    "extract_images_from_chunks",
-    "rate_suffix",
-    "segment_sources",
-    "slugify",
-    "tokens_to_chars",
-    "try_pydanticai_extraction",
-]
-
 # Maximum slug length. Windows limits a single path component to 255 chars;
 # the LLM sometimes emits a full sentence as a page title, which slugifies to
 # 300+ chars and crashes ``write_text`` with ``OSError: [Errno 22]``. Cap the
@@ -275,3 +258,21 @@ def segment_sources(
     if current:
         segments.append(current)
     return segments
+
+
+# The budget helpers are re-exported here: the compilation layer's budget
+# arithmetic has always been importable from the two-phase writer, and the
+# planner now owns the implementation.
+__all__ = [
+    "CONTEXT_SAFETY_FRACTION",
+    "CONTEXT_SAFETY_TOKENS",
+    "chars_to_tokens",
+    "compute_quality_score",
+    "context_safety_tokens",
+    "extract_images_from_chunks",
+    "rate_suffix",
+    "segment_sources",
+    "slugify",
+    "tokens_to_chars",
+    "try_pydanticai_extraction",
+]

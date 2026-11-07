@@ -9,8 +9,6 @@ from typing import Any, TypedDict
 from kompend.core.models.enums import ChunkField, ElementType, MetadataField
 from kompend.core.paths import safe_stem
 
-__all__ = ["Chunk", "ImageRef", "ResolvedChunk", "image_source_key", "images_for_provenance"]
-
 
 @dataclass
 class Chunk:
@@ -113,3 +111,6 @@ def image_source_key(source: str) -> str:
     memory #779) lowercased is what they share.
     """
     return safe_stem(source).casefold()
+
+
+__all__ = ["Chunk", "ImageRef", "ResolvedChunk", "image_source_key", "images_for_provenance"]

@@ -53,18 +53,6 @@ from kompend.llm.request_budget import EffectiveWindow
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 
-# Re-export for backward compatibility.
-__all__ = [
-    "Extraction",
-    "ExtractionSet",
-    "TwoPhaseCompiler",
-    "chars_to_tokens",
-    "cosine_similarity",
-    "merge_similar_concepts",
-    "segment_sources",
-    "tokens_to_chars",
-]
-
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
@@ -381,3 +369,16 @@ class TwoPhaseCompiler(BaseCompiler):
     def _batch_texts(texts: list[str], char_budget: int) -> list[str]:
         """Group texts into batches that fit within *char_budget* (chars)."""
         return batch_texts(texts, char_budget)
+
+
+# Re-export for backward compatibility.
+__all__ = [
+    "Extraction",
+    "ExtractionSet",
+    "TwoPhaseCompiler",
+    "chars_to_tokens",
+    "cosine_similarity",
+    "merge_similar_concepts",
+    "segment_sources",
+    "tokens_to_chars",
+]

@@ -44,9 +44,6 @@ _WICER_CONTEXT_UTILIZATION: Final[float] = 0.50
 # ``probe_eval.md.j2``; both are short fixed envelopes.
 _WICER_PROMPT_RESERVE_TOKENS: Final[int] = 1024
 
-
-__all__ = ["WiCERCompiler"]
-
 logger = get_logger(__name__)
 
 
@@ -502,3 +499,6 @@ class WiCERCompiler(BaseCompiler):
         except Exception as exc:
             logger.warning("WiCER: diagnosis failed: %s", exc, exc_info=True)
             return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
+
+
+__all__ = ["WiCERCompiler"]
