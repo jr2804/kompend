@@ -20,7 +20,10 @@ builds the wiki index page and serves wiki page previews.
 | ``base.py`` | ``BaseOutputWriter`` ABC with plugin registry (``register`` / ``get``) |
 | ``renderer.py`` | ``DocumentRenderer`` — canonical Markdown rendering (wenmode AST, deterministic output); ``format_output`` — explicit ``kompend lint format`` helper |
 | ``markdown.py`` | ``MarkdownWriter`` — the single markdown writer (OKF v0.2-compliant bundle, portable relative links, §5.1 footnote attribution) |
-| ``vault.py`` | ``VaultWriter`` — shared vault algorithm: page routing, stale-clearing, citation rewriting, references/index/log orchestration, per-source summaries (``wiki/summaries/``), copy-on-embed image portability |
+| ``vault.py`` | ``VaultWriter`` — the per-page vault algorithm: page routing, stale-clearing, link resolution, index/log orchestration, copy-on-embed image portability |
+| ``page.py`` | ``OkfPageMixin`` (canonical OKF v0.2 frontmatter, description cap, node quality) + body conversion (wikilinks, inline citations → footnotes, source/asset footnote definitions, provenance → ``sources``) |
+| ``page_paths.py`` | Page layout vocabulary: ``PageLayoutMixin`` (``_KIND_FOLDERS`` / ``_folder_for_kind``), ``bundle_path``, ``page_stem`` |
+| ``surfaces.py`` | ``GeneratedSurfaceMixin`` — per-source summary pages (``summaries/``), ``references.md``, ``quality.md`` |
 | ``json_writer.py`` | ``JsonWriter`` — JSON output |
 | ``typst.py`` | ``TypstWriter`` — Typst output |
 | ``wiki_index.py`` | Wiki index page construction |
@@ -34,7 +37,7 @@ builds the wiki index page and serves wiki page previews.
 
 ### Generation contract: prose pipes escaped
 
-Raw-string markdown emission (renderer body, vault per-source summaries,
+Raw-string markdown emission (renderer body, per-source summaries,
 ``overview.md``) runs through ``core.text.pipes.escape_prose_pipes`` before
 the write; AST-built pages get equivalent escaping from wenmode's text-node
 renderer. A literal ``|`` in kompend-emitted prose can never be misread as
@@ -47,8 +50,9 @@ format, and `compile.output.format` only offers real formats (`markdown`,
 `json`, `typst`). Spec: <https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md>.
 User-facing guide: `docs/concepts/open-knowledge-format.md`.
 
-1. **Frontmatter** is built once by `VaultWriter.okf_frontmatter()` — every
-   writer delegates to it (single source of truth). Every concept file has
+1. **Frontmatter** is built once by `OkfPageMixin.okf_frontmatter()`
+   (`page.py`; reachable as `VaultWriter.okf_frontmatter()`) — every writer
+   delegates to it (single source of truth). Every concept file has
    parseable YAML with a non-empty `type` (§11.2).
 2. **Trust fields** — `generated: {by, at}` (§5.2; `by` follows the §7 actor
    convention `kompend/<version>`) supersedes the v0.1 `timestamp`. `verified` is
@@ -73,6 +77,15 @@ User-facing guide: `docs/concepts/open-knowledge-format.md`.
 ## Rules
 
 - Import from the package root: ``from kompend.output import MarkdownWriter``.
+- The vault writer is assembled from mixins, one concern each:
+  ``OkfPageMixin`` (``page.py``: how one page is written),
+  ``PageLayoutMixin`` (``page_paths.py``: which folder a page lands in),
+  ``GeneratedSurfaceMixin`` (``surfaces.py``: the non-page surfaces), and
+  ``VaultWriter`` itself (``vault.py``: the vault-wide algorithm and the
+  format hooks). Put new page rendering in the mixin that owns the concern
+  instead of growing ``vault.py``.
+- ``output/page_paths.py`` owns page-path *layout* only; artifact **names**
+  come from ``core/paths.py``. Never invent a filename here.
 - ``DocumentRenderer`` is the single path for per-page Markdown rendering;
   all generated output is additionally piped through ``rumdl fmt``
   (``format_output``) after write — no hand-rolled flavor converters.
