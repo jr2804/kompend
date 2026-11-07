@@ -40,6 +40,19 @@ from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
 from kompend.core.utils.time import iso_local
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 from kompend.rag.embedding_base import EmbeddingProvider
+from kompend.rag.sqlite_vec.schema import (
+    BACKEND,
+    BACKEND_COLUMN,
+    EMBEDDING_MODEL_COLUMN,
+    VEC_ATTR_KEYS,
+    VEC_ATTRIBUTES,
+    VEC_FTS,
+    VEC_ITEMS,
+    VEC_TAGS,
+    create_schema,
+    read_meta,
+    write_meta,
+)
 from kompend.rag.vector_store import (
     EMBED_TEXT_VERSION,
     VectorField,
@@ -50,35 +63,6 @@ from kompend.rag.vector_store import (
     figure_paths,
     indexable_nodes,
 )
-
-#: Identifies this backend in the manifest row and in the store's own meta
-#: table. A manifest written by another backend must not validate this store.
-_BACKEND: Final[str] = "sqlite-vec"
-
-#: The vec0 table holding the vectors and the scalar fields of a node.
-_VEC_ITEMS: Final[str] = "vec_items"
-
-#: The FTS5 table holding the lexical index (title + content preview). The
-#: node type and source file ride along as unindexed columns, so a lexical
-#: hit carries the same fields as a vector hit without a join.
-_VEC_FTS: Final[str] = "vec_fts"
-
-#: Side tables: one row per (node, tag/attribute/key) pair.
-_VEC_TAGS: Final[str] = "vec_item_tags"
-_VEC_ATTRIBUTES: Final[str] = "vec_item_attributes"
-_VEC_ATTR_KEYS: Final[str] = "vec_item_attr_keys"
-
-#: The store's own schema fingerprint — what makes a rebuild necessary.
-_VEC_META: Final[str] = "vec_meta"
-
-#: The manifest column naming the embedding model behind the vectors.
-#: It is a store column, not a node-metadata key — the manifest is not a
-#: :class:`~kompend.core.models.MetadataField` carrier — so it carries its own
-#: constant instead of borrowing the metadata member.
-_EMBEDDING_MODEL_COLUMN: Final[str] = "embedding_model"
-
-#: The manifest column naming the backend that wrote the vectors.
-_BACKEND_COLUMN: Final[str] = "backend"
 
 #: Reciprocal-rank-fusion constant: a document's contribution is
 #: ``weight / (RRF_K + rank)``. 60 is the value the previous store's
@@ -408,52 +392,11 @@ class SqliteVecWikiStore:
         return SQLiteVecClient.create_connection(str(self.db_file))
 
     def _create_schema(self) -> None:
-        """(Re)create the store's tables.
-
-        The index is rebuilt from scratch on every build: the corpus is small,
-        and a fresh table cannot carry rows the current wiki no longer has.
-        """
+        """(Re)create the store's tables."""
         conn = self._require_conn()
         dim = self._require_provider().dim
-        conn.execute(f"DROP TABLE IF EXISTS {_VEC_ITEMS}")
-        conn.execute(f"DROP TABLE IF EXISTS {_VEC_FTS}")
-        conn.execute(f"DROP TABLE IF EXISTS {_VEC_TAGS}")
-        conn.execute(f"DROP TABLE IF EXISTS {_VEC_ATTRIBUTES}")
-        conn.execute(f"DROP TABLE IF EXISTS {_VEC_ATTR_KEYS}")
-        conn.execute(
-            f"""
-            CREATE VIRTUAL TABLE {_VEC_ITEMS} USING vec0(
-                id              TEXT PRIMARY KEY,
-                embedding       FLOAT[{dim}] distance_metric=cosine,
-                title           TEXT,
-                node_type       TEXT,
-                source_file     TEXT,
-                content_preview TEXT
-            )
-            """
-        )
-        conn.execute(
-            f"""
-            CREATE VIRTUAL TABLE {_VEC_FTS} USING fts5(
-                id UNINDEXED,
-                title,
-                content_preview,
-                node_type UNINDEXED,
-                source_file UNINDEXED,
-                tokenize='unicode61'
-            )
-            """
-        )
-        conn.execute(f"CREATE TABLE {_VEC_TAGS} (item_id TEXT, tag TEXT, PRIMARY KEY (item_id, tag))")
-        conn.execute(f"CREATE TABLE {_VEC_ATTRIBUTES} (item_id TEXT, token TEXT, PRIMARY KEY (item_id, token))")
-        conn.execute(f"CREATE TABLE {_VEC_ATTR_KEYS} (item_id TEXT, key TEXT, PRIMARY KEY (item_id, key))")
-        conn.execute(f"CREATE INDEX ix_vec_tags_token ON {_VEC_TAGS} (tag)")
-        conn.execute(f"CREATE INDEX ix_vec_attributes_token ON {_VEC_ATTRIBUTES} (token)")
-        conn.execute(f"CREATE INDEX ix_vec_attr_keys_key ON {_VEC_ATTR_KEYS} (key)")
-        conn.execute(f"CREATE TABLE IF NOT EXISTS {_VEC_META} (key TEXT PRIMARY KEY, value TEXT)")
-        conn.execute(f"DELETE FROM {_VEC_META}")
-        self._write_meta(dim)
-        conn.commit()
+        model_id = self._provider.model_id if self._provider is not None else ""
+        create_schema(conn, dim, model_id)
 
     def _index_nodes(
         self,
@@ -482,16 +425,16 @@ class SqliteVecWikiStore:
                 return 0
             count = len(items)
             conn.executemany(
-                f"INSERT INTO {_VEC_ITEMS} (id, embedding, title, node_type, source_file, content_preview) VALUES (?, ?, ?, ?, ?, ?)",
+                f"INSERT INTO {VEC_ITEMS} (id, embedding, title, node_type, source_file, content_preview) VALUES (?, ?, ?, ?, ?, ?)",
                 items,
             )
             conn.executemany(
-                f"INSERT INTO {_VEC_FTS} (id, title, content_preview, node_type, source_file) VALUES (?, ?, ?, ?, ?)",
+                f"INSERT INTO {VEC_FTS} (id, title, content_preview, node_type, source_file) VALUES (?, ?, ?, ?, ?)",
                 fts_rows,
             )
-            conn.executemany(f"INSERT INTO {_VEC_TAGS} (item_id, tag) VALUES (?, ?)", tag_rows)
-            conn.executemany(f"INSERT INTO {_VEC_ATTRIBUTES} (item_id, token) VALUES (?, ?)", attribute_rows)
-            conn.executemany(f"INSERT INTO {_VEC_ATTR_KEYS} (item_id, key) VALUES (?, ?)", attr_key_rows)
+            conn.executemany(f"INSERT INTO {VEC_TAGS} (item_id, tag) VALUES (?, ?)", tag_rows)
+            conn.executemany(f"INSERT INTO {VEC_ATTRIBUTES} (item_id, token) VALUES (?, ?)", attribute_rows)
+            conn.executemany(f"INSERT INTO {VEC_ATTR_KEYS} (item_id, key) VALUES (?, ?)", attr_key_rows)
             items.clear()
             fts_rows.clear()
             tag_rows.clear()
@@ -574,7 +517,7 @@ class SqliteVecWikiStore:
         pool = _candidate_pool(top_k, filtered=bool(clause))
         sql = f"""
             SELECT v.id, v.title, v.node_type, v.source_file, v.content_preview, v.distance
-            FROM {_VEC_ITEMS} v
+            FROM {VEC_ITEMS} v
             WHERE v.embedding MATCH ? AND v.k = ?
             {clause}
             ORDER BY v.distance
@@ -625,8 +568,8 @@ class SqliteVecWikiStore:
             attribute_keys=attribute_keys,
         )
         sql = f"""
-            SELECT f.id, f.title, f.content_preview, f.node_type, f.source_file, bm25({_VEC_FTS}) AS rank
-            FROM {_VEC_FTS} f
+            SELECT f.id, f.title, f.content_preview, f.node_type, f.source_file, bm25({VEC_FTS}) AS rank
+            FROM {VEC_FTS} f
             WHERE f.{column} MATCH ? {clause}
             ORDER BY rank
             LIMIT ?
@@ -665,13 +608,13 @@ class SqliteVecWikiStore:
         A row written before the hashes were tracked is not a mismatch here —
         the content comparison catches that.
         """
-        if row[_BACKEND_COLUMN] != _BACKEND:
-            return f"backend {row[_BACKEND_COLUMN]!r} != {_BACKEND!r}"
+        if row[BACKEND_COLUMN] != BACKEND:
+            return f"backend {row[BACKEND_COLUMN]!r} != {BACKEND!r}"
         if row["embed_version"] != EMBED_TEXT_VERSION:
             return f"embed-text version {row['embed_version']!r} != {EMBED_TEXT_VERSION!r}"
         current_model = self._provider.model_id if self._provider is not None else ""
-        if row[_EMBEDDING_MODEL_COLUMN] != current_model:
-            return f"embedding model {row[_EMBEDDING_MODEL_COLUMN]!r} != {current_model!r}"
+        if row[EMBEDDING_MODEL_COLUMN] != current_model:
+            return f"embedding model {row[EMBEDDING_MODEL_COLUMN]!r} != {current_model!r}"
         return None
 
     def _content_changed(self, recorded: str, nodes: list[WikiNode]) -> bool:
@@ -724,15 +667,15 @@ class SqliteVecWikiStore:
             with open_store(self._manifest_db_path()) as conn:
                 conn.execute(
                     f"INSERT INTO {VECTOR_MANIFEST_TABLE}"
-                    f"(id, embed_version, embedding_model, {_BACKEND_COLUMN}, ids, content_hashes, written_at) "
+                    f"(id, embed_version, embedding_model, {BACKEND_COLUMN}, ids, content_hashes, written_at) "
                     "VALUES (1, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
                     "embed_version = excluded.embed_version, embedding_model = excluded.embedding_model, "
-                    f"{_BACKEND_COLUMN} = excluded.{_BACKEND_COLUMN}, "
+                    f"{BACKEND_COLUMN} = excluded.{BACKEND_COLUMN}, "
                     "ids = excluded.ids, content_hashes = excluded.content_hashes, written_at = excluded.written_at",
                     (
                         EMBED_TEXT_VERSION,
                         model_id,
-                        _BACKEND,
+                        BACKEND,
                         json.dumps(ids),
                         json.dumps(hashes, sort_keys=True),
                         iso_local(),
@@ -750,17 +693,8 @@ class SqliteVecWikiStore:
     def _write_meta(self, dim: int) -> None:
         """Record the store's schema fingerprint."""
         conn = self._require_conn()
-        fingerprint = _schema_fingerprint(dim)
-        conn.executemany(
-            f"INSERT OR REPLACE INTO {_VEC_META} (key, value) VALUES (?, ?)",
-            [
-                ("backend", _BACKEND),
-                ("dim", str(dim)),
-                ("schema", fingerprint),
-                ("embed_version", str(EMBED_TEXT_VERSION)),
-                ("model_id", self._provider.model_id if self._provider is not None else ""),
-            ],
-        )
+        model_id = self._provider.model_id if self._provider is not None else ""
+        write_meta(conn, dim, model_id)
 
     def _meta_matches(self) -> bool:
         """True when the store file holds this schema, dimension and backend."""
@@ -780,12 +714,8 @@ class SqliteVecWikiStore:
             conn.close()
 
     def _read_meta(self, conn: sqlite3.Connection) -> bool:
-        try:
-            rows = dict(conn.execute(f"SELECT key, value FROM {_VEC_META}").fetchall())
-        except sqlite3.Error:
-            return False
         dim = self._provider.dim if self._provider is not None else 0
-        return rows.get("backend") == _BACKEND and rows.get("dim") == str(dim) and rows.get("schema") == _schema_fingerprint(dim)
+        return read_meta(conn, dim)
 
     # ── Internals ────────────────────────────────────────────────────────
 
@@ -805,7 +735,7 @@ class SqliteVecWikiStore:
         try:
             row = self._conn.execute(
                 "SELECT name FROM sqlite_master WHERE name = ?",
-                (_VEC_ITEMS,),
+                (VEC_ITEMS,),
             ).fetchone()
         except sqlite3.Error:
             return False
@@ -817,7 +747,7 @@ class SqliteVecWikiStore:
         try:
             with open_store(manifest_db) as conn:
                 return conn.execute(
-                    f"SELECT embed_version, {_EMBEDDING_MODEL_COLUMN}, {_BACKEND_COLUMN}, ids, content_hashes FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
+                    f"SELECT embed_version, {EMBEDDING_MODEL_COLUMN}, {BACKEND_COLUMN}, ids, content_hashes FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
                 ).fetchone()
         except sqlite3.Error as exc:
             logger.warning("Vector manifest unreadable — treating store as stale: %s", exc)
@@ -870,7 +800,7 @@ def recorded_embedding_model(manifest_db: Path) -> str | None:
         conn = connect(manifest_db)
         try:
             row = conn.execute(
-                f"SELECT {_EMBEDDING_MODEL_COLUMN} FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
+                f"SELECT {EMBEDDING_MODEL_COLUMN} FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
             ).fetchone()
         finally:
             conn.close()
@@ -956,7 +886,7 @@ def _filter_clause(
     params: list[str] = []
 
     for tag in tags_all or ():
-        clauses.append(f"EXISTS (SELECT 1 FROM {_VEC_TAGS} t WHERE t.item_id = {alias}.id AND t.tag = ?)")
+        clauses.append(f"EXISTS (SELECT 1 FROM {VEC_TAGS} t WHERE t.item_id = {alias}.id AND t.tag = ?)")
         params.append(str(tag))
 
     groups: list[str] = []
@@ -965,7 +895,7 @@ def _filter_clause(
         members = [str(tag) for tag in group]
         if not members:
             continue
-        group_clauses = [f"EXISTS (SELECT 1 FROM {_VEC_TAGS} t WHERE t.item_id = {alias}.id AND t.tag = ?)" for _ in members]
+        group_clauses = [f"EXISTS (SELECT 1 FROM {VEC_TAGS} t WHERE t.item_id = {alias}.id AND t.tag = ?)" for _ in members]
         groups.append(" AND ".join(group_clauses))
         group_params.extend(members)
     if groups:
@@ -973,11 +903,11 @@ def _filter_clause(
         params.extend(group_params)
 
     for token in attributes_all or ():
-        clauses.append(f"EXISTS (SELECT 1 FROM {_VEC_ATTRIBUTES} a WHERE a.item_id = {alias}.id AND a.token = ?)")
+        clauses.append(f"EXISTS (SELECT 1 FROM {VEC_ATTRIBUTES} a WHERE a.item_id = {alias}.id AND a.token = ?)")
         params.append(str(token))
 
     for key in attribute_keys or ():
-        clauses.append(f"EXISTS (SELECT 1 FROM {_VEC_ATTR_KEYS} k WHERE k.item_id = {alias}.id AND k.key = ?)")
+        clauses.append(f"EXISTS (SELECT 1 FROM {VEC_ATTR_KEYS} k WHERE k.item_id = {alias}.id AND k.key = ?)")
         params.append(str(key))
 
     if not clauses:
@@ -1018,8 +948,3 @@ def _fuse(
             )
         )
     return fused
-
-
-def _schema_fingerprint(dim: int) -> str:
-    """Identity of the store's schema — a change forces a rebuild."""
-    return f"vec0:1:{dim}:{_VEC_ITEMS}/{_VEC_FTS}/{_VEC_TAGS}/{_VEC_ATTRIBUTES}/{_VEC_ATTR_KEYS}"
