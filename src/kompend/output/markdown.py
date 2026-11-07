@@ -40,17 +40,15 @@ Two modes:
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 from typing import Any, ClassVar, override
 
 from wenmode.nodes import Node, Paragraph, Text
 
-from kompend.compilation.concept_keys import nearest_alias, normalize_concept_key
 from kompend.core.config import Flavor
-from kompend.core.models import CompiledWiki, MetadataField, Reference, WikiNode
+from kompend.core.models import CompiledWiki, MetadataField
 from kompend.core.models.enums import NodeType
-from kompend.core.models.metadata import meta_int, meta_list_dict, meta_str, meta_str_list
+from kompend.core.models.metadata import meta_int, meta_str, meta_str_list
 from kompend.core.page_builder import PageBuilder, link
 from kompend.core.paths import (
     ATTACHMENTS_DIR_NAME,
@@ -62,30 +60,24 @@ from kompend.core.paths import (
     REFERENCES_MD,
     SUMMARIES_SUBDIR,
     WIKI_MARKDOWN_FILE,
-    safe_stem,
 )
 from kompend.core.pipeline.assets import AssetStore
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.utils.time import iso_local
-from kompend.output.models import Document, OkfSource, TrustEvent
+from kompend.output.models import Document
+from kompend.output.page import (
+    convert_wikilinks,
+    format_asset_footnotes,
+    format_source_footnotes,
+    provenance_sources,
+    relativize,
+    rewrite_citations_to_footnotes,
+    trust_events,
+)
 from kompend.output.pages.log import append_log_entry
 from kompend.output.renderer import DocumentRenderer
 from kompend.output.vault import OKF_VERSION, VaultWriter
 from kompend.output.vault import okf_frontmatter_yaml as _okf_frontmatter
-from kompend.types import MetadataValue
-
-# Regex to find [[wikilinks]] or [[wikilinks|alias]] in body text.
-_WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
-
-# Match in-text asset references: ``¶ <id>``.
-_ASSET_FOOTNOTE_RE = re.compile(r"¶ ([\w-]+)")
-
-# Match inline source citations ``[sources/<file>.pdf]`` or multi-citations
-# ``[sources/a.pdf, sources/b.pdf]``.
-_CITATION_RE = re.compile(r"\[sources/[^\]\n]+\]")
-
-# Match inline footnote references ``[^id]``.
-_FOOTNOTE_REF_RE = re.compile(r"\[\^([^\]]+)\]")
 
 
 class MarkdownWriter(VaultWriter):
@@ -154,11 +146,11 @@ class MarkdownWriter(VaultWriter):
         docs: list[Document] = []
         compiled_at = iso_local()
         ref_store = self._load_ref_store()
-        verified = _trust_events(wiki.metadata.get("verified"))
+        verified = trust_events(wiki.metadata.get("verified"))
         verification = self._load_verification()
 
         for node in wiki.nodes:
-            sources = _provenance_sources(node, ref_store)
+            sources = provenance_sources(node, ref_store)
             frontmatter = VaultWriter.okf_frontmatter(
                 node,
                 compiled_at,
@@ -217,7 +209,7 @@ class MarkdownWriter(VaultWriter):
         # Link paths must be relative to THIS page's directory (a page inside
         # concepts/ links to ``x.md``, not ``concepts/x.md``).
         folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
-        page_targets = {k: _relativize(v, folder) for k, v in slug_targets.items()} if folder else slug_targets
+        page_targets = {k: relativize(v, folder) for k, v in slug_targets.items()} if folder else slug_targets
 
         # Convert wikilinks to portable relative markdown links, then rewrite
         # inline source citations to footnote references (§5.1).
@@ -241,7 +233,7 @@ class MarkdownWriter(VaultWriter):
                 rendered += f"- {link}{annotation}\n"
 
         if sources:
-            footnotes = _format_source_footnotes(rendered, sources)
+            footnotes = format_source_footnotes(rendered, sources)
             if footnotes:
                 rendered += "\n" + footnotes
 
@@ -250,7 +242,7 @@ class MarkdownWriter(VaultWriter):
         if self._assets_file is not None:
             asset_store = AssetStore(self._assets_file)
         if asset_store:
-            asset_footnotes = _format_asset_footnotes(rendered, asset_store)
+            asset_footnotes = format_asset_footnotes(rendered, asset_store)
             if asset_footnotes:
                 rendered += "\n" + asset_footnotes
 
@@ -341,223 +333,3 @@ class MarkdownWriter(VaultWriter):
             action="Creation",
             detail=f"Compiled {article_count} page(s) from {source_count} source(s).",
         )
-
-
-# _NoAliasDumper + okf_frontmatter_yaml live in vault.py (shared with the
-# per-source summary writer); markdown imports them below.
-
-
-def _trust_events(value: MetadataValue | None) -> list[TrustEvent] | None:
-    """The metadata value as OKF trust events; ``None`` when there are none."""
-    events = [TrustEvent(by=event.get("by", ""), at=event.get("at", "")) for event in meta_list_dict(value)]
-    return events or None
-
-
-def _relativize(bundle_path: str, folder: str) -> str:
-    """Rebase a bundle-relative path onto the current page's folder."""
-    return Path(bundle_path).relative_to(folder, walk_up=True).as_posix()
-
-
-def convert_wikilinks(body: str, slug_targets: dict[str, str]) -> str:
-    """Convert ``[[wikilinks]]`` to portable bundle-relative markdown links.
-
-    ``slug_targets`` maps page slugs/titles to bundle-relative paths
-    (e.g. ``"my-page" -> "concepts/my-page.md"``). The lookup is
-    alias-aware: short forms like ``[[P.863]]`` resolve to a page whose
-    long title contains the alias, mirroring the lint rule's behaviour
-    so the rendered output stays consistent with what the wiki considers
-    resolvable. Unknown targets are left as Obsidian-style wikilinks
-    (``[[target]]``) so the user can see broken cross-links in their
-    markdown viewer rather than silently losing them.
-    """
-    # Build a richer lookup index from slug_targets keys. ``slug_targets``
-    # is keyed by slug + long title; we need the bare-acronym and
-    # normalized forms as well.
-    alias_index: dict[str, str] = dict(slug_targets)
-    alias_index.update(_alias_keys(slug_targets.keys(), slug_targets))
-
-    def _replace(match: re.Match[str]) -> str:
-        target = match.group(1)
-        alias = match.group(2) or target
-        # 1. Direct lookup (slug or long title)
-        path = alias_index.get(target)
-        # 2. Alias-aware nearest-match (short forms like P.863).
-        # nearest_alias returns the value at the best-scoring key — which
-        # here is the path itself, so we can use it directly.
-        if path is None:
-            path = nearest_alias(target, alias_index)
-        if path is not None:
-            return f"[{alias}]({path})"
-        # 3. Unknown — leave as Obsidian wikilink so the user sees it.
-        return match.group(0)
-
-    return _WIKILINK_RE.sub(_replace, body)
-
-
-def _alias_keys(titles: Any, paths: dict[str, str]) -> dict[str, str]:
-    """Build alias-aware lookup keys for :func:`convert_wikilinks`.
-
-    Mirrors :func:`kompend.lint.structural._node_lookup_index` — acronym,
-    bare-prefix-before-paren, and slug forms — so the rendered output
-    resolves the same targets the lint rule does. Returns a dict of
-    alias-key → path suitable for ``setdefault`` merging.
-    """
-    out: dict[str, str] = {}
-    for key in titles:
-        path = paths[key]
-        stripped = normalize_concept_key(key)
-        if stripped and stripped != key.lower():
-            out.setdefault(stripped, path)
-        before_paren = key.split("(", 1)[0].strip().lower()
-        if before_paren and before_paren != key.lower():
-            out.setdefault(before_paren, path)
-    return out
-
-
-def rewrite_citations_to_footnotes(body: str, sources: list[OkfSource]) -> str:
-    """Rewrite inline ``[sources/<file>.pdf]`` citations to ``[^id]`` refs.
-
-    The footnote id is resolved from the source entry (by its ``id`` or by the
-    stem of its ``resource``), so it works whether ids are file stems or
-    structured reference ids. Unmatched citations stay as readable plain text
-    (no orphan footnote references). Multi-source citations
-    ``[sources/a.pdf, sources/b.pdf]`` become ``[^a][^b]``.
-    """
-    id_by_stem: dict[str, str] = {}
-    for src in sources:
-        sid = str(src.get("id") or "")
-        if not sid:
-            continue
-        id_by_stem.setdefault(sid.lower(), sid)
-        resource = str(src.get("resource") or "")
-        if resource:
-            id_by_stem.setdefault(safe_stem(resource).lower(), sid)
-
-    def _replace(match: re.Match[str]) -> str:
-        refs: list[str] = []
-        for raw in match.group(0)[1:-1].split(","):
-            item = raw.strip()
-            if not item.startswith("sources/"):
-                continue
-            stem = Path(item[len("sources/") :]).stem
-            sid = id_by_stem.get(stem.lower())
-            if sid:
-                refs.append(f"[^{sid}]")
-        return "".join(refs) if refs else match.group(0)
-
-    return _CITATION_RE.sub(_replace, body)
-
-
-def _provenance_sources(
-    node: WikiNode,
-    ref_store: ReferenceStore | None,
-) -> list[OkfSource]:
-    """Build the OKF v0.2 ``sources`` list for a node from its provenance.
-
-    Provenance is a list of source identifiers (filenames/URLs). When a
-    :class:`ReferenceStore` is available, each provenance source is expanded
-    into one structured ``sources`` entry per extracted reference (§5.1). When
-    no structured references exist, the raw provenance identifiers are wrapped
-    as minimal ``{id, resource}`` entries so the field stays spec-shaped.
-    """
-    provenance = meta_str_list(node.metadata.get(MetadataField.PROVENANCE))
-    if not provenance:
-        return []
-
-    # Deduplicate provenance identifiers, preserving order.
-    seen: set[str] = set()
-    prov_ids: list[str] = []
-    for ps in provenance:
-        if ps and ps not in seen:
-            seen.add(ps)
-            prov_ids.append(ps)
-
-    sources: list[OkfSource] = []
-    if ref_store is not None:
-        for prov in prov_ids:
-            refs = ref_store.get_source(prov) or ref_store.get_source(safe_stem(prov))
-            for ref in refs:
-                sources.append(_reference_to_okf_source(ref))
-
-    # If no structured references resolved, emit minimal spec-shaped entries.
-    if not sources:
-        for prov in prov_ids:
-            sources.append({"id": safe_stem(prov), "resource": prov})
-    return sources
-
-
-def _reference_to_okf_source(ref: Reference) -> OkfSource:
-    """Build an OKF v0.2 ``sources`` entry (§5.1) from a CSL-aligned Reference.
-
-    The ``id`` is the join key for per-claim footnote attribution (§5.1);
-    ``resource`` is REQUIRED within an entry and prefers a URL/DOI when present.
-    """
-    resource = ref.url or (f"https://doi.org/{ref.doi}" if ref.doi else "")
-    if not resource:
-        # Fall back to the citing source path so the entry always has a resource.
-        resource = ref.citing_source or ref.id
-    entry: OkfSource = {"id": ref.id or ref.citing_source or ref.short_label()}
-    if resource:
-        entry["resource"] = resource
-    if ref.title:
-        entry["title"] = ref.title
-    author = ref.display_authors()
-    if author:
-        entry["author"] = author
-    return entry
-
-
-def _format_source_footnotes(rendered: str, sources: list[OkfSource]) -> str:
-    """Render footnote definitions for OKF §5.1 per-claim attribution.
-
-    Only sources whose ``[^id]`` is actually referenced in *rendered* get a
-    definition, deduplicated by id and ordered by first reference — no
-    orphan definitions (MD066), no orphan references (MD067), no ordering
-    warnings.
-    """
-    ref_positions: dict[str, int] = {}
-    for m in _FOOTNOTE_REF_RE.finditer(rendered):
-        ref_positions.setdefault(m.group(1), m.start())
-    if not ref_positions:
-        return ""
-
-    by_id: dict[str, OkfSource] = {}
-    for src in sources:
-        sid = str(src.get("id") or "")
-        if sid and sid not in by_id:
-            by_id[sid] = src
-
-    ordered = sorted(
-        (s for s in by_id.values() if str(s.get("id")) in ref_positions),
-        key=lambda s: ref_positions[str(s["id"])],
-    )
-    lines: list[str] = []
-    for src in ordered:
-        sid = str(src["id"])
-        label = src.get("title") or src.get("resource") or sid
-        lines.append(f"[^{sid}]: {label}")
-    return "\n".join(lines) + "\n"
-
-
-def _format_asset_footnotes(body: str, store: AssetStore) -> str:
-    """Render asset footnote definitions for ``¶ <id>`` references in *body*.
-
-    Scans *body* for asset references like ``¶ tab-a1f3`` and ``¶ fig-9c2e``,
-    collects the unique asset ids, looks up their summaries from *store*,
-    and emits ``[^<id>]: <summary>`` lines OKF-style.
-    """
-    if not body:
-        return ""
-    ids_found: set[str] = set()
-    for m in _ASSET_FOOTNOTE_RE.finditer(body):
-        ids_found.add(m.group(1))
-    if not ids_found:
-        return ""
-    lines: list[str] = []
-    for aid in sorted(ids_found):
-        record = store.get(aid)
-        if record is None:
-            continue
-        label = record.summary or aid
-        lines.append(f"[^{aid}]: {label}")
-    return "\n".join(lines) + "\n"
