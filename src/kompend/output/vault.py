@@ -1,20 +1,25 @@
-"""Shared vault-writing algorithm for kompend output writers.
+"""Vault-writing algorithm for kompend output writers.
 
-The vault layout — one ``.md`` file per wiki node, directory routing by kind,
-stale-file clearing, related-edge resolution, in-text citation rewriting, and
-the references/index/log page orchestration — is implemented exactly once
-here in :class:`VaultWriter`.
+The vault-wide algorithm — one ``.md`` file per wiki node, stale-file clearing,
+related-edge resolution, in-text citation rewriting, and the
+references/index/log orchestration — is implemented exactly once here in
+:class:`VaultWriter`.
 
 OKF (Open Knowledge Format v0.2) frontmatter is the **unique, canonical
 standard** every vault writer emits. The single markdown writer
 (:class:`~kompend.output.markdown.MarkdownWriter`) is OKF-compliant and uses
 portable relative links — no Obsidian-only syntax.
 
+The pieces that are not the vault algorithm are mixed in, one concern each:
+:class:`~kompend.output.page.OkfPageMixin` (how one page is written),
+:class:`~kompend.output.page_paths.PageLayoutMixin` (which folder a page lands
+in), :class:`~kompend.output.surfaces.GeneratedSurfaceMixin` (per-source
+summaries, ``references.md``, ``quality.md``).
+
 Subclasses fill in the rendering hooks that differ by format:
 
 - :meth:`_wiki_to_documents` — build the ``Document`` list (frontmatter, etc.)
 - :meth:`_render_document` — render one page (body already citation-rewritten)
-- :meth:`_write_references_page` — bibliography page
 - :meth:`_write_index` — root index page
 - :meth:`_write_log` — bundle log page
 """
