@@ -59,7 +59,7 @@ from parsecraft.pipeline.models import PageGroup
 from parsecraft.providers._endpoints import select_judge_spec  # noqa: E402 — guarded by the importorskip above
 from parsecraft.routing import NoEligibleBackendError, RoutingError
 from parsecraft.routing.judge import BackendDescriptor
-from parsecraft.routing.models import Intent, PageRoute, RoutingPlan  # noqa: E402 — guarded by the importorskip above
+from parsecraft.routing.models import Intent, PageRoute, RoutingPlan, RoutingPreference  # noqa: E402 — guarded by the importorskip above
 
 from kompend.core.config import ImageMode
 from kompend.core.models import ElementType
@@ -640,21 +640,19 @@ class TestJudgeWiring:
         the rule table; a preference that only reaches provider judges is
         silently inert for the default configuration.
         """
-        adapter = _adapter()
         for name in ("speed", "balanced", "quality"):
             parser = _routing_parser(preference=name)
-            assert parser._get_judge()._preference is adapter.RoutingPreference(name)
+            assert parser._get_judge()._preference is RoutingPreference(name)
 
     def test_degraded_paths_keep_the_preference(self) -> None:
         """Resolver failure and call-time degradation both build the rule-table
         fallback with the configured axis, not the enum default.
         """
-        adapter = _adapter()
         unresolvable = _judged_parser("nosuchprovider/m", preference="quality")
-        assert unresolvable._get_judge()._preference is adapter.RoutingPreference.QUALITY
+        assert unresolvable._get_judge()._preference is RoutingPreference.QUALITY
         degraded = _judged_parser("ollama/m", preference="quality")
         degraded._degrade_judge(RuntimeError("endpoint died"))
-        assert degraded._judge_fallback._preference is adapter.RoutingPreference.QUALITY
+        assert degraded._judge_fallback._preference is RoutingPreference.QUALITY
 
     def test_the_judge_degradation_warnings_carry_the_reason_code(self, caplog: pytest.LogCaptureFixture) -> None:
         """A judge that degrades to the rule table is a JUDGE_DEGRADED failure.
@@ -709,7 +707,7 @@ class TestJudgeWiring:
         parser = adapter.ParsecraftParser()
         parser._environment = SimpleNamespace(installed_extras=frozenset({"docling"}))  # type: ignore[assignment] — the parser reads ``installed_extras`` only
         assert list(parser._get_judge().rank(Intent.NATIVE, [free, gated])) == ["gated", "free"]
-        without_host_facts = adapter.DeterministicJudge(adapter.RoutingPreference.BALANCED)
+        without_host_facts = adapter.DeterministicJudge(RoutingPreference.BALANCED)
         assert list(without_host_facts.rank(Intent.NATIVE, [free, gated])) == ["free", "gated"]
 
     def test_cache_identity_tracks_a_non_default_preference(self) -> None:

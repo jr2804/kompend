@@ -25,7 +25,6 @@ Mapping summary:
 from __future__ import annotations
 
 import os
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any, Final
 
@@ -52,7 +51,6 @@ from parsecraft.pipeline.analysis import AnalysisResult
 from parsecraft.routing import NoEligibleBackendError, RoutingConstraints, RoutingError, RoutingPlan
 from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from parsecraft.routing.judge_providers import JudgeError, resolve_judge
-from parsecraft.routing.models import RoutingPreference
 
 from kompend.core.config import ImageMode
 from kompend.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
@@ -60,6 +58,7 @@ from kompend.core.types import ReasonCode
 from kompend.logging import get_logger
 from kompend.preprocessing.images import ImageStore, asset_for_chunk, assets_by_id
 from kompend.preprocessing.parsers.options import PARSER_PARSECRAFT, ParserOptions
+from kompend.preprocessing.parsers.parsecraft import identity
 from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingConfig, constraints_for, load_parsecraft_config
 
 #: parsecraft chunk kind → kompend element type. Kinds without a kompend equivalent
@@ -230,22 +229,12 @@ class ParsecraftParser:
         kompend's own attributes: they are parsecraft's settings now, so a
         change in ``parsecraft.toml`` has to show up here or the parse cache
         would serve documents the new routing never produced.
+
+        Thin delegator: the identity composition lives in
+        ``identity.backend_identity``; the state — the probed environment and
+        the loaded settings — lives here.
         """
-        env = self._ensure_environment()
-        routing = self.parsecraft_settings().routing
-        parts = [
-            f"backends:{','.join(sorted(env.backends))}",
-            f"extras:{','.join(sorted(env.installed_extras))}",
-        ]
-        if routing.only_backend is not None:
-            parts.append(f"only:{routing.only_backend}")
-        if routing.preferred_backend is not None:
-            parts.append(f"preferred:{routing.preferred_backend}")
-        if routing.engines:
-            parts.append(f"engines:{','.join(sorted(routing.engines))}")
-        if routing.allow_ocr is not None:
-            parts.append(f"ocr:{'on' if routing.allow_ocr else 'off'}")
-        return "|".join(parts)
+        return identity.backend_identity(self._ensure_environment(), self.parsecraft_settings())
 
     def cache_identity(self) -> str:
         """Routing inputs that change this backend's output without changing its class.
@@ -273,45 +262,12 @@ class ParsecraftParser:
         The no-judge, balanced-default case keeps an empty *routing* part: it is the
         rule table's neutral axis, and emitting it would re-invalidate every vault
         for no behavioural change.
+
+        Thin delegator: the segment composition lives in
+        ``identity.cache_identity``; the state — the probed environment, the
+        loaded settings and the image store — lives here.
         """
-        env = self._ensure_environment()
-        settings = self.parsecraft_settings()
-        routing = settings.routing
-        host = f"extras:{','.join(sorted(env.installed_extras))}|parsecraft:{_parsecraft_version()}|judge_extras:1"
-        # Routing segments: judge (when configured) or preference (when non-default),
-        # plus independent `effort:` and `ocr:` segments when the user set them.
-        # Joining with `|` keeps each lever its own slot so the cache key flips when
-        # any of them changes, but stays stable for the all-default combination —
-        # the leading empty join renders as `""`, not `"|"`.
-        parts: list[str] = []
-        judge_spec = settings.judge_spec
-        if judge_spec is not None:
-            parts.append(f"judge:{judge_spec}:{routing.preference}")
-        elif routing.preference is not RoutingPreference.BALANCED:
-            parts.append(f"preference:{routing.preference}")
-        if routing.allow_ocr is not None:
-            parts.append("ocr:on" if routing.allow_ocr else "ocr:off")
-        if routing.engines:
-            parts.append(f"engines:{','.join(sorted(routing.engines))}")
-        if routing.preferred_backend is not None:
-            parts.append(f"preferred_backend:{routing.preferred_backend}")
-        if routing.only_backend is not None:
-            parts.append(f"only_backend:{routing.only_backend}")
-        if routing.backend_options:
-            rendered = ",".join(
-                f"{backend}:{','.join(f'{key}={value}' for key, value in sorted(options.items()))}"
-                for backend, options in sorted(routing.backend_options.items())
-            )
-            parts.append(f"backend_options:{rendered}")
-        # The image mode changes what an element carries (a cached file path or
-        # an inline payload), so it belongs to the identity like every other
-        # output-shaping input. It is emitted only when the run actually
-        # extracts images: a run that extracts none produces the same document
-        # as before, and must not re-invalidate a vault for that.
-        if self._images.enabled:
-            parts.append(f"images:{self._images.mode.value}")
-        routing = "|".join(parts)
-        return f"{host}|{routing}"
+        return identity.cache_identity(self._ensure_environment(), self.parsecraft_settings(), self._images)
 
     def parsecraft_settings(self) -> ParsecraftRoutingConfig:
         """Parsecraft's own configuration, read once per instance.
@@ -595,19 +551,6 @@ class ParsecraftParseError(RuntimeError):
         degradations = [f"p{signal.page_number} {signal.name}: {signal.detail}" for signal in document.quality if signal.name.startswith("degraded-")]
         message = "; ".join(failures or degradations) or "all parsecraft passes failed"
         super().__init__(f"{source_file.name}: {message}")
-
-
-def _parsecraft_version() -> str:
-    """The installed parsecraft version, or `"unknown"`.
-
-    Part of the cache identity because upstream changes routing without kompend
-    changing anything, and there is no way to tell from here whether that changed
-    what a backend produces.
-    """
-    try:
-        return version("parsecraft")
-    except PackageNotFoundError:  # pragma: no cover — parsecraft is an extra
-        return "unknown"
 
 
 def _warn_on_empty_pages(
