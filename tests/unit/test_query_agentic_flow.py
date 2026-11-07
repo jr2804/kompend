@@ -123,7 +123,7 @@ def test_run_agentic_query_builds_deps_and_returns_answer(monkeypatch: pytest.Mo
         seen["model"] = model
         return _Agent()
 
-    monkeypatch.setattr("kompend.search.retriever.make_agentic_query_agent", _factory)
+    monkeypatch.setattr("kompend.search.retrieval.synthesis.make_agentic_query_agent", _factory)
     answer = run_agentic_query(
         "What is P.863?",
         retriever=fake,

@@ -250,7 +250,7 @@ class TestSynthesizeVerbosity:
         fake = _FakeLLMClient()
         mock_agent = MagicMock()
         mock_agent.run = MagicMock(return_value=f"answer ({verbosity})")
-        with patch("kompend.search.retriever.QueryAgent", return_value=mock_agent):
+        with patch("kompend.search.retrieval.synthesis.QueryAgent", return_value=mock_agent):
             result = synthesize_results("q", [], model=fake.default_model, verbosity=verbosity)
         return result, mock_agent
 
