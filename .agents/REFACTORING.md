@@ -515,3 +515,27 @@ SqliteVecWikiStore` — so the shim stayed rather than being deleted, and
   the DOX line "no module below `store.py` opens a file" was wrong on arrival
   because `manifest.py` must open `kompend.db` before any store exists, so
   the DOX was corrected instead of leaving a rule the code contradicts.
+- Ninth loop (bead knox-jjt5): `lint/structural.py` 1363 lines / 4 noqa became
+  `lint/structural/` — `attachments.py` 403, `links.py` 244, `references.py`
+  175, `structure.py` 171, `markdown.py` 166, `sources.py` 142, `__init__.py`
+  84 (registry and public surface only), `images.py` 76, `metadata.py` 64 — 9
+  files / 1525 gross. The largest file is 70 % smaller; the 162 extra lines
+  are one import header per module plus the registry that replaced the old
+  hand-written if-chain. The 14 rule names, messages and their execution
+  order are unchanged — the bead declared them contracts, so each family
+  module exports an ordered tuple (`IMAGE_RULES`, `LINK_RULES`, …) and
+  `__init__.py` owns the one ordered
+  `STRUCTURAL_RULES` list (image, link, metadata, page structure, source,
+  attachment) plus `RULE_BY_NAME`.
+  What the size count could not see: (1) the split is by rule _family_, not
+  by rule — `links.py` and `images.py` both index the same nodes and
+  `references.py` and `markdown.py` both read page text, so a file per rule
+  would have multiplied the shared walkers instead of removing them; (2) the
+  four suppressions are properties of the algorithm, not of the container —
+  S603 marks the one internally constructed subprocess call
+  (`markdown.py:147`) and PLR6301 marks three `fix` methods that genuinely
+  ignore `self` (`images.py:61`, `links.py:99`, `metadata.py:43`), so the
+  split could not and should not drop them; (3) the bead's target shape said
+  `lint/rules/structural/`, but `lint/structural/` shipped because the parent
+  already holds non-rule modules (`base.py`, `runner.py`, `flow.py`), so a
+  `rules/` level would only add a synonym for "the structural rules".
