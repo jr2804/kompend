@@ -10,11 +10,8 @@
 """
 
 from kompend.compilation.flows.extraction.flow import (
-    _compact_history_inplace,
-    _estimate_history_tokens,
     _extract_char_budget,
     _source_progress,
-    _synthetic_history_response,
     batch_texts,
     combine_extractions,
     extract_incremental,
@@ -22,6 +19,11 @@ from kompend.compilation.flows.extraction.flow import (
     extraction_detail,
     reduce_extractions,
     run_extraction,
+)
+from kompend.compilation.flows.extraction.prompt import (
+    _compact_history_inplace,
+    _estimate_history_tokens,
+    _synthetic_history_response,
 )
 
 __all__ = [
