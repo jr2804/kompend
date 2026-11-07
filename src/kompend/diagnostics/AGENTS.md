@@ -22,7 +22,7 @@ never raises.
 |--------|----------|
 | `base.py` | `CheckResult` — the frozen result record every check returns |
 | `environment.py` | Sources/output directories, git, disk headroom, the parser build — the parts that need no model |
-| `providers.py` | Model catalogue, `[providers.<name>]` endpoints, Ollama offload, `nvidia-smi`; also `provider_id_of`/`model_slug`, the one parse of a `provider/model` string |
+| `providers.py` | Model catalogue, `[providers.<name>]` endpoints, Ollama offload, `nvidia-smi` |
 | `models.py` | Connectivity pings, structured-output probes, context window discovery, window fit, server window, output ceiling |
 | `capabilities.py` | The structured-output probes themselves (`probe_*`, `measure_compact_formats`) |
 | `runner.py` | `run_doctor` — which checks run, in which order |
@@ -42,9 +42,9 @@ never raises.
   `catalog.ensure_fresh()` (TTL-gated) and is the only refresher of the
   models.dev cache in the process; no other check writes anything, and none
   writes into the vault.
-- `provider_id_of`/`model_slug` live here rather than in `llm/`: a model string
-  is parsed in exactly one place, so the provider lookup and the Ollama calls
-  cannot disagree about which provider a model belongs to.
+- Model-string parsing (`provider_id_of`/`model_slug`) is not owned here — it lives
+  in `../llm/model_id.py` (see `../llm/AGENTS.md`). The doctor imports it, so its
+  provider lookups and Ollama calls cannot disagree with the build path.
 
 ## Verification
 

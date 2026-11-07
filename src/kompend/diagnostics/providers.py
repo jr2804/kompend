@@ -1,9 +1,9 @@
 """Provider checks: the model catalogue, custom endpoints, Ollama's offload.
 
-This module also owns the two model-string helpers (``provider_id_of`` and
-``model_slug``): a ``provider/model`` or ``provider:model`` string is parsed in
-one place, so the doctor, the provider lookup and the Ollama calls cannot
-disagree about which provider a model belongs to.
+Model-string parsing (``provider_id_of``/``model_slug``) lives in
+:mod:`kompend.llm.model_id` and is imported here, so the doctor's provider
+lookups and its Ollama calls cannot disagree about which provider a model
+belongs to.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import ollama
 
 from kompend.core.config import ProviderEndpoint
 from kompend.diagnostics.base import CheckResult
-from kompend.llm import catalog
+from kompend.llm import catalog, model_slug, provider_id_of
 from kompend.llm.models import is_known_provider
 from kompend.logging import get_logger
 
@@ -210,26 +210,6 @@ def check_ollama_device(default_model: str | None, vlm_model: str | None) -> Che
     if any_warn:
         return CheckResult(name, True, message, warning=True)
     return CheckResult(name, True, message)
-
-
-def provider_id_of(model_string: str) -> str | None:
-    """Return the provider part of a ``provider/model`` or ``provider:model`` string.
-
-    ``ollama/qwen3`` → ``"ollama"``, ``ollama:embeddinggemma-2:270m`` →
-    ``"ollama"``, ``gpt-4o`` (provider implied) → ``None``.
-    """
-    for separator in ("/", ":"):
-        if separator in model_string:
-            return model_string.split(separator, 1)[0]
-    return None
-
-
-def model_slug(model_string: str) -> str:
-    """Return the model part of a model string, without its provider prefix."""
-    for separator in ("/", ":"):
-        if separator in model_string:
-            return model_string.split(separator, 1)[1]
-    return model_string
 
 
 def ollama_ps_lookup(model_name: str) -> OllamaLoadedModel | None:

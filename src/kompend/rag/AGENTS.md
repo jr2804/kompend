@@ -42,7 +42,9 @@ retrievers.
   from there. The store resolves its provider through the package's lazy
   export (`kompend.rag.make_provider`) so importing the store stays light
   too. A string constant like `OLLAMA_DEFAULT_BASE_URL` comes from
-  `kompend.llm.constants`, never from `kompend.llm.models`.
+  `kompend.llm.constants`, never from `kompend.llm.models`. Model-string
+  parsing comes from `kompend.llm.model_id` (stdlib-only, via the package's
+  lazy export) — never a local split.
 - **The index is built from the markdown bundle, and staleness is judged by the
   same rule.** `indexable_nodes()` (in `vector_store.py`) defines which nodes
   the index covers; every builder and `is_stale()` must use it. Two

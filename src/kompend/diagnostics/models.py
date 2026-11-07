@@ -20,7 +20,8 @@ from kompend.diagnostics.capabilities import (
     probe_prompted_structured_output,
     probe_raw_json,
 )
-from kompend.diagnostics.providers import OLLAMA_PROVIDER_ID, model_slug, provider_id_of
+from kompend.diagnostics.providers import OLLAMA_PROVIDER_ID
+from kompend.llm import model_slug, provider_id_of
 from kompend.llm.context_window import discover_context_window
 from kompend.llm.models import (
     _query_ollama_num_ctx,

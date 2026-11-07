@@ -40,8 +40,8 @@ from kompend.diagnostics.providers import (
     check_catalogue,
     check_custom_providers,
     check_ollama_device,
-    provider_id_of,
 )
+from kompend.llm import provider_id_of
 from kompend.llm.models import resolve_vlm_model
 
 

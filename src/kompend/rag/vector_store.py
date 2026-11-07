@@ -23,12 +23,13 @@ import os
 from collections.abc import Sequence
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Final, Protocol
 
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.core.models.elements import element_text
 from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.utils.exceptions import LLMOutputError
+from kompend.llm import model_slug, provider_id_of
 from kompend.logging import get_logger
 from kompend.preprocessing.images import is_raster_image, rasterise_bytes
 from kompend.rag.embedding_base import EmbeddingProvider
@@ -40,6 +41,21 @@ from kompend.rag.multimodal import MediaEmbeddingUnsupported
 # 4: a node with figures now feeds its figure to the embedder as well (see
 # embed_node), so a vector built from text alone is not the same vector.
 EMBED_TEXT_VERSION = 4
+
+#: Known LLM/embedding providers — anything else is rejected by
+#: :func:`to_pydantic_ai_embedding_string`.
+_KNOWN_EMBEDDING_PROVIDERS: Final[frozenset[str]] = frozenset(
+    {
+        "ollama",
+        "openai",
+        "google",
+        "cohere",
+        "bedrock",
+        "groq",
+        "mistral",
+        "deepseek",
+    }
+)
 
 #: Cache of figure digests, keyed by (path, size, mtime). The staleness
 #: fingerprint hashes every figure on every check, and a query checks it.
@@ -103,28 +119,9 @@ def to_pydantic_ai_embedding_string(embedding_model: str) -> str:
     :func:`kompend.llm.models.build_model`. An explicit provider prefix is
     required — there is no silent fallback to a local embedding provider.
     """
-    # Known LLM/embedding providers — anything else is rejected.
-    _KNOWN_PROVIDERS = frozenset(
-        {
-            "ollama",
-            "openai",
-            "google",
-            "cohere",
-            "bedrock",
-            "groq",
-            "mistral",
-            "deepseek",
-        }
-    )
-
-    if ":" in embedding_model:
-        provider = embedding_model.split(":", 1)[0]
-        if provider in _KNOWN_PROVIDERS:
-            return embedding_model
-    if "/" in embedding_model:
-        provider = embedding_model.split("/", 1)[0]
-        if provider in _KNOWN_PROVIDERS:
-            return provider + ":" + embedding_model.split("/", 1)[1]
+    provider = provider_id_of(embedding_model)
+    if provider in _KNOWN_EMBEDDING_PROVIDERS:
+        return f"{provider}:{model_slug(embedding_model)}"
     raise ValueError(
         f"Embedding model {embedding_model!r} has no known provider prefix. Use provider/model or provider:model syntax, e.g. ollama:granite-embedding:278m."
     )
