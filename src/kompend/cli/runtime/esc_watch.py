@@ -135,10 +135,12 @@ def _make_platform_reader() -> tuple[KeyReader, Cleanup] | None:
 
         fd = sys.stdin.fileno()
         saved = termios.tcgetattr(fd)
+        # tcgetattr returns the POSIX cc_t list: [iflag, oflag, cflag, lflag,
+        # ispeed, ospeed, cc]. It has no attribute access — index the slots.
         mode = termios.tcgetattr(fd)
-        mode.lflag &= ~(termios.ICANON | termios.ECHO)
-        mode.ccc[termios.VMIN] = 0
-        mode.ccc[termios.VTIME] = 0
+        mode[3] &= ~(termios.ICANON | termios.ECHO)
+        mode[6][termios.VMIN] = 0
+        mode[6][termios.VTIME] = 0
         termios.tcsetattr(fd, termios.TCSANOW, mode)
 
         def _read() -> str | None:
