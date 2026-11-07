@@ -206,7 +206,7 @@ back losslessly, the original content is kept.
 
 [Parsecraft](https://pypi.org/project/parsecraft/) is an external
 document-intelligence pipeline (public API only, separate project from kompend).
-kompend consumes it through a single adapter (`preprocessing/parsers/parsecraft_parser.py`)
+kompend consumes it through a single adapter (`preprocessing/parsers/parsecraft/`, re-exported lazily)
 and maps parsecraft's intermediate representation onto kompend's element model.
 It is a core dependency, so installing kompend is all that is required:
 

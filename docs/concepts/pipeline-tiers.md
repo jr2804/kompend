@@ -39,7 +39,7 @@ flowchart LR
 |-------|------|---------|
 | `ParserBackend` | `parsers/base.py` | Protocol: `can_parse(path)`, `parse(path) → ParsedDocument` |
 | `DocumentParser` | `parsers/base.py` | The guards around every parse: mislabel refusal, surrogate scrubbing, backend identity |
-| `ParsecraftParser` | `parsers/parsecraft_parser.py` | The one backend; per-page routing across parsecraft's sub-backends |
+| `ParsecraftParser` | `parsers/parsecraft/` (adapter.py) | The one backend; per-page routing across parsecraft's sub-backends |
 | `HTTPDownloader` | `downloaders/http.py` | Direct file URLs |
 | `WebCrawler` | `downloaders/crawler.py` | Web pages via crawl4ai |
 | `build_parser` | `parsers/document_parser.py` | The single construction point; takes `ParserOptions` |

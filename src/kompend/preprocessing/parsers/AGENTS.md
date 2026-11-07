@@ -23,7 +23,12 @@ document_parser.py   build_parser(options) — the single factory, returns a gua
 extensions.py        supported_extensions() — the ingestible suffix set
 parsecraft_routing.py  load_parsecraft_config(), constraints_for(), ParsecraftRoutingConfig —
                      parsecraft's own routing config, read through parsecraft's engine
-parsecraft_parser.py ParsecraftParser — the adapter: IR → elements, figures, diagnostics
+parsecraft/          ParsecraftParser (adapter.py) — the adapter: IR → elements, figures,
+                     diagnostics — plus its extracted concerns: identity.py (backend and
+                     cache identity strings), conversion.py (judge resolution and
+                     degradation), assets.py (IR→element mapping, ParsecraftParseError),
+                     pages.py (empty-page accounting and warnings). The package __init__
+                     re-exports the surface lazily (see the factory contract below).
 markdown.py          element_to_markdown()/markdown_to_element() — the wrap/unwrap pair used for
                      rumdl whole-part normalisation
 ```
@@ -96,6 +101,13 @@ stack costs ~1.4 s, which `kompend --help` must not pay. Callers that only need
 the suffix table (`list-parsers`, extension discovery) pass no options and never
 instantiate a backend.
 
+The adapter lives in the `parsecraft/` package, whose `__init__.py` re-exports
+its public surface through `lazy_loader` — never eagerly. An eager re-export
+would pull the native stack onto the parsers-package import path (options.py
+would trigger the package `__init__`). Modules inside the package import each
+other one-way (adapter → identity/conversion/assets/pages, pages → assets);
+nothing imports the adapter back.
+
 ### Identity: what a change re-parses
 
 `DocumentParser.backend_identity()` composes the backend's
@@ -104,9 +116,11 @@ instantiate a backend.
 (`PARSE_CACHE_PARSER_KEY`). The adapter's `backend_identity()` names what can
 parse here (registered backends, installed extras, the resolved
 `[routing]` pins); `cache_identity()` names the routing inputs (judge spec,
-preference, OCR permission, engines, backend options, image mode). A parsecraft
-version bump is deliberately absent: a bug-fix release must not re-parse a
-vault, while a changed backend set or a changed routing value must.
+preference, OCR permission, engines, backend options, image mode) and the
+parsecraft version (`parsecraft:{version}`): the version is half of the
+parse-cache key, so a version bump re-parses the vault on purpose — a new
+wheel can change how every backend reads a file, and a stale cache would
+serve documents parsed by different code.
 
 ### The format table classifies, it never gates
 

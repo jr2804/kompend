@@ -174,7 +174,7 @@ class CompiledWiki:
 ### 1. Parser-Agnostic
 
 No parser is baked into kompend's core. Everything downstream of parsing consumes
-a `ParsedDocument`, and one adapter (`preprocessing/parsers/parsecraft_parser.py`)
+a `ParsedDocument`, and one adapter (`preprocessing/parsers/parsecraft/`, re-exported lazily)
 produces it — parsecraft routes each page across its own sub-backends (docling,
 liteparse, pandoc, native text, OCR), so kompend keeps no selector, no chain and
 no per-backend preference of its own. If a second parser is ever needed, it
