@@ -56,6 +56,7 @@ from parsecraft.routing.models import RoutingPreference
 
 from kompend.core.config import ImageMode
 from kompend.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
+from kompend.core.types import ReasonCode
 from kompend.logging import get_logger
 from kompend.preprocessing.images import ImageStore, asset_for_chunk, assets_by_id
 from kompend.preprocessing.parsers.options import PARSER_PARSECRAFT, ParserOptions
@@ -515,6 +516,7 @@ class ParsecraftParser:
             self.parsecraft_settings().judge_spec or "(unresolved)",
             type(exc).__name__,
             str(exc)[:_JUDGE_ERROR_EXCERPT_CHARS],
+            extra={"reason_code": ReasonCode.JUDGE_DEGRADED},
         )
 
     def _get_judge(self) -> RoutingJudge:
@@ -566,6 +568,7 @@ class ParsecraftParser:
                 spec,
                 type(exc).__name__,
                 str(exc)[:_JUDGE_ERROR_EXCERPT_CHARS],
+                extra={"reason_code": ReasonCode.JUDGE_DEGRADED},
             )
             self._judge_fallback = self._deterministic_judge()
             return self._judge_fallback

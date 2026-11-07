@@ -17,6 +17,7 @@ import base64
 import hashlib
 import importlib
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -29,6 +30,7 @@ from typing import Any
 import pytest
 
 from kompend.core.config._configs import IngestConfig
+from kompend.core.types import ReasonCode
 
 pytest.importorskip("parsecraft", reason="parsecraft extra not installed")
 
@@ -652,6 +654,25 @@ class TestJudgeWiring:
         degraded = _judged_parser("ollama/m", preference="quality")
         degraded._degrade_judge(RuntimeError("endpoint died"))
         assert degraded._judge_fallback._preference is adapter.RoutingPreference.QUALITY
+
+    def test_the_judge_degradation_warnings_carry_the_reason_code(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A judge that degrades to the rule table is a JUDGE_DEGRADED failure.
+
+        knox-ty8f.1: the item path reports every failure with a reason code so
+        the ledger can count a failure class instead of matching prose. Both
+        judge-degradation sites carry it — the call-time failure and the
+        resolution failure — and they are the same class of event.
+        """
+        with caplog.at_level(logging.WARNING, logger="kompend.preprocessing.parsers.parsecraft_parser"):
+            _judged_parser("nosuchprovider/m", preference="quality")._get_judge()
+            _judged_parser("ollama/m", preference="quality")._degrade_judge(RuntimeError("endpoint died"))
+
+        codes = {
+            getattr(record, "reason_code", None)
+            for record in caplog.records
+            if "judge" in record.getMessage()
+        }
+        assert codes == {ReasonCode.JUDGE_DEGRADED}
 
     def test_quality_flips_the_rule_table_vram_tiebreak(self) -> None:
         """Behavioural pin: same two candidates, opposite order under quality.
