@@ -130,8 +130,8 @@ Contracts:
 - The answer reserve and the safety margin are paid by default, so a stage
   cannot forget either by accident.
 - `context_safety_tokens` is defined **once** here (8% of the window, floor
-  512 tokens). `kompend.compilation._two_phase_core` re-exports it for the
-  historical import path — a second definition is how stages drift apart.
+  512 tokens). `kompend.compilation.two_phase` re-exports it for the
+  package-root import path — a second definition is how stages drift apart.
 - `chars_to_tokens` / `tokens_to_chars` are the single chars-per-token
   conversion; pass the configured `compile.llm.default_chars_per_token`.
 

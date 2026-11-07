@@ -1,6 +1,6 @@
 """ExtractionAgent — PydanticAI wrapper for the two-phase extraction stage.
 
-Replaces the raw direct LLM call in ``kompend/compilation/_two_phase_core.py``
+Replaces the raw direct LLM call in ``kompend/compilation/two_phase/``
 with a typed PydanticAI agent. The agent's ``output_type`` is
 :class:`~kompend.compilation.schema.ExtractionOutput`, so the LLM is
 asked to produce that exact Pydantic model. PydanticAI handles JSON
