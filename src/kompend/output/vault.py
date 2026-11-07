@@ -27,10 +27,10 @@ import shutil
 import sqlite3
 from abc import abstractmethod
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any
 
 from kompend.core.config._configs import DisplayConfig, OutputConfig
-from kompend.core.models import KIND_FOLDERS, CompiledWiki, ExtractionStats, GraphEdge, ImageRef, MetadataField, image_source_key
+from kompend.core.models import CompiledWiki, ExtractionStats, GraphEdge, ImageRef, MetadataField, image_source_key
 from kompend.core.models.assets import AssetRecord
 from kompend.core.models.enums import AssetKind, NodeType, OkfField
 from kompend.core.models.metadata import meta_dict_list, meta_str_list
@@ -63,6 +63,7 @@ from kompend.output.frontmatter import OKF_VERSION
 from kompend.output.frontmatter import okf_frontmatter_yaml as _okf_frontmatter_yaml
 from kompend.output.models import Document
 from kompend.output.page import DEFAULT_STATUS, GENERATED_BY, OkfPageMixin
+from kompend.output.page_paths import PageLayoutMixin, bundle_path, page_stem
 from kompend.output.reference_links import format_bibliography_entry, rewrite_source_references
 
 # OKF spec version every vault writer targets.
@@ -71,20 +72,13 @@ __all__ = ["OKF_VERSION", "okf_frontmatter_yaml"]
 logger = get_logger(__name__)
 
 
-class VaultWriter(OkfPageMixin, BaseOutputWriter):
+class VaultWriter(OkfPageMixin, PageLayoutMixin, BaseOutputWriter):
     """Base class for writers that emit a vault of ``.md`` files.
 
     Subclasses fill in the rendering hooks that differ between flavors; the
     shared vault algorithm lives here so it is written exactly once. The
     frontmatter is already uniform — see :meth:`okf_frontmatter`.
     """
-
-    # node_type -> subfolder under the vault root. Kinds not listed here
-    # (overview, procedure, section, unknown) stay at the root so the
-    # layout never splits a type the compiler didn't anticipate.
-    # Canonical kind→folder map lives in core.models.kinds (shared with the
-    # lint fixer).
-    _KIND_FOLDERS: ClassVar[dict[str, str]] = KIND_FOLDERS
 
     def __init__(
         self,
@@ -215,7 +209,7 @@ class VaultWriter(OkfPageMixin, BaseOutputWriter):
         slug_targets: dict[str, str] = {}
         for doc in docs:
             folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
-            path = f"{folder}/{doc.page_slug or 'untitled'}.md" if folder else f"{doc.page_slug or 'untitled'}.md"
+            path = bundle_path(folder, doc.page_slug)
             slug_targets[doc.page_slug] = path
             slug_targets[doc.title] = path
 
@@ -232,7 +226,7 @@ class VaultWriter(OkfPageMixin, BaseOutputWriter):
             folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
             target_dir = output_dir / folder if folder else output_dir
             target_dir.mkdir(parents=True, exist_ok=True)
-            filename = f"{doc.page_slug or 'untitled'}.md"
+            filename = f"{page_stem(doc.page_slug)}.md"
 
             # Rewrite in-text citation markers to reference links (shared).
             body = doc.body
@@ -596,18 +590,6 @@ class VaultWriter(OkfPageMixin, BaseOutputWriter):
         except ValueError:
             return None
         return rel if rel.parts and rel.parts[0] == KOMP_DIR else None
-
-    @classmethod
-    def _folder_for_kind(cls, node_type: NodeType, sub: str = "") -> str:
-        """Return the subfolder for a page kind, or '' to stay at the root.
-
-        Entity pages route into ``entities/<sub>/`` — the sub-type
-        (person/organization/standard/...) from node metadata.
-        """
-        folder = cls._KIND_FOLDERS.get(node_type.value, "")
-        if folder and sub:
-            return f"{folder}/{sub}"
-        return folder
 
     @staticmethod
     def _build_related_edges(
