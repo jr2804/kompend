@@ -28,11 +28,9 @@ from kompend.core.pipeline.bounded_parse import ParseDeadlineExceeded
 from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.pipeline.references import ReferenceStore
-from kompend.core.pipeline.stages import parse as parse_stage
-from kompend.core.pipeline.stages.parse import (
-    _load_cache,  # noqa: PLC2701
-    _process_single_source,  # noqa: PLC2701
-)
+from kompend.core.pipeline.stages import parse_store as parse_store_stage
+from kompend.core.pipeline.stages.parse_sources import _process_single_source  # noqa: PLC2701
+from kompend.core.pipeline.stages.parse_store import _load_cache  # noqa: PLC2701
 from kompend.core.reporting.ledger import stage_ledger
 from kompend.core.store import open_store
 from kompend.core.types import ReasonCode
@@ -41,7 +39,8 @@ from kompend.preprocessing.parsers import DocumentParser
 from kompend.preprocessing.parsers.base import BinarySourceError
 
 _INGEST = "kompend.core.pipeline.ingest"
-_PARSE_STAGE = "kompend.core.pipeline.stages.parse"
+_PARSE_SOURCES = "kompend.core.pipeline.stages.parse_sources"
+_PARSE_STORE = "kompend.core.pipeline.stages.parse_store"
 _ATTACHMENTS = "kompend.core.pipeline.attachments"
 _ASSETS = "kompend.core.pipeline.assets"
 _REFERENCES = "kompend.core.pipeline.references"
@@ -201,7 +200,7 @@ def test_ingest_deadline_failure_carries_timeout(tmp_path: Path, monkeypatch: py
     assert _codes(caplog, "Failed to parse") == {ReasonCode.TIMEOUT}
 
 
-# --- stages/_parse.py -------------------------------------------------------------
+# --- stages/parse_sources.py, stages/parse_store.py -----------------------------------------------------------
 
 
 def test_stage_no_backend_routes_to_no_parser(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
@@ -210,7 +209,7 @@ def test_stage_no_backend_routes_to_no_parser(tmp_path: Path, caplog: pytest.Log
     src.write_text("# note\n", encoding="utf-8")
     runtime = _StubRuntime(base, parser=_RoutedParser(None))
 
-    with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
+    with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_SOURCES):
         assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) is None
 
     assert _codes(caplog, "No parser backend") == {ReasonCode.NO_PARSER}
@@ -224,7 +223,7 @@ def test_stage_backend_failure_carries_the_classified_code(tmp_path: Path, caplo
     boom.parse.side_effect = RuntimeError("docling exploded")
     runtime = _StubRuntime(base, parser=_RoutedParser(boom))
 
-    with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
+    with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_SOURCES):
         assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) is None
 
     assert _codes(caplog, "Failed to parse") == {ReasonCode.BACKEND_UNAVAILABLE}
@@ -238,7 +237,7 @@ def test_stage_typed_binary_error_keeps_its_code(tmp_path: Path, caplog: pytest.
     mislabelled.parse.side_effect = BinarySourceError("note.md: extension claims text")
     runtime = _StubRuntime(base, parser=_RoutedParser(mislabelled))
 
-    with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
+    with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_SOURCES):
         assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) is None
 
     assert _codes(caplog, "Failed to parse") == {ReasonCode.MISLABELLED_BINARY}
@@ -251,12 +250,12 @@ def test_stage_corrupt_cache_entry_reparses_with_code(tmp_path: Path, monkeypatc
     runtime = _StubRuntime(base, parser=_RoutedParser(None, identity="stub-chain"))
     # An entry the identity check accepts but the element rebuild cannot.
     monkeypatch.setattr(
-        parse_stage,
+        parse_store_stage,
         "read_document",
         lambda db_path, key: {"_parser_fingerprint": "stub-chain", "elements": [{"type": "bogus", "content": "x"}]},
     )
 
-    with caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
+    with caplog.at_level(logging.WARNING, logger=_PARSE_STORE):
         assert _load_cache(cast("Any", runtime), src) is None
 
     assert _codes(caplog, "Corrupt parse cache") == {ReasonCode.CORRUPT_CACHE}

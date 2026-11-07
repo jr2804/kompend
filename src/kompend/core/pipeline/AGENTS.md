@@ -15,20 +15,23 @@ persistence, and standalone ingestion.
 | --------------------- | ---------------------------------------------------------------------------------------- |
 | `stages/pipeline.py` | `WikiPipeline` — 5-tier orchestrator, `ProgressCallback`                                 |
 | `stages/factory.py`  | `build_pipeline` — pipeline factory                                                      |
-| `stages/parse.py`    | Tier 1 parse + chunk orchestration; heavy parses run under `HeavyParseGuard` (`preprocessing/host_memory.py`) |
+| `stages/parse.py`    | Tier 1 dispatch: `parse_and_chunk`, worker pool, dedup gate, attachments, `build_resolver_chain`; heavy parses run under one `HeavyParseGuard` (`preprocessing/host_memory.py`) |
+| `stages/parse_sources.py` | One source through Tier 1: `_process_single_source`, `_parse_source`, privacy filter, dedup warning |
+| `stages/parse_store.py` | Stage-side parse-cache adapter: `_load_cache`, `_save_cache`, `_try_load_parsed_cache`, `_try_load_chunk_cache`, `_chunk_cache_deps`, `parse_identity` |
 | `stages/index.py`    | Tier 0 source indexing                                                                   |
 | `stages/resolve.py`  | Tier 3 resolution orchestration                                                          |
 | `stages/compile.py`  | Tier 4 compilation + Tier 5 output orchestration                                         |
 | `config.py`           | re-exports `Tier`, `Compiler`, `TierInfo` from `core.config`; `PipelineConfig`            |
 | `state.py`            | `TierStateStore`, `TierState`, `SourceState`, `CompileStatus`, `classify_compile_status` |
 | `references.py`       | `ReferenceStore` — JSON-backed bibliographic reference persistence                       |
-| `ingest.py`           | `ingest_documents`, `parse_cache_name`, `preserve_cached_metadata`, `parse_cache_is_current`, `PARSE_CACHE_PARSER_KEY`, `parse_target_path`, `IngestResult` |
+| `ingest.py`           | `ingest_documents`, `parse_cache_name`, `preserve_cached_metadata`, `parse_target_path`, `IngestResult` |
+| `parse_cache.py`      | Dolt-free DB layer for parsed documents: `cache_key` (the `<stem>-<hash8>` rule), `content_hash_prefix`, `parse_cache_is_current`, `PARSE_CACHE_PARSER_KEY`, `read_document`/`write_document` |
 | `parallelism.py`      | `gil_enabled`, `describe_parallelism` — interpreter parallelism facts for `compile.workers` |
 | `bounded_parse.py`    | `DeadlineWorker`, `ParseDeadlineExceeded` — per-file wall-clock budget, enforced by a reusable worker process (`ingest.parse_timeout_s`; `0` parses in-process) |
 | `reasons.py`          | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
 | `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`           | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |
-| (ledger wiring)      | `stages/parse.py`, `ingest.py`, `attachments.py` record every parse/chunk/enrich/attachment/dedup attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()` |
+| (ledger wiring)      | `stages/parse.py`, `stages/parse_sources.py`, `ingest.py`, `attachments.py` record every parse/chunk/enrich/attachment/dedup attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()` |
 
 ## Rules
 
@@ -44,7 +47,9 @@ persistence, and standalone ingestion.
 - The parse cache is content-addressed: an entry is reused when the source
   bytes hash to the same key **and** the entry was written by the current
   backend identity (`parser.backend_identity()`, stored under
-  `PARSE_CACHE_PARSER_KEY`, checked by `parse_cache_is_current`) — a changed
+  `PARSE_CACHE_PARSER_KEY`, checked by `parse_cache_is_current`; the stage's
+  cache half lives in `stages/parse_store.py` and asks `parse_cache.py` for
+  the key — it never re-derives `<stem>-<hash8>`) — a changed
   backend set or `[ingest]` restriction re-parses, a parsecraft version bump
   does not. Entries from before the identity existed store an empty key and
   re-parse once (self-healing). `compile.reparse` (CLI `--reparse`) bypasses the
@@ -60,8 +65,8 @@ persistence, and standalone ingestion.
   `sources/` keeps every cache entry and every state row, while two files
   sharing a name but differing in content stay two sources. A cache hit is
   rebound to the path the current run looked it up for (`_load_cache`,
-  `_try_load_chunk_cache`) so no consumer resurrects a path that no longer
-  exists; `tier_state.source_file` is only the last path the source was seen
+  `_try_load_chunk_cache` in `stages/parse_store.py`) so no consumer
+  resurrects a path that no longer exists; `tier_state.source_file` is only the last path the source was seen
   at.
 - The parse tier and the standalone ingest share one decision point for
   *which bytes a parser receives*: `parse_target_path` (in `ingest.py`) hands

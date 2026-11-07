@@ -91,7 +91,7 @@ class TestParseTierWiring:
     _repo = Path(__file__).resolve().parents[2]
 
     def test_parse_source_normalises_elements(self) -> None:
-        source = (self._repo / "src/kompend/core/pipeline/stages/parse.py").read_text(encoding="utf-8")
+        source = (self._repo / "src/kompend/core/pipeline/stages/parse_sources.py").read_text(encoding="utf-8")
         assert "normalize_element_markdown(" in source
         # must be applied after relativisation, before the cache write
         assert source.index("normalize_element_markdown(") < source.index("_save_cache(pipeline, source_file, parsed)")

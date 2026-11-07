@@ -132,7 +132,7 @@ See `src/kompend/cli/cmds/AGENTS.md` for detailed command organization rules.
 - `--verbose` / `KOMP_VERBOSE` gates tracebacks via
   `kompend.core.verbosity`, whose value is a `ContextVar` — cross-thread readers
   (the parse pool) need the submission wrapped in `copy_context().run(...)`,
-  which `stages/_parse.py` does. The recoverable-log rule that accompanies it
+  which `stages/parse.py` does. The recoverable-log rule that accompanies it
   lives in `core/pipeline/AGENTS.md`.
 
 ### CLI overrides → config

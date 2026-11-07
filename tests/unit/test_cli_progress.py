@@ -65,7 +65,7 @@ class _RecordingTracker(PipelineProgress):
 class TestMakeProgressCallbackSummary:
     """The summary sub-phase: per-tree bar during LLM summarization.
 
-    Events emitted by ``parse_and_chunk`` (core/pipeline/stages/_parse.py):
+    Events emitted by ``parse_and_chunk`` (core/pipeline/stages/parse.py):
     sentinel (0, N, "starting") → per-unit (i, N, label) → (N, N, "done").
     """
 

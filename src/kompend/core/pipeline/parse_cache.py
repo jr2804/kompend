@@ -5,7 +5,7 @@ the ``documents`` table of the single store, keyed by ``<stem>-<hash8>`` so
 same-stem files with different content never collide.
 
 The stored record keeps the same JSON shape the file cache used, so callers
-(``_parse`` / ``ingest``) only swap their persistence calls:
+(``stages/parse_store`` / ``ingest``) only swap their persistence calls:
 
 ``source_file``, ``_parser_fingerprint``, ``title``, ``author``, ``language``,
 ``page_count``, ``metadata``, ``elements``.

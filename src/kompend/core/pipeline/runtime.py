@@ -1,10 +1,10 @@
 """Structural protocol for the pipeline object passed to stage functions.
 
-Stage modules (``parse.py``, ``index.py``, ``compile.py``,
-``resolve.py``) receive the orchestrator as a parameter but cannot import
-:class:`WikiPipeline` directly (circular import — ``pipeline.py`` imports
-the stages). This Protocol breaks the cycle: stages type-hint against the
-abstraction, ``WikiPipeline`` satisfies it structurally.
+Stage modules (``parse.py``, ``parse_sources.py``, ``parse_store.py``,
+``index.py``, ``compile.py``, ``resolve.py``) receive the orchestrator as a
+parameter but cannot import :class:`WikiPipeline` directly (circular import —
+``pipeline.py`` imports the stages). This Protocol breaks the cycle: stages
+type-hint against the abstraction, ``WikiPipeline`` satisfies it structurally.
 
 Only the attributes and methods that stages actually access are declared.
 All members are public — stages are the interface's consumers, so nothing
