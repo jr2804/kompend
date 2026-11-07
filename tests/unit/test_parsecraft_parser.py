@@ -172,8 +172,7 @@ class TestMarkdownFidelity:
 class TestFailureShapes:
     def test_total_exhaustion_raises_never_emits_placeholders(self) -> None:
         """All pages exhausted → kompend parse failure, not empty content."""
-        adapter = _adapter()
-        with pytest.raises(adapter.ParsecraftParseError, match="all candidates failed"):
+        with pytest.raises(_assets().ParsecraftParseError, match="all candidates failed"):
             _map(_document([_exhausted_page(1)]))
 
     def test_partial_exhaustion_keeps_good_pages(self) -> None:
@@ -203,8 +202,7 @@ class TestFailureShapes:
         assert groups[0].attempts == []
 
     def test_empty_document_raises(self) -> None:
-        adapter = _adapter()
-        with pytest.raises(adapter.ParsecraftParseError):
+        with pytest.raises(_assets().ParsecraftParseError):
             _map(_document([_page(1, [])]))
 
 
@@ -927,26 +925,22 @@ class TestStructuredRows:
     """
 
     def test_rows_convert_to_nested_lists(self) -> None:
-        adapter = _adapter()
         chunk = self._chunk(rows=(("A", "B"), ("1", "2")))
-        assert adapter._chunk_content(chunk) == [["A", "B"], ["1", "2"]]
+        assert _assets().chunk_content(chunk) == [["A", "B"], ["1", "2"]]
 
     def test_rows_win_over_markdown_content(self) -> None:
-        adapter = _adapter()
         chunk = self._chunk(content="| ignored |", rows=(("A",),))
-        assert adapter._chunk_content(chunk) == [["A"]]
+        assert _assets().chunk_content(chunk) == [["A"]]
 
     def test_absent_rows_fall_back_to_markdown(self) -> None:
-        adapter = _adapter()
-        assert adapter._chunk_content(self._chunk()) == "| A | B |"
+        assert _assets().chunk_content(self._chunk()) == "| A | B |"
 
     def test_empty_rows_do_not_become_an_empty_table(self) -> None:
         """An empty grid carries no content, so the element is dropped rather
         than emitted as an empty TABLE.
         """
-        adapter = _adapter()
         chunk = self._chunk(content="", rows=())
-        assert not adapter._chunk_content(chunk)
+        assert not _assets().chunk_content(chunk)
 
     @staticmethod
     def _chunk(**overrides: Any) -> Any:
@@ -1270,9 +1264,8 @@ class TestImageExtraction:
     """
 
     def test_a_figure_chunk_carries_the_stored_image(self, tmp_path: Path) -> None:
-        adapter = _adapter()
         document = _document([_page_with_asset(_figure_chunk(), "asset-1")])
-        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        elements = _assets().map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
         image = next(element for element in elements if element.type is ElementType.IMAGE)
         stored = Path(image.metadata["image_file"])
         assert stored.parent == tmp_path
@@ -1280,9 +1273,8 @@ class TestImageExtraction:
         assert image.content == str(stored)
 
     def test_the_figures_own_text_rides_along_as_its_description(self, tmp_path: Path) -> None:
-        adapter = _adapter()
         document = _document([_page_with_asset(_figure_chunk(content="Figure 1 — the block diagram"), "asset-1")])
-        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        elements = _assets().map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
         image = next(element for element in elements if element.type is ElementType.IMAGE)
         assert image.metadata["description"] == "Figure 1 — the block diagram"
 
@@ -1291,48 +1283,43 @@ class TestImageExtraction:
         # caption, and the caption may be empty. The image must survive
         # that: it is the content of the element, the caption is only ever
         # a description.
-        adapter = _adapter()
         document = _document([_page_with_asset(_figure_chunk(content=""), "asset-1")])
-        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        elements = _assets().map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
         image = next(element for element in elements if element.type is ElementType.IMAGE)
         assert Path(image.metadata["image_file"]).exists()
         assert image.content == image.metadata["image_file"]
         assert "description" not in image.metadata
 
     def test_base64_mode_keeps_the_payload_inline(self, tmp_path: Path) -> None:
-        adapter = _adapter()
         document = _document([_page_with_asset(_figure_chunk(), "asset-1")])
-        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.BASE64))
+        elements = _assets().map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.BASE64))
         image = next(element for element in elements if element.type is ElementType.IMAGE)
         assert image.metadata["image_base64"].startswith("data:image/png;base64,")
         assert "image_file" not in image.metadata
         assert not list(tmp_path.iterdir())
 
     def test_none_mode_extracts_no_images(self, tmp_path: Path) -> None:
-        adapter = _adapter()
         document = _document([_page_with_asset(_figure_chunk(content="Figure 1"), "asset-1")])
-        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.NONE))
+        elements = _assets().map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.NONE))
         # No image to point at: the figure's own text stays, as text.
         assert [element.type for element in elements] == [ElementType.TEXT]
         assert elements[0].content == "Figure 1"
         assert "image_file" not in elements[0].metadata
 
     def test_an_asset_no_chunk_claims_becomes_its_own_element(self, tmp_path: Path) -> None:
-        adapter = _adapter()
         document = _document([_page_with_asset(_text_chunk(), "asset-1")])
-        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        elements = _assets().map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
         assert [element.type for element in elements] == [ElementType.TEXT, ElementType.IMAGE]
         assert Path(elements[1].metadata["image_file"]).exists()
 
     def test_an_unreadable_asset_does_not_lose_the_text(self, tmp_path: Path) -> None:
-        adapter = _adapter()
         page = PageResult(
             page_number=1,
             blocks=[_figure_chunk(content="Figure 1")],
             assets=[ExtractedAsset(id="asset-1", kind=AssetKind.IMAGE, media_type="image/png", uri="data:image/png;base64,%%%not-base64%%%")],
         )
         document = _document([page])
-        elements = adapter._map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        elements = _assets().map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
         assert [element.type for element in elements] == [ElementType.TEXT]
         assert elements[0].content == "Figure 1"
         assert "image_file" not in elements[0].metadata
@@ -1340,9 +1327,8 @@ class TestImageExtraction:
     def test_the_file_name_pairs_the_source_stem_with_the_digest(self, tmp_path: Path) -> None:
         # Content-addressed: the digest of the bytes, with the source stem
         # kept in front for human readability.
-        adapter = _adapter()
         document = _document([_page_with_asset(_figure_chunk(), "asset-1")])
-        elements = adapter._map_document(document, Path("report.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        elements = _assets().map_document(document, Path("report.pdf"), images=_store(tmp_path, ImageMode.FILE))
         image = next(element for element in elements if element.type is ElementType.IMAGE)
         digest = hashlib.sha256(_PNG_BYTES).hexdigest()[:16]
         assert Path(image.metadata["image_file"]).name == f"report__{digest}.png"
@@ -1350,12 +1336,11 @@ class TestImageExtraction:
     def test_identical_bytes_keep_one_file_across_ids_and_re_parses(self, tmp_path: Path) -> None:
         # The name keys on the bytes, not the asset id: a re-parse (fresh
         # ids from the backend) reuses the file instead of accumulating copies.
-        adapter = _adapter()
         images_dir = tmp_path / "images"
         first = _document([_page_with_asset(_figure_chunk(), "asset-1")])
-        adapter._map_document(first, Path("doc.pdf"), images=_store(images_dir, ImageMode.FILE))
+        _assets().map_document(first, Path("doc.pdf"), images=_store(images_dir, ImageMode.FILE))
         reparsed = _document([_page_with_asset(_figure_chunk(), "asset-99")])
-        elements = adapter._map_document(reparsed, Path("doc.pdf"), images=_store(images_dir, ImageMode.FILE))
+        elements = _assets().map_document(reparsed, Path("doc.pdf"), images=_store(images_dir, ImageMode.FILE))
         image = next(element for element in elements if element.type is ElementType.IMAGE)
         assert [path.name for path in images_dir.iterdir()] == [Path(image.metadata["image_file"]).name]
         assert (images_dir / Path(image.metadata["image_file"]).name).read_bytes() == _PNG_BYTES
@@ -1363,7 +1348,6 @@ class TestImageExtraction:
     def test_changed_bytes_get_a_new_file(self, tmp_path: Path) -> None:
         # A changed figure must not overwrite the old crop — the new bytes
         # land under their own digest.
-        adapter = _adapter()
         changed = _PNG_BYTES + b"\x00"
         rerender = PageResult(
             page_number=1,
@@ -1377,8 +1361,8 @@ class TestImageExtraction:
                 )
             ],
         )
-        adapter._map_document(_document([_page_with_asset(_figure_chunk(), "asset-1")]), Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
-        elements = adapter._map_document(_document([rerender]), Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        _assets().map_document(_document([_page_with_asset(_figure_chunk(), "asset-1")]), Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
+        elements = _assets().map_document(_document([rerender]), Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
         image = next(element for element in elements if element.type is ElementType.IMAGE)
         assert len(list(tmp_path.iterdir())) == 2
         assert Path(image.metadata["image_file"]).read_bytes() == changed
@@ -1522,7 +1506,7 @@ def _routing_part(parser: Any) -> str:
 
 def _map(document: DocumentResult, name: str = "d.txt") -> list:
 
-    return _adapter()._map_document(document, Path(name))
+    return _assets().map_document(document, Path(name))
 
 
 # ── IR fixtures ──────────────────────────────────────────────────────────
@@ -1724,6 +1708,11 @@ def _adapter() -> Any:
 def _conversion() -> Any:
     """The judge-machinery module (``execute``, ``resolve_judge`` seams)."""
     return importlib.import_module("kompend.preprocessing.parsers.parsecraft.conversion")
+
+
+def _assets() -> Any:
+    """The IR-to-element module (``map_document``, ``chunk_content``, the error)."""
+    return importlib.import_module("kompend.preprocessing.parsers.parsecraft.assets")
 
 
 def _routing(**routing: Any) -> ParsecraftRoutingConfig:
