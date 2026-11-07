@@ -540,7 +540,6 @@ class TestJudgeWiring:
         vocabulary belongs to parsecraft, and a provider kompend has never
         heard of must still resolve.
         """
-        adapter = _adapter()
         sentinel = _SentinelJudge()
         seen: list[str] = []
 
@@ -548,7 +547,7 @@ class TestJudgeWiring:
             seen.append(spec)
             return sentinel
 
-        monkeypatch.setattr(adapter, "resolve_judge", fake_resolve)
+        monkeypatch.setattr(_conversion(), "resolve_judge", fake_resolve)
         assert _judged_parser("ollama/parable-tinyjev")._get_judge() is sentinel
         assert _judged_parser("typesafe-ai/jev-latest")._get_judge() is sentinel
         assert seen == ["ollama/parable-tinyjev", "typesafe-ai/jev-latest"]
@@ -614,7 +613,6 @@ class TestJudgeWiring:
         """One resolution per parser: the SDK memoises per page class on the
         judge instance, so re-resolving per file would discard that memo.
         """
-        adapter = _adapter()
         sentinel = _SentinelJudge()
         seen: list[str] = []
 
@@ -622,7 +620,7 @@ class TestJudgeWiring:
             seen.append(spec)
             return sentinel
 
-        monkeypatch.setattr(adapter, "resolve_judge", fake_resolve)
+        monkeypatch.setattr(_conversion(), "resolve_judge", fake_resolve)
         parser = _judged_parser("ollama/m")
         assert parser._get_judge() is sentinel
         assert parser._get_judge() is sentinel
@@ -662,7 +660,7 @@ class TestJudgeWiring:
         judge-degradation sites carry it — the call-time failure and the
         resolution failure — and they are the same class of event.
         """
-        with caplog.at_level(logging.WARNING, logger="kompend.preprocessing.parsers.parsecraft.adapter"):
+        with caplog.at_level(logging.WARNING, logger="kompend.preprocessing.parsers.parsecraft.conversion"):
             _judged_parser("nosuchprovider/m", preference="quality")._get_judge()
             _judged_parser("ollama/m", preference="quality")._degrade_judge(RuntimeError("endpoint died"))
 
@@ -747,8 +745,8 @@ class TestJudgeWiring:
                 raise RoutingError("judge exploded")
             return _EmptyResult()
 
-        monkeypatch.setattr(adapter, "resolve_judge", fake_resolve)
-        monkeypatch.setattr(adapter, "execute", fake_execute)
+        monkeypatch.setattr(_conversion(), "resolve_judge", fake_resolve)
+        monkeypatch.setattr(_conversion(), "execute", fake_execute)
         parser = _judged_parser("zen/m")
         result = parser._execute_with_judge(object(), object(), object(), object())
         assert result.groups == []
@@ -764,12 +762,11 @@ class TestJudgeWiring:
         """A real routing dead-end must surface: the deterministic judge could
         not have fixed it, so falling back would hide a genuine failure.
         """
-        adapter = _adapter()
 
         def fake_execute(*args: object, judge: object = None, **kwargs: object) -> object:
             raise NoEligibleBackendError(None, "no backend can parse this")
 
-        monkeypatch.setattr(adapter, "execute", fake_execute)
+        monkeypatch.setattr(_conversion(), "execute", fake_execute)
         parser = _judged_parser("ollama/m")
         with pytest.raises(NoEligibleBackendError):
             parser._execute_with_judge(object(), object(), object(), object())
@@ -784,7 +781,7 @@ class TestJudgeWiring:
             calls += 1
             raise RoutingError("routing broke")
 
-        monkeypatch.setattr(adapter, "execute", fake_execute)
+        monkeypatch.setattr(_conversion(), "execute", fake_execute)
         parser = adapter.ParsecraftParser()
         with pytest.raises(RoutingError):
             parser._execute_with_judge(object(), object(), object(), object())
@@ -1716,11 +1713,17 @@ def _adapter() -> Any:
     """Lazy accessor for the adapter *module* (see module docstring).
 
     The submodule, not the package: the patch seams below attach to names
-    that live on the module (``resolve_judge``, ``_map_document``, …), and the
-    lazy package ``__init__`` re-exports only the public surface. As the
-    split lands, each seam is repointed at the module that now owns its name.
+    that live on the module (``analyze_source``, ``constraints_for``, …),
+    and the lazy package ``__init__`` re-exports only the public surface.
+    As the split lands, each seam is repointed at the module that now owns
+    its name.
     """
     return importlib.import_module("kompend.preprocessing.parsers.parsecraft.adapter")
+
+
+def _conversion() -> Any:
+    """The judge-machinery module (``execute``, ``resolve_judge`` seams)."""
+    return importlib.import_module("kompend.preprocessing.parsers.parsecraft.conversion")
 
 
 def _routing(**routing: Any) -> ParsecraftRoutingConfig:

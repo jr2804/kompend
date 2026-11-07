@@ -44,21 +44,18 @@ from parsecraft.pipeline import (
     PipelineResult,
     UnsupportedSourceError,
     analyze_source,
-    execute,
     media_type_for,
 )
 from parsecraft.pipeline.analysis import AnalysisResult
-from parsecraft.routing import NoEligibleBackendError, RoutingConstraints, RoutingError, RoutingPlan
+from parsecraft.routing import RoutingConstraints, RoutingPlan
 from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
-from parsecraft.routing.judge_providers import JudgeError, resolve_judge
 
 from kompend.core.config import ImageMode
 from kompend.core.models import DocumentElement, ElementType, MetadataField, ParsedDocument
-from kompend.core.types import ReasonCode
 from kompend.logging import get_logger
 from kompend.preprocessing.images import ImageStore, asset_for_chunk, assets_by_id
 from kompend.preprocessing.parsers.options import PARSER_PARSECRAFT, ParserOptions
-from kompend.preprocessing.parsers.parsecraft import identity
+from kompend.preprocessing.parsers.parsecraft import conversion, identity
 from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingConfig, constraints_for, load_parsecraft_config
 
 #: parsecraft chunk kind → kompend element type. Kinds without a kompend equivalent
@@ -81,11 +78,6 @@ _CHUNK_KIND_TO_ELEMENT: dict[ChunkKind, ElementType] = {
     ChunkKind.UNKNOWN: ElementType.TEXT,
 }
 
-
-#: Characters of a judge/SDK error message kept in a log line. The SDK wraps
-#: provider errors with the full HTTP exchange; the first clause names the
-#: cause and the rest is noise in a per-file warning.
-_JUDGE_ERROR_EXCERPT_CHARS = 160
 
 #: Environment variable the docling engine reads for its ONNX thread count.
 #: The engine builds its converter when the first conversion runs, so the
@@ -449,86 +441,50 @@ class ParsecraftParser:
         ``RoutingError``). A failure from the deterministic judge is re-raised
         for the same reason — the retry is not a general-purpose error
         absorber.
-        """
-        judge = self._get_judge()
-        try:
-            return execute(analysis, registry, constraints, source, judge=judge)
-        except NoEligibleBackendError:
-            raise
-        except RoutingError as exc:
-            if self._judge_degraded or isinstance(judge, DeterministicJudge):
-                raise
-            self._degrade_judge(exc)
-            fallback = self._judge_fallback if self._judge_fallback is not None else self._deterministic_judge()
-            return execute(analysis, registry, constraints, source, judge=fallback)
 
-    def _degrade_judge(self, exc: BaseException) -> None:
-        """Drop a live judge that failed at call time; warn once per run."""
-        self._judge = None
-        self._judge_fallback = self._deterministic_judge()
-        self._judge_degraded = True
-        logger.warning(
-            "parsecraft judge %s failed at call time (%s: %s); falling back to the deterministic rule table for the rest of this run.",
-            self.parsecraft_settings().judge_spec or "(unresolved)",
-            type(exc).__name__,
-            str(exc)[:_JUDGE_ERROR_EXCERPT_CHARS],
-            extra={"reason_code": ReasonCode.JUDGE_DEGRADED},
+        Thin delegator: the policy lives in ``conversion.execute_with_judge``;
+        the memo slots (``_judge``/``_judge_fallback``/``_judge_degraded``)
+        live here, so a degrade is remembered for the rest of the run.
+        """
+        return conversion.execute_with_judge(
+            analysis,
+            registry,
+            constraints,
+            source,
+            judge=self._get_judge(),
+            degraded=self._judge_degraded,
+            on_degrade=self._degrade_judge,
         )
+
+    def _degrade_judge(self, exc: BaseException) -> RoutingJudge:
+        """Drop a live judge that failed at call time; warn once per run.
+
+        Thin delegator: the warning lives in ``conversion.degrade_judge``;
+        the memo reset lives here.
+        """
+        self._judge = None
+        self._judge_degraded = True
+        self._judge_fallback = conversion.degrade_judge(self.parsecraft_settings(), self._ensure_environment(), exc)
+        return self._judge_fallback
 
     def _get_judge(self) -> RoutingJudge:
         """Return the routing judge for this parser, resolving it once per instance.
 
-        Three exit paths, in order:
-
-        1. Neither ``PARSECRAFT_JUDGE_MODEL`` nor ``[judge] model`` names a
-           judge (the default): return a fresh :class:`DeterministicJudge`
-           every call. Cheap (in-process rule table) and avoids sharing state
-           between documents.
-        2. A spec is configured: resolve it through parsecraft's
-           :func:`resolve_judge` and cache the verdict. A second parse reuses
-           the same judge instance, so the SDK's intra-instance memo (per
-           page class) survives across the run. The spec is parsecraft's —
-           kompend neither parses nor names its provider.
-        3. Resolver raised (spec error, missing credential, unreachable
-           endpoint, missing `decision` capability on the ollama model):
-           warn once and fall back to :class:`DeterministicJudge`. A dead
-           judge endpoint must never fail an ingest — the fallback is a
-           degraded parse, not a hard error.
-
+        Thin delegator: the resolution paths (fresh rule table when no judge
+        is configured, memo hit, spec resolution, degrade-on-``JudgeError``
+        warning) live in ``conversion.get_judge``; the memo slots live here.
         Resolution happens inside the caller's ``config_scope`` (see
-        :meth:`parse`), so the spec and the provider endpoint are read from the
-        run's configuration. ``resolve_judge`` validates the *spec*, never the
-        *endpoint* (a cloud provider accepts any model token
-        and 400s on the first call). The call-time failure is handled by
+        :meth:`parse`), so the spec and the provider endpoint are read from
+        the run's configuration. The call-time failure is handled by
         :meth:`_execute_with_judge`.
         """
-        if self._judge is not None:
-            return self._judge
-        if self._judge_fallback is not None:
-            return self._judge_fallback
-        spec = self.parsecraft_settings().judge_spec
-        if spec is None:
-            self._judge_fallback = self._deterministic_judge()
-            return self._judge_fallback
-        try:
-            self._judge = resolve_judge(
-                spec,
-                preference=self.parsecraft_settings().routing.preference,
-            )
-        except JudgeError as exc:
-            # Every resolution failure is a JudgeError subclass: JudgeSpecError
-            # (malformed spec), JudgeProviderUnavailableError (no loader / missing
-            # credential), JudgeProviderLoadError (extra not installed).
-            logger.warning(
-                "parsecraft judge %s could not be resolved (%s: %s); falling back to the deterministic rule table.",
-                spec,
-                type(exc).__name__,
-                str(exc)[:_JUDGE_ERROR_EXCERPT_CHARS],
-                extra={"reason_code": ReasonCode.JUDGE_DEGRADED},
-            )
-            self._judge_fallback = self._deterministic_judge()
-            return self._judge_fallback
-        return self._judge
+        resolved, self._judge, self._judge_fallback = conversion.get_judge(
+            self.parsecraft_settings(),
+            self._ensure_environment(),
+            judge=self._judge,
+            fallback=self._judge_fallback,
+        )
+        return resolved
 
 
 class ParsecraftParseError(RuntimeError):
