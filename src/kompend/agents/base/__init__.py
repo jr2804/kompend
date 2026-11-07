@@ -9,13 +9,8 @@ here, so the 39 importing files (31 source, 7 tests, 1 docs page) need
 no edits.
 """
 
-from kompend.agents.base.agent import (
-    _CONTEXT_PRESETS,
-    _SLIDING_KEEP_MESSAGES,
-    _SLIDING_MAX_MESSAGES,
-    RLM_CONTEXT_PLACEHOLDER,
-    KompendAgentBase,
-)
+from kompend.agents.base.agent import RLM_CONTEXT_PLACEHOLDER, KompendAgentBase
+from kompend.agents.base.context import _CONTEXT_PRESETS
 from kompend.agents.base.deps import (
     UNSET_RETRIES,
     UNSET_TIMEOUT,
@@ -25,6 +20,7 @@ from kompend.agents.base.deps import (
     resolve_retry_budget,
 )
 from kompend.agents.base.retries import _is_cache_rejection
+from kompend.agents.context_manager import _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES
 
 __all__ = [
     "RLM_CONTEXT_PLACEHOLDER",

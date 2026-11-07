@@ -37,7 +37,7 @@ from abc import ABC
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, Final, cast
+from typing import Any, ClassVar, cast
 
 from pydantic import BaseModel
 from pydantic_ai import Agent, ModelRequestContext, NativeOutput, RunContext, Tool, UsageLimits
@@ -50,8 +50,13 @@ from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
 from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
-from pydantic_ai_harness.compaction import ContextUsage, ReportContextUsage, SlidingWindowCompaction
+from pydantic_ai_harness.compaction import ContextUsage, ReportContextUsage
 
+from kompend.agents.base.context import (
+    on_usage_update,
+    resolve_context_capability,
+    resolve_rlm_capability,
+)
 from kompend.agents.base.delta_retry import (
     _build_delta_message,
     _get_response_text,
@@ -74,11 +79,9 @@ from kompend.agents.base.retries import (
     _is_cache_rejection,
     _map_agent_error,
 )
-from kompend.agents.context_manager import _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES, build_fallback_compaction
 from kompend.agents.instrument import configure_observability
 from kompend.agents.kompend_model import KompendModel
 from kompend.agents.rlm import (
-    _DEFAULT_NODE_BUDGET,
     RLMCapability,
 )
 from kompend.agents.types import PipelineAgentDeps
@@ -107,15 +110,6 @@ _CEILING_MARGIN_MIN: int = 256
 
 #: Chars-per-token used when the agent has no ``compile.llm`` config group.
 _FALLBACK_CHARS_PER_TOKEN: float = 4.0
-
-#: Compaction presets: preset -> (compress threshold, messages kept verbatim).
-#: Keys are the validated :class:`~kompend.core.config.ContextManagerPreset`
-#: members — a preset absent here fails the ``[]`` lookup loudly instead of
-#: degrading to a different compaction shape.
-_CONTEXT_PRESETS: Final[dict[ContextManagerPreset, tuple[float, int]]] = {
-    ContextManagerPreset.DEFAULT: (0.9, 0),
-    ContextManagerPreset.AGGRESSIVE: (0.7, 5),
-}
 
 #: Sliding-window defaults live in :mod:`kompend.agents.context_manager` so
 #: the ``sliding`` preset and the summarizer's fallback cannot drift apart.
@@ -802,77 +796,18 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         return hooks
 
     def _resolve_context_capability(self, model: Model) -> AbstractCapability[DepsT] | None:
-        """Build the context-management capability from the configured preset.
-
-        Returns ``None`` when context management is disabled, in which case the
-        pydantic-ai Agent is constructed without ``capabilities``.
-
-        Args:
-            model: The top-level (failover) model — reused as the
-                summarization model so compressions run on the same chain.
-        """
-        setting = self.context_manager
-        if setting is False or setting is None:
-            return None
-        preset = ContextManagerPreset.DEFAULT if setting is True else setting
-
-        if preset is ContextManagerPreset.SLIDING:
-            return SlidingWindowCompaction(
-                max_messages=_SLIDING_MAX_MESSAGES,
-                keep_messages=_SLIDING_KEEP_MESSAGES,
-            )
-        threshold, keep = _CONTEXT_PRESETS[preset]
-        return build_fallback_compaction(
-            context_window=self.context_window,
-            compress_threshold=threshold,
-            keep_messages=keep,
-            model=model,
-        )
+        """Delegate to :func:`kompend.agents.base.context.resolve_context_capability`."""
+        return resolve_context_capability(self, model)
 
     def _resolve_rlm_capability(self, model: Model) -> RLMCapability | None:
-        """Build the RLM capability from the ``compile.llm.rlm`` group.
-
-        Returns ``None`` when RLM is disabled (``rlm`` unset or
-        ``enable = false``). The sub-model defaults to the agent's top-level
-        model (same failover chain); ``sub_model`` resolves via
-        ``build_model`` and is wrapped in :class:`KompendModel` for usage
-        tracking.
-
-        Args:
-            model: The top-level (failover) model — reused as the
-                ``llm_query`` sub-model when ``sub_model`` is unset.
-        """
-        rlm = self.rlm
-        if not isinstance(rlm, RlmConfig) or not rlm.enable:
-            return None
-        max_tool_calls = rlm.max_tool_calls
-        code_timeout = rlm.code_timeout
-        sub_model_str = rlm.sub_model
-        depth = rlm.max_depth
-        node_budget = rlm.node_budget
-        if sub_model_str:
-            sub_model: Model = KompendModel(
-                build_model(sub_model_str),
-                usage_tracker=self.usage_tracker,
-            )
-        else:
-            sub_model = model
-        return RLMCapability(
-            context_field=self.rlm_context_field,
-            code_timeout=code_timeout,
-            sub_model=sub_model,
-            max_tool_calls=max_tool_calls,
-            main_model=model,
-            depth=depth,
-            node_budget=node_budget or _DEFAULT_NODE_BUDGET,
-        )
+        """Delegate to :func:`kompend.agents.base.context.resolve_rlm_capability`."""
+        return resolve_rlm_capability(self, model)
 
     # ── compaction callbacks ─────────────────────────────
 
     def _on_usage_update(self, usage: ContextUsage) -> None:
-        """Token-usage snapshot from the compaction capability → UsageTracker."""
-        if self.usage_tracker is not None:
-            self.usage_tracker.record_context_usage(usage.used_tokens, usage.window_tokens)
+        """Delegate to :func:`kompend.agents.base.context.on_usage_update`."""
+        on_usage_update(self, usage)
 
     @staticmethod
     def _deps_to_template_vars(deps: DepsT) -> dict[str, object]:
