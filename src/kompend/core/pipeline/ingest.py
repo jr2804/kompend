@@ -35,6 +35,7 @@ from kompend.core.pipeline.parse_cache import (
     cache_key as document_cache_key,
 )
 from kompend.core.pipeline.reasons import reason_code_for
+from kompend.core.pipeline.stall_watch import DEFAULT_STALL_WARN_S, StallWatchdog, WatchStage
 from kompend.core.pipeline.state import TierStateStore
 from kompend.core.reporting.ledger import StageLedger
 from kompend.core.store import vault_db_path
@@ -86,6 +87,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     flavor: str | None = None,
     cancel: CancelState | None = None,
     parse_timeout_s: float = 0.0,
+    stall_warn_s: float | None = None,
 ) -> IngestResult:
     """Parse every file and cache the structured documents.
 
@@ -145,6 +147,10 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             child process that is killed on expiry, so a wedged backend costs
             one file instead of the run (see
             :mod:`kompend.core.pipeline.bounded_parse`).
+        stall_warn_s: Seconds without a per-file heartbeat before the stall
+            watchdog logs a one-time warning naming the file and stage (see
+            :mod:`kompend.core.pipeline.stall_watch`). ``None`` uses the
+            module default; ``0`` disables the watchdog.
 
     Returns:
         :class:`IngestResult` with counts and the cache directory source_file.
@@ -184,6 +190,14 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
         # parser stack's import cost (seconds) on every source. It is a no-op when
         # no budget is configured.
         worker = DeadlineWorker(parse_timeout_s)
+
+        # One stall watchdog for the whole run (knox-ty8f.8), beside the
+        # deadline worker: the deadline bounds a hung backend, this names it
+        # while it hangs — one warning per file whose heartbeat has been
+        # silent for ``stall_warn_s`` (default 30 s, ``0`` disables). The
+        # monitor thread is a daemon and never kills anything.
+        watchdog = StallWatchdog(DEFAULT_STALL_WARN_S if stall_warn_s is None else stall_warn_s)
+        watchdog.start()
 
         # One probe per run: the backend identity decides whether a cached parse
         # is still current for the parser that is running now.
@@ -233,10 +247,14 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
                 skipped += 1
                 continue
 
+            # Heartbeat keys match the ledger's source spelling exactly.
+            source_key = str(_relative(source_file))
+            watchdog.watch(source_key, stage=WatchStage.PARSE)
             attempt_start = time.perf_counter()
             try:
                 parse_target = parse_target_path(source_file, cache_dir)
                 doc = worker.parse(backend, parse_target)
+                watchdog.beat(source_key, stage=WatchStage.POSTPROCESS)
                 restore_source_path(doc, parse_target=parse_target, source_file=source_file)
                 normalize_element_markdown(
                     doc.elements,
@@ -253,13 +271,20 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
                     extra={"reason_code": reason},
                 )
                 outcome = StageOutcome.TIMEOUT if isinstance(exc, ParseDeadlineExceeded) else StageOutcome.FAILED
+                detail = str(exc)
+                if isinstance(exc, ParseDeadlineExceeded):
+                    # The deadline fires inside worker.parse, before any beat
+                    # could follow registration, so the last stage is the
+                    # backend call itself — name it in the row.
+                    detail = f"{detail} Last progress: stage {watchdog.last_stage(source_key) or WatchStage.PARSE.value}."
+                watchdog.unwatch(source_key)
                 ledger.record(
                     str(_relative(source_file)),
                     "parse",
                     outcome=outcome,
                     duration_ms=(time.perf_counter() - attempt_start) * 1000.0,
                     reason_code=reason,
-                    detail=str(exc),
+                    detail=detail,
                     parser=backend_identity,
                     backend=type(backend).__name__,
                     cache_key=doc_key,
@@ -310,10 +335,12 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             )
             count += 1
             state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
+            watchdog.unwatch(source_key)
 
         # Parsing is over; nothing below needs the worker. (A worker left behind by
         # an abnormal exit is a daemon process and dies with the parent.)
         worker.close()
+        watchdog.close()
 
         # ── Pass 2: Dedup fingerprints (separate from parsing) ─────────
         # Fingerprints are computed AFTER all files are parsed so that GPU-bound

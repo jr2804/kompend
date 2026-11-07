@@ -1,7 +1,9 @@
 """One source through Tier 1: parse, normalise, chunk, enrich.
 
-:func:`_process_single_source` is the unit the tier dispatches per file;
-the cache halves it consults live in :mod:`kompend.core.pipeline.stages.parse_store`.
+:func:`_dispatch_single_source` is the unit the tier dispatches per file —
+watchdog registration wrapped around :func:`_process_single_source`, which
+beats at every phase transition; the cache halves live in
+:mod:`kompend.core.pipeline.stages.parse_store`.
 """
 
 from __future__ import annotations
@@ -30,6 +32,7 @@ from kompend.core.pipeline.stages.parse_store import (
     _try_load_chunk_cache,
     _try_load_parsed_cache,
 )
+from kompend.core.pipeline.stall_watch import StallWatchdog, WatchStage
 from kompend.core.reporting.ledger import StageLedger
 from kompend.core.text.rumdl import normalize_element_markdown
 from kompend.core.types import ReasonCode, StageOutcome
@@ -43,6 +46,35 @@ from kompend.trust import filter_sensitive
 
 logger = get_logger(__name__)
 
+#: Shared inert watchdog (zero budget): call sites hand it around without
+#: branching on ``watchdog is None`` — every beat against it is a no-op.
+_INERT_WATCHDOG = StallWatchdog(0.0)
+
+
+def _dispatch_single_source(
+    pipeline: PipelineRuntime,
+    source_file: Path,
+    dedup_similar: dict[str, dict[str, object]],
+    heavy_guard: HeavyParseGuard,
+    ledger: StageLedger,
+    parser_identity: str | None,
+    watchdog: StallWatchdog | None = None,
+) -> ChunkTree | None:
+    """Watch-bound unit the tier dispatches per file (knox-ty8f.8).
+
+    Registers the source with the run's stall watchdog, runs
+    :func:`_process_single_source` (which beats at every phase
+    transition), and guarantees the item is forgotten even when the
+    worker dies mid-file — a lost thread must not leave a ghost that
+    warns later.
+    """
+    watch = watchdog if watchdog is not None else _INERT_WATCHDOG
+    watch.watch(pipeline.rel_file(source_file), stage=WatchStage.PARSE)
+    try:
+        return _process_single_source(pipeline, source_file, dedup_similar, heavy_guard, ledger, parser_identity, watch)
+    finally:
+        watch.unwatch(pipeline.rel_file(source_file))
+
 
 def _process_single_source(
     pipeline: PipelineRuntime,
@@ -51,6 +83,7 @@ def _process_single_source(
     heavy_guard: HeavyParseGuard,
     ledger: StageLedger,
     parser_identity: str | None,
+    watchdog: StallWatchdog | None = None,
 ) -> ChunkTree | None:
     """Parse a single source file (cache-aware) and chunk it.
 
@@ -60,6 +93,7 @@ def _process_single_source(
     Returns the :class:`ChunkTree` or *None* if the file was skipped
     (no parser, cache hit with no tree, or parse failure).
     """
+    watch = watchdog if watchdog is not None else _INERT_WATCHDOG
     stem = source_file.stem
     use_cache = not (pipeline.config.no_cache or pipeline.config.reparse)
     content_hash = ""
@@ -78,12 +112,13 @@ def _process_single_source(
             sha=content_hash or None,
         )
     else:
-        parsed = _parse_source(pipeline, source_file, use_cache, content_hash, heavy_guard, ledger, parser_identity)
+        parsed = _parse_source(pipeline, source_file, use_cache, content_hash, heavy_guard, ledger, parser_identity, watch)
         if parsed is None:
             return None
         if use_cache and not content_hash:
             content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
 
+    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.POSTPROCESS)
     # Normalize source_file to relative POSIX on parsed doc.
     parsed.source_file = Path(pipeline.rel_file(parsed.source_file))
     for el in parsed.elements:
@@ -115,6 +150,10 @@ def _process_single_source(
         )
         return tree
 
+    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.CHUNK)
+    # Heartbeat: about to chunk (the parse doc is final by now).
+    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.CHUNK)
+
     # Chunk and cache.
     chunk_start = time.perf_counter()
     tree = pipeline.chunker.chunk(parsed)
@@ -127,6 +166,9 @@ def _process_single_source(
         sha=content_hash or None,
     )
 
+    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.ENRICH)
+    # Heartbeat: chunking is done, enrichment may follow.
+    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.ENRICH)
     if pipeline.enricher is not None:
         enrich_start = time.perf_counter()
         tree = pipeline.enricher.enrich_tree(tree, parsed)
@@ -161,11 +203,14 @@ def _parse_source(
     heavy_guard: HeavyParseGuard,
     ledger: StageLedger,
     parser_identity: str | None,
+    watchdog: StallWatchdog | None = None,
 ) -> ParsedDocument | None:
     """Parse a source file via the parser and optionally cache the result.
 
-    Records the parse attempt's outcome in *ledger*.
+    Records the parse attempt's outcome in *ledger* and beats the stall
+    watchdog around the backend call.
     """
+    watch = watchdog if watchdog is not None else _INERT_WATCHDOG
     if pipeline.parser is None:
         return None
     attempt_start = time.perf_counter()
@@ -187,6 +232,7 @@ def _parse_source(
         # decides which bytes that backend receives (UTF-8 for known text
         # formats, the raw file otherwise). It never gates parsing.
         parse_target = parse_target_path(source_file, pipeline.cache_directory())
+        watch.beat(pipeline.rel_file(source_file), stage=WatchStage.PARSE)
         with heavy_guard.guard(source_file):
             parsed = selected.parse(parse_target)
         _ = len(parsed.elements)
@@ -232,6 +278,7 @@ def _parse_source(
         backend=type(selected).__name__,
         sha=content_hash or None,
     )
+    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.POSTPROCESS)
     # The parser saw the encoding sibling (if any); citations and the cache
     # entry must reference the real source, not the cache copy.
     restore_source_path(parsed, parse_target=parse_target, source_file=source_file)

@@ -28,6 +28,7 @@ persistence, and standalone ingestion.
 | `parse_cache.py`              | Dolt-free DB layer for parsed documents: `cache_key` (the `<stem>-<hash8>` rule), `content_hash_prefix`, `parse_cache_is_current`, `PARSE_CACHE_PARSER_KEY`, `read_document`/`write_document` |
 | `parallelism.py`              | `gil_enabled`, `describe_parallelism` — interpreter parallelism facts for `compile.workers` |
 | `bounded_parse.py`            | `DeadlineWorker`, `ParseDeadlineExceeded` — per-file wall-clock budget, enforced by a reusable worker process (`ingest.parse_timeout_s`; `0` parses in-process) |
+| `stall_watch.py`              | `StallWatchdog`, `WatchStage`, `DEFAULT_STALL_WARN_S` — per-item heartbeat observer beside the `DeadlineWorker`: warns **once** per item whose beat goes silent ("no progress for N s in stage X: file"); one watchdog per run (`stall_warn_s`, default 30 s, `0` disables); `last_stage` feeds the deadline row's detail |
 | `reasons.py`                  | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
 | `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`                   | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |

@@ -29,7 +29,8 @@ from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.pipeline.parallelism import describe_parallelism
 from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.pipeline.runtime import PipelineRuntime
-from kompend.core.pipeline.stages.parse_sources import _process_single_source
+from kompend.core.pipeline.stages.parse_sources import _dispatch_single_source
+from kompend.core.pipeline.stall_watch import DEFAULT_STALL_WARN_S, StallWatchdog
 from kompend.core.reporting.ledger import StageLedger, stage_ledger
 from kompend.core.store import vault_db_path
 from kompend.core.types import ReasonCode, StageOutcome
@@ -49,7 +50,7 @@ from kompend.resolution.vlm_enricher import VLMEnricher
 logger = get_logger(__name__)
 
 
-def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
+def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = None) -> list[ChunkTree]:
     """Parse documents and chunk them, with optional caching and parallelism.
 
     When tier state is available, sources that already match the
@@ -60,6 +61,11 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
     the DedupStore is checked. Sources flagged as ``identical`` are
     silently skipped. Sources flagged as ``similar`` get a duplication
     warning attached to their metadata.
+
+    One stall watchdog per run warns once per file whose parse/chunk/enrich
+    heartbeat has been silent for ``stall_warn_s`` seconds (default 30 s,
+    ``0`` disables) — a hung backend is distinguishable from a slow one
+    (knox-ty8f.8).
     """
     source_files = list(pipeline.iter_sources())
     if not source_files:
@@ -113,6 +119,15 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
         max_concurrent=pipeline.config.max_concurrent_heavy_parses,
     )
 
+    # One stall watchdog per run (knox-ty8f.8): while the pool grinds, a
+    # wedged backend looks identical to a slow one — the progress bar pins
+    # on one file with no hint why. Every dispatch beats the watchdog at
+    # phase transitions; a silent file warns exactly once, naming the file
+    # and the stage it died in. ``stall_warn_s=0`` disables. Never kills —
+    # enforcement stays with the parse budget (``ingest.parse_timeout_s``).
+    watchdog = StallWatchdog(DEFAULT_STALL_WARN_S if stall_warn_s is None else stall_warn_s)
+    watchdog.start()
+
     trees: list[ChunkTree] = []
     # The ledger records one row per (source, stage, attempt) for this run;
     # rows correlate with the CLI run via the handle context. Opened here,
@@ -120,53 +135,59 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
     # even if the run dies inside.
     with stage_ledger(vault_db_path(pipeline.cache_directory())) as ledger:
         parser_identity = pipeline.parser.backend_identity() if pipeline.parser is not None else None
-        if workers > 1 and len(source_files) > 1:
-            # Say which kind of interpreter this is: a thread pool only runs
-            # Python code in parallel on a free-threaded build.
-            logger.info("%s", describe_parallelism(workers))
-            completed = 0
-            # Explicit executor (not a ``with`` block): on a graceful cancel the
-            # emit below raises KompendCancelled, and shutdown(cancel_futures=True)
-            # then drops queued futures instead of parsing the whole corpus.
-            # In-flight workers still finish (bounded by ``workers``) so caches
-            # stay consistent.
-            executor = ThreadPoolExecutor(max_workers=workers)
-            # Each submission carries a copy of the caller's context: the verbosity
-            # switch lives in a ContextVar, and a fresh thread would read its
-            # default (False) and lose ``--verbose`` for every worker-thread
-            # traceback. ``copy_context()`` per iteration keeps each Context
-            # single-use, which ``Context.run`` requires. The ledger (lock-guarded)
-            # and the run-id context travel with it.
-            futures: dict[Future[ChunkTree | None], Path] = {
-                executor.submit(_context_bound_call(_process_single_source, pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity)): sf
-                for sf in source_files
-            }
-            try:
-                for future in as_completed(futures):
-                    sf = futures[future]
-                    try:
-                        tree = future.result()
-                        if tree is not None:
-                            trees.append(tree)
-                    except Exception as exc:
-                        logger.error(
-                            "Worker failed for %s: %s",
-                            sf,
-                            exc,
-                            exc_info=is_verbose(),
-                            extra={"reason_code": reason_code_for(exc)},
-                        )
-                    finally:
-                        completed += 1
-                        pipeline.emit("parse", completed, len(source_files), sf.name)
-            finally:
-                executor.shutdown(wait=True, cancel_futures=True)
-        else:
-            for idx, sf in enumerate(source_files):
-                tree = _process_single_source(pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity)
-                if tree is not None:
-                    trees.append(tree)
-                pipeline.emit("parse", idx + 1, len(source_files), sf.name)
+        try:
+            if workers > 1 and len(source_files) > 1:
+                # Say which kind of interpreter this is: a thread pool only runs
+                # Python code in parallel on a free-threaded build.
+                logger.info("%s", describe_parallelism(workers))
+                completed = 0
+                # Explicit executor (not a ``with`` block): on a graceful cancel the
+                # emit below raises KompendCancelled, and shutdown(cancel_futures=True)
+                # then drops queued futures instead of parsing the whole corpus.
+                # In-flight workers still finish (bounded by ``workers``) so caches
+                # stay consistent.
+                executor = ThreadPoolExecutor(max_workers=workers)
+                # Each submission carries a copy of the caller's context: the verbosity
+                # switch lives in a ContextVar, and a fresh thread would read its
+                # default (False) and lose ``--verbose`` for every worker-thread
+                # traceback. ``copy_context()`` per iteration keeps each Context
+                # single-use, which ``Context.run`` requires. The ledger (lock-guarded)
+                # and the run-id context travel with it — and so does the watchdog
+                # reference (lock-guarded the same way).
+                futures: dict[Future[ChunkTree | None], Path] = {
+                    executor.submit(
+                        _context_bound_call(_dispatch_single_source, pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity, watchdog)
+                    ): sf
+                    for sf in source_files
+                }
+                try:
+                    for future in as_completed(futures):
+                        sf = futures[future]
+                        try:
+                            tree = future.result()
+                            if tree is not None:
+                                trees.append(tree)
+                        except Exception as exc:
+                            logger.error(
+                                "Worker failed for %s: %s",
+                                sf,
+                                exc,
+                                exc_info=is_verbose(),
+                                extra={"reason_code": reason_code_for(exc)},
+                            )
+                        finally:
+                            completed += 1
+                            pipeline.emit("parse", completed, len(source_files), sf.name)
+                finally:
+                    executor.shutdown(wait=True, cancel_futures=True)
+            else:
+                for idx, sf in enumerate(source_files):
+                    tree = _dispatch_single_source(pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity, watchdog)
+                    if tree is not None:
+                        trees.append(tree)
+                    pipeline.emit("parse", idx + 1, len(source_files), sf.name)
+        finally:
+            watchdog.close()
 
         pipeline.emit("parse", len(source_files), len(source_files), "done")
 
