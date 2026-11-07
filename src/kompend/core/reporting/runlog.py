@@ -29,12 +29,12 @@ from kompend.core.keys import (
     PATHS_STATE_DIR,
     PATHS_WIKI_DIR,
 )
-from kompend.core.paths import CONFIG_FILE
+from kompend.core.paths import CONFIG_FILE, LOGS_SUBDIR
 from kompend.core.reporting.handle import RunHandle, set_current_run_id
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import RUNS_TABLE
 from kompend.core.utils.time import iso_local, now_local
-from kompend.logging import get_logger
+from kompend.logging import attach_run_log, detach_run_log, get_logger
 from kompend.types import ConfigValue
 
 _SOFT_CAP_ROWS = 1000
@@ -82,7 +82,19 @@ def log_run_start(wiki_dir: str | None = None, *, cmd_tokens: list[str] | None =
     # The ledger (and any other per-run writer) correlates its rows with this
     # run through the handle module's context — set once, here.
     set_current_run_id(run_id)
-    return RunHandle(run_id=run_id, cmd=cmd, db_path=db_path, start_iso=start_iso, error_chars=display.log_error_chars)
+    # Flight recorder: INFO+ straight to the run log, the DEBUG ring dumped
+    # on failure (kompend.logging.RunLogHandler). The path rides the handle
+    # so the CLI footer can name it. The log lives next to the state dir's
+    # own artifacts, so a custom ``paths.state_dir`` keeps its log with it.
+    handler = attach_run_log(run_id, state_dir / LOGS_SUBDIR)
+    return RunHandle(
+        run_id=run_id,
+        cmd=cmd,
+        db_path=db_path,
+        start_iso=start_iso,
+        error_chars=display.log_error_chars,
+        log_file=handler.path,
+    )
 
 
 def resolve_state_dir(wiki_dir: str | None = None) -> Path | None:
@@ -154,6 +166,10 @@ def log_run_end(
     """Insert the matching ``end`` row for a run started by :func:`log_run_start`."""
     if handle is None:
         return
+    # Flight recorder: dump the DEBUG ring first, while the file is still
+    # open — anything but status "ok" (a crash or a user cancel) counts as
+    # "did not finish clean" and keeps its debug trail.
+    detach_run_log(failed=status != "ok", reason=f"run ended with status={status!r}")
     duration = (now_local() - _parse_iso(handle.start_iso)).total_seconds()
     capped_error: str | None = None
     if error:

@@ -2,10 +2,12 @@
 
 Kept out of ``runlog`` so the CLI can type its holder without importing the
 run-log module, which reaches the config engine and the vault store. The
-handle itself is four plain fields plus an optional truncation limit.
+handle itself is plain run metadata plus two optional extras.
 
 ``error_chars`` is ``None`` for handles built outside ``log_run_start``;
-``log_run_end`` resolves it from the display config then.
+``log_run_end`` resolves it from the display config then. ``log_file`` is
+the flight-recorder file opened by ``log_run_start`` (``None`` when the
+run log was never attached — no vault, or a pre-existing handle).
 
 This module also owns the *current run* context: a ``ContextVar`` set by
 ``log_run_start`` so observability writers (the per-item ledger) can
@@ -32,6 +34,7 @@ class RunHandle:
     db_path: Path
     start_iso: str
     error_chars: int | None = None
+    log_file: Path | None = None
 
 
 def set_current_run_id(run_id: str | None) -> None:

@@ -14,7 +14,7 @@ stores into human-readable markdown — no LLM calls.
 |--------|----------|
 | `log.py` | `build_log_report` - the engine behind `kompend log` |
 | `handle.py` | `RunHandle` - the run identity the CLI holds between start and end; the `_CURRENT_RUN_ID` ContextVar + `set_current_run_id`/`current_run_id` |
-| `runlog.py` | `log_run_start`, `log_run_end` - append-only audit trail in the `runs` table |
+| `runlog.py` | `log_run_start`, `log_run_end` - append-only audit trail in the `runs` table; attaches/detaches the flight recorder (see Rules) |
 | `ledger.py` | `StageLedger`, `stage_ledger` - per-item stage ledger in the `stages` table; documented queries (`slowest_items`, `failure_histogram`, `cache_hit_rate`) |
 
 ## Rules
@@ -40,3 +40,11 @@ stores into human-readable markdown — no LLM calls.
   are read from the *merged* config (`cfg.get(...)`), not from the validated
   model — `cfg.kompend` raises on a vault whose config does not validate yet
   (`kompend config path` must still work there).
+- The **flight recorder** (`kompend.logging.RunLogHandler`) is attached by
+  `log_run_start` (root logger, run id minted there) and detached by
+  `log_run_end`: INFO+ straight to `.kompend/logs/run-<id>.log`, DEBUG held
+  in a bounded ring dumped into the same file only when `status != "ok"`.
+  `RunHandle.log_file` carries the path. The handler lives in
+  `kompend.logging` (the module that owns logging configuration); root runs
+  at DEBUG and the terminal handler's own level gates the console — never
+  the other way round.

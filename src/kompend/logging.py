@@ -108,6 +108,7 @@ class RunLogHandler(logging.Handler):
     ) -> None:
         """Prepare the run log file at *path* (``a`` mode) and an empty ring."""
         super().__init__(level=level)
+        self.path = path
         self._ring: deque[str] = deque(maxlen=max(1, capacity))
         self._file = None
         try:
