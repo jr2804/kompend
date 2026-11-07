@@ -21,7 +21,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
         "build": ["build_vector_index"],
         "embedding_pydantic": ["PydanticAIEmbeddingProvider", "build_embedder", "make_provider"],
         "flashrank_backend": ["build_request", "load_ranker"],
-        "sqlite_vec_store": ["SqliteVecWikiStore"],
+        "sqlite_vec_store": ["SqliteVecWikiStore", "recorded_embedding_model"],
         "vector_store": ["VectorField", "indexable_nodes"],
     },
 )

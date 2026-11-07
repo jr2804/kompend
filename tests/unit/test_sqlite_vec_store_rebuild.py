@@ -20,10 +20,12 @@ from sqlite_vec_client import SQLiteVecClient
 
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
+from kompend.core.paths import KOMP_DB_FILE
+from kompend.core.store import connect
 from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
 from kompend.memory.store import MemoryStore
 from kompend.rag.embedding_base import EmbeddingProvider
-from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+from kompend.rag.sqlite_vec_store import SqliteVecWikiStore, recorded_embedding_model
 
 
 class StubProvider(EmbeddingProvider):
@@ -64,6 +66,38 @@ def test_wiki_store_is_stale_when_the_embedding_model_changed(tmp_path: Path) ->
     other = SqliteVecWikiStore(db_file=db, embedding_provider=StubProvider(4, "ollama:embeddinggemma-2:440m"))
     assert other.is_stale(wiki) is True
     other.close()
+
+
+def test_recorded_embedding_model_reads_the_manifest_row(tmp_path: Path) -> None:
+    """The doctor compares the configured embedder with the recorded one.
+
+    The manifest row keeps whatever ``model_id`` the provider reported at
+    build time — in production the config-form ``provider/model`` string, so
+    that is what this pin uses.
+    """
+    db = tmp_path / "vectors.db"
+    store = SqliteVecWikiStore(db_file=db, embedding_provider=StubProvider(4, "ollama/embeddinggemma-2:270m"))
+    store.build_index(_wiki())
+    store.close()
+
+    assert recorded_embedding_model(db.parent / KOMP_DB_FILE) == "ollama/embeddinggemma-2:270m"
+
+
+def test_recorded_embedding_model_without_a_store_is_none(tmp_path: Path) -> None:
+    """A vault that never indexed answers with ``None``, not with an error."""
+    assert recorded_embedding_model(tmp_path / "missing" / KOMP_DB_FILE) is None
+
+
+def test_recorded_embedding_model_without_a_manifest_table_is_none(tmp_path: Path) -> None:
+    """A vault whose store predates vectors answers with ``None``, not an error."""
+    manifest_db = tmp_path / KOMP_DB_FILE
+    conn = connect(manifest_db)
+    try:
+        conn.execute("CREATE TABLE unrelated (id INTEGER PRIMARY KEY)")
+        conn.commit()
+    finally:
+        conn.close()
+    assert recorded_embedding_model(manifest_db) is None
 
 
 def test_wiki_store_rebuilds_on_dim_change(tmp_path: Path) -> None:

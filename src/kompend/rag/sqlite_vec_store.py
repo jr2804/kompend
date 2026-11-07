@@ -35,7 +35,7 @@ import kompend.rag
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.paths import KOMP_DB_FILE, rel_to_vault
-from kompend.core.store import open_store
+from kompend.core.store import connect, open_store
 from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
 from kompend.core.utils.time import iso_local
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
@@ -845,6 +845,41 @@ class _Hit:
         self.node_type = node_type
         self.source_file = source_file
         self.content_preview = content_preview
+
+
+def recorded_embedding_model(manifest_db: Path) -> str | None:
+    """The ``provider/model`` string the current vectors were built with.
+
+    The manifest row in ``kompend.db`` records the embedding provider's
+    ``model_id`` at build time (:meth:`SqliteVecWikiStore._write_manifest`).
+    The doctor resolves this tag's serving digest and compares it with the
+    configured embedder's: equal digests under different tags mean a pending
+    rebuild that would produce byte-identical vectors. ``None`` when there is
+    no manifest row (never indexed, unreadable) or the recorded model is
+    empty.
+
+    The read goes through :func:`kompend.core.store.connect`, deliberately
+    *not* :func:`~kompend.core.store.open_store`: the doctor calls this on
+    stores written by any kompend generation, and ``open_store``'s schema
+    ensure would clean-cut-recreate a version-mismatched ``kompend.db`` — a
+    destructive write a diagnostic must never perform.
+    """
+    if not manifest_db.exists():
+        return None
+    try:
+        conn = connect(manifest_db)
+        try:
+            row = conn.execute(
+                f"SELECT {_EMBEDDING_MODEL_COLUMN} FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
+            ).fetchone()
+        finally:
+            conn.close()
+    except sqlite3.Error:
+        return None
+    if row is None:
+        return None
+    recorded = str(row[0]).strip()
+    return recorded or None
 
 
 def _hit_to_dict(hit: _Hit) -> dict[str, Any]:

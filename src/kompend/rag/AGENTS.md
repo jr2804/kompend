@@ -152,7 +152,9 @@ retrievers.
 - **The embedding model is part of the index identity.** The manifest row
   records the provider's `model_id`; a different model makes `is_stale()`
   true and the index is rebuilt. Without it, a model switch kept serving the
-  old vectors.
+  old vectors. The doctor reads the recorded string with
+  `recorded_embedding_model()` (read-only `connect()`, never `open_store()`:
+  the schema ensure would clean-cut a foreign-generation `kompend.db`).
 - **The rerank stage is optional and degrades.** `rerank.py` imports flashrank
   lazily, so a vault that never enables the stage never pays for onnxruntime.
   A missing model is a stage failure: the candidates come back unchanged.
