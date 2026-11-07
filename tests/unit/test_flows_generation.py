@@ -17,13 +17,12 @@ import pytest
 
 from kompend.agents.failure import EmptyAnswerError
 from kompend.compilation import GraphCompiler
-from kompend.compilation._two_phase_core import Extraction, ExtractionSet
 from kompend.compilation.schema import (
     Concept,
     GenerationOutput,
     GenerationPage,
 )
-from kompend.compilation.two_phase import TwoPhaseCompiler
+from kompend.compilation.two_phase import Extraction, ExtractionSet, TwoPhaseCompiler
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, ElementType, ResolvedChunk
 from kompend.core.pipeline.config import PipelineConfig

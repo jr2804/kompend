@@ -38,14 +38,10 @@ from kompend.agents.deps import MemoryConsolidationDeps, PipelineAgentDeps
 from kompend.agents.extraction import ExtractionAgent
 from kompend.agents.failure import UnitFailure, is_retry_pointless, record_unit_failure
 from kompend.agents.memory_consolidation import MemoryConsolidationAgent
-from kompend.compilation._two_phase_core import (
-    Extraction,
-    ProgressFn,
-    TwoPhaseRuntime,
-)
 from kompend.compilation.asset_tools import build_asset_tools
 from kompend.compilation.extraction_memory import ExtractionMemory
 from kompend.compilation.schema import ExtractionOutput
+from kompend.compilation.two_phase.state import Extraction, ProgressFn, TwoPhaseRuntime
 from kompend.core.models.enums import CacheDeps
 from kompend.core.text.windows import split_text_windows
 from kompend.llm.context_window import ContextWindow

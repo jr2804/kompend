@@ -17,14 +17,6 @@ import pytest
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from kompend.agents.failure import EmptyAnswerError
-from kompend.compilation._two_phase_core import (
-    Extraction,
-    ExtractionSet,
-    TwoPhaseRuntime,
-    chars_to_tokens,
-    context_safety_tokens,
-    tokens_to_chars,
-)
 from kompend.compilation.flows import generation as gen_module
 from kompend.compilation.flows.extraction import (
     _compact_history_inplace,
@@ -33,7 +25,15 @@ from kompend.compilation.flows.extraction import (
 )
 from kompend.compilation.flows.extraction import flow as ext_module
 from kompend.compilation.schema import Concept, Entity, ExtractionOutput
-from kompend.compilation.two_phase import TwoPhaseCompiler
+from kompend.compilation.two_phase import (
+    Extraction,
+    ExtractionSet,
+    TwoPhaseCompiler,
+    TwoPhaseRuntime,
+    chars_to_tokens,
+    context_safety_tokens,
+    tokens_to_chars,
+)
 from kompend.core.cache.store import make_cache_key
 from kompend.core.config._configs import (
     EmbeddingConfig,

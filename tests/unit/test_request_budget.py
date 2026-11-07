@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from kompend.compilation._two_phase_core import context_safety_tokens as reexported_safety_tokens
+from kompend.compilation.two_phase import context_safety_tokens as reexported_safety_tokens
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.llm.request_budget import (

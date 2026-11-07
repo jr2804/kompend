@@ -18,9 +18,9 @@ from typing import cast
 import pytest
 
 from kompend.agents.reference_extraction import ReferenceExtractionAgent
-from kompend.compilation._two_phase_core import TwoPhaseRuntime
 from kompend.compilation.flows import references as ref_flow
 from kompend.compilation.flows.references import run_reference_extraction
+from kompend.compilation.two_phase import TwoPhaseRuntime
 from kompend.core.models import Chunk, ElementType, ResolvedChunk
 from kompend.core.models.references import Reference
 from kompend.core.pipeline.references import ReferenceStore

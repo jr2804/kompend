@@ -12,8 +12,8 @@ on key collision regardless of provider availability.
 
 from __future__ import annotations
 
-from kompend.compilation._two_phase_core import upsert_node
 from kompend.compilation.base import BaseCompiler
+from kompend.compilation.two_phase import upsert_node
 from kompend.core.models import WikiNode
 from kompend.core.models.enums import NodeType
 

@@ -8,7 +8,7 @@ here keeps a single source of truth so the two backends never drift apart.
 
 The module is deliberately dependency-free (stdlib only) so that importing
 it from :mod:`graph` cannot create a circular import: ``graph → base →
-_two_phase_core`` would otherwise loop back to ``graph``.
+two_phase`` would otherwise loop back to ``graph``.
 """
 
 from __future__ import annotations

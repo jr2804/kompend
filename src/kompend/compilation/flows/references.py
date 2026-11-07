@@ -27,11 +27,9 @@ from pydantic_ai.messages import ModelMessage
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.failure import UnitFailureLog
 from kompend.agents.reference_extraction import ReferenceExtractionAgent
-from kompend.compilation._two_phase_core import (
-    TwoPhaseRuntime,
-    tokens_to_chars,
-)
 from kompend.compilation.reference_excision import excise_references
+from kompend.compilation.two_phase.core import tokens_to_chars
+from kompend.compilation.two_phase.state import TwoPhaseRuntime
 from kompend.core.models import ResolvedChunk
 from kompend.core.models.references import Reference, ReferenceResolutionOutput
 from kompend.core.paths import rel_to_vault

@@ -12,14 +12,6 @@ import pytest
 
 from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 from kompend.compilation import GraphCompiler, WiCERCompiler
-from kompend.compilation._two_phase_core import (
-    _FAILURE_THRESHOLD_MIN,
-    _SLUG_MAX_LENGTH,
-    BatchFailureTracker,
-    Extraction,
-    ExtractionSet,
-    slugify,
-)
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.schema import (
     Concept,
@@ -29,7 +21,16 @@ from kompend.compilation.schema import (
     WicerEvaluateOutput,
     WicerProbeOutput,
 )
-from kompend.compilation.two_phase import TwoPhaseCompiler, merge_node
+from kompend.compilation.two_phase import (
+    BatchFailureTracker,
+    Extraction,
+    ExtractionSet,
+    TwoPhaseCompiler,
+    merge_node,
+    slugify,
+)
+from kompend.compilation.two_phase.core import _SLUG_MAX_LENGTH
+from kompend.compilation.two_phase.state import _FAILURE_THRESHOLD_MIN
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from kompend.core.models.enums import NodeType

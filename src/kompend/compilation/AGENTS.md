@@ -18,15 +18,15 @@ merging and an optional iterative WiCER refinement loop.
 | Module                  | Contents                                                                 |
 | ----------------------- | ------------------------------------------------------------------------ |
 | `base.py`               | `BaseCompiler` ABC — compiler interface with progress hook               |
-| `two_phase.py`          | `TwoPhaseCompiler` — extract-first then generate with cross-source merge |
-| `_two_phase_core.py`    | Core extract/generate loops extracted from `two_phase.py`                |
+| `two_phase/`            | `TwoPhaseCompiler` package — `compiler.py` extract-first then generate with cross-source merge; `state.py` extraction data, failure policy, runtime protocol; `core.py` planning/measurement helpers + budget re-exports; `writer.py` page upsert/merge |
+| `_two_phase_core.py`    | Compatibility shim: re-exports `two_phase/` for callers not yet repointed |
 | `wicer.py`              | `WiCERCompiler` — iterative correctness/entity/consistency refinement    |
 | `graph.py`              | `GraphCompiler` — dependency-graph-aware compilation                     |
 | `schema.py`             | Wiki graph schema: predicates, entity types, relation types              |
 | `step_recovery.py`      | Transcript-key derivation + scan/extract for step-store resume           |
 | `flows/`                | Flow-based compilation building blocks                                   |
 | `flows/assembly.py`     | Cross-source assembly flow                                               |
-| `flows/extraction.py`   | Extraction flow                                                          |
+| `flows/extraction/`     | Extraction flow package (`flow.py`)                                       |
 | `flows/agentic.py`      | AGENTIC extraction flow — per-section `ExtractionMemory` digest sized by the shared planner (`_digest_budget_tokens`: window − answer reserve − safety − system − section); over budget the digest is model-consolidated (`MemoryConsolidationAgent`, rolling delta, never cropped); provider context-overflow 400s lower the window to the provider's limit and split the section into windows that fit (`_replan_section`), and the section/consolidation agents are rebuilt against the clamped window (`_section_agents` — they turn it into compaction thresholds and the output ceiling at construction); only an overflow that cannot be split skips the section — a rejected payload is never resent unchanged |
 | `flows/generation.py`   | Generation flow; `build_known_titles` (canonical titles for wikilinks) is the only reserved payload that grows with the corpus, so `_known_titles_windows` splits its `_KNOWN_TITLES_MAX_FRACTION` window share into an inline prompt head and a `list_known_titles()` page — windowed, never truncated; `_agentic_budget` declares the request's reserved payloads to the shared planner; `prepare_source_segments` raises when even the minimum segment does not fit the plan (planning-time failure, before any LLM call); `learn_wikilink_aliases` (post-generation alias map persisted as `MetadataField.WIKILINK_ALIASES`); Loop-1 deterministic shrink (`adaptation.py`): a unit that overflows the window — or fails ambiguously at ≥95% window pressure — is halved and its halves re-queued (`_shrink_and_requeue`), bounded by `budget.segment_shrink_attempts`; fetched-but-unpaged concepts move with the split, never stranded; Loop-2 decision model (`agents/decision.py::decide_unit_adaptation`, `decision/adaptation_triage.md.j2`): an ambiguous failure Loop 1 declines is asked once — the verdict (`ErrorDecision.shrink`) routes through the same `_shrink_and_requeue` and budget, `SKIP`/`ABORT` stop the retries or fail loudly; placeholder ingestion gate: `_reject_placeholder_pages` refuses the whole submission the moment any page has empty provenance, filler body text (`PlaceholderMarker` StrEnum), or a degenerate title — on the live pass result and on a transcript replayed from the step store — raising `PlaceholderPageError` (an `EmptyAnswerError` subclass), so the placeholder fails the unit on the existing empty-answer path and never reaches the wiki |
 | `flows/references.py`   | Reference-extraction flow (pre-extraction pass; retries = `llm.output_retries`; splits oversized sections into windows bounded by the planner's input room and the window's answer reserve (`ContextWindow.answer_reserve`); every window is processed) |
@@ -38,8 +38,9 @@ merging and an optional iterative WiCER refinement loop.
 
 - Import from the package root: `from kompend.compilation import GraphCompiler`,
   `from kompend.compilation.wicer import WiCERCompiler`.
-- `two_phase.py` is the primary entry point; `_two_phase_core.py` holds
-  extracted core logic to keep the main module focused.
+- `two_phase/` is the package; `TwoPhaseCompiler` is the entry point. Import
+  from its root. `_two_phase_core.py` is a compatibility shim only — new code
+  imports `kompend.compilation.two_phase`.
 - `WiCERCompiler` wraps a `TwoPhaseCompiler` and adds iterative probing.
 - No prompt text belongs here - templates live in `src/kompend/templates/`.
 - **LLM-product cache keys carry the model** (extraction deps, generation
@@ -48,12 +49,13 @@ merging and an optional iterative WiCER refinement loop.
   from all three keys so a run can be finished on another model - the
   per-page `MetadataField.MODEL` tag keeps the result attributable.
 - **A figure caption is an `image_description`; everything else is an
-  `image_caption_status`** (`_two_phase_core.extract_images_from_chunks`):
+  `image_caption_status`** (`two_phase.extract_images_from_chunks`):
   only a real caption (the parser's own description or a successful VLM
   caption) may be published as the figure's caption. A skipped, filtered,
   failed or placeholder figure carries a status entity instead. The
-  status names are reserved (`_RESERVED_CONCEPT_NAMES`,
-  `_RESERVED_ENTITY_NAMES`), so a status never becomes a page.
+  status names are reserved (`_RESERVED_CONCEPT_NAMES` in
+  `two_phase/state.py`, `_STATUS_ENTITY_NAMES` in `two_phase/core.py`), so a
+  status never becomes a page.
 - **Segment transcripts live in the step store, not in a checkpoint file**
   (`step_recovery.py` + `flows/generation.py`): the harness
   `StepPersistence` capability persists every run into
@@ -76,9 +78,10 @@ merging and an optional iterative WiCER refinement loop.
   (`{"system": …, "known_titles": …}`) and reads the content budget from the
   plan; the answer reserve and the safety margin are paid by default. A
   request that cannot fit raises `LLMOutputError` naming the components —
-  content is never cropped to fit. `_two_phase_core.py` re-exports
+  content is never cropped to fit. `two_phase/core.py` re-exports
   `context_safety_tokens` / `tokens_to_chars` / `chars_to_tokens` from the
-  planner; do not define a second safety margin or conversion here.
+  planner (the `_two_phase_core.py` shim keeps the historical path); do not
+  define a second safety margin or conversion here.
 - **A provider that rejects an oversized request lowers the window**
   (`TwoPhaseCompiler._clamp_window` → `EffectiveWindow.clamp`), and the stage
   re-plans against it — the source is re-batched, the segments are
@@ -95,11 +98,11 @@ merging and an optional iterative WiCER refinement loop.
   is extracted twice.
 - **The progress bar reports the units the flow works in** — the sections of
   a document (agentic extraction), its batches (the other strategies), the
-  concepts of a generation segment. `ProgressFn` (`_two_phase_core.py`) is
+  concepts of a generation segment. `ProgressFn` (`two_phase/state.py`) is
   `(units done, units total, activity)`; the flows pass it down so a long
   document moves the bar instead of freezing it. The bar counts characters,
   so a document's share is paid out as its units complete
-  (`_source_progress` in `flows/extraction.py`). Extraction also counts the
+  (`_source_progress` in `flows/extraction/flow.py`). Extraction also counts the
   units of every source up front — the chunk tier built every tree before the
   loop — so the line carries the run-wide counter next to the document's
   (`(12/234 · 2450/9800 sections)`); the position in the whole run stays

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from kompend.chunking import HierarchicalChunker
-from kompend.compilation._two_phase_core import extract_images_from_chunks
+from kompend.compilation.two_phase import extract_images_from_chunks
 from kompend.core.config import EmbeddingConfig, Flavor, LLMConfig, OutputConfig
 from kompend.core.models import (
     CompiledWiki,

@@ -2,7 +2,8 @@
 
 The implementation lives in :mod:`kompend.compilation.two_phase`; new code
 imports the package root. This module re-exports the old names until the
-remaining callers (generation, assembly, lint) are repointed by their owners.
+remaining callers (generation, assembly, extraction, lint) are repointed by
+their owners.
 """
 
 from __future__ import annotations

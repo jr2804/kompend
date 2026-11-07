@@ -13,7 +13,7 @@ from kompend.agents.categorize import CategorizeAgent
 from kompend.agents.categorize_models import CategoryNode as PydanticNode
 from kompend.agents.categorize_models import CategoryTree as PydanticTree
 from kompend.cli.app import app, register_all_commands
-from kompend.compilation._two_phase_core import Extraction
+from kompend.compilation.two_phase import Extraction
 from kompend.core.cache import CacheStore
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import OrganizeConfig, resolve_config

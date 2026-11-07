@@ -20,9 +20,9 @@ from typing import Any, Final
 
 from kompend.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
 from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
-from kompend.compilation._two_phase_core import tokens_to_chars
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.graph import GraphCompiler
+from kompend.compilation.two_phase import tokens_to_chars
 from kompend.core.config import ContextManagerPreset
 from kompend.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from kompend.core.pipeline.config import PipelineConfig

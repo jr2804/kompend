@@ -92,7 +92,8 @@ effective  = max(chunk_size_min, min(raw, chunk_size_max))
 Every stage that sizes a request against the context window also holds back a
 safety margin, defined once as ``context_safety_tokens()`` in
 `kompend.llm.request_budget` (re-exported from
-`kompend.compilation._two_phase_core` for the historical import path):
+`kompend.compilation.two_phase`, and from the historical
+`kompend.compilation._two_phase_core` compatibility path):
 
 ```text
 margin = max(512, 8% of the context window)

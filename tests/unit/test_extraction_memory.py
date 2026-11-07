@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from kompend.compilation._two_phase_core import Extraction
 from kompend.compilation.extraction_memory import ExtractionMemory
 from kompend.compilation.schema import Concept, Entity
+from kompend.compilation.two_phase import Extraction
 
 # ── ingest ────────────────────────────────────────────────────────────────
 

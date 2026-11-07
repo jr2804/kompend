@@ -14,10 +14,9 @@ from kompend.chunking.summarizer import (
     SummarizerContentPolicy,
     SummarizerSessionPolicy,
 )
-from kompend.compilation._two_phase_core import tokens_to_chars
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.graph import GraphCompiler
-from kompend.compilation.two_phase import TwoPhaseCompiler
+from kompend.compilation.two_phase import TwoPhaseCompiler, tokens_to_chars
 from kompend.compilation.wicer import WiCERCompiler
 from kompend.core.cache.store import CacheStore
 from kompend.core.cancel import CancelState

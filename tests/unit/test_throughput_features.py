@@ -21,7 +21,7 @@ from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord,
 import kompend.compilation.flows.generation as gen_module
 from kompend.agents.types import ToolGenerationDeps, VerificationDeps, VerificationVerdict
 from kompend.agents.verification import AgenticVerificationAgent
-from kompend.compilation._two_phase_core import _FAILURE_THRESHOLD_MIN, normalize_concept_key
+from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.compilation.flows.generation import (
     _agentic_budget,
     _known_titles_windows,
@@ -39,6 +39,7 @@ from kompend.compilation.two_phase import (
     merge_similar_concepts,
     segment_sources,
 )
+from kompend.compilation.two_phase.state import _FAILURE_THRESHOLD_MIN
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, Citation, CompiledWiki, ElementType, ResolvedChunk, WikiNode, extract_citations, merge_duplicate_citations
 from kompend.core.models.enums import NodeType

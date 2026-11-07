@@ -14,8 +14,8 @@ from pydantic import ValidationError
 from kompend.agents.lint import LintRuleAgent
 from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
 from kompend.agents.types import RemediationDeps, RemediationPageResult
-from kompend.compilation._two_phase_core import Extraction
 from kompend.compilation.schema import Concept, Entity
+from kompend.compilation.two_phase import Extraction
 from kompend.core.config._configs import LlmDataFormat
 from kompend.core.config.rumdl import _shipped_hash, resolve_rumdl_config
 from kompend.core.models import CompiledWiki, WikiNode

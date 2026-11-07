@@ -19,7 +19,7 @@ from typing import Any, cast
 
 from kompend.agents.categorize import CategorizeAgent
 from kompend.agents.deps import CategorizeDeps
-from kompend.compilation._two_phase_core import Extraction
+from kompend.compilation.two_phase import Extraction
 from kompend.core.cache import CacheStore
 from kompend.core.config import OrganizeConfig
 from kompend.core.config._configs import LlmDataFormat

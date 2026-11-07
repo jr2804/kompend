@@ -14,7 +14,7 @@ from kompend import __version__ as _KOMP_VERSION
 from kompend.agents.verification import AgenticVerificationAgent, VerificationAgent, make_agentic_verification_agent
 from kompend.agents.wiki_index import make_agentic_overview_agent
 from kompend.cli.runtime.progress import PipelineProgress
-from kompend.compilation._two_phase_core import tokens_to_chars
+from kompend.compilation.two_phase import tokens_to_chars
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
 from kompend.core.config._configs import LintConfig, LintOutput

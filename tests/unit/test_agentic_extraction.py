@@ -17,7 +17,6 @@ import pytest
 
 import kompend.compilation.flows.agentic as agentic_module
 from kompend.agents.deps import MemoryConsolidationDeps
-from kompend.compilation._two_phase_core import Extraction, context_safety_tokens
 from kompend.compilation.extraction_memory import ExtractionMemory
 from kompend.compilation.flows.agentic import (
     _consolidate_digest,
@@ -27,6 +26,7 @@ from kompend.compilation.flows.agentic import (
     _running_digest,
 )
 from kompend.compilation.schema import Concept, Entity, ExtractionOutput
+from kompend.compilation.two_phase import Extraction, context_safety_tokens
 from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.llm.request_budget import EffectiveWindow
 

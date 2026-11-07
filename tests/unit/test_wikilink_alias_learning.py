@@ -10,8 +10,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
 
-from kompend.compilation._two_phase_core import TwoPhaseRuntime
 from kompend.compilation.flows.generation import build_known_titles, learn_wikilink_aliases
+from kompend.compilation.two_phase import TwoPhaseRuntime
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import MetadataField, NodeType

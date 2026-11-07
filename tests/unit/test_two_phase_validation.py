@@ -23,7 +23,6 @@ from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord,
 
 from kompend.agents.failure import AgentFailureKind, classify_agent_failure
 from kompend.compilation import GraphCompiler
-from kompend.compilation._two_phase_core import Extraction, ExtractionSet
 from kompend.compilation.flows.generation import (
     PlaceholderMarker,
     PlaceholderPageError,
@@ -37,7 +36,7 @@ from kompend.compilation.schema import (
     GenerationPage,
 )
 from kompend.compilation.step_recovery import generation_conversation, pass_run_id, segment_run_prefix
-from kompend.compilation.two_phase import TwoPhaseCompiler
+from kompend.compilation.two_phase import Extraction, ExtractionSet, TwoPhaseCompiler
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, ElementType, ResolvedChunk
 from kompend.core.pipeline.config import PipelineConfig

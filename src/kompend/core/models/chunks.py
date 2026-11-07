@@ -71,7 +71,7 @@ class ResolvedChunk:
 class ImageRef(TypedDict):
     """Schema for one image reference passed through compile into output.
 
-    Built by ``compilation._two_phase_core.extract_images_from_chunks``,
+    Built by ``compilation.two_phase.extract_images_from_chunks``,
     stored in ``node.metadata["images"]``, consumed by the output writers.
     """
 
