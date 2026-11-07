@@ -8,6 +8,8 @@
 # test is a signal instead of a surprise.
 #
 # What it runs:
+#   - the type checker (ty) — the same command `mise run typecheck` documents,
+#     pinned here so the check cannot silently go unrun again (knox-i4uf)
 #   - the unit tier (tests/unit) — no network, no real LLM calls
 #   - the same command the project's verification tiers document
 #     (tests/AGENTS.md), so CI and humans run the same thing
@@ -71,6 +73,14 @@ jobs:
         # dependencies (unrar2-cffi) ship cp313 wheels only, so a different
         # minor version means building them from source.
         run: uv sync --python 3.13 --extra rerank
+
+      - name: Type check
+        # `ty` is a standalone tool rather than a project dependency (mise
+        # installs it locally, `.config/mise/config.toml`), so it rides in via
+        # `--with`. Pinning it keeps CI's verdict reproducible; bump the pin
+        # and the mise tool together. The project venv is on VIRTUAL_ENV, so
+        # ty resolves third-party imports against the synced environment.
+        run: uv run --with ty==0.0.97 ty check src/ tests/ scripts/
 
       - name: Unit suite
         # The documented T2 command (tests/AGENTS.md): the retry backoff is

@@ -2,6 +2,11 @@
 
 [environment]
 python-version = "3.13"
+# Check every platform's stdlib surface, not just the host's. The CLI cancel
+# watcher and the parse memory guard have win32-only branches behind
+# `sys.platform` guards; resolving only POSIX stubs makes those branches look
+# like attribute errors and pushes the code toward `getattr` workarounds that
+# ruff B009 correctly rejects (knox-i4uf).
 python-platform = "all"
 
 [src]
