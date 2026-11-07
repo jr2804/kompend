@@ -36,16 +36,7 @@ class StalePageRule(BaseLintRule):
                     source_file_str = meta_str(node.metadata.get(MetadataField.SOURCE_FILE))
                     if not source_file_str:
                         continue
-                    source_file = Path(source_file_str)
-                    if not source_file.is_absolute():
-                        # Try base_dir-relative first (sources/paper.pdf),
-                        # then sources_dir-relative (paper.pdf)
-                        for root in (sources_root.parent, Path(sources_dir)):
-                            if (root / source_file).exists():
-                                source_file = str(root / source_file)
-                                break
-                        else:
-                            source_file = str(sources_root.parent / source_file)
+                    source_file = _resolve_source_file(source_file_str, sources_root)
                     if not Path(source_file).exists():
                         results.append(
                             LintResult(
@@ -114,14 +105,7 @@ class SourceNotFoundRule(BaseLintRule):
             source_file_str = meta_str(node.metadata.get(MetadataField.SOURCE_FILE))
             if not source_file_str:
                 continue
-            source_file = Path(source_file_str)
-            if not source_file.is_absolute():
-                for root in (sources_root.parent, Path(sources_dir)):
-                    if (root / source_file).exists():
-                        source_file = str(root / source_file)
-                        break
-                else:
-                    source_file = str(sources_root.parent / source_file)
+            source_file = _resolve_source_file(source_file_str, sources_root)
             if not Path(source_file).exists():
                 results.append(
                     LintResult(
@@ -140,3 +124,19 @@ class SourceNotFoundRule(BaseLintRule):
 
 #: The rules this family contributes to the structural registry.
 SOURCE_RULES: tuple[BaseLintRule, ...] = (StalePageRule(), SourceNotFoundRule())
+
+
+def _resolve_source_file(source_file_str: str, sources_root: Path) -> str:
+    """The source file a page names, resolved the way the vault lays it out.
+
+    Tries the base-dir-relative form first (``sources/paper.pdf``), then the
+    sources-dir-relative form (``paper.pdf``); when neither exists it returns
+    the base-dir form, so the finding names the path the page claims.
+    """
+    source_file = Path(source_file_str)
+    if source_file.is_absolute():
+        return str(source_file)
+    for root in (sources_root.parent, sources_root):
+        if (root / source_file).exists():
+            return str(root / source_file)
+    return str(sources_root.parent / source_file)
