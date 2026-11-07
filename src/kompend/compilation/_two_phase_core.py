@@ -35,10 +35,12 @@ from kompend.compilation.two_phase.state import (
     merge_extractions,
 )
 from kompend.compilation.two_phase.writer import (
-    _merge_node,
     _merge_sections,
     _split_sections,
     upsert_node,
+)
+from kompend.compilation.two_phase.writer import (
+    merge_node as _merge_node,
 )
 
 # The historical surface: every name a caller could import from this module.

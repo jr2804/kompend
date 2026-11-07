@@ -31,13 +31,13 @@ def upsert_node(
         )
     if slug in slug_to_idx:
         idx = slug_to_idx[slug]
-        nodes[idx] = _merge_node(nodes[idx], new_node)
+        nodes[idx] = merge_node(nodes[idx], new_node)
     else:
         slug_to_idx[slug] = len(nodes)
         nodes.append(new_node)
 
 
-def _merge_node(
+def merge_node(
     existing: WikiNode,
     incoming: WikiNode,
 ) -> WikiNode:

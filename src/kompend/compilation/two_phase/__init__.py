@@ -33,7 +33,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
             "tokens_to_chars",
             "try_pydanticai_extraction",
         ],
-        "writer": ["upsert_node"],
+        "writer": ["merge_node", "upsert_node"],
         "compiler": ["TwoPhaseCompiler"],
         "_compat": ["cosine_similarity", "merge_similar_concepts"],
     },

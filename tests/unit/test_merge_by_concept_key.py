@@ -29,7 +29,7 @@ class TestMergeByConceptKey:
         assert len(merged) == 1
         # Longest title wins (preserves descriptive form).
         assert merged[0].title == "Absolute Category Rating (ACR)"
-        # Content sections unioned (section-aware dedup in _merge_node).
+        # Content sections unioned (section-aware dedup in merge_node).
         assert "body A" in merged[0].content or "body B" in merged[0].content
 
     def test_keeps_distinct_concepts(self) -> None:

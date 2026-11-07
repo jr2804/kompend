@@ -18,7 +18,6 @@ from kompend.compilation._two_phase_core import (
     BatchFailureTracker,
     Extraction,
     ExtractionSet,
-    _merge_node,
     slugify,
 )
 from kompend.compilation.base import BaseCompiler
@@ -30,7 +29,7 @@ from kompend.compilation.schema import (
     WicerEvaluateOutput,
     WicerProbeOutput,
 )
-from kompend.compilation.two_phase import TwoPhaseCompiler
+from kompend.compilation.two_phase import TwoPhaseCompiler, merge_node
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
 from kompend.core.models.enums import NodeType
@@ -104,8 +103,8 @@ class TestGraphCompiler:
         assert "Content for chunk 1" in wiki.nodes[0].content
         assert "Content for chunk 2" in wiki.nodes[0].content
 
-    def test_merge_node_dict_valued_provenance_no_crash(self) -> None:
-        """Regression: _merge_node must not crash when provenance/related hold
+    def testmerge_node_dict_valued_provenance_no_crash(self) -> None:
+        """Regression: merge_node must not crash when provenance/related hold
         dicts (malformed LLM output). Previously raised 'unhashable type: dict'.
         """
         a = WikiNode(
@@ -124,7 +123,7 @@ class TestGraphCompiler:
             source_chunks=[],
             metadata={"provenance": [{"chunk": "c2"}, {"chunk": "c1", "quote": "x"}]},
         )
-        merged = _merge_node(a, b)  # must not raise
+        merged = merge_node(a, b)  # must not raise
         # dedup: c1 in both -> 2 unique (merge stringifies dict entries)
         assert len(meta_str_list(merged.metadata.get("provenance"))) == 2
         assert len(meta_str_list(merged.metadata.get("related"))) == 1

@@ -8,8 +8,8 @@ from collections import defaultdict
 from collections.abc import Callable
 from typing import TypeVar
 
-from kompend.compilation._two_phase_core import _merge_node
 from kompend.compilation.concept_keys import normalize_concept_key
+from kompend.compilation.two_phase.writer import merge_node
 from kompend.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.core.models.metadata import meta_str_list
@@ -76,7 +76,7 @@ class BaseCompiler(ABC):
 
         Post-generation fuzzy merge: clusters concept nodes by title
         embedding cosine similarity and merges each cluster via
-        :func:`_merge_node` (section-aware content merge, provenance/
+        :func:`merge_node` (section-aware content merge, provenance/
         related/source_chunks unioned). This catches near-duplicate
         concepts that survived the concept-stage merge under slightly
         different surface forms.
@@ -167,7 +167,7 @@ class BaseCompiler(ABC):
             else:
                 survivor = concept_nodes[members[0]]
                 for m in members[1:]:
-                    survivor = _merge_node(survivor, concept_nodes[m])
+                    survivor = merge_node(survivor, concept_nodes[m])
                 merged_concepts.append(survivor)
 
         non_concept = [n for n in nodes if n.node_type is not NodeType.CONCEPT]
@@ -194,7 +194,7 @@ class BaseCompiler(ABC):
         surfaced from a chunk) still collapse here.
 
         Picks the longest title as the canonical (preserves the most
-        descriptive surface form); merges via :func:`_merge_node` for
+        descriptive surface form); merges via :func:`merge_node` for
         section-aware content + provenance union.
         """
         if len(nodes) < 2:
@@ -220,7 +220,7 @@ class BaseCompiler(ABC):
             for idx in indices:
                 if idx == winner_idx:
                     continue
-                merged = _merge_node(merged, nodes[idx])
+                merged = merge_node(merged, nodes[idx])
                 losers.add(idx)
             winners[winner_idx] = merged
 
