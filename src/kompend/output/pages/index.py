@@ -20,7 +20,8 @@ from kompend.core.paths import (
     SUMMARIES_SUBDIR,
 )
 from kompend.core.utils.time import display_local
-from kompend.output.vault import VaultWriter
+from kompend.output.page import OkfPageMixin
+from kompend.output.page_paths import PageLayoutMixin
 
 EXPORTED_HEADING: Final[str] = "Exported sources"
 INDEX_HEADING: Final[str] = "Wiki Index"
@@ -148,12 +149,12 @@ def _full_catalog(
     toc_items: list[Paragraph] = []
     for node in wiki.nodes:
         slug = node.id
-        folder = VaultWriter._folder_for_kind(
+        folder = PageLayoutMixin._folder_for_kind(
             node.node_type,
             str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if node.node_type is NodeType.ENTITY else "",
         )
         link_target = f"{prefix}/{folder}/{slug}.md" if folder else f"{prefix}/{slug}.md"
-        desc = VaultWriter.okf_description(node, desc_limit)
+        desc = OkfPageMixin.okf_description(node, desc_limit)
         entry = Paragraph()
         entry.children.append(link(link_target, node.title))
         if desc:
