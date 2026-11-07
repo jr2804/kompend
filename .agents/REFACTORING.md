@@ -539,3 +539,31 @@ SqliteVecWikiStore` — so the shim stayed rather than being deleted, and
   `lint/rules/structural/`, but `lint/structural/` shipped because the parent
   already holds non-rule modules (`base.py`, `runner.py`, `flow.py`), so a
   `rules/` level would only add a synonym for "the structural rules".
+- Tenth loop (bead knox-7uwl): `core/paths/__init__.py` 717 lines / 295 net
+  became a package of three implementation modules plus a public-surface shim
+  — `names.py` 487/203, `resolve.py` 181/68, `discover.py` 75/24,
+  `__init__.py` 148/132 (891 gross / 427 net). The largest file is 31 % smaller
+  (295 → 203 net); the 132 extra net lines are the shim's import header and
+  its 65-entry `__all__`, which is what keeps every caller on
+  `from kompend.core.paths import …`.
+  What the size count could not see: (1) there was nothing dead to delete —
+  an audit found exactly one definition of each helper, every helper has
+  external callers (`safe_stem` 29, `rel_to_vault` 28, `vault_paths` 69), and
+  the 18 constants with no reader outside their own `VaultPaths` property are
+  internal name authorities, not duplicates. Four public members have zero
+  external users — `.extract_dir`, `.index_file`, `.ensure_dirs` and
+  `.state_file` (whose docstring already says "Unused legacy placeholder") —
+  and were kept: deleting public API is a behaviour change, not a move, and
+  belongs in its own bead. (2) The antipattern checker assumed one file:
+  `_PATHS_MODULE` pointed at `core/paths/__init__.py`, so after the move it
+  would have found no `Final[str]` `.md` constants and silently disarmed
+  WIKI-FILENAME. It now reads `names.py`, and the exemption widened from that
+  one file to the whole `core/paths/` package via a new `_PATHS_DIR` so a
+  future literal in a sibling is still skipped. The constant name stayed
+  because `tests/unit/test_dev_checks.py` monkeypatches `_PATHS_MODULE` to
+  prove an unreadable fact source aborts the scan. (3) `.agents/FILES.md`
+  still points at `src/kompend/core/paths.py` (lines 37, 41, 79); it is
+  outside this bead's lane and was reported, not edited. (4) The only line
+  changed rather than moved is `attachment_slug`'s `__import__("re")` pair:
+  it now uses a module-level `import re` and compiled `Final` patterns —
+  same output, fewer per-call imports.

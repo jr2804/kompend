@@ -153,7 +153,11 @@ _KOMP_LITERAL_RE = re.compile(r'"KOMP_[A-Z_]+"')
 _WIKI_FILENAME_RE = re.compile(r"""["']([A-Za-z0-9][A-Za-z0-9_.-]*\.md)["']""")
 
 # The single allowed definition site for the wiki file names.
-_PATHS_MODULE = SRC_ROOT / "core" / "paths" / "__init__.py"
+_PATHS_MODULE = SRC_ROOT / "core" / "paths" / "names.py"
+
+# The package that owns those names. Siblings such as ``resolve.py`` must not
+# repeat a constant either, so the whole package is exempt from the scan.
+_PATHS_DIR = _PATHS_MODULE.parent
 
 # The single allowed definition site for ``KOMP_*`` env-var names.
 _ENV_MODULE = SRC_ROOT / "core" / "env.py"
@@ -211,6 +215,10 @@ _STRING_TOKEN_TYPES: frozenset[int] = frozenset(
         tokenize.FSTRING_END,
     }
 )
+
+
+#: The logger ``extra`` key the item path uses to carry a failure reason.
+_REASON_CODE_KEY = "reason_code"
 
 
 @dataclass(frozen=True)
@@ -394,7 +402,7 @@ def scan_wiki_filenames(path: Path, lines: list[str]) -> list[Violation]:
     truth. Names that no constant covers (scaffold templates such as
     ``README.md``) are not flagged: they are not shared path components.
     """
-    if path == _PATHS_MODULE or _is_test_file(path):
+    if _PATHS_DIR in path.parents or _is_test_file(path):
         return []
     known = _path_filename_constants()
     if not known:
@@ -560,10 +568,6 @@ def scan_enum_value_literals(path: Path, tree: ast.Module, lines: list[str], com
                 )
             )
     return out
-
-
-#: The logger ``extra`` key the item path uses to carry a failure reason.
-_REASON_CODE_KEY = "reason_code"
 
 
 def scan_reason_code_literals(path: Path, tree: ast.Module, lines: list[str], comments: dict[int, Comment]) -> list[Violation]:
