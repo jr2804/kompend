@@ -8,8 +8,8 @@ from kompend.cli.settings import build_cli_overrides
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
 from kompend.core.config.rumdl import resolve_rumdl_config
-from kompend.core.models import MetadataField, load_wiki_from_files
-from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, REVIEW_DIR, VaultPaths, vault_paths
+from kompend.core.models import load_wiki_from_files
+from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, VaultPaths, vault_paths
 from kompend.lint.base import RemediationStatus
 from kompend.lint.flow import CHECK_STEP_RULES, _make_lint_agent, persist_lint_fixes, run_full_lint_flow
 from kompend.lint.flow import _run_pass as _run_rules_pass
@@ -31,10 +31,9 @@ from kompend.logging import get_logger
 from kompend.mcp.tools.quality.doctor import doctor as doctor
 from kompend.mcp.tools.quality.list_parsers import list_parsers as list_parsers
 from kompend.mcp.tools.quality.log import log as log
+from kompend.mcp.tools.quality.provenance import provenance as provenance
+from kompend.mcp.tools.quality.review import review as review
 from kompend.output.renderer import format_output
-from kompend.preprocessing.parsers import PARSER_PARSECRAFT as PARSER_PARSECRAFT
-from kompend.preprocessing.parsers import build_parser as build_parser
-from kompend.review import ReviewQueue
 
 logger = get_logger(__name__)
 
@@ -345,155 +344,3 @@ def lint_format(
     if changed:
         return {"status": "ok", "message": f"Formatted {len(changed)} file(s) with rumdl.", "changed": [str(c) for c in changed]}
     return {"status": "ok", "message": "No formatting changes needed."}
-
-
-# ── review ────────────────────────────────────────────────────────────────
-
-
-def review(  # noqa: PLR0917, PLR0911 — MCP tool with many kwargs
-    wiki_dir: str | None = None,
-    action: str = "list",
-    slug: str | None = None,
-    reason: str | None = None,
-    approve_all: bool = False,
-    json_output: bool = False,
-) -> dict[str, Any]:
-    """Manage the review queue for compiled pages.
-
-    Actions: list, approve, reject, lock, unlock
-    """
-    vp = vault_paths(wiki_dir)
-    resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
-    queue = ReviewQueue(review_dir=vp.kompend_dir / REVIEW_DIR)
-
-    if action == "list":
-        entries = queue.list_entries()
-        if json_output:
-            return {"status": "ok", "entries": [e.to_dict() for e in entries]}
-        if not entries:
-            return {"status": "ok", "message": "No pages in the review queue."}
-        return {"status": "ok", "entries_text": "\n".join(f"  [{e.status:9s}] {e.slug}  ({e.title})" for e in entries)}
-
-    if action == "lock":
-        if not slug:
-            return {"status": "error", "message": "Lock requires a slug."}
-        if queue.lock(slug):
-            return {"status": "ok", "message": f"Locked: {slug}"}
-        return {"status": "error", "message": f"Cannot lock {slug!r}: no approved page found."}
-
-    if action == "unlock":
-        if not slug:
-            return {"status": "error", "message": "Unlock requires a slug."}
-        lock_file = queue.review_dir / f"{slug}.locked"
-        if lock_file and lock_file.exists():
-            lock_file.unlink()
-            return {"status": "ok", "message": f"Unlocked: {slug}"}
-        return {"status": "error", "message": f"No lock for {slug!r}."}
-
-    if action == "approve":
-        approved = queue.approve(slug or "", approve_all=approve_all)
-        if not approved:
-            return {"status": "error", "message": "No matching pages to approve."}
-        return {"status": "ok", "approved": [e.slug for e in approved]}
-
-    if action == "reject":
-        if not slug:
-            return {"status": "error", "message": "Reject requires a slug."}
-        rejected = queue.reject(slug, reason=reason or "")
-        if not rejected:
-            return {"status": "error", "message": f"No pending page with slug {slug!r}."}
-        return {"status": "ok", "rejected": [e.slug for e in rejected]}
-
-    return {"status": "error", "message": f"Unknown review action: {action!r}. Use list|approve|reject|lock|unlock."}
-
-
-# ── provenance ────────────────────────────────────────────────────────────
-
-
-def provenance(
-    wiki_dir: str | None = None,
-    page_slugs: list[str] | None = None,
-    with_content: bool = False,
-    json_output: bool = False,
-) -> dict[str, Any]:
-    """Trace compiled wiki page(s) back to their source chunks (provenance).
-
-    Named ``provenance`` to avoid confusion with the OpenTelemetry tracing
-    feature (see ``docs/guides/observability.md``).
-    """
-    vp = vault_paths(wiki_dir)
-    resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
-    sources_dir = vp.sources_dir
-    base_dir = vp.base_dir
-
-    wiki = load_wiki_from_files(VaultPaths(base_dir).output_dir)
-    if wiki is None:
-        return {"status": "error", "message": "No wiki pages found. Run 'wiki_compile' first."}
-
-    slugs = page_slugs or []
-
-    if not slugs:
-        pages = sorted(
-            ((n.id, n.title, len(_node_sources(n, sources_dir))) for n in wiki.nodes),
-            key=lambda p: p[0],
-        )
-        if json_output:
-            return {"status": "ok", "pages": [{"slug": s, "title": t, "sources": c} for s, t, c in pages]}
-        lines = [f"{len(pages)} page(s) in compiled wiki:\n"]
-        for slug, title, count in pages:
-            lines.append(f"  {slug:<40} ({count} sources)  {title}")
-        return {"status": "ok", "pages_text": "\n".join(lines)}
-
-    seen_slugs: set[str] = set()
-    matched: list = []
-    missing: list[str] = []
-    for slug in slugs:
-        key = slug.lower()
-        if key in seen_slugs:
-            continue
-        seen_slugs.add(key)
-        nodes = [n for n in wiki.nodes if n.id == slug or n.title.lower() == key]
-        if nodes:
-            matched.append(nodes[0])
-        else:
-            missing.append(slug)
-
-    if json_output:
-        entries = [{"page": n.title, "slug": n.id, "sources": _node_sources(n, sources_dir)} for n in matched]
-        return {"status": "ok" if not missing else "error", "pages": entries[0] if len(entries) == 1 else entries, "missing": missing}
-
-    lines = []
-    for node in matched:
-        node_sources = _node_sources(node, sources_dir)
-        lines.append(f"# {node.title}\n")
-        if node_sources:
-            for src in node_sources:
-                lines.append(f"  Source: {src}")
-        else:
-            lines.append("  (no sources tracked)")
-        lines.append("")
-
-    if missing:
-        lines.append("Missing: " + ", ".join(missing))
-        return {"status": "error", "pages_text": "\n".join(lines), "missing": missing}
-
-    return {"status": "ok", "pages_text": "\n".join(lines)}
-
-
-def _node_sources(node: Any, sources_dir: Path) -> list[str]:
-    chunks: list[str] = list(getattr(node, "source_chunks", None) or [])
-    if not chunks:
-        metadata = getattr(node, "metadata", None) or {}
-        prov = metadata.get(MetadataField.PROVENANCE) or []
-        chunks = [str(s) for s in prov if s]
-    return [_shorten(s, sources_dir) for s in chunks]
-
-
-def _shorten(source: str, sources_dir: Path) -> str:
-    source_path = Path(source)
-    if not source_path.is_absolute():
-        return source
-    try:
-        return source_path.relative_to(sources_dir).as_posix()
-    except ValueError:
-        return source_path.name
