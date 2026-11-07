@@ -38,6 +38,7 @@ from kompend.core.pipeline.ingest import (
 )
 from kompend.core.pipeline.parallelism import describe_parallelism
 from kompend.core.pipeline.parse_cache import (
+    cache_key,
     content_hash_prefix,
     parse_cache_is_current,
     read_document,
@@ -514,7 +515,8 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
     configuration no longer asks for.
     """
     db_path = vault_db_path(Path(pipeline.base_directory))
-    key = cache_key(source_file)
+    content_hash = content_hash_prefix(source_file.read_bytes())
+    key = cache_key(source_file, content_hash)
     data = read_document(db_path, key)
     if data is None:
         return None
@@ -555,7 +557,8 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
 def _save_cache(pipeline: PipelineRuntime, source_file: Path, doc: ParsedDocument) -> None:
     """Write a ParsedDocument to the store, stamped with the parser identity."""
     db_path = vault_db_path(Path(pipeline.base_directory))
-    key = cache_key(source_file)
+    content_hash = content_hash_prefix(source_file.read_bytes())
+    key = cache_key(source_file, content_hash)
     try:
         # Preserve user-set tags/attributes across the overwrite.
         preserve_cached_metadata(doc, read_document(db_path, key))
@@ -619,16 +622,6 @@ def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, di
     except Exception as exc:
         logger.debug("Dedup store not available — skipping dedup check: %s", exc, exc_info=is_verbose())
     return dedup_skip, dedup_similar
-
-
-def cache_key(source_file: Path) -> str:
-    """Content-discriminated cache key — collision-proof across same-named files.
-
-    Delegates to :func:`kompend.core.identity.source_key`, the one definition of
-    a source's identity (file name + content-hash prefix), so the chunk cache
-    and the tier state can never disagree about which source a key names.
-    """
-    return source_key(source_file.stem, content_hash_prefix(source_file.read_bytes()))
 
 
 def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list[ChunkTree]:
