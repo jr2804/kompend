@@ -45,7 +45,6 @@ _CMD_PREVIEW_ARGS = 4
 
 _WIKILINK_RE = re.compile(r"\[\[([^\]]+)\]\]")
 _HEADING_RE = re.compile(r"^(#{1,6})\s", re.MULTILINE)
-_FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 #: Image file extensions — ``[[img.png]]`` is an embed-syntax error, not a
 #: broken wikilink; :class:`ImageEmbedRule` handles those.
@@ -62,17 +61,15 @@ _IMAGE_EXTENSIONS: frozenset[str] = frozenset(
     }
 )
 
-#: ``[[img.png]]`` without the ``!`` embed prefix.
+#: Markdown link or embed target pointing into an ``attachments/`` folder
+#: (``](…/attachments/…)``), as emitted by the wiki writer and exports.
 _ATTACHMENT_LINK_RE = re.compile(r"\]\((?P<target>[^)]*attachments/[^)]+)\)")
+
+#: ``[[img.png]]`` without the ``!`` embed prefix.
 _IMAGE_EMBED_RE = re.compile(
     r"(?<!\!)\[\[([^\]]+\.(?:png|jpg|jpeg|gif|svg|webp|bmp|tiff))\]\]",
     re.IGNORECASE,
 )
-
-
-#: Minimum token-Jaccard score to flag a broken wikilink as an alias of an
-#: existing page (vs. a genuinely missing topic). Conservative default:
-#: 0.5 means at least half the target's tokens overlap with the candidate.
 
 #: Threshold above which a broken wikilink is treated as a SHORT-FORM alias
 #: (severity WARNING, the suggested alias is attached) instead of a hard
@@ -108,7 +105,7 @@ class BrokenWikilinksRule(BaseLintRule):
         # Lookup index covers: page title, page slug, and acronym-stripped
         # short alias (e.g. ``[[P.863]]`` resolves to the page titled
         # ``POLQA (Perceptual Objective Listening Quality Analysis)``).
-        alias_index, slug_to_id = _node_lookup_index(wiki)
+        alias_index = _node_lookup_index(wiki)
         results: list[LintResult] = []
         for node in wiki.nodes:
             for target_title in _extract_wikilinks(node.content):
@@ -1291,15 +1288,13 @@ def _node_titles_index(wiki: CompiledWiki) -> dict[str, str]:
     return {n.title.lower(): n.id for n in wiki.nodes}
 
 
-def _node_lookup_index(wiki: CompiledWiki) -> tuple[dict[str, str], dict[str, str]]:
+def _node_lookup_index(wiki: CompiledWiki) -> dict[str, str]:
     """Build a wikilink lookup that also accepts slugs and acronym aliases.
 
-    Returns a tuple of:
-    - ``alias_index``: maps any of ``node.title.lower()``, ``node.id``,
-      or the acronym-stripped title (e.g. ``"polqa"`` extracted from
-      ``"POLQA (Perceptual Objective Listening Quality Analysis)"``)
-      to ``node.id``.
-    - ``slug_to_id``: just ``node.id`` → ``node.id``, used by alias detection.
+    The returned ``alias_index`` maps any of ``node.title.lower()``,
+    ``node.id``, or the acronym-stripped title (e.g. ``"polqa"`` extracted
+    from ``"POLQA (Perceptual Objective Listening Quality Analysis)"``)
+    to ``node.id``.
 
     Also indexes the filesystem-path forms ``concepts/<id>`` and
     ``entities/<id>`` (entities get a sub-folder per type, e.g.
@@ -1312,12 +1307,10 @@ def _node_lookup_index(wiki: CompiledWiki) -> tuple[dict[str, str], dict[str, st
     resolution — one source of truth.
     """
     alias_index: dict[str, str] = {}
-    slug_to_id: dict[str, str] = {}
     for n in wiki.nodes:
         # Lower-case first entry wins; existing index already preferred title
         alias_index.setdefault(n.title.lower(), n.id)
         alias_index.setdefault(n.id, n.id)
-        slug_to_id[n.id] = n.id
         stripped = normalize_concept_key(n.title)
         if stripped:
             alias_index.setdefault(stripped, n.id)
@@ -1337,7 +1330,7 @@ def _node_lookup_index(wiki: CompiledWiki) -> tuple[dict[str, str], dict[str, st
         # nearest_alias pick the closer one).
         folder = KIND_FOLDERS.get(n.node_type.value, "concepts")
         alias_index.setdefault(f"{folder}/{n.id}", n.id)
-    return alias_index, slug_to_id
+    return alias_index
 
 
 def _batched(items: list[str], size: int) -> list[list[str]]:

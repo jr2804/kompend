@@ -24,21 +24,21 @@ class TestNodeLookupIndex:
     def test_indexes_filesystem_path_forms(self) -> None:
         """``[[concepts/foo]]`` resolves the same as ``[[foo]]``."""
         node = _node("polqa", "POLQA")
-        alias_index, _ = _node_lookup_index(_wiki(node))
+        alias_index = _node_lookup_index(_wiki(node))
         assert alias_index["concepts/polqa"] == "polqa"
         assert alias_index["polqa"] == "polqa"
 
     def test_indexes_entity_subfolder(self) -> None:
         node = _node("standard-p862", "P.862", "")
         node.node_type = NodeType.ENTITY
-        alias_index, _ = _node_lookup_index(_wiki(node))
+        alias_index = _node_lookup_index(_wiki(node))
         assert alias_index["entities/standard-p862"] == "standard-p862"
 
     def test_does_not_index_unknown_node_types(self) -> None:
         """``overview``/non-canonical node types fall back to concepts/ folder."""
         node = _node("ov", "Overview")
         node.node_type = NodeType.OVERVIEW
-        alias_index, _ = _node_lookup_index(_wiki(node))
+        alias_index = _node_lookup_index(_wiki(node))
         # overview isn't in KIND_FOLDERS, so fallback "concepts" is used.
         assert alias_index["concepts/ov"] == "ov"
 
