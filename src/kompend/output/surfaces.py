@@ -11,7 +11,9 @@ here are the bundle-level pages that exist once per vault:
   verification pass ran.
 
 The mixin keeps the documented ``VaultWriter._load_verification`` entry point
-while moving the implementations out of the vault algorithm module.
+and is mixed into :class:`~kompend.output.vault.VaultWriter` alongside the vault
+algorithm, so the surfaces stay reachable from the writer that orchestrates
+them.
 """
 
 from __future__ import annotations
