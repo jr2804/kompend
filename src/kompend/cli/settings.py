@@ -6,7 +6,6 @@ config file and the override bag the pipeline consumes.
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from kompend.cli.context import RunContext, current_run_context
@@ -44,16 +43,6 @@ from kompend.core.vocab import LintOutput
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
-
-logging.getLogger("docling").setLevel(logging.CRITICAL)
-logging.getLogger("RapidOCR").setLevel(logging.CRITICAL)
-logging.getLogger("rapidocr").setLevel(logging.CRITICAL)
-logging.getLogger("onnxruntime").setLevel(logging.CRITICAL)
-logging.getLogger("pdfminer").setLevel(logging.WARNING)
-logging.getLogger("PIL").setLevel(logging.WARNING)
-logging.getLogger("LiteLLM").setLevel(logging.WARNING)
-logging.getLogger("LiteLLM Router").setLevel(logging.WARNING)
-logging.getLogger("LiteLLM Proxy").setLevel(logging.WARNING)
 
 
 def config_file_from_ctx(ctx: RunContext | None = None) -> str | None:

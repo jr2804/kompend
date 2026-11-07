@@ -64,6 +64,14 @@ THIRD_PARTY_LOG_LEVELS: Final[Mapping[str, str]] = MappingProxyType(
         "transformers": "DEBUG",
         "httpx": "DEBUG",
         "ollama": "DEBUG",
+        "RapidOCR": "CRITICAL",
+        "rapidocr": "CRITICAL",
+        "onnxruntime": "CRITICAL",
+        "pdfminer": "WARNING",
+        "PIL": "WARNING",
+        "LiteLLM": "WARNING",
+        "LiteLLM Router": "WARNING",
+        "LiteLLM Proxy": "WARNING",
     }
 )
 

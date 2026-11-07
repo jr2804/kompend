@@ -79,4 +79,6 @@ class TestThirdPartyRouting:
             set_module_levels({})
 
     def test_covers_the_named_libraries(self) -> None:
-        assert set(THIRD_PARTY_LOG_LEVELS) == {"docling", "transformers", "httpx", "ollama"}
+        assert {"docling", "transformers", "httpx", "ollama"} <= set(THIRD_PARTY_LOG_LEVELS)
+        assert THIRD_PARTY_LOG_LEVELS["docling"] == "DEBUG"
+        assert THIRD_PARTY_LOG_LEVELS["onnxruntime"] == "CRITICAL"
