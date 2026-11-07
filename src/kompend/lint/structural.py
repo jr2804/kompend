@@ -784,7 +784,7 @@ class OrphanAttachmentsRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No orphaned attachments"))
         return results
 
-    def fix(  # noqa: PLR6301 — signature on lint-rule contract
+    def fix(
         self,
         wiki: CompiledWiki,
         results: list[LintResult],
@@ -881,7 +881,7 @@ class DuplicateReferencesRule(BaseLintRule):
         self.embedding_model = embedding_model
         self.fuzzy_threshold = fuzzy_threshold
 
-    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:  # noqa: ARG002, PLR0915
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
         results: list[LintResult] = []
         if sources_dir is None:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
