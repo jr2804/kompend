@@ -14,8 +14,10 @@ from pathlib import Path
 
 import pytest
 
+from kompend.cli.app import _print_run_log_footer
 from kompend.core.paths import VaultPaths
 from kompend.core.reporting import runlog
+from kompend.core.reporting.handle import RunHandle
 from kompend.logging import (
     RunLogHandler,
     attach_run_log,
@@ -147,6 +149,44 @@ class TestRunlogIntegration:
         assert runlog.log_run_start(cmd_tokens=["compile"]) is None
         detach_run_log(failed=True)  # must be a no-op, not a crash
         assert not (tmp_path / "logs").exists()
+
+
+class TestRunLogFooter:
+    """The one-line footer naming the flight recorder."""
+
+    def test_names_the_file_relative_to_the_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        monkeypatch.chdir(tmp_path)
+        path = tmp_path / ".kompend" / "logs" / "run-r1.log"
+        path.parent.mkdir(parents=True)
+        path.write_text("row\n", encoding="utf-8")
+        handle = RunHandle(run_id="r1", cmd="compile", db_path=tmp_path / ".kompend" / "kompend.db", start_iso="", log_file=path)
+
+        _print_run_log_footer(handle)
+
+        assert capsys.readouterr().out.strip() == "Full log: .kompend/logs/run-r1.log"
+
+    def test_silent_without_a_written_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        monkeypatch.chdir(tmp_path)
+        missing = tmp_path / ".kompend" / "logs" / "run-none.log"
+        handle = RunHandle(run_id="none", cmd="compile", db_path=tmp_path / "kompend.db", start_iso="", log_file=missing)
+
+        _print_run_log_footer(handle)
+        _print_run_log_footer(None)
+
+        assert capsys.readouterr().out == ""
+
+    def test_falls_back_to_the_absolute_path_outside_the_cwd(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+        elsewhere = tmp_path / "elsewhere"
+        elsewhere.mkdir()
+        monkeypatch.chdir(elsewhere)
+        path = tmp_path / "logs" / "run-r2.log"
+        path.parent.mkdir()
+        path.write_text("row\n", encoding="utf-8")
+        handle = RunHandle(run_id="r2", cmd="compile", db_path=tmp_path / "kompend.db", start_iso="", log_file=path)
+
+        _print_run_log_footer(handle)
+
+        assert capsys.readouterr().out.strip() == f"Full log: {path}"
 
 
 def _read(path: Path) -> str:

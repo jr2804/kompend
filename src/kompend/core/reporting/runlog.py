@@ -87,6 +87,7 @@ def log_run_start(wiki_dir: str | None = None, *, cmd_tokens: list[str] | None =
     # so the CLI footer can name it. The log lives next to the state dir's
     # own artifacts, so a custom ``paths.state_dir`` keeps its log with it.
     handler = attach_run_log(run_id, state_dir / LOGS_SUBDIR)
+    logger.info("run %s started: %s", run_id, cmd)
     return RunHandle(
         run_id=run_id,
         cmd=cmd,
@@ -166,11 +167,15 @@ def log_run_end(
     """Insert the matching ``end`` row for a run started by :func:`log_run_start`."""
     if handle is None:
         return
-    # Flight recorder: dump the DEBUG ring first, while the file is still
-    # open — anything but status "ok" (a crash or a user cancel) counts as
-    # "did not finish clean" and keeps its debug trail.
-    detach_run_log(failed=status != "ok", reason=f"run ended with status={status!r}")
     duration = (now_local() - _parse_iso(handle.start_iso)).total_seconds()
+    # The recorder's own bookends: even a run that logs nothing else yields a
+    # file naming the command, its outcome and its duration — the footer points
+    # at a log that always explains itself.
+    logger.info("run %s ended: status=%s duration=%.2fs", handle.run_id, status, duration)
+    # Flight recorder: dump the DEBUG ring before detaching, while the file is
+    # still open — anything but status "ok" (a crash or a user cancel) counts
+    # as "did not finish clean" and keeps its debug trail.
+    detach_run_log(failed=status != "ok", reason=f"run ended with status={status!r}")
     capped_error: str | None = None
     if error:
         limit = handle.error_chars if handle.error_chars is not None else DisplayConfig().log_error_chars

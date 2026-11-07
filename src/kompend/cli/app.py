@@ -18,6 +18,7 @@ import importlib
 import os
 import sys
 from functools import cache
+from pathlib import Path
 from types import ModuleType
 from typing import Annotated, Any, Literal
 
@@ -132,7 +133,8 @@ def _root(
     _configure_logfire()
     context = RunContext(wiki_dir=wiki_dir, config_file=config, no_user_tracking=no_user_tracking)
     with use_run_context(context):
-        _run_handle_slot.handle = log_run_start(wiki_dir=wiki_dir, cmd_tokens=list(tokens))
+        handle = log_run_start(wiki_dir=wiki_dir, cmd_tokens=list(tokens))
+        _run_handle_slot.handle = handle
         app(list(tokens))
 
 
@@ -162,6 +164,7 @@ def main() -> None:
         code = exc.code if isinstance(exc.code, int) else (0 if exc.code is None else 1)
         handle = _extract_handle()
         _end_run(handle, status="ok" if code == 0 else "error", exit_code=code)
+        _print_run_log_footer(handle)
         raise
     except KompendCancelled as exc:
         # Graceful user abort (double-ESC during a progress bar): the command
@@ -170,19 +173,40 @@ def main() -> None:
         handle = _extract_handle()
         _end_run(handle, status="cancelled", exit_code=CANCEL_EXIT_CODE, error=exc.reason)
         _write_failure(f"\nCancelled ({exc.reason}) — progress saved; rerun the command to resume.")
+        _print_run_log_footer(handle)
         raise SystemExit(CANCEL_EXIT_CODE) from exc
     except KeyboardInterrupt:
         # System-level interrupt — keep default Python behaviour (no reformatting).
         handle = _extract_handle()
         _end_run(handle, status="error", error="KeyboardInterrupt")
+        _print_run_log_footer(handle)
         raise
     except BaseException as exc:  # noqa: BLE001 — capture any crash for the audit trail
         handle = _extract_handle()
         _end_run(handle, status="error", error=repr(exc))
         _write_failure(format_exception_for_cli(exc, verbose=is_verbose()))
+        _print_run_log_footer(handle)
         raise SystemExit(1) from exc
     handle = _extract_handle()
     _end_run(handle, status="ok", exit_code=0)
+    _print_run_log_footer(handle)
+
+
+def _print_run_log_footer(handle: RunHandle | None) -> None:
+    """Name the flight-recorder file when this run wrote one.
+
+    One line after the command's own summary, so a crash report can point at
+    the full detail without the user reproducing it with ``--verbose``. Silent
+    when no file was written (no vault, or an unwritable log directory).
+    """
+    path = handle.log_file if handle is not None else None
+    if path is None or not path.is_file():
+        return
+    try:
+        shown = path.relative_to(Path.cwd())
+    except ValueError:
+        shown = path
+    get_console().print(f"Full log: {shown}", soft_wrap=True)
 
 
 def _end_run(handle: RunHandle | None, **fields: Any) -> None:
