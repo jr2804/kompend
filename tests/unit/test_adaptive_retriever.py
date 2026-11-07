@@ -9,9 +9,12 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
+
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
-from kompend.rag.vector_store import VectorStoreLike
+from kompend.rag.vector_store import VectorField, VectorStoreLike
+from kompend.search import adaptive_retriever as adaptive_retriever_module
 from kompend.search.adaptive_retriever import AdaptiveRetriever
 
 
@@ -168,6 +171,28 @@ class TestAdaptiveRetriever:
         results = retriever._wiki_vector_results("test", top_k=5)
         assert len(results) == 1
         assert results[0].article_id == "n1"
+
+    def test_wiki_vector_results_uses_shared_retrieval_stages(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        fake = _FakeVectorStore()
+        hits: list[dict[str, object]] = [{"id": "orphan", VectorField.TITLE: "Typed title", VectorField.CONTENT_PREVIEW: 42}]
+        calls: list[tuple[VectorStoreLike | None, str, int]] = []
+
+        def fake_vector_search(
+            store: VectorStoreLike | None,
+            query: str,
+            *,
+            top_k: int,
+        ) -> list[dict[str, object]]:
+            calls.append((store, query, top_k))
+            return hits
+
+        monkeypatch.setattr(adaptive_retriever_module, "vector_search", fake_vector_search)
+        retriever = AdaptiveRetriever(_make_wiki([]), vector_store=cast("VectorStoreLike", fake))
+
+        results = retriever._wiki_vector_results("test", top_k=7)
+
+        assert calls == [(fake, "test", 7)]
+        assert results[0].snippet == "Typed title"
 
 
 def _make_wiki_node(

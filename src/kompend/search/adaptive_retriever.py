@@ -11,13 +11,11 @@ from __future__ import annotations
 
 from kompend.core.config._configs import DisplayConfig
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
-from kompend.core.models.metadata import meta_str_list, meta_str_list_dict
-from kompend.logging import get_logger
-from kompend.rag.vector_store import VectorField, VectorStoreLike
+from kompend.rag.vector_store import VectorStoreLike
 from kompend.search.budget import BudgetPlan, ContextBudgetManager
+from kompend.search.retrieval.assemble import result_from_hit
+from kompend.search.retrieval.vector import vector_search
 from kompend.search.retriever import SearchResult, extract_snippet, node_figures, tokenize
-
-logger = get_logger(__name__)
 
 
 class AdaptiveRetriever:
@@ -131,41 +129,19 @@ class AdaptiveRetriever:
         return plan
 
     def _wiki_vector_results(self, query: str, top_k: int) -> list[SearchResult]:
-        if self._vector_store is None or not self._vector_store.available:
-            return []
-        try:
-            hits = self._vector_store.search(query, top_k=top_k)
-        except Exception as exc:
-            logger.warning("Vector search failed: %s", exc, exc_info=True)
+        hits = vector_search(self._vector_store, query, top_k=top_k)
+        if hits is None:
             return []
         query_tokens = set(tokenize(query))
-        results: list[SearchResult] = []
-        for hit in hits:
-            node_id = hit.get("id", "")
-            node = self._node_by_id.get(node_id)
-            title = hit.get(VectorField.TITLE) or (node.title if node else node_id)
-            snippet = (
-                extract_snippet(node.content, query_tokens, self._display.search_snippet_chars)
-                if node and node.content
-                else hit.get(VectorField.CONTENT_PREVIEW, "") or title
+        return [
+            result_from_hit(
+                self._node_by_id.get(str(hit.get("id", ""))),
+                hit,
+                query_tokens,
+                snippet_chars=self._display.search_snippet_chars,
             )
-            source_file: str | None = hit.get(VectorField.SOURCE_FILE)
-            if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
-                source_file = str(node.metadata[MetadataField.SOURCE])
-            results.append(
-                SearchResult(
-                    article_id=node_id,
-                    title=title,
-                    snippet=snippet,
-                    score=float(hit.get("score", 0.0)),
-                    source_file=source_file,
-                    tags=set(meta_str_list(node.metadata.get(MetadataField.TAGS))) if node and node.metadata else set(),
-                    attributes=meta_str_list_dict(node.metadata.get(MetadataField.ATTRIBUTES)) if node and node.metadata else {},
-                    content=node.content or "" if node else "",
-                    figures=node_figures(node),
-                )
-            )
-        return results
+            for hit in hits
+        ]
 
     @staticmethod
     def _dedup_add(

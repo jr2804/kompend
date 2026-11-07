@@ -35,6 +35,8 @@ def vector_search(
     if store is None or not store.available:
         return None
     try:
+        if all(value is None for value in (tags_all, tags_dnf, attributes_all, attribute_keys)):
+            return store.search(query, top_k=top_k)
         return store.search(
             query,
             top_k=top_k,
