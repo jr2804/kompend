@@ -23,6 +23,7 @@ from kompend.core.pipeline.export import _load_asset_store
 from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.pipeline.stages.parse_sources import _parse_source
+from kompend.core.reporting.ledger import stage_ledger
 from kompend.core.verbosity import is_verbose, set_verbose
 from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.parsers.base import DocumentParser
@@ -63,6 +64,9 @@ class _Parser:
 
 class _Pipeline:
     parser = _Parser()
+
+    def rel_file(self, file: Path) -> str:  # noqa: ARG002
+        return str(file)
 
     def cache_directory(self) -> Path:
         return Path("/nonexistent-cache")  # noqa: S108 — never touched: parse raises first
@@ -220,15 +224,17 @@ def test_main_fatal_is_traceback_with_verbose(monkeypatch: pytest.MonkeyPatch, c
     assert "RuntimeError: boom" in err
 
 
-def test_parse_source_default_message_carries_cause(caplog: pytest.LogCaptureFixture) -> None:
+def test_parse_source_default_message_carries_cause(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     set_verbose(False)
-    with caplog.at_level(logging.ERROR):
+    with caplog.at_level(logging.ERROR), stage_ledger(tmp_path / "led.db") as ledger:
         out = _parse_source(
             cast("PipelineRuntime", _Pipeline()),
             Path("sources/foo.pdf"),
             use_cache=False,
             content_hash="h",
             heavy_guard=HeavyParseGuard(),
+            ledger=ledger,
+            parser_identity=None,
         )
     assert out is None
     records = [r for r in caplog.records if "Failed to parse" in r.getMessage()]
