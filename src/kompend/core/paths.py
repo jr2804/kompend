@@ -135,6 +135,11 @@ VERIFICATION_FILE: Final[str] = "verification.json"
 # ── Logging ─────────────────────────────────────────────────────────────
 LOG_FILE: Final[str] = "log.md"
 
+# Flight-recorder run logs (see kompend.logging.RunLogHandler): one file per
+# CLI run, named by the run id minted in core/reporting/runlog.py.
+LOGS_SUBDIR: Final[str] = "logs"
+RUN_LOG_FILE_TEMPLATE: Final[str] = "run-{run_id}.log"
+
 # ── Trust / Privacy ─────────────────────────────────────────────────────
 PRIVATE_FILE: Final[str] = "private.json"
 
@@ -332,6 +337,15 @@ class VaultPaths:
     def agent_memory_dir(self) -> Path:
         """Agent notebook directory (``compile.llm.memory_store = "vault"``)."""
         return self.kompend_dir / AGENT_MEMORY_SUBDIR
+
+    @property
+    def logs_dir(self) -> Path:
+        """Flight-recorder run logs directory (created on demand by the handler)."""
+        return self.kompend_dir / LOGS_SUBDIR
+
+    def run_log_file(self, run_id: str) -> Path:
+        """Flight-recorder log for one CLI run (``run-<run_id>.log``)."""
+        return self.logs_dir / RUN_LOG_FILE_TEMPLATE.format(run_id=run_id)
 
     @property
     def step_db_file(self) -> Path:

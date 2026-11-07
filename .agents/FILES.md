@@ -62,6 +62,8 @@ any `.py` file outside `paths.py`. Always import from `kompend.core.paths`.
 | `COMPILE_STATE_FILE` | `"compile_state.json"` | Tier state checkpoint |
 | `LINT_HISTORY_FILE` | `"lint_history.jsonl"` | Append-only lint history log |
 | `STATE_FILE` | `"state.json"` | General state file |
+| `LOGS_SUBDIR` | `"logs"` | Flight-recorder run logs (`.kompend/logs/`, created on demand) |
+| `RUN_LOG_FILE_TEMPLATE` | `"run-{run_id}.log"` | One flight-recorder log per CLI run (`VaultPaths.run_log_file(run_id)`) |
 
 **Configurable directory names** (`"sources"`, `"wiki"`) live in `DEFAULTS`
 under `["paths"]["sources_dir"]` and `["paths"]["output_dir"]` — not in
