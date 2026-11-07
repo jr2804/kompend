@@ -16,8 +16,6 @@ contend on the same entry.  Writes are idempotent upserts; the DB is opened
 with WAL, so readers do not block the writer (see ``kompend.core.store``).
 """
 
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
-
 from __future__ import annotations
 
 import hashlib
@@ -27,6 +25,9 @@ from dataclasses import fields, is_dataclass
 from enum import StrEnum
 from pathlib import Path
 from typing import Final, cast
+
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from kompend.core.models import (
     Chunk,
@@ -53,8 +54,8 @@ from kompend.core.models.enums import (
     StructuredField,
     WikiField,
 )
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import CHUNKS_TABLE, EXTRACTIONS_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import chunks, extractions
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
 from kompend.types import CacheValue, JSONDict, JSONValue
@@ -233,17 +234,12 @@ class CacheStore:
         """
         if not self._db_path.exists():
             return []
-        if layer == _CHUNK_LAYER:
-            sql = f"SELECT payload FROM {CHUNKS_TABLE}"
-            params: tuple[str, ...] = ()
-        else:
-            sql = f"SELECT payload FROM {EXTRACTIONS_TABLE} WHERE layer = ?"
-            params = (layer,)
         values: list[CacheValue] = []
-        with open_store(self._db_path) as conn:
-            for row in conn.execute(sql, params).fetchall():
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            stmt = select(chunks.c.payload) if layer == _CHUNK_LAYER else select(extractions.c.payload).where(extractions.c.layer == layer)
+            for row in core.execute(stmt).fetchall():
                 try:
-                    decoded = decode_json(json.loads(row["payload"]))
+                    decoded = decode_json(json.loads(row.payload))
                 except Exception:
                     logger.debug("Cache read error for %s - skipping row", layer, exc_info=True)
                     continue
@@ -271,47 +267,47 @@ class CacheStore:
             layer owned by this store (the ``chunk`` layer and all
             ``extractions`` layers).
         """
-        if layer is None:
-            sqls = [
-                (f"DELETE FROM {CHUNKS_TABLE}", ()),
-                (f"DELETE FROM {EXTRACTIONS_TABLE}", ()),
-            ]
-        elif layer == _CHUNK_LAYER:
-            sqls = [(f"DELETE FROM {CHUNKS_TABLE}", ())]
-        else:
-            sqls = [(f"DELETE FROM {EXTRACTIONS_TABLE} WHERE layer = ?", (layer,))]
-        with open_store(self._db_path) as conn:
-            for sql, params in sqls:
-                conn.execute(sql, params)
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            if layer is None:
+                core.execute(delete(chunks))
+                core.execute(delete(extractions))
+            elif layer == _CHUNK_LAYER:
+                core.execute(delete(chunks))
+            else:
+                core.execute(delete(extractions).where(extractions.c.layer == layer))
         logger.debug("Cache invalidated: layer=%s", layer or "*")
 
     def _read_payload(self, layer: str, key: str) -> str | None:
         """Return the stored payload JSON for a layer/key, or ``None``."""
         if not self._db_path.exists():
             return None
-        if layer == _CHUNK_LAYER:
-            sql = f"SELECT payload FROM {CHUNKS_TABLE} WHERE cache_key = ?"
-            params = (key,)
-        else:
-            sql = f"SELECT payload FROM {EXTRACTIONS_TABLE} WHERE layer = ? AND cache_key = ?"
-            params = (layer, key)
-        with open_store(self._db_path) as conn:
-            row = conn.execute(sql, params).fetchone()
-        return None if row is None else cast("str", row["payload"])
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            stmt = (
+                select(chunks.c.payload).where(chunks.c.cache_key == key)
+                if layer == _CHUNK_LAYER
+                else (select(extractions.c.payload).where(extractions.c.layer == layer).where(extractions.c.cache_key == key))
+            )
+            row = core.execute(stmt).fetchone()
+        return None if row is None else cast("str", row.payload)
 
     def _write_payload(self, layer: str, key: str, payload: str) -> None:
         """Upsert the payload JSON for a layer/key."""
-        with open_store(self._db_path) as conn:
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
             if layer == _CHUNK_LAYER:
-                conn.execute(
-                    f"INSERT INTO {CHUNKS_TABLE}(cache_key, payload) VALUES (?, ?) ON CONFLICT(cache_key) DO UPDATE SET payload = excluded.payload",
-                    (key, payload),
+                insert_stmt = sqlite_insert(chunks).values(cache_key=key, payload=payload)
+                core.execute(
+                    insert_stmt.on_conflict_do_update(
+                        index_elements=[chunks.c.cache_key],
+                        set_={"payload": insert_stmt.excluded.payload},
+                    )
                 )
             else:
-                conn.execute(
-                    f"INSERT INTO {EXTRACTIONS_TABLE}(layer, cache_key, payload) VALUES (?, ?, ?) "
-                    f"ON CONFLICT(layer, cache_key) DO UPDATE SET payload = excluded.payload",
-                    (layer, key, payload),
+                insert_stmt = sqlite_insert(extractions).values(layer=layer, cache_key=key, payload=payload)
+                core.execute(
+                    insert_stmt.on_conflict_do_update(
+                        index_elements=[extractions.c.layer, extractions.c.cache_key],
+                        set_={"payload": insert_stmt.excluded.payload},
+                    )
                 )
 
 
