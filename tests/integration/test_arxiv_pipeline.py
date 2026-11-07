@@ -33,7 +33,7 @@ from kompend.preprocessing.downloaders.url_resolver import (
     UrlResolverChain,
 )
 from kompend.preprocessing.parsers import ParserOptions, build_parser
-from kompend.preprocessing.parsers.parsecraft_parser import ParsecraftParser
+from kompend.preprocessing.parsers.parsecraft import ParsecraftParser
 
 ARXIV_PAPER_ID = "2405.17364"
 ARXIV_PDF_URL = f"https://arxiv.org/abs/{ARXIV_PAPER_ID}"

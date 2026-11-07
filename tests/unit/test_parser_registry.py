@@ -30,7 +30,7 @@ from kompend.preprocessing.parsers import (
     scrub_document,
 )
 from kompend.preprocessing.parsers.extensions import supported_extensions
-from kompend.preprocessing.parsers.parsecraft_parser import ParsecraftParser
+from kompend.preprocessing.parsers.parsecraft import ParsecraftParser
 from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingConfig
 
 

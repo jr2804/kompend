@@ -38,7 +38,7 @@ from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.mcp.tools.pipeline import wiki_ingest
 from kompend.preprocessing.parsers import ParserOptions, build_parser
-from kompend.preprocessing.parsers.parsecraft_parser import ParsecraftParser
+from kompend.preprocessing.parsers.parsecraft import ParsecraftParser
 from kompend.preprocessing.parsers.parsecraft_routing import load_parsecraft_config
 from tests.helpers.cli import CliRunner
 

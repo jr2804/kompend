@@ -20,7 +20,7 @@ from kompend.preprocessing.parsers.options import ParserOptions
 
 #: The runtime-only import at its call site (``.agents/CODE.md``: no
 #: ``TYPE_CHECKING`` blocks — they diverge runtime from the type checker).
-_ADAPTER_MODULE = "kompend.preprocessing.parsers.parsecraft_parser"
+_ADAPTER_MODULE = "kompend.preprocessing.parsers.parsecraft"
 
 logger = get_logger(__name__)
 

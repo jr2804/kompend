@@ -113,7 +113,7 @@ class ParserBackend(Protocol):
     """The structural surface :class:`DocumentParser` needs from a backend.
 
     Structural rather than an ABC base class: the one backend is
-    :class:`~kompend.preprocessing.parsers.parsecraft_parser.ParsecraftParser`,
+    :class:`~kompend.preprocessing.parsers.parsecraft.ParsecraftParser`,
     which carries parsecraft-specific constructor state the shared surface has
     no business knowing about. A future backend only has to satisfy this.
     """

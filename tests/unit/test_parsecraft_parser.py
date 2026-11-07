@@ -1,4 +1,4 @@
-"""Tests for the parsecraft adapter (``kompend.preprocessing.parsers.parsecraft_parser``).
+"""Tests for the parsecraft adapter (``kompend.preprocessing.parsers.parsecraft.adapter``).
 
 Fidelity contract: parsecraft IR → kompend elements must preserve element kind,
 page numbers, reading order, heading levels, and table shape — and must NOT
@@ -70,7 +70,7 @@ from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingCo
 #: A one-pixel PNG — enough to prove the bytes survive the round trip.
 _PNG_BYTES: bytes = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
 
-#: Resolved lazily via importlib: a static ``from ... import parsecraft_parser``
+#: Resolved lazily via importlib: a static ``from ... import parsecraft``
 #: would register the backend at collection time (pyreorder hoists function-level
 #: imports to module level — the TYPE_CHECKING incident, commit 010097d) and
 #: broaden ``supported_extensions()`` for the rest of the test process.
@@ -236,7 +236,7 @@ class TestEmptyPages:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         pages = [_page(1, [_chunk(ChunkKind.PARAGRAPH, "Text")]), _page(2, [])]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             doc = self._parsing(parser, monkeypatch, pages, images={1: 0, 2: 3}).parse(markdown_file)
         assert doc.metadata["empty_pages"] == [2]
         assert doc.metadata["unreadable_pages"] == [2]
@@ -255,7 +255,7 @@ class TestEmptyPages:
     ) -> None:
         """No text and no images: a separator page. Nothing was lost, so say nothing loud."""
         pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
-        with caplog.at_level("DEBUG", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("DEBUG", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             doc = self._parsing(parser, monkeypatch, pages, images={1: 0, 2: 0}).parse(markdown_file)
         assert doc.metadata["empty_pages"] == [1]
         assert doc.metadata["blank_pages"] == [1]
@@ -278,7 +278,7 @@ class TestEmptyPages:
         alone.
         """
         pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             doc = self._parsing(
                 parser,
                 monkeypatch,
@@ -317,7 +317,7 @@ class TestEmptyPages:
             _page(3, []),
             _page(4, []),
         ]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             doc = self._parsing(parser, monkeypatch, pages, images={1: 1, 2: 0, 3: 2, 4: 1}).parse(markdown_file)
         assert doc.metadata["unreadable_pages"] == [1, 3, 4]
         warnings = [r.getMessage() for r in caplog.records if "hold images but produced no text" in r.getMessage()]
@@ -334,7 +334,7 @@ class TestEmptyPages:
         """The remedy comes from the planner, not from a guess in the adapter."""
         pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
         reasons = {1: "OCR unavailable (the tesseract engine is not installed on this host); degraded to native"}
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             self._parsing(parser, monkeypatch, pages, images={1: 1, 2: 0}, reasons=reasons).parse(markdown_file)
         warnings = [r.getMessage() for r in caplog.records if "hold images but produced no text" in r.getMessage()]
         assert len(warnings) == 1, warnings
@@ -348,7 +348,7 @@ class TestEmptyPages:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         pages = [_page(1, [_chunk(ChunkKind.PARAGRAPH, "One")]), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Two", 2)])]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             doc = self._parsing(parser, monkeypatch, pages).parse(markdown_file)
         assert doc.metadata["empty_pages"] == []
         assert not [r for r in caplog.records if "produced no text" in r.getMessage()]
@@ -374,7 +374,7 @@ class TestEmptyPages:
                 ],
             ),
         ]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             self._parsing(parser, monkeypatch, pages, images={2: 1}).parse(markdown_file)
 
         warned = "\n".join(r.getMessage() for r in caplog.records if "produced no text" in r.getMessage())
@@ -397,7 +397,7 @@ class TestEmptyPages:
                 detail="docling returned no content for a page that needs OCR",
             )
         ]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             self._parsing(parser, monkeypatch, pages, images={2: 1}, quality=quality).parse(markdown_file)
 
         warned = "\n".join(r.getMessage() for r in caplog.records if "produced no text" in r.getMessage())
@@ -664,15 +664,11 @@ class TestJudgeWiring:
         judge-degradation sites carry it — the call-time failure and the
         resolution failure — and they are the same class of event.
         """
-        with caplog.at_level(logging.WARNING, logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level(logging.WARNING, logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             _judged_parser("nosuchprovider/m", preference="quality")._get_judge()
             _judged_parser("ollama/m", preference="quality")._degrade_judge(RuntimeError("endpoint died"))
 
-        codes = {
-            getattr(record, "reason_code", None)
-            for record in caplog.records
-            if "judge" in record.getMessage()
-        }
+        codes = {getattr(record, "reason_code", None) for record in caplog.records if "judge" in record.getMessage()}
         assert codes == {ReasonCode.JUDGE_DEGRADED}
 
     def test_quality_flips_the_rule_table_vram_tiebreak(self) -> None:
@@ -1198,7 +1194,7 @@ class TestIgnoredBackendOptions:
         adapter = _adapter()
         monkeypatch.setattr(adapter, "_winning_backends", lambda groups: "pdf-inspector")
         monkeypatch.setattr(adapter, "_serves_format", lambda name, media_type: True)
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             _routing_parser(backend_options={"liteparse": {"extract_vector_graphics": True}}).parse(markdown_file)
         messages = [r.getMessage() for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
         assert len(messages) == 1, messages
@@ -1219,7 +1215,7 @@ class TestIgnoredBackendOptions:
         # The real ``_serves_format``: liteparse declares pdf/image, not markdown.
         assert not adapter._serves_format("liteparse", "text/markdown")
         monkeypatch.setattr(adapter, "_winning_backends", lambda groups: "native-markdown")
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft_parser"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
             _routing_parser(backend_options={"liteparse": {"extract_vector_graphics": True}}).parse(markdown_file)
         assert not [r for r in caplog.records if "ignored the configured backend option" in r.getMessage()]
 
@@ -1392,6 +1388,84 @@ class TestImageExtraction:
         assert len(list(tmp_path.iterdir())) == 2
         assert Path(image.metadata["image_file"]).read_bytes() == changed
         assert Path(image.metadata["image_file"]).name != hashlib.sha256(_PNG_BYTES).hexdigest()[:16] + ".png"
+
+
+class TestIdentityGoldenStrings:
+    """Byte-exact golden strings for both identity halves (knox-tsr4, step 0).
+
+    The identity strings are the parse-cache key's raw material, and the
+    planned split of this module moves their code twice. A refactor that
+    silently reorders segments, drops one, or changes a separator would pass
+    every existing test (they only assert that the identity *changes* on a
+    change) while invalidating every vault's parse cache. These pins freeze
+    the exact bytes for a fully pinned configuration.
+
+    The one legitimate variable is the parsecraft version segment — it comes
+    from the installed wheel and a bump flipping ``cache_identity`` is the
+    documented contract, so the test sources that one segment from the same
+    authority the code uses instead of freezing a stale version in.
+    """
+
+    def test_backend_identity_is_byte_stable(self, tmp_path: Path) -> None:
+        expected = "backends:docling,liteparse,native-text|extras:docling,pandoc|only:mineru|preferred:docling|engines:pandoc,tesseract|ocr:on"
+        assert self._pinned_parser("ollama/parable-tinyjev", tmp_path).backend_identity() == expected
+
+    def test_cache_identity_is_byte_stable(self, tmp_path: Path) -> None:
+        installed = package_version("parsecraft")
+        expected = (
+            "extras:docling,pandoc"
+            f"|parsecraft:{installed}"
+            "|judge_extras:1"
+            "|judge:ollama/parable-tinyjev:quality"
+            "|ocr:on"
+            "|engines:pandoc,tesseract"
+            "|preferred_backend:docling"
+            "|only_backend:mineru"
+            "|backend_options:mineru:effort=flash"
+            "|images:file"
+        )
+        assert self._pinned_parser("ollama/parable-tinyjev", tmp_path).cache_identity() == expected
+
+    def test_a_judge_only_change_flips_the_cache_identity_and_not_the_backend_identity(self, tmp_path: Path) -> None:
+        """The trap the package AGENTS.md documents: the judge is a routing
+        input (``[judge] model``), not a backend capability, so swapping the
+        judge must invalidate the parse cache while leaving the backend
+        identity — and therefore the backend selection key — untouched.
+        """
+        judged = self._pinned_parser("ollama/parable-tinyjev", tmp_path)
+        unjudged = self._pinned_parser(None, tmp_path)
+        assert judged.cache_identity() != unjudged.cache_identity()
+        assert judged.backend_identity() == unjudged.backend_identity()
+
+    def _pinned_parser(self, judge_model: str | None, images_dir: Path) -> Any:
+        """A parser whose every routing lever is set, on a fixed fake host.
+
+        The environment is a stand-in, not a probe: backends and extras are
+        explicit, so the golden string cannot drift when the test host's
+        parsecraft extras change. Images carry ``ImageMode.FILE`` so the
+        ``images:file`` segment is deterministic; the directory itself is the
+        test's ``tmp_path`` — the identity reads the mode and the enabled
+        flag only, it never touches the filesystem.
+        """
+        routing: dict[str, Any] = {
+            "preference": "quality",
+            "only_backend": "mineru",
+            "preferred_backend": "docling",
+            "engines": ["pandoc", "tesseract"],
+            "allow_ocr": True,
+            "backend_options": {"mineru": {"effort": "flash"}},
+        }
+        settings = ParsecraftConfig(routing=RoutingSettings(**routing), judge=JudgeSettings(model=judge_model))
+        parser = _adapter().ParsecraftParser(
+            parsecraft_config=ParsecraftRoutingConfig(settings=settings, written=frozenset(routing)),
+            images_dir=images_dir,
+            image_mode=ImageMode.FILE,
+        )
+        parser._environment = SimpleNamespace(  # type: ignore[assignment] — the identities read these two names only
+            backends={"docling", "liteparse", "native-text"},
+            installed_extras=frozenset({"docling", "pandoc"}),
+        )
+        return parser
 
 
 def _pdf_backend(name: str, vram: float) -> BackendDescriptor:
@@ -1641,8 +1715,14 @@ def _judged_parser(spec: str | None, **routing: Any) -> Any:
 
 
 def _adapter() -> Any:
-    """Lazy accessor for the adapter module (see module docstring)."""
-    return importlib.import_module("kompend.preprocessing.parsers.parsecraft_parser")
+    """Lazy accessor for the adapter *module* (see module docstring).
+
+    The submodule, not the package: the patch seams below attach to names
+    that live on the module (``resolve_judge``, ``_map_document``, …), and the
+    lazy package ``__init__`` re-exports only the public surface. As the
+    split lands, each seam is repointed at the module that now owns its name.
+    """
+    return importlib.import_module("kompend.preprocessing.parsers.parsecraft.adapter")
 
 
 def _routing(**routing: Any) -> ParsecraftRoutingConfig:
@@ -1666,86 +1746,3 @@ def markdown_file(tmp_path: Path) -> Path:
         encoding="utf-8",
     )
     return path
-
-
-class TestIdentityGoldenStrings:
-    """Byte-exact golden strings for both identity halves (knox-tsr4, step 0).
-
-    The identity strings are the parse-cache key's raw material, and the
-    planned split of this module moves their code twice. A refactor that
-    silently reorders segments, drops one, or changes a separator would pass
-    every existing test (they only assert that the identity *changes* on a
-    change) while invalidating every vault's parse cache. These pins freeze
-    the exact bytes for a fully pinned configuration.
-
-    The one legitimate variable is the parsecraft version segment — it comes
-    from the installed wheel and a bump flipping ``cache_identity`` is the
-    documented contract, so the test sources that one segment from the same
-    authority the code uses instead of freezing a stale version in.
-    """
-
-    def _pinned_parser(self, judge_model: str | None) -> Any:
-        """A parser whose every routing lever is set, on a fixed fake host.
-
-        The environment is a stand-in, not a probe: backends and extras are
-        explicit, so the golden string cannot drift when the test host's
-        parsecraft extras change. Images point at a fixed path with
-        ``ImageMode.FILE`` so the ``images:file`` segment is deterministic.
-        """
-        routing = {
-            "preference": "quality",
-            "only_backend": "mineru",
-            "preferred_backend": "docling",
-            "engines": ["pandoc", "tesseract"],
-            "allow_ocr": True,
-            "backend_options": {"mineru": {"effort": "flash"}},
-        }
-        settings = ParsecraftConfig(routing=RoutingSettings(**routing), judge=JudgeSettings(model=judge_model))
-        parser = _adapter().ParsecraftParser(
-            parsecraft_config=ParsecraftRoutingConfig(settings=settings, written=frozenset(routing)),
-            images_dir=Path("/tmp/kompend-golden-images"),
-            image_mode=ImageMode.FILE,
-        )
-        parser._environment = SimpleNamespace(  # type: ignore[assignment] — the identities read these two names only
-            backends={"docling", "liteparse", "native-text"},
-            installed_extras=frozenset({"docling", "pandoc"}),
-        )
-        return parser
-
-    def test_backend_identity_is_byte_stable(self) -> None:
-        expected = (
-            "backends:docling,liteparse,native-text"
-            "|extras:docling,pandoc"
-            "|only:mineru"
-            "|preferred:docling"
-            "|engines:pandoc,tesseract"
-            "|ocr:on"
-        )
-        assert self._pinned_parser("ollama/parable-tinyjev").backend_identity() == expected
-
-    def test_cache_identity_is_byte_stable(self) -> None:
-        installed = package_version("parsecraft")
-        expected = (
-            "extras:docling,pandoc"
-            f"|parsecraft:{installed}"
-            "|judge_extras:1"
-            "|judge:ollama/parable-tinyjev:quality"
-            "|ocr:on"
-            "|engines:pandoc,tesseract"
-            "|preferred_backend:docling"
-            "|only_backend:mineru"
-            "|backend_options:mineru:effort=flash"
-            "|images:file"
-        )
-        assert self._pinned_parser("ollama/parable-tinyjev").cache_identity() == expected
-
-    def test_a_judge_only_change_flips_the_cache_identity_and_not_the_backend_identity(self) -> None:
-        """The trap the package AGENTS.md documents: the judge is a routing
-        input (``[judge] model``), not a backend capability, so swapping the
-        judge must invalidate the parse cache while leaving the backend
-        identity — and therefore the backend selection key — untouched.
-        """
-        judged = self._pinned_parser("ollama/parable-tinyjev")
-        unjudged = self._pinned_parser(None)
-        assert judged.cache_identity() != unjudged.cache_identity()
-        assert judged.backend_identity() == unjudged.backend_identity()
