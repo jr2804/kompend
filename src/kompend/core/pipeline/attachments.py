@@ -301,6 +301,7 @@ def _tag_metadata(doc: ParsedDocument, att: Attachment) -> None:
             }
         )
 
+
 __all__ = [
     "ingest_attachment",
     "iter_ingestible_attachments",
