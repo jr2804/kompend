@@ -611,6 +611,83 @@ def _antipatterns() -> Any:
         sys.path.pop(0)
 
 
+def _runner() -> Any:
+    """Import the gate runner module (it lives outside the package tree)."""
+    sys.path.insert(0, str(CHECKS))
+    try:
+        return importlib.import_module("all")
+    finally:
+        sys.path.pop(0)
+
+
+def test_the_runner_tells_a_violation_from_an_unjudged_gate(tmp_path: Path) -> None:
+    """Exit 1 is a violation; exit 2 is a gate that could not judge.
+
+    The two are not the same, and the runner must not merge them: a gate that
+    read nothing proved nothing, so reporting it as passed is the same
+    confidently-wrong bug the exit-2 convention exists to prevent. The runner's
+    own exit code follows the same convention — 1 for a violation, 2 for an
+    unjudged gate, 0 only when every gate judged and found nothing.
+    """
+    runner = _runner()
+
+    clean = runner._run_steps([("judged-clean", _gate_command(0))])
+    assert clean == 0
+
+    unjudged = runner._run_steps([("judged-clean", _gate_command(0)), ("could-not-judge", _gate_command(2))])
+    assert unjudged == 2, "a gate that could not judge must not yield a clean run"
+
+    violated = runner._run_steps([("judged-clean", _gate_command(0)), ("found-violations", _gate_command(1))])
+    assert violated == 1, "a gate that found violations must fail the run"
+
+
+def test_an_unjudged_gate_is_never_reported_as_ok(capsys: pytest.CaptureFixture[str]) -> None:
+    """The runner says what it did: judged, or it did not judge."""
+    runner = _runner()
+
+    code = runner._run_steps([("judged-clean", _gate_command(0)), ("could-not-judge", _gate_command(2))])
+
+    out = capsys.readouterr().out
+    assert code == 2
+    assert "[ok]" in out
+    assert "[n/a]" in out, f"the unjudged gate must not be reported as ok:\n{out}"
+    assert out.count("[ok]") == 1
+
+
+def test_the_vault_gate_is_given_a_subject_it_can_scan(tmp_path: Path) -> None:
+    """The vault gate refuses to certify a scan that read nothing.
+
+    The repository root is not a vault, so the runner builds one — otherwise
+    the documented "run every gate" command could never pass in a fresh
+    checkout, because the gate would have nothing to scan.
+    """
+    runner = _runner()
+    vault = tmp_path / "vault"
+
+    runner._build_vault(vault)
+
+    store = vault / ".kompend" / "kompend.db"
+    assert store.is_file(), "the runner must build a real store for the vault gate to scan"
+
+    result = subprocess.run(  # noqa: S603 - fixed argv, no shell
+        [sys.executable, str(CHECKS / "check_persisted_paths.py"), "--vault", str(vault)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        cwd=ROOT,
+        timeout=180,
+        check=False,
+    )
+    assert result.returncode == 0, f"the vault gate did not judge the vault:\n{result.stdout}\n{result.stderr}"
+    assert "artifact(s) scanned" in result.stdout
+
+
+def _gate_command(code: int) -> list[str]:
+    """An argv for a fake gate that exits with *code*."""
+    return [sys.executable, "-c", f"import sys; sys.exit({code})"]
+
+
 def _run(script: str, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(  # noqa: S603 - fixed argv, no shell
         [sys.executable, str(CHECKS / script), *args],

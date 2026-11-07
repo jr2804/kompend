@@ -17,12 +17,8 @@ Per-line waivers exist for sites the rule cannot judge — `# nocheck: <reason>`
 in field-consistency, `# noqa: <code>` in antipatterns; the reason states why
 this site is legitimate.
 
-### Extension
-
-Adding a verification tool, enforcement script, or checklist item updates the
-matching section below.
-
----
+**Extension.** Adding a verification tool, enforcement script, or checklist item
+updates the matching section below.
 
 ## Project-specific Checks — kompend
 
@@ -32,11 +28,10 @@ matching section below.
 - pytest runs are tiered — never the full unit suite unprompted mid-task; T0 = the test file(s) covering the change: `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/unit/test_<file>.py -q --no-header -p pytest_asyncio.plugin -p pytest_timeout`, T1 = T0 plus the test files importing the changed module (`rg -l "kompend\.<module>" tests/`)
 - T2 = full unit suite once, before commit: `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/unit -q --no-header --tb=short -p pytest_asyncio.plugin -p pytest_timeout`; integration suite only when the change touches it: `KOMP_LLM_TRANSIENT_BACKOFF=0 PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest tests/integration -q --no-header --tb=short -p pytest_asyncio.plugin -p pytest_timeout` (policy detail: `tests/AGENTS.md`)
 - Run `ty check src/kompend` for type checking (mypy is not used)
-- Run `uv run python scripts/checks/all.py` — every gate; run one directly for its detail
+- Run `uv run python scripts/checks/all.py` — every gate; run one directly for its detail. The runner exits `0` when every gate judged and found nothing, `1` on a violation, `2` when a gate could not judge.
 - Run `uv run pytest tests/smoke` after touching the CLI surface: it spawns the real `kompend` (init, config check, status, doctor, lint show, empty-vault compile) and fails on a traceback
 - Verify `kompend.toml.example` stays in sync with `DEFAULTS` when adding config keys
-- After changing CLI commands, MCP tools, config keys, or output format, check
-  `skills/kompend/SKILL.md` for stale or missing info
+- After changing CLI commands, MCP tools, config keys, or output format, check `skills/kompend/SKILL.md` for stale or missing info
 - Run `uv run mkdocs build --strict` when changing documentation files
 
 ### New Code Checklist
@@ -62,18 +57,18 @@ Tick these BEFORE writing a function:
 
 ### Enforcement scripts
 
-| Script | Catches | Lives in |
-|---|---|---|
-| `ruff check` | Most lint issues (PLC0415/E402 are warnings, not errors) | ruff.toml |
-| `scripts/checks/check_field_consistency.py` | Bare-string contract keys | scripts/checks/ |
-| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, string-keyed registries, bare enum-value literals, bare reason-code literals, pip-side installs in code/docs | scripts/checks/ |
-| `scripts/checks/check_persisted_paths.py` | An absolute filesystem path persisted in `.kompend/` (every text column of `kompend.db` plus loose JSON/JSONL) | scripts/checks/ |
-| `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
-| `scripts/checks/check_enum_cache.py` | A `StrEnum` reachable from a cached dataclass missing from `_CACHE_ENUMS` | scripts/checks/ |
-| `scripts/checks/check_config_literals.py` | A literal repeating a config default, or a dotted config key as a string | scripts/checks/ |
-| `scripts/checks/check_cli_surface.py` | A run-level flag (`--config`) declared on a command instead of the root app | scripts/checks/ |
-| `scripts/checks/all.py` | Runs every gate in one command; stops at the first failure | scripts/checks/ |
-| `scripts/analyze/analyze_codebase.py` | Files/submodules exceeding net-line targets (>350 lines/file, >7 files/submodule) | scripts/analyze/ |
+| Script                                      | Catches                                                                                                                                                                 | Lives in         |
+| ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
+| `ruff check`                                | Most lint issues (PLC0415/E402 are warnings, not errors)                                                                                                                | ruff.toml        |
+| `scripts/checks/check_field_consistency.py` | Bare-string contract keys                                                                                                                                               | scripts/checks/  |
+| `scripts/checks/check_antipatterns.py`      | Banned-noqa, magic crops, `try/except ImportError` guards, string-keyed registries, bare enum-value literals, bare reason-code literals, pip-side installs in code/docs | scripts/checks/  |
+| `scripts/checks/check_persisted_paths.py`   | An absolute filesystem path persisted in `.kompend/` (every text column of `kompend.db` plus loose JSON/JSONL)                                                          | scripts/checks/  |
+| `scripts/checks/check_dox.py`               | DOX file size budgets, cross-file duplication                                                                                                                           | scripts/checks/  |
+| `scripts/checks/check_enum_cache.py`        | A `StrEnum` reachable from a cached dataclass missing from `_CACHE_ENUMS`                                                                                               | scripts/checks/  |
+| `scripts/checks/check_config_literals.py`   | A literal repeating a config default, or a dotted config key as a string                                                                                                | scripts/checks/  |
+| `scripts/checks/check_cli_surface.py`       | A run-level flag (`--config`) declared on a command instead of the root app                                                                                             | scripts/checks/  |
+| `scripts/checks/all.py`                     | Runs every gate in one command; `[ok]`/`[n/a]`/`[FAIL]`, exits `0`/`2`/`1`                                                                                              | scripts/checks/  |
+| `scripts/analyze/analyze_codebase.py`       | Files/submodules exceeding net-line targets (>350 lines/file, >7 files/submodule)                                                                                       | scripts/analyze/ |
 
 **Wiring.** The pre-commit hook lives at `.githooks` (`mise run install-hooks`):
 it runs the forbidden ruff rules plus several gates, then `_delegate.sh`
@@ -86,7 +81,7 @@ core `.agents/` state; `.agents/skills/**` and `.agents/history/**` are skipped.
 Above the generic rule ("a scan that finds no files is an error"), a gate must
 assert four more failure faces and the exit-code convention:
 
-- **Identity** — a scan of the *wrong* source is not empty, so no coverage check
+- **Identity** — a scan of the _wrong_ source is not empty, so no coverage check
   sees it: reading one project with another's facts is confident and wrong.
   Resolve a fact from the caller or the scanner itself, never a guessing
   fallback — make the source non-negotiable, not the fallback smarter.
@@ -100,8 +95,7 @@ assert four more failure faces and the exit-code convention:
   `callable(info.default)` "showed" no config field used a factory while that
   same test WAS the bug (a factory leaves `PydanticUndefined`), confirming the
   defect instead of measuring it. Ask what the predicate reports if the
-  assumption is false; "the same" means it tests nothing, and no emptiness check
-  catches it.
+  assumption is false; "the same" means it tests nothing.
 - **Codes** — `0` clean, `1` violations, `2` could not establish what it needs
   to judge. Never `0` for the last case.
 
@@ -109,12 +103,18 @@ assert four more failure faces and the exit-code convention:
 over a `None`/sentinel that compares false, a missed finding over a false alarm.
 A lookup table inverts this — omit the entry rather than guess one; a wrong entry
 looks exactly like an honest probe, while a missing one exits 2 in a project file
-*and* in a PEP 723 script. Ask what a *wrong* entry does: if it can only make the
+_and_ in a PEP 723 script. Ask what a _wrong_ entry does: if it can only make the
 scanner quieter (selecting what to check, resolving to nothing), the typo is the
 silent case, and that table needs a test that every entry still matches reality.
-State the precondition — a claim without it is a different claim.
 
 **Migrations disarm gates.** A storage change empties a scanner's input without
 touching it: `check_persisted_paths` read loose JSON under `.kompend/`, the state
 moved into `kompend.db`, and it kept exiting 0 reading nothing. When a layout
 moves, re-check every gate that reads it.
+
+**A gate needs a subject, and the runner supplies it.** The same migration left
+`check_persisted_paths` needing a VAULT, and the repository root is not one —
+its `.kompend/` is gitignored, so a fresh checkout never has a store. A gate
+that reads nothing must exit 2 (never 0), so the RUNNER gives it something:
+`all.py` builds a throwaway vault holding a real store, and the gate judges the
+repository's own DDL instead of declining.
