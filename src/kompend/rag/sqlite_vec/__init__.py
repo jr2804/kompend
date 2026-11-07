@@ -8,6 +8,7 @@ SqliteVecWikiStore``).
 
 from __future__ import annotations
 
-from kompend.rag.sqlite_vec.store import SqliteVecWikiStore, recorded_embedding_model
+from kompend.rag.sqlite_vec.manifest import recorded_embedding_model
+from kompend.rag.sqlite_vec.store import SqliteVecWikiStore
 
 __all__ = ["SqliteVecWikiStore", "recorded_embedding_model"]

@@ -9,10 +9,12 @@ The store keeps the shape of the store it replaces — ``build_index``,
 ``search``, ``fts_search``, ``hybrid_search``, ``is_stale``, ``open``,
 ``close`` — so the retrievers and the CLI keep working unchanged. The rules
 that decide *what* is indexed live in :mod:`kompend.rag.vector_store` and are
-shared with every backend.
+shared with every backend. The DDL and its fingerprint live in
+:mod:`kompend.rag.sqlite_vec.schema`; the manifest row and the staleness
+rules in :mod:`kompend.rag.sqlite_vec.manifest`.
 
 Scores follow the store's convention: **higher is better**. The vector path
-returns ``1 - cosine_distance`` (the cosine similarity); the lexical path
+returns ``1 - distance`` (the cosine similarity); the lexical path
 returns ``-bm25()`` (SQLite's bm25 is lower-is-better).
 """
 
@@ -34,16 +36,17 @@ from sqlite_vec_client import SQLiteVecClient
 import kompend.rag
 from kompend.core.models import CompiledWiki, MetadataField, WikiNode
 from kompend.core.models.metadata import meta_str_list_dict
-from kompend.core.paths import KOMP_DB_FILE, rel_to_vault
-from kompend.core.store import connect, open_store
-from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
-from kompend.core.utils.time import iso_local
+from kompend.core.paths import rel_to_vault
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 from kompend.rag.embedding_base import EmbeddingProvider
+from kompend.rag.sqlite_vec.manifest import (
+    content_changed,
+    manifest_db_path,
+    manifest_mismatch,
+    read_manifest,
+    write_manifest,
+)
 from kompend.rag.sqlite_vec.schema import (
-    BACKEND,
-    BACKEND_COLUMN,
-    EMBEDDING_MODEL_COLUMN,
     VEC_ATTR_KEYS,
     VEC_ATTRIBUTES,
     VEC_FTS,
@@ -54,10 +57,8 @@ from kompend.rag.sqlite_vec.schema import (
     write_meta,
 )
 from kompend.rag.vector_store import (
-    EMBED_TEXT_VERSION,
     VectorField,
     attributes_to_list,
-    content_hash,
     embed_node,
     embed_text,
     figure_paths,
@@ -603,90 +604,24 @@ class SqliteVecWikiStore:
             )
 
     def _manifest_mismatch(self, row: sqlite3.Row) -> str | None:
-        """Why the manifest does not describe the current vectors, or ``None``.
-
-        A row written before the hashes were tracked is not a mismatch here —
-        the content comparison catches that.
-        """
-        if row[BACKEND_COLUMN] != BACKEND:
-            return f"backend {row[BACKEND_COLUMN]!r} != {BACKEND!r}"
-        if row["embed_version"] != EMBED_TEXT_VERSION:
-            return f"embed-text version {row['embed_version']!r} != {EMBED_TEXT_VERSION!r}"
+        """Why the manifest does not describe the current vectors, or ``None``."""
         current_model = self._provider.model_id if self._provider is not None else ""
-        if row[EMBEDDING_MODEL_COLUMN] != current_model:
-            return f"embedding model {row[EMBEDDING_MODEL_COLUMN]!r} != {current_model!r}"
-        return None
+        return manifest_mismatch(row, current_model)
 
     def _content_changed(self, recorded: str, nodes: list[WikiNode]) -> bool:
-        """Compare recorded content hashes against *nodes*.
-
-        The id check alone cannot see an edited page: a `lint --fix`, a hand
-        edit, or a recompile that produced different prose leaves the id set
-        unchanged while the vectors describe text search no longer returns.
-        Hashing the indexed payload closes that blind spot.
-
-        A row written before hashes were tracked (empty mapping) is stale by
-        definition — one rebuild records them.
-        """
-        stored: dict[str, str] = json.loads(recorded) if recorded else {}
-        if not stored:
-            logger.info("Vector manifest has no content hashes (pre-tracking build) — rebuilding: %s", self.db_file)
-            return True
-        expected = {node.id: content_hash(node) for node in nodes}
-        changed = sorted(node_id for node_id, digest in expected.items() if stored.get(node_id) != digest)
-        if not changed:
-            return False
-        logger.info(
-            "Vector index content changed for %d of %d node(s), e.g. %s — rebuilding: %s",
-            len(changed),
-            len(expected),
-            changed[:LOG_SAMPLE_LIMIT],
-            self.db_file,
-        )
-        return True
+        """Whether the recorded hashes differ from *nodes*."""
+        return content_changed(recorded, nodes, self.db_file)
 
     # ── Manifest ─────────────────────────────────────────────────────────
 
     def _manifest_db_path(self) -> Path:
-        """``kompend.db`` beside the vector store — home of the index manifest row.
-
-        The vectors file always sits in the vault's ``.kompend/`` next to the
-        single non-vector store, so the manifest is a row there instead of a
-        loose JSON sidecar: ``.kompend/`` holds one state file, not a scattering
-        of state files.  The vector branch itself (this file) stays separate
-        and regenerable.
-        """
-        return self.db_file.parent / KOMP_DB_FILE
+        """``kompend.db`` beside the vector store — home of the index manifest row."""
+        return manifest_db_path(self.db_file)
 
     def _write_manifest(self, nodes: list[WikiNode]) -> None:
-        """Record the indexed id set, content hashes, embed-text version, model and backend."""
-        ids = sorted(node.id for node in nodes)
-        hashes = {node.id: content_hash(node) for node in nodes}
+        """Record the indexed id set, hashes, embed-text version, model and backend."""
         model_id = self._provider.model_id if self._provider is not None else ""
-        try:
-            with open_store(self._manifest_db_path()) as conn:
-                conn.execute(
-                    f"INSERT INTO {VECTOR_MANIFEST_TABLE}"
-                    f"(id, embed_version, embedding_model, {BACKEND_COLUMN}, ids, content_hashes, written_at) "
-                    "VALUES (1, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET "
-                    "embed_version = excluded.embed_version, embedding_model = excluded.embedding_model, "
-                    f"{BACKEND_COLUMN} = excluded.{BACKEND_COLUMN}, "
-                    "ids = excluded.ids, content_hashes = excluded.content_hashes, written_at = excluded.written_at",
-                    (
-                        EMBED_TEXT_VERSION,
-                        model_id,
-                        BACKEND,
-                        json.dumps(ids),
-                        json.dumps(hashes, sort_keys=True),
-                        iso_local(),
-                    ),
-                )
-        except (sqlite3.Error, OSError) as exc:
-            logger.warning(
-                "Could not record the vector manifest in %s: %s",
-                self._manifest_db_path(),
-                exc,
-            )
+        write_manifest(self.db_file, nodes, model_id)
 
     # ── Store identity ───────────────────────────────────────────────────
 
@@ -744,14 +679,7 @@ class SqliteVecWikiStore:
     @staticmethod
     def _read_manifest(manifest_db: Path) -> sqlite3.Row | None:
         """The manifest row of the last build, or ``None`` when there is none."""
-        try:
-            with open_store(manifest_db) as conn:
-                return conn.execute(
-                    f"SELECT embed_version, {EMBEDDING_MODEL_COLUMN}, {BACKEND_COLUMN}, ids, content_hashes FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
-                ).fetchone()
-        except sqlite3.Error as exc:
-            logger.warning("Vector manifest unreadable — treating store as stale: %s", exc)
-            return None
+        return read_manifest(manifest_db)
 
 
 class _Hit:
@@ -775,41 +703,6 @@ class _Hit:
         self.node_type = node_type
         self.source_file = source_file
         self.content_preview = content_preview
-
-
-def recorded_embedding_model(manifest_db: Path) -> str | None:
-    """The ``provider/model`` string the current vectors were built with.
-
-    The manifest row in ``kompend.db`` records the embedding provider's
-    ``model_id`` at build time (:meth:`SqliteVecWikiStore._write_manifest`).
-    The doctor resolves this tag's serving digest and compares it with the
-    configured embedder's: equal digests under different tags mean a pending
-    rebuild that would produce byte-identical vectors. ``None`` when there is
-    no manifest row (never indexed, unreadable) or the recorded model is
-    empty.
-
-    The read goes through :func:`kompend.core.store.connect`, deliberately
-    *not* :func:`~kompend.core.store.open_store`: the doctor calls this on
-    stores written by any kompend generation, and ``open_store``'s schema
-    ensure would clean-cut-recreate a version-mismatched ``kompend.db`` — a
-    destructive write a diagnostic must never perform.
-    """
-    if not manifest_db.exists():
-        return None
-    try:
-        conn = connect(manifest_db)
-        try:
-            row = conn.execute(
-                f"SELECT {EMBEDDING_MODEL_COLUMN} FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1",
-            ).fetchone()
-        finally:
-            conn.close()
-    except sqlite3.Error:
-        return None
-    if row is None:
-        return None
-    recorded = str(row[0]).strip()
-    return recorded or None
 
 
 def _hit_to_dict(hit: _Hit) -> dict[str, Any]:
