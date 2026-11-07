@@ -124,6 +124,45 @@ def test_import_error_guard_ignores_an_import_inside_the_handler() -> None:
     assert len(module.scan_import_error_guards(Path("a.py"), real_guard)) == 1
 
 
+def test_a_bare_string_reason_code_is_caught_but_the_member_is_not(tmp_path: Path) -> None:
+    """The reason-code vocabulary is an enum; a bare string desyncs the log from it.
+
+    The position is the signal, not the value: a typo'd reason ("timeouts")
+    is the case worth catching, and a string that happens to match a member
+    value is no more correct than one that does not — so the rule requires
+    the member form rather than comparing against the enum.
+    """
+    module = _antipatterns()
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "def f(exc):\n"
+        '    logger.error("x", extra={"reason_code": "timeout"})\n'
+        '    logger.error("x", reason_code="timeouts")\n'
+        '    logger.error("x", extra={"reason_code": ReasonCode.TIMEOUT})\n'
+        '    logger.error("x", extra={"reason_code": reason_code_for(exc)})\n',
+        encoding="utf-8",
+    )
+
+    findings = module.scan_file(probe)
+
+    assert [f.rule for f in findings] == ["REASON-CODE-LITERAL", "REASON-CODE-LITERAL"]
+    assert [f.line for f in findings] == [2, 3]
+    assert '"timeout"' in findings[0].message
+    assert "ReasonCode member" in findings[0].message
+
+
+def test_the_reason_code_rule_can_be_waived_with_a_reason(tmp_path: Path) -> None:
+    """A waiver states why the site is legitimate — it is not a silent opt-out."""
+    module = _antipatterns()
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        'logger.error("x", extra={"reason_code": "custom"})  # nocheck: reason-code — vendor payload\n',
+        encoding="utf-8",
+    )
+
+    assert module.scan_file(probe) == []
+
+
 def test_require_facts_documents_its_precondition() -> None:
     """Zero has three meanings; the helper can only see the count.
 

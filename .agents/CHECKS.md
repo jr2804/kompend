@@ -66,7 +66,7 @@ Tick these BEFORE writing a function:
 |---|---|---|
 | `ruff check` | Most lint issues (PLC0415/E402 are warnings, not errors) | ruff.toml |
 | `scripts/checks/check_field_consistency.py` | Bare-string contract keys | scripts/checks/ |
-| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, string-keyed registries, bare enum-value literals, pip-side installs in code/docs | scripts/checks/ |
+| `scripts/checks/check_antipatterns.py` | Banned-noqa, magic crops, `try/except ImportError` guards, string-keyed registries, bare enum-value literals, bare reason-code literals, pip-side installs in code/docs | scripts/checks/ |
 | `scripts/checks/check_persisted_paths.py` | An absolute filesystem path persisted in `.kompend/` (every text column of `kompend.db` plus loose JSON/JSONL) | scripts/checks/ |
 | `scripts/checks/check_dox.py` | DOX file size budgets, cross-file duplication | scripts/checks/ |
 | `scripts/checks/check_enum_cache.py` | A `StrEnum` reachable from a cached dataclass missing from `_CACHE_ENUMS` | scripts/checks/ |

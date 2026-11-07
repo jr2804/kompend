@@ -47,6 +47,16 @@ LLM-coding mistakes observed in this codebase:
   against the enum member instead, so a vocabulary change cannot silently
   desync a call site. External vocabularies waive with
   ``# nocheck: enum-literal — <reason>``.
+- A bare string literal in a ``reason_code`` position — the keyword argument
+  or the ``extra`` dict key the item path uses to carry a failure reason —
+  is flagged (``REASON-CODE-LITERAL``). The reason-code vocabulary is a
+  ``StrEnum`` (:class:`kompend.core.types.ReasonCode`) precisely so the
+  ledger, doctor and explain screens can count a failure class instead of
+  pattern-matching prose; a bare string there desyncs the log from the
+  vocabulary it claims to speak. The position is the signal, not the value:
+  a typo'd reason ("timeouts") is the case worth catching, and a string
+  that happens to match a member value is no more correct than one that
+  does not. Waive with ``# nocheck: reason-code — <reason>``.
 
 Each violation prints ``file:line:col  rule  message`` and the script
 exits non-zero on any violation. Exits 0 when clean, and **2** when the scan
@@ -345,6 +355,7 @@ def scan_file(path: Path) -> list[Violation]:
     out.extend(scan_wiki_filenames(path, code_lines))
     out.extend(scan_str_keyed_registries(path, tree, code_lines, comments))
     out.extend(scan_enum_value_literals(path, tree, code_lines, comments))
+    out.extend(scan_reason_code_literals(path, tree, code_lines, comments))
     # Comments keep their own scan: a documented install command is still an
     # install command, and it is the form that actually reaches a reader.
     out.extend(scan_pip_installs(path, source.splitlines()))
@@ -549,6 +560,61 @@ def scan_enum_value_literals(path: Path, tree: ast.Module, lines: list[str], com
                 )
             )
     return out
+
+
+#: The logger ``extra`` key the item path uses to carry a failure reason.
+_REASON_CODE_KEY = "reason_code"
+
+
+def scan_reason_code_literals(path: Path, tree: ast.Module, lines: list[str], comments: dict[int, Comment]) -> list[Violation]:
+    """Flag a bare-string reason code where the ``ReasonCode`` enum belongs.
+
+    The item path reports every failure with ``extra={"reason_code": ...}``.
+    A bare string there is a silent desync: the ledger counts enum members,
+    the log carries prose, and nothing notices until a histogram shows two
+    spellings of one failure class — exactly what the vocabulary was
+    introduced to prevent.
+
+    The position is the signal, not the value. A typo'd reason ("timeouts")
+    is the case worth catching, and a string that happens to match a member
+    value is no more correct than one that does not, so the rule does not
+    compare against the enum: it requires the member form.
+    """
+    if _is_test_file(path):
+        return []
+    out: list[Violation] = []
+
+    def _report(node: ast.AST, value: str) -> None:
+        lineno = getattr(node, "lineno", 0)
+        if _waived(lineno, comments):
+            return
+        out.append(
+            Violation(
+                file=path,
+                line=lineno,
+                col=getattr(node, "col_offset", 0) + 1,
+                rule="REASON-CODE-LITERAL",
+                message=f'reason_code "{value}" is a bare string — use the ReasonCode member from kompend.core.types',
+            )
+        )
+
+    def _is_bare_str(node: ast.AST) -> bool:
+        return isinstance(node, ast.Constant) and isinstance(node.value, str)
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Call):
+            for keyword in node.keywords:
+                if keyword.arg == _REASON_CODE_KEY and _is_bare_str(keyword.value):
+                    _report(keyword.value, keyword.value.value)
+        elif isinstance(node, ast.Dict):
+            for key, value in zip(node.keys, node.values, strict=True):
+                if key is None:
+                    continue
+                if isinstance(key, ast.Constant) and key.value == _REASON_CODE_KEY and _is_bare_str(value):
+                    _report(value, value.value)
+    # ``ast.walk`` is breadth-first, so the keyword form and the dict form
+    # arrive out of source order. Sort so the report reads like the file.
+    return sorted(out, key=lambda v: (v.line, v.col))
 
 
 @cache
