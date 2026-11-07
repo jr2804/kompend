@@ -12,7 +12,7 @@ from pathlib import Path
 
 from kompend.core.models import CompiledWiki
 from kompend.core.paths import VaultPaths
-from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+from kompend.rag import SqliteVecWikiStore
 
 
 def build_vector_index(
