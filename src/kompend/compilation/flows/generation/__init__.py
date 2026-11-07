@@ -6,15 +6,17 @@ segment planning, request accounting, prompt assembly and page writing.
 
 from __future__ import annotations
 
+from kompend.compilation.flows.generation.budget import (
+    _agentic_budget,
+    _known_titles_windows,
+)
 from kompend.compilation.flows.generation.flow import (
     PlaceholderMarker,
     PlaceholderPageError,
-    _agentic_budget,
     _allowed_kind,
     _categories_block,
     _consult_loop2,
     _format_uncovered_concepts,
-    _known_titles_windows,
     _placeholder_reasons,
     _reject_placeholder_pages,
     _resolve_page_kind,
