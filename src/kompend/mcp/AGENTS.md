@@ -26,11 +26,16 @@ Use ``from fastmcp import FastMCP`` — never the SDK's renamed
 | ``tools/knowledge.py`` | ``wiki_capture``, ``wiki_distill``, ``wiki_learn``, ``query_wiki`` |
 | ``tools/memory.py`` | ``memory_add``, ``memory_search``, ``memory_synthesize`` |
 | ``tools/query.py`` | ``query_wiki`` — markdown-first search (vector search optional, keyword fallback) |
+| ``tools/quality/`` | Quality & diagnostics family: ``lint_*`` (9 tools), ``doctor``, ``review``, ``provenance``, ``log``, ``list_parsers`` |
 | ``tools/_helpers.py`` | Shared tool utilities (wiki dir resolution, error formatting) |
 
 ## Rules
 
 - Tool implementations go in ``tools/``, not in ``server.py``.
+- ``tools/quality/`` keeps one module per tool family; ``__init__.py`` only
+  re-exports, and its ``__all__`` — the 14 tool names — is the MCP contract.
+  ``tests/unit/test_mcp_quality.py`` pins the names, the input schemas and the
+  payload keys.
 - ``server.py`` registers tools via function reference, not strings.
 - Import: ``from kompend.mcp.server import server`` for the FastMCP instance.
 - The ``main()`` entry point is invoked by the ``kompend serve`` CLI command.

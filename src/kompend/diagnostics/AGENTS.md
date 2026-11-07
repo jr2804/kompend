@@ -14,7 +14,7 @@ never raises.
 
 - `src/kompend/diagnostics/` — the checks, the result type, the run order
 - Not here: rendering (`src/kompend/cli/cmds/quality/doctor.py` prints text and
-  JSON), command wiring (`doctor_cmd.py`), MCP exposure (`mcp/tools/quality.py`)
+  JSON), command wiring (`doctor_cmd.py`), MCP exposure (`mcp/tools/quality/doctor.py`)
 
 ## Architecture
 
