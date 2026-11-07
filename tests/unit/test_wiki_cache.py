@@ -72,7 +72,10 @@ class TestLoadCachedWiki:
         db_path = vault_db_path(tmp_path)
         with open_store(db_path) as conn:
             conn.execute("INSERT INTO wiki_snapshot(kind, nodes) VALUES ('last', '{invalid json')")
-        with pytest.raises(json.JSONDecodeError):
+        # Wrapped as "Corrupt wiki snapshot …" (ValueError) since the store
+        # boundary names the layer and row key instead of leaking the raw
+        # JSONDecodeError — see load_wiki_snapshot.
+        with pytest.raises(ValueError, match="Corrupt wiki snapshot"):
             load_cached_wiki(tmp_path)
 
 

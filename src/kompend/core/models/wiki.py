@@ -12,13 +12,23 @@ from pathlib import Path
 from typing import Final, NotRequired, TypedDict
 
 import yaml
+from pydantic import TypeAdapter, ValidationError
+from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from kompend.core.models.elements import element_text
-from kompend.core.models.enums import EdgeType, MetadataField, NodeType, OkfField, node_type_from_okf_type
+from kompend.core.models.enums import (
+    EdgeType,
+    MetadataField,
+    NodeType,
+    OkfField,
+    WikiField,
+    node_type_from_okf_type,
+)
 from kompend.core.models.metadata import meta_float, meta_int, meta_str
 from kompend.core.paths import INDEX_FILE, LOG_FILE, REFERENCES_MD
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import WIKI_SNAPSHOT_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import wiki_snapshot
 from kompend.core.utils.time import iso_local
 from kompend.types import JSONDict, JSONValue, MetadataValue
 
@@ -212,6 +222,42 @@ class TocEntry(TypedDict):
     level: int
 
 
+#: Row-validation adapters for the flat ``wiki_snapshot`` columns (store
+#: boundary: a malformed row raises where it is read, wrapped with the
+#: snapshot kind). The ``nodes``/``metadata`` columns cannot ride a
+#: TypeAdapter until ``kompend.types`` declares ``MetadataValue``/
+#: ``JSONValue`` as PEP 695 aliases — they are implicit recursive aliases,
+#: which pydantic 2.14 refuses — so those columns validate by shape in
+#: :func:`_snapshot_nodes` / :func:`_snapshot_metadata` instead.
+_SNAPSHOT_EDGES_ADAPTER: Final = TypeAdapter(list[GraphEdge])
+_SNAPSHOT_TOC_ADAPTER: Final = TypeAdapter(list[TocEntry])
+
+
+def _snapshot_nodes(raw: object) -> list[WikiNode]:
+    """Rehydrate the ``nodes`` column, raising on a malformed entry.
+
+    Shape check plus the ``WikiNode`` constructor's own guards (missing or
+    unknown keys raise ``TypeError``; ``NodeType.of`` rejects bad kinds).
+    Deep ``MetadataValue``/``JSONValue`` members stay unvalidated — see the
+    adapter note above.
+    """
+    if not isinstance(raw, list):
+        raise TypeError(f"nodes column is {type(raw).__name__}, expected a list")
+    nodes: list[WikiNode] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise TypeError(f"node entry is {type(entry).__name__}, expected an object")
+        nodes.append(WikiNode(**entry))
+    return nodes
+
+
+def _snapshot_metadata(raw: object) -> dict[str, MetadataValue]:
+    """Validate the ``metadata`` column's container shape."""
+    if not isinstance(raw, dict):
+        raise TypeError(f"metadata column is {type(raw).__name__}, expected an object")
+    return raw
+
+
 def truncate_description(text: str, max_chars: int) -> str:
     """Shorten *text* to at most *max_chars* characters, cut at a word boundary.
 
@@ -243,23 +289,31 @@ def write_wiki_snapshot_payload(
     *nodes* are pre-shaped by the caller (the two writers rewrite paths
     differently). Loaded back via :func:`load_wiki_snapshot`.
     """
-    with open_store(vault_db_path(base_dir)) as conn:
-        conn.execute(
-            f"INSERT INTO {WIKI_SNAPSHOT_TABLE}(kind, nodes, edges, toc, quality_score, iteration, metadata, written_at) "
-            f"VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
-            f"ON CONFLICT(kind) DO UPDATE SET nodes = excluded.nodes, edges = excluded.edges, toc = excluded.toc, "
-            f"quality_score = excluded.quality_score, iteration = excluded.iteration, "
-            f"metadata = excluded.metadata, written_at = excluded.written_at",
-            (
-                kind,
-                json.dumps(nodes, default=str),
-                json.dumps(list(edges), default=str),
-                json.dumps(list(toc), default=str),
-                quality_score,
-                iteration,
-                json.dumps(dict(metadata), default=str),
-                iso_local(),
-            ),
+    with open_store(vault_db_path(base_dir)) as conn, core_connection(conn) as core:
+        core.execute(
+            sqlite_insert(wiki_snapshot)
+            .values(
+                kind=kind,
+                nodes=json.dumps(nodes, default=str),
+                edges=json.dumps(list(edges), default=str),
+                toc=json.dumps(list(toc), default=str),
+                quality_score=quality_score,
+                iteration=iteration,
+                metadata=json.dumps(dict(metadata), default=str),
+                written_at=iso_local(),
+            )
+            .on_conflict_do_update(
+                index_elements=[wiki_snapshot.c.kind],
+                set_={
+                    WikiField.NODES: json.dumps(nodes, default=str),
+                    WikiField.EDGES: json.dumps(list(edges), default=str),
+                    WikiField.TOC: json.dumps(list(toc), default=str),
+                    WikiField.QUALITY_SCORE: quality_score,
+                    WikiField.ITERATION: iteration,
+                    WikiField.METADATA: json.dumps(dict(metadata), default=str),
+                    "written_at": iso_local(),
+                },
+            )
         )
 
 
@@ -281,22 +335,33 @@ def load_wiki_snapshot(base_dir: Path, kind: str) -> CompiledWiki | None:
     """Load the wiki snapshot of *kind* from the store, or ``None`` on miss."""
     if not vault_db_path(base_dir).exists():
         return None
-    with open_store(vault_db_path(base_dir)) as conn:
-        row = conn.execute(
-            f"SELECT nodes, edges, toc, quality_score, iteration, metadata FROM {WIKI_SNAPSHOT_TABLE} WHERE kind = ?",
-            (kind,),
+    with open_store(vault_db_path(base_dir)) as conn, core_connection(conn) as core:
+        row = core.execute(
+            select(
+                wiki_snapshot.c.nodes,
+                wiki_snapshot.c.edges,
+                wiki_snapshot.c.toc,
+                wiki_snapshot.c.quality_score,
+                wiki_snapshot.c.iteration,
+                wiki_snapshot.c.metadata,
+            ).where(wiki_snapshot.c.kind == kind)
         ).fetchone()
     if row is None:
         return None
-    raw_nodes = json.loads(row["nodes"])  # nocheck: wiki_snapshot column, not a metadata key
-    nodes = [WikiNode(**n) if isinstance(n, dict) else n for n in raw_nodes]
+    try:
+        nodes = _snapshot_nodes(json.loads(row.nodes))
+        edges = _SNAPSHOT_EDGES_ADAPTER.validate_python(json.loads(row.edges))
+        toc = _SNAPSHOT_TOC_ADAPTER.validate_python(json.loads(row.toc))
+        metadata = _snapshot_metadata(json.loads(row.metadata))
+    except (ValidationError, TypeError, KeyError, ValueError) as exc:
+        raise ValueError(f"Corrupt wiki snapshot {kind!r} at {vault_db_path(base_dir)}: {exc}") from exc
     return CompiledWiki(
         nodes=nodes,
-        edges=json.loads(row["edges"]),  # nocheck: wiki_snapshot column
-        toc=json.loads(row["toc"]),  # nocheck: wiki_snapshot column
-        quality_score=float(row["quality_score"]),  # nocheck: wiki_snapshot column
-        iteration=int(row["iteration"]),  # nocheck: wiki_snapshot column
-        metadata=json.loads(row["metadata"]),
+        edges=edges,
+        toc=toc,
+        quality_score=float(row.quality_score),
+        iteration=int(row.iteration),
+        metadata=metadata,
     )
 
 
