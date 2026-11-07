@@ -14,7 +14,6 @@ from kompend.compilation.flows.generation.flow import (
     PlaceholderMarker,
     PlaceholderPageError,
     _allowed_kind,
-    _categories_block,
     _consult_loop2,
     _format_uncovered_concepts,
     _placeholder_reasons,
@@ -23,7 +22,6 @@ from kompend.compilation.flows.generation.flow import (
     _sanitize_entity_type,
     _SegmentUnit,
     assemble_wiki,
-    build_known_titles,
     gen_cache_deps,
     generate_all_pages_agentic,
     generation_detail,
@@ -32,6 +30,10 @@ from kompend.compilation.flows.generation.flow import (
     prepare_source_segments,
     run_generation,
     run_generation_resumable,
+)
+from kompend.compilation.flows.generation.prompt import (
+    _categories_block,
+    build_known_titles,
 )
 
 __all__ = [

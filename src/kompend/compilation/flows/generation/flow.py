@@ -34,6 +34,7 @@ from kompend.compilation.flows.generation.budget import (
     _known_titles_windows,
     _token_estimate,
 )
+from kompend.compilation.flows.generation.prompt import _categories_block, build_known_titles
 from kompend.compilation.schema import GenerationOutput, GenerationPage
 from kompend.compilation.step_recovery import (
     SegmentRecovery,
@@ -55,7 +56,7 @@ from kompend.compilation.two_phase import (
     upsert_node,
 )
 from kompend.core.keys import MANDATORY_KINDS
-from kompend.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, images_for_provenance, load_cached_wiki
+from kompend.core.models import ChunkTree, CompiledWiki, ImageRef, ResolvedChunk, TocEntry, WikiField, WikiNode, images_for_provenance
 from kompend.core.models.enums import CacheDeps, ExtractionField, MetadataField, NodeType
 from kompend.core.paths import safe_stem
 from kompend.core.pipeline.entity_types import EntityTypeRegistry
@@ -1304,11 +1305,6 @@ def _allowed_kind(kind: str, extras: dict[str, str]) -> NodeType:
     return NodeType.CONCEPT
 
 
-def _categories_block(extras: dict[str, str]) -> str:
-    """Render configured extra categories as prompt instruction lines."""
-    return "\n".join(f'- "{name}" — {desc}'.rstrip(".") for name, desc in extras.items())
-
-
 def assemble_wiki(
     compiler: TwoPhaseRuntime,
     nodes: list[WikiNode],
@@ -1424,39 +1420,6 @@ def _sanitize_entity_type(raw: str) -> str:
     """Normalize an entity type for use as a folder name ("Person" → "person")."""
     sanitized = slugify(raw or "", max_length=40)
     return sanitized or "entity"
-
-
-def build_known_titles(compiler: TwoPhaseRuntime, concepts: list[dict[str, Any]]) -> list[str]:
-    """Canonical page titles the generation LLM should link to verbatim.
-
-    Combines the merged concept names from this compile with the canonical
-    titles learned by the *previous* compile (its
-    ``MetadataField.WIKILINK_ALIASES`` map, read from the on-disk wiki cache
-    — still the previous compile's output at generation time, since the
-    cache is written after generation). Deduplicated, order-preserving.
-    """
-    titles: list[str] = []
-    seen: set[str] = set()
-
-    def _add(title: str) -> None:
-        if title and title not in seen:
-            seen.add(title)
-            titles.append(title)
-
-    for c in concepts:
-        _add(str(c.get(ExtractionField.NAME, "")))
-
-    try:
-        previous = load_cached_wiki(compiler._config.paths.base_dir)
-    except Exception:  # noqa: BLE001 — cache read is best-effort; never fail compile
-        previous = None
-    if previous is not None:
-        learned = previous.metadata.get(MetadataField.WIKILINK_ALIASES) or {}
-        if isinstance(learned, dict):
-            for canonical in learned.values():
-                _add(str(canonical))
-
-    return titles
 
 
 def learn_wikilink_aliases(nodes: list[WikiNode]) -> dict[str, str]:
