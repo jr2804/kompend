@@ -23,6 +23,7 @@ from kompend.compilation.flows.extraction import (
     _synthetic_history_response,
 )
 from kompend.compilation.flows.extraction import flow as ext_module
+from kompend.compilation.flows.extraction import units as units_module
 from kompend.compilation.flows.generation import flow as gen_module
 from kompend.compilation.schema import Concept, Entity, ExtractionOutput
 from kompend.compilation.two_phase import (
@@ -131,7 +132,7 @@ class TestReduceExtractions:
             concepts=[Concept(name="chunking", definition="splitting text")],
             tags=["ai", "docs"],
         )
-        with patch("kompend.compilation.flows.extraction.flow.ExtractionReduceAgent") as mock_agent_cls:
+        with patch("kompend.compilation.flows.extraction.units.ExtractionReduceAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.run.return_value = mock_output
             mock_agent_cls.return_value = mock_agent
@@ -152,7 +153,7 @@ class TestReduceExtractions:
             Extraction(source="doc.md", summary="B."),
         ]
 
-        with patch("kompend.compilation.flows.extraction.flow.ExtractionReduceAgent") as mock_agent_cls:
+        with patch("kompend.compilation.flows.extraction.units.ExtractionReduceAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.run.side_effect = LLMOutputError("boom")
             mock_agent_cls.return_value = mock_agent
@@ -262,8 +263,8 @@ class TestExtractIncrementalHistoryCompaction:
         compiler._cache_store.get = MagicMock(return_value=cached_ext.to_dict())
 
         # Patch _synthetic_history_response so we can assert it was called.
-        with patch.object(ext_module, "_synthetic_history_response") as synth_mock, patch.object(ext_module, "_compact_history_inplace") as compact_mock:
-            results, stopped = ext_module.extract_incremental(
+        with patch.object(units_module, "_synthetic_history_response") as synth_mock, patch.object(units_module, "_compact_history_inplace") as compact_mock:
+            results, stopped = units_module.extract_incremental(
                 compiler,
                 source="doc.md",
                 batches_list=["batch 1 text"],
@@ -282,8 +283,8 @@ class TestExtractIncrementalHistoryCompaction:
         compiler = _make_compiler()
         reports: list[tuple[int, int, str]] = []
 
-        with patch.object(ext_module, "extract_one", return_value=Extraction(source="doc.md")):
-            results, stopped = ext_module.extract_incremental(
+        with patch.object(units_module, "extract_one", return_value=Extraction(source="doc.md")):
+            results, stopped = units_module.extract_incremental(
                 compiler,
                 source="doc.md",
                 batches_list=["batch 1", "batch 2", "batch 3"],
@@ -476,7 +477,7 @@ class TestExtractCharBudget:
         cpt = compiler._config.llm.default_chars_per_token
         cw = compiler._context_window.max_input
 
-        budget = ext_module._extract_char_budget(compiler)
+        budget = units_module._extract_char_budget(compiler)
         content_tokens = chars_to_tokens(budget, chars_per_token=cpt)
         safety = context_safety_tokens(cw)
 
@@ -488,7 +489,7 @@ class TestExtractCharBudget:
         cpt = compiler._config.llm.default_chars_per_token
         cw = compiler._context_window.max_input
 
-        with_margin = ext_module._extract_char_budget(compiler)
+        with_margin = units_module._extract_char_budget(compiler)
         without = tokens_to_chars(
             cw - compiler._extract_system_tokens - compiler._context_window.answer_reserve,
             chars_per_token=cpt,
@@ -512,7 +513,7 @@ class TestExtractCacheDeps:
     """
 
     def test_key_records_model_and_text(self) -> None:
-        deps = ext_module._extract_cache_deps(_make_compiler(), "hello")
+        deps = units_module._extract_cache_deps(_make_compiler(), "hello")
         assert deps[CacheDeps.MODEL] == "ollama/test"
         assert deps[CacheDeps.SOURCE_TEXT] == hashlib.sha256(b"hello").hexdigest()
         assert deps[CacheDeps.CHUNK_SIZE_MIN] == "2048"
@@ -524,8 +525,8 @@ class TestExtractCacheDeps:
         second = _make_compiler()
         second._model = "ollama/other"
 
-        deps_a = ext_module._extract_cache_deps(first, text)
-        deps_b = ext_module._extract_cache_deps(second, text)
+        deps_a = units_module._extract_cache_deps(first, text)
+        deps_b = units_module._extract_cache_deps(second, text)
 
         assert deps_a[CacheDeps.SOURCE_TEXT] == deps_b[CacheDeps.SOURCE_TEXT]
         assert make_cache_key(deps_a) != make_cache_key(deps_b)
@@ -542,7 +543,7 @@ class TestExtractCacheDeps:
             "tags": [],
         }
 
-        ext_module.extract_one(compiler, "s", "text", "system")
+        units_module.extract_one(compiler, "s", "text", "system")
 
         deps = compiler._cache_store.get_dict.call_args.args[1]
         assert deps[CacheDeps.MODEL] == "ollama/test"
@@ -552,7 +553,7 @@ class TestExtractCacheDeps:
         compiler = _make_compiler()
         compiler._config.cache_ignore_model = True
 
-        deps = ext_module._extract_cache_deps(compiler, "hello")
+        deps = units_module._extract_cache_deps(compiler, "hello")
 
         assert CacheDeps.MODEL not in deps
         assert deps[CacheDeps.SOURCE_TEXT] == hashlib.sha256(b"hello").hexdigest()
@@ -601,7 +602,7 @@ class TestReplanAfterOverflow:
         compiler = _make_big_window_compiler()
         exc = LLMContextOverflowError("too big", stated_limit=32768)
 
-        texts = ext_module._replan_after_overflow(compiler, "s.md", ["a" * 100], exc)
+        texts = units_module._replan_after_overflow(compiler, "s.md", ["a" * 100], exc)
 
         assert compiler._context_window.max_input == 32768
         assert texts == ["a" * 100]  # the content is re-planned, not dropped
@@ -612,12 +613,12 @@ class TestReplanAfterOverflow:
         text = "x" * 40_000
         exc = LLMContextOverflowError("too big", stated_limit=8192)
 
-        windows = ext_module._replan_after_overflow(compiler, "s.md", [text], exc)
+        windows = units_module._replan_after_overflow(compiler, "s.md", [text], exc)
 
         assert len(windows) > 1
         # Every character survives, and each window fits the lowered budget.
         assert "".join(windows) == text
-        budget = ext_module._extract_char_budget(compiler)
+        budget = units_module._extract_char_budget(compiler)
         assert all(len(window) <= budget for window in windows)
 
     def test_an_overflow_without_a_limit_is_raised(self) -> None:
@@ -626,7 +627,7 @@ class TestReplanAfterOverflow:
         exc = LLMContextOverflowError("too big", stated_limit=None)
 
         with pytest.raises(LLMContextOverflowError):
-            ext_module._replan_after_overflow(compiler, "s.md", ["a"], exc)
+            units_module._replan_after_overflow(compiler, "s.md", ["a"], exc)
 
     def test_a_repeated_overflow_at_the_same_limit_is_raised(self) -> None:
         """Re-planning against an unchanged budget would repeat the request."""
@@ -635,16 +636,16 @@ class TestReplanAfterOverflow:
         compiler._clamp_window(32768, reason="provider enforces 32768 tokens")
 
         with pytest.raises(LLMContextOverflowError):
-            ext_module._replan_after_overflow(compiler, "s.md", ["a"], exc)
+            units_module._replan_after_overflow(compiler, "s.md", ["a"], exc)
 
     def test_the_re_plan_uses_the_smaller_budget(self) -> None:
         compiler = _make_big_window_compiler()
-        big = ext_module._extract_char_budget(compiler)
+        big = units_module._extract_char_budget(compiler)
         exc = LLMContextOverflowError("too big", stated_limit=16384)
 
-        ext_module._replan_after_overflow(compiler, "s.md", ["a" * big], exc)
+        units_module._replan_after_overflow(compiler, "s.md", ["a" * big], exc)
 
-        assert ext_module._extract_char_budget(compiler) < big
+        assert units_module._extract_char_budget(compiler) < big
 
     def test_a_midway_overflow_keeps_completed_batches(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A batch that already succeeded is not sent again after a re-plan."""
@@ -662,7 +663,7 @@ class TestReplanAfterOverflow:
             return Extraction(source=source, summary=combined)
 
         monkeypatch.setattr(ext_module, "extract_one", fake_extract_one)
-        batches = ext_module.batch_texts(texts, ext_module._extract_char_budget(compiler))
+        batches = units_module.batch_texts(texts, units_module._extract_char_budget(compiler))
 
         results = ext_module._extract_batches(compiler, "s.md", batches, "sys", lambda *a: None, texts=texts)
 
@@ -684,7 +685,7 @@ class TestReplanAfterOverflow:
             attempts["n"] += 1
             if attempts["n"] == 1:
                 raise LLMContextOverflowError("too big", stated_limit=8192)
-            assert len(combined) <= ext_module._extract_char_budget(compiler_)
+            assert len(combined) <= units_module._extract_char_budget(compiler_)
             extracted.append(combined)
             return Extraction(source=source, summary=combined)
 
@@ -714,10 +715,10 @@ class TestReplanAfterOverflow:
                 text = str(getattr(deps, "text", ""))
                 return ExtractionOutput(summary=text, entities=[], concepts=[], tags=[]), []
 
-        monkeypatch.setattr(ext_module, "ExtractionAgent", _StubAgent)
-        batches = ext_module.batch_texts(texts, ext_module._extract_char_budget(compiler))
+        monkeypatch.setattr(units_module, "ExtractionAgent", _StubAgent)
+        batches = units_module.batch_texts(texts, units_module._extract_char_budget(compiler))
 
-        results, stopped = ext_module.extract_incremental(compiler, "doc.md", batches, "sys", texts=texts)
+        results, stopped = units_module.extract_incremental(compiler, "doc.md", batches, "sys", texts=texts)
 
         assert stopped is False
         for i in range(4):
@@ -733,7 +734,7 @@ class TestExtractionFailurePolicy:
         calls: list[str] = []
         self._stub_agent(monkeypatch, EmptyAnswerError("the model returned nothing"), calls)
 
-        result = ext_module.extract_one(compiler, "doc.md", "body text", "sys")
+        result = units_module.extract_one(compiler, "doc.md", "body text", "sys")
 
         assert result is None
         assert calls == ["doc.md"]
@@ -744,7 +745,7 @@ class TestExtractionFailurePolicy:
         calls: list[str] = []
         self._stub_agent(monkeypatch, LLMTransientError("connection reset"), calls)
 
-        result = ext_module.extract_one(compiler, "doc.md", "body text", "sys")
+        result = units_module.extract_one(compiler, "doc.md", "body text", "sys")
 
         assert result is None
         assert len(calls) == 3  # 1 attempt + batch_retry_attempts
@@ -754,7 +755,7 @@ class TestExtractionFailurePolicy:
         calls: list[str] = []
         self._stub_agent(monkeypatch, LLMOutputError("Exceeded maximum output retries (4)"), calls)
 
-        result = ext_module.extract_one(compiler, "doc.md", "body text", "sys")
+        result = units_module.extract_one(compiler, "doc.md", "body text", "sys")
 
         assert result is None
         assert len(calls) == 2
@@ -768,7 +769,7 @@ class TestExtractionFailurePolicy:
         self._stub_agent(monkeypatch, EmptyAnswerError("the model returned nothing"), [])
 
         with caplog.at_level("WARNING"):
-            ext_module.extract_one(compiler, "doc.md", "body text", "sys")
+            units_module.extract_one(compiler, "doc.md", "body text", "sys")
 
         assert "doc.md: empty_answer" in caplog.text
         assert "returned no result after" not in caplog.text
@@ -794,7 +795,7 @@ class TestExtractionFailurePolicy:
                 calls.append(str(getattr(deps, "source_id", "")))
                 raise exc
 
-        monkeypatch.setattr(ext_module, "ExtractionAgent", _FailingAgent)
+        monkeypatch.setattr(units_module, "ExtractionAgent", _FailingAgent)
 
 
 def _make_big_window_compiler() -> TwoPhaseCompiler:

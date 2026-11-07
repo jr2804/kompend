@@ -389,7 +389,7 @@ def _digest_budget_tokens(
 ) -> int:
     """Tokens the prior-section digest may occupy in one section request.
 
-    Mirrors the batch path's :func:`~kompend.compilation.flows.extraction.flow._extract_char_budget`
+    Mirrors the batch path's :func:`~kompend.compilation.flows.extraction.units._extract_char_budget`
     terms - window minus answer reserve, shared safety margin, measured
     system prompt and the section text itself - so the agentic path sizes
     against the same physics instead of discovering the window at the
