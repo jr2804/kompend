@@ -24,9 +24,6 @@ from kompend.llm.request_budget import RequestBudget
 from kompend.logging import get_logger
 from kompend.rag.embedding_pydantic import make_provider
 
-logger = get_logger(__name__)
-
-
 #: rapidfuzz-scale (0–100) threshold for "does a produced page title cover
 #: this concept" (T2 string tier).
 _COVER_SIMILARITY_THRESHOLD = 85.0
@@ -51,6 +48,8 @@ _COVER_SEMANTIC_THRESHOLD = 0.65
 #: when the deterministic policy declines them. Transport failures and
 #: provider overflows are arithmetic — the model is never asked about those.
 _AMBIGUOUS_KINDS: Final[frozenset[AgentFailureKind]] = frozenset({AgentFailureKind.SCHEMA_MISMATCH, AgentFailureKind.OTHER, AgentFailureKind.EMPTY_ANSWER})
+
+logger = get_logger(__name__)
 
 
 class _CoverageCredit:

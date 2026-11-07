@@ -27,7 +27,7 @@ merging and an optional iterative WiCER refinement loop.
 | `flows/assembly.py`     | Cross-source assembly flow                                               |
 | `flows/extraction/`     | Extraction flow package (`flow.py`)                                       |
 | `flows/agentic.py`      | AGENTIC extraction flow — per-section `ExtractionMemory` digest sized by the shared planner (`_digest_budget_tokens`: window − answer reserve − safety − system − section); over budget the digest is model-consolidated (`MemoryConsolidationAgent`, rolling delta, never cropped); provider context-overflow 400s lower the window to the provider's limit and split the section into windows that fit (`_replan_section`), and the section/consolidation agents are rebuilt against the clamped window (`_section_agents` — they turn it into compaction thresholds and the output ceiling at construction); only an overflow that cannot be split skips the section — a rejected payload is never resent unchanged |
-| `flows/generation.py`   | Generation flow; `build_known_titles` (canonical titles for wikilinks) is the only reserved payload that grows with the corpus, so `_known_titles_windows` splits its `_KNOWN_TITLES_MAX_FRACTION` window share into an inline prompt head and a `list_known_titles()` page — windowed, never truncated; `_agentic_budget` declares the request's reserved payloads to the shared planner; `prepare_source_segments` raises when even the minimum segment does not fit the plan (planning-time failure, before any LLM call); `learn_wikilink_aliases` (post-generation alias map persisted as `MetadataField.WIKILINK_ALIASES`); Loop-1 deterministic shrink (`adaptation.py`): a unit that overflows the window — or fails ambiguously at ≥95% window pressure — is halved and its halves re-queued (`_shrink_and_requeue`), bounded by `budget.segment_shrink_attempts`; fetched-but-unpaged concepts move with the split, never stranded; Loop-2 decision model (`agents/decision.py::decide_unit_adaptation`, `decision/adaptation_triage.md.j2`): an ambiguous failure Loop 1 declines is asked once — the verdict (`ErrorDecision.shrink`) routes through the same `_shrink_and_requeue` and budget, `SKIP`/`ABORT` stop the retries or fail loudly; placeholder ingestion gate: `_reject_placeholder_pages` refuses the whole submission the moment any page has empty provenance, filler body text (`PlaceholderMarker` StrEnum), or a degenerate title — on the live pass result and on a transcript replayed from the step store — raising `PlaceholderPageError` (an `EmptyAnswerError` subclass), so the placeholder fails the unit on the existing empty-answer path and never reaches the wiki |
+| `flows/generation/`     | Generation flow package. `flow.py` — orchestration and the agentic pass loop (`run_generation`, `generate_all_pages_agentic`, `generation_detail`, `gen_cache_deps`); `budget.py` — request accounting (`_agentic_budget`, `_known_titles_windows`, `_MAX_CONTEXT_CLAMPS`); `segments.py` — source sizing and failure adaptation (`prepare_source_segments`, `_CoverageCredit`, `_shrink_and_requeue`, `_consult_loop2`, `_failure_action`); `prompt.py` — prompt assembly (`build_known_titles`, `_categories_block`); `writer.py` — page writing and assembly (`assemble_wiki`, `learn_wikilink_aliases`, `_allowed_kind`, `_resolve_page_kind`, placeholder gate `_reject_placeholder_pages`). `build_known_titles` (canonical titles for wikilinks) is the only reserved payload that grows with the corpus, so `_known_titles_windows` splits its `_KNOWN_TITLES_MAX_FRACTION` window share into an inline prompt head and a `list_known_titles()` page — windowed, never truncated; `prepare_source_segments` raises when even the minimum segment does not fit the plan (planning-time failure, before any LLM call); `learn_wikilink_aliases` builds the post-generation alias map persisted as `MetadataField.WIKILINK_ALIASES`; Loop-1 deterministic shrink (`adaptation.py`): a unit that overflows the window — or fails ambiguously at ≥95% window pressure — is halved and its halves re-queued (`_shrink_and_requeue`), bounded by `budget.segment_shrink_attempts`; fetched-but-unpaged concepts move with the split, never stranded; Loop-2 decision model (`agents/decision.py::decide_unit_adaptation`, `decision/adaptation_triage.md.j2`): an ambiguous failure Loop 1 declines is asked once — the verdict (`ErrorDecision.shrink`) routes through the same `_shrink_and_requeue` and budget, `SKIP`/`ABORT` stop the retries or fail loudly; placeholder ingestion gate: `_reject_placeholder_pages` refuses the whole submission the moment any page has empty provenance, filler body text (`PlaceholderMarker` StrEnum), or a degenerate title — on the live pass result and on a transcript replayed from the step store — raising `PlaceholderPageError` (an `EmptyAnswerError` subclass), so the placeholder fails the unit on the existing empty-answer path and never reaches the wiki |
 | `flows/references.py`   | Reference-extraction flow (pre-extraction pass; retries = `llm.output_retries`; splits oversized sections into windows bounded by the planner's input room and the window's answer reserve (`ContextWindow.answer_reserve`); every window is processed) |
 | `reference_excision.py` | Reference-section detection + excision (regex-based)                     |
 | `write_tools.py`        | Tools of the agentic write agent — `read_source(stem, offset)` serves a source in windows of `budget.capture_source_char_max` characters and names the next offset, so a long source is paged through, never shortened |
@@ -55,7 +55,7 @@ merging and an optional iterative WiCER refinement loop.
   `two_phase/state.py`, `_STATUS_ENTITY_NAMES` in `two_phase/core.py`), so a
   status never becomes a page.
 - **Segment transcripts live in the step store, not in a checkpoint file**
-  (`step_recovery.py` + `flows/generation.py`): the harness
+  (`step_recovery.py` + `flows/generation/`): the harness
   `StepPersistence` capability persists every run into
   `SqliteStepStore(paths.step_db_file)`; the conversation id is the
   generation deps key and each pass gets a deterministic
@@ -110,7 +110,7 @@ merging and an optional iterative WiCER refinement loop.
   count (`_source_progress`) instead of reporting a total the bar cannot
   reach.
 - **A bar line carries counters, not labels** — `extraction_detail`
-  (`flows/extraction.py`) and `generation_detail` (`flows/generation.py`)
+  (`flows/extraction/`) and `generation_detail` (`flows/generation/flow.py`)
   build them. A counter without its denominator ("segment 2" — out of how
   many?) is noise, and so is a second unit beside the main one ("4/12
   concepts covered" next to a page counter). A sub-counter in another unit
@@ -124,10 +124,10 @@ Every generated page carries a `kind` (OKF `type`): the **mandatory taxonomy**
 (`concept`, `entity`, `summary`, `comparison` - `MANDATORY_KINDS` in
 `core/keys.py`) is always allowed and cannot be deactivated; extra
 kinds come from `compile.extraction.categories`. The LLM assigns `kind` per
-page in `generation_prompt.md.j2`; `_allowed_kind` in `flows/generation.py`
+page in `generation_prompt.md.j2`; `_allowed_kind` in `flows/generation/writer.py`
 validates it at node creation — anything outside the allowed set falls back
 to `concept` (permissive-consumption model, never a hard failure).
 Exception: extracted entities become mandatory pages — `ExtractionSet.entity_pages()`
-merges them with a pre-assigned `kind: entity`, and `_resolve_page_kind` in `flows/generation.py`
+merges them with a pre-assigned `kind: entity`, and `_resolve_page_kind` in `flows/generation/writer.py`
 overrides the LLM's label for those entries. Entity specs colliding with an existing
 concept key are dropped to avoid duplicate pages.

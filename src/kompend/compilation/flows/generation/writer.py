@@ -29,9 +29,6 @@ from kompend.lint.base import LintRuleOutcome
 from kompend.lint.structural import BrokenWikilinksRule
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 
-logger = get_logger(__name__)
-
-
 # Matches wikilink-wrapped source citations like [[sources/foo.pdf]] so they
 # can be normalized to the intended [sources/foo.pdf] inline citation format
 # regardless of LLM compliance with the system prompt.
@@ -41,6 +38,8 @@ _SOURCE_WIKILINK_RE = re.compile(r"\[\[\s*(sources/[^\]\n]+?)\s*\]\]")
 #: A page title shorter than this many characters (a bare "x") is a
 #: placeholder identity, never a real page title. Two characters ("3D") pass.
 _MIN_PAGE_TITLE_CHARS: Final[int] = 2
+
+logger = get_logger(__name__)
 
 
 class PlaceholderMarker(StrEnum):
