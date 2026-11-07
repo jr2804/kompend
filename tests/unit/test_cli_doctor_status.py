@@ -658,9 +658,172 @@ class TestCheckCustomProviders:
         assert result.passed is True
 
 
+class TestOllamaShowLookup:
+    def test_identity_reads_parent_digest_params_and_dim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An alias tag reports its parent's digest, not its own manifest entry."""
+        details = SimpleNamespace(
+            parent_model="sha256:111e84992a04",
+            parameter_size="271M",
+            family="gemma-embedding2",
+            families=None,
+            format="gguf",
+            quantization_level="Q4_K_M",
+        )
+        shown = SimpleNamespace(
+            details=details,
+            modelinfo={"general.parameter_count": 270_000_000, "gemma-embedding2.embedding_length": 512},
+        )
+        monkeypatch.setattr(providers.ollama, "show", lambda _name: shown)
+
+        identity = providers.ollama_show_lookup("embeddinggemma-2:440m")
+
+        assert identity is not None
+        assert identity.digest == "sha256:111e84992a04"
+        assert identity.parameter_size == "271M"
+        assert identity.native_dim == 512
+
+    def test_digest_falls_back_to_the_local_manifest(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A tag with no parent takes its own digest from ``ollama list``."""
+        shown = SimpleNamespace(details=None, modelinfo={"gemma-embedding2.embedding_length": 512})
+        entry = SimpleNamespace(model="embeddinggemma-2:270m", digest="sha256:abc123")
+        monkeypatch.setattr(providers.ollama, "show", lambda _name: shown)
+        monkeypatch.setattr(providers.ollama, "list", lambda: SimpleNamespace(models=[entry]))
+
+        identity = providers.ollama_show_lookup("embeddinggemma-2:270m")
+
+        assert identity is not None
+        assert identity.digest == "sha256:abc123"
+        assert identity.native_dim == 512
+
+    def test_unreachable_daemon_yields_no_identity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Without Ollama there is nothing to resolve — the caller degrades."""
+
+        def _boom(*_args: object) -> None:
+            raise ConnectionError("connection refused")
+
+        monkeypatch.setattr(providers.ollama, "show", _boom)
+        monkeypatch.setattr(providers.ollama, "list", _boom)
+
+        assert providers.ollama_show_lookup("embeddinggemma-2:270m") is None
+
+
+class TestPingEmbedModelIdentity:
+    def test_message_reports_digest_params_and_dim(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The embed check names the weights behind the tag, next to the tag."""
+        monkeypatch.setattr(models, "ollama_show_lookup", lambda _name: _alias_pair()["embeddinggemma-2:440m"])
+        monkeypatch.setattr(models, "build_embedder", lambda _string: _fake_embedder())
+
+        result = models.ping_embed_model("ollama/embeddinggemma-2:440m")
+
+        assert result.passed is True
+        assert result.warning is False
+        assert "digest sha256:111e84992a04" in result.message
+        assert "271M params" in result.message
+        assert "native 512 dims" in result.message
+        assert "768 dims" in result.message  # the MRL-truncated ping dimension
+
+    def test_same_digest_under_two_tags_warns(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A recorded tag that serves the same weights flags the rebuild as a no-op."""
+        pair = _alias_pair()
+        monkeypatch.setattr(models, "ollama_show_lookup", lambda name: pair[name])
+        monkeypatch.setattr(models, "build_embedder", lambda _string: _fake_embedder())
+
+        result = models.ping_embed_model(
+            "ollama/embeddinggemma-2:440m",
+            recorded_model="ollama/embeddinggemma-2:270m",
+        )
+
+        assert result.passed is True
+        assert result.warning is True
+        assert "serves the same digest" in result.message
+        assert "ollama/embeddinggemma-2:270m" in result.message
+
+    def test_a_genuinely_new_model_does_not_warn(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A different digest is a real rebuild and stays a clean pass."""
+        pair = _alias_pair()
+        pair["nomic-embed-text"] = providers.OllamaModelIdentity(
+            digest="sha256:different",
+            parameter_size="137M",
+            native_dim=768,
+        )
+        monkeypatch.setattr(models, "ollama_show_lookup", lambda name: pair[name])
+        monkeypatch.setattr(models, "build_embedder", lambda _string: _fake_embedder())
+
+        result = models.ping_embed_model("ollama/embeddinggemma-2:440m", recorded_model="ollama/nomic-embed-text")
+
+        assert result.passed is True
+        assert result.warning is False
+        assert "serves the same digest" not in result.message
+
+    def test_same_tag_never_warns(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A plain re-index of the same tag needs no digest comparison."""
+        pair = _alias_pair()
+        monkeypatch.setattr(models, "ollama_show_lookup", lambda name: pair[name])
+        monkeypatch.setattr(models, "build_embedder", lambda _string: _fake_embedder())
+
+        result = models.ping_embed_model(
+            "ollama/embeddinggemma-2:270m",
+            recorded_model="ollama/embeddinggemma-2:270m",
+        )
+
+        assert result.warning is False
+
+    def test_unresolvable_recorded_model_does_not_warn(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """When the recorded tag cannot be resolved there is no claim to make."""
+        pair = _alias_pair()
+
+        def _lookup(name: str) -> providers.OllamaModelIdentity | None:
+            return pair[name] if name.endswith("440m") else None
+
+        monkeypatch.setattr(models, "ollama_show_lookup", _lookup)
+        monkeypatch.setattr(models, "build_embedder", lambda _string: _fake_embedder())
+
+        result = models.ping_embed_model(
+            "ollama/embeddinggemma-2:440m",
+            recorded_model="ollama/gone-model",
+        )
+
+        assert result.passed is True
+        assert result.warning is False
+
+
 def _catalog_snapshot() -> SimpleNamespace:
     """A minimal catalogue snapshot for the doctor's reporting check."""
     return SimpleNamespace(providers={"acme": object()}, fetched_at=None)
+
+
+def _fake_embedder(dims: int = 768) -> SimpleNamespace:
+    """An embedder double: one ping yields one ``dims``-long vector."""
+    return SimpleNamespace(embed_documents_sync=lambda _text: SimpleNamespace(embeddings=[[0.1] * dims]))
+
+
+def _alias_pair() -> dict[str, SimpleNamespace]:
+    """Two Ollama tags — ``440m`` is an alias layer over ``270m``'s weights."""
+    base = providers.OllamaModelIdentity(digest="sha256:111e84992a04", parameter_size="271M", native_dim=512)
+    same_weights = providers.OllamaModelIdentity(digest="sha256:111e84992a04", parameter_size="271M", native_dim=512)
+    return {
+        "embeddinggemma-2:270m": base,
+        "embeddinggemma-2:440m": same_weights,
+    }
+
+
+def test_run_doctor_passes_the_recorded_embed_model(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The runner forwards the manifest's recorded embedding string verbatim."""
+    captured: dict[str, Any] = {}
+
+    def _fake_ping(model: str | None, *, recorded_model: str | None = None) -> CheckResult:
+        captured["model"] = model
+        captured["recorded_model"] = recorded_model
+        return CheckResult("connectivity-embed", True, "stub")
+
+    monkeypatch.setattr(diag_runner, "ping_embed_model", _fake_ping)
+    results = run_doctor(
+        embed_model="ollama/embeddinggemma-2:440m",
+        recorded_embed_model="ollama/embeddinggemma-2:270m",
+    )
+
+    assert captured == {"model": "ollama/embeddinggemma-2:440m", "recorded_model": "ollama/embeddinggemma-2:270m"}
+    assert results[-1].name == "connectivity-embed"
 
 
 def test_provenance_no_wiki() -> None:

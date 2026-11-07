@@ -22,7 +22,7 @@ never raises.
 |--------|----------|
 | `base.py` | `CheckResult` — the frozen result record every check returns |
 | `environment.py` | Sources/output directories, git, disk headroom, the parser build — the parts that need no model |
-| `providers.py` | Model catalogue, `[providers.<name>]` endpoints, Ollama offload, `nvidia-smi` |
+| `providers.py` | Model catalogue, `[providers.<name>]` endpoints, Ollama offload + tag identity (`ollama_show_lookup`), `nvidia-smi` |
 | `models.py` | Connectivity pings, structured-output probes, context window discovery, window fit, server window, output ceiling |
 | `capabilities.py` | The structured-output probes themselves (`probe_*`, `measure_compact_formats`) |
 | `runner.py` | `run_doctor` — which checks run, in which order |
@@ -45,6 +45,12 @@ never raises.
 - Model-string parsing (`provider_id_of`/`model_slug`) is not owned here — it lives
   in `../llm/model_id.py` (see `../llm/AGENTS.md`). The doctor imports it, so its
   provider lookups and Ollama calls cannot disagree with the build path.
+- **The embed check reads the manifest, it never writes.** `doctor_cmd.py` hands
+  `run_doctor` the embedding string recorded in `kompend.db`
+  (`rag.recorded_embedding_model`), and `ping_embed_model` resolves both tags to
+  digests to flag an alias-tag rebuild that would produce byte-identical
+  vectors. A digest it cannot resolve degrades to plain tag reporting — never
+  a guess, never a write.
 
 ## Verification
 

@@ -20,7 +20,7 @@ from kompend.diagnostics.capabilities import (
     probe_prompted_structured_output,
     probe_raw_json,
 )
-from kompend.diagnostics.providers import OLLAMA_PROVIDER_ID
+from kompend.diagnostics.providers import OLLAMA_PROVIDER_ID, ollama_show_lookup
 from kompend.llm import model_slug, provider_id_of
 from kompend.llm.context_window import discover_context_window
 from kompend.llm.models import (
@@ -87,8 +87,15 @@ def ping_model(
         return CheckResult(name, False, f"{label} failed: {exc}")
 
 
-def ping_embed_model(model: str | None) -> CheckResult:
-    """Ping an embedding model and report its dimension count."""
+def ping_embed_model(model: str | None, *, recorded_model: str | None = None) -> CheckResult:
+    """Ping an embedding model and report its dimension count.
+
+    ``recorded_model`` is the embedding string the current vectors were built
+    with (the manifest row, read by the caller). When both the configured and
+    the recorded tag resolve to the same Ollama digest, the pending rebuild
+    would produce byte-identical vectors and the check says so instead of
+    letting an alias-tag upgrade pass as a real change.
+    """
     name = "connectivity-embed"
     if not model:
         return CheckResult(name, True, "No embed model configured — skipped", warning=True)
@@ -98,9 +105,48 @@ def ping_embed_model(model: str | None) -> CheckResult:
         embedder = build_embedder(pydantic_ai_string)
         result = embedder.embed_documents_sync(EMBED_PING_TEXT)
         dims = len(result.embeddings[0]) if result.embeddings else 0
-        return CheckResult(name, True, f"embed OK ({pydantic_ai_string}, {dims} dims)")
     except Exception as exc:  # noqa: BLE001 — a failed embed is the fact being reported
         return CheckResult(name, False, f"embed failed: {exc}")
+    identity_text, no_op_note = _ollama_identity_report(model, recorded_model)
+    message = f"embed OK ({pydantic_ai_string}, {dims} dims){identity_text}"
+    if no_op_note:
+        message = f"{message}. {no_op_note}"
+    return CheckResult(name, True, message, warning=no_op_note is not None)
+
+
+def _ollama_identity_report(model: str, recorded_model: str | None) -> tuple[str, str | None]:
+    """Describe which weights an Ollama embed tag serves, and warn on tag no-ops.
+
+    Returns the text appended to the embed check's message and, when the
+    configured tag resolves to the same digest as the tag recorded in the
+    vectors manifest, a note saying the pending rebuild is a no-op. Only
+    Ollama models resolve here — other providers answer with an API model id
+    that has no local alias layer, so there is nothing to disambiguate.
+    """
+    if provider_id_of(model) != OLLAMA_PROVIDER_ID:
+        return "", None
+    identity = ollama_show_lookup(model_slug(model))
+    if identity is None:
+        return "", None
+    parts = [
+        text
+        for text in (
+            f"digest {identity.digest}" if identity.digest else "",
+            f"{identity.parameter_size} params" if identity.parameter_size else "",
+            f"native {identity.native_dim} dims" if identity.native_dim else "",
+        )
+        if text
+    ]
+    identity_text = f"; {', '.join(parts)}" if parts else ""
+    if not (identity.digest and recorded_model and recorded_model != model):
+        return identity_text, None
+    if provider_id_of(recorded_model) != OLLAMA_PROVIDER_ID:
+        return identity_text, None
+    recorded_identity = ollama_show_lookup(model_slug(recorded_model))
+    if recorded_identity is None or recorded_identity.digest != identity.digest:
+        return identity_text, None
+    note = f"The current vectors were built with {recorded_model}, which serves the same digest — rebuilding for the tag change is a no-op."
+    return identity_text, note
 
 
 def check_model_capabilities(

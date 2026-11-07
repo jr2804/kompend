@@ -62,6 +62,22 @@ class NvidiaReport:
     memory_used_mib: int
 
 
+@dataclass(frozen=True, slots=True)
+class OllamaModelIdentity:
+    """The weights behind one Ollama tag, as ``ollama show`` reports them.
+
+    ``digest`` names what the tag actually serves: an alias tag (a second
+    layer built ``FROM`` an existing model) reports its parent's digest, so
+    two tags that share a digest produce byte-identical outputs even though
+    their names — and kompend's index identity — differ. A tag with no parent
+    falls back to its own digest from ``ollama list``.
+    """
+
+    digest: str | None
+    parameter_size: str | None
+    native_dim: int | None
+
+
 class _LoadedModel(Protocol):
     """The fields the doctor reads off an ``ollama.ps()`` entry."""
 
@@ -249,6 +265,52 @@ def _as_loaded_model(loaded: object) -> OllamaLoadedModel:
         context_length=int(entry.context_length or 0),
         digest=entry.digest or "",
     )
+
+
+def ollama_show_lookup(model_name: str) -> OllamaModelIdentity | None:
+    """Resolve one Ollama tag to the weights it serves, or ``None``.
+
+    The digest prefers ``details.parent_model``: that is what makes alias tags
+    visible — ``embeddinggemma-2:440m`` built ``FROM`` ``embeddinggemma-2:270m``
+    reports the base model's digest, so the doctor can tell "different tags,
+    same weights" from a genuinely different model. Without a reachable daemon
+    there is no identity; the caller degrades to the plain tag name.
+    """
+    try:
+        shown = ollama.show(model_name)
+    except Exception as exc:  # noqa: BLE001 — an unreachable daemon means no identity
+        logger.debug("ollama.show(%s) failed: %s", model_name, exc)
+        return None
+    digest = None
+    if shown.details is not None and shown.details.parent_model:
+        digest = shown.details.parent_model
+    if digest is None:
+        digest = _ollama_list_digest(model_name)
+    native_dim = None
+    for key, value in sorted((shown.modelinfo or {}).items()):
+        if key.endswith(".embedding_length") and isinstance(value, int):
+            native_dim = value
+            break
+    parameter_size = shown.details.parameter_size if shown.details is not None else None
+    return OllamaModelIdentity(digest=digest, parameter_size=parameter_size, native_dim=native_dim)
+
+
+def _ollama_list_digest(model_name: str) -> str | None:
+    """The manifest digest of ``model_name`` from ``ollama list``, or ``None``.
+
+    ``ollama show`` reports a parent digest only for alias tags; a tag with no
+    parent has no ``details.parent_model``, so its own digest comes from the
+    local manifest instead.
+    """
+    try:
+        listing = ollama.list()
+    except Exception as exc:  # noqa: BLE001 — an unreachable daemon means no digest
+        logger.debug("ollama.list() failed: %s", exc)
+        return None
+    for entry in getattr(listing, "models", ()) or ():
+        if getattr(entry, "model", None) == model_name:
+            return getattr(entry, "digest", None) or None
+    return None
 
 
 def classify_ollama_offload(size: int, size_vram: int) -> str:

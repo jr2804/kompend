@@ -52,6 +52,7 @@ def run_doctor(
     default_model: str | None = None,
     vlm_model: str | None = None,
     embed_model: str | None = None,
+    recorded_embed_model: str | None = None,
     config: ResolvedConfig | None = None,
     verbose: bool = False,
 ) -> list[CheckResult]:
@@ -69,6 +70,10 @@ def run_doctor(
         VLM model name for the connectivity ping.
     embed_model:
         Embedding model name for the connectivity ping.
+    recorded_embed_model:
+        The embedding string the current vectors were built with (the manifest
+        row), so the embed check can flag an alias-tag rebuild that would
+        produce byte-identical vectors. ``None`` when there is no manifest.
     config:
         The resolved configuration. When omitted, the LLM defaults apply and no
         ``[providers.<name>]`` block is checked.
@@ -126,7 +131,7 @@ def run_doctor(
     referenced_providers = {provider for model in (default_model, vlm_model, embed_model) if model and (provider := provider_id_of(model)) is not None}
     results.append(check_custom_providers(providers, referenced_providers))
     results.append(check_ollama_device(default_model, vlm_model))
-    results.append(ping_embed_model(embed_model))
+    results.append(ping_embed_model(embed_model, recorded_model=recorded_embed_model))
 
     return results
 
