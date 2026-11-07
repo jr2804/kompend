@@ -180,5 +180,5 @@ flowchart LR
 | `PipelineConfig` | `core/pipeline.py` | Configuration dataclass for all tiers |
 | PydanticAI agents | `agents/*.py` | LLM calls route through `KompendAgentBase` subclasses (Extraction, Generation, Query, WiCER, Doctor, Capture) wrapped via `KompendModel`; failover via `FallbackModel`. See [LLM Configuration](../guides/llm-config.md) |
 | `TemplateLoader` | `core/template_loader.py` | Jinja2 template loading with override chain |
-| `LintRunner` | `lint/runner.py` | 8 structural + 4 LLM-powered lint rules |
+| `LintRunner` | `lint/runner.py` | 14 structural + 4 LLM-powered lint rules |
 | `MCP Server` | `mcp/server.py` | stdio MCP tools for agent integration |

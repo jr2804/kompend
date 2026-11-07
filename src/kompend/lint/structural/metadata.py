@@ -11,10 +11,7 @@ from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severit
 
 
 class MissingFrontmatterRule(BaseLintRule):
-    """Detect pages missing required frontmatter fields.
-
-    Required fields: ``title`` and ``date``.
-    """
+    """Detect pages missing required frontmatter fields."""
 
     name = "missing-frontmatter"
     description = "Pages missing required frontmatter fields"

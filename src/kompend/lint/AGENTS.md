@@ -19,13 +19,28 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 |--------|----------|
 | ``base.py`` | ``Severity``, ``LintRuleOutcome``, ``LintResult``, ``BaseLintRule`` ABC |
 | ``runner.py`` | ``LintRunner``, ``LintReport`` — orchestrates rule execution; ``LintReportPayload``/``LintResultPayload`` are the validated wire shapes (dumped to JSON, loaded from history) |
-| ``structural.py`` | ``STRUCTURAL_RULES`` — programmatic rules (image embeds, broken links, etc.); ``broken-wikilinks`` lookup is alias-aware (slug/acronym/normalized forms + fuzzy fallback tagged ``alias_of``) |
+| ``structural/`` | The programmatic rules, one module per family (see **Structural families** below); ``structural/__init__.py`` is the registry — ``STRUCTURAL_RULES``, ``RULE_BY_NAME`` and the re-exported rule classes, so ``kompend.lint.structural`` stays the one import path |
 | ``flow.py`` | ``run_full_lint_flow``/``_run_pass`` (one pass over a rule set, fixes persisted), ``persist_lint_fixes``, ``_make_lint_agent``, and ``CHECK_STEP_RULES`` — the deterministic rules of the ``check`` step |
 | ``llm_rules.py`` | ``LLM_RULE_BY_NAME`` — LLM-powered semantic rules |
 | ``remediation.py`` | ``RemediationAutoFixer`` — auto-fix for structural + LLM findings |
 | ``gap_analysis.py`` | Gap recommendations from lint reports; broken-wikilink findings stratified into ``alias`` vs ``missing`` resolutions |
 | ``_remediation_gaps.py`` | Gap-specific remediation logic; generated pages route through ``MarkdownWriter`` (→ ``concepts/`` + index regen) |
 | ``history.py`` | Nested pydantic records (``LintEntry``/``LintRunOptions``/``LintLlmMeta``/``LintConfigSnapshot``/``LintWikiMeta``) + ``save_lint_entry``/``load_lint_history``/``prune_lint_history``/``report_from_dict`` and ``persist_history`` (one run → one entry) — lint run history in the ``lint_runs`` table of ``.kompend/kompend.db``. ``LintEntry.from_row()``/``to_columns()`` are the only owners of the table's 7-column shape; adding a column means adding a field and a ``_COLUMNS`` name |
+
+## Structural families
+
+``src/kompend/lint/structural/`` — one module per rule family.
+
+| Module | Rules |
+|--------|-------|
+| ``links.py`` | ``broken-wikilinks``, ``kompend-reference`` + the wikilink vocabulary |
+| ``images.py`` | ``image-embed`` + the image vocabulary |
+| ``structure.py`` | ``orphan-page``, ``duplicate-title``, ``empty-page``, ``heading-skip`` |
+| ``metadata.py`` | ``missing-frontmatter`` |
+| ``sources.py`` | ``stale-page``, ``source-not-found`` |
+| ``attachments.py`` | ``orphan-attachments``, ``unreferenced-attachments`` + the two public helpers |
+| ``references.py`` | ``duplicate-references`` |
+| ``markdown.py`` | ``rumdl`` (+ ``RumdlFinding``, the rumdl wire shape) |
 
 ## Rules
 
@@ -58,6 +73,24 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   history entry (``history.persist_history``) live here, never in a caller: the
   CLI commands and the MCP tools both consume them, and a copy in either layer
   drifts (the MCP tools used to import both from the CLI command module).
+- **One home for the structural registry.** ``structural/__init__.py`` owns
+  ``STRUCTURAL_RULES`` and ``RULE_BY_NAME``. Each family module names the rules
+  it contributes (``IMAGE_RULES``, ``LINK_RULES``, ``METADATA_RULES``,
+  ``PAGE_STRUCTURE_RULES``, ``SOURCE_RULES``, ``ATTACHMENT_RULES``) and the
+  registry concatenates them — a family gains a rule without the registry
+  changing. ``rumdl`` and ``duplicate-references`` are config-dependent
+  factories: they are registered by name in ``RULE_BY_NAME`` only and
+  instantiated by ``LintRunner._resolve_rules``.
+- **Rule names and detail keys are contracts.** Rule names are dispatched by
+  string outside this package (``gap_analysis.py``, ``runner.py``, ``flow.py``),
+  and ``broken-wikilinks`` findings carry the ``alias_of``/``target`` detail
+  keys that ``compilation/flows/generation`` reads to learn aliases. Renaming
+  a rule or a key degrades gap analysis and alias learning silently.
+- **The attachment rules delete files.** ``orphan-attachments`` and
+  ``unreferenced-attachments`` are ``destructive`` and run only behind the
+  runner's ``fix_destructive`` opt-in. Their ``fix()`` reads ``_last_sources_dir``,
+  which ``check()`` set on the same instance — the runner must call ``check``
+  and ``fix`` on one instance, or the fix silently no-ops.
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.

@@ -76,7 +76,7 @@ decisions. Many thanks to their creators and contributors.
 | Idea | Description | kompend Status |
 |------|------------|-------------|
 | **Session transcript ingestion** | Structured ingestion of Claude Code .jsonl, Codex CLI, Cursor session transcripts. Full adapter pattern with format detection. | **Not yet planned.** Richer than text snippets; captures full agent conversations. |
-| **16 lint rules** | 8 structural (broken links, missing metadata, orphan pages) + 8 LLM-powered (factual consistency, clarity, coherence). | **Planned (N1).** Reference for rule design. |
+| **16 lint rules** | 8 structural (broken links, missing metadata, orphan pages) + 8 LLM-powered (factual consistency, clarity, coherence). | **Implemented (N1).** kompend runs 14 structural + 4 LLM-powered rules. |
 | **5-state lifecycle** | draft → reviewed → verified → stale → archived. 90-day auto-stale timer. Ebbinghaus-inspired confidence decay. | **Planned (Q21 enhancement).** Improves trust model. |
 | **8+ agent adapters** | Claude Code, Cursor, Windsurf, Codex CLI, Continue.dev, GitHub Copilot, Cline, Aider. | **Reference for MCP design (kompend-4jc).** Broad adapter strategy. |
 
