@@ -234,7 +234,7 @@ class TestEmptyPages:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         pages = [_page(1, [_chunk(ChunkKind.PARAGRAPH, "Text")]), _page(2, [])]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.pages"):
             doc = self._parsing(parser, monkeypatch, pages, images={1: 0, 2: 3}).parse(markdown_file)
         assert doc.metadata["empty_pages"] == [2]
         assert doc.metadata["unreadable_pages"] == [2]
@@ -253,7 +253,7 @@ class TestEmptyPages:
     ) -> None:
         """No text and no images: a separator page. Nothing was lost, so say nothing loud."""
         pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
-        with caplog.at_level("DEBUG", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
+        with caplog.at_level("DEBUG", logger="kompend.preprocessing.parsers.parsecraft.pages"):
             doc = self._parsing(parser, monkeypatch, pages, images={1: 0, 2: 0}).parse(markdown_file)
         assert doc.metadata["empty_pages"] == [1]
         assert doc.metadata["blank_pages"] == [1]
@@ -276,7 +276,7 @@ class TestEmptyPages:
         alone.
         """
         pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.pages"):
             doc = self._parsing(
                 parser,
                 monkeypatch,
@@ -315,7 +315,7 @@ class TestEmptyPages:
             _page(3, []),
             _page(4, []),
         ]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.pages"):
             doc = self._parsing(parser, monkeypatch, pages, images={1: 1, 2: 0, 3: 2, 4: 1}).parse(markdown_file)
         assert doc.metadata["unreadable_pages"] == [1, 3, 4]
         warnings = [r.getMessage() for r in caplog.records if "hold images but produced no text" in r.getMessage()]
@@ -332,7 +332,7 @@ class TestEmptyPages:
         """The remedy comes from the planner, not from a guess in the adapter."""
         pages = [_page(1, []), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Text", 2)])]
         reasons = {1: "OCR unavailable (the tesseract engine is not installed on this host); degraded to native"}
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.pages"):
             self._parsing(parser, monkeypatch, pages, images={1: 1, 2: 0}, reasons=reasons).parse(markdown_file)
         warnings = [r.getMessage() for r in caplog.records if "hold images but produced no text" in r.getMessage()]
         assert len(warnings) == 1, warnings
@@ -346,7 +346,7 @@ class TestEmptyPages:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         pages = [_page(1, [_chunk(ChunkKind.PARAGRAPH, "One")]), _page(2, [_chunk(ChunkKind.PARAGRAPH, "Two", 2)])]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.pages"):
             doc = self._parsing(parser, monkeypatch, pages).parse(markdown_file)
         assert doc.metadata["empty_pages"] == []
         assert not [r for r in caplog.records if "produced no text" in r.getMessage()]
@@ -372,7 +372,7 @@ class TestEmptyPages:
                 ],
             ),
         ]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.pages"):
             self._parsing(parser, monkeypatch, pages, images={2: 1}).parse(markdown_file)
 
         warned = "\n".join(r.getMessage() for r in caplog.records if "produced no text" in r.getMessage())
@@ -395,7 +395,7 @@ class TestEmptyPages:
                 detail="docling returned no content for a page that needs OCR",
             )
         ]
-        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.adapter"):
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.pages"):
             self._parsing(parser, monkeypatch, pages, images={2: 1}, quality=quality).parse(markdown_file)
 
         warned = "\n".join(r.getMessage() for r in caplog.records if "produced no text" in r.getMessage())
@@ -1664,7 +1664,7 @@ def _plan(reasons: dict[int, str], blank: set[int]) -> RoutingPlan | None:
                 candidates=["liteparse"],
                 chosen="liteparse",
                 reason=reason,
-                degradation_code=_adapter().DEGRADED_BLANK_PAGE if number in blank else None,
+                degradation_code=_pages().DEGRADED_BLANK_PAGE if number in blank else None,
                 degradation_score=0.0 if number in blank else None,
             )
             for number, reason in sorted(reasons.items())
@@ -1713,6 +1713,11 @@ def _conversion() -> Any:
 def _assets() -> Any:
     """The IR-to-element module (``map_document``, ``chunk_content``, the error)."""
     return importlib.import_module("kompend.preprocessing.parsers.parsecraft.assets")
+
+
+def _pages() -> Any:
+    """The empty-page module (``DEGRADED_BLANK_PAGE`` and the warning block)."""
+    return importlib.import_module("kompend.preprocessing.parsers.parsecraft.pages")
 
 
 def _routing(**routing: Any) -> ParsecraftRoutingConfig:

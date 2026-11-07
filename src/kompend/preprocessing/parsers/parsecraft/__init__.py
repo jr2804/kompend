@@ -22,5 +22,6 @@ __getattr__, __dir__, __all__ = lazy.attach(
     submod_attrs={
         "adapter": ["ParsecraftParser"],
         "assets": ["ParsecraftParseError"],
+        "pages": ["DEGRADED_BLANK_PAGE"],
     },
 )
