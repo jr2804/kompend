@@ -62,6 +62,7 @@ DEDUP_FINGERPRINTS_TABLE: Final[str] = "dedup_fingerprints"
 ATTACHMENT_MANIFEST_TABLE: Final[str] = "attachment_manifest"
 LINT_RUNS_TABLE: Final[str] = "lint_runs"
 RUNS_TABLE: Final[str] = "runs"
+STAGES_TABLE: Final[str] = "stages"
 MEMORY_STATES_TABLE: Final[str] = "memory_states"
 MEMORY_LOG_TABLE: Final[str] = "memory_log"
 MEMORY_LOG_FTS_TABLE: Final[str] = "memory_log_fts"
@@ -93,6 +94,7 @@ TABLE_NAMES: Final[tuple[str, ...]] = (
     ATTACHMENT_MANIFEST_TABLE,
     LINT_RUNS_TABLE,
     RUNS_TABLE,
+    STAGES_TABLE,
     MEMORY_STATES_TABLE,
     MEMORY_LOG_TABLE,
     REFERENCES_TABLE,
@@ -221,6 +223,7 @@ def _expected_columns() -> dict[str, dict[str, str]]:
         return expected
     finally:
         scratch.close()
+
 
 # ── DDL ─────────────────────────────────────────────────────────────────
 # The DDL itself lives in ``tables.METADATA`` — the single source of truth.

@@ -2,7 +2,8 @@
 
 This module is the home for small, stable enums that several subsystems
 need to agree on — today the failure-reason vocabulary of the item path
-(:class:`ReasonCode`), tomorrow the observability ledger that counts it.
+(:class:`ReasonCode`) and the ledger's stage-outcome vocabulary
+(:class:`StageOutcome`).
 Anything imported from here must stay stdlib-only and import-cheap: the
 store ledger, CLI diagnostics, and the parser stack all import it.
 Domain-model vocabularies (element types, metadata fields) live in
@@ -49,3 +50,30 @@ class ReasonCode(StrEnum):
     NO_PARSER = "no_parser"
     #: The parser/VLM ran but produced nothing usable.
     EMPTY_EXTRACTION = "empty_extraction"
+
+
+class StageOutcome(StrEnum):
+    """What happened to one item in one pipeline stage (the ``stages`` ledger).
+
+    One row per (run, source, stage, attempt) in the per-item ledger
+    (:mod:`kompend.core.reporting.ledger`) carries exactly one of these as
+    ``outcome``. ``failed`` vs ``timeout`` split the parse deadline from other
+    failures; ``degraded`` means the item completed through a worse path
+    (empty VLM caption kept as-is, judge fallback) rather than failing.
+
+    Members are public API — persisted rows carry the value verbatim; add
+    freely, never rename or recycle.
+    """
+
+    #: The stage completed normally.
+    OK = "ok"
+    #: A current cache entry satisfied the stage without recompute.
+    CACHED = "cached"
+    #: The item was deliberately not processed (no backend, dedup, disabled).
+    SKIPPED = "skipped"
+    #: The stage raised; the run continued with the remaining items.
+    FAILED = "failed"
+    #: The stage exceeded its wall-clock budget (``ingest.parse_timeout_s``).
+    TIMEOUT = "timeout"
+    #: The stage completed via a fallback path with reduced quality.
+    DEGRADED = "degraded"

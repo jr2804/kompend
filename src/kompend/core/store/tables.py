@@ -78,6 +78,8 @@ AFTER_CREATE_DDL: Final[tuple[str, ...]] = (
     END
     """,
     "CREATE INDEX IF NOT EXISTS idx_runs_run_id ON runs(run_id)",
+    "CREATE INDEX IF NOT EXISTS idx_stages_run_id ON stages(run_id)",
+    "CREATE INDEX IF NOT EXISTS idx_stages_stage_outcome ON stages(stage, outcome)",
 )
 
 #: Bookkeeping row. Single row, ``id = 1``.
@@ -228,6 +230,35 @@ runs: Final[Table] = Table(
     Column("duration_s", REAL),
     Column("exit", Integer),
     Column("error", Text),
+    sqlite_autoincrement=True,
+)
+
+#: Per-item stage ledger: one row per (run, source, stage, attempt) — the
+#: observability spine (``knox-ty8f.2``). Facts columns are NULL when the
+#: stage did not have that fact in hand; ``outcome``/``reason_code`` carry
+#: the :class:`~kompend.core.types.StageOutcome` / :class:`~kompend.core.types.ReasonCode`
+#: values verbatim. Rows are appended by
+#: :class:`kompend.core.reporting.ledger.StageLedger` and pruned to a soft cap.
+stages: Final[Table] = Table(
+    "stages",
+    METADATA,
+    Column("id", Integer, primary_key=True, nullable=True),
+    Column("run_id", Text, nullable=True),
+    Column("ts", Text, nullable=False),
+    Column("source", Text, nullable=False),
+    Column("stage", Text, nullable=False),
+    Column("attempt", Integer, nullable=False, server_default=text("1")),
+    Column("outcome", Text, nullable=False),
+    Column("duration_ms", REAL),
+    Column("reason_code", Text),
+    Column("detail", Text),
+    Column("parser", Text),
+    Column("parser_version", Text),
+    Column("backend", Text),
+    Column("judge_model", Text),
+    Column("cache_key", Text),
+    Column("sha", Text),
+    Column("size_bytes", Integer),
     sqlite_autoincrement=True,
 )
 

@@ -388,6 +388,27 @@ def test_core_metadata_generates_the_current_ddl() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS stages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id TEXT,
+            ts TEXT NOT NULL,
+            source TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            attempt INTEGER NOT NULL DEFAULT 1,
+            outcome TEXT NOT NULL,
+            duration_ms REAL,
+            reason_code TEXT,
+            detail TEXT,
+            parser TEXT,
+            parser_version TEXT,
+            backend TEXT,
+            judge_model TEXT,
+            cache_key TEXT,
+            sha TEXT,
+            size_bytes INTEGER
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS memory_states (
             node_id TEXT PRIMARY KEY,
             title TEXT NOT NULL DEFAULT '',
@@ -520,11 +541,13 @@ def test_core_metadata_generates_the_current_ddl() -> None:
             # Table-level meanings PRAGMA cannot see: AUTOINCREMENT, the
             # single-row CHECK, the FTS5 index and its triggers.
             autoincrement = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%AUTOINCREMENT%'")}
-            assert autoincrement == {"lint_runs", "runs", "memory_log", "organize_reports", "verification"}
+            assert autoincrement == {"lint_runs", "runs", "stages", "memory_log", "organize_reports", "verification"}
             checked = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = 'table' AND sql LIKE '%CHECK (id = 1)%'")}
             assert checked == {SCHEMA_VERSION_TABLE, "vector_manifest"}
             indexes = [row[1] for row in conn.exec_driver_sql("PRAGMA index_list(runs)")]
             assert "idx_runs_run_id" in indexes
+            stage_indexes = [row[1] for row in conn.exec_driver_sql("PRAGMA index_list(stages)")]
+            assert {"idx_stages_run_id", "idx_stages_stage_outcome"} <= set(stage_indexes)
             fts_columns = [row[1] for row in conn.exec_driver_sql(f"PRAGMA table_info({MEMORY_LOG_FTS_TABLE})")]
             assert fts_columns == ["query", "answer", "feedback"]
             triggers = {row[0] for row in conn.exec_driver_sql("SELECT name FROM sqlite_master WHERE type = 'trigger'")}

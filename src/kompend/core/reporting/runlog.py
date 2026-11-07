@@ -30,7 +30,7 @@ from kompend.core.keys import (
     PATHS_WIKI_DIR,
 )
 from kompend.core.paths import CONFIG_FILE
-from kompend.core.reporting.handle import RunHandle
+from kompend.core.reporting.handle import RunHandle, set_current_run_id
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import RUNS_TABLE
 from kompend.core.utils.time import iso_local, now_local
@@ -79,6 +79,9 @@ def log_run_start(wiki_dir: str | None = None, *, cmd_tokens: list[str] | None =
         logger.debug("run-log start write failed: %s", exc)
         return None
     _maybe_prune(db_path)
+    # The ledger (and any other per-run writer) correlates its rows with this
+    # run through the handle module's context — set once, here.
+    set_current_run_id(run_id)
     return RunHandle(run_id=run_id, cmd=cmd, db_path=db_path, start_iso=start_iso, error_chars=display.log_error_chars)
 
 
