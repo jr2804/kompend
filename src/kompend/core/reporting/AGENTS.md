@@ -53,5 +53,7 @@ stores into human-readable markdown — no LLM calls.
 - `kompend.logging.route_third_party_loggers` raises `docling`,
   `transformers`, `httpx` and `ollama` to DEBUG so their records reach the
   recorder's ring; the terminal handler's level keeps them off screen.
-  `logging.modules` overlays that map. Native stderr from docling-rs and
-  tqdm progress bars bypasses `logging` entirely and is not captured here.
+  Operator overrides pass through `route_third_party_loggers(overrides)`,
+  which keeps the built-in defaults for names it does not mention. Native
+  stderr from docling-rs and tqdm progress bars bypasses `logging` entirely
+  and is not captured here.
