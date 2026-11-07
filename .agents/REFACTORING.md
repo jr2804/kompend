@@ -7,13 +7,13 @@ and is there for calibration, not for copying.
 
 ## 0. What the skill must encode
 
-| Question | Answer |
-|---|---|
-| Trigger | an explicit request ("refactor/split/clean up X") or a measured signal from §1 that crosses the repo's own median |
-| Input | one folder, one concern — never "the codebase" |
-| Output | commits (one per mechanical step), a before/after inventory, updated docs |
-| Stop condition | the §1 ranking stops paying (see §5.12) |
-| Forbidden | mixing a move with a behaviour change; weakening tests to pass; refactoring what cannot be run |
+| Question       | Answer                                                                                                            |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Trigger        | an explicit request ("refactor/split/clean up X") or a measured signal from §1 that crosses the repo's own median |
+| Input          | one folder, one concern — never "the codebase"                                                                    |
+| Output         | commits (one per mechanical step), a before/after inventory, updated docs                                         |
+| Stop condition | the §1 ranking stops paying (see §5.12)                                                                           |
+| Forbidden      | mixing a move with a behaviour change; weakening tests to pass; refactoring what cannot be run                    |
 
 Not a trigger: "the code looks ugly", a pending feature (build it, then
 refactor), a bug (fix it first, separately).
@@ -24,18 +24,18 @@ Measure, never opine. Compare against the repo's own median, not an absolute
 truth: a 300-line module is unremarkable in a repo whose median is 280 and a
 smell in one whose median is 40.
 
-| Signal | Measure | Red flag | Why it matters |
-|---|---|---|---|
-| File size | lines per leaf module | far above the repo median, or a leaf >300 | the file is a container, not a concept |
-| Function size | statements per function | >60, or a suppression (`# noqa: PLR0915`, `C901`) | nobody can hold it in working memory |
-| Suppression density | suppressions per file | more than a couple | each one is a rule the code cannot meet |
-| Naming | `utils`, `helpers`, `_shared`, `common`, `misc`, `_anything` | any | the name says "not my job", so nobody finds anything |
-| Reasons to change | list the module's unrelated "and also" claims | >1 | the definition of a missing boundary |
-| Fan-in | importing files per module | top decile of the repo | blast radius of every edit |
-| Churn | commits touching the file over 6 months | top decile | where the pain actually is |
-| Test mirror | test file size vs module size | test ≥ module, or a 1:1 giant | the module has no seam |
-| Duplicate vocabulary | hand-written lists that mirror an enum/schema | any | drift by construction |
-| Doc drift | responsibility tables vs the code | mismatch | the map lies, so reviews miss things |
+| Signal               | Measure                                                      | Red flag                                          | Why it matters                                       |
+| -------------------- | ------------------------------------------------------------ | ------------------------------------------------- | ---------------------------------------------------- |
+| File size            | lines per leaf module                                        | far above the repo median, or a leaf >300         | the file is a container, not a concept               |
+| Function size        | statements per function                                      | >60, or a suppression (`# noqa: PLR0915`, `C901`) | nobody can hold it in working memory                 |
+| Suppression density  | suppressions per file                                        | more than a couple                                | each one is a rule the code cannot meet              |
+| Naming               | `utils`, `helpers`, `_shared`, `common`, `misc`, `_anything` | any                                               | the name says "not my job", so nobody finds anything |
+| Reasons to change    | list the module's unrelated "and also" claims                | >1                                                | the definition of a missing boundary                 |
+| Fan-in               | importing files per module                                   | top decile of the repo                            | blast radius of every edit                           |
+| Churn                | commits touching the file over 6 months                      | top decile                                        | where the pain actually is                           |
+| Test mirror          | test file size vs module size                                | test ≥ module, or a 1:1 giant                     | the module has no seam                               |
+| Duplicate vocabulary | hand-written lists that mirror an enum/schema                | any                                               | drift by construction                                |
+| Doc drift            | responsibility tables vs the code                            | mismatch                                          | the map lies, so reviews miss things                 |
 
 ```sh
 # size, descending (swap the glob for the language)
@@ -174,11 +174,11 @@ decision and a stable entry point).
 
 Write the tree and the mapping before moving anything:
 
-| Today | Tomorrow | Reason |
-|---|---|---|
-| `_console.py` | `runtime/console.py` | process-level console concern |
-| `_shared.py` | `settings.py` + `errors.py` | two unrelated reasons to change |
-| `_query_helpers.py` | `query/{search,synthesize,render}.py` | three stages of one flow |
+| Today               | Tomorrow                              | Reason                          |
+| ------------------- | ------------------------------------- | ------------------------------- |
+| `_console.py`       | `runtime/console.py`                  | process-level console concern   |
+| `_shared.py`        | `settings.py` + `errors.py`           | two unrelated reasons to change |
+| `_query_helpers.py` | `query/{search,synthesize,render}.py` | three stages of one flow        |
 
 ### 4.4 Perform — mechanics
 
@@ -251,15 +251,15 @@ Pitfalls that cost real time:
 
 Same gates before and after, plus the checks a move specifically needs.
 
-| Check | Question it answers |
-|---|---|
-| Format / lint / type check | did structure get lost in the move? |
-| Repo's own gates (custom checks, doc budgets, parity scripts) | do the repo's invariants still hold? |
-| Focused tests for the touched layer | does the behaviour still hold where it matters? |
-| Import smoke | does every new module import standalone — no cycle, no missing name? |
-| Public-surface parity | are entry points, command names and external strings unchanged? |
-| Straggler grep | does anything still point at the old home? |
-| Before/after inventory | is the measured problem actually smaller? |
+| Check                                                         | Question it answers                                                  |
+| ------------------------------------------------------------- | -------------------------------------------------------------------- |
+| Format / lint / type check                                    | did structure get lost in the move?                                  |
+| Repo's own gates (custom checks, doc budgets, parity scripts) | do the repo's invariants still hold?                                 |
+| Focused tests for the touched layer                           | does the behaviour still hold where it matters?                      |
+| Import smoke                                                  | does every new module import standalone — no cycle, no missing name? |
+| Public-surface parity                                         | are entry points, command names and external strings unchanged?      |
+| Straggler grep                                                | does anything still point at the old home?                           |
+| Before/after inventory                                        | is the measured problem actually smaller?                            |
 
 ```sh
 # import smoke: every changed or new module imports on its own
@@ -322,17 +322,17 @@ Rules of verification:
 
 ## 6. Anti-patterns observed
 
-| Anti-pattern | What it looks like | Cost |
-|---|---|---|
-| Helper grab bag | `_shared.py`, `utils.ts`, `common/` | nobody owns it; it grows by accretion |
-| Split by kind | `validators/`, `builders/`, `mappers/` across one flow | every change touches all three |
-| Permanent shim | `from new.home import x  # noqa: F401`, kept forever | two homes, both stale |
-| Over-splitting | 40-line module behind a 12-line import header | more files to open, no boundary gained |
-| Barrel `__init__` | re-exports hiding the real home | imports become unreadable and cyclic |
-| Rename without restructuring | `helpers.py` → `support.py` | same missing boundary, new name |
-| Move plus fix | the diff that "also" fixes a bug | unreviewable, unbisectable |
-| Leaping loop | a 12-step plan agreed up front | step three invalidates the rest |
-| Doc drift | responsibility table not updated | the next reviewer trusts a stale map |
+| Anti-pattern                 | What it looks like                                     | Cost                                   |
+| ---------------------------- | ------------------------------------------------------ | -------------------------------------- |
+| Helper grab bag              | `_shared.py`, `utils.ts`, `common/`                    | nobody owns it; it grows by accretion  |
+| Split by kind                | `validators/`, `builders/`, `mappers/` across one flow | every change touches all three         |
+| Permanent shim               | `from new.home import x  # noqa: F401`, kept forever   | two homes, both stale                  |
+| Over-splitting               | 40-line module behind a 12-line import header          | more files to open, no boundary gained |
+| Barrel `__init__`            | re-exports hiding the real home                        | imports become unreadable and cyclic   |
+| Rename without restructuring | `helpers.py` → `support.py`                            | same missing boundary, new name        |
+| Move plus fix                | the diff that "also" fixes a bug                       | unreviewable, unbisectable             |
+| Leaping loop                 | a 12-step plan agreed up front                         | step three invalidates the rest        |
+| Doc drift                    | responsibility table not updated                       | the next reviewer trusts a stale map   |
 
 ## 7. Appendix — evidence from the session that produced this file
 
@@ -381,8 +381,8 @@ Kept for calibration; do not copy the specifics into another project.
   branches built the same string — and one duplication: `--attr key=value` was
   parsed in two modules with two different messages, now one `parse_attrs` in
   `cli/settings.py`. A cross-command inconsistency was found and deliberately
-  NOT fixed here (``parse`` never passed ``config_file`` to ``resolve_config``,
-  so ``--config-file`` was ignored): a behaviour fix is its own commit.
+  NOT fixed here (`parse` never passed `config_file` to `resolve_config`,
+  so `--config-file` was ignored): a behaviour fix is its own commit.
 - Fourth loop: `cli/cmds/quality/doctor.py` 746 → a library of seven modules
   (`run_doctor` in `diagnostics/runner.py` 134, `providers.py` 312,
   `models.py` 279, `environment.py` 82, `base.py` 33, `capabilities.py` moved
@@ -403,7 +403,7 @@ Kept for calibration; do not copy the specifics into another project.
   bare model → `None` provider), and four call sites now consume it —
   `llm/user_providers.py`, `llm/debug.py`, `diagnostics/providers.py`,
   `rag/vector_store.py`. The move surfaced what the size count could not: the
-  copies disagreed about *which* separator wins, not only about the edge
+  copies disagreed about _which_ separator wins, not only about the edge
   cases. The doctor pair checked `/` before `:` by code order, not in-string
   order, so it mis-split a colon-first string holding a slash model
   (`ollama:hf.co/...` → provider `ollama:hf.co`); `rag` checked `:` first and
@@ -422,3 +422,96 @@ Kept for calibration; do not copy the specifics into another project.
   because the call site keeps its own known-provider check and only the split
   moved. The lesson is the one the fourth loop already paid for: the size was
   never the argument, the four answers to "which provider is this model" were.
+- Sixth loop (bead knox-2xbd): `core/pipeline/stages/` held six underscore-prefixed
+  modules, and `stages/_parse.py` was 769 gross / 504 net lines answering three
+  questions — how Tier 1 dispatches, what happens to one source, and how its parse
+  and chunk caches are read and written. The underscores went first, as one pure
+  `git mv` (`_parse` → `parse`, plus `_pipeline`, `_factory`, `_index`, `_resolve`,
+  `_compile`), with every import site repointed in the same commit, because the
+  modules were internal to `core/pipeline` and no public path depended on them.
+  Then `_parse.py` split along its call graph into `parse.py` (365 / 216: dispatch,
+  worker pool, dedup gate, attachments, `build_resolver_chain`), `parse_sources.py`
+  (267 / 188: `_process_single_source`, `_parse_source`, privacy filter, dedup
+  warning) and `parse_store.py` (194 / 117: the six cache functions), which took the
+  subtree from 1186 net lines over 7 files with one file past the 350 threshold to
+  1203 net lines over 9 files with none. The move surfaced the duplicate the bead
+  only half-named: the stage carried a local `cache_key(source_file)` re-deriving
+  `source_key(stem, content_hash_prefix(bytes))` while `parse_cache.py` next door
+  already exported `cache_key` _and_ `parse_cache_is_current`. The extraction was
+  therefore a deletion — call the canonical key, drop the local copy — committed on
+  its own before the split, with the key proven identical (`note-ba7816bf` from both
+  forms). No shim re-exports were left: `ruff` pruned the ones staged as a
+  transition and the tests were repointed at the new homes, including the
+  `caplog` logger string, which had to split into `_PARSE_SOURCES` and
+  `_PARSE_STORE` because the warnings moved with their call sites. Every function
+  body was compared against the pre-split file (16 defs, zero differences), so the
+  `HeavyParseGuard` budget, the `Skipped <file>: <reason>` contract, the reason
+  codes, the ledger rows and the `cancel_futures` shutdown are untouched. The lesson
+  is that a 504-line stage file was not the argument; the argument was that three
+  questions shared one module and one of them had already been answered next door.
+- Seventh loop (bead knox-n869): `output/vault.py` 879 gross / 541 net and
+  `output/markdown.py` 563 / 325 became `page.py` 432 / 216 (the OKF frontmatter
+  plus every body transform), `page_paths.py` 61 / 15 (page layout vocabulary:
+  `bundle_path`, `page_stem`, `_folder_for_kind`), `surfaces.py` 379 / 260
+  (per-source summaries, `references.md`, `quality.md`), `vault.py` 373 / 207 (the
+  vault-wide loop and the format hooks) and `markdown.py` 335 / 204 (the markdown
+  format). The size was never the argument — the argument is that one file answered
+  five questions at once (what frontmatter is, what a page body looks like, where a
+  page lands, what the non-page surfaces are, and how a vault is swept), so a change
+  to the description cap and a change to stale-file clearing fought over the same
+  file. The assembly is mixins, not inheritance chains: `VaultWriter` is
+  `OkfPageMixin + PageLayoutMixin + GeneratedSurfaceMixin + BaseOutputWriter`,
+  which keeps the external surface (`VaultWriter.okf_frontmatter`,
+  `_folder_for_kind`, `_KIND_FOLDERS`, `okf_description`) resolving through
+  inheritance while `output/pages/index.py` imports the two mixins it actually
+  uses instead of the vault writer it never instantiates.
+  The move surfaced four things the line count could not: (1) `vault.py`
+  carried a byte-identical copy of `markdown.py`'s `WIKILINK_RE` — deleted, not
+  relocated; (2) `vault.okf_frontmatter_yaml` was a forwarding wrapper whose
+  docstring claimed capture writers needed it to dodge this module's
+  dependencies, but `capture/capture.py`, `distill.py` and `learn.py` all
+  import `kompend.output.frontmatter` directly — deleted, and that removal is
+  a deliberate public-surface change recorded in its own commit; (3)
+  `_write_source_summaries` and `_write_references_page` each enumerated the
+  corpus sources with the same `sorted(... if p.is_file() and not
+is_protected_source(...))` expression — now one `source_keys()`, and the
+  dead `_source_name(key)` statement whose return value was discarded went with
+  it; (4) three page-path templates disagree for an empty slug (`vault`'s has
+  the `untitled` fallback, `MarkdownWriter._write_index`'s does not,
+  `pages/index.py`'s adds a prefix). They were deliberately left divergent —
+  unifying them changes the write path for empty slugs, which is a behaviour
+  change and its own bead — and the divergence is documented in the
+  `page_paths.py` module docstring. The other finding is reported, not fixed:
+  `VaultWriter.__init__` falls back to bare `OutputConfig()` / `DisplayConfig()`
+  (schema defaults, not resolved config); its docstring claims
+  `output.max_related_links` where the real dotted path is
+  `compile.output.max_related_links`, and the capture and MCP call sites pass
+  only `description_max_chars`, so a configured `max_related_links` is silently
+  ignored.
+- Eighth loop (bead knox-6aoi): `rag/sqlite_vec_store.py` 1025 gross / 577 net
+  became a package of six implementation modules plus a public surface —
+  `sqlite_vec/store.py` 532/327, `query.py` 237/104, `manifest.py` 159/81,
+  `index.py` 135/96, `schema.py` 122/51, `filters.py` 72/34, `__init__.py`
+  14/1 — with the old module path kept as a 14-line compatibility re-export.
+  Subtree went 1846/914 to 2106/915 net: the split costs one line of glue
+  and buys a 43 % cut in the largest file, and nothing in the subtree is
+  over the 350-net threshold any more.
+  What the size count could not see: the bead's step 3 ("decide ONE home for
+  `matches_attr_filter` … delete the other copy") was already settled — the
+  one Python predicate is `search/filters.py:25` and the store only ever held
+  its SQL translation, with `TestFilterParityWithCanonicalPredicates` pinning
+  them together, so there was nothing to delete and the step was a no-op. The
+  seam list was also stale by one: the file held an embed-and-insert job the
+  target shape did not name, which is why `index.py` exists. And the old
+  module path turned out to be a _published_ one — `docs/integrations/
+open-webui.md` shows `from kompend.rag.sqlite_vec_store import
+SqliteVecWikiStore` — so the shim stayed rather than being deleted, and
+  four in-repo callers in other lanes' files still import the old path (they
+  work, but they now break the "import from the package root" rule; reported,
+  not fixed). Two smaller things a mover should expect: the copied
+  `# ruff: noqa: S608` marker was needed in all five SQL modules and then
+  became dead in `store.py` once its last interpolated statement left — ruff's
+  RUF100 caught it, which is why the last commit is a two-line style fix; and
+  the DOX line "no module below `store.py` opens a file" was wrong on arrival
+  because `manifest.py` must open `kompend.db` before any store exists, so
+  the DOX was corrected instead of leaving a rule the code contradicts.
