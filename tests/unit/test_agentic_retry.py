@@ -70,7 +70,7 @@ def test_plain_errors_are_not_transient() -> None:
 
 def test_transient_failure_is_retried_on_the_agent_base(monkeypatch: pytest.MonkeyPatch) -> None:
     """The retry policy lives in one place - no per-stage backoff loops."""
-    monkeypatch.setattr("kompend.agents.base.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("kompend.agents.base.agent.time.sleep", lambda _seconds: None)
     agent, fake = _stub(retries=2)
     fake.run_sync.side_effect = [httpx.ReadTimeout("slow"), SimpleNamespace(output="ok")]
 
@@ -79,7 +79,7 @@ def test_transient_failure_is_retried_on_the_agent_base(monkeypatch: pytest.Monk
 
 
 def test_transient_budget_is_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("kompend.agents.base.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("kompend.agents.base.agent.time.sleep", lambda _seconds: None)
     agent, fake = _stub(retries=1)
     fake.run_sync.side_effect = httpx.ReadTimeout("slow")
 
@@ -89,7 +89,7 @@ def test_transient_budget_is_honoured(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_semantic_failure_is_not_retried(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("kompend.agents.base.time.sleep", lambda _seconds: None)
+    monkeypatch.setattr("kompend.agents.base.agent.time.sleep", lambda _seconds: None)
     agent, fake = _stub(retries=2)
     fake.run_sync.side_effect = ValueError("bad schema")
 

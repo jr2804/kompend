@@ -8,7 +8,7 @@ import pytest
 from pydantic_ai_harness.compaction import ReportContextUsage
 from pydantic_ai_harness.memory import InMemoryStore, MemoryStore
 
-import kompend.agents.base as base_module
+import kompend.agents.base.agent as base_module
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.distill_agentic import make_agentic_distill_agent
 from kompend.agents.remediate import make_agentic_remediation_agent
