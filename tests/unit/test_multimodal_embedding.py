@@ -17,10 +17,10 @@ import pytest
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import MetadataField, NodeType
 from kompend.core.utils.exceptions import LLMOutputError
+from kompend.rag import SqliteVecWikiStore
 from kompend.rag.embedding_base import EmbeddingProvider
 from kompend.rag.embedding_pydantic import PydanticAIEmbeddingProvider
 from kompend.rag.multimodal import MediaEmbeddingUnsupported, OllamaMediaEmbedder
-from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.rag.vector_store import content_hash
 
 PNG = bytes.fromhex("89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000a49444154789c63000100000500010d0a2db40000000049454e44ae426082")

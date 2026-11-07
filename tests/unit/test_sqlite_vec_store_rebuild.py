@@ -24,8 +24,8 @@ from kompend.core.paths import KOMP_DB_FILE
 from kompend.core.store import connect
 from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
 from kompend.memory.store import MemoryStore
+from kompend.rag import SqliteVecWikiStore, recorded_embedding_model
 from kompend.rag.embedding_base import EmbeddingProvider
-from kompend.rag.sqlite_vec_store import SqliteVecWikiStore, recorded_embedding_model
 
 
 class StubProvider(EmbeddingProvider):

@@ -20,7 +20,7 @@ import pytest
 
 from kompend.core.models import CompiledWiki, WikiNode, load_wiki_from_files
 from kompend.core.models.enums import NodeType
-from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
+from kompend.rag import SqliteVecWikiStore
 from kompend.rag.vector_store import (
     EMBED_TEXT_VERSION,
     content_hash,

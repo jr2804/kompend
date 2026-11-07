@@ -11,8 +11,8 @@ import pytest
 
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
+from kompend.rag import SqliteVecWikiStore
 from kompend.rag.embedding_base import EmbeddingProvider
-from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.rag.vector_store import VectorField
 from tests.conftest import as_float
 
