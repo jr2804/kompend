@@ -8,6 +8,7 @@ cache without running the full compile pipeline.
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Callable, Sequence
 from contextlib import suppress
 from dataclasses import asdict, dataclass
@@ -21,7 +22,7 @@ from kompend.core.keys import (
 )
 from kompend.core.models import ElementType, MetadataField, ParsedDocument
 from kompend.core.paths import VaultPaths
-from kompend.core.pipeline.bounded_parse import DeadlineWorker
+from kompend.core.pipeline.bounded_parse import DeadlineWorker, ParseDeadlineExceeded
 from kompend.core.pipeline.parse_cache import (
     PARSE_CACHE_PARSER_KEY,
     extract_text_from_cached,  # noqa: F401 — re-exported for capture.py
@@ -35,9 +36,11 @@ from kompend.core.pipeline.parse_cache import (
 )
 from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.pipeline.state import TierStateStore
+from kompend.core.reporting.ledger import StageLedger
 from kompend.core.store import vault_db_path
 from kompend.core.text.encoding import normalize_to_utf8_path
 from kompend.core.text.rumdl import normalize_element_markdown
+from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup import DedupOrchestrator
@@ -158,158 +161,211 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
     cache_dir = paths.cache_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
     db_path = vault_db_path(paths.cache_dir)
+    with StageLedger.open(db_path) as ledger:
+        state_store = TierStateStore(paths.compile_state_file)
+        state = state_store.load()
 
-    state_store = TierStateStore(paths.compile_state_file)
-    state = state_store.load()
+        count = cached = skipped = failed = 0
 
-    count = cached = skipped = failed = 0
+        def _check_cancel() -> None:
+            """Stop between files on a graceful cancel, persisting tier-1 records."""
+            if cancel is not None and cancel.requested():
+                state_store.save(state)
+                raise KompendCancelled(cancel.reason)
 
-    def _check_cancel() -> None:
-        """Stop between files on a graceful cancel, persisting tier-1 records."""
-        if cancel is not None and cancel.requested():
-            state_store.save(state)
-            raise KompendCancelled(cancel.reason)
+        # ── Dedup orchestrator (created once, used in pass 2) ──────────
+        # Fingerprints are computed AFTER all files are parsed so that GPU-bound
+        # parsers and the embedding model don't compete for GPU memory.
+        dedup_enabled = bool((config or {}).get(DEDUP_ENABLED))
+        dedup_orch: DedupOrchestrator | None = DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
+        dedup_fps: dict[str, dict[str, Any]] = {}
 
-    # ── Dedup orchestrator (created once, used in pass 2) ──────────
-    # Fingerprints are computed AFTER all files are parsed so that GPU-bound
-    # parsers and the embedding model don't compete for GPU memory.
-    dedup_enabled = bool((config or {}).get(DEDUP_ENABLED))
-    dedup_orch: DedupOrchestrator | None = DedupOrchestrator(base_dir, config=config or {}) if dedup_enabled else None
-    dedup_fps: dict[str, dict[str, Any]] = {}
+        # One deadline worker for the whole run: a child per file would pay the
+        # parser stack's import cost (seconds) on every source. It is a no-op when
+        # no budget is configured.
+        worker = DeadlineWorker(parse_timeout_s)
 
-    # One deadline worker for the whole run: a child per file would pay the
-    # parser stack's import cost (seconds) on every source. It is a no-op when
-    # no budget is configured.
-    worker = DeadlineWorker(parse_timeout_s)
+        # One probe per run: the backend identity decides whether a cached parse
+        # is still current for the parser that is running now.
+        backend_identity = parser.backend_identity()
 
-    # One probe per run: the backend identity decides whether a cached parse
-    # is still current for the parser that is running now.
-    backend_identity = parser.backend_identity()
-
-    for idx, source_file in enumerate(files):
-        _check_cancel()
-        if progress_fn is not None:
-            progress_fn(idx, total, source_file.name)
-
-        # Compute content hash once, reuse for cache key AND state store.
-        # Avoids reading the entire file twice on cache-hit paths.
-        content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
-        doc_key = document_cache_key(source_file, content_hash)
-        prior_data = read_document(db_path, doc_key)
-
-        if not reparse and prior_data is not None and parse_cache_is_current(prior_data, backend_identity):
-            logger.info("Skipping %s — already cached", source_file.name)
-            cached += 1
-            count += 1
-            state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
-            continue
-
-        backend = parser.route(source_file)
-        if backend is None:
-            logger.info("Skipping %s — no parser available", source_file.name)
-            skipped += 1
-            continue
-
-        try:
-            parse_target = parse_target_path(source_file, cache_dir)
-            doc = worker.parse(backend, parse_target)
-            restore_source_path(doc, parse_target=parse_target, source_file=source_file)
-            normalize_element_markdown(
-                doc.elements,
-                rumdl_config=resolve_rumdl_config(base_dir, rumdl_config),
-                flavor=flavor,
-            )
-        except Exception as exc:
-            logger.warning(
-                "Failed to parse %s: %s",
-                source_file,
-                exc,
-                exc_info=is_verbose(),
-                extra={"reason_code": reason_code_for(exc)},
-            )
-            failed += 1
-            continue
-
-        # Preserve user-set tags/attributes before the entry is overwritten.
-        # A re-parse (forced, or after a parser change) must not drop what
-        # ``kompend sources tag`` / ``attr`` wrote into the previous entry.
-        preserve_cached_metadata(doc, prior_data)
-
-        # Attach CLI-provided tags — union with any preserved tags.
-        if tags:
-            if doc.metadata is None:
-                doc.metadata = {}
-            existing_tags = list(doc.metadata.get(MetadataField.TAGS) or [])
-            for tag in tags:
-                if tag not in existing_tags:
-                    existing_tags.append(tag)
-            doc.metadata[MetadataField.TAGS] = existing_tags
-        if attributes:
-            if doc.metadata is None:
-                doc.metadata = {}
-            merged = dict(doc.metadata.get(MetadataField.ATTRIBUTES) or {})
-            merged.update(attributes)
-            doc.metadata[MetadataField.ATTRIBUTES] = merged
-
-        # Portable cache: image paths relative to the vault, like source_file.
-        relativize_image_paths(doc, base_dir)
-
-        data = asdict(doc)
-        data[MetadataField.SOURCE_FILE] = str(_relative(Path(data[MetadataField.SOURCE_FILE])))
-        data[PARSE_CACHE_PARSER_KEY] = backend_identity
-        write_document(db_path, doc_key, data)
-        count += 1
-        state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
-
-    # Parsing is over; nothing below needs the worker. (A worker left behind by
-    # an abnormal exit is a daemon process and dies with the parent.)
-    worker.close()
-
-    # ── Pass 2: Dedup fingerprints (separate from parsing) ─────────
-    # Fingerprints are computed AFTER all files are parsed so that GPU-bound
-    # parsers (Docling) and the embedding model don't compete for GPU memory.
-    # The embedding model loads once, fingerprints all documents, then unloads.
-    if dedup_orch is not None:
-        # Load the store early so we can skip fingerprinting unchanged docs.
-        dedup_orch._store.load()  # noqa: SLF001 — intentional access to load cached fingerprints
         for idx, source_file in enumerate(files):
             _check_cancel()
-            slug = source_file.stem
-            # Skip files already fingerprinted in a previous run.
-            if slug in dedup_orch._store:  # noqa: SLF001
-                continue
             if progress_fn is not None:
-                progress_fn(idx, total, f"embedding {source_file.name}")
-            key = document_cache_key(source_file, _content_hash(source_file))
-            data = read_document(db_path, key)
-            if data is None:
+                progress_fn(idx, total, source_file.name)
+
+            # Compute content hash once, reuse for cache key AND state store.
+            # Avoids reading the entire file twice on cache-hit paths.
+            raw = source_file.read_bytes()
+            size_bytes = len(raw)
+            content_hash = hashlib.sha256(raw).hexdigest()
+            doc_key = document_cache_key(source_file, content_hash)
+            prior_data = read_document(db_path, doc_key)
+
+            if not reparse and prior_data is not None and parse_cache_is_current(prior_data, backend_identity):
+                logger.info("Skipping %s — already cached", source_file.name)
+                ledger.record(
+                    str(_relative(source_file)),
+                    "parse",
+                    outcome=StageOutcome.CACHED,
+                    parser=backend_identity,
+                    cache_key=doc_key,
+                    sha=content_hash,
+                    size_bytes=size_bytes,
+                )
+                cached += 1
+                count += 1
+                state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
                 continue
-            text = extract_text_from_data(data)
-            dedup_fps[slug] = dedup_orch.fingerprint(slug, text)
 
-    # ── Content-level duplicate comparison (end of ingest) ──────────
-    # Pure CPU — no network calls. Uses pre-computed fingerprints.
-    dedup_skipped = 0
-    if dedup_orch is not None and dedup_fps:
+            backend = parser.route(source_file)
+            if backend is None:
+                logger.info("Skipping %s — no parser available", source_file.name)
+                ledger.record(
+                    str(_relative(source_file)),
+                    "parse",
+                    outcome=StageOutcome.SKIPPED,
+                    reason_code=ReasonCode.NO_PARSER,
+                    cache_key=doc_key,
+                    sha=content_hash,
+                    size_bytes=size_bytes,
+                )
+                skipped += 1
+                continue
 
-        def _dedup_progress(completed: int, total_cmp: int) -> None:
-            if progress_fn is not None:
-                progress_fn(completed, max(total_cmp, 1), f"dedup {completed}/{total_cmp}")
+            attempt_start = time.perf_counter()
+            try:
+                parse_target = parse_target_path(source_file, cache_dir)
+                doc = worker.parse(backend, parse_target)
+                restore_source_path(doc, parse_target=parse_target, source_file=source_file)
+                normalize_element_markdown(
+                    doc.elements,
+                    rumdl_config=resolve_rumdl_config(base_dir, rumdl_config),
+                    flavor=flavor,
+                )
+            except Exception as exc:
+                reason = reason_code_for(exc)
+                logger.warning(
+                    "Failed to parse %s: %s",
+                    source_file,
+                    exc,
+                    exc_info=is_verbose(),
+                    extra={"reason_code": reason},
+                )
+                outcome = StageOutcome.TIMEOUT if isinstance(exc, ParseDeadlineExceeded) else StageOutcome.FAILED
+                ledger.record(
+                    str(_relative(source_file)),
+                    "parse",
+                    outcome=outcome,
+                    duration_ms=(time.perf_counter() - attempt_start) * 1000.0,
+                    reason_code=reason,
+                    detail=str(exc),
+                    parser=backend_identity,
+                    backend=type(backend).__name__,
+                    cache_key=doc_key,
+                    sha=content_hash,
+                    size_bytes=size_bytes,
+                )
+                failed += 1
+                continue
 
-        results = dedup_orch.compare(dedup_fps, progress_fn=_dedup_progress)
-        for slug, result in results.items():
-            if result.verdict.value == "identical":
-                dedup_skipped += 1
-                logger.info("Dedup: %s is identical to %s (score=%.3f) — skipping compile", slug, result.closest_match, result.closest_score)
-            elif result.verdict.value == "similar":
-                logger.info("Dedup: %s is similar to %s (score=%.3f) — will add warning", slug, result.closest_match, result.closest_score)
-        if dedup_skipped:
-            logger.info("Dedup: %d document(s) identified as identical and will be skipped during compile", dedup_skipped)
+            # Preserve user-set tags/attributes before the entry is overwritten.
+            # A re-parse (forced, or after a parser change) must not drop what
+            # ``kompend sources tag`` / ``attr`` wrote into the previous entry.
+            preserve_cached_metadata(doc, prior_data)
 
-    if progress_fn is not None:
-        progress_fn(total, total, "done")
+            # Attach CLI-provided tags — union with any preserved tags.
+            if tags:
+                if doc.metadata is None:
+                    doc.metadata = {}
+                existing_tags = list(doc.metadata.get(MetadataField.TAGS) or [])
+                for tag in tags:
+                    if tag not in existing_tags:
+                        existing_tags.append(tag)
+                doc.metadata[MetadataField.TAGS] = existing_tags
+            if attributes:
+                if doc.metadata is None:
+                    doc.metadata = {}
+                merged = dict(doc.metadata.get(MetadataField.ATTRIBUTES) or {})
+                merged.update(attributes)
+                doc.metadata[MetadataField.ATTRIBUTES] = merged
 
-    state_store.save(state)
+            # Portable cache: image paths relative to the vault, like source_file.
+            relativize_image_paths(doc, base_dir)
+
+            data = asdict(doc)
+            data[MetadataField.SOURCE_FILE] = str(_relative(Path(data[MetadataField.SOURCE_FILE])))
+            data[PARSE_CACHE_PARSER_KEY] = backend_identity
+            write_document(db_path, doc_key, data)
+            ledger.record(
+                str(_relative(source_file)),
+                "parse",
+                outcome=StageOutcome.OK,
+                duration_ms=(time.perf_counter() - attempt_start) * 1000.0,
+                parser=backend_identity,
+                backend=type(backend).__name__,
+                cache_key=doc_key,
+                sha=content_hash,
+                size_bytes=size_bytes,
+            )
+            count += 1
+            state_store.record(state, source_file.stem, _relative(source_file), content_hash, tier=1, ingested_by=ingested_by)
+
+        # Parsing is over; nothing below needs the worker. (A worker left behind by
+        # an abnormal exit is a daemon process and dies with the parent.)
+        worker.close()
+
+        # ── Pass 2: Dedup fingerprints (separate from parsing) ─────────
+        # Fingerprints are computed AFTER all files are parsed so that GPU-bound
+        # parsers (Docling) and the embedding model don't compete for GPU memory.
+        # The embedding model loads once, fingerprints all documents, then unloads.
+        if dedup_orch is not None:
+            # Load the store early so we can skip fingerprinting unchanged docs.
+            dedup_orch._store.load()  # noqa: SLF001 — intentional access to load cached fingerprints
+            for idx, source_file in enumerate(files):
+                _check_cancel()
+                slug = source_file.stem
+                # Skip files already fingerprinted in a previous run.
+                if slug in dedup_orch._store:  # noqa: SLF001
+                    continue
+                if progress_fn is not None:
+                    progress_fn(idx, total, f"embedding {source_file.name}")
+                key = document_cache_key(source_file, _content_hash(source_file))
+                data = read_document(db_path, key)
+                if data is None:
+                    continue
+                text = extract_text_from_data(data)
+                dedup_fps[slug] = dedup_orch.fingerprint(slug, text)
+
+        # ── Content-level duplicate comparison (end of ingest) ──────────
+        # Pure CPU — no network calls. Uses pre-computed fingerprints.
+        dedup_skipped = 0
+        if dedup_orch is not None and dedup_fps:
+
+            def _dedup_progress(completed: int, total_cmp: int) -> None:
+                if progress_fn is not None:
+                    progress_fn(completed, max(total_cmp, 1), f"dedup {completed}/{total_cmp}")
+
+            results = dedup_orch.compare(dedup_fps, progress_fn=_dedup_progress)
+            for slug, result in results.items():
+                if result.verdict.value == "identical":
+                    dedup_skipped += 1
+                    ledger.record(
+                        slug,
+                        "dedup",
+                        outcome=StageOutcome.SKIPPED,
+                        detail=f"identical to {result.closest_match} (score={result.closest_score:.3f})",
+                    )
+                    logger.info("Dedup: %s is identical to %s (score=%.3f) — skipping compile", slug, result.closest_match, result.closest_score)
+                elif result.verdict.value == "similar":
+                    logger.info("Dedup: %s is similar to %s (score=%.3f) — will add warning", slug, result.closest_match, result.closest_score)
+            if dedup_skipped:
+                logger.info("Dedup: %d document(s) identified as identical and will be skipped during compile", dedup_skipped)
+
+        if progress_fn is not None:
+            progress_fn(total, total, "done")
+
+        state_store.save(state)
     return IngestResult(
         count=count,
         cached=cached,

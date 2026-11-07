@@ -33,6 +33,7 @@ from kompend.core.pipeline.stages._parse import (
     _load_cache,  # noqa: PLC2701
     _process_single_source,  # noqa: PLC2701
 )
+from kompend.core.reporting.ledger import stage_ledger
 from kompend.core.store import open_store
 from kompend.core.types import ReasonCode
 from kompend.preprocessing.host_memory import HeavyParseGuard, InsufficientHostMemoryError
@@ -209,8 +210,8 @@ def test_stage_no_backend_routes_to_no_parser(tmp_path: Path, caplog: pytest.Log
     src.write_text("# note\n", encoding="utf-8")
     runtime = _StubRuntime(base, parser=_RoutedParser(None))
 
-    with caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
-        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard()) is None
+    with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
+        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) is None
 
     assert _codes(caplog, "No parser backend") == {ReasonCode.NO_PARSER}
 
@@ -223,8 +224,8 @@ def test_stage_backend_failure_carries_the_classified_code(tmp_path: Path, caplo
     boom.parse.side_effect = RuntimeError("docling exploded")
     runtime = _StubRuntime(base, parser=_RoutedParser(boom))
 
-    with caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
-        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard()) is None
+    with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
+        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) is None
 
     assert _codes(caplog, "Failed to parse") == {ReasonCode.BACKEND_UNAVAILABLE}
 
@@ -237,8 +238,8 @@ def test_stage_typed_binary_error_keeps_its_code(tmp_path: Path, caplog: pytest.
     mislabelled.parse.side_effect = BinarySourceError("note.md: extension claims text")
     runtime = _StubRuntime(base, parser=_RoutedParser(mislabelled))
 
-    with caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
-        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard()) is None
+    with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_STAGE):
+        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) is None
 
     assert _codes(caplog, "Failed to parse") == {ReasonCode.MISLABELLED_BINARY}
 
@@ -344,7 +345,12 @@ def test_reference_store_corrupt_payload_is_skipped_with_code(tmp_path: Path, ca
 
 def _codes(caplog: pytest.LogCaptureFixture, needle: str) -> set[ReasonCode]:
     """Reason codes carried by captured records whose message contains *needle*."""
-    return {record.reason_code for record in caplog.records if needle in record.getMessage() and hasattr(record, "reason_code")}
+    codes: set[ReasonCode] = set()
+    for record in caplog.records:
+        code = getattr(record, "reason_code", None)
+        if needle in record.getMessage() and isinstance(code, ReasonCode):
+            codes.add(code)
+    return codes
 
 
 def _seed_vault(tmp_path: Path) -> Path:

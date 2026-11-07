@@ -9,9 +9,11 @@ import pytest
 
 from kompend.core.models import DocumentElement, ElementType, ParsedDocument
 from kompend.core.models.attachments import Attachment, AttachmentManifest
-from kompend.core.paths import VaultPaths
+from kompend.core.paths import CACHE_DIR, VaultPaths
 from kompend.core.pipeline.attachments import ingest_attachment, iter_ingestible_attachments
 from kompend.core.pipeline.stages._parse import _process_attachments
+from kompend.core.reporting.ledger import StageLedger
+from kompend.core.store import vault_db_path
 
 
 def test_iter_ingestible_attachments_empty_manifest(vault: VaultPaths) -> None:
@@ -117,7 +119,7 @@ def test_process_attachments_gate_off_skips_all(vault: VaultPaths) -> None:
     pipeline.base_directory = str(vault.base_dir)
     pipeline.config.attachments_ingest_adopted = False
 
-    assert _process_attachments(pipeline) == []
+    assert _process_attachments(pipeline, StageLedger.open(vault_db_path(vault.base_dir / CACHE_DIR))) == []
     pipeline.parser.parse.assert_not_called()
 
 
@@ -139,7 +141,7 @@ def test_process_attachments_gate_on_uses_manifest(vault: VaultPaths) -> None:
 
     # ingest_attachment returns None for a text file without a parser pass
     # result; the loop must still run (emit called) rather than early-return.
-    trees = _process_attachments(pipeline)
+    trees = _process_attachments(pipeline, StageLedger.open(vault_db_path(vault.base_dir / CACHE_DIR)))
     assert trees == []
     pipeline.emit.assert_called()
 

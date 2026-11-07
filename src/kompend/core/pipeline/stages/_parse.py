@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import time
 from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from contextvars import copy_context
@@ -45,9 +46,10 @@ from kompend.core.pipeline.parse_cache import (
 )
 from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.pipeline.runtime import PipelineRuntime
+from kompend.core.reporting.ledger import StageLedger, stage_ledger
 from kompend.core.store import vault_db_path
 from kompend.core.text.rumdl import normalize_element_markdown
-from kompend.core.types import ReasonCode
+from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.verbosity import is_verbose
 from kompend.llm.models import resolve_vlm_model
 from kompend.llm.user_providers import effective_workers
@@ -102,6 +104,15 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
     dedup_skip, dedup_similar = _load_dedup_state(pipeline)
     if dedup_skip:
         logger.info("Dedup: %d source(s) flagged as identical — will skip", len(dedup_skip))
+        with stage_ledger(vault_db_path(pipeline.cache_directory())) as ledger:
+            for f in source_files:
+                if f.stem in dedup_skip:
+                    ledger.record(
+                        pipeline.rel_file(f),
+                        "parse",
+                        outcome=StageOutcome.SKIPPED,
+                        detail="dedup: identical to another source",
+                    )
         source_files = [f for f in source_files if f.stem not in dedup_skip]
         if not source_files:
             pipeline.emit("parse", 0, 0, "all skipped by dedup")
@@ -124,58 +135,66 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
     )
 
     trees: list[ChunkTree] = []
-    if workers > 1 and len(source_files) > 1:
-        # Say which kind of interpreter this is: a thread pool only runs
-        # Python code in parallel on a free-threaded build.
-        logger.info("%s", describe_parallelism(workers))
-        completed = 0
-        # Explicit executor (not a ``with`` block): on a graceful cancel the
-        # emit below raises KompendCancelled, and shutdown(cancel_futures=True)
-        # then drops queued futures instead of parsing the whole corpus.
-        # In-flight workers still finish (bounded by ``workers``) so caches
-        # stay consistent.
-        executor = ThreadPoolExecutor(max_workers=workers)
-        # Each submission carries a copy of the caller's context: the verbosity
-        # switch lives in a ContextVar, and a fresh thread would read its
-        # default (False) and lose ``--verbose`` for every worker-thread
-        # traceback. ``copy_context()`` per iteration keeps each Context
-        # single-use, which ``Context.run`` requires.
-        futures: dict[Future[ChunkTree | None], Path] = {
-            executor.submit(_context_bound_call(_process_single_source, pipeline, sf, dedup_similar, heavy_guard)): sf for sf in source_files
-        }
-        try:
-            for future in as_completed(futures):
-                sf = futures[future]
-                try:
-                    tree = future.result()
-                    if tree is not None:
-                        trees.append(tree)
-                except Exception as exc:
-                    logger.error(
-                        "Worker failed for %s: %s",
-                        sf,
-                        exc,
-                        exc_info=is_verbose(),
-                        extra={"reason_code": reason_code_for(exc)},
-                    )
-                finally:
-                    completed += 1
-                    pipeline.emit("parse", completed, len(source_files), sf.name)
-        finally:
-            executor.shutdown(wait=True, cancel_futures=True)
-    else:
-        for idx, sf in enumerate(source_files):
-            tree = _process_single_source(pipeline, sf, dedup_similar, heavy_guard)
-            if tree is not None:
-                trees.append(tree)
-            pipeline.emit("parse", idx + 1, len(source_files), sf.name)
+    # The ledger records one row per (source, stage, attempt) for this run;
+    # rows correlate with the CLI run via the handle context. Opened here,
+    # closed when the stage function returns — per-row commits keep rows
+    # even if the run dies inside.
+    with stage_ledger(vault_db_path(pipeline.cache_directory())) as ledger:
+        parser_identity = pipeline.parser.backend_identity() if pipeline.parser is not None else None
+        if workers > 1 and len(source_files) > 1:
+            # Say which kind of interpreter this is: a thread pool only runs
+            # Python code in parallel on a free-threaded build.
+            logger.info("%s", describe_parallelism(workers))
+            completed = 0
+            # Explicit executor (not a ``with`` block): on a graceful cancel the
+            # emit below raises KompendCancelled, and shutdown(cancel_futures=True)
+            # then drops queued futures instead of parsing the whole corpus.
+            # In-flight workers still finish (bounded by ``workers``) so caches
+            # stay consistent.
+            executor = ThreadPoolExecutor(max_workers=workers)
+            # Each submission carries a copy of the caller's context: the verbosity
+            # switch lives in a ContextVar, and a fresh thread would read its
+            # default (False) and lose ``--verbose`` for every worker-thread
+            # traceback. ``copy_context()`` per iteration keeps each Context
+            # single-use, which ``Context.run`` requires. The ledger (lock-guarded)
+            # and the run-id context travel with it.
+            futures: dict[Future[ChunkTree | None], Path] = {
+                executor.submit(_context_bound_call(_process_single_source, pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity)): sf
+                for sf in source_files
+            }
+            try:
+                for future in as_completed(futures):
+                    sf = futures[future]
+                    try:
+                        tree = future.result()
+                        if tree is not None:
+                            trees.append(tree)
+                    except Exception as exc:
+                        logger.error(
+                            "Worker failed for %s: %s",
+                            sf,
+                            exc,
+                            exc_info=is_verbose(),
+                            extra={"reason_code": reason_code_for(exc)},
+                        )
+                    finally:
+                        completed += 1
+                        pipeline.emit("parse", completed, len(source_files), sf.name)
+            finally:
+                executor.shutdown(wait=True, cancel_futures=True)
+        else:
+            for idx, sf in enumerate(source_files):
+                tree = _process_single_source(pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity)
+                if tree is not None:
+                    trees.append(tree)
+                pipeline.emit("parse", idx + 1, len(source_files), sf.name)
 
-    pipeline.emit("parse", len(source_files), len(source_files), "done")
+        pipeline.emit("parse", len(source_files), len(source_files), "done")
 
-    # ── Process ingestible attachments ──────────────────────────────
-    att_trees = _process_attachments(pipeline)
-    if att_trees:
-        trees.extend(att_trees)
+        # ── Process ingestible attachments ──────────────────────────────
+        att_trees = _process_attachments(pipeline, ledger)
+        if att_trees:
+            trees.extend(att_trees)
 
     if pipeline.summarizer is not None:
         # Summarization runs one LLM session per tree and can take hours for
@@ -212,8 +231,13 @@ def _process_single_source(
     source_file: Path,
     dedup_similar: dict[str, dict[str, object]],
     heavy_guard: HeavyParseGuard,
+    ledger: StageLedger,
+    parser_identity: str | None,
 ) -> ChunkTree | None:
     """Parse a single source file (cache-aware) and chunk it.
+
+    Records the attempt's outcome per stage (parse, chunk, enrich) in
+    *ledger*.
 
     Returns the :class:`ChunkTree` or *None* if the file was skipped
     (no parser, cache hit with no tree, or parse failure).
@@ -227,8 +251,16 @@ def _process_single_source(
 
     parsed = _try_load_parsed_cache(pipeline, source_file, stem, content_hash, use_cache)
 
-    if parsed is None:
-        parsed = _parse_source(pipeline, source_file, use_cache, content_hash, heavy_guard)
+    if parsed is not None:
+        ledger.record(
+            pipeline.rel_file(source_file),
+            "parse",
+            outcome=StageOutcome.CACHED,
+            parser=parser_identity,
+            sha=content_hash or None,
+        )
+    else:
+        parsed = _parse_source(pipeline, source_file, use_cache, content_hash, heavy_guard, ledger, parser_identity)
         if parsed is None:
             return None
         if use_cache and not content_hash:
@@ -257,14 +289,35 @@ def _process_single_source(
     # Chunk cache lookup (Tier 1).
     tree = _try_load_chunk_cache(pipeline, source_file, content_hash, use_cache)
     if tree is not None:
+        ledger.record(
+            pipeline.rel_file(source_file),
+            "chunk",
+            outcome=StageOutcome.CACHED,
+            sha=content_hash or None,
+        )
         return tree
 
     # Chunk and cache.
+    chunk_start = time.perf_counter()
     tree = pipeline.chunker.chunk(parsed)
     pipeline.apply_tags_to_tree(tree, source_file)
+    ledger.record(
+        pipeline.rel_file(source_file),
+        "chunk",
+        outcome=StageOutcome.OK,
+        duration_ms=(time.perf_counter() - chunk_start) * 1000.0,
+        sha=content_hash or None,
+    )
 
     if pipeline.enricher is not None:
+        enrich_start = time.perf_counter()
         tree = pipeline.enricher.enrich_tree(tree, parsed)
+        ledger.record(
+            pipeline.rel_file(source_file),
+            "enrich",
+            outcome=StageOutcome.OK,
+            duration_ms=(time.perf_counter() - enrich_start) * 1000.0,
+        )
 
     if content_hash:
         pipeline.state_store.record(pipeline.state, stem, Path(pipeline.rel_file(source_file)), content_hash, tier=1)
@@ -303,14 +356,29 @@ def _parse_source(
     use_cache: bool,
     content_hash: str,
     heavy_guard: HeavyParseGuard,
+    ledger: StageLedger,
+    parser_identity: str | None,
 ) -> ParsedDocument | None:
-    """Parse a source file via the parser and optionally cache the result."""
+    """Parse a source file via the parser and optionally cache the result.
+
+    Records the parse attempt's outcome in *ledger*.
+    """
     if pipeline.parser is None:
         return None
+    attempt_start = time.perf_counter()
+    selected: Any = None
     try:
         selected = pipeline.parser.route(source_file)
         if selected is None:
             logger.warning("No parser backend for %s, skipping", source_file, extra={"reason_code": ReasonCode.NO_PARSER})
+            ledger.record(
+                pipeline.rel_file(source_file),
+                "parse",
+                outcome=StageOutcome.SKIPPED,
+                duration_ms=(time.perf_counter() - attempt_start) * 1000.0,
+                reason_code=ReasonCode.NO_PARSER,
+                parser=parser_identity,
+            )
             return None
         # The parser has already picked a backend: the format table only
         # decides which bytes that backend receives (UTF-8 for known text
@@ -321,16 +389,46 @@ def _parse_source(
         _ = len(parsed.elements)
     except InsufficientHostMemoryError as exc:
         logger.error("Skipped %s: %s", source_file, exc, extra={"reason_code": ReasonCode.BACKEND_UNAVAILABLE})
+        ledger.record(
+            pipeline.rel_file(source_file),
+            "parse",
+            outcome=StageOutcome.SKIPPED,
+            duration_ms=(time.perf_counter() - attempt_start) * 1000.0,
+            reason_code=ReasonCode.BACKEND_UNAVAILABLE,
+            detail=str(exc),
+            parser=parser_identity,
+            backend=type(selected).__name__ if selected is not None else None,
+        )
         return None
     except Exception as exc:
+        reason = reason_code_for(exc)
         logger.error(
             "Failed to parse %s: %s",
             source_file,
             exc,
             exc_info=is_verbose(),
-            extra={"reason_code": reason_code_for(exc)},
+            extra={"reason_code": reason},
+        )
+        ledger.record(
+            pipeline.rel_file(source_file),
+            "parse",
+            outcome=StageOutcome.FAILED,
+            duration_ms=(time.perf_counter() - attempt_start) * 1000.0,
+            reason_code=reason,
+            detail=str(exc),
+            parser=parser_identity,
+            backend=type(selected).__name__ if selected is not None else None,
         )
         return None
+    ledger.record(
+        pipeline.rel_file(source_file),
+        "parse",
+        outcome=StageOutcome.OK,
+        duration_ms=(time.perf_counter() - attempt_start) * 1000.0,
+        parser=parser_identity,
+        backend=type(selected).__name__,
+        sha=content_hash or None,
+    )
     # The parser saw the encoding sibling (if any); citations and the cache
     # entry must reference the real source, not the cache copy.
     restore_source_path(parsed, parse_target=parse_target, source_file=source_file)
@@ -533,7 +631,7 @@ def cache_key(source_file: Path) -> str:
     return source_key(source_file.stem, content_hash_prefix(source_file.read_bytes()))
 
 
-def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
+def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list[ChunkTree]:
     """Process ingestible attachments and return their ChunkTrees.
 
     Attachments are parsed via the same parser as sources.
@@ -579,14 +677,21 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
         pipeline.emit("parse", idx + 1, len(ingestible), f"asset: {att.filename}")
 
         try:
-            doc = ingest_attachment(vp, att, parser, vlm_captioner=vlm_captioner)
+            doc = ingest_attachment(vp, att, parser, vlm_captioner=vlm_captioner, vlm_model=vlm_model, ledger=ledger)
             if doc is None:
                 continue
 
             if not pipeline.chunker:
                 continue
 
+            chunk_start = time.perf_counter()
             tree = pipeline.chunker.chunk(doc)
+            ledger.record(
+                att.path,
+                "chunk",
+                outcome=StageOutcome.OK,
+                duration_ms=(time.perf_counter() - chunk_start) * 1000.0,
+            )
 
             # Stamp source-asset metadata on all leaves so downstream
             # resolve/index stages can distinguish attachment content.
@@ -598,13 +703,27 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
                 node.chunk.metadata["asset_file"] = att.path
 
             if pipeline.enricher is not None:
+                enrich_start = time.perf_counter()
                 tree = pipeline.enricher.enrich_tree(tree, doc)
+                ledger.record(
+                    att.path,
+                    "enrich",
+                    outcome=StageOutcome.OK,
+                    duration_ms=(time.perf_counter() - enrich_start) * 1000.0,
+                )
 
             trees.append(tree)
             logger.info("Processed attachment: %s → %d chunk(s)", att.filename, len(list(tree.leaves())))
 
         except Exception as exc:
             logger.debug("Failed to process attachment %s: %s", att.filename, exc, exc_info=is_verbose())
+            ledger.record(
+                att.path,
+                "attachment",
+                outcome=StageOutcome.FAILED,
+                reason_code=reason_code_for(exc),
+                detail=str(exc),
+            )
 
     if trees:
         logger.info("Processed %d ingestible attachment(s)", len(trees))

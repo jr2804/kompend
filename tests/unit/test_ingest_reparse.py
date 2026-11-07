@@ -21,6 +21,7 @@ from typing import Any, cast
 from kompend.chunking.hierarchical import HierarchicalChunker
 from kompend.core.cache.store import CacheStore
 from kompend.core.models import ChunkTree, DocumentElement, ElementType, MetadataField, ParsedDocument
+from kompend.core.paths import CACHE_DIR
 from kompend.core.pipeline.ingest import (
     PARSE_CACHE_PARSER_KEY,
     ingest_documents,
@@ -30,10 +31,17 @@ from kompend.core.pipeline.parse_cache import cache_key, iter_documents, write_d
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.pipeline.stages._parse import _chunk_cache_deps, _process_single_source  # noqa: PLC2701
 from kompend.core.pipeline.state import TierState, TierStateStore
+from kompend.core.reporting.ledger import StageLedger
 from kompend.core.store import vault_db_path
 from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.parsers.base import DocumentParser
 from tests.conftest import as_obj
+
+
+def _open_ledger(base: Path) -> StageLedger:
+    """Ledger on the vault store; closed implicitly by test process exit."""
+    return StageLedger.open(vault_db_path(base / CACHE_DIR))
+
 
 # ── Parser identity ─────────────────────────────────────────────────
 
@@ -315,7 +323,7 @@ def test_enriched_tree_is_what_gets_cached(tmp_path: Path) -> None:
     _seed_parse_cache(base, source_file, content_hash)
 
     runtime = _StubRuntime(base, enricher=_StubEnricher(), parser=_parser_of("chain-A"))
-    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard())
+    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard(), _open_ledger(base), "chain-A")
 
     assert tree is not None
     cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(cast("PipelineRuntime", runtime), content_hash))
@@ -335,7 +343,7 @@ def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
     _seed_parse_cache(base, source_file, content_hash)
 
     runtime = _StubRuntime(base, enricher=None, parser=_parser_of("chain-A"))
-    _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard())
+    _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard(), _open_ledger(base), "chain-A")
 
     cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(cast("PipelineRuntime", runtime), content_hash))
     assert cached is not None
@@ -355,7 +363,7 @@ def test_reparse_bypasses_the_parse_cache(tmp_path: Path) -> None:
     runtime.parser = parser
     runtime.config.reparse = True
 
-    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard())
+    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard(), _open_ledger(base), "chain-A")
 
     assert tree is not None
     assert len(parser.parsed) == 1

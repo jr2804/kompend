@@ -28,6 +28,7 @@ persistence, and standalone ingestion.
 | `reasons.py`          | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
 | `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`           | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |
+| (ledger wiring)      | `stages/_parse.py`, `ingest.py`, `attachments.py` record every parse/chunk/enrich/attachment/dedup attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()` |
 
 ## Rules
 

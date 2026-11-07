@@ -13,6 +13,7 @@ attachments are captioned via a VLM (if configured).
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from binaryornot.check import is_binary
@@ -23,17 +24,14 @@ from kompend.core.models import DocumentElement, ElementType, ParsedDocument
 from kompend.core.models.attachments import IMAGE_EXTENSIONS, Attachment, AttachmentManifest
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.ingest import restore_source_path
+from kompend.core.pipeline.reasons import reason_code_for
+from kompend.core.reporting.ledger import StageLedger
 from kompend.core.text.encoding import normalize_to_utf8_path
 from kompend.core.text.rumdl import normalize_element_markdown
-from kompend.core.types import ReasonCode
+from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers.base import DocumentParser
-
-__all__ = [
-    "ingest_attachment",
-    "iter_ingestible_attachments",
-]
 
 logger = get_logger(__name__)
 
@@ -68,6 +66,8 @@ def ingest_attachment(
     parser: DocumentParser,
     *,
     vlm_captioner: VlmAgent | None = None,
+    vlm_model: str | None = None,
+    ledger: StageLedger | None = None,
 ) -> ParsedDocument | None:
     """Ingest a single attachment through the parser pipeline.
 
@@ -82,6 +82,10 @@ def ingest_attachment(
         att: The attachment to ingest.
         parser: Document parser for text files.
         vlm_captioner: Optional VLM captioner for image files.
+        vlm_model: The VLM model name, recorded as ``judge_model`` on
+            ledger rows for image captions.
+        ledger: Optional per-item ledger; the attempt's outcome is recorded
+            as stage ``attachment`` (recording never raises).
 
     Returns:
         A parsed document, or ``None`` on failure/skip.
@@ -89,6 +93,15 @@ def ingest_attachment(
     att_file = vp.attachments_dir / att.path
     if not att_file.exists():
         logger.error("Attachment file not found: %s", att_file, extra={"reason_code": ReasonCode.CORRUPT_CACHE})
+        if ledger is not None:
+            ledger.record(
+                att.path,
+                "attachment",
+                outcome=StageOutcome.FAILED,
+                reason_code=ReasonCode.CORRUPT_CACHE,
+                detail=f"file not found: {att_file}",
+                size_bytes=_size_of(att_file),
+            )
         return None
 
     ext = att_file.suffix.lower()
@@ -100,8 +113,17 @@ def ingest_attachment(
                 att.filename,
                 extra={"reason_code": ReasonCode.NO_PARSER},
             )
+            if ledger is not None:
+                ledger.record(
+                    att.path,
+                    "attachment",
+                    outcome=StageOutcome.SKIPPED,
+                    reason_code=ReasonCode.NO_PARSER,
+                    detail="image attachment without a VLM captioner",
+                    size_bytes=_size_of(att_file),
+                )
             return None
-        return _caption_image(att_file, att, vlm_captioner)
+        return _caption_image(att_file, att, vlm_captioner, vlm_model=vlm_model, ledger=ledger, size_bytes=_size_of(att_file))
 
     # Non-image attachments: any non-binary file is text. The configured backend
     # is what decides which text extensions it claims — parsecraft's native-text
@@ -110,11 +132,36 @@ def ingest_attachment(
     # claim raises in the parser and is skipped by the handler below.
     if is_binary(str(att_file)):
         logger.warning("Unsupported attachment type '%s', skipping: %s", ext, att.filename, extra={"reason_code": ReasonCode.NO_PARSER})
+        if ledger is not None:
+            ledger.record(
+                att.path,
+                "attachment",
+                outcome=StageOutcome.SKIPPED,
+                reason_code=ReasonCode.NO_PARSER,
+                detail=f"unsupported attachment type: {ext}",
+                size_bytes=_size_of(att_file),
+            )
         return None
-    return _parse_text(att_file, att, parser, vp.cache_dir)
+    return _parse_text(att_file, att, parser, vp.cache_dir, ledger=ledger, size_bytes=_size_of(att_file))
 
 
-def _parse_text(att_file: Path, att: Attachment, parser: DocumentParser, cache_dir: Path) -> ParsedDocument | None:
+def _size_of(path: Path) -> int | None:
+    """File size for ledger rows; ``None`` when the file is unreadable."""
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
+
+
+def _parse_text(
+    att_file: Path,
+    att: Attachment,
+    parser: DocumentParser,
+    cache_dir: Path,
+    *,
+    ledger: StageLedger | None = None,
+    size_bytes: int | None = None,
+) -> ParsedDocument | None:
     """Parse a text/markdown attachment via the standard parser.
 
     The path passed to the parser is the UTF-8-normalized sibling of
@@ -130,18 +177,44 @@ def _parse_text(att_file: Path, att: Attachment, parser: DocumentParser, cache_d
         normalize_element_markdown(doc.elements, rumdl_config=resolve_rumdl_config(cache_dir.parent.parent))
         doc.title = doc.title or att.filename
         _tag_metadata(doc, att)
+        if ledger is not None:
+            ledger.record(
+                att.path,
+                "attachment",
+                outcome=StageOutcome.OK,
+                detail=_encoding,
+                size_bytes=size_bytes,
+            )
         return doc
-    except Exception:
+    except Exception as exc:
         logger.debug("Failed to parse attachment %s", att_file, exc_info=is_verbose())
+        if ledger is not None:
+            ledger.record(
+                att.path,
+                "attachment",
+                outcome=StageOutcome.FAILED,
+                reason_code=reason_code_for(exc),
+                detail=str(exc),
+                size_bytes=size_bytes,
+            )
         return None
 
 
-def _caption_image(att_file: Path, att: Attachment, vlm_captioner: VlmAgent) -> ParsedDocument | None:
+def _caption_image(
+    att_file: Path,
+    att: Attachment,
+    vlm_captioner: VlmAgent,
+    *,
+    vlm_model: str | None = None,
+    ledger: StageLedger | None = None,
+    size_bytes: int | None = None,
+) -> ParsedDocument | None:
     """Caption an image attachment via the VLM.
 
     Produces a synthetic document whose single text element holds the
     VLM-generated description.
     """
+    caption_start = time.perf_counter()
     try:
         caption = vlm_captioner.run(
             VlmDeps(
@@ -151,10 +224,41 @@ def _caption_image(att_file: Path, att: Attachment, vlm_captioner: VlmAgent) -> 
         )
         if not caption or caption.strip().upper() == "SKIP":
             logger.warning("VLM returned empty caption for %s", att.filename, extra={"reason_code": ReasonCode.EMPTY_EXTRACTION})
+            if ledger is not None:
+                ledger.record(
+                    att.path,
+                    "attachment",
+                    outcome=StageOutcome.DEGRADED,
+                    duration_ms=(time.perf_counter() - caption_start) * 1000.0,
+                    reason_code=ReasonCode.EMPTY_EXTRACTION,
+                    judge_model=vlm_model,
+                    size_bytes=size_bytes,
+                )
             return None
     except Exception as exc:
         logger.debug("Failed to caption image %s: %s", att_file, exc, exc_info=is_verbose())
+        if ledger is not None:
+            ledger.record(
+                att.path,
+                "attachment",
+                outcome=StageOutcome.FAILED,
+                duration_ms=(time.perf_counter() - caption_start) * 1000.0,
+                reason_code=reason_code_for(exc),
+                detail=str(exc),
+                judge_model=vlm_model,
+                size_bytes=size_bytes,
+            )
         return None
+
+    if ledger is not None:
+        ledger.record(
+            att.path,
+            "attachment",
+            outcome=StageOutcome.OK,
+            duration_ms=(time.perf_counter() - caption_start) * 1000.0,
+            judge_model=vlm_model,
+            size_bytes=size_bytes,
+        )
 
     doc = ParsedDocument(
         source_file=att_file,
@@ -196,3 +300,8 @@ def _tag_metadata(doc: ParsedDocument, att: Attachment) -> None:
                 "asset_file": att.path,
             }
         )
+
+__all__ = [
+    "ingest_attachment",
+    "iter_ingestible_attachments",
+]

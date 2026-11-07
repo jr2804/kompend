@@ -7,10 +7,13 @@ from __future__ import annotations
 import sqlite3
 import time
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 import kompend.core.reporting.ledger as ledger_mod
+from kompend.core.models import ParsedDocument
+from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.reporting.handle import set_current_run_id
 from kompend.core.reporting.ledger import (
     StageLedger,
@@ -22,6 +25,26 @@ from kompend.core.reporting.ledger import (
 from kompend.core.store import open_store
 from kompend.core.store.schema import STAGES_TABLE
 from kompend.core.types import ReasonCode, StageOutcome
+from kompend.preprocessing.parsers.base import DocumentParser
+
+# --- ingest integration ---------------------------------------------------------
+
+
+class _LedgerBackend:
+    """Trivial backend: any file parses to an empty document."""
+
+    def parse(self, target: Path) -> ParsedDocument:
+        return ParsedDocument(source_file=Path(target), elements=[], title=Path(target).stem)
+
+
+class _LedgerParser:
+    """Parser facade satisfying ingest_documents' routing contract."""
+
+    def backend_identity(self) -> str:
+        return "stub-backend|1.0"
+
+    def route(self, source_file: Path) -> _LedgerBackend:  # noqa: ARG002
+        return _LedgerBackend()
 
 
 def _db(tmp_path: Path) -> Path:
@@ -172,3 +195,31 @@ def test_a_broken_store_never_breaks_the_command(tmp_path: Path) -> None:
         ledger._conn.close()
         ledger.record("broken.md", "parse", outcome=StageOutcome.OK, run_id="r")  # swallowed
     assert len(_rows(db, "r")) == 1
+
+
+def test_ingest_documents_fills_the_ledger(tmp_path: Path) -> None:
+    """Acceptance: a real ingest run writes one ok-row per parsed source,
+    correlated with the ambient run id (the same one runlog assigns).
+    """
+    base = tmp_path / "vault"
+    (base / "sources").mkdir(parents=True)
+    (base / ".kompend").mkdir()
+    (base / ".kompend" / "config.toml").write_text("", encoding="utf-8")
+    src = base / "sources" / "note.md"
+    src.write_text("# note\n", encoding="utf-8")
+
+    set_current_run_id("ing42")
+    try:
+        result = ingest_documents([src], base, cast(DocumentParser, _LedgerParser()))
+    finally:
+        set_current_run_id(None)
+
+    assert result.count == 1
+    rows = _rows(_db(base), "ing42")
+    assert [(row["stage"], row["outcome"]) for row in rows] == [("parse", "ok")]
+    row = rows[0]
+    assert row["source"].endswith("note.md")
+    assert row["parser"] == "stub-backend|1.0"
+    assert row["backend"] == "_LedgerBackend"
+    assert len(row["sha"]) == 64
+    assert row["size_bytes"] == len(b"# note\n")

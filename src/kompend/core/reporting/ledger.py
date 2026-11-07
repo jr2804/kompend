@@ -56,8 +56,10 @@ from __future__ import annotations
 
 import sqlite3
 import threading
+from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any
 
 from kompend.core.reporting.handle import current_run_id
 from kompend.core.store import connect, open_store
@@ -65,8 +67,6 @@ from kompend.core.store.schema import STAGES_TABLE
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
-from collections.abc import Generator
-from typing import Any
 
 _SOFT_CAP_ROWS = 5000
 _KEEP_ROWS = 2500
@@ -158,6 +158,12 @@ class StageLedger:
                 finally:
                     self._conn.close()
                     self._conn = None
+
+    def __enter__(self) -> StageLedger:
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
+        self.close()
 
     @classmethod
     def open(cls, db_path: Path) -> StageLedger:
