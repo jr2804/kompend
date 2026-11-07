@@ -397,3 +397,20 @@ Kept for calibration; do not copy the specifics into another project.
   copies of provider-string parsing across the repo, a dead offload branch, and
   a check documented as the only catalogue refresher that `run_doctor` never
   called (left unwired: that is a behaviour change, reported instead).
+- Fifth loop (bead knox-xapn): the fourth loop's finding "three copies of
+  provider-string parsing across the repo" landed as `kompend.llm.model_id`
+  (`provider_id_of`/`model_slug` over one first-separator split; bare model →
+  `None` provider), and four call sites now consume it — `llm/user_providers.py`,
+  `llm/debug.py`, `diagnostics/providers.py`, `rag/vector_store.py`. The move
+  surfaced what the size count could not: the doctor pair checked `/` before
+  `:` *by code order, not in-string order*, so it mis-split colon-first strings
+  holding a slash model (`ollama:hf.co/...` → provider `ollama:hf.co`), and two
+  `llm/` sites missed the colon form entirely — `effective_workers` looked up
+  `[providers.<name>]` with the raw prefix, silently ignoring
+  `max_connections` for `ollama:model:tag`, and the debug slug kept the provider
+  for one spelling and stripped it for the other. Each disagreement was pinned
+  red in `tests/unit/test_model_id.py` before the repoint, then resolved to the
+  union rule (`models._split`'s, minus its raise on the bare form);
+  `models._split` and `context_window._split_model` stay — they are build-path
+  splitters with stricter no-separator contracts (raise / empty provider), and
+  `rag`'s known-provider gate is its own contract, not a parse.
