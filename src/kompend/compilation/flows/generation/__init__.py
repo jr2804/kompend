@@ -11,18 +11,9 @@ from kompend.compilation.flows.generation.budget import (
     _known_titles_windows,
 )
 from kompend.compilation.flows.generation.flow import (
-    PlaceholderMarker,
-    PlaceholderPageError,
-    _allowed_kind,
-    _placeholder_reasons,
-    _reject_placeholder_pages,
-    _resolve_page_kind,
-    _sanitize_entity_type,
-    assemble_wiki,
     gen_cache_deps,
     generate_all_pages_agentic,
     generation_detail,
-    learn_wikilink_aliases,
     prepare_concepts,
     run_generation,
     run_generation_resumable,
@@ -36,6 +27,17 @@ from kompend.compilation.flows.generation.segments import (
     _format_uncovered_concepts,
     _SegmentUnit,
     prepare_source_segments,
+)
+from kompend.compilation.flows.generation.writer import (
+    PlaceholderMarker,
+    PlaceholderPageError,
+    _allowed_kind,
+    _placeholder_reasons,
+    _reject_placeholder_pages,
+    _resolve_page_kind,
+    _sanitize_entity_type,
+    assemble_wiki,
+    learn_wikilink_aliases,
 )
 
 __all__ = [
