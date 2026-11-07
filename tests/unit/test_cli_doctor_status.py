@@ -797,7 +797,7 @@ def _fake_embedder(dims: int = 768) -> SimpleNamespace:
     return SimpleNamespace(embed_documents_sync=lambda _text: SimpleNamespace(embeddings=[[0.1] * dims]))
 
 
-def _alias_pair() -> dict[str, SimpleNamespace]:
+def _alias_pair() -> dict[str, providers.OllamaModelIdentity]:
     """Two Ollama tags — ``440m`` is an alias layer over ``270m``'s weights."""
     base = providers.OllamaModelIdentity(digest="sha256:111e84992a04", parameter_size="271M", native_dim=512)
     same_weights = providers.OllamaModelIdentity(digest="sha256:111e84992a04", parameter_size="271M", native_dim=512)

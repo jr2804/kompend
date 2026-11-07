@@ -11,6 +11,7 @@ debug slugs missed the ``provider:model`` colon form; the doctor mis-split
 from __future__ import annotations
 
 import re
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Final
 
@@ -109,10 +110,18 @@ class TestEffectiveWorkersColonForm:
         assert effective_workers("mistral/x", 8) == 8
 
     @pytest.fixture(autouse=True)
-    def _clean_user_providers(self) -> None:
+    def _clean_user_providers(self) -> Iterator[None]:
         set_user_providers({})
         yield
         set_user_providers({})
+
+
+class _FakeAgent:
+    """The minimal agent surface ``save_debug_prompt`` reads."""
+
+    stage = "test"
+    current_source_id = "src"
+    _last_debug_file: Path | None = None
 
 
 class TestDebugSlugSpellingIndependence:
@@ -129,7 +138,7 @@ class TestDebugSlugSpellingIndependence:
     def _dump_slug(self, monkeypatch: pytest.MonkeyPatch, debug_dir: str, model_string: str) -> str:
         monkeypatch.setenv(EnvVar.DEBUG_LLM_DIR, debug_dir)
         save_debug_prompt(
-            type("_FakeAgent", (), {"stage": "test", "current_source_id": "src", "_last_debug_file": None})(),
+            _FakeAgent(),
             model_string,
             [{"role": "user", "content": "hi"}],
             {},
