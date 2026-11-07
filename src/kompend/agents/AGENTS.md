@@ -28,9 +28,8 @@ All agents extend `KompendAgentBase[ResultT, DepsT]` (ABC):
   `QueryExpansionAgent`, `CragGradeAgent`, `HydeAgent`, `VlmAgent`,
   `CaptureAgent`, `DistillAgent`, `CategorizeAgent`, `LintRuleAgent`,
   `RemediationAgent`, `VerificationAgent`, `ContextChunkAgent`, `DoctorAgent`
-- windowed agentic-extraction digest: `MemoryConsolidationAgent`
-- WiCER probes: `WicerProbeAgent`, `WicerEvaluateAgent`, `WicerDiagnoseAgent`
-- `SummarizerAgent`, and `DecisionAgent` (TypeSafe decision model, error triage)
+- windowed digest: `MemoryConsolidationAgent`; `SummarizerAgent`; the three
+  WICER probes; `DecisionAgent` (TypeSafe decision model, error triage)
 
 ### KompendAgentBase responsibilities
 
@@ -41,6 +40,21 @@ Each concrete agent declares:
 - `system_template_name` — Jinja2 system-prompt template
 - `result_type` — Pydantic model (or `str`) the LLM must return
 - `deps_type` — typed context dataclass (default: `PipelineAgentDeps`)
+
+### The `base/` package
+
+`KompendAgentBase` and its machinery, split by concern. The import path
+`kompend.agents.base` is stable — `base/__init__.py` re-exports the public
+surface, so importers never name a submodule:
+
+| Module | Scope |
+|--------|-------|
+| `base/agent.py` | the `KompendAgentBase` dataclass: construction defaults (`_apply_config_defaults`), run entry points, prompt rendering, lazy `_build_agent()` |
+| `base/deps.py` | `AgentDeps` protocol, `ResultT`/`DepsT` typevars, `resolve_retry_budget()`, the `UNSET_*` sentinels |
+| `base/models.py` | top-level model assembly (failover chain) and output-ceiling arithmetic |
+| `base/context.py` | context-manager and RLM capability assembly, `_CONTEXT_PRESETS` |
+| `base/retries.py` | transient-retry loop, failure mapping, cache-rejection sniffing, session limits |
+| `base/delta_retry.py` | the delta-retry salvage hook and its six helpers |
 
 The base class provides:
 
@@ -61,23 +75,21 @@ The base class provides:
   level, enabled by config.
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
   `[rlm]` extra) attaches from the `compile.llm.rlm` group (`RlmConfig` in
-  `core/config/_configs.py`: `enable`, `preset`, `max_tool_calls`,
-  `code_timeout`, `sub_model`, `max_depth`, `node_budget`; `enable` is the
-  only switch, explicit fields override the preset baseline). It registers
-  an `execute_code` tool (sandboxed REPL, deps context pre-loaded from
-  `rlm_context_field`) plus RLM instructions; the sub-model powers
-  `llm_query()` in the REPL and is usage-tracked via `KompendModel`. With
+  `core/config/_configs.py`; `enable` is the only switch, explicit fields
+  override the preset baseline). It registers an `execute_code` tool
+  (sandboxed REPL, deps context pre-loaded from `rlm_context_field`) plus
+  RLM instructions; the sub-model powers `llm_query()` in the REPL and is
+  usage-tracked via `KompendModel`. With
   `max_depth > 0` the REPL also exposes `rlm_query(prompt, slice)` — a
   child agent (same main model, own REPL) recursing to the depth budget,
   guarded by a per-root-run node budget (default 16) and cycle detection on
   (depth, prompt, context fingerprint). The per-run REPL cache is keyed by
-  `id(deps)`; a lookup must confirm the entry still belongs to that deps
-  object — ids are recycled once a deps object is collected, and a stale
-  REPL would run the next agent against the previous run's namespace,
-  guard and model. Run tool-calls are bounded by `UsageLimits` from the
-  preset. When RLM is enabled the `rlm_context_field` deps value is replaced
-  in rendered prompts by `RLM_CONTEXT_PLACEHOLDER` (the deps keep the full
-  value for the REPL). Disabled by default (`rlm=False`).
+  `id(deps)` and a lookup must confirm the entry still belongs to that deps
+  object (ids are recycled; a stale REPL would run against the previous
+  run's namespace, guard and model). When RLM is enabled the
+  `rlm_context_field` deps value is replaced in rendered prompts by
+  `RLM_CONTEXT_PLACEHOLDER` (the deps keep the full value for the REPL).
+  Disabled by default (`rlm=False`).
 - **Skill injection** — user-defined skills from `compile.skills` are
   appended to the system prompt under `## Skill: <name>` headings
 - **Output validation + retry** — PydanticAI validates against
@@ -87,17 +99,14 @@ The base class provides:
   `_usage_limits_for(deps)` (default: the RLM preset limits, else None →
   pydantic-ai's implicit 50-request cap). Every session agent overrides the
   hook through `_session_limits(units=…, per_unit=…)` — one formula: planned
-  turns + a fixed 2-request session cost (the "no more work" probe and the
-  closing turn) + `_retry_requests()` (the resolved tool+output budgets: a
-  session that may retry but does not budget the retries aborts on its first
-  retried call), scaled by `headroom_frac`. Only the unit count and per-unit
-  cost are per agent: nodes (`budget.summary_requests_per_node`), groups
-  (`budget.distill_requests_per_group`), claims, gaps, chunks, concepts — the
-  last four class constants. A session counts as progress only for ids in its
-  own payload, and `summarize_node` rejects unknown ids with `ModelRetry` so a
-  mangled id cannot masquerade as progress. Unsummarized nodes are
-  re-requested later (caller-side in `NodeSummarizer`, batched and
-  stall-retried per `SummarizerSessionPolicy` from `budget.summary_session_*`).
+  turns + a fixed 2-request session cost + `_retry_requests()` (resolved
+  tool+output budgets — unbudgeted retries abort on the first retried call),
+  scaled by `headroom_frac`. Only the unit count and per-unit cost are per
+  agent (nodes and groups from `budget.*`, the rest class constants). A
+  session counts progress only for ids in its own payload; `summarize_node`
+  rejects unknown ids with `ModelRetry`. Unsummarized nodes are re-requested
+  caller-side (`NodeSummarizer`, per `SummarizerSessionPolicy` from
+  `budget.summary_session_*`).
 - **Reasoning effort** — config string mapped to provider thinking
   controls (e.g. `think=False` for Ollama)
 - **VLM captioning** — `VlmAgent` sends a LIST user prompt: the rendered
@@ -114,12 +123,9 @@ did not spell out:
 |-------|--------|
 | `llm` | the `compile.llm` group — timeout, retries, reasoning effort, context manager, context window, fallback chain, delta-retry switch, data format |
 
-`KompendAgentBase._apply_config_defaults()` fills the gaps: `timeout` ←
-`llm.timeout`, `retries` ← the tool/output split (`llm.tool_retries` /
-`llm.output_retries`, 0 when `output_retries_enabled` is false),
-`reasoning_effort`, `context_manager`, `context_window`, `fallback_models`,
-`delta_retry_enabled`, `data_format` ← their `compile.llm` twins. An
-explicitly passed value always wins.
+`_apply_config_defaults()` (in `base/agent.py`) fills every gap from its
+`compile.llm` twin (the tool/output retry split collapses to 0 when
+`output_retries_enabled` is false). An explicitly passed value always wins.
 
 There is no `max_tokens` and no `budget` kwarg: an answer is bounded by the
 model's context window minus its prompt (`llm/AGENTS.md`). The exception is
@@ -134,10 +140,10 @@ the format cannot drift from the config the agent already carries
 (`CategorizeAgent` → `_build_files_payload`).
 
 A **transient** failure (timeout, dropped connection, 429/5xx) is retried in
-`KompendAgentBase._invoke` — `compile.llm.transient_retries` times with
+the base's `_invoke` — `compile.llm.transient_retries` times with
 `transient_backoff` doubling. That is the only whole-request retry: stages must
-not add backoff loops of their own (generation and lint had one; both were
-removed). Tool, output-schema and session-progress retries are other axes.
+not add backoff loops of their own. Tool, output-schema and session-progress
+retries are other axes.
 
 ### Failure vocabulary (`failure.py`)
 
@@ -163,32 +169,28 @@ The agentic harness offers the memory capability only on request
 (`AgenticHarness(memory=True)`). The notebook is a `read_memory`/`write_memory`
 tool pair: an invented file name gets `ModelRetry`, and once the tool budget
 is spent the run dies with the node left unsummarized.
-
 `compile.llm.agent_memory` (default on) decides which stages request it. The
 notebook is owned by ONE agent instance, so it only helps a stage where one
-instance handles MANY outputs - summarisation, verification, remediation,
-distillation. Fresh-agent-per-unit stages (generation, write, query,
-context-chunk, overview) gain nothing: it would be empty every unit.
-`compile.llm.memory_store` (default `vault`) picks the backend: `vault`
-roots the notebook at `.kompend/agent-memory/` via `DirectoryMemoryStore`
-(`vault_memory.py`; the harness `FileStore` is POSIX-only locally), resolved
-by `build_notebook_store(llm, memory_dir)` — every notebook stage uses it.
-The harness scopes every notebook path by agent name, so each stage owns
-`.kompend/agent-memory/<agent_name>/MEMORY.md`. The notebook is agent-written
-prompt context, not a cache input: it is not part of the summary cache key.
+instance handles MANY outputs (summarisation, verification, remediation,
+distillation); fresh-agent-per-unit stages gain nothing. `compile.llm.memory_store`
+(default `vault`) picks the backend: `vault` roots the notebook at
+`.kompend/agent-memory/<agent_name>/MEMORY.md` via `DirectoryMemoryStore`
+(`vault_memory.py`), resolved by `build_notebook_store(llm, memory_dir)`. The
+notebook is agent-written prompt context, not a cache input: it is not part
+of the summary cache key.
 
-Three more harness capabilities ride on `AgenticHarness` (`agentic_harness.py`),
-first consumed by the generation and summarizer agents: **StepPersistence**
-(`step_store`) saves every run's transcript after each turn, so a hard kill
-resumes from the last complete snapshot (keys in `compilation/step_recovery.py`).
-**ConversationSearch** (`search_history`) adds a BM25 tool over the same store,
-scoped to the conversation. **SystemReminders** (`reminder_content` +
-`reminder_interval`) appends a cache-safe tail reminder rendered from a template.
+Three more harness capabilities ride on `AgenticHarness` (`agentic_harness.py`):
+**StepPersistence** (`step_store`) saves every run's transcript after each turn,
+so a hard kill resumes from the last complete snapshot (keys in
+`compilation/step_recovery.py`). **ConversationSearch** (`search_history`) adds
+a BM25 tool over the same store, scoped to the conversation. **SystemReminders**
+(`reminder_content` + `reminder_interval`) appends a cache-safe tail reminder
+rendered from a template.
 
-The delta-retry salvage hook is opt-in per class: a subclass sets
-`supports_delta_retry: ClassVar[bool] = True`, and it fires only when
-`llm.delta_retry_enabled` is on. It is a `ClassVar` — a plain attribute would
-`__init__` and never take effect.
+The delta-retry salvage hook (`base/delta_retry.py`) is opt-in per class: a
+subclass sets `supports_delta_retry: ClassVar[bool] = True`, and it fires only
+when `llm.delta_retry_enabled` is on. It must be a `ClassVar` — a plain
+attribute would `__init__` and never take effect.
 
 ### KompendModel (`kompend_model.py`)
 
@@ -211,9 +213,7 @@ Agent layer (`build_fallback_compaction`, see `KompendAgentBase`).
 | ------------------- | ------------------------------------------------------------------------------------- |
 | `PipelineAgentDeps` | extraction, search, capture, lint, verification, categorize, summarize, context-chunk |
 | `QueryDeps`         | QueryAgent (adds `retrieved_context`, `query`, `mode`)                                |
-| `WicerProbeDeps`    | WicerProbeAgent                                                                       |
-| `WicerEvaluateDeps` | WicerEvaluateAgent                                                                    |
-| `WicerDiagnoseDeps` | WicerDiagnoseAgent                                                                    |
+| `Wicer*` deps       | the three WICER agents (probe, evaluate, diagnose)                                    |
 | `DoctorDeps`        | DoctorAgent                                                                           |
 | `SummarizerDeps`    | AgenticSummarizerAgent (payload: `SummaryNode`)                                       |
 | `MemoryConsolidationDeps` | MemoryConsolidationAgent (`previous` + delta digest, `target_tokens`)      |

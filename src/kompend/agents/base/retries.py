@@ -34,11 +34,11 @@ if TYPE_CHECKING:
     from kompend.agents.base.agent import KompendAgentBase
     from kompend.agents.base.deps import DepsT
 
-logger = logging.getLogger(__name__)
-
 #: Transient retries when no config is handed over (``compile.llm`` unset).
 _DEFAULT_TRANSIENT_RETRIES: int = 2
 _DEFAULT_TRANSIENT_BACKOFF_SECONDS: float = 5.0
+
+logger = logging.getLogger(__name__)
 
 
 def _is_cache_rejection(exc: BaseException) -> bool:
