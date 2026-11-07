@@ -18,7 +18,7 @@ from pydantic_ai import RunContext
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, ToolCallPart, ToolReturnPart
 from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord, SnapshotState, SqliteStepStore
 
-import kompend.compilation.flows.generation as gen_module
+import kompend.compilation.flows.generation.flow as gen_module
 from kompend.agents.types import ToolGenerationDeps, VerificationDeps, VerificationVerdict
 from kompend.agents.verification import AgenticVerificationAgent
 from kompend.compilation.concept_keys import normalize_concept_key
@@ -1349,7 +1349,7 @@ class TestTwoPhaseCompiler:
 
         with (
             patch("kompend.compilation.flows.extraction.flow.try_pydanticai_extraction", side_effect=extract_side_effect),
-            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", side_effect=_fake_agent_factory),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", side_effect=_fake_agent_factory),
         ):
             wiki = compiler.compile(chunks)
         assert "extraction_stats" in wiki.metadata
@@ -1458,7 +1458,7 @@ class TestStepStoreRecovery:
         return TwoPhaseCompiler(config=config)
 
     def _run_generation(self, compiler: TwoPhaseCompiler, factory: Callable[..., object]) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
-        with patch("kompend.compilation.flows.generation.make_agentic_generation_agent", side_effect=factory):
+        with patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", side_effect=factory):
             return generate_all_pages_agentic(
                 compiler,
                 list(self.CONCEPTS),

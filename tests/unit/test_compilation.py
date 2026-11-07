@@ -1237,7 +1237,7 @@ class TestTwoPhaseConceptSalvage:
         failing_agent.run.side_effect = LLMOutputError("generation failed")
         with (
             patch.object(compiler, "extract", return_value=ext_set),
-            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", return_value=failing_agent),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=failing_agent),
             pytest.raises(LLMOutputError, match=r"produced no page\(s\) for any of its 1 assigned concept\(s\)"),
         ):
             compiler.compile(chunks)
@@ -1263,7 +1263,7 @@ class TestTwoPhaseConceptSalvage:
         failing_agent.run.side_effect = LLMOutputError("Tool 'final_result' exceeded max retries count of 1")
         with (
             patch.object(compiler, "extract", return_value=ext_set),
-            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", return_value=failing_agent),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=failing_agent),
             pytest.raises(LLMOutputError) as excinfo,
         ):
             compiler.compile(_make_chunks(count=3, heading="Some Heading"))

@@ -17,13 +17,13 @@ import pytest
 from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
 
 from kompend.agents.failure import EmptyAnswerError
-from kompend.compilation.flows import generation as gen_module
 from kompend.compilation.flows.extraction import (
     _compact_history_inplace,
     _estimate_history_tokens,
     _synthetic_history_response,
 )
 from kompend.compilation.flows.extraction import flow as ext_module
+from kompend.compilation.flows.generation import flow as gen_module
 from kompend.compilation.schema import Concept, Entity, ExtractionOutput
 from kompend.compilation.two_phase import (
     Extraction,

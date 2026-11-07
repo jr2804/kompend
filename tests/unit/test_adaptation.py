@@ -14,7 +14,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-import kompend.compilation.flows.generation as gen_module
+import kompend.compilation.flows.generation.flow as gen_module
 from kompend.agents.failure import AgentFailureKind, EmptyAnswerError
 from kompend.compilation.adaptation import (
     AdaptationSignal,
@@ -195,7 +195,7 @@ class TestShrinkLoop:
             agent.run = _run
             return agent
 
-        with patch("kompend.compilation.flows.generation.make_agentic_generation_agent", side_effect=_factory):
+        with patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", side_effect=_factory):
             nodes, _, caller_progress = generate_all_pages_agentic(
                 compiler,
                 [dict(c) for c in CONCEPTS],
@@ -226,7 +226,7 @@ class TestShrinkLoop:
             return agent
 
         with (
-            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", side_effect=_factory),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", side_effect=_factory),
             pytest.raises(LLMContextOverflowError),
         ):
             generate_all_pages_agentic(
@@ -404,7 +404,7 @@ class TestLoop2Shrink:
             return decide(signal)
 
         with (
-            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", side_effect=_factory),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", side_effect=_factory),
             patch.object(gen_module, "decide_unit_adaptation", side_effect=_decide),
         ):
             try:

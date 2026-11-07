@@ -44,7 +44,7 @@ class TestAgenticPassLoop:
 
         with (
             patch.object(compiler, "extract", return_value=_extraction_set()),
-            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", return_value=agent),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
         ):
             wiki = compiler.compile(_chunks())
 
@@ -62,7 +62,7 @@ class TestAgenticPassLoop:
 
         with (
             patch.object(compiler, "extract", return_value=_extraction_set()),
-            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", return_value=agent),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
             caplog.at_level(logging.WARNING),
         ):
             compiler.compile(_chunks())
@@ -78,7 +78,7 @@ class TestAgenticPassLoop:
 
         with (
             patch.object(compiler, "extract", return_value=_extraction_set()),
-            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", return_value=agent),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
             pytest.raises(LLMOutputError, match=r"produced no page\(s\)"),
         ):
             compiler.compile(_chunks())
@@ -93,7 +93,7 @@ class TestAgenticPassLoop:
 
         with (
             patch.object(compiler, "extract", return_value=_extraction_set()),
-            patch("kompend.compilation.flows.generation.make_agentic_generation_agent", return_value=agent),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
             pytest.raises(LLMOutputError, match=r"produced no page\(s\)"),
         ):
             compiler.compile(_chunks())
