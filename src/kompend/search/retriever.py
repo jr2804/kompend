@@ -28,6 +28,7 @@ from kompend.logging import get_logger
 from kompend.rag.vector_store import VectorField, VectorStoreLike
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
 from kompend.search.retrieval.results import Citation, SearchResult, SynthesisResult
+from kompend.search.retrieval.vector import hit_float, hit_opt_str, hit_str, vector_search
 
 TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
 _TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
@@ -143,20 +144,20 @@ class HybridRetriever:
         """
         node_id = str(hit.get("id", ""))
         node = self._node_by_id.get(node_id)
-        title = _hit_str(hit, VectorField.TITLE) or (node.title if node else node_id)
+        title = hit_str(hit, VectorField.TITLE) or (node.title if node else node_id)
         snippet = (
             extract_snippet(node.content, query_tokens, self._display.search_snippet_chars)
             if node and node.content
-            else _hit_str(hit, VectorField.CONTENT_PREVIEW) or title
+            else hit_str(hit, VectorField.CONTENT_PREVIEW) or title
         )
-        source_file = _hit_opt_str(hit, VectorField.SOURCE_FILE)
+        source_file = hit_opt_str(hit, VectorField.SOURCE_FILE)
         if source_file is None and node and node.metadata and node.metadata.get(MetadataField.SOURCE):
             source_file = str(node.metadata[MetadataField.SOURCE])
         return SearchResult(
             article_id=node_id,
             title=title,
             snippet=snippet,
-            score=_hit_float(hit, "score"),
+            score=hit_float(hit, "score"),
             source_file=source_file,
             tags=_node_tags(node),
             attributes=_node_attributes(node),
@@ -174,21 +175,16 @@ class HybridRetriever:
         attributes_all: Sequence[str] | None = None,
         attribute_keys: Sequence[str] | None = None,
     ) -> list[SearchResult]:
-        if self._vector_store is None or not self._vector_store.available:
-            return []
-        try:
-            hits = self._vector_store.search(
-                query,
-                top_k=top_k,
-                tags_all=tags_all,
-                tags_dnf=tags_dnf,
-                attributes_all=attributes_all,
-                attribute_keys=attribute_keys,
-            )
-        except Exception as exc:
-            # The keyword path still has candidates, so the vector half
-            # degrades to "no vector hits" instead of failing the search.
-            record_unit_failure(stage="search.vector-search", unit=query, exc=exc)
+        hits = vector_search(
+            self._vector_store,
+            query,
+            top_k=top_k,
+            tags_all=tags_all,
+            tags_dnf=tags_dnf,
+            attributes_all=attributes_all,
+            attribute_keys=attribute_keys,
+        )
+        if hits is None:
             return []
         query_tokens = set(tokenize(query))
         results: list[SearchResult] = []
@@ -353,27 +349,6 @@ class KeywordRetriever:
     ) -> list[SearchResult]:
         """Alias of :meth:`search` — no raw-source fallback in portable mode."""
         return self.search(query, top_k=top_k)
-
-
-# ── HybridRetriever (vector-only) ──────────────────────────────────────
-
-
-def _hit_str(hit: dict[str, object], key: str, default: str = "") -> str:
-    """Read a string field from a vector-store hit, falling back to *default*."""
-    value = hit.get(key)
-    return value if isinstance(value, str) else default
-
-
-def _hit_opt_str(hit: dict[str, object], key: str) -> str | None:
-    """Read an optional string field from a vector-store hit."""
-    value = hit.get(key)
-    return value if isinstance(value, str) else None
-
-
-def _hit_float(hit: dict[str, object], key: str, default: float = 0.0) -> float:
-    """Read a float field from a vector-store hit."""
-    value = hit.get(key)
-    return value if isinstance(value, int | float) else default
 
 
 # ── Synthesis (context formatting + LLM call) ──────────────────────────
