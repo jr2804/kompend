@@ -41,7 +41,6 @@ from kompend.core.pipeline.references import ReferenceStore
 from kompend.logging import get_logger
 from kompend.output.base import BaseOutputWriter
 from kompend.output.frontmatter import OKF_VERSION
-from kompend.output.frontmatter import okf_frontmatter_yaml as _okf_frontmatter_yaml
 from kompend.output.models import Document
 from kompend.output.page import OkfPageMixin
 from kompend.output.page_paths import PageLayoutMixin, bundle_path, page_stem
@@ -49,7 +48,7 @@ from kompend.output.reference_links import rewrite_source_references
 from kompend.output.surfaces import GeneratedSurfaceMixin
 
 # OKF spec version every vault writer targets.
-__all__ = ["OKF_VERSION", "okf_frontmatter_yaml"]
+__all__ = ["OKF_VERSION"]
 
 logger = get_logger(__name__)
 
@@ -367,12 +366,3 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
             lines.append("")
 
         return "\n".join(lines)
-
-
-def okf_frontmatter_yaml(frontmatter: dict[str, Any]) -> str:
-    """Render frontmatter as YAML without anchors/aliases.
-
-    Thin alias of :func:`kompend.output.frontmatter.okf_frontmatter_yaml`, so
-    capture writers can call it without this module's dependencies.
-    """
-    return _okf_frontmatter_yaml(frontmatter)

@@ -64,6 +64,7 @@ from kompend.core.paths import (
 from kompend.core.pipeline.assets import AssetStore
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.utils.time import iso_local
+from kompend.output.frontmatter import okf_frontmatter_yaml as _okf_frontmatter
 from kompend.output.models import Document
 from kompend.output.page import (
     convert_wikilinks,
@@ -77,7 +78,6 @@ from kompend.output.page import (
 from kompend.output.pages.log import append_log_entry
 from kompend.output.renderer import DocumentRenderer
 from kompend.output.vault import OKF_VERSION, VaultWriter
-from kompend.output.vault import okf_frontmatter_yaml as _okf_frontmatter
 
 
 class MarkdownWriter(VaultWriter):
