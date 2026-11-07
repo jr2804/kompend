@@ -83,7 +83,7 @@ module map, and modification guidance — **see `acp/AGENTS.md`** and
 - Python 3.13+ only. Modern typing (`X | None`, `list[str]`).
 - Every module in `src/kompend/` has an `__init__.py` that defines its public API
   via re-exports. Import from the package root, not the defining submodule.
-- `src/kompend/core/paths.py` is the single source of truth for on-disk artifact
+- `src/kompend/core/paths/` is the single source of truth for on-disk artifact
   paths — see `.agents/FILES.md`.
 - `src/kompend/core/config/` owns all configuration and `DEFAULTS` — see
   `core/config/AGENTS.md`.

@@ -147,13 +147,13 @@ _ENV_ACCESS_RE = re.compile(r"\b(?:os\.environ|envvar|validation_alias|_set_env|
 _KOMP_LITERAL_RE = re.compile(r'"KOMP_[A-Z_]+"')
 
 # Hard-coded wiki file names. The canonical names live in
-# ``kompend/core/paths.py`` as ``Final[str]`` constants; a literal that
+# ``kompend/core/paths/`` as ``Final[str]`` constants; a literal that
 # duplicates one of them is a second source of truth for a path that
 # several modules share.
 _WIKI_FILENAME_RE = re.compile(r"""["']([A-Za-z0-9][A-Za-z0-9_.-]*\.md)["']""")
 
 # The single allowed definition site for the wiki file names.
-_PATHS_MODULE = SRC_ROOT / "core" / "paths.py"
+_PATHS_MODULE = SRC_ROOT / "core" / "paths" / "__init__.py"
 
 # The single allowed definition site for ``KOMP_*`` env-var names.
 _ENV_MODULE = SRC_ROOT / "core" / "env.py"
@@ -421,9 +421,9 @@ def scan_wiki_filenames(path: Path, lines: list[str]) -> list[Violation]:
 
 @cache
 def _path_filename_constants() -> frozenset[str]:
-    """The ``*.md`` file names defined as ``Final[str]`` in ``core/paths.py``.
+    """The ``*.md`` file names defined as ``Final[str]`` in ``core/paths/``.
 
-    An unreadable or unparseable ``paths.py`` means the rule has no facts to
+    An unreadable or unparseable paths module means the rule has no facts to
     judge by, so it raises :class:`ScanError` rather than returning an empty
     set — an empty set reads as "no path constants exist" and disarms
     WIKI-FILENAME without saying so.
