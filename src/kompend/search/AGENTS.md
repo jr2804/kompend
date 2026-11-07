@@ -45,6 +45,10 @@ selection, query classification, budget management, and tag filtering.
   (store-less path). The two must agree — ``filters.py`` holds the canonical
   semantics and a test pins the store to it. The agentic query tools thread
   the caller's filters through ``QueryAgentDeps`` into ``retriever.search``.
+- ``HybridRetriever.synthesize`` forwards **every** synthesis knob
+  (``verbosity``, ``skills``, ``reasoning_effort``, ``rlm``, ``llm``). A knob
+  it drops silently answers differently on the MCP path than on the CLI path,
+  which passes them all — the drop is invisible until the two are compared.
 - ``pipeline.py``'s optional steps (query expansion, HyDE, neural rerank,
   CRAG grading) DO call LLM agents — classification is programmatic, those
   steps are not. Each one is best-effort enrichment: on failure it records

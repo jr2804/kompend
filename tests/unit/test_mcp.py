@@ -10,10 +10,13 @@ import pytest
 
 from kompend.cli.app import app as cli_app
 from kompend.cli.app import register_all_commands
+from kompend.core.config import ReasoningEffort, resolve_config
 from kompend.mcp.server import compile_wiki, parse_document
 from kompend.mcp.server import server as mcp_server
 from kompend.mcp.tools.config import config_check
 from kompend.mcp.tools.query import query_wiki
+from kompend.search.retrieval.results import SynthesisResult
+from kompend.search.retriever import HybridRetriever
 
 # ---------------------------------------------------------------------------
 # CLI ↔ MCP parity
@@ -215,3 +218,41 @@ def test_query_wiki_errors_when_no_pages(tmp_path: Path) -> None:
     """Querying a non-vault dir fails fast (LookupError) before page loading."""
     with pytest.raises(LookupError, match="not a kompend vault root"):
         query_wiki("anything", wiki_dir=str(tmp_path / "empty"))
+
+
+def test_query_wiki_forwards_synthesis_settings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The MCP query path must pass reasoning_effort and llm, like the CLI path."""
+    vault = _vault_with_one_page(tmp_path)
+    (vault / ".kompend" / "config.toml").write_text(
+        '[compile.llm]\ndefault_model = "openai/gpt-4o"\nreasoning_effort = "high"\n',
+        encoding="utf-8",
+    )
+    captured: dict[str, object] = {}
+
+    def _capture(self: HybridRetriever, query: str, results: list[object], **kwargs: object) -> SynthesisResult:
+        captured.update(kwargs)
+        return SynthesisResult(answer="pinned", citations=[])
+
+    monkeypatch.setattr(HybridRetriever, "synthesize", _capture)
+
+    result = query_wiki("transformers attention", wiki_dir=str(vault))
+
+    assert result["status"] == "ok"
+    assert result["synthesis"]["answer"] == "pinned"
+    llm = resolve_config(base_dir=vault).kompend.compile.llm
+    assert captured["reasoning_effort"] is ReasoningEffort.HIGH
+    assert captured["reasoning_effort"] == llm.reasoning_effort
+    assert captured["llm"] == llm
+
+
+def _vault_with_one_page(tmp_path: Path) -> Path:
+    vault = tmp_path / "vault"
+    (vault / ".kompend").mkdir(parents=True)
+    (vault / ".kompend" / "config.toml").write_text("", encoding="utf-8")
+    (vault / "wiki" / "concepts").mkdir(parents=True)
+    (vault / "wiki" / "index.md").write_text("# Wiki Index\n", encoding="utf-8")
+    (vault / "wiki" / "concepts" / "transformers.md").write_text(
+        "---\ntype: Concept\ntitle: Transformers\n---\n\nTransformers use self-attention mechanisms for language modeling.\n",
+        encoding="utf-8",
+    )
+    return vault

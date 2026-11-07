@@ -15,8 +15,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
-from kompend.core.config import RlmConfig
-from kompend.core.config._configs import DisplayConfig
+from kompend.core.config import ReasoningEffort, RlmConfig
+from kompend.core.config._configs import DisplayConfig, LLMConfig
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.vocab import Verbosity
 from kompend.logging import get_logger
@@ -134,17 +134,26 @@ class HybridRetriever:
         *,
         verbosity: str = Verbosity.STANDARD,
         skills: dict[str, str] | None = None,
+        reasoning_effort: ReasoningEffort | None = None,
         model: str = "",
         rlm: RlmConfig | None = None,
+        llm: LLMConfig | None = None,
     ) -> SynthesisResult:
-        """Synthesize an answer from search results."""
+        """Synthesize an answer from search results.
+
+        Forwards every knob ``synthesize_results`` accepts, so the MCP query
+        tool and the CLI path honour the same ``reasoning_effort`` and
+        ``llm`` settings.
+        """
         return synthesize_results(
             query,
             results,
             model=model,
             verbosity=verbosity,
             skills=skills,
+            reasoning_effort=reasoning_effort,
             rlm=rlm,
+            llm=llm,
         )
 
     def _hit_to_result(self, hit: dict[str, object], query_tokens: set[str]) -> SearchResult:

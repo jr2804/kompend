@@ -119,7 +119,9 @@ def query_wiki(
                 query,
                 results,
                 model=model,
+                reasoning_effort=cfg.kompend.compile.llm.reasoning_effort,
                 rlm=RlmConfig.model_validate(cfg.kompend.compile.llm.rlm or {}),
+                llm=cfg.kompend.compile.llm,
             )
             return {
                 "status": "ok",
