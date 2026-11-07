@@ -22,7 +22,7 @@ from kompend.cli.errors import format_exception_for_cli
 from kompend.core.pipeline.export import _load_asset_store
 from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.pipeline.runtime import PipelineRuntime
-from kompend.core.pipeline.stages._parse import _parse_source
+from kompend.core.pipeline.stages.parse_sources import _parse_source
 from kompend.core.verbosity import is_verbose, set_verbose
 from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.parsers.base import DocumentParser
