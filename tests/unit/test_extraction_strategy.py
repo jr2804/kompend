@@ -25,13 +25,13 @@ from kompend.compilation._two_phase_core import (
     context_safety_tokens,
     tokens_to_chars,
 )
-from kompend.compilation.flows import extraction as ext_module
 from kompend.compilation.flows import generation as gen_module
 from kompend.compilation.flows.extraction import (
     _compact_history_inplace,
     _estimate_history_tokens,
     _synthetic_history_response,
 )
+from kompend.compilation.flows.extraction import flow as ext_module
 from kompend.compilation.schema import Concept, Entity, ExtractionOutput
 from kompend.compilation.two_phase import TwoPhaseCompiler
 from kompend.core.cache.store import make_cache_key
@@ -131,7 +131,7 @@ class TestReduceExtractions:
             concepts=[Concept(name="chunking", definition="splitting text")],
             tags=["ai", "docs"],
         )
-        with patch("kompend.compilation.flows.extraction.ExtractionReduceAgent") as mock_agent_cls:
+        with patch("kompend.compilation.flows.extraction.flow.ExtractionReduceAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.run.return_value = mock_output
             mock_agent_cls.return_value = mock_agent
@@ -152,7 +152,7 @@ class TestReduceExtractions:
             Extraction(source="doc.md", summary="B."),
         ]
 
-        with patch("kompend.compilation.flows.extraction.ExtractionReduceAgent") as mock_agent_cls:
+        with patch("kompend.compilation.flows.extraction.flow.ExtractionReduceAgent") as mock_agent_cls:
             mock_agent = MagicMock()
             mock_agent.run.side_effect = LLMOutputError("boom")
             mock_agent_cls.return_value = mock_agent

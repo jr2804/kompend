@@ -1157,7 +1157,7 @@ class TestTwoPhaseCompiler:
                 )
             )
         ]
-        with patch("kompend.compilation.flows.extraction.try_pydanticai_extraction", side_effect=_validated_side_effect([None])):
+        with patch("kompend.compilation.flows.extraction.flow.try_pydanticai_extraction", side_effect=_validated_side_effect([None])):
             wiki = compiler.compile(chunks)
         # Extraction failed → no concepts → generation has nothing → empty wiki
         assert wiki.metadata.get("generation_skipped") is True
@@ -1189,7 +1189,7 @@ class TestTwoPhaseCompiler:
             for i in range(n_sources)
         ]
         # Every extraction batch fails.
-        with patch("kompend.compilation.flows.extraction.try_pydanticai_extraction", return_value=None):
+        with patch("kompend.compilation.flows.extraction.flow.try_pydanticai_extraction", return_value=None):
             wiki = compiler.compile(chunks)
         # Threshold fired → flagged incomplete, failures recorded.
         assert wiki.metadata.get("compile_incomplete") is True
@@ -1217,7 +1217,7 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "kompend.compilation.flows.extraction.try_pydanticai_extraction",
+            "kompend.compilation.flows.extraction.flow.try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
@@ -1254,7 +1254,7 @@ class TestTwoPhaseCompiler:
             )
         ]
         with patch(
-            "kompend.compilation.flows.extraction.try_pydanticai_extraction",
+            "kompend.compilation.flows.extraction.flow.try_pydanticai_extraction",
             side_effect=_validated_side_effect(
                 [
                     {
@@ -1347,7 +1347,7 @@ class TestTwoPhaseCompiler:
             return agent
 
         with (
-            patch("kompend.compilation.flows.extraction.try_pydanticai_extraction", side_effect=extract_side_effect),
+            patch("kompend.compilation.flows.extraction.flow.try_pydanticai_extraction", side_effect=extract_side_effect),
             patch("kompend.compilation.flows.generation.make_agentic_generation_agent", side_effect=_fake_agent_factory),
         ):
             wiki = compiler.compile(chunks)
