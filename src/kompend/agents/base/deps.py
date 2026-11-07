@@ -27,6 +27,9 @@ UNSET_TIMEOUT: float = -1.0
 UNSET_RETRIES: int = -1
 
 
+ResultT = TypeVar("ResultT")
+
+
 @runtime_checkable
 class AgentDeps(Protocol):
     """Structural type for deps objects passed to :class:`KompendAgentBase`.
@@ -37,8 +40,6 @@ class AgentDeps(Protocol):
 
     source_id: str
 
-
-ResultT = TypeVar("ResultT")
 
 DepsT = TypeVar("DepsT", bound=AgentDeps)
 
