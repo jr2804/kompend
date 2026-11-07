@@ -11,7 +11,6 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Final
 
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT
 from kompend.agents.deps import QueryDeps
@@ -21,21 +20,28 @@ from kompend.agents.query_agentic import make_agentic_query_agent
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
 from kompend.core.config import ReasoningEffort, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LLMConfig
-from kompend.core.models import CompiledWiki, MetadataField, WikiNode
+from kompend.core.models import CompiledWiki, WikiNode
 from kompend.logging import get_logger
 from kompend.rag.vector_store import VectorStoreLike
-from kompend.search.filters import matches_attr_filter, matches_tag_filter
-from kompend.search.retrieval.assemble import (
-    extract_snippet,
-    node_attributes,
-    node_figures,
-    node_tags,
-    result_from_hit,
-)
+from kompend.search.retrieval.assemble import extract_snippet, node_figures, result_from_hit
+from kompend.search.retrieval.rank import TOKEN_SPLIT_RE, graph_expansion, keyword_search, tokenize
 from kompend.search.retrieval.results import Citation, SearchResult, SynthesisResult
 from kompend.search.retrieval.vector import vector_search
 
-TOKEN_SPLIT_RE: Final[re.Pattern[str]] = re.compile(r"[^a-zA-Z0-9_]+")
+__all__ = [
+    "TOKEN_SPLIT_RE",
+    "Citation",
+    "HybridRetriever",
+    "KeywordRetriever",
+    "SearchResult",
+    "SynthesisResult",
+    "extract_snippet",
+    "node_figures",
+    "run_agentic_query",
+    "synthesize_results",
+    "tokenize",
+]
+
 _TOKEN_SPLIT_RE = TOKEN_SPLIT_RE  # backward-compat alias
 
 
@@ -120,7 +126,13 @@ class HybridRetriever:
     ) -> list[SearchResult]:
         results = self.search_wiki(query, top_k=top_k)
         if expand_graph and results:
-            results = self._graph_expansion_results(results, top_k=top_k)
+            results = graph_expansion(
+                results,
+                edges=self._wiki.edges,
+                node_by_id=self._node_by_id,
+                top_k=top_k,
+                max_chars=self._display.search_snippet_chars,
+            )
         return results
 
     @staticmethod
@@ -198,47 +210,6 @@ class HybridRetriever:
             )
         return results
 
-    def _graph_expansion_results(self, initial_results: list[SearchResult], top_k: int) -> list[SearchResult]:
-        """Expand search results by following typed relations in the wiki graph."""
-        if not initial_results or not self._wiki.edges:
-            return initial_results
-
-        expanded: dict[str, SearchResult] = {r.article_id: r for r in initial_results}
-        decay_factor = 0.5
-        max_chars = self._display.search_snippet_chars
-
-        def add_neighbor(neighbor_id: str, seed_score: float) -> None:
-            if neighbor_id in expanded:
-                return
-            node = self._node_by_id.get(neighbor_id)
-            if node is None:
-                return
-            expanded[neighbor_id] = SearchResult(
-                article_id=neighbor_id,
-                title=node.title,
-                snippet=node.content[:max_chars] + "..." if node.content else "",
-                score=seed_score * decay_factor,
-                source_file=str(node.metadata.get(MetadataField.SOURCE)) if node.metadata and node.metadata.get(MetadataField.SOURCE) else None,
-                tags=node_tags(node),
-                attributes=node_attributes(node),
-                content=node.content or "",
-                figures=node_figures(node),
-            )
-
-        for result in initial_results:
-            for edge in self._wiki.edges:
-                source_id = edge.get("source")
-                target_id = edge.get("target")
-                if not (isinstance(source_id, str) and isinstance(target_id, str)):
-                    continue
-                if source_id == result.article_id:
-                    add_neighbor(target_id, result.score)
-                elif target_id == result.article_id:
-                    add_neighbor(source_id, result.score)
-
-        sorted_results = sorted(expanded.values(), key=lambda x: x.score, reverse=True)
-        return sorted_results[:top_k]
-
 
 class KeywordRetriever:
     """Portable keyword search over a CompiledWiki — no vector store needed.
@@ -264,46 +235,16 @@ class KeywordRetriever:
         attribute_keys: Sequence[str] | None = None,
     ) -> list[SearchResult]:
         """Rank wiki pages by token overlap with *query*, honouring filters."""
-        query_tokens = set(tokenize(query))
-        scored: list[tuple[float, WikiNode]] = []
-        for node in self._nodes.values():
-            if not _node_matches_filters(
-                node,
-                tags_all=tags_all,
-                tags_dnf=tags_dnf,
-                attributes_all=attributes_all,
-                attribute_keys=attribute_keys,
-            ):
-                continue
-            title_tokens = set(tokenize(node.title))
-            content_tokens = set(tokenize(node.content or ""))
-            desc = node.description
-            desc_tokens = set(tokenize(desc))
-            score = len(query_tokens & title_tokens) * 3 + len(query_tokens & desc_tokens) * 2 + len(query_tokens & content_tokens)
-            if score > 0:
-                scored.append((float(score), node))
-        scored.sort(key=lambda t: (-t[0], t[1].title.lower()))
-
-        results: list[SearchResult] = []
-        for score, node in scored[:top_k]:
-            snippet = extract_snippet(node.content, query_tokens, self._display.search_snippet_chars) if node.content else node.title
-            source_file = None
-            if node.metadata and node.metadata.get(MetadataField.SOURCE):
-                source_file = str(node.metadata[MetadataField.SOURCE])
-            results.append(
-                SearchResult(
-                    article_id=node.id,
-                    title=node.title,
-                    snippet=snippet,
-                    score=score,
-                    source_file=source_file,
-                    tags=node_tags(node),
-                    attributes=node_attributes(node),
-                    content=node.content or "",
-                    figures=node_figures(node),
-                )
-            )
-        return results
+        return keyword_search(
+            self._nodes.values(),
+            query,
+            top_k=top_k,
+            tags_all=tags_all,
+            tags_dnf=tags_dnf,
+            attributes_all=attributes_all,
+            attribute_keys=attribute_keys,
+            display=self._display,
+        )
 
     def search_wiki(
         self,
@@ -478,41 +419,6 @@ def run_agentic_query(
         attr_filters=attr_filters or [],
     )
     return agent.run(deps)
-
-
-# ── Utilities ──────────────────────────────────────────────────────────
-
-
-def tokenize(text: str) -> list[str]:
-    """Split text into lowercase alphanumeric tokens."""
-    return [t for t in TOKEN_SPLIT_RE.split(text.lower()) if t]
-
-
-def _node_matches_filters(
-    node: WikiNode,
-    *,
-    tags_all: Sequence[str] | None = None,
-    tags_dnf: Sequence[Sequence[str]] | None = None,
-    attributes_all: Sequence[str] | None = None,
-    attribute_keys: Sequence[str] | None = None,
-) -> bool:
-    """Portable (store-less) equivalent of the store-side filter.
-
-    Used by :class:`KeywordRetriever`; the store-backed
-    :class:`HybridRetriever` pushes the same filters into the store instead.
-    """
-    tags = node_tags(node)
-    if tags_all and not all(tag in tags for tag in tags_all):
-        return False
-    if tags_dnf and not matches_tag_filter(tags, [list(g) for g in tags_dnf]):
-        return False
-    attr_filters: list[tuple[str, str | None]] = []
-    for pair in attributes_all or ():
-        key, _, value = pair.partition("=")
-        attr_filters.append((key, value))
-    for key in attribute_keys or ():
-        attr_filters.append((key, None))
-    return matches_attr_filter(node_attributes(node), attr_filters)
 
 
 # ── Synthesis (context formatting + LLM call) ──────────────────────────
