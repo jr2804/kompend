@@ -25,6 +25,7 @@ from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.ingest import restore_source_path
 from kompend.core.text.encoding import normalize_to_utf8_path
 from kompend.core.text.rumdl import normalize_element_markdown
+from kompend.core.types import ReasonCode
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers.base import DocumentParser
@@ -87,7 +88,7 @@ def ingest_attachment(
     """
     att_file = vp.attachments_dir / att.path
     if not att_file.exists():
-        logger.error("Attachment file not found: %s", att_file)
+        logger.error("Attachment file not found: %s", att_file, extra={"reason_code": ReasonCode.CORRUPT_CACHE})
         return None
 
     ext = att_file.suffix.lower()
@@ -97,6 +98,7 @@ def ingest_attachment(
             logger.warning(
                 "Image attachment '%s' requires VLM captioning but VLM is not configured; skipping.",
                 att.filename,
+                extra={"reason_code": ReasonCode.NO_PARSER},
             )
             return None
         return _caption_image(att_file, att, vlm_captioner)
@@ -107,7 +109,7 @@ def ingest_attachment(
     # suffixes). A non-binary attachment whose extension the backend does not
     # claim raises in the parser and is skipped by the handler below.
     if is_binary(str(att_file)):
-        logger.warning("Unsupported attachment type '%s', skipping: %s", ext, att.filename)
+        logger.warning("Unsupported attachment type '%s', skipping: %s", ext, att.filename, extra={"reason_code": ReasonCode.NO_PARSER})
         return None
     return _parse_text(att_file, att, parser, vp.cache_dir)
 
@@ -148,7 +150,7 @@ def _caption_image(att_file: Path, att: Attachment, vlm_captioner: VlmAgent) -> 
             )
         )
         if not caption or caption.strip().upper() == "SKIP":
-            logger.warning("VLM returned empty caption for %s", att.filename)
+            logger.warning("VLM returned empty caption for %s", att.filename, extra={"reason_code": ReasonCode.EMPTY_EXTRACTION})
             return None
     except Exception as exc:
         logger.debug("Failed to caption image %s: %s", att_file, exc, exc_info=is_verbose())

@@ -45,6 +45,7 @@ other kompend subsystems build on.
 | `page_builder.py` | Wenmode-based Markdown AST builder (shared by core and output modules) |
 | `keys.py` | Config dotted-key constants and the `EnvVar` re-export - the light boundary the CLI imports |
 | `vocab.py` | CLI-facing `StrEnum` vocabularies (verbosity, export, lint output, LLM data format) - no pydantic |
+| `types.py` | Cross-cutting runtime vocabularies — `ReasonCode`, the item-path failure/degradation enum (stdlib-only, import-cheap) |
 | `cancel.py` | Cooperative cancellation — `CancelState` token, `KompendCancelled` (BaseException), `CANCEL_WINDOW_SECONDS`, `CANCEL_EXIT_CODE` |
 | `ignore.py` | Central ignore/pattern matching + special-dir exclusion (`.kompend/`, `sources/_archive/`) for all source discovery |
 | `config/AGENTS.md` | Configuration system — resolution, precedence, TOML schema |

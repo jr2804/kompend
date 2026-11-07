@@ -41,6 +41,7 @@ from kompend.core.page_builder import PageBuilder, link
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.assets import AssetStore
 from kompend.core.text.pipes import escape_prose_pipes
+from kompend.core.types import ReasonCode
 from kompend.core.verbosity import is_verbose
 from kompend.logging import get_logger
 
@@ -314,7 +315,7 @@ def _render_image(el: DocumentElement, state: _RenderState) -> str:
         if not content_path.is_absolute():
             content_path = state.base_dir / content_path
         if not content_path.is_file():
-            logger.warning("Image missing during export: %s", content)
+            logger.warning("Image missing during export: %s", content, extra={"reason_code": ReasonCode.CORRUPT_CACHE})
             return f"*{content}*"
         target = _as_data_uri(content_path) if state.inline else _copy_asset(content_path, state)
     return f"![{caption}]({target})" if caption else f"![]({target})"

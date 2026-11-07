@@ -25,6 +25,8 @@ persistence, and standalone ingestion.
 | `ingest.py`           | `ingest_documents`, `parse_cache_name`, `preserve_cached_metadata`, `parse_cache_is_current`, `PARSE_CACHE_PARSER_KEY`, `parse_target_path`, `IngestResult` |
 | `parallelism.py`      | `gil_enabled`, `describe_parallelism` — interpreter parallelism facts for `compile.workers` |
 | `bounded_parse.py`    | `DeadlineWorker`, `ParseDeadlineExceeded` — per-file wall-clock budget, enforced by a reusable worker process (`ingest.parse_timeout_s`; `0` parses in-process) |
+| `reasons.py`          | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
+| `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`           | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |
 
 ## Rules
@@ -113,6 +115,12 @@ persistence, and standalone ingestion.
   bare file/key with no reason. `logger.exception(...)` has no gate-able form —
   use `logger.error(..., exc_info=is_verbose())`. The `--verbose` flag itself
   lives in `cli/` (see `cli/AGENTS.md`).
+- **Reason-code rule:** every item-path `logger.error`/`logger.warning` carries
+  `extra={"reason_code": ReasonCode.X}` — the enum from `kompend.core.types`, never
+  a bare string. Sites that catch a concrete exception pass the member directly;
+  broad `except Exception` sites classify with `reason_code_for(exc)`
+  (`reasons.py`). The observability ledger, `kompend explain` and doctor count
+  on this field; `tests/unit/test_reason_codes.py` pins the emission sites.
 - **Cancel contract** (token: `core.cancel.CancelState`; signal:
   `KompendCancelled`, a `BaseException` so `except Exception` sites cannot
   swallow it): `WikiPipeline.emit()` raises it *before* callback dispatch when

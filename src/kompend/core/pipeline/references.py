@@ -21,6 +21,7 @@ from kompend.core.models.references import Reference
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import REFERENCES_TABLE
 from kompend.core.text.matching import cosine
+from kompend.core.types import ReasonCode
 from kompend.logging import get_logger
 from kompend.rag.embedding_pydantic import make_provider
 
@@ -69,7 +70,11 @@ class ReferenceStore:
             try:
                 ref = json.loads(row["payload"])
             except json.JSONDecodeError:
-                logger.warning("ReferenceStore: corrupt payload for %s — skipping", row["source"])
+                logger.warning(
+                    "ReferenceStore: corrupt payload for %s — skipping",
+                    row["source"],
+                    extra={"reason_code": ReasonCode.CORRUPT_CACHE},
+                )
                 continue
             data.setdefault(row["source"], []).append(ref)
         self._data = data

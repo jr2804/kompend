@@ -43,9 +43,11 @@ from kompend.core.pipeline.parse_cache import (
     source_key,
     write_document,
 )
+from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.store import vault_db_path
 from kompend.core.text.rumdl import normalize_element_markdown
+from kompend.core.types import ReasonCode
 from kompend.core.verbosity import is_verbose
 from kompend.llm.models import resolve_vlm_model
 from kompend.llm.user_providers import effective_workers
@@ -149,7 +151,13 @@ def parse_and_chunk(pipeline: PipelineRuntime) -> list[ChunkTree]:
                     if tree is not None:
                         trees.append(tree)
                 except Exception as exc:
-                    logger.error("Worker failed for %s: %s", sf, exc, exc_info=is_verbose())
+                    logger.error(
+                        "Worker failed for %s: %s",
+                        sf,
+                        exc,
+                        exc_info=is_verbose(),
+                        extra={"reason_code": reason_code_for(exc)},
+                    )
                 finally:
                     completed += 1
                     pipeline.emit("parse", completed, len(source_files), sf.name)
@@ -302,7 +310,7 @@ def _parse_source(
     try:
         selected = pipeline.parser.route(source_file)
         if selected is None:
-            logger.warning("No parser backend for %s, skipping", source_file)
+            logger.warning("No parser backend for %s, skipping", source_file, extra={"reason_code": ReasonCode.NO_PARSER})
             return None
         # The parser has already picked a backend: the format table only
         # decides which bytes that backend receives (UTF-8 for known text
@@ -312,10 +320,16 @@ def _parse_source(
             parsed = selected.parse(parse_target)
         _ = len(parsed.elements)
     except InsufficientHostMemoryError as exc:
-        logger.error("Skipped %s: %s", source_file, exc)
+        logger.error("Skipped %s: %s", source_file, exc, extra={"reason_code": ReasonCode.BACKEND_UNAVAILABLE})
         return None
     except Exception as exc:
-        logger.error("Failed to parse %s: %s", source_file, exc, exc_info=is_verbose())
+        logger.error(
+            "Failed to parse %s: %s",
+            source_file,
+            exc,
+            exc_info=is_verbose(),
+            extra={"reason_code": reason_code_for(exc)},
+        )
         return None
     # The parser saw the encoding sibling (if any); citations and the cache
     # entry must reference the real source, not the cache copy.
@@ -436,7 +450,7 @@ def _load_cache(pipeline: PipelineRuntime, source_file: Path) -> ParsedDocument 
         )
     except (KeyError, ValueError, TypeError) as exc:
         # Corrupt entry = miss: re-parse. Warn so it's visible.
-        logger.warning("Corrupt parse cache for %s — reparsing: %s", key, exc, exc_info=is_verbose())
+        logger.warning("Corrupt parse cache for %s — reparsing: %s", key, exc, exc_info=is_verbose(), extra={"reason_code": ReasonCode.CORRUPT_CACHE})
         return None
 
 
@@ -545,7 +559,7 @@ def _process_attachments(pipeline: PipelineRuntime) -> list[ChunkTree]:
 
     parser = pipeline.parser
     if parser is None:
-        logger.warning("No parser available — skipping attachment ingestion")
+        logger.warning("No parser available — skipping attachment ingestion", extra={"reason_code": ReasonCode.NO_PARSER})
         return []
     vlm_captioner = None
     vlm_model = resolve_vlm_model(pipeline.config.llm.default_model, pipeline.config.llm.vlm_model)

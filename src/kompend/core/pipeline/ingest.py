@@ -33,6 +33,7 @@ from kompend.core.pipeline.parse_cache import (
 from kompend.core.pipeline.parse_cache import (
     cache_key as document_cache_key,
 )
+from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.pipeline.state import TierStateStore
 from kompend.core.store import vault_db_path
 from kompend.core.text.encoding import normalize_to_utf8_path
@@ -219,7 +220,13 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
                 flavor=flavor,
             )
         except Exception as exc:
-            logger.warning("Failed to parse %s: %s", source_file, exc, exc_info=is_verbose())
+            logger.warning(
+                "Failed to parse %s: %s",
+                source_file,
+                exc,
+                exc_info=is_verbose(),
+                extra={"reason_code": reason_code_for(exc)},
+            )
             failed += 1
             continue
 

@@ -22,6 +22,7 @@ from typing import Any, cast
 from kompend.core.models.assets import AssetField, AssetRecord
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import ASSETS_TABLE
+from kompend.core.types import ReasonCode
 from kompend.logging import get_logger
 from kompend.types import JSONDict
 
@@ -74,7 +75,7 @@ class AssetStore:
                     AssetField.REF_COUNT: int(row["ref_count"]),
                 }
             except json.JSONDecodeError as exc:
-                logger.warning("Asset record %s corrupt (%s) — skipping", row["id"], exc)
+                logger.warning("Asset record %s corrupt (%s) — skipping", row["id"], exc, extra={"reason_code": ReasonCode.CORRUPT_CACHE})
                 continue
             data[row["id"]] = record
         self._data = data
