@@ -28,9 +28,7 @@ The base class handles:
 from __future__ import annotations
 
 import dataclasses
-import math
 import re
-import time
 import typing
 from abc import ABC
 from collections.abc import Callable, Sequence
@@ -73,11 +71,13 @@ from kompend.agents.base.models import (
     output_ceiling,
 )
 from kompend.agents.base.retries import (
-    _DEFAULT_TRANSIENT_BACKOFF_SECONDS,
-    _DEFAULT_TRANSIENT_RETRIES,
-    _context_usage_str,
-    _is_cache_rejection,
-    _map_agent_error,
+    failure,
+    invoke_agent,
+    retry_requests,
+    session_limits,
+    transient_backoff,
+    transient_retries,
+    usage_limits_for,
 )
 from kompend.agents.instrument import configure_observability
 from kompend.agents.rlm import (
@@ -89,7 +89,6 @@ from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.utils.exceptions import (
     LLMOutputError,
 )
-from kompend.llm.errors import is_transient_error
 from kompend.llm.models import requires_output_ceiling
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
@@ -355,23 +354,8 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         return output
 
     def _failure(self, exc: Exception, deps: DepsT) -> LLMOutputError:
-        """Log a failed run once and return the exception the stage must see.
-
-        Both entry points (``run`` and ``run_with_messages``) fail the same
-        way, so the log line and the mapping live here instead of in two
-        identical ``except`` blocks that could drift apart.
-        """
-        debug_hint = f" (debug: {self._last_debug_file})" if self._last_debug_file else ""
-        ctx_info = _context_usage_str(self.usage_tracker)
-        logger.warning(
-            "Agent '%s' failed on '%s': %s%s%s",
-            type(self).__name__,
-            deps.source_id,
-            exc,
-            debug_hint,
-            ctx_info,
-        )
-        return _map_agent_error(exc, model_string=self.model_string, debug_hint=debug_hint)
+        """Delegate to :func:`kompend.agents.base.retries.failure`."""
+        return failure(self, exc, deps)
 
     def _invoke(
         self,
@@ -383,64 +367,24 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         conversation_id: str | None = None,
         run_id: str | None = None,
     ) -> Any:
-        """Run the agent: one transient-retry policy, one cache-rejection retry.
-
-        The retry policy is the *only* place a request is repeated. A stage that
-        needs a different number of tries changes ``compile.llm.transient_retries``
-        instead of growing its own backoff loop.
-
-        A gateway that does not know the provider's cache field answers 400 with
-        the field name in the body; caching is an optimisation, so that failure
-        disables caching for this agent and retries immediately.
-        """
-        if self._agent is None:
-            self._agent = self._build_agent()
-
-        transient_left = self._transient_retries()
-        attempt = 0
-        while True:
-            try:
-                return self._agent.run_sync(
-                    user_prompt,
-                    deps=deps,
-                    instructions=system_prompt,
-                    message_history=message_history,
-                    usage_limits=self._usage_limits_for(deps),
-                    conversation_id=conversation_id,
-                    run_id=run_id,
-                )
-            except Exception as exc:
-                if self._prompt_cache and _is_cache_rejection(exc):
-                    logger.warning(
-                        "Prompt caching rejected by '%s' (%s) - retrying without it; set compile.llm.prompt_cache = false to skip the probe",
-                        self.model_string,
-                        exc,
-                    )
-                    self._prompt_cache = False
-                    self._agent = self._build_agent()
-                    continue
-                if transient_left <= 0 or not is_transient_error(exc):
-                    raise
-                attempt += 1
-                transient_left -= 1
-                delay = self._transient_backoff() * 2 ** (attempt - 1)
-                logger.warning(
-                    "Transient failure from '%s' (attempt %d, %d retry/retries left, waiting %.1fs): %s",
-                    self.model_string,
-                    attempt,
-                    transient_left,
-                    delay,
-                    exc,
-                )
-                time.sleep(delay)
+        """Delegate to :func:`kompend.agents.base.retries.invoke_agent`."""
+        return invoke_agent(
+            self,
+            user_prompt,
+            deps,
+            system_prompt,
+            message_history,
+            conversation_id=conversation_id,
+            run_id=run_id,
+        )
 
     def _transient_retries(self) -> int:
-        """Configured whole-request retries after a transient failure."""
-        return self.llm.transient_retries if self.llm is not None else _DEFAULT_TRANSIENT_RETRIES
+        """Delegate to :func:`kompend.agents.base.retries.transient_retries`."""
+        return transient_retries(self)
 
     def _transient_backoff(self) -> float:
-        """Configured first backoff (seconds) for a transient retry."""
-        return self.llm.transient_backoff if self.llm is not None else _DEFAULT_TRANSIENT_BACKOFF_SECONDS
+        """Delegate to :func:`kompend.agents.base.retries.transient_backoff`."""
+        return transient_backoff(self)
 
     def _apply_config_defaults(self) -> None:
         """Take every limit the construction site did not set from the config.
@@ -484,13 +428,8 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             self.delta_retry_enabled = True
 
     def _usage_limits_for(self, deps: DepsT) -> UsageLimits | None:
-        """Per-run UsageLimits; default is the RLM preset limits (or None).
-
-        pydantic-ai's implicit default caps a run at 50 requests, which is
-        tighter than multi-turn tool agents need - overriding agents derive
-        their honest budget from deps via :meth:`_session_limits`.
-        """
-        return self._rlm_usage_limits
+        """Delegate to :func:`kompend.agents.base.retries.usage_limits_for`."""
+        return usage_limits_for(self, deps)
 
     def _session_limits(
         self,
@@ -500,39 +439,18 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         headroom_frac: float = 1.1,
         session_overhead: int = 2,
     ) -> UsageLimits | None:
-        """Request budget for a session that works through ``units`` items.
-
-        One formula for every agentic session: the planned turns
-        (``units`` x ``per_unit``) plus the fixed session overhead - the
-        "no more items" probe and the closing turn - plus the retry
-        capacity :meth:`_retry_requests` derives from the configured
-        budgets, scaled by ``headroom_frac``.
-
-        The unit count and its per-unit cost stay in the subclass: only the
-        agent knows what one work item costs. Everything that is the same
-        for all sessions lives here.
-        """
-        if self._rlm_usage_limits is not None:
-            return self._rlm_usage_limits
-        planned = max(units, 0) * per_unit + session_overhead + self._retry_requests()
-        return UsageLimits(request_limit=math.ceil(planned * headroom_frac))
+        """Delegate to :func:`kompend.agents.base.retries.session_limits`."""
+        return session_limits(
+            self,
+            units=units,
+            per_unit=per_unit,
+            headroom_frac=headroom_frac,
+            session_overhead=session_overhead,
+        )
 
     def _retry_requests(self) -> int:
-        """Requests the configured retry budgets may add to one run.
-
-        A retried tool call and a rejected structured output each cost another
-        request, so a session budget that counts only planned turns aborts as
-        soon as the model needs its first retry - a one-group distill session
-        with four output retries configured died on ``request_limit of 6``
-        while still holding real work. The sum of both budgets is the upper
-        bound a single session may legitimately need.
-        """
-        retries = self.retries
-        if isinstance(retries, int):
-            # A bare int sets both categories (pydantic-ai ``AgentRetries``
-            # shorthand).
-            return max(retries, 0) * 2
-        return max(int(retries.get("tools", 0)), 0) + max(int(retries.get("output", 0)), 0)
+        """Delegate to :func:`kompend.agents.base.retries.retry_requests`."""
+        return retry_requests(self)
 
     def _resolve_type_params(self) -> None:
         """Resolve ``result_type`` and ``deps_type`` from generic type params.
