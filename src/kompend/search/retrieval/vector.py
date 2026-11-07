@@ -46,21 +46,3 @@ def vector_search(
     except Exception as exc:
         record_unit_failure(stage="search.vector-search", unit=query, exc=exc)
         return None
-
-
-def hit_str(hit: dict[str, object], key: str, default: str = "") -> str:
-    """Read a string field from a vector-store hit, falling back to *default*."""
-    value = hit.get(key)
-    return value if isinstance(value, str) else default
-
-
-def hit_opt_str(hit: dict[str, object], key: str) -> str | None:
-    """Read an optional string field from a vector-store hit."""
-    value = hit.get(key)
-    return value if isinstance(value, str) else None
-
-
-def hit_float(hit: dict[str, object], key: str, default: float = 0.0) -> float:
-    """Read a float field from a vector-store hit."""
-    value = hit.get(key)
-    return value if isinstance(value, int | float) else default

@@ -13,8 +13,7 @@ from kompend.core.models import ElementType, ImageRef, MetadataField, WikiNode
 from kompend.core.models.metadata import meta_str_list_dict
 from kompend.core.text.page_media import find_page_figures
 from kompend.rag.vector_store import VectorField
-from kompend.search.retrieval.results import SearchResult
-from kompend.search.retrieval.vector import hit_float, hit_opt_str, hit_str
+from kompend.search.retrieval.results import SearchResult, hit_float, hit_opt_str, hit_str
 
 
 def result_from_hit(

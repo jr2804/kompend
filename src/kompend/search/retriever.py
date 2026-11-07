@@ -1,9 +1,13 @@
-"""Vector-only retriever for semantic search over compiled wikis.
+"""Search entry point: the two retrievers and the public search surface.
 
-All retrieval goes through the vector store. FTS5, token overlap,
-and BM25 raw-source fallbacks have been removed — if no vector store is
-available, search returns empty results (the markdown wiki is still
-browsable directly).
+All retrieval goes through the vector store. FTS5, token overlap, and BM25
+raw-source fallbacks have been removed: ``HybridRetriever`` asks the store and
+drops into ``KeywordRetriever`` only when no store is available or the index
+answers nothing (stale after a recompile). The stages themselves live in
+:mod:`kompend.search.retrieval` — ``vector`` (the store call), ``assemble``
+(hit → result), ``rank`` (store-less scoring, graph expansion) and
+``synthesis`` (context formatting, LLM call) — and this module re-exports
+their public names so callers have one import site.
 """
 
 from __future__ import annotations

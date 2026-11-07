@@ -4,6 +4,10 @@
 query path (``src/kompend/mcp/tools/query.py``), so its field set and order
 are that payload's schema. ``Citation`` is read structurally by the CLI and
 MCP renderers, so its key set is a contract too.
+
+The ``hit_*`` readers live here rather than beside the store call: they
+decode a hit row into result fields and must not drag the failure-recording
+stack into a module that only needs the shapes.
 """
 
 from __future__ import annotations
@@ -51,3 +55,21 @@ class Citation(TypedDict):
 
     Absent when the citation was built without the page body.
     """
+
+
+def hit_str(hit: dict[str, object], key: str, default: str = "") -> str:
+    """Read a string field from a vector-store hit, falling back to *default*."""
+    value = hit.get(key)
+    return value if isinstance(value, str) else default
+
+
+def hit_opt_str(hit: dict[str, object], key: str) -> str | None:
+    """Read an optional string field from a vector-store hit."""
+    value = hit.get(key)
+    return value if isinstance(value, str) else None
+
+
+def hit_float(hit: dict[str, object], key: str, default: float = 0.0) -> float:
+    """Read a float field from a vector-store hit."""
+    value = hit.get(key)
+    return value if isinstance(value, int | float) else default
