@@ -11,8 +11,8 @@ compatibility with downstream callers that still import them from
 from __future__ import annotations
 
 from kompend.core.pipeline.config import PipelineConfig, Tier, TierInfo  # noqa: F401 — re-export
-from kompend.core.pipeline.stages._factory import build_pipeline  # noqa: F401 — re-export
-from kompend.core.pipeline.stages._pipeline import WikiPipeline  # noqa: F401 — re-export
+from kompend.core.pipeline.stages.factory import build_pipeline  # noqa: F401 — re-export
+from kompend.core.pipeline.stages.pipeline import WikiPipeline  # noqa: F401 — re-export
 
 # Legacy string-constant re-exports (kept for backward compatibility with
 # downstream callers that imported these names from ``kompend.core.pipeline``).

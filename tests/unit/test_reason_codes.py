@@ -28,8 +28,8 @@ from kompend.core.pipeline.bounded_parse import ParseDeadlineExceeded
 from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.pipeline.references import ReferenceStore
-from kompend.core.pipeline.stages import _parse as parse_stage
-from kompend.core.pipeline.stages._parse import (
+from kompend.core.pipeline.stages import parse as parse_stage
+from kompend.core.pipeline.stages.parse import (
     _load_cache,  # noqa: PLC2701
     _process_single_source,  # noqa: PLC2701
 )
@@ -41,7 +41,7 @@ from kompend.preprocessing.parsers import DocumentParser
 from kompend.preprocessing.parsers.base import BinarySourceError
 
 _INGEST = "kompend.core.pipeline.ingest"
-_PARSE_STAGE = "kompend.core.pipeline.stages._parse"
+_PARSE_STAGE = "kompend.core.pipeline.stages.parse"
 _ATTACHMENTS = "kompend.core.pipeline.attachments"
 _ASSETS = "kompend.core.pipeline.assets"
 _REFERENCES = "kompend.core.pipeline.references"

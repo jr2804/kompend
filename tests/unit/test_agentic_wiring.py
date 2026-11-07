@@ -120,7 +120,7 @@ class TestAgenticSummarizerAgentWiring:
         summary silently fell back to the extractive path (0iv2.6).
         """
         monkeypatch.setattr(
-            "kompend.core.pipeline.stages._factory.discover_context_window",
+            "kompend.core.pipeline.stages.factory.discover_context_window",
             lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
         )
         config = PipelineConfig(
@@ -136,7 +136,7 @@ class TestAgenticSummarizerAgentWiring:
 
     def test_build_pipeline_passes_summary_requests_per_node(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
-            "kompend.core.pipeline.stages._factory.discover_context_window",
+            "kompend.core.pipeline.stages.factory.discover_context_window",
             lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
         )
         config = PipelineConfig(
@@ -157,7 +157,7 @@ class TestAgenticSummarizerAgentWiring:
         agent-memory store (the session store keeps it in process).
         """
         monkeypatch.setattr(
-            "kompend.core.pipeline.stages._factory.discover_context_window",
+            "kompend.core.pipeline.stages.factory.discover_context_window",
             lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
         )
         source_dir = make_tmp_vault()
@@ -483,7 +483,7 @@ def test_build_pipeline_enricher_off_by_default(monkeypatch: pytest.MonkeyPatch)
     today's chunk-cache output is unchanged.
     """
     monkeypatch.setattr(
-        "kompend.core.pipeline.stages._factory.discover_context_window",
+        "kompend.core.pipeline.stages.factory.discover_context_window",
         lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
     )
     config = PipelineConfig(
@@ -499,7 +499,7 @@ def test_build_pipeline_enricher_off_by_default(monkeypatch: pytest.MonkeyPatch)
 def test_build_pipeline_enricher_wired_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     """TASK-20: enabling the gate constructs a ContextualEnricher with an agent."""
     monkeypatch.setattr(
-        "kompend.core.pipeline.stages._factory.discover_context_window",
+        "kompend.core.pipeline.stages.factory.discover_context_window",
         lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
     )
     config = PipelineConfig(

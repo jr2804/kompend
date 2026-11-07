@@ -29,7 +29,7 @@ from kompend.core.pipeline.ingest import (
 )
 from kompend.core.pipeline.parse_cache import cache_key, iter_documents, write_document
 from kompend.core.pipeline.runtime import PipelineRuntime
-from kompend.core.pipeline.stages._parse import _chunk_cache_deps, _process_single_source  # noqa: PLC2701
+from kompend.core.pipeline.stages.parse import _chunk_cache_deps, _process_single_source  # noqa: PLC2701
 from kompend.core.pipeline.state import TierState, TierStateStore
 from kompend.core.reporting.ledger import StageLedger
 from kompend.core.store import vault_db_path

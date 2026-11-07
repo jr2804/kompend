@@ -28,10 +28,10 @@ from kompend.core.models import (
 from kompend.core.paths import VaultPaths, rel_to_vault
 from kompend.core.pipeline.config import PipelineConfig, Tier
 from kompend.core.pipeline.parse_cache import clear_documents
-from kompend.core.pipeline.stages._compile import load_compiled_wiki, run_compile_tier, run_output_tier
-from kompend.core.pipeline.stages._index import detect_resume_tier, iter_sources, run_index_tier
-from kompend.core.pipeline.stages._parse import parse_and_chunk
-from kompend.core.pipeline.stages._resolve import apply_tags_to_tree, resolve_chunks
+from kompend.core.pipeline.stages.compile import load_compiled_wiki, run_compile_tier, run_output_tier
+from kompend.core.pipeline.stages.index import detect_resume_tier, iter_sources, run_index_tier
+from kompend.core.pipeline.stages.parse import parse_and_chunk
+from kompend.core.pipeline.stages.resolve import apply_tags_to_tree, resolve_chunks
 from kompend.core.pipeline.state import TierState, TierStateStore
 from kompend.core.resolution.xref_checker import CrossReferenceResult
 from kompend.core.store import vault_db_path

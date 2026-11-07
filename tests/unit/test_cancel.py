@@ -27,7 +27,7 @@ from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.pipeline.orchestrator import build_pipeline
-from kompend.core.pipeline.stages._pipeline import WikiPipeline
+from kompend.core.pipeline.stages.pipeline import WikiPipeline
 from kompend.core.pipeline.state import TierStateStore
 from kompend.core.reporting.handle import RunHandle
 from kompend.llm.context_window import ContextSource, ContextWindow
@@ -256,7 +256,7 @@ class TestPipelineRunCancel:
         monkeypatch.setattr(pipeline, "save_state", lambda: saved.append(True))
         monkeypatch.setattr(pipeline, "_validate_prerequisites", lambda: None)
         monkeypatch.setattr(
-            "kompend.core.pipeline.stages._pipeline.detect_resume_tier",
+            "kompend.core.pipeline.stages.pipeline.detect_resume_tier",
             lambda _pipeline: None,
         )
         with pytest.raises(KompendCancelled, match="double-ESC"):
@@ -498,7 +498,7 @@ def test_build_pipeline_accepts_cancel(tmp_path: Path, monkeypatch: pytest.Monke
     to do with the cancel wiring.
     """
     monkeypatch.setattr(
-        "kompend.core.pipeline.stages._factory.discover_context_window",
+        "kompend.core.pipeline.stages.factory.discover_context_window",
         lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
     )
     cfg = resolve_config(base_dir=tmp_path)

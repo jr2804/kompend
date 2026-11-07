@@ -14,7 +14,7 @@ from kompend.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from kompend.core.models import Chunk, ChunkNode, ChunkTree, ElementType, MetadataField, ResolvedChunk
 from kompend.core.pipeline.config import Compiler, ImageMode, PipelineConfig
 from kompend.core.pipeline.orchestrator import build_pipeline
-from kompend.core.pipeline.stages._resolve import _collect_image_contexts, resolve_chunks
+from kompend.core.pipeline.stages.resolve import _collect_image_contexts, resolve_chunks
 from kompend.resolution.base import BaseResolver
 
 

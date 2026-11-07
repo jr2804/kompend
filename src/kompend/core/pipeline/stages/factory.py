@@ -22,8 +22,8 @@ from kompend.core.cache.store import CacheStore
 from kompend.core.cancel import CancelState
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.pipeline.config import Compiler, PipelineConfig, Tier
-from kompend.core.pipeline.stages._parse import build_resolver_chain
-from kompend.core.pipeline.stages._pipeline import WikiPipeline
+from kompend.core.pipeline.stages.parse import build_resolver_chain
+from kompend.core.pipeline.stages.pipeline import WikiPipeline
 from kompend.llm.context_window import discover_context_window
 from kompend.logging import get_logger
 from kompend.output.base import BaseOutputWriter

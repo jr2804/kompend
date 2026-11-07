@@ -16,8 +16,8 @@ from kompend.core.models.wiki import (
     write_wiki_snapshot_payload,
 )
 from kompend.core.pipeline.runtime import PipelineRuntime
-from kompend.core.pipeline.stages._parse import parse_and_chunk
-from kompend.core.pipeline.stages._resolve import resolve_chunks
+from kompend.core.pipeline.stages.parse import parse_and_chunk
+from kompend.core.pipeline.stages.resolve import resolve_chunks
 from kompend.logging import get_logger
 from kompend.trust import filter_wiki
 

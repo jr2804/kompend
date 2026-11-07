@@ -13,12 +13,12 @@ persistence, and standalone ingestion.
 
 | Module                | Contents                                                                                 |
 | --------------------- | ---------------------------------------------------------------------------------------- |
-| `stages/_pipeline.py` | `WikiPipeline` — 5-tier orchestrator, `ProgressCallback`                                 |
-| `stages/_factory.py`  | `build_pipeline` — pipeline factory                                                      |
-| `stages/_parse.py`    | Tier 1 parse + chunk orchestration; heavy parses run under `HeavyParseGuard` (`preprocessing/host_memory.py`) |
-| `stages/_index.py`    | Tier 0 source indexing                                                                   |
-| `stages/_resolve.py`  | Tier 3 resolution orchestration                                                          |
-| `stages/_compile.py`  | Tier 4 compilation + Tier 5 output orchestration                                         |
+| `stages/pipeline.py` | `WikiPipeline` — 5-tier orchestrator, `ProgressCallback`                                 |
+| `stages/factory.py`  | `build_pipeline` — pipeline factory                                                      |
+| `stages/parse.py`    | Tier 1 parse + chunk orchestration; heavy parses run under `HeavyParseGuard` (`preprocessing/host_memory.py`) |
+| `stages/index.py`    | Tier 0 source indexing                                                                   |
+| `stages/resolve.py`  | Tier 3 resolution orchestration                                                          |
+| `stages/compile.py`  | Tier 4 compilation + Tier 5 output orchestration                                         |
 | `config.py`           | re-exports `Tier`, `Compiler`, `TierInfo` from `core.config`; `PipelineConfig`            |
 | `state.py`            | `TierStateStore`, `TierState`, `SourceState`, `CompileStatus`, `classify_compile_status` |
 | `references.py`       | `ReferenceStore` — JSON-backed bibliographic reference persistence                       |
@@ -28,16 +28,16 @@ persistence, and standalone ingestion.
 | `reasons.py`          | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
 | `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`           | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |
-| (ledger wiring)      | `stages/_parse.py`, `ingest.py`, `attachments.py` record every parse/chunk/enrich/attachment/dedup attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()` |
+| (ledger wiring)      | `stages/parse.py`, `ingest.py`, `attachments.py` record every parse/chunk/enrich/attachment/dedup attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()` |
 
 ## Rules
 
-- Import from submodules directly: `from kompend.core.pipeline.stages._pipeline import WikiPipeline`,
+- Import from submodules directly: `from kompend.core.pipeline.stages.pipeline import WikiPipeline`,
   `from kompend.core.pipeline.config import PipelineConfig`.
 - Public re-exports in `__init__.py` preserve backward compatibility —
   `from kompend.core.pipeline.orchestrator import WikiPipeline` still works.
 - `config.py` is the public config shape — both CLI and orchestrator import it.
-- `_pipeline.py` imports from nearly every other core submodule; this is
+- `pipeline.py` imports from nearly every other core submodule; this is
   expected for an orchestrator.
 - Each stage module keeps its responsibility isolated — stages communicate
   through the `WikiPipeline` state and shared data models.
@@ -79,7 +79,7 @@ persistence, and standalone ingestion.
   citations or the parse cache.
 - Contextual chunk enrichment is opt-in via `search.contextual.enabled`
   (default false). When on, `build_pipeline` constructs a `ContextualEnricher`;
-  `_parse.py` runs it after chunking and **before** the chunk-cache write, so the
+  `parse.py` runs it after chunking and **before** the chunk-cache write, so the
   cached tree carries `contextual_context`. The chunk-cache key includes the gate
   state, so enabling it invalidates prior un-enriched trees instead of embedding
   stale text. Gate off ⇒ cached output is unchanged.
@@ -109,7 +109,7 @@ persistence, and standalone ingestion.
 - **Recoverable-log rule:** a log call that attaches a traceback gates it on
   `kompend.core.verbosity.is_verbose()` (`exc_info=is_verbose()`). The switch is
   a `ContextVar`, so a worker thread only sees it when the submission carries
-  the context (`_context_bound_call` in `stages/_parse.py` wraps each pool
+  the context (`_context_bound_call` in `stages/parse.py` wraps each pool
   submission in `copy_context().run`). Removing a
   traceback is only safe when the one-line message carries the cause: bind the
   exception (`except X as exc`) and append it (`"...: %s", exc`), never leave a
@@ -129,6 +129,6 @@ persistence, and standalone ingestion.
   pipeline". `run()`/`run_tier()` and `ingest_documents()` stop at tier/file
   boundaries: save tier state, then re-raise. `build_pipeline(config, *,
   cancel=...)` threads the token in; `cli/` owns token creation and the
-  double-ESC watcher (see `cli/AGENTS.md`). `_parse.py`'s threaded branch
+  double-ESC watcher (see `cli/AGENTS.md`). `parse.py`'s threaded branch
   shuts its executor down with `cancel_futures=True` so a cancel drops queued
   parse futures instead of chewing through the corpus.

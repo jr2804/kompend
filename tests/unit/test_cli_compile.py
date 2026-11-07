@@ -16,8 +16,8 @@ from kompend.core.models import Chunk, ChunkNode, ChunkTree, ElementType, Resolv
 from kompend.core.pipeline.config import Compiler, ImageMode, PipelineConfig
 from kompend.core.pipeline.orchestrator import build_pipeline
 from kompend.core.pipeline.runtime import PipelineRuntime
-from kompend.core.pipeline.stages._index import iter_sources
-from kompend.core.pipeline.stages._resolve import resolve_chunks
+from kompend.core.pipeline.stages.index import iter_sources
+from kompend.core.pipeline.stages.resolve import resolve_chunks
 from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.resolution.base import BaseResolver
 from kompend.resolution.chain import ResolverChain
@@ -64,7 +64,7 @@ def test_build_pipeline_wires_the_parsecraft_parser(tmp_path: Path) -> None:
     """
     config = _make_config(tmp_path, vlm_model="")
     with patch(
-        "kompend.core.pipeline.stages._factory.discover_context_window",
+        "kompend.core.pipeline.stages.factory.discover_context_window",
         return_value=ContextWindow(max_input=128000, max_output=32768, source=ContextSource.FALLBACK),
     ):
         pipeline = build_pipeline(config)

@@ -33,7 +33,7 @@ from kompend.core.models import (
 from kompend.core.paths import ATTACHMENTS_DIR_NAME, KOMP_DIR, VaultPaths
 from kompend.core.pipeline.config import Compiler, ImageMode, PipelineConfig
 from kompend.core.pipeline.orchestrator import build_pipeline
-from kompend.core.pipeline.stages._resolve import resolve_chunks
+from kompend.core.pipeline.stages.resolve import resolve_chunks
 from kompend.output.markdown import MarkdownWriter
 from kompend.resolution.vlm_enricher import VLMEnricher
 

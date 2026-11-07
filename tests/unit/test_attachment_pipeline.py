@@ -11,7 +11,7 @@ from kompend.core.models import DocumentElement, ElementType, ParsedDocument
 from kompend.core.models.attachments import Attachment, AttachmentManifest
 from kompend.core.paths import CACHE_DIR, VaultPaths
 from kompend.core.pipeline.attachments import ingest_attachment, iter_ingestible_attachments
-from kompend.core.pipeline.stages._parse import _process_attachments
+from kompend.core.pipeline.stages.parse import _process_attachments
 from kompend.core.reporting.ledger import StageLedger
 from kompend.core.store import vault_db_path
 
