@@ -29,6 +29,7 @@ from collections import deque
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final
 
 from rich.console import Console
@@ -52,6 +53,19 @@ RUN_LOG_RING_CAPACITY: Final[int] = 2000
 #: Records at this level or above are written to the run log immediately;
 #: everything below waits in the ring for a failed run to dump it.
 RUN_LOG_DIRECT_LEVEL: Final[int] = logging.INFO
+
+#: Third-party loggers whose DEBUG detail belongs in the flight recorder, not
+#: the terminal. Their logger level is raised to DEBUG so the records reach the
+#: root and the run-log ring; the terminal handler's own level (WARNING by
+#: default) keeps them off screen. ``logging.modules`` overlays this map.
+THIRD_PARTY_LOG_LEVELS: Final[Mapping[str, str]] = MappingProxyType(
+    {
+        "docling": "DEBUG",
+        "transformers": "DEBUG",
+        "httpx": "DEBUG",
+        "ollama": "DEBUG",
+    }
+)
 
 
 @dataclass
@@ -309,3 +323,17 @@ def set_module_levels(levels: Mapping[str, int | str]) -> None:
     for name, level_int in resolved.items():
         logging.getLogger(name).setLevel(level_int)
     _state.module_levels = resolved
+
+
+def route_third_party_loggers(overrides: Mapping[str, int | str] | None = None) -> None:
+    """Send third-party DEBUG detail to the run log and keep it off the terminal.
+
+    Applies :data:`THIRD_PARTY_LOG_LEVELS` with *overrides* on top (the
+    operator's ``logging.modules`` config). Call after
+    :func:`configure_logging`; the terminal handler's level still decides what
+    the user sees, so ``docling = "DEBUG"`` costs nothing on screen.
+    """
+    merged: dict[str, int | str] = dict(THIRD_PARTY_LOG_LEVELS)
+    if overrides:
+        merged.update(overrides)
+    set_module_levels(merged)

@@ -31,7 +31,7 @@ from kompend.cli.tree.registry import COMMANDS, PANEL_ORDER, HelpPanel, OnDemand
 from kompend.core.cancel import CANCEL_EXIT_CODE, KompendCancelled
 from kompend.core.reporting.handle import RunHandle
 from kompend.core.verbosity import is_verbose, set_verbose
-from kompend.logging import configure_logging, get_console
+from kompend.logging import configure_logging, get_console, route_third_party_loggers
 
 Version = Annotated[
     bool,
@@ -156,6 +156,7 @@ def _get_version() -> str:
 def main() -> None:
     """Entry point for the CLI application."""
     configure_logging()
+    route_third_party_loggers()
     _configure_streams_utf8()
     handle: RunHandle | None = None
     try:
