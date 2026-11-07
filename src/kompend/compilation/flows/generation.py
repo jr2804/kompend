@@ -10,12 +10,13 @@ import hashlib
 import json
 import re
 from collections import defaultdict, deque
+from enum import StrEnum
 from typing import Any, Final, NamedTuple
 
 from pydantic_ai_harness.step_persistence import SqliteStepStore, StepStore
 
 from kompend.agents.decision import decide_error_action, decide_unit_adaptation
-from kompend.agents.failure import AgentFailureKind, classify_agent_failure, record_unit_failure
+from kompend.agents.failure import AgentFailureKind, EmptyAnswerError, classify_agent_failure, record_unit_failure
 from kompend.agents.generation import make_agentic_generation_agent
 from kompend.agents.types import ToolGenerationDeps
 from kompend.compilation._two_phase_core import (
@@ -38,7 +39,7 @@ from kompend.compilation.flows.assembly import (
     build_edges,
     merge_similar_concepts,
 )
-from kompend.compilation.schema import GenerationOutput
+from kompend.compilation.schema import GenerationOutput, GenerationPage
 from kompend.compilation.step_recovery import (
     SegmentRecovery,
     extract_final_output,
@@ -75,6 +76,12 @@ _SOURCE_WIKILINK_RE = re.compile(r"\[\[\s*(sources/[^\]\n]+?)\s*\]\]")
 #: rapidfuzz-scale (0–100) threshold for "does a produced page title cover
 #: this concept" (T2 string tier).
 _COVER_SIMILARITY_THRESHOLD = 85.0
+
+
+#: A page title shorter than this many characters (a bare "x") is a
+#: placeholder identity, never a real page title. Two characters ("3D") pass.
+_MIN_PAGE_TITLE_CHARS: Final[int] = 2
+
 
 #: Failure kinds that end one pass but not the segment. An empty answer (or
 #: a request the provider refused for size) says nothing about the next
@@ -142,6 +149,40 @@ _AMBIGUOUS_KINDS: Final[frozenset[AgentFailureKind]] = frozenset({AgentFailureKi
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
+
+
+class PlaceholderMarker(StrEnum):
+    """Filler phrases that mark a page body as a placeholder.
+
+    The two-phase writer can self-test its ``final_result`` tool and submit
+    filler instead of a summary: a run recorded in ``steps.db`` accepted a
+    page whose whole body was "Placeholder removed", and a reviewed wiki
+    carried a page body announcing itself as prose written to test
+    submission. None of these phrases occur in real source material, so a
+    body containing one is a placeholder, never a summary.
+    """
+
+    #: The observed artifact body, verbatim.
+    PLACEHOLDER_REMOVED = "placeholder removed"
+    #: The classic typesetter filler.
+    LOREM_IPSUM = "lorem ipsum"
+    #: Announces the body as standing text rather than written prose.
+    PLACEHOLDER_TEXT = "placeholder text"
+    #: Announces the body as generic filler ("Body text here with …").
+    BODY_TEXT_HERE = "body text here"
+    #: Self-describing test language ("… prose to test submission").
+    PROSE_TO_TEST = "prose to test"
+
+
+class PlaceholderPageError(EmptyAnswerError):
+    """A ``final_result`` submission carried a placeholder page.
+
+    Subclasses :class:`~kompend.agents.failure.EmptyAnswerError` so the
+    agentic pass loop applies its existing, proven remedy for "the model
+    returned nothing usable": the unit is recorded, the pass is retried or
+    the segment stops loudly — and the placeholder page is never silently
+    dropped and never written to the wiki.
+    """
 
 
 class _CoverageCredit:
@@ -644,8 +685,25 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
             recovered = extract_final_output(recovery.snapshot.messages, GenerationOutput)
             # Absorb first: a transcript whose pages all carry empty content
             # recovers nothing — the segment runs fresh instead of being
-            # skipped with zero pages.
-            seg_titles = _absorb_pages(recovered, seg_idx) if recovered is not None else set()
+            # skipped with zero pages. The same ingestion gate as the live
+            # path applies: a transcript whose final_result carries
+            # placeholder pages must not replay them into the wiki — the
+            # segment re-runs fresh and the rejection is recorded loudly.
+            seg_titles = set()
+            rejected_recovery = False
+            if recovered is not None:
+                try:
+                    _reject_placeholder_pages(recovered, unit=seg_label)
+                except PlaceholderPageError as exc:
+                    rejected_recovery = True
+                    record_unit_failure(
+                        stage="agentic-generation-recovery",
+                        unit=seg_id,
+                        exc=exc,
+                        attempts=recovery.attempts,
+                    )
+                else:
+                    seg_titles = _absorb_pages(recovered, seg_idx)
             if seg_titles:
                 broker.mark_caller_consumed(seg_id, seg_titles)
                 caller_progress[seg_id] = sorted(seg_titles)
@@ -667,10 +725,16 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     ),
                 )
                 continue
-            logger.info(
-                "TwoPhase: agentic %s has a finished transcript without a readable result — re-running fresh.",
-                seg_label,
-            )
+            if rejected_recovery:
+                logger.info(
+                    "TwoPhase: agentic %s replayed a transcript carrying rejected placeholder page(s) — re-running fresh.",
+                    seg_label,
+                )
+            else:
+                logger.info(
+                    "TwoPhase: agentic %s has a finished transcript without a readable result — re-running fresh.",
+                    seg_label,
+                )
             recovery = SegmentRecovery(snapshot=None, interrupted=False, attempts=recovery.attempts)
         resume_history = recovery.history if recovery.snapshot is not None else None
         if resume_history is not None:
@@ -755,6 +819,9 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
                     run_id=pass_run_id(seg_prefix, recovery.attempts + 1, passes) if seg_prefix else None,
                 )
                 resume_history = None  # only the first pass continues the old conversation
+                # Ingestion gate: a placeholder page must fail the unit on
+                # the existing failure path, never reach the wiki.
+                _reject_placeholder_pages(gen_output, unit=seg_label)
             except LLMContextOverflowError as exc:
                 # The unit did not fit the provider's window. Loop 1 earns
                 # it a smaller re-plan; only a unit that cannot shrink keeps
@@ -992,6 +1059,46 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx, caller_progress
+
+
+def _reject_placeholder_pages(gen_output: GenerationOutput, *, unit: str) -> None:
+    """Refuse the whole submission when any submitted page is a placeholder.
+
+    The gate sits where a model submission enters the pipeline: the live
+    pass result, and a transcript replayed from the step store. The
+    offender is never silently dropped — the whole
+    :class:`~kompend.compilation.schema.GenerationOutput` is refused with
+    :class:`PlaceholderPageError`, which routes through the pass loop's
+    existing failure path: the unit is recorded, and the segment either
+    re-runs or fails loudly. The placeholder page never reaches the wiki.
+    """
+    offenders: list[str] = []
+    for page in gen_output.pages:
+        if reasons := _placeholder_reasons(page):
+            offenders.append(f"'{page.title or '(untitled)'}' ({'; '.join(reasons)})")
+    if offenders:
+        raise PlaceholderPageError(f"{unit}: rejected {len(offenders)} placeholder page(s) — {'; '.join(offenders)}")
+
+
+def _placeholder_reasons(page: GenerationPage) -> list[str]:
+    """Reasons *page* is a placeholder, empty when the page is legitimate.
+
+    A page with no provenance had no source to summarize (the generation
+    prompt requires ``provenance`` — a list of cited source filenames — on
+    every page), a filler body is the writer testing its own tool, and a
+    single-character title is a test identity, not a page name.
+    """
+    reasons: list[str] = []
+    if not [entry for entry in page.provenance if str(entry).strip()]:
+        reasons.append("empty provenance (no source chunks cited)")
+    body = (page.content or "").casefold()
+    markers = [marker.value for marker in PlaceholderMarker if marker.value in body]
+    if markers:
+        reasons.append(f"filler body text ({', '.join(markers)})")
+    title = (page.title or "").strip()
+    if title and len(title) < _MIN_PAGE_TITLE_CHARS:
+        reasons.append(f"title '{title}' is shorter than {_MIN_PAGE_TITLE_CHARS} characters")
+    return reasons
 
 
 def _shrink_and_requeue(

@@ -126,7 +126,7 @@ def _extraction_set() -> ExtractionSet:
 
 def _page_output() -> GenerationOutput:
     return GenerationOutput(
-        pages=[GenerationPage(title="Listening Effort", content="The effort to understand speech.")],
+        pages=[GenerationPage(title="Listening Effort", content="The effort to understand speech.", provenance=["sources/src.pdf"])],
     )
 
 

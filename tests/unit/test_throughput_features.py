@@ -1321,6 +1321,7 @@ class TestTwoPhaseCompiler:
                                 "on discrete information while ignoring other perceivable input. "
                                 "It plays a critical role in learning and memory."
                             ),
+                            "provenance": ["sources/a.pdf"],
                         }
                     ]
                 },
@@ -1367,6 +1368,7 @@ class TestStepStoreRecovery:
             "discrete information while ignoring other perceivable input. "
             "It plays a critical role in learning and memory."
         ),
+        "provenance": ["sources/a.pdf"],
     }
     CONCEPTS = [{"name": "attention", "kind": "concept", "importance": "high", "definition": "def"}]
     SEGMENTS = [[("a.pdf", "Source body text about attention.")]]
@@ -1501,7 +1503,11 @@ class TestStepStoreRecovery:
                 broker = getattr(_deps, "concept_broker", None)
                 if broker is not None:
                     broker.fetch(getattr(_deps, "source_id", ""), limit=10)
-                return GenerationOutput(pages=[GenerationPage(title=page_title, content=f"The {page_title} page body, written by the fresh attempt.")])
+                return GenerationOutput(
+                    pages=[
+                        GenerationPage(title=page_title, content=f"The {page_title} page body, written by the fresh attempt.", provenance=["sources/src.pdf"])
+                    ]
+                )
 
             agent.run = _run
             return agent

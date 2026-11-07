@@ -188,7 +188,9 @@ class TestShrinkLoop:
                     # The seg_4 shape: concepts fetched, then the request died.
                     failed = True
                     raise LLMContextOverflowError("request exceeds the available context size (131072 tokens)")
-                return GenerationOutput(pages=[GenerationPage(title=str(c["name"]), content=f"Body for {c['name']}.") for c in batch])
+                return GenerationOutput(
+                    pages=[GenerationPage(title=str(c["name"]), content=f"Body for {c['name']}.", provenance=["sources/corpus.pdf"]) for c in batch]
+                )
 
             agent.run = _run
             return agent
@@ -390,7 +392,9 @@ class TestLoop2Shrink:
                 batch = broker.fetch(source_id, limit=10) if broker is not None else []
                 calls.append(source_id)
                 fail(source_id, batch)
-                return GenerationOutput(pages=[GenerationPage(title=str(c["name"]), content=f"Body for {c['name']}.") for c in batch])
+                return GenerationOutput(
+                    pages=[GenerationPage(title=str(c["name"]), content=f"Body for {c['name']}.", provenance=["sources/corpus.pdf"]) for c in batch]
+                )
 
             agent.run = _run
             return agent
