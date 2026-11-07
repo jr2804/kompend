@@ -16,6 +16,7 @@ from kompend.core.models.enums import NodeType
 from kompend.rag.vector_store import VectorField, VectorStoreLike
 from kompend.search import adaptive_retriever as adaptive_retriever_module
 from kompend.search.adaptive_retriever import AdaptiveRetriever
+from kompend.search.retrieval.results import SearchResult
 
 
 class _FakeVectorStore:
@@ -176,6 +177,7 @@ class TestAdaptiveRetriever:
         fake = _FakeVectorStore()
         hits: list[dict[str, object]] = [{"id": "orphan", VectorField.TITLE: "Typed title", VectorField.CONTENT_PREVIEW: 42}]
         calls: list[tuple[VectorStoreLike | None, str, int]] = []
+        assembled: list[tuple[WikiNode | None, dict[str, object], set[str], int]] = []
 
         def fake_vector_search(
             store: VectorStoreLike | None,
@@ -186,12 +188,31 @@ class TestAdaptiveRetriever:
             calls.append((store, query, top_k))
             return hits
 
+        real_result_from_hit = adaptive_retriever_module.result_from_hit
+
+        def spy_result_from_hit(
+            node: WikiNode | None,
+            hit: dict[str, object],
+            query_tokens: set[str],
+            *,
+            snippet_chars: int,
+        ) -> SearchResult:
+            assembled.append((node, hit, query_tokens, snippet_chars))
+            return real_result_from_hit(node, hit, query_tokens, snippet_chars=snippet_chars)
+
         monkeypatch.setattr(adaptive_retriever_module, "vector_search", fake_vector_search)
+        monkeypatch.setattr(adaptive_retriever_module, "result_from_hit", spy_result_from_hit)
         retriever = AdaptiveRetriever(_make_wiki([]), vector_store=cast("VectorStoreLike", fake))
 
         results = retriever._wiki_vector_results("test", top_k=7)
 
         assert calls == [(fake, "test", 7)]
+        assert len(assembled) == 1
+        node, hit, query_tokens, snippet_chars = assembled[0]
+        assert node is None
+        assert hit is hits[0]
+        assert query_tokens == {"test"}
+        assert snippet_chars > 0
         assert results[0].snippet == "Typed title"
 
 
