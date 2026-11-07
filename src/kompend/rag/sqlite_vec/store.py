@@ -18,8 +18,6 @@ returns ``1 - distance`` (the cosine similarity); the lexical path
 returns ``-bm25()`` (SQLite's bm25 is lower-is-better).
 """
 
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
-
 from __future__ import annotations
 
 import contextlib
