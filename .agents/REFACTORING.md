@@ -399,18 +399,26 @@ Kept for calibration; do not copy the specifics into another project.
   called (left unwired: that is a behaviour change, reported instead).
 - Fifth loop (bead knox-xapn): the fourth loop's finding "three copies of
   provider-string parsing across the repo" landed as `kompend.llm.model_id`
-  (`provider_id_of`/`model_slug` over one first-separator split; bare model →
-  `None` provider), and four call sites now consume it — `llm/user_providers.py`,
-  `llm/debug.py`, `diagnostics/providers.py`, `rag/vector_store.py`. The move
-  surfaced what the size count could not: the doctor pair checked `/` before
-  `:` *by code order, not in-string order*, so it mis-split colon-first strings
-  holding a slash model (`ollama:hf.co/...` → provider `ollama:hf.co`), and two
-  `llm/` sites missed the colon form entirely — `effective_workers` looked up
-  `[providers.<name>]` with the raw prefix, silently ignoring
-  `max_connections` for `ollama:model:tag`, and the debug slug kept the provider
-  for one spelling and stripped it for the other. Each disagreement was pinned
-  red in `tests/unit/test_model_id.py` before the repoint, then resolved to the
-  union rule (`models._split`'s, minus its raise on the bare form);
-  `models._split` and `context_window._split_model` stay — they are build-path
-  splitters with stricter no-separator contracts (raise / empty provider), and
-  `rag`'s known-provider gate is its own contract, not a parse.
+  (43 lines: `provider_id_of`, `model_slug`, one private `_split_model_id`;
+  bare model → `None` provider), and four call sites now consume it —
+  `llm/user_providers.py`, `llm/debug.py`, `diagnostics/providers.py`,
+  `rag/vector_store.py`. The move surfaced what the size count could not: the
+  copies disagreed about *which* separator wins, not only about the edge
+  cases. The doctor pair checked `/` before `:` by code order, not in-string
+  order, so it mis-split a colon-first string holding a slash model
+  (`ollama:hf.co/...` → provider `ollama:hf.co`); `rag` checked `:` first and
+  was right; the two `llm/` sites split on `/` only, so `effective_workers`
+  looked up `[providers.<name>]` with the raw prefix and silently ignored
+  `max_connections` for `ollama:model:tag`, while the debug slug kept the
+  provider for one spelling and stripped it for the other. Each disagreement
+  was pinned red in `tests/unit/test_model_id.py` before the repoint, then
+  resolved to the union rule — the first separator in string order, which is
+  `models._split`'s rule minus its raise on the bare form. `models._split` and
+  `context_window._split_model` stay: they are build-path splitters with
+  stricter no-separator contracts (raise / empty provider), and `rag`'s
+  known-provider gate is its own contract, not a parse. The move and the
+  behaviour fixes are separate commits (`d62e23cd`, `5d5d7eb6`), and the
+  doctor's `ValueError` for an unknown provider prefix survives unchanged,
+  because the call site keeps its own known-provider check and only the split
+  moved. The lesson is the one the fourth loop already paid for: the size was
+  never the argument, the four answers to "which provider is this model" were.
