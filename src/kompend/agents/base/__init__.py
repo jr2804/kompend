@@ -20,6 +20,7 @@ from kompend.agents.base.deps import (
     resolve_retry_budget,
 )
 from kompend.agents.base.retries import _is_cache_rejection
+from kompend.agents.base.spec import AgentSpec, agent_class, build_agent
 from kompend.agents.context_manager import _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES
 
 __all__ = [
@@ -30,9 +31,12 @@ __all__ = [
     "_SLIDING_KEEP_MESSAGES",
     "_SLIDING_MAX_MESSAGES",
     "AgentDeps",
+    "AgentSpec",
     "DepsT",
     "KompendAgentBase",
     "ResultT",
     "_is_cache_rejection",
+    "agent_class",
+    "build_agent",
     "resolve_retry_budget",
 ]

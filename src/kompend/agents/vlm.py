@@ -14,11 +14,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final
 
 from pydantic_ai.messages import BinaryContent
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.core.config import ReasoningEffort
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.debug import save_debug_prompt
@@ -77,6 +77,16 @@ class VlmDeps:
     source_id: str = "vlm"
 
 
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="vlm",
+    result_type=str,
+    deps_type=VlmDeps,
+    template_name="caption.md.j2",
+    system_template_name="",
+    template_prefix="vlm/",
+)
+
+
 class VlmAgent(KompendAgentBase[str, VlmDeps]):
     """PydanticAI agent for VLM image captioning.
 
@@ -85,9 +95,7 @@ class VlmAgent(KompendAgentBase[str, VlmDeps]):
     prompt cannot carry image bytes.
     """
 
-    template_name: ClassVar[str] = "caption.md.j2"
-    system_template_name: ClassVar[str] = ""
-    template_prefix: ClassVar[str] = "vlm/"
+    spec: ClassVar[AgentSpec | None] = SPEC
 
     def __post_init__(self) -> None:
         # Image captioning never benefits from reasoning — force it off so

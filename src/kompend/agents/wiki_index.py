@@ -2,22 +2,40 @@
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final
 
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import OverviewDeps
 from kompend.compilation.overview_tools import build_overview_tools
 from kompend.core.config._configs import LLMConfig, RlmConfig
 
+SPEC_WIKI_INDEX: Final[AgentSpec] = AgentSpec(
+    name="wiki_index",
+    result_type=dict[str, Any],
+    deps_type=PipelineAgentDeps,
+    template_name="synthesize.md.j2",
+    system_template_name="synthesize.md.j2",
+    template_prefix="output/",
+)
+
 
 class WikiIndexAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
     """PydanticAI agent for generating wiki overview/index text."""
 
-    template_prefix: ClassVar[str] = "output/"
-    template_name: ClassVar[str] = "synthesize.md.j2"
-    system_template_name: ClassVar[str] = "synthesize.md.j2"
+    spec: ClassVar[AgentSpec | None] = SPEC_WIKI_INDEX
+
+
+SPEC_AGENTIC_OVERVIEW: Final[AgentSpec] = AgentSpec(
+    name="agentic_overview",
+    result_type=str,
+    deps_type=OverviewDeps,
+    template_name="synthesize_agentic_prompt.md.j2",
+    system_template_name="synthesize_agentic_system.md.j2",
+    template_prefix="output/",
+    supports_delta_retry=True,
+)
 
 
 class AgenticOverviewAgent(KompendAgentBase[str, OverviewDeps]):
@@ -29,10 +47,7 @@ class AgenticOverviewAgent(KompendAgentBase[str, OverviewDeps]):
     on ``deps.overview`` by the tool).
     """
 
-    template_name: ClassVar[str] = "synthesize_agentic_prompt.md.j2"
-    system_template_name: ClassVar[str] = "synthesize_agentic_system.md.j2"
-    template_prefix: ClassVar[str] = "output/"
-    supports_delta_retry: ClassVar[bool] = True
+    spec: ClassVar[AgentSpec | None] = SPEC_AGENTIC_OVERVIEW
 
 
 def make_agentic_overview_agent(

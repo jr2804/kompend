@@ -7,21 +7,28 @@ the final answer.
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import QueryAgentDeps
 from kompend.compilation.query_tools import build_query_tools
 from kompend.core.config._configs import LLMConfig, RlmConfig
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="agentic_query",
+    result_type=str,
+    deps_type=QueryAgentDeps,
+    template_name="query_agentic_prompt.md.j2",
+    system_template_name="query_agentic_system.md.j2",
+    template_prefix="search/",
+)
 
 
 class AgenticQueryAgent(KompendAgentBase[str, QueryAgentDeps]):
     """PydanticAI agent that synthesizes answers via tools."""
 
-    template_name: ClassVar[str] = "query_agentic_prompt.md.j2"
-    system_template_name: ClassVar[str] = "query_agentic_system.md.j2"
-    template_prefix: ClassVar[str] = "search/"
+    spec: ClassVar[AgentSpec | None] = SPEC
 
 
 def make_agentic_query_agent(

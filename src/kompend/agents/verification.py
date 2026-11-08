@@ -3,25 +3,43 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final
 
 from pydantic_ai import UsageLimits
 
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import VerificationDeps
 from kompend.agents.vault_memory import build_notebook_store
 from kompend.compilation.verification_tools import build_verification_tools
 from kompend.core.config._configs import LLMConfig, RlmConfig
 
+SPEC_VERIFICATION: Final[AgentSpec] = AgentSpec(
+    name="verification",
+    result_type=dict[str, Any],
+    deps_type=PipelineAgentDeps,
+    template_name="verify_claim.md.j2",
+    system_template_name="verify_system.md.j2",
+    template_prefix="verification/",
+)
+
 
 class VerificationAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
     """PydanticAI agent for verifying claims against source excerpts."""
 
-    template_name: ClassVar[str] = "verify_claim.md.j2"
-    system_template_name: ClassVar[str] = "verify_system.md.j2"
-    template_prefix: ClassVar[str] = "verification/"
+    spec: ClassVar[AgentSpec | None] = SPEC_VERIFICATION
+
+
+SPEC_AGENTIC_VERIFICATION: Final[AgentSpec] = AgentSpec(
+    name="agentic_verification",
+    result_type=str,
+    deps_type=VerificationDeps,
+    template_name="verify_agentic_prompt.md.j2",
+    system_template_name="verify_agentic_system.md.j2",
+    template_prefix="lint/",
+    supports_delta_retry=True,
+)
 
 
 class AgenticVerificationAgent(KompendAgentBase[str, VerificationDeps]):
@@ -34,10 +52,7 @@ class AgenticVerificationAgent(KompendAgentBase[str, VerificationDeps]):
     LLM call per claim.
     """
 
-    template_name: ClassVar[str] = "verify_agentic_prompt.md.j2"
-    system_template_name: ClassVar[str] = "verify_agentic_system.md.j2"
-    template_prefix: ClassVar[str] = "lint/"
-    supports_delta_retry: ClassVar[bool] = True
+    spec: ClassVar[AgentSpec | None] = SPEC_AGENTIC_VERIFICATION
 
     #: Requests one claim costs: ``get_claim()``, an optional source read, and
     #: the ``mark_*()`` verdict.

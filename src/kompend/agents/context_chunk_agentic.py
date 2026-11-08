@@ -2,15 +2,42 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar, Final
 
 from pydantic_ai import UsageLimits
 
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import ContextChunkDeps
 from kompend.compilation.context_chunk_tools import CONTEXT_CHUNK_TEXT_PREVIEW_CHARS, build_context_chunk_tools
 from kompend.core.config._configs import LLMConfig, RlmConfig
+
+
+def _context_chunk_agentic_user_prompt(agent: Any, deps: ContextChunkDeps) -> str:
+    """Return a task description with the chunk to situate."""
+    chunk = deps.current_chunk
+    if not chunk:
+        return "No chunk to situate."
+    heading = " > ".join(chunk["heading_chain"]) or "document root"
+    return (
+        f"Generate situating context for this chunk:\n"
+        f"Document: {deps.doc_title}\n"
+        f"Summary: {deps.doc_summary}\n"
+        f"Heading: {heading}\n"
+        f"Text: {chunk['text'][:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]}"
+    )
+
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="agentic_context_chunk",
+    result_type=str,
+    deps_type=ContextChunkDeps,
+    template_name="contextual_agentic_prompt.md.j2",
+    system_template_name="contextual_agentic_system.md.j2",
+    template_prefix="chunking/",
+    supports_delta_retry=True,
+    user_prompt=_context_chunk_agentic_user_prompt,
+)
 
 
 class AgenticContextChunkAgent(KompendAgentBase[str, ContextChunkDeps]):
@@ -21,27 +48,10 @@ class AgenticContextChunkAgent(KompendAgentBase[str, ContextChunkDeps]):
     in ``deps.results`` keyed by chunk id.
     """
 
-    template_name: ClassVar[str] = "contextual_agentic_prompt.md.j2"
-    system_template_name: ClassVar[str] = "contextual_agentic_system.md.j2"
-    template_prefix: ClassVar[str] = "chunking/"
-    supports_delta_retry: ClassVar[bool] = True
+    spec: ClassVar[AgentSpec | None] = SPEC
 
     #: Requests one chunk costs: ``next_chunk()`` and ``situate_chunk()``.
     requests_per_chunk: ClassVar[int] = 2
-
-    def render_user_prompt(self, deps: ContextChunkDeps) -> str:  # noqa: PLR6301
-        """Return a task description with the chunk to situate."""
-        chunk = deps.current_chunk
-        if not chunk:
-            return "No chunk to situate."
-        heading = " > ".join(chunk["heading_chain"]) or "document root"
-        return (
-            f"Generate situating context for this chunk:\n"
-            f"Document: {deps.doc_title}\n"
-            f"Summary: {deps.doc_summary}\n"
-            f"Heading: {heading}\n"
-            f"Text: {chunk['text'][:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]}"
-        )
 
     def _usage_limits_for(self, deps: ContextChunkDeps) -> UsageLimits | None:
         """Budget the one session that situates every chunk of a document."""

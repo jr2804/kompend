@@ -3,15 +3,30 @@
 from __future__ import annotations
 
 from dataclasses import field
-from typing import Any, ClassVar
+from typing import Any, ClassVar, Final
 
 from pydantic import BaseModel
 from pydantic_ai.agent import Agent
 from pydantic_ai.messages import ModelMessage
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.agents.types import PipelineAgentDeps
 from kompend.types import AgentResult
+
+
+def _lint_user_prompt(agent: Any, deps: PipelineAgentDeps) -> str:
+    """Return the pre-rendered prompt from deps.text."""
+    return deps.text
+
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="lint_rule",
+    result_type=BaseModel | str,
+    deps_type=PipelineAgentDeps,
+    template_name="",
+    system_template_name="",
+    user_prompt=_lint_user_prompt,
+)
 
 
 class LintRuleAgent(KompendAgentBase[BaseModel | str, PipelineAgentDeps]):
@@ -26,18 +41,8 @@ class LintRuleAgent(KompendAgentBase[BaseModel | str, PipelineAgentDeps]):
     changes, the underlying PydanticAI Agent is rebuilt (cached per type).
     """
 
-    template_name: ClassVar[str] = ""  # not used; render_user_prompt is overridden
-    system_template_name: ClassVar[str] = ""  # not used; system prompt is empty
+    spec: ClassVar[AgentSpec | None] = SPEC
     _agents_by_type: dict[type, Agent[Any, Any]] = field(default_factory=dict, init=False, repr=False)
-
-    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301
-        """Return the pre-rendered prompt from deps.text.
-
-        Lint rules render their own templates in ``_call_agent()`` and
-        pass the result as ``deps.text``, so the base class template
-        rendering is bypassed.
-        """
-        return deps.text
 
     def run(
         self,

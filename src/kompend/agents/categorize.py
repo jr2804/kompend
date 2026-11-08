@@ -2,11 +2,33 @@
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar, Final
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.agents.categorize_models import CategoryTree
 from kompend.agents.deps import CategorizeDeps
+
+
+def _categorize_system_prompt(agent: Any, deps: CategorizeDeps) -> str:
+    """Render the categorize system prompt with tree-constraint values."""
+    return agent._template_loader.render(  # noqa: SLF001
+        f"{agent.template_prefix}{agent.system_template_name}",
+        max_depth=deps.max_depth,
+        min_subcategories=deps.min_subcategories,
+        min_files_per_category=deps.min_files_per_category,
+    )
+
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="categorize",
+    result_type=CategoryTree,
+    deps_type=CategorizeDeps,
+    template_name="categorize_prompt.md.j2",
+    system_template_name="categorize_system.md.j2",
+    template_prefix="organize/",
+    temperature=0.0,
+    system_prompt=_categorize_system_prompt,
+)
 
 
 class CategorizeAgent(KompendAgentBase[CategoryTree, CategorizeDeps]):
@@ -19,16 +41,4 @@ class CategorizeAgent(KompendAgentBase[CategoryTree, CategorizeDeps]):
     :class:`CategorizeDeps` config fields.
     """
 
-    template_name: ClassVar[str] = "categorize_prompt.md.j2"
-    system_template_name: ClassVar[str] = "categorize_system.md.j2"
-    template_prefix: ClassVar[str] = "organize/"
-    temperature: float | None = 0.0
-
-    def render_system_prompt(self, deps: CategorizeDeps) -> str:
-        """Render the categorize system prompt with tree-constraint values."""
-        return self._template_loader.render(
-            f"{self.template_prefix}{self.system_template_name}",
-            max_depth=deps.max_depth,
-            min_subcategories=deps.min_subcategories,
-            min_files_per_category=deps.min_files_per_category,
-        )
+    spec: ClassVar[AgentSpec | None] = SPEC

@@ -79,6 +79,7 @@ from kompend.agents.base.retries import (
     transient_retries,
     usage_limits_for,
 )
+from kompend.agents.base.spec import AgentSpec, install_hooks
 from kompend.agents.instrument import configure_observability
 from kompend.agents.rlm import (
     RLMCapability,
@@ -175,6 +176,11 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     #: (the decision sidecar speaks the SystemOne protocol). ``None`` uses
     #: :func:`kompend.llm.models.build_model`.
     model_builder: ClassVar[Callable[[str], Model] | None] = None
+    #: Declarative definition, when the agent is built from an
+    #: :class:`~kompend.agents.base.spec.AgentSpec`. Specs own the type
+    #: parameters and prompt wiring; a ``None`` spec keeps the legacy
+    #: generic-parameter resolution.
+    spec: ClassVar[AgentSpec | None] = None
 
     # Runtime-resolved type params (set in __post_init__, not constructor params)
     result_type: type = field(default=str, init=False, repr=False)
@@ -189,6 +195,27 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     _delta_retry_state: dict[int, JSONValue] = field(default_factory=dict, init=False, repr=False)
     _last_debug_file: Path | None = field(default=None, init=False, repr=False)
     _rlm_usage_limits: UsageLimits | None = field(default=None, init=False, repr=False)
+
+    def __init_subclass__(cls, **kwargs: Any) -> None:
+        """Copy a declared spec's prompt wiring onto the class.
+
+        A subclass that declares ``spec`` no longer repeats the template
+        names and flags as class attributes; the spec stays the single
+        definition. Subclasses without a spec keep their class attributes.
+        """
+        super().__init_subclass__(**kwargs)
+        spec = cls.__dict__.get("spec")
+        if spec is None:
+            return
+        cls.template_name = spec.template_name
+        cls.system_template_name = spec.system_template_name
+        cls.template_prefix = spec.template_prefix
+        cls.supports_delta_retry = spec.supports_delta_retry
+        # Assign through ``staticmethod``: a plain function on the class would
+        # bind as a method and receive ``self`` as the model string.
+        builder = spec.model_builder
+        cls.model_builder = cast("Callable[[str], Model] | None", staticmethod(builder) if builder is not None else None)
+        install_hooks(cls, spec)
 
     def __post_init__(self) -> None:
         # Resolve result_type / deps_type from the generic type params.
@@ -458,7 +485,15 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         Walks the MRO to find ``KompendAgentBase[X, Y]`` and extracts X and Y.
         Falls back to ``str`` / ``PipelineAgentDeps`` if resolution fails
         (e.g. the subclass uses ``Any`` or doesn't parameterize).
+
+        A class that carries an :class:`AgentSpec` takes its types from the
+        spec instead — the spec is the single definition, so there is no
+        second place for the result or deps type to drift.
         """
+        if self.spec is not None:
+            self.result_type = self.spec.result_type
+            self.deps_type = self.spec.deps_type
+            return
         for base in getattr(type(self), "__orig_bases__", ()):
             args = typing.get_args(base)
             if len(args) >= 2:

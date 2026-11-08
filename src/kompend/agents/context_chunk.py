@@ -2,10 +2,27 @@
 
 from __future__ import annotations
 
-from typing import ClassVar, override
+from typing import Any, ClassVar, Final
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.agents.types import PipelineAgentDeps
+
+
+def _pre_rendered_prompt(agent: Any, deps: PipelineAgentDeps) -> str:
+    """The caller supplies the finished prompt; send it as-is."""
+    return deps.text
+
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="context_chunk",
+    result_type=str,
+    deps_type=PipelineAgentDeps,
+    template_name="",
+    system_template_name="",
+    template_prefix="chunking/",
+    temperature=0.0,
+    user_prompt=_pre_rendered_prompt,
+)
 
 
 class ContextChunkAgent(KompendAgentBase[str, PipelineAgentDeps]):
@@ -18,12 +35,4 @@ class ContextChunkAgent(KompendAgentBase[str, PipelineAgentDeps]):
     # naming one here made the base render it with no variables at all, which
     # raised on every call and was swallowed by the caller's ``debug`` log,
     # leaving enrichment permanently on its structural fallback.
-    template_name: ClassVar[str] = ""
-    system_template_name: ClassVar[str] = ""
-    template_prefix: ClassVar[str] = "chunking/"
-    temperature: float | None = 0.0
-
-    @override
-    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:
-        """The caller supplies the finished prompt; send it as-is."""
-        return deps.text
+    spec: ClassVar[AgentSpec | None] = SPEC

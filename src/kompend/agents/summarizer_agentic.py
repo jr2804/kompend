@@ -9,12 +9,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from pydantic_ai import UsageLimits
 
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import SummarizerDeps
 from kompend.agents.vault_memory import build_notebook_store
 from kompend.compilation.summarizer_tools import build_summarizer_tools
@@ -28,13 +28,21 @@ _REMINDER_INTERVAL: int = 10
 _loader = get_template_loader()
 
 
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="agentic_summarizer",
+    result_type=str,
+    deps_type=SummarizerDeps,
+    template_name="summarizer_agentic_prompt.md.j2",
+    system_template_name="summarizer_agentic_system.md.j2",
+    template_prefix="chunking/",
+)
+
+
 @dataclass
 class AgenticSummarizerAgent(KompendAgentBase[str, SummarizerDeps]):
     """PydanticAI agent that summarizes chunk-tree nodes via tools."""
 
-    template_name: ClassVar[str] = "summarizer_agentic_prompt.md.j2"
-    system_template_name: ClassVar[str] = "summarizer_agentic_system.md.j2"
-    template_prefix: ClassVar[str] = "chunking/"
+    spec: ClassVar[AgentSpec | None] = SPEC
 
     #: LLM requests budgeted per payload node. The pipeline sets this from
     #: ``budget.summary_requests_per_node`` — small local models routinely

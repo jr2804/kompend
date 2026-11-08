@@ -11,10 +11,17 @@ the window leaves for it: this agent is that consolidation call.
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Final
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.agents.deps import MemoryConsolidationDeps
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="memory_consolidation",
+    result_type=str,
+    deps_type=MemoryConsolidationDeps,
+    template_name="memory_consolidation.md.j2",
+)
 
 
 class MemoryConsolidationAgent(KompendAgentBase[str, MemoryConsolidationDeps]):
@@ -25,5 +32,4 @@ class MemoryConsolidationAgent(KompendAgentBase[str, MemoryConsolidationDeps]):
     enough to serve as prior-section context for the sections that follow.
     """
 
-    template_name: ClassVar[str] = "memory_consolidation.md.j2"
-    template_prefix: ClassVar[str] = "compilation/"
+    spec: ClassVar[AgentSpec | None] = SPEC

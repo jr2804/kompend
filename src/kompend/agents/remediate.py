@@ -3,17 +3,43 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar, Final
 
 from pydantic_ai import UsageLimits
 
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import RemediationDeps
 from kompend.agents.vault_memory import build_notebook_store
 from kompend.compilation.remediate_tools import build_remediation_tools
 from kompend.core.config._configs import LLMConfig, RlmConfig
+
+
+def _remediation_user_prompt(agent: Any, deps: PipelineAgentDeps) -> str:
+    """Return the pre-rendered prompt from deps.text."""
+    return deps.text
+
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="remediation",
+    result_type=str,
+    deps_type=PipelineAgentDeps,
+    template_name="",
+    system_template_name="",
+    user_prompt=_remediation_user_prompt,
+)
+
+
+SPEC_AGENTIC: Final[AgentSpec] = AgentSpec(
+    name="agentic_remediation",
+    result_type=str,
+    deps_type=RemediationDeps,
+    template_name="remediate_agentic_prompt.md.j2",
+    system_template_name="remediate_agentic_system.md.j2",
+    template_prefix="lint/",
+    supports_delta_retry=True,
+)
 
 
 class RemediationAgent(KompendAgentBase[str, PipelineAgentDeps]):
@@ -28,12 +54,7 @@ class RemediationAgent(KompendAgentBase[str, PipelineAgentDeps]):
     directly.
     """
 
-    template_name: ClassVar[str] = ""  # not used; render_user_prompt is overridden
-    system_template_name: ClassVar[str] = ""  # not used; system prompt is empty
-
-    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301
-        """Return the pre-rendered prompt from deps.text."""
-        return deps.text
+    spec: ClassVar[AgentSpec | None] = SPEC
 
 
 class AgenticRemediationAgent(KompendAgentBase[str, RemediationDeps]):
@@ -44,10 +65,7 @@ class AgenticRemediationAgent(KompendAgentBase[str, RemediationDeps]):
     ``mark_unfixable()``. Returns a plain-text summary.
     """
 
-    template_name: ClassVar[str] = "remediate_agentic_prompt.md.j2"
-    system_template_name: ClassVar[str] = "remediate_agentic_system.md.j2"
-    template_prefix: ClassVar[str] = "lint/"
-    supports_delta_retry: ClassVar[bool] = True
+    spec: ClassVar[AgentSpec | None] = SPEC_AGENTIC
 
     #: Requests one gap costs: ``fetch_gaps()``, a source read, and
     #: ``save_page()`` / ``mark_unfixable()``.

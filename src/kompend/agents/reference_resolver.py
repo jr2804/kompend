@@ -21,11 +21,20 @@ Usage::
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Final
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.core.models.references import ReferenceResolutionOutput
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="reference_resolver",
+    result_type=ReferenceResolutionOutput,
+    deps_type=PipelineAgentDeps,
+    template_name="reference_resolver_prompt.md.j2",
+    system_template_name="reference_resolver_system.md.j2",
+    temperature=0.0,
+)
 
 
 class ReferenceResolverAgent(KompendAgentBase[ReferenceResolutionOutput, PipelineAgentDeps]):
@@ -36,6 +45,5 @@ class ReferenceResolverAgent(KompendAgentBase[ReferenceResolutionOutput, Pipelin
     ``reference_resolver_prompt.md.j2``) under ``compilation/``.
     """
 
-    template_name: ClassVar[str] = "reference_resolver_prompt.md.j2"
-    system_template_name: ClassVar[str] = "reference_resolver_system.md.j2"
+    spec: ClassVar[AgentSpec | None] = SPEC
     temperature: float | None = 0.0

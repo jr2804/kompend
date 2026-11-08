@@ -23,10 +23,41 @@ Usage::
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import Any, ClassVar, Final
 
-from kompend.agents.base import RLM_CONTEXT_PLACEHOLDER, KompendAgentBase
+from kompend.agents.base import RLM_CONTEXT_PLACEHOLDER, AgentSpec, KompendAgentBase
 from kompend.agents.deps import QueryDeps
+
+
+def _query_user_prompt(agent: Any, deps: QueryDeps) -> str:
+    """The user prompt is the raw question — no template needed."""
+    return deps.question
+
+
+def _query_system_prompt(agent: Any, deps: QueryDeps) -> str:
+    """Render the system prompt from the synthesis template + skills."""
+    ctx = deps.context
+    if agent.rlm:
+        ctx = RLM_CONTEXT_PLACEHOLDER
+    prompt = agent._template_loader.render(  # noqa: SLF001
+        f"query/{agent.system_template_name}",
+        context=ctx,
+        verbosity=deps.verbosity,
+    )
+    if agent.skills:
+        skill_blocks = [f"## Skill: {name}\n\n{instructions}" for name, instructions in agent.skills.items()]
+        prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
+    return prompt
+
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="query",
+    result_type=str,
+    deps_type=QueryDeps,
+    template_name="",
+    user_prompt=_query_user_prompt,
+    system_prompt=_query_system_prompt,
+)
 
 
 class QueryAgent(KompendAgentBase[str, QueryDeps]):
@@ -41,31 +72,4 @@ class QueryAgent(KompendAgentBase[str, QueryDeps]):
 
     # QueryAgent has no user-prompt template — the user prompt is the
     # raw question. We override render_user_prompt to return it directly.
-    template_name: ClassVar[str] = ""  # not used; render_user_prompt is overridden
-    system_template_name: ClassVar[str] = "synthesize_system.md.j2"
-
-    def render_user_prompt(self, deps: QueryDeps) -> str:  # noqa: PLR6301
-        """The user prompt is the raw question — no template needed."""
-        return deps.question
-
-    def render_system_prompt(self, deps: QueryDeps) -> str:
-        """Render the system prompt from the synthesis template + skills.
-
-        When RLM is enabled the inlined context is replaced with a
-        placeholder — the full context stays in the deps (REPL ``context``
-        variable) so the model explores it via code instead.
-        """
-        ctx = deps.context
-        if self.rlm:
-            ctx = RLM_CONTEXT_PLACEHOLDER
-        prompt = self._template_loader.render(
-            f"query/{self.system_template_name}",
-            context=ctx,
-            verbosity=deps.verbosity,
-        )
-        if self.skills:
-            skill_blocks = []
-            for name, instructions in self.skills.items():
-                skill_blocks.append(f"## Skill: {name}\n\n{instructions}")
-            prompt += "\n\n" + "\n\n---\n\n".join(skill_blocks)
-        return prompt
+    spec: ClassVar[AgentSpec | None] = SPEC

@@ -9,59 +9,51 @@ PydanticAI agents in this package.
 Every stage that calls a model goes through an agent here: typed structured
 output, one ``run_sync``/``run`` per unit of work, and capabilities (retry,
 compaction, MCP tool injection) attached per agent instead of per call site.
+
+The public surface is attached lazily: importing ``kompend.agents`` — directly
+or as the package ``__init__`` of any submodule import — must not drag the
+pydantic-ai stack into interpreter startup (measured: the vendor floor alone
+costs ~4-5 s, which every CLI spawn paid through this facade). Set
+``EAGER_IMPORT=1`` to materialise all names eagerly (lazy_loader's escape
+hatch). The names are NOT imported at module level to satisfy a type checker:
+an import here *is* the eager import this boundary exists to prevent.
 """
 
-from kompend.agents.base import KompendAgentBase
-from kompend.agents.deps import (
-    MemoryConsolidationDeps,
-    QueryDeps,
-    WicerDiagnoseDeps,
-    WicerEvaluateDeps,
-    WicerProbeDeps,
-)
-from kompend.agents.doctor import DoctorAgent, DoctorDeps
-from kompend.agents.extraction import ExtractionAgent
-from kompend.agents.extraction_reduce import ExtractionReduceAgent
-from kompend.agents.failure import (
-    AgentFailureKind,
-    EmptyAnswerError,
-    UnitFailure,
-    UnitFailureLog,
-    classify_agent_failure,
-    is_retry_pointless,
-    record_unit_failure,
-)
-from kompend.agents.memory_consolidation import MemoryConsolidationAgent
-from kompend.agents.query import QueryAgent
-from kompend.agents.types import (
-    PipelineAgentDeps,
-    ToolGenerationDeps,
-)
-from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
+from __future__ import annotations
 
-__all__ = [
-    "AgentFailureKind",
-    "DoctorAgent",
-    "DoctorDeps",
-    "EmptyAnswerError",
-    "ExtractionAgent",
-    "ExtractionReduceAgent",
-    "KompendAgentBase",
-    "MemoryConsolidationAgent",
-    "MemoryConsolidationDeps",
-    "PipelineAgentDeps",
-    "QueryAgent",
-    "QueryDeps",
-    "ToolGenerationDeps",
-    "UnitFailure",
-    "UnitFailureLog",
-    "WicerDiagnoseAgent",
-    "WicerDiagnoseDeps",
-    "WicerEvaluateAgent",
-    "WicerEvaluateDeps",
-    "WicerProbeAgent",
-    "WicerProbeDeps",
-    "classify_agent_failure",
-    "is_retry_pointless",
-    "record_unit_failure",
-]
+import lazy_loader as lazy
+
+__getattr__, __dir__, __all__ = lazy.attach(
+    __name__,
+    submod_attrs={
+        "base": ["AgentSpec", "KompendAgentBase", "agent_class", "build_agent"],
+        "deps": [
+            "MemoryConsolidationDeps",
+            "QueryDeps",
+            "WicerDiagnoseDeps",
+            "WicerEvaluateDeps",
+            "WicerProbeDeps",
+        ],
+        "doctor": ["DoctorAgent", "DoctorDeps"],
+        "extraction": ["ExtractionAgent"],
+        "extraction_reduce": ["ExtractionReduceAgent"],
+        "failure": [
+            "AgentFailureKind",
+            "EmptyAnswerError",
+            "UnitFailure",
+            "UnitFailureLog",
+            "classify_agent_failure",
+            "is_retry_pointless",
+            "record_unit_failure",
+        ],
+        "memory_consolidation": ["MemoryConsolidationAgent"],
+        "query": ["QueryAgent"],
+        "specs": ["AgentName", "get_spec"],
+        "types": ["PipelineAgentDeps", "ToolGenerationDeps"],
+        "wicer": [
+            "WicerDiagnoseAgent",
+            "WicerEvaluateAgent",
+            "WicerProbeAgent",
+        ],
+    },
+)

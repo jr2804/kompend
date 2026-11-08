@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-from kompend.compilation.graph import GraphCompiler
-from kompend.compilation.wicer import WiCERCompiler
+import lazy_loader as lazy
 
-__all__ = [
-    "GraphCompiler",
-    "WiCERCompiler",
-]
+__getattr__, __dir__, __all__ = lazy.attach(
+    __name__,
+    submod_attrs={
+        "graph": ["GraphCompiler"],
+        "wicer": ["WiCERCompiler"],
+    },
+)

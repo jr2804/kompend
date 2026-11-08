@@ -15,9 +15,9 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, Final
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.compilation.adaptation import AdaptationSignal
 from kompend.core.config._configs import DecisionConfig
 from kompend.llm.decision import ErrorAction, ErrorDecision, decision_model_string
@@ -50,14 +50,35 @@ class DecisionDeps:
     source_id: str = "decision"
 
 
+SPEC_DECISION: Final[AgentSpec] = AgentSpec(
+    name="decision",
+    result_type=ErrorDecision,
+    deps_type=DecisionDeps,
+    template_name="error_triage.md.j2",
+    system_template_name="error_triage_system.md.j2",
+    template_prefix="decision/",
+    temperature=0.0,
+    model_builder=build_decision_model,
+)
+
+
 class DecisionAgent(KompendAgentBase[ErrorDecision, DecisionDeps]):
     """PydanticAI agent backed by a decision model (TypeSafe Jev)."""
 
-    template_name: ClassVar[str] = "error_triage.md.j2"
-    system_template_name: ClassVar[str] = "error_triage_system.md.j2"
-    template_prefix: ClassVar[str] = "decision/"
+    spec: ClassVar[AgentSpec | None] = SPEC_DECISION
     temperature: float | None = 0.0
-    model_builder = staticmethod(build_decision_model)
+
+
+SPEC_ADAPTATION: Final[AgentSpec] = AgentSpec(
+    name="adaptation",
+    result_type=ErrorDecision,
+    deps_type=DecisionDeps,
+    template_name="adaptation_triage.md.j2",
+    system_template_name="error_triage_system.md.j2",
+    template_prefix="decision/",
+    temperature=0.0,
+    model_builder=build_decision_model,
+)
 
 
 class AdaptationAgent(DecisionAgent):
@@ -68,7 +89,7 @@ class AdaptationAgent(DecisionAgent):
     is worth trying.
     """
 
-    template_name: ClassVar[str] = "adaptation_triage.md.j2"
+    spec: ClassVar[AgentSpec | None] = SPEC_ADAPTATION
 
 
 def decide_error_action(

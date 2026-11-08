@@ -18,11 +18,20 @@ Usage::
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Final
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.core.models.references import ReferenceExtractionOutput
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="reference_extraction",
+    result_type=ReferenceExtractionOutput,
+    deps_type=PipelineAgentDeps,
+    template_name="reference_extraction_prompt.md.j2",
+    system_template_name="reference_extraction_system.md.j2",
+    supports_delta_retry=True,
+)
 
 
 class ReferenceExtractionAgent(KompendAgentBase[ReferenceExtractionOutput, PipelineAgentDeps]):
@@ -33,6 +42,4 @@ class ReferenceExtractionAgent(KompendAgentBase[ReferenceExtractionOutput, Pipel
     ``reference_extraction_prompt.md.j2``) under ``compilation/``.
     """
 
-    template_name: ClassVar[str] = "reference_extraction_prompt.md.j2"
-    system_template_name: ClassVar[str] = "reference_extraction_system.md.j2"
-    supports_delta_retry: ClassVar[bool] = True
+    spec: ClassVar[AgentSpec | None] = SPEC

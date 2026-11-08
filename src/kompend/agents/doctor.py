@@ -15,9 +15,9 @@ Usage::
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import Any, ClassVar, Final
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 
 
 @dataclass
@@ -35,19 +35,31 @@ class DoctorDeps:
     source_id: str = "doctor"
 
 
+def _doctor_user_prompt(agent: Any, deps: DoctorDeps) -> str:
+    """The user prompt is the ping string — no template needed."""
+    return deps.ping
+
+
+def _doctor_system_prompt(agent: Any, deps: DoctorDeps) -> str:
+    """No system prompt for the doctor ping."""
+    return ""
+
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="doctor",
+    result_type=str,
+    deps_type=DoctorDeps,
+    template_name="",
+    system_template_name="",
+    user_prompt=_doctor_user_prompt,
+    system_prompt=_doctor_system_prompt,
+)
+
+
 class DoctorAgent(KompendAgentBase[str, DoctorDeps]):
     """PydanticAI agent for the doctor connectivity check.
 
     Returns free text (the model's response to a ping prompt).
     """
 
-    template_name: ClassVar[str] = ""  # not used; render_user_prompt is overridden
-    system_template_name: ClassVar[str] = ""  # not used; render_system_prompt is overridden
-
-    def render_user_prompt(self, deps: DoctorDeps) -> str:  # noqa: PLR6301
-        """The user prompt is the ping string — no template needed."""
-        return deps.ping
-
-    def render_system_prompt(self, deps: DoctorDeps) -> str:  # noqa: PLR6301
-        """No system prompt for the doctor ping."""
-        return ""
+    spec: ClassVar[AgentSpec | None] = SPEC

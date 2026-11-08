@@ -13,33 +13,29 @@ This package is the **only** layer that talks to pydantic-ai `Agent` directly.
 
 - `src/kompend/agents/` — all PydanticAI agent classes, their dependency
   dataclasses, and the `KompendModel` wrapper
-- No prompt text belongs here — templates live in `src/kompend/templates/`
-- No pipeline orchestration belongs here — agents are instantiated at
-  the call site (e.g. `compilation/two_phase.py`)
+- No pipeline orchestration belongs here — agents are built from their spec
+  at the call site (e.g. `compilation/two_phase.py`)
 
 ## Architecture
 
 ### Class hierarchy
 
-All agents extend `KompendAgentBase[ResultT, DepsT]` (ABC):
-
-- single-turn structured output: `ExtractionAgent`, `ExtractionReduceAgent`,
-  `AgenticGenerationAgent`, `ReferenceExtractionAgent`, `QueryAgent`,
-  `QueryExpansionAgent`, `CragGradeAgent`, `HydeAgent`, `VlmAgent`,
-  `CaptureAgent`, `DistillAgent`, `CategorizeAgent`, `LintRuleAgent`,
-  `RemediationAgent`, `VerificationAgent`, `ContextChunkAgent`, `DoctorAgent`
-- windowed digest: `MemoryConsolidationAgent`; `SummarizerAgent`; the three
-  WICER probes; `DecisionAgent` (TypeSafe decision model, error triage)
+Every agent is a registered `AgentSpec`; the typed class is its facade and
+extends `KompendAgentBase[ResultT, DepsT]`. The 35 specs cover every pipeline
+stage from extraction to write.
 
 ### KompendAgentBase responsibilities
 
-Each concrete agent declares:
+Each concrete agent declares one `SPEC: AgentSpec` (name, `result_type`,
+`deps_type`, templates, delta-retry flag, prompt hooks); `build_agent("name",
+...)` materialises it and the class is only the typed facade. Add a `SPEC` and
+a registry entry in `agents/specs.py` instead of hand-wiring a class.
 
-- `template_name` — Jinja2 user-prompt template (in
-  `src/kompend/templates/<module>/`)
-- `system_template_name` — Jinja2 system-prompt template
-- `result_type` — Pydantic model (or `str`) the LLM must return
-- `deps_type` — typed context dataclass (default: `PipelineAgentDeps`)
+Prompt or validation behaviour a template cannot express belongs on the spec
+as `user_prompt` / `system_prompt` / `validate_output`. The hook receives
+`(agent, deps)`, so it reads `agent.rlm`, `agent.skills` and
+`agent._template_loader` as the old override did; the base installs it as the
+method. Never override `render_*` or `validate_output` in a concrete class.
 
 ### The `base/` package
 
@@ -50,6 +46,7 @@ surface, so importers never name a submodule:
 | Module | Scope |
 |--------|-------|
 | `base/agent.py` | the `KompendAgentBase` dataclass: construction defaults (`_apply_config_defaults`), run entry points, prompt rendering, lazy `_build_agent()` |
+| `base/spec.py` | `AgentSpec` (data-only agent definition), `agent_class()`, `install_hooks()` and `build_agent()`; the agent modules' `SPEC` constants are the definitions |
 | `base/deps.py` | `AgentDeps` protocol, `ResultT`/`DepsT` typevars, `resolve_retry_budget()`, the `UNSET_*` sentinels |
 | `base/models.py` | top-level model assembly (failover chain) and output-ceiling arithmetic |
 | `base/context.py` | context-manager and RLM capability assembly, `_CONTEXT_PRESETS` |
@@ -204,8 +201,7 @@ Thin delegate around any native pydantic-ai `Model`. Adds:
 - `_repair_tool_call_args()` / `_repair_text_part()` — `json_repair`
   before the strict validator (fixes malformed JSON from small local models)
 
-History compression is **not** handled here — it lives on the pydantic-ai
-Agent layer (`build_fallback_compaction`, see `KompendAgentBase`).
+History compression lives on the Agent layer (`build_fallback_compaction`).
 
 ### Dependency types (`types.py`, `deps.py`)
 
@@ -240,11 +236,15 @@ it mirrors untrusted model output.
   `kompend.llm.roles`. Add new roles there when adding new agents.
 - **Export new agents** from `__init__.py`; **result types** live in the
   consuming module (e.g. `kompend.compilation.schema.ExtractionOutput`).
+  The package surface is attached **lazily** (`lazy_loader.attach`, mirroring
+  `kompend.rag`): importing `kompend.agents` must not pull the pydantic-ai
+  stack — add a new agent by extending its module's list in the
+  `submod_attrs` map, never with a module-level import (measured: the eager
+  facade made every CLI spawn pay ~4-5 s of vendor import floor).
 
 ## Relationship to other layers
 
-This package (`agents/`, plural) is distinct from `kompend/acp/`, the ACP
-protocol adapter for editors. Stack: editor request → `kompend/acp/` → MCP
-tools → pipeline → **these** PydanticAI agents. See
-`docs/reference/pydantic-ai-agents.md` for per-role model overrides, skills
-and how to write a new agent.
+Distinct from `kompend/acp/` (the editor protocol adapter). Stack: editor
+request → `kompend/acp/` → MCP tools → pipeline → **these** PydanticAI
+agents. See `docs/reference/pydantic-ai-agents.md` for per-role model
+overrides, skills and how to write a new agent.

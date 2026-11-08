@@ -8,25 +8,32 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from pydantic_ai import UsageLimits
 
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import DistillAgentDeps
 from kompend.agents.vault_memory import build_notebook_store
 from kompend.compilation.distill_tools import build_distill_tools
 from kompend.core.config._configs import LLMConfig, RlmConfig
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="agentic_distill",
+    result_type=str,
+    deps_type=DistillAgentDeps,
+    template_name="distill_agentic_prompt.md.j2",
+    system_template_name="distill_agentic_system.md.j2",
+    template_prefix="capture/",
+)
 
 
 @dataclass
 class AgenticDistillAgent(KompendAgentBase[str, DistillAgentDeps]):
     """PydanticAI agent that distills notes into wiki pages via tools."""
 
-    template_name: ClassVar[str] = "distill_agentic_prompt.md.j2"
-    system_template_name: ClassVar[str] = "distill_agentic_system.md.j2"
-    template_prefix: ClassVar[str] = "capture/"
+    spec: ClassVar[AgentSpec | None] = SPEC
 
     #: LLM requests budgeted per tag group. The distiller sets this from
     #: ``budget.distill_requests_per_group`` - small local models spend prose

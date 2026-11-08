@@ -16,13 +16,13 @@ validation + auto-retry on mismatch internally.
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Final
 
 from pydantic_ai import ModelRetry, RunContext, UsageLimits
 from pydantic_ai_harness.step_persistence import StepStore
 
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, KompendAgentBase, resolve_retry_budget
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
 from kompend.agents.types import ToolGenerationDeps
 from kompend.compilation.gen_tools import build_gen_tools
 from kompend.compilation.schema import GenerationOutput, GenerationPage
@@ -40,6 +40,25 @@ _REMINDER_INTERVAL: int = 8
 _loader = get_template_loader()
 
 
+def _generation_validate_output(ctx: RunContext[ToolGenerationDeps], output: GenerationOutput) -> GenerationOutput:
+    """Validate generation output for the agentic flow."""
+    if not output.pages:
+        raise ModelRetry("You returned an empty pages list. Generate at least one wiki page.")
+    _fix_slugs_locally(output.pages)
+    return output
+
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="agentic_generation",
+    result_type=GenerationOutput,
+    deps_type=ToolGenerationDeps,
+    template_name="generation_agentic_prompt.md.j2",
+    system_template_name="generation_agentic_system.md.j2",
+    supports_delta_retry=True,
+    validate_output=_generation_validate_output,
+)
+
+
 class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDeps]):
     """PydanticAI agent for tool-based agentic generation.
 
@@ -55,21 +74,11 @@ class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDe
     - ``ClampOversizedMessages`` — prevents runaway tool outputs
     """
 
-    template_name: ClassVar[str] = "generation_agentic_prompt.md.j2"
-    system_template_name: ClassVar[str] = "generation_agentic_system.md.j2"
-    supports_delta_retry: ClassVar[bool] = True
+    spec: ClassVar[AgentSpec | None] = SPEC
 
     #: Requests one concept costs: ``fetch_concepts()``, ``read_segment()``,
     #: and the page write.
     requests_per_concept: ClassVar[int] = 3
-
-    @staticmethod
-    def validate_output(ctx: RunContext[ToolGenerationDeps], output: GenerationOutput) -> GenerationOutput:
-        """Validate generation output for the agentic flow."""
-        if not output.pages:
-            raise ModelRetry("You returned an empty pages list. Generate at least one wiki page.")
-        _fix_slugs_locally(output.pages)
-        return output
 
     def _usage_limits_for(self, deps: ToolGenerationDeps) -> UsageLimits | None:
         """Budget the one session that generates a segment's concepts.

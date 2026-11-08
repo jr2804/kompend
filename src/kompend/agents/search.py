@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+from typing import Any, ClassVar, Final
+
 from pydantic import BaseModel
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.agents.deps import PipelineAgentDeps
 
 
@@ -21,34 +23,51 @@ class CragGradeOutput(BaseModel):
     relevance: float = 0.5
 
 
-class _PreRenderedPromptAgent:
-    """Mixin for search agents whose prompt is rendered by the caller.
-
-    ``EnhancedRetriever`` renders the ``search/*.md.j2`` template with the
-    query/title/snippet variables and passes the finished prompt as
-    ``deps.text``. Declaring that template as ``template_name`` /
-    ``system_template_name`` made the base render it a second time with no
-    variables, which raised at runtime; these agents instead return
-    ``deps.text`` verbatim and carry no system prompt.
-    """
-
-    def render_user_prompt(self, deps: PipelineAgentDeps) -> str:  # noqa: PLR6301 — overrides KompendAgentBase for its subclasses
-        return deps.text
+def _search_user_prompt(agent: Any, deps: PipelineAgentDeps) -> str:
+    """The caller renders ``search/*.md.j2`` and passes it as ``deps.text``."""
+    return deps.text
 
 
-class QueryExpansionAgent(_PreRenderedPromptAgent, KompendAgentBase[QueryExpansionOutput, PipelineAgentDeps]):
+SPEC_QUERY_EXPANSION: Final[AgentSpec] = AgentSpec(
+    name="query_expansion",
+    result_type=QueryExpansionOutput,
+    deps_type=PipelineAgentDeps,
+    temperature=0.0,
+    user_prompt=_search_user_prompt,
+)
+
+
+class QueryExpansionAgent(KompendAgentBase[QueryExpansionOutput, PipelineAgentDeps]):
     """PydanticAI agent for multi-query expansion (RAG-Fusion)."""
 
-    temperature: float | None = 0.0
+    spec: ClassVar[AgentSpec | None] = SPEC_QUERY_EXPANSION
 
 
-class CragGradeAgent(_PreRenderedPromptAgent, KompendAgentBase[CragGradeOutput, PipelineAgentDeps]):
+SPEC_CRAG_GRADE: Final[AgentSpec] = AgentSpec(
+    name="crag_grade",
+    result_type=CragGradeOutput,
+    deps_type=PipelineAgentDeps,
+    temperature=0.0,
+    user_prompt=_search_user_prompt,
+)
+
+
+class CragGradeAgent(KompendAgentBase[CragGradeOutput, PipelineAgentDeps]):
     """PydanticAI agent for CRAG relevance grading."""
 
-    temperature: float | None = 0.0
+    spec: ClassVar[AgentSpec | None] = SPEC_CRAG_GRADE
 
 
-class HydeAgent(_PreRenderedPromptAgent, KompendAgentBase[str, PipelineAgentDeps]):
+SPEC_HYDE: Final[AgentSpec] = AgentSpec(
+    name="hyde",
+    result_type=str,
+    deps_type=PipelineAgentDeps,
+    temperature=0.7,
+    user_prompt=_search_user_prompt,
+)
+
+
+class HydeAgent(KompendAgentBase[str, PipelineAgentDeps]):
     """PydanticAI agent for HyDE hypothetical answer generation."""
 
-    temperature: float | None = 0.7
+    spec: ClassVar[AgentSpec | None] = SPEC_HYDE

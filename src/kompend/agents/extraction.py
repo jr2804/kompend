@@ -17,22 +17,27 @@ Usage::
 
 from __future__ import annotations
 
-from typing import ClassVar
+from typing import ClassVar, Final
 
-from kompend.agents.base import KompendAgentBase
+from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.agents.types import PipelineAgentDeps
 from kompend.compilation.schema import ExtractionOutput
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="extraction",
+    result_type=ExtractionOutput,
+    deps_type=PipelineAgentDeps,
+    template_name="extraction_prompt.md.j2",
+    system_template_name="extraction_system.md.j2",
+    supports_delta_retry=True,
+)
 
 
 class ExtractionAgent(KompendAgentBase[ExtractionOutput, PipelineAgentDeps]):
     """PydanticAI agent for the compilation extraction stage.
 
-    The agent's system + user prompts come from the existing Jinja2
-    templates (``extraction_system.md.j2``, ``extraction_prompt.md.j2``)
-    so the LLM-facing surface is identical to the current direct LLM
-    path. Only the dispatch and validation are upgraded.
+    The definition lives in :data:`SPEC`; the class is the typed facade the
+    base class materialises the spec onto.
     """
 
-    template_name: ClassVar[str] = "extraction_prompt.md.j2"
-    system_template_name: ClassVar[str] = "extraction_system.md.j2"
-    supports_delta_retry: ClassVar[bool] = True
+    spec: ClassVar[AgentSpec | None] = SPEC
