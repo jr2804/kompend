@@ -333,6 +333,28 @@ class TestEmptyPages:
         assert len(warnings) == 1, warnings
         assert "(1, 3, 4)" in warnings[0]
 
+    def test_partial_exhaustion_is_recorded_and_warned(
+        self,
+        parser: Any,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """An exhausted page is missing content, not an empty page — record it as such.
+
+        One good page and one all-passes-failed page: the good elements survive,
+        no exception is raised, ``exhausted_pages`` names the failed page next
+        to ``degraded_pages``, and exactly one warning names it too (knox-grcb).
+        """
+        pages = [_page(3, [_chunk(ChunkKind.PARAGRAPH, "Kept", 3)]), _exhausted_page(4)]
+        with caplog.at_level("WARNING", logger="kompend.preprocessing.parsers.parsecraft.pages"):
+            doc = self._parsing(parser, monkeypatch, pages, images={3: 0, 4: 0}).parse(markdown_file)
+        assert [str(e.content) for e in doc.elements] == ["Kept"]
+        assert doc.metadata["exhausted_pages"] == [4]
+        warnings = [r.getMessage() for r in caplog.records if "failed to parse on every pass" in r.getMessage()]
+        assert len(warnings) == 1, warnings
+        assert "(4)" in warnings[0]
+
     def test_warning_quotes_the_routing_reason(
         self,
         parser: Any,

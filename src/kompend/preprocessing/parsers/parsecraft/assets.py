@@ -63,6 +63,16 @@ class ParsecraftParseError(RuntimeError):
         super().__init__(f"{source_file.name}: {message}")
 
 
+def exhausted_pages(document: DocumentResult) -> list[int]:
+    """Page numbers where every parse pass failed, in document order.
+
+    The single place that reads parsecraft's all-passes-failed diagnostic, so
+    the total-exhaustion raise in :func:`map_document` and the partial-
+    exhaustion record in the adapter agree on what "exhausted" means.
+    """
+    return [page.page_number for page in document.pages if any(diagnostic.code == ALL_PASSES_FAILED_CODE for diagnostic in page.diagnostics)]
+
+
 def map_document(document: DocumentResult, source_file: Path, *, images: ImageStore | None = None) -> list[DocumentElement]:
     """Map parsecraft IR pages/chunks to kompend elements, order + pages preserved.
 
@@ -76,8 +86,8 @@ def map_document(document: DocumentResult, source_file: Path, *, images: ImageSt
     cache hit also yields ``winner=None`` with plan-shaped ``attempts == []``
     groups and a perfectly valid document).
     """
-    exhausted = {page.page_number for page in document.pages if any(diagnostic.code == ALL_PASSES_FAILED_CODE for diagnostic in page.diagnostics)}
-    if exhausted and exhausted == {page.page_number for page in document.pages}:
+    exhausted = exhausted_pages(document)
+    if exhausted and set(exhausted) == {page.page_number for page in document.pages}:
         raise ParsecraftParseError(source_file, document)
 
     store = images if images is not None else ImageStore(None, ImageMode.NONE)

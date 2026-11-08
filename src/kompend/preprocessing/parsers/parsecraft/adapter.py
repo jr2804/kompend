@@ -152,9 +152,11 @@ class ParsecraftParser:
 
         document = result.document
         elements = assets.map_document(document, source_file, images=self._images)
+        exhausted = assets.exhausted_pages(document)
         empty_pages = pages.empty_pages(document)
         blank_pages, unreadable_pages = pages.classify_empty_pages(empty_pages, analysis, result.plan)
         pages.warn_on_empty_pages(source_file, unreadable_pages, blank_pages, result.plan, document)
+        pages.warn_on_exhausted_pages(source_file, exhausted)
         self._warn_on_ignored_backend_options(_winning_backends(result.groups), media_type, elements)
 
         return ParsedDocument(
@@ -170,6 +172,7 @@ class ParsecraftParser:
                 "degraded_pages": sorted(
                     signal.page_number for signal in document.quality if signal.name.startswith("degraded-") and signal.page_number is not None
                 ),
+                "exhausted_pages": exhausted,
                 "empty_pages": empty_pages,
                 "blank_pages": blank_pages,
                 "unreadable_pages": unreadable_pages,

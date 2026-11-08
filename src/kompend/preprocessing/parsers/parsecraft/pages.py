@@ -5,6 +5,13 @@ source, a page nobody could read, and a backend that had the capability and
 still returned nothing. This module tells them apart, says out loud which
 pages fell into each, and quotes parsecraft's own explanation (routing
 reason, engine diagnostic, executor signal) instead of guessing at a remedy.
+
+A fourth silence is louder than the other three: a page where every pass
+failed contributes zero elements exactly like a blank page, but "empty" and
+"failed to parse" need different responses downstream. Those pages get their
+own record (`warn_on_exhausted_pages`, plus ``exhausted_pages`` in the
+document metadata next to ``degraded_pages``) instead of the empty-page
+accounting — ``page_count`` counts the page either way.
 """
 
 from __future__ import annotations
@@ -74,6 +81,23 @@ def warn_on_empty_pages(
         routing_reasons(plan, unreadable_pages),
         page_diagnostics(document, unreadable_pages),
         empty_output_detail(document, unreadable_pages),
+    )
+
+
+def warn_on_exhausted_pages(source_file: Path, exhausted: list[int]) -> None:
+    """Say out loud when pages failed on every pass instead of parsing thin.
+
+    One record per file, listing the pages — not one record per page. A
+    partial parse still beats nothing, so this never raises; it exists so a
+    console ingest shows the gap instead of a clean short parse.
+    """
+    if not exhausted:
+        return
+    logger.warning(
+        "%s: %d page(s) failed to parse on every pass (%s) — content missing, not empty.",
+        source_file.name,
+        len(exhausted),
+        ", ".join(str(page) for page in exhausted),
     )
 
 
