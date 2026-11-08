@@ -14,6 +14,7 @@ from contextvars import copy_context
 from pathlib import Path
 from typing import Any
 
+from kompend.agents.decision import FigureRelevanceAgent
 from kompend.agents.failure import UnitFailureLog
 from kompend.agents.vlm import VlmAgent
 from kompend.core.models import (
@@ -36,6 +37,7 @@ from kompend.core.reporting.parse_quality import measure_parse_quality
 from kompend.core.store import vault_db_path
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.verbosity import is_verbose
+from kompend.llm.decision import decision_model_string
 from kompend.llm.models import resolve_vlm_model
 from kompend.llm.user_providers import effective_workers
 from kompend.logging import get_logger
@@ -379,6 +381,15 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
                 timeout=config.llm.timeout,
                 llm=config.llm,
             )
+            relevance_agent: FigureRelevanceAgent | None = None
+            relevance_model = decision_model_string(config.decision)
+            if relevance_model is not None:
+                relevance_agent = FigureRelevanceAgent(
+                    relevance_model,
+                    timeout=config.decision.timeout,
+                    retries=0,
+                )
+                logger.info("VLM relevance gate enabled (model=%s)", relevance_model)
             resolvers.append(
                 VLMEnricher(
                     agent=vlm_agent,
@@ -386,6 +397,12 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
                     min_image_dimension=config.vlm_min_image_dimension,
                     failures=UnitFailureLog(
                         stage="vlm",
+                        ratio=config.llm.batch_failure_threshold_ratio,
+                        min_units=config.llm.batch_failure_threshold_min,
+                    ),
+                    relevance_agent=relevance_agent,
+                    relevance_failures=UnitFailureLog(
+                        stage="vlm:relevance",
                         ratio=config.llm.batch_failure_threshold_ratio,
                         min_units=config.llm.batch_failure_threshold_min,
                     ),

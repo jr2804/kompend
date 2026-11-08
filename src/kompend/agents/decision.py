@@ -23,6 +23,7 @@ from kompend.core.config._configs import DecisionConfig
 from kompend.llm.decision import (
     ErrorAction,
     ErrorDecision,
+    FigureRelevanceDecision,
     QueryIntentDecision,
     QueryIntentVerdict,
     decision_model_string,
@@ -226,3 +227,46 @@ def decide_unit_adaptation(
     except Exception as exc:  # ponytail: a sidecar failure must never break the pipeline
         logger.warning("Decision model unavailable (%s) - falling back to the deterministic path", exc)
         return None
+
+
+@dataclass
+class FigureRelevanceDeps:
+    """Deps for the figure-relevance decision.
+
+    Attributes:
+        context: What surrounds the figure — the same rendering the caption
+            prompt gets (section, neighbouring text, contextual summary).
+            The figure image itself is never sent; the judgement is made
+            from the surrounding text alone.
+        source_id: Log/provenance label.
+        timeout: Per-call timeout in seconds.
+    """
+
+    context: str = ""
+    source_id: str = "vlm-relevance"
+    timeout: float = 10.0
+
+
+SPEC_FIGURE_RELEVANCE: Final[AgentSpec] = AgentSpec(
+    name="figure_relevance",
+    result_type=FigureRelevanceDecision,
+    deps_type=FigureRelevanceDeps,
+    template_name="figure_relevance.md.j2",
+    system_template_name="figure_relevance_system.md.j2",
+    template_prefix="decision/",
+    temperature=0.0,
+    model_builder=build_decision_model,
+)
+
+
+class FigureRelevanceAgent(KompendAgentBase[FigureRelevanceDecision, FigureRelevanceDeps]):
+    """Decision-model agent that judges whether a figure deserves a caption.
+
+    Judges from the surrounding text only — the figure image itself is
+    never sent, so the decision sidecar's text-only transport is not a
+    limitation. The prompt is conservative: only a context that clearly
+    indicates decoration answers ``decorative``; anything ambiguous
+    answers ``informative`` so no caption is lost.
+    """
+
+    spec: ClassVar[AgentSpec | None] = SPEC_FIGURE_RELEVANCE

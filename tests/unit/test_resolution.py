@@ -6,12 +6,14 @@ VLMEnricher now uses VlmAgent instead of LLMClient.
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
 from kompend.agents.vlm import VlmAgent
 from kompend.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
+from kompend.llm.decision import FigureRelevanceVerdict
 from kompend.resolution import VLMEnricher
 
 
@@ -203,6 +205,120 @@ class TestVLMEnricher:
         assert statuses[0]["context"].startswith("Image too large: vector source too large (")
         assert resolved.metadata.get("vlm_filtered") is True
         assert not enricher.failures.failures
+
+    def test_a_decorative_verdict_skips_the_caption_with_its_own_status(self, tmp_path: Path) -> None:
+        """A decision-model "decorative" answer costs no caption call.
+
+        The skip carries its own status name: it must stay distinguishable
+        from a size pre-filter and from the VLM's own SKIP answer.
+        """
+        png_file = tmp_path / "logo.png"
+        png_file.write_bytes(b"PNG mock data")
+        agent = _make_agent()
+        relevance = MagicMock()
+        relevance.run.return_value = SimpleNamespace(verdict=FigureRelevanceVerdict.DECORATIVE)
+        enricher = VLMEnricher(
+            agent=agent,
+            min_image_bytes=0,
+            min_image_dimension=0,
+            relevance_agent=relevance,
+        )
+        with patch.object(agent, "run", return_value="unused caption") as run:
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
+
+        run.assert_not_called()
+        statuses = [e for e in resolved.entities if e.get("type") == "image_caption_status"]
+        assert [status["name"] for status in statuses] == ["vlm_relevance_skipped"]
+        assert "decorative" in statuses[0]["context"].lower()
+        assert resolved.metadata.get("vlm_relevance_skipped") is True
+        # A deliberate skip is neither a caption nor a failure.
+        assert not [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert not enricher.failures.failures
+        assert not enricher.relevance_failures.failures
+
+    def test_an_informative_verdict_still_captions(self, tmp_path: Path) -> None:
+        """The gate only filters; the caption path is untouched for a "yes"."""
+        png_file = tmp_path / "diagram.png"
+        png_file.write_bytes(b"PNG mock data")
+        agent = _make_agent()
+        relevance = MagicMock()
+        relevance.run.return_value = SimpleNamespace(verdict=FigureRelevanceVerdict.INFORMATIVE)
+        enricher = VLMEnricher(
+            agent=agent,
+            min_image_bytes=0,
+            min_image_dimension=0,
+            relevance_agent=relevance,
+        )
+        with patch.object(agent, "run", return_value="A pipeline diagram"):
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
+
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert [desc["context"] for desc in descs] == ["A pipeline diagram"]
+        assert resolved.metadata.get("vlm_enriched") is True
+        assert not resolved.metadata.get("vlm_relevance_skipped")
+
+    def test_the_relevance_gate_sees_the_caption_context(self, tmp_path: Path) -> None:
+        """The verdict is judged on the same surroundings the caption gets."""
+        png_file = tmp_path / "figure.png"
+        png_file.write_bytes(b"PNG mock data")
+        agent = _make_agent()
+        relevance = MagicMock()
+        relevance.run.return_value = SimpleNamespace(verdict=FigureRelevanceVerdict.INFORMATIVE)
+        enricher = VLMEnricher(
+            agent=agent,
+            min_image_bytes=0,
+            min_image_dimension=0,
+            relevance_agent=relevance,
+        )
+        chunk = _image_chunk(image_file=str(png_file))
+        chunk.metadata[MetadataField.VLM_CONTEXT] = {
+            "section": "Architecture",
+            "nearby": "The two-stage pipeline.",
+            "document_context": "This chapter describes the pipeline.",
+        }
+        with patch.object(agent, "run", return_value="caption"):
+            enricher.enrich(ResolvedChunk(chunk=chunk))
+
+        context = relevance.run.call_args.args[0].context
+        assert "Architecture" in context
+        assert "The two-stage pipeline." in context
+        assert "This chapter describes the pipeline." in context
+
+    def test_a_failed_classification_falls_back_to_captioning(self, tmp_path: Path) -> None:
+        """A broken decision model must never swallow a figure as a skip."""
+        png_file = tmp_path / "figure.png"
+        png_file.write_bytes(b"PNG mock data")
+        agent = _make_agent()
+        relevance = MagicMock()
+        relevance.run.side_effect = RuntimeError("decision model unavailable")
+        enricher = VLMEnricher(
+            agent=agent,
+            min_image_bytes=0,
+            min_image_dimension=0,
+            relevance_agent=relevance,
+        )
+        with patch.object(agent, "run", return_value="A pipeline diagram"):
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
+
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert [desc["context"] for desc in descs] == ["A pipeline diagram"]
+        assert not resolved.metadata.get("vlm_relevance_skipped")
+        # Recorded as a failed unit at the relevance stage, not as a skip.
+        assert [failure.unit for failure in enricher.relevance_failures.failures] == ["chunk_img_001"]
+        assert not enricher.failures.failures
+
+    def test_without_a_relevance_agent_the_caption_is_unchanged(self, tmp_path: Path) -> None:
+        """decision.enabled = false builds no gate: today's path, exactly."""
+        png_file = tmp_path / "figure.png"
+        png_file.write_bytes(b"PNG mock data")
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
+        with patch.object(agent, "run", return_value="A pipeline diagram"):
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
+
+        assert [e["context"] for e in resolved.entities if e.get("type") == "image_description"] == ["A pipeline diagram"]
+        assert not [e for e in resolved.entities if e.get("type") == "image_caption_status"]
+        assert not enricher.relevance_failures.failures
 
 
 class TestVLMEnricherIntegration:

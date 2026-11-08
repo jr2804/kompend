@@ -15,7 +15,7 @@ persistence, and standalone ingestion.
 | ----------------------------- | -------- |
 | `stages/pipeline.py`          | `WikiPipeline` — 5-tier orchestrator, `ProgressCallback` |
 | `stages/factory.py`           | `build_pipeline` — pipeline factory |
-| `stages/parse.py`             | Tier 1 dispatch: `parse_and_chunk`, worker pool, dedup gate, attachments, `build_resolver_chain`; heavy parses run under one `HeavyParseGuard` (`preprocessing/host_memory.py`) |
+| `stages/parse.py`             | Tier 1 dispatch: `parse_and_chunk`, worker pool, dedup gate, attachments, `build_resolver_chain` (VLM captioning plus the optional decision-model relevance gate); heavy parses run under one `HeavyParseGuard` (`preprocessing/host_memory.py`) |
 | `stages/parse_sources.py`     | One source through Tier 1: `_process_single_source`, `_parse_source`, privacy filter, dedup warning |
 | `stages/parse_store.py`       | Stage-side parse-cache adapter: `_load_cache`, `_save_cache`, `_try_load_parsed_cache`, `_try_load_chunk_cache`, `_chunk_cache_deps`, `parse_identity` |
 | `stages/index.py`             | Tier 0 source indexing |

@@ -57,6 +57,24 @@ class QueryIntentDecision(BaseModel):
     intent: QueryIntentVerdict = Field(description="What the user is asking for.")
 
 
+class FigureRelevanceVerdict(StrEnum):
+    """Whether a figure carries information worth a VLM caption."""
+
+    INFORMATIVE = "informative"
+    DECORATIVE = "decorative"
+
+
+class FigureRelevanceDecision(BaseModel):
+    """A decision model's verdict on whether a figure deserves a caption.
+
+    Choices and bools only, never free-form text: the caption is the VLM's
+    job, the decision is the classifier's. A ``decorative`` verdict skips
+    the caption call; it is never published as a caption.
+    """
+
+    verdict: FigureRelevanceVerdict = Field(description="Whether the figure is worth captioning.")
+
+
 def decision_model_string(config: DecisionConfig | None) -> str | None:
     """Return the configured ``provider/model`` string, if a decision model is enabled.
 

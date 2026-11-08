@@ -31,6 +31,7 @@ class AgentName(StrEnum):
     DECISION = "decision"
     ADAPTATION = "adaptation"
     QUERY_INTENT = "query_intent"
+    FIGURE_RELEVANCE = "figure_relevance"
     DISTILL = "distill"
     AGENTIC_DISTILL = "agentic_distill"
     DOCTOR = "doctor"
@@ -71,6 +72,7 @@ _MODULES: dict[AgentName, str] = {
     AgentName.DECISION: "kompend.agents.decision",
     AgentName.ADAPTATION: "kompend.agents.decision",
     AgentName.QUERY_INTENT: "kompend.agents.decision",
+    AgentName.FIGURE_RELEVANCE: "kompend.agents.decision",
     AgentName.DISTILL: "kompend.agents.distill",
     AgentName.AGENTIC_DISTILL: "kompend.agents.distill_agentic",
     AgentName.DOCTOR: "kompend.agents.doctor",

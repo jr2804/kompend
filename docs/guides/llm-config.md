@@ -497,8 +497,8 @@ the run doomed?". It is named exactly like every other model
 `[providers.*]` block you already use - TypeSafe's Jev
 (`typesafe/jev-latest`) and Ollama's Clef (`ollama/clef`) are both valid.
 
-Where it is used today: **error triage** in the generation loop, and **query
-intent routing**. A failed
+Where it is used today: **error triage** in the generation loop, **query
+intent routing**, and the **figure relevance gate** in front of VLM captions. A failed
 model call is classified first by type (`kompend.llm.errors`): a timeout, a
 dropped connection or a retryable status (408, 409, 425, 429, 5xx, 529) raises
 `LLMTransientError` and is retried with backoff; a validation or schema failure
@@ -517,6 +517,14 @@ A decision model can only fill choices and booleans, never free text, so its
 output type is a single `StrEnum` field (`ErrorAction`). When the sidecar is
 disabled or unreachable, the deterministic classification applies and the
 pipeline behaves exactly as it does without it.
+
+The figure gate is the third consumer: before a figure is captioned, the
+decision model judges from the surrounding text alone - section, neighbouring
+prose, and the figure's contextual summary; the image itself is never sent -
+whether the figure is worth the caption. A `decorative` verdict skips the VLM
+call and is recorded under its own status (`vlm_relevance_skipped`), distinct
+from the VLM's own SKIP answer; a failed classification is recorded as a
+failed unit at stage `vlm:relevance` and the figure is captioned anyway.
 
 ### Prompt caching
 

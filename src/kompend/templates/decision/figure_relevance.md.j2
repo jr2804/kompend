@@ -1,0 +1,27 @@
+---
+variables:
+  - name: context
+    required: false
+role: decision.figure-relevance
+response_format: text
+temperature: 0.0
+---
+Is the figure described below worth the cost of a caption? You are shown
+what surrounds the figure in its document — the figure image itself is
+not sent, so judge from the surrounding text.
+
+What surrounds the figure:
+
+{{ context }}
+
+A figure is worth a caption when its surroundings show it carries
+information a reader needs — a diagram, chart, screenshot, photograph,
+or scan discussed, referenced, or needed by the text. It is not worth
+one when the surroundings clearly show decoration — a logo, icon,
+separator, bullet, border, or ornament with no informational content
+and no informational alt text.
+
+Be conservative: only a context that clearly indicates decoration
+answers decorative. Anything ambiguous — an undescribed figure, a bare
+reference, surrounding text that says nothing either way — answers
+informative, so the caption is not lost.

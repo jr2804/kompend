@@ -16,6 +16,15 @@ Two rules shape this module:
   enricher records it in a :class:`~kompend.agents.failure.UnitFailureLog`
   (the shared failure vocabulary every LLM-backed stage uses) and keeps the
   batch going. The resolve stage checks the log when the batch is done.
+- **A relevance verdict is not a caption.** When a decision model is
+  configured, a cheap text-context classification runs before the caption
+  call: the surroundings the caption would be written against (section,
+  neighbouring text, contextual summary) decide whether the figure is
+  worth captioning — the image itself is never sent. A ``decorative``
+  verdict skips the VLM call and is recorded under its own status name
+  (``vlm_relevance_skipped``), distinct from the VLM's own SKIP. A failed
+  classification is recorded in a separate ``vlm:relevance`` log and falls
+  back to captioning — never to a skip.
 """
 
 from __future__ import annotations
@@ -25,11 +34,13 @@ from typing import Final
 
 from PIL import Image
 
+from kompend.agents.decision import FigureRelevanceAgent, FigureRelevanceDeps
 from kompend.agents.failure import UnitFailureLog
 from kompend.agents.vlm import VlmAgent, VlmDeps
 from kompend.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
 from kompend.core.templates import get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError
+from kompend.llm.decision import FigureRelevanceVerdict
 from kompend.logging import get_logger
 from kompend.preprocessing.images import MAX_RASTER_PIXELS, VectorRasterError, is_raster_image, rasterise_image
 from kompend.resolution.base import BaseResolver
@@ -75,16 +86,31 @@ class VLMEnricher(BaseResolver):
         min_image_bytes: int = 2048,
         min_image_dimension: int = 64,
         failures: UnitFailureLog | None = None,
+        relevance_agent: FigureRelevanceAgent | None = None,
+        relevance_failures: UnitFailureLog | None = None,
     ) -> None:
         self._agent = agent
         self._min_bytes = min_image_bytes
         self._min_dim = min_image_dimension
         self._failures = failures if failures is not None else UnitFailureLog(stage="vlm")
+        self._relevance_agent = relevance_agent
+        self._relevance_failures = relevance_failures if relevance_failures is not None else UnitFailureLog(stage="vlm:relevance")
 
     @property
     def failures(self) -> UnitFailureLog:
         """The failure log of this enricher — always present."""
         return self._failures
+
+    @property
+    def relevance_failures(self) -> UnitFailureLog:
+        """Failed relevance classifications (stage ``vlm:relevance``).
+
+        Only failures land here — a failed classification falls back to
+        captioning, so this log never counts attempts and never stops the
+        batch. It exists so a failed classification is a recorded unit,
+        never a silent skip.
+        """
+        return self._relevance_failures
 
     def resolve(self, chunk: Chunk) -> ResolvedChunk:
         """BaseResolver interface: wrap chunk then enrich."""
@@ -155,16 +181,23 @@ class VLMEnricher(BaseResolver):
             return resolved
 
         skip, reason = self._should_skip(caption_source)
+        skip_name: str | None = None
+        skip_context = ""
         if skip:
             logger.debug("VLM pre-filter skipping %s: %s", resolved.chunk.id, reason)
+            skip_name, skip_context = "vlm_filtered", f"Image filtered: {reason}"
+        elif self._relevance_agent is not None and not self._is_worth_captioning(resolved.chunk.id, _render_context(resolved.chunk)):
+            logger.debug("Relevance gate skipping %s: judged decorative", resolved.chunk.id)
+            skip_name, skip_context = "vlm_relevance_skipped", "Figure judged decorative — caption deliberately skipped"
+        if skip_name is not None:
             resolved.entities.append(
                 {
-                    "name": "vlm_filtered",
+                    "name": skip_name,
                     "type": STATUS_ENTITY_TYPE,
-                    "context": f"Image filtered: {reason}",
+                    "context": skip_context,
                 }
             )
-            resolved.metadata["vlm_filtered"] = True
+            resolved.metadata[skip_name] = True
             return resolved
 
         try:
@@ -203,6 +236,28 @@ class VLMEnricher(BaseResolver):
     def _record(self, resolved: ResolvedChunk, exc: BaseException) -> None:
         """Record one failed unit in the shared failure log."""
         self.failures.record(unit=resolved.chunk.id, exc=exc)
+
+    def _is_worth_captioning(self, unit: str, context: str) -> bool:
+        """Run the relevance gate: ``True`` captions, ``False`` skips.
+
+        The judgement is made from the surrounding text alone — the figure
+        image itself is never sent, so the decision sidecar's text-only
+        transport applies unchanged.
+
+        A failed classification is recorded in the ``vlm:relevance`` log and
+        reads as ``True`` — the figure is captioned as if the gate were not
+        there. A failed classification must never skip a figure.
+        """
+        agent = self._relevance_agent
+        if agent is None:
+            return True
+        try:
+            verdict = agent.run(FigureRelevanceDeps(context=context)).verdict
+        except Exception as exc:
+            self._relevance_failures.record(unit=unit, exc=exc)
+            logger.debug("Relevance classification failed for %s (%s) — falling back to captioning", unit, exc)
+            return True
+        return verdict is FigureRelevanceVerdict.INFORMATIVE
 
     def _should_skip(self, image_file: str | Path) -> tuple[bool, str]:
         """Cheap pre-filter: return (skip, reason) without calling the VLM.
