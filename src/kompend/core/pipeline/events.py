@@ -14,6 +14,7 @@ enrichment: it is logged at WARNING and never aborts the pipeline.
 Documented ingest sequence::
 
     parse:started      current=0, total=N, detail="starting"
+    parse:item_started one per source before dispatch, source=<source name>
     parse:progress     one per source, detail=<source name>
     parse:completed    current=N, total=N, detail="done"
     summary:started    current=0, total=M, detail="starting"   (when enabled)
@@ -28,7 +29,7 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final, Protocol
@@ -52,6 +53,29 @@ _START_DETAIL: Final[str] = "starting"
 _DONE_DETAIL: Final[str] = "done"
 
 
+class PipelineEventField(StrEnum):
+    """Keys of :meth:`PipelineEvent.to_dict` — the JSONL record contract."""
+
+    PHASE = "phase"
+    KIND = "kind"
+    CURRENT = "current"
+    TOTAL = "total"
+    DETAIL = "detail"
+    SOURCE = "source"
+    ATTRIBUTES = "attributes"
+    RUN_ID = "run_id"
+    AT = "at"
+
+
+class PipelineEventKind(StrEnum):
+    """Where an event sits in its phase's lifetime."""
+
+    STARTED = "started"
+    ITEM_STARTED = "item_started"
+    PROGRESS = "progress"
+    COMPLETED = "completed"
+
+
 class PipelinePhase(StrEnum):
     """Curated phases the pipeline emits progress for.
 
@@ -71,26 +95,6 @@ class PipelinePhase(StrEnum):
     OTHER = "other"
 
 
-class PipelineEventKind(StrEnum):
-    """Where an event sits in its phase's lifetime."""
-
-    STARTED = "started"
-    PROGRESS = "progress"
-    COMPLETED = "completed"
-
-
-class PipelineEventField(StrEnum):
-    """Keys of :meth:`PipelineEvent.to_dict` — the JSONL record contract."""
-
-    PHASE = "phase"
-    KIND = "kind"
-    CURRENT = "current"
-    TOTAL = "total"
-    DETAIL = "detail"
-    RUN_ID = "run_id"
-    AT = "at"
-
-
 @dataclass(frozen=True, slots=True)
 class PipelineEvent:
     """One structured progress event from the pipeline."""
@@ -100,8 +104,24 @@ class PipelineEvent:
     current: int
     total: int
     detail: str = ""
+    source: str | None = None
+    attributes: Mapping[str, str | int | float | bool] = field(default_factory=dict)
     run_id: str | None = None
     at: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict[str, object]:
+        """JSON-ready record; keys are :class:`PipelineEventField` values."""
+        return {
+            PipelineEventField.PHASE.value: self.phase.value,
+            PipelineEventField.KIND.value: self.kind.value,
+            PipelineEventField.CURRENT.value: self.current,
+            PipelineEventField.TOTAL.value: self.total,
+            PipelineEventField.DETAIL.value: self.detail,
+            PipelineEventField.SOURCE.value: self.source,
+            PipelineEventField.ATTRIBUTES.value: dict(self.attributes),
+            PipelineEventField.RUN_ID.value: self.run_id,
+            PipelineEventField.AT.value: self.at,
+        }
 
     @classmethod
     def from_emit(
@@ -110,6 +130,9 @@ class PipelineEvent:
         current: int,
         total: int,
         detail: str = "",
+        *,
+        source: str | None = None,
+        attributes: Mapping[str, str | int | float | bool] | None = None,
     ) -> PipelineEvent:
         """Build the typed event for one ``emit`` call.
 
@@ -117,35 +140,43 @@ class PipelineEvent:
         warning instead of raising: progress reporting is best-effort and
         must never take the run down.
         """
-        try:
-            known = PipelinePhase(phase)
-        except ValueError:
-            logger.warning(
-                "Unknown pipeline phase %r — publishing as %s",
-                phase,
-                PipelinePhase.OTHER.value,
-            )
-            known = PipelinePhase.OTHER
         return cls(
-            phase=known,
+            phase=_phase_for(phase),
             kind=_kind_for(current=current, total=total, detail=detail),
             current=current,
             total=total,
             detail=detail,
+            source=source,
+            attributes=dict(attributes or {}),
             run_id=current_run_id(),
         )
 
-    def to_dict(self) -> dict[str, str | int | float | None]:
-        """JSON-ready record; keys are :class:`PipelineEventField` values."""
-        return {
-            PipelineEventField.PHASE.value: self.phase.value,
-            PipelineEventField.KIND.value: self.kind.value,
-            PipelineEventField.CURRENT.value: self.current,
-            PipelineEventField.TOTAL.value: self.total,
-            PipelineEventField.DETAIL.value: self.detail,
-            PipelineEventField.RUN_ID.value: self.run_id,
-            PipelineEventField.AT.value: self.at,
-        }
+    @classmethod
+    def item_started(
+        cls,
+        phase: str,
+        current: int,
+        total: int,
+        source: str,
+        *,
+        attributes: Mapping[str, str | int | float | bool] | None = None,
+    ) -> PipelineEvent:
+        """Build the event that opens one item's span before dispatch.
+
+        The rich bar never sees this kind: :meth:`WikiPipeline.emit_item_start`
+        publishes it on the bus only, so adding per-item spans changes no
+        progress output. ``current`` is the item's zero-based index.
+        """
+        return cls(
+            phase=_phase_for(phase),
+            kind=PipelineEventKind.ITEM_STARTED,
+            current=current,
+            total=total,
+            detail=source,
+            source=source,
+            attributes=dict(attributes or {}),
+            run_id=current_run_id(),
+        )
 
 
 class PipelineEventSink(Protocol):
@@ -200,6 +231,19 @@ class PipelineEventBus:
                     exc,
                     exc_info=is_verbose(),
                 )
+
+
+def _phase_for(phase: str) -> PipelinePhase:
+    """Resolve a phase string; an unknown one degrades to ``OTHER``."""
+    try:
+        return PipelinePhase(phase)
+    except ValueError:
+        logger.warning(
+            "Unknown pipeline phase %r — publishing as %s",
+            phase,
+            PipelinePhase.OTHER.value,
+        )
+        return PipelinePhase.OTHER
 
 
 def _kind_for(*, current: int, total: int, detail: str) -> PipelineEventKind:

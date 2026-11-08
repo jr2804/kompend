@@ -175,6 +175,33 @@ export KOMP_OTEL_HEADERS="Authorization=Bearer <your-write-token>"
 Each agent run produces one root trace. The trace carries `kompend.agent_type`
 and `kompend.source_id` attributes for filtering.
 
+### Pipeline stages (the machine path)
+
+The stage pipeline publishes typed events (`core/pipeline/events.py`); when
+OTel is enabled the same bus feeds a span sink (`core/pipeline/otel_sink.py`),
+so a long parse is visible before the run ends. One run produces one
+`pipeline.run` root with a child span per phase:
+
+| Phase | Span | Child spans |
+|-------|------|-------------|
+| index | `pipeline.index` | — |
+| parse + chunk | `pipeline.parse` | `pipeline.parse.source`, one per source, opened when the source is dispatched |
+| summary | `pipeline.summary` | — |
+| resolve | `pipeline.resolve` | — |
+| compile | `pipeline.compile` | — |
+| output | `pipeline.output` | — |
+
+Every span carries `kompend.run_id`, `kompend.phase`, `kompend.current`,
+`kompend.total` and `kompend.detail`; per-source spans add `kompend.source`
+and `kompend.index`. A stage that has more facts (`parser`, `backend`,
+`pages`, `bytes`, `cache_hit`) passes them to `emit` and they appear as
+`kompend.<key>`. `kompend.duration_ms` is set when a phase completes.
+
+A span still open when the run ends — a stalled parse, a cancelled run — is
+closed with `kompend.incomplete=true` and an error status, so the gap is
+visible instead of vanishing. The sink is inert unless `KOMP_OTEL_ENABLED`
+is truthy and the `otel` extra is installed.
+
 ---
 
 ## 9. Disabling

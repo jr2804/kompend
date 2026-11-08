@@ -154,12 +154,23 @@ def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = N
                 # single-use, which ``Context.run`` requires. The ledger (lock-guarded)
                 # and the run-id context travel with it — and so does the watchdog
                 # reference (lock-guarded the same way).
-                futures: dict[Future[ChunkTree | None], Path] = {
-                    executor.submit(
-                        _context_bound_call(_dispatch_single_source, pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity, watchdog)
-                    ): sf
-                    for sf in source_files
-                }
+                futures: dict[Future[ChunkTree | None], Path] = {}
+                for index, sf in enumerate(source_files):
+                    pipeline.emit_item_start("parse", index, len(source_files), sf.name)
+                    futures[
+                        executor.submit(
+                            _context_bound_call(
+                                _dispatch_single_source,
+                                pipeline,
+                                sf,
+                                dedup_similar,
+                                heavy_guard,
+                                ledger,
+                                parser_identity,
+                                watchdog,
+                            )
+                        )
+                    ] = sf
                 try:
                     for future in as_completed(futures):
                         sf = futures[future]
@@ -182,6 +193,7 @@ def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = N
                     executor.shutdown(wait=True, cancel_futures=True)
             else:
                 for idx, sf in enumerate(source_files):
+                    pipeline.emit_item_start("parse", idx, len(source_files), sf.name)
                     tree = _dispatch_single_source(pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity, watchdog)
                     if tree is not None:
                         trees.append(tree)

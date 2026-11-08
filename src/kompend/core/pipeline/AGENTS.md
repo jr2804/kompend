@@ -31,6 +31,7 @@ persistence, and standalone ingestion.
 | `stall_watch.py`              | `StallWatchdog`, `WatchStage`, `DEFAULT_STALL_WARN_S` — per-item heartbeat observer beside the `DeadlineWorker`: warns **once** per item whose beat goes silent ("no progress for N s in stage X: file"); one watchdog per run (`stall_warn_s`, default 30 s, `0` disables); `last_stage` feeds the deadline row's detail |
 | `events.py`                   | `PipelineEvent`, `PipelinePhase`, `PipelineEventKind`, `PipelineEventField`, `PipelineEventBus`, `PipelineEventSink` — the typed payload behind `WikiPipeline.emit`; the bus fans one event out to every registered sink. `PipelinePhase`/`PipelineEventKind` are the public vocabulary; `PipelineEventField` is the JSONL record contract |
 | `event_sinks.py`              | `CallbackSink` (the rich progress bar), `JsonlSink` (one JSON object per event, append mode), `CollectingSink` (in-memory test collector); a ledger or OTel adapter implements `PipelineEventSink` directly and is not special-cased |
+| `otel_sink.py`                | `OtelEventSink` — projects the same events onto `pipeline.run` → `pipeline.<phase>` → `pipeline.<phase>.source` spans; carries `kompend.run_id`/`phase`/`current`/`total`/`detail`/`source`/`duration_ms`, copies extra emit attributes as `kompend.<key>`, and closes a span still open at the run boundary with `kompend.incomplete=true`; inert unless `KOMP_OTEL_ENABLED` and the `otel` extra are present |
 | `reasons.py`                  | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
 | `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`                   | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |
@@ -139,6 +140,12 @@ persistence, and standalone ingestion.
   diagnostic never aborts a run. The `PipelinePhase`/`PipelineEventKind`
   values are public (JSONL consumers key on them): add, never rename. Stdlib
   only — the bus is not a second logging framework.
+- **Machine spans ride the bus.** `OtelEventSink` is auto-subscribed by
+  `WikiPipeline` when OTel is enabled: a phase span opens on `started`,
+  per-source spans on `item_started` (bus-only, never on the bar), and both
+  close on `progress`/`completed`. Add stage facts through
+  `emit(..., attributes=...)`, never by opening spans at a call site;
+  OpenTelemetry imports live only in `agents/instrument.py` and this sink.
 - **Cancel contract** (token: `core.cancel.CancelState`; signal:
   `KompendCancelled`, a `BaseException` so `except Exception` sites cannot
   swallow it): `WikiPipeline.emit()` raises it *before* event dispatch when

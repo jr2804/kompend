@@ -28,6 +28,7 @@ from kompend.core.models import (
 from kompend.core.paths import VaultPaths, rel_to_vault
 from kompend.core.pipeline.config import PipelineConfig, Tier
 from kompend.core.pipeline.events import PipelineEvent, PipelineEventBus, PipelineEventSink
+from kompend.core.pipeline.otel_sink import OtelEventSink
 from kompend.core.pipeline.parse_cache import clear_documents
 from kompend.core.pipeline.stages.compile import load_compiled_wiki, run_compile_tier, run_output_tier
 from kompend.core.pipeline.stages.index import detect_resume_tier, iter_sources, run_index_tier
@@ -99,6 +100,9 @@ class WikiPipeline:
         self.state_store = state_store or TierStateStore(self._default_state_file(), self.base_directory)
         self._progress_callback: ProgressCallback | None = None
         self.event_bus = PipelineEventBus()
+        self._otel_sink = OtelEventSink()
+        if self._otel_sink.enabled:
+            self.event_bus.subscribe(self._otel_sink)
         self.cache_store = CacheStore(self.cache_directory(), self.base_directory)
         self._tier_timings: dict[str, float] = {}
         self.last_chunk_count: int = 0
@@ -144,6 +148,8 @@ class WikiPipeline:
             get_template_loader().clear_global_context()
             logger.info("Pipeline cancelled — tier state saved; rerun to resume.")
             raise
+        finally:
+            self.close_event_spans()
 
     def run_tier(self, tier: str) -> None:
         """Run a single tier by name.
@@ -170,6 +176,8 @@ class WikiPipeline:
             self.save_state()
             logger.info("Tier run cancelled — tier state saved; rerun to resume.")
             raise
+        finally:
+            self.close_event_spans()
 
         self.save_state()
 
@@ -236,6 +244,22 @@ class WikiPipeline:
     def subscribe_events(self, sink: PipelineEventSink) -> Callable[[], None]:
         """Register a sink for typed pipeline events; returns an unsubscribe callable."""
         return self.event_bus.subscribe(sink)
+
+    def emit_item_start(self, phase: str, current: int, total: int, source: str) -> None:
+        """Publish an item-start event without touching the progress bar.
+
+        Item starts are the one part of the phase lifecycle the bar never
+        needed: it learns about a source when that source finishes. The event
+        bus does need the start, because a span opened at completion has no
+        duration. ``OtelEventSink`` uses it to open the per-source child span;
+        ``JsonlSink`` records it like any other event. No progress callback is
+        invoked, so the bar's output is byte-for-byte unchanged.
+        """
+        self.event_bus.publish(PipelineEvent.item_started(phase, current, total, source))
+
+    def close_event_spans(self) -> None:
+        """End spans still open at the run boundary (stall, cancel, early error)."""
+        self._otel_sink.close()
 
     def emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
         """Publish a typed event, then feed the legacy progress callback.
