@@ -1,6 +1,6 @@
 """Contract pins for the MCP quality tools (names, input schemas, payload keys).
 
-The MCP wire contract for the quality family is exactly three things: the 14
+The MCP wire contract for the quality family is exactly three things: the 15
 tool names registered on the server, the fastmcp-derived input schema per
 name, and the payload key sets each tool may return. ``check_mcp_parity.py``
 and the test_mcp parity tests compare names only, so without these pins a
@@ -35,6 +35,7 @@ QUALITY_TOOL_NAMES: frozenset[str] = frozenset(
         "lint_remediate",
         "lint_format",
         "doctor",
+        "explain",
         "review",
         "provenance",
         "log",
@@ -63,6 +64,17 @@ GOLDEN_SCHEMAS: dict[str, dict[str, Any]] = {
             "fix": {"default": True, "type": "boolean"},
             "wiki_dir": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
         },
+        "type": "object",
+    },
+    "explain": {
+        "additionalProperties": False,
+        "properties": {
+            "config_file": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
+            "run_id": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
+            "source": {"type": "string"},
+            "wiki_dir": {"anyOf": [{"type": "string"}, {"type": "null"}], "default": None},
+        },
+        "required": ["source"],
         "type": "object",
     },
     "lint_check": {
@@ -180,6 +192,7 @@ GOLDEN_SCHEMAS: dict[str, dict[str, Any]] = {
 # from the defining source. A payload key rename or removal changes this golden.
 GOLDEN_PAYLOAD_KEYS: dict[str, list[list[str]]] = {
     "doctor": [["message", "status"], ["results", "status"], ["status", "summary"]],
+    "explain": [["candidates", "message", "status"], ["message", "status"], ["report", "report_text", "status"]],
     "lint_all": [["failures", "health_score", "passes", "report", "skips", "status"], ["message", "status"]],
     "lint_check": [["fixes_applied", "health_score", "passes", "report_text", "status", "total_checks"], ["message", "status"]],
     "lint_format": [["changed", "message", "status"], ["message", "status"]],
@@ -196,36 +209,8 @@ GOLDEN_PAYLOAD_KEYS: dict[str, list[list[str]]] = {
 }
 
 
-def _quality_sources() -> list[Path]:
-    """The file(s) defining the quality tools: the module today, the package later."""
-    tools_dir = Path(server_module.__file__).parent / "tools"
-    module = tools_dir / "quality.py"
-    if module.exists():
-        return [module]
-    return sorted((tools_dir / "quality").glob("*.py"))
-
-
-def _payload_key_sets() -> dict[str, set[tuple[str, ...]]]:
-    """Collect the sorted key set of every ``return {...}`` literal per tool."""
-    shapes: dict[str, set[tuple[str, ...]]] = {name: set() for name in QUALITY_TOOL_NAMES}
-    for source in _quality_sources():
-        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
-            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.name not in shapes:
-                continue
-            for stmt in ast.walk(node):
-                if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Dict):
-                    keys = [k.value for k in stmt.value.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
-                    shapes[node.name].add(tuple(sorted(keys)))
-    return shapes
-
-
-def _registered_tools() -> dict[str, Any]:
-    tools = asyncio.run(mcp_server.list_tools())
-    return {tool.name: tool for tool in tools if tool.name in QUALITY_TOOL_NAMES}
-
-
 class TestToolRegistration:
-    def test_the_fourteen_quality_tools_are_registered(self) -> None:
+    def test_the_fifteen_quality_tools_are_registered(self) -> None:
         assert set(_registered_tools()) == QUALITY_TOOL_NAMES
 
     def test_the_payload_pin_sees_every_tool(self) -> None:
@@ -253,3 +238,31 @@ class TestLiveSurface:
         assert result["status"] == "ok"
         (parser,) = result["parsers"]
         assert set(parser) == {"name", "type", "extensions", "figure_enrichment", "metadata"}
+
+
+def _payload_key_sets() -> dict[str, set[tuple[str, ...]]]:
+    """Collect the sorted key set of every ``return {...}`` literal per tool."""
+    shapes: dict[str, set[tuple[str, ...]]] = {name: set() for name in QUALITY_TOOL_NAMES}
+    for source in _quality_sources():
+        for node in ast.walk(ast.parse(source.read_text(encoding="utf-8"))):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.name not in shapes:
+                continue
+            for stmt in ast.walk(node):
+                if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Dict):
+                    keys = [k.value for k in stmt.value.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+                    shapes[node.name].add(tuple(sorted(keys)))
+    return shapes
+
+
+def _quality_sources() -> list[Path]:
+    """The file(s) defining the quality tools: the module today, the package later."""
+    tools_dir = Path(server_module.__file__).parent / "tools"
+    module = tools_dir / "quality.py"
+    if module.exists():
+        return [module]
+    return sorted((tools_dir / "quality").glob("*.py"))
+
+
+def _registered_tools() -> dict[str, Any]:
+    tools = asyncio.run(mcp_server.list_tools())
+    return {tool.name: tool for tool in tools if tool.name in QUALITY_TOOL_NAMES}

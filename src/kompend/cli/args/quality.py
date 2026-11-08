@@ -253,3 +253,22 @@ LogWrite = Annotated[
         negative="",
     ),
 ]
+
+# ── explain command ─────────────────────────────────────────────────────
+
+ExplainSource = Annotated[
+    str,
+    Parameter(
+        negative="",
+        help="Source file to explain: ledger name (sources/notes/a.md), file name, or an unambiguous fragment.",
+    ),
+]
+
+ExplainRun = Annotated[
+    str | None,
+    Parameter(
+        name="--run",
+        negative="",
+        help="Run id to explain; defaults to the latest run that touched the file.",
+    ),
+]

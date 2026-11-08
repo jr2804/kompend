@@ -1,12 +1,13 @@
 """Quality & diagnostics MCP tools.
 
-Six families, one module each, all re-exported here:
+Seven families, one module each, all re-exported here:
 
 * :mod:`kompend.mcp.tools.quality.lint` - the lint pipeline, its history and gaps (9 tools)
 * :mod:`kompend.mcp.tools.quality.doctor` - configuration and connectivity report
 * :mod:`kompend.mcp.tools.quality.review` - the review queue
 * :mod:`kompend.mcp.tools.quality.provenance` - page-to-source tracing
 * :mod:`kompend.mcp.tools.quality.log` - the pipeline log
+* :mod:`kompend.mcp.tools.quality.explain` - per-file stage timings and decision provenance
 * :mod:`kompend.mcp.tools.quality.list_parsers` - the ingestion parser
 
 The tool names in ``__all__`` are the MCP contract: ``server.py``
@@ -15,6 +16,7 @@ the set, the input schema and the payload keys.
 """
 
 from kompend.mcp.tools.quality.doctor import doctor
+from kompend.mcp.tools.quality.explain import explain
 from kompend.mcp.tools.quality.lint import (
     lint_all,
     lint_check,
@@ -33,6 +35,7 @@ from kompend.mcp.tools.quality.review import review
 
 __all__ = [
     "doctor",
+    "explain",
     "lint_all",
     "lint_check",
     "lint_format",

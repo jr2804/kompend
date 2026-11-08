@@ -15,7 +15,8 @@ stores into human-readable markdown — no LLM calls.
 | `log.py` | `build_log_report` - the engine behind `kompend log` |
 | `handle.py` | `RunHandle` - the run identity the CLI holds between start and end; the `_CURRENT_RUN_ID` ContextVar + `set_current_run_id`/`current_run_id` |
 | `runlog.py` | `log_run_start`, `log_run_end` - append-only audit trail in the `runs` table; attaches/detaches the flight recorder (see Rules) |
-| `ledger.py` | `StageLedger`, `stage_ledger` - per-item stage ledger in the `stages` table; documented queries (`slowest_items`, `failure_histogram`, `cache_hit_rate`) |
+| `ledger.py` | `StageLedger`, `stage_ledger` - per-item stage ledger in the `stages` table; documented queries (`slowest_items`, `failure_histogram`, `cache_hit_rate`, `matching_sources`, `source_runs`, `source_attempts`) |
+| `explain.py` | `build_explain_report`, `render_explain`, `resolve_source` - the engine behind `kompend explain` (one file's ledger rows, stage totals, degradations); raises `AmbiguousSourceError` on fragment collisions |
 
 ## Rules
 

@@ -44,6 +44,7 @@ class CommandModule(StrEnum):
     COMPILE = "kompend.cli.cmds.pipeline.compile"
     CONFIG = "kompend.cli.cmds.pipeline.config"
     DOCTOR = "kompend.cli.cmds.quality.doctor_cmd"
+    EXPLAIN = "kompend.cli.cmds.quality.explain_cmd"
     INDEX = "kompend.cli.cmds.pipeline.index"
     INGEST = "kompend.cli.cmds.pipeline.ingest"
     INIT = "kompend.cli.cmds.init"
@@ -76,6 +77,7 @@ class CommandName(StrEnum):
     CONSOLIDATE = "consolidate"
     DISTILL = "distill"
     DOCTOR = "doctor"
+    EXPLAIN = "explain"
     INDEX = "index"
     INGEST = "ingest"
     INIT = "init"
@@ -277,6 +279,12 @@ COMMANDS: Final[dict[CommandName, CommandSpec]] = {
         "log_cmd",
         HelpPanel.QUALITY_INSPECTION,
         "Regenerate the pipeline log from structured stores (no LLM calls).",
+    ),
+    CommandName.EXPLAIN: CommandSpec(
+        CommandModule.EXPLAIN,
+        "explain_cmd",
+        HelpPanel.QUALITY_INSPECTION,
+        "Explain what the pipeline did to one source file: stage timings and decisions.",
     ),
     CommandName.REVIEW: CommandSpec(
         CommandModule.REVIEW,

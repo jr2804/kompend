@@ -25,6 +25,7 @@ from kompend.mcp.tools import (
     config_path,
     config_set,
     doctor,
+    explain,
     init_wiki,
     lint_all,
     lint_check,
@@ -125,6 +126,7 @@ def _register_all(srv: FastMCP) -> None:  # noqa: PLR0915 — one registration p
     srv.tool(name="lint_remediate")(lint_remediate)
     srv.tool(name="lint_format")(lint_format)
     srv.tool(name="doctor")(doctor)
+    srv.tool(name="explain")(explain)
     srv.tool(name="review")(review)
     srv.tool(name="provenance")(provenance)
     srv.tool(name="log")(log)

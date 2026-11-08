@@ -8,7 +8,7 @@
 - :mod:`kompend.mcp.tools.references` — list, export, fetch
 - :mod:`kompend.mcp.tools.attachments` — add, remove (list/read/info in knowledge)
 - :mod:`kompend.mcp.tools.pipeline` — ingest, index, organize, write
-- :mod:`kompend.mcp.tools.quality` — lint*, doctor, review, provenance, log, list-parsers
+- :mod:`kompend.mcp.tools.quality` — lint*, doctor, review, provenance, log, explain, list-parsers
 - :mod:`kompend.mcp.tools.packs` — pack-list, pack-install
 """
 
@@ -44,6 +44,7 @@ from kompend.mcp.tools.packs import pack_install, pack_list
 from kompend.mcp.tools.pipeline import wiki_index, wiki_ingest, wiki_organize, wiki_write
 from kompend.mcp.tools.quality import (
     doctor,
+    explain,
     lint_all,
     lint_check,
     lint_format,
@@ -87,6 +88,7 @@ __all__ = [
     "config_path",
     "config_set",
     "doctor",
+    "explain",
     "init_wiki",
     "lint_all",
     "lint_check",

@@ -33,7 +33,7 @@ Use ``from fastmcp import FastMCP`` — never the SDK's renamed
 
 - Tool implementations go in ``tools/``, not in ``server.py``.
 - ``tools/quality/`` keeps one module per tool family; ``__init__.py`` only
-  re-exports, and its ``__all__`` — the 14 tool names — is the MCP contract.
+  re-exports, and its ``__all__`` — the 15 tool names — is the MCP contract.
   ``tests/unit/test_mcp_quality.py`` pins the names, the input schemas and the
   payload keys.
 - ``server.py`` registers tools via function reference, not strings.

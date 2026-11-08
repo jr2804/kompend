@@ -472,6 +472,25 @@ Displays:
 - Last compile timestamp
 - Health score (if eval is set up)
 
+## `kompend explain`
+
+Explain what the pipeline did to one source file — without `--verbose`. Reads
+the per-item ledger and prints the stage-by-stage rows of the latest run that
+touched the file, where the wall-clock time went, the attempt's facts
+(parser, backend, judge model, cache identity) and every degradation with its
+reason code.
+
+```bash
+kompend explain sources/notes/stuck.md          # latest run for that file
+kompend explain stuck.md                        # file name is enough
+kompend explain stuck.md --run r-20261107-3     # a specific run
+kompend explain stuck.md --json                 # machine-readable
+```
+
+The source argument accepts the ledger name (`sources/notes/a.md`), a bare
+file name, or any unambiguous fragment; ambiguous fragments list their
+candidates and exit non-zero. The matching MCP tool is `explain`.
+
 ## `kompend list-parsers`
 
 Show the ingestion backend and the formats it claims. There is one backend:

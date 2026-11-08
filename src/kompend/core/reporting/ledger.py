@@ -59,7 +59,7 @@ import threading
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 from kompend.core.reporting.handle import current_run_id
 from kompend.core.store import connect, open_store
@@ -72,6 +72,11 @@ _SOFT_CAP_ROWS = 5000
 _KEEP_ROWS = 2500
 #: Cap for the ``detail`` excerpt — enough to recognise an error, never a dump.
 _DETAIL_CHARS = 240
+
+
+_SOURCE_COLUMNS: Final[str] = (
+    "run_id, ts, stage, attempt, outcome, duration_ms, reason_code, detail, parser, parser_version, backend, judge_model, cache_key, sha, size_bytes"
+)
 
 logger = get_logger(__name__)
 
@@ -244,3 +249,38 @@ def cache_hit_rate(conn: sqlite3.Connection, run_id: str) -> float | None:
     if parsed == 0:
         return None
     return counts.get(StageOutcome.CACHED.value, 0) / parsed
+
+
+def matching_sources(conn: sqlite3.Connection, fragment: str) -> list[str]:
+    """Distinct ledger sources whose name contains *fragment*, sorted.
+
+    An exact match also contains itself, so resolution can check for it
+    without a second query.
+    """
+    rows = conn.execute(
+        f"SELECT DISTINCT source FROM {STAGES_TABLE} WHERE source LIKE ? ORDER BY source",
+        (f"%{fragment}%",),
+    ).fetchall()
+    return [row["source"] for row in rows]
+
+
+def source_runs(conn: sqlite3.Connection, source: str) -> list[str]:
+    """Run ids that recorded *source*, oldest first (``[]`` when unknown)."""
+    rows = conn.execute(
+        f"SELECT DISTINCT run_id FROM {STAGES_TABLE} WHERE source = ? AND run_id IS NOT NULL ORDER BY id",
+        (source,),
+    ).fetchall()
+    return [row["run_id"] for row in rows]
+
+
+def source_attempts(conn: sqlite3.Connection, source: str, *, run_id: str | None = None) -> list[sqlite3.Row]:
+    """Every recorded attempt for *source* (optionally one run), oldest first."""
+    if run_id is None:
+        return conn.execute(
+            f"SELECT {_SOURCE_COLUMNS} FROM {STAGES_TABLE} WHERE source = ? ORDER BY id",
+            (source,),
+        ).fetchall()
+    return conn.execute(
+        f"SELECT {_SOURCE_COLUMNS} FROM {STAGES_TABLE} WHERE source = ? AND run_id = ? ORDER BY id",
+        (source, run_id),
+    ).fetchall()
