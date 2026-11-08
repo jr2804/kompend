@@ -201,7 +201,13 @@ def test_deadline_row_names_the_stage_the_file_died_in(tmp_path: Path, monkeypat
     stuck.write_text("# stuck\n", encoding="utf-8")
     fine.write_text("# fine\n", encoding="utf-8")
 
-    def _parse(self: object, parser: _DeadlineBackend, target: Path) -> ParsedDocument:
+    def _parse(
+        self: object,
+        parser: _DeadlineBackend,
+        target: Path,
+        *,
+        source: str | None = None,  # noqa: ARG001 — signature parity
+    ) -> ParsedDocument:
         if Path(target).name == "stuck.md":
             raise ParseDeadlineExceeded(Path(target), 5.0)
         return parser.parse(target)

@@ -28,6 +28,13 @@ from pathlib import Path
 from typing import Any
 
 from kompend.core.models import ParsedDocument
+from kompend.core.pipeline.backend_capture import (
+    BackendBanners,
+    backend_name,
+    capture_backend_output,
+    log_backend_banners,
+    log_banner_lines,
+)
 
 #: Seconds to wait for a killed worker to disappear. A killed process normally
 #: exits at once; this only bounds a native library blocking in its finaliser.
@@ -76,28 +83,59 @@ class DeadlineWorker:
     def __exit__(self, *_exc_info: object) -> None:
         self.close()
 
-    def parse(self, parser: Any, target: Path) -> ParsedDocument:  # noqa: ANN401 — any object with .parse()
+    def parse(  # noqa: ANN401 — any object with .parse()
+        self,
+        parser: Any,
+        target: Path,
+        *,
+        source: str | None = None,
+        backend: str | None = None,
+    ) -> ParsedDocument:
         """Parse *target* with *parser*, killing the parse when the budget expires.
 
         ``timeout_s <= 0`` parses in this process, keeping the caller's
         exception handling intact. A positive budget parses in the worker;
         :class:`ParseDeadlineExceeded` is raised on expiry and the worker is
         replaced on the next call.
+
+        Either path captures what the backend prints to the process streams
+        (bead knox-drz1) and logs it with attribution; *source* and *backend*
+        name the file and backend in those records. The worker ships its
+        captured lines to this process first — the worker's own loggers have
+        no run-log handler.
         """
         if self._timeout_s <= 0:
-            return parser.parse(target)  # type: ignore[no-any-return]
+            banners = BackendBanners(source=source or target.name, backend=backend or backend_name(parser))
+            try:
+                with capture_backend_output(banners):
+                    return parser.parse(target)  # type: ignore[no-any-return]
+            finally:
+                log_backend_banners(banners)
         self._ensure_worker()
         assert self._connection is not None  # noqa: S101 — set by _ensure_worker
         self._connection.send((parser, str(target)))
         if not self._connection.poll(self._timeout_s):
             self._kill()
             raise ParseDeadlineExceeded(target, self._timeout_s)
-        try:
-            status, payload = self._connection.recv()
-        except EOFError:
-            self._kill()
-            msg = "the parse worker died without reporting a result — a native library probably aborted the process (an OpenBLAS allocation failure does this)"
-            raise RuntimeError(msg) from None
+        while True:
+            try:
+                status, payload = self._connection.recv()
+            except EOFError:
+                self._kill()
+                msg = (
+                    "the parse worker died without reporting a result — a native library probably aborted "
+                    "the process (an OpenBLAS allocation failure does this)"
+                )
+                raise RuntimeError(msg) from None
+            if status != "banners":
+                break
+            lines, suppressed, worker_backend = payload
+            log_banner_lines(
+                lines,
+                suppressed=suppressed,
+                source=source or target.name,
+                backend=backend or worker_backend,
+            )
         if status == "ok":
             return payload  # type: ignore[no-any-return]
         raise RuntimeError(payload)
@@ -167,9 +205,13 @@ def _worker_main(connection: Connection) -> None:
         if request is _STOP:
             return
         parser, target = request
+        banners = BackendBanners(source=Path(target).name, backend=backend_name(parser))
         try:
-            document = parser.parse(Path(target))
+            with capture_backend_output(banners):
+                document = parser.parse(Path(target))
         except BaseException as exc:  # noqa: BLE001 — the parent is the only reporter left
+            connection.send(("banners", (banners.lines, banners.suppressed, banners.backend)))
             connection.send(("error", f"{type(exc).__name__}: {exc}"))
         else:
+            connection.send(("banners", (banners.lines, banners.suppressed, banners.backend)))
             connection.send(("ok", document))

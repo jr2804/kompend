@@ -256,7 +256,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             parse_target: Path | None = None
             try:
                 parse_target = parse_target_path(source_file, cache_dir)
-                doc = worker.parse(backend, parse_target)
+                doc = worker.parse(backend, parse_target, source=source_key)
                 watchdog.beat(source_key, stage=WatchStage.POSTPROCESS)
                 restore_source_path(doc, parse_target=parse_target, source_file=source_file)
                 normalize_element_markdown(

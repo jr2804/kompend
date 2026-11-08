@@ -183,7 +183,13 @@ def test_ingest_deadline_failure_carries_timeout(tmp_path: Path, monkeypatch: py
     stuck = base / "sources" / "stuck.md"
     stuck.write_text("# stuck\n", encoding="utf-8")
 
-    def _parse(self: object, parser: object, target: Path) -> ParsedDocument:  # noqa: ARG002
+    def _parse(
+        self: object,
+        parser: object,
+        target: Path,
+        *,
+        source: str | None = None,  # noqa: ARG002 — signature parity
+    ) -> ParsedDocument:
         raise ParseDeadlineExceeded(Path(target), 5.0)
 
     monkeypatch.setattr("kompend.core.pipeline.ingest.DeadlineWorker.parse", _parse)

@@ -19,6 +19,12 @@ from kompend.core.models import (
     DocumentElement,
     ParsedDocument,
 )
+from kompend.core.pipeline.backend_capture import (
+    BackendBanners,
+    backend_name,
+    capture_backend_output,
+    log_backend_banners,
+)
 from kompend.core.pipeline.failure_bundle import write_failure_bundle
 from kompend.core.pipeline.ingest import (
     parse_target_path,
@@ -244,8 +250,12 @@ def _parse_source(
         # formats, the raw file otherwise). It never gates parsing.
         parse_target = parse_target_path(source_file, pipeline.cache_directory())
         watch.beat(pipeline.rel_file(source_file), stage=WatchStage.PARSE)
-        with heavy_guard.guard(source_file):
-            parsed = selected.parse(parse_target)
+        banners = BackendBanners(source=pipeline.rel_file(source_file), backend=backend_name(selected))
+        try:
+            with capture_backend_output(banners), heavy_guard.guard(source_file):
+                parsed = selected.parse(parse_target)
+        finally:
+            log_backend_banners(banners)
         _ = len(parsed.elements)
     except InsufficientHostMemoryError as exc:
         logger.error("Skipped %s: %s", source_file, exc, extra={"reason_code": ReasonCode.BACKEND_UNAVAILABLE})

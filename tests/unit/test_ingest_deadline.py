@@ -56,7 +56,13 @@ def test_a_deadline_failure_is_counted_and_the_run_continues(tmp_path: Path, mon
     fine.write_text("# fine\n", encoding="utf-8")
     parser = _Parser()
 
-    def _parse(self: object, parser: _FakeParser, target: Path) -> ParsedDocument:
+    def _parse(
+        self: object,
+        parser: _FakeParser,
+        target: Path,
+        *,
+        source: str | None = None,  # noqa: ARG001 — signature parity
+    ) -> ParsedDocument:
         if Path(target).name == "stuck.md":
             raise ParseDeadlineExceeded(Path(target), 5.0)
         # The good file is parsed in-process: this test is about the ingest
