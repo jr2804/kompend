@@ -201,17 +201,18 @@ Three interfaces, same core:
 
 - **CLI:** `kompend compile sources/ --output wiki/`
 - **Python SDK:** `pipeline.compile(sources=[Path("paper.pdf")])`
-- **MCP Server:** `wiki_parse`, `wiki_compile`, `wiki_capture`, `wiki_learn` tools for Hermes/Claude Code/Codex
+- **MCP Server:** the full tool surface (56 tools across wiki, memory, attachments, config, sources, references, lint/quality and packs) for Hermes/Claude Code/Codex. See [MCP Server](../guides/mcp.md).
 
 No GUI. No web server required. Headless cron-friendly.
 
 ### 5. Resolution-Ready
 
-Default: one-shot ingestion (fast). Opt-in per document: multi-turn resolution (accurate). Resolvers are pluggable via MCP or CLI tools:
-
-- Abbreviation expansion → `mcp_glossary_resolve`
-- Cross-reference validation → `mcp_doi_lookup`
-- Term disambiguation → `mcp_wikipedia_disambiguate`
+Default: one-shot ingestion (fast). Opt-in per document: multi-turn resolution
+(accurate). Resolvers are pluggable parts of the resolution phase: the
+`reference_resolver` agent matches citations to extracted references, and the
+resolution stage can run additional passes per document. Integrations reach
+them through the CLI or the Python library; there are no separate resolver MCP
+tools.
 
 ### 6. Multimodal
 
@@ -236,7 +237,11 @@ zoom for retrieval.
 
 ### Hermes Agent
 
-kompend provides an MCP server (`src/kompend/mcp/server.py`) exposing `wiki_parse`, `wiki_compile`, `wiki_capture`, and `wiki_learn` tools. Hermes skills can call these tools directly. The CLI remains the source of truth — the MCP layer is a thin wrapper.
+kompend provides an MCP server (`src/kompend/mcp/server.py`) exposing the full
+tool surface — wiki, memory, attachments, config, sources, references,
+lint/quality and packs (56 tools). Hermes skills can call them directly. Tools
+use the same library layer as the CLI; the server is an adapter, not a wrapper
+around subprocesses. See [MCP Server](../guides/mcp.md).
 
 ### Open-WebUI
 
@@ -259,6 +264,15 @@ The `query` command supports a `--search-mode` (or `--scope`) option:
 - `raw` — Search only raw source files using BM25.
 - `hybrid` — Combine wiki and raw results via RRF (default).
 - `graph` — Hybrid search plus graph-traversal expansion, which follows typed relations (e.g., `depends_on`, `related_to`) to surface connected nodes with a decayed score.
+
+Three opt-in passes sit on top of the default pipeline:
+
+- **Intent routing** (`[decision] enabled = true`) classifies small talk before
+  retrieval, so non-knowledge messages do not consume a search.
+- **Adaptive retrieval** (`--adaptive`) walks the chunk tree with zoom-in,
+  zoom-out and targeted modes instead of returning a flat top-K.
+- **Agentic synthesis** (`[search.agentic] enabled = true`) replaces the
+  one-shot synthesis with a multi-turn tool loop for broad questions.
 
 Optional extras:
 

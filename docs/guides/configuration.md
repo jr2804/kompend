@@ -198,10 +198,35 @@ The main configuration sections:
 | `[ingest]` | Ingestion settings: heavy-parse limits and where figures land; routing *and* the judge are parsecraft's config (`~/.config/parsecraft/config.toml`, `<wiki>/.kompend/parsecraft.toml`, `./parsecraft.toml`) |
 | `[providers.<id>]` | User-defined OpenAI-compatible endpoints (self-hosted llama.cpp, vLLM, TGI). See [LLM Configuration](llm-config.md#user-defined-providers) |
 | `[export]` | `kompend sources export` placement of extracted data (`annotations` / `summary`: `off` \| `inline` \| `asset`) |
+| `[decision]` | Optional decision-model sidecar for error triage, query-intent routing and figure relevance (see [LLM Configuration](llm-config.md#decision-model-optional-sidecar)) |
+| `[query]` | Query defaults (scope and result limits) |
+| `[search]` | RAG query pipeline: expansion, HyDE, reranker, CRAG, contextual and agentic retrieval (see [RAG Pipeline](../concepts/rag-pipeline.md)) |
+| `[trust]` | Privacy filter and local user tracking |
+| `[ignore]` | Source ignore patterns |
+| `[organize]` | `kompend organize` tree defaults (depth, sub-category and collapse rules) |
+| `[attachments]` | Attachment adoption, ingestion and vector-index gates |
+| `[dedup]` | Opt-in near-duplicate detection (matchers and thresholds; see [Duplicate Detection](dedup.md)) |
+| `[downloader]` | Downloader settings |
+| `[logging]` | Per-module log levels (see below) |
 | `[notes]` | User notes file configuration |
 | `[hooks]` | Event hook callbacks |
 
 The full annotated reference is available in the config template created by `kompend init` at `.kompend/config.toml`. Enum-like keys carry a trailing comment listing the remaining valid values (e.g. `format = "markdown"  # json, typst`).
+
+### Per-module log levels
+
+`[logging] modules` raises the level of one logger without changing the
+terminal threshold:
+
+```toml
+[logging]
+modules = { docling = "DEBUG" }
+```
+
+The mapping is applied after config resolution. A module set to `DEBUG` writes
+its detail to the run log, while the terminal handler keeps its own level, so
+the extra output is there when you read `run-*.log` and invisible when you
+don't.
 
 ## Migration from `--sources-dir` / `--output-dir`
 

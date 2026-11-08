@@ -109,7 +109,7 @@ Superseded pages are excluded from stale detection and reported in
 
 **Q: Is privacy redaction on by default?**
 A: Yes — `filter_sensitive` is always called before the wiki is
-written. Pass `--no-privacy` (if implemented in your version) to skip.
+written. Pass `--no-privacy` to skip it for one run.
 
 **Q: How accurate is grounding verification?**
 A: LLM-as-judge is ~85% accurate on supported-claim detection. The
@@ -117,9 +117,10 @@ substring fallback is conservative — it marks many claims as
 unsupported.
 
 **Q: Can I use a different LLM for verification?**
-A: Yes — set `KOMP_LLM_DEFAULT_MODEL`, or give the `verify` role its own model
-in `[compile.llm.role_models]`. The verifier runs through kompend's configured
-pydantic-ai agent like every other LLM step.
+A: Verification uses the run's configured model, so set
+`[compile.llm] default_model` or `KOMP_LLM_DEFAULT_MODEL` to change it. It runs
+through kompend's pydantic-ai agent like every other LLM step; the old
+per-role `[compile.llm.role_models]` overrides were removed.
 
 **Q: What happens to private pages in the vector index?**
 A: Private pages are indexed but tagged with `private: true` in

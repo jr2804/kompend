@@ -1,26 +1,43 @@
 # RAG Pipeline
 
-kompend's query pipeline includes optional RAG enhancement techniques that improve retrieval quality. Each is a **plug-in step** — configurable via `kompend.toml` under `[search]`, and all default to **disabled**.
+kompend's query pipeline includes optional RAG enhancement techniques that improve retrieval quality. Each is a **plug-in step** — configurable via `kompend.toml` under `[search]`. The optional steps default to **disabled**; hybrid retrieval is always active.
 
 ## Pipeline Flow
 
 ```text
 User Query
     │
+    ├── 0. Intent routing (optional [decision]) ── knowledge vs small talk
+    │       ↓
     ├── 1. Multi-Query Expansion (RAG-Fusion) ── generate N variants
     │       ↓
     ├── 2. HyDE ── generate hypothetical answer for embedding
     │       ↓
     ├── 3. Hybrid Retrieval (FTS + vector + token-overlap + raw)
     │       ↓
+    ├── 3b. Adaptive retrieval (--adaptive) ── zoom in/out/targeted
+    │       ↓
     ├── 4. Neural Re-ranker ── cross-encoder re-ranking
     │       ↓
     ├── 5. CRAG ── LLM relevance grading, drop noise
     │       ↓
-    └── 6. LLM Synthesis ── generate final answer
+    ├── 6. Synthesis ── one-shot answer, or the opt-in agentic tool loop
 ```
 
 ## Step Details
+
+### 0. Intent routing (optional)
+
+**Config:** `[decision]` — `enabled`, `model`, `timeout`
+
+When the decision sidecar is enabled, `kompend query` first classifies the
+message as a knowledge question or small talk. Regex rules answer the obvious
+greetings and thanks; only the queries those rules leave as knowledge reach
+the decision model, which catches small talk the patterns miss. A non-knowledge
+verdict answers with the canned reply and skips retrieval entirely. A disabled
+or failing sidecar keeps the deterministic path. `--no-classify` skips the
+step and always retrieves. See
+[Decision model](../guides/llm-config.md#decision-model-optional-sidecar).
 
 ### 1. Multi-Query Expansion (RAG-Fusion)
 
@@ -50,6 +67,24 @@ Always active. Combines four retrieval methods via RRF:
 - **Token-overlap** — Simple token intersection for fallback
 - **Raw sources** — BM25 search over original source files
 
+### 3b. Adaptive retrieval
+
+**Flag:** `kompend query --adaptive`
+
+Adaptive retrieval walks the chunk tree instead of returning a flat top-K, and
+selects the granularity per candidate:
+
+- **ZOOM_IN** — retrieve section summaries first, then expand the hottest
+  sections to their full leaf chunks.
+- **ZOOM_OUT** — when too many leaves hit, collapse them to section summaries
+  so the answer sees structure rather than fragments.
+- **TARGETED** — when the query names a table or equation, query the typed
+  structured node directly.
+
+The choice is context-budget-aware: the retriever keeps the assembled context
+inside the model's input window instead of truncating the tail. It works best
+with a compiled chunk tree; without one, hybrid retrieval remains the default.
+
 ### 4. Neural Re-ranker
 
 **Config:** `[search.reranker]` — `enabled`, `backend`, `model`, `top_k`
@@ -77,6 +112,14 @@ After retrieval, the LLM grades each candidate chunk for relevance to the query.
 
 Always active when an LLM is configured. Synthesizes the final answer from the filtered, ranked candidates.
 
+The opt-in **agentic path** (`[search.agentic] enabled = true`) replaces the
+one-shot synthesis with a multi-turn tool loop: the agent can read pages,
+search the wiki, and split a broad question into sub-questions
+(`max_sub_questions`). It is disabled by default, never applies to
+`--search-mode raw`, and still honours tag and attribute filters. Use it for
+questions that need several lookups; the one-shot path is faster and cheaper
+for single-fact queries.
+
 ## Configuration Reference
 
 ```toml
@@ -100,6 +143,11 @@ hyde.enabled = false
 # Contextual Retrieval (chunk enrichment during T2)
 contextual.enabled = false
 contextual.model = ""
+
+# Agentic synthesis (multi-turn tool loop; default: one-shot)
+agentic.enabled = false
+agentic.model = ""
+agentic.max_sub_questions = 5
 ```
 
 ## Environment Variables
@@ -116,3 +164,6 @@ contextual.model = ""
 | `KOMP_SEARCH_HYDE_ENABLED` | `search.hyde.enabled` | Enable HyDE |
 | `KOMP_SEARCH_CONTEXTUAL_ENABLED` | `search.contextual.enabled` | Enable contextual retrieval |
 | `KOMP_SEARCH_CONTEXTUAL_MODEL` | `search.contextual.model` | LLM model for context generation |
+| `KOMP_SEARCH_AGENTIC_ENABLED` | `search.agentic.enabled` | Enable the agentic query path |
+| `KOMP_SEARCH_AGENTIC_MODEL` | `search.agentic.model` | Model for the agentic query loop |
+| `KOMP_SEARCH_AGENTIC_MAX_SUB_QUESTIONS` | `search.agentic.max_sub_questions` | Sub-question cap for a broad query |

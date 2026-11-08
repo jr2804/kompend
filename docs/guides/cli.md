@@ -10,8 +10,9 @@ kompend provides a Cyclopts-based CLI with the following commands:
 | `kompend compile` | Compile documents into a knowledge wiki |
 | `kompend ingest` | Copy files into sources without compiling |
 | `kompend query` | Query the compiled wiki with natural language |
-| `kompend doctor` | Validate configuration and connectivity |
-| `kompend status` | Show per-wiki statistics |
+| `kompend doctor` | Validate configuration and connectivity, with a last-run summary |
+| `kompend status` | Show per-wiki statistics, including parse quality |
+| `kompend explain` | Trace one source through the ledger: stage timings, facts, degradations |
 | `kompend list-parsers` | Show the ingestion backend and the formats it claims |
 | `kompend lint all` | Full lint pipeline: check → format → semantic → gaps → remediate (single weighted progress bar; LLM steps skipped without a model) |
 | `kompend lint check` | Deterministic structural rules, auto-fix on |
@@ -450,6 +451,23 @@ Example output::
 
 Exit code: `0` if no check fails (warnings do not fail), `1` if any check fails.
 
+### Last run
+
+When the vault has ledger history, `doctor` appends a **last run** section
+read from the per-item ledger and the flight-recorder log:
+
+- run id, command, status and duration, plus the path to the full log
+- ledger rows and distinct sources covered by the run
+- the parse-cache hit rate
+- degradations, including judge fallbacks and the embedding-merge fallback,
+  which are recorded in the run log rather than as ledger rows
+- the slowest stages, and the failure histogram by stage, outcome and
+  reason code
+
+`--json` carries the same data under `last_run`. A vault with no runs prints
+`last run: no ledger rows recorded yet`. For one file rather than the whole
+run, use [`kompend explain`](#kompend-explain).
+
 ## `kompend status`
 
 Show per-wiki statistics.
@@ -471,6 +489,9 @@ Displays:
 - Article count and total word count
 - Last compile timestamp
 - Health score (if eval is set up)
+- Parse quality: how many documents were measured, how many are suspicious,
+  and up to three flagged sources with their replacement-character ratio and
+  empty-block count (also under `parse_quality` in `--json`)
 
 ## `kompend explain`
 
@@ -521,10 +542,12 @@ kompend query [OPTIONS] QUESTION
 | Flag | Default | Description |
 |------|---------|-------------|
 | `--top-k` | `5` | Number of context chunks to retrieve |
-| `--scope` | `hybrid` | Search scope: `wiki`, `raw`, or `hybrid` |
+| `--scope` | `hybrid` | Search scope: `wiki`, `raw`, `hybrid`, or `graph` (hybrid plus relation traversal) |
 | `--format` | `text` | Output format: `text`, `json`, `toon`, or `ison` |
 | `--raw` | — | Return raw context chunks without LLM synthesis |
 | `--no-classify` | — | Skip intent classification |
+| `--adaptive` | — | Adaptive retrieval: zoom in/out or target structured nodes instead of a flat top-K |
+| `--remember` | — | Save the question and synthesized answer to the memory store |
 | `--verbosity` | `standard` | Answer verbosity: `brief`, `standard`, or `comprehensive` |
 | `--tags <group>` | — | Filter results by tag. Comma-separated values within one flag are AND'd; multiple `--tags` flags are OR'd (e.g. `--tags audio,paper --tags video`) |
 | `--attr KEY=VALUE` | — | Filter results by source attribute. Repeatable; multiple flags are AND'd. Bare `KEY` matches any value for that key (e.g. `--attr version=2 --attr status`) |

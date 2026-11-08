@@ -583,6 +583,11 @@ Exit codes from the parsecraft CLI are **not** part of the contract — kompend
 imports `parsecraft.pipeline` as a library, so typed exceptions cross the
 boundary, never exit codes.
 
+When a parse does fail, kompend leaves a replay bundle at
+`.kompend/tmp/failures/<sha16>/` with the exact source bytes, the reason code,
+parser identity and traceback. `repro.sh` reproduces the failure in a scratch
+vault; see [Failure replay bundles](observability.md#failure-replay-bundles).
+
 ### Limitations
 
 - Adds an external dependency with a minimum parsecraft release; upgrading

@@ -80,6 +80,7 @@ nav:
   - Home: index.md
   - Guides:
     - CLI: guides/cli.md
+    - MCP Server: guides/mcp.md
     - Compilation: guides/compilation.md
     - Document Extraction: guides/document-extraction.md
     - Lint: guides/lint.md

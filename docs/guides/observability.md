@@ -202,6 +202,40 @@ closed with `kompend.incomplete=true` and an error status, so the gap is
 visible instead of vanishing. The sink is inert unless `KOMP_OTEL_ENABLED`
 is truthy and the `otel` extra is installed.
 
+For a past run without a tracing backend, the CLI reads the same ledger:
+`kompend doctor` prints the last-run summary, `kompend explain <source>` shows
+one file's stage rows and degradations, and `kompend status` reports parse
+quality across the vault.
+
+### Failure replay bundles
+
+When a parse fails, kompend writes a self-contained bundle to
+`.kompend/tmp/failures/<sha16>/` (the key is the first 16 hex characters of the
+source hash). It holds:
+
+| File | Contents |
+|------|----------|
+| `meta.json` | source reference, stage, reason code, parser and version, backend, judge model, cache key, sha256, size |
+| `source<ext>` | the exact bytes the parser received |
+| `traceback.txt` | the exception traceback |
+| `run.log` | the run's flight-recorder log, when present |
+| `repro.sh` | creates a scratch vault and re-runs `kompend ingest` on the copied source |
+
+The bundle never contains absolute paths, and writing it is best-effort: a
+read-only state directory cannot turn one parse failure into two. See
+`kompend explain <source>` for the same event in line form.
+
+### Backend output capture
+
+Parsers that print to stdout or stderr (docling, external converters) are
+captured during the parse and re-emitted as log lines prefixed
+`backend banner [backend] source:`, attributed to the parsing thread. The
+capture replaces the stream for the duration of the parse and is capped per
+source, so a noisy backend cannot flood the log. Set
+`[logging] modules = { docling = "DEBUG" }` to keep that detail in the run log
+while the terminal stays at its normal threshold; see
+[Configuration](configuration.md#per-module-log-levels).
+
 ---
 
 ## 9. Disabling

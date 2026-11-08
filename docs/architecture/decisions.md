@@ -167,6 +167,11 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 **Context:** Some tools duplicate business logic between CLI and MCP. This causes drift.  
 **Decision:** MCP server calls CLI commands. Zero logic in MCP layer.
 **Consequences:** MCP is slower (fork/exec overhead). But no drift.
+**Superseded (2026-11):** MCP tools now call the same library layer as the CLI
+instead of forking subprocesses. Parity is enforced mechanically:
+`scripts/checks/check_mcp_parity.py` gates tool names and the snapshot in
+`scripts/checks/snapshots/mcp_tool_surface.json` gates input/output shapes. See
+[MCP Server](../guides/mcp.md).
 
 ### Decision: Hermes skill wraps CLI, not MCP
 

@@ -29,11 +29,16 @@ Open-WebUI can ingest the compiled wiki as a knowledge source:
 
 ### 3. Use the MCP server
 
-kompend ships with an MCP server that exposes `wiki_parse` and `wiki_compile` tools:
+kompend ships with an MCP server that exposes the full tool surface — 56 tools
+for wiki, memory, attachments, config, sources, references, lint/quality and
+packs, including `wiki_parse` and `wiki_compile`:
 
 ```bash
-kompend compile ./sources --url https://example.com/doc.pdf
+kompend mcp
 ```
+
+The server speaks stdio by default; see [MCP Server](../guides/mcp.md) for the
+HTTP transport and the tool families.
 
 In Open-WebUI, configure an MCP connection:
 

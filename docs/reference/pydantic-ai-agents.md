@@ -24,6 +24,31 @@ This guide covers:
 
 ## Agent architecture
 
+### The spec registry
+
+Every agent is declared as an `AgentSpec` — a frozen, data-only definition in
+the agent's module (`SPEC: AgentSpec`) and registered in
+`src/kompend/agents/specs.py`. `all_specs()` returns all 37 definitions,
+`get_spec("extraction")` resolves one by name, and `AgentName` is the string
+vocabulary used by the registry and tests.
+
+The spec carries the name, result type, deps type, template names and prefix,
+delta-retry opt-in, temperature, native-output and retry defaults, and the
+optional prompt/validation hooks. `build_agent("name", model_string=...)`
+materialises the spec into a typed `KompendAgentBase[ResultT, DepsT]` subclass
+(cached by name) and applies the spec's scalar defaults only where the call
+site did not pass a value. Call sites may keep instantiating the typed class
+directly when that reads better; the spec is the declaration, not a
+construction mandate.
+
+```python
+from kompend.agents.base import build_agent
+from kompend.agents.deps import PipelineAgentDeps
+
+agent = build_agent("extraction", model_string="ollama/gemma4:e2b")
+result = agent.run(PipelineAgentDeps(text=chunk, source_id=stem))
+```
+
 ### Base class
 
 All agents inherit from `KompendAgentBase[ResultT, DepsT]` — a kompend wrapper around
@@ -31,115 +56,113 @@ All agents inherit from `KompendAgentBase[ResultT, DepsT]` — a kompend wrapper
 
 - **Model bridge** — builds a [`KompendModel`](#kompendmodel) from a
   `provider/model` string.
-- **Typed result and deps** — the two generic parameters supply the output
-  schema (`ResultT`) and the run context dataclass (`DepsT`). They are resolved
-  at construction and handed to pydantic-ai as the agent's `output_type`; there
-  is no separate `result_type` class attribute to set.
+- **Typed result and deps** — the `AgentSpec` supplies the output schema
+  (`result_type`) and the run-context dataclass (`deps_type`); the base hands
+  them to pydantic-ai as `output_type`. PydanticAI validates and retries on
+  mismatch, so the spec never relies on its non-validating `output_schema`
+  form.
 - **Template-driven prompts** — system and user prompts are Jinja2
   templates loaded by `TemplateLoader`. No prompt text lives in Python.
+- **Prompt hooks** — agents whose prompt is computed rather than templated
+  declare `user_prompt` / `system_prompt` on the spec. The hook receives
+  `(agent, deps)`, so it can read `agent.rlm`, `agent.skills` and
+  `agent._template_loader`; `install_hooks()` installs it on the materialised
+  class. Never override `render_*` or `validate_output` in a concrete class.
 - **Skill injection** — user-defined skills are appended to the system
   prompt at render time.
 - **Output validation + retry** — PydanticAI validates the LLM response
   against the output type; on mismatch, it sends actionable feedback and
-  retries up to `output_retries` times.
+  retries up to `output_retries` times. `validate_output` is installed from
+  the spec as a static hook.
 - **Usage tracking** — token usage is recorded per call for
   observability.
 - **Reasoning effort** — maps `reasoning_effort` config to the
   provider's thinking controls (e.g. `think=False` for Ollama).
-- **Tools and capabilities** — agentic subclasses pass `tools=` and
+- **Tools and capabilities** — agentic agents pass `tools=` and
   `AgenticHarness.build_capabilities()` to get a multi-turn tool loop.
 
-### How agents are wired into the pipeline
-
-Agents are constructed at the point of use, not via a global registry. Some are
-built directly by the stage that needs them; the agentic ones are built by a
-`make_agentic_*` factory that also attaches their tools and harness, and that
-factory is called by the CLI/MCP layer. Example (single-shot extraction):
-
-```python
-agent = ExtractionAgent(
-    model_string=self._model or "",
-    timeout=self._timeout,
-    skills=self._config.skills,
-    retries=self._config.llm.output_retries,
-    reasoning_effort=self._config.llm.reasoning_effort,
-)
-result = agent.run(PipelineAgentDeps(text=chunk, source_id=stem))
-```
-
-A class file existing is **not** evidence that it is wired: several agents are
-implemented but have no production construction site. The inventory below
-marks this explicitly, and wiring status is tracked in the epic `kompend-0iv2`.
+A class existing is **not** evidence that it is wired: the registry declares
+the definition, while production call sites still choose which agent to build
+and when. The inventory below is a map of the definitions, not a wiring claim.
 
 ---
 
 ## Agent inventory
 
-> `Output` / `Deps` are the `KompendAgentBase` generic parameters. `Template role`
-> is the `role:` value declared in the agent's prompt frontmatter. `Status` is
-> from a call-site scan: **wired** = a production construction site exists,
-> **not wired** = class/factory exists but production never constructs it,
-> **dead** = unreachable.
+`all_specs()` is the authoritative list; the tables below group the 37
+definitions by pipeline area. `Output` is the spec's `result_type` and `Deps`
+its `deps_type`.
 
-### Agentic agents (multi-turn, tool-using)
+### Compilation and references
 
-| Agent | Stage | Output | Deps | Template role | Status |
-|-------|-------|--------|------|---------------|--------|
-| `AgenticGenerationAgent` | Compilation T4 (page synthesis) | `GenerationOutput` | `ToolGenerationDeps` | `compile.generate` | wired |
-| `AgenticRemediationAgent` | Lint (remediation) | `str` | `RemediationDeps` | `lint.remediate-agentic` | wired |
-| `AgenticVerificationAgent` | Trust (claim verification) | `str` | `VerificationDeps` | `lint.verify-agentic` | wired |
-| `AgenticOverviewAgent` | Output (overview synthesis) | `str` | `OverviewDeps` | `output.synthesize-agentic` | wired |
-| `AgenticWriteAgent` | Capture (`write`) | `str` | `WriteDeps` | `capture.write-agentic` | wired |
-| `AgenticDistillAgent` | Capture (`distill`) | `str` | `DistillAgentDeps` | `capture.distill.agentic` | wired |
-| `AgenticQueryAgent` | Query synthesis | `str` | `QueryAgentDeps` | `search.query.agentic` | wired |
-| `AgenticSummarizerAgent` | Chunking (internal-node summaries) | `str` | `SummarizerDeps` | — | not wired |
-| `AgenticContextChunkAgent` | Chunking (contextual retrieval) | `str` | `ContextChunkDeps` | — | not wired |
+| Spec | Output | Deps |
+|------|--------|------|
+| `extraction` | `ExtractionOutput` | `PipelineAgentDeps` |
+| `extraction_reduce` | `ExtractionOutput` | `PipelineAgentDeps` |
+| `agentic_generation` | `GenerationOutput` | `ToolGenerationDeps` |
+| `reference_extraction` | `ReferenceExtractionOutput` | `PipelineAgentDeps` |
+| `reference_resolver` | `ReferenceResolutionOutput` | `PipelineAgentDeps` |
+| `memory_consolidation` | `str` | `MemoryConsolidationDeps` |
+| `remediation` | `str` | `PipelineAgentDeps` |
+| `agentic_remediation` | `str` | `RemediationDeps` |
+| `verification` | `dict[str, Any]` | `PipelineAgentDeps` |
+| `agentic_verification` | `str` | `VerificationDeps` |
+| `wicer_probe` | `WicerProbeOutput` | `WicerProbeDeps` |
+| `wicer_evaluate` | `WicerEvaluateOutput` | `WicerEvaluateDeps` |
+| `wicer_diagnose` | `WicerDiagnoseOutput` | `WicerDiagnoseDeps` |
 
-### Single-shot agents
+### Capture and organize
 
-| Agent | Stage | Output | Deps | Template role | Status |
-|-------|-------|--------|------|---------------|--------|
-| `ExtractionAgent` | Compilation T3 (extraction) | `ExtractionOutput` | `PipelineAgentDeps` | `compile.extract` | wired |
-| `ExtractionReduceAgent` | Compilation T3 (map-reduce) | `ExtractionOutput` | `PipelineAgentDeps` | `compile.extract.reduce` | wired |
-| `ReferenceExtractionAgent` | Compilation (references) | `ReferenceExtractionOutput` | `PipelineAgentDeps` | `compile.references` | wired |
-| `ReferenceResolverAgent` | References (resolve) | `ReferenceResolutionOutput` | `PipelineAgentDeps` | `compile.references` | wired |
-| `WicerProbeAgent` | WiCER probe | `WicerProbeOutput` | `WicerProbeDeps` | `wicer.probe` | wired |
-| `WicerEvaluateAgent` | WiCER judge | `WicerEvaluateOutput` | `WicerEvaluateDeps` | `wicer.judge` | wired |
-| `WicerDiagnoseAgent` | WiCER refine | `WicerDiagnoseOutput` | `WicerDiagnoseDeps` | `wicer.refine` | wired |
-| `QueryAgent` | Query synthesis (non-agentic path) | `str` | `QueryDeps` | — | wired |
-| `QueryExpansionAgent` | Search (query expansion) | `QueryExpansionOutput` | `PipelineAgentDeps` | `search.expand` | wired |
-| `CragGradeAgent` | Search (CRAG grading) | `CragGradeOutput` | `PipelineAgentDeps` | — | wired |
-| `HydeAgent` | Search (HyDE) | `str` | `PipelineAgentDeps` | — | wired |
-| `VlmAgent` | Resolution (figure captioning) | `str` | `VlmDeps` | — | wired |
-| `CaptureAgent` | Capture | `CaptureOutput` | `PipelineAgentDeps` | `capture` | wired |
-| `DistillAgent` | Capture (distill, single-shot) | `DistillOutput` | `DistillDeps` | `capture.distill` | wired |
-| `CategorizeAgent` | Organize | `CategoryTree` | `CategorizeDeps` | `organize.categorize` | wired |
-| `LintRuleAgent` | Lint rules | `BaseModel \| str` | `PipelineAgentDeps` | `lint.*` | wired |
-| `DoctorAgent` | Doctor diagnostics | `str` | `DoctorDeps` | — | wired |
-| `WriteAgent` | Capture (`write`, single-shot) | `str` | `PipelineAgentDeps` | — | wired |
+| Spec | Output | Deps |
+|------|--------|------|
+| `capture` | `CaptureOutput` | `PipelineAgentDeps` |
+| `distill` | `DistillOutput` | `DistillDeps` |
+| `agentic_distill` | `str` | `DistillAgentDeps` |
+| `write` | `str` | `PipelineAgentDeps` |
+| `agentic_write` | `str` | `WriteDeps` |
+| `categorize` | `CategoryTree` | `CategorizeDeps` |
 
-### Implemented but not wired
+### Search and query
 
-These classes exist and are accepted by their consuming component, but no
-production path constructs them. Do not describe them as live pipeline stages.
+| Spec | Output | Deps |
+|------|--------|------|
+| `query` | `str` | `QueryDeps` |
+| `agentic_query` | `str` | `QueryAgentDeps` |
+| `query_expansion` | `QueryExpansionOutput` | `PipelineAgentDeps` |
+| `crag_grade` | `CragGradeOutput` | `PipelineAgentDeps` |
+| `hyde` | `str` | `PipelineAgentDeps` |
+| `query_intent` | `QueryIntentDecision` | `QueryIntentDeps` |
 
-| Agent | Stage | Output | Deps | Notes |
-|-------|-------|--------|------|-------|
-| `RemediationAgent` | Lint (remediation) | `str` | `PipelineAgentDeps` | Superseded by `AgenticRemediationAgent`; only the agentic factory has callers. |
-| `VerificationAgent` | Trust (verification) | `dict[str, Any]` | `PipelineAgentDeps` | Superseded by `AgenticVerificationAgent`. |
-| `SummarizerAgent` | Chunking (summaries) | `str` | `PipelineAgentDeps` | `NodeSummarizer` accepts it, but `build_pipeline` constructs `NodeSummarizer` without an agent. |
-| `ContextChunkAgent` | Chunking (contextual retrieval) | `str` | `PipelineAgentDeps` | `ContextualEnricher` accepts it, but is constructed only in tests. |
-| `AgenticSummarizerAgent` | Chunking (summaries) | `str` | `SummarizerDeps` | Factory `make_agentic_summarizer_agent()` has no caller. |
-| `AgenticContextChunkAgent` | Chunking (contextual retrieval) | `str` | `ContextChunkDeps` | Factory `make_agentic_context_chunk_agent()` has no caller. |
+### Decision sidecar
 
-### Dead (superseded, unreachable)
+| Spec | Output | Deps |
+|------|--------|------|
+| `decision` | `ErrorDecision` | `DecisionDeps` |
+| `adaptation` | `ErrorDecision` | `DecisionDeps` |
+| `figure_relevance` | `FigureRelevanceDecision` | `FigureRelevanceDeps` |
 
-| Agent | Output | Deps | Notes |
-|-------|--------|------|-------|
-| `WikiIndexAgent` | `dict[str, Any]` | `PipelineAgentDeps` | No construction site; superseded by `AgenticOverviewAgent`. |
+`query_intent` is listed with the search specs above; all four run only when
+`[decision] enabled = true`. See
+[Decision model](../guides/llm-config.md#decision-model-optional-sidecar).
 
-The legacy template `GenerationAgent` (and its `generate_all_pages()` loop) were
-removed in `kompend-0iv2.12`.
+### Chunking
+
+| Spec | Output | Deps |
+|------|--------|------|
+| `context_chunk` | `str` | `PipelineAgentDeps` |
+| `agentic_context_chunk` | `str` | `ContextChunkDeps` |
+| `summarizer` | `str` | `PipelineAgentDeps` |
+| `agentic_summarizer` | `str` | `SummarizerDeps` |
+
+### Output, diagnostics and vision
+
+| Spec | Output | Deps |
+|------|--------|------|
+| `wiki_index` | `dict[str, Any]` | `PipelineAgentDeps` |
+| `agentic_overview` | `str` | `OverviewDeps` |
+| `doctor` | `str` | `DoctorDeps` |
+| `vlm` | `str` | `VlmDeps` |
+| `lint_rule` | `BaseModel \| str` | `PipelineAgentDeps` |
 
 ### KompendModel
 
@@ -201,7 +224,7 @@ instructions = '''
 | Domain terminology, abbreviations, style rules | **Skill** (`compile.skills`) |
 | Change what the LLM is asked to do | **Template** (Jinja2 `.md.j2`) |
 | Change the output schema | **Output type** (`KompendAgentBase` generic parameter) |
-| Change which model is used | **`default_model`** (per-role overrides are not yet applied) |
+| Change which model is used | **`default_model`** (one model per run; per-role overrides were removed) |
 
 Skills are additive — they augment the system prompt without replacing
 it. Templates define the core instruction; skills provide additional
@@ -231,42 +254,66 @@ would be registered, and pipeline callers would need no change.
 
 ## Writing a new agent
 
-1. **Create the agent class** in `src/kompend/agents/<name>.py`. The result and
-   deps types are the generic parameters — do **not** declare a `result_type`
-   attribute:
+1. **Declare the spec** in `src/kompend/agents/<name>.py`:
+
+```python
+from typing import Final
+
+from kompend.agents.base import AgentSpec
+from kompend.agents.deps import PipelineAgentDeps
+from kompend.compilation.schema import MyOutput  # or define a Pydantic model
+
+SPEC: Final[AgentSpec] = AgentSpec(
+    name="my_agent",
+    result_type=MyOutput,
+    deps_type=PipelineAgentDeps,
+    template_name="my_prompt.md.j2",
+    system_template_name="my_system.md.j2",
+    template_prefix="compilation/",
+)
+```
+
+2. **Add the typed facade** — the class callers may instantiate directly:
 
 ```python
 from typing import ClassVar
 
-from kompend.agents.base import KompendAgentBase
-from kompend.agents.deps import PipelineAgentDeps
-from kompend.compilation.schema import MyOutput  # or define a Pydantic model
+from kompend.agents.base import AgentSpec, KompendAgentBase
 
 
 class MyAgent(KompendAgentBase[MyOutput, PipelineAgentDeps]):
     """One-line description of what this agent does."""
 
-    template_prefix: ClassVar[str] = "compilation/"
-    template_name: ClassVar[str] = "my_prompt.md.j2"
-    system_template_name: ClassVar[str] = "my_system.md.j2"
+    spec: ClassVar[AgentSpec | None] = SPEC
 ```
 
-2. **Create the Jinja2 templates** in `src/kompend/templates/<prefix>/`:
+3. **Register the name** in `src/kompend/agents/specs.py`: add a member to
+   `AgentName` and map it to the module in `_MODULES`. `get_spec("my_agent")`
+   then resolves `SPEC`, and `all_specs()` includes it.
+
+4. **Create the Jinja2 templates** in `src/kompend/templates/<prefix>/`:
 
    - `<name>_system.md.j2` — system prompt, with a `role:` in its frontmatter
    - `<name>_prompt.md.j2` — user prompt template (receives `deps`
      fields as Jinja2 variables)
 
    `template_prefix` must match the template's directory exactly — a mismatch
-   fails at render time (this has bitten agentic agents whose templates moved
-   between directories).
+   fails at render time.
 
-3. **Wire it** at the point of use (the stage that needs it), or add a
-   `make_agentic_<name>_agent` factory next to the class and call it from the
-   CLI/MCP layer. There is no central registry.
+5. **Computed prompts go on the spec.** If a template cannot express the
+   prompt, set `user_prompt` or `system_prompt` to a callable taking
+   `(agent, deps)`; `install_hooks()` installs it on the materialised class.
+   Output checks that must run after the model returns go in `validate_output`
+   with the signature `(ctx, output)`.
 
-4. **Export** the agent from `src/kompend/agents/__init__.py` if callers import it
-   from the package.
+6. **Wire it** with `build_agent("my_agent", model_string=...)` at the stage
+   that needs it, or instantiate `MyAgent(...)` directly when the call site
+   needs typed access. Add a `make_agentic_<name>_agent` factory only when the
+   agent needs the harness's tools and capabilities.
+
+7. **Export** the agent from `src/kompend/agents/__init__.py` if callers import
+   it from the package. `tests/unit/test_agent_specs.py` checks that every
+   registered spec materialises into a typed class with its hooks installed.
 
 See the [LLM Configuration guide](../guides/llm-config.md) for model
 strings, fallback chains, and reasoning-effort controls.
