@@ -149,6 +149,17 @@ def chunk_to_element(
 ) -> DocumentElement | None:
     """One IR chunk → one kompend element, or ``None`` when it carries no content."""
     element_type = CHUNK_KIND_TO_ELEMENT.get(chunk.kind, ElementType.TEXT)
+    if chunk.kind == ChunkKind.UNKNOWN and chunk.metadata.get(MetadataField.FRONTMATTER) == "true":
+        # parsecraft ships a document's YAML frontmatter as its own UNKNOWN
+        # chunk (verified against the installed 2026.11.7 wheel:
+        # ``adapters/markdown.py`` emits ``metadata={"frontmatter": "true"}``
+        # with the whole fence block as content). It is metadata, not prose:
+        # METADATA elements ride on ``ParsedDocument.elements`` but are
+        # skipped by the chunk-tree builder and export, so the YAML stays out
+        # of chunk text and retrieval. The flag itself stays in the IR — the
+        # element keeps ``parsecraft_kind``/``confidence`` and the metadata
+        # projection stays closed.
+        element_type = ElementType.METADATA
     content = chunk_content(chunk)
     metadata: dict[str, Any] = {
         MetadataField.PARSECRAFT_KIND: chunk.kind.value,

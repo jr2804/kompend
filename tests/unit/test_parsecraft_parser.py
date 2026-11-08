@@ -1400,6 +1400,46 @@ class TestChunkMetadataProjection:
         assert "context" not in chunk.metadata
         assert "list_type" not in chunk.metadata
 
+    def test_the_frontmatter_chunk_is_metadata_not_prose(self) -> None:
+        # parsecraft emits a document's YAML fence as an UNKNOWN chunk flagged
+        # ``frontmatter`` (adapters/markdown.py, installed 2026.11.7). The YAML
+        # is metadata: it rides on the parsed document but never becomes chunk
+        # text, so retrieval and generation never see it as the first paragraph.
+        chunk = _assets().chunk_to_element(
+            StructuredChunk(
+                id="md-0000-unknown",
+                kind=ChunkKind.UNKNOWN,
+                content="---\ntitle: Doc\n---",
+                page_number=1,
+                reading_order=0,
+                metadata={"frontmatter": "true"},
+            ),
+            Path("doc.md"),
+            0,
+        )
+        assert chunk is not None
+        assert chunk.type is ElementType.METADATA
+        assert chunk.content == "---\ntitle: Doc\n---"
+        # The flag stays in the IR; the element projection stays closed.
+        assert chunk.metadata[MetadataField.PARSECRAFT_KIND] == "unknown"
+        assert "frontmatter" not in chunk.metadata
+
+    def test_an_unflagged_unknown_chunk_is_still_text(self) -> None:
+        chunk = _assets().chunk_to_element(
+            StructuredChunk(
+                id="md-0001-unknown",
+                kind=ChunkKind.UNKNOWN,
+                content="stray block",
+                page_number=1,
+                reading_order=1,
+                metadata={},
+            ),
+            Path("doc.md"),
+            1,
+        )
+        assert chunk is not None
+        assert chunk.type is ElementType.TEXT
+
     def test_an_asset_no_chunk_claims_becomes_its_own_element(self, tmp_path: Path) -> None:
         document = _document([_page_with_asset(_text_chunk(), "asset-1")])
         elements = _assets().map_document(document, Path("doc.pdf"), images=_store(tmp_path, ImageMode.FILE))
