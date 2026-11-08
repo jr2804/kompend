@@ -27,17 +27,6 @@ __all__ = ["UNSLUGGED_PAGE", "PageLayoutMixin", "bundle_path", "page_stem"]
 UNSLUGGED_PAGE: Final[str] = "untitled"
 
 
-def page_stem(slug: str) -> str:
-    """Filename stem for a page slug, falling back to :data:`UNSLUGGED_PAGE`."""
-    return slug or UNSLUGGED_PAGE
-
-
-def bundle_path(folder: str, slug: str) -> str:
-    """Bundle-relative markdown path for the page *slug* in *folder*."""
-    name = page_stem(slug)
-    return f"{folder}/{name}.md" if folder else f"{name}.md"
-
-
 class PageLayoutMixin:
     """Vault-relative page routing shared by the writers and the index pages."""
 
@@ -59,3 +48,14 @@ class PageLayoutMixin:
         if folder and sub:
             return f"{folder}/{sub}"
         return folder
+
+
+def bundle_path(folder: str, slug: str) -> str:
+    """Bundle-relative markdown path for the page *slug* in *folder*."""
+    name = page_stem(slug)
+    return f"{folder}/{name}.md" if folder else f"{name}.md"
+
+
+def page_stem(slug: str) -> str:
+    """Filename stem for a page slug, falling back to :data:`UNSLUGGED_PAGE`."""
+    return slug or UNSLUGGED_PAGE

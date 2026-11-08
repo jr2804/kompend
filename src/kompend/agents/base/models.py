@@ -1,3 +1,5 @@
+# pyreorder: off — the TYPE_CHECKING import below is deliberate: base.agent
+# imports these helpers, so a runtime import would close a cycle. Keep the guard.
 """Model wiring for the agent base: top-level model and output ceilings.
 
 ``build_top_level_model`` builds the failover chain wrapped in

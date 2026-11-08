@@ -16,18 +16,6 @@ from kompend.core.reporting.parse_quality import (
 )
 
 
-def _doc(*blocks: str, pages: int = 1) -> ParsedDocument:
-    return ParsedDocument(
-        source_file=Path("paper.md"),
-        elements=[DocumentElement(type=ElementType.TEXT, content=block) for block in blocks],
-        page_count=pages,
-    )
-
-
-def _quality(doc: ParsedDocument, *, source: str = "paper.md", sha: str = "abc") -> ParseQuality:
-    return measure_parse_quality(doc, source=source, sha=sha, parser="docling", backend="Docling")
-
-
 def test_replacement_ratio_flags_a_garbled_document() -> None:
     doc = _doc("a" * 100 + "\ufffd" * 10, "b" * 100 + "\ufffd" * 10)
 
@@ -100,6 +88,18 @@ def test_ledger_round_trip_keeps_the_latest_row(tmp_path: Path) -> None:
     current = next(row for row in rows if row.source == "paper.md")
     assert current.text_chars == 400
     assert current.suspicious is False
+
+
+def _doc(*blocks: str, pages: int = 1) -> ParsedDocument:
+    return ParsedDocument(
+        source_file=Path("paper.md"),
+        elements=[DocumentElement(type=ElementType.TEXT, content=block) for block in blocks],
+        page_count=pages,
+    )
+
+
+def _quality(doc: ParsedDocument, *, source: str = "paper.md", sha: str = "abc") -> ParseQuality:
+    return measure_parse_quality(doc, source=source, sha=sha, parser="docling", backend="Docling")
 
 
 def test_missing_store_reads_as_empty(tmp_path: Path) -> None:

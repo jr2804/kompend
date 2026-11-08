@@ -53,6 +53,10 @@ surface, so importers never name a submodule:
 | `base/retries.py` | transient-retry loop, failure mapping, cache-rejection sniffing, session limits |
 | `base/delta_retry.py` | the delta-retry salvage hook and its six helpers |
 
+Four modules (`context.py`, `delta_retry.py`, `models.py`, `retries.py`) carry
+`# pyreorder: off`: `base/agent.py` imports their builders, so their
+`TYPE_CHECKING` import of `KompendAgentBase` is deliberate — keep the guard.
+
 The base class provides:
 
 - **Model bridge** — `KompendModel` wraps a native pydantic-ai `Model`
@@ -87,25 +91,21 @@ The base class provides:
   `rlm_context_field` deps value is replaced in rendered prompts by
   `RLM_CONTEXT_PLACEHOLDER` (the deps keep the full value for the REPL).
   Disabled by default (`rlm=False`).
-- **Skill injection** — user-defined skills from `compile.skills` are
-  appended to the system prompt under `## Skill: <name>` headings
+- **Skill injection** — `compile.skills` entries are appended to the system
+  prompt under `## Skill: <name>` headings
 - **Output validation + retry** — PydanticAI validates against
   `result_type`; `ModelRetry` triggers a retry with feedback
 - **Usage tracking** — token usage recorded per call
-- **Usage limits** — `run()`/`run_with_messages()` pass
-  `_usage_limits_for(deps)` (default: the RLM preset limits, else None →
-  pydantic-ai's implicit 50-request cap). Every session agent overrides the
-  hook through `_session_limits(units=…, per_unit=…)` — one formula: planned
-  turns + a fixed 2-request session cost + `_retry_requests()` (resolved
-  tool+output budgets — unbudgeted retries abort on the first retried call),
-  scaled by `headroom_frac`. Only the unit count and per-unit cost are per
-  agent (nodes and groups from `budget.*`, the rest class constants). A
-  session counts progress only for ids in its own payload; `summarize_node`
-  rejects unknown ids with `ModelRetry`. Unsummarized nodes are re-requested
-  caller-side (`NodeSummarizer`, per `SummarizerSessionPolicy` from
-  `budget.summary_session_*`).
-- **Reasoning effort** — config string mapped to provider thinking
-  controls (e.g. `think=False` for Ollama)
+- **Usage limits** — `run()`/`run_with_messages()` pass `_usage_limits_for(deps)`
+  (default: the RLM preset limits, else None → pydantic-ai's implicit
+  50-request cap). Session agents override `_session_limits(units=…,
+  per_unit=…)`: planned turns + a fixed 2-request cost + `_retry_requests()`,
+  scaled by `headroom_frac` (unit count and per-unit cost from `budget.*`,
+  the rest class constants). A session counts progress only for ids in its own
+  payload; `summarize_node` rejects unknown ids with `ModelRetry`, and
+  `NodeSummarizer` re-requests unsummarized nodes per `SummarizerSessionPolicy`.
+- **Reasoning effort** — config string mapped to provider thinking controls
+  (e.g. `think=False` for Ollama)
 - **VLM captioning** — `VlmAgent` sends a LIST user prompt: the rendered
   template plus the image bytes as `BinaryContent`. Its deps carry the
   image path and the figure's surroundings, never a ready-made prompt.
@@ -232,8 +232,8 @@ it mirrors untrusted model output.
   Pipeline code imports an agent class and calls `agent.run(deps)`.
 - **No `litellm` imports.** Model construction goes through
   `kompend.llm.models.build_model()`.
-- **Roles.** Every agent corresponds to an `LLMRole` enum value in
-  `kompend.llm.roles`. Add new roles there when adding new agents.
+- **Roles.** Every agent names an `LLMRole` value from `kompend.llm.roles`; add
+  one there when adding an agent.
 - **Export new agents** from `__init__.py`; **result types** live in the
   consuming module (e.g. `kompend.compilation.schema.ExtractionOutput`).
   The package surface is attached **lazily** (`lazy_loader.attach`, mirroring
@@ -244,7 +244,7 @@ it mirrors untrusted model output.
 
 ## Relationship to other layers
 
-Distinct from `kompend/acp/` (the editor protocol adapter). Stack: editor
-request → `kompend/acp/` → MCP tools → pipeline → **these** PydanticAI
-agents. See `docs/reference/pydantic-ai-agents.md` for per-role model
-overrides, skills and how to write a new agent.
+Distinct from `kompend/acp/` (the editor protocol adapter): editor request →
+`kompend/acp/` → MCP tools → pipeline → **these** agents. See
+`docs/reference/pydantic-ai-agents.md` for per-role model overrides, skills and
+how to write a new agent.

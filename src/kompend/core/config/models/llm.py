@@ -6,32 +6,12 @@ from typing import Annotated, Final
 
 from pydantic import BeforeValidator, Field
 
-from kompend.core.config._configs import (
-    ContextManagerPreset,
-    ExtractionStrategy,
-    LlmApiType,
-    LlmMemoryStore,
-    ReasoningEffort,
-)
+from kompend.core.config.enums import ContextManagerPreset, ExtractionStrategy, LlmApiType, LlmMemoryStore, ReasoningEffort
 from kompend.core.config.models._base import _KompendBaseModel
 from kompend.core.keys import EnvVar
 from kompend.core.vocab import LlmDataFormat
 
 _CONTEXT_OFF_WORDS: Final[frozenset[str]] = frozenset({"", "off", "false", "none", "no"})
-
-
-def _coerce_context_manager(value: object) -> object:
-    """Normalize a raw ``compile.llm.context_manager`` value for the schema.
-
-    Strings are matched against the off-words (→ ``False``) and the preset
-    members; anything else passes through for pydantic to validate.
-    """
-    if isinstance(value, str):
-        normalized = value.strip().lower()
-        if normalized in _CONTEXT_OFF_WORDS:
-            return False
-        return ContextManagerPreset(normalized)
-    return value
 
 
 class RlmConfig(_KompendBaseModel):
@@ -208,3 +188,17 @@ class ProviderEndpoint(_KompendBaseModel):
         default=None,
         description="Max parallel LLM connections to this provider (client-side). Clips compile.workers when set. None = no limit",
     )
+
+
+def _coerce_context_manager(value: object) -> object:
+    """Normalize a raw ``compile.llm.context_manager`` value for the schema.
+
+    Strings are matched against the off-words (→ ``False``) and the preset
+    members; anything else passes through for pydantic to validate.
+    """
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in _CONTEXT_OFF_WORDS:
+            return False
+        return ContextManagerPreset(normalized)
+    return value

@@ -27,18 +27,6 @@ from kompend.rag.vector_store import EMBED_TEXT_VERSION, content_hash
 logger = get_logger(__name__)
 
 
-def manifest_db_path(db_file: Path) -> Path:
-    """``kompend.db`` beside the vector store — home of the index manifest row.
-
-    The vectors file always sits in the vault's ``.kompend/`` next to the
-    single non-vector store, so the manifest is a row there instead of a
-    loose JSON sidecar: ``.kompend/`` holds one state file, not a scattering
-    of state files.  The vector branch itself (the store file) stays separate
-    and regenerable.
-    """
-    return db_file.parent / KOMP_DB_FILE
-
-
 def write_manifest(db_file: Path, nodes: list[WikiNode], model_id: str) -> None:
     """Record the indexed id set, content hashes, embed-text version, model and backend."""
     ids = sorted(node.id for node in nodes)
@@ -67,6 +55,18 @@ def write_manifest(db_file: Path, nodes: list[WikiNode], model_id: str) -> None:
             manifest_db_path(db_file),
             exc,
         )
+
+
+def manifest_db_path(db_file: Path) -> Path:
+    """``kompend.db`` beside the vector store — home of the index manifest row.
+
+    The vectors file always sits in the vault's ``.kompend/`` next to the
+    single non-vector store, so the manifest is a row there instead of a
+    loose JSON sidecar: ``.kompend/`` holds one state file, not a scattering
+    of state files.  The vector branch itself (the store file) stays separate
+    and regenerable.
+    """
+    return db_file.parent / KOMP_DB_FILE
 
 
 def read_manifest(manifest_db: Path) -> sqlite3.Row | None:

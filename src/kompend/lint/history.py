@@ -95,6 +95,18 @@ class LintEntry(BaseModel):
     wiki_meta: LintWikiMeta
     report: LintReportPayload
 
+    def to_columns(self) -> tuple[object, ...]:
+        """Serialise to the ``_COLUMNS`` values of one ``lint_runs`` row."""
+        return (
+            self.timestamp,
+            self.duration_seconds,
+            _json_column(self.options),
+            _json_column(self.llm) if self.llm is not None else None,
+            _json_column(self.config_snapshot),
+            _json_column(self.wiki_meta),
+            _json_column(self.report),
+        )
+
     @classmethod
     def from_row(cls, row: sqlite3.Row | Mapping[str, Any]) -> LintEntry:
         """Rebuild an entry from a ``lint_runs`` row, validating every JSON column.
@@ -112,18 +124,6 @@ class LintEntry(BaseModel):
                 "wiki_meta": json.loads(row["wiki_meta"]),
                 "report": json.loads(row["report"]),
             }
-        )
-
-    def to_columns(self) -> tuple[object, ...]:
-        """Serialise to the ``_COLUMNS`` values of one ``lint_runs`` row."""
-        return (
-            self.timestamp,
-            self.duration_seconds,
-            _json_column(self.options),
-            _json_column(self.llm) if self.llm is not None else None,
-            _json_column(self.config_snapshot),
-            _json_column(self.wiki_meta),
-            _json_column(self.report),
         )
 
 

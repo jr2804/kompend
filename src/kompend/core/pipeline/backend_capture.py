@@ -36,7 +36,31 @@ from typing import Final, TextIO
 
 from kompend.logging import get_logger
 
+#: Banner lines kept per parse. Progress-bar chatter (``\r`` updates) and
+#: model-loading walls stop here; the count is summarised in one record.
+DEFAULT_MAX_BANNER_LINES: Final[int] = 100
+
+#: Per-line character ceiling. A banner is diagnostic output, not an LLM
+#: payload — a pathological multi-megabyte line must not dominate the run log.
+_MAX_LINE_CHARS: Final[int] = 4000
+
+_UNKNOWN_BACKEND: Final[str] = "unknown-backend"
+
 logger = get_logger(__name__)
+
+
+_install_lock = threading.Lock()
+
+
+#: Install/restore discipline for the process streams. First capture in
+#: installs the writers, last one out restores the originals; concurrent
+#: captures (compile pool threads) share one installation. One mutable
+#: holder keeps the discipline without module-level rebinding.
+@dataclass
+class _InstallState:
+    depth: int = 0
+    stdout: TextIO | None = None
+    stderr: TextIO | None = None
 
 
 def backend_name(backend: object) -> str:
@@ -55,66 +79,11 @@ def backend_name(backend: object) -> str:
     return type(backend).__name__
 
 
-#: Banner lines kept per parse. Progress-bar chatter (``\r`` updates) and
-#: model-loading walls stop here; the count is summarised in one record.
-DEFAULT_MAX_BANNER_LINES: Final[int] = 100
-
-#: Per-line character ceiling. A banner is diagnostic output, not an LLM
-#: payload — a pathological multi-megabyte line must not dominate the run log.
-_MAX_LINE_CHARS: Final[int] = 4000
-
-_UNKNOWN_BACKEND: Final[str] = "unknown-backend"
-
-
-#: Install/restore discipline for the process streams. First capture in
-#: installs the writers, last one out restores the originals; concurrent
-#: captures (compile pool threads) share one installation. One mutable
-#: holder keeps the discipline without module-level rebinding.
-@dataclass
-class _InstallState:
-    depth: int = 0
-    stdout: TextIO | None = None
-    stderr: TextIO | None = None
-
-
-_install_lock = threading.Lock()
 _install = _InstallState()
 
 #: Per-thread capture stack. The top of the stack is the parse this thread is
 #: currently inside; a write is captured only when the writing thread has one.
 _tls = threading.local()
-
-
-class _CapturingWriter:
-    """Stream replacement that records writes from registered threads.
-
-    Everything else — ``isatty``, ``fileno``, ``encoding`` — delegates to the
-    wrapped stream so backend capability probes keep their old answers.
-    """
-
-    __slots__ = ("_fallback", "_is_stderr")
-
-    def __init__(self, fallback: TextIO, *, is_stderr: bool) -> None:
-        self._fallback = fallback
-        self._is_stderr = is_stderr
-
-    def write(self, text: str) -> int:
-        """Record *text* for the capturing thread; pass strangers through."""
-        state = _current_state()
-        if state is None:
-            return self._fallback.write(text)
-        state.record(text, is_stderr=self._is_stderr)
-        return len(text)
-
-    def writelines(self, lines: Iterable[str]) -> None:
-        for line in lines:
-            self.write(line)
-
-    def flush(self) -> None:
-        """Flush the fallback; captured output lives in memory, not a pipe."""
-
-    def __getattr__(self, name: str) -> object:
-        return getattr(self._fallback, name)
 
 
 @dataclass
@@ -162,6 +131,38 @@ class BackendBanners:
             self.suppressed += 1
             return
         self.lines.append(stripped[:_MAX_LINE_CHARS])
+
+
+class _CapturingWriter:
+    """Stream replacement that records writes from registered threads.
+
+    Everything else — ``isatty``, ``fileno``, ``encoding`` — delegates to the
+    wrapped stream so backend capability probes keep their old answers.
+    """
+
+    __slots__ = ("_fallback", "_is_stderr")
+
+    def __init__(self, fallback: TextIO, *, is_stderr: bool) -> None:
+        self._fallback = fallback
+        self._is_stderr = is_stderr
+
+    def write(self, text: str) -> int:
+        """Record *text* for the capturing thread; pass strangers through."""
+        state = _current_state()
+        if state is None:
+            return self._fallback.write(text)
+        state.record(text, is_stderr=self._is_stderr)
+        return len(text)
+
+    def writelines(self, lines: Iterable[str]) -> None:
+        for line in lines:
+            self.write(line)
+
+    def flush(self) -> None:
+        """Flush the fallback; captured output lives in memory, not a pipe."""
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._fallback, name)
 
 
 def _visible_segment(line: str) -> str:
@@ -212,6 +213,11 @@ def capture_backend_output(banners: BackendBanners) -> Generator[BackendBanners]
                 _install.stderr = None
 
 
+def log_backend_banners(banners: BackendBanners) -> None:
+    """Log a finished collector in the process that ran the parse."""
+    log_banner_lines(banners.lines, suppressed=banners.suppressed, source=banners.source, backend=banners.backend)
+
+
 def log_banner_lines(
     lines: Iterable[str],
     *,
@@ -234,8 +240,3 @@ def log_banner_lines(
             source,
             suppressed,
         )
-
-
-def log_backend_banners(banners: BackendBanners) -> None:
-    """Log a finished collector in the process that ran the parse."""
-    log_banner_lines(banners.lines, suppressed=banners.suppressed, source=banners.source, backend=banners.backend)

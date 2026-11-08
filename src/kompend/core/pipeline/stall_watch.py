@@ -29,8 +29,6 @@ from typing import Final
 
 from kompend.logging import get_logger
 
-logger = get_logger(__name__)
-
 #: Default seconds without a beat before an item is flagged. Matches the
 #: scale users tolerate for a large PDF before wondering whether it hung.
 DEFAULT_STALL_WARN_S: Final[float] = 30.0
@@ -39,6 +37,8 @@ DEFAULT_STALL_WARN_S: Final[float] = 30.0
 #: still fire roughly on time, slow enough to be invisible at defaults.
 _MIN_TICK_S: Final[float] = 0.05
 _MAX_TICK_S: Final[float] = 5.0
+
+logger = get_logger(__name__)
 
 
 class WatchStage(StrEnum):

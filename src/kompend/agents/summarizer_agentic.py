@@ -25,8 +25,6 @@ from kompend.core.templates import get_template_loader
 #: ``_REMINDER_INTERVAL`` — same rationale: long tool sessions drift).
 _REMINDER_INTERVAL: int = 10
 
-_loader = get_template_loader()
-
 
 SPEC: Final[AgentSpec] = AgentSpec(
     name="agentic_summarizer",
@@ -36,6 +34,8 @@ SPEC: Final[AgentSpec] = AgentSpec(
     system_template_name="summarizer_agentic_system.md.j2",
     template_prefix="chunking/",
 )
+
+_loader = get_template_loader()
 
 
 @dataclass

@@ -1,3 +1,5 @@
+# pyreorder: off — the TYPE_CHECKING import below is deliberate: base.agent
+# imports these helpers, so a runtime import would close a cycle. Keep the guard.
 """Delta-retry salvage: recover partial outputs on retry.
 
 When an agentic agent produces an output that almost validates — a few

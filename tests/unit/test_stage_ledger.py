@@ -47,15 +47,6 @@ class _LedgerParser:
         return _LedgerBackend()
 
 
-def _db(tmp_path: Path) -> Path:
-    return tmp_path / ".kompend" / "kompend.db"
-
-
-def _rows(db: Path, run_id: str) -> list[sqlite3.Row]:
-    with open_store(db) as conn:
-        return conn.execute(f"SELECT * FROM {STAGES_TABLE} WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
-
-
 def test_record_roundtrips_every_column(tmp_path: Path) -> None:
     db = _db(tmp_path)
     with stage_ledger(db) as ledger:
@@ -223,3 +214,12 @@ def test_ingest_documents_fills_the_ledger(tmp_path: Path) -> None:
     assert row["backend"] == "_LedgerBackend"
     assert len(row["sha"]) == 64
     assert row["size_bytes"] == len(b"# note\n")
+
+
+def _db(tmp_path: Path) -> Path:
+    return tmp_path / ".kompend" / "kompend.db"
+
+
+def _rows(db: Path, run_id: str) -> list[sqlite3.Row]:
+    with open_store(db) as conn:
+        return conn.execute(f"SELECT * FROM {STAGES_TABLE} WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()

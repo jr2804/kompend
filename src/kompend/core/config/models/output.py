@@ -7,33 +7,12 @@ from typing import Annotated, Any, Final
 
 from pydantic import BeforeValidator, Field
 
-from kompend.core.config._configs import Flavor, OutputFormat
+from kompend.core.config.enums import Flavor, OutputFormat
 from kompend.core.config.models._base import _KompendBaseModel
 from kompend.core.keys import EnvVar
 from kompend.core.vocab import ExportMode
 
 FLAVOR_ALIASES: Final[dict[str, Flavor]] = {"github": Flavor.GFM}  # nocheck: str-registry — product-name aliases are an open input domain
-
-
-def _coerce_flavor(value: object) -> object:
-    """Normalize a raw ``compile.output.flavor`` value for the schema.
-
-    Lowercases, resolves aliases, then lets pydantic validate against the
-    members; ``None`` passes through.
-    """
-    if isinstance(value, str) and value:
-        return FLAVOR_ALIASES.get(value.strip().lower(), value.strip().lower())
-    return value
-
-
-def resolve_flavor(value: str) -> Flavor:
-    """Resolve a programmatic flavor string to its member.
-
-    Applies the same alias handling as the config schema; raises
-    :class:`ValueError` for an unknown flavor.
-    """
-    normalized = FLAVOR_ALIASES.get(value.strip().lower(), value.strip().lower())
-    return Flavor(normalized)
 
 
 class OutputConfig(_KompendBaseModel):
@@ -81,3 +60,24 @@ class DisplayConfig(_KompendBaseModel):
     mcp_element_chars: int = Field(default=500, validation_alias=EnvVar.DISPLAY_MCP_ELEMENT_CHARS)
     web_nodes: int = Field(default=10, validation_alias=EnvVar.DISPLAY_WEB_NODES)
     search_snippet_chars: int = Field(default=300, validation_alias=EnvVar.DISPLAY_SEARCH_SNIPPET_CHARS)
+
+
+def _coerce_flavor(value: object) -> object:
+    """Normalize a raw ``compile.output.flavor`` value for the schema.
+
+    Lowercases, resolves aliases, then lets pydantic validate against the
+    members; ``None`` passes through.
+    """
+    if isinstance(value, str) and value:
+        return FLAVOR_ALIASES.get(value.strip().lower(), value.strip().lower())
+    return value
+
+
+def resolve_flavor(value: str) -> Flavor:
+    """Resolve a programmatic flavor string to its member.
+
+    Applies the same alias handling as the config schema; raises
+    :class:`ValueError` for an unknown flavor.
+    """
+    normalized = FLAVOR_ALIASES.get(value.strip().lower(), value.strip().lower())
+    return Flavor(normalized)

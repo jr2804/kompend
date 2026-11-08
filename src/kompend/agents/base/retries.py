@@ -1,3 +1,5 @@
+# pyreorder: off — the TYPE_CHECKING import below is deliberate: base.agent
+# imports these helpers, so a runtime import would close a cycle. Keep the guard.
 """Transient-retry policy, failure mapping and cache-rejection sniffing.
 
 The transient-retry loop (``invoke_agent`` and its helpers) retries transient

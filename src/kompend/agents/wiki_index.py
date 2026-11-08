@@ -21,12 +21,6 @@ SPEC_WIKI_INDEX: Final[AgentSpec] = AgentSpec(
 )
 
 
-class WikiIndexAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
-    """PydanticAI agent for generating wiki overview/index text."""
-
-    spec: ClassVar[AgentSpec | None] = SPEC_WIKI_INDEX
-
-
 SPEC_AGENTIC_OVERVIEW: Final[AgentSpec] = AgentSpec(
     name="agentic_overview",
     result_type=str,
@@ -36,6 +30,12 @@ SPEC_AGENTIC_OVERVIEW: Final[AgentSpec] = AgentSpec(
     template_prefix="output/",
     supports_delta_retry=True,
 )
+
+
+class WikiIndexAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
+    """PydanticAI agent for generating wiki overview/index text."""
+
+    spec: ClassVar[AgentSpec | None] = SPEC_WIKI_INDEX
 
 
 class AgenticOverviewAgent(KompendAgentBase[str, OverviewDeps]):

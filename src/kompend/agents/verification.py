@@ -25,12 +25,6 @@ SPEC_VERIFICATION: Final[AgentSpec] = AgentSpec(
 )
 
 
-class VerificationAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
-    """PydanticAI agent for verifying claims against source excerpts."""
-
-    spec: ClassVar[AgentSpec | None] = SPEC_VERIFICATION
-
-
 SPEC_AGENTIC_VERIFICATION: Final[AgentSpec] = AgentSpec(
     name="agentic_verification",
     result_type=str,
@@ -40,6 +34,12 @@ SPEC_AGENTIC_VERIFICATION: Final[AgentSpec] = AgentSpec(
     template_prefix="lint/",
     supports_delta_retry=True,
 )
+
+
+class VerificationAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
+    """PydanticAI agent for verifying claims against source excerpts."""
+
+    spec: ClassVar[AgentSpec | None] = SPEC_VERIFICATION
 
 
 class AgenticVerificationAgent(KompendAgentBase[str, VerificationDeps]):

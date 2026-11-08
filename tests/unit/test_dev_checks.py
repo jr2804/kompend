@@ -611,15 +611,6 @@ def _antipatterns() -> Any:
         sys.path.pop(0)
 
 
-def _runner() -> Any:
-    """Import the gate runner module (it lives outside the package tree)."""
-    sys.path.insert(0, str(CHECKS))
-    try:
-        return importlib.import_module("all")
-    finally:
-        sys.path.pop(0)
-
-
 def test_the_runner_tells_a_violation_from_an_unjudged_gate(tmp_path: Path) -> None:
     """Exit 1 is a violation; exit 2 is a gate that could not judge.
 
@@ -681,6 +672,15 @@ def test_the_vault_gate_is_given_a_subject_it_can_scan(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, f"the vault gate did not judge the vault:\n{result.stdout}\n{result.stderr}"
     assert "artifact(s) scanned" in result.stdout
+
+
+def _runner() -> Any:
+    """Import the gate runner module (it lives outside the package tree)."""
+    sys.path.insert(0, str(CHECKS))
+    try:
+        return importlib.import_module("all")
+    finally:
+        sys.path.pop(0)
 
 
 def _gate_command(code: int) -> list[str]:

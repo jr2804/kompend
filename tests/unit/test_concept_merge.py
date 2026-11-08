@@ -26,14 +26,8 @@ import pytest
 
 from kompend.compilation.flows.assembly import merge_similar_concepts
 
-
-def _concept(name: str, *sources: str, definition: str = "") -> dict[str, Any]:
-    """One concept candidate, as the extraction stage hands them over."""
-    return {
-        "name": name,
-        "sources": list(sources),
-        "definitions": [definition] if definition else [],
-    }
+#: The text each concept is embedded as ("<name>. <definition>").
+_VECTORS: dict[str, list[float]] = {}
 
 
 class _FakeProvider:
@@ -48,19 +42,6 @@ class _FakeProvider:
 
     def embed(self, text: str) -> list[float]:
         return self._vectors[text]
-
-
-@pytest.fixture
-def _patched_provider(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Install the fake provider wherever the merge looks it up."""
-    monkeypatch.setattr(
-        "kompend.compilation.flows.assembly.make_provider",
-        lambda _model: _FakeProvider(_VECTORS),
-    )
-
-
-#: The text each concept is embedded as ("<name>. <definition>").
-_VECTORS: dict[str, list[float]] = {}
 
 
 class TestCentroidLinkage:
@@ -285,3 +266,21 @@ class TestStringFallback:
 
         assert len(merged) == 2
         assert any("refused" in record.message for record in caplog.records)
+
+
+def _concept(name: str, *sources: str, definition: str = "") -> dict[str, Any]:
+    """One concept candidate, as the extraction stage hands them over."""
+    return {
+        "name": name,
+        "sources": list(sources),
+        "definitions": [definition] if definition else [],
+    }
+
+
+@pytest.fixture
+def _patched_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Install the fake provider wherever the merge looks it up."""
+    monkeypatch.setattr(
+        "kompend.compilation.flows.assembly.make_provider",
+        lambda _model: _FakeProvider(_VECTORS),
+    )

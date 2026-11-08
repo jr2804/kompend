@@ -18,24 +18,6 @@ class _BoomError(RuntimeError):
     """A parse failure with a stable message for the traceback assertion."""
 
 
-def _write_bundle(tmp_path: Path, source_file: Path, *, cache_key: str | None = None) -> Path | None:
-    return write_failure_bundle(
-        base_dir=tmp_path,
-        source="sources/paper.md",
-        source_file=source_file,
-        error=_BoomError("backend exploded"),
-        reason_code=ReasonCode.TIMEOUT,
-        stage="parse",
-        parser="parsecraft",
-        parser_version="1.2.3",
-        backend="DoclingBackend",
-        cache_key=cache_key,
-        sha="",
-        size_bytes=12,
-        detail="backend exploded after 900s",
-    )
-
-
 def test_bundle_directory_is_the_input_digest(tmp_path: Path) -> None:
     source = tmp_path / "paper.md"
     source.write_text("# Paper\n\nbody\n", encoding="utf-8")
@@ -135,6 +117,24 @@ def test_reason_codes_are_serialised_by_value(tmp_path: Path) -> None:
     assert bundle is not None
     meta = json.loads((bundle / "meta.json").read_text(encoding="utf-8"))
     assert meta["reason_code"] == "timeout"
+
+
+def _write_bundle(tmp_path: Path, source_file: Path, *, cache_key: str | None = None) -> Path | None:
+    return write_failure_bundle(
+        base_dir=tmp_path,
+        source="sources/paper.md",
+        source_file=source_file,
+        error=_BoomError("backend exploded"),
+        reason_code=ReasonCode.TIMEOUT,
+        stage="parse",
+        parser="parsecraft",
+        parser_version="1.2.3",
+        backend="DoclingBackend",
+        cache_key=cache_key,
+        sha="",
+        size_bytes=12,
+        detail="backend exploded after 900s",
+    )
 
 
 @pytest.mark.parametrize("reason", [ReasonCode.TIMEOUT, ReasonCode.BACKEND_UNAVAILABLE])

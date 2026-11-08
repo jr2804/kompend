@@ -1,3 +1,5 @@
+# pyreorder: off — the TYPE_CHECKING import below is deliberate: base.agent
+# imports these helpers, so a runtime import would close a cycle. Keep the guard.
 """Context-management and RLM capability assembly for the agent base.
 
 Turns the ``compile.context_manager`` / ``compile.llm.rlm`` config groups

@@ -88,17 +88,6 @@ SPEC_ADAPTATION: Final[AgentSpec] = AgentSpec(
 )
 
 
-class AdaptationAgent(DecisionAgent):
-    """Decision model for ambiguous generation failures (Loop 2).
-
-    Same verdict schema as error triage plus the shrink remedy: the model
-    sees the compact failure record and decides whether one more halving
-    is worth trying.
-    """
-
-    spec: ClassVar[AgentSpec | None] = SPEC_ADAPTATION
-
-
 @dataclass
 class QueryIntentDeps:
     """Deps for the query-intent decision.
@@ -114,6 +103,17 @@ class QueryIntentDeps:
     source_id: str = "query_intent"
 
 
+class AdaptationAgent(DecisionAgent):
+    """Decision model for ambiguous generation failures (Loop 2).
+
+    Same verdict schema as error triage plus the shrink remedy: the model
+    sees the compact failure record and decides whether one more halving
+    is worth trying.
+    """
+
+    spec: ClassVar[AgentSpec | None] = SPEC_ADAPTATION
+
+
 SPEC_QUERY_INTENT: Final[AgentSpec] = AgentSpec(
     name="query_intent",
     result_type=QueryIntentDecision,
@@ -124,6 +124,24 @@ SPEC_QUERY_INTENT: Final[AgentSpec] = AgentSpec(
     temperature=0.0,
     model_builder=build_decision_model,
 )
+
+
+@dataclass
+class FigureRelevanceDeps:
+    """Deps for the figure-relevance decision.
+
+    Attributes:
+        context: What surrounds the figure — the same rendering the caption
+            prompt gets (section, neighbouring text, contextual summary).
+            The figure image itself is never sent; the judgement is made
+            from the surrounding text alone.
+        source_id: Log/provenance label.
+        timeout: Per-call timeout in seconds.
+    """
+
+    context: str = ""
+    source_id: str = "vlm-relevance"
+    timeout: float = 10.0
 
 
 class QueryIntentAgent(KompendAgentBase[QueryIntentDecision, QueryIntentDeps]):
@@ -227,24 +245,6 @@ def decide_unit_adaptation(
     except Exception as exc:  # ponytail: a sidecar failure must never break the pipeline
         logger.warning("Decision model unavailable (%s) - falling back to the deterministic path", exc)
         return None
-
-
-@dataclass
-class FigureRelevanceDeps:
-    """Deps for the figure-relevance decision.
-
-    Attributes:
-        context: What surrounds the figure — the same rendering the caption
-            prompt gets (section, neighbouring text, contextual summary).
-            The figure image itself is never sent; the judgement is made
-            from the surrounding text alone.
-        source_id: Log/provenance label.
-        timeout: Per-call timeout in seconds.
-    """
-
-    context: str = ""
-    source_id: str = "vlm-relevance"
-    timeout: float = 10.0
 
 
 SPEC_FIGURE_RELEVANCE: Final[AgentSpec] = AgentSpec(

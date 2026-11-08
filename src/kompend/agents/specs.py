@@ -105,6 +105,16 @@ _MODULES: dict[AgentName, str] = {
 _CACHE: dict[str, AgentSpec] = {}
 
 
+def registered_names() -> tuple[str, ...]:
+    """Names known to the registry, in declaration order."""
+    return tuple(str(name) for name in _MODULES)
+
+
+def all_specs() -> dict[str, AgentSpec]:
+    """Resolve every registered spec (imports each declaring module once)."""
+    return {str(name): get_spec(name) for name in _MODULES}
+
+
 def get_spec(name: AgentName | str) -> AgentSpec:
     """Return the spec registered under *name*."""
     try:
@@ -128,13 +138,3 @@ def get_spec(name: AgentName | str) -> AgentSpec:
         raise KeyError(f"{module_path} does not declare an AgentSpec named {str(key)!r}")
     _CACHE[str(key)] = spec
     return spec
-
-
-def registered_names() -> tuple[str, ...]:
-    """Names known to the registry, in declaration order."""
-    return tuple(str(name) for name in _MODULES)
-
-
-def all_specs() -> dict[str, AgentSpec]:
-    """Resolve every registered spec (imports each declaring module once)."""
-    return {str(name): get_spec(name) for name in _MODULES}

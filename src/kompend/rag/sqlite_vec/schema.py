@@ -47,11 +47,6 @@ EMBEDDING_MODEL_COLUMN: Final[str] = "embedding_model"
 BACKEND_COLUMN: Final[str] = "backend"
 
 
-def schema_fingerprint(dim: int) -> str:
-    """Identity of the store's schema — a change forces a rebuild."""
-    return f"vec0:1:{dim}:{VEC_ITEMS}/{VEC_FTS}/{VEC_TAGS}/{VEC_ATTRIBUTES}/{VEC_ATTR_KEYS}"
-
-
 def create_schema(conn: sqlite3.Connection, dim: int, model_id: str) -> None:
     """(Re)create the store's tables.
 
@@ -120,3 +115,8 @@ def read_meta(conn: sqlite3.Connection, dim: int) -> bool:
     except sqlite3.Error:
         return False
     return rows.get("backend") == BACKEND and rows.get("dim") == str(dim) and rows.get("schema") == schema_fingerprint(dim)
+
+
+def schema_fingerprint(dim: int) -> str:
+    """Identity of the store's schema — a change forces a rebuild."""
+    return f"vec0:1:{dim}:{VEC_ITEMS}/{VEC_FTS}/{VEC_TAGS}/{VEC_ATTRIBUTES}/{VEC_ATTR_KEYS}"

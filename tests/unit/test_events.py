@@ -15,15 +15,6 @@ from kompend.core.pipeline.events import (
 from kompend.core.pipeline.stages.pipeline import WikiPipeline
 
 
-def _event(
-    phase: PipelinePhase = PipelinePhase.PARSE,
-    current: int = 0,
-    total: int = 3,
-    detail: str = "starting",
-) -> PipelineEvent:
-    return PipelineEvent.from_emit(phase.value, current, total, detail)
-
-
 class _ListSink:
     def __init__(self) -> None:
         self.events: list[PipelineEvent] = []
@@ -81,6 +72,15 @@ def test_bus_unsubscribe_is_idempotent() -> None:
     bus.publish(_event())
 
     assert len(sink.events) == 1
+
+
+def _event(
+    phase: PipelinePhase = PipelinePhase.PARSE,
+    current: int = 0,
+    total: int = 3,
+    detail: str = "starting",
+) -> PipelineEvent:
+    return PipelineEvent.from_emit(phase.value, current, total, detail)
 
 
 def test_emit_publishes_the_documented_ingest_sequence() -> None:

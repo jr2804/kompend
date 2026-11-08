@@ -32,9 +32,14 @@ through this package — no other module reads config files or env vars directly
   defined. Lives outside this package: `paths.py` reads env vars before the config
   package finishes loading. Enforced by `scripts/checks/check_antipatterns.py`
   (`ENV-VAR-LITERAL` rule).
-- `_configs.py` — `StrEnum` vocabularies only. Section models resolve lazily
-  through `models/` for the historical import path (`from
-  kompend.core.config._configs import BudgetConfig` still works).
+- `enums.py` — the config vocabulary (`Compiler`, `Tier`, `Flavor`,
+  `ReasoningEffort`, …) plus `TierInfo`. Imports nothing but the stdlib, so
+  the section models can depend on it without a cycle.
+- `_configs.py` — re-export shim only: the enums from `enums.py`, the section
+  models from `models/`, and the CLI vocabularies from `../vocab.py`, so the
+  historical path (`from kompend.core.config._configs import BudgetConfig`)
+  keeps working. Nothing is defined here; the dependency graph is
+  `enums` → nothing, `models` → `enums`, `_configs` → both.
 - `models/` — Section models, one module per config section:
   - `root.py` — `KompendConfig`, `PathsConfig`, `NotesConfig`, `TrustConfig`,
     and the single `DEFAULTS = KompendConfig().model_dump()`

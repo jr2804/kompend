@@ -52,11 +52,11 @@ from kompend.preprocessing.host_memory import (
 )
 from kompend.trust import filter_sensitive
 
-logger = get_logger(__name__)
-
 #: Shared inert watchdog (zero budget): call sites hand it around without
 #: branching on ``watchdog is None`` — every beat against it is a no-op.
 _INERT_WATCHDOG = StallWatchdog(0.0)
+
+logger = get_logger(__name__)
 
 
 def _dispatch_single_source(

@@ -26,14 +26,11 @@ class ErrorAction(StrEnum):
     ABORT = "abort"
 
 
-class ErrorDecision(BaseModel):
-    """A decision model's verdict on a failed pipeline step."""
+class FigureRelevanceVerdict(StrEnum):
+    """Whether a figure carries information worth a VLM caption."""
 
-    action: ErrorAction = Field(description="What the pipeline should do next with the failed unit of work.")
-    shrink: bool = Field(
-        default=False,
-        description="Retry the unit at half size. Only the generation shrink loop reads this; every other caller ignores it.",
-    )
+    INFORMATIVE = "informative"
+    DECORATIVE = "decorative"
 
 
 class QueryIntentVerdict(StrEnum):
@@ -51,17 +48,20 @@ class QueryIntentVerdict(StrEnum):
     OFFTOPIC = "offtopic"
 
 
+class ErrorDecision(BaseModel):
+    """A decision model's verdict on a failed pipeline step."""
+
+    action: ErrorAction = Field(description="What the pipeline should do next with the failed unit of work.")
+    shrink: bool = Field(
+        default=False,
+        description="Retry the unit at half size. Only the generation shrink loop reads this; every other caller ignores it.",
+    )
+
+
 class QueryIntentDecision(BaseModel):
     """A decision model's verdict on a user query's intent."""
 
     intent: QueryIntentVerdict = Field(description="What the user is asking for.")
-
-
-class FigureRelevanceVerdict(StrEnum):
-    """Whether a figure carries information worth a VLM caption."""
-
-    INFORMATIVE = "informative"
-    DECORATIVE = "decorative"
 
 
 class FigureRelevanceDecision(BaseModel):

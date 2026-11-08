@@ -41,10 +41,6 @@ from kompend.core.store.schema import SCHEMA_VERSION, apply_schema
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
 
-#: A gate step: ``(name, argv, extra_env)``. ``extra_env`` layers over the
-#: inherited environment for that subprocess only (``None`` inherits as-is).
-Step = tuple[str, list[str], dict[str, str] | None]
-
 #: The gate that scans a VAULT's persisted artifacts rather than the
 #: repository's source. The repository root is not a vault — it has no
 #: ``kompend.toml`` and its ``.kompend/`` is gitignored, so a fresh checkout
@@ -52,6 +48,10 @@ Step = tuple[str, list[str], dict[str, str] | None]
 #: nothing. The runner gives it a subject instead: a throwaway vault holding a
 #: real store, built from the repository's own schema code.
 VAULT_GATE = "persisted_paths"
+
+#: A gate step: ``(name, argv, extra_env)``. ``extra_env`` layers over the
+#: inherited environment for that subprocess only (``None`` inherits as-is).
+Step = tuple[str, list[str], dict[str, str] | None]
 
 
 def main() -> int:

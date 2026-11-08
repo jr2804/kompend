@@ -233,31 +233,6 @@ _SNAPSHOT_EDGES_ADAPTER: Final = TypeAdapter(list[GraphEdge])
 _SNAPSHOT_TOC_ADAPTER: Final = TypeAdapter(list[TocEntry])
 
 
-def _snapshot_nodes(raw: object) -> list[WikiNode]:
-    """Rehydrate the ``nodes`` column, raising on a malformed entry.
-
-    Shape check plus the ``WikiNode`` constructor's own guards (missing or
-    unknown keys raise ``TypeError``; ``NodeType.of`` rejects bad kinds).
-    Deep ``MetadataValue``/``JSONValue`` members stay unvalidated — see the
-    adapter note above.
-    """
-    if not isinstance(raw, list):
-        raise TypeError(f"nodes column is {type(raw).__name__}, expected a list")
-    nodes: list[WikiNode] = []
-    for entry in raw:
-        if not isinstance(entry, dict):
-            raise TypeError(f"node entry is {type(entry).__name__}, expected an object")
-        nodes.append(WikiNode(**entry))
-    return nodes
-
-
-def _snapshot_metadata(raw: object) -> dict[str, MetadataValue]:
-    """Validate the ``metadata`` column's container shape."""
-    if not isinstance(raw, dict):
-        raise TypeError(f"metadata column is {type(raw).__name__}, expected an object")
-    return raw
-
-
 def truncate_description(text: str, max_chars: int) -> str:
     """Shorten *text* to at most *max_chars* characters, cut at a word boundary.
 
@@ -363,6 +338,31 @@ def load_wiki_snapshot(base_dir: Path, kind: str) -> CompiledWiki | None:
         iteration=int(row.iteration),
         metadata=metadata,
     )
+
+
+def _snapshot_nodes(raw: object) -> list[WikiNode]:
+    """Rehydrate the ``nodes`` column, raising on a malformed entry.
+
+    Shape check plus the ``WikiNode`` constructor's own guards (missing or
+    unknown keys raise ``TypeError``; ``NodeType.of`` rejects bad kinds).
+    Deep ``MetadataValue``/``JSONValue`` members stay unvalidated — see the
+    adapter note above.
+    """
+    if not isinstance(raw, list):
+        raise TypeError(f"nodes column is {type(raw).__name__}, expected a list")
+    nodes: list[WikiNode] = []
+    for entry in raw:
+        if not isinstance(entry, dict):
+            raise TypeError(f"node entry is {type(entry).__name__}, expected an object")
+        nodes.append(WikiNode(**entry))
+    return nodes
+
+
+def _snapshot_metadata(raw: object) -> dict[str, MetadataValue]:
+    """Validate the ``metadata`` column's container shape."""
+    if not isinstance(raw, dict):
+        raise TypeError(f"metadata column is {type(raw).__name__}, expected an object")
+    return raw
 
 
 def load_wiki_from_files(output_dir: Path) -> CompiledWiki | None:

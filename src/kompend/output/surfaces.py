@@ -56,15 +56,6 @@ __all__ = ["GeneratedSurfaceMixin", "source_keys"]
 logger = get_logger(__name__)
 
 
-def source_keys(sources_dir: Path) -> list[str]:
-    """Vault-relative ``sources/<path>`` keys for every ingestable source file."""
-    return sorted(
-        f"{DEFAULT_SOURCES_DIR_NAME}/{p.relative_to(sources_dir).as_posix()}"
-        for p in sources_dir.rglob("*")
-        if p.is_file() and not is_protected_source(p, sources_dir)
-    )
-
-
 class GeneratedSurfaceMixin:
     """Bundle-level surface pages, written once per vault."""
 
@@ -358,6 +349,15 @@ class GeneratedSurfaceMixin:
             parts.append("_(none extracted yet)_")
 
         (output_dir / REFERENCES_MD).write_text("\n\n".join(parts) + "\n", encoding="utf-8")
+
+
+def source_keys(sources_dir: Path) -> list[str]:
+    """Vault-relative ``sources/<path>`` keys for every ingestable source file."""
+    return sorted(
+        f"{DEFAULT_SOURCES_DIR_NAME}/{p.relative_to(sources_dir).as_posix()}"
+        for p in sources_dir.rglob("*")
+        if p.is_file() and not is_protected_source(p, sources_dir)
+    )
 
 
 def _source_name(key: str) -> str:

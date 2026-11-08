@@ -13,27 +13,6 @@ from kompend.core.store import open_store
 from kompend.core.types import ReasonCode, StageOutcome
 
 
-def _seed(tmp_path: Path, rows: list[dict[str, Any]], *, run_id: str = "run-1") -> Path:
-    db_path = VaultPaths(tmp_path).kompend_db_file
-    ledger = StageLedger.open(db_path)
-    try:
-        for row in rows:
-            ledger.record(run_id=run_id, **row)
-    finally:
-        ledger.close()
-    return db_path
-
-
-def _run_row(tmp_path: Path, *, run_id: str = "run-1") -> None:
-    db_path = VaultPaths(tmp_path).kompend_db_file
-    with open_store(db_path) as conn:
-        conn.execute(
-            "INSERT INTO runs (event, run_id, cmd, ts, status, duration_s) VALUES (?, ?, ?, ?, ?, ?)",
-            ("end", run_id, "ingest", "2026-01-01T00:00:00", "ok", 12.5),
-        )
-        conn.commit()
-
-
 def test_empty_vault_has_no_runs(tmp_path: Path) -> None:
     report = build_last_run_report(tmp_path)
     assert not report.has_runs
@@ -132,6 +111,16 @@ def test_run_facts_and_missing_log(tmp_path: Path) -> None:
     assert report.log_path is None
 
 
+def _run_row(tmp_path: Path, *, run_id: str = "run-1") -> None:
+    db_path = VaultPaths(tmp_path).kompend_db_file
+    with open_store(db_path) as conn:
+        conn.execute(
+            "INSERT INTO runs (event, run_id, cmd, ts, status, duration_s) VALUES (?, ?, ?, ?, ?, ?)",
+            ("end", run_id, "ingest", "2026-01-01T00:00:00", "ok", 12.5),
+        )
+        conn.commit()
+
+
 def test_store_without_ledger_table_is_empty(tmp_path: Path) -> None:
     db_path = VaultPaths(tmp_path).kompend_db_file
     db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -147,3 +136,14 @@ def test_to_dict_round_trips_the_record(tmp_path: Path) -> None:
     assert data["run_id"] == "run-1"
     assert data["rows"] == 1
     assert isinstance(data["slowest"], list)
+
+
+def _seed(tmp_path: Path, rows: list[dict[str, Any]], *, run_id: str = "run-1") -> Path:
+    db_path = VaultPaths(tmp_path).kompend_db_file
+    ledger = StageLedger.open(db_path)
+    try:
+        for row in rows:
+            ledger.record(run_id=run_id, **row)
+    finally:
+        ledger.close()
+    return db_path

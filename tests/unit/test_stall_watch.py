@@ -25,8 +25,9 @@ from kompend.core.pipeline.stall_watch import DEFAULT_STALL_WARN_S, StallWatchdo
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.preprocessing.parsers import DocumentParser
 
-_ingest = importlib.import_module("kompend.core.pipeline.ingest")
 _LOGGER_NAME = "kompend.core.pipeline.stall_watch"
+
+_ingest = importlib.import_module("kompend.core.pipeline.ingest")
 
 
 class _FakeClock:
@@ -40,6 +41,54 @@ class _FakeClock:
 
     def advance(self, seconds: float) -> None:
         self.now += seconds
+
+
+class _SlowParser:
+    """Picklable stand-in that takes its time on one file."""
+
+    def __init__(self, delay_s: float) -> None:
+        self._delay_s = delay_s
+
+    def parse(self, target: Path) -> ParsedDocument:
+        time.sleep(self._delay_s)
+        return ParsedDocument(source_file=Path(target), elements=[], title=Path(target).stem)
+
+
+class _SlowChain:
+    """Parser façade routed per file; mirrors the deadline-test harness."""
+
+    def __init__(self, delay_s: float) -> None:
+        self._delay_s = delay_s
+        self.parsed: list[str] = []
+
+    def backend_identity(self) -> str:
+        return "stall-watch-chain"
+
+    def route(self, source_file: Path) -> _SlowParser:
+        slow = Path(source_file).name == "stuck.md"
+        return _SlowParser(self._delay_s if slow else 0.0)
+
+
+class _DeadlineParser:
+    """Façade whose stuck file raises the deadline error, as in the deadline test."""
+
+    def __init__(self) -> None:
+        self.parsed: list[str] = []
+
+    def backend_identity(self) -> str:
+        return "stall-attribution-chain"
+
+    def route(self, source_file: Path) -> _DeadlineBackend:
+        return _DeadlineBackend(self.parsed)
+
+
+class _DeadlineBackend:
+    def __init__(self, seen: list[str]) -> None:
+        self.seen = seen
+
+    def parse(self, target: Path) -> ParsedDocument:
+        self.seen.append(Path(target).name)
+        return ParsedDocument(source_file=Path(target), elements=[], title=Path(target).stem)
 
 
 def test_default_threshold_is_thirty_seconds() -> None:
@@ -119,32 +168,6 @@ def test_last_stage_tracks_the_latest_stage_and_ignores_strangers() -> None:
     watchdog.close()
 
 
-class _SlowParser:
-    """Picklable stand-in that takes its time on one file."""
-
-    def __init__(self, delay_s: float) -> None:
-        self._delay_s = delay_s
-
-    def parse(self, target: Path) -> ParsedDocument:
-        time.sleep(self._delay_s)
-        return ParsedDocument(source_file=Path(target), elements=[], title=Path(target).stem)
-
-
-class _SlowChain:
-    """Parser façade routed per file; mirrors the deadline-test harness."""
-
-    def __init__(self, delay_s: float) -> None:
-        self._delay_s = delay_s
-        self.parsed: list[str] = []
-
-    def backend_identity(self) -> str:
-        return "stall-watch-chain"
-
-    def route(self, source_file: Path) -> _SlowParser:
-        slow = Path(source_file).name == "stuck.md"
-        return _SlowParser(self._delay_s if slow else 0.0)
-
-
 def test_ingest_warns_once_for_a_stuck_source_and_lets_the_run_finish(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     base = _seed_vault(tmp_path)
     stuck = base / "sources" / "stuck.md"
@@ -170,28 +193,6 @@ def test_ingest_warns_once_for_a_stuck_source_and_lets_the_run_finish(tmp_path: 
     message = warnings[0].getMessage()
     assert "stuck.md" in message
     assert "stage parse" in message
-
-
-class _DeadlineParser:
-    """Façade whose stuck file raises the deadline error, as in the deadline test."""
-
-    def __init__(self) -> None:
-        self.parsed: list[str] = []
-
-    def backend_identity(self) -> str:
-        return "stall-attribution-chain"
-
-    def route(self, source_file: Path) -> _DeadlineBackend:
-        return _DeadlineBackend(self.parsed)
-
-
-class _DeadlineBackend:
-    def __init__(self, seen: list[str]) -> None:
-        self.seen = seen
-
-    def parse(self, target: Path) -> ParsedDocument:
-        self.seen.append(Path(target).name)
-        return ParsedDocument(source_file=Path(target), elements=[], title=Path(target).stem)
 
 
 def test_deadline_row_names_the_stage_the_file_died_in(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

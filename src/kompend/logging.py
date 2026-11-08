@@ -41,12 +41,6 @@ from kompend.types import ConfigValue
 DEFAULT_LEVEL: int = logging.WARNING
 
 
-class _ConfigLike(Protocol):
-    """The piece of a resolved config :func:`apply_logging_config` needs."""
-
-    def get(self, key: str, default: ConfigValue = None) -> ConfigValue: ...
-
-
 #: How many items a diagnostic log line samples out of a larger collection
 #: ("first 5 collisions", "e.g. these aliases"). A log line summarises; it never
 #: lists the whole set, and the count is a presentation choice rather than a
@@ -99,17 +93,13 @@ class _LoggingState:
     module_levels: dict[str, int] = field(default_factory=dict)
 
 
+class _ConfigLike(Protocol):
+    """The piece of a resolved config :func:`apply_logging_config` needs."""
+
+    def get(self, key: str, default: ConfigValue = None) -> ConfigValue: ...
+
+
 _state: Final[_LoggingState] = _LoggingState()
-
-
-@functools.cache
-def get_console() -> Console:
-    """Cached stdout console.
-
-    Auto-detects terminal width on every render.  Colour is suppressed
-    when stdout is not a TTY (CI, pipes).
-    """
-    return Console(stderr=False, no_color=not sys.stdout.isatty())
 
 
 class RunLogHandler(logging.Handler):
@@ -198,6 +188,16 @@ class RunLogHandler(logging.Handler):
         super().close()
 
 
+@functools.cache
+def get_console() -> Console:
+    """Cached stdout console.
+
+    Auto-detects terminal width on every render.  Colour is suppressed
+    when stdout is not a TTY (CI, pipes).
+    """
+    return Console(stderr=False, no_color=not sys.stdout.isatty())
+
+
 def attach_run_log(run_id: str, logs_dir: Path) -> RunLogHandler:
     """Start recording the run to ``logs_dir/run-<run_id>.log``.
 
@@ -245,6 +245,31 @@ def get_logger(name: str) -> logging.Logger:
     return logging.getLogger(name)
 
 
+def set_verbosity(level: int | str) -> None:
+    """Set the logging level for all loggers (root and children).
+
+    Args:
+        level: Integer level (``logging.DEBUG``, ``logging.INFO``, …) or
+               string name (``"debug"``, ``"info"``, ``"warning"``, …).
+
+    Raises:
+        ValueError: If *level* is an unrecognised string name.
+    """
+    if isinstance(level, str):
+        level_int = logging._nameToLevel.get(level.upper())
+        if level_int is None:
+            msg = f"Invalid logging level: {level!r}"
+            raise ValueError(msg)
+        level = level_int
+    # Move the terminal handler's level, not the root: the root stays at
+    # DEBUG so the flight recorder's ring keeps filling (see
+    # configure_logging).
+    if _state.terminal_handler is None:
+        configure_logging()
+    if _state.terminal_handler is not None:
+        _state.terminal_handler.setLevel(level)
+
+
 @functools.cache
 def configure_logging() -> None:
     """Wire the root logger to RichHandler (idempotent via @functools.cache).
@@ -280,29 +305,32 @@ def get_err_console() -> Console:
     return Console(stderr=True, no_color=not sys.stderr.isatty())
 
 
-def set_verbosity(level: int | str) -> None:
-    """Set the logging level for all loggers (root and children).
+def apply_logging_config(config: _ConfigLike | None) -> None:
+    """Apply the resolved ``[logging] modules`` mapping (knox-nnm6).
 
-    Args:
-        level: Integer level (``logging.DEBUG``, ``logging.INFO``, …) or
-               string name (``"debug"``, ``"info"``, ``"warning"``, …).
-
-    Raises:
-        ValueError: If *level* is an unrecognised string name.
+    Reads ``logging.modules`` through the resolved config's dotted lookup and
+    re-routes the third-party loggers with the operator's levels on top.
+    Safe to call repeatedly; an empty mapping keeps the built-in levels.
     """
-    if isinstance(level, str):
-        level_int = logging._nameToLevel.get(level.upper())
-        if level_int is None:
-            msg = f"Invalid logging level: {level!r}"
-            raise ValueError(msg)
-        level = level_int
-    # Move the terminal handler's level, not the root: the root stays at
-    # DEBUG so the flight recorder's ring keeps filling (see
-    # configure_logging).
-    if _state.terminal_handler is None:
-        configure_logging()
-    if _state.terminal_handler is not None:
-        _state.terminal_handler.setLevel(level)
+    raw = config.get("logging.modules") if config is not None else None
+    # ConfigValue is the wide JSON union; the LoggingConfig model guarantees
+    # str levels, the isinstance filter just narrows the static type.
+    overrides = {str(name): level for name, level in raw.items() if isinstance(level, (int, str))} if isinstance(raw, dict) and raw else None
+    route_third_party_loggers(overrides=overrides)
+
+
+def route_third_party_loggers(overrides: Mapping[str, int | str] | None = None) -> None:
+    """Send third-party DEBUG detail to the run log and keep it off the terminal.
+
+    Applies :data:`THIRD_PARTY_LOG_LEVELS` with *overrides* on top (the
+    operator's ``logging.modules`` config). Call after
+    :func:`configure_logging`; the terminal handler's level still decides what
+    the user sees, so ``docling = "DEBUG"`` costs nothing on screen.
+    """
+    merged: dict[str, int | str] = dict(THIRD_PARTY_LOG_LEVELS)
+    if overrides:
+        merged.update(overrides)
+    set_module_levels(merged)
 
 
 def set_module_levels(levels: Mapping[str, int | str]) -> None:
@@ -339,31 +367,3 @@ def set_module_levels(levels: Mapping[str, int | str]) -> None:
     for name, level_int in resolved.items():
         logging.getLogger(name).setLevel(level_int)
     _state.module_levels = resolved
-
-
-def route_third_party_loggers(overrides: Mapping[str, int | str] | None = None) -> None:
-    """Send third-party DEBUG detail to the run log and keep it off the terminal.
-
-    Applies :data:`THIRD_PARTY_LOG_LEVELS` with *overrides* on top (the
-    operator's ``logging.modules`` config). Call after
-    :func:`configure_logging`; the terminal handler's level still decides what
-    the user sees, so ``docling = "DEBUG"`` costs nothing on screen.
-    """
-    merged: dict[str, int | str] = dict(THIRD_PARTY_LOG_LEVELS)
-    if overrides:
-        merged.update(overrides)
-    set_module_levels(merged)
-
-
-def apply_logging_config(config: _ConfigLike | None) -> None:
-    """Apply the resolved ``[logging] modules`` mapping (knox-nnm6).
-
-    Reads ``logging.modules`` through the resolved config's dotted lookup and
-    re-routes the third-party loggers with the operator's levels on top.
-    Safe to call repeatedly; an empty mapping keeps the built-in levels.
-    """
-    raw = config.get("logging.modules") if config is not None else None
-    # ConfigValue is the wide JSON union; the LoggingConfig model guarantees
-    # str levels, the isinstance filter just narrows the static type.
-    overrides = {str(name): level for name, level in raw.items() if isinstance(level, (int, str))} if isinstance(raw, dict) and raw else None
-    route_third_party_loggers(overrides=overrides)

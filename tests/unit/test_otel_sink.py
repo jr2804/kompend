@@ -50,6 +50,21 @@ class FakeTracer:
         return span
 
 
+class _StubTrace:
+    """Stand-in for ``opentelemetry.trace`` so the error-status branch runs."""
+
+    class StatusCode:
+        ERROR = "error"
+
+    @staticmethod
+    def Status(code: object, description: str | None = None) -> tuple[object, str | None]:
+        return (code, description)
+
+    @staticmethod
+    def set_span_in_context(span: object) -> object:
+        return span
+
+
 def test_phase_lifecycle_opens_and_closes_a_span() -> None:
     sink, tracer = _sink()
 
@@ -122,21 +137,6 @@ def test_emit_attributes_are_copied_onto_the_span() -> None:
     assert phase.attributes["kompend.parser"] == "docling"
     assert phase.attributes["kompend.pages"] == 3
     assert phase.attributes["kompend.cache_hit"] is False
-
-
-class _StubTrace:
-    """Stand-in for ``opentelemetry.trace`` so the error-status branch runs."""
-
-    class StatusCode:
-        ERROR = "error"
-
-    @staticmethod
-    def Status(code: object, description: str | None = None) -> tuple[object, str | None]:
-        return (code, description)
-
-    @staticmethod
-    def set_span_in_context(span: object) -> object:
-        return span
 
 
 def _sink() -> tuple[OtelEventSink, FakeTracer]:

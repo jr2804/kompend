@@ -6,11 +6,27 @@ from typing import Annotated, Final
 
 from pydantic import BeforeValidator, Field
 
-from kompend.core.config._configs import MatcherName
+from kompend.core.config.enums import MatcherName
 from kompend.core.config.models._base import _KompendBaseModel
 from kompend.core.keys import EnvVar
 
 DEFAULT_MATCHERS: Final[tuple[MatcherName, ...]] = (MatcherName.EMBEDDING, MatcherName.MINHASH)
+
+
+class DedupConfig(_KompendBaseModel):
+    """Deduplication configuration (opt-in by default)."""
+
+    enabled: bool = Field(default=False, validation_alias=EnvVar.DEDUP_ENABLED)
+    #: Comma-string (env var, legacy TOML) or array; both parse through
+    #: :func:`parse_matchers`, which raises on an unknown name.
+    matchers: Annotated[list[MatcherName], BeforeValidator(parse_matchers)] = Field(
+        default_factory=lambda: list(DEFAULT_MATCHERS),
+        validation_alias=EnvVar.DEDUP_MATCHERS,
+    )
+    threshold_identical: float = Field(default=0.95, validation_alias=EnvVar.DEDUP_THRESHOLD_IDENTICAL)
+    threshold_similar: float = Field(default=0.80, validation_alias=EnvVar.DEDUP_THRESHOLD_SIMILAR)
+    model: str = Field(default="", validation_alias=EnvVar.DEDUP_MODEL)
+    minhash_lsh_threshold: float = Field(default=0.8, validation_alias=EnvVar.DEDUP_MINHASH_LSH_THRESHOLD)
 
 
 def parse_matchers(value: object) -> list[MatcherName]:
@@ -42,19 +58,3 @@ def parse_matchers(value: object) -> list[MatcherName]:
             msg = f"unknown dedup matcher {part!r}; expected one of: {expected}"
             raise ValueError(msg) from e
     return matchers
-
-
-class DedupConfig(_KompendBaseModel):
-    """Deduplication configuration (opt-in by default)."""
-
-    enabled: bool = Field(default=False, validation_alias=EnvVar.DEDUP_ENABLED)
-    #: Comma-string (env var, legacy TOML) or array; both parse through
-    #: :func:`parse_matchers`, which raises on an unknown name.
-    matchers: Annotated[list[MatcherName], BeforeValidator(parse_matchers)] = Field(
-        default_factory=lambda: list(DEFAULT_MATCHERS),
-        validation_alias=EnvVar.DEDUP_MATCHERS,
-    )
-    threshold_identical: float = Field(default=0.95, validation_alias=EnvVar.DEDUP_THRESHOLD_IDENTICAL)
-    threshold_similar: float = Field(default=0.80, validation_alias=EnvVar.DEDUP_THRESHOLD_SIMILAR)
-    model: str = Field(default="", validation_alias=EnvVar.DEDUP_MODEL)
-    minhash_lsh_threshold: float = Field(default=0.8, validation_alias=EnvVar.DEDUP_MINHASH_LSH_THRESHOLD)

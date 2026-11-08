@@ -10,10 +10,6 @@ from kompend.core.pipeline.event_sinks import CallbackSink, CollectingSink, Json
 from kompend.core.pipeline.events import PipelineEvent, PipelineEventField, PipelinePhase
 
 
-def _event(*, current: int = 0, total: int = 3, detail: str = "starting") -> PipelineEvent:
-    return PipelineEvent.from_emit(PipelinePhase.PARSE.value, current, total, detail)
-
-
 def test_callback_sink_passes_the_legacy_arguments() -> None:
     seen: list[tuple[str, int, int, str]] = []
     sink = CallbackSink(lambda phase, current, total, detail: seen.append((phase, current, total, detail)))
@@ -61,3 +57,7 @@ def test_jsonl_sink_leaves_a_caller_stream_open() -> None:
 
     assert not stream.closed
     assert json.loads(stream.getvalue())[PipelineEventField.PHASE.value] == "parse"
+
+
+def _event(*, current: int = 0, total: int = 3, detail: str = "starting") -> PipelineEvent:
+    return PipelineEvent.from_emit(PipelinePhase.PARSE.value, current, total, detail)

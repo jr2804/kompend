@@ -6,7 +6,7 @@ The public surface is re-exported here; import from
 
 from __future__ import annotations
 
-from kompend.core.config._configs import (
+from kompend.core.config.enums import (
     Compiler,
     ContextManagerPreset,
     ExtractionStrategy,

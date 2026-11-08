@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pydantic import Field
 
-from kompend.core.config._configs import RerankerBackend
+from kompend.core.config.enums import RerankerBackend
 from kompend.core.config.models._base import _KompendBaseModel
 from kompend.core.keys import EnvVar
 from kompend.core.vocab import LlmDataFormat, Verbosity

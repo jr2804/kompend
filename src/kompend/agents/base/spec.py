@@ -38,6 +38,9 @@ from kompend.agents.base.deps import AgentDeps
 _RESERVED_NAMES: frozenset[str] = frozenset({"kompend_agent_base", "spec_agent"})
 
 
+_SPEC_CLASSES: dict[str, type] = {}
+
+
 @dataclass(frozen=True, slots=True)
 class AgentSpec:
     """One agent's declarative definition.
@@ -105,43 +108,6 @@ def _is_supported_result(result_type: Any) -> bool:
     return typing.get_origin(result_type) is dict
 
 
-def _class_name(spec_name: str) -> str:
-    """``extraction_reduce`` -> ``ExtractionReduceAgent``."""
-    parts = [part for part in spec_name.replace("-", "_").split("_") if part]
-    return "".join(part.capitalize() for part in parts) + "Agent"
-
-
-_SPEC_CLASSES: dict[str, type] = {}
-
-
-def agent_class(spec: AgentSpec) -> type:
-    """Materialise (and cache) the ``KompendAgentBase`` subclass for *spec*."""
-    cached = _SPEC_CLASSES.get(spec.name)
-    if cached is not None:
-        return cached
-
-    # Imported by name: agent.py imports AgentSpec, so a module-level import
-    # would close the cycle spec -> agent -> spec.
-    KompendAgentBase = import_module("kompend.agents.base.agent").KompendAgentBase
-
-    attrs: dict[str, Any] = {
-        "__doc__": f"Spec-backed agent for {spec.name!r}.",
-        "__module__": __name__,
-        "spec": spec,
-        "template_name": spec.template_name,
-        "system_template_name": spec.system_template_name,
-        "template_prefix": spec.template_prefix,
-        "supports_delta_retry": spec.supports_delta_retry,
-        "model_builder": staticmethod(spec.model_builder) if spec.model_builder is not None else None,
-    }
-    if spec.temperature is not None:
-        attrs["temperature"] = spec.temperature
-
-    cls = type(_class_name(spec.name), (KompendAgentBase,), attrs)
-    _SPEC_CLASSES[spec.name] = cls
-    return cls
-
-
 def install_hooks(cls: type, spec: AgentSpec) -> None:
     """Install a spec's prompt/validation hooks on its materialised class.
 
@@ -186,6 +152,40 @@ def build_agent(spec: AgentSpec | str, *, model_string: str, **kwargs: Any) -> A
     if spec.retries is not None:
         kwargs.setdefault("retries", spec.retries)
     return cls(model_string=model_string, **kwargs)
+
+
+def agent_class(spec: AgentSpec) -> type:
+    """Materialise (and cache) the ``KompendAgentBase`` subclass for *spec*."""
+    cached = _SPEC_CLASSES.get(spec.name)
+    if cached is not None:
+        return cached
+
+    # Imported by name: agent.py imports AgentSpec, so a module-level import
+    # would close the cycle spec -> agent -> spec.
+    KompendAgentBase = import_module("kompend.agents.base.agent").KompendAgentBase
+
+    attrs: dict[str, Any] = {
+        "__doc__": f"Spec-backed agent for {spec.name!r}.",
+        "__module__": __name__,
+        "spec": spec,
+        "template_name": spec.template_name,
+        "system_template_name": spec.system_template_name,
+        "template_prefix": spec.template_prefix,
+        "supports_delta_retry": spec.supports_delta_retry,
+        "model_builder": staticmethod(spec.model_builder) if spec.model_builder is not None else None,
+    }
+    if spec.temperature is not None:
+        attrs["temperature"] = spec.temperature
+
+    cls = type(_class_name(spec.name), (KompendAgentBase,), attrs)
+    _SPEC_CLASSES[spec.name] = cls
+    return cls
+
+
+def _class_name(spec_name: str) -> str:
+    """``extraction_reduce`` -> ``ExtractionReduceAgent``."""
+    parts = [part for part in spec_name.replace("-", "_").split("_") if part]
+    return "".join(part.capitalize() for part in parts) + "Agent"
 
 
 def spec_names() -> tuple[str, ...]:

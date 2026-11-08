@@ -38,8 +38,25 @@ from kompend.preprocessing.parsers import DocumentParser
 _LOGGER = "kompend.core.pipeline.backend_capture"
 
 
-def _records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
-    return [r for r in caplog.records if r.name == _LOGGER]
+class _PrintingBackend:
+    """Picklable backend that prints a banner before parsing."""
+
+    def backend_identity(self) -> str:
+        return "banner-backend"
+
+    def parse(self, target: Path) -> ParsedDocument:  # noqa: ARG002 — target unused
+        print("weights loaded")  # noqa: T201 — the backend under test
+        return ParsedDocument(source_file=target, elements=[], title="doc")
+
+
+class _PrintingChain:
+    """Parser facade matching the pieces ``_parse_source`` touches."""
+
+    def backend_identity(self) -> str:
+        return "chain"
+
+    def route(self, source_file: Path) -> _PrintingBackend:  # noqa: ARG002 — any backend
+        return _PrintingBackend()
 
 
 def test_a_printed_banner_is_captured_with_attribution(caplog: pytest.LogCaptureFixture, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -130,37 +147,6 @@ def test_backend_name_prefers_the_identity_hook() -> None:
     assert backend_name(_Broken()) == "_Broken"
 
 
-class _PrintingBackend:
-    """Picklable backend that prints a banner before parsing."""
-
-    def backend_identity(self) -> str:
-        return "banner-backend"
-
-    def parse(self, target: Path) -> ParsedDocument:  # noqa: ARG002 — target unused
-        print("weights loaded")  # noqa: T201 — the backend under test
-        return ParsedDocument(source_file=target, elements=[], title="doc")
-
-
-class _PrintingChain:
-    """Parser facade matching the pieces ``_parse_source`` touches."""
-
-    def backend_identity(self) -> str:
-        return "chain"
-
-    def route(self, source_file: Path) -> _PrintingBackend:  # noqa: ARG002 — any backend
-        return _PrintingBackend()
-
-
-def _pipeline(tmp_path: Path) -> Any:
-    return SimpleNamespace(
-        parser=cast("DocumentParser", _PrintingChain()),
-        base_directory=tmp_path,
-        rel_file=lambda file: f"sources/{Path(file).name}",
-        cache_directory=lambda: tmp_path / "cache",
-        config=SimpleNamespace(output=SimpleNamespace(rumdl_config=None, flavor=None)),
-    )
-
-
 def test_parse_source_logs_the_banner_before_the_ledger_row(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
     source = tmp_path / "stuck.md"
     source.write_text("hello")
@@ -180,6 +166,16 @@ def test_parse_source_logs_the_banner_before_the_ledger_row(tmp_path: Path, capl
     assert parsed is not None
     banner = [r.getMessage() for r in _records(caplog)]
     assert banner == ["backend banner [banner-backend] sources/stuck.md: weights loaded"]
+
+
+def _pipeline(tmp_path: Path) -> Any:
+    return SimpleNamespace(
+        parser=cast("DocumentParser", _PrintingChain()),
+        base_directory=tmp_path,
+        rel_file=lambda file: f"sources/{Path(file).name}",
+        cache_directory=lambda: tmp_path / "cache",
+        config=SimpleNamespace(output=SimpleNamespace(rumdl_config=None, flavor=None)),
+    )
 
 
 def test_the_in_process_deadline_path_attributes_banners(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
@@ -206,3 +202,7 @@ def test_the_deadline_worker_ships_banners_to_the_parent(tmp_path: Path, caplog:
     assert doc.title == "doc"
     assert time.monotonic() < deadline  # sanity: the spawn must not hang the suite
     assert [r.getMessage() for r in _records(caplog)] == ["backend banner [docling] sources/doc.md: weights loaded"]
+
+
+def _records(caplog: pytest.LogCaptureFixture) -> list[logging.LogRecord]:
+    return [r for r in caplog.records if r.name == _LOGGER]

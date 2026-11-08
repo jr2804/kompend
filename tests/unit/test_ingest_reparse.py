@@ -38,12 +38,6 @@ from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.parsers.base import DocumentParser
 from tests.conftest import as_obj
 
-
-def _open_ledger(base: Path) -> StageLedger:
-    """Ledger on the vault store; closed implicitly by test process exit."""
-    return StageLedger.open(vault_db_path(base / CACHE_DIR))
-
-
 # ── Parser identity ─────────────────────────────────────────────────
 
 
@@ -310,10 +304,6 @@ def _runtime_for_chunk_deps(*, contextual: bool, enricher: object | None) -> Any
     )
 
 
-def _parser_of(name: str) -> DocumentParser:
-    return _IngestParser(name)
-
-
 def test_enriched_tree_is_what_gets_cached(tmp_path: Path) -> None:
     """TASK-20: enrichment runs after chunking and BEFORE the chunk-cache write,
     so the cached tree (and therefore the embeddings) carry the context.
@@ -352,6 +342,10 @@ def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
     assert all(node["contextual_context"] == "" for node in nodes.values())
 
 
+def _parser_of(name: str) -> DocumentParser:
+    return _IngestParser(name)
+
+
 def test_reparse_bypasses_the_parse_cache(tmp_path: Path) -> None:
     """``compile.reparse`` re-parses a source whose parse-cache entry is valid."""
     base = _seed_vault(tmp_path)
@@ -368,6 +362,11 @@ def test_reparse_bypasses_the_parse_cache(tmp_path: Path) -> None:
 
     assert tree is not None
     assert len(parser.parsed) == 1
+
+
+def _open_ledger(base: Path) -> StageLedger:
+    """Ledger on the vault store; closed implicitly by test process exit."""
+    return StageLedger.open(vault_db_path(base / CACHE_DIR))
 
 
 def _seed_vault(tmp_path: Path) -> Path:

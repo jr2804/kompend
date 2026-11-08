@@ -6,7 +6,7 @@ from typing import Annotated
 
 from pydantic import Field, model_validator
 
-from kompend.core.config._configs import Compiler, ImageMode, Tier
+from kompend.core.config.enums import Compiler, ImageMode, Tier
 from kompend.core.config.models._base import _KompendBaseModel
 from kompend.core.config.models.llm import EmbeddingConfig, LLMConfig
 from kompend.core.config.models.output import OutputConfig

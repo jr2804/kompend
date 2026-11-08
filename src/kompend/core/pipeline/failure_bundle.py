@@ -37,8 +37,6 @@ from kompend.core.reporting.handle import current_run_id
 from kompend.core.types import ReasonCode
 from kompend.logging import get_logger
 
-logger = get_logger(__name__)
-
 #: Bundle format version; bump when a consumer needs to branch on the shape.
 BUNDLE_SCHEMA_VERSION: Final[int] = 1
 #: Hash prefix used for the bundle directory (matches the parse-cache prefix).
@@ -50,6 +48,8 @@ _RUN_LOG_FILE: Final[str] = "run.log"
 _SOURCE_PREFIX: Final[str] = "source"
 #: Executable bit for the generated repro script (owner rwx, group/other rx).
 _REPRO_MODE: Final[int] = 0o755
+
+logger = get_logger(__name__)
 
 
 def write_failure_bundle(
