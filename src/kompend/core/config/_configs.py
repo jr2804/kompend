@@ -10,8 +10,53 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import cache
+from typing import TYPE_CHECKING
 
 from kompend.core.vocab import ExportMode, LintOutput, LlmDataFormat, Verbosity
+
+if TYPE_CHECKING:
+    # Static mirror of the lazy forwards below: type checkers resolve the real
+    # model classes for the historical import path without a runtime cycle.
+    from kompend.core.config.models import (
+        AttachmentsConfig,
+        BudgetConfig,
+        CompileConfig,
+        DecisionConfig,
+        DEFAULT_MATCHERS,
+        DEFAULTS,
+        DedupConfig,
+        DisplayConfig,
+        DownloaderConfig,
+        EmbeddingConfig,
+        ExportConfig,
+        ExtractionConfig,
+        FLAVOR_ALIASES,
+        IgnoreConfig,
+        IngestConfig,
+        KompendConfig,
+        LLMConfig,
+        LintConfig,
+        NotesConfig,
+        OrganizeConfig,
+        OutputConfig,
+        PathsConfig,
+        ProviderEndpoint,
+        ProviderModelConfig,
+        QueryConfig,
+        RlmConfig,
+        SearchAgenticConfig,
+        SearchConfig,
+        SearchContextualConfig,
+        SearchCragConfig,
+        SearchExpansionConfig,
+        SearchHydeConfig,
+        SearchRerankerConfig,
+        SearchSynthesisConfig,
+        SkillConfig,
+        TrustConfig,
+        parse_matchers,
+        resolve_flavor,
+    )
 
 __all__ = [
     "Compiler",
