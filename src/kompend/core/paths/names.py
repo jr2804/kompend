@@ -64,6 +64,12 @@ PARSECRAFT_CONFIG_FILE: Final[str] = f"{KOMP_DIR}/parsecraft.toml"
 #: current directory above the vault file and below the environment.
 PARSECRAFT_PROJECT_FILE: Final[str] = "parsecraft.toml"
 
+# ── Failure repro bundles ───────────────────────────────────────────────
+TMP_SUBDIR: Final[str] = "tmp"
+FAILURES_SUBDIR: Final[str] = "failures"
+#: One bundle per failed/stalled parse: ``.kompend/tmp/failures/<hash>/``.
+FAILURE_BUNDLES_DIR: Final[str] = f"{KOMP_DIR}/{TMP_SUBDIR}/{FAILURES_SUBDIR}"
+
 # ── Cache ───────────────────────────────────────────────────────────────
 CACHE_SUBDIR: Final[str] = "cache"
 CACHE_DIR: Final[str] = f"{KOMP_DIR}/{CACHE_SUBDIR}"
@@ -296,6 +302,16 @@ class VaultPaths:
     def logs_dir(self) -> Path:
         """Flight-recorder run logs directory (created on demand by the handler)."""
         return self.kompend_dir / LOGS_SUBDIR
+
+    @property
+    def tmp_dir(self) -> Path:
+        """Scratch directory inside the vault (repro bundles and one-off dumps)."""
+        return self.kompend_dir / TMP_SUBDIR
+
+    @property
+    def failure_bundles_dir(self) -> Path:
+        """Repro bundles for failed or stalled parses, one directory per source hash."""
+        return self.tmp_dir / FAILURES_SUBDIR
 
     def run_log_file(self, run_id: str) -> Path:
         """Flight-recorder log for one CLI run (``run-<run_id>.log``)."""

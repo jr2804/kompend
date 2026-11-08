@@ -23,6 +23,7 @@ from kompend.core.keys import (
 from kompend.core.models import ElementType, MetadataField, ParsedDocument
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.bounded_parse import DeadlineWorker, ParseDeadlineExceeded
+from kompend.core.pipeline.failure_bundle import write_failure_bundle
 from kompend.core.pipeline.parse_cache import (
     PARSE_CACHE_PARSER_KEY,
     extract_text_from_cached,  # noqa: F401 — re-exported for capture.py
@@ -252,6 +253,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
             source_key = str(_relative(source_file))
             watchdog.watch(source_key, stage=WatchStage.PARSE)
             attempt_start = time.perf_counter()
+            parse_target: Path | None = None
             try:
                 parse_target = parse_target_path(source_file, cache_dir)
                 doc = worker.parse(backend, parse_target)
@@ -279,6 +281,21 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
                     # backend call itself — name it in the row.
                     detail = f"{detail} Last progress: stage {watchdog.last_stage(source_key) or WatchStage.PARSE.value}."
                 watchdog.unwatch(source_key)
+                write_failure_bundle(
+                    base_dir=base_dir,
+                    source=str(_relative(source_file)),
+                    source_file=source_file,
+                    error=exc,
+                    reason_code=reason,
+                    stage="parse",
+                    parse_target=parse_target,
+                    parser=backend_identity,
+                    backend=type(backend).__name__,
+                    cache_key=doc_key,
+                    sha=content_hash,
+                    size_bytes=size_bytes,
+                    detail=detail,
+                )
                 ledger.record(
                     str(_relative(source_file)),
                     "parse",

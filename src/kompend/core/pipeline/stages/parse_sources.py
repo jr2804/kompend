@@ -19,6 +19,7 @@ from kompend.core.models import (
     DocumentElement,
     ParsedDocument,
 )
+from kompend.core.pipeline.failure_bundle import write_failure_bundle
 from kompend.core.pipeline.ingest import (
     parse_target_path,
     relativize_image_paths,
@@ -224,6 +225,7 @@ def _parse_source(
         return None
     attempt_start = time.perf_counter()
     selected: Any = None
+    parse_target: Path | None = None
     try:
         selected = pipeline.parser.route(source_file)
         if selected is None:
@@ -247,6 +249,18 @@ def _parse_source(
         _ = len(parsed.elements)
     except InsufficientHostMemoryError as exc:
         logger.error("Skipped %s: %s", source_file, exc, extra={"reason_code": ReasonCode.BACKEND_UNAVAILABLE})
+        write_failure_bundle(
+            base_dir=pipeline.base_directory,
+            source=pipeline.rel_file(source_file),
+            source_file=source_file,
+            error=exc,
+            reason_code=ReasonCode.BACKEND_UNAVAILABLE,
+            stage="parse",
+            parse_target=parse_target,
+            parser=parser_identity,
+            backend=type(selected).__name__ if selected is not None else None,
+            sha=content_hash,
+        )
         ledger.record(
             pipeline.rel_file(source_file),
             "parse",
@@ -266,6 +280,18 @@ def _parse_source(
             exc,
             exc_info=is_verbose(),
             extra={"reason_code": reason},
+        )
+        write_failure_bundle(
+            base_dir=pipeline.base_directory,
+            source=pipeline.rel_file(source_file),
+            source_file=source_file,
+            error=exc,
+            reason_code=reason,
+            stage="parse",
+            parse_target=parse_target,
+            parser=parser_identity,
+            backend=type(selected).__name__ if selected is not None else None,
+            sha=content_hash,
         )
         ledger.record(
             pipeline.rel_file(source_file),

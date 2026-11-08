@@ -33,6 +33,7 @@ persistence, and standalone ingestion.
 | `event_sinks.py`              | `CallbackSink` (the rich progress bar), `JsonlSink` (one JSON object per event, append mode), `CollectingSink` (in-memory test collector); a ledger or OTel adapter implements `PipelineEventSink` directly and is not special-cased |
 | `otel_sink.py`                | `OtelEventSink` — projects the same events onto `pipeline.run` → `pipeline.<phase>` → `pipeline.<phase>.source` spans; carries `kompend.run_id`/`phase`/`current`/`total`/`detail`/`source`/`duration_ms`, copies extra emit attributes as `kompend.<key>`, and closes a span still open at the run boundary with `kompend.incomplete=true`; inert unless `KOMP_OTEL_ENABLED` and the `otel` extra are present |
 | `reasons.py`                  | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
+| `failure_bundle.py`           | `write_failure_bundle` — a failed/stalled parse's self-contained repro bundle under `VaultPaths.failure_bundles_dir` (`.kompend/tmp/failures/<sha16>/`): `meta.json`, `traceback.txt`, the parser's bytes, the run log, `repro.sh` |
 | `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`                   | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |
 | (ledger wiring)               | `stages/parse.py`, `stages/parse_sources.py`, `ingest.py`, `attachments.py` record every parse/chunk/enrich/attachment/dedup attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()`. The success path also records `measure_parse_quality(...)` so `kompend status` can flag a suspicious parse |
@@ -79,6 +80,15 @@ persistence, and standalone ingestion.
   status` surfaces a suspicion. A flagged parse still succeeds — the mislabel
   guard (`parse_target_path`) is a separate refusal and is not special-cased
   here.
+- A failed parse leaves a repro bundle, not just a ledger row.
+  `failure_bundle.write_failure_bundle` — called from `ingest_documents` and
+  both `_parse_source` failure branches — copies the parser's bytes, the
+  traceback, the run log and `meta.json` into
+  `VaultPaths.failure_bundles_dir`, then writes an executable `repro.sh`
+  that scaffolds a scratch vault and re-ingests the source. The bundle is
+  best-effort (an unreadable source or a full disk is logged, never raised)
+  so one parse failure cannot become two. Bundle the evidence; do not
+  re-walk the vault.
 - The parse tier and the standalone ingest share one decision point for
   *which bytes a parser receives*: `parse_target_path` (in `ingest.py`) hands
   a known text format over as UTF-8 and every other source byte-wise. One
