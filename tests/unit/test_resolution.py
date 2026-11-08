@@ -165,6 +165,45 @@ class TestVLMEnricher:
         assert descs[0]["context"] == "A red square."
         assert resolved.metadata.get("vlm_filtered") is None
 
+    def test_a_raster_over_the_pixel_ceiling_is_filtered_before_rasterising(self, tmp_path: Path) -> None:
+        """An oversized raster never reaches the VLM — and never raises.
+
+        The guard has to run before ``_caption_source``; otherwise ``Image.open``
+        trips PIL's decompression bomb and the error path answers "unreadable
+        header" by allowing a call that dies mid-flight.
+        """
+        big = tmp_path / "huge.png"
+        Image.new("RGB", (200, 200), (10, 20, 30)).save(big)
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
+        with patch.object(Image, "MAX_IMAGE_PIXELS", 100), patch.object(agent, "run") as run:
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(big))))
+        run.assert_not_called()
+        statuses = [e for e in resolved.entities if e.get("type") == "image_caption_status"]
+        assert len(statuses) == 1
+        assert statuses[0]["name"] == "vlm_filtered"
+        assert statuses[0]["context"].startswith("Image too large:")
+        assert resolved.metadata.get("vlm_filtered") is True
+        # Deliberately skipped, not a failed unit.
+        assert not enricher.failures.failures
+
+    def test_a_vector_over_the_byte_backstop_is_filtered(self, tmp_path: Path) -> None:
+        """Vector sources are bounded by file size: canvas cannot predict render cost."""
+        graphic = tmp_path / "heavy.svg"
+        graphic.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>',
+            encoding="utf-8",
+        )
+        agent = _make_agent()
+        enricher = VLMEnricher(agent=agent, min_image_bytes=0, min_image_dimension=0)
+        with patch("kompend.resolution.vlm_enricher._MAX_VECTOR_BYTES", 10), patch.object(agent, "run") as run:
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(graphic))))
+        run.assert_not_called()
+        statuses = [e for e in resolved.entities if e.get("type") == "image_caption_status"]
+        assert statuses[0]["context"].startswith("Image too large: vector source too large (")
+        assert resolved.metadata.get("vlm_filtered") is True
+        assert not enricher.failures.failures
+
 
 class TestVLMEnricherIntegration:
     """Sanity checks against the unified pydantic-ai agent path (mocked)."""

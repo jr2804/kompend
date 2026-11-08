@@ -21,6 +21,7 @@ Two rules shape this module:
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Final
 
 from PIL import Image
 
@@ -30,7 +31,7 @@ from kompend.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
 from kompend.core.templates import get_template_loader
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.logging import get_logger
-from kompend.preprocessing.images import VectorRasterError, rasterise_image
+from kompend.preprocessing.images import MAX_RASTER_PIXELS, VectorRasterError, is_raster_image, rasterise_image
 from kompend.resolution.base import BaseResolver
 
 #: The entity type a real caption carries. The compiler publishes an
@@ -43,6 +44,13 @@ STATUS_ENTITY_TYPE = "image_caption_status"
 
 #: The template that renders what surrounds a figure for the VLM.
 _CONTEXT_TEMPLATE = "vlm/context.md.j2"
+
+#: Backstop for vector sources. The renderer budgets its output at
+#: ``MAX_RASTER_PIXELS`` (4 Mpx, i.e. 16 MiB of raw RGBA), so a vector file
+#: bigger than that frame carries more XML than its own rendered pixels —
+#: pathological by construction. SVG geometry cannot serve instead: the
+#: declared canvas says nothing about the bytes the renderer will need.
+_MAX_VECTOR_BYTES: Final[int] = 4 * MAX_RASTER_PIXELS
 
 logger = get_logger(__name__)
 
@@ -109,15 +117,27 @@ class VLMEnricher(BaseResolver):
 
         image_file = resolved.chunk.metadata.get(MetadataField.IMAGE_FILE) or resolved.metadata.get(MetadataField.IMAGE_FILE)
 
-        if not image_file:
-            self._record(resolved, FileNotFoundError("the chunk metadata carries no image path"))
-            resolved.entities.append(
-                {
-                    "name": "vlm_placeholder",
-                    "type": STATUS_ENTITY_TYPE,
-                    "context": "Image present — VLM caption not available (no image path)",
-                }
-            )
+        oversized = _oversized_reason(image_file) if image_file else None
+        if not image_file or oversized is not None:
+            if oversized is not None:
+                logger.info("Skipping oversized figure %s for %s: %s", Path(str(image_file)).name, resolved.chunk.id, oversized)
+                resolved.entities.append(
+                    {
+                        "name": "vlm_filtered",
+                        "type": STATUS_ENTITY_TYPE,
+                        "context": f"Image too large: {oversized}",
+                    }
+                )
+                resolved.metadata["vlm_filtered"] = True
+            else:
+                self._record(resolved, FileNotFoundError("the chunk metadata carries no image path"))
+                resolved.entities.append(
+                    {
+                        "name": "vlm_placeholder",
+                        "type": STATUS_ENTITY_TYPE,
+                        "context": "Image present — VLM caption not available (no image path)",
+                    }
+                )
             return resolved
 
         try:
@@ -201,6 +221,8 @@ class VLMEnricher(BaseResolver):
         try:
             with Image.open(p) as img:
                 w, h = img.size
+        except Image.DecompressionBombError as exc:
+            return True, f"dimensions trip PIL's pixel ceiling ({exc})"
         except Exception as exc:
             logger.debug("Could not read dimensions for %s: %s — allowing VLM call", p, exc)
             return False, ""
@@ -239,6 +261,39 @@ def _render_context(chunk: Chunk) -> str:
         nearby=nearby,
         document_context=document_context,
     )
+
+
+def _oversized_reason(image_file: str | Path) -> str | None:
+    """Why this figure can never reach the VLM, or ``None`` when it may proceed.
+
+    Raster inputs are measured by header dimensions against PIL's own
+    decompression-bomb ceiling — opening a header is cheap, decoding is not.
+    Vector inputs are measured by file size: their declared canvas says
+    nothing about render cost, and the renderer already budgets its output,
+    so this is a backstop for pathological attachments, not a classifier.
+    Missing or unreadable files return ``None``: that verdict belongs to
+    :func:`_caption_source`, not to this pre-check.
+    """
+    path = Path(str(image_file))
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return None
+    if not is_raster_image(path):
+        if size > _MAX_VECTOR_BYTES:
+            return f"vector source too large ({size} bytes > {_MAX_VECTOR_BYTES})"
+        return None
+    try:
+        with Image.open(path) as img:
+            width, height = img.size
+    except Image.DecompressionBombError:
+        return f"dimensions trip PIL's {Image.MAX_IMAGE_PIXELS}-pixel ceiling"
+    except Exception:
+        return None
+    ceiling = Image.MAX_IMAGE_PIXELS
+    if ceiling is not None and width * height >= ceiling:
+        return f"{width}×{height} trips PIL's {ceiling}-pixel ceiling"
+    return None
 
 
 def _caption_source(image_file: str | Path) -> Path:
