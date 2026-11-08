@@ -51,6 +51,10 @@ def test_a_printed_banner_is_captured_with_attribution(caplog: pytest.LogCapture
     with capture_backend_output(banners):
         print("Loading weights 745")  # noqa: T201 — the backend under test
         print("conversion finished", file=sys.stderr)  # noqa: T201 — the backend under test
+    # Read the terminal streams NOW: logging after the block may legitimately
+    # write to a handler that resolves sys.stderr lazily (a handler another
+    # test installed), and that is not the capture's doing.
+    printed_out, printed_err = terminal_out.getvalue(), terminal_err.getvalue()
     with caplog.at_level(logging.INFO, logger=_LOGGER):
         log_backend_banners(banners)
 
@@ -60,8 +64,8 @@ def test_a_printed_banner_is_captured_with_attribution(caplog: pytest.LogCapture
         "backend banner [docling] sources/stuck.md: conversion finished",
     ]
     # Replace, not tee: the terminal received none of it.
-    assert terminal_out.getvalue() == ""
-    assert terminal_err.getvalue() == ""
+    assert printed_out == ""
+    assert printed_err == ""
 
 
 def test_unregistered_threads_pass_through(monkeypatch: pytest.MonkeyPatch) -> None:

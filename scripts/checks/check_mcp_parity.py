@@ -100,6 +100,12 @@ SNAPSHOT_PATH: Path = Path(__file__).resolve().parent / "snapshots" / "mcp_tool_
 
 
 def main(argv: list[str] | None = None) -> int:
+    """Run the gate; ``argv=None`` means "no options" (see ``__main__``).
+
+    Never falls back to ``sys.argv``: this function is imported and called
+    from the dev-checks tests, where the process argv is pytest's own command
+    line and argparse would reject it as an unknown option.
+    """
     parser = argparse.ArgumentParser(description="Check CLI↔MCP name parity and the MCP shape snapshot.")
     parser.add_argument(
         "--snapshot",
@@ -112,7 +118,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="rewrite the snapshot from the live server, then exit 0",
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args([] if argv is None else argv)
 
     if not args.update_snapshot and not args.snapshot.is_file():
         print(
@@ -396,4 +402,4 @@ def get_mcp_tools() -> set[str]:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
