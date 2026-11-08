@@ -20,7 +20,7 @@ from kompend.core.models.citations import (
     extract_citations,
     merge_duplicate_citations,
 )
-from kompend.core.models.elements import DocumentElement, ParsedDocument
+from kompend.core.models.elements import DocumentElement, ParsedDocument, element_text
 from kompend.core.models.enums import (
     ChunkField,
     ChunkNodeField,
@@ -109,6 +109,7 @@ __all__ = [
     "TocEntry",
     "WikiField",
     "WikiNode",
+    "element_text",
     "extract_citations",
     "image_source_key",
     "images_for_provenance",

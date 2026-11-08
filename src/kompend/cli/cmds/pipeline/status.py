@@ -7,17 +7,20 @@ import sqlite3
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Final
 
 from kompend.core.models import KIND_FOLDERS
 from kompend.core.paths import (
     COMPILE_STATE_FILE,
     INDEX_FILE,
+    KOMP_DB_FILE,
     LOG_FILE,
     OVERVIEW_MD,
     QUALITY_FILE,
     REFERENCES_MD,
 )
 from kompend.core.pipeline.state import TierStateStore, classify_compile_status
+from kompend.core.reporting.parse_quality import read_parse_quality
 from kompend.logging import get_console
 from kompend.preprocessing.parsers.extensions import supported_extensions
 
@@ -25,6 +28,8 @@ from kompend.preprocessing.parsers.extensions import supported_extensions
 _BUNDLE_FILES: frozenset[str] = frozenset({INDEX_FILE, LOG_FILE, QUALITY_FILE, REFERENCES_MD, OVERVIEW_MD})
 #: Folders the writer puts pages in — one page per file.
 _PAGE_FOLDERS: frozenset[str] = frozenset(KIND_FOLDERS.values())
+#: How many flagged sources the text summary previews; the JSON keeps them all.
+_MAX_FLAGGED_LINES: Final[int] = 3
 
 
 def collect_stats(
@@ -43,6 +48,7 @@ def collect_stats(
         "tier_distribution": None,
         "compile_status": None,
         "health_score": None,
+        "parse_quality": {"documents": 0, "suspicious": 0, "flagged": []},
     }
 
     # Source stats
@@ -110,6 +116,17 @@ def collect_stats(
     if tier_state and tier_state.entries:
         stats["tier_distribution"] = tier_state.tier_distribution()
 
+    # Parse quality — the latest verdict per source, beyond the pruned ledger
+    # (knox-ty8f.10). Read-only: a missing store or table is simply empty.
+    if state_dir is not None:
+        rows = read_parse_quality(state_dir / KOMP_DB_FILE)
+        flagged = [row for row in rows if row.suspicious]
+        stats["parse_quality"] = {
+            "documents": len(rows),
+            "suspicious": len(flagged),
+            "flagged": [row.to_dict() for row in flagged],
+        }
+
     return stats
 
 
@@ -159,6 +176,17 @@ def print_status(stats: dict, json_output: bool = False) -> int:
     cs = stats.get("compile_status")
     if cs:
         get_console().print(f"  Status:    {cs['label']}")
+
+    pq = stats.get("parse_quality") or {}
+    if pq.get("documents"):
+        get_console().print(f"  Parse:     {pq['suspicious']} suspicious of {pq['documents']} document(s)")
+        flagged = pq.get("flagged", [])
+        for row in flagged[:_MAX_FLAGGED_LINES]:
+            get_console().print(
+                f"    ! {row['source']}: {row['replacement_ratio']:.1%} replacement chars, {row['empty_blocks']}/{row['block_count']} empty blocks"
+            )
+        if len(flagged) > _MAX_FLAGGED_LINES:
+            get_console().print(f"    … and {len(flagged) - _MAX_FLAGGED_LINES} more")
 
     if stats["tier_distribution"]:
         get_console().print(f"  Tiers:     {stats['tier_distribution']}")

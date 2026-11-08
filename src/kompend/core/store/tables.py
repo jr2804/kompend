@@ -262,6 +262,30 @@ stages: Final[Table] = Table(
     sqlite_autoincrement=True,
 )
 
+#: Parse quality — one row per source, latest parse wins. The companion of the
+#: ``stages`` ledger row: the same source spelling and run correlation, but the
+#: row survives ledger pruning because it describes the document, not one
+#: attempt. A re-parse replaces the row.
+parse_quality: Final[Table] = Table(
+    "parse_quality",
+    METADATA,
+    Column("source", Text, primary_key=True, nullable=True),
+    Column("sha", Text, nullable=False, server_default=text("''")),
+    Column("run_id", Text),
+    Column("ts", Text, nullable=False),
+    Column("parser", Text),
+    Column("backend", Text),
+    Column("page_count", Integer, nullable=False, server_default=text("0")),
+    Column("text_chars", Integer, nullable=False, server_default=text("0")),
+    Column("replacement_chars", Integer, nullable=False, server_default=text("0")),
+    Column("replacement_ratio", REAL, nullable=False, server_default=text("0.0")),
+    Column("empty_blocks", Integer, nullable=False, server_default=text("0")),
+    Column("block_count", Integer, nullable=False, server_default=text("0")),
+    Column("block_coverage", REAL, nullable=False, server_default=text("1.0")),
+    Column("chars_per_page", REAL, nullable=False, server_default=text("0.0")),
+    Column("suspicious", Integer, nullable=False, server_default=text("0")),
+)
+
 #: Memory node states.
 memory_states: Final[Table] = Table(
     "memory_states",

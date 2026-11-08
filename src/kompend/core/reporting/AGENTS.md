@@ -16,6 +16,7 @@ stores into human-readable markdown — no LLM calls.
 | `handle.py` | `RunHandle` - the run identity the CLI holds between start and end; the `_CURRENT_RUN_ID` ContextVar + `set_current_run_id`/`current_run_id` |
 | `runlog.py` | `log_run_start`, `log_run_end` - append-only audit trail in the `runs` table; attaches/detaches the flight recorder (see Rules) |
 | `ledger.py` | `StageLedger`, `stage_ledger` - per-item stage ledger in the `stages` table; documented queries (`slowest_items`, `failure_histogram`, `cache_hit_rate`, `matching_sources`, `source_runs`, `source_attempts`) |
+| `parse_quality.py` | `ParseQuality`, `measure_parse_quality`, `read_parse_quality` - per-document parse verdict (replacement ratio, empty blocks, coverage, chars per page) persisted one row per source; `read_parse_quality` is read-only and returns `[]` for a missing store or table |
 | `explain.py` | `build_explain_report`, `render_explain`, `resolve_source` - the engine behind `kompend explain` (one file's ledger rows, stage totals, degradations); raises `AmbiguousSourceError` on fragment collisions |
 
 ## Rules
@@ -36,6 +37,12 @@ stores into human-readable markdown — no LLM calls.
   crash keeps what was written; pruning reuses the runlog soft-cap pattern
   (`_SOFT_CAP_ROWS`/`_KEEP_ROWS`). Callers pass `StageLedger` down or open it
   with `stage_ledger(db_path)`; `record()` never raises.
+- `parse_quality` is the one table that outlives ledger pruning: one row per
+  source (latest parse wins), written by `record_parse_quality` at the parse
+  call sites. It stores a **suspicion**, never a gate — no parse is rejected
+  and no run fails because of a quality row. Read it with
+  `read_parse_quality`; never open the store for writing from a read-only
+  command.
 - The run log is written for **every** command, so it must never fail because
   of a config value: the display limits (`cli_arg_preview`, `log_error_chars`)
   are read from the *merged* config (`cfg.get(...)`), not from the validated

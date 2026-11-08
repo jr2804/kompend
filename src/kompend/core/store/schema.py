@@ -64,6 +64,7 @@ ATTACHMENT_MANIFEST_TABLE: Final[str] = "attachment_manifest"
 LINT_RUNS_TABLE: Final[str] = "lint_runs"
 RUNS_TABLE: Final[str] = "runs"
 STAGES_TABLE: Final[str] = "stages"
+PARSE_QUALITY_TABLE: Final[str] = "parse_quality"
 MEMORY_STATES_TABLE: Final[str] = "memory_states"
 MEMORY_LOG_TABLE: Final[str] = "memory_log"
 MEMORY_LOG_FTS_TABLE: Final[str] = "memory_log_fts"
@@ -96,6 +97,7 @@ TABLE_NAMES: Final[tuple[str, ...]] = (
     LINT_RUNS_TABLE,
     RUNS_TABLE,
     STAGES_TABLE,
+    PARSE_QUALITY_TABLE,
     MEMORY_STATES_TABLE,
     MEMORY_LOG_TABLE,
     REFERENCES_TABLE,

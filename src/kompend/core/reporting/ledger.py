@@ -45,9 +45,11 @@ Parse-cache hit rate::
     -- cached / (cached + ok) is the hit rate
 
 Rows are tiny; the table is pruned to a soft cap (run-log pattern) on open
-and close, so the store stays bounded without a maintenance command. A ledger
-write must never break the command it observes: every store error is logged at
-debug and swallowed.
+and close, so the store stays bounded without a maintenance command. Parse
+quality is the exception: :meth:`StageLedger.record_parse_quality` upserts one
+row per source into ``parse_quality`` (latest parse wins) so the verdict
+outlives ledger pruning. A ledger write must never break the command it
+observes: every store error is logged at debug and swallowed.
 """
 
 # ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
@@ -62,11 +64,15 @@ from pathlib import Path
 from typing import Any, Final
 
 from kompend.core.reporting.handle import current_run_id
+from kompend.core.reporting.parse_quality import PARSE_QUALITY_COLUMNS, ParseQuality
 from kompend.core.store import connect, open_store
-from kompend.core.store.schema import STAGES_TABLE
+from kompend.core.store.schema import PARSE_QUALITY_TABLE, STAGES_TABLE
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
+
+#: Column whose value the parse-quality table keys on (a column name, not a NodeType).
+_SOURCE_COLUMN: Final[str] = "source"
 
 _SOFT_CAP_ROWS = 5000
 _KEEP_ROWS = 2500
@@ -151,6 +157,30 @@ class StageLedger:
                 conn.commit()
         except sqlite3.Error as exc:  # never let the observer break the run
             logger.debug("stage ledger write failed: %s", exc)
+
+    def record_parse_quality(self, quality: ParseQuality) -> None:
+        """Persist *quality* as the source's current parse verdict.
+
+        One row per source (latest parse wins) in ``parse_quality`` — beside
+        the attempt row in ``stages`` but not pruned with it, because the row
+        describes the document rather than one run. Never raises, for the same
+        reason the stage row does not.
+        """
+        conn = self._conn
+        if conn is None:
+            return
+        columns = ", ".join(PARSE_QUALITY_COLUMNS)
+        placeholders = ", ".join("?" for _ in PARSE_QUALITY_COLUMNS)
+        updates = ", ".join(f"{column} = excluded.{column}" for column in PARSE_QUALITY_COLUMNS if column != _SOURCE_COLUMN)
+        try:
+            with self._lock:
+                conn.execute(
+                    f"INSERT INTO {PARSE_QUALITY_TABLE} ({columns}) VALUES ({placeholders}) ON CONFLICT(source) DO UPDATE SET {updates}",
+                    quality.to_row(run_id=current_run_id(), ts=iso_local()),
+                )
+                conn.commit()
+        except sqlite3.Error as exc:  # never let the observer break the run
+            logger.debug("parse-quality write failed: %s", exc)
 
     def close(self) -> None:
         """Close the writer's connection (idempotent; prunes one last time)."""

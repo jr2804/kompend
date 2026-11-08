@@ -38,6 +38,7 @@ from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.pipeline.stall_watch import DEFAULT_STALL_WARN_S, StallWatchdog, WatchStage
 from kompend.core.pipeline.state import TierStateStore
 from kompend.core.reporting.ledger import StageLedger
+from kompend.core.reporting.parse_quality import measure_parse_quality
 from kompend.core.store import vault_db_path
 from kompend.core.text.encoding import normalize_to_utf8_path
 from kompend.core.text.rumdl import normalize_element_markdown
@@ -317,6 +318,16 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
 
             # Portable cache: image paths relative to the vault, like source_file.
             relativize_image_paths(doc, base_dir)
+
+            ledger.record_parse_quality(
+                measure_parse_quality(
+                    doc,
+                    source=str(_relative(source_file)),
+                    sha=content_hash,
+                    parser=backend_identity,
+                    backend=type(backend).__name__,
+                )
+            )
 
             data = asdict(doc)
             data[MetadataField.SOURCE_FILE] = str(_relative(Path(data[MetadataField.SOURCE_FILE])))

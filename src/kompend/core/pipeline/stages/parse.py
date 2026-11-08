@@ -32,6 +32,7 @@ from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.pipeline.stages.parse_sources import _dispatch_single_source
 from kompend.core.pipeline.stall_watch import DEFAULT_STALL_WARN_S, StallWatchdog
 from kompend.core.reporting.ledger import StageLedger, stage_ledger
+from kompend.core.reporting.parse_quality import measure_parse_quality
 from kompend.core.store import vault_db_path
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.verbosity import is_verbose
@@ -309,6 +310,8 @@ def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list
             doc = ingest_attachment(vp, att, parser, vlm_captioner=vlm_captioner, vlm_model=vlm_model, ledger=ledger)
             if doc is None:
                 continue
+
+            ledger.record_parse_quality(measure_parse_quality(doc, source=att.path))
 
             if not pipeline.chunker:
                 continue

@@ -34,6 +34,7 @@ from kompend.core.pipeline.stages.parse_store import (
 )
 from kompend.core.pipeline.stall_watch import StallWatchdog, WatchStage
 from kompend.core.reporting.ledger import StageLedger
+from kompend.core.reporting.parse_quality import measure_parse_quality
 from kompend.core.text.rumdl import normalize_element_markdown
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.verbosity import is_verbose
@@ -110,6 +111,14 @@ def _process_single_source(
             outcome=StageOutcome.CACHED,
             parser=parser_identity,
             sha=content_hash or None,
+        )
+        ledger.record_parse_quality(
+            measure_parse_quality(
+                parsed,
+                source=pipeline.rel_file(source_file),
+                sha=content_hash,
+                parser=parser_identity or "",
+            )
         )
     else:
         parsed = _parse_source(pipeline, source_file, use_cache, content_hash, heavy_guard, ledger, parser_identity, watch)
@@ -293,6 +302,15 @@ def _parse_source(
         parsed.elements,
         rumdl_config=resolve_rumdl_config(Path(pipeline.base_directory), pipeline.config.output.rumdl_config),
         flavor=pipeline.config.output.flavor,
+    )
+    ledger.record_parse_quality(
+        measure_parse_quality(
+            parsed,
+            source=pipeline.rel_file(source_file),
+            sha=content_hash,
+            parser=parser_identity or "",
+            backend=type(selected).__name__,
+        )
     )
     if use_cache:
         _save_cache(pipeline, source_file, parsed)

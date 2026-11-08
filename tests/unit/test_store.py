@@ -409,6 +409,25 @@ def test_core_metadata_generates_the_current_ddl() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS parse_quality (
+            source TEXT PRIMARY KEY,
+            sha TEXT NOT NULL DEFAULT '',
+            run_id TEXT,
+            ts TEXT NOT NULL,
+            parser TEXT,
+            backend TEXT,
+            page_count INTEGER NOT NULL DEFAULT 0,
+            text_chars INTEGER NOT NULL DEFAULT 0,
+            replacement_chars INTEGER NOT NULL DEFAULT 0,
+            replacement_ratio REAL NOT NULL DEFAULT 0.0,
+            empty_blocks INTEGER NOT NULL DEFAULT 0,
+            block_count INTEGER NOT NULL DEFAULT 0,
+            block_coverage REAL NOT NULL DEFAULT 1.0,
+            chars_per_page REAL NOT NULL DEFAULT 0.0,
+            suspicious INTEGER NOT NULL DEFAULT 0
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS memory_states (
             node_id TEXT PRIMARY KEY,
             title TEXT NOT NULL DEFAULT '',

@@ -35,7 +35,7 @@ persistence, and standalone ingestion.
 | `reasons.py`                  | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
 | `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`                   | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |
-| (ledger wiring)               | `stages/parse.py`, `stages/parse_sources.py`, `ingest.py`, `attachments.py` record every parse/chunk/enrich/attachment/dedup attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()` |
+| (ledger wiring)               | `stages/parse.py`, `stages/parse_sources.py`, `ingest.py`, `attachments.py` record every parse/chunk/enrich/attachment/dedup attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()`. The success path also records `measure_parse_quality(...)` so `kompend status` can flag a suspicious parse |
 
 ## Rules
 
@@ -72,6 +72,13 @@ persistence, and standalone ingestion.
   `_try_load_chunk_cache` in `stages/parse_store.py`) so no consumer
   resurrects a path that no longer exists; `tier_state.source_file` is only
   the last path the source was seen at.
+- Parse quality is a persisted verdict, not a gate. The parse success paths
+  (`ingest_documents`, the `_parse_source` and parse-cache-hit branches of
+  `stages/parse_sources.py`, and attachments) record `measure_parse_quality`
+  beside the ledger row; the metrics outlive ledger pruning and `kompend
+  status` surfaces a suspicion. A flagged parse still succeeds — the mislabel
+  guard (`parse_target_path`) is a separate refusal and is not special-cased
+  here.
 - The parse tier and the standalone ingest share one decision point for
   *which bytes a parser receives*: `parse_target_path` (in `ingest.py`) hands
   a known text format over as UTF-8 and every other source byte-wise. One
