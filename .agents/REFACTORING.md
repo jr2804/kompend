@@ -622,3 +622,26 @@ SqliteVecWikiStore` — so the shim stayed rather than being deleted, and
   the old single file. (6) The section models' `EnvVar` aliases are
   unchanged; the split moved classes verbatim, so env precedence is the
   same.
+- Thirteenth loop (bead knox-ayc5): `core/config/engine/_check.py` 656 gross
+  / 518 net became `_check.py` 317/258 (the entry point, still exporting the
+  same nine names) plus `engine/checks/` 435 gross / 334 net —
+  `schema.py` 206/155 (the live model walk, namespace patterns, defaults),
+  `messages.py` 93/72 (status vocabulary and report rows), `cross_key.py`
+  66/52 (the pydantic validation pass and error indexing), `deprecated.py`
+  61/48 (removed and renamed key tables), `__init__.py` 9/7. The largest net
+  file is 258 (was 518). The 74 extra net lines are module headers and the
+  entry point's import block. What the size count could not see: (1) the
+  bead's "cross-key coherence (a model must fit the window, a backend must
+  have its extra)" is not implemented in this file — those rules are
+  pydantic `model_validator`s on the section models, so `cross_key.py` holds
+  the `KompendConfig.model_validate` pass and the per-key error index, not a
+  new rule engine. (2) The bead names the package `checks/` (plural) while
+  the assignment said `check/`; the bead won. (3) Row order and the
+  ok/modified/removed/error accounting are unchanged: removed and renamed
+  rows are still sorted and appended last, and the helper functions sort
+  the same sets the inline loops did. (4) The debug logger is pinned to
+  `kompend.core.config.engine._check`, not the new module name, so an
+  unexpected-validation debug line stays identical. (5) The differential
+  check used a sample TOML with one modified, one unknown, one removed and
+  one deprecated key: the old and new modules produce the same `to_dict()`
+  (62 entries, counts 58/1/1/1).

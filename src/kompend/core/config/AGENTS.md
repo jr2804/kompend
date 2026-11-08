@@ -54,7 +54,11 @@ through this package — no other module reads config files or env vars directly
   - `_precedence.py` — Precedence ordering and final resolution
   - `_schema.py` — Config schema validation; re-exports `DEFAULTS` from
     `models/root.py`
-  - `_check.py` — Config file diff vs schema defaults (backing ``kompend config check``)
+  - `_check.py` — Config file diff vs schema defaults (backing ``kompend config
+    check``); entry point that runs the `checks/` helpers in order
+  - `checks/` — one concern per module: `messages.py` (status vocabulary,
+    report rows), `schema.py` (live schema walk), `deprecated.py` (removed and
+    renamed keys), `cross_key.py` (pydantic validation pass)
   - `__init__.py` — Public re-exports for the engine
 - `AGENTS.md` — This file
 
@@ -174,10 +178,10 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
   `if value is not None`.
 - **`kompend.toml.example` is the schema contract** — it must always reflect the
   current keys, defaults, and valid options. Treat it like a living spec.
-- **`_check.py` walks the live pydantic model, not `DEFAULTS`** — optional
+- **`checks/schema.py` walks the live pydantic model, not `DEFAULTS`** — optional
   nested models (e.g. `compile.llm.rlm`) store `None` in the `DEFAULTS` dump,
-  so `flat_keys(DEFAULTS)` silently misses their leaves. `_schema_leaf_keys()`
-  / `_schema_defaults()` recurse `KompendConfig` field types to surface them.
+  so `flat_keys(DEFAULTS)` silently misses their leaves. `schema_leaf_keys()`
+  / `schema_defaults()` recurse `KompendConfig` field types to surface them.
   Only report a nested-model leaf when the user actually wrote its parent
   section (`_parent_key_present`), so an untouched optional model contributes
   no rows.
