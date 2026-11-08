@@ -4,7 +4,9 @@ import functools
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from importlib import import_module
 
+from kompend.core.config._configs import DecisionConfig
 from kompend.search.retriever import TOKEN_SPLIT_RE
 
 _GREETING_PATTERNS: list[re.Pattern[str]] = [
@@ -129,7 +131,20 @@ class ClassificationResult:
     response: str | None
 
 
-def classify(query: str, min_length: int = 2) -> ClassificationResult:
+def classify(
+    query: str,
+    min_length: int = 2,
+    *,
+    decision: DecisionConfig | None = None,
+) -> ClassificationResult:
+    """Classify *query* into the assistant's intents.
+
+    The regex rules run first: they are free and exact on the obvious cases
+    (a bare "hello", "tell me a joke"). Only a query they leave as knowledge
+    reaches *decision*, the optional decision-model sidecar, which recognises
+    small talk the patterns miss. A disabled or failing sidecar keeps the
+    deterministic answer, so the classifier never depends on a model call.
+    """
     lower: str = query.strip().lower()
 
     if len(lower) < min_length:
@@ -148,7 +163,32 @@ def classify(query: str, min_length: int = 2) -> ClassificationResult:
                 if matched(lower):
                     return ClassificationResult(rule.intent, response=rule.response)
 
+    verdict = _decide_intent(query, decision)
+    if verdict is not None:
+        return ClassificationResult(verdict, response=intent_response(verdict))
+
     return ClassificationResult(QueryIntent.KNOWLEDGE, response=None)
+
+
+def intent_response(intent: QueryIntent) -> str | None:
+    """The canned reply for *intent*, or ``None`` when retrieval should run."""
+    return next((rule.response for rule in QueryIntent.get_classifiers() if rule.intent == intent), None)
+
+
+def _decide_intent(query: str, decision: DecisionConfig | None) -> QueryIntent | None:
+    """Consult the decision sidecar, if one is configured.
+
+    The agents layer pulls pydantic-ai and the provider SDKs in, and the CLI
+    imports this module on every query, so the import is runtime-only and
+    happens only when a decision model is actually enabled.
+    """
+    if decision is None or not decision.enabled:
+        return None
+    decide = import_module("kompend.agents.decision").decide_query_intent
+    verdict = decide(decision, query=query)
+    if verdict is None:
+        return None
+    return QueryIntent(verdict.value)
 
 
 def _has_substance(query: str) -> bool:

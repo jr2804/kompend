@@ -497,13 +497,21 @@ the run doomed?". It is named exactly like every other model
 `[providers.*]` block you already use - TypeSafe's Jev
 (`typesafe/jev-latest`) and Ollama's Clef (`ollama/clef`) are both valid.
 
-Where it is used today: **error triage** in the generation loop. A failed
+Where it is used today: **error triage** in the generation loop, and **query
+intent routing**. A failed
 model call is classified first by type (`kompend.llm.errors`): a timeout, a
 dropped connection or a retryable status (408, 409, 425, 429, 5xx, 529) raises
 `LLMTransientError` and is retried with backoff; a validation or schema failure
 is not retried. With `decision.enabled = true`, the decision model gets the
 last word - `retry`, `skip` or `abort` - and can therefore also abort a run
 when retrying is pointless.
+
+Query routing is the second consumer: `kompend query` classifies the message
+with its regex rules first (a bare "hello", "thanks", a joke), and only the
+queries those rules leave as knowledge reach the decision model, which
+recognises small talk the patterns miss. A model verdict other than
+`knowledge` answers with the same canned reply the regex path uses; a disabled
+or failing sidecar keeps the deterministic answer.
 
 A decision model can only fill choices and booleans, never free text, so its
 output type is a single `StrEnum` field (`ErrorAction`). When the sidecar is

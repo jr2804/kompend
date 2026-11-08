@@ -47,7 +47,7 @@ from kompend.cli.settings import (
     vault_paths_from_ctx,
 )
 from kompend.core.config import LLMConfig, resolve_config
-from kompend.core.config._configs import LlmDataFormat
+from kompend.core.config._configs import DecisionConfig, LlmDataFormat
 from kompend.core.models import load_wiki_from_files
 from kompend.core.paths import vault_paths
 from kompend.llm.context_window import discover_context_window
@@ -92,7 +92,7 @@ def query_cmd(  # noqa: PLR0917 — one parameter per CLI option
     output_dir = vp.output_dir
     state_dir = vp.kompend_dir
 
-    if _classify_intent(query, no_classify, format):
+    if _classify_intent(query, no_classify, format, decision=cfg.kompend.decision):
         return
 
     tag_groups = _parse_tag_groups(tags)
@@ -271,7 +271,7 @@ def _parse_attr_filters(attrs: list[str] | None) -> list[tuple[str, str | None]]
     return filters
 
 
-def _classify_intent(query: str, no_classify: bool, format: LlmDataFormat) -> bool:
+def _classify_intent(query: str, no_classify: bool, format: LlmDataFormat, *, decision: DecisionConfig | None = None) -> bool:
     """Run intent classification and respond directly if classified.
 
     Returns True if the classifier produced a response (caller should return).
@@ -279,7 +279,7 @@ def _classify_intent(query: str, no_classify: bool, format: LlmDataFormat) -> bo
     if no_classify:
         return False
 
-    result = classify(query)
+    result = classify(query, decision=decision)
     if result.response is None:
         return False
     if format == LlmDataFormat.MARKDOWN:

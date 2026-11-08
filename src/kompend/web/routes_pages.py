@@ -9,7 +9,7 @@ from fastapi.responses import HTMLResponse
 
 from kompend.core.models import CompiledWiki, MetadataField, WikiField
 from kompend.core.paths import PROJECT_CONFIG_FILE
-from kompend.search.classifier import classify
+from kompend.search.classifier import QueryIntent, classify
 from kompend.search.retriever import HybridRetriever
 from kompend.web._view_helpers import display_config, load_wiki, project_dir, render_result, source_of
 
@@ -180,9 +180,10 @@ async def query_page(q: str = Query(default="")) -> str:
         retriever = HybridRetriever(w, display=display_config())
         results = retriever.search(q, top_k=5)
 
-        intent = classify(q)
-        if intent != "knowledge":
-            answer_html = f"<p><em>Intent: {intent}</em></p><p>Hello! I can answer questions about your compiled wiki. Try asking something specific.</p>"
+        classification = classify(q)
+        if classification.intent is not QueryIntent.KNOWLEDGE:
+            reply = classification.response
+            answer_html = f"<p><em>Intent: {classification.intent}</em></p><p>{reply}</p>"
         elif results:
             answer_html = "<h3>Results</h3>" + "".join(render_result(r) for r in results)
         else:

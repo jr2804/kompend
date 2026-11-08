@@ -40,7 +40,7 @@ def _query_system_prompt(agent: Any, deps: QueryDeps) -> str:
     if agent.rlm:
         ctx = RLM_CONTEXT_PLACEHOLDER
     prompt = agent._template_loader.render(  # noqa: SLF001
-        f"query/{agent.system_template_name}",
+        f"{agent.template_prefix}{agent.system_template_name}",
         context=ctx,
         verbosity=deps.verbosity,
     )
@@ -55,6 +55,8 @@ SPEC: Final[AgentSpec] = AgentSpec(
     result_type=str,
     deps_type=QueryDeps,
     template_name="",
+    system_template_name="synthesize_system.md.j2",
+    template_prefix="query/",
     user_prompt=_query_user_prompt,
     system_prompt=_query_system_prompt,
 )

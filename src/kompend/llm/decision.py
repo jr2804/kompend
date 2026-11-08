@@ -36,6 +36,27 @@ class ErrorDecision(BaseModel):
     )
 
 
+class QueryIntentVerdict(StrEnum):
+    """What a user query is asking for.
+
+    The vocabulary mirrors :class:`kompend.search.classifier.QueryIntent`: the
+    regex classifier and the decision model answer the same question, so one
+    pair of enums keeps both branches comparable.
+    """
+
+    KNOWLEDGE = "knowledge"
+    GREETING = "greeting"
+    GRATITUDE = "gratitude"
+    HELP = "help"
+    OFFTOPIC = "offtopic"
+
+
+class QueryIntentDecision(BaseModel):
+    """A decision model's verdict on a user query's intent."""
+
+    intent: QueryIntentVerdict = Field(description="What the user is asking for.")
+
+
 def decision_model_string(config: DecisionConfig | None) -> str | None:
     """Return the configured ``provider/model`` string, if a decision model is enabled.
 

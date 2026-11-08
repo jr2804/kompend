@@ -20,7 +20,13 @@ from typing import ClassVar, Final
 from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.compilation.adaptation import AdaptationSignal
 from kompend.core.config._configs import DecisionConfig
-from kompend.llm.decision import ErrorAction, ErrorDecision, decision_model_string
+from kompend.llm.decision import (
+    ErrorAction,
+    ErrorDecision,
+    QueryIntentDecision,
+    QueryIntentVerdict,
+    decision_model_string,
+)
 from kompend.llm.models import build_decision_model
 from kompend.logging import get_logger
 
@@ -90,6 +96,64 @@ class AdaptationAgent(DecisionAgent):
     """
 
     spec: ClassVar[AgentSpec | None] = SPEC_ADAPTATION
+
+
+@dataclass
+class QueryIntentDeps:
+    """Deps for the query-intent decision.
+
+    Attributes:
+        query: The user's message, verbatim.
+        timeout: Per-call timeout in seconds.
+        source_id: Log/provenance label (satisfies the agent deps protocol).
+    """
+
+    query: str
+    timeout: float = 10.0
+    source_id: str = "query_intent"
+
+
+SPEC_QUERY_INTENT: Final[AgentSpec] = AgentSpec(
+    name="query_intent",
+    result_type=QueryIntentDecision,
+    deps_type=QueryIntentDeps,
+    template_name="query_intent.md.j2",
+    system_template_name="query_intent_system.md.j2",
+    template_prefix="decision/",
+    temperature=0.0,
+    model_builder=build_decision_model,
+)
+
+
+class QueryIntentAgent(KompendAgentBase[QueryIntentDecision, QueryIntentDeps]):
+    """Decision model that classifies what a user query is asking for."""
+
+    spec: ClassVar[AgentSpec | None] = SPEC_QUERY_INTENT
+    temperature: float | None = 0.0
+
+
+def decide_query_intent(
+    config: DecisionConfig | None,
+    *,
+    query: str,
+) -> QueryIntentVerdict | None:
+    """Ask the decision model what kind of message *query* is.
+
+    Returns the verdict, or ``None`` when no decision model is configured or
+    the call failed - callers then keep their deterministic classifier.
+    """
+    model_string = decision_model_string(config)
+    if model_string is None or config is None:
+        return None
+
+    agent = QueryIntentAgent(model_string=model_string, timeout=config.timeout, retries=0)
+    try:
+        decision = agent.run(QueryIntentDeps(query=query, timeout=config.timeout))
+    except Exception as exc:  # ponytail: a sidecar failure must never break a query
+        logger.warning("Decision model unavailable (%s) - falling back to the deterministic classifier", exc)
+        return None
+    logger.info("Decision model: query intent %s", decision.intent)
+    return decision.intent
 
 
 def decide_error_action(

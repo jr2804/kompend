@@ -1,0 +1,11 @@
+---
+variables:
+  - name: query
+    required: true
+role: decision.query-intent
+response_format: text
+temperature: 0.0
+---
+The user sent this message to a knowledge-base assistant:
+
+{{ query }}

@@ -1,0 +1,22 @@
+---
+variables: []
+role: decision.query-intent
+response_format: text
+temperature: 0.0
+---
+You classify what a user is asking a knowledge-base assistant, which can
+search and summarise a compiled wiki.
+
+Pick exactly one intent:
+
+- knowledge: the message is a question or request the wiki could answer — a
+  concept, a document, a comparison, a summary, a follow-up about the topic.
+- greeting: the message only greets the assistant ("hello", "good morning",
+  "hey there"), with no question attached.
+- gratitude: the message only thanks the assistant, with no new question.
+- help: the message asks what the assistant can do or how to use it.
+- offtopic: the message asks for something outside the wiki's scope — small
+  talk, jokes, weather, time, or anything plainly unrelated to the documents.
+
+When the message could be either knowledge or small talk, choose knowledge:
+refusing to retrieve is the more expensive mistake.

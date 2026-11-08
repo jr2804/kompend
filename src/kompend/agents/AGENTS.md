@@ -21,7 +21,7 @@ This package is the **only** layer that talks to pydantic-ai `Agent` directly.
 ### Class hierarchy
 
 Every agent is a registered `AgentSpec`; the typed class is its facade and
-extends `KompendAgentBase[ResultT, DepsT]`. The 35 specs cover every pipeline
+extends `KompendAgentBase[ResultT, DepsT]`. The 36 specs cover every pipeline
 stage from extraction to write.
 
 ### KompendAgentBase responsibilities

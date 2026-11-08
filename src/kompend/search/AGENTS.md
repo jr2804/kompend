@@ -20,7 +20,7 @@ selection, query classification, budget management, and tag filtering.
 | ``retrieval/`` | Retrieval stages: ``results.py`` (``SearchResult``/``SynthesisResult``/``Citation`` shapes), ``vector.py`` (the one store call, hit decoders), ``assemble.py`` (hit → result, snippets, figures), ``rank.py`` (keyword scoring, graph expansion, store-less filter predicates), ``synthesis.py`` (context formatting, LLM call) |
 | ``filters.py`` | ``matches_tag_filter`` / ``matches_attr_filter`` — canonical tag/attribute predicates |
 | ``adaptive_retriever.py`` | ``AdaptiveRetriever`` — multi-strategy retriever with auto-selection |
-| ``classifier.py`` | ``QueryClassifier`` — classify queries by type/domain for retriever selection |
+| ``classifier.py`` | ``classify`` → ``ClassificationResult`` — is the message knowledge, greeting, gratitude, help or off-topic? Regex rules answer the obvious cases for free; the optional ``decision`` sidecar (``[decision]``) classifies only the queries the rules leave as knowledge |
 | ``budget.py`` | ``SearchBudget`` — per-query token and time budget tracking |
 | ``pipeline.py`` | ``EnhancedRetriever`` — HybridRetriever + pluggable RAG steps |
 
