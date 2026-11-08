@@ -15,6 +15,7 @@ from kompend.core.paths import vault_paths
 from kompend.core.reporting.last_run import build_last_run_report
 from kompend.core.utils.dicts import as_str
 from kompend.diagnostics import run_doctor
+from kompend.rag import recorded_embedding_model
 
 
 def doctor(
@@ -28,6 +29,7 @@ def doctor(
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
     sources_dir = vp.sources_dir
     output_dir = vp.output_dir
+    embed_model = as_str(cfg.get(COMPILE_EMBEDDING_MODEL))
 
     if not wiki_dir and not output_dir.exists():
         return {"status": "error", "message": f"No wiki found at {output_dir}. Use wiki_dir parameter."}
@@ -36,7 +38,8 @@ def doctor(
         output_dir=output_dir,
         default_model=as_str(cfg.get(COMPILE_LLM_DEFAULT_MODEL)),
         vlm_model=as_str(cfg.get(COMPILE_LLM_VLM_MODEL)),
-        embed_model=as_str(cfg.get(COMPILE_EMBEDDING_MODEL)),
+        embed_model=embed_model,
+        recorded_embed_model=recorded_embedding_model(vp.kompend_db_file) if embed_model else None,
         config=cfg,
         verbose=verbose,
     )

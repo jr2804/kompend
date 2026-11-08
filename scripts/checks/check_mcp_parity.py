@@ -1,8 +1,20 @@
 #!/usr/bin/env python
 """Check parity between kompend CLI commands and MCP server tools.
 
-This script verifies that every functional kompend CLI command has a matching
-MCP server tool so the same functionality is reachable over the MCP surface.
+This script owns two contracts:
+
+1. **Names** — every functional kompend CLI command has a matching MCP server
+   tool, so the same functionality is reachable over the MCP surface.
+2. **Shapes** — the quality tool family's input schema and output payload
+   shape are pinned in ``scripts/checks/snapshots/mcp_tool_surface.json``. A
+   parameter rename, a changed default, or a renamed payload key fails the
+   gate until the snapshot is regenerated deliberately:
+
+       uv run python scripts/checks/check_mcp_parity.py --update-snapshot
+
+   Review the snapshot diff in the same commit as the tool change. The gate
+   exits 0 (clean), 1 (a shape or name drifted), or 2 (it could not judge —
+   no tools, no snapshot, no output shape).
 
 Design notes
 ------------
@@ -19,10 +31,18 @@ Design notes
   are excluded via ``EXCLUDED_CLI_COMMANDS`` and listed at the end of the run.
 """
 
-import asyncio
-import sys
+from __future__ import annotations
 
-from _common import require_facts
+import argparse
+import ast
+import asyncio
+import json
+import sys
+from collections import defaultdict
+from pathlib import Path
+from typing import Any
+
+from _common import repo_root, require_facts
 
 from kompend.cli.app import app as cli_app
 from kompend.cli.app import register_all_commands
@@ -53,8 +73,92 @@ MCP_TO_CLI_ALIASES: dict[str, str] = {
 # reported as separate commands (Cyclopts lists each group under every name).
 CLI_COMMAND_ALIASES: dict[str, str] = {"att": "attachments"}
 
+#: The quality family whose wire shapes are pinned. The set is explicit rather
+#: than "every tool on the server" so adding an unrelated tool does not churn
+#: the snapshot; add a name here when its contract should be gated.
+SNAPSHOT_TOOL_NAMES: frozenset[str] = frozenset(
+    {
+        "lint_all",
+        "lint_check",
+        "lint_semantic",
+        "lint_history",
+        "lint_show",
+        "lint_prune",
+        "lint_gaps",
+        "lint_remediate",
+        "lint_format",
+        "doctor",
+        "review",
+        "provenance",
+        "log",
+        "list_parsers",
+    }
+)
 
-def main() -> int:
+SNAPSHOT_SCHEMA_VERSION: int = 1
+SNAPSHOT_PATH: Path = Path(__file__).resolve().parent / "snapshots" / "mcp_tool_surface.json"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Check CLI↔MCP name parity and the MCP shape snapshot.")
+    parser.add_argument(
+        "--snapshot",
+        type=Path,
+        default=SNAPSHOT_PATH,
+        help=f"snapshot file to compare against (default: {SNAPSHOT_PATH})",
+    )
+    parser.add_argument(
+        "--update-snapshot",
+        action="store_true",
+        help="rewrite the snapshot from the live server, then exit 0",
+    )
+    args = parser.parse_args(argv)
+
+    if not args.update_snapshot and not args.snapshot.is_file():
+        print(
+            f"ERROR: no MCP shape snapshot at {args.snapshot}. Generate it with: uv run python {Path(__file__).name} --update-snapshot",
+            file=sys.stderr,
+        )
+        return 2
+
+    names_code = _check_names()
+
+    print("\nChecking MCP tool shape snapshot...")
+    try:
+        live = build_snapshot()
+    except SystemExit as exc:
+        return exc.code if isinstance(exc.code, int) else 2
+
+    if args.update_snapshot:
+        write_snapshot(live, args.snapshot)
+        print(f"Wrote {args.snapshot} ({len(live['tools'])} tools).")
+        return 0
+
+    try:
+        expected = load_snapshot(args.snapshot)
+    except (OSError, ValueError) as exc:
+        print(f"ERROR: cannot read the MCP shape snapshot at {args.snapshot}: {exc}", file=sys.stderr)
+        return 2
+
+    findings = compare_snapshots(expected, live)
+    if findings:
+        print(f"\nMCP SHAPE DRIFT ({len(findings)} finding(s)):")
+        for finding in findings:
+            print(f"  - {finding}")
+        print(
+            f"\nIf the change is intended, regenerate the snapshot and review its diff:\n  uv run python {Path(__file__).name} --update-snapshot",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"OK: {len(live['tools'])} tool shape(s) match {args.snapshot.name}.")
+    if names_code == 2:
+        return 2
+    return names_code
+
+
+def _check_names() -> int:
+    """The original CLI↔MCP name parity check."""
     print("Checking kompend CLI vs MCP Parity...")
 
     cli_commands = get_cli_commands()
@@ -66,7 +170,7 @@ def main() -> int:
         require_facts(len(cli_commands), "CLI commands", "Check that register_all_commands() ran and resolved sub-commands.")
         require_facts(len(mcp_tools), "MCP tools", "Check the FastMCP server: list_tools() returned nothing.")
     except SystemExit as exc:
-        return int(exc.code)
+        return exc.code if isinstance(exc.code, int) else 2
 
     # Map normalized → original CLI path for reporting.
     cli_norm_to_full: dict[str, str] = {}
@@ -111,6 +215,125 @@ def main() -> int:
         print(f"  - {c}")
 
     return 1
+
+
+def build_snapshot() -> dict[str, Any]:
+    """Build the current MCP tool-shape snapshot from the live server and source."""
+    tools = _tool_map()
+    payload_shapes = _payload_shapes()
+
+    require_facts(len(tools), "MCP tools", "Check the FastMCP server: list_tools() returned nothing.")
+
+    missing = sorted(SNAPSHOT_TOOL_NAMES - set(tools))
+    if missing:
+        print(
+            f"ERROR: the live MCP server is missing pinned tool(s): {', '.join(missing)}. "
+            "Add them to the server or remove them from SNAPSHOT_TOOL_NAMES deliberately.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    absent_shapes = sorted(name for name in SNAPSHOT_TOOL_NAMES if not payload_shapes.get(name))
+    if absent_shapes:
+        print(
+            f"ERROR: no return-dict shape found for {', '.join(absent_shapes)}. The output shape must be discoverable from the tool source.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
+    return {
+        "schema_version": SNAPSHOT_SCHEMA_VERSION,
+        "tools": {
+            name: {
+                "input_schema": _normalize_schema(tools[name].parameters),
+                "output_schema": _normalize_schema(tools[name].output_schema),
+                "payload_keys": payload_shapes[name],
+            }
+            for name in sorted(SNAPSHOT_TOOL_NAMES)
+        },
+    }
+
+
+def load_snapshot(path: Path = SNAPSHOT_PATH) -> dict[str, Any]:
+    """Load and validate a snapshot file."""
+    data = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict) or data.get("schema_version") != SNAPSHOT_SCHEMA_VERSION:
+        msg = f"unsupported snapshot schema_version in {path}"
+        raise ValueError(msg)
+    tools = data.get("tools")
+    if not isinstance(tools, dict) or not tools:
+        msg = f"snapshot {path} contains no tools"
+        raise ValueError(msg)
+    return data
+
+
+def write_snapshot(snapshot: dict[str, Any], path: Path = SNAPSHOT_PATH) -> None:
+    """Write *snapshot* in the canonical, diff-friendly form."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(snapshot, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def compare_snapshots(expected: dict[str, Any], actual: dict[str, Any]) -> list[str]:
+    """Return one finding per drifted tool shape; empty when the surfaces match."""
+    expected_tools = expected.get("tools", {})
+    actual_tools = actual.get("tools", {})
+    findings: list[str] = []
+
+    for name in sorted(SNAPSHOT_TOOL_NAMES - set(actual_tools)):
+        findings.append(f"{name}: missing from the live server")
+    for name in sorted(set(actual_tools) - set(expected_tools)):
+        findings.append(f"{name}: live tool is not in the snapshot")
+
+    for name in sorted(SNAPSHOT_TOOL_NAMES & set(expected_tools) & set(actual_tools)):
+        before = expected_tools[name]
+        after = actual_tools[name]
+        for field in ("input_schema", "output_schema", "payload_keys"):
+            if before.get(field) != after.get(field):
+                findings.append(f"{name}: {field} changed")
+
+    return findings
+
+
+def _tool_map() -> dict[str, Any]:
+    """The live server's tools, keyed by name."""
+    return {tool.name: tool for tool in asyncio.run(mcp_server.list_tools())}
+
+
+def _payload_shapes() -> dict[str, list[list[str]]]:
+    """Sorted key sets of every ``return {...}`` literal per pinned tool.
+
+    ``fastmcp`` reports ``output_schema`` as the generic
+    ``{"type": "object"}`` for these ``dict[str, Any]`` tools, so the snapshot
+    also pins the concrete payload keys, read from the defining source.
+    """
+    shapes: defaultdict[str, set[tuple[str, ...]]] = defaultdict(set)
+    for source in _quality_sources():
+        tree = ast.parse(source.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or node.name not in SNAPSHOT_TOOL_NAMES:
+                continue
+            for stmt in ast.walk(node):
+                if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Dict):
+                    keys = [k.value for k in stmt.value.keys if isinstance(k, ast.Constant) and isinstance(k.value, str)]
+                    shapes[node.name].add(tuple(sorted(keys)))
+    return {name: sorted(list(keys) for keys in shapes[name]) for name in sorted(SNAPSHOT_TOOL_NAMES)}
+
+
+def _quality_sources() -> list[Path]:
+    """The file(s) defining the quality tools: the module today, the package later."""
+    tools_dir = repo_root() / "src" / "kompend" / "mcp" / "tools"
+    module = tools_dir / "quality.py"
+    if module.exists():
+        return [module]
+    return sorted((tools_dir / "quality").glob("*.py"))
+
+
+def _normalize_schema(schema: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Round-trip through JSON so the snapshot compares structure, not objects."""
+    if schema is None:
+        return None
+    normalized: dict[str, Any] = json.loads(json.dumps(schema, sort_keys=True))
+    return normalized
 
 
 def _normalize_mcp_name(name: str) -> str:

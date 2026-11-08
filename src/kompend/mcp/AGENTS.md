@@ -36,6 +36,15 @@ Use ``from fastmcp import FastMCP`` — never the SDK's renamed
   re-exports, and its ``__all__`` — the 15 tool names — is the MCP contract.
   ``tests/unit/test_mcp_quality.py`` pins the names, the input schemas and the
   payload keys.
+- Tool shapes are gated, not just names: ``scripts/checks/check_mcp_parity.py``
+  compares the live ``list_tools()`` input schema and the AST-extracted return
+  payload keys against ``scripts/checks/snapshots/mcp_tool_surface.json``.
+  Regenerate deliberately with
+  ``uv run python scripts/checks/check_mcp_parity.py --update-snapshot`` and
+  review the snapshot diff in the same commit; never hand-edit it.
+- ``doctor`` resolves ``recorded_embed_model`` through
+  ``recorded_embedding_model()`` exactly as the CLI does, so both surfaces
+  report the vault's actual embed identity.
 - ``server.py`` registers tools via function reference, not strings.
 - Import: ``from kompend.mcp.server import server`` for the FastMCP instance.
 - The ``main()`` entry point is invoked by the ``kompend serve`` CLI command.

@@ -1,0 +1,790 @@
+{
+  "schema_version": 1,
+  "tools": {
+    "doctor": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "json_output": {
+            "default": false,
+            "type": "boolean"
+          },
+          "verbose": {
+            "default": false,
+            "type": "boolean"
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "last_run",
+          "results",
+          "status"
+        ],
+        [
+          "last_run",
+          "status",
+          "summary"
+        ],
+        [
+          "message",
+          "status"
+        ]
+      ]
+    },
+    "lint_all": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "fix": {
+            "default": true,
+            "type": "boolean"
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "failures",
+          "health_score",
+          "passes",
+          "report",
+          "skips",
+          "status"
+        ],
+        [
+          "message",
+          "status"
+        ]
+      ]
+    },
+    "lint_check": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "fix": {
+            "default": true,
+            "type": "boolean"
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "fixes_applied",
+          "health_score",
+          "passes",
+          "report_text",
+          "status",
+          "total_checks"
+        ],
+        [
+          "message",
+          "status"
+        ]
+      ]
+    },
+    "lint_format": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "check": {
+            "default": false,
+            "type": "boolean"
+          },
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "changed",
+          "message",
+          "status"
+        ],
+        [
+          "message",
+          "status"
+        ]
+      ]
+    },
+    "lint_gaps": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "json_output": {
+            "default": false,
+            "type": "boolean"
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "based_on",
+          "recommendations",
+          "status"
+        ],
+        [
+          "based_on",
+          "recommendations_text",
+          "status"
+        ],
+        [
+          "message",
+          "status"
+        ]
+      ]
+    },
+    "lint_history": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "json_output": {
+            "default": false,
+            "type": "boolean"
+          },
+          "last": {
+            "default": 10,
+            "type": "integer"
+          },
+          "trend": {
+            "default": false,
+            "type": "boolean"
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "entries",
+          "status"
+        ],
+        [
+          "entries_text",
+          "status"
+        ]
+      ]
+    },
+    "lint_prune": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "keep_last": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "max_age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "message",
+          "removed",
+          "status"
+        ],
+        [
+          "message",
+          "status"
+        ]
+      ]
+    },
+    "lint_remediate": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "dry_run": {
+            "default": false,
+            "type": "boolean"
+          },
+          "json_output": {
+            "default": false,
+            "type": "boolean"
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "actions",
+          "applied",
+          "dry_run",
+          "status"
+        ],
+        [
+          "actions_text",
+          "applied",
+          "based_on",
+          "dry_run",
+          "status"
+        ],
+        [
+          "message",
+          "status"
+        ]
+      ]
+    },
+    "lint_semantic": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "health_score",
+          "passes",
+          "report_text",
+          "status",
+          "total_checks"
+        ],
+        [
+          "message",
+          "status"
+        ]
+      ]
+    },
+    "lint_show": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "json_output": {
+            "default": false,
+            "type": "boolean"
+          },
+          "run": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "entry",
+          "status"
+        ],
+        [
+          "message",
+          "status"
+        ],
+        [
+          "report",
+          "status"
+        ]
+      ]
+    },
+    "list_parsers": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "json_output": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "parsers",
+          "status"
+        ],
+        [
+          "parsers_text",
+          "status"
+        ]
+      ]
+    },
+    "log": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "config_file": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "last": {
+            "default": 25,
+            "type": "integer"
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "write": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "message",
+          "status"
+        ],
+        [
+          "report",
+          "status"
+        ]
+      ]
+    },
+    "provenance": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "json_output": {
+            "default": false,
+            "type": "boolean"
+          },
+          "page_slugs": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "with_content": {
+            "default": false,
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "message",
+          "status"
+        ],
+        [
+          "missing",
+          "pages",
+          "status"
+        ],
+        [
+          "missing",
+          "pages_text",
+          "status"
+        ],
+        [
+          "pages",
+          "status"
+        ],
+        [
+          "pages_text",
+          "status"
+        ]
+      ]
+    },
+    "review": {
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "default": "list",
+            "type": "string"
+          },
+          "approve_all": {
+            "default": false,
+            "type": "boolean"
+          },
+          "json_output": {
+            "default": false,
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "wiki_dir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "type": "object"
+      },
+      "output_schema": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "payload_keys": [
+        [
+          "approved",
+          "status"
+        ],
+        [
+          "entries",
+          "status"
+        ],
+        [
+          "entries_text",
+          "status"
+        ],
+        [
+          "message",
+          "status"
+        ],
+        [
+          "rejected",
+          "status"
+        ]
+      ]
+    }
+  }
+}
