@@ -7,6 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import ollama
 import pytest
 
 from kompend.cli.app import app
@@ -567,7 +568,9 @@ class TestOllamaPsLookupTagMatching:
 
     def _patch_ps(self, monkeypatch: pytest.MonkeyPatch, entries: list[dict]) -> None:
         ps = SimpleNamespace(models=[SimpleNamespace(**e) for e in entries])
-        monkeypatch.setattr(providers.ollama, "ps", lambda: ps)
+        # Patch the ollama SDK module itself: kompend.diagnostics.providers
+        # imports it lazily at the call site, so the SDK singleton is the seam.
+        monkeypatch.setattr(ollama, "ps", lambda: ps)
 
     _MODEL = {"name": "qwen3:8b", "size": 100, "size_vram": 100, "context_length": 65536}
 
@@ -673,7 +676,7 @@ class TestOllamaShowLookup:
             details=details,
             modelinfo={"general.parameter_count": 270_000_000, "gemma-embedding2.embedding_length": 512},
         )
-        monkeypatch.setattr(providers.ollama, "show", lambda _name: shown)
+        monkeypatch.setattr(ollama, "show", lambda _name: shown)
 
         identity = providers.ollama_show_lookup("embeddinggemma-2:440m")
 
@@ -686,8 +689,8 @@ class TestOllamaShowLookup:
         """A tag with no parent takes its own digest from ``ollama list``."""
         shown = SimpleNamespace(details=None, modelinfo={"gemma-embedding2.embedding_length": 512})
         entry = SimpleNamespace(model="embeddinggemma-2:270m", digest="sha256:abc123")
-        monkeypatch.setattr(providers.ollama, "show", lambda _name: shown)
-        monkeypatch.setattr(providers.ollama, "list", lambda: SimpleNamespace(models=[entry]))
+        monkeypatch.setattr(ollama, "show", lambda _name: shown)
+        monkeypatch.setattr(ollama, "list", lambda: SimpleNamespace(models=[entry]))
 
         identity = providers.ollama_show_lookup("embeddinggemma-2:270m")
 
@@ -701,8 +704,8 @@ class TestOllamaShowLookup:
         def _boom(*_args: object) -> None:
             raise ConnectionError("connection refused")
 
-        monkeypatch.setattr(providers.ollama, "show", _boom)
-        monkeypatch.setattr(providers.ollama, "list", _boom)
+        monkeypatch.setattr(ollama, "show", _boom)
+        monkeypatch.setattr(ollama, "list", _boom)
 
         assert providers.ollama_show_lookup("embeddinggemma-2:270m") is None
 

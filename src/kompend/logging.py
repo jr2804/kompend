@@ -365,9 +365,5 @@ def apply_logging_config(config: _ConfigLike | None) -> None:
     raw = config.get("logging.modules") if config is not None else None
     # ConfigValue is the wide JSON union; the LoggingConfig model guarantees
     # str levels, the isinstance filter just narrows the static type.
-    overrides = (
-        {str(name): level for name, level in raw.items() if isinstance(level, (int, str))}
-        if isinstance(raw, dict) and raw
-        else None
-    )
+    overrides = {str(name): level for name, level in raw.items() if isinstance(level, (int, str))} if isinstance(raw, dict) and raw else None
     route_third_party_loggers(overrides=overrides)

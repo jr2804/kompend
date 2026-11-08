@@ -9,7 +9,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from kompend.agents.lint import LintRuleAgent
 from kompend.core.config._configs import LintConfig, LlmDataFormat
 from kompend.core.models import CompiledWiki
 from kompend.lint.base import BaseLintRule, LintReport, LintResult, LintRuleOutcome, Severity
@@ -69,7 +68,10 @@ class LintRunner:
         *,
         rules: list[str] | None = None,
         enable_llm: bool = False,
-        lint_agent: LintRuleAgent | None = None,
+        # An injected kompend.agents.lint.LintRuleAgent. Annotated ``Any``
+        # because the agents import is runtime-only (TYPE_CHECKING blocks are
+        # banned) and this module must stay import-light.
+        lint_agent: Any = None,
         lint_page_budget: int | None = None,
         fix: bool = False,
         fix_destructive: bool = False,

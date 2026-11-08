@@ -14,9 +14,8 @@ Strategy:
 from __future__ import annotations
 
 import math
+from importlib import import_module
 from typing import Any, Final
-
-from chonkie import RecursiveChunker, RecursiveLevel, RecursiveRules
 
 from kompend.chunking.extractors import extract_structured
 from kompend.core.models import (
@@ -104,8 +103,12 @@ class HierarchicalChunker:
 
     def _split_text(self, text: str) -> list[str]:
         """Split *text* into pieces that fit the effective token budget."""
+        # chonkie is imported at the call site (CODE.md runtime-only-import
+        # pattern): the package costs seconds and drags the openai SDK in,
+        # which gates and CLI startup must not pay for a split they never run.
+        chonkie = import_module("chonkie")
         try:
-            rc = RecursiveChunker(
+            rc = chonkie.RecursiveChunker(
                 chunk_size=self._effective_max,
                 tokenizer=self.tokenizer_name,
                 rules=_boundary_rules(),
@@ -299,14 +302,19 @@ class _TreeBuilder:
 # ── helpers ─────────────────────────────────────────────────────────────
 
 
-def _boundary_rules() -> RecursiveRules:
-    """Paragraph → line → sentence → whitespace fallback."""
-    return RecursiveRules(
+def _boundary_rules() -> Any:
+    """Paragraph → line → sentence → whitespace fallback.
+
+    Returns a ``chonkie.RecursiveRules``; annotated ``Any`` because chonkie
+    is imported at the call site (see ``_split_text``).
+    """
+    chonkie = import_module("chonkie")
+    return chonkie.RecursiveRules(
         levels=[
-            RecursiveLevel(delimiters=["\n\n"], include_delim="prev"),
-            RecursiveLevel(delimiters=["\n"], include_delim="prev"),
-            RecursiveLevel(delimiters=[". ", "? ", "! "], include_delim="prev"),
-            RecursiveLevel(include_delim="prev"),
+            chonkie.RecursiveLevel(delimiters=["\n\n"], include_delim="prev"),
+            chonkie.RecursiveLevel(delimiters=["\n"], include_delim="prev"),
+            chonkie.RecursiveLevel(delimiters=[". ", "? ", "! "], include_delim="prev"),
+            chonkie.RecursiveLevel(include_delim="prev"),
         ],
     )
 

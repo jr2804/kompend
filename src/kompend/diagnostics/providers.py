@@ -14,9 +14,8 @@ import urllib.error
 import urllib.request
 from collections.abc import Mapping
 from dataclasses import dataclass
+from importlib import import_module
 from typing import Final, Protocol, cast
-
-import ollama
 
 from kompend.core.config import ProviderEndpoint
 from kompend.diagnostics.base import CheckResult
@@ -238,6 +237,8 @@ def ollama_ps_lookup(model_name: str) -> OllamaLoadedModel | None:
     of the same base model (e.g. ``qwen3:4b`` configured while ``qwen3:8b`` is
     loaded would falsely report 8b's VRAM as 4b's).
     """
+    ollama = import_module("ollama")
+
     try:
         ps_models = ollama.ps().models
     except Exception as exc:  # noqa: BLE001 — an unreachable daemon means "not loaded"
@@ -276,6 +277,8 @@ def ollama_show_lookup(model_name: str) -> OllamaModelIdentity | None:
     same weights" from a genuinely different model. Without a reachable daemon
     there is no identity; the caller degrades to the plain tag name.
     """
+    ollama = import_module("ollama")
+
     try:
         shown = ollama.show(model_name)
     except Exception as exc:  # noqa: BLE001 — an unreachable daemon means no identity
@@ -302,6 +305,8 @@ def _ollama_list_digest(model_name: str) -> str | None:
     parent has no ``details.parent_model``, so its own digest comes from the
     local manifest instead.
     """
+    ollama = import_module("ollama")
+
     try:
         listing = ollama.list()
     except Exception as exc:  # noqa: BLE001 — an unreachable daemon means no digest

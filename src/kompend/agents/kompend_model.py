@@ -26,7 +26,7 @@ Failover is handled by wrapping multiple :class:`KompendModel` instances in
 
 from __future__ import annotations
 
-from typing import Final, cast
+from typing import Any, Final, cast
 
 from pydantic import BaseModel
 from pydantic_ai.messages import (
@@ -36,7 +36,6 @@ from pydantic_ai.messages import (
     ToolCallPart,
 )
 from pydantic_ai.models import Model, ModelRequestParameters
-from pydantic_ai.models.openai import OpenAIChatModelSettings
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
 from kompend.agents.failure import EmptyAnswerError
@@ -163,7 +162,7 @@ class KompendModel(Model):
         # Members other than DEFAULT all carry a mapping; a KeyError here is
         # impossible by construction and would be a vocabulary drift bug.
         thinking = _EFFORT_TO_THINKING[self._reasoning_effort]
-        settings = cast("OpenAIChatModelSettings", dict(model_settings or {}))
+        settings = cast("dict[str, Any]", dict(model_settings or {}))
         settings.setdefault("thinking", thinking)
         # pydantic-ai drops the unified ``thinking`` key when the model profile
         # lacks ``supports_thinking`` (true for most Ollama HF models), so the
@@ -177,7 +176,7 @@ class KompendModel(Model):
         # respects ``reasoning_effort: 'none'`` and disables thinking.
         if thinking is False:
             settings["openai_reasoning_effort"] = ReasoningEffort.NONE.value
-        return settings
+        return cast("ModelSettings", settings)
 
 
 def _fail_on_empty_answer(response: ModelResponse, request_parameters: ModelRequestParameters) -> None:

@@ -35,24 +35,22 @@ import functools
 import os
 import pkgutil
 import re
+from importlib import import_module
 
 import llmdb
-import ollama
 import pydantic_ai.providers
 from pydantic_ai.models import Model, infer_model
-from pydantic_ai.models.anthropic import AnthropicModel
-from pydantic_ai.models.fallback import FallbackModel
-from pydantic_ai.models.ollama import OllamaModel
-from pydantic_ai.models.openai import OpenAIChatModel, OpenAIResponsesModel
-from pydantic_ai.models.typesafe import TypeSafeModel
 from pydantic_ai.providers import infer_provider_class
-from pydantic_ai.providers.anthropic import AnthropicProvider
-from pydantic_ai.providers.ollama import OllamaProvider
-from pydantic_ai.providers.openai import OpenAIProvider
-from pydantic_ai.providers.typesafe import TypeSafeProvider
 from pydantic_ai.settings import ModelSettings
-from typesafe_sdk import AsyncTypeSafeClient
 
+# Provider SDKs (anthropic, openai, typesafe, ollama) and the pydantic-ai
+# wrappers that hard-depend on them (OllamaModel/Provider ride the openai
+# SDK, FallbackModel wraps concrete models) are imported at their call sites
+# via ``import_module`` (the .agents/CODE.md runtime-only-import pattern),
+# never at module level: each SDK costs seconds to import and gates, CLI
+# startup and smoke spawns pay that cost on every run without ever building
+# a model. Only the pydantic-ai core stays module-level (agents subclass it
+# regardless).
 from kompend.llm import catalog
 from kompend.llm.constants import OLLAMA_CONTEXT_LENGTH_ENV, OLLAMA_DEFAULT_BASE_URL
 
@@ -159,6 +157,8 @@ def _vision_from_catalog(provider_id: str, model_name: str) -> bool | None:
 
 def _vision_from_ollama(model_name: str) -> bool | None:
     """Vision flag via live ``ollama.show``; ``None`` on probe failure."""
+    ollama = import_module("ollama")
+
     try:
         caps = ollama.show(model_name).capabilities
         return bool(caps and "vision" in caps)
@@ -230,12 +230,14 @@ def requires_output_ceiling(model: Model) -> bool:
     OpenAI-compatible endpoints and Ollama generate until the model stops or
     the window fills, and there kompend sends nothing at all.
     """
-    if isinstance(model, FallbackModel):
+    fallback_models = import_module("pydantic_ai.models.fallback")
+    if isinstance(model, fallback_models.FallbackModel):
         return any(requires_output_ceiling(inner) for inner in model.models)
     delegate = getattr(model, "delegate", None)
     if isinstance(delegate, Model):
         return requires_output_ceiling(delegate)
-    return isinstance(model, AnthropicModel)
+    anthropic_models = import_module("pydantic_ai.models.anthropic")
+    return isinstance(model, anthropic_models.AnthropicModel)
 
 
 def resolve_model_limits(model_id: str) -> tuple[int, int]:
@@ -300,7 +302,7 @@ def _build_native(provider_id: str, model_name: str) -> Model:
     # Ollama is a well-known local provider with no model catalogue (models.dev) entry
     # and no built-in default base_url. Provide the local default so kompend
     # works out of the box; OLLAMA_BASE_URL still wins when set.
-    if provider_cls is OllamaProvider:
+    if provider_cls is import_module("pydantic_ai.providers.ollama").OllamaProvider:
         return _build_ollama(model_name)
 
     provider = provider_cls()
@@ -310,7 +312,7 @@ def _build_native(provider_id: str, model_name: str) -> Model:
     )
 
 
-def _build_ollama(model_name: str) -> OllamaModel:
+def _build_ollama(model_name: str) -> Model:
     """Construct an OllamaModel with a sane local default base_url.
 
     ``OLLAMA_BASE_URL`` (the env var pydantic-ai reads) wins when set;
@@ -322,13 +324,18 @@ def _build_ollama(model_name: str) -> OllamaModel:
     runs at its server default (~4096) and silently truncates long prompts
     from the middle — the model sees prompt head/tail but not the content.
     """
+    # OllamaModel/Provider live behind the openai SDK (pydantic-ai's
+    # models/ollama.py imports openai at module level), so both arrive here.
+    ollama_models = import_module("pydantic_ai.models.ollama")
+    ollama_providers = import_module("pydantic_ai.providers.ollama")
+
     base_url = os.getenv("OLLAMA_BASE_URL") or OLLAMA_DEFAULT_BASE_URL
-    provider = OllamaProvider(base_url=base_url)
+    provider = ollama_providers.OllamaProvider(base_url=base_url)
     ctx = _query_ollama_num_ctx(model_name)
     if ctx is None:
-        return OllamaModel(model_name, provider=provider)
+        return ollama_models.OllamaModel(model_name, provider=provider)
     settings: ModelSettings = ModelSettings(extra_body={"options": {"num_ctx": ctx}})
-    return OllamaModel(model_name, provider=provider, settings=settings)
+    return ollama_models.OllamaModel(model_name, provider=provider, settings=settings)
 
 
 def _build_catalog(provider_id: str, model_name: str) -> Model:
@@ -347,9 +354,11 @@ def _build_catalog(provider_id: str, model_name: str) -> Model:
 
     base_url = _normalize_base_url(entry.api)
     api_key = _catalog_api_key(entry)
-    return OpenAIChatModel(
+    openai_models = import_module("pydantic_ai.models.openai")
+    openai_providers = import_module("pydantic_ai.providers.openai")
+    return openai_models.OpenAIChatModel(
         model_name,
-        provider=OpenAIProvider(base_url=base_url, api_key=api_key),
+        provider=openai_providers.OpenAIProvider(base_url=base_url, api_key=api_key),
     )
 
 
@@ -390,12 +399,16 @@ def _build_user_provider(provider_id: str, model_name: str) -> Model:
     api_type = cfg.get("api_type") or "openai-chat"
 
     if api_type == "anthropic":
-        provider = AnthropicProvider(base_url=base_url, api_key=api_key)
-        return AnthropicModel(model_name, provider=provider)
-    provider = OpenAIProvider(base_url=base_url, api_key=api_key)
+        anthropic_models = import_module("pydantic_ai.models.anthropic")
+        anthropic_providers = import_module("pydantic_ai.providers.anthropic")
+        provider = anthropic_providers.AnthropicProvider(base_url=base_url, api_key=api_key)
+        return anthropic_models.AnthropicModel(model_name, provider=provider)
+    openai_models = import_module("pydantic_ai.models.openai")
+    openai_providers = import_module("pydantic_ai.providers.openai")
+    provider = openai_providers.OpenAIProvider(base_url=base_url, api_key=api_key)
     if api_type == "openai-responses":
-        return OpenAIResponsesModel(model_name, provider=provider)
-    return OpenAIChatModel(model_name, provider=provider)
+        return openai_models.OpenAIResponsesModel(model_name, provider=provider)
+    return openai_models.OpenAIChatModel(model_name, provider=provider)
 
 
 # ── path 3: user-defined provider (from [providers] in kompend.toml) ──────
@@ -436,6 +449,8 @@ def _query_ollama_num_ctx(model_name: str) -> int | None:
 
     Returns ``None`` if none are available or the Ollama queries fail.
     """
+    ollama = import_module("ollama")
+
     # 1. Global env var.
     env_ctx: int | None = None
     env_val = os.environ.get(OLLAMA_CONTEXT_LENGTH_ENV)
@@ -500,6 +515,9 @@ def build_decision_model(model_string: str) -> Model:
     endpoint on the same base URL as their other models, so the provider block
     is reused unchanged.
     """
+    typesafe_models = import_module("pydantic_ai.models.typesafe")
+    typesafe_providers = import_module("pydantic_ai.providers.typesafe")
+
     provider_id, _, model_name = model_string.partition("/")
     if not model_name:
         raise ValueError(f"Decision model must be 'provider/model', got {model_string!r}")
@@ -507,7 +525,7 @@ def build_decision_model(model_string: str) -> Model:
     base_url = _decision_base_url(provider.get("base_url"))
     api_key = provider.get("api_key")
     if not base_url and not api_key:
-        return TypeSafeModel(model_name)
+        return typesafe_models.TypeSafeModel(model_name)
     if base_url:
         # The SDK zstd-frames bodies >= 1 KiB by default; systemone endpoints
         # other than api.typesafe.ai (ollama.com) do not strip Content-Encoding,
@@ -516,9 +534,10 @@ def build_decision_model(model_string: str) -> Model:
         # forward the SDK's `compression` option through its provider, whose
         # documented escape hatch is a prebuilt client. Decision payloads are a
         # few KiB, so uncompressed costs nothing anywhere.
-        client = AsyncTypeSafeClient(api_key=api_key, base_url=base_url, compression=False)
-        return TypeSafeModel(model_name, provider=TypeSafeProvider(typesafe_client=client))
-    return TypeSafeModel(model_name, provider=TypeSafeProvider(api_key=api_key))
+        typesafe_sdk = import_module("typesafe_sdk")
+        client = typesafe_sdk.AsyncTypeSafeClient(api_key=api_key, base_url=base_url, compression=False)
+        return typesafe_models.TypeSafeModel(model_name, provider=typesafe_providers.TypeSafeProvider(typesafe_client=client))
+    return typesafe_models.TypeSafeModel(model_name, provider=typesafe_providers.TypeSafeProvider(api_key=api_key))
 
 
 def _decision_base_url(base_url: str | None) -> str | None:

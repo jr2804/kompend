@@ -7,7 +7,8 @@ always skipped. This is the single entry point:
     python scripts/checks/all.py            # everything
     python scripts/checks/all.py --fast     # skip the smoke layer
 
-Each step prints one line; the run stops at the first failure.
+Each step prints one line; the gates run in parallel, so verdict lines
+arrive in completion order — every line names its gate.
 
 A gate's exit code says what it found, and the runner keeps that meaning
 (``.agents/CHECKS.md``, "Gate exit codes"):
@@ -25,18 +26,24 @@ would be the same confidently-wrong bug the exit-2 code exists to prevent.
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import sqlite3
 import subprocess
 import sys
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 from kompend.core.store.schema import SCHEMA_VERSION, apply_schema
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
+
+#: A gate step: ``(name, argv, extra_env)``. ``extra_env`` layers over the
+#: inherited environment for that subprocess only (``None`` inherits as-is).
+Step = tuple[str, list[str], dict[str, str] | None]
 
 #: The gate that scans a VAULT's persisted artifacts rather than the
 #: repository's source. The repository root is not a vault — it has no
@@ -59,39 +66,59 @@ def main() -> int:
         return _run_steps(steps)
 
 
-def _run_steps(steps: list[tuple[str, list[str]]]) -> int:
-    """Run the gate steps and report one verdict for the whole run.
+def _run_steps(steps: list[Step]) -> int:
+    """Run the gate steps in parallel and report one verdict for the whole run.
 
-    Each step is a ``(name, argv)`` pair. A step that exits 0 judged and found
-    nothing; exit 1 found violations; exit 2 could not judge at all — no
-    subject, no facts, a scan that read nothing. The third is not a violation
-    and there is nothing to fix in the source, but the gate certified nothing
-    either, so the run cannot claim to be clean.
+    Each step is a ``(name, argv, extra_env)`` triple. A step that exits 0
+    judged and found nothing; exit 1 found violations; exit 2 could not judge
+    at all — no subject, no facts, a scan that read nothing. The third is not
+    a violation and there is nothing to fix in the source, but the gate
+    certified nothing either, so the run cannot claim to be clean.
+
+    The gates are independent processes (read-only scans plus the smoke
+    layer), so they run concurrently in a thread pool; the wall-clock cost of
+    the run is the slowest gate, not the sum. Every gate runs to completion —
+    nothing is skipped when another gate fails.
 
     Returns the run's exit code: 0 when every gate judged and found nothing,
     1 when a gate found violations, 2 when a gate could not judge.
     """
-    unjudged: list[str] = []
-    for name, command in steps:
+
+    def run(step: Step) -> tuple[str, subprocess.CompletedProcess[str], float]:
+        name, command, extra_env = step
+        env = {**os.environ, **extra_env} if extra_env else None
         started = time.monotonic()
         result = subprocess.run(  # noqa: S603 - fixed argv, no shell
-            command, cwd=ROOT, capture_output=True, text=True, check=False
+            command, cwd=ROOT, capture_output=True, text=True, check=False, env=env
         )
-        elapsed = time.monotonic() - started
-        if result.returncode == 0:
-            print(f"[ok]   {name} ({elapsed:.1f}s)")
-            continue
-        if result.returncode == 2:
-            unjudged.append(name)
-            print(f"[n/a]  {name} ({elapsed:.1f}s, exit 2 - could not judge)")
-            print(result.stderr.rstrip(), file=sys.stderr)
-            continue
-        print(f"[FAIL] {name} ({elapsed:.1f}s, exit {result.returncode})")
-        print(result.stdout.rstrip())
-        print(result.stderr.rstrip(), file=sys.stderr)
-        print("\nGATE FAILED - fix the step above before continuing.", file=sys.stderr)
-        return 1
+        return name, result, time.monotonic() - started
 
+    workers = min(len(steps), os.cpu_count() or 2)
+    failed: list[str] = []
+    unjudged: list[str] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        futures = [pool.submit(run, step) for step in steps]
+        for future in as_completed(futures):
+            name, result, elapsed = future.result()
+            if result.returncode == 0:
+                print(f"[ok]   {name} ({elapsed:.1f}s)")
+                continue
+            if result.returncode == 2:
+                unjudged.append(name)
+                print(f"[n/a]  {name} ({elapsed:.1f}s, exit 2 - could not judge)")
+                print(result.stderr.rstrip(), file=sys.stderr)
+                continue
+            failed.append(name)
+            print(f"[FAIL] {name} ({elapsed:.1f}s, exit {result.returncode})")
+            print(result.stdout.rstrip())
+            print(result.stderr.rstrip(), file=sys.stderr)
+
+    if failed:
+        print(
+            f"\nGATE FAILED - {', '.join(failed)} found violations; fix before continuing.",
+            file=sys.stderr,
+        )
+        return 1
     if unjudged:
         print(
             f"\n{len(unjudged)} gate(s) could not judge and certified nothing: {', '.join(unjudged)}.",
@@ -102,10 +129,10 @@ def _run_steps(steps: list[tuple[str, list[str]]]) -> int:
     return 0
 
 
-def _steps(fast: bool, vault: Path) -> list[tuple[str, list[str]]]:
+def _steps(fast: bool, vault: Path) -> list[Step]:
     python = sys.executable
-    steps: list[tuple[str, list[str]]] = [
-        (name, [python, str(HERE / f"check_{name}.py")])
+    steps: list[Step] = [
+        (name, [python, str(HERE / f"check_{name}.py")], None)
         for name in (
             "enum_cache",
             "config_literals",
@@ -116,17 +143,40 @@ def _steps(fast: bool, vault: Path) -> list[tuple[str, list[str]]]:
             "mcp_parity",
         )
     ]
-    steps.append((VAULT_GATE, [python, str(HERE / f"check_{VAULT_GATE}.py"), "--vault", str(vault)]))
+    steps.append((VAULT_GATE, [python, str(HERE / f"check_{VAULT_GATE}.py"), "--vault", str(vault)], None))
     steps += [
-        ("ruff check", [_binary("ruff"), "check", "src", "tests", "scripts"]),
-        ("ruff format", [_binary("ruff"), "format", "--check", "src", "tests", "scripts"]),
+        ("ruff check", [_binary("ruff"), "check", "src", "tests", "scripts"], None),
+        ("ruff format", [_binary("ruff"), "format", "--check", "src", "tests", "scripts"], None),
         # Same scope as `mise run typecheck` (see .config/mise/conf.d/lint.toml).
         # A narrower scope let a type error in tests/ pass this runner while the
         # documented task failed on the same tree — two verdicts for one gate.
-        ("ty", [_binary("ty"), "check", "src/", "tests/", "scripts/"]),
+        ("ty", [_binary("ty"), "check", "src/", "tests/", "scripts/"], None),
     ]
     if not fast:
-        steps.append(("smoke", [python, "-m", "pytest", "tests/smoke", "-q"]))
+        # The smoke layer's own convention (tests/AGENTS.md): skip the pytest
+        # plugin-autoload tax (~6s per pytest process), and zero the transient
+        # backoff so a stubbed provider error cannot stall the run.
+        smoke_env: dict[str, str] = {
+            "KOMP_LLM_TRANSIENT_BACKOFF": "0",
+            "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+        }
+        steps.append(
+            (
+                "smoke",
+                [
+                    python,
+                    "-m",
+                    "pytest",
+                    "tests/smoke",
+                    "-q",
+                    "-p",
+                    "pytest_asyncio.plugin",
+                    "-p",
+                    "pytest_timeout",
+                ],
+                smoke_env,
+            )
+        )
     return steps
 
 

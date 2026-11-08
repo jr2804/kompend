@@ -631,13 +631,13 @@ def test_the_runner_tells_a_violation_from_an_unjudged_gate(tmp_path: Path) -> N
     """
     runner = _runner()
 
-    clean = runner._run_steps([("judged-clean", _gate_command(0))])
+    clean = runner._run_steps([("judged-clean", _gate_command(0), None)])
     assert clean == 0
 
-    unjudged = runner._run_steps([("judged-clean", _gate_command(0)), ("could-not-judge", _gate_command(2))])
+    unjudged = runner._run_steps([("judged-clean", _gate_command(0), None), ("could-not-judge", _gate_command(2), None)])
     assert unjudged == 2, "a gate that could not judge must not yield a clean run"
 
-    violated = runner._run_steps([("judged-clean", _gate_command(0)), ("found-violations", _gate_command(1))])
+    violated = runner._run_steps([("judged-clean", _gate_command(0), None), ("found-violations", _gate_command(1), None)])
     assert violated == 1, "a gate that found violations must fail the run"
 
 
@@ -645,7 +645,7 @@ def test_an_unjudged_gate_is_never_reported_as_ok(capsys: pytest.CaptureFixture[
     """The runner says what it did: judged, or it did not judge."""
     runner = _runner()
 
-    code = runner._run_steps([("judged-clean", _gate_command(0)), ("could-not-judge", _gate_command(2))])
+    code = runner._run_steps([("judged-clean", _gate_command(0), None), ("could-not-judge", _gate_command(2), None)])
 
     out = capsys.readouterr().out
     assert code == 2

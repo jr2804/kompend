@@ -12,10 +12,8 @@ that only needs the protocol.
 from __future__ import annotations
 
 import os
-
-from pydantic_ai import Embedder
-from pydantic_ai.embeddings import infer_embedding_model
-from pydantic_ai.providers.ollama import OllamaProvider
+from importlib import import_module
+from typing import Any
 
 from kompend.llm.constants import OLLAMA_DEFAULT_BASE_URL
 from kompend.rag.embedding_base import EmbeddingProvider
@@ -80,19 +78,28 @@ class PydanticAIEmbeddingProvider(EmbeddingProvider):
         return OllamaMediaEmbedder(self._model_string.split(":", 1)[1])
 
 
-def build_embedder(model_string: str) -> Embedder:
+def build_embedder(model_string: str) -> Any:
     """Build a pydantic-ai ``Embedder`` with Ollama base_url support.
 
     Mirrors the pattern in :mod:`kompend.llm.models`: when the provider is
     Ollama, explicitly construct ``OllamaProvider`` with the local default
     ``base_url`` so it works out-of-the-box without ``OLLAMA_BASE_URL``.
+
+    Returns ``pydantic_ai.Embedder``; the annotation is ``Any`` because the
+    pydantic-ai imports are call-site (``import_module``, per the repo-wide
+    runtime-only-import rule) and ``TYPE_CHECKING`` blocks are banned — this
+    module is reachable from lint report rendering, which must stay
+    import-light.
     """
+    pydantic_ai = import_module("pydantic_ai")
     if model_string.startswith("ollama:"):
+        ollama_providers = import_module("pydantic_ai.providers.ollama")
         base_url = os.getenv("OLLAMA_BASE_URL") or OLLAMA_DEFAULT_BASE_URL
-        provider = OllamaProvider(base_url=base_url)
-        model = infer_embedding_model(model_string, provider_factory=lambda _: provider)
-        return Embedder(model)
-    return Embedder(model_string)
+        provider = ollama_providers.OllamaProvider(base_url=base_url)
+        embeddings = import_module("pydantic_ai.embeddings")
+        model = embeddings.infer_embedding_model(model_string, provider_factory=lambda _: provider)
+        return pydantic_ai.Embedder(model)
+    return pydantic_ai.Embedder(model_string)
 
 
 def make_provider(
