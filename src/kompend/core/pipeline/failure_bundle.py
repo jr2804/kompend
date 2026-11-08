@@ -78,6 +78,47 @@ def write_failure_bundle(
 
     Returns ``None`` when the bundle could not be written. Never raises.
     """
+    try:
+        return _write_failure_bundle(
+            base_dir=base_dir,
+            source=source,
+            source_file=source_file,
+            parse_target=parse_target,
+            sha=sha,
+            size_bytes=size_bytes,
+            stage=stage,
+            reason_code=reason_code,
+            detail=detail,
+            parser=parser,
+            parser_version=parser_version,
+            backend=backend,
+            judge_model=judge_model,
+            cache_key=cache_key,
+            error=error,
+        )
+    except Exception as exc:  # noqa: BLE001 — the bundle is best-effort by contract
+        logger.warning("Could not write failure bundle for %s: %s", source, exc)
+        return None
+
+
+def _write_failure_bundle(
+    *,
+    base_dir: Path | str,
+    source: str,
+    source_file: Path,
+    parse_target: Path | None,
+    sha: str,
+    size_bytes: int,
+    stage: str,
+    reason_code: ReasonCode,
+    detail: str,
+    parser: str | None,
+    parser_version: str | None,
+    backend: str | None,
+    judge_model: str | None,
+    cache_key: str | None,
+    error: BaseException,
+) -> Path | None:
     paths = VaultPaths(Path(base_dir))
     payload = _read_bytes(parse_target or source_file)
     digest = (sha or hashlib.sha256(payload).hexdigest()) if payload else _fallback_digest(source, sha)

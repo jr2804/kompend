@@ -65,6 +65,8 @@ class _Parser:
 class _Pipeline:
     parser = _Parser()
 
+    base_directory = Path("/nonexistent-vault")  # noqa: S108 — only read by the failure-bundle writer
+
     def rel_file(self, file: Path) -> str:  # noqa: ARG002
         return str(file)
 
