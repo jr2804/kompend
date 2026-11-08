@@ -77,7 +77,7 @@ def extract_table(el: DocumentElement) -> StructuredTable:
     rows = [{col: str(row[j]) if j < len(row) else "" for j, col in enumerate(columns)} for row in grid[1:]]
     caption = ""
     if el.metadata:
-        caption = str(el.metadata.get("caption", ""))
+        caption = str(el.metadata.get(MetadataField.CAPTION, ""))
     return StructuredTable(columns=columns, rows=rows, caption=caption)
 
 
@@ -93,7 +93,7 @@ def extract_equation(el: DocumentElement) -> StructuredEquation:
     caption = ""
     variables: list[EquationVariable] = []
     if el.metadata:
-        caption = str(el.metadata.get("caption", ""))
+        caption = str(el.metadata.get(MetadataField.CAPTION, ""))
 
     variables.extend(_extract_definition_vars(latex))
     if not variables:
@@ -101,7 +101,7 @@ def extract_equation(el: DocumentElement) -> StructuredEquation:
 
     surrounding = ""
     if el.metadata:
-        surrounding = str(el.metadata.get("context", "")) + " " + caption
+        surrounding = str(el.metadata.get(MetadataField.CONTEXT, "")) + " " + caption
     if surrounding:
         variables.extend(_extract_where_clause_vars(surrounding))
 
@@ -115,8 +115,8 @@ def extract_figure(el: DocumentElement) -> StructuredFigure:
     alt_text = ""
     description = ""
     if el.metadata:
-        caption = str(el.metadata.get("caption", ""))
-        alt_text = str(el.metadata.get("alt_text", ""))
+        caption = str(el.metadata.get(MetadataField.CAPTION, ""))
+        alt_text = str(el.metadata.get(MetadataField.IMAGE_ALT, ""))
         description = str(el.metadata.get(MetadataField.DESCRIPTION, ""))
     if isinstance(el.content, str):
         image_ref = el.content

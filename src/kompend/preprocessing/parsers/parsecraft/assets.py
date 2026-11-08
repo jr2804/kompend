@@ -37,6 +37,8 @@ CHUNK_KIND_TO_ELEMENT: dict[ChunkKind, ElementType] = {
     ChunkKind.QUOTE: ElementType.TEXT,
     ChunkKind.UNKNOWN: ElementType.TEXT,
 }
+# Alias for external callers importing the kind map.
+PARSECRAFT_KIND_TO_ELEMENT = CHUNK_KIND_TO_ELEMENT
 
 
 class ParsecraftParseError(RuntimeError):
@@ -139,9 +141,16 @@ def chunk_to_element(
     element_type = CHUNK_KIND_TO_ELEMENT.get(chunk.kind, ElementType.TEXT)
     content = chunk_content(chunk)
     metadata: dict[str, Any] = {
-        "parsecraft_kind": chunk.kind.value,
-        "confidence": chunk.confidence,
+        MetadataField.PARSECRAFT_KIND: chunk.kind.value,
+        MetadataField.CONFIDENCE: chunk.confidence,
     }
+    # IR kind-specific hints that backends emit today: figure alt text and the
+    # code-fence language. Everything else stays in the IR; new keys need an
+    # entry here and a symbol in MetadataField.
+    if chunk.metadata.get(MetadataField.IMAGE_ALT):
+        metadata[MetadataField.IMAGE_ALT] = chunk.metadata[MetadataField.IMAGE_ALT]
+    if chunk.metadata.get(MetadataField.LANGUAGE):
+        metadata[MetadataField.LANGUAGE] = chunk.metadata[MetadataField.LANGUAGE]
     if image_metadata:
         metadata.update(image_metadata)
     if element_type is ElementType.IMAGE:

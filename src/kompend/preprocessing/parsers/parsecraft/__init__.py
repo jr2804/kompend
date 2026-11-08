@@ -21,7 +21,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
     __name__,
     submod_attrs={
         "adapter": ["ParsecraftParser"],
-        "assets": ["ParsecraftParseError"],
+        "assets": ["ParsecraftParseError", "chunk_to_element", "PARSECRAFT_KIND_TO_ELEMENT", "CHUNK_KIND_TO_ELEMENT"],
         "pages": ["DEGRADED_BLANK_PAGE"],
     },
 )

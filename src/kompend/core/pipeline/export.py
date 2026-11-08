@@ -35,7 +35,7 @@ from kompend.core.models import (
     ElementType,
     MetadataField,
 )
-from kompend.core.models.enums import AssetKind
+from kompend.core.models.enums import AssetKind, StructuredField
 from kompend.core.models.structured import structured_to_dict
 from kompend.core.page_builder import PageBuilder, link
 from kompend.core.paths import VaultPaths
@@ -281,7 +281,7 @@ def _render_element(el: DocumentElement, state: _RenderState) -> str:  # noqa: P
     if el.type is ElementType.CODE:
         lang = ""
         if el.metadata:
-            lang = str(el.metadata.get("language", "") or "").strip()
+            lang = str(el.metadata.get(MetadataField.LANGUAGE, "") or "").strip()
         return f"```{lang}\n{text}\n```"
     if el.type is ElementType.FORMULA:
         return f"$$\n{text}\n$$"
@@ -326,7 +326,7 @@ def _image_caption(el: DocumentElement, content: str) -> str:
     if m and m.group(1):
         return m.group(1).strip()
     if el.metadata:
-        for key in ("caption", "alt_text"):
+        for key in (MetadataField.CAPTION, StructuredField.ALT_TEXT):
             value = str(el.metadata.get(key, "") or "").strip()
             if value:
                 return value

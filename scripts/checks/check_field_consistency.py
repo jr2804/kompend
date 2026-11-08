@@ -130,6 +130,18 @@ VALUE_DENYLIST: frozenset[str] = frozenset(
         "single_pass",
         "two_level",
         "multi_resolution",
+        # Overloaded across element metadata (caption/context), VLM entity dicts,
+        # resolve-cache deps and LLM-output claims: a bare "caption" or "context"
+        # in an LLM-output parser or entity dict is a different contract than
+        # the MetadataField symbol. Members remain available where the metadata
+        # dict is the element-metadata contract.
+        "caption",
+        "context",
+        # "language" / "confidence" are document-locale and LLM-claim keys in
+        # unrelated contracts (parse_store's doc rows, verification claims),
+        # not element-metadata keys.
+        "language",
+        "confidence",
     }
 )
 

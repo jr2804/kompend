@@ -200,10 +200,14 @@ class ExtractionField(StrEnum):
 
 
 class MetadataField(StrEnum):
-    """Canonical keys for ``WikiNode.metadata`` and provenance data dicts.
+    """Canonical keys for ``WikiNode.metadata``, provenance data dicts, and
+    parsed-element metadata.
 
     Every metadata / source-file / provenance key that crosses file boundaries
-    must live here, not as a bare literal.
+    must live here, not as a bare literal. Element metadata produced by a
+    parser and read by chunking, export or the VLM enricher lives under these
+    symbols too — the same dict that gets cached in
+    ``documents.elements`` and re-surfaced in export/search.
     """
 
     SOURCE = "source"
@@ -237,6 +241,20 @@ class MetadataField(StrEnum):
     ENTITY_TYPE = "entity_type"
     WIKILINK_ALIASES = "wikilink_aliases"
     FRONTMATTER = "frontmatter"
+    PARSECRAFT_KIND = "parsecraft_kind"
+    """IR chunk kind the element was mapped from (parsecraft parser)."""
+    CONFIDENCE = "confidence"
+    """IR chunk confidence score, 0..1 or absent."""
+    IMAGE_SRC = "image_src"
+    """Figure source path emitted by the parsecraft IR (legacy key)."""
+    IMAGE_ALT = "image_alt"
+    """Figure alt text emitted by the parsecraft IR."""
+    LANGUAGE = "language"
+    """Code-fence language emitted by the parsecraft IR."""
+    CAPTION = "caption"
+    """A caption attached to a table, equation or figure element."""
+    CONTEXT = "context"
+    """Surrounding context carried by an element's metadata."""
 
 
 class NodeType(StrEnum):

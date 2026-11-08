@@ -11,6 +11,7 @@ from kompend.chunking.extractors import (
 from kompend.core.models import (
     DocumentElement,
     ElementType,
+    MetadataField,
     StructuredEquation,
     StructuredFigure,
     StructuredTable,
@@ -34,7 +35,7 @@ class TestExtractStructuredDispatch:
         assert isinstance(result, StructuredEquation)
 
     def test_image_dispatches(self) -> None:
-        el = DocumentElement(type=ElementType.IMAGE, content="img.png", metadata={"caption": "Figure"})
+        el = DocumentElement(type=ElementType.IMAGE, content="img.png", metadata={MetadataField.CAPTION: "Figure"})
         result = extract_structured(el)
         assert isinstance(result, StructuredFigure)
 
@@ -61,7 +62,7 @@ class TestExtractTable:
         el = DocumentElement(
             type=ElementType.TABLE,
             content=[["A"], ["1"]],
-            metadata={"caption": "Test Results"},
+            metadata={MetadataField.CAPTION: "Test Results"},
         )
         result = extract_table(el)
         assert result.caption == "Test Results"
@@ -119,7 +120,7 @@ class TestExtractEquation:
         el = DocumentElement(
             type=ElementType.FORMULA,
             content=latex,
-            metadata={"caption": "where f is the frequency in Hz"},
+            metadata={MetadataField.CAPTION: "where f is the frequency in Hz"},
         )
         result = extract_equation(el)
         assert any(v.name == "f" and "frequency" in v.definition.lower() for v in result.variables)
@@ -134,7 +135,7 @@ class TestExtractEquation:
         el = DocumentElement(
             type=ElementType.FORMULA,
             content="x = y",
-            metadata={"caption": "Equation 1"},
+            metadata={MetadataField.CAPTION: "Equation 1"},
         )
         result = extract_equation(el)
         assert result.caption == "Equation 1"
@@ -159,9 +160,9 @@ class TestExtractFigure:
             type=ElementType.IMAGE,
             content="img.png",
             metadata={
-                "caption": "Block diagram",
-                "alt_text": "System architecture",
-                "description": "Shows data flow",
+                MetadataField.CAPTION: "Block diagram",
+                MetadataField.IMAGE_ALT: "System architecture",
+                MetadataField.DESCRIPTION: "Shows data flow",
             },
         )
         result = extract_figure(el)

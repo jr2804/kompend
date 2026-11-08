@@ -63,7 +63,7 @@ from parsecraft.routing.models import Intent, PageRoute, RoutingPlan, RoutingPre
 from parsecraft.routing.rules import DEGRADED_BLANK_PAGE_CODE  # noqa: E402 — guarded by the importorskip above
 
 from kompend.core.config import ImageMode
-from kompend.core.models import ElementType
+from kompend.core.models import ElementType, MetadataField
 from kompend.preprocessing.images import ImageStore
 from kompend.preprocessing.parsers import PARSER_PARSECRAFT, ParserOptions, build_parser
 from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingConfig
@@ -1316,6 +1316,67 @@ class TestImageExtraction:
         assert [element.type for element in elements] == [ElementType.TEXT]
         assert elements[0].content == "Figure 1"
         assert "image_file" not in elements[0].metadata
+
+
+class TestChunkMetadataProjection:
+    """The IR's kind-specific hints reach the element, on named keys only.
+
+    ``chunk_to_element`` projects a fixed allowlist of ``StructuredChunk.metadata``
+    keys onto the element so chunking, export and the VLM enricher read one
+    vocabulary. A key that is not on the allowlist stays in the IR: it must
+    never surface in a cached element, so an unpinned projection is a bug.
+    """
+
+    def test_figure_alt_text_survives_the_projection(self) -> None:
+        chunk = _assets().chunk_to_element(
+            StructuredChunk(
+                id="fig-1",
+                kind=ChunkKind.FIGURE,
+                content="![diagram](diagram.png)",
+                page_number=1,
+                reading_order=0,
+                metadata={"image_alt": "System architecture"},
+            ),
+            Path("doc.md"),
+            0,
+            image_metadata={MetadataField.IMAGE_FILE: "assets/fig.png"},
+        )
+        assert chunk is not None
+        assert chunk.metadata[MetadataField.IMAGE_ALT] == "System architecture"
+
+    def test_code_language_survives_the_projection(self) -> None:
+        chunk = _assets().chunk_to_element(
+            StructuredChunk(
+                id="c1",
+                kind=ChunkKind.CODE,
+                content="print(1)",
+                page_number=1,
+                reading_order=0,
+                metadata={"language": "python"},
+            ),
+            Path("doc.md"),
+            0,
+        )
+        assert chunk is not None
+        assert chunk.metadata[MetadataField.LANGUAGE] == "python"
+
+    def test_unknown_ir_keys_stay_in_the_ir(self) -> None:
+        chunk = _assets().chunk_to_element(
+            StructuredChunk(
+                id="p1",
+                kind=ChunkKind.PARAGRAPH,
+                content="Body",
+                page_number=1,
+                reading_order=0,
+                metadata={"caption": "never projected", "context": "never projected", "list_type": "never projected"},
+            ),
+            Path("doc.md"),
+            0,
+        )
+        assert chunk is not None
+        assert "caption" not in chunk.metadata
+        assert "context" not in chunk.metadata
+        assert "list_type" not in chunk.metadata
 
     def test_an_asset_no_chunk_claims_becomes_its_own_element(self, tmp_path: Path) -> None:
         document = _document([_page_with_asset(_text_chunk(), "asset-1")])

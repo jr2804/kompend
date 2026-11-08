@@ -18,7 +18,7 @@ from __future__ import annotations
 import re
 from typing import Final
 
-from kompend.core.models import DocumentElement, ElementType
+from kompend.core.models import DocumentElement, ElementType, MetadataField
 
 __all__ = [
     "FENCE_RE",
@@ -61,7 +61,7 @@ def element_to_markdown(element: DocumentElement) -> str | None:
     if element.type is ElementType.LIST_ITEM:
         return f"- {content}"
     if element.type is ElementType.CODE:
-        language = str((element.metadata or {}).get("language", "") or "")
+        language = str((element.metadata or {}).get(MetadataField.LANGUAGE, "") or "")
         return f"```{language}\n{content}\n```"
     if element.type is ElementType.FORMULA:
         return f"$$\n{content}\n$$"
