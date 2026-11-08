@@ -43,132 +43,6 @@ def batch_texts(texts: list[str], char_budget: int) -> list[str]:
     return ["\n\n".join(group) for group in _text_groups(texts, char_budget)]
 
 
-def _replan_after_overflow(
-    compiler: TwoPhaseRuntime,
-    source: str,
-    texts: list[str],
-    exc: LLMContextOverflowError,
-) -> list[str]:
-    """Lower the window to the provider's limit and fit *texts* to it.
-
-    Returns the texts that still have to be extracted, each already small
-    enough for the re-planned budget - a text larger than the new window is
-    split into windows instead of being sent whole again. The caller packs
-    them into batches and keeps whatever it already extracted.
-
-    The re-plan works on the source's *texts*, not the batches they were
-    packed into: a joined batch has no text boundaries left to split on, so
-    re-packing it could only hard-split the middle of a text.
-
-    Raises the original error when the provider named no limit or the window
-    is already at that limit - kompend cannot plan against an unknown limit,
-    and re-planning an unchanged budget would produce the same request.
-    """
-    limit = exc.stated_limit
-    if limit is None:
-        raise exc
-    if not compiler._clamp_window(limit, reason=f"provider enforces {limit} tokens"):
-        raise exc
-    char_budget = _extract_char_budget(compiler)
-    fitted = _fit_texts(texts, char_budget)
-    logger.info(
-        "TwoPhase: re-planned '%s' into %d text window(s) for the %d-token window",
-        source,
-        len(fitted),
-        compiler._context_window.max_input,
-    )
-    return fitted
-
-
-def _fit_texts(texts: list[str], char_budget: int) -> list[str]:
-    """Split any text that does not fit *char_budget* into windows.
-
-    Batching can split a source between its texts, but a single text larger
-    than the budget can only be split inside itself. ``split_text_windows``
-    keeps every character (breaking on line boundaries where it can), so a
-    chunk that grew past the window is still extracted in full - and a text
-    that fits is passed through untouched.
-    """
-    fitted: list[str] = []
-    for text in texts:
-        if len(text) > char_budget:
-            fitted.extend(split_text_windows(text, char_budget))
-        elif text:
-            fitted.append(text)
-    return fitted
-
-
-def _text_groups(texts: list[str], char_budget: int) -> list[list[str]]:
-    """Pack *texts* into groups that fit within *char_budget* (chars).
-
-    The groups keep the texts they contain (not the joined strings) so a
-    caller that has to re-plan can tell exactly which texts a group covers.
-    A text larger than the budget still forms its own group; callers that
-    must fit the window split it first (:func:`_fit_texts`).
-    """
-    groups: list[list[str]] = []
-    parts: list[str] = []
-    length = 0
-    for text in texts:
-        if length + len(text) > char_budget and parts:
-            groups.append(parts)
-            parts = []
-            length = 0
-        parts.append(text)
-        length += len(text)
-    if parts:
-        groups.append(parts)
-    return groups
-
-
-def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
-    """Character budget for one extraction batch.
-
-    The per-request cost that is NOT source content: the system template, the
-    reserved output, and the shared context safety margin.  Every term is
-    measured from the resolved config, never hard-coded, and the arithmetic
-    lives in :class:`~kompend.llm.request_budget.RequestBudget` so every
-    stage sizes itself the same way.
-
-    The safety margin matters here: the chars-per-token heuristic undercounts
-    token-dense text (formulas, tables), so a nominally exact-fit batch would
-    overflow a small local model's window
-    (``request (65762 tokens) exceeds the available context size (65536)``).
-    Content is never cropped: a smaller budget splits the source across more
-    batches.
-    """
-    budget = RequestBudget(
-        window=compiler._context_window,
-        reserved={"system": compiler._extract_system_tokens},
-    )
-    logger.info("TwoPhase: extract budget (%s)", budget.report())
-    return budget.content_chars(compiler._config.llm.default_chars_per_token)
-
-
-def _extract_cache_deps(compiler: TwoPhaseRuntime, text: str) -> dict[str, str]:
-    """Cache dependencies for one extraction batch.
-
-    Single source of truth for the ``extract`` cache key - used by both
-    :func:`extract_one` and :func:`extract_incremental`, which must agree.
-
-    ``CacheDeps.MODEL`` is part of the key because extraction output is
-    model-specific (which concepts a model finds, how it names them, how
-    verbose the definitions are).  Without it, switching models replays
-    the previous model's extractions instead of re-running them.  With
-    ``cache_ignore_model`` the model is left out on purpose: the caller
-    accepts replaying prior-model output to avoid re-running everything.
-    """
-    budget = compiler._budget
-    deps = {
-        CacheDeps.SOURCE_TEXT: hashlib.sha256(text.encode()).hexdigest(),
-        CacheDeps.CHUNK_SIZE_MIN: str(budget.chunk_size_min),
-        CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
-    }
-    if not compiler._config.cache_ignore_model:
-        deps[CacheDeps.MODEL] = compiler._model or ""
-    return deps
-
-
 def extract_one(compiler: TwoPhaseRuntime, source: str, combined: str, extraction_system: str) -> Extraction | None:
     """Run a single extraction LLM call with cache."""
     extract_deps = _extract_cache_deps(compiler, combined)
@@ -382,6 +256,132 @@ def extract_incremental(
             continue
         pending = []
     return results, False
+
+
+def _replan_after_overflow(
+    compiler: TwoPhaseRuntime,
+    source: str,
+    texts: list[str],
+    exc: LLMContextOverflowError,
+) -> list[str]:
+    """Lower the window to the provider's limit and fit *texts* to it.
+
+    Returns the texts that still have to be extracted, each already small
+    enough for the re-planned budget - a text larger than the new window is
+    split into windows instead of being sent whole again. The caller packs
+    them into batches and keeps whatever it already extracted.
+
+    The re-plan works on the source's *texts*, not the batches they were
+    packed into: a joined batch has no text boundaries left to split on, so
+    re-packing it could only hard-split the middle of a text.
+
+    Raises the original error when the provider named no limit or the window
+    is already at that limit - kompend cannot plan against an unknown limit,
+    and re-planning an unchanged budget would produce the same request.
+    """
+    limit = exc.stated_limit
+    if limit is None:
+        raise exc
+    if not compiler._clamp_window(limit, reason=f"provider enforces {limit} tokens"):
+        raise exc
+    char_budget = _extract_char_budget(compiler)
+    fitted = _fit_texts(texts, char_budget)
+    logger.info(
+        "TwoPhase: re-planned '%s' into %d text window(s) for the %d-token window",
+        source,
+        len(fitted),
+        compiler._context_window.max_input,
+    )
+    return fitted
+
+
+def _fit_texts(texts: list[str], char_budget: int) -> list[str]:
+    """Split any text that does not fit *char_budget* into windows.
+
+    Batching can split a source between its texts, but a single text larger
+    than the budget can only be split inside itself. ``split_text_windows``
+    keeps every character (breaking on line boundaries where it can), so a
+    chunk that grew past the window is still extracted in full - and a text
+    that fits is passed through untouched.
+    """
+    fitted: list[str] = []
+    for text in texts:
+        if len(text) > char_budget:
+            fitted.extend(split_text_windows(text, char_budget))
+        elif text:
+            fitted.append(text)
+    return fitted
+
+
+def _text_groups(texts: list[str], char_budget: int) -> list[list[str]]:
+    """Pack *texts* into groups that fit within *char_budget* (chars).
+
+    The groups keep the texts they contain (not the joined strings) so a
+    caller that has to re-plan can tell exactly which texts a group covers.
+    A text larger than the budget still forms its own group; callers that
+    must fit the window split it first (:func:`_fit_texts`).
+    """
+    groups: list[list[str]] = []
+    parts: list[str] = []
+    length = 0
+    for text in texts:
+        if length + len(text) > char_budget and parts:
+            groups.append(parts)
+            parts = []
+            length = 0
+        parts.append(text)
+        length += len(text)
+    if parts:
+        groups.append(parts)
+    return groups
+
+
+def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
+    """Character budget for one extraction batch.
+
+    The per-request cost that is NOT source content: the system template, the
+    reserved output, and the shared context safety margin.  Every term is
+    measured from the resolved config, never hard-coded, and the arithmetic
+    lives in :class:`~kompend.llm.request_budget.RequestBudget` so every
+    stage sizes itself the same way.
+
+    The safety margin matters here: the chars-per-token heuristic undercounts
+    token-dense text (formulas, tables), so a nominally exact-fit batch would
+    overflow a small local model's window
+    (``request (65762 tokens) exceeds the available context size (65536)``).
+    Content is never cropped: a smaller budget splits the source across more
+    batches.
+    """
+    budget = RequestBudget(
+        window=compiler._context_window,
+        reserved={"system": compiler._extract_system_tokens},
+    )
+    logger.info("TwoPhase: extract budget (%s)", budget.report())
+    return budget.content_chars(compiler._config.llm.default_chars_per_token)
+
+
+def _extract_cache_deps(compiler: TwoPhaseRuntime, text: str) -> dict[str, str]:
+    """Cache dependencies for one extraction batch.
+
+    Single source of truth for the ``extract`` cache key - used by both
+    :func:`extract_one` and :func:`extract_incremental`, which must agree.
+
+    ``CacheDeps.MODEL`` is part of the key because extraction output is
+    model-specific (which concepts a model finds, how it names them, how
+    verbose the definitions are).  Without it, switching models replays
+    the previous model's extractions instead of re-running them.  With
+    ``cache_ignore_model`` the model is left out on purpose: the caller
+    accepts replaying prior-model output to avoid re-running everything.
+    """
+    budget = compiler._budget
+    deps = {
+        CacheDeps.SOURCE_TEXT: hashlib.sha256(text.encode()).hexdigest(),
+        CacheDeps.CHUNK_SIZE_MIN: str(budget.chunk_size_min),
+        CacheDeps.CHUNK_SIZE_MAX: str(budget.chunk_size_max),
+    }
+    if not compiler._config.cache_ignore_model:
+        deps[CacheDeps.MODEL] = compiler._model or ""
+    return deps
 
 
 def combine_extractions(compiler: TwoPhaseRuntime, source: str, parts: list[Extraction]) -> Extraction:
