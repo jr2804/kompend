@@ -147,6 +147,7 @@ def test_every_member_has_a_stable_value() -> None:
         "CORRUPT_CACHE",
         "NO_PARSER",
         "EMPTY_EXTRACTION",
+        "EMBEDDING_MERGE_DISABLED",
     }
     assert ReasonCode.MISLABELLED_BINARY == "mislabelled_binary"
     assert ReasonCode.TIMEOUT == "timeout"
@@ -156,6 +157,7 @@ def test_every_member_has_a_stable_value() -> None:
     assert ReasonCode.CORRUPT_CACHE == "corrupt_cache"
     assert ReasonCode.NO_PARSER == "no_parser"
     assert ReasonCode.EMPTY_EXTRACTION == "empty_extraction"
+    assert ReasonCode.EMBEDDING_MERGE_DISABLED == "embedding_merge_disabled"
 
 
 def test_ingest_parse_failure_carries_the_classified_code(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:

@@ -12,6 +12,7 @@ from kompend.core.keys import (
     COMPILE_LLM_VLM_MODEL,
 )
 from kompend.core.paths import vault_paths
+from kompend.core.reporting.last_run import build_last_run_report
 from kompend.core.utils.dicts import as_str
 from kompend.diagnostics import run_doctor
 
@@ -40,8 +41,9 @@ def doctor(
         verbose=verbose,
     )
     # We can't easily capture print_doctor_results output, so return the raw results
+    last_run = build_last_run_report(vp.base_dir).to_dict()
     if json_output:
-        return {"status": "ok", "results": [r.to_dict() for r in results]}
+        return {"status": "ok", "results": [r.to_dict() for r in results], "last_run": last_run}
     # Build a text summary
     lines = []
     all_ok = True
@@ -51,4 +53,4 @@ def doctor(
         lines.append(f"{r.name}: {'OK' if r.passed else 'FAIL'}")
         if verbose and r.message:
             lines.append(f"  {r.message}")
-    return {"status": "ok" if all_ok else "error", "summary": "\n".join(lines)}
+    return {"status": "ok" if all_ok else "error", "summary": "\n".join(lines), "last_run": last_run}

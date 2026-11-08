@@ -50,6 +50,9 @@ class ReasonCode(StrEnum):
     NO_PARSER = "no_parser"
     #: The parser/VLM ran but produced nothing usable.
     EMPTY_EXTRACTION = "empty_extraction"
+    #: The concept-embedding merge fell back to string similarity; the
+    #: warning is log-only (no ledger row).
+    EMBEDDING_MERGE_DISABLED = "embedding_merge_disabled"
 
 
 class StageOutcome(StrEnum):

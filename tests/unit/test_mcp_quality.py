@@ -191,7 +191,7 @@ GOLDEN_SCHEMAS: dict[str, dict[str, Any]] = {
 # Sorted key sets of every ``return {...}`` dict literal per tool, AST-extracted
 # from the defining source. A payload key rename or removal changes this golden.
 GOLDEN_PAYLOAD_KEYS: dict[str, list[list[str]]] = {
-    "doctor": [["message", "status"], ["results", "status"], ["status", "summary"]],
+    "doctor": [["last_run", "results", "status"], ["last_run", "status", "summary"], ["message", "status"]],
     "explain": [["candidates", "message", "status"], ["message", "status"], ["report", "report_text", "status"]],
     "lint_all": [["failures", "health_score", "passes", "report", "skips", "status"], ["message", "status"]],
     "lint_check": [["fixes_applied", "health_score", "passes", "report_text", "status", "total_checks"], ["message", "status"]],

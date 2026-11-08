@@ -9,11 +9,17 @@ from __future__ import annotations
 import json
 import sys
 
+from kompend.core.reporting.last_run import LastRunReport, render_last_run
 from kompend.diagnostics.base import CheckResult
 from kompend.logging import get_console
 
 
-def print_doctor_results(results: list[CheckResult], json_output: bool = False) -> int:
+def print_doctor_results(
+    results: list[CheckResult],
+    json_output: bool = False,
+    *,
+    last_run: LastRunReport | None = None,
+) -> int:
     """Print doctor results. Returns exit code (0 = no failures)."""
     failed_count = sum(1 for result in results if not result.passed)
     warn_count = sum(1 for result in results if result.passed and result.warning)
@@ -26,6 +32,7 @@ def print_doctor_results(results: list[CheckResult], json_output: bool = False) 
             "failed": failed_count,
             "total": len(results),
             "checks": [result.to_dict() for result in results],
+            "last_run": last_run.to_dict() if last_run is not None else None,
         }
         json.dump(data, sys.stdout, indent=2)
         sys.stdout.write("\n")
@@ -47,5 +54,10 @@ def print_doctor_results(results: list[CheckResult], json_output: bool = False) 
         if failed_count:
             console.print(f", {failed_count} failed", end="")
         console.print("")
+
+        if last_run is not None:
+            console.print("")
+            for line in render_last_run(last_run):
+                console.print(line, markup=False)
 
     return 1 if failed_count else 0

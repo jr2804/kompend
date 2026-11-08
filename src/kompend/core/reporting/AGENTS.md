@@ -18,6 +18,7 @@ stores into human-readable markdown — no LLM calls.
 | `ledger.py` | `StageLedger`, `stage_ledger` - per-item stage ledger in the `stages` table; documented queries (`slowest_items`, `failure_histogram`, `cache_hit_rate`, `matching_sources`, `source_runs`, `source_attempts`) |
 | `parse_quality.py` | `ParseQuality`, `measure_parse_quality`, `read_parse_quality` - per-document parse verdict (replacement ratio, empty blocks, coverage, chars per page) persisted one row per source; `read_parse_quality` is read-only and returns `[]` for a missing store or table |
 | `explain.py` | `build_explain_report`, `render_explain`, `resolve_source` - the engine behind `kompend explain` (one file's ledger rows, stage totals, degradations); raises `AmbiguousSourceError` on fragment collisions |
+| `last_run.py` | `build_last_run_report`, `render_last_run` - the doctor's last-run section: degradation counts against their calls, slowest items overall and per stage, failure histogram, and the run-log path; read-only and empty-safe |
 
 ## Rules
 
@@ -48,6 +49,11 @@ stores into human-readable markdown — no LLM calls.
   are read from the *merged* config (`cfg.get(...)`), not from the validated
   model — `cfg.kompend` raises on a vault whose config does not validate yet
   (`kompend config path` must still work there).
+- `last_run.py` reads the ledger and the run log **read-only**: a missing
+  store, a missing table, or a vault with no runs yields an empty report,
+  never an exception. Degradations counted from log-only warnings
+  (`embedding_merge_disabled`, judge fallbacks) are attributed to the run log
+  so they are never mistaken for ledger rows.
 - The **flight recorder** (`kompend.logging.RunLogHandler`) is attached by
   `log_run_start` (root logger, run id minted there) and detached by
   `log_run_end`: INFO+ straight to `.kompend/logs/run-<id>.log`, DEBUG held

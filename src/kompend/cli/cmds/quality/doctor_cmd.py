@@ -17,6 +17,7 @@ from kompend.core.keys import (
     COMPILE_LLM_VLM_MODEL,
 )
 from kompend.core.paths import vault_paths
+from kompend.core.reporting.last_run import build_last_run_report
 from kompend.core.utils.dicts import as_str
 from kompend.diagnostics import run_doctor
 from kompend.logging import get_err_console
@@ -59,6 +60,6 @@ def doctor_cmd(
         config=cfg,
         verbose=verbose,
     )
-    exit_code = print_doctor_results(results, json_output=json_output)
+    exit_code = print_doctor_results(results, json_output=json_output, last_run=build_last_run_report(vp.base_dir))
     if exit_code:
         raise SystemExit(1)

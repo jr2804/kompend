@@ -20,7 +20,7 @@ from kompend.core.store import open_store
 from kompend.core.types import ReasonCode, StageOutcome
 
 #: Reason codes that mark a row as a degradation even when the outcome is OK.
-_DEGRADATION_REASONS: Final[frozenset[str]] = frozenset({ReasonCode.JUDGE_DEGRADED.value, ReasonCode.DECISION_FALLBACK.value})
+DEGRADATION_REASONS: Final[frozenset[str]] = frozenset({ReasonCode.JUDGE_DEGRADED.value, ReasonCode.DECISION_FALLBACK.value})
 
 #: Row facts merged first-non-null into the report (attempt-level identity).
 _FACT_KEYS: Final[tuple[str, ...]] = (
@@ -88,7 +88,7 @@ def build_explain_report(base_dir: Path, source: str, *, run_id: str | None = No
             "detail": row["detail"],
         }
         for row in rows
-        if row["outcome"] == StageOutcome.DEGRADED.value or row["reason_code"] in _DEGRADATION_REASONS
+        if row["outcome"] == StageOutcome.DEGRADED.value or row["reason_code"] in DEGRADATION_REASONS
     ]
     facts = {key: next((row[key] for row in rows if row.get(key) is not None), None) for key in _FACT_KEYS}
     return {

@@ -51,6 +51,10 @@ never raises.
   digests to flag an alias-tag rebuild that would produce byte-identical
   vectors. A digest it cannot resolve degrades to plain tag reporting — never
   a guess, never a write.
+- **The last-run section is not a check.** `core.reporting.last_run` builds it
+  from the ledger and the run log and `print_doctor_results` renders it; the
+  checks stay host/model probes and never read the ledger. The section is
+  read-only and prints an explicit empty state for a vault with no runs.
 
 ## Verification
 
