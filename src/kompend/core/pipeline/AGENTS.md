@@ -29,6 +29,8 @@ persistence, and standalone ingestion.
 | `parallelism.py`              | `gil_enabled`, `describe_parallelism` — interpreter parallelism facts for `compile.workers` |
 | `bounded_parse.py`            | `DeadlineWorker`, `ParseDeadlineExceeded` — per-file wall-clock budget, enforced by a reusable worker process (`ingest.parse_timeout_s`; `0` parses in-process) |
 | `stall_watch.py`              | `StallWatchdog`, `WatchStage`, `DEFAULT_STALL_WARN_S` — per-item heartbeat observer beside the `DeadlineWorker`: warns **once** per item whose beat goes silent ("no progress for N s in stage X: file"); one watchdog per run (`stall_warn_s`, default 30 s, `0` disables); `last_stage` feeds the deadline row's detail |
+| `events.py`                   | `PipelineEvent`, `PipelinePhase`, `PipelineEventKind`, `PipelineEventField`, `PipelineEventBus`, `PipelineEventSink` — the typed payload behind `WikiPipeline.emit`; the bus fans one event out to every registered sink. `PipelinePhase`/`PipelineEventKind` are the public vocabulary; `PipelineEventField` is the JSONL record contract |
+| `event_sinks.py`              | `CallbackSink` (the rich progress bar), `JsonlSink` (one JSON object per event, append mode), `CollectingSink` (in-memory test collector); a ledger or OTel adapter implements `PipelineEventSink` directly and is not special-cased |
 | `reasons.py`                  | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
 | `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`                   | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |
@@ -129,10 +131,18 @@ persistence, and standalone ingestion.
   broad `except Exception` sites classify with `reason_code_for(exc)`
   (`reasons.py`). The observability ledger, `kompend explain` and doctor count
   on this field; `tests/unit/test_reason_codes.py` pins the emission sites.
+- **One emit, every observer.** `WikiPipeline.emit()` builds a typed
+  `PipelineEvent` and publishes it on `event_bus` before feeding the legacy
+  progress callback. Sinks register with `pipeline.subscribe_events(sink)` or
+  `pipeline.event_bus.subscribe(sink)` — no emit call site changes when a
+  consumer is added. A sink failure is logged at WARNING and skipped; a
+  diagnostic never aborts a run. The `PipelinePhase`/`PipelineEventKind`
+  values are public (JSONL consumers key on them): add, never rename. Stdlib
+  only — the bus is not a second logging framework.
 - **Cancel contract** (token: `core.cancel.CancelState`; signal:
   `KompendCancelled`, a `BaseException` so `except Exception` sites cannot
-  swallow it): `WikiPipeline.emit()` raises it *before* callback dispatch when
-  the token is set — the deliberate exception to "callbacks must not abort the
+  swallow it): `WikiPipeline.emit()` raises it *before* event dispatch when
+  the token is set — the deliberate exception to "consumers must not abort the
   pipeline". `run()`/`run_tier()` and `ingest_documents()` stop at tier/file
   boundaries: save tier state, then re-raise. `build_pipeline(config, *,
   cancel=...)` threads the token in; `cli/` owns token creation and the

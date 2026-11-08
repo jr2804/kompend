@@ -27,6 +27,7 @@ from kompend.core.models import (
 )
 from kompend.core.paths import VaultPaths, rel_to_vault
 from kompend.core.pipeline.config import PipelineConfig, Tier
+from kompend.core.pipeline.events import PipelineEvent, PipelineEventBus, PipelineEventSink
 from kompend.core.pipeline.parse_cache import clear_documents
 from kompend.core.pipeline.stages.compile import load_compiled_wiki, run_compile_tier, run_output_tier
 from kompend.core.pipeline.stages.index import detect_resume_tier, iter_sources, run_index_tier
@@ -97,6 +98,7 @@ class WikiPipeline:
         self.base_directory = config.resolved_base_dir()
         self.state_store = state_store or TierStateStore(self._default_state_file(), self.base_directory)
         self._progress_callback: ProgressCallback | None = None
+        self.event_bus = PipelineEventBus()
         self.cache_store = CacheStore(self.cache_directory(), self.base_directory)
         self._tier_timings: dict[str, float] = {}
         self.last_chunk_count: int = 0
@@ -231,14 +233,24 @@ class WikiPipeline:
             return meta
         return metadata
 
-    def emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
-        """Emit a progress event if a callback is registered.
+    def subscribe_events(self, sink: PipelineEventSink) -> Callable[[], None]:
+        """Register a sink for typed pipeline events; returns an unsubscribe callable."""
+        return self.event_bus.subscribe(sink)
 
-        Cancellation takes priority over the callback: when a cancel was
+    def emit(self, phase: str, current: int, total: int, detail: str = "") -> None:
+        """Publish a typed event, then feed the legacy progress callback.
+
+        The event bus sees every call first (``PipelineEvent.from_emit``), so
+        a JSONL recorder, a test collector or an OTel bridge observes exactly
+        the sequence the bar sees. Sinks subscribe through
+        :meth:`subscribe_events` or ``event_bus.subscribe``; no emit call
+        site changes when a consumer is added.
+
+        Cancellation takes priority over dispatch: when a cancel was
         requested (double-ESC watcher), this raises
         :class:`~kompend.core.cancel.KompendCancelled` so the calling loop
         stops at its next unit boundary. That is the one deliberate
-        exception to the "callback must not abort the pipeline" contract
+        exception to the "a consumer must not abort the pipeline" contract
         below — a user-requested stop is not a callback bug.
 
         A progress callback is arbitrary user code; it may raise anything. Per
@@ -248,6 +260,7 @@ class WikiPipeline:
         """
         if self.cancel is not None and self.cancel.requested():
             raise KompendCancelled(self.cancel.reason)
+        self.event_bus.publish(PipelineEvent.from_emit(phase, current, total, detail))
         if self._progress_callback is not None:
             try:
                 self._progress_callback(phase, current, total, detail)
