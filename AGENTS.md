@@ -170,6 +170,11 @@ When the user requests a durable behavior change, record it here or in the
 relevant child AGENTS.md. (Conventions, config, or boundary rules belong in
 `.agents/` or the child; only always-applied preferences go here.)
 
+- Worker protocol (WK threads): after completing an assigned task, send a
+  completion report to the orchestrator thread — currently Kompend-Main
+  (`thread_0da01260-92f9-4ce1-985a-5ffc70234f63`) — via `t3_thread_send`,
+  without waiting to be asked.
+
 - LLM I/O policy (details in `.agents/CODE.md`): never crop LLM inputs or
   outputs, no fallbacks where an exception belongs, no hand-crafted heuristic
   stand-ins for LLM calls without explicit approval.
