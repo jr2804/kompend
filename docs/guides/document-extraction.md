@@ -62,11 +62,12 @@ marker is parsecraft's **bring-your-own** sub-backend.
 ## Supported Formats
 
 Discovery takes the registry default (parsecraft) and asks it which suffixes
-it claims; the source directory is scanned for exactly those. parsecraft's
-current 34-suffix table is what a default `kompend ingest` covers, plus eight
-legacy suffixes from kompend's own table (`.adoc .bmp .doc .eml .gif .ltx
-.msg .webp`) that parsecraft rejects at parse time — such a file is skipped
-with a message rather than crashing. `.kompend/`
+it claims; the source directory is scanned for exactly those. kompend's own
+format table (`FileExtension`) names only suffixes a backend honours, so the
+two agree: seven legacy suffixes with no parser on either side (`.adoc .bmp
+.eml .gif .ltx .msg .webp`) were pruned from the table (knox-8tsj) and such
+files are no longer discovered. `.doc` stays in the table because parsecraft
+claims it and docling converts it natively (upstream parsecraft#10). `.kompend/`
 is excluded regardless of claimed formats, so state artifacts such as
 `.kompend/rumdl.toml` are never ingested even though parsecraft claims `.toml`.
 

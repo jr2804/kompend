@@ -14,11 +14,8 @@ _TEXT = {
     FileExtension.TXT,
     FileExtension.CSV,
     FileExtension.TSV,
-    FileExtension.ADOC,
     FileExtension.RST,
     FileExtension.TEX,
-    FileExtension.LTX,
-    FileExtension.EML,
 }
 _BINARY = set(FileExtension) - _TEXT
 
@@ -53,7 +50,11 @@ def test_known_extension_resolves_table_suffix(suffix: str, expected: FileExtens
     assert known_extension(suffix) is expected
 
 
-@pytest.mark.parametrize("suffix", [".c", ".h", ".m", ".py", ".sh", ".cfg", ".ini", ""])
+@pytest.mark.parametrize("suffix", [".c", ".h", ".m", ".py", ".sh", ".cfg", ".ini", "", ".adoc", ".bmp", ".eml", ".gif", ".ltx", ".msg", ".webp"])
 def test_known_extension_is_none_for_unknown_suffix(suffix: str) -> None:
-    """A suffix outside the table is a fact about the format, not an error."""
+    """A suffix outside the table is a fact about the format, not an error.
+
+    The last seven were pruned from the table (knox-8tsj): no parser on
+    either side honours them, so the table no longer names them.
+    """
     assert known_extension(suffix) is None

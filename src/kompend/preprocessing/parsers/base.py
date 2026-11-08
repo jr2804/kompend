@@ -42,7 +42,17 @@ _SURROGATE_RE = re.compile("[\ud800-\udfff]")
 
 
 class FileExtension(StrEnum):
-    """Canonical file extensions supported by kompend."""
+    """Canonical file extensions kompend can ingest.
+
+    Every member is honoured by the parse backend (parsecraft's ``MEDIA_TYPES``)
+    or reads byte-wise through it. Suffixes no backend honours are deliberately
+    absent: declaring them would put them into :func:`supported_extensions`, so
+    discovery would pick up files only for the parse to reject them. Pruned
+    (knox-8tsj): ``.adoc .bmp .eml .gif .ltx .msg .webp`` — no parser on either
+    side. ``.doc`` stays: parsecraft claims it and docling converts it natively
+    (upstream parsecraft#10). Source-code suffixes (``.py``, ``.c``, ...) stay
+    undeclared on purpose: source is codegraph's domain, not ingestion's.
+    """
 
     PDF = ".pdf"
     DOCX = ".docx"
@@ -56,23 +66,16 @@ class FileExtension(StrEnum):
     RST = ".rst"
     RTF = ".rtf"
     TEX = ".tex"
-    LTX = ".ltx"
     MD = ".md"
     MARKDOWN = ".markdown"
     TXT = ".txt"
     CSV = ".csv"
     TSV = ".tsv"
-    ADOC = ".adoc"
-    EML = ".eml"
-    MSG = ".msg"
     PNG = ".png"
     JPG = ".jpg"
     JPEG = ".jpeg"
-    GIF = ".gif"
-    WEBP = ".webp"
     TIFF = ".tiff"
     TIF = ".tif"
-    BMP = ".bmp"
 
     @property
     def is_text(self) -> bool:
@@ -99,11 +102,8 @@ _TEXT_EXTENSIONS: frozenset[FileExtension] = frozenset(
         FileExtension.TXT,
         FileExtension.CSV,
         FileExtension.TSV,
-        FileExtension.ADOC,
         FileExtension.RST,
         FileExtension.TEX,
-        FileExtension.LTX,
-        FileExtension.EML,
     }
 )
 
