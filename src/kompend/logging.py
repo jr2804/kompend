@@ -30,14 +30,22 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
-from typing import Final
+from typing import Final, Protocol
 
 from rich.console import Console
 from rich.logging import RichHandler
 
 from kompend.core.paths import RUN_LOG_FILE_TEMPLATE
+from kompend.types import ConfigValue
 
 DEFAULT_LEVEL: int = logging.WARNING
+
+
+class _ConfigLike(Protocol):
+    """The piece of a resolved config :func:`apply_logging_config` needs."""
+
+    def get(self, key: str, default: ConfigValue = None) -> ConfigValue: ...
+
 
 #: How many items a diagnostic log line samples out of a larger collection
 #: ("first 5 collisions", "e.g. these aliases"). A log line summarises; it never
@@ -345,3 +353,21 @@ def route_third_party_loggers(overrides: Mapping[str, int | str] | None = None) 
     if overrides:
         merged.update(overrides)
     set_module_levels(merged)
+
+
+def apply_logging_config(config: _ConfigLike | None) -> None:
+    """Apply the resolved ``[logging] modules`` mapping (knox-nnm6).
+
+    Reads ``logging.modules`` through the resolved config's dotted lookup and
+    re-routes the third-party loggers with the operator's levels on top.
+    Safe to call repeatedly; an empty mapping keeps the built-in levels.
+    """
+    raw = config.get("logging.modules") if config is not None else None
+    # ConfigValue is the wide JSON union; the LoggingConfig model guarantees
+    # str levels, the isinstance filter just narrows the static type.
+    overrides = (
+        {str(name): level for name, level in raw.items() if isinstance(level, (int, str))}
+        if isinstance(raw, dict) and raw
+        else None
+    )
+    route_third_party_loggers(overrides=overrides)

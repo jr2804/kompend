@@ -26,6 +26,15 @@ recursive = true
 [notes]
 file = "NOTES.md"
 
+# ── Logging ──────────────────────────────────────────────────────────────
+# Per-module log levels applied on top of the built-in third-party routing
+# (docling, transformers, …) once the config is resolved. Level names are
+# case-insensitive; the run log keeps the detail while the terminal stays at
+# its own threshold.
+
+[logging]
+# modules = { docling = "DEBUG", transformers = "WARNING" }
+
 # ── Ingestion settings ──────────────────────────────────────────────────
 # There is no parser selector. parsecraft is the ingestion pipeline: it routes
 # each page across its own sub-backends (native, docling, liteparse, pandoc, OCR)

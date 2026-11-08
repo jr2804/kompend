@@ -7,8 +7,10 @@ from pathlib import Path
 
 import pytest
 
+from kompend.core.config import DEFAULTS, resolve_config
 from kompend.logging import (
     THIRD_PARTY_LOG_LEVELS,
+    apply_logging_config,
     attach_run_log,
     detach_run_log,
     route_third_party_loggers,
@@ -82,3 +84,36 @@ class TestThirdPartyRouting:
         assert {"docling", "transformers", "httpx", "ollama"} <= set(THIRD_PARTY_LOG_LEVELS)
         assert THIRD_PARTY_LOG_LEVELS["docling"] == "DEBUG"
         assert THIRD_PARTY_LOG_LEVELS["onnxruntime"] == "CRITICAL"
+
+
+class TestApplyLoggingConfig:
+    """``[logging] modules`` resolves through the config engine (knox-nnm6)."""
+
+    def test_the_key_exists_in_defaults(self) -> None:
+        assert DEFAULTS["logging"]["modules"] == {}
+
+    def test_the_key_resolves_and_reaches_the_logger_levels(self, tmp_path: Path) -> None:
+        (tmp_path / "kompend.toml").write_text(
+            '[logging]\nmodules = { docling = "WARNING", transformers = "ERROR" }\n',
+            encoding="utf-8",
+        )
+
+        cfg = resolve_config(config_file=tmp_path / "kompend.toml", base_dir=tmp_path)
+
+        assert cfg.get("logging.modules") == {"docling": "WARNING", "transformers": "ERROR"}
+
+        apply_logging_config(cfg)
+        try:
+            assert logging.getLogger("docling").level == logging.WARNING
+            assert logging.getLogger("transformers").level == logging.ERROR
+            # Untouched names keep the built-in routing.
+            assert logging.getLogger("httpx").level == logging.DEBUG
+        finally:
+            set_module_levels({})
+
+    def test_empty_mapping_keeps_the_builtin_routing(self) -> None:
+        apply_logging_config(None)
+        try:
+            assert logging.getLogger("docling").level == logging.DEBUG
+        finally:
+            set_module_levels({})

@@ -31,7 +31,7 @@ from kompend.cli.tree.registry import COMMANDS, PANEL_ORDER, HelpPanel, OnDemand
 from kompend.core.cancel import CANCEL_EXIT_CODE, KompendCancelled
 from kompend.core.reporting.handle import RunHandle
 from kompend.core.verbosity import is_verbose, set_verbose
-from kompend.logging import configure_logging, get_console, route_third_party_loggers
+from kompend.logging import apply_logging_config, configure_logging, get_console, route_third_party_loggers
 
 Version = Annotated[
     bool,
@@ -133,6 +133,10 @@ def _root(
     _configure_logfire()
     context = RunContext(wiki_dir=wiki_dir, config_file=config, no_user_tracking=no_user_tracking)
     with use_run_context(context):
+        # knox-nnm6: the operator's [logging] modules apply before any command
+        # body runs. Commands re-resolve config for their own values; this key
+        # has no flag, so the file-level resolution here is final for it.
+        _apply_logging_config(wiki_dir, config)
         handle = log_run_start(wiki_dir=wiki_dir, cmd_tokens=list(tokens))
         _run_handle_slot.handle = handle
         app(list(tokens))
@@ -140,6 +144,19 @@ def _root(
 
 # Version management
 @cache
+def _apply_logging_config(wiki_dir: str | None, config_file: str | None) -> None:
+    """Apply the operator's ``[logging] modules`` overrides (knox-nnm6).
+
+    The config engine and path resolver load behind :func:`importlib.import_module`
+    on purpose: ``kompend --version`` must stay light, the same posture as
+    :func:`_get_version` below.
+    """
+    config_module = importlib.import_module("kompend.core.config")
+    paths_module = importlib.import_module("kompend.core.paths")
+    base_dir = paths_module.vault_paths(wiki_dir, require_vault=False).base_dir
+    apply_logging_config(config_module.resolve_config(base_dir=base_dir, config_file=config_file))
+
+
 def _get_version() -> str:
     """Installed version of kompend, read from package metadata on first use.
 

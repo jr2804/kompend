@@ -43,6 +43,18 @@ class NotesConfig(_KompendBaseModel):
     file: str = Field(default="NOTES.md", validation_alias=EnvVar.NOTES_FILE)
 
 
+class LoggingConfig(_KompendBaseModel):
+    """Per-module log levels (knox-nnm6).
+
+    ``modules`` maps a logger name to a level name (case-insensitive). The
+    mapping is applied on top of the built-in third-party routing once the
+    config is resolved, so ``docling = "DEBUG"`` records the detail in the
+    run log while the terminal handler keeps its own threshold.
+    """
+
+    modules: dict[str, str] = Field(default_factory=dict)
+
+
 class TrustConfig(_KompendBaseModel):
     """Privacy and trust configuration."""
 
@@ -71,6 +83,7 @@ class KompendConfig(_KompendBaseModel):
     hooks: dict[str, Any] = Field(default_factory=dict)
     paths: PathsConfig = Field(default_factory=PathsConfig)
     notes: NotesConfig = Field(default_factory=NotesConfig)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
     ingest: IngestConfig = Field(default_factory=IngestConfig)
     downloader: DownloaderConfig = Field(default_factory=DownloaderConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)

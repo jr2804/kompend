@@ -58,6 +58,7 @@ from kompend.core.config.models.output import (
 from kompend.core.config.models.root import (
     DEFAULTS,
     KompendConfig,
+    LoggingConfig,
     NotesConfig,
     PathsConfig,
     TrustConfig,
@@ -104,6 +105,7 @@ __all__ = [
     "LlmApiType",
     "LlmDataFormat",
     "LlmMemoryStore",
+    "LoggingConfig",
     "MatcherName",
     "NotesConfig",
     "OrganizeConfig",
