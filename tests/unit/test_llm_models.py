@@ -380,8 +380,16 @@ class TestBuildDecisionModel:
         assert provider is not None
         assert provider.client._config.compression is None  # noqa: SLF001 — the compression flag has no public accessor
 
-    def test_default_endpoint_serves_the_sdk_home(self) -> None:
-        """No provider info falls back to the SDK default, which strips zstd natively."""
+    def test_default_endpoint_serves_the_sdk_home(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No provider info falls back to the SDK default, which strips zstd natively.
+
+        ``TypeSafeProvider`` demands a credential while it is constructed, so a
+        placeholder stands in for the key a developer shell tends to carry. The
+        endpoint is what this test pins; without the placeholder the test only
+        passed where ``TYPESAFE_API_KEY`` happened to be exported (it is not on
+        CI), and the fallback itself never ran there.
+        """
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
         m = build_decision_model("typesafe/jev-latest")
         assert isinstance(m, TypeSafeModel)
         assert m.base_url == "https://api.typesafe.ai"
