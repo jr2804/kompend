@@ -358,7 +358,7 @@ def scan_file(path: Path, entries: list[EnumEntry]) -> list[Violation]:
 
 def is_globally_allowlisted(path: Path) -> bool:
     posix = path.as_posix()
-    return any(posix.endswith(suf) for suf in ALLOWLIST_SUFFIXES)
+    return "/core/config/models/" in posix or any(posix.endswith(suf) for suf in ALLOWLIST_SUFFIXES)
 
 
 def _string_node_value(node: ast.AST) -> str | None:

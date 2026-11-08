@@ -25,7 +25,7 @@ from _common import repo_root, require_facts
 from pydantic_core import PydanticUndefined
 
 from kompend.core import keys as key_constants
-from kompend.core.config._configs import (
+from kompend.core.config.models import (
     BudgetConfig,
     DisplayConfig,
     LintConfig,

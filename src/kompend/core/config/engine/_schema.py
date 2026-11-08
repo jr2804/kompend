@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import contextlib
-from typing import Any, get_origin
+from typing import get_origin
 
 from pydantic import BaseModel, TypeAdapter
 from pydantic.fields import FieldInfo
 
-from kompend.core.config._configs import KompendConfig
+from kompend.core.config.models.root import DEFAULTS, KompendConfig
 from kompend.core.keys import (
     COMPILE_CACHE_DIR,
     COMPILE_RESPECT_GITIGNORE,
@@ -22,11 +22,6 @@ from kompend.logging import get_logger
 from kompend.types import ConfigValue
 
 logger = get_logger(__name__)
-
-
-def _build_defaults() -> dict[str, Any]:
-    """Generate DEFAULTS from the :class:`KompendConfig` schema model."""
-    return KompendConfig().model_dump()
 
 
 def _build_env_map() -> dict[str, str]:
@@ -57,9 +52,6 @@ def _build_env_map() -> dict[str, str]:
         }
     )
     return env_map
-
-
-DEFAULTS: dict[str, Any] = _build_defaults()
 
 
 ENV_MAP: dict[str, str] = _build_env_map()

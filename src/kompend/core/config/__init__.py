@@ -12,7 +12,31 @@
 See ``kompend.core.config.AGENTS.md`` for coding conventions.
 """
 
-from kompend.core.config._configs import (
+from kompend.core.config._core import (
+    DEFAULTS,
+    STATUS_DEPRECATED,
+    STATUS_ERROR,
+    STATUS_MODIFIED,
+    STATUS_OK,
+    STATUS_REMOVED,
+    ConfigCheckEntry,
+    ConfigCheckReport,
+    ConfigSource,
+    ResolvedConfig,
+    check_config_file,
+    check_config_files,
+    coerce_config_value,
+    find_all_project_configs,
+    find_global_config,
+    find_project_config,
+    get_global_config_file,
+    get_project_config_file,
+    resolve_config,
+    set_config_file_value,
+    validate_config_key,
+)
+from kompend.core.config.generate import generate_scaffold_config
+from kompend.core.config.models import (
     DEFAULT_MATCHERS,
     FLAVOR_ALIASES,
     BudgetConfig,
@@ -41,30 +65,6 @@ from kompend.core.config._configs import (
     parse_matchers,
     resolve_flavor,
 )
-from kompend.core.config._core import (
-    DEFAULTS,
-    STATUS_DEPRECATED,
-    STATUS_ERROR,
-    STATUS_MODIFIED,
-    STATUS_OK,
-    STATUS_REMOVED,
-    ConfigCheckEntry,
-    ConfigCheckReport,
-    ConfigSource,
-    ResolvedConfig,
-    check_config_file,
-    check_config_files,
-    coerce_config_value,
-    find_all_project_configs,
-    find_global_config,
-    find_project_config,
-    get_global_config_file,
-    get_project_config_file,
-    resolve_config,
-    set_config_file_value,
-    validate_config_key,
-)
-from kompend.core.config.generate import generate_scaffold_config
 
 __all__ = [
     "DEFAULTS",

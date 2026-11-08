@@ -16,8 +16,8 @@ from typing import Any, Union, cast, get_args, get_origin
 import tomli_w
 from pydantic import BaseModel
 
-from kompend.core.config._configs import KompendConfig
 from kompend.core.config._core import DEFAULTS, flat_keys
+from kompend.core.config.models import KompendConfig
 from kompend.types import ConfigValue
 
 _HIDDEN_KEYS: frozenset[str] = frozenset(

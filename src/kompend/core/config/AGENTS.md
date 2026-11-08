@@ -32,14 +32,28 @@ through this package — no other module reads config files or env vars directly
   defined. Lives outside this package: `paths.py` reads env vars before the config
   package finishes loading. Enforced by `scripts/checks/check_antipatterns.py`
   (`ENV-VAR-LITERAL` rule).
-- `_configs.py` — Config dataclass definitions
+- `_configs.py` — `StrEnum` vocabularies only. Section models resolve lazily
+  through `models/` for the historical import path (`from
+  kompend.core.config._configs import BudgetConfig` still works).
+- `models/` — Section models, one module per config section:
+  - `root.py` — `KompendConfig`, `PathsConfig`, `NotesConfig`, `TrustConfig`,
+    and the single `DEFAULTS = KompendConfig().model_dump()`
+  - `llm.py` (`LLMConfig`, `RlmConfig`, `EmbeddingConfig`, provider endpoints),
+    `compile.py` (`CompileConfig`, `BudgetConfig`, `ExtractionConfig`,
+    `SkillConfig`), `ingest.py` (`IngestConfig`, `DownloaderConfig`,
+    `OrganizeConfig`, `IgnoreConfig`), `search.py` (`SearchConfig` and its
+    sub-configs, `QueryConfig`), `output.py` (`OutputConfig`, `ExportConfig`,
+    `DisplayConfig`), `memory.py` (`DedupConfig`), `eval.py` (`LintConfig`),
+    `attachments.py`, `decision.py`
+  - `_base.py` — shared pydantic base; `__init__.py` — public re-exports
 - `engine/` — Split resolution engine (discrete stages):
   - `_env.py` — Env var loading (``KOMP_*``)
   - `_loading.py` — TOML file loading
   - `_dedupe.py` — Duplicate-key tolerant TOML rewriting (keeps first occurrence)
   - `_overlay.py` — Config overlay merging
   - `_precedence.py` — Precedence ordering and final resolution
-  - `_schema.py` — Config schema validation
+  - `_schema.py` — Config schema validation; re-exports `DEFAULTS` from
+    `models/root.py`
   - `_check.py` — Config file diff vs schema defaults (backing ``kompend config check``)
   - `__init__.py` — Public re-exports for the engine
 - `AGENTS.md` — This file
@@ -89,7 +103,8 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
 
 ### Adding a new config key — checklist
 
-1. **Add to `DEFAULTS` dict** in `_core.py` — every key must have a default.
+1. **Add the field to the owning section model** in `models/` — every key must
+   have a default. `DEFAULTS` in `models/root.py` derives from `KompendConfig`.
 2. **Add the env alias** — `validation_alias=EnvVar.<NAME>` on the field in
    `_configs.py` (auto-derived into `ENV_MAP`), or add the name to the
    `EnvVar` enum in `../env.py` if it is a CLI-only override. Example:

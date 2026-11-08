@@ -38,9 +38,9 @@ from pydantic import BaseModel, ValidationError
 from pydantic.fields import FieldInfo
 from pydantic_core import PydanticUndefined
 
-from kompend.core.config._configs import KompendConfig
 from kompend.core.config.engine._loading import load_toml
 from kompend.core.config.engine._schema import DEFAULTS, DEPRECATED_ALIASES, REMOVED_KEYS
+from kompend.core.config.models.root import KompendConfig
 from kompend.core.utils.dicts import flat_keys, get_dot, resolve_dotted
 from kompend.logging import get_logger
 from kompend.types import JSONDict, JSONList, JSONValue

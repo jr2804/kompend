@@ -567,3 +567,58 @@ SqliteVecWikiStore` — so the shim stayed rather than being deleted, and
   changed rather than moved is `attachment_slug`'s `__import__("re")` pair:
   it now uses a module-level `import re` and compiled `Final` patterns —
   same output, fewer per-call imports.
+- Eleventh loop (bead knox-scb0): `compilation/flows/extraction.py` 841
+  gross / 547 net became the `extraction/` package — `flow.py` 370/250
+  (orchestration, `_extract_batches`, progress, stats), `units.py` 440/283
+  (batching, per-unit calls, merge/reduce), `prompt.py` 81/33 (history
+  budgeting), `__init__.py` 44/29 re-exporting 12 names (935 gross / 595
+  net). No `nodes.py`: this phase emits `Extraction` records and WikiNode
+  assembly lives in `flows/generation/writer.py`, so a nodes module would
+  have been an empty slot. No failure-threshold module either:
+  `BatchFailureTracker` is `two_phase/state.py`. No shared
+  `flows/_segment/` pair: generation segments pages and extraction batches
+  sources, and the genuinely shared pieces (`RequestBudget`,
+  `split_text_windows`, `UnitFailureLog`, the batch tracker) already live
+  in core/agents/llm — a shared package would only name a coincidence.
+  Behaviour proof is an AST comparison of the pre-move single file against
+  the package: 17 functions before and after, zero missing, zero added,
+  zero signature/body changes; the 126-line `units.py` diff is a pure
+  function reorder from the repo's own sorter. A failed unit is recorded
+  through `record_unit_failure` and appended as `None`, so it surfaces as
+  a SKIP with a warning (`"all extraction batches failed … — skipped"`)
+  and `combine_extractions` still emits an (empty) `Extraction` — never a
+  silent drop; a failed reduce falls back to the naive merge.
+- Twelfth loop (bead knox-e4iu): `core/config/_configs.py` 1034 gross /
+  693 net became `_configs.py` 292/225 (the StrEnum vocabularies plus a
+  lazy compatibility path) and the `models/` package 1006 gross / 713 net —
+  `root.py` 80/62 (`KompendConfig`, `PathsConfig`, `NotesConfig`,
+  `TrustConfig`, and the single `DEFAULTS`), `llm.py` 210/125, `compile.py`
+  187/111, `ingest.py` 83/69, `output.py` 83/61, `search.py` 67/43,
+  `memory.py` 60/47, `eval.py` 32/17, `attachments.py` 29/23,
+  `decision.py` 25/15, `_base.py` 16/10, `__init__.py` 134/130. The largest
+  net file is 125 (was 693). The 245 extra net lines are module headers and
+  the public-surface `__init__`, the same shim cost the tenth loop measured.
+  What the size count could not see: (1) `DEFAULTS` did not live in
+  `_core.py` as the bead said — it was `engine/_schema.py:62`
+  (`_build_defaults()` over `KompendConfig`). It moved to `models/root.py`,
+  and `_schema.py` now only re-exports it; that two-line import seam is the
+  one `engine/` edit, forced because `_schema.py` already imported
+  `KompendConfig` from `_configs.py`. (2) `_configs.py` had to stay a
+  working import path for models, not just enums: 70+ modules import model
+  classes from it, and `diagnostics/capabilities.py` imports `LlmDataFormat`
+  from it. It forwards unknown names through a module `__getattr__` to
+  `models/`, with the cycle-breaking import at the bottom. (3) That
+  `__getattr__` is the incident: it first read `_models` unconditionally,
+  and the import machinery probes `__path__` on the module while the bottom
+  import is still running, so `NameError: name '_models' is not defined`
+  broke every `_configs` import — including `kompend.memory.store` and
+  `kompend.rag.vector_store`. A dunder guard plus a `NameError` guard fixed
+  it; a module `__getattr__` must never assume its late-bound target exists.
+  (4) `memory.py` holds `[dedup]` and `eval.py` holds `[lint]`; the section
+  modules keep the bead's names even though the TOML sections are spelled
+  differently. (5) The path-bound checkers were repointed, not widened:
+  `check_config_literals.py` now imports from `models`, and
+  `check_field_consistency.py` allowlists `/core/config/models/` instead of
+  the old single file. (6) The section models' `EnvVar` aliases are
+  unchanged; the split moved classes verbatim, so env precedence is the
+  same.

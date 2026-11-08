@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from kompend.core.config._configs import _DEFAULT_DOCLING_THREADS, KompendConfig
+from kompend.core.config._configs import KompendConfig
+from kompend.core.config.models.ingest import _DEFAULT_DOCLING_THREADS
 from kompend.core.env import EnvVar
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.preprocessing.host_memory import (

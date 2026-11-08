@@ -28,7 +28,7 @@ from kompend.core.utils.dicts import deep_merge, del_dot, get_dot, nest_flat, se
 from kompend.logging import get_logger
 from kompend.types import ConfigValue
 from kompend.llm.user_providers import set_user_providers
-from kompend.core.config._configs import KompendConfig
+from kompend.core.config.models import KompendConfig
 
 logger = get_logger(__name__)
 
