@@ -2,7 +2,7 @@
 variables:
   - name: query
     required: true
-  - name: candidates
+  - name: candidate
     required: true
 role: decision.source-search-rerank
 response_format: text
@@ -12,19 +12,13 @@ A page author is researching a knowledge base and asks:
 
 {{ query }}
 
-Below are candidate chunks retrieved from the sources of one run, each under
-its source stem. For each chunk, answer one typed question: does this chunk
-contain material that answers the request — a fact, a number, a definition,
-a method, or a quotation the page could use?
+Below is one chunk retrieved from the sources of one run. The chunk begins
+just before the first place it mentions the request, and the source can be
+read on from there.
 
-{% for stem, snippet in candidates %}
-## {{ stem }}
+{{ candidate }}
 
-{{ snippet }}
-
-{% endfor %}
-Return one verdict per candidate chunk. Copy each stem verbatim from the
-headings above — the stem is the join key back to the chunk. A chunk that
-merely mentions a term of the request without answering it is not relevant.
-A chunk you cannot assess is not relevant; never skip a stem and never
-invent one.
+Answer one typed question: does this chunk contain material that answers the
+request — a fact, a number, a definition, a method, or a quotation the page
+could use? A chunk that merely mentions a term of the request without
+answering it is not relevant. A chunk you cannot assess is not relevant.

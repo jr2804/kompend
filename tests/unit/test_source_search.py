@@ -6,21 +6,30 @@ the semantic tier (cosine over the matched snippets, only when an embedding
 provider is live), window paging, and the two generation tools that expose
 them. No LLM or embedding endpoint is contacted: providers and the judge
 agent are fakes.
+
+The verdict schema is checked against the real decision-model machinery, not
+a stub: a result type the decision grammar refuses must fail here, because a
+stubbed judge once hid exactly that.
 """
 
 from __future__ import annotations
 
 import asyncio
+import logging
+import threading
 from typing import Any, cast
 from unittest.mock import patch
 
-from pydantic_ai import RunContext
+import pytest
+from pydantic import BaseModel, Field
+from pydantic_ai import RunContext, _output
+from pydantic_ai.models import decision as decision_grammar
 
 from kompend.agents.types import ToolGenerationDeps
+from kompend.compilation import source_search
 from kompend.compilation.gen_tools import read_source_window, search_sources
 from kompend.compilation.source_search import (
-    ChunkRelevanceDecision,
-    ChunkVerdict,
+    CandidateVerdict,
     SourceIndex,
     SourceSearchJudgeDeps,
 )
@@ -269,19 +278,49 @@ class TestJudgeTier:
         index = _judged_index()
         lexical = _lexical_baseline()
         assert lexical[-1] == "source-0.md"
-        judge = _FakeJudge(relevant={"source-0.md"})
-        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
+        judge = _JudgePolicy(relevant={"source-0.md"})
+        with judge.installed():
             judged = [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
         assert judged[0] == "source-0.md"
+        assert judged[1:] == lexical[:-1]
         assert sorted(judged) == sorted(lexical)
 
-    def test_a_failing_judge_falls_back_to_the_lexical_order(self) -> None:
-        index = _judged_index()
+    def test_one_failing_candidate_is_unjudged_and_keeps_its_lexical_rank(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A single dead request is an unjudged candidate, not a dead tier."""
         lexical = _lexical_baseline()
-        judge = _FakeJudge(fail=TimeoutError("decision model timed out"))
-        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
-            judged = [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
+        judge = _JudgePolicy(relevant={"source-0.md"}, fail_for=set(lexical) - {"source-0.md"})
+        with judge.installed(), caplog.at_level(logging.INFO, logger="kompend.compilation.source_search"):
+            judged = [hit.stem for hit in _judged_index().search("transcoder", k=len(_JUDGE_SOURCES))]
+        assert judged[0] == "source-0.md"
+        assert judged[1:] == lexical[:-1]
+        assert "left 5 of 6 candidate(s) unjudged" in caplog.text
+        assert "failed for every candidate" not in caplog.text
+
+    def test_a_failing_judge_keeps_the_lexical_order_and_names_the_cause(self, caplog: pytest.LogCaptureFixture) -> None:
+        lexical = _lexical_baseline()
+        judge = _JudgePolicy(fail=TimeoutError("decision model timed out"))
+        with judge.installed(), caplog.at_level(logging.WARNING, logger="kompend.compilation.source_search"):
+            judged = [hit.stem for hit in _judged_index().search("transcoder", k=len(_JUDGE_SOURCES))]
         assert judged == lexical
+        assert "judge failed for every candidate" in caplog.text
+        assert "decision model timed out" in caplog.text
+
+    def test_a_dead_judge_falls_through_to_the_semantic_tier(self) -> None:
+        """Total judge failure hands the ranking back to today's cosine tier."""
+        vectors = _semantic_vectors()
+        with patch("kompend.compilation.source_search.make_provider", return_value=_MappingEmbedder(vectors)):
+            semantic = SourceIndex(_JUDGE_SOURCES, embedding_model="fake/model")
+            expected = [hit.stem for hit in semantic.search("transcoder", k=len(_JUDGE_SOURCES))]
+        judge = _JudgePolicy(fail=RuntimeError("judge endpoint is down"))
+        embedder = _MappingEmbedder(vectors)
+        with (
+            judge.installed(),
+            patch("kompend.compilation.source_search.make_provider", return_value=embedder),
+        ):
+            index = SourceIndex(_JUDGE_SOURCES, embedding_model="fake/model", decision=_DECISION)
+            judged = [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
+        assert judged == expected
+        assert embedder.calls, "the semantic tier must have been asked"
 
     def test_rank_fusion_is_stable_when_every_verdict_agrees(self) -> None:
         """fast-jev-compaction#154: probability scale shifts, order does not.
@@ -291,45 +330,58 @@ class TestJudgeTier:
         all-irrelevant both keep the BM25 order, so a judge that is merely
         uncertain can never scramble the ranking.
         """
-        index = _judged_index()
         lexical = _lexical_baseline()
-        with patch("kompend.compilation.source_search.build_agent", return_value=_FakeJudge(relevant=set(lexical))):
-            assert [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))] == lexical
+        with _JudgePolicy(relevant=set(lexical)).installed():
+            assert [hit.stem for hit in _judged_index().search("transcoder", k=len(_JUDGE_SOURCES))] == lexical
         # A fresh index: the first search filled the verdict cache, and a
         # cached verdict must not stand in for this second question.
-        other = _judged_index()
-        with patch("kompend.compilation.source_search.build_agent", return_value=_FakeJudge()):
-            assert [hit.stem for hit in other.search("transcoder", k=len(_JUDGE_SOURCES))] == lexical
+        with _JudgePolicy().installed():
+            assert [hit.stem for hit in _judged_index().search("transcoder", k=len(_JUDGE_SOURCES))] == lexical
+
+    def test_the_judge_is_asked_once_per_candidate_with_one_chunk(self) -> None:
+        judge = _JudgePolicy(relevant={"source-0.md"})
+        with judge.installed():
+            _judged_index().search("transcoder", k=len(_JUDGE_SOURCES))
+        assert len(judge.calls) == len(_JUDGE_SOURCES)
+        assert {call.stem for call in judge.calls} == {stem for stem, _ in _JUDGE_SOURCES}
+        assert all(call.query == "transcoder" for call in judge.calls)
+        assert all(isinstance(call.candidate, str) and call.candidate for call in judge.calls)
 
     def test_a_repeated_query_does_not_ask_the_judge_again(self) -> None:
         index = _judged_index()
-        judge = _FakeJudge(relevant={"source-0.md"})
-        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
+        judge = _JudgePolicy(relevant={"source-0.md"})
+        with judge.installed():
             index.search("transcoder")
             first = len(judge.calls)
             index.search("transcoder")
-        assert first == 1
-        assert len(judge.calls) == 1
+        assert first == len(_JUDGE_SOURCES)
+        assert len(judge.calls) == first
 
-    def test_a_verdict_for_a_stem_that_was_not_sent_is_dropped(self) -> None:
-        index = _judged_index()
-        lexical = _lexical_baseline()
-        judge = _FakeJudge(extra={"ghost.md"})
-        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
-            judged = [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
-        assert "ghost.md" not in judged
-        assert judged == lexical
+    def test_concurrent_judging_yields_the_same_verdicts_as_a_serial_pool(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The pool width changes latency, never the ranking."""
+        relevant = {"source-0.md", "source-2.md"}
+        with _JudgePolicy(relevant=relevant).installed():
+            concurrent = [hit.stem for hit in _judged_index().search("transcoder", k=len(_JUDGE_SOURCES))]
+        monkeypatch.setattr(source_search, "JUDGE_CONCURRENCY", 1)
+        serial_judge = _JudgePolicy(relevant=relevant)
+        with serial_judge.installed():
+            serial = [hit.stem for hit in _judged_index().search("transcoder", k=len(_JUDGE_SOURCES))]
+        assert serial_judge.calls
+        assert len(serial_judge.calls) == len(_JUDGE_SOURCES)
+        assert concurrent == serial
+        # Rank fusion, not score fusion: the two relevant chunks lead in
+        # BM25 order (source-2 before source-0), the rest follow unchanged.
+        assert concurrent == ["source-2.md", "source-0.md", "source-5.md", "source-4.md", "source-3.md", "source-1.md"]
 
-    def test_a_missing_verdict_keeps_the_lexical_rank(self) -> None:
-        index = _judged_index()
-        lexical = _lexical_baseline()
-        # The judge promotes the last candidate but says nothing about the
-        # others: they keep their BM25 order behind it.
-        judge = _FakeJudge(relevant={"source-0.md"}, skip=set(lexical) - {"source-0.md"})
-        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
-            judged = [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
-        assert judged[0] == "source-0.md"
-        assert judged[1:] == lexical[:-1]
+    def test_each_worker_thread_builds_its_own_judge_agent(self) -> None:
+        """``run()`` keeps per-run state on the instance, so instances are not shared."""
+        judge = _JudgePolicy(relevant={"source-0.md"})
+        with judge.installed():
+            _judged_index().search("transcoder", k=len(_JUDGE_SOURCES))
+        assert judge.builds, "the judge was never materialised"
+        assert len(judge.builds) <= source_search.JUDGE_CONCURRENCY
+        assert len({id(agent) for agent in judge.builds}) == len(judge.builds)
+        assert len(judge.threads) <= source_search.JUDGE_CONCURRENCY
 
     def test_the_judge_is_not_built_until_a_search_needs_it(self) -> None:
         with patch("kompend.compilation.source_search.build_agent") as factory:
@@ -353,35 +405,108 @@ class TestJudgeTier:
         assert [hit.stem for hit in index.search("POLQA")] == ["beta.md"]
 
 
-class _FakeJudge:
-    """Stands in for the materialised judge agent.
+class TestVerdictSchemaIsAccepted:
+    """The verdict type is checked against the real decision grammar.
 
-    Answers ``relevant`` for the listed stems, stays silent about ``skip``
-    candidates (an unjudged candidate), appends ``extra`` echo lines, or
-    raises ``fail`` — all without touching a model.
+    This is the gap that let a dead judge ship: a stub answered a shape the
+    decision model refuses before sending anything. These tests build the
+    request the model would build, with no endpoint involved.
+    """
+
+    _LIMITS = decision_grammar._Limits(choice_options=None, score_levels=None, requires_instructions=False, questions=None)
+
+    @staticmethod
+    def _output_tool(model: type[BaseModel]) -> Any:
+        """The tool definition the decision model reads for this output type."""
+        toolset = _output.OutputToolset.build(cast("list[Any]", [model]))
+        assert toolset is not None
+        return toolset._tool_defs[0]
+
+    def test_the_single_bool_verdict_becomes_a_yes_no_question(self) -> None:
+        tool = self._output_tool(CandidateVerdict)
+        assert decision_grammar._expressible(tool, None, self._LIMITS) is True
+        questions = decision_grammar._questions(decision_grammar._fields(tool), tool, None, self._LIMITS, label=None)
+        assert list(questions) == ["relevant"]
+        question = questions["relevant"]
+        assert question.type == "noul"
+        assert "answers the query" in str(question.instructions)
+
+    def test_a_list_of_verdict_models_is_refused(self) -> None:
+        class _BatchedVerdicts(BaseModel):
+            """One verdict per candidate chunk."""
+
+            verdicts: list[CandidateVerdict] = Field(description="One verdict per candidate.")
+
+        tool = self._output_tool(_BatchedVerdicts)
+        assert decision_grammar._expressible(tool, None, self._LIMITS) is False
+        with pytest.raises(Exception, match="list must be of two or more string options"):
+            decision_grammar._questions(decision_grammar._fields(tool), tool, None, self._LIMITS, label=None)
+
+
+class _JudgePolicy:
+    """What the fake judge answers, shared by the per-thread agent instances.
+
+    ``build_agent`` is patched to hand out one agent per call (the tier keeps
+    one per worker thread), so the policy — the answer set, the failure set,
+    and the call log — lives here, behind a lock, instead of on the agent.
     """
 
     def __init__(
         self,
         relevant: set[str] | None = None,
         *,
-        skip: set[str] | None = None,
-        extra: set[str] | None = None,
         fail: Exception | None = None,
+        fail_for: set[str] | None = None,
     ) -> None:
         self._relevant = relevant or set()
-        self._skip = skip or set()
-        self._extra = extra or set()
         self._fail = fail
+        self._fail_for = fail_for or set()
         self.calls: list[SourceSearchJudgeDeps] = []
+        self.builds: list[Any] = []
+        self.threads: set[int] = set()
+        self._lock = threading.Lock()
 
-    def run(self, deps: SourceSearchJudgeDeps) -> ChunkRelevanceDecision:
-        self.calls.append(deps)
+    def installed(self) -> Any:
+        """Patch ``build_agent`` for the ``with`` block."""
+        return patch("kompend.compilation.source_search.build_agent", side_effect=self._build)
+
+    def _build(self, spec: Any, **kwargs: Any) -> _FakeJudge:
+        agent = _FakeJudge(self)
+        with self._lock:
+            self.builds.append(agent)
+        return agent
+
+    def answer(self, deps: SourceSearchJudgeDeps) -> CandidateVerdict:
+        with self._lock:
+            self.calls.append(deps)
+            self.threads.add(threading.get_ident())
         if self._fail is not None:
             raise self._fail
-        verdicts = [ChunkVerdict(stem=stem, relevant=stem in self._relevant) for stem, _ in deps.candidates if stem not in self._skip]
-        verdicts.extend(ChunkVerdict(stem=stem, relevant=True) for stem in self._extra)
-        return ChunkRelevanceDecision(verdicts=verdicts)
+        if deps.stem in self._fail_for:
+            raise RuntimeError(f"judge request for {deps.stem} failed")
+        return CandidateVerdict(relevant=deps.stem in self._relevant)
+
+
+class _FakeJudge:
+    """Stands in for one materialised judge agent; answers through the policy."""
+
+    def __init__(self, policy: _JudgePolicy) -> None:
+        self._policy = policy
+
+    def run(self, deps: SourceSearchJudgeDeps) -> CandidateVerdict:
+        return self._policy.answer(deps)
+
+
+def _semantic_vectors() -> dict[str, list[float]]:
+    """Vectors under which the cosine tier reorders the lexical candidates."""
+    lexical = _lexical_baseline()
+    snippets = {hit.stem: hit.snippet for hit in _index(*_JUDGE_SOURCES).search("transcoder", k=len(_JUDGE_SOURCES))}
+    query_vector, other = [1.0, 0.0], [0.0, 1.0]
+    return {
+        "transcoder": query_vector,
+        snippets[lexical[-1]]: query_vector,
+        snippets[lexical[0]]: other,
+    }
 
 
 def _judged_index() -> SourceIndex:
