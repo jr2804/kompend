@@ -307,9 +307,11 @@ def _chunk_document(
         ledger.record(source_label, "chunk", outcome=StageOutcome.CACHED, sha=content_hash or None)
         return tree
 
+    # Heartbeat: about to chunk (the parse doc is final by now). The unsplit
+    # source beats twice here, exactly as it did before splitting existed; the
+    # second beat is kept so the off path stays byte-identical.
     watch.beat(pipeline.rel_file(tag_source), stage=WatchStage.CHUNK)
     if not identity:
-        # Heartbeat: about to chunk (the parse doc is final by now).
         watch.beat(pipeline.rel_file(tag_source), stage=WatchStage.CHUNK)
     if pipeline.chunker is None:
         return None
@@ -326,9 +328,10 @@ def _chunk_document(
         sha=content_hash or None,
     )
 
+    # Heartbeat: chunking is done, enrichment may follow — same double beat on
+    # the unsplit path as before (see the chunk heartbeat above).
     watch.beat(pipeline.rel_file(tag_source), stage=WatchStage.ENRICH)
     if not identity:
-        # Heartbeat: chunking is done, enrichment may follow.
         watch.beat(pipeline.rel_file(tag_source), stage=WatchStage.ENRICH)
     if pipeline.enricher is not None:
         enrich_start = time.perf_counter()
