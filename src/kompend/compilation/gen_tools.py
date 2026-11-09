@@ -20,6 +20,7 @@ no closure-captured state is needed.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Final
 
 from pydantic_ai import RunContext, Tool
@@ -79,7 +80,10 @@ async def search_sources(
     index = ctx.deps.source_index
     if index is None:
         return "Source search is not available in this run — work from the segment content."
-    hits = index.search(query, k=max(1, min(k, MAX_SEARCH_HITS)))
+    # search() is synchronous and may call an embedding or judge endpoint;
+    # hopping to a worker thread keeps that off the event loop driving the
+    # generation agent (and lets the judge's sync entry point run legally).
+    hits = await asyncio.to_thread(index.search, query, k=max(1, min(k, MAX_SEARCH_HITS)))
     if not hits:
         return f"No source of this run mentions {query!r}."
     lines = [f"{len(hits)} source(s) match {query!r}:"]

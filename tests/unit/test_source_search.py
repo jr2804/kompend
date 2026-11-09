@@ -1,9 +1,11 @@
 """Tests for source search during generation.
 
-Covers the lexical tier (BM25 over the run's sources), the semantic tier
-(cosine over the matched snippets, only when an embedding provider is
-live), window paging, and the two generation tools that expose them.
-No LLM or embedding endpoint is contacted: providers are fakes.
+Covers the lexical tier (BM25 over the run's sources), the judge tier (a
+TypeSafe decision model answering one yes/no per candidate, fused by rank),
+the semantic tier (cosine over the matched snippets, only when an embedding
+provider is live), window paging, and the two generation tools that expose
+them. No LLM or embedding endpoint is contacted: providers and the judge
+agent are fakes.
 """
 
 from __future__ import annotations
@@ -16,10 +18,24 @@ from pydantic_ai import RunContext
 
 from kompend.agents.types import ToolGenerationDeps
 from kompend.compilation.gen_tools import read_source_window, search_sources
-from kompend.compilation.source_search import SourceIndex
+from kompend.compilation.source_search import (
+    ChunkRelevanceDecision,
+    ChunkVerdict,
+    SourceIndex,
+    SourceSearchJudgeDeps,
+)
+from kompend.core.config.models.decision import DecisionConfig
 
 _ALPHA = "The transcoder maps timestamps onto the output clock. Latency is bounded per frame."
 _BETA = "Listening quality is scored by the POLQA algorithm. The transcoder feeds it with speech frames."
+
+
+_DECISION = DecisionConfig(enabled=True, model="typesafe/jev-latest")
+
+#: Six sources that all match "transcoder", with falling term frequency, so
+#: the lexical order is source-5 … source-0 and the judge has something to
+#: promote from the tail.
+_JUDGE_SOURCES: list[tuple[str, str]] = [(f"source-{number}.md", "transcoder " * (number + 1) + "latency is bounded per frame") for number in range(6)]
 
 
 class _MappingEmbedder:
@@ -246,6 +262,135 @@ class TestReadSourceWindowTool:
     def test_a_run_without_an_index_says_so(self) -> None:
         deps = ToolGenerationDeps(source_id="seg")
         assert "not available" in _call(read_source_window, deps, "alpha.md", 0)
+
+
+class TestJudgeTier:
+    def test_the_judge_promotes_a_chunk_the_lexical_order_put_last(self) -> None:
+        index = _judged_index()
+        lexical = _lexical_baseline()
+        assert lexical[-1] == "source-0.md"
+        judge = _FakeJudge(relevant={"source-0.md"})
+        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
+            judged = [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
+        assert judged[0] == "source-0.md"
+        assert sorted(judged) == sorted(lexical)
+
+    def test_a_failing_judge_falls_back_to_the_lexical_order(self) -> None:
+        index = _judged_index()
+        lexical = _lexical_baseline()
+        judge = _FakeJudge(fail=TimeoutError("decision model timed out"))
+        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
+            judged = [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
+        assert judged == lexical
+
+    def test_rank_fusion_is_stable_when_every_verdict_agrees(self) -> None:
+        """fast-jev-compaction#154: probability scale shifts, order does not.
+
+        A boolean verdict has no scale to shift; the property that matters is
+        that a board-wide verdict changes nothing: all-relevant and
+        all-irrelevant both keep the BM25 order, so a judge that is merely
+        uncertain can never scramble the ranking.
+        """
+        index = _judged_index()
+        lexical = _lexical_baseline()
+        with patch("kompend.compilation.source_search.build_agent", return_value=_FakeJudge(relevant=set(lexical))):
+            assert [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))] == lexical
+        # A fresh index: the first search filled the verdict cache, and a
+        # cached verdict must not stand in for this second question.
+        other = _judged_index()
+        with patch("kompend.compilation.source_search.build_agent", return_value=_FakeJudge()):
+            assert [hit.stem for hit in other.search("transcoder", k=len(_JUDGE_SOURCES))] == lexical
+
+    def test_a_repeated_query_does_not_ask_the_judge_again(self) -> None:
+        index = _judged_index()
+        judge = _FakeJudge(relevant={"source-0.md"})
+        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
+            index.search("transcoder")
+            first = len(judge.calls)
+            index.search("transcoder")
+        assert first == 1
+        assert len(judge.calls) == 1
+
+    def test_a_verdict_for_a_stem_that_was_not_sent_is_dropped(self) -> None:
+        index = _judged_index()
+        lexical = _lexical_baseline()
+        judge = _FakeJudge(extra={"ghost.md"})
+        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
+            judged = [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
+        assert "ghost.md" not in judged
+        assert judged == lexical
+
+    def test_a_missing_verdict_keeps_the_lexical_rank(self) -> None:
+        index = _judged_index()
+        lexical = _lexical_baseline()
+        # The judge promotes the last candidate but says nothing about the
+        # others: they keep their BM25 order behind it.
+        judge = _FakeJudge(relevant={"source-0.md"}, skip=set(lexical) - {"source-0.md"})
+        with patch("kompend.compilation.source_search.build_agent", return_value=judge):
+            judged = [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
+        assert judged[0] == "source-0.md"
+        assert judged[1:] == lexical[:-1]
+
+    def test_the_judge_is_not_built_until_a_search_needs_it(self) -> None:
+        with patch("kompend.compilation.source_search.build_agent") as factory:
+            index = _judged_index()
+            assert index.search("  ") == []
+        factory.assert_not_called()
+
+    def test_a_search_inside_a_running_loop_skips_the_judge(self) -> None:
+        index = _judged_index()
+        lexical = _lexical_baseline()
+
+        async def scenario() -> list[str]:
+            return [hit.stem for hit in index.search("transcoder", k=len(_JUDGE_SOURCES))]
+
+        with patch("kompend.compilation.source_search.build_agent") as factory:
+            assert asyncio.run(scenario()) == lexical
+        factory.assert_not_called()
+
+    def test_no_judge_and_no_embedding_model_still_searches(self) -> None:
+        index = _index(("beta.md", _BETA))
+        assert [hit.stem for hit in index.search("POLQA")] == ["beta.md"]
+
+
+class _FakeJudge:
+    """Stands in for the materialised judge agent.
+
+    Answers ``relevant`` for the listed stems, stays silent about ``skip``
+    candidates (an unjudged candidate), appends ``extra`` echo lines, or
+    raises ``fail`` — all without touching a model.
+    """
+
+    def __init__(
+        self,
+        relevant: set[str] | None = None,
+        *,
+        skip: set[str] | None = None,
+        extra: set[str] | None = None,
+        fail: Exception | None = None,
+    ) -> None:
+        self._relevant = relevant or set()
+        self._skip = skip or set()
+        self._extra = extra or set()
+        self._fail = fail
+        self.calls: list[SourceSearchJudgeDeps] = []
+
+    def run(self, deps: SourceSearchJudgeDeps) -> ChunkRelevanceDecision:
+        self.calls.append(deps)
+        if self._fail is not None:
+            raise self._fail
+        verdicts = [ChunkVerdict(stem=stem, relevant=stem in self._relevant) for stem, _ in deps.candidates if stem not in self._skip]
+        verdicts.extend(ChunkVerdict(stem=stem, relevant=True) for stem in self._extra)
+        return ChunkRelevanceDecision(verdicts=verdicts)
+
+
+def _judged_index() -> SourceIndex:
+    return SourceIndex(_JUDGE_SOURCES, decision=_DECISION)
+
+
+def _lexical_baseline() -> list[str]:
+    """The same corpus without a judge — the BM25 order a test compares against."""
+    return [hit.stem for hit in SourceIndex(_JUDGE_SOURCES).search("transcoder", k=len(_JUDGE_SOURCES))]
 
 
 def _index(*sources: tuple[str, str], embedding_model: str = "") -> SourceIndex:

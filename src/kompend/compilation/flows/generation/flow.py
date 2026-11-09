@@ -385,7 +385,11 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
     # reach a researcher has - name a concept, find the sources that mention
     # it, then read them in windows. Built once per run from the same
     # segments the plan slices up, so it costs one token scan per source.
-    source_index = SourceIndex.from_segments(source_segments, embedding_model=compiler._config.embedding.model)
+    source_index = SourceIndex.from_segments(
+        source_segments,
+        embedding_model=compiler._config.embedding.model,
+        decision=compiler._config.decision,
+    )
 
     def _absorb_pages(gen_output: GenerationOutput, seg_idx: int) -> set[str]:
         """Upsert a segment's produced pages into ``nodes``; return their titles."""

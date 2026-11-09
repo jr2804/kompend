@@ -204,10 +204,21 @@ is served by the `list_known_titles()` tool. A segment is closed-world: the
 agent sees its own content and the concepts assigned to it. When a central
 concept is only partly covered there, `search_sources(query)` names the
 other sources of the run that mention it and `read_source_window(stem,
-offset)` reads them — scored lexically, re-scored by cosine when an
-embedding model is configured. To give generation more source
-text, raise the model's context window - a bigger `chunk_size_max` alone
-cannot create room an answer needs:
+offset)` reads them. Ranked lexically, then by the judge tier when `[decision]`
+is configured, and re-scored by cosine when an embedding model is. The judge
+is a decision model (a TypeSafe SystemOne model such as `typesafe/jev-latest`)
+that answers one yes/no per top candidate — "does this chunk contain material
+that answers the query?" — and its verdicts are fused by rank: relevant
+chunks first, BM25 order inside each group. No probability is thresholded,
+because a decision model's probability scale moves with the request shape
+while its ordering holds. Verdicts are cached per query and snippet, so a
+repeated search in one run costs nothing, and every source the reply shows
+stays readable through `read_source_window()` whatever the ranking dropped.
+A judge that fails or times out leaves the ranking to the lower tiers. With
+no `[decision]` model the tier is absent — lexical search plus cosine when an
+embedding model is configured, exactly as before. To give generation more
+source text, raise the model's context window - a bigger `chunk_size_max`
+alone cannot create room an answer needs:
 
 ```bash
 kompend compile *.pdf --set compile.llm.context_window=65536
