@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import io
 import os
+import struct
+import zlib
 from pathlib import Path
 
 import pytest
 from PIL import Image
 
+from kompend.preprocessing import images
 from kompend.preprocessing.images import (
     MAX_RASTER_LONG_EDGE,
     MAX_RASTER_PIXELS,
@@ -92,6 +96,51 @@ class TestRasteriseImage:
             assert image.width * image.height <= MAX_RASTER_PIXELS
             assert max(image.size) <= MAX_RASTER_LONG_EDGE
 
+    def test_a_subpixel_canvas_renders_inside_the_pixel_budget(self, tmp_path: Path) -> None:
+        """A hairline canvas (0.13 x 79.4 units) is scaled by its long edge.
+
+        PDF-to-SVG exports state sub-pixel widths; scaling such a canvas to
+        1600 px *wide* asks for a 610:1 strip of 202 Mpx and used to crash on
+        PIL's decompression-bomb ceiling.
+        """
+        target = tmp_path / "rule.svg"
+        target.write_text(
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 0.13 79.4"><rect width="0.13" height="79.4" fill="#333"/></svg>',
+            encoding="utf-8",
+        )
+        rendered = rasterise_image(target)
+        with Image.open(rendered) as image:
+            assert max(image.size) == MAX_RASTER_LONG_EDGE
+            assert image.width * image.height <= MAX_RASTER_PIXELS
+
+    def test_a_render_over_the_decode_ceiling_is_repeated_smaller(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A render the renderer will not bound is re-rendered by a smaller scalar."""
+        target = tmp_path / "runaway.svg"
+        target.write_text('<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8"/></svg>', encoding="utf-8")
+        small = io.BytesIO()
+        Image.new("RGB", (40, 30), "#336699").save(small, format="PNG")
+        renders = [_oversized_png_bytes(), small.getvalue()]
+        widths: list[int] = []
+
+        def fake_render(*, svg_path: str, width: int, **kwargs: object) -> bytes:
+            widths.append(width)
+            return renders[min(len(widths), len(renders)) - 1]
+
+        monkeypatch.setattr(images.resvg_py, "svg_to_bytes", fake_render)
+        rendered = rasterise_image(target)
+        assert len(widths) == 2
+        assert widths[1] < widths[0]
+        with Image.open(rendered) as image:
+            assert image.size == (40, 30)
+
+    def test_a_render_that_never_fits_is_a_failed_render(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Every attempt over the ceiling means no pixels, not a decompression bomb."""
+        target = tmp_path / "runaway.svg"
+        target.write_text('<svg xmlns="http://www.w3.org/2000/svg"><rect width="8" height="8"/></svg>', encoding="utf-8")
+        monkeypatch.setattr(images.resvg_py, "svg_to_bytes", lambda **kwargs: _oversized_png_bytes())
+        with pytest.raises(VectorRasterError, match="decode ceiling"):
+            rasterise_image(target)
+
 
 class TestRasteriseBytes:
     """The byte-level entry point used by the media embedder."""
@@ -110,3 +159,17 @@ def _svg(path: Path, width: int = 200, height: int = 120) -> Path:
     """Write a solid-rectangle SVG and return its path."""
     path.write_text(_SVG.format(width=width, height=height), encoding="utf-8")
     return path
+
+
+def _oversized_png_bytes() -> bytes:
+    """A PNG whose header claims 60000 x 60000 pixels, past PIL's decode ceiling.
+
+    Only the IHDR dimensions and its CRC are rewritten, so the bytes stay tiny
+    while ``Image.open`` refuses them exactly as it refused the real figure.
+    """
+    buffer = io.BytesIO()
+    Image.new("RGB", (4, 4), "#336699").save(buffer, format="PNG")
+    data = bytearray(buffer.getvalue())
+    struct.pack_into(">II", data, 16, 60000, 60000)
+    struct.pack_into(">I", data, 29, zlib.crc32(bytes(data[12:29])) & 0xFFFFFFFF)
+    return bytes(data)

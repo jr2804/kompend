@@ -90,6 +90,10 @@ MAX_RASTER_LONG_EDGE: Final[int] = 1600
 #: Ceiling on the rendered canvas: one pathological SVG must not allocate gigabytes.
 MAX_RASTER_PIXELS: Final[int] = 4_000_000
 
+#: How often the scalar is stepped down for a figure that declares no usable
+#: canvas. Four steps take 1600 px to 6 px, which no document can overshoot.
+_GEOMETRYLESS_ATTEMPTS: Final[int] = 4
+
 #: Chunk metadata key a backend uses to name the asset a chunk owns.
 _ASSET_ID_KEY: str = "asset_id"
 
@@ -287,16 +291,46 @@ def is_raster_image(image_file: str | Path) -> bool:
 
 
 def _render_vector(source: Path) -> bytes:
-    """Render a vector figure to PNG bytes, bounded by :data:`MAX_RASTER_LONG_EDGE`."""
+    """Render a vector figure to PNG bytes, bounded by :data:`MAX_RASTER_LONG_EDGE`.
+
+    The scale comes from the **long** edge of the declared canvas, never from
+    the width alone: a PDF-to-SVG export routinely states a sub-pixel width
+    (``viewBox="0 0 0.13 79.4"`` for a hairline rule), so scaling that canvas to
+    1600 px wide asks for a 610:1 strip of 202 Mpx - past PIL's decode ceiling.
+    """
     width, height = _vector_canvas(source)
-    if width <= 0 or height <= 0:
-        # Unknown geometry: let the renderer pick the aspect, then shrink a
-        # canvas that came back too large for a model request.
-        return _shrink(resvg_py.svg_to_bytes(svg_path=str(source), width=MAX_RASTER_LONG_EDGE))
-    scale = min(MAX_RASTER_LONG_EDGE / max(width, height), _pixel_budget_scale(width, height))
-    if width >= height:
-        return bytes(resvg_py.svg_to_bytes(svg_path=str(source), width=max(1, round(width * scale))))
-    return bytes(resvg_py.svg_to_bytes(svg_path=str(source), height=max(1, round(height * scale))))
+    long_edge = max(width, height)
+    if long_edge <= 0:
+        # No usable geometry: the renderer picks the aspect, so the scalar
+        # alone decides how many pixels come back.
+        return _render_geometryless(source)
+    scale = min(MAX_RASTER_LONG_EDGE / long_edge, _pixel_budget_scale(max(width, 1), max(height, 1)))
+    if height > width:
+        pixels = bytes(resvg_py.svg_to_bytes(svg_path=str(source), height=max(1, round(height * scale))))
+    else:
+        pixels = bytes(resvg_py.svg_to_bytes(svg_path=str(source), width=max(1, round(width * scale))))
+    shrunk = _shrink(pixels)
+    if shrunk is not None:
+        return shrunk
+    # The renderer ignored the requested edge; fall back to the scalar ladder.
+    return _render_geometryless(source)
+
+
+def _render_geometryless(source: Path) -> bytes:
+    """Render a figure that declares no usable canvas, stepping the scalar down.
+
+    Each attempt quarters the width until the pixels decode inside the budget;
+    a figure that still overshoots at 6 px wide is refused as a failed render
+    rather than left to allocate past PIL's decompression-bomb ceiling.
+    """
+    width = MAX_RASTER_LONG_EDGE
+    for _ in range(_GEOMETRYLESS_ATTEMPTS):
+        pixels = _shrink(bytes(resvg_py.svg_to_bytes(svg_path=str(source), width=width)))
+        if pixels is not None:
+            return pixels
+        width //= 4
+    msg = f"the render stayed above PIL's decode ceiling even at {width} px wide"
+    raise VectorRasterError(msg)
 
 
 def _pixel_budget_scale(width: int, height: int) -> float:
@@ -307,13 +341,21 @@ def _pixel_budget_scale(width: int, height: int) -> float:
     return (MAX_RASTER_PIXELS / area) ** 0.5
 
 
-def _shrink(pixels: bytes | bytearray) -> bytes:
-    """Downscale rendered pixels that came back over the canvas budget."""
+def _shrink(pixels: bytes | bytearray) -> bytes | None:
+    """Downscale rendered pixels that came back over the canvas budget.
+
+    ``None`` means the render arrived larger than PIL will decode at all
+    (:class:`PIL.Image.DecompressionBombError`); the caller re-renders smaller
+    instead of handing a decompression bomb to a vision model.
+    """
     data = bytes(pixels)
-    with Image.open(io.BytesIO(data)) as image:
-        if image.width * image.height <= MAX_RASTER_PIXELS:
-            return data
-        resized = image.copy()
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.width * image.height <= MAX_RASTER_PIXELS:
+                return data
+            resized = image.copy()
+    except Image.DecompressionBombError:
+        return None
     resized.thumbnail((MAX_RASTER_LONG_EDGE, MAX_RASTER_LONG_EDGE))
     buffer = io.BytesIO()
     resized.save(buffer, format="PNG")
