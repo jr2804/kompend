@@ -218,7 +218,7 @@ def test_stage_no_backend_routes_to_no_parser(tmp_path: Path, caplog: pytest.Log
     runtime = _StubRuntime(base, parser=_RoutedParser(None))
 
     with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_SOURCES):
-        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) is None
+        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) == []
 
     assert _codes(caplog, "No parser backend") == {ReasonCode.NO_PARSER}
 
@@ -232,7 +232,7 @@ def test_stage_backend_failure_carries_the_classified_code(tmp_path: Path, caplo
     runtime = _StubRuntime(base, parser=_RoutedParser(boom))
 
     with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_SOURCES):
-        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) is None
+        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) == []
 
     assert _codes(caplog, "Failed to parse") == {ReasonCode.BACKEND_UNAVAILABLE}
 
@@ -246,7 +246,7 @@ def test_stage_typed_binary_error_keeps_its_code(tmp_path: Path, caplog: pytest.
     runtime = _StubRuntime(base, parser=_RoutedParser(mislabelled))
 
     with stage_ledger(tmp_path / "led.db") as ledger, caplog.at_level(logging.WARNING, logger=_PARSE_SOURCES):
-        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) is None
+        assert _process_single_source(cast("Any", runtime), src, {}, HeavyParseGuard(), ledger, None) == []
 
     assert _codes(caplog, "Failed to parse") == {ReasonCode.MISLABELLED_BINARY}
 

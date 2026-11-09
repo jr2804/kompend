@@ -314,9 +314,9 @@ def test_enriched_tree_is_what_gets_cached(tmp_path: Path) -> None:
     _seed_parse_cache(base, source_file, content_hash)
 
     runtime = _StubRuntime(base, enricher=_StubEnricher(), parser=_parser_of("chain-A"))
-    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard(), _open_ledger(base), "chain-A")
+    trees = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard(), _open_ledger(base), "chain-A")
 
-    assert tree is not None
+    assert len(trees) == 1
     cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(cast("PipelineRuntime", runtime), content_hash))
     assert cached is not None
     nodes = as_obj(as_obj(cached)["nodes"])
@@ -334,8 +334,9 @@ def test_gate_off_cached_tree_has_no_context(tmp_path: Path) -> None:
     _seed_parse_cache(base, source_file, content_hash)
 
     runtime = _StubRuntime(base, enricher=None, parser=_parser_of("chain-A"))
-    _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard(), _open_ledger(base), "chain-A")
+    trees = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard(), _open_ledger(base), "chain-A")
 
+    assert len(trees) == 1
     cached = runtime.cache_store.get_dict("chunk", _chunk_cache_deps(cast("PipelineRuntime", runtime), content_hash))
     assert cached is not None
     nodes = as_obj(as_obj(cached)["nodes"])
@@ -358,9 +359,9 @@ def test_reparse_bypasses_the_parse_cache(tmp_path: Path) -> None:
     runtime.parser = parser
     runtime.config.reparse = True
 
-    tree = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard(), _open_ledger(base), "chain-A")
+    trees = _process_single_source(cast("PipelineRuntime", runtime), base / "sources" / "note.md", {}, HeavyParseGuard(), _open_ledger(base), "chain-A")
 
-    assert tree is not None
+    assert len(trees) == 1
     assert len(parser.parsed) == 1
 
 
