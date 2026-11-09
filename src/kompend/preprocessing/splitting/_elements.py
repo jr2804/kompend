@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from pathlib import Path
 
@@ -285,10 +285,16 @@ def child_source_path(parent: Path, segment: SplitSegment) -> Path:
 
 
 def _rehome(elements: list[DocumentElement], child_source: Path) -> list[DocumentElement]:
-    """Point every element at the child source, leaving content untouched."""
-    for element in elements:
-        element.source_file = child_source
-    return elements
+    """Copies of *elements* pointing at the child source, content untouched.
+
+    The copies matter: children are cut from one parsed document, so rehoming
+    the originals would repoint the parent's and its siblings' elements at
+    whichever child was built last. Copying keeps ``partition_document`` a pure
+    read of the parent — a caller may still use the whole document afterwards.
+    Element metadata is copied too, for the same reason: a child must not be
+    able to mutate its parent's element dicts.
+    """
+    return [replace(element, source_file=child_source, metadata=copy.deepcopy(element.metadata)) for element in elements]
 
 
 def _child_title(parent_title: str, segment: SplitSegment) -> str:

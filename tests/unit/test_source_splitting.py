@@ -257,6 +257,36 @@ def test_partition_scopes_the_parent_title_by_page_range() -> None:
     assert children[0].title == "Packet [p001-002]"
 
 
+def test_partition_leaves_the_parent_document_untouched() -> None:
+    """Cutting must not repoint the parent's (or a sibling's) elements.
+
+    Children are cut from one parsed document, so in-place rehoming would leave
+    every element pointing at whichever child was built last — the parent would
+    then cite pages it no longer owns.
+    """
+    document = _document(4)
+    parent_source = document.source_file
+    originals = list(document.elements)
+    original_metadata = [dict(element.metadata) for element in originals]
+
+    children = partition_document(
+        document,
+        (SplitSegment(1, 2), SplitSegment(3, 4)),
+        parent_source=parent_source,
+        decided_by="fixed",
+        rules_sha256="",
+    )
+
+    assert document.elements == originals
+    assert [element.source_file for element in document.elements] == [None] * len(originals)
+    assert [element.metadata for element in document.elements] == original_metadata
+    # Each child's elements point at *its* source, and no element is shared.
+    for child in children:
+        assert {element.source_file for element in child.elements} == {child.source_file}
+    ids = [id(element) for child in children for element in child.elements]
+    assert len(set(ids)) == len(ids)
+
+
 def test_partition_refuses_to_drop_elements() -> None:
     """A segment list that does not cover the document is a bug, not a trim."""
     document = _document(4)
