@@ -13,21 +13,30 @@ methods.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models import Model
-from pydantic_ai_harness.compaction import ContextUsage, SlidingWindowCompaction
+from pydantic_ai_harness.compaction import CompactionStrategy, CompactOnRequest, ContextUsage, SlidingWindowCompaction
 
 from kompend.agents.base.deps import DepsT, ResultT
-from kompend.agents.context_manager import _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES, build_fallback_compaction
+from kompend.agents.context_manager import (
+    _SLIDING_KEEP_MESSAGES,
+    _SLIDING_MAX_MESSAGES,
+    build_fallback_compaction,
+)
 from kompend.agents.kompend_model import KompendModel
 from kompend.agents.rlm import _DEFAULT_NODE_BUDGET, RLMCapability
 from kompend.core.config._configs import ContextManagerPreset, RlmConfig
-from kompend.llm.models import build_model
+from kompend.core.templates import get_template_loader
+from kompend.llm.models import build_decision_model, build_model
 
 if TYPE_CHECKING:
     from kompend.agents.base.agent import KompendAgentBase
+
+#: Summarizer doctrine, a project-overridable template resource (never inline
+#: prompt text). It states that the transcript is history, not instructions.
+_DOCTRINE_TEMPLATE: Final[str] = "compaction/doctrine.md.j2"
 
 #: Compaction presets: preset -> (compress threshold, messages kept verbatim).
 #: Keys are the validated :class:`~kompend.core.config.ContextManagerPreset`
@@ -64,13 +73,42 @@ def resolve_context_capability(
             max_messages=_SLIDING_MAX_MESSAGES,
             keep_messages=_SLIDING_KEEP_MESSAGES,
         )
+
     threshold, keep = _CONTEXT_PRESETS[preset]
+    compaction = agent.compaction
+    judge = build_decision_model(compaction.judge) if compaction.judge else None
     return build_fallback_compaction(
         context_window=agent.context_window,
         compress_threshold=threshold,
         keep_messages=keep,
         model=model,
+        judge=judge,
+        keep_tokens=compaction.keep_tokens,
+        min_growth_tokens=compaction.min_growth_tokens,
+        instructions=get_template_loader().render(_DOCTRINE_TEMPLATE),
     )
+
+
+def resolve_compact_on_request(
+    agent: KompendAgentBase[ResultT, DepsT],
+    capability: AbstractCapability[DepsT] | None,
+) -> CompactOnRequest[DepsT] | None:
+    """Attach the model-triggered compaction tool for history-threading agents.
+
+    Only agents that opt in via ``compact_on_request`` get the tool: a
+    single-call agent has no long history worth compacting at a natural
+    break, and the tool would only cost prompt space.
+
+    Args:
+        agent: The agent whose ``compact_on_request`` flag decides.
+        capability: The compaction capability already attached. Every shipped
+            compaction capability implements the ``CompactionStrategy``
+            protocol, so the tool delegates to it and shares its growth-gate
+            baseline — the cast states that fact rather than re-deriving it.
+    """
+    if not agent.compact_on_request or capability is None:
+        return None
+    return CompactOnRequest(strategy=cast(CompactionStrategy[DepsT], capability))
 
 
 def resolve_rlm_capability(

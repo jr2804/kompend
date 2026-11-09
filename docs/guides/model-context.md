@@ -354,6 +354,72 @@ piece of work needs:
 If a run reports a warning about a threshold, the fix is a bigger budget
 or a faster model — never a smaller exclusion.
 
+## Conversation Compaction
+
+Multi-turn and multi-batch agents (extraction, the agentic summarizer,
+generation, reference resolution) thread one `message_history` across their
+units. When that history approaches the window, kompend folds it instead of
+failing the run — and instead of cropping anything the model still needs.
+
+`compile.context_manager` picks the shape:
+
+| Value | Trigger | What runs |
+|-------|---------|-----------|
+| `"default"` | 90% of the window | The rank-based stack below |
+| `"aggressive"` | 70% of the window, 5 trailing messages kept | The rank-based stack below |
+| `"sliding"` | 100 messages | Oldest messages trimmed, 50 kept (no LLM call) |
+| `false` | — | History preserved verbatim |
+
+The stack runs cheapest first and stops as soon as the history fits:
+
+1. **Clear old tool results** — every tool return older than the newest five
+   call/return pairs is blanked in place. Zero LLM calls.
+2. **Deduplicate file reads** — an earlier result of an idempotent read
+   (`read_source`, `read_segment`, `search_sources`, …) with identical
+   arguments is blanked once a later identical call exists. Writes and
+   queue-style tools are never touched: their results differ per call.
+3. **Judge-ranked relevance** (only when `compile.llm.compaction.judge` is
+   set) — a decision model scores each step for "must stay verbatim" and
+   "still matters", keeps the highest-ranked steps until the target fits,
+   and routes the rest to the summarizer. The most recent
+   `keep_tokens` tokens are never judged.
+4. **Summary** — the remaining steps are folded into one summary written
+   from the project doctrine (`templates/compaction/doctrine.md.j2`), which
+   names what must survive (the goal and how it evolved, decisions and why,
+   exact paths with line numbers, signatures, config keys, error strings,
+   exact values, open objectives) and what may go (consumed tool output,
+   duplicate reads, dead ends, back-and-forth).
+
+Two properties keep this from becoming the cropping this project forbids:
+
+- **The task assignment is pinned.** The first user turn is marked with the
+  harness pin contract before any tier runs; every strategy, including the
+  sliding fallback, re-injects it verbatim.
+- **Nothing re-derivable is lost.** Source text never rides in a prompt
+  alone — agents re-read it through their tools — and load-bearing state
+  (pinned facts, known titles, the extraction digest, the plan) lives in
+  agent deps and is re-rendered into each prompt, not carried in history.
+
+If the summarizer model cannot answer, the run continues on the zero-cost
+sliding window (a logged warning) rather than dying; provider and
+programming errors still propagate.
+
+```toml
+[compile.llm.compaction]
+judge = "system-one:jev-latest"   # optional: rank steps before summarising
+keep_tokens = 8000               # recent tail the judge never touches
+min_growth_tokens = 2048         # token growth that re-arms compaction
+```
+
+`min_growth_tokens` exists because a fold rewrites older messages and
+invalidates the provider's prompt cache from the rewrite point on: re-folding
+a static oversized context would pay that cache write again while reclaiming
+nothing. A pass therefore runs only when the history actually grew.
+
+Agents that thread history across many turns additionally get the
+`compact_context` tool (model-triggered compaction at a natural break);
+single-call agents do not, where it would only cost prompt space.
+
 ## Example Configurations
 
 ### Local-Only Setup (Ollama, 8K–32K)

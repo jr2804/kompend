@@ -76,6 +76,10 @@ class AgenticGenerationAgent(KompendAgentBase[GenerationOutput, ToolGenerationDe
 
     spec: ClassVar[AgentSpec | None] = SPEC
 
+    #: Generation threads one ``message_history`` across every concept of a
+    #: section, so a fold at a natural break beats a fold at a threshold.
+    compact_on_request: ClassVar[bool] = True
+
     #: Requests one concept costs: ``fetch_concepts()``, ``read_segment()``,
     #: and the page write.
     requests_per_concept: ClassVar[int] = 3

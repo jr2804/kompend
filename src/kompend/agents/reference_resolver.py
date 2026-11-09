@@ -46,4 +46,8 @@ class ReferenceResolverAgent(KompendAgentBase[ReferenceResolutionOutput, Pipelin
     """
 
     spec: ClassVar[AgentSpec | None] = SPEC
+
+    #: Reference resolution threads a ``message_history`` across every source
+    #: window, so a fold at a natural break beats a fold at a threshold.
+    compact_on_request: ClassVar[bool] = True
     temperature: float | None = 0.0

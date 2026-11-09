@@ -16,7 +16,7 @@ persistence, and standalone ingestion.
 | `stages/pipeline.py`          | `WikiPipeline` — 5-tier orchestrator, `ProgressCallback` |
 | `stages/factory.py`           | `build_pipeline` — pipeline factory |
 | `stages/parse.py`             | Tier 1 dispatch: `parse_and_chunk`, worker pool, dedup gate, attachments, `build_resolver_chain` (VLM captioning plus the optional decision-model relevance gate); heavy parses are serialized by one `HeavyParseGuard` (`preprocessing/host_memory.py`) — the memory headroom half is checked in the parser, which holds the routing plan |
-| `stages/parse_sources.py`     | One source through Tier 1: `_process_single_source`, `_parse_source`, privacy filter, dedup warning |
+| `stages/parse_sources.py`     | One source through Tier 1: `_process_single_source` (returns `list[ChunkTree]` — one tree per document), `_parse_source`, page-range splitting seam (`preprocessing.splitting`), privacy filter, dedup warning |
 | `stages/parse_store.py`       | Stage-side parse-cache adapter: `_load_cache`, `_save_cache`, `_try_load_parsed_cache`, `_try_load_chunk_cache`, `_chunk_cache_deps`, `parse_identity` |
 | `stages/index.py`             | Tier 0 source indexing |
 | `stages/resolve.py`           | Tier 3 resolution orchestration |
@@ -74,6 +74,21 @@ persistence, and standalone ingestion.
   `_try_load_chunk_cache` in `stages/parse_store.py`) so no consumer
   resurrects a path that no longer exists; `tier_state.source_file` is only
   the last path the source was seen at.
+- **One source can yield several documents.** Page-range splitting
+  (`preprocessing/splitting/`) runs on the parsed document, before chunking,
+  and `_process_single_source` returns one `ChunkTree` per child — a child is
+  a virtual source whose stem carries its page range
+  (`packet#p005-009`), so its cache entry and state row stay its own while it
+  shares the parent's content hash. The split contract is the partition
+  invariant (`validate_plan`: every page once, in order, no gap or overlap —
+  violations raise, never truncate) and it is fail-closed: an unpaged source,
+  an oversized page, a judge error or an unusable plan leaves the source
+  whole. A decline that is a real failure (judge down, invalid plan) records
+  `DEGRADED` + `JUDGE_DEGRADED` and logs a warning; an ordinary decline
+  (`no_boundary`, `too_few_pages`) records `SKIPPED`. An applied plan always
+  records a `split` ledger row naming the boundary — silent splitting is
+  forbidden. With no splitter injected the flow is byte-identical to the
+  unsplit path: no extra cache lookups, no ledger row.
 - Parse quality is a persisted verdict, not a gate. The parse success paths
   (`ingest_documents`, the `_parse_source` and parse-cache-hit branches of
   `stages/parse_sources.py`, and attachments) record `measure_parse_quality`

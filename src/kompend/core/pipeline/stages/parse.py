@@ -43,6 +43,7 @@ from kompend.llm.user_providers import effective_workers
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup import DedupStore
 from kompend.preprocessing.host_memory import HeavyParseGuard
+from kompend.preprocessing.splitting import SourceSplitter
 from kompend.resolution.base import BaseResolver
 from kompend.resolution.chain import ResolverChain
 from kompend.resolution.vlm_enricher import VLMEnricher
@@ -50,7 +51,12 @@ from kompend.resolution.vlm_enricher import VLMEnricher
 logger = get_logger(__name__)
 
 
-def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = None) -> list[ChunkTree]:
+def parse_and_chunk(
+    pipeline: PipelineRuntime,
+    *,
+    stall_warn_s: float | None = None,
+    splitting: SourceSplitter | None = None,
+) -> list[ChunkTree]:
     """Parse documents and chunk them, with optional caching and parallelism.
 
     When tier state is available, sources that already match the
@@ -66,6 +72,12 @@ def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = N
     heartbeat has been silent for ``stall_warn_s`` seconds (default 30 s,
     ``0`` disables) — a hung backend is distinguishable from a slow one
     (knox-ty8f.8).
+
+    *splitting* is the page-range splitter for this run (see
+    :mod:`kompend.preprocessing.splitting`). The default, ``None``, is the
+    pre-split behaviour: one tree per source. The parameter exists ahead of the
+    ``[preprocessing.split]`` config block so the wiring is one argument at the
+    call site that owns it.
     """
     source_files = list(pipeline.iter_sources())
     if not source_files:
@@ -155,7 +167,7 @@ def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = N
                 # single-use, which ``Context.run`` requires. The ledger (lock-guarded)
                 # and the run-id context travel with it — and so does the watchdog
                 # reference (lock-guarded the same way).
-                futures: dict[Future[ChunkTree | None], Path] = {}
+                futures: dict[Future[list[ChunkTree]], Path] = {}
                 for index, sf in enumerate(source_files):
                     pipeline.emit_item_start("parse", index, len(source_files), sf.name)
                     futures[
@@ -169,6 +181,7 @@ def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = N
                                 ledger,
                                 parser_identity,
                                 watchdog,
+                                splitting,
                             )
                         )
                     ] = sf
@@ -176,9 +189,7 @@ def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = N
                     for future in as_completed(futures):
                         sf = futures[future]
                         try:
-                            tree = future.result()
-                            if tree is not None:
-                                trees.append(tree)
+                            trees.extend(future.result())
                         except Exception as exc:
                             logger.error(
                                 "Worker failed for %s: %s",
@@ -195,9 +206,7 @@ def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = N
             else:
                 for idx, sf in enumerate(source_files):
                     pipeline.emit_item_start("parse", idx, len(source_files), sf.name)
-                    tree = _dispatch_single_source(pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity, watchdog)
-                    if tree is not None:
-                        trees.append(tree)
+                    trees.extend(_dispatch_single_source(pipeline, sf, dedup_similar, heavy_guard, ledger, parser_identity, watchdog, splitting))
                     pipeline.emit("parse", idx + 1, len(source_files), sf.name)
         finally:
             watchdog.close()
@@ -228,7 +237,7 @@ def tree_label(tree: ChunkTree) -> str:
     return source.name if source is not None else tree.root_id
 
 
-def _context_bound_call(fn: Callable[..., ChunkTree | None], *args: Any) -> Callable[[], ChunkTree | None]:
+def _context_bound_call(fn: Callable[..., list[ChunkTree]], *args: Any) -> Callable[[], list[ChunkTree]]:
     """Bind *fn* to a copy of the caller's context, for pool submission.
 
     Called in the submitting thread on purpose: ``copy_context()`` inside the

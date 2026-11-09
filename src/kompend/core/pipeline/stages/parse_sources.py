@@ -1,9 +1,15 @@
-"""One source through Tier 1: parse, normalise, chunk, enrich.
+"""One source through Tier 1: parse, normalise, split, chunk, enrich.
 
 :func:`_dispatch_single_source` is the unit the tier dispatches per file —
 watchdog registration wrapped around :func:`_process_single_source`, which
 beats at every phase transition; the cache halves live in
 :mod:`kompend.core.pipeline.stages.parse_store`.
+
+Both return *one tree per document*: a packet that
+:class:`~kompend.preprocessing.splitting.SourceSplitter` cuts along page ranges
+yields one tree per child source. With no splitter injected — the default —
+the list holds exactly the one tree today's code returned, in the same order
+and with the same ledger rows, so the off path is unchanged.
 """
 
 from __future__ import annotations
@@ -14,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from kompend.core.config.rumdl import resolve_rumdl_config
+from kompend.core.identity import source_key
 from kompend.core.models import (
     ChunkTree,
     DocumentElement,
@@ -50,6 +57,12 @@ from kompend.preprocessing.host_memory import (
     HeavyParseGuard,
     InsufficientHostMemoryError,
 )
+from kompend.preprocessing.splitting import (
+    SourceSplitter,
+    SplitDecision,
+    SplitReason,
+    partition_document,
+)
 from kompend.trust import filter_sensitive
 
 #: Shared inert watchdog (zero budget): call sites hand it around without
@@ -67,7 +80,8 @@ def _dispatch_single_source(
     ledger: StageLedger,
     parser_identity: str | None,
     watchdog: StallWatchdog | None = None,
-) -> ChunkTree | None:
+    splitting: SourceSplitter | None = None,
+) -> list[ChunkTree]:
     """Watch-bound unit the tier dispatches per file (knox-ty8f.8).
 
     Registers the source with the run's stall watchdog, runs
@@ -75,11 +89,14 @@ def _dispatch_single_source(
     transition), and guarantees the item is forgotten even when the
     worker dies mid-file — a lost thread must not leave a ghost that
     warns later.
+
+    Returns one tree per produced document (``[]`` when the source was
+    skipped) — see :func:`_process_single_source`.
     """
     watch = watchdog if watchdog is not None else _INERT_WATCHDOG
     watch.watch(pipeline.rel_file(source_file), stage=WatchStage.PARSE)
     try:
-        return _process_single_source(pipeline, source_file, dedup_similar, heavy_guard, ledger, parser_identity, watch)
+        return _process_single_source(pipeline, source_file, dedup_similar, heavy_guard, ledger, parser_identity, watch, splitting)
     finally:
         watch.unwatch(pipeline.rel_file(source_file))
 
@@ -92,14 +109,19 @@ def _process_single_source(
     ledger: StageLedger,
     parser_identity: str | None,
     watchdog: StallWatchdog | None = None,
-) -> ChunkTree | None:
-    """Parse a single source file (cache-aware) and chunk it.
+    splitting: SourceSplitter | None = None,
+) -> list[ChunkTree]:
+    """Parse a single source file (cache-aware), split it, and chunk each document.
 
-    Records the attempt's outcome per stage (parse, chunk, enrich) in
+    Records the attempt's outcome per stage (parse, split, chunk, enrich) in
     *ledger*.
 
-    Returns the :class:`ChunkTree` or *None* if the file was skipped
-    (no parser, cache hit with no tree, or parse failure).
+    When *splitting* is ``None`` (the default) the source is one document and
+    the returned list holds the one tree the previous single-tree return gave
+    (``[]`` when the file was skipped: no parser, cache hit with no tree, or
+    parse failure). When a splitter is injected and its plan applies, the
+    parsed packet becomes N virtual child sources and the list holds one tree
+    per child — the parent itself is not chunked.
     """
     watch = watchdog if watchdog is not None else _INERT_WATCHDOG
     stem = source_file.stem
@@ -130,7 +152,7 @@ def _process_single_source(
     else:
         parsed = _parse_source(pipeline, source_file, use_cache, content_hash, heavy_guard, ledger, parser_identity, watch)
         if parsed is None:
-            return None
+            return []
         if use_cache and not content_hash:
             content_hash = hashlib.sha256(source_file.read_bytes()).hexdigest()
 
@@ -150,55 +172,217 @@ def _process_single_source(
         apply_privacy_filter(parsed.elements)
 
     if not pipeline.chunker:
-        return None
+        return []
 
     # Attach dedup similarity warning if applicable.
     _attach_dedup_warning(parsed, stem, dedup_similar)
 
-    # Chunk cache lookup (Tier 1).
-    tree = _try_load_chunk_cache(pipeline, source_file, content_hash, use_cache)
-    if tree is not None:
-        ledger.record(
-            pipeline.rel_file(source_file),
-            "chunk",
-            outcome=StageOutcome.CACHED,
-            sha=content_hash or None,
+    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.POSTPROCESS)
+    documents = _split_documents(pipeline, parsed, splitting, ledger)
+
+    trees: list[ChunkTree] = []
+    for document in documents:
+        # A child's path is synthetic (``<parent>#p005-009.<suffix>``) and does
+        # not exist on disk, so directory tags come from the file it was cut
+        # out of — which is *source_file* for the parent itself as well.
+        tree = _chunk_document(
+            pipeline,
+            document=document,
+            tag_source=source_file,
+            content_hash=content_hash,
+            use_cache=use_cache,
+            ledger=ledger,
+            watch=watch,
+            # The parent keeps the plain dependency set: its cache key stays
+            # byte-identical. A child adds a discriminator because siblings
+            # share the parent's content hash and would otherwise collide.
+            identity="" if document is parsed else _document_identity(document, content_hash),
         )
+        if tree is not None:
+            trees.append(tree)
+    return trees
+
+
+def _split_documents(
+    pipeline: PipelineRuntime,
+    parsed: ParsedDocument,
+    splitting: SourceSplitter | None,
+    ledger: StageLedger,
+) -> list[ParsedDocument]:
+    """The documents *parsed* becomes: itself, or one child per planned segment.
+
+    With no splitter injected this is exactly ``[parsed]`` and writes no ledger
+    row — the off path stays byte-identical. When a splitter is injected every
+    attempt is recorded, whether it cut or declined: silent splitting is
+    forbidden, and so is a silent decline.
+    """
+    if splitting is None:
+        return [parsed]
+
+    source = pipeline.rel_file(parsed.source_file)
+    decision = splitting.decide(parsed)
+    if not decision.applies:
+        _record_split_decline(ledger, source, decision)
+        return [parsed]
+
+    try:
+        children = partition_document(
+            parsed,
+            decision.segments,
+            parent_source=parsed.source_file,
+            decided_by=decision.decided_by,
+            rules_sha256=decision.rules_sha256,
+        )
+    except ValueError as exc:
+        # partition_document refuses to lose an element; that is a decline, not
+        # a crash — the packet stays whole and the run log says why.
+        _record_split_decline(
+            ledger,
+            source,
+            SplitDecision(reason=SplitReason.PLAN_INVALID, detail=str(exc), decided_by=decision.decided_by),
+        )
+        return [parsed]
+
+    ledger.record(source, "split", outcome=StageOutcome.OK, detail=decision.summary())
+    logger.info("Split %s — %s", source, decision.summary())
+    return children
+
+
+def _record_split_decline(ledger: StageLedger, source: str, decision: SplitDecision) -> None:
+    """Record a split that did not happen, with the reason it did not.
+
+    A judge failure or an unusable plan marks the attempt ``degraded`` (the
+    deterministic path kept the source whole) and carries
+    :data:`ReasonCode.JUDGE_DEGRADED`; a normal decline — too few pages, no
+    boundary, unpaged, one page too large — is ``skipped`` with the reason in
+    the detail. (Splitting has no dedicated ``ReasonCode`` yet; adding one
+    belongs in ``core.types``, which this change does not own.)
+    """
+    detail = f"{decision.reason.value}: {decision.detail}" if decision.detail else decision.reason.value
+    if decision.reason in {SplitReason.JUDGE_FAILED, SplitReason.PLAN_INVALID}:
+        logger.warning("Split declined for %s — %s", source, detail, extra={"reason_code": ReasonCode.JUDGE_DEGRADED})
+        ledger.record(source, "split", outcome=StageOutcome.DEGRADED, reason_code=ReasonCode.JUDGE_DEGRADED, detail=detail)
+        return
+    logger.debug("Split declined for %s — %s", source, detail)
+    ledger.record(source, "split", outcome=StageOutcome.SKIPPED, detail=detail)
+
+
+def _document_identity(document: ParsedDocument, content_hash: str) -> str:
+    """Chunk-cache discriminator for a split child: its own source identity.
+
+    ``<stem>-<hash8>`` (``kompend.core.identity.source_key``) is the rule every
+    other cache layer already uses; children share the parent's content hash, so
+    the stem half is what keeps siblings apart.
+    """
+    return source_key(document.source_file.stem, content_hash)
+
+
+def _chunk_document(
+    pipeline: PipelineRuntime,
+    *,
+    document: ParsedDocument,
+    tag_source: Path,
+    content_hash: str,
+    use_cache: bool,
+    ledger: StageLedger,
+    watch: StallWatchdog,
+    identity: str,
+) -> ChunkTree | None:
+    """Chunk (or load from cache) and enrich one document; ``None`` on a skip.
+
+    For the unsplit source (``identity == ""``) this is the pre-split code path
+    unchanged, including :func:`_try_load_chunk_cache` and the plain dependency
+    set. A split child takes :func:`_load_child_tree`, which carries the extra
+    discriminator in the same dependency set.
+    """
+    source_label = pipeline.rel_file(document.source_file)
+    deps = _chunk_deps(pipeline, content_hash, identity=identity)
+
+    # Chunk cache lookup (Tier 1).
+    if identity:
+        tree = _load_child_tree(pipeline, document, content_hash, use_cache, deps, tag_source)
+    else:
+        tree = _try_load_chunk_cache(pipeline, document.source_file, content_hash, use_cache)
+    if tree is not None:
+        ledger.record(source_label, "chunk", outcome=StageOutcome.CACHED, sha=content_hash or None)
         return tree
 
-    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.CHUNK)
-    # Heartbeat: about to chunk (the parse doc is final by now).
-    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.CHUNK)
+    watch.beat(pipeline.rel_file(tag_source), stage=WatchStage.CHUNK)
+    if not identity:
+        # Heartbeat: about to chunk (the parse doc is final by now).
+        watch.beat(pipeline.rel_file(tag_source), stage=WatchStage.CHUNK)
+    if pipeline.chunker is None:
+        return None
 
     # Chunk and cache.
     chunk_start = time.perf_counter()
-    tree = pipeline.chunker.chunk(parsed)
-    pipeline.apply_tags_to_tree(tree, source_file)
+    tree = pipeline.chunker.chunk(document)
+    pipeline.apply_tags_to_tree(tree, tag_source)
     ledger.record(
-        pipeline.rel_file(source_file),
+        source_label,
         "chunk",
         outcome=StageOutcome.OK,
         duration_ms=(time.perf_counter() - chunk_start) * 1000.0,
         sha=content_hash or None,
     )
 
-    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.ENRICH)
-    # Heartbeat: chunking is done, enrichment may follow.
-    watch.beat(pipeline.rel_file(source_file), stage=WatchStage.ENRICH)
+    watch.beat(pipeline.rel_file(tag_source), stage=WatchStage.ENRICH)
+    if not identity:
+        # Heartbeat: chunking is done, enrichment may follow.
+        watch.beat(pipeline.rel_file(tag_source), stage=WatchStage.ENRICH)
     if pipeline.enricher is not None:
         enrich_start = time.perf_counter()
-        tree = pipeline.enricher.enrich_tree(tree, parsed)
+        tree = pipeline.enricher.enrich_tree(tree, document)
         ledger.record(
-            pipeline.rel_file(source_file),
+            source_label,
             "enrich",
             outcome=StageOutcome.OK,
             duration_ms=(time.perf_counter() - enrich_start) * 1000.0,
         )
 
     if content_hash:
-        pipeline.state_store.record(pipeline.state, stem, Path(pipeline.rel_file(source_file)), content_hash, tier=1)
-        chunk_deps = _chunk_cache_deps(pipeline, content_hash)
-        pipeline.cache_store.set("chunk", chunk_deps, tree.to_dict())
+        pipeline.state_store.record(pipeline.state, document.source_file.stem, Path(source_label), content_hash, tier=1)
+        pipeline.cache_store.set("chunk", deps, tree.to_dict())
+    return tree
+
+
+def _chunk_deps(pipeline: PipelineRuntime, content_hash: str, *, identity: str) -> dict[str, str]:
+    """Chunk-cache dependencies, plus a per-document discriminator when split.
+
+    The base set is :func:`~kompend.core.pipeline.stages.parse_store._chunk_cache_deps`
+    and is not re-derived here. The split child's extra ``source_identity`` key
+    belongs in that function long-term (it is the chunk-cache identity rule's
+    home); it lives here only because this change does not own ``parse_store``.
+    """
+    deps = _chunk_cache_deps(pipeline, content_hash)
+    if identity:
+        deps["source_identity"] = identity
+    return deps
+
+
+def _load_child_tree(
+    pipeline: PipelineRuntime,
+    document: ParsedDocument,
+    content_hash: str,
+    use_cache: bool,
+    deps: dict[str, str],
+    tag_source: Path,
+) -> ChunkTree | None:
+    """Chunk-cache hit for a split child (the discriminating twin of the store helper).
+
+    Same behaviour as :func:`_try_load_chunk_cache` — state row, rebound
+    ``source_file``, tags — over the child's own dependency set so two children
+    of one packet never share an entry.
+    """
+    if not (use_cache and content_hash):
+        return None
+    cached = pipeline.cache_store.get_dict("chunk", deps)
+    if cached is None:
+        return None
+    pipeline.state_store.record(pipeline.state, document.source_file.stem, Path(pipeline.rel_file(document.source_file)), content_hash, tier=1)
+    tree = ChunkTree.from_dict(cached)
+    tree.source_file = document.source_file
+    pipeline.apply_tags_to_tree(tree, tag_source)
     return tree
 
 

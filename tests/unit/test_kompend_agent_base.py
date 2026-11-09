@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic_ai import Agent
 from pydantic_ai_harness.compaction import (
+    CompactOnRequest,
     ContextUsage,
     FallbackCompaction,
     SlidingWindowCompaction,
@@ -15,8 +16,9 @@ from pydantic_ai_harness.compaction import (
 )
 
 from kompend.agents.base import KompendAgentBase, resolve_retry_budget
+from kompend.agents.context_manager import GrowthGatedCompaction
 from kompend.agents.deps import PipelineAgentDeps
-from kompend.core.config import ContextManagerPreset, ReasoningEffort
+from kompend.core.config import CompactionConfig, ContextManagerPreset, ReasoningEffort
 from kompend.core.config._configs import LLMConfig, LlmDataFormat
 from kompend.llm.usage import UsageTracker
 
@@ -126,28 +128,49 @@ class TestCompactionCapability:
 
     def test_default_preset_builds_context_manager(self) -> None:
         agent = self._agent(context_manager=ContextManagerPreset.DEFAULT, context_window=8192)
-        cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, FallbackCompaction)
-        summarizer = cap.fallback_chain[0]
-        assert isinstance(summarizer, SummarizingCompaction)
+        summarizer = _summarizer(agent)
         assert summarizer.max_fraction == 0.9
         assert summarizer.context_window == 8192
 
     def test_aggressive_preset_uses_lower_threshold(self) -> None:
         agent = self._agent(context_manager=ContextManagerPreset.AGGRESSIVE)
-        cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
-        assert isinstance(cap, FallbackCompaction)
-        summarizer = cap.fallback_chain[0]
-        assert isinstance(summarizer, SummarizingCompaction)
-        assert summarizer.max_fraction == 0.7
+        assert _summarizer(agent).max_fraction == 0.7
 
     def test_true_maps_to_default(self) -> None:
         agent = self._agent(context_manager=True)
+        assert _summarizer(agent).max_fraction == 0.9
+
+    def test_compaction_config_reaches_the_summarizer(self) -> None:
+        agent = self._agent(
+            context_manager=ContextManagerPreset.DEFAULT,
+            context_window=8192,
+            compaction=CompactionConfig(keep_tokens=1_024, min_growth_tokens=64),
+        )
         cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
         assert isinstance(cap, FallbackCompaction)
-        summarizer = cap.fallback_chain[0]
-        assert isinstance(summarizer, SummarizingCompaction)
-        assert summarizer.max_fraction == 0.9
+        gated = cap.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+        assert gated.min_growth_tokens == 64
+
+    def test_compact_on_request_is_off_by_default(self) -> None:
+        agent = self._agent(context_manager=ContextManagerPreset.DEFAULT)
+        cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
+
+        assert agent._resolve_compact_on_request(cap) is None  # noqa: SLF001
+
+    def test_compact_on_request_attaches_for_opted_in_agents(self) -> None:
+        agent = _CompactOnRequestAgent(context_manager=ContextManagerPreset.DEFAULT, model_string="test/noop")
+        cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
+
+        on_request = agent._resolve_compact_on_request(cap)  # noqa: SLF001
+
+        assert isinstance(on_request, CompactOnRequest)
+        assert on_request.strategy is cap
+
+    def test_compact_on_request_needs_a_capability(self) -> None:
+        agent = _CompactOnRequestAgent(model_string="test/noop")
+
+        assert agent._resolve_compact_on_request(None) is None  # noqa: SLF001
 
     def test_sliding_preset_builds_sliding_window(self) -> None:
         agent = self._agent(context_manager=ContextManagerPreset.SLIDING)
@@ -191,6 +214,12 @@ class TestCompactionCapability:
             pass
 
         return _A(model_string="ollama/noop", **kwargs)
+
+
+class _CompactOnRequestAgent(KompendAgentBase[Any, Any]):
+    """A history-threading agent: opts into model-triggered compaction."""
+
+    compact_on_request: ClassVar[bool] = True
 
 
 class TestConfigDrivenDefaults:
@@ -324,3 +353,14 @@ class TestToolRetryBudget:
 
         agent = _A(model_string="ollama/noop", retries=4)
         assert agent.tool_retry_budget() == 4
+
+
+def _summarizer(agent: KompendAgentBase[Any, Any]) -> SummarizingCompaction:
+    """The summarizer tier of the capability an agent resolves to."""
+    cap = agent._resolve_context_capability(MagicMock())  # noqa: SLF001
+    assert isinstance(cap, FallbackCompaction)
+    gated = cap.fallback_chain[0]
+    assert isinstance(gated, GrowthGatedCompaction)
+    summarizer = gated.strategy.tiers[-1]
+    assert isinstance(summarizer, SummarizingCompaction)
+    return summarizer

@@ -41,3 +41,7 @@ class ExtractionAgent(KompendAgentBase[ExtractionOutput, PipelineAgentDeps]):
     """
 
     spec: ClassVar[AgentSpec | None] = SPEC
+
+    #: Extraction threads one ``message_history`` across every uncached batch
+    #: of a source, so a fold at a natural break beats a fold at a threshold.
+    compact_on_request: ClassVar[bool] = True

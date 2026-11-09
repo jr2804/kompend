@@ -29,6 +29,24 @@ class RlmConfig(_KompendBaseModel):
     node_budget: int | None = None
 
 
+class CompactionConfig(_KompendBaseModel):
+    """Rank-based context-compaction tuning (``[compile.llm.compaction]``).
+
+    The compaction stack itself is built for every ``context_manager`` preset
+    except ``sliding`` (see ``kompend.agents.context_manager``); these knobs
+    shape it. ``judge`` names a decision-model string (as in
+    ``[decision].model``) that ranks steps keep/reduce/drop before the
+    summarizing tier runs; without it the stack clears and deduplicates tool
+    results and summarizes. ``keep_tokens`` is the recent tail the judge may
+    never touch; ``min_growth_tokens`` gates the expensive tiers so a static
+    context is not re-folded on every request (prompt-cache protection).
+    """
+
+    judge: str | None = None
+    keep_tokens: int = 8_000
+    min_growth_tokens: int = 2_048
+
+
 class LLMConfig(_KompendBaseModel):
     """Configuration for LLM models, timeouts, and fallback behavior."""
 
@@ -119,6 +137,7 @@ class LLMConfig(_KompendBaseModel):
     #: ``None`` disables. Only the group form is accepted — no scalar
     #: shorthand.
     rlm: RlmConfig | None = None
+    compaction: CompactionConfig = Field(default_factory=CompactionConfig)
     #: How a multi-chunk source is extracted (see the "Extraction strategies"
     #: section in docs/guides/llm-config.md). ``incremental`` (default) keeps
     #: one conversation per source with per-batch caching; ``reduce`` extracts

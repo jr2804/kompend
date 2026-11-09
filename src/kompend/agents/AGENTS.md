@@ -22,20 +22,16 @@ This package is the **only** layer that talks to pydantic-ai `Agent` directly.
 
 Every agent is a registered `AgentSpec`; the typed class is its facade and
 extends `KompendAgentBase[ResultT, DepsT]`. The 37 specs cover every pipeline
-stage from extraction to write.
-
-### KompendAgentBase responsibilities
-
-Each concrete agent declares one `SPEC: AgentSpec` (name, `result_type`,
-`deps_type`, templates, delta-retry flag, prompt hooks); `build_agent("name",
-...)` materialises it and the class is only the typed facade. Add a `SPEC` and
-a registry entry in `agents/specs.py` instead of hand-wiring a class.
+stage from extraction to write. Each concrete agent declares one
+`SPEC: AgentSpec` (name, `result_type`, `deps_type`, templates, delta-retry
+flag, prompt hooks); `build_agent("name", ...)` materialises it. Add a `SPEC`
+or a registry entry in `agents/specs.py` instead of hand-wiring a class.
 
 Prompt or validation behaviour a template cannot express belongs on the spec
 as `user_prompt` / `system_prompt` / `validate_output`. The hook receives
 `(agent, deps)`, so it reads `agent.rlm`, `agent.skills` and
-`agent._template_loader` as the old override did; the base installs it as the
-method. Never override `render_*` or `validate_output` in a concrete class.
+`agent._template_loader`; the base installs it as the method. Never override
+`render_*` or `validate_output` in a concrete class.
 
 ### The `base/` package
 
@@ -49,7 +45,7 @@ surface, so importers never name a submodule:
 | `base/spec.py` | `AgentSpec` (data-only agent definition), `agent_class()`, `install_hooks()` and `build_agent()`; the agent modules' `SPEC` constants are the definitions |
 | `base/deps.py` | `AgentDeps` protocol, `ResultT`/`DepsT` typevars, `resolve_retry_budget()`, the `UNSET_*` sentinels |
 | `base/models.py` | top-level model assembly (failover chain) and output-ceiling arithmetic |
-| `base/context.py` | context-manager and RLM capability assembly, `_CONTEXT_PRESETS` |
+| `base/context.py` | context-manager and RLM capability assembly, `_CONTEXT_PRESETS`, `resolve_compact_on_request` |
 | `base/retries.py` | transient-retry loop, failure mapping, cache-rejection sniffing, session limits |
 | `base/delta_retry.py` | the delta-retry salvage hook and its six helpers |
 
@@ -65,31 +61,40 @@ The base class provides:
   first `run()` call, so tests can import the class without a running
   model
 - **Context management** — `build_fallback_compaction()`
-  (`context_manager.py`) is attached from the `context_manager` config
-  preset (`"default"`/`"aggressive"`/`"sliding"`/`false`): a
-  `FallbackCompaction` of `SummarizingCompaction` (at a fraction of the
-  discovered `context_window.max_input`), then a token-triggered
-  `SlidingWindowCompaction` keeping half the trigger, used only when the
-  summarizer cannot answer (`UnexpectedModelBehavior`, e.g. one unknown-tool
-  call exhausting the harness's implicit budget of 1,
-  pydantic/pydantic-ai#12307); other errors burn. Disabled at the code-API
-  level, enabled by config.
+  (`context_manager.py`) is attached from the `context_manager` preset
+  (`"default"`/`"aggressive"`/`"sliding"`/`false`), tuned by
+  `[compile.llm.compaction]` (`CompactionConfig`: `judge`, `keep_tokens`,
+  `min_growth_tokens`). Default/aggressive is a `_PinningFallbackCompaction`
+  whose first entry is a `GrowthGatedCompaction` around a `TieredCompaction`
+  (clear tool results → dedupe superseded reads via `_file_key` →
+  `RelevanceCompaction` when a `judge` is set → doctrine summarizer; cheapest
+  tier first, stopping when the history fits); the second entry is a
+  token-triggered `SlidingWindowCompaction` used only when the summarizer
+  cannot answer (`UnexpectedModelBehavior`, pydantic/pydantic-ai#12307) —
+  other errors burn. Stack and tuning: `docs/guides/model-context.md`.
+- **Compaction invariants** — `_pin_first_user_turn` pins the task assignment
+  (harness `pin()`, model-invisible) before any tier runs and every strategy
+  re-injects it; the gate re-arms only after `min_growth_tokens` of growth (a
+  fold invalidates the provider prompt cache from the rewrite point on); the
+  summary comes from `templates/compaction/doctrine.md.j2`. Never add a
+  compaction path that skips the pin or crops instead of folding.
+  `compact_on_request: ClassVar[bool]` (default `False`) adds
+  model-triggered `CompactOnRequest` for history-threading agents only.
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
   `[rlm]` extra) attaches from the `compile.llm.rlm` group (`RlmConfig` in
   `core/config/_configs.py`; `enable` is the only switch, explicit fields
   override the preset baseline). It registers an `execute_code` tool
-  (sandboxed REPL, deps context pre-loaded from `rlm_context_field`) plus
-  RLM instructions; the sub-model powers `llm_query()` in the REPL and is
-  usage-tracked via `KompendModel`. With
-  `max_depth > 0` the REPL also exposes `rlm_query(prompt, slice)` — a
-  child agent (same main model, own REPL) recursing to the depth budget,
-  guarded by a per-root-run node budget (default 16) and cycle detection on
-  (depth, prompt, context fingerprint). The per-run REPL cache is keyed by
-  `id(deps)` and a lookup must confirm the entry still belongs to that deps
-  object (ids are recycled; a stale REPL would run against the previous
-  run's namespace, guard and model). When RLM is enabled the
-  `rlm_context_field` deps value is replaced in rendered prompts by
-  `RLM_CONTEXT_PLACEHOLDER` (the deps keep the full value for the REPL).
+  (sandboxed REPL, deps context pre-loaded from `rlm_context_field`) plus RLM
+  instructions; the sub-model powers `llm_query()` in the REPL and is
+  usage-tracked via `KompendModel`. With `max_depth > 0` the REPL also exposes
+  `rlm_query(prompt, slice)` — a child agent (same main model, own REPL)
+  recursing to the depth budget, guarded by a per-root-run node budget
+  (default 16) and cycle detection on (depth, prompt, context fingerprint).
+  The per-run REPL cache is keyed by `id(deps)` and a lookup must confirm the
+  entry still belongs to that deps object (ids are recycled; a stale REPL
+  would run against the previous run's namespace, guard and model). When RLM
+  is enabled the `rlm_context_field` deps value is replaced in rendered prompts
+  by `RLM_CONTEXT_PLACEHOLDER` (the deps keep the full value for the REPL).
   Disabled by default (`rlm=False`).
 - **Skill injection** — `compile.skills` entries are appended to the system
   prompt under `## Skill: <name>` headings
@@ -97,13 +102,13 @@ The base class provides:
   `result_type`; `ModelRetry` triggers a retry with feedback
 - **Usage tracking** — token usage recorded per call
 - **Usage limits** — `run()`/`run_with_messages()` pass `_usage_limits_for(deps)`
-  (default: the RLM preset limits, else None → pydantic-ai's implicit
-  50-request cap). Session agents override `_session_limits(units=…,
-  per_unit=…)`: planned turns + a fixed 2-request cost + `_retry_requests()`,
-  scaled by `headroom_frac` (unit count and per-unit cost from `budget.*`,
-  the rest class constants). A session counts progress only for ids in its own
-  payload; `summarize_node` rejects unknown ids with `ModelRetry`, and
-  `NodeSummarizer` re-requests unsummarized nodes per `SummarizerSessionPolicy`.
+  (default: the RLM preset limits, else None → pydantic-ai's implicit 50-request
+  cap). Session agents override `_session_limits(units=…, per_unit=…)`: planned
+  turns + a fixed 2-request cost + `_retry_requests()`, scaled by
+  `headroom_frac` (units/per-unit cost from `budget.*`, the rest class
+  constants). A session counts progress only for ids in its own payload;
+  `summarize_node` rejects unknown ids with `ModelRetry`, and `NodeSummarizer`
+  re-requests unsummarized nodes per `SummarizerSessionPolicy`.
 - **Reasoning effort** — config string mapped to provider thinking controls
   (e.g. `think=False` for Ollama)
 - **VLM captioning** — `VlmAgent` sends a LIST user prompt: the rendered
@@ -122,38 +127,39 @@ did not spell out:
 
 `_apply_config_defaults()` (in `base/agent.py`) fills every gap from its
 `compile.llm` twin (the tool/output retry split collapses to 0 when
-`output_retries_enabled` is false). An explicitly passed value always wins.
+`output_retries_enabled` is false); an explicitly passed value always wins.
 
 There is no `max_tokens` and no `budget` kwarg: an answer is bounded by the
 model's context window minus its prompt (`llm/AGENTS.md`). The exception is
 protocol-driven: Anthropic rejects an unset `max_tokens`, so there the agent
 passes a callable `model_settings` computing window - prompt - margin per
-request, clamped by the model's catalog output limit; every other protocol
-sends nothing.
+request, clamped by the catalog output limit; every other protocol sends
+nothing.
 
-`agent.data_format` is the resolved `llm.data_format` (see `llm/AGENTS.md`):
-prompt-building code reads it off the agent instead of taking a parameter, so
+`agent.data_format` is the resolved `llm.data_format` (`llm/AGENTS.md`):
+prompt-building code reads it off the agent rather than taking a parameter, so
 the format cannot drift from the config the agent already carries
 (`CategorizeAgent` → `_build_files_payload`).
 
 A **transient** failure (timeout, dropped connection, 429/5xx) is retried in
 the base's `_invoke` — `compile.llm.transient_retries` times with
 `transient_backoff` doubling. That is the only whole-request retry: stages must
-not add backoff loops of their own. Tool, output-schema and session-progress
-retries are other axes.
+not add backoff loops. Tool, output-schema and session-progress retries are
+other axes.
 
 ### Failure vocabulary (`failure.py`)
 
 `classify_agent_failure(exc)` maps any raised error onto an `AgentFailureKind`
 (`empty_answer`, `schema_mismatch`, `context_overflow`, `transient`, `other`);
-`is_retry_pointless(kind)` says when re-sending the request cannot help.
-An empty answer never spends the output budget: `KompendModel` resamples a
-blank structured-output response once, then raises `EmptyAnswerError` (every
-output mode except `text`): retry feedback cannot fix a blank answer. Stages call `record_unit_failure(...)` per failed unit (one log line
-naming unit, kind and request count) and `UnitFailureLog.check()` raises once
-more than `compile.llm.batch_failure_threshold_ratio` of the units failed. A
-stage never swallows a failure into a smaller result set: record it and go on,
-or stop with the kinds in the message.
+`is_retry_pointless(kind)` says when re-sending cannot help. An empty answer
+never spends the output budget: `KompendModel` resamples a blank
+structured-output response once, then raises `EmptyAnswerError` (every mode
+except `text`) — retry feedback cannot fix a blank answer. Stages call
+`record_unit_failure(...)` per failed unit (one log line naming unit, kind and
+request count) and `UnitFailureLog.check()` raises once more than
+`compile.llm.batch_failure_threshold_ratio` of the units failed. A stage never
+swallows a failure into a smaller result set: record it and go on, or stop with
+the kinds in the message.
 
 `resolve_retry_budget(llm, retries=…, output_retries=…)` derives the
 tool/output retry split from the same config — the agentic factories use it so
@@ -165,43 +171,38 @@ capabilities that need it (the context manager's summarizer agent).
 The agentic harness offers the memory capability only on request
 (`AgenticHarness(memory=True)`). The notebook is a `read_memory`/`write_memory`
 tool pair: an invented file name gets `ModelRetry`, and once the tool budget
-is spent the run dies with the node left unsummarized.
-`compile.llm.agent_memory` (default on) decides which stages request it. The
-notebook is owned by ONE agent instance, so it only helps a stage where one
-instance handles MANY outputs (summarisation, verification, remediation,
-distillation); fresh-agent-per-unit stages gain nothing. `compile.llm.memory_store`
-(default `vault`) picks the backend: `vault` roots the notebook at
-`.kompend/agent-memory/<agent_name>/MEMORY.md` via `DirectoryMemoryStore`
-(`vault_memory.py`), resolved by `build_notebook_store(llm, memory_dir)`. The
-notebook is agent-written prompt context, not a cache input: it is not part
-of the summary cache key.
+is spent the run dies with the node left unsummarized. `compile.llm.agent_memory`
+(default on) decides which stages request it. One instance owns the notebook,
+so it only helps a stage where one instance handles MANY outputs
+(summarisation, verification, remediation, distillation); fresh-agent-per-unit
+stages gain nothing. `compile.llm.memory_store` (default `vault`) picks the
+backend: `vault` roots it at `.kompend/agent-memory/<agent_name>/MEMORY.md`
+via `DirectoryMemoryStore` (`vault_memory.py`), resolved by
+`build_notebook_store(llm, memory_dir)`. It is prompt context, not a cache key.
 
-Three more harness capabilities ride on `AgenticHarness` (`agentic_harness.py`):
-**StepPersistence** (`step_store`) saves every run's transcript after each turn,
-so a hard kill resumes from the last complete snapshot (keys in
-`compilation/step_recovery.py`). **ConversationSearch** (`search_history`) adds
-a BM25 tool over the same store, scoped to the conversation. **SystemReminders**
-(`reminder_content` + `reminder_interval`) appends a cache-safe tail reminder
-rendered from a template.
+Three harness capabilities ride on `AgenticHarness` (`agentic_harness.py`):
+**StepPersistence** (`step_store`) saves each run's transcript per turn, so a
+hard kill resumes from the last snapshot (keys in
+`compilation/step_recovery.py`); **ConversationSearch** (`search_history`) adds
+a BM25 tool over that store; **SystemReminders** (`reminder_content` +
+`reminder_interval`) appends a cache-safe tail reminder from a template.
 
 The delta-retry salvage hook (`base/delta_retry.py`) is opt-in per class: a
-subclass sets `supports_delta_retry: ClassVar[bool] = True`, and it fires only
-when `llm.delta_retry_enabled` is on. It must be a `ClassVar` — a plain
-attribute would `__init__` and never take effect.
+subclass sets `supports_delta_retry: ClassVar[bool] = True`; it fires only when
+`llm.delta_retry_enabled` is on. It must be a `ClassVar` — a plain attribute
+would `__init__` and never take effect.
 
 ### KompendModel (`kompend_model.py`)
 
-Thin delegate around any native pydantic-ai `Model`. Adds:
+Thin delegate around any native pydantic-ai `Model`. Adds `_merge_reasoning()`
+(reasoning effort → provider settings), `_track_usage()` (input/output tokens),
+`_fail_on_empty_answer()` (`EmptyAnswerError` instead of letting a blank
+response burn four output retries), `_save_debug()` (LLM debug log), and
+`_repair_tool_call_args()` / `_repair_text_part()` (`json_repair` before the
+strict validator, for malformed JSON from small local models).
 
-- `_merge_reasoning()` — maps `reasoning_effort` to provider settings
-- `_track_usage()` — records input/output tokens
-- `_fail_on_empty_answer()` — raises `EmptyAnswerError` instead of letting a
-  blank response burn four output retries
-- `_save_debug()` — writes request/response to LLM debug log
-- `_repair_tool_call_args()` / `_repair_text_part()` — `json_repair`
-  before the strict validator (fixes malformed JSON from small local models)
-
-History compression lives on the Agent layer (`build_fallback_compaction`).
+History compression lives on the Agent layer (`build_fallback_compaction`);
+the doctrine it summarizes by lives in `templates/compaction/`.
 
 ### Dependency types (`types.py`, `deps.py`)
 
@@ -220,7 +221,7 @@ History compression lives on the Agent layer (`build_fallback_compaction`).
 | `VlmDeps`          | VlmAgent (`image_file`, the figure's `context`)                                        |
 
 Agentic-session payloads are `TypedDict`s in `types.py`, never bare
-`dict[str, Any]` at the agent boundary. `DistillPage` is `total=False` because
+`dict[str, Any]` at the agent boundary; `DistillPage` is `total=False` because
 it mirrors untrusted model output.
 
 ## Local Contracts
@@ -228,10 +229,9 @@ it mirrors untrusted model output.
 - **Never crop what the model sees or returns** — a window splits, it never truncates (`.agents/CODE.md` "LLM calls").
 - **No text in code.** All prompts are Jinja2 templates in
   `src/kompend/templates/<module>/`. See parent doc.
-- **No direct pydantic-ai `Agent` construction outside this package.**
-  Pipeline code imports an agent class and calls `agent.run(deps)`.
-- **No `litellm` imports.** Model construction goes through
-  `kompend.llm.models.build_model()`.
+- **No direct pydantic-ai `Agent` construction outside this package**, and no
+  `litellm` imports: pipeline code imports an agent class and calls
+  `agent.run(deps)`; models come from `kompend.llm.models.build_model()`.
 - **Roles.** Every agent names an `LLMRole` value from `kompend.llm.roles`; add
   one there when adding an agent.
 - **Export new agents** from `__init__.py`; **result types** live in the
@@ -245,6 +245,5 @@ it mirrors untrusted model output.
 ## Relationship to other layers
 
 Distinct from `kompend/acp/` (the editor protocol adapter): editor request →
-`kompend/acp/` → MCP tools → pipeline → **these** agents. See
-`docs/reference/pydantic-ai-agents.md` for per-role model overrides, skills and
-how to write a new agent.
+`kompend/acp/` → MCP tools → pipeline → **these** agents. Per-role model
+overrides, skills and how to write a new agent: `docs/reference/pydantic-ai-agents.md`.

@@ -44,6 +44,10 @@ class AgenticSummarizerAgent(KompendAgentBase[str, SummarizerDeps]):
 
     spec: ClassVar[AgentSpec | None] = SPEC
 
+    #: The summarizer threads one ``message_history`` across every section of
+    #: a document, so a fold at a natural break beats a fold at a threshold.
+    compact_on_request: ClassVar[bool] = True
+
     #: LLM requests budgeted per payload node. The pipeline sets this from
     #: ``budget.summary_requests_per_node`` — small local models routinely
     #: need more than the historical 2 (prose turns, id retries) and starve

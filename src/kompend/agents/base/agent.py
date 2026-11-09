@@ -48,6 +48,7 @@ from pydantic_ai_harness.compaction import ContextUsage, ReportContextUsage
 
 from kompend.agents.base.context import (
     on_usage_update,
+    resolve_compact_on_request,
     resolve_context_capability,
     resolve_rlm_capability,
 )
@@ -85,7 +86,14 @@ from kompend.agents.rlm import (
     RLMCapability,
 )
 from kompend.agents.types import PipelineAgentDeps
-from kompend.core.config._configs import ContextManagerPreset, LLMConfig, LlmDataFormat, ReasoningEffort, RlmConfig
+from kompend.core.config._configs import (
+    CompactionConfig,
+    ContextManagerPreset,
+    LLMConfig,
+    LlmDataFormat,
+    ReasoningEffort,
+    RlmConfig,
+)
 from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.core.utils.exceptions import (
     LLMOutputError,
@@ -141,6 +149,10 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     #: disables compaction; ``None`` defers to the config, then to disabled.
     context_manager: ContextManagerPreset | bool | None = None
     context_window: int | None = None
+    #: Compaction tuning from ``compile.llm.compaction``: judge model, protected
+    #: tail and growth gate. The shape defaults match
+    #: :class:`~kompend.core.config._configs.CompactionConfig`.
+    compaction: CompactionConfig = field(default_factory=CompactionConfig)
     delta_retry_enabled: bool | None = None
     tools: list[Tool[DepsT]] = field(default_factory=list)
     extra_capabilities: Sequence[AbstractCapability[DepsT]] = field(default_factory=list)
@@ -172,6 +184,11 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     #: ``delta_retry_enabled``; this flag only marks the agent as
     #: capable of the hook.
     supports_delta_retry: ClassVar[bool] = False
+    #: Opt-in for the model-triggered ``compact_context`` tool. Set on agents
+    #: that thread a long ``message_history`` between runs, where a fold at a
+    #: natural break is worth more than a fold at a token threshold. The tool
+    #: delegates to the same growth-gated stack the automatic path uses.
+    compact_on_request: ClassVar[bool] = False
     #: Optional model factory for agents whose model is not a chat model
     #: (the decision sidecar speaks the SystemOne protocol). ``None`` uses
     #: :func:`kompend.llm.models.build_model`.
@@ -547,6 +564,9 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         capabilities: list[AbstractCapability[DepsT]] = []
         if capability is not None:
             capabilities.append(capability)
+            on_request = self._resolve_compact_on_request(capability)
+            if on_request is not None:
+                capabilities.append(on_request)
             if self.usage_tracker is not None:
                 # The harness reports token usage through an event; keep feeding
                 # the tracker so context usage stays visible in the run summary.
@@ -619,6 +639,13 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     def _resolve_context_capability(self, model: Model) -> AbstractCapability[DepsT] | None:
         """Delegate to :func:`kompend.agents.base.context.resolve_context_capability`."""
         return resolve_context_capability(self, model)
+
+    def _resolve_compact_on_request(
+        self,
+        capability: AbstractCapability[DepsT] | None,
+    ) -> AbstractCapability[DepsT] | None:
+        """Delegate to :func:`kompend.agents.base.context.resolve_compact_on_request`."""
+        return resolve_compact_on_request(self, capability)
 
     def _resolve_rlm_capability(self, model: Model) -> RLMCapability | None:
         """Delegate to :func:`kompend.agents.base.context.resolve_rlm_capability`."""

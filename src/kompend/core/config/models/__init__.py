@@ -37,6 +37,7 @@ from kompend.core.config.models.ingest import (
     OrganizeConfig,
 )
 from kompend.core.config.models.llm import (
+    CompactionConfig,
     EmbeddingConfig,
     LLMConfig,
     ProviderEndpoint,
@@ -82,6 +83,7 @@ __all__ = [
     "FLAVOR_ALIASES",
     "AttachmentsConfig",
     "BudgetConfig",
+    "CompactionConfig",
     "CompileConfig",
     "Compiler",
     "ContextManagerPreset",
