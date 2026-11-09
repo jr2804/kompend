@@ -47,6 +47,7 @@ from kompend.compilation.flows.generation.writer import (
     assemble_wiki,
 )
 from kompend.compilation.schema import GenerationOutput
+from kompend.compilation.source_search import SourceIndex
 from kompend.compilation.step_recovery import (
     SegmentRecovery,
     extract_final_output,
@@ -379,6 +380,12 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
     # Coverage credit: rapidfuzz T2 + embedding T3 (single instances shared
     # across segments so title/concept embeddings are cached compile-wide).
     coverage = _CoverageCredit(compiler._config.embedding.model)
+    # Segment-scoped generation is closed-world by default: the agent sees its
+    # own segment and the concepts assigned to it. The index gives it the
+    # reach a researcher has - name a concept, find the sources that mention
+    # it, then read them in windows. Built once per run from the same
+    # segments the plan slices up, so it costs one token scan per source.
+    source_index = SourceIndex.from_segments(source_segments, embedding_model=compiler._config.embedding.model)
 
     def _absorb_pages(gen_output: GenerationOutput, seg_idx: int) -> set[str]:
         """Upsert a segment's produced pages into ``nodes``; return their titles."""
@@ -546,6 +553,7 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
             known_titles_prompt=known_titles_prompt or [],
             known_titles_page_chars=known_titles_page_chars,
             concept_broker=broker,
+            source_index=source_index,
         )
 
         # Force full concept coverage: small models often stop after the first

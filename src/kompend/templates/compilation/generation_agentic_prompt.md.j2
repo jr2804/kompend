@@ -16,6 +16,9 @@ Generate wiki pages for the concepts in this source segment.
 
 Use the **read_segment()** tool to load the source content, then
 use **fetch_concepts()** to retrieve concept batches (up to 10 per call).
+When a concept is central but this segment only touches it, **search_sources()**
+names the other sources of this compile that mention it and
+**read_source_window()** reads any of them in full.
 
 Return one page for **every** concept in the batch you fetched, in this same
 pass - a pass that fetches ten concepts and returns one page wastes nine

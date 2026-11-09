@@ -200,7 +200,12 @@ from many sources is served its segments across requests, and when even the
 fixed request overhead no longer fits the window, planning fails loudly
 with the component breakdown instead of sending a shortened request. The
 known-titles list is windowed the same way — the head goes inline, the rest
-is served by the `list_known_titles()` tool. To give generation more source
+is served by the `list_known_titles()` tool. A segment is closed-world: the
+agent sees its own content and the concepts assigned to it. When a central
+concept is only partly covered there, `search_sources(query)` names the
+other sources of the run that mention it and `read_source_window(stem,
+offset)` reads them — scored lexically, re-scored by cosine when an
+embedding model is configured. To give generation more source
 text, raise the model's context window - a bigger `chunk_size_max` alone
 cannot create room an answer needs:
 

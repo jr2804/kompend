@@ -102,6 +102,13 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 **Decision:** `KompendModel` resamples a blank structured-output response once (`_EMPTY_ANSWER_RESAMPLES`) before raising `EmptyAnswerError`, and the retry budget stays unspent because its feedback cannot change a blank answer. `compile.llm.content_window_tokens` sets how much content one request carries, independent of the window; discovery stamps it on `ContextWindow.content_window_tokens`, so `RequestBudget` sizes every payload by it.  
 **Consequences:** A stage whose payload exceeds that window splits it — extraction into more batches, generation into more segments, summarization and WiCER probes into more windows — so the cost of a smaller value is more requests, never less content. The value is unset by default (the window decides), so nothing changes for models that handle long prompts well; a local model gets a window that reflects what it can actually answer from.
 
+### Decision: The generation agent searches the run's sources instead of being handed them
+
+**Date:** Nov 9, 2026  
+**Context:** Generation runs per segment: the agent sees its own segment content and the concepts assigned to it, and had no way to reach a source outside that segment. A concept that is central to one source but only mentioned there produced a thin page, and the agent could not tell whether the corpus held more. Handing every source to every segment is impossible (the corpus does not fit one window) and a pre-built embedding index over sources does not exist — the vector store indexes compiled wiki pages, and it is built in `post_compile`, after generation.  
+**Decision:** `compilation/source_search.SourceIndex` indexes the run's segments (BM25 over the tokens of each source) and the generation toolset gains `search_sources(query, k)` plus `read_source_window(stem, offset)`. When `[embedding] model` is configured, the best lexical candidates are re-scored by cosine against their matched snippet, cached per string — the same two-tier split `_CoverageCredit` uses for page titles.  
+**Consequences:** The agent's reach is the whole run without paying for the corpus up front: a hit is a source, an offset and a 400-character preview, and reading costs one window per call (`SOURCE_WINDOW_CHARS`, with the next offset named) — the source is paged, never shortened. A dead embedding provider degrades to the lexical ranking instead of failing the segment. Extraction stays single-pass over its own source: the same tool there would need an agentic extraction pass, which the single-shot decision has not been reopened for.
+
 ## Chunking
 
 ### Decision: Structure-aware chunking: atomic elements never split

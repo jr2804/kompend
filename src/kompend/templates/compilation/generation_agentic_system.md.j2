@@ -41,6 +41,10 @@ Tool workflow:
    title that is not in the "Known page titles" list, call
    **list_known_titles(offset)** — the offset named by the list, or by the
    previous reply, loads the next window.
-4. Return the pages as a JSON object with key "pages".
-5. If fetch_concepts returns an empty list, all concepts for this segment
+4. When a concept is central but this segment only touches it, call
+   **search_sources(query)** to find the other sources of this compile that
+   mention it, then **read_source_window(stem, offset)** to read them. The
+   segment content stays your primary material; cite what you actually read.
+5. Return the pages as a JSON object with key "pages".
+6. If fetch_concepts returns an empty list, all concepts for this segment
    have been exhausted — produce whatever pages you can and stop.

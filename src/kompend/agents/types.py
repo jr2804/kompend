@@ -75,12 +75,17 @@ class ToolGenerationDeps(BaseGenerationDeps):
             served per ``list_known_titles()`` call. 0 serves the whole
             list. The agent pages through the titles by passing the offset
             the reply names — no title is dropped.
+        source_index: Search over every source of this run, served through
+            ``search_sources()`` and ``read_source_window()``. ``None``
+            leaves the segment closed — the agent then works from the
+            segment content and the concept batches alone.
     """
 
     source_content: str = ""
     categories: str = ""  # rendered extra-category instructions
     concept_broker: ConceptBrokerProtocol | None = None
     known_titles_page_chars: int = 0
+    source_index: SourceSearchProtocol | None = None
 
 
 @dataclass
@@ -415,6 +420,42 @@ class ConceptBrokerProtocol(Protocol):
     def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
 
     def remaining(self, caller_id: str) -> int: ...
+
+
+class SourceHitProtocol(Protocol):
+    """One source a :class:`SourceSearchProtocol` matched."""
+
+    @property
+    def stem(self) -> str: ...
+
+    @property
+    def offset(self) -> int: ...
+
+    @property
+    def total_chars(self) -> int: ...
+
+    @property
+    def score(self) -> float: ...
+
+    @property
+    def snippet(self) -> str: ...
+
+
+class SourceSearchProtocol(Protocol):
+    """Minimal source-search surface used by the agentic generation tools.
+
+    Declared locally for the same import-cycle reason as
+    :class:`ConceptBrokerProtocol`; the concrete implementation is
+    :class:`kompend.compilation.source_search.SourceIndex`.
+    """
+
+    def search(self, query: str, k: int = 6) -> Sequence[SourceHitProtocol]: ...
+
+    def read_window(self, stem: str, offset: int = 0) -> tuple[str, int]: ...
+
+    def stems(self) -> list[str]: ...
+
+    def total_chars(self, stem: str) -> int: ...
 
 
 class GapBrokerProtocol(Protocol):
