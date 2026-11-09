@@ -147,9 +147,9 @@ retries are other axes.
 `classify_agent_failure(exc)` maps any raised error onto an `AgentFailureKind`
 (`empty_answer`, `schema_mismatch`, `context_overflow`, `transient`, `other`);
 `is_retry_pointless(kind)` says when re-sending the request cannot help.
-An empty answer never spends the output budget: `KompendModel` raises
-`EmptyAnswerError` on the first blank response, for every output mode except
-`text`. Stages call `record_unit_failure(...)` per failed unit (one log line
+An empty answer never spends the output budget: `KompendModel` resamples a
+blank structured-output response once, then raises `EmptyAnswerError` (every
+output mode except `text`): retry feedback cannot fix a blank answer. Stages call `record_unit_failure(...)` per failed unit (one log line
 naming unit, kind and request count) and `UnitFailureLog.check()` raises once
 more than `compile.llm.batch_failure_threshold_ratio` of the units failed. A
 stage never swallows a failure into a smaller result set: record it and go on,

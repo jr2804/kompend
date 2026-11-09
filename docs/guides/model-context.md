@@ -57,6 +57,24 @@ default_model = "ollama/llama3.1"
 context_window = 32768   # never exceed 32K even if the model reports more
 ```
 
+A large window is not the same as a model that can use it. A small local
+model may accept a 40K-token prompt and answer it with nothing at all, and
+raising `context_window` then makes each request *heavier* instead of better.
+`compile.llm.content_tokens` caps the content one request may carry,
+independently of the window:
+
+```toml
+[compile.llm]
+context_window = 65536
+content_tokens = 16000   # at most 16K tokens of source per request
+```
+
+The stages react by splitting their work into more requests — extraction into
+more batches, generation into more segments. Content is never cropped to fit:
+a budget that is too small means more calls, never less text. Leave it unset
+and the window decides, which is right for models that handle long prompts
+well.
+
 `context_window_cap` was renamed to `context_window` in both `[compile.llm]`
 and `[providers.<name>]`; a config still setting the old name keeps working
 (the value is migrated, with a deprecation warning) — but please update it.

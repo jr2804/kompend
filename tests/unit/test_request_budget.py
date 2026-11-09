@@ -135,9 +135,28 @@ def test_explicit_answer_and_safety_override_the_window_defaults() -> None:
     assert budget.available_tokens == window.max_input - 1024
 
 
-def _window(max_input: int = 65536, max_output: int = 8192) -> ContextWindow:
+def test_the_window_content_cap_bounds_the_payload() -> None:
+    """``compile.llm.content_tokens`` caps content below what the window could hold."""
+    budget = RequestBudget(window=_window(max_input=65536, content_cap=16000), reserved={})
+
+    assert budget.available_tokens > 16000
+    assert budget.content_tokens == 16000
+    assert "cap=16000" in budget.report()
+
+
+def test_the_content_cap_never_raises_the_payload() -> None:
+    """A cap larger than the remaining budget changes nothing."""
+    uncapped = RequestBudget(window=_window(max_input=8192), reserved={"system": 1000})
+    capped = RequestBudget(window=_window(max_input=8192, content_cap=10**6), reserved={"system": 1000})
+
+    assert capped.content_tokens == uncapped.content_tokens
+    assert "cap=" not in uncapped.report()
+
+
+def _window(max_input: int = 65536, max_output: int = 8192, content_cap: int | None = None) -> ContextWindow:
     return ContextWindow(
         max_input=max_input,
         max_output=max_output,
         source=ContextSource.FALLBACK,
+        content_cap=content_cap,
     )

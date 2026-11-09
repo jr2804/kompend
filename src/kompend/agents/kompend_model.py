@@ -43,6 +43,7 @@ from kompend.core.config import ReasoningEffort
 from kompend.llm.debug import _DebugSource
 from kompend.llm.postprocess import default_pipeline
 from kompend.llm.usage import UsageTracker
+from kompend.logging import get_logger
 
 # kompend config ``reasoning_effort`` → pydantic-ai unified ``thinking``.
 # ``none`` disables thinking entirely (``False``); the five named levels map
@@ -72,6 +73,15 @@ __all__ = ["KompendModel"]
 #: caller interprets itself (a summariser's empty summary, a tool-using agent's
 #: plain reply).
 _TEXT_OUTPUT_MODE: Final[str] = "text"
+
+#: How often a blank structured-output answer is resampled before it escalates.
+#: Measured on a local 4-bit model (ollama, 2026-11-09): one extraction prompt
+#: answered nothing in five of six identical calls and answered cleanly the next
+#: time, so a blank answer is sampling noise rather than a request the model
+#: cannot satisfy. One resample recovers it; a second blank escalates.
+_EMPTY_ANSWER_RESAMPLES: Final[int] = 1
+
+logger = get_logger(__name__)
 
 
 class KompendModel(Model):
@@ -136,6 +146,15 @@ class KompendModel(Model):
         # not drop ``ModelResponse`` messages here: that loses the model's own
         # output and defeats pydantic-ai's retry feedback loop.
         response = await self._delegate.request(messages, merged_settings, model_request_parameters)
+        empty_resamples = _EMPTY_ANSWER_RESAMPLES
+        while empty_resamples and _is_empty_answer(response, model_request_parameters):
+            empty_resamples -= 1
+            logger.warning(
+                "%s answered nothing to a structured request; resampling (%d left)",
+                self.model_name,
+                empty_resamples,
+            )
+            response = await self._delegate.request(messages, merged_settings, model_request_parameters)
         _fail_on_empty_answer(response, model_request_parameters)
 
         pipeline = default_pipeline(
@@ -183,35 +202,55 @@ def _fail_on_empty_answer(response: ModelResponse, request_parameters: ModelRequ
     """Raise :class:`EmptyAnswerError` when a structured-output request answered with nothing.
 
     The check sits in the model wrapper because this is the one place every
-    request in kompend passes through. It fires before pydantic-ai's output
-    retry loop, so an empty answer costs exactly one request instead of
+    request in kompend passes through. It fires after the resample in
+    :meth:`KompendModel.request` and before pydantic-ai's output retry loop, so
+    an empty answer costs at most two requests instead of
     ``compile.llm.output_retries`` / ``agentic_output_retries`` of them, and the
     stage receives :class:`EmptyAnswerError` instead of the opaque
     ``Exceeded maximum output retries (4)``. The retry feedback for an empty
-    answer is "please return text or include your response in a tool call" — the
-    model that just returned nothing cannot act on that, so the retries are pure
-    budget burn.
-
-    A response that made a tool call is never empty: it is the tool that has no
-    answer yet. A response with non-blank text is never empty either — in
-    prompted mode that text may be the answer itself when the caller allows it.
+    answer is "please return text or include your response in a tool call" — a
+    model that just returned nothing does not fail because that feedback was
+    missing, so the retries are pure budget burn. A plain resample does help
+    (see :data:`_EMPTY_ANSWER_RESAMPLES`), which is why it happens here.
 
     Args:
         response: The delegate's response, after any JSON salvage.
-        request_parameters: What the caller asked for; only its output mode
-            decides whether an empty answer is an error.
+        request_parameters: What the caller asked for.
 
     Raises:
         EmptyAnswerError: The request wanted a typed object and got nothing.
     """
-    if request_parameters.output_mode == _TEXT_OUTPUT_MODE:
-        return
-    if any(isinstance(part, ToolCallPart) for part in response.parts):
-        return
-    if any(isinstance(part, TextPart) and part.content.strip() for part in response.parts):
+    if not _is_empty_answer(response, request_parameters):
         return
     names = ", ".join(tool.name for tool in request_parameters.output_tools)
     expected = f" instead of calling {names}" if names else ""
+    repeated = " again" if _EMPTY_ANSWER_RESAMPLES else ""
     raise EmptyAnswerError(
-        f"The model returned an empty answer{expected}. An empty answer cannot be fixed by repeating the same prompt, so the output retry budget was not spent."
+        f"The model returned an empty answer{expected}{repeated}. "
+        "Retrying with feedback cannot change a blank answer, so the output retry budget was not spent."
     )
+
+
+def _is_empty_answer(response: ModelResponse, request_parameters: ModelRequestParameters) -> bool:
+    """True when a structured-output request came back with nothing usable.
+
+    A response that made a tool call is never empty: it is the tool that has no
+    answer yet. A response with non-blank text is never empty either — in
+    prompted mode that text may be the answer itself when the caller allows it.
+    A text request has no empty case: "nothing" is an answer the caller
+    interprets itself (a summariser's empty summary, a tool-using agent's plain
+    reply).
+
+    Args:
+        response: The delegate's response, after any JSON salvage.
+        request_parameters: What the caller asked for; only its output mode
+            decides whether an empty answer counts.
+
+    Returns:
+        True when the caller wanted a typed object and got nothing.
+    """
+    if request_parameters.output_mode == _TEXT_OUTPUT_MODE:
+        return False
+    if any(isinstance(part, ToolCallPart) for part in response.parts):
+        return False
+    return not any(isinstance(part, TextPart) and part.content.strip() for part in response.parts)

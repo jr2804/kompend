@@ -14,6 +14,7 @@ import pytest
 from pydantic import ValidationError
 
 from kompend.core.config._configs import ProviderEndpoint
+from kompend.core.config.models.llm import LLMConfig
 from kompend.llm.context_window import (
     ContextSource,
     ContextWindow,
@@ -159,6 +160,21 @@ class TestDiscoverContextWindowUserProvider:
         assert cw.max_input == 64000
         assert cw.max_output == 32000
         assert cw.source == ContextSource.FALLBACK
+
+    def test_the_content_cap_travels_with_the_window(self) -> None:
+        """``compile.llm.content_tokens`` rides on the window, so every stage obeys it."""
+        cw = discover_context_window(
+            "unknown/model",
+            fallback_max_input=64000,
+            fallback_max_output=32000,
+            llm_config=LLMConfig(content_tokens=16000),
+        )
+        assert cw.max_input == 64000
+        assert cw.content_cap == 16000
+
+    def test_no_content_cap_leaves_the_window_uncapped(self) -> None:
+        cw = discover_context_window("unknown/model", fallback_max_input=64000, fallback_max_output=32000)
+        assert cw.content_cap is None
 
 
 class TestDeprecatedProviderCapKey:

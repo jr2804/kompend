@@ -95,6 +95,13 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 **Decision:** The headroom check moved into the parsecraft adapter, the only layer that holds a routing plan: `ParserOptions.parse_min_free_commit_mb` reaches it as bytes and `_ensure_headroom` budgets the *chosen* pass — a native page lists docling as a fallback candidate even when liteparse wins, so budgeting candidates would refuse files for an engine they never run. The suffix-based `HeavyParseGuard` keeps the concurrency cap only. Default lowered to 4096 MB; the refusal names the planned engine, and the terminal handler now runs with `markup=False` so `[ingest]` reaches the user as the config table it is instead of vanishing as a Rich style tag.  
 **Consequences:** A PDF routed to liteparse is never refused for docling's budget; a fallback pass can still load an engine after the chosen pass produced nothing, which the concurrency cap serializes and the per-file failure path contains. `kompend parse` and the MCP parse tools are guarded too, because the check lives in the parser instead of the pipeline stage.
 
+### Decision: A blank answer is resampled once, and the window is not a content budget
+
+**Date:** Nov 9, 2026  
+**Context:** A 4-bit local model skipped whole sources with `empty_answer after 1 request(s)`. The Ollama server log showed the request was complete (`n_tokens = 43118, truncated = 0`, `n_ctx = 65536`) and the model returned a single EOS token (`eval time = 0.00 ms / 1 tokens`). Six identical probes produced five blanks and one clean answer, so a blank is sampling noise, not a prompt the model cannot satisfy — while a 40K-token prompt makes it far more likely. Raising `compile.llm.context_window` from 32768 to 64000 made every request heavier instead of better, because the extraction budget grew from 21691 to 50424 tokens of source per request.  
+**Decision:** `KompendModel` resamples a blank structured-output response once (`_EMPTY_ANSWER_RESAMPLES`) before raising `EmptyAnswerError`, and the retry budget stays unspent because its feedback cannot change a blank answer. `compile.llm.content_tokens` caps the content one request may carry, independent of the window; discovery stamps it on `ContextWindow.content_cap`, so `RequestBudget` enforces it everywhere a stage packs payload.  
+**Consequences:** A stage that hits the cap splits its work into more requests — extraction into more batches, generation into more segments — and never crops content. The cap is unset by default (the window decides), so nothing changes for models that handle long prompts well; a local model gets a ceiling that reflects what it can actually answer from.
+
 ## Chunking
 
 ### Decision: Structure-aware chunking: atomic elements never split

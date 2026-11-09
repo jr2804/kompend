@@ -440,6 +440,14 @@ default_model = "${KOMP_LLM_DEFAULT_MODEL}"
 # on slower/local models. None = no cap (use full discovered window).
 # context_window = 65536
 
+# Ceiling on the content one request may carry, in tokens (default: unset —
+# the window decides). A model can accept a large window and still answer a
+# long prompt with nothing, and raising context_window then makes every
+# request heavier instead of better. Stages react by splitting the work into
+# more requests (extraction batches, generation segments); content is never
+# cropped to fit.
+# content_tokens = 16000
+
 # LLM communication data format for prompt input context: "json" (default) | "toon" | "ison"
 # Compact formats reduce input token count by 30-70%, giving small-context models
 # more output budget and reducing truncated/malformed responses. Every compact

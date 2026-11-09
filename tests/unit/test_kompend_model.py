@@ -17,6 +17,7 @@ from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.settings import ModelSettings
 
+from kompend.agents.failure import EmptyAnswerError
 from kompend.agents.kompend_model import KompendModel
 from kompend.core.env import EnvVar
 from kompend.llm.usage import UsageTracker
@@ -134,6 +135,57 @@ class TestDebugSaving:
         await wrapper.request(msgs, None, params)
         # No files written.
         assert list(tmp_path.iterdir()) == []
+
+
+class TestEmptyAnswerResample:
+    """A blank structured answer is sampling noise, so it is resampled once."""
+
+    @pytest.mark.asyncio
+    async def test_a_blank_answer_is_resampled_once(self) -> None:
+        delegate = MagicMock(spec=TestModel)
+        delegate.model_name = "test-model"
+        delegate.request = AsyncMock(side_effect=[_make_response(""), _make_response("answered")])
+        wrapper = KompendModel(delegate)
+
+        result = await wrapper.request(_msgs(), None, _structured())
+
+        assert delegate.request.await_count == 2
+        assert isinstance(result.parts[0], TextPart)
+        assert result.parts[0].content == "answered"
+
+    @pytest.mark.asyncio
+    async def test_a_second_blank_answer_escalates(self) -> None:
+        delegate = MagicMock(spec=TestModel)
+        delegate.model_name = "test-model"
+        delegate.request = AsyncMock(side_effect=[_make_response(""), _make_response("   ")])
+        wrapper = KompendModel(delegate)
+
+        with pytest.raises(EmptyAnswerError, match="again"):
+            await wrapper.request(_msgs(), None, _structured())
+
+        assert delegate.request.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_a_text_request_is_never_resampled(self) -> None:
+        """An empty answer is a legitimate text answer, so there is nothing to retry."""
+        delegate = MagicMock(spec=TestModel)
+        delegate.model_name = "test-model"
+        delegate.request = AsyncMock(return_value=_make_response(""))
+        wrapper = KompendModel(delegate)
+
+        await wrapper.request(_msgs(), None, ModelRequestParameters(output_mode="text"))
+
+        assert delegate.request.await_count == 1
+
+
+def _msgs() -> list[ModelRequest | ModelResponse]:
+    """A one-prompt history, the minimum a request needs."""
+    return [ModelRequest(parts=[UserPromptPart(content="ping")])]
+
+
+def _structured() -> ModelRequestParameters:
+    """A prompted structured-output request: a blank answer there is a failure."""
+    return ModelRequestParameters(output_mode="tool")
 
 
 def _make_response(text: str = "hello", *, input_tokens: int = 10, output_tokens: int = 5) -> ModelResponse:
