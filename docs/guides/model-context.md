@@ -367,8 +367,19 @@ failing the run — and instead of cropping anything the model still needs.
 |-------|---------|-----------|
 | `"default"` | 90% of the window | The rank-based stack below |
 | `"aggressive"` | 70% of the window, 5 trailing messages kept | The rank-based stack below |
-| `"sliding"` | 100 messages | Oldest messages trimmed, 50 kept (no LLM call) |
+| `"sliding"` | 80% of the window (or 100 messages) | Oldest messages trimmed to a token tail, 50 messages otherwise (no LLM call) |
 | `false` | — | History preserved verbatim |
+
+The `"sliding"` preset trims rather than folds, so its trigger is a *token*
+fraction with the message count as a coarser second bound. A message count
+alone cannot protect a token budget: one p863 run reached 244 140 estimated
+tokens against a 64 000-token window in far fewer than 100 messages and the
+provider rejected it at 90 154 actual tokens. The fraction fires with a fifth
+of the window to spare, because the estimator under-states dense content
+(minified JSON, base64, non-Latin scripts). Every trim logs the messages
+kept and dropped plus the token estimate before and after, and the preset
+honours the same `keep_tokens` tail, `min_growth_tokens` gate and pinned task
+assignment as the stack below.
 
 The stack runs cheapest first and stops as soon as the history fits:
 

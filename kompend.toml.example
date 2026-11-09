@@ -594,15 +594,17 @@ extraction_strategy = "incremental"  # reduce, agentic
 # project doctrine — nothing an agent still needs is cropped.
 #   "default"    — compact at 90% of the context window (recommended)
 #   "aggressive" — compact at 70%, keep 5 trailing messages
-#   "sliding"    — trim oldest messages at 100, keep 50 (no LLM call)
+#   "sliding"    — trim at 80% of the window or 100 messages, keep a token
+#                  tail (no LLM call; every trim is logged)
 #   false        — disable (history preserved verbatim)
 context_manager = "default"  # aggressive, sliding; or false to disable
 
-# Compaction tuning for the "default" / "aggressive" presets. The preset
-# above picks the trigger and the tiers; this block tunes the rank-based
-# stack: zero-cost clearing of old tool results, deduplication of superseded
-# file reads, an optional judge-ranked relevance pass, then a summary written
-# from the project doctrine (templates/compaction/doctrine.md.j2).
+# Compaction tuning, honoured by every preset above. The preset picks the
+# trigger and the tiers; this block tunes what the stack keeps: zero-cost
+# clearing of old tool results, deduplication of superseded file reads, an
+# optional judge-ranked relevance pass, then a summary written from the
+# project doctrine (templates/compaction/doctrine.md.j2). For "sliding" only
+# keep_tokens and min_growth_tokens apply (no judge, no summary).
 [compile.llm.compaction]
 # Decision model that ranks each step keep/reduce/drop before summarising.
 # Unset skips the relevance tier (summarisation only). Any decision model

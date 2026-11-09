@@ -21,13 +21,14 @@ from kompend.agents.base.deps import (
 )
 from kompend.agents.base.retries import _is_cache_rejection
 from kompend.agents.base.spec import AgentSpec, agent_class, build_agent
-from kompend.agents.context_manager import _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES
+from kompend.agents.context_manager import _SLIDING_COMPRESS_THRESHOLD, _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES
 
 __all__ = [
     "RLM_CONTEXT_PLACEHOLDER",
     "UNSET_RETRIES",
     "UNSET_TIMEOUT",
     "_CONTEXT_PRESETS",
+    "_SLIDING_COMPRESS_THRESHOLD",
     "_SLIDING_KEEP_MESSAGES",
     "_SLIDING_MAX_MESSAGES",
     "AgentDeps",

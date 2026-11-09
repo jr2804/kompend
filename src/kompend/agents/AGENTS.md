@@ -57,9 +57,8 @@ The base class provides:
 
 - **Model bridge** — `KompendModel` wraps a native pydantic-ai `Model`
   built by `build_model()` from a `provider/model` string
-- **Lazy agent construction** — the `pydantic_ai.Agent` is built on
-  first `run()` call, so tests can import the class without a running
-  model
+- **Lazy agent construction** — the `pydantic_ai.Agent` is built on first
+  `run()`, so tests import the class without a running model
 - **Context management** — `build_fallback_compaction()`
   (`context_manager.py`) is attached from the `context_manager` preset
   (`"default"`/`"aggressive"`/`"sliding"`/`false`), tuned by
@@ -70,14 +69,19 @@ The base class provides:
   `RelevanceCompaction` when a `judge` is set → doctrine summarizer; cheapest
   tier first, stopping when the history fits); the second entry is a
   token-triggered `SlidingWindowCompaction` used only when the summarizer
-  cannot answer (`UnexpectedModelBehavior`, pydantic/pydantic-ai#12307) —
-  other errors burn. Stack and tuning: `docs/guides/model-context.md`.
+  cannot answer (`UnexpectedModelBehavior`, pydantic/pydantic-ai#12307).
+  The `sliding` preset is `build_sliding_compaction()`:
+  a `_GuardedSlidingCompaction` trim with a token trigger (not just the
+  100-message count), the same pin, gate and per-trim log. Stack and tuning:
+  `docs/guides/model-context.md`.
 - **Compaction invariants** — `_pin_first_user_turn` pins the task assignment
   (harness `pin()`, model-invisible) before any tier runs and every strategy
   re-injects it; the gate re-arms only after `min_growth_tokens` of growth (a
   fold invalidates the provider prompt cache from the rewrite point on); the
-  summary comes from `templates/compaction/doctrine.md.j2`. Never add a
-  compaction path that skips the pin or crops instead of folding.
+  summary comes from `templates/compaction/doctrine.md.j2`. Every trim is
+  logged with kept/dropped counts and token estimates — a silent trim is
+  indistinguishable from no compaction. Never add a compaction path that
+  skips the pin, crops instead of folding, or fires on message count alone.
   `compact_on_request: ClassVar[bool]` (default `False`) adds
   model-triggered `CompactOnRequest` for history-threading agents only.
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
@@ -172,10 +176,9 @@ The agentic harness offers the memory capability only on request
 (`AgenticHarness(memory=True)`). The notebook is a `read_memory`/`write_memory`
 tool pair: an invented file name gets `ModelRetry`, and once the tool budget
 is spent the run dies with the node left unsummarized. `compile.llm.agent_memory`
-(default on) decides which stages request it. One instance owns the notebook,
-so it only helps a stage where one instance handles MANY outputs
-(summarisation, verification, remediation, distillation); fresh-agent-per-unit
-stages gain nothing. `compile.llm.memory_store` (default `vault`) picks the
+(default on) decides which stages request it; it only helps a stage where one
+instance handles MANY outputs (summarisation, verification, remediation,
+distillation) — fresh-agent-per-unit stages gain nothing. `compile.llm.memory_store` (default `vault`) picks the
 backend: `vault` roots it at `.kompend/agent-memory/<agent_name>/MEMORY.md`
 via `DirectoryMemoryStore` (`vault_memory.py`), resolved by
 `build_notebook_store(llm, memory_dir)`. It is prompt context, not a cache key.
@@ -187,10 +190,9 @@ hard kill resumes from the last snapshot (keys in
 a BM25 tool over that store; **SystemReminders** (`reminder_content` +
 `reminder_interval`) appends a cache-safe tail reminder from a template.
 
-The delta-retry salvage hook (`base/delta_retry.py`) is opt-in per class: a
-subclass sets `supports_delta_retry: ClassVar[bool] = True`; it fires only when
-`llm.delta_retry_enabled` is on. It must be a `ClassVar` — a plain attribute
-would `__init__` and never take effect.
+The delta-retry salvage hook (`base/delta_retry.py`) is opt-in per class via
+`supports_delta_retry: ClassVar[bool] = True` (a plain attribute would
+`__init__` and never take effect) and fires only with `llm.delta_retry_enabled`.
 
 ### KompendModel (`kompend_model.py`)
 
@@ -198,11 +200,10 @@ Thin delegate around any native pydantic-ai `Model`. Adds `_merge_reasoning()`
 (reasoning effort → provider settings), `_track_usage()` (input/output tokens),
 `_fail_on_empty_answer()` (`EmptyAnswerError` instead of letting a blank
 response burn four output retries), `_save_debug()` (LLM debug log), and
-`_repair_tool_call_args()` / `_repair_text_part()` (`json_repair` before the
+`_repair_tool_call_args()`/`_repair_text_part()` (`json_repair` before the
 strict validator, for malformed JSON from small local models).
-
-History compression lives on the Agent layer (`build_fallback_compaction`);
-the doctrine it summarizes by lives in `templates/compaction/`.
+History compression lives on the Agent layer (`build_fallback_compaction`,
+`build_sliding_compaction`); the doctrine lives in `templates/compaction/`.
 
 ### Dependency types (`types.py`, `deps.py`)
 

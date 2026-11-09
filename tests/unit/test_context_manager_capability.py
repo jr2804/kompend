@@ -28,17 +28,20 @@ from pydantic_ai_harness.compaction import (
     SlidingWindowCompaction,
     SummarizingCompaction,
     TieredCompaction,
+    estimate_context_tokens,
     is_pinned,
     pin,
 )
 
-from kompend.agents.base import _CONTEXT_PRESETS, _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES
+from kompend.agents.base import _CONTEXT_PRESETS, _SLIDING_COMPRESS_THRESHOLD, _SLIDING_KEEP_MESSAGES, _SLIDING_MAX_MESSAGES
 from kompend.agents.base.context import resolve_context_capability
 from kompend.agents.context_manager import (
     GrowthGatedCompaction,
     _file_key,  # noqa: PLC2701
+    _GuardedSlidingCompaction,  # noqa: PLC2701
     _pin_first_user_turn,  # noqa: PLC2701
     build_fallback_compaction,
+    build_sliding_compaction,
     build_summarizing_compaction,
 )
 from kompend.core.config import CompactionConfig, ContextManagerPreset
@@ -93,6 +96,148 @@ class TestSlidingWindowDefaults:
         capability = SlidingWindowCompaction(max_messages=_SLIDING_MAX_MESSAGES, keep_messages=_SLIDING_KEEP_MESSAGES)
 
         assert capability.keep_messages == _SLIDING_KEEP_MESSAGES
+
+
+class TestSlidingPreset:
+    """The ``sliding`` preset must protect a token budget, not only a count.
+
+    Regression: a p863 vault set this preset; one request reached 244 140
+    estimated tokens against a 64 000-token window (381%), the provider
+    rejected it at 90 154 actual tokens, and the run died with no trim and
+    no log line — a message-count trigger cannot see that coming.
+    """
+
+    def _capability(self, window: int = 64_000) -> SlidingWindowCompaction:
+        return build_sliding_compaction(
+            context_window=window,
+            compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
+            keep_messages=_SLIDING_KEEP_MESSAGES,
+            keep_tokens=8_000,
+            min_growth_tokens=2_048,
+        )
+
+    def test_triggers_on_tokens_as_well_as_message_count(self) -> None:
+        capability = self._capability()
+
+        assert capability.max_fraction == _SLIDING_COMPRESS_THRESHOLD
+        assert capability.max_messages == _SLIDING_MAX_MESSAGES
+        assert capability.context_window == 64_000
+        assert capability.keep_tokens == 8_000
+
+    def test_the_token_trigger_fires_below_the_provider_limit(self) -> None:
+        assert _SLIDING_COMPRESS_THRESHOLD < 1.0
+
+    async def test_a_token_heavy_history_trims_before_the_provider_rejects(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Few messages, enormous content: the count trigger alone would never fire."""
+        capability = self._capability(window=64_000)
+        messages = _heavy_history(messages=20, chars_per_message=20_000)
+        assert len(messages) < _SLIDING_MAX_MESSAGES
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert len(ctx.messages) < len(messages)
+        # The tail that survived is bounded by the token budget, not the count.
+        assert estimate_context_tokens(ctx.messages) < 64_000 * _SLIDING_COMPRESS_THRESHOLD
+        assert "Sliding-window trim: dropped" in caplog.text
+
+    async def test_a_short_history_is_left_alone(self, caplog: pytest.LogCaptureFixture) -> None:
+        capability = self._capability(window=64_000)
+        messages = _short_history()
+        ctx = _ctx()
+        ctx.messages[:] = messages
+        request_context = _request_context(list(ctx.messages))
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            returned = await capability.before_model_request(ctx, request_context)
+
+        assert returned is request_context
+        assert len(ctx.messages) == len(messages)
+        assert "Sliding-window trim" not in caplog.text
+
+    async def test_the_first_user_turn_survives_the_trim(self) -> None:
+        capability = self._capability(window=64_000)
+        messages = _heavy_history(messages=20, chars_per_message=20_000)
+        task = messages[0].parts[0]
+        assert isinstance(task, UserPromptPart)
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        kept = [
+            part
+            for message in ctx.messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, UserPromptPart) and is_pinned(part)
+        ]
+        assert len(ctx.messages) < len(messages)
+        assert [_text(part) for part in kept] == [task.content]
+
+    async def test_the_trim_is_logged_with_kept_dropped_and_tokens(self, caplog: pytest.LogCaptureFixture) -> None:
+        capability = self._capability(window=32_000)
+        messages = _heavy_history(messages=20, chars_per_message=20_000)
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        record = next(record for record in caplog.records if "Sliding-window trim:" in record.getMessage())
+        text = record.getMessage()
+        assert "dropped" in text
+        assert "token(s)" in text
+
+    async def test_the_growth_gate_stops_a_re_trim_of_the_same_history(self) -> None:
+        capability = self._capability(window=64_000)
+        messages = _heavy_history(messages=20, chars_per_message=20_000)
+        ctx = _ctx()
+        ctx.messages[:] = messages
+        request_context = _request_context(list(ctx.messages))
+
+        await capability.before_model_request(ctx, request_context)
+        trimmed_len = len(ctx.messages)
+        await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert len(ctx.messages) == trimmed_len
+
+    def test_the_sliding_preset_is_wired_from_the_agent_config(self) -> None:
+        agent = _StubAgent()
+        agent.context_manager = ContextManagerPreset.SLIDING
+        agent.context_window = 64_000
+        agent.compaction = CompactionConfig(keep_tokens=4_000, min_growth_tokens=512)
+
+        capability = resolve_context_capability(cast(Any, agent), TestModel())
+
+        assert isinstance(capability, _GuardedSlidingCompaction)
+        assert capability.max_fraction == _SLIDING_COMPRESS_THRESHOLD
+        assert capability.keep_tokens == 4_000
+        assert capability.min_growth_tokens == 512
+        assert capability.context_window == 64_000
+
+    def test_the_summarizing_presets_are_unchanged(self) -> None:
+        default_threshold, default_keep = _CONTEXT_PRESETS[ContextManagerPreset.DEFAULT]
+        aggressive_threshold, aggressive_keep = _CONTEXT_PRESETS[ContextManagerPreset.AGGRESSIVE]
+
+        assert (default_threshold, default_keep) == (0.9, 0)
+        assert (aggressive_threshold, aggressive_keep) == (0.7, 5)
+
+    def test_the_keep_tail_never_exceeds_half_the_trigger(self) -> None:
+        """A tail sized for a large window must not disable the trim on a small one."""
+        capability = build_sliding_compaction(
+            context_window=8_000,
+            compress_threshold=0.8,
+            keep_messages=_SLIDING_KEEP_MESSAGES,
+            keep_tokens=100_000,
+        )
+
+        assert capability.keep_tokens == int(8_000 * 0.8 * 0.5)
 
 
 class TestFallbackCompaction:
@@ -538,6 +683,16 @@ def _short_history() -> list[ModelMessage]:
         ModelRequest(parts=[UserPromptPart(content="next step")]),
         ModelResponse(parts=[TextPart(content="more work")]),
     ]
+
+
+def _heavy_history(*, messages: int, chars_per_message: int) -> list[ModelMessage]:
+    """A realistic long-turn history: big tool returns, far below the count cap."""
+    history: list[ModelMessage] = [ModelRequest(parts=[UserPromptPart(content="the task assignment")])]
+    padding = "x" * chars_per_message
+    for index in range(messages):
+        history.append(ModelResponse(parts=[TextPart(content=f"turn {index} {padding}")]))
+        history.append(ModelRequest(parts=[UserPromptPart(content=f"next unit {index} {padding}")]))
+    return history
 
 
 def _request_context(messages: list[ModelMessage]) -> ModelRequestContext:

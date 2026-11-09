@@ -33,13 +33,16 @@ class CompactionConfig(_KompendBaseModel):
     """Rank-based context-compaction tuning (``[compile.llm.compaction]``).
 
     The compaction stack itself is built for every ``context_manager`` preset
-    except ``sliding`` (see ``kompend.agents.context_manager``); these knobs
-    shape it. ``judge`` names a decision-model string (as in
-    ``[decision].model``) that ranks steps keep/reduce/drop before the
-    summarizing tier runs; without it the stack clears and deduplicates tool
-    results and summarizes. ``keep_tokens`` is the recent tail the judge may
-    never touch; ``min_growth_tokens`` gates the expensive tiers so a static
-    context is not re-folded on every request (prompt-cache protection).
+    (see ``kompend.agents.context_manager``); these knobs shape it. The
+    summarizer presets fold history into a summary; ``sliding`` trims instead,
+    so there ``keep_tokens`` bounds the retained tail (capped at half the
+    trigger) and no judge or summary is involved. ``judge`` names a
+    decision-model string (as in ``[decision].model``) that ranks steps
+    keep/reduce/drop before the summarizing tier runs; without it the stack
+    clears and deduplicates tool results and summarizes. ``keep_tokens`` is
+    the recent tail the judge may never touch; ``min_growth_tokens`` gates the
+    expensive tiers so a static context is not re-folded on every request
+    (prompt-cache protection).
     """
 
     judge: str | None = None

@@ -17,13 +17,14 @@ from typing import TYPE_CHECKING, Final, cast
 
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models import Model
-from pydantic_ai_harness.compaction import CompactionStrategy, CompactOnRequest, ContextUsage, SlidingWindowCompaction
+from pydantic_ai_harness.compaction import CompactionStrategy, CompactOnRequest, ContextUsage
 
 from kompend.agents.base.deps import DepsT, ResultT
 from kompend.agents.context_manager import (
+    _SLIDING_COMPRESS_THRESHOLD,
     _SLIDING_KEEP_MESSAGES,
-    _SLIDING_MAX_MESSAGES,
     build_fallback_compaction,
+    build_sliding_compaction,
 )
 from kompend.agents.kompend_model import KompendModel
 from kompend.agents.rlm import _DEFAULT_NODE_BUDGET, RLMCapability
@@ -41,10 +42,13 @@ _DOCTRINE_TEMPLATE: Final[str] = "compaction/doctrine.md.j2"
 #: Compaction presets: preset -> (compress threshold, messages kept verbatim).
 #: Keys are the validated :class:`~kompend.core.config.ContextManagerPreset`
 #: members — a preset absent here fails the ``[]`` lookup loudly instead of
-#: degrading to a different compaction shape.
+#: degrading to a different compaction shape. ``sliding`` is a trim, not a
+#: fold, so its second element is the retained tail, not "messages kept after
+#: a summary".
 _CONTEXT_PRESETS: Final[dict[ContextManagerPreset, tuple[float, int]]] = {
     ContextManagerPreset.DEFAULT: (0.9, 0),
     ContextManagerPreset.AGGRESSIVE: (0.7, 5),
+    ContextManagerPreset.SLIDING: (_SLIDING_COMPRESS_THRESHOLD, _SLIDING_KEEP_MESSAGES),
 }
 
 
@@ -67,15 +71,18 @@ def resolve_context_capability(
     if setting is False or setting is None:
         return None
     preset = ContextManagerPreset.DEFAULT if setting is True else setting
-
-    if preset is ContextManagerPreset.SLIDING:
-        return SlidingWindowCompaction(
-            max_messages=_SLIDING_MAX_MESSAGES,
-            keep_messages=_SLIDING_KEEP_MESSAGES,
-        )
-
     threshold, keep = _CONTEXT_PRESETS[preset]
     compaction = agent.compaction
+
+    if preset is ContextManagerPreset.SLIDING:
+        return build_sliding_compaction(
+            context_window=agent.context_window,
+            compress_threshold=threshold,
+            keep_messages=keep,
+            keep_tokens=compaction.keep_tokens,
+            min_growth_tokens=compaction.min_growth_tokens,
+        )
+
     judge = build_decision_model(compaction.judge) if compaction.judge else None
     return build_fallback_compaction(
         context_window=agent.context_window,
