@@ -42,10 +42,7 @@ from kompend.llm.models import resolve_vlm_model
 from kompend.llm.user_providers import effective_workers
 from kompend.logging import get_logger
 from kompend.preprocessing.dedup import DedupStore
-from kompend.preprocessing.host_memory import (
-    MEGABYTE,
-    HeavyParseGuard,
-)
+from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.resolution.base import BaseResolver
 from kompend.resolution.chain import ResolverChain
 from kompend.resolution.vlm_enricher import VLMEnricher
@@ -114,11 +111,12 @@ def parse_and_chunk(pipeline: PipelineRuntime, *, stall_warn_s: float | None = N
     workers = effective_workers(pipeline.config.llm.default_model or "", workers)
 
     # One guard per run: serializes heavy parses (a PDF/office conversion
-    # costs several GB of commit charge — N workers cost N times that) and
-    # refuses one outright when the host cannot back it. A refused source
-    # fails loudly per-file; the run continues with the rest.
+    # costs several GB of commit charge — N workers cost N times that). The
+    # memory admission check is not here: it needs the routing plan, which only
+    # the parser has, so ``ParserOptions.parse_min_free_commit_mb`` carries the
+    # budget into the parser. A refused source fails loudly per-file; the run
+    # continues with the rest.
     heavy_guard = HeavyParseGuard(
-        min_free_commit_bytes=pipeline.config.parse_min_free_commit_mb * MEGABYTE,
         max_concurrent=pipeline.config.max_concurrent_heavy_parses,
     )
 

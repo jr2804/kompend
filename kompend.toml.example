@@ -132,14 +132,16 @@ file = "NOTES.md"
 # Env: KOMP_INGEST_PARSECRAFT_DOCLING_THREADS
 # parsecraft_docling_threads = 4
 
-# Heavy parses (docling, mineru, pandoc, pymupdf on non-text sources) are
-# guarded: a heavy parse only starts with at least this much free commit
-# memory (MB), and at most max_concurrent_heavy_parses run at once — measured
-# 8 GB per docling pass, independent of page count. 0 disables the headroom
+# Heavy engines (docling, mineru, the OCR models) are guarded, and the guard
+# follows the routing plan: a source is only held to this budget when an
+# engine it actually routes to loads a model stack — a PDF liteparse reads is
+# not. A guarded parse needs at least this much free commit memory (MB) and at
+# most max_concurrent_heavy_parses run at once. Measured: 1830 MB per docling
+# pass at four threads, independent of page count. 0 disables the headroom
 # check (the concurrency cap stays); a blocked source fails loudly as skipped,
 # never silently.
 # Env: KOMP_INGEST_PARSE_MIN_FREE_COMMIT_MB
-# parse_min_free_commit_mb = 10240
+# parse_min_free_commit_mb = 4096
 # Env: KOMP_INGEST_MAX_CONCURRENT_HEAVY_PARSES
 # max_concurrent_heavy_parses = 1
 

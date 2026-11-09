@@ -12,6 +12,12 @@ from kompend.core.keys import EnvVar
 
 _DEFAULT_DOCLING_THREADS: Final[int] = min(4, os.cpu_count() or 4)
 
+#: Measured peak commit charge of one docling conversion at four threads is
+#: about 1830 MB; the default leaves room for the rest of the process on top.
+#: The previous 10240 MB was derived from a 2.55.4 measurement (8.0 GB) and is
+#: unreachable on an ordinary 16 GB host, so it skipped every heavy source.
+_DEFAULT_PARSE_MIN_FREE_COMMIT_MB: Final[int] = 4096
+
 
 class IngestConfig(_KompendBaseModel):
     parse_timeout_s: float = Field(
@@ -42,15 +48,15 @@ class IngestConfig(_KompendBaseModel):
         ),
     )
     parse_min_free_commit_mb: int = Field(
-        default=10240,
+        default=_DEFAULT_PARSE_MIN_FREE_COMMIT_MB,
         ge=0,
         validation_alias=EnvVar.INGEST_PARSE_MIN_FREE_COMMIT_MB,
         description=(
-            "Free commit charge (MB) a parse that may load the heavy conversion engine requires. The "
-            "default (10240) sits above the measured peak of one docling conversion (about 8.0 GB) so the "
-            "run stops with an actionable message instead of the OS aborting an allocation inside the "
-            "native extension. `0` disables the check; the concurrency cap stays. Text sources never take "
-            "this budget — only the formats that may load the PDF engine do."
+            "Free commit charge (MB) a parse whose plan routes it to a heavy engine requires. The plan "
+            "counts, not the suffix: a PDF routed to liteparse is never held to docling's budget. The "
+            "default (4096) sits above the measured peak of one docling conversion at the configured "
+            "thread count (about 1830 MB) plus room for the rest of the process; `0` disables the check "
+            "and leaves only the concurrency cap."
         ),
     )
     max_concurrent_heavy_parses: int = Field(

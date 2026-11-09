@@ -64,6 +64,7 @@ from parsecraft.routing.rules import DEGRADED_BLANK_PAGE_CODE  # noqa: E402 — 
 
 from kompend.core.config import ImageMode
 from kompend.core.models import ElementType, MetadataField
+from kompend.preprocessing.host_memory import MEGABYTE, InsufficientHostMemoryError
 from kompend.preprocessing.images import ImageStore
 from kompend.preprocessing.parsers import PARSER_PARSECRAFT, ParserOptions, build_parser
 from kompend.preprocessing.parsers.parsecraft_routing import ParsecraftRoutingConfig
@@ -789,6 +790,32 @@ class TestJudgeWiring:
         parser._execute_with_judge(object(), object(), object(), object())
         assert judges[2] is judges[1]
 
+    def test_planning_degrades_a_dead_judge_to_the_rule_table(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The budget check plans through the same degradation contract.
+
+        A judge that dies while the plan is computed must be dropped there,
+        not retried by the conversion that follows.
+        """
+        adapter = _adapter()
+        sentinel = _SentinelJudge()
+        judges: list[object] = []
+
+        def fake_plan(analysis: object, backends: object, constraints: object, judge: object = None) -> object:
+            judges.append(judge)
+            if judge is sentinel:
+                raise RoutingError("judge exploded")
+            return _planned("liteparse")
+
+        monkeypatch.setattr(_conversion(), "resolve_judge", lambda *args, **kwargs: sentinel)
+        monkeypatch.setattr(_conversion(), "plan_route", fake_plan)
+        parser = _judged_parser("zen/m")
+        parser._min_free_commit_bytes = 1  # opt into the budget check
+        registry = SimpleNamespace(list_backends=lambda: [])
+        parser._ensure_headroom(object(), registry, object(), Path("report.pdf"))
+        assert judges[0] is sentinel
+        assert isinstance(judges[1], adapter.DeterministicJudge)
+        assert parser._judge_degraded is True
+
     def test_no_eligible_backend_error_is_not_absorbed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A real routing dead-end must surface: the deterministic judge could
         not have fixed it, so falling back would hide a genuine failure.
@@ -1287,6 +1314,47 @@ class TestDoclingThreadLimit:
         adapter = _adapter()
         adapter.ParsecraftParser(parsecraft_docling_threads=4)
         assert os.environ["DOCLING_RS_PDF_THREADS"] == "2"
+
+
+class TestHeadroom:
+    """The memory budget follows the routing plan, not the file suffix.
+
+    A PDF is not inherently heavy: liteparse reads it in a few hundred
+    megabytes, docling needs gigabytes. Classifying by suffix refused every
+    PDF in a liteparse vault with docling's budget, which is the bug this
+    class pins down.
+    """
+
+    def test_a_liteparse_plan_is_not_held_to_the_engine_budget(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        adapter = _adapter()
+        monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", lambda: 1)
+        monkeypatch.setattr(_conversion(), "plan_with_judge", lambda *args, **kwargs: _planned("liteparse"))
+        parser = adapter.ParsecraftParser(parse_min_free_commit_bytes=4096 * MEGABYTE)
+        parser._ensure_headroom(object(), object(), object(), Path("report.pdf"))
+
+    def test_a_docling_plan_below_the_budget_stops_the_parse_before_any_conversion(
+        self,
+        markdown_file: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        adapter = _adapter()
+        monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", lambda: 512 * MEGABYTE)
+        monkeypatch.setattr(adapter, "analyze_source", lambda *args, **kwargs: object())
+        monkeypatch.setattr(_conversion(), "plan_with_judge", lambda *args, **kwargs: _planned("liteparse", "docling"))
+        monkeypatch.setattr(_conversion(), "execute", _never_called)
+        parser = adapter.ParsecraftParser(parse_min_free_commit_bytes=4096 * MEGABYTE)
+        with pytest.raises(InsufficientHostMemoryError, match="docling"):
+            parser.parse(markdown_file)
+
+    def test_a_zero_budget_plans_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        adapter = _adapter()
+        monkeypatch.setattr(_conversion(), "plan_with_judge", _never_called)
+        adapter.ParsecraftParser()._ensure_headroom(object(), object(), object(), Path("report.pdf"))
+
+    def test_from_options_converts_the_configured_megabytes_to_bytes(self) -> None:
+        adapter = _adapter()
+        parser = adapter.ParsecraftParser.from_options(ParserOptions(parse_min_free_commit_mb=4096))
+        assert parser._min_free_commit_bytes == 4096 * MEGABYTE
 
 
 class TestImageExtraction:
@@ -1804,6 +1872,28 @@ def _plan(reasons: dict[int, str], blank: set[int]) -> RoutingPlan | None:
             for number, reason in sorted(reasons.items())
         ],
     )
+
+
+def _planned(*backends: str) -> RoutingPlan:
+    """A plan whose pages chose *backends*, one page each, in order."""
+    return RoutingPlan(
+        primary=backends[0],
+        pages=[
+            PageRoute(
+                page_number=number,
+                intent=Intent.NATIVE,
+                candidates=[backend],
+                chosen=backend,
+                reason="planned for a budget test",
+            )
+            for number, backend in enumerate(backends, start=1)
+        ],
+    )
+
+
+def _never_called(*args: object, **kwargs: object) -> object:
+    """A seam that must not be reached; the budget check owns the decision."""
+    raise AssertionError("this step must not run")
 
 
 def _parser_with(**options: Any) -> Any:

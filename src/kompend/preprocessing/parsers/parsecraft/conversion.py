@@ -26,7 +26,7 @@ from parsecraft.backends.protocol import SourceDocument
 from parsecraft.environment import EnvironmentInfo
 from parsecraft.pipeline import PipelineResult, execute
 from parsecraft.pipeline.analysis import AnalysisResult
-from parsecraft.routing import NoEligibleBackendError, RoutingConstraints, RoutingError
+from parsecraft.routing import NoEligibleBackendError, RoutingConstraints, RoutingError, RoutingPlan, plan_route
 from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from parsecraft.routing.judge_providers import JudgeError, resolve_judge
 
@@ -66,15 +66,65 @@ def execute_with_judge(
     for the same reason — the retry is not a general-purpose error
     absorber.
     """
+    return _with_judge(
+        lambda active: execute(analysis, registry, constraints, source, judge=active),
+        judge=judge,
+        degraded=degraded,
+        on_degrade=on_degrade,
+    )
+
+
+def plan_with_judge(
+    analysis: AnalysisResult,
+    registry: BackendRegistry,
+    constraints: RoutingConstraints,
+    *,
+    judge: RoutingJudge,
+    degraded: bool,
+    on_degrade: Callable[[BaseException], RoutingJudge],
+) -> RoutingPlan:
+    """The plan ``execute`` would follow, under the same judge contract.
+
+    The memory budget cannot be checked without knowing which engine the pages
+    reach, and only the plan says that: a PDF routed to liteparse loads no
+    model stack, the same PDF routed to docling needs gigabytes. The caller
+    therefore plans, checks the plan against the host, and lets ``execute``
+    plan again — planning is deterministic in-process work, and a configured
+    judge memoizes per page class, so the second plan costs nothing new.
+
+    A judge that dies here is dropped exactly as it would be during the
+    execution: ``on_degrade`` runs once and the plan is recomputed on the rule
+    table, so the caller's later :func:`execute_with_judge` starts already
+    degraded instead of retrying a judge known to be dead.
+    """
+    return _with_judge(
+        lambda active: plan_route(analysis, registry.list_backends(), constraints, active),
+        judge=judge,
+        degraded=degraded,
+        on_degrade=on_degrade,
+    )
+
+
+def _with_judge[PlanT](
+    call: Callable[[RoutingJudge], PlanT],
+    *,
+    judge: RoutingJudge,
+    degraded: bool,
+    on_degrade: Callable[[BaseException], RoutingJudge],
+) -> PlanT:
+    """Run *call* with *judge*, degrading to the rule table exactly once.
+
+    The one place the degradation contract is written down; every judge
+    call site goes through it.
+    """
     try:
-        return execute(analysis, registry, constraints, source, judge=judge)
+        return call(judge)
     except NoEligibleBackendError:
         raise
     except RoutingError as exc:
         if degraded or isinstance(judge, DeterministicJudge):
             raise
-        fallback = on_degrade(exc)
-        return execute(analysis, registry, constraints, source, judge=fallback)
+        return call(on_degrade(exc))
 
 
 def get_judge(

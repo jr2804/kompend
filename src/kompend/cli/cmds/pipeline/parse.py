@@ -7,6 +7,7 @@ from kompend.cli.settings import build_cli_overrides, vault_paths_from_ctx
 from kompend.cli.sources.resolve import resolve_files
 from kompend.core.config import resolve_config
 from kompend.logging import get_console, get_err_console
+from kompend.preprocessing.host_memory import InsufficientHostMemoryError
 from kompend.preprocessing.parsers import BinarySourceError, ParserOptions, build_parser
 
 
@@ -38,6 +39,11 @@ def parse_cmd(
             # The file's extension claims text but its bytes are binary —
             # say that instead of the generic no-parser wording.
             get_err_console().print(f"Mislabelled source: {exc}")
+            continue
+        except InsufficientHostMemoryError as exc:
+            # The router planned a convert this host cannot back. It is not a
+            # parse failure: nothing ran, and the message names the levers.
+            get_err_console().print(f"Not attempted: {exc}")
             continue
         except ValueError as exc:
             # No backend claims the file, or every backend failed.

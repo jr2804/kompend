@@ -421,13 +421,13 @@ into slower arithmetic.
 A docling conversion is the heaviest thing an ingest does. Its cost is **fixed
 per pass, not per page**: docling-rs loads its layout, table-structure and OCR
 models plus an ONNX arena inside the Rust extension, so one 8-page PDF and one
-113-page PDF both peak around 4.2–5.4 GB of working set. Two knobs bound it,
-and one default assumes them.
+113-page PDF both peak at about the same commit charge (1830 MB at four
+threads). Two knobs bound it, and one default assumes them.
 
 ```toml
 [ingest]
 parsecraft_docling_threads = 4          # ONNX threads; default 4 on a big host
-parse_min_free_commit_mb = 10240        # refuse a heavy parse below this; 0 = off
+parse_min_free_commit_mb = 4096         # refuse a heavy plan below this; 0 = off
 max_concurrent_heavy_parses = 1         # parallel docling/mineru passes
 
 # ~/.config/parsecraft/config.toml or <wiki>/.kompend/parsecraft.toml
@@ -446,16 +446,20 @@ do_table_structure = false              # skip the table model (~1.6 GB)
   wins over the config key.
 - **`[routing.backend_options]`** (in parsecraft's config) forwards options to
   one sub-backend's converter. Skipping the OCR and table models on a
-  text-layer PDF is the single biggest win measured: 8.0 GB / 23.6 s down to
-  2.9 GB / 10.3 s. Only do it for sources with real text; a scan needs both
-  models.
+  text-layer PDF removes docling's biggest memory consumers; only do it for
+  sources with real text, because a scan needs both models. Under this vault's
+  routing (`allow_ocr = false`, `preferred_backend = "liteparse"`) no page
+  reaches docling at all, so the block below is inert.
 - **`parse_min_free_commit_mb`** and **`max_concurrent_heavy_parses`** are the
-  guard, not the cure: a heavy parse (a non-text source: docling, mineru,
-  pandoc, pymupdf) only starts with that much free commit charge, and at most
-  that many run at once. A source that does not get the room is logged as
-  skipped (`Skipped <file>: …`) and retried next run — never silently dropped,
-  and never allowed to take the whole run down. Light sources (native text,
-  code) are unaffected.
+  guard, not the cure. The headroom half follows the **routing plan**, not the
+  file suffix: a source is refused only when an engine the plan names (anything
+  outside `LIGHT_BACKENDS` — docling, mineru, the OCR models) needs more free
+  commit charge than the host has, so a PDF that liteparse reads is never held
+  to docling's budget. `max_concurrent_heavy_parses` still serializes by
+  suffix, because a queue slot is cheap to over-approximate. A source that does
+  not get the room is logged as skipped (`Skipped <file>: …`, with the planned
+  engine and the shortfall) and retried next run — never silently dropped, and
+  never allowed to take the whole run down. Text sources are unaffected.
 
 With GPU-accelerated docling there is nothing to tune yet on Windows: the PyPI
 wheel is CPU-only. `docling-rs-cuda` exists for Linux x86_64 only, and the

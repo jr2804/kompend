@@ -6,12 +6,14 @@ import logging
 from pathlib import Path
 
 import pytest
+from rich.logging import RichHandler
 
 from kompend.core.config import DEFAULTS, resolve_config
 from kompend.logging import (
     THIRD_PARTY_LOG_LEVELS,
     apply_logging_config,
     attach_run_log,
+    configure_logging,
     detach_run_log,
     route_third_party_loggers,
     set_module_levels,
@@ -117,3 +119,15 @@ class TestApplyLoggingConfig:
             assert logging.getLogger("docling").level == logging.DEBUG
         finally:
             set_module_levels({})
+
+
+def test_the_terminal_handler_does_not_read_config_brackets_as_markup() -> None:
+    """A log message names its config key as the TOML table it is.
+
+    With Rich markup on, ``[ingest] parse_min_free_commit_mb`` reached the user
+    as ``lower  parse_min_free_commit_mb`` — the table name silently eaten.
+    """
+    configure_logging()
+    handler = logging.getLogger().handlers[0]
+    assert isinstance(handler, RichHandler)
+    assert handler.markup is False

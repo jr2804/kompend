@@ -51,6 +51,13 @@ class ParserOptions:
     #: own thread count; a value bounds the engine's memory use (the ONNX
     #: arena scales with the thread count) at the price of wall-clock time.
     parsecraft_docling_threads: int | None = None
+    #: Commit charge the planned engines must leave free
+    #: (``ingest.parse_min_free_commit_mb``, in megabytes, same unit as the
+    #: config key; ``0`` disables the check). The parser checks it against the
+    #: routing plan, because only the plan reveals which engine a source
+    #: reaches — see
+    #: :func:`kompend.preprocessing.host_memory.ensure_engine_headroom`.
+    parse_min_free_commit_mb: int = 0
 
     @classmethod
     def from_config(cls, cfg: ResolvedConfig, *, base_dir: Path) -> ParserOptions:
@@ -68,4 +75,5 @@ class ParserOptions:
             image_mode=kompend.compile.image_mode,
             parsecraft_config_files=(paths.parsecraft_config_file, Path.cwd() / PARSECRAFT_PROJECT_FILE),
             parsecraft_docling_threads=kompend.ingest.parsecraft_docling_threads,
+            parse_min_free_commit_mb=kompend.ingest.parse_min_free_commit_mb,
         )

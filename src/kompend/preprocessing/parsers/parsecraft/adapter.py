@@ -50,6 +50,7 @@ from parsecraft.routing.judge import DeterministicJudge, RoutingJudge
 from kompend.core.config import ImageMode
 from kompend.core.models import DocumentElement, ParsedDocument
 from kompend.logging import get_logger
+from kompend.preprocessing.host_memory import MEGABYTE, ensure_engine_headroom
 from kompend.preprocessing.images import ImageStore
 from kompend.preprocessing.parsers.options import PARSER_PARSECRAFT, ParserOptions
 from kompend.preprocessing.parsers.parsecraft import assets, conversion, identity, pages
@@ -87,6 +88,7 @@ class ParsecraftParser:
         parsecraft_docling_threads: int | None = None,
         images_dir: Path | None = None,
         image_mode: ImageMode = ImageMode.FILE,
+        parse_min_free_commit_bytes: int = 0,
     ) -> None:
         self._registry = registry
         self._environment: EnvironmentInfo | None = None
@@ -109,6 +111,11 @@ class ParsecraftParser:
         #: the environment when it builds its converter, so it is applied
         #: here — before the first conversion of the process.
         self._docling_threads = parsecraft_docling_threads
+        #: Commit-charge headroom the planned engines require
+        #: (``ingest.parse_min_free_commit_mb``, ``0`` disables the check).
+        #: The adapter checks it because only the adapter has the routing plan;
+        #: see :meth:`_ensure_headroom`.
+        self._min_free_commit_bytes = max(0, parse_min_free_commit_bytes)
         self._apply_docling_thread_limit()
 
     def can_parse(self, source_file: Path) -> bool:  # noqa: PLR6301 — parser-instance surface
@@ -148,6 +155,7 @@ class ParsecraftParser:
                 media_type=media_type,
                 installed_extras=constraints.installed_extras,
             )
+            self._ensure_headroom(analysis, registry, constraints, source_file)
             result = self._execute_with_judge(analysis, registry, constraints, source)
 
         document = result.document
@@ -260,6 +268,7 @@ class ParsecraftParser:
             parsecraft_docling_threads=options.parsecraft_docling_threads,
             images_dir=options.images_dir,
             image_mode=options.image_mode,
+            parse_min_free_commit_bytes=options.parse_min_free_commit_mb * MEGABYTE,
         )
 
     def _apply_docling_thread_limit(self) -> None:
@@ -388,6 +397,49 @@ class ParsecraftParser:
         (knox-j5ig).
         """
         return DeterministicJudge(self.parsecraft_settings().routing.preference, installed_extras=self._ensure_environment().installed_extras)
+
+    def _ensure_headroom(
+        self,
+        analysis: AnalysisResult,
+        registry: BackendRegistry,
+        constraints: RoutingConstraints,
+        source_file: Path,
+    ) -> None:
+        """Refuse the parse when the engines its plan names cannot fit in memory.
+
+        The plan is computed here rather than at the pipeline's heavy-parse
+        guard because only this layer has one: the guard sees a file and a
+        suffix, which say nothing about which engine the router will pick —
+        every PDF looked heavy, so a vault whose PDFs all route to liteparse
+        was refused for docling's budget. Both halves of the budget stay
+        honest: the guard serializes by suffix (cheap to over-approximate), the
+        parser checks headroom against the plan (the only accurate signal).
+
+        ``min_free_commit_bytes == 0`` disables the check before anything is
+        planned, so the disabled path costs no extra routing work.
+
+        Only the chosen pass is budgeted, deliberately: a plan lists every
+        eligible backend per page, so a native page in a liteparse vault still
+        carries docling as candidate two, and budgeting candidates would
+        refuse the file for an engine it never runs. A fallback pass loads its
+        engine only after the chosen pass produced nothing, and the concurrency
+        cap still serializes it.
+        """
+        if self._min_free_commit_bytes <= 0:
+            return
+        plan = conversion.plan_with_judge(
+            analysis,
+            registry,
+            constraints,
+            judge=self._get_judge(),
+            degraded=self._judge_degraded,
+            on_degrade=self._degrade_judge,
+        )
+        ensure_engine_headroom(
+            source_file,
+            (route.chosen for route in plan.pages),
+            min_free_commit_bytes=self._min_free_commit_bytes,
+        )
 
     def _execute_with_judge(
         self,

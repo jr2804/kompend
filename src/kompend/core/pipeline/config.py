@@ -84,7 +84,6 @@ class PipelineConfig:
     no_cache: bool = False  # bypass every cache, including LLM results
     reparse: bool = False  # re-parse sources even if cached (compile.reparse)
     workers: int = 1  # parallel parse+chunk workers
-    parse_min_free_commit_mb: int = 10240  # commit headroom a heavy parse requires (ingest.parse_min_free_commit_mb)
     max_concurrent_heavy_parses: int = 1  # heavy parses allowed to run at once (ingest.max_concurrent_heavy_parses)
     start_at_tier: Tier = Tier.INDEX  # pipeline entry point (T0 by default)
     stop_at_tier: Tier = Tier.OUTPUT  # pipeline exit point (T4 by default; T1 for ingest)
@@ -213,7 +212,6 @@ class PipelineConfig:
             recursive=kompend.paths.recursive,
             compiler=Compiler(kompend.compile.compiler),
             privacy_filter=kompend.trust.privacy_filter,
-            parse_min_free_commit_mb=kompend.ingest.parse_min_free_commit_mb,
             max_concurrent_heavy_parses=kompend.ingest.max_concurrent_heavy_parses,
             memory_enabled=kompend.compile.memory_enabled,
             memory_half_life_days=kompend.compile.memory_half_life_days,

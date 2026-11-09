@@ -88,6 +88,13 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 **Decision:** Configurable `image_mode`: `"base64"` (embedded, portable) or `"file"` (external, smaller). Default `"file"`.
 **Consequences:** Base64 produces large JSON sidecars. File mode requires path management.
 
+### Decision: Parse memory budget follows the routing plan
+
+**Date:** Nov 9, 2026  
+**Context:** The heavy-parse guard classified by file suffix, so every PDF was held to docling's budget even when liteparse read it. On a host with ~5 GB free commit charge and the then-default 10240 MB, a liteparse-only vault skipped all 33 of its PDFs with no setting that could have let them through. The same message also lost its config keys (Rich markup ate `[ingest]`), and the budget itself came from a docling-rs 2.55.4 measurement (8.0 GB) that 2.65.1 does not support (1830 MB at four threads).  
+**Decision:** The headroom check moved into the parsecraft adapter, the only layer that holds a routing plan: `ParserOptions.parse_min_free_commit_mb` reaches it as bytes and `_ensure_headroom` budgets the *chosen* pass — a native page lists docling as a fallback candidate even when liteparse wins, so budgeting candidates would refuse files for an engine they never run. The suffix-based `HeavyParseGuard` keeps the concurrency cap only. Default lowered to 4096 MB; the refusal names the planned engine, and the terminal handler now runs with `markup=False` so `[ingest]` reaches the user as the config table it is instead of vanishing as a Rich style tag.  
+**Consequences:** A PDF routed to liteparse is never refused for docling's budget; a fallback pass can still load an engine after the chosen pass produced nothing, which the concurrency cap serializes and the per-file failure path contains. `kompend parse` and the MCP parse tools are guarded too, because the check lives in the parser instead of the pipeline stage.
+
 ## Chunking
 
 ### Decision: Structure-aware chunking: atomic elements never split

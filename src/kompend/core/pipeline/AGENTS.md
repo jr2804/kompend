@@ -15,13 +15,13 @@ persistence, and standalone ingestion.
 | ----------------------------- | -------- |
 | `stages/pipeline.py`          | `WikiPipeline` — 5-tier orchestrator, `ProgressCallback` |
 | `stages/factory.py`           | `build_pipeline` — pipeline factory |
-| `stages/parse.py`             | Tier 1 dispatch: `parse_and_chunk`, worker pool, dedup gate, attachments, `build_resolver_chain` (VLM captioning plus the optional decision-model relevance gate); heavy parses run under one `HeavyParseGuard` (`preprocessing/host_memory.py`) |
+| `stages/parse.py`             | Tier 1 dispatch: `parse_and_chunk`, worker pool, dedup gate, attachments, `build_resolver_chain` (VLM captioning plus the optional decision-model relevance gate); heavy parses are serialized by one `HeavyParseGuard` (`preprocessing/host_memory.py`) — the memory headroom half is checked in the parser, which holds the routing plan |
 | `stages/parse_sources.py`     | One source through Tier 1: `_process_single_source`, `_parse_source`, privacy filter, dedup warning |
 | `stages/parse_store.py`       | Stage-side parse-cache adapter: `_load_cache`, `_save_cache`, `_try_load_parsed_cache`, `_try_load_chunk_cache`, `_chunk_cache_deps`, `parse_identity` |
 | `stages/index.py`             | Tier 0 source indexing |
 | `stages/resolve.py`           | Tier 3 resolution orchestration |
 | `stages/compile.py`           | Tier 4 compilation + Tier 5 output orchestration |
-| `config.py`                   | re-exports `Tier`, `Compiler`, `TierInfo` from `core.config`; `PipelineConfig` |
+| `config.py`                   | re-exports `Tier`, `Compiler`, `TierInfo` from `core.config`; `PipelineConfig` (the parse memory budget travels in `ParserOptions`, not here) |
 | `state.py`                    | `TierStateStore`, `TierState`, `SourceState`, `CompileStatus`, `classify_compile_status` |
 | `references.py`               | `ReferenceStore` — JSON-backed bibliographic reference persistence |
 | `ingest.py`                   | `ingest_documents`, `parse_cache_name`, `preserve_cached_metadata`, `parse_target_path`, `IngestResult` |
@@ -121,14 +121,19 @@ persistence, and standalone ingestion.
   changed figure or a changed prompt cannot replay a stale caption. The
   context is a per-run value: the chunk cache is written before the
   resolve tier, so it never enters it.
-- Heavy parses are budgeted, not just threaded: a source that may load the
-  heavy conversion engine (non-text `FileExtension` — PDF/office/image)
-  enters `HeavyParseGuard` (`preprocessing/host_memory.py`): at most
-  `ingest.max_concurrent_heavy_parses` run at once and a heavy parse needs
-  `ingest.parse_min_free_commit_mb` of free commit charge (measured peak of
-  one docling conversion: ~8 GB, independent of page count — knox-b9p2). A
-  refused source is skipped loudly per-file; the run continues. `0` disables
-  the headroom check, the cap stays. The docling engine's ONNX thread count
+- Heavy parses are budgeted, not just threaded, and the budget follows the
+  *routing plan*, not the file name: a non-text `FileExtension`
+  (PDF/office/image) enters `HeavyParseGuard`
+  (`preprocessing/host_memory.py`), which caps concurrency at
+  `ingest.max_concurrent_heavy_parses`; the headroom half runs in the parser
+  (`ensure_engine_headroom`), because only the plan says whether an engine
+  loads at all — a PDF liteparse reads needs hundreds of megabytes, the same
+  PDF routed to docling needs gigabytes. A planned backend outside
+  `LIGHT_BACKENDS` needs `ingest.parse_min_free_commit_mb` of free commit
+  charge (measured peak of one docling conversion: 1830 MB at the default
+  four threads, independent of page count — knox-b9p2); `0` disables the
+  headroom check, the cap stays. A refused source is skipped loudly per-file;
+  the run continues. The docling engine's ONNX thread count
   (`ingest.parsecraft_docling_threads` → `DOCLING_RS_PDF_THREADS`, set at
   parser construction, before the first conversion) is the engine-side
   lever; the default is `min(4, cores)` — the measured knee (7.4 s / 1830 MB

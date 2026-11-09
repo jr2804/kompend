@@ -273,7 +273,7 @@ def test_deadline_row_names_the_stage_the_file_died_in(tmp_path: Path, monkeypat
     timeout_rows = [row for row in rows if row[1] is StageOutcome.TIMEOUT]
     assert len(timeout_rows) == 1
     source, _, detail = timeout_rows[0]
-    assert source == "sources/stuck.md"
+    assert source == str(Path("sources/stuck.md"))
     assert detail.endswith("Last progress: stage parse.")
 
 

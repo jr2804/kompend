@@ -101,12 +101,27 @@ def test_run_id_defaults_to_the_current_run_context(tmp_path: Path) -> None:
     assert rows[0]["run_id"] == "ctx42"
 
 
-def test_detail_excerpt_is_capped(tmp_path: Path) -> None:
+def test_detail_excerpt_is_capped_on_a_word_boundary(tmp_path: Path) -> None:
+    # A raw slice ended mid-word (a skipped source read "…or b"); the excerpt
+    # keeps whole words and says it continues.
+    db = _db(tmp_path)
+    detail = " ".join(f"word{index}" for index in range(120))
+    with stage_ledger(db) as ledger:
+        ledger.record("big.md", "parse", outcome=StageOutcome.FAILED, detail=detail, run_id="r")
+    stored = _rows(db, "r")[0]["detail"]
+    assert stored.endswith("…")
+    assert len(stored) <= 241
+    assert stored[:-1] == detail[: len(stored) - 1]
+    assert not stored[:-1].endswith("wor")
+
+
+def test_detail_excerpt_without_spaces_is_a_hard_cut(tmp_path: Path) -> None:
     db = _db(tmp_path)
     with stage_ledger(db) as ledger:
         ledger.record("big.md", "parse", outcome=StageOutcome.FAILED, detail="x" * 10_000, run_id="r")
     row = _rows(db, "r")[0]
-    assert len(row["detail"]) == 240
+    assert len(row["detail"]) == 241
+    assert row["detail"].endswith("…")
 
 
 def test_closed_ledger_records_are_silent_no_ops(tmp_path: Path) -> None:
@@ -197,7 +212,7 @@ def test_ingest_documents_fills_the_ledger(tmp_path: Path) -> None:
     (base / ".kompend").mkdir()
     (base / ".kompend" / "config.toml").write_text("", encoding="utf-8")
     src = base / "sources" / "note.md"
-    src.write_text("# note\n", encoding="utf-8")
+    src.write_bytes(b"# note\n")  # bytes: text mode would translate to CRLF and change size_bytes
 
     set_current_run_id("ing42")
     try:

@@ -127,7 +127,7 @@ class StageLedger:
         if conn is None:
             return
         if detail is not None and len(detail) > _DETAIL_CHARS:
-            detail = detail[:_DETAIL_CHARS]
+            detail = _excerpt(detail)
         values: tuple[Any, ...] = (
             run_id if run_id is not None else current_run_id(),
             iso_local(),
@@ -223,6 +223,17 @@ class StageLedger:
         with self._lock:
             if self._conn is not None:
                 _prune(self._conn)
+
+
+def _excerpt(text: str) -> str:
+    """*text* cut at :data:`_DETAIL_CHARS` on a word boundary, marked as cut.
+
+    A raw slice ends mid-word, which reads as corruption in a diagnostics
+    table (a skipped source's reason ended "…or b"). Dropping the partial word
+    costs at most one word and the ellipsis says the text continues.
+    """
+    cut = text.rfind(" ", 0, _DETAIL_CHARS)
+    return f"{text[: cut if cut > 0 else _DETAIL_CHARS].rstrip()}…"
 
 
 def _prune(conn: sqlite3.Connection) -> None:

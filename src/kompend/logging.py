@@ -282,7 +282,11 @@ def configure_logging() -> None:
         show_time=True,
         show_path=False,
         rich_tracebacks=True,
-        markup=True,
+        # Log messages carry config syntax, not styling: "[ingest]
+        # parse_min_free_commit_mb" is a TOML table, and Rich markup reads it as
+        # a style tag and drops it, so the user saw "lower
+        # parse_min_free_commit_mb". Styled output belongs to console.print.
+        markup=False,
         tracebacks_width=None,
         level=DEFAULT_LEVEL,
     )

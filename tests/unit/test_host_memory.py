@@ -1,30 +1,35 @@
-"""The heavy-parse guard: classification, headroom refusal, serialization."""
+"""The parse memory budget: plan-aware headroom, serialization, config surface."""
 
 from __future__ import annotations
 
 import threading
+from dataclasses import fields
 from pathlib import Path
 
 import pytest
 
 from kompend.core.config._configs import KompendConfig
-from kompend.core.config.models.ingest import _DEFAULT_DOCLING_THREADS
 from kompend.core.env import EnvVar
 from kompend.core.pipeline.config import PipelineConfig
+from kompend.preprocessing import host_memory
 from kompend.preprocessing.host_memory import (
     HEAVY_SUFFIXES,
+    LIGHT_BACKENDS,
     MEGABYTE,
     HeavyParseGuard,
     InsufficientHostMemoryError,
+    ensure_engine_headroom,
+    heavy_backends,
     is_heavy_source,
 )
 from kompend.preprocessing.parsers.base import FileExtension
+from kompend.preprocessing.parsers.options import ParserOptions
 
-# ── classification ───────────────────────────────────────────────────────
+# ── serialization classification ─────────────────────────────────────────
 #
 # The set is derived from FileExtension, so the cases that matter are the
-# boundaries: a binary container is heavy, a text format never is — including
-# the ones a hand-written list got wrong (.htm/.html are native text).
+# boundaries: a binary container is serialized, a text format never is —
+# including the ones a hand-written list got wrong (.htm/.html are native text).
 
 
 @pytest.mark.parametrize(
@@ -37,7 +42,7 @@ from kompend.preprocessing.parsers.base import FileExtension
         ("page.htm", False),
         ("page.html", False),
         ("source.py", False),
-        ("unknown.z9", False),  # unparseable today: no parser reaches the guard
+        ("unknown.z9", False),  # unparseable today: no parser reaches the throttle
     ],
 )
 def test_classification_matches_the_extension_table(name: str, heavy: bool) -> None:
@@ -45,63 +50,84 @@ def test_classification_matches_the_extension_table(name: str, heavy: bool) -> N
 
 
 def test_heavy_suffixes_are_derived_not_declared() -> None:
-
     assert frozenset(e.value for e in FileExtension if not e.is_text) == HEAVY_SUFFIXES
 
 
-def test_a_heavy_parse_below_the_threshold_is_refused_with_the_remedy(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", lambda: 512 * MEGABYTE)
-    guard = _guard(4096)
-    with pytest.raises(InsufficientHostMemoryError) as exc_info, guard.guard(Path("report.pdf")):
-        pass
-    message = str(exc_info.value)
-    assert "512 MB free" in message
-    assert "4096 MB required" in message
-    assert "parse_min_free_commit_mb" in message
-    assert "parsecraft_docling_threads" in message
+# ── plan-aware headroom ──────────────────────────────────────────────────
+#
+# Which engine a source reaches is the router's decision, so the budget must
+# follow the plan: a PDF liteparse reads needs a few hundred megabytes, the
+# same PDF routed to docling needs gigabytes. Classifying by suffix refused
+# both and skipped every PDF in a liteparse-only vault.
 
 
-def test_zero_disables_the_headroom_check(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", lambda: 1)
-    with HeavyParseGuard().guard(Path("report.pdf")):  # min_free_commit_bytes=0
-        pass  # not refused: the cap is the only protection left
-
-
-def test_an_unknown_platform_warns_once_and_proceeds(
-    monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", lambda: None)
-    guard = _guard(4096)
-    with caplog.at_level("WARNING"):
-        for _ in range(2):
-            with guard.guard(Path("report.pdf")):
-                pass
-    warnings = [r for r in caplog.records if "unknown" in r.getMessage()]
-    assert len(warnings) == 1
-
-
-def test_a_light_source_never_checks_the_host(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("planned", ["liteparse", "native-markdown", "pymupdf"])
+def test_a_light_plan_never_checks_the_host(monkeypatch: pytest.MonkeyPatch, planned: str) -> None:
     def _unexpected() -> int | None:
-        raise AssertionError("the light path must not ask the host")
+        raise AssertionError("a light plan must not ask the host")
 
     monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", _unexpected)
-    with _guard(4096).guard(Path("note.md")):
-        pass
+    ensure_engine_headroom(Path("report.pdf"), [planned], min_free_commit_bytes=4096 * MEGABYTE)
 
 
-# ── headroom ─────────────────────────────────────────────────────────────
+@pytest.mark.parametrize("planned", ["docling", "mineru", "marker", "ocr-surya", "a-backend-added-later"])
+def test_an_unmeasured_or_heavy_plan_is_guarded(monkeypatch: pytest.MonkeyPatch, planned: str) -> None:
+    """``LIGHT_BACKENDS`` is a positive list: everything else is heavy until measured."""
+    monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", lambda: 512 * MEGABYTE)
+    with pytest.raises(InsufficientHostMemoryError):
+        ensure_engine_headroom(Path("report.pdf"), [planned], min_free_commit_bytes=4096 * MEGABYTE)
 
 
-def _guard(min_free_mb: int) -> HeavyParseGuard:
-    return HeavyParseGuard(min_free_commit_bytes=min_free_mb * MEGABYTE)
+def test_heavy_backends_names_only_the_heavy_part_of_a_plan() -> None:
+    assert heavy_backends(["liteparse", "docling", "native-text"]) == frozenset({"docling"})
+    assert "liteparse" in LIGHT_BACKENDS
+
+
+def test_the_refusal_names_the_plan_the_shortfall_and_the_levers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", lambda: 512 * MEGABYTE)
+    with pytest.raises(InsufficientHostMemoryError) as exc_info:
+        ensure_engine_headroom(Path("report.pdf"), ["docling"], min_free_commit_bytes=4096 * MEGABYTE)
+    message = str(exc_info.value)
+    assert "512 MB" in message
+    assert "4096 MB" in message
+    assert "docling" in message
+    assert "1830 MB" in message  # the measured peak, not a guess
+    assert "[ingest] parse_min_free_commit_mb" in message
+    assert "[ingest] parsecraft_docling_threads = 1" in message
+
+
+def test_a_non_docling_engine_gets_only_the_levers_that_apply(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", lambda: 1)
+    with pytest.raises(InsufficientHostMemoryError) as exc_info:
+        ensure_engine_headroom(Path("scan.pdf"), ["mineru"], min_free_commit_bytes=MEGABYTE)
+    message = str(exc_info.value)
+    assert "docling" not in message
+    assert "[ingest] parse_min_free_commit_mb" in message
+
+
+def test_zero_disables_the_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _unexpected() -> int | None:
+        raise AssertionError("a disabled check must not ask the host")
+
+    monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", _unexpected)
+    ensure_engine_headroom(Path("report.pdf"), ["docling"], min_free_commit_bytes=0)
+
+
+def test_an_unknown_platform_warns_once_and_proceeds(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    host_memory._warn_unknown_headroom_once.cache_clear()
+    monkeypatch.setattr("kompend.preprocessing.host_memory.available_commit_bytes", lambda: None)
+    with caplog.at_level("WARNING"):
+        for _ in range(2):
+            ensure_engine_headroom(Path("report.pdf"), ["docling"], min_free_commit_bytes=4096 * MEGABYTE)
+    warnings = [r for r in caplog.records if "unknown" in r.getMessage()]
+    assert len(warnings) == 1
 
 
 # ── serialization ────────────────────────────────────────────────────────
 
 
 def test_heavy_parses_are_serialized_at_max_concurrent_one() -> None:
-    guard = HeavyParseGuard(min_free_commit_bytes=0, max_concurrent=1)
+    guard = HeavyParseGuard(max_concurrent=1)
     inside = threading.Event()
     release = threading.Event()
     order: list[str] = []
@@ -133,22 +159,29 @@ def test_heavy_parses_are_serialized_at_max_concurrent_one() -> None:
     assert order == ["first", "second"]
 
 
+def test_a_text_source_never_takes_a_slot() -> None:
+    guard = HeavyParseGuard(max_concurrent=1)
+    with guard.guard(Path("a.pdf")), guard.guard(Path("note.md")):  # would deadlock if it took the semaphore
+        pass
+
+
 # ── config surface ───────────────────────────────────────────────────────
 
 
 def test_the_config_fields_exist_with_the_measured_defaults() -> None:
     config = KompendConfig()
-    assert config.ingest.parsecraft_docling_threads == _DEFAULT_DOCLING_THREADS
-    assert 1 <= config.ingest.parsecraft_docling_threads <= 4
-    assert config.ingest.parse_min_free_commit_mb == 10240
+    # Four threads is the measured sweet spot: the peak drops from 2790 MB at
+    # the engine's own count to 1830 MB, for 0.3 s more per 8-page document.
+    assert config.ingest.parsecraft_docling_threads == 4
+    assert config.ingest.parse_min_free_commit_mb == 4096
     assert config.ingest.max_concurrent_heavy_parses == 1
 
 
-def test_the_pipeline_config_carries_the_guard_budget() -> None:
-    # The dataclass defaults mirror [ingest]; ``from_resolved`` maps the
-    # KompendConfig fields onto them (see the mapping block in config.py).
-    assert PipelineConfig.parse_min_free_commit_mb == 10240
-    assert PipelineConfig.max_concurrent_heavy_parses == 1
+def test_the_parser_defaults_to_no_budget_and_the_pipeline_passes_it_per_run() -> None:
+    # A parser built without config (extension discovery) must not refuse
+    # anything; the pipeline's parser carries the budget from ParserOptions.
+    assert ParserOptions().parse_min_free_commit_mb == 0
+    assert next(f for f in fields(PipelineConfig) if f.name == "max_concurrent_heavy_parses").default == 1
 
 
 def test_the_env_vars_are_declared() -> None:

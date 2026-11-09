@@ -1,56 +1,77 @@
-"""Host memory facts and the guard that keeps a parse inside the host's budget.
+"""Host memory facts, the plan-aware budget check, and the heavy-parse throttle.
 
-A heavy PDF conversion is not a CPU cost, it is a memory cost: the docling
-engine loads its layout, table-structure and OCR models plus an ONNX arena,
-which peaks at roughly 5.4 GB of working set and 8.0 GB of commit charge for
-one document — measured on Windows with docling-rs 2.55.4 (2026-11-03). The
-peak is a fixed per-conversion cost, not a per-page one: an 8-page and a
-113-page PDF both cost about the same.
+A heavy conversion is a memory cost, not a CPU cost: the docling engine loads
+its layout, table-structure and OCR models plus an ONNX arena, which peaks at
+about 1830 MB of commit charge for one document at the configured four threads
+(2790 MB at the engine's own thread count, 1533 MB at a single thread) —
+measured on Windows with docling-rs 2.65.1 (2026-11-04). The peak is a fixed
+per-conversion cost, not a per-page one: an 8-page and a 113-page PDF both cost
+about the same.
 
-Two consequences shape this module:
+Which engine a source reaches is decided per page by parsecraft's router, and
+that decision is what the budget depends on: the same PDF needs a few hundred
+megabytes when liteparse reads it and gigabytes when docling does. The budget
+check therefore takes the backends the routing plan names —
+:func:`ensure_engine_headroom` — and runs in the parser, the one layer that
+holds a plan, immediately before the conversion starts. The file suffix only
+decides serialization (:class:`HeavyParseGuard`), which is cheap to
+over-approximate.
 
-* the OS may refuse to back the commit charge, and the failure arrives as an
-  abort inside the native extension (or as an unrelated allocation failure in
-  numpy) long after the request that caused it. A parse that cannot fit is
-  therefore refused *before* it starts, with a message that names the remedy.
-* several heavy parses running at once cost several times the headroom, so
-  they are serialized.
-
-The measurements behind the numbers here are recorded in the beads; the
-thresholds themselves are config fields, because every behaviour-affecting
-value in this project is one.
+The measurements behind the numbers are recorded in the beads; the thresholds
+are config fields, because every behaviour-affecting value in this project is
+one.
 """
 
 from __future__ import annotations
 
 import ctypes
+import functools
 import os
 import threading
-from collections.abc import Generator
+from collections.abc import Generator, Iterable, Mapping
 from contextlib import contextmanager
 from pathlib import Path
+from types import MappingProxyType
 from typing import Final
 
 from kompend.logging import get_logger
 from kompend.preprocessing.parsers.base import FileExtension, known_extension
 
-#: Suffixes whose conversion may load the heavy PDF/office engine. Derived
-#: from the canonical extension table, never re-declared: a binary container
-#: (:attr:`FileExtension.is_text` is false) may load the engine, a text
-#: format never does (native and liteparse need a few hundred megabytes at
-#: most). The set deliberately over-approximates the formats a backend can
-#: actually parse today (``.gif`` parses nothing at the moment) — the guard
-#: only runs for sources that parse, so an unparseable suffix costs nothing
-#: and a newly parseable binary format is covered from day one.
+#: Suffixes whose conversion *may* load a heavy engine, used for
+#: serialization. Derived from the canonical extension table, never
+#: re-declared: a binary container (:attr:`FileExtension.is_text` is false)
+#: may load the engine, a text format never does. The set deliberately
+#: over-approximates what the router can route to a heavy backend, because a
+#: serialized parse costs wall-clock time while an unguarded one costs memory.
 HEAVY_SUFFIXES: Final[frozenset[str]] = frozenset(extension.value for extension in FileExtension if not extension.is_text)
 
 #: Bytes in one megabyte — the unit the config fields speak.
 MEGABYTE: Final[int] = 1024 * 1024
 
-#: The measured peak of one docling conversion (working set / commit charge),
-#: quoted in the refusal message so the number the user sees is the number
-#: that was measured, not a guess.
-MEASURED_DOCLING_COMMIT_BYTES: Final[int] = 8 * 1000 * MEGABYTE
+#: Backends that extract text with native code and load no model stack, so one
+#: parse stays in the hundreds of megabytes. Listed positively because "light"
+#: is the claim that needs evidence: every other backend — the ML engines and
+#: the OCR models, including one added to parsecraft after this line — is
+#: treated as heavy, so the budget check fails safe.
+LIGHT_BACKENDS: Final[frozenset[str]] = frozenset(
+    {
+        "liteparse",
+        "native-csv",
+        "native-html",
+        "native-markdown",
+        "native-text",
+        "openpyxl",
+        "pandoc",
+        "pdf-inspector",
+        "pymupdf",
+        "trafilatura",
+    },
+)
+
+#: Measured peak commit charge of one conversion, per engine, at this project's
+#: defaults. Only measured engines are listed: an unmeasured heavy backend is
+#: still guarded, its message just omits a figure instead of inventing one.
+MEASURED_ENGINE_COMMIT_MB: Final[Mapping[str, int]] = MappingProxyType({"docling": 1830})
 
 logger = get_logger(__name__)
 
@@ -64,54 +85,93 @@ class InsufficientHostMemoryError(RuntimeError):
 
 
 class HeavyParseGuard:
-    """Serializes heavy parses and refuses them when the host has no headroom.
+    """Serializes heavy parses — the concurrency half of the memory budget.
 
-    One instance belongs to one run: the semaphore is the run's concurrency
-    cap and the headroom check is the run's memory budget.
+    One instance belongs to one run: the semaphore is the run's
+    ``max_concurrent`` cap, because N simultaneous conversions cost N times the
+    peak. The headroom half lives in :func:`ensure_engine_headroom`, which
+    needs the routing plan and therefore belongs to the parser.
     """
 
-    def __init__(self, *, min_free_commit_bytes: int = 0, max_concurrent: int = 1) -> None:
-        self._min_free_commit_bytes = max(0, min_free_commit_bytes)
+    def __init__(self, *, max_concurrent: int = 1) -> None:
         self._semaphore = threading.BoundedSemaphore(max(1, max_concurrent))
-        self._warned_unknown = False
 
     @contextmanager
     def guard(self, source: Path) -> Generator[None]:
-        """Hold the heavy-parse budget for *source*.
-
-        A light source passes through untouched — it never loads the engine
-        that needs the budget. A heavy source takes the semaphore (so at most
-        ``max_concurrent`` of them run at once) and is refused when the host
-        cannot back the conversion.
-        """
+        """Hold a heavy-parse slot for *source*; a text source passes through."""
         if not is_heavy_source(source):
             yield
             return
         with self._semaphore:
-            self._check_headroom(source)
             yield
 
-    def _check_headroom(self, source: Path) -> None:
-        if self._min_free_commit_bytes == 0:
-            return
-        available = available_commit_bytes()
-        if available is None:
-            if not self._warned_unknown:
-                self._warned_unknown = True
-                logger.warning(
-                    "Host commit headroom is unknown on this platform — the heavy-parse guard cannot check it. A conversion may still exhaust the host.",
-                )
-            return
-        if available >= self._min_free_commit_bytes:
-            return
-        raise InsufficientHostMemoryError(
-            f"Not enough commit charge for a heavy parse of {source.name}: "
-            f"{available / MEGABYTE:.0f} MB free, {self._min_free_commit_bytes / MEGABYTE:.0f} MB required "
-            f"(one docling conversion peaks at about {MEASURED_DOCLING_COMMIT_BYTES / MEGABYTE:.0f} MB). "
-            "Free memory and run again, lower [ingest] parse_min_free_commit_mb, or bound the engine "
-            "itself with [ingest] parsecraft_docling_threads = 1 and "
-            "[routing.backend_options.docling] in parsecraft's config (do_ocr = false, do_table_structure = false).",
+
+def ensure_engine_headroom(source: Path, backends: Iterable[str], *, min_free_commit_bytes: int) -> None:
+    """Refuse *source* when the engines its plan names cannot fit in the host.
+
+    Args:
+        source: The file the plan is for; named in the refusal message.
+        backends: Every backend the routing plan named for this source. Only
+            the ones that load a model stack count, so a PDF routed to
+            liteparse is never refused for docling's budget.
+        min_free_commit_bytes: Headroom the config demands
+            (``ingest.parse_min_free_commit_mb``); ``0`` disables the check.
+
+    Raises:
+        InsufficientHostMemoryError: A planned engine is heavy and free commit
+            charge is below ``min_free_commit_bytes``.
+    """
+    if min_free_commit_bytes <= 0:
+        return
+    engines = sorted(heavy_backends(backends))
+    if not engines:
+        return
+    available = available_commit_bytes()
+    if available is None:
+        _warn_unknown_headroom_once()
+        return
+    if available >= min_free_commit_bytes:
+        return
+    raise InsufficientHostMemoryError(_refusal_message(source, engines, available, min_free_commit_bytes))
+
+
+def heavy_backends(backends: Iterable[str]) -> frozenset[str]:
+    """The names in *backends* that may load a multi-gigabyte model stack."""
+    return frozenset(name for name in backends if name not in LIGHT_BACKENDS)
+
+
+def _refusal_message(source: Path, engines: list[str], available: int, required: int) -> str:
+    """The refusal text: what was planned, what is short, and the levers.
+
+    The remedies spell the keys the way the config does — ``[ingest]
+    parse_min_free_commit_mb`` — so they can be found in `kompend.toml`. The
+    terminal handler runs with ``markup=False`` for exactly this reason
+    (``logging.configure_logging``): with markup on, Rich read the table name
+    as a style tag and the user saw "lower  parse_min_free_commit_mb".
+    """
+    measured = ""
+    for engine in engines:
+        peak = MEASURED_ENGINE_COMMIT_MB.get(engine)
+        if peak is not None:
+            measured += f" ({engine} peaks at about {peak} MB per conversion)"
+    steps = ["free memory and run again", "lower [ingest] parse_min_free_commit_mb"]
+    if "docling" in engines:
+        steps.append(
+            "bound docling with [ingest] parsecraft_docling_threads = 1, "
+            "[routing.backend_options.docling] do_ocr = false, [routing.backend_options.docling] do_table_structure = false",
         )
+    return (
+        f"Not enough commit charge to parse {source.name}: its plan routes it to "
+        f"{', '.join(engines)}{measured}, and only {available / MEGABYTE:.0f} MB of commit charge is free "
+        f"against the {required / MEGABYTE:.0f} MB minimum. {', '.join(steps)}."
+    )
+
+
+@functools.cache
+def _warn_unknown_headroom_once() -> None:
+    logger.warning(
+        "Host commit headroom is unknown on this platform — the parse budget cannot be checked. A conversion may still exhaust the host.",
+    )
 
 
 def available_commit_bytes() -> int | None:
@@ -169,6 +229,6 @@ def _posix_commit_bytes() -> int | None:
 
 
 def is_heavy_source(source: Path) -> bool:
-    """True when the source may load the heavy conversion engine."""
+    """True when the source may load a heavy conversion engine."""
     extension = known_extension(source.suffix)
     return extension is not None and not extension.is_text

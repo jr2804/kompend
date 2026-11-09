@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -54,6 +55,14 @@ def test_bundle_carries_the_evidence_needed_to_reproduce(tmp_path: Path) -> None
     script = (bundle / "repro.sh").read_text(encoding="utf-8")
     assert "kompend init ." in script
     assert 'kompend ingest "$bundle/source.md"' in script
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Windows has no POSIX executable bit to assert")
+def test_the_repro_script_is_executable(tmp_path: Path) -> None:
+    source = tmp_path / "paper.md"
+    source.write_text("body\n", encoding="utf-8")
+    bundle = _write_bundle(tmp_path, source)
+    assert bundle is not None
     assert (bundle / "repro.sh").stat().st_mode & 0o111
 
 

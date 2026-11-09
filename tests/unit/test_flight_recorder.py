@@ -163,7 +163,7 @@ class TestRunLogFooter:
 
         _print_run_log_footer(handle)
 
-        assert capsys.readouterr().out.strip() == "Full log: .kompend/logs/run-r1.log"
+        assert capsys.readouterr().out.strip() == f"Full log: {Path('.kompend/logs/run-r1.log')}"
 
     def test_silent_without_a_written_file(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
         monkeypatch.chdir(tmp_path)
