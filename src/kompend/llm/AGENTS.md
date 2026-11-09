@@ -119,7 +119,7 @@ chars = budget.content_chars(chars_per_token)
 | `safety_tokens` | Defaults to `context_safety_tokens(window.max_input)` |
 | `utilization` | Scales the remainder (a stage needing a second leg takes a fraction) |
 | `available_tokens` | Signed: window − answer − safety − reserved |
-| `content_tokens` / `content_chars()` | What is left for content (≥ 1), capped by `compile.llm.content_tokens` |
+| `content_tokens` / `content_chars()` | What is left for content (≥ 1), sized by `compile.llm.content_window_tokens` |
 | `fits()` / `require()` | Check, or raise `LLMOutputError` naming the components |
 | `report()` | One-line log description of the budget |
 

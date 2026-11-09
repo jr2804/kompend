@@ -73,9 +73,9 @@ class RequestBudget:
     room for a second leg of the same request (a probe and its evaluation)
     takes a fraction instead of the whole remainder.
 
-    The window's ``content_cap`` (``compile.llm.content_tokens``) bounds the
-    result: a model that answers nothing to a very long prompt gets a smaller
-    payload per request, which means more requests — never less content.
+    The window's ``content_window_tokens`` (``compile.llm.content_window_tokens``)
+    sizes the result: a model that answers nothing to a very long prompt gets a
+    smaller payload per request, which means more requests — never less content.
     """
 
     window: ContextWindow
@@ -119,13 +119,14 @@ class RequestBudget:
     def content_tokens(self) -> int:
         """Tokens available for content, scaled by :attr:`utilization` (at least 1).
 
-        Bounded by :attr:`ContextWindow.content_cap` when the run configured
-        one, so a stage never packs more content than the model is known to
-        handle even though the window could hold it.
+        Bounded by :attr:`ContextWindow.content_window_tokens` when the run
+        configured one, so a stage never packs more content into one request
+        than the model is known to handle even though the window could hold it.
+        The stage splits its payload; nothing is dropped.
         """
         scaled = int(self.available_tokens * self.utilization)
-        if self.window.content_cap is not None:
-            scaled = min(scaled, self.window.content_cap)
+        if self.window.content_window_tokens is not None:
+            scaled = min(scaled, self.window.content_window_tokens)
         return max(1, scaled)
 
     def content_chars(self, chars_per_token: float) -> int:
@@ -153,7 +154,7 @@ class RequestBudget:
             + (f", reserved {reserved}" if reserved else "")
             + f", usable {self.available_tokens} tokens"
             + (f" x utilization {self.utilization}" if self.utilization != 1.0 else "")
-            + (f", content cap {self.window.content_cap} tokens" if self.window.content_cap is not None else "")
+            + (f", content window {self.window.content_window_tokens} tokens" if self.window.content_window_tokens is not None else "")
             + "). Content is never cropped: shrink the reserved payloads "
             "(known_titles is windowed) or raise compile.llm.context_window."
         )
@@ -161,7 +162,7 @@ class RequestBudget:
     def report(self) -> str:
         """One-line description of the budget, for log lines."""
         reserved = ", ".join(f"{name}={value}" for name, value in sorted(self.reserved.items()))
-        cap = f" cap={self.window.content_cap}" if self.window.content_cap is not None else ""
+        cap = f" window={self.window.content_window_tokens}" if self.window.content_window_tokens is not None else ""
         return (
             f"cw={self.window.max_input} answer={self.answer_reserve} safety={self.safety} "
             f"reserved={self.reserved_total} ({reserved}) usable={self.available_tokens} "

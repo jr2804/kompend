@@ -41,16 +41,16 @@ class ContextWindow:
 
     ``max_input`` and ``max_output`` are in **tokens**.
     ``source`` records where the values came from for diagnostics.
-    ``content_cap`` (``compile.llm.content_tokens``) is a ceiling on the content
-    one request may carry, independent of how large the window is: a model can
-    accept a long prompt and still answer it badly, and only the user knows
-    where that point is for their model. ``None`` means the window decides.
+    ``content_window_tokens`` (``compile.llm.content_window_tokens``) is how many
+    tokens of content one request should carry — smaller than the window when a
+    model answers long prompts badly. It sizes a window: stages split their
+    payload across more requests, and no content is dropped.
     """
 
     max_input: int
     max_output: int
     source: ContextSource
-    content_cap: int | None = None
+    content_window_tokens: int | None = None
 
     @property
     def answer_reserve(self) -> int:
@@ -212,7 +212,7 @@ def discover_context_window(  # noqa: PLR0915
         max_input=max_input,
         max_output=max_output,
         source=source,
-        content_cap=llm_config.content_tokens if llm_config is not None else None,
+        content_window_tokens=llm_config.content_window_tokens if llm_config is not None else None,
     )
 
 

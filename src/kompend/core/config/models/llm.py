@@ -41,14 +41,17 @@ class LLMConfig(_KompendBaseModel):
     context_window: int | None = Field(
         default=None, validation_alias=EnvVar.LLM_CONTEXT_WINDOW, description="Context window length override/cap applied to every discovered model"
     )
-    #: Ceiling on the content one request may carry, in tokens. Unset means the
-    #: window decides (window minus answer reserve, safety margin and the
-    #: stage's reserved payloads). A local model can accept a large window and
-    #: still answer nothing when the prompt is long, so the ceiling belongs to
-    #: model ability rather than to the window; a stage that hits it splits its
-    #: work into more requests and never crops content.
-    content_tokens: int | None = Field(
-        default=None, validation_alias=EnvVar.LLM_CONTENT_TOKENS, description="Ceiling on the content one request carries, in tokens"
+    #: How many tokens of content one request may carry. It sizes a window, it
+    #: never removes anything: a stage whose payload does not fit splits it into
+    #: more requests (extraction batches, generation segments, summary and probe
+    #: windows). Unset means the context window decides alone. Distinct from
+    #: ``context_window``, which caps what the model will *accept*; this caps
+    #: what it should be *given*, which is a property of the model, not of the
+    #: provider.
+    content_window_tokens: int | None = Field(
+        default=None,
+        validation_alias=EnvVar.LLM_CONTENT_WINDOW_TOKENS,
+        description="Tokens of content one request may carry; larger payloads are split, never cropped",
     )
     data_format: LlmDataFormat = Field(default=LlmDataFormat.JSON, validation_alias=EnvVar.LLM_DATA_FORMAT)
     #: Whole-request retries after a *transient* failure (a timeout, a dropped

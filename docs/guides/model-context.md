@@ -60,20 +60,19 @@ context_window = 32768   # never exceed 32K even if the model reports more
 A large window is not the same as a model that can use it. A small local
 model may accept a 40K-token prompt and answer it with nothing at all, and
 raising `context_window` then makes each request *heavier* instead of better.
-`compile.llm.content_tokens` caps the content one request may carry,
+`compile.llm.content_window_tokens` sets how much content one request carries,
 independently of the window:
 
 ```toml
 [compile.llm]
 context_window = 65536
-content_tokens = 16000   # at most 16K tokens of source per request
+content_window_tokens = 16000   # at most 16K tokens of source per request
 ```
 
-The stages react by splitting their work into more requests — extraction into
-more batches, generation into more segments. Content is never cropped to fit:
-a budget that is too small means more calls, never less text. Leave it unset
-and the window decides, which is right for models that handle long prompts
-well.
+Nothing is cropped to meet it. The stages size their payload and split what
+does not fit: extraction packs more batches, generation emits more segments,
+the summarizer and WiCER probe in more windows. A smaller value therefore
+means more calls and the same content — not less content.
 
 `context_window_cap` was renamed to `context_window` in both `[compile.llm]`
 and `[providers.<name>]`; a config still setting the old name keeps working
