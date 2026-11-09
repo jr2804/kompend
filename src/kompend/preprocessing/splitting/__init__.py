@@ -20,6 +20,7 @@ request window.
 from __future__ import annotations
 
 from ._elements import (
+    LEDGER_DETAIL_CHARS,
     SourceSplitter,
     SplitDecision,
     SplitMetadata,
@@ -42,6 +43,7 @@ from ._plan import (
 )
 
 __all__ = [
+    "LEDGER_DETAIL_CHARS",
     "NeverSplit",
     "PageText",
     "SourceSplitter",

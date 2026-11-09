@@ -37,6 +37,7 @@ from ._plan import (
 )
 
 __all__ = [
+    "LEDGER_DETAIL_CHARS",
     "SourceSplitter",
     "SplitDecision",
     "SplitMetadata",
@@ -45,6 +46,15 @@ __all__ = [
     "page_texts",
     "partition_document",
 ]
+
+
+#: Budget for :meth:`SplitDecision.ledger_detail`.
+#:
+#: :class:`~kompend.core.reporting.ledger.StageLedger` keeps 240 characters of
+#: ``detail`` and cuts the rest on a word boundary. Staying under that here
+#: means the boundary account is compressed by this module (which knows what
+#: matters) instead of being cut mid-range by the ledger (which does not).
+LEDGER_DETAIL_CHARS = 200
 
 
 class SplitMetadata(StrEnum):
@@ -90,11 +100,37 @@ class SplitDecision:
         return self.reason is SplitReason.APPLIED and len(self.segments) > 1
 
     def summary(self) -> str:
-        """One-line human account of the cut, for the ledger's ``detail``."""
+        """One-line human account of the cut, for the log.
+
+        Lists every segment, so it can exceed :data:`LEDGER_DETAIL_CHARS` —
+        the ledger takes :meth:`ledger_detail` instead, which stays inside
+        the column's budget by construction.
+        """
         if not self.applies:
             return self.detail or self.reason.value
-        cuts = ", ".join(f"{segment.label()}{f' {segment.category}' if segment.category else ''}" for segment in self.segments)
+        cuts = ", ".join(_segment_label(segment) for segment in self.segments)
         return f"1->{len(self.segments)}: {cuts}"
+
+    def ledger_detail(self) -> str:
+        """The one form both the ledger and the log take their account from.
+
+        ``stages.detail`` keeps 240 characters and cuts anything longer, which
+        for a many-document packet would drop boundaries mid-list. So this
+        method owns the compression instead: a decline reads
+        ``<reason>: <why>`` cut on a word boundary, and a cut that does not fit
+        names the first and last segment and counts the rest — a reader can
+        still tell what was cut and where it ended, and :meth:`summary` in the
+        run log always has the full list.
+        """
+        if not self.applies:
+            text = f"{self.reason.value}: {self.detail}" if self.detail else self.reason.value
+            return _cut_on_word(text, LEDGER_DETAIL_CHARS)
+        full = f"1->{len(self.segments)}: {', '.join(_segment_label(segment) for segment in self.segments)}"
+        if len(full) <= LEDGER_DETAIL_CHARS:
+            return full
+        first, last = self.segments[0], self.segments[-1]
+        between = len(self.segments) - 2
+        return f"1->{len(self.segments)}: {_segment_label(first)} … {_segment_label(last)} ({between} between)"
 
 
 @dataclass(frozen=True, slots=True)
@@ -300,3 +336,20 @@ def _rehome(elements: list[DocumentElement], child_source: Path) -> list[Documen
 def _child_title(parent_title: str, segment: SplitSegment) -> str:
     """Child title: the parent's title scoped by its page range."""
     return f"{parent_title} [{segment.label()}]" if parent_title else segment.label()
+
+
+def _segment_label(segment: SplitSegment) -> str:
+    """``p001-004`` plus the judge's category, when it assigned one."""
+    return f"{segment.label()} {segment.category}" if segment.category else segment.label()
+
+
+def _cut_on_word(text: str, limit: int) -> str:
+    """*text* cut at *limit* on a word boundary, marked as cut.
+
+    Mirrors :func:`kompend.core.reporting.ledger._excerpt` so a detail that
+    this module had to shorten reads the same as one the ledger shortened.
+    """
+    if len(text) <= limit:
+        return text
+    cut = text.rfind(" ", 0, limit)
+    return f"{text[: cut if cut > 0 else limit].rstrip()}…"

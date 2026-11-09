@@ -40,9 +40,11 @@ from kompend.core.store.schema import STAGES_TABLE
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.splitting import (
+    LEDGER_DETAIL_CHARS,
     NeverSplit,
     PageText,
     SourceSplitter,
+    SplitDecision,
     SplitMetadata,
     SplitPlan,
     SplitPlanError,
@@ -364,6 +366,53 @@ def test_decide_applies_a_valid_plan_and_summarises_it() -> None:
     assert decision.applies
     assert decision.reason is SplitReason.APPLIED
     assert decision.summary() == "1->2: p001-004 standard, p005-008 amendment"
+
+
+def test_ledger_detail_fits_the_columns_budget() -> None:
+    """A many-document packet must not lose its boundaries to the ledger's cut.
+
+    ``stages.detail`` keeps 240 characters and cuts the rest, so the split has
+    to compress its own account: first and last segment stay named, the middle
+    is counted, and the full list remains available for the run log.
+    """
+    segments = tuple(SplitSegment(start, start + 9) for start in range(1, 200, 10))
+    decision = SourceSplitter(judge=_FixedJudge(list(segments)), min_pages=2).decide(_document(200))
+
+    detail = decision.ledger_detail()
+
+    assert len(detail) <= LEDGER_DETAIL_CHARS < len(decision.summary())
+    assert detail.startswith("1->20: p001-010")
+    assert "p191-200" in detail
+    assert "18 between" in detail
+
+
+def test_ledger_detail_lists_a_small_cut_in_full() -> None:
+    judge = _FixedJudge([SplitSegment(1, 4, category="standard"), SplitSegment(5, 8, category="amendment")])
+
+    decision = SourceSplitter(judge=judge, min_pages=2).decide(_document(8))
+
+    assert decision.ledger_detail() == "1->2: p001-004 standard, p005-008 amendment"
+
+
+def test_ledger_detail_names_the_decline_and_its_reason() -> None:
+    decision = SourceSplitter(judge=_FixedJudge(error=RuntimeError("judge down")), min_pages=2).decide(_document(8))
+
+    detail = decision.ledger_detail()
+
+    assert detail.startswith("judge_failed: _FixedJudge: RuntimeError: judge down")
+    assert detail == f"judge_failed: {decision.detail}"
+
+
+def test_ledger_detail_cuts_a_long_decline_on_a_word_boundary() -> None:
+    reason = "word " * 100
+    decision = SplitDecision(reason=SplitReason.PLAN_INVALID, detail=reason.strip())
+
+    detail = decision.ledger_detail()
+
+    assert len(detail) <= LEDGER_DETAIL_CHARS
+    assert detail.endswith("…")
+    assert not detail[:-1].endswith(" ")
+    assert detail.endswith("word…")
 
 
 def test_decide_never_sends_a_cropped_page_to_the_judge() -> None:

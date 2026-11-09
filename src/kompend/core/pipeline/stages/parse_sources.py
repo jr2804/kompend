@@ -58,6 +58,7 @@ from kompend.preprocessing.host_memory import (
     InsufficientHostMemoryError,
 )
 from kompend.preprocessing.splitting import (
+    LEDGER_DETAIL_CHARS,
     SourceSplitter,
     SplitDecision,
     SplitReason,
@@ -243,7 +244,7 @@ def _split_documents(
         )
         return [parsed]
 
-    ledger.record(source, "split", outcome=StageOutcome.OK, detail=decision.summary())
+    ledger.record(source, "split", outcome=StageOutcome.OK, detail=decision.ledger_detail())
     logger.info("Split %s — %s", source, decision.summary())
     return children
 
@@ -259,6 +260,8 @@ def _record_split_decline(ledger: StageLedger, source: str, decision: SplitDecis
     belongs in ``core.types``, which this change does not own.)
     """
     detail = f"{decision.reason.value}: {decision.detail}" if decision.detail else decision.reason.value
+    if len(detail) > LEDGER_DETAIL_CHARS:
+        detail = decision.ledger_detail()
     if decision.reason in {SplitReason.JUDGE_FAILED, SplitReason.PLAN_INVALID}:
         logger.warning("Split declined for %s — %s", source, detail, extra={"reason_code": ReasonCode.JUDGE_DEGRADED})
         ledger.record(source, "split", outcome=StageOutcome.DEGRADED, reason_code=ReasonCode.JUDGE_DEGRADED, detail=detail)
