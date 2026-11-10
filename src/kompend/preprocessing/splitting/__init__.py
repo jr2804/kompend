@@ -23,9 +23,9 @@ from __future__ import annotations
 from ._build import build_splitter, resolve_judge_model, resolve_rules_file
 from ._elements import (
     LEDGER_DETAIL_CHARS,
+    SPLIT_FIELDS,
     SourceSplitter,
     SplitDecision,
-    SplitMetadata,
     child_source_path,
     page_range,
     page_texts,
@@ -56,12 +56,13 @@ from ._plan import (
     rules_digest,
     validate_plan,
 )
-from ._provenance import attachment_owner_stem, parent_source_of
+from ._provenance import attachment_owner_stem, parent_source_of, split_keys
 from ._rules import BUILTIN_RULES_TEMPLATE, SplitRulesError, load_rules, parse_rules
 
 __all__ = [
     "BUILTIN_RULES_TEMPLATE",
     "LEDGER_DETAIL_CHARS",
+    "SPLIT_FIELDS",
     "DecisionModelSplitJudge",
     "NeverSplit",
     "NoDecisionModel",
@@ -71,7 +72,6 @@ __all__ = [
     "SplitJudge",
     "SplitJudgeDeps",
     "SplitJudgeUnavailable",
-    "SplitMetadata",
     "SplitPlan",
     "SplitPlanError",
     "SplitReason",
@@ -97,5 +97,6 @@ __all__ = [
     "resolve_rules_file",
     "rules_digest",
     "spec_name",
+    "split_keys",
     "validate_plan",
 ]

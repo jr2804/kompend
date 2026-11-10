@@ -33,6 +33,7 @@ from kompend.core.models import (
     ChunkTree,
     DocumentElement,
     ElementType,
+    MetadataField,
     ParsedDocument,
 )
 from kompend.core.pipeline.config import Compiler, EmbeddingConfig, LLMConfig, PipelineConfig
@@ -51,6 +52,7 @@ from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.splitting import (
     LEDGER_DETAIL_CHARS,
+    SPLIT_FIELDS,
     DecisionModelSplitJudge,
     NeverSplit,
     PageText,
@@ -58,7 +60,6 @@ from kompend.preprocessing.splitting import (
     SplitDecision,
     SplitJudgeDeps,
     SplitJudgeUnavailable,
-    SplitMetadata,
     SplitPlan,
     SplitPlanError,
     SplitReason,
@@ -80,6 +81,7 @@ from kompend.preprocessing.splitting import (
     render_pages,
     render_rules,
     spec_name,
+    split_keys,
     validate_plan,
 )
 from kompend.types import JSONDict, JSONList
@@ -283,13 +285,13 @@ def test_partition_stamps_parent_provenance_on_every_child() -> None:
     )
 
     first, second = children
-    assert first.metadata[SplitMetadata.PARENT_STEM.value] == "packet"
-    assert first.metadata[SplitMetadata.PARENT_SOURCE.value] == "sources/packet.pdf"
-    assert first.metadata[SplitMetadata.PAGES.value] == "p001-002"
-    assert first.metadata[SplitMetadata.CATEGORY.value] == "standard"
-    assert second.metadata[SplitMetadata.CATEGORY.value] == "amendment"
-    assert first.metadata[SplitMetadata.DECIDED_BY.value] == "jev"
-    assert first.metadata[SplitMetadata.RULES_SHA256.value] == "sha-rules"
+    assert first.metadata[MetadataField.SPLIT_PARENT_STEM.value] == "packet"
+    assert first.metadata[MetadataField.SPLIT_PARENT_SOURCE.value] == "sources/packet.pdf"
+    assert first.metadata[MetadataField.SPLIT_PAGES.value] == "p001-002"
+    assert first.metadata[MetadataField.SPLIT_CATEGORY.value] == "standard"
+    assert second.metadata[MetadataField.SPLIT_CATEGORY.value] == "amendment"
+    assert first.metadata[MetadataField.SPLIT_DECIDED_BY.value] == "jev"
+    assert first.metadata[MetadataField.SPLIT_RULES_SHA256.value] == "sha-rules"
     # Page count is the child's own range, and every element points at the child.
     assert (first.page_count, second.page_count) == (2, 2)
     assert all(element.source_file == first.source_file for element in first.elements)
@@ -865,7 +867,10 @@ def _built_pipeline(monkeypatch: pytest.MonkeyPatch, config: PipelineConfig) -> 
 
 def test_a_child_names_the_parent_whose_attachments_it_keeps() -> None:
     child = Path("sources/packet#p005-009.pdf")
-    stamped = {SplitMetadata.PARENT_STEM.value: "packet", SplitMetadata.PARENT_SOURCE.value: "sources/packet.pdf"}
+    stamped = {
+        MetadataField.SPLIT_PARENT_STEM.value: "packet",
+        MetadataField.SPLIT_PARENT_SOURCE.value: "sources/packet.pdf",
+    }
 
     assert attachment_owner_stem(child, stamped) == "packet"
     assert parent_source_of(stamped) == Path("sources/packet.pdf")
@@ -876,6 +881,26 @@ def test_an_ordinary_source_owns_its_own_attachments() -> None:
     assert attachment_owner_stem(None, {}) is None
     assert parent_source_of({}) is None
     assert parent_source_of(None) is None
+
+
+def test_the_split_vocabulary_is_metadata_field_and_keeps_its_contract_values() -> None:
+    """The keys cross file boundaries, so the enum owns them and the values stay."""
+    assert SPLIT_FIELDS == (
+        MetadataField.SPLIT_PARENT_STEM,
+        MetadataField.SPLIT_PARENT_SOURCE,
+        MetadataField.SPLIT_PAGES,
+        MetadataField.SPLIT_CATEGORY,
+        MetadataField.SPLIT_DECIDED_BY,
+        MetadataField.SPLIT_RULES_SHA256,
+    )
+    assert split_keys() == (
+        "_split_parent_stem",
+        "_split_parent_source",
+        "_split_pages",
+        "_split_category",
+        "_split_decided_by",
+        "_split_rules_sha256",
+    )
 
 
 def test_a_child_chunk_carries_the_child_path_and_the_parent_link(tmp_path: Path) -> None:
@@ -897,9 +922,9 @@ def test_a_child_chunk_carries_the_child_path_and_the_parent_link(tmp_path: Path
         assert leaf.chunk.source_file == first.source_file
         assert leaf.chunk.source_file is not None
         assert leaf.chunk.source_file.name == "packet#p001-005.md"
-        assert leaf.chunk.metadata[SplitMetadata.PARENT_STEM.value] == "packet"
-        assert leaf.chunk.metadata[SplitMetadata.PARENT_SOURCE.value] == source.as_posix()
-        assert leaf.chunk.metadata[SplitMetadata.PAGES.value] == "p001-005"
+        assert leaf.chunk.metadata[MetadataField.SPLIT_PARENT_STEM.value] == "packet"
+        assert leaf.chunk.metadata[MetadataField.SPLIT_PARENT_SOURCE.value] == source.as_posix()
+        assert leaf.chunk.metadata[MetadataField.SPLIT_PAGES.value] == "p001-005"
 
 
 def test_an_unsplit_source_gains_no_split_metadata(tmp_path: Path) -> None:
@@ -909,7 +934,7 @@ def test_an_unsplit_source_gains_no_split_metadata(tmp_path: Path) -> None:
     with stage_ledger(vault_db_path(base)) as ledger:
         trees = _process_single_source(cast("PipelineRuntime", runtime), source, {}, HeavyParseGuard(), ledger, "test-chain")
 
-    keys = {str(key.value) for key in SplitMetadata}
+    keys = {str(key.value) for key in SPLIT_FIELDS}
     for leaf in trees[0].leaves():
         if leaf.chunk is not None:
             assert not keys & set(leaf.chunk.metadata)
@@ -927,7 +952,7 @@ def test_a_child_keeps_its_provenance_through_the_chunk_cache(tmp_path: Path) ->
 
     leaves = [leaf for leaf in cached[0].leaves() if leaf.chunk is not None]
     assert leaves
-    assert all(leaf.chunk.metadata[SplitMetadata.PARENT_STEM.value] == "packet" for leaf in leaves if leaf.chunk is not None)
+    assert all(leaf.chunk.metadata[MetadataField.SPLIT_PARENT_STEM.value] == "packet" for leaf in leaves if leaf.chunk is not None)
 
 
 def _split_runtime(base: Path) -> tuple[Any, Path]:

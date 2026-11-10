@@ -19,7 +19,7 @@ heavy parses. Parsing itself lives in the child package `parsers/`.
 
 | Module | Contents |
 |--------|----------|
-| `splitting/` | Page-range splitting of a parsed packet into independent child sources: `_plan` (plan vocabulary, `SplitJudge` seam, `validate_plan` partition invariant), `_elements` (`SourceSplitter`, `SplitDecision`, `partition_document`, `SplitMetadata`), `_judge` (`DecisionModelSplitJudge`, the verdict model, prompt rendering), `_rules` (category rules), `_provenance` (who owns a child's attachments), `_build` (`build_splitter` — the one config→judge site) |
+| `splitting/` | Page-range splitting of a parsed packet into independent child sources: `_plan` (plan vocabulary, `SplitJudge` seam, `validate_plan` partition invariant), `_elements` (`SourceSplitter`, `SplitDecision`, `partition_document`, `SPLIT_FIELDS`), `_judge` (`DecisionModelSplitJudge`, the verdict model, prompt rendering), `_rules` (category rules), `_provenance` (who owns a child's attachments), `_build` (`build_splitter` — the one config→judge site) |
 | `host_memory.py` | `HeavyParseGuard`, `ensure_engine_headroom`, `available_commit_bytes`, `is_heavy_source` — the memory half of "one heavy parse at a time" |
 | `images.py` | `ImageStore`, `store_asset`, rasterising/vector conversion helpers — figure bytes land here, the mapping lives in `parsers/parsecraft/assets.py` |
 | `dedup/` | `DedupOrchestrator`, `DedupStore`, the MinHash/embedding matchers |
@@ -78,8 +78,17 @@ entry, state row and provenance are its own while it shares the parent's content
 hash. Children own *copies* of the parent's elements (`partition_document`
 rehomes copies, `docs/architecture/decisions.md`); the parent document is never
 mutated. Because a child has no manifest entry, attachments stay with the parent:
-`attachment_owner_stem` answers with `SplitMetadata.PARENT_STEM`, and an
+`attachment_owner_stem` answers with `MetadataField.SPLIT_PARENT_STEM`, and an
 extraction path asks it instead of deriving a stem from the child's own name.
+
+### The split vocabulary is `MetadataField`; the package keeps only the order
+
+The six `_split_*` keys cross file boundaries — `partition_document` writes them
+onto a child's `ParsedDocument.metadata`, the parse stage stamps them onto every
+leaf chunk, and figure attribution reads them back — so they live in
+`kompend.core.models.enums.MetadataField`. `SPLIT_FIELDS` is the package-level
+tuple of exactly those six members in stamping order: iterate it instead of
+re-listing keys, and never retype a `_split_*` literal.
 
 ## Work Guidance
 

@@ -10,8 +10,9 @@ Two questions are answered here, both from the metadata a split stamps:
 * which stem's attachments belong to a child (:func:`attachment_owner_stem`);
 * which document a child was cut from (:func:`parent_source_of`).
 
-Reading the keys through :class:`SplitMetadata` keeps the vocabulary in one
-place; a caller never writes ``"_split_parent_stem"`` itself.
+Reading the keys through :class:`~kompend.core.models.enums.MetadataField`
+keeps the vocabulary in one place; a caller never writes
+``"_split_parent_stem"`` itself.
 """
 
 from __future__ import annotations
@@ -20,9 +21,11 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from ._elements import SplitMetadata
+from kompend.core.models import MetadataField
 
-__all__ = ["attachment_owner_stem", "parent_source_of"]
+from ._elements import SPLIT_FIELDS
+
+__all__ = ["attachment_owner_stem", "parent_source_of", "split_keys"]
 
 
 def attachment_owner_stem(source_file: Path | str | None, metadata: Mapping[str, Any] | None) -> str | None:
@@ -33,7 +36,7 @@ def attachment_owner_stem(source_file: Path | str | None, metadata: Mapping[str,
     own. Any other source answers with its own stem. ``None`` means there is no
     stem to look attachments up by (no source file at all).
     """
-    parent = _metadata_text(metadata, SplitMetadata.PARENT_STEM)
+    parent = _metadata_text(metadata, MetadataField.SPLIT_PARENT_STEM)
     if parent:
         return parent
     if source_file is None:
@@ -48,13 +51,18 @@ def parent_source_of(metadata: Mapping[str, Any] | None) -> Path | None:
     The path is the parent's vault-relative path as stamped at partition time;
     it names a file that exists, unlike the child's own synthetic path.
     """
-    parent = _metadata_text(metadata, SplitMetadata.PARENT_SOURCE)
+    parent = _metadata_text(metadata, MetadataField.SPLIT_PARENT_SOURCE)
     return Path(parent) if parent else None
 
 
-def _metadata_text(metadata: Mapping[str, Any] | None, key: SplitMetadata) -> str:
+def _metadata_text(metadata: Mapping[str, Any] | None, key: MetadataField) -> str:
     """The non-empty string *metadata* carries under *key*, else ``""``."""
     if not metadata:
         return ""
     value = metadata.get(str(key.value)) or metadata.get(key.value)
     return value.strip() if isinstance(value, str) else ""
+
+
+def split_keys() -> tuple[str, ...]:
+    """The split's metadata keys as plain strings, in stamping order."""
+    return tuple(key.value for key in SPLIT_FIELDS)

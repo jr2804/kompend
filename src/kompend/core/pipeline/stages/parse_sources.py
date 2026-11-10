@@ -59,9 +59,9 @@ from kompend.preprocessing.host_memory import (
 )
 from kompend.preprocessing.splitting import (
     LEDGER_DETAIL_CHARS,
+    SPLIT_FIELDS,
     SourceSplitter,
     SplitDecision,
-    SplitMetadata,
     SplitReason,
     partition_document,
 )
@@ -372,7 +372,7 @@ def _stamp_split_provenance(tree: ChunkTree, document: ParsedDocument) -> None:
 
     The unsplit source has no such keys, so this is a no-op for it.
     """
-    stamped = {str(key.value): value for key in SplitMetadata if (value := document.metadata.get(key.value))}
+    stamped = {str(key.value): value for key in SPLIT_FIELDS if (value := document.metadata.get(key.value))}
     if not stamped:
         return
     parent = parent_source_of(document.metadata)

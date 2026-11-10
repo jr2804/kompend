@@ -18,10 +18,10 @@ from __future__ import annotations
 import copy
 from collections.abc import Sequence
 from dataclasses import dataclass, field, replace
-from enum import StrEnum
 from pathlib import Path
+from typing import Final
 
-from kompend.core.models import DocumentElement, ParsedDocument
+from kompend.core.models import DocumentElement, MetadataField, ParsedDocument
 from kompend.core.models.elements import element_text
 
 from ._plan import (
@@ -38,9 +38,9 @@ from ._plan import (
 
 __all__ = [
     "LEDGER_DETAIL_CHARS",
+    "SPLIT_FIELDS",
     "SourceSplitter",
     "SplitDecision",
-    "SplitMetadata",
     "child_source_path",
     "page_range",
     "page_texts",
@@ -57,29 +57,20 @@ __all__ = [
 LEDGER_DETAIL_CHARS = 200
 
 
-class SplitMetadata(StrEnum):
-    """Metadata keys a split stamps on every child document.
-
-    Split-owned vocabulary. A key that crosses a file boundary belongs in
-    :class:`~kompend.core.models.enums.MetadataField`; promoting these four is a
-    follow-up for the models owner (this change is confined to the pipeline and
-    preprocessing seams). Until then they live here so no call site writes a
-    bare literal.
-    """
-
-    #: Stem of the packet this child was cut from. Figure/attachment
-    #: attribution resolves child → parent through this key.
-    PARENT_STEM = "_split_parent_stem"
-    #: Parent's source path, relative POSIX — the attachment owner.
-    PARENT_SOURCE = "_split_parent_source"
-    #: Inclusive page range of this child, ``"p005-009"``.
-    PAGES = "_split_pages"
-    #: Category id the judge assigned, when it assigned one.
-    CATEGORY = "_split_category"
-    #: Identity of the decision tier and the rules digest that produced the
-    #: split — a child's cache identity carries both.
-    DECIDED_BY = "_split_decided_by"
-    RULES_SHA256 = "_split_rules_sha256"
+#: The split's provenance keys, in the order a child document stamps them.
+#:
+#: The vocabulary lives in :class:`~kompend.core.models.enums.MetadataField`
+#: because these keys cross file boundaries — splitting writes them and figure
+#: attribution reads them. This tuple is the package's ordering, so "every
+#: split key" is asked once and no call site retypes a key.
+SPLIT_FIELDS: Final[tuple[MetadataField, ...]] = (
+    MetadataField.SPLIT_PARENT_STEM,
+    MetadataField.SPLIT_PARENT_SOURCE,
+    MetadataField.SPLIT_PAGES,
+    MetadataField.SPLIT_CATEGORY,
+    MetadataField.SPLIT_DECIDED_BY,
+    MetadataField.SPLIT_RULES_SHA256,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,12 +274,12 @@ def partition_document(
         elements = [element for element in document.elements if element.page is not None and segment.covers(element.page)]
         child_source = child_source_path(parent_source, segment)
         metadata = copy.deepcopy(document.metadata or {})
-        metadata[SplitMetadata.PARENT_STEM.value] = parent_source.stem
-        metadata[SplitMetadata.PARENT_SOURCE.value] = parent_source.as_posix()
-        metadata[SplitMetadata.PAGES.value] = segment.label()
-        metadata[SplitMetadata.CATEGORY.value] = segment.category or ""
-        metadata[SplitMetadata.DECIDED_BY.value] = decided_by
-        metadata[SplitMetadata.RULES_SHA256.value] = rules_sha256
+        metadata[MetadataField.SPLIT_PARENT_STEM.value] = parent_source.stem
+        metadata[MetadataField.SPLIT_PARENT_SOURCE.value] = parent_source.as_posix()
+        metadata[MetadataField.SPLIT_PAGES.value] = segment.label()
+        metadata[MetadataField.SPLIT_CATEGORY.value] = segment.category or ""
+        metadata[MetadataField.SPLIT_DECIDED_BY.value] = decided_by
+        metadata[MetadataField.SPLIT_RULES_SHA256.value] = rules_sha256
         children.append(
             ParsedDocument(
                 source_file=child_source,

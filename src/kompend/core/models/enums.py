@@ -256,6 +256,22 @@ class MetadataField(StrEnum):
     CONTEXT = "context"
     """Surrounding context carried by an element's metadata."""
 
+    # Split provenance — stamped by ``preprocessing.splitting`` on every child
+    # document of a page-range cut and read back by figure attribution. The
+    # values are contract: a child's virtual source path is built from them.
+    SPLIT_PARENT_STEM = "_split_parent_stem"
+    """Stem of the packet a child source was cut from."""
+    SPLIT_PARENT_SOURCE = "_split_parent_source"
+    """Parent source path (relative POSIX) — the attachment owner."""
+    SPLIT_PAGES = "_split_pages"
+    """Inclusive page range of the child, e.g. ``p005-009``."""
+    SPLIT_CATEGORY = "_split_category"
+    """Category id the split judge assigned, when it assigned one."""
+    SPLIT_DECIDED_BY = "_split_decided_by"
+    """Identity of the decision tier that produced the split."""
+    SPLIT_RULES_SHA256 = "_split_rules_sha256"
+    """Digest of the split rules the decision was made under."""
+
 
 class NodeType(StrEnum):
     """Canonical wiki node types — the ``WikiNode.node_type`` vocabulary.
