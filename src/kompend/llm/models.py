@@ -36,6 +36,7 @@ import os
 import pkgutil
 import re
 from importlib import import_module
+from typing import Any
 
 import llmdb
 import pydantic_ai.providers
@@ -51,7 +52,7 @@ from pydantic_ai.settings import ModelSettings
 # startup and smoke spawns pay that cost on every run without ever building
 # a model. Only the pydantic-ai core stays module-level (agents subclass it
 # regardless).
-from kompend.llm import catalog
+from kompend.llm import catalog, user_providers
 from kompend.llm.constants import OLLAMA_CONTEXT_LENGTH_ENV, OLLAMA_DEFAULT_BASE_URL
 
 # ── public API ─────────────────────────────────────────────────────────
@@ -514,6 +515,12 @@ def build_decision_model(model_string: str) -> Model:
     uses. Providers that serve one (TypeSafe's Jev, Ollama's Clef) expose that
     endpoint on the same base URL as their other models, so the provider block
     is reused unchanged.
+
+    The endpoint is read from the resolved configuration, never guessed. A
+    provider the user configured wins, whether or not ``resolve_config()`` has
+    run yet; only the SDK's own SystemOne provider (``typesafe/...``) may use
+    the SDK default endpoint. Anything else raises instead of sending the
+    request somewhere the user never named.
     """
     typesafe_models = import_module("pydantic_ai.models.typesafe")
     typesafe_providers = import_module("pydantic_ai.providers.typesafe")
@@ -521,10 +528,17 @@ def build_decision_model(model_string: str) -> Model:
     provider_id, _, model_name = model_string.partition("/")
     if not model_name:
         raise ValueError(f"Decision model must be 'provider/model', got {model_string!r}")
-    provider = _user_providers.get(provider_id) or {}
+    provider = _registered_user_providers().get(provider_id) or {}
     base_url = _decision_base_url(provider.get("base_url"))
     api_key = provider.get("api_key")
     if not base_url and not api_key:
+        if not _is_systemone_provider(provider_id):
+            raise ValueError(
+                f"Decision model provider {provider_id!r} is not configured: no [providers.{provider_id}] block with a base_url, "
+                f"and the SDK's own SystemOne endpoint is not this provider's - using it would send the request somewhere the user "
+                f"never named. Add [providers.{provider_id}] (base_url + api_key) or use the SDK's own SystemOne provider "
+                f"(typesafe/jev-latest). Got: {model_string!r}"
+            )
         return typesafe_models.TypeSafeModel(model_name)
     if base_url:
         # The SDK zstd-frames bodies >= 1 KiB by default; systemone endpoints
@@ -538,6 +552,48 @@ def build_decision_model(model_string: str) -> Model:
         client = typesafe_sdk.AsyncTypeSafeClient(api_key=api_key, base_url=base_url, compression=False)
         return typesafe_models.TypeSafeModel(model_name, provider=typesafe_providers.TypeSafeProvider(typesafe_client=client))
     return typesafe_models.TypeSafeModel(model_name, provider=typesafe_providers.TypeSafeProvider(api_key=api_key))
+
+
+def _registered_user_providers() -> dict[str, dict[str, Any]]:
+    """The user-provider table, resolved from config if no caller has yet.
+
+    :func:`set_user_providers` runs as a side effect of ``resolve_config()``,
+    so before the first resolution the table is empty and a model built early
+    would silently talk to the SDK default endpoint. Resolving the config here
+    makes the endpoint a consequence of the configuration rather than of the
+    order in which some caller happened to resolve it. The flag distinguishes
+    "no providers configured" (already resolved, stays empty) from "nobody has
+    looked yet" (resolve, once).
+
+    The fallback resolves the *ambient* configuration - the project discovered
+    from the working directory - because a caller that never resolved anything
+    has no other base directory to offer. Every pipeline entry point resolves
+    first, so in practice this is the early-caller path only.
+
+    ``kompend.core.config`` is imported inside the function because an
+    import-graph cycle would form at module level; the ``import_module`` call
+    is the .agents/CODE.md runtime-only-import pattern, not a local import.
+    """
+    if user_providers._registry_state.resolved:
+        return _user_providers
+    import_module("kompend.core.config").resolve_config()
+    return _user_providers
+
+
+def _is_systemone_provider(provider_id: str) -> bool:
+    """Whether *provider_id* IS the SDK's own SystemOne endpoint family.
+
+    Only there may the SDK default endpoint stand in for configuration: the
+    ``typesafe`` provider is the one whose class speaks ``/v1/systemone`` and
+    reads ``TYPESAFE_API_KEY`` itself. Every other provider - ``ollama`` and
+    its chat family included - has a base URL of its own, so the SDK default
+    would send its requests to a host the user never named.
+    """
+    try:
+        provider_cls = infer_provider_class(provider_id)
+    except ValueError:
+        return False
+    return provider_cls is import_module("pydantic_ai.providers.typesafe").TypeSafeProvider
 
 
 def _decision_base_url(base_url: str | None) -> str | None:

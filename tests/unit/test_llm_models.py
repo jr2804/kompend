@@ -20,9 +20,10 @@ from pydantic_ai.providers.anthropic import AnthropicProvider
 from pydantic_ai.providers.ollama import OllamaProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
+import kompend.core.config as config_pkg
 import kompend.llm.models as mod
 from kompend.core.config._configs import ProviderEndpoint
-from kompend.llm import catalog
+from kompend.llm import catalog, user_providers
 from kompend.llm.models import (
     OLLAMA_CONTEXT_LENGTH_ENV,
     _resolve_env_ref,
@@ -403,6 +404,53 @@ class TestBuildDecisionModel:
     def test_missing_model_name_raises(self) -> None:
         with pytest.raises(ValueError, match="provider/model"):
             build_decision_model("clef")
+
+    def test_a_model_built_before_any_resolution_uses_the_configured_endpoint(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The endpoint follows the CONFIG, not the order a caller resolved it.
+
+        ``set_user_providers`` runs as a side effect of ``resolve_config``, so a
+        decision model built first used to read an empty table and fall into
+        the SDK-default branch - the user's ``ollama-cloud`` block was silently
+        ignored and the request went to api.typesafe.ai, which answers
+        "Unknown model: clef". The registry is empty here on purpose; the
+        builder resolves the configuration itself before choosing an endpoint.
+        """
+        set_user_providers({})
+        user_providers._registry_state.resolved = False
+        user_providers._user_providers.clear()
+        resolved: list[str] = []
+
+        def _resolve_config(*args: object, **kwargs: object) -> None:
+            resolved.append("called")
+            set_user_providers({"ollama-cloud": {"base_url": "https://ollama.com/v1", "api_key": "sk-key"}})
+
+        monkeypatch.setattr(config_pkg, "resolve_config", _resolve_config)
+
+        m = build_decision_model("ollama-cloud/clef")
+
+        assert resolved == ["called"]
+        assert isinstance(m, TypeSafeModel)
+        assert m.base_url == "https://ollama.com"
+
+    def test_a_genuine_systemone_model_still_uses_the_sdk_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """An SDK-native decision model needs no user block: that path is real."""
+        monkeypatch.setenv("TYPESAFE_API_KEY", "test-key")
+        set_user_providers({})
+        monkeypatch.setattr(config_pkg, "resolve_config", lambda *args, **kwargs: None)
+
+        m = build_decision_model("typesafe/jev-latest")
+
+        assert isinstance(m, TypeSafeModel)
+        assert m.base_url == "https://api.typesafe.ai"
+
+    def test_an_unconfigured_provider_fails_instead_of_guessing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A provider nobody configured must not fall back to the SDK default."""
+        monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+        set_user_providers({})
+        monkeypatch.setattr(config_pkg, "resolve_config", lambda *args, **kwargs: None)
+
+        with pytest.raises(ValueError, match="not configured"):
+            build_decision_model("typo-cloud/clef")
 
 
 # ── resolve_model_limits ───────────────────────────────────────────────

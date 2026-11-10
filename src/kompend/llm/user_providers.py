@@ -8,6 +8,7 @@ openai, ollama, …) on every ``kompend`` invocation — including ``--help``.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from kompend.llm import provider_id_of
@@ -15,7 +16,7 @@ from kompend.logging import get_logger
 
 logger = get_logger(__name__)
 
-__all__ = ["_user_providers", "effective_workers", "provider_max_connections", "set_user_providers"]
+__all__ = ["_registry_state", "_user_providers", "effective_workers", "provider_max_connections", "set_user_providers"]
 
 
 #: Provider-level keys that left the schema and now migrate to a canonical key.
@@ -27,6 +28,20 @@ _DEPRECATED_PROVIDER_KEYS: dict[str, str] = {"context_window_cap": "context_wind
 #: (optional), models (optional; per-model settings keyed by model name, each
 #: with context_window).
 _user_providers: dict[str, dict[str, Any]] = {}
+
+
+#: Whether :func:`set_user_providers` has ever run in this process. Distinguishes
+#: "no providers configured" (resolved, stays empty) from "config not resolved
+#: yet" (nobody has looked), so a model built early can resolve the
+#: configuration itself exactly once instead of on every build.
+@dataclass(slots=True)
+class _RegistryState:
+    """Bookkeeping for the provider registry, separate from the entries."""
+
+    resolved: bool = False
+
+
+_registry_state: _RegistryState = _RegistryState()
 
 
 def set_user_providers(providers: dict[str, dict[str, Any]]) -> None:
@@ -44,6 +59,7 @@ def set_user_providers(providers: dict[str, dict[str, Any]]) -> None:
     for name, provider in providers.items():
         _migrate_deprecated_provider_keys(name, provider)
         _user_providers[name] = provider
+    _registry_state.resolved = True
 
 
 def _migrate_deprecated_provider_keys(name: str, provider: dict[str, Any]) -> None:

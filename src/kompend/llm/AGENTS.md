@@ -227,22 +227,22 @@ that class and treat the rest as unretryable.
 `kompend.llm.decision` holds the vocabulary for the optional **decision model**
 (TypeSafe SystemOne / Jev): `ErrorAction = Literal["retry", "skip", "abort"]`
 and `ErrorDecision` (only `action` — a decision model can fill choices and
-booleans, never free text). `DECISION_RESULT_TYPES` is the single registry of
-every result type kompend ships to a decision model (label → model class) and
-holds `CandidateVerdict` (the one-boolean source-search verdict), so a
-consumer imports it from one place; the doctor's offline schema check walks
-that registry (`../diagnostics/AGENTS.md`). The model itself is an ordinary
-agent (`kompend.agents.decision.DecisionAgent`) reached through pydantic-ai's
-`typesafe` provider, configured as
-`decision.enabled/model/api_key/base_url/timeout`. Every helper returns `None`
-when the sidecar is off or unreachable, so the deterministic classification
-stays the floor.
+booleans, never free text). `DECISION_RESULT_TYPES` maps every result type
+kompend ships to a decision model to its class, `CandidateVerdict` included;
+the doctor's offline schema check walks it (`../diagnostics/AGENTS.md`). The
+model is an ordinary agent (`kompend.agents.decision.DecisionAgent`) reached
+through pydantic-ai's `typesafe` provider; `decision.enabled/model/timeout`
+name it, `[providers.*]` carries the credentials. Every helper returns `None`
+when the sidecar is off or unreachable, so the deterministic floor holds.
+**The decision endpoint follows the config, not the call order**:
+`build_decision_model` resolves the config itself when nobody has yet, and a
+provider nobody configured raises rather than trusting the SDK default — a
+wrong endpoint is worse than an honest failure; only `typesafe/...` may use it.
 
 `build_decision_model` sends decision payloads uncompressed
 (`compression=False`): the SDK zstd-compresses bodies of 1 KiB and more, and
 third-party systemone endpoints (ollama.com) do not strip `Content-Encoding`
-— a zstd frame starts with `0x28` (`'('`), so the server fails with
-"invalid character '(' looking for beginning of value". api.typesafe.ai
+— the frame reaches them as JSON starting with `0x28` (`'('`). api.typesafe.ai
 decompresses natively; nothing else is assumed to.
 
 ## Verification

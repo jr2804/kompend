@@ -16,6 +16,8 @@ import pytest
 from pydantic import BaseModel, Field, create_model
 from pydantic_ai.models.typesafe import TypeSafeModel
 
+from kompend.agents import decision as decision_agents
+from kompend.agents import decision_probe
 from kompend.agents.decision_probe import DecisionProbeResult
 from kompend.core.config import DecisionConfig
 from kompend.core.utils.exceptions import LLMOutputError
@@ -29,6 +31,7 @@ from kompend.diagnostics.decision import (
 )
 from kompend.diagnostics.runner import run_doctor
 from kompend.llm.decision import DECISION_RESULT_TYPES, CandidateVerdict
+from kompend.llm.models import build_decision_model
 
 
 class _BatchedVerdicts(BaseModel):
@@ -211,6 +214,26 @@ class TestDecisionChecksInTheRun:
         assert names.index(DECISION_SCHEMA_CHECK) < names.index(DECISION_CONNECTIVITY_CHECK)
         assert names.index(DECISION_CONNECTIVITY_CHECK) < names.index("connectivity-llm")
         assert names.index("output-directory") < names.index(DECISION_SCHEMA_CHECK)
+
+
+class TestTheDoctorJudgesTheRuntimeEndpoint:
+    """One endpoint, one builder - a doctor that pings elsewhere proves nothing."""
+
+    def test_the_probe_and_every_runtime_decision_agent_share_one_builder(self) -> None:
+        assert decision_probe.SPEC.model_builder is build_decision_model
+        assert decision_agents.SPEC_DECISION.model_builder is build_decision_model
+        assert decision_agents.SPEC_ADAPTATION.model_builder is build_decision_model
+        assert decision_agents.SPEC_QUERY_INTENT.model_builder is build_decision_model
+        assert decision_agents.SPEC_FIGURE_RELEVANCE.model_builder is build_decision_model
+
+    def test_an_unconfigured_provider_reaches_the_doctor_as_a_failure(self) -> None:
+        """The endpoint defect the builder now refuses must surface as a check."""
+        result = check_decision_connectivity(DecisionConfig(enabled=True, model="typo-cloud/clef"))
+
+        assert result.passed is False
+        assert result.warning is False
+        assert "not configured" in result.message
+        assert "typo-cloud/clef" in result.message
 
 
 def _overwide_choice(option_count: int) -> type[BaseModel]:
