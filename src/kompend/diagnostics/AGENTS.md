@@ -49,8 +49,13 @@ never raises.
   keeps its deterministic fallbacks — and a FAILURE when a configured model
   cannot answer. The offline schema check never touches the network: it builds
   the request the grammar would build for every type in
-  `llm.decision.DECISION_RESULT_TYPES`, and if the pydantic-ai internals it reads
-  move, it reports that as a warning instead of passing silently.
+  `llm.decision.DECISION_RESULT_TYPES` and for one representative of the dynamic
+  split-boundary family (`boundary_verdict_model`, validated at the six-page
+  `SourceSplitter.min_pages` floor), judged against the caps the shipped
+  `TypeSafeModel` declares rather than against no limits at all — a cap copied
+  into this package would be the first thing to go stale. If the pydantic-ai
+  internals it reads move, it reports that as a warning instead of passing
+  silently, and an unimportable splitting package is a warning too.
 - **One side effect, one place.** `providers.check_catalogue()` calls
   `catalog.ensure_fresh()` (TTL-gated) and is the only refresher of the
   models.dev cache in the process; no other check writes anything, and none

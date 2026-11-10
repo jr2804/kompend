@@ -8,8 +8,11 @@ to its fallback, and a dead endpoint degrades it to the deterministic
 classifier — so the doctor asks both questions directly.
 
 - :func:`check_decision_schema` is offline: it builds the request the model
-  would build for every shipped result type and lets the decision grammar
-  judge it, with no endpoint and no api key involved.
+  would build for every shipped result type — the four static ones in
+  :data:`kompend.llm.decision.DECISION_RESULT_TYPES` and one representative of
+  the dynamic split-boundary family — and lets the decision grammar judge it
+  against the caps the shipped model enforces, with no endpoint and no api key
+  involved.
 - :func:`check_decision_connectivity` is one live request through the same
   agent the pipeline uses, so the reported cause is the real one (401, 404,
   the zstd frame, a timeout, a refused connection).
@@ -43,6 +46,17 @@ _GRAMMAR_MODULE: Final[str] = "pydantic_ai.models.decision"
 #: The module that builds the output tool the grammar reads.
 _OUTPUT_MODULE: Final[str] = "pydantic_ai._output"
 
+#: The shipped decision model, read by name for the caps its endpoint enforces.
+_DECISION_MODEL_MODULE: Final[str] = "pydantic_ai.models.typesafe"
+
+#: The public factory of the dynamic split-boundary verdict model.
+_SPLITTING_MODULE: Final[str] = "kompend.preprocessing.splitting"
+
+#: The packet length a split-boundary verdict is validated at: ``SourceSplitter``
+#: defaults ``min_pages`` to six, so six is the narrowest packet that reaches a
+#: judge, and the verdict then carries the five candidate cut points.
+_BOUNDARY_PAGES: Final[int] = 6
+
 #: What a failed ping may raise, as a closed set: the agent base maps every
 #: provider failure to :class:`LLMOutputError`; the grammar and the model
 #: builder raise ``UserError``/``ValueError``; a broken provider module raises
@@ -56,34 +70,81 @@ def check_decision_schema() -> CheckResult:
     """Validate every shipped decision result type against the real grammar.
 
     The grammar decides whether a result type can be asked at all, before any
-    request is sent: a list of models is refused outright, while a list of
-    string options is accepted and then collapses verdicts. Both make a tier
-    degrade without an error, which is exactly what this check reports — one
-    verdict per type, with the grammar's own stated cause.
+    request is sent: a list of models is refused outright, a list of string
+    options is accepted and then collapses verdicts, and a pick-one wider than
+    the endpoint's cap is refused too. All three make a tier degrade without an
+    error, which is exactly what this check reports — one verdict per type, with
+    the grammar's own stated cause.
+
+    The dynamic split-boundary family cannot be enumerated: it mints one boolean
+    per candidate cut, so its shape varies per packet. One representative is
+    validated instead, so a regression that only shows on wider packets is not
+    reported as clean for the whole family.
     """
     name = DECISION_SCHEMA_CHECK
     try:
         grammar = import_module(_GRAMMAR_MODULE)
         output = import_module(_OUTPUT_MODULE)
-        limits = grammar._Limits(choice_options=None, score_levels=None, requires_instructions=False, questions=None)
+        limits = _shipped_limits(grammar)
         build_toolset = output.OutputToolset.build
     except (ImportError, AttributeError) as exc:
         return CheckResult(name, True, f"decision grammar could not be validated: pydantic-ai internals changed ({exc})", warning=True)
 
+    family: list[tuple[str, type[BaseModel]]] = list(DECISION_RESULT_TYPES)
+    unchecked: str | None = None
+    try:
+        family.append((f"split-boundary-verdict({_BOUNDARY_PAGES} pages)", _split_boundary_result_type()))
+    except (ImportError, AttributeError, ValueError) as exc:
+        # The splitting package is optional for a doctor run on a tree where it is
+        # not installed; an unvalidated family is a warning, never a failure.
+        unchecked = f"the dynamic split-boundary verdict went unchecked ({exc})"
+
     accepted: list[str] = []
     refusals: list[str] = []
     questions = 0
-    for label, result_type in DECISION_RESULT_TYPES:
+    for label, result_type in family:
         tool = _output_tool(build_toolset, result_type)
         if grammar._expressible(tool, None, limits):
             accepted.append(label)
             questions += len(grammar._questions(grammar._fields(tool), tool, None, limits, label=None))
         else:
             refusals.append(f"{label}: {_refusal_cause(grammar, tool, limits)}")
+    suffix = f" — {unchecked}" if unchecked is not None else ""
     if refusals:
-        return CheckResult(name, False, "decision grammar refuses " + "; ".join(refusals))
+        return CheckResult(name, False, "decision grammar refuses " + "; ".join(refusals) + suffix)
     listed = ", ".join(accepted)
-    return CheckResult(name, True, f"{len(accepted)} decision result types accepted, {questions} typed questions ({listed})")
+    message = f"{len(accepted)} decision result types accepted, {questions} typed questions ({listed})"
+    return CheckResult(name, True, message + suffix, warning=unchecked is not None)
+
+
+def _shipped_limits(grammar: Any) -> Any:
+    """The ``_Limits`` the shipped decision model enforces, read from its class variables.
+
+    The real request-time limits come from the model class — a profile may refine
+    them, and the class's values are the fallback where it leaves them out — so
+    they are read here rather than repeated: Jev picks from at most 255 options
+    and scores at most 10 rubric levels today, and an upstream change to those
+    moves this check with it instead of letting it accept a type the endpoint
+    would refuse with a 400. The class inherits the grammar's own defaults, so a
+    cap it stops declaring falls back to the unbounded base by itself.
+    """
+    model_class = import_module(_DECISION_MODEL_MODULE).TypeSafeModel
+    return grammar._Limits(
+        choice_options=model_class.max_choice_options,
+        score_levels=model_class.max_score_levels,
+        requires_instructions=model_class.requires_instructions,
+        questions=model_class.max_questions,
+    )
+
+
+def _split_boundary_result_type() -> type[BaseModel]:
+    """One representative of the dynamic split-boundary verdict family.
+
+    Imported lazily: the doctor must not pull the preprocessing machinery in at
+    start-up for a check that is only about the result shape.
+    """
+    factory = import_module(_SPLITTING_MODULE).boundary_verdict_model
+    return factory(_BOUNDARY_PAGES)
 
 
 def check_decision_connectivity(config: DecisionConfig | None) -> CheckResult:

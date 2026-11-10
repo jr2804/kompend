@@ -9,10 +9,12 @@ endpoint degrades the same tiers silently in the other direction.
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
 
 import pytest
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, create_model
+from pydantic_ai.models.typesafe import TypeSafeModel
 
 from kompend.agents.decision_probe import DecisionProbeResult
 from kompend.core.config import DecisionConfig
@@ -35,6 +37,15 @@ class _BatchedVerdicts(BaseModel):
     verdicts: list[CandidateVerdict] = Field(description="One verdict per candidate.")
 
 
+def _overwide_choice(option_count: int) -> type[BaseModel]:
+    """A pick-one with *option_count* options, one past what the endpoint accepts."""
+    options = Enum("options", {f"option_{index}": f"option-{index}" for index in range(option_count)}, type=str)
+    return create_model(
+        "Overwide",
+        choice=(options, Field(description="Which option applies.")),
+    )
+
+
 class TestDecisionSchemaCheck:
     def test_it_accepts_every_shipped_result_type(self) -> None:
         result = check_decision_schema()
@@ -42,9 +53,15 @@ class TestDecisionSchemaCheck:
         assert result.name == DECISION_SCHEMA_CHECK
         assert result.passed
         assert not result.warning
-        assert f"{len(DECISION_RESULT_TYPES)} decision result types accepted" in result.message
+        assert f"{len(DECISION_RESULT_TYPES) + 1} decision result types accepted" in result.message
         for label, _ in DECISION_RESULT_TYPES:
             assert label in result.message
+
+    def test_the_dynamic_split_boundary_family_is_part_of_the_validated_set(self) -> None:
+        result = check_decision_schema()
+
+        assert result.passed
+        assert "split-boundary-verdict(6 pages)" in result.message
 
     def test_the_registry_names_are_the_documented_ones(self) -> None:
         names = [label for label, _ in DECISION_RESULT_TYPES]
@@ -64,6 +81,30 @@ class TestDecisionSchemaCheck:
         assert result.passed is False
         assert "batched-verdicts" in result.message
         assert "list must be of two or more string options" in result.message
+
+    def test_a_pick_one_past_the_endpoints_cap_is_refused(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cap = TypeSafeModel.max_choice_options
+        assert cap is not None
+        monkeypatch.setattr(
+            diagnostics_decision,
+            "DECISION_RESULT_TYPES",
+            (*DECISION_RESULT_TYPES, ("overwide-choice", _overwide_choice(cap + 1))),
+        )
+
+        result = check_decision_schema()
+
+        assert result.passed is False
+        assert "overwide-choice" in result.message
+        assert f"at most {cap} options" in result.message
+
+    def test_an_unimportable_splitting_package_warns_instead_of_failing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(diagnostics_decision, "_SPLITTING_MODULE", "kompend.preprocessing._no_such_package")
+
+        result = check_decision_schema()
+
+        assert result.passed is True
+        assert result.warning is True
+        assert "split-boundary verdict went unchecked" in result.message
 
     def test_moved_internals_warn_instead_of_passing_silently(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(diagnostics_decision, "_GRAMMAR_MODULE", "pydantic_ai.models._no_such_module")
