@@ -140,21 +140,6 @@ def _cancel_and_drain(future: concurrent.futures.Future[None], *, timeout: float
         future.result(timeout=timeout)
 
 
-async def _drain_tasks() -> None:
-    """Cancel every task on the companion loop except this one, and await them.
-
-    A task that is already unwinding a cancellation is awaited, not cancelled
-    again: a second cancel lands inside the task's ``finally`` block and the
-    cleanup it was doing — closing a listener, for one — never finishes.
-    """
-    tasks = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
-    for task in tasks:
-        if not task.cancelling():
-            task.cancel()
-    if tasks:
-        await asyncio.gather(*tasks, return_exceptions=True)
-
-
 def _drain_remaining(loop: asyncio.AbstractEventLoop, *, timeout: float) -> None:
     """Cancel what the server left behind, while its loop is still running.
 
@@ -171,6 +156,21 @@ def _drain_remaining(loop: asyncio.AbstractEventLoop, *, timeout: float) -> None
         pass  # best effort: the loop thread is a daemon and cannot hold exit
     except RuntimeError as exc:
         logger.debug("companion loop was already closed during teardown: %s", exc)
+
+
+async def _drain_tasks() -> None:
+    """Cancel every task on the companion loop except this one, and await them.
+
+    A task that is already unwinding a cancellation is awaited, not cancelled
+    again: a second cancel lands inside the task's ``finally`` block and the
+    cleanup it was doing — closing a listener, for one — never finishes.
+    """
+    tasks = [task for task in asyncio.all_tasks() if task is not asyncio.current_task()]
+    for task in tasks:
+        if not task.cancelling():
+            task.cancel()
+    if tasks:
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _as_companion(handle: object) -> _CompanionLoop:
