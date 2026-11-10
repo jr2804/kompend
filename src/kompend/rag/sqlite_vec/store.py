@@ -20,7 +20,6 @@ returns ``-bm25()`` (SQLite's bm25 is lower-is-better).
 
 from __future__ import annotations
 
-import contextlib
 import json
 import sqlite3
 from collections.abc import Sequence
@@ -258,8 +257,10 @@ class SqliteVecWikiStore:
         rebuild of the same path races the open handle.
         """
         if self._conn is not None:
-            with contextlib.suppress(Exception):
+            try:
                 self._conn.close()
+            except sqlite3.Error as exc:  # a close that already failed leaves nothing to repair, but say so
+                logger.debug("Closing the vector store at %s failed: %s", self.db_file, exc)
             self._conn = None
 
     # ── Staleness ────────────────────────────────────────────────────────

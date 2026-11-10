@@ -1,8 +1,11 @@
 """Tests for kompend Hybrid RAG — the sqlite-vec vector store."""
 
 import gc
+import logging
 import shutil
+import sqlite3
 from pathlib import Path
+from typing import cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -108,6 +111,29 @@ class TestSqliteVecWikiStore:
         store = SqliteVecWikiStore()
         store.close()
         store.close()  # should not raise
+
+    def test_close_records_a_sqlite_error_instead_of_hiding_it(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A close the daemon already refused is logged, not silently swallowed."""
+        store = SqliteVecWikiStore()
+        broken = MagicMock()
+        broken.close.side_effect = sqlite3.ProgrammingError("already closed")
+        store._conn = cast("sqlite3.Connection", broken)
+
+        with caplog.at_level(logging.DEBUG, logger="kompend.rag.sqlite_vec.store"):
+            store.close()
+
+        assert store._conn is None
+        assert any("Closing the vector store" in record.message for record in caplog.records)
+
+    def test_close_lets_a_non_sqlite_failure_escape(self) -> None:
+        """Only sqlite3.Error is a close race; anything else is a bug and must surface."""
+        store = SqliteVecWikiStore()
+        broken = MagicMock()
+        broken.close.side_effect = RuntimeError("boom")
+        store._conn = cast("sqlite3.Connection", broken)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            store.close()
 
     def test_open_existing_store_and_search(self, vectors_db: Path) -> None:
         """Opening an existing collection allows querying without rebuilding."""
