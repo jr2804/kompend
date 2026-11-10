@@ -35,6 +35,9 @@ from kompend.core.pipeline.backend_capture import (
     log_backend_banners,
     log_banner_lines,
 )
+from kompend.logging import get_logger
+
+logger = get_logger(__name__)
 
 #: Seconds to wait for a killed worker to disappear. A killed process normally
 #: exits at once; this only bounds a native library blocking in its finaliser.
@@ -145,15 +148,29 @@ class DeadlineWorker:
         if self._connection is not None:
             with suppress(OSError, ValueError):
                 self._connection.send(_STOP)
-            with suppress(Exception):
-                self._connection.close()
-            self._connection = None
+            self._close_connection()
         if self._process is not None:
             self._process.join(_REAP_TIMEOUT_S)
             if self._process.is_alive():
                 self._process.kill()
                 self._process.join(_REAP_TIMEOUT_S)
             self._process = None
+
+    def _close_connection(self) -> None:
+        """Close the parent's end, recording rather than swallowing a failure.
+
+        A ``multiprocessing.Connection`` raises the same pair a ``send`` does, so
+        the catch is no wider than the file's own statement of it; the failure
+        never fails the parse, but it is logged instead of vanishing.
+        """
+        connection = self._connection
+        if connection is None:
+            return
+        try:
+            connection.close()
+        except (OSError, ValueError) as exc:
+            logger.debug("Closing the parse worker's connection failed: %s", exc)
+        self._connection = None
 
     def _ensure_worker(self) -> None:
         if self._process is not None and self._process.is_alive():
@@ -179,9 +196,7 @@ class DeadlineWorker:
 
     def _kill(self) -> None:
         if self._connection is not None:
-            with suppress(Exception):
-                self._connection.close()
-            self._connection = None
+            self._close_connection()
         if self._process is not None:
             self._process.kill()
             self._process.join(_REAP_TIMEOUT_S)
