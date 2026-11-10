@@ -59,8 +59,8 @@ The base class provides:
   `build_model()` from a `provider/model` string; the `pydantic_ai.Agent` is
   built on first `run()`, so tests import the class without a running model
 - **Context management** — `build_fallback_compaction()`
-  (`context_manager.py`) is attached from the `context_manager` preset
-  (`"default"`/`"aggressive"`/`"sliding"`/`false`), tuned by
+  (`context_manager.py`) comes from the `context_manager` preset
+  (`"default"`/`"aggressive"`/`"sliding"`/`false`) and is tuned by
   `[compile.llm.compaction]` (`CompactionConfig`: `judge`, `keep_tokens`,
   `min_growth_tokens`). Default/aggressive is a `_PinningFallbackCompaction`
   whose first entry is a `GrowthGatedCompaction` around a `TieredCompaction`
@@ -69,18 +69,19 @@ The base class provides:
   tier first, stopping when the history fits); the second entry is a
   token-triggered `SlidingWindowCompaction` used only when the summarizer
   cannot answer (`UnexpectedModelBehavior`, pydantic/pydantic-ai#12307).
-  The `sliding` preset is `build_sliding_compaction()`:
-  a `_GuardedSlidingCompaction` trim with a token trigger (not just the
-  100-message count), the same pin, gate and per-trim log. Stack and tuning:
-  `docs/guides/model-context.md`.
+  The `sliding` preset is `build_sliding_compaction()`: a
+  `_GuardedSlidingCompaction` trim with a token trigger (not just the
+  100-message count) plus the same pin, gate and per-trim log. Stack and
+  tuning: `docs/guides/model-context.md`.
 - **Compaction invariants** — `_pin_first_user_turn` pins the task assignment
   (harness `pin()`, model-invisible) before any tier runs and every strategy
-  re-injects it; the gate re-arms only after `min_growth_tokens` of growth (a
-  fold invalidates the provider prompt cache from the rewrite point on); the
-  summary comes from `templates/compaction/doctrine.md.j2`. Every trim is
-  logged with kept/dropped counts and token estimates — a silent trim is
-  indistinguishable from no compaction. Never add a compaction path that
-  skips the pin, crops instead of folding, or fires on message count alone.
+  re-injects it; the gate re-arms only after `min_growth_tokens` of growth
+  since the last pass through it — a skip never moves the baseline, so growth
+  accumulates (a fold invalidates the provider prompt cache from the rewrite
+  point on); summaries come from `templates/compaction/doctrine.md.j2`;
+  every trim is logged with kept/dropped counts and token estimates — a silent
+  trim is indistinguishable from no compaction. Never add a compaction path
+  that skips the pin, crops instead of folding, or fires on message count alone.
   `compact_on_request: ClassVar[bool]` (default `False`) adds
   model-triggered `CompactOnRequest` for history-threading agents only.
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
@@ -239,9 +240,8 @@ it mirrors untrusted model output.
   consuming module (e.g. `kompend.compilation.schema.ExtractionOutput`).
   The package surface is attached **lazily** (`lazy_loader.attach`, mirroring
   `kompend.rag`): importing `kompend.agents` must not pull the pydantic-ai
-  stack — add a new agent by extending its module's list in the
-  `submod_attrs` map, never with a module-level import (measured: the eager
-  facade made every CLI spawn pay ~4-5 s of vendor import floor).
+  stack — extend the module's list in the `submod_attrs` map instead of adding
+  a module-level import (the eager facade cost ~4-5 s per CLI spawn).
 
 ## Relationship to other layers
 

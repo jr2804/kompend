@@ -479,6 +479,34 @@ class TestGrowthGate:
         focused = gate.with_focus("the API change")
 
         assert focused.min_growth_tokens == 7
+        assert focused._baseline_tokens == 123  # noqa: SLF001
+
+    async def test_skipped_requests_accumulate_growth_for_the_gate(self) -> None:
+        """A skip must not move the baseline, or the gate never re-opens.
+
+        Each request here grows the history by less than ``min_growth_tokens``,
+        so no single one may pass; growth has to accumulate across the skips
+        until the total since the last pass reaches the threshold.
+        """
+        strategy = _RecordingStrategy()
+        gate = GrowthGatedCompaction(strategy=cast(Any, strategy), min_growth_tokens=300)
+        ctx = _ctx()
+        ctx.messages[:] = _short_history()
+        request_context = _request_context(ctx.messages)
+
+        await gate.before_model_request(ctx, request_context)
+        assert strategy.before_calls == 1
+
+        # Each appended turn adds ~200 tokens: less than min_growth_tokens on its
+        # own, so the first one must skip, and the second one must pass because
+        # growth accumulated since the last pass (not since the last request).
+        ctx.messages.append(ModelRequest(parts=[UserPromptPart(content="step " + "padding " * 100)]))
+        await gate.before_model_request(ctx, request_context)
+        assert strategy.before_calls == 1
+
+        ctx.messages.append(ModelRequest(parts=[UserPromptPart(content="step " + "padding " * 100)]))
+        await gate.before_model_request(ctx, request_context)
+        assert strategy.before_calls == 2
 
     @staticmethod
     def _bulk(count: int) -> list[ModelMessage]:

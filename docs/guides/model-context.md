@@ -425,7 +425,10 @@ min_growth_tokens = 2048         # token growth that re-arms compaction
 `min_growth_tokens` exists because a fold rewrites older messages and
 invalidates the provider's prompt cache from the rewrite point on: re-folding
 a static oversized context would pay that cache write again while reclaiming
-nothing. A pass therefore runs only when the history actually grew.
+nothing. A pass therefore runs only when the history grew by
+`min_growth_tokens` since the last pass that was allowed through; a skipped
+request does not reset that baseline, so small increments accumulate until
+they add up to a pass.
 
 Agents that thread history across many turns additionally get the
 `compact_context` tool (model-triggered compaction at a natural break);

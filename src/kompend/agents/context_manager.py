@@ -149,11 +149,15 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
     prompt cache from the rewrite point onward. Re-firing on a static
     context would re-fold the same material on every request and pay that
     cache-write each time, reclaiming nothing. This wrapper tracks the
-    token count at the last compaction (``_baseline_tokens``) and skips the
-    wrapped strategy — returning the request context unchanged, raising
-    nothing — until the history grew by ``min_growth_tokens`` again. A skip
-    is not an error, so a surrounding ``FallbackCompaction`` still reserves
-    its fallback for genuine strategy failures.
+    token count after the last pass that was allowed through the gate
+    (``_baseline_tokens``) and skips the wrapped strategy — returning the
+    request context unchanged, raising nothing — until the history grew by
+    ``min_growth_tokens`` since that pass. A skipped request never moves the
+    baseline: growth accumulates across skips, so a history that gains less
+    than the threshold per request still re-arms the stack once the total
+    since the last pass reaches it. A skip is not an error, so a surrounding
+    ``FallbackCompaction`` still reserves its fallback for genuine strategy
+    failures.
 
     The wrapper marks the first user turn as pinned before delegating (see
     ``_pin_first_user_turn``), so the tiers and the sliding fallback keep
@@ -164,10 +168,14 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
     """The tiered stack to gate. Its own trigger decides when it would fire."""
 
     min_growth_tokens: int = _DEFAULT_MIN_GROWTH_TOKENS
-    """Token growth since the last compaction that re-arms the stack."""
+    """Token growth since the last pass through the gate that re-arms the stack."""
 
     _baseline_tokens: int | None = field(default=None, repr=False, compare=False)
-    """Estimated tokens after the last gated compaction; ``None`` until then."""
+    """Estimated tokens after the last pass allowed through the gate.
+
+    ``None`` means no pass has run yet, so the first request always passes.
+    A skipped request leaves it alone so growth keeps accumulating.
+    """
 
     def with_focus(self, focus: str) -> GrowthGatedCompaction[AgentDepsT]:
         """Forward the focus to the wrapped stack's focus-capable tiers."""
@@ -206,14 +214,13 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
         pinned = _pin_first_user_turn(list(ctx.messages))
         ctx.messages[:] = pinned
         if not self._gate_open(pinned):
-            self._baseline_tokens = estimate_context_tokens(pinned)
             return request_context
         request_context = await self.strategy.before_model_request(ctx, request_context)
         self._baseline_tokens = estimate_context_tokens(ctx.messages)
         return request_context
 
     def _gate_open(self, pinned: list[ModelMessage]) -> bool:
-        """Whether enough new material arrived since the last compaction."""
+        """Whether the context grew enough since the last pass through the gate."""
         if self._baseline_tokens is None:
             return True
         growth = estimate_context_tokens(pinned) - self._baseline_tokens
