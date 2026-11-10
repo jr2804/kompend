@@ -21,6 +21,7 @@ from pydantic_ai.models.fallback import FallbackModel
 
 from kompend.agents.kompend_model import KompendModel
 from kompend.llm.models import build_model, resolve_model_limits
+from kompend.logging import get_logger
 
 if TYPE_CHECKING:
     from pydantic_ai import RunContext
@@ -38,6 +39,8 @@ _CEILING_MARGIN_MIN: int = 256
 
 #: Chars-per-token used when the agent has no ``compile.llm`` config group.
 _FALLBACK_CHARS_PER_TOKEN: float = 4.0
+
+logger = get_logger(__name__)
 
 
 def build_top_level_model(agent: KompendAgentBase) -> Model:
@@ -107,10 +110,18 @@ def output_ceiling(agent: KompendAgentBase, messages: Sequence[ModelMessage]) ->
 
 
 def estimate_prompt_tokens(agent: KompendAgentBase, messages: Sequence[ModelMessage]) -> int | None:
-    """Rough token count of the request payload, ``None`` when unknown."""
+    """Rough token count of the request payload, ``None`` when unknown.
+
+    An estimate of zero is not an answer, so an unknown size is reported as
+    ``None`` and the caller skips the ceiling — the request itself is still
+    made (the estimate is a sizing aid, not a gate).
+    """
     try:
         payload = ModelMessagesTypeAdapter.dump_json(list(messages))
-    except Exception:  # noqa: BLE001 - an unmeasurable prompt must not break the call
+    except (ValueError, TypeError) as exc:
+        # ``dump_json`` signals an unserialisable message through pydantic's
+        # ``ValueError``-derived serialization errors; anything else is a bug.
+        logger.debug("Prompt size is unknown (%s): %s", type(exc).__name__, exc)
         return None
     chars_per_token = agent.llm.default_chars_per_token if agent.llm is not None else _FALLBACK_CHARS_PER_TOKEN
     return max(1, int(len(payload) / chars_per_token))

@@ -203,7 +203,7 @@ class RLMCapability(AbstractCapability[Any]):
                 return format_repl_result(result)
             except TimeoutError:
                 return f"Error: Code execution timed out after {cap._code_timeout} seconds."
-            except Exception as exc:  # noqa: BLE001 — surfaced to the model, not fatal
+            except Exception as exc:  # user code raises anything; the error goes back to the model
                 return f"Error executing code: {exc!s}"
 
         return toolset

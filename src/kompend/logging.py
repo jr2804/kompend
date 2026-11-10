@@ -153,7 +153,7 @@ class RunLogHandler(logging.Handler):
                 self._file.flush()
             else:
                 self._ring.append(line)
-        except Exception:  # noqa: BLE001 - a log write must never break the command
+        except Exception:  # a log write must never break the command
             self.handleError(record)
 
     def dump_ring(self, *, reason: str) -> None:
@@ -176,7 +176,7 @@ class RunLogHandler(logging.Handler):
             finally:
                 if lock is not None:
                     lock.release()
-        except Exception:  # noqa: BLE001 - a log write must never break the command
+        except Exception:  # a log write must never break the command
             logging.getLogger(__name__).debug("run-log ring dump failed", exc_info=True)
 
     def close(self) -> None:
@@ -228,7 +228,7 @@ def detach_run_log(*, failed: bool, reason: str = "") -> None:
             handler.dump_ring(reason=reason or "run failed")
         logging.root.removeHandler(handler)
         handler.close()
-    except Exception:  # noqa: BLE001 - teardown must not break the command
+    except Exception:  # teardown must not break the command
         logging.getLogger(__name__).debug("run log detach failed", exc_info=True)
 
 

@@ -77,7 +77,7 @@ class CliRunner:
             except CycloptsError as exc:
                 result.exit_code = _USAGE_ERROR_EXIT_CODE
                 result.stderr = f"{exc}\n"
-            except BaseException as exc:  # noqa: BLE001 — the runner reports, it does not handle
+            except BaseException as exc:  # a runner reports SystemExit and KeyboardInterrupt too
                 if not catch_exceptions:
                     raise
                 result.exception = exc

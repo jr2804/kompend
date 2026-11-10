@@ -266,7 +266,7 @@ def load_enums(enums: list[tuple[str, str, list[str]]]) -> list[EnumEntry]:
     for module_name, class_name, consumers in enums:
         try:
             mod = importlib.import_module(module_name)
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:  # an import that fails is a finding, not a crash
             broken.append(f"{module_name}: import failed ({exc})")
             continue
         cls = getattr(mod, class_name, None)

@@ -64,7 +64,7 @@ def _reachable_enums() -> dict[str, str]:
         seen.add(cls)
         try:
             hints = typing.get_type_hints(cls)
-        except Exception as exc:  # noqa: BLE001 - a broken hint is a finding, not a crash
+        except Exception as exc:  # a broken hint is a finding, not a crash
             print(f"ERROR: cannot resolve annotations of {cls.__name__}: {exc}", file=sys.stderr)
             raise SystemExit(2) from exc
         for field_name, hint in hints.items():
