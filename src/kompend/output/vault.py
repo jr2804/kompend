@@ -180,33 +180,6 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
             out.append(new_img)
         return out
 
-    @staticmethod
-    def _attachment_owner_rel(img: ImageRef, base_dir: Path) -> str | None:
-        """The source path whose attachment directory owns *img*, if not its own.
-
-        Only a figure from a split child carries an owner: the child is virtual
-        (no file under ``sources/``), so the parent stamped into the chunk at
-        split time is the source whose attachments the figure belongs to. The
-        stamped value is absolute on the normal pipeline path (the parse stage
-        restores the real source path) and relative when a caller partitions a
-        document directly; both reduce to a ``sources/``-relative path here, so
-        ``attachment_slug()`` derives the same directory from either shape.
-        """
-        raw = img.get("attachment_owner")
-        if not isinstance(raw, str) or not raw:
-            return None
-        path = Path(raw)
-        if path.is_absolute():
-            try:
-                path = path.relative_to(base_dir)
-            except ValueError:
-                # An owner outside the vault cannot own an attachments/
-                # directory; its bare name still names a live source's slug.
-                path = Path(path.name)
-        prefix = f"{DEFAULT_SOURCES_DIR_NAME}/"
-        text = path.as_posix()
-        return text[len(prefix) :] if text.startswith(prefix) else text
-
     def _write_vault(self, docs: list[Document], wiki: CompiledWiki, output_dir: Path) -> Path:
         """Write each document as a separate ``.md`` file, plus index/log pages."""
         # Clear stale compile output so the on-disk vault exactly reflects the
@@ -320,6 +293,33 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
         except ValueError:
             return None
         return rel if rel.parts and rel.parts[0] == KOMP_DIR else None
+
+    @staticmethod
+    def _attachment_owner_rel(img: ImageRef, base_dir: Path) -> str | None:
+        """The source path whose attachment directory owns *img*, if not its own.
+
+        Only a figure from a split child carries an owner: the child is virtual
+        (no file under ``sources/``), so the parent stamped into the chunk at
+        split time is the source whose attachments the figure belongs to. The
+        stamped value is absolute on the normal pipeline path (the parse stage
+        restores the real source path) and relative when a caller partitions a
+        document directly; both reduce to a ``sources/``-relative path here, so
+        ``attachment_slug()`` derives the same directory from either shape.
+        """
+        raw = img.get("attachment_owner")
+        if not isinstance(raw, str) or not raw:
+            return None
+        path = Path(raw)
+        if path.is_absolute():
+            try:
+                path = path.relative_to(base_dir)
+            except ValueError:
+                # An owner outside the vault cannot own an attachments/
+                # directory; its bare name still names a live source's slug.
+                path = Path(path.name)
+        prefix = f"{DEFAULT_SOURCES_DIR_NAME}/"
+        text = path.as_posix()
+        return text[len(prefix) :] if text.startswith(prefix) else text
 
     @staticmethod
     def _build_related_edges(
