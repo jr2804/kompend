@@ -99,6 +99,32 @@ def test_noqa_codes_split_on_whitespace_as_ruff_does() -> None:
     assert module._collect_noqa_codes("# noqa: PLC0415, B008") == {"PLC0415", "B008"}
 
 
+def test_the_broad_except_markers_are_banned() -> None:
+    """A broad except is fixed, not silenced.
+
+    ``BLE001`` is not even a selected ruff rule, so the marker hid the shape
+    without silencing anything; ``S110`` silenced a live finding outright.
+    """
+    module = _antipatterns()
+
+    assert {"BLE001", "S110"} <= module.BANNED_NOQA
+
+    for code in ("BLE001", "S110"):
+        _, comments = module._split_comments(f"x = 1  # noqa: {code}")
+        found = module.scan_noqa_bans(Path("a.py"), comments)
+
+        assert [v.rule for v in found] == ["BANNED-NOQA"], code
+        assert code in found[0].message
+
+
+def test_the_banned_suppression_reaches_the_gate_scripts() -> None:
+    """The gate scripts are project code; a suppression there is a blind spot too."""
+    module = _antipatterns()
+
+    assert module.REPO_ROOT / "scripts" in module.NOQA_ROOTS
+    assert module.REPO_ROOT / ".config" / "mise" / "scripts" in module.NOQA_ROOTS
+
+
 def test_magic_crops_honours_a_bare_noqa_and_ignores_string_data() -> None:
     """A crop in a string is data; a bare ``# noqa`` is a valid opt-out."""
     module = _antipatterns()

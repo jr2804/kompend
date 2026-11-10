@@ -8,6 +8,10 @@ LLM-coding mistakes observed in this codebase:
   module level, no exceptions"). The original PLC0415 ruff warning is fine
   for the lint pass; this scanner additionally fails on the suppression
   comment so the only way past the rule is to actually fix the import.
+- ``# noqa: BLE001`` and ``# noqa: S110`` are BANNED for the same reason.
+  A broad ``except`` is fixed, not silenced: BLE001 is not even a selected
+  ruff rule, so the marker hid the shape without silencing anything, while
+  S110 silenced a live finding outright.
 - ``try/except ImportError`` guards are flagged as suspicious. Required
   dependencies must be imported at module level; the only legitimate use
   is probing an explicitly-optional package (declared in pyproject.toml's
@@ -92,6 +96,16 @@ from _common import ScanError, repo_root, require_scanned
 REPO_ROOT = repo_root()
 SRC_ROOT = REPO_ROOT / "src" / "kompend"
 TESTS_ROOT = REPO_ROOT / "tests"
+#: Roots for the banned-suppression rule. A suppression marker is wrong
+#: wherever it stands, and the gate scripts are project code too, so this
+#: rule covers every Python file the project owns while the other rules stay
+#: scoped to the package and the tests.
+NOQA_ROOTS: tuple[Path, ...] = (
+    SRC_ROOT,
+    TESTS_ROOT,
+    REPO_ROOT / "scripts",
+    REPO_ROOT / ".config" / "mise" / "scripts",
+)
 
 # Dependency installs go through uv alone. `pip install` / `uv pip install`
 # bypass uv.lock, so nothing is tracked and the environment stops being
@@ -118,6 +132,8 @@ _DOC_GLOBS: tuple[str, ...] = (
 BANNED_NOQA: frozenset[str] = frozenset(
     {
         "PLC0415",  # ban inline imports entirely
+        "BLE001",  # ban the marker that hides a broad except
+        "S110",  # ban silencing a live try/except/pass finding
     }
 )
 
@@ -275,15 +291,32 @@ def main() -> int:
     except ScanError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
+    noqa_roots = list(roots) if args.src else list(NOQA_ROOTS)
+    try:
+        noqa_files = discover_py_files(noqa_roots)
+    except ScanError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
     doc_files = discover_doc_files()
     # Per set, not on the sum: doc files are discovered repo-wide, so a sum
     # would let ``--src <empty dir>`` scan zero Python files and still pass.
     require_scanned(len(py_files), roots)
+    require_scanned(len(noqa_files), noqa_roots)
     require_scanned(len(doc_files), [REPO_ROOT])
     all_violations: list[Violation] = []
     try:
         for f in py_files:
             all_violations.extend(scan_file(f))
+    except ScanError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 2
+    # Files outside the scanned roots still carry comments, and a banned
+    # suppression in a gate script is as blind a spot as one in the package.
+    scanned = set(py_files)
+    try:
+        for f in noqa_files:
+            if f not in scanned:
+                all_violations.extend(scan_noqa_only(f))
     except ScanError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -309,7 +342,9 @@ def main() -> int:
     else:
         touched = len({v.file for v in all_violations})
         print(
-            f"check-antipatterns: {len(all_violations)} violation(s) in {touched} file(s) with findings, {len(py_files)} python + {len(doc_files)} doc scanned"
+            f"check-antipatterns: {len(all_violations)} violation(s) in {touched} file(s) with findings, "
+            f"{len(py_files)} python + {len(doc_files)} doc scanned, "
+            f"{len(noqa_files)} python checked for banned suppressions"
         )
         if by_rule:
             print("  by rule:")
@@ -650,6 +685,22 @@ def _vocab_enum_values() -> dict[str, set[str]]:
                 ):
                     value_map[stmt.value.value].add(node.name)
     return dict(value_map)
+
+
+def scan_noqa_only(path: Path) -> list[Violation]:
+    """Scan one file for banned suppressions only.
+
+    The other rules are scoped to the package and the tests; a suppression is
+    not, so this pass reaches the gate scripts as well. The file is read but
+    not parsed: a suppression is a comment, and a file that cannot be read is
+    still a gap in the scan.
+    """
+    try:
+        source = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        raise ScanError(f"cannot read {path}: {exc}") from exc
+    _, comments = _split_comments(source)
+    return scan_noqa_bans(path, comments)
 
 
 def scan_noqa_bans(path: Path, comments: dict[int, Comment]) -> list[Violation]:

@@ -46,7 +46,7 @@ The first five are instances of the universal magic-number rule
 (see `POLICIES.md`); rows 6–9 are kompend-specific. Three of them are enforced:
 `scripts/checks/check_field_consistency.py` (bare contract keys) and
 `scripts/checks/check_antipatterns.py` (env-var literals, magic crops, pip
-installs). Run both before committing — see `CHECKS.md`.
+installs, banned suppressions). Run both before committing — see `CHECKS.md`.
 
 ## Boundaries
 
@@ -107,9 +107,9 @@ The only valid `try/except` sites:
    `WARNING` so corruption stays visible.
 
 Forbidden: `except Exception: pass`, `except Exception: return None`,
-`# noqa: BLE001`/`S110` to silence a bare except, and catching a corrupt
-internal-state file (wiki cache, tier state, compile state) to reset it —
-corruption is a bug; raise.
+`# noqa: BLE001`/`S110` to silence a bare except (the gate rejects both), and
+catching a corrupt internal-state file (wiki cache, tier state, compile state)
+to reset it — corruption is a bug; raise.
 
 Removing a `try/except` that surfaces a real error to someone who needs it is
 the correct fix.
