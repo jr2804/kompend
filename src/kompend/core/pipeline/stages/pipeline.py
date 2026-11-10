@@ -45,6 +45,7 @@ from kompend.memory.lifecycle import update_memory_for_compile
 from kompend.output.base import BaseOutputWriter
 from kompend.preprocessing.downloaders.base import BaseDownloader
 from kompend.preprocessing.parsers.base import DocumentParser
+from kompend.preprocessing.splitting import SourceSplitter
 from kompend.resolution.base import BaseResolver
 from kompend.trust import filter_wiki
 from kompend.types import MetadataValue
@@ -84,6 +85,7 @@ class WikiPipeline:
         summarizer: NodeSummarizer | None = None,
         enricher: ContextualEnricher | None = None,
         cancel: CancelState | None = None,
+        splitter: SourceSplitter | None = None,
     ) -> None:
         self.config = config
         set_user_providers(config.providers)
@@ -96,6 +98,9 @@ class WikiPipeline:
         self.summarizer = summarizer
         self.enricher = enricher
         self.cancel = cancel
+        # Page-range splitting is off unless a splitter is handed in; the parse
+        # stage then behaves exactly as it did before the seam existed.
+        self.splitter = splitter
         self.base_directory = config.resolved_base_dir()
         self.state_store = state_store or TierStateStore(self._default_state_file(), self.base_directory)
         self._progress_callback: ProgressCallback | None = None
@@ -167,7 +172,7 @@ class WikiPipeline:
             if target_level >= Tier.level_of(Tier.INDEX):
                 run_index_tier(self)
             if target_level >= Tier.level_of(Tier.CHUNK):
-                parse_and_chunk(self)
+                parse_and_chunk(self, splitting=self.splitter)
             if target_level >= Tier.level_of(Tier.COMPILE):
                 run_compile_tier(self)
             if target_level >= Tier.level_of(Tier.OUTPUT):
@@ -361,13 +366,13 @@ class WikiPipeline:
             self.emit("index", 1, 1, "done")
         if self._should_run(Tier.CHUNK):
             _t0 = time.monotonic()
-            all_trees = parse_and_chunk(self)
+            all_trees = parse_and_chunk(self, splitting=self.splitter)
             self.last_chunk_count = sum(1 for t in all_trees for _ in t.leaves())
             self._tier_timings["chunk"] = time.monotonic() - _t0
             self._record_tier_state(1)
         if self._should_run(Tier.RESOLVE):
             if not all_trees:
-                all_trees = parse_and_chunk(self)
+                all_trees = parse_and_chunk(self, splitting=self.splitter)
             leaf_count = sum(1 for t in all_trees for _ in t.leaves())
             self.emit("resolve", 0, leaf_count, "starting")
             _t0 = time.monotonic()
@@ -377,7 +382,7 @@ class WikiPipeline:
             self.emit("resolve", len(resolved), len(resolved), "done")
         if self._should_run(Tier.COMPILE):
             if not resolved:
-                all_trees = parse_and_chunk(self)
+                all_trees = parse_and_chunk(self, splitting=self.splitter)
                 resolved = resolve_chunks(self, all_trees)
             self.emit("compile", 0, 1, "starting")
             _t0 = time.monotonic()

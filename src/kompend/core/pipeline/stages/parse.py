@@ -74,10 +74,10 @@ def parse_and_chunk(
     (knox-ty8f.8).
 
     *splitting* is the page-range splitter for this run (see
-    :mod:`kompend.preprocessing.splitting`). The default, ``None``, is the
-    pre-split behaviour: one tree per source. The parameter exists ahead of the
-    ``[preprocessing.split]`` config block so the wiring is one argument at the
-    call site that owns it.
+    :mod:`kompend.preprocessing.splitting`), built from ``[splitting]`` by
+    :func:`kompend.preprocessing.splitting.build_splitter`. The default,
+    ``None``, is the pre-split behaviour: one tree per source, no split ledger
+    row.
     """
     source_files = list(pipeline.iter_sources())
     if not source_files:

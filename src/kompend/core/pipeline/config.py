@@ -28,7 +28,7 @@ from kompend.core.config import (
     Tier,
     TierInfo,
 )
-from kompend.core.config._configs import DecisionConfig, SearchConfig
+from kompend.core.config._configs import DecisionConfig, SearchConfig, SplittingConfig
 from kompend.core.paths import VaultPaths
 from kompend.preprocessing.parsers.options import ParserOptions
 
@@ -110,6 +110,7 @@ class PipelineConfig:
     parser_options: ParserOptions = field(default_factory=ParserOptions)
     source_tags: list[str] = field(default_factory=list)  # CLI-provided source tags
     search: SearchConfig = field(default_factory=SearchConfig)  # search config (contextual enrichment gate lives here)
+    splitting: SplittingConfig = field(default_factory=SplittingConfig)  # multi-document packet splitting (opt-in; disabled → no splitter built)
     attachments_ingest_adopted: bool = False  # attachments.ingest_adopted: global gate — manifest flag AND this gate decides ingestion
     providers: dict[str, dict] = field(default_factory=dict)  # user-defined providers from [providers] section
 
@@ -221,6 +222,7 @@ class PipelineConfig:
             decision=kompend.decision,
             budget=budget_config,
             search=SearchConfig(**_kwargs_for(SearchConfig, "search")),
+            splitting=SplittingConfig(**_kwargs_for(SplittingConfig, "splitting")),
             output=output_config,
             embedding=embedding_config,
             display=display_config,

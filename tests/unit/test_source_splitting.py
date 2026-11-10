@@ -20,44 +20,70 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
+import yaml
+from pydantic import BaseModel, Field
+from pydantic_ai import _output
+from pydantic_ai.models import decision as decision_grammar
 
 from kompend.chunking.hierarchical import HierarchicalChunker
 from kompend.core.cache.store import CacheStore
+from kompend.core.config.models.decision import DecisionConfig
+from kompend.core.config.models.splitting import SplittingConfig
 from kompend.core.models import (
     ChunkTree,
     DocumentElement,
     ElementType,
     ParsedDocument,
 )
+from kompend.core.pipeline.config import Compiler, EmbeddingConfig, LLMConfig, PipelineConfig
 from kompend.core.pipeline.ingest import PARSE_CACHE_PARSER_KEY
 from kompend.core.pipeline.parse_cache import cache_key, write_document
 from kompend.core.pipeline.runtime import PipelineRuntime
+from kompend.core.pipeline.stages.factory import build_pipeline
 from kompend.core.pipeline.stages.parse_sources import _process_single_source  # noqa: PLC2701
 from kompend.core.pipeline.state import TierState, TierStateStore
 from kompend.core.reporting.ledger import stage_ledger
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import STAGES_TABLE
+from kompend.core.templates import get_template_loader
 from kompend.core.types import ReasonCode, StageOutcome
+from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.splitting import (
     LEDGER_DETAIL_CHARS,
+    DecisionModelSplitJudge,
     NeverSplit,
     PageText,
     SourceSplitter,
     SplitDecision,
+    SplitJudgeDeps,
+    SplitJudgeUnavailable,
     SplitMetadata,
     SplitPlan,
     SplitPlanError,
     SplitReason,
     SplitRule,
+    SplitRulesError,
     SplitSegment,
+    attachment_owner_stem,
+    boundary_field_name,
+    boundary_verdict_model,
+    build_splitter,
     child_source_path,
+    load_rules,
     page_range,
     page_texts,
+    parent_source_of,
+    parse_rules,
     partition_document,
+    plan_from_verdict,
+    render_pages,
+    render_rules,
+    spec_name,
     validate_plan,
 )
 from kompend.types import JSONDict, JSONList
+from tests.conftest import make_tmp_vault
 
 _PAGE_MARKER = re.compile(r"page (\d+) text")
 
@@ -123,6 +149,27 @@ class _StubRuntime:
 
     def apply_tags_to_tree(self, tree: ChunkTree, source_file: Path) -> None:  # noqa: ARG002
         return
+
+
+# ── The verdict the judge is asked for ─────────────────────────────────
+
+
+class _Grammar:
+    """The decision grammar's own view of a verdict model (no endpoint)."""
+
+    LIMITS = decision_grammar._Limits(choice_options=None, score_levels=None, requires_instructions=False, questions=None)
+
+    @classmethod
+    def questions(cls, model: type[BaseModel]) -> dict[str, Any]:
+        tool = cls.tool(model)
+        assert decision_grammar._expressible(tool, None, cls.LIMITS) is True
+        return dict(decision_grammar._questions(decision_grammar._fields(tool), tool, None, cls.LIMITS, label=None))
+
+    @staticmethod
+    def tool(model: type[BaseModel]) -> Any:
+        toolset = _output.OutputToolset.build(cast("list[Any]", [model]))
+        assert toolset is not None
+        return toolset._tool_defs[0]
 
 
 # ── validate_plan: the partition invariant ─────────────────────────────
@@ -426,18 +473,6 @@ def test_decide_never_sends_a_cropped_page_to_the_judge() -> None:
     assert long_page in judge.calls[0][1].text
 
 
-def _document(pages: int, *, base: Path = Path("sources/packet.pdf"), text: str = "body") -> ParsedDocument:
-    elements = [_element(page, f"{text} p{page}") for page in range(1, pages + 1)]
-    return ParsedDocument(source_file=base, elements=elements, title="Packet", page_count=pages)
-
-
-# ── Fixtures: documents ────────────────────────────────────────────────
-
-
-def _element(page: int | None, text: str = "", *, kind: ElementType = ElementType.TEXT) -> DocumentElement:
-    return DocumentElement(type=kind, content=text, page=page, reading_order=page)
-
-
 def test_no_splitter_returns_exactly_one_tree(tmp_path: Path) -> None:
     base = tmp_path / "vault"
     runtime, source = _split_runtime(base)
@@ -541,6 +576,360 @@ def test_children_get_independent_chunk_cache_entries(tmp_path: Path) -> None:
     assert [row["outcome"] for row in rows[-2:]] == [StageOutcome.CACHED.value, StageOutcome.CACHED.value]
 
 
+def test_skip_path_returns_an_empty_list(tmp_path: Path) -> None:
+    base = tmp_path / "vault"
+    base.mkdir(parents=True)
+    source = base / "unparsedable.zzz"
+    source.write_text("bytes", encoding="utf-8")
+    runtime = _StubRuntime(base)
+
+    with stage_ledger(vault_db_path(base)) as ledger:
+        assert _process_single_source(cast("PipelineRuntime", runtime), source, {}, HeavyParseGuard(), ledger, None) == []
+
+
+def _pages(tree: ChunkTree) -> list[int]:
+    """Page numbers of every page marker in the tree, in reading order.
+
+    Chunks carry no page field, so the fixture's "page N text" markers are the
+    only page evidence available downstream of chunking.
+    """
+    numbers: list[int] = []
+    for leaf in tree.leaves():
+        if leaf.chunk is None:
+            continue
+        numbers.extend(int(found) for found in _PAGE_MARKER.findall(leaf.chunk.text))
+    return numbers
+
+
+def _ledger_rows(base: Path, *, stage: str) -> list[Any]:
+    with open_store(vault_db_path(base)) as conn:
+        return conn.execute(f"SELECT * FROM {STAGES_TABLE} WHERE stage = ? ORDER BY id", (stage,)).fetchall()
+
+
+def test_the_verdict_asks_one_yes_no_question_per_candidate_cut_point() -> None:
+    """Seven pages have six seams, and the decision grammar carries each as a bool."""
+    questions = _Grammar.questions(boundary_verdict_model(7))
+
+    assert list(questions) == [boundary_field_name(index) for index in range(1, 7)]
+    assert {question.type for question in questions.values()} == {"noul"}
+
+
+def test_the_first_page_is_never_a_candidate() -> None:
+    """A packet's first page starts its first document, so there is no seam before it."""
+    assert list(_Grammar.questions(boundary_verdict_model(2))) == [boundary_field_name(1)]
+
+
+def test_a_page_count_with_no_seam_is_refused() -> None:
+    with pytest.raises(ValueError, match="at least two pages"):
+        boundary_verdict_model(1)
+
+
+def test_a_batched_list_of_verdicts_would_be_refused_by_the_grammar() -> None:
+    """Why the verdict is one bool per cut point and not a list of segment models."""
+
+    class _BatchedSegments(BaseModel):
+        """One model per segment."""
+
+        segments: list[SplitSegment] = Field(description="One model per segment.")
+
+    tool = _Grammar.tool(_BatchedSegments)
+    assert decision_grammar._expressible(tool, None, _Grammar.LIMITS) is False
+    with pytest.raises(Exception, match="list must be of two or more string options"):
+        decision_grammar._questions(decision_grammar._fields(tool), tool, None, _Grammar.LIMITS, label=None)
+
+
+def test_plan_from_verdict_closes_a_segment_at_every_answered_seam() -> None:
+    answers = {boundary_field_name(index): index in {2, 4} for index in range(1, 6)}
+    verdict = boundary_verdict_model(6)(**answers)
+
+    plan = plan_from_verdict(verdict, page_numbers=[1, 2, 3, 4, 5, 6], decided_by="jev", rules_sha256="abc")
+
+    assert [(segment.start_page, segment.end_page) for segment in plan.segments] == [(1, 2), (3, 4), (5, 6)]
+    assert plan.decided_by == "jev"
+    assert plan.rules_sha256 == "abc"
+
+
+def test_an_unanswered_seam_keeps_the_document_whole() -> None:
+    """A missing answer is not a boundary: the safest reading is continuation."""
+    verdict = boundary_verdict_model(4).model_construct(None, **{boundary_field_name(2): True})
+
+    plan = plan_from_verdict(verdict, page_numbers=[1, 2, 3, 4], decided_by="jev", rules_sha256="")
+
+    assert [(segment.start_page, segment.end_page) for segment in plan.segments] == [(1, 2), (3, 4)]
+
+
+def test_a_plan_from_the_verdict_always_partitions_the_packet() -> None:
+    verdict = boundary_verdict_model(5)(**{boundary_field_name(index): index % 2 == 0 for index in range(1, 5)})
+
+    plan = plan_from_verdict(verdict, page_numbers=[1, 2, 3, 4, 5], decided_by="jev", rules_sha256="")
+
+    validate_plan(plan, first_page=1, last_page=5)
+
+
+def test_the_judge_sees_every_page_under_its_own_marker() -> None:
+    pages = [PageText(page_number=number, text=f"text of {number}") for number in (1, 2, 3)]
+
+    rendered = render_pages(pages)
+
+    assert "<<< page 1 >>>\ntext of 1" in rendered
+    assert "<<< page 3 >>>\ntext of 3" in rendered
+
+
+def test_the_rules_are_rendered_as_the_categories_the_judge_may_use() -> None:
+    rules = (SplitRule(id="contract", description="An agreement."), SplitRule(id="amendment", description="Changes a contract."))
+
+    assert render_rules(rules).splitlines() == ["- contract: An agreement.", "- amendment: Changes a contract."]
+    assert render_rules(()) == "(no categories configured)"
+
+
+def test_the_spec_is_named_by_the_number_of_questions_it_asks() -> None:
+    """Materialised agent classes are cached per name, so the name carries the shape."""
+    assert spec_name(9) == spec_name(9)
+    assert spec_name(9) != spec_name(10)
+
+
+# ── The judge templates ────────────────────────────────────────────────
+
+
+def test_the_judge_templates_resolve_and_render() -> None:
+    """The judge lives outside ``kompend.agents``, so its templates need their own guard."""
+    loader = get_template_loader()
+    deps = SplitJudgeDeps(source_id="split-judge", pages="<<< page 1 >>>\nbody", rules="- contract: An agreement.")
+
+    body = loader.render("decision/split_boundary.md.j2", pages=deps.pages, rules=deps.rules)
+
+    assert "<<< page 1 >>>" in body
+    assert "- contract: An agreement." in body
+    assert "one typed question per page transition" in body
+    assert loader.get_body("decision/split_boundary_system.md.j2").strip()
+
+
+def test_the_judge_templates_declare_only_what_the_questions_carry() -> None:
+    meta = get_template_loader().get_meta("decision/split_boundary.md.j2")
+    assert {variable["name"] for variable in meta.variables} == {"pages", "rules"}
+
+
+# ── Rules ──────────────────────────────────────────────────────────────
+
+
+def test_the_built_in_rules_load_from_the_shipped_resource() -> None:
+    rules = load_rules()
+
+    ids = [rule.id for rule in rules]
+    assert "contract" in ids
+    assert "amendment" in ids
+    assert len(set(ids)) == len(ids)
+    assert all(rule.description for rule in rules)
+
+
+def test_rules_from_an_explicit_file_win(tmp_path: Path) -> None:
+    path = tmp_path / "rules.yaml"
+    path.write_text("categories:\n  - id: memo\n    description: An internal memo.\n", encoding="utf-8")
+
+    assert [rule.id for rule in load_rules(path)] == ["memo"]
+
+
+def test_an_unreadable_rules_file_is_an_error_not_an_empty_list(tmp_path: Path) -> None:
+    with pytest.raises(SplitRulesError, match="Cannot read splitting rules"):
+        load_rules(tmp_path / "absent.yaml")
+
+
+@pytest.mark.parametrize(
+    ("document", "match"),
+    [
+        ("categories: []", "non-empty 'categories' list"),
+        ("options: []", "unknown key\\(s\\): options"),
+        ("categories:\n  - description: no id\n", "needs an 'id'"),
+        ("categories:\n  - id: Bad Id\n    description: x\n", "needs an 'id'"),
+        ("categories:\n  - id: memo\n    description: x\n  - id: memo\n    description: y\n", "repeats the id 'memo'"),
+        ("categories:\n  - id: memo\n    description: '   '\n", "needs a non-empty 'description'"),
+        ("categories:\n  - id: memo\n    description: x\n    colour: red\n", "unknown key\\(s\\): colour"),
+    ],
+)
+def test_a_rules_file_that_is_half_understood_is_refused(document: str, match: str) -> None:
+    with pytest.raises(SplitRulesError, match=match):
+        parse_rules(yaml.safe_load(document), origin="inline")
+
+
+# ── Building the splitter from settings ────────────────────────────────
+
+
+def test_splitting_is_off_until_the_block_says_otherwise() -> None:
+    assert build_splitter(SplittingConfig(), DecisionConfig(), base_dir=Path("vault")) is None
+
+
+def test_an_enabled_block_without_a_model_still_wires_a_judge_that_declines() -> None:
+    """An operator who turned splitting on learns per source why nothing happened."""
+    splitter = build_splitter(SplittingConfig(enabled=True), DecisionConfig(), base_dir=Path("vault"))
+
+    assert splitter is not None
+    decision = splitter.decide(_document(8))
+    assert decision.reason is SplitReason.JUDGE_FAILED
+    assert "splitting.judge_model" in decision.detail
+    with pytest.raises(SplitJudgeUnavailable):
+        splitter.judge.plan_pages(page_texts(_document(8), first_page=1, last_page=8), ())
+
+
+def _document(pages: int, *, base: Path = Path("sources/packet.pdf"), text: str = "body") -> ParsedDocument:
+    elements = [_element(page, f"{text} p{page}") for page in range(1, pages + 1)]
+    return ParsedDocument(source_file=base, elements=elements, title="Packet", page_count=pages)
+
+
+# ── Fixtures: documents ────────────────────────────────────────────────
+
+
+def _element(page: int | None, text: str = "", *, kind: ElementType = ElementType.TEXT) -> DocumentElement:
+    return DocumentElement(type=kind, content=text, page=page, reading_order=page)
+
+
+def test_the_judge_model_falls_back_to_the_decision_section() -> None:
+    splitter = build_splitter(
+        SplittingConfig(enabled=True),
+        DecisionConfig(enabled=True, model="typesafe/jev-latest"),
+        base_dir=Path("vault"),
+    )
+
+    assert splitter is not None
+    assert isinstance(splitter.judge, DecisionModelSplitJudge)
+    assert splitter.judge.model_string == "typesafe/jev-latest"
+
+
+def test_a_judge_model_of_its_own_wins_over_the_decision_section() -> None:
+    splitter = build_splitter(
+        SplittingConfig(enabled=True, judge_model="ollama/clef"),
+        DecisionConfig(enabled=True, model="typesafe/jev-latest"),
+        base_dir=Path("vault"),
+    )
+
+    assert splitter is not None
+    assert isinstance(splitter.judge, DecisionModelSplitJudge)
+    assert splitter.judge.model_string == "ollama/clef"
+
+
+def test_the_settings_reach_the_splitter(tmp_path: Path) -> None:
+    path = tmp_path / "rules.yaml"
+    path.write_text("categories:\n  - id: memo\n    description: An internal memo.\n", encoding="utf-8")
+
+    splitter = build_splitter(
+        SplittingConfig(enabled=True, judge_model="ollama/clef", rules_file="rules.yaml", min_pages=4, max_page_chars=900),
+        DecisionConfig(),
+        base_dir=tmp_path,
+    )
+
+    assert splitter is not None
+    assert (splitter.min_pages, splitter.max_page_chars) == (4, 900)
+    assert [rule.id for rule in splitter.rules] == ["memo"]
+
+
+# ── Factory wiring ─────────────────────────────────────────────────────
+
+
+def test_the_factory_leaves_splitting_off_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    pipeline = _built_pipeline(monkeypatch, PipelineConfig(**_factory_kwargs()))
+
+    assert pipeline.splitter is None
+
+
+def test_the_factory_hands_an_enabled_splitter_to_the_pipeline(monkeypatch: pytest.MonkeyPatch) -> None:
+    config = PipelineConfig(**_factory_kwargs(splitting=SplittingConfig(enabled=True, judge_model="ollama/clef")))
+
+    pipeline = _built_pipeline(monkeypatch, config)
+
+    assert isinstance(pipeline.splitter, SourceSplitter)
+    assert pipeline.splitter.judge.model_string == "ollama/clef"
+
+
+def _factory_kwargs(**overrides: Any) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
+        "source_dir": make_tmp_vault(),
+        "output_dir": make_tmp_vault(),
+        "llm": LLMConfig(default_model="ollama/gpt-oss:20b", vlm_model="vlm"),
+        "embedding": EmbeddingConfig(model="hash"),
+        "compiler": Compiler.GRAPH,
+    }
+    kwargs.update(overrides)
+    return kwargs
+
+
+def _built_pipeline(monkeypatch: pytest.MonkeyPatch, config: PipelineConfig) -> Any:
+    """Build through the real factory without touching a model."""
+    monkeypatch.setattr(
+        "kompend.core.pipeline.stages.factory.discover_context_window",
+        lambda *a, **k: ContextWindow(max_input=8192, max_output=2048, source=ContextSource.FALLBACK),
+    )
+    return build_pipeline(config)
+
+
+# ── Provenance a split stamps onto its children ────────────────────────
+
+
+def test_a_child_names_the_parent_whose_attachments_it_keeps() -> None:
+    child = Path("sources/packet#p005-009.pdf")
+    stamped = {SplitMetadata.PARENT_STEM.value: "packet", SplitMetadata.PARENT_SOURCE.value: "sources/packet.pdf"}
+
+    assert attachment_owner_stem(child, stamped) == "packet"
+    assert parent_source_of(stamped) == Path("sources/packet.pdf")
+
+
+def test_an_ordinary_source_owns_its_own_attachments() -> None:
+    assert attachment_owner_stem(Path("sources/report.pdf"), {}) == "report"
+    assert attachment_owner_stem(None, {}) is None
+    assert parent_source_of({}) is None
+    assert parent_source_of(None) is None
+
+
+def test_a_child_chunk_carries_the_child_path_and_the_parent_link(tmp_path: Path) -> None:
+    """Extraction and export read the chunk, so the provenance must reach it."""
+    base = tmp_path / "vault"
+    runtime, source = _split_runtime(base)
+    splitting = SourceSplitter(judge=_FixedJudge([SplitSegment(1, 5), SplitSegment(6, 8)]), min_pages=2)
+
+    with stage_ledger(vault_db_path(base)) as ledger:
+        trees = _process_single_source(cast("PipelineRuntime", runtime), source, {}, HeavyParseGuard(), ledger, "test-chain", splitting=splitting)
+
+    first = trees[0]
+    leaves = [leaf for leaf in first.leaves() if leaf.chunk is not None]
+    assert leaves
+    for leaf in leaves:
+        assert leaf.chunk is not None
+        # The figure of a child's page must match a provenance entry, and
+        # provenance is keyed by the child's own stem.
+        assert leaf.chunk.source_file == first.source_file
+        assert leaf.chunk.source_file is not None
+        assert leaf.chunk.source_file.name == "packet#p001-005.md"
+        assert leaf.chunk.metadata[SplitMetadata.PARENT_STEM.value] == "packet"
+        assert leaf.chunk.metadata[SplitMetadata.PARENT_SOURCE.value] == source.as_posix()
+        assert leaf.chunk.metadata[SplitMetadata.PAGES.value] == "p001-005"
+
+
+def test_an_unsplit_source_gains_no_split_metadata(tmp_path: Path) -> None:
+    base = tmp_path / "vault"
+    runtime, source = _split_runtime(base)
+
+    with stage_ledger(vault_db_path(base)) as ledger:
+        trees = _process_single_source(cast("PipelineRuntime", runtime), source, {}, HeavyParseGuard(), ledger, "test-chain")
+
+    keys = {str(key.value) for key in SplitMetadata}
+    for leaf in trees[0].leaves():
+        if leaf.chunk is not None:
+            assert not keys & set(leaf.chunk.metadata)
+
+
+def test_a_child_keeps_its_provenance_through_the_chunk_cache(tmp_path: Path) -> None:
+    """The second run rebuilds the tree from cache; the provenance must survive."""
+    base = tmp_path / "vault"
+    runtime, source = _split_runtime(base)
+    splitting = SourceSplitter(judge=_FixedJudge([SplitSegment(1, 5), SplitSegment(6, 8)]), min_pages=2)
+
+    with stage_ledger(vault_db_path(base)) as ledger:
+        _process_single_source(cast("PipelineRuntime", runtime), source, {}, HeavyParseGuard(), ledger, "test-chain", splitting=splitting)
+        cached = _process_single_source(cast("PipelineRuntime", runtime), source, {}, HeavyParseGuard(), ledger, "test-chain", splitting=splitting)
+
+    leaves = [leaf for leaf in cached[0].leaves() if leaf.chunk is not None]
+    assert leaves
+    assert all(leaf.chunk.metadata[SplitMetadata.PARENT_STEM.value] == "packet" for leaf in leaves if leaf.chunk is not None)
+
+
 def _split_runtime(base: Path) -> tuple[Any, Path]:
     runtime = _StubRuntime(base, parser_identity="test-chain")
     source, _ = _seed(base, 8)
@@ -576,33 +965,3 @@ def _seed(base: Path, pages: int, *, stem: str = "packet") -> tuple[Path, str]:
     }
     write_document(vault_db_path(base), cache_key(source, content_hash), payload)
     return source, content_hash
-
-
-def test_skip_path_returns_an_empty_list(tmp_path: Path) -> None:
-    base = tmp_path / "vault"
-    base.mkdir(parents=True)
-    source = base / "unparsedable.zzz"
-    source.write_text("bytes", encoding="utf-8")
-    runtime = _StubRuntime(base)
-
-    with stage_ledger(vault_db_path(base)) as ledger:
-        assert _process_single_source(cast("PipelineRuntime", runtime), source, {}, HeavyParseGuard(), ledger, None) == []
-
-
-def _pages(tree: ChunkTree) -> list[int]:
-    """Page numbers of every page marker in the tree, in reading order.
-
-    Chunks carry no page field, so the fixture's "page N text" markers are the
-    only page evidence available downstream of chunking.
-    """
-    numbers: list[int] = []
-    for leaf in tree.leaves():
-        if leaf.chunk is None:
-            continue
-        numbers.extend(int(found) for found in _PAGE_MARKER.findall(leaf.chunk.text))
-    return numbers
-
-
-def _ledger_rows(base: Path, *, stage: str) -> list[Any]:
-    with open_store(vault_db_path(base)) as conn:
-        return conn.execute(f"SELECT * FROM {STAGES_TABLE} WHERE stage = ? ORDER BY id", (stage,)).fetchall()

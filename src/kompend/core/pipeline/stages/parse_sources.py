@@ -61,9 +61,11 @@ from kompend.preprocessing.splitting import (
     LEDGER_DETAIL_CHARS,
     SourceSplitter,
     SplitDecision,
+    SplitMetadata,
     SplitReason,
     partition_document,
 )
+from kompend.preprocessing.splitting._provenance import attachment_owner_stem, parent_source_of
 from kompend.trust import filter_sensitive
 
 #: Shared inert watchdog (zero budget): call sites hand it around without
@@ -245,7 +247,12 @@ def _split_documents(
         return [parsed]
 
     ledger.record(source, "split", outcome=StageOutcome.OK, detail=decision.ledger_detail())
-    logger.info("Split %s — %s", source, decision.summary())
+    logger.info(
+        "Split %s — %s (attachments stay with %s)",
+        source,
+        decision.summary(),
+        attachment_owner_stem(parsed.source_file, parsed.metadata) or source,
+    )
     return children
 
 
@@ -322,6 +329,7 @@ def _chunk_document(
     # Chunk and cache.
     chunk_start = time.perf_counter()
     tree = pipeline.chunker.chunk(document)
+    _stamp_split_provenance(tree, document)
     pipeline.apply_tags_to_tree(tree, tag_source)
     ledger.record(
         source_label,
@@ -350,6 +358,30 @@ def _chunk_document(
         pipeline.state_store.record(pipeline.state, document.source_file.stem, Path(source_label), content_hash, tier=1)
         pipeline.cache_store.set("chunk", deps, tree.to_dict())
     return tree
+
+
+def _stamp_split_provenance(tree: ChunkTree, document: ParsedDocument) -> None:
+    """Copy a split child's provenance onto every leaf chunk of *tree*.
+
+    A child document carries the split keys in ``ParsedDocument.metadata``, but
+    a chunk only inherits its *element*'s metadata — so a leaf of a child tree
+    would reach the compile and export stages knowing nothing about the packet
+    it came from. That matters twice: attachment lookup keys off the ingested
+    source's stem (the parent, since the child was never ingested on its own),
+    and a page's provenance should be traceable back to a file that exists.
+
+    The unsplit source has no such keys, so this is a no-op for it.
+    """
+    stamped = {str(key.value): value for key in SplitMetadata if (value := document.metadata.get(key.value))}
+    if not stamped:
+        return
+    parent = parent_source_of(document.metadata)
+    if parent is not None:
+        logger.debug("Chunked %s — cut out of %s", document.source_file, parent)
+    for node in tree.leaves():
+        if node.chunk is None:
+            continue
+        node.chunk.metadata.update(stamped)
 
 
 def _chunk_deps(pipeline: PipelineRuntime, content_hash: str, *, identity: str) -> dict[str, str]:

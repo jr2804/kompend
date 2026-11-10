@@ -742,6 +742,37 @@ enable = false                    # on/off switch
 # model = "ollama-cloud/clef"
 # timeout = 10.0
 
+# ── Splitting settings ────────────────────────────────────────────────
+# A packet that holds several documents in one file (a contract with its
+# amendments, an appendix, a bundle of letters) is cut into one virtual
+# source per document before chunking: `packet#p005-009`. Each child gets
+# its own stem, cache entries, state row and provenance; the parent keeps
+# its own copy of everything.
+#
+# The boundaries come from a decision model - a page count cannot tell an
+# amendment from a chapter. With no judge reachable the source is kept
+# whole and the ledger records the decline; there is no heuristic
+# stand-in. Splitting is opt-in because it changes identity: enable it on
+# a fresh vault, or expect the children to be re-parsed once.
+[splitting]
+# enabled = false
+# Full `provider/model` of the decision model that finds the boundaries.
+# Unset falls back to [decision] model (and its enabled flag).
+# judge_model = "ollama-cloud/clef"
+# Seconds one boundary question may take; a packet is bigger than a
+# classification, so this sits above decision.timeout.
+# judge_timeout = 20.0
+# Vault-relative YAML of document categories the judge may assign, or an
+# absolute path. Unset uses the rules shipped with kompend.
+# rules_file = "splitting-rules.yaml"
+# Fewest pages a source must have before a split is considered; below it
+# no judge call is spent.
+# min_pages = 6
+# Most characters one page may contribute to the judge's request. A page
+# above it declines the split - a cropped page is a page the judge never
+# saw.
+# max_page_chars = 12000
+
 [dedup]
 # enabled = false
 # matchers = "embedding,minhash"  # embedding, minhash

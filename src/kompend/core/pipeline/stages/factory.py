@@ -28,6 +28,8 @@ from kompend.llm.context_window import discover_context_window
 from kompend.logging import get_logger
 from kompend.output.base import BaseOutputWriter
 from kompend.preprocessing.parsers import build_parser
+from kompend.preprocessing.splitting import SourceSplitter
+from kompend.preprocessing.splitting._build import build_splitter
 from kompend.resolution.base import BaseResolver
 
 logger = get_logger(__name__)
@@ -65,6 +67,17 @@ def build_pipeline(
         raise ValueError(msg)
 
     parser = build_parser(config.parser_options)
+
+    # Page-range splitting is opt-in and needs no LLM to be *decided about*: a
+    # disabled block yields ``None`` and the parse stage keeps its pre-split
+    # behaviour exactly (one tree, no split ledger row). An enabled block with
+    # no judge reachable still yields a splitter, so the decline is recorded
+    # per source instead of the setting silently doing nothing.
+    splitter: SourceSplitter | None = build_splitter(
+        config.splitting,
+        config.decision,
+        base_dir=config.paths.base_dir,
+    )
 
     # T0 (index) and T1 (parse) run without an LLM — ``kompend ingest``
     # stops here. T2 (chunk) and beyond need the LLM for context-window
@@ -144,6 +157,7 @@ def build_pipeline(
         config=config,
         parser=parser,
         cancel=cancel,
+        splitter=splitter,
         chunker=HierarchicalChunker(
             context_window=chunker_context_window,
             chunk_size_min=config.budget.chunk_size_min,

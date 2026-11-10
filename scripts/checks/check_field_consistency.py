@@ -105,6 +105,7 @@ ALLOWLIST_SUFFIXES: list[str] = [
     "compilation/two_phase/core.py",  # ImageRef TypedDict literal
     "mcp/server.py",  # JSON-RPC protocol keys
     "llm/__init__.py",  # lazy_loader submod_attrs table: keys are module names
+    "preprocessing/splitting/_rules.py",  # parses a user-supplied YAML schema
 ]
 
 # Known-generic enum values to skip even outside allowlisted files.

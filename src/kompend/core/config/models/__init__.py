@@ -75,6 +75,7 @@ from kompend.core.config.models.search import (
     SearchRerankerConfig,
     SearchSynthesisConfig,
 )
+from kompend.core.config.models.splitting import SplittingConfig
 from kompend.core.vocab import ExportMode, LintOutput, LlmDataFormat, Verbosity
 
 __all__ = [
@@ -129,6 +130,7 @@ __all__ = [
     "SearchRerankerConfig",
     "SearchSynthesisConfig",
     "SkillConfig",
+    "SplittingConfig",
     "Tier",
     "TierInfo",
     "TrustConfig",

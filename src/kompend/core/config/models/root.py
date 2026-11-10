@@ -16,6 +16,7 @@ from kompend.core.config.models.llm import ProviderEndpoint
 from kompend.core.config.models.memory import DedupConfig
 from kompend.core.config.models.output import DisplayConfig, ExportConfig
 from kompend.core.config.models.search import QueryConfig, SearchConfig
+from kompend.core.config.models.splitting import SplittingConfig
 from kompend.core.keys import EnvVar
 from kompend.core.paths import CACHE_DIR, KOMP_DIR
 
@@ -85,6 +86,7 @@ class KompendConfig(_KompendBaseModel):
     notes: NotesConfig = Field(default_factory=NotesConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     ingest: IngestConfig = Field(default_factory=IngestConfig)
+    splitting: SplittingConfig = Field(default_factory=SplittingConfig)
     downloader: DownloaderConfig = Field(default_factory=DownloaderConfig)
     export: ExportConfig = Field(default_factory=ExportConfig)
     providers: dict[str, ProviderEndpoint] = Field(default_factory=dict)

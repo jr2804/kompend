@@ -1,0 +1,32 @@
+---
+variables:
+  - name: pages
+    required: true
+  - name: rules
+    required: true
+role: decision.split-boundary
+response_format: text
+temperature: 0.0
+---
+A single file holds one or more documents. Below is every page of it, in
+order, each marked with its page number.
+
+{{ pages }}
+
+The categories a document in this packet may belong to:
+
+{{ rules }}
+
+Answer one typed question per page transition: does the page after the
+transition begin a new document, rather than continue the one before it?
+
+A new document starts when the page begins its own title, heading block, date,
+reference number, parties, or signature block — a contract followed by its
+amendment, a letter followed by another letter, a body followed by an appendix
+or annex. A page that continues the argument, table, list or clause count of
+the page before it is not a new document, even when it carries a running
+header, a page number, or a repeated title line.
+
+Judge the packet as one thing: the first page starts the first document, and
+every transition afterwards is a yes or a no. Say no when you cannot tell —
+keeping a document whole is better than cutting one in half.

@@ -1,0 +1,29 @@
+# Document categories the split judge may assign to a segment.
+#
+# These are the categories a packet assembled from several documents usually
+# mixes. Each id becomes a label on a child source's metadata and in the ledger,
+# so it is a filing word, not a sentence. The description is what the judge
+# reasons over, which is why the list is a resource and not a Python literal:
+# a vault can override it (kompend/templates/splitting/rules.yaml) or point
+# `splitting.rules_file` at its own YAML with the same shape.
+categories:
+  - id: contract
+    description: An agreement between parties - main contract, framework agreement, terms and conditions.
+  - id: amendment
+    description: A change to an agreement already in the packet - amendment, addendum, change order, side letter.
+  - id: invoice
+    description: A demand for payment - invoice, credit note, receipt, statement of account.
+  - id: letter
+    description: Correspondence - a letter, an email printout, a notice or an official communication.
+  - id: report
+    description: An account of findings or activity - report, study, assessment, protocol, manual.
+  - id: form
+    description: A document filled in a fixed layout - application, declaration, registration, questionnaire.
+  - id: appendix
+    description: Material that supports a longer document - appendix, annex, exhibit, schedule, attachment.
+  - id: minutes
+    description: A record of a meeting or proceeding - minutes, protocol, transcript, resolution.
+  - id: certificate
+    description: An attestation issued about a fact or a person - certificate, licence, permit, approval.
+  - id: unknown
+    description: A document that fits none of the categories above, or whose category cannot be told.

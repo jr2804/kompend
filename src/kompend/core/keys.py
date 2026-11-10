@@ -78,6 +78,14 @@ DECISION_ENABLED: Final[str] = "decision.enabled"
 DECISION_MODEL: Final[str] = "decision.model"
 DECISION_TIMEOUT: Final[str] = "decision.timeout"
 
+# ── splitting section ──
+SPLITTING_ENABLED: Final[str] = "splitting.enabled"
+SPLITTING_JUDGE_MODEL: Final[str] = "splitting.judge_model"
+SPLITTING_JUDGE_TIMEOUT: Final[str] = "splitting.judge_timeout"
+SPLITTING_MAX_PAGE_CHARS: Final[str] = "splitting.max_page_chars"
+SPLITTING_MIN_PAGES: Final[str] = "splitting.min_pages"
+SPLITTING_RULES_FILE: Final[str] = "splitting.rules_file"
+
 # ── organize section ──
 ORGANIZE_MAX_DEPTH: Final[str] = "organize.max_depth"
 ORGANIZE_MIN_SUBCATEGORIES: Final[str] = "organize.min_subcategories"
