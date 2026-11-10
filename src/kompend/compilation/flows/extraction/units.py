@@ -238,7 +238,7 @@ def extract_incremental(
                     # below lowers the window and splits the remaining texts -
                     # the error carries the limit the provider named.
                     raise
-                except Exception as exc:  # noqa: BLE001 — classified into the failure vocabulary below
+                except Exception as exc:  # classified into the failure vocabulary below
                     record_unit_failure(stage="extraction:incremental", unit=f"{source}:{batch_idx}", exc=exc)
                     compiler._batch_tracker.record(failed=True)
                     results.append(None)

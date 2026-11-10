@@ -65,6 +65,13 @@ merging and an optional iterative WiCER refinement loop.
   resumes with its history; `compile.no_cache` ignores both. The store is a
   separate SQLite file because `kompend.db` is recreated clean-cut on
   schema bumps.
+- **A corrupt wiki cache raises; only a locked one is tolerated.**
+  `build_known_titles` (`flows/generation/prompt.py`) reads the previous
+  compile's `WIKILINK_ALIASES` for prompt context, and losing it is never a
+  reason to fail a compile — but a cache whose payload does not validate is a
+  bug, so `sqlite3.OperationalError` is swallowed only for
+  `SQLITE_BUSY`/`SQLITE_LOCKED` and `OSError` only as an unreadable file; every
+  other error propagates from `load_cached_wiki`, as its docstring promises.
 - **No content is excluded by size or by a threshold** (see the budget rule in
   `.agents/CODE.md`). `min_content_length` and `max_concept_pages` are warning
   thresholds: short pages and every concept-page candidate are compiled. Only

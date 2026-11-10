@@ -74,7 +74,8 @@ def backend_name(backend: object) -> str:
     if callable(hook):
         try:
             return str(hook()) or type(backend).__name__
-        except Exception:  # noqa: BLE001 — attribution must never break a parse
+        except Exception as exc:  # a user-supplied hook may raise anything; attribution must never break a parse
+            logger.debug("Backend identity hook failed for %s: %s", type(backend).__name__, exc, exc_info=True)
             return type(backend).__name__
     return type(backend).__name__
 

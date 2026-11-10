@@ -120,7 +120,7 @@ class ReferenceStore:
         for raw in raw_list:
             try:
                 out.append(Reference.model_validate(raw))
-            except Exception as exc:  # noqa: BLE001 — skip malformed entries
+            except Exception as exc:  # one malformed entry is skipped, never the whole source's references
                 logger.debug("ReferenceStore: skipping malformed entry in %s: %s", source, exc)
         return out
 
@@ -346,14 +346,14 @@ def _fuzzy_dedup_references(
 
     try:
         provider = make_provider(embedding_model)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # fuzzy merge is an optional tier: without a provider, exact dedup stands
         logger.debug("Reference fuzzy merge disabled: provider creation failed: %s", exc)
         return references
 
     texts = [_ref_embedding_text(r) for r in references]
     try:
         vecs = [provider.embed(t) for t in texts]
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # a failed embedding call drops this optional tier, never the references
         logger.debug("Reference fuzzy merge disabled: embedding call failed: %s", exc)
         return references
 

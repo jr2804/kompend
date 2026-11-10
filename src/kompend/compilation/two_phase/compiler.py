@@ -152,7 +152,7 @@ class TwoPhaseCompiler(BaseCompiler):
         ref_start = time.monotonic()
         try:
             run_reference_extraction(self, chunks, ref_store)
-        except Exception as exc:  # noqa: BLE001 — reference extraction is non-fatal
+        except Exception as exc:  # reference extraction is non-fatal: the main pass still runs
             logger.warning("TwoPhase: reference extraction failed (non-fatal): %s", exc)
         ref_elapsed = time.monotonic() - ref_start
         if ref_store.total_count() > 0:

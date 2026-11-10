@@ -96,7 +96,7 @@ def write_failure_bundle(
             cache_key=cache_key,
             error=error,
         )
-    except Exception as exc:  # noqa: BLE001 — the bundle is best-effort by contract
+    except Exception as exc:  # the bundle is best-effort by contract: a failed write must not fail the unit
         logger.warning("Could not write failure bundle for %s: %s", source, exc)
         return None
 

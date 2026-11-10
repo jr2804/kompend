@@ -6,9 +6,12 @@ wikilink prompts): :mod:`kompend.compilation.flows.generation`.
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from types import SimpleNamespace
 from typing import cast
+
+import pytest
 
 from kompend.compilation.flows.generation import build_known_titles, learn_wikilink_aliases
 from kompend.compilation.two_phase import TwoPhaseRuntime
@@ -98,6 +101,48 @@ def test_build_known_titles_survives_missing_cache(tmp_path: Path) -> None:
     compiler = _fake_compiler(tmp_path)
     titles = build_known_titles(cast("TwoPhaseRuntime", compiler), [{"name": "POLQA"}])
     assert titles == ["POLQA"]
+
+
+def test_build_known_titles_propagates_a_corrupt_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A corrupt wiki cache is a bug: the read raises so the cause surfaces."""
+
+    def _corrupt(base_dir: Path) -> None:
+        raise sqlite3.DatabaseError("database disk image is malformed")
+
+    monkeypatch.setattr("kompend.compilation.flows.generation.prompt.load_cached_wiki", _corrupt)
+    compiler = _fake_compiler(tmp_path)
+
+    with pytest.raises(sqlite3.DatabaseError, match="malformed"):
+        build_known_titles(cast("TwoPhaseRuntime", compiler), [{"name": "POLQA"}])
+
+
+def test_build_known_titles_tolerates_a_locked_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A database another process holds open is environmental, not corrupt."""
+
+    def _locked(base_dir: Path) -> None:
+        exc = sqlite3.OperationalError("database is locked")
+        exc.sqlite_errorcode = sqlite3.SQLITE_BUSY  # type: ignore[attr-defined]
+        raise exc
+
+    monkeypatch.setattr("kompend.compilation.flows.generation.prompt.load_cached_wiki", _locked)
+    compiler = _fake_compiler(tmp_path)
+
+    assert build_known_titles(cast("TwoPhaseRuntime", compiler), [{"name": "POLQA"}]) == ["POLQA"]
+
+
+def test_build_known_titles_reraises_an_operational_error_that_is_not_a_lock(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """An operational error with any other code is a real fault, not a busy cache."""
+
+    def _broken(base_dir: Path) -> None:
+        exc = sqlite3.OperationalError("no such table: wiki_snapshot")
+        exc.sqlite_errorcode = getattr(sqlite3, "SQLITE_ERROR", 1)  # type: ignore[attr-defined]
+        raise exc
+
+    monkeypatch.setattr("kompend.compilation.flows.generation.prompt.load_cached_wiki", _broken)
+    compiler = _fake_compiler(tmp_path)
+
+    with pytest.raises(sqlite3.OperationalError, match="no such table"):
+        build_known_titles(cast("TwoPhaseRuntime", compiler), [{"name": "POLQA"}])
 
 
 # ── build_known_titles (kompend-2kai + kompend-oumw wiring) ───────────────────

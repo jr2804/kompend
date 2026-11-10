@@ -229,7 +229,7 @@ def try_pydanticai_extraction(
         # the provider named, so swallowing it here would lose the only
         # number that can fix the request.
         raise
-    except Exception as exc:  # noqa: BLE001 — the classifier below decides what kind this is
+    except Exception as exc:  # the classifier below decides what kind this is; every kind is recorded
         failure = failures.record(source_id, exc) if failures is not None else None
         kind = failure.kind.value if failure is not None else classify_agent_failure(exc).value
         logger.warning("PydanticAI extraction failed for '%s' (%s): %s", source_id, kind, exc)

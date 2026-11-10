@@ -148,9 +148,9 @@ class StallWatchdog:
         while not self._stop.wait(tick):
             try:
                 self._scan()
-            except Exception as exc:  # noqa: BLE001 — observer must survive anything
-                # Same posture as ``_load_dedup_state``: a broken observer
-                # must never take down the run it watches.
+            except Exception as exc:  # a broken observer must never take down the run it watches
+                # Same posture as ``_load_dedup_state``: the watchdog only ever
+                # reports; its own failure is logged and the loop continues.
                 logger.debug("Stall watchdog scan failed: %s", exc)
 
     def _scan(self) -> list[tuple[str, WatchStage, float]]:

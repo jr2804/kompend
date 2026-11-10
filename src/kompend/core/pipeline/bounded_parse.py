@@ -209,7 +209,7 @@ def _worker_main(connection: Connection) -> None:
         try:
             with capture_backend_output(banners):
                 document = parser.parse(Path(target))
-        except BaseException as exc:  # noqa: BLE001 — the parent is the only reporter left
+        except BaseException as exc:  # the parent is the only reporter left, so even SystemExit must travel
             connection.send(("banners", (banners.lines, banners.suppressed, banners.backend)))
             connection.send(("error", f"{type(exc).__name__}: {exc}"))
         else:
