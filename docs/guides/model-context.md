@@ -372,14 +372,55 @@ failing the run — and instead of cropping anything the model still needs.
 
 The `"sliding"` preset trims rather than folds, so its trigger is a *token*
 fraction with the message count as a coarser second bound. A message count
-alone cannot protect a token budget: one p863 run reached 244 140 estimated
-tokens against a 64 000-token window in far fewer than 100 messages and the
-provider rejected it at 90 154 actual tokens. The fraction fires with a fifth
-of the window to spare, because the estimator under-states dense content
-(minified JSON, base64, non-Latin scripts). Every trim logs the messages
-kept and dropped plus the token estimate before and after, and the preset
-honours the same `keep_tokens` tail, `min_growth_tokens` gate and pinned task
-assignment as the stack below.
+alone cannot protect a token budget: the p863 vault ran this preset and the
+provider rejected one request at 90 154 actual tokens against a 65 536-token
+window. The fraction fires with a fifth of the window to spare, which also
+absorbs a server that enforces a smaller window than kompend was configured
+for. Every trim logs the messages kept and dropped plus the token estimate
+before and after, and the preset honours the same `keep_tokens` tail,
+`min_growth_tokens` gate and pinned task assignment as the stack below.
+
+### How the estimate is defended
+
+The harness's estimator anchors on the newest provider-reported usage: the
+provider's own `input_tokens` covers instructions, tool schemas and every
+message up to that response, so most of a mature history is exact. Only the
+messages after the anchor are estimated from characters, and those are the
+dense ones — tool returns, tables, minified JSON, retry echoes.
+
+Kompend counts that tail at **2.5 characters per token**, not the harness's
+default of 4 (`_conservative_tokens` in `kompend.agents.context_manager`).
+Every compaction strategy kompend builds gets the same callable, so a
+trigger, its reclaim accounting and its logged figures cannot disagree
+about the size of the context.
+
+Why 2.5: measured on the p863 corpus, over 733 request tails (the growth
+between two responses that each reported usage, minus the later response's
+own output):
+
+| density assumed | tails it under-counts | worst under-count |
+|-----------------|----------------------|-------------------|
+| 4.0 chars/token (harness default) | 560 of 733 (76%) | 2.02× |
+| 3.5 chars/token | 84 of 733 (11%) | 1.77× |
+| 3.0 chars/token | 37 of 733 (5%) | 1.52× |
+| **2.5 chars/token** | **7 of 733 (1.0%)** | **1.27×** |
+| 2.0 chars/token | 5 of 733 (0.7%) | 1.01× |
+
+True density across those tails: p01 2.65, p05 2.95, p10 3.18, median 3.86
+chars per token. Erring high is cheap — a trim slightly early costs
+prompt-cache writes — while a trim late is a provider 400 after minutes of
+upstream work. The price: a `keep_tokens` tail is counted in these
+conservative units, so a named 8 000-token tail retains roughly 5 200 real
+tokens of the same text (it held ~8 300 at 4 chars/token).
+
+What the estimate cannot save is a request dominated by one part. In the
+p863 failure the retained tail held a single 380 538-character
+`RetryFeedbackPart` — an echo of a response that had already reported
+84 325 output tokens — so no amount of dropping older messages could bring
+the request under the window. The preset therefore also warns when a trim
+succeeded but the surviving tail is still over the trigger, naming the
+largest message; that is the signal to look at the oversized part, not at
+the trigger.
 
 The stack runs cheapest first and stops as soon as the history fits:
 

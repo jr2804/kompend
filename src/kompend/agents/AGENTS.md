@@ -70,9 +70,9 @@ The base class provides:
   token-triggered `SlidingWindowCompaction` used only when the summarizer
   cannot answer (`UnexpectedModelBehavior`, pydantic/pydantic-ai#12307).
   The `sliding` preset is `build_sliding_compaction()`: a
-  `_GuardedSlidingCompaction` trim with a token trigger (not just the
-  100-message count) plus the same pin, gate and per-trim log. Stack and
-  tuning: `docs/guides/model-context.md`.
+  `_GuardedSlidingCompaction` trim on a token trigger (not just the
+  100-message count) with the same pin, gate and per-trim log, every figure
+  using `_conservative_tokens` (2.5 chars/token, measured; see the guide).
 - **Compaction invariants** — `_pin_first_user_turn` pins the task assignment
   (harness `pin()`, model-invisible) before any tier runs and every strategy
   re-injects it; the gate re-arms only after `min_growth_tokens` of growth

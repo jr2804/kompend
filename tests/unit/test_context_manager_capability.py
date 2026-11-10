@@ -19,7 +19,7 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import ModelRequestContext, ModelRequestParameters
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.tools import RunContext
-from pydantic_ai.usage import RunUsage
+from pydantic_ai.usage import RequestUsage, RunUsage
 from pydantic_ai_harness.compaction import (
     ClearToolResults,
     DeduplicateFileReads,
@@ -37,6 +37,7 @@ from kompend.agents.base import _CONTEXT_PRESETS, _SLIDING_COMPRESS_THRESHOLD, _
 from kompend.agents.base.context import resolve_context_capability
 from kompend.agents.context_manager import (
     GrowthGatedCompaction,
+    _conservative_tokens,  # noqa: PLC2701
     _file_key,  # noqa: PLC2701
     _GuardedSlidingCompaction,  # noqa: PLC2701
     _pin_first_user_turn,  # noqa: PLC2701
@@ -237,6 +238,117 @@ class TestSlidingPreset:
             keep_messages=_SLIDING_KEEP_MESSAGES,
             keep_tokens=8_000,
             min_growth_tokens=2_048,
+        )
+
+
+class TestConservativeDensity:
+    """The trigger must not trust four characters per token on dense content.
+
+    Measured on the p863 corpus (733 request tails): median 3.86 chars/token,
+    p01 2.65, p10 3.18. The harness's default of 4 lets a dense tail cross the
+    window with no trigger firing; kompend counts at 2.5, which covers 99.0%
+    of the measured tails and leaves the worst the rest 1.27x short.
+    """
+
+    def test_counts_dense_text_at_the_measured_density_floor(self) -> None:
+        dense = "x" * 25_000
+
+        assert _conservative_tokens(dense) == 10_000
+        assert _conservative_tokens(dense) > len(dense) // 4
+
+    def test_rounds_up_so_a_nonempty_part_never_weighs_nothing(self) -> None:
+        assert _conservative_tokens("x") == 1
+        assert _conservative_tokens("") == 0
+
+    def test_every_strategy_the_builders_return_counts_the_kompend_way(self) -> None:
+        """One scale for triggers, reclaim accounting and logged figures."""
+        sliding = build_sliding_compaction(
+            context_window=64_000,
+            compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
+            keep_messages=_SLIDING_KEEP_MESSAGES,
+            keep_tokens=8_000,
+        )
+        fallback = build_fallback_compaction(
+            context_window=64_000,
+            compress_threshold=0.9,
+            keep_messages=5,
+            judge=TestModel(),
+        )
+
+        assert sliding.tokenizer is _conservative_tokens
+        gated = fallback.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+        assert gated.tokenizer is _conservative_tokens
+        tiers = gated.strategy.tiers
+        assert all(cast("Any", tier).tokenizer is _conservative_tokens for tier in tiers)
+        assert cast("Any", fallback.fallback_chain[1]).tokenizer is _conservative_tokens
+
+    async def test_a_dense_tail_the_heuristic_would_miss_trims_anyway(self) -> None:
+        """130 000 chars is 32 500 tokens at 4 chars, 52 000 at 2.5.
+
+        The 4-char count sits below the 51 200-token trigger, so the trim
+        never fires and the provider rejects the request; the conservative
+        count crosses it and the trim runs.
+        """
+        capability = build_sliding_compaction(
+            context_window=64_000,
+            compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
+            keep_messages=_SLIDING_KEEP_MESSAGES,
+            keep_tokens=8_000,
+        )
+        messages = _heavy_history(messages=8, chars_per_message=9_200)
+        assert len(_joined_chars(messages)) > 130_000
+        assert len(_joined_chars(messages)) // 4 < 64_000 * _SLIDING_COMPRESS_THRESHOLD
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert len(ctx.messages) < len(messages)
+
+    def test_an_anchored_history_is_still_measured_exactly(self) -> None:
+        """The fix targets the unanchored tail; the provider's own count stays."""
+        tail = ModelRequest(parts=[UserPromptPart(content="y" * 5_000)])
+        messages: list[ModelMessage] = [
+            ModelRequest(parts=[UserPromptPart(content="the task")]),
+            ModelResponse(
+                parts=[TextPart(content="an answer")],
+                usage=RequestUsage(input_tokens=40_000, output_tokens=500),
+            ),
+            tail,
+        ]
+
+        estimated = estimate_context_tokens(messages, _conservative_tokens)
+
+        assert estimated == 40_500 + _conservative_tokens("y" * 5_000)
+
+    async def test_a_trim_that_still_exceeds_the_trigger_says_so(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The retained tail itself can be over budget — one part no trim can drop."""
+        capability = build_sliding_compaction(
+            context_window=64_000,
+            compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
+            keep_messages=_SLIDING_KEEP_MESSAGES,
+            keep_tokens=8_000,
+        )
+        messages = _heavy_history(messages=6, chars_per_message=9_200)
+        echo = ModelRequest(parts=[UserPromptPart(content="z" * 300_000)])
+        messages.append(echo)
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        with caplog.at_level("WARNING", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        text = caplog.text
+        assert "trim kept" in text
+        assert "cannot reclaim more" in text
+
+    def _capability(self) -> SlidingWindowCompaction:
+        return build_sliding_compaction(
+            context_window=64_000,
+            compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
+            keep_messages=_SLIDING_KEEP_MESSAGES,
+            keep_tokens=8_000,
         )
 
 
@@ -497,14 +609,15 @@ class TestGrowthGate:
         await gate.before_model_request(ctx, request_context)
         assert strategy.before_calls == 1
 
-        # Each appended turn adds ~200 tokens: less than min_growth_tokens on its
+        # Each appended turn adds ~200 tokens at kompend's conservative density
+        # (_CONSERVATIVE_CHARS_PER_TOKEN): less than min_growth_tokens on its
         # own, so the first one must skip, and the second one must pass because
         # growth accumulated since the last pass (not since the last request).
-        ctx.messages.append(ModelRequest(parts=[UserPromptPart(content="step " + "padding " * 100)]))
+        ctx.messages.append(ModelRequest(parts=[UserPromptPart(content="step " + "padding " * 62)]))
         await gate.before_model_request(ctx, request_context)
         assert strategy.before_calls == 1
 
-        ctx.messages.append(ModelRequest(parts=[UserPromptPart(content="step " + "padding " * 100)]))
+        ctx.messages.append(ModelRequest(parts=[UserPromptPart(content="step " + "padding " * 62)]))
         await gate.before_model_request(ctx, request_context)
         assert strategy.before_calls == 2
 
@@ -721,6 +834,16 @@ def _heavy_history(*, messages: int, chars_per_message: int) -> list[ModelMessag
         history.append(ModelResponse(parts=[TextPart(content=f"turn {index} {padding}")]))
         history.append(ModelRequest(parts=[UserPromptPart(content=f"next unit {index} {padding}")]))
     return history
+
+
+def _joined_chars(messages: list[ModelMessage]) -> str:
+    """Every string part of *messages* concatenated, for size assertions."""
+    chunks: list[str] = []
+    for message in messages:
+        for part in message.parts:
+            content = getattr(part, "content", "")
+            chunks.append(content if isinstance(content, str) else "")
+    return "".join(chunks)
 
 
 def _request_context(messages: list[ModelMessage]) -> ModelRequestContext:

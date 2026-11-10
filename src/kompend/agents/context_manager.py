@@ -33,10 +33,21 @@ window) and the message cap as a second bound, wrapped in
 ``GrowthGatedCompaction`` so the run's first user turn is pinned and an
 unchanged context is not re-trimmed; every trim it performs is logged.
 A message count alone cannot protect a token budget: a p863 vault set this
-preset, one request reached 381% of a 64K window (244 140 estimated tokens)
-and the provider rejected it at 90 154 actual tokens. Nothing trimmed,
-because 100 messages had not accumulated yet and no trim was logged, so the
-failure looked like no compaction at all.
+preset and the provider rejected one request at 90 154 actual tokens
+against a 65 536-token window.
+
+How the estimate is defended (``_conservative_tokens``): the harness anchors
+``estimate_context_tokens`` on the newest provider-reported usage, so most of
+any history is measured exactly and only the messages after that anchor are
+estimated. Those messages are the dense ones — tool returns, tables, retry
+echoes — and the harness charges them 4 characters per token. Measured on the
+p863 corpus (733 request tails) the true density is a median 3.86 chars per
+token with a p01 of 2.65, so kompend passes its own callable at 2.5 chars per
+token: 99.0% of measured tails come out at or above their real cost, and the
+seven that do not are off by at most 1.27x, inside the trigger's headroom.
+Every strategy kompend builds gets it, so a tier's trigger, its reclaim
+accounting and its logged figures cannot disagree about how big the context
+is.
 
 NEVER-CROP reconciliation (``.agents/CODE.md``): compaction folds only
 re-derivable conversation history. Source text never rides in prompts
@@ -53,8 +64,9 @@ The summarizer's instructions come from the doctrine template
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
+from math import ceil
 from typing import Any, Final
 
 from pydantic_ai.capabilities import AbstractCapability
@@ -74,6 +86,7 @@ from pydantic_ai_harness.compaction import (
     SupportsFocus,
     TieredCompaction,
     estimate_context_tokens,
+    estimate_message_tokens,
     is_pinned,
     pin,
     resolve_context_window,
@@ -89,12 +102,33 @@ _SLIDING_MAX_MESSAGES: Final[int] = 100
 _SLIDING_KEEP_MESSAGES: Final[int] = 50
 
 #: Token trigger of the ``sliding`` preset: the fraction of the window at
-#: which the trim runs. A trim reclaims only by dropping, and the harness's
-#: character heuristic (4 chars/token) under-states token-dense content —
-#: minified JSON, base64, non-Latin scripts — by a factor the harness's own
-#: docstring calls expensive. Hence the headroom: fire with a fifth of the
-#: window to spare instead of at the provider's hard limit.
+#: which the trim runs. The estimate itself is now conservative (see
+#: ``_CONSERVATIVE_CHARS_PER_TOKEN``), so this headroom no longer carries the
+#: whole error budget: it also absorbs the drift between what a server
+#: advertises and what it enforces — one p863 server served 64 000 tokens,
+#: enforced 65 536, and the run was configured for 128 000.
 _SLIDING_COMPRESS_THRESHOLD: Final[float] = 0.8
+
+#: Characters per token kompend assumes where the provider's own count is not
+#: available. The harness defaults to 4, which is honest for English prose and
+#: optimistic for everything else a run puts in a request.
+#:
+#: Measured on the p863 corpus (733 request tails: the context growth between
+#: two responses that each reported usage, minus the later response's output),
+#: reproducible with ``.kompend/tmp/measure_token_density.py``.
+#: p01 2.65, p05 2.95, p10 3.18, median 3.86 chars per token. Tool returns —
+#: JSON, tables, standard clauses — carry the dense end. At the harness's 4
+#: the estimate under-counts 560 of those 733 tails (76%), worst by 2.02x; at
+#: this value it covers 726 of 733 (99.0%) and the seven it leaves under-count
+#: by at most 1.27x, which the trigger's headroom absorbs.
+#:
+#: Erring high is the cheap failure — a trim slightly early costs prompt-cache
+#: writes; a trim late is a provider 400 after minutes of upstream work, and
+#: the anchored part of the estimate (below) is exact, so only the tail can
+#: drift. The cost of the margin: a ``keep_tokens`` tail is counted in these
+#: units, so a named 8 000-token tail retains roughly 5 200 real tokens of the
+#: same text (it held ~8 300 at 4 chars/token).
+_CONSERVATIVE_CHARS_PER_TOKEN: Final[float] = 2.5
 
 #: Share of the compaction trigger the fallback retains as message-content
 #: tokens. Below 1.0 so the fallback actually reclaims room — a result still
@@ -141,6 +175,17 @@ _IDEMPOTENT_READ_TOOLS: Final[frozenset[str]] = frozenset(
 logger = get_logger(__name__)
 
 
+def _conservative_tokens(text: str) -> int:
+    """Count *text* at kompend's measured density floor, never the harness's 4.
+
+    The harness calls this only for the part of a request no provider count
+    covers — the messages after the newest usage-carrying response, and a
+    history with no usage at all. That is exactly where dense content lives,
+    and where under-counting lets a history blow the window.
+    """
+    return ceil(len(text) / _CONSERVATIVE_CHARS_PER_TOKEN)
+
+
 @dataclass
 class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
     """Run the wrapped tiered stack only when the context grew.
@@ -177,12 +222,21 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
     A skipped request leaves it alone so growth keeps accumulating.
     """
 
+    tokenizer: Callable[[str], int] = _conservative_tokens
+    """Counts *text* for every estimate this gate compares.
+
+    Both operands come from the same callable, so the growth this gate measures
+    and the ``min_growth_tokens`` it compares against stay on one scale — the
+    conservative one, not the harness's optimistic four-chars-per-token default.
+    """
+
     def with_focus(self, focus: str) -> GrowthGatedCompaction[AgentDepsT]:
         """Forward the focus to the wrapped stack's focus-capable tiers."""
         inner = self.strategy.with_focus(focus) if isinstance(self.strategy, SupportsFocus) else self.strategy
         focused: GrowthGatedCompaction[AgentDepsT] = GrowthGatedCompaction(
             strategy=inner,
             min_growth_tokens=self.min_growth_tokens,
+            tokenizer=self.tokenizer,
         )
         focused._baseline_tokens = self._baseline_tokens
         return focused
@@ -202,7 +256,7 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
         if not self._gate_open(pinned):
             return pinned
         compacted = await self.strategy.compact(pinned, ctx)
-        self._baseline_tokens = estimate_context_tokens(compacted)
+        self._baseline_tokens = estimate_context_tokens(compacted, self.tokenizer)
         return compacted
 
     async def before_model_request(
@@ -216,14 +270,14 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
         if not self._gate_open(pinned):
             return request_context
         request_context = await self.strategy.before_model_request(ctx, request_context)
-        self._baseline_tokens = estimate_context_tokens(ctx.messages)
+        self._baseline_tokens = estimate_context_tokens(ctx.messages, self.tokenizer)
         return request_context
 
     def _gate_open(self, pinned: list[ModelMessage]) -> bool:
         """Whether the context grew enough since the last pass through the gate."""
         if self._baseline_tokens is None:
             return True
-        growth = estimate_context_tokens(pinned) - self._baseline_tokens
+        growth = estimate_context_tokens(pinned, self.tokenizer) - self._baseline_tokens
         if growth < self.min_growth_tokens:
             logger.debug(
                 "Compaction skipped: context grew %d token(s) since the last pass (< %d)",
@@ -240,22 +294,26 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
 
     ``SlidingWindowCompaction`` alone fires on a message count, which cannot
     protect a token budget: a long tool-call history reaches many times the
-    window in far fewer than 100 messages. The p863 vault ran this preset,
-    accumulated 244 140 estimated tokens against a 64 000-token window in one
-    request, was rejected at 90 154 actual tokens, and left no trace — no
-    trim ran, so nothing was logged. This subclass adds the three halves of
-    that fix:
+    window in far fewer than 100 messages. The p863 vault ran this preset and
+    one request was rejected at 90 154 actual tokens against a 65 536-token
+    window. This subclass adds the three halves of that fix:
 
     * **Token trigger.** ``max_fraction`` trims at a fraction of the
       request's window (``_SLIDING_COMPRESS_THRESHOLD``); the message count
-      stays as a second, coarser bound. The fraction leaves headroom the
-      char heuristic cannot promise, so the trim fires before the provider
-      rejects.
+      stays as a second, coarser bound.
     * **Pinned task assignment.** The first user turn is marked with the pin
       contract before the trim (``_pin_first_user_turn``), so the trimmed
       history keeps the run's task verbatim.
     * **A record.** Every trim logs kept/dropped messages and the token
-      estimate before/after, and a trim that reclaims nothing says so.
+      estimate before/after; a trim that reclaims nothing says so, and a trim
+      that leaves more than the trigger behind says that too — the p863 tail
+      held one 380 538-char retry-feedback part, so dropping every older
+      message could never have brought it under budget.
+
+    Every count this class compares comes from ``_conservative_tokens``, so
+    the trigger, the recorded figures and ``keep_tokens`` all speak the same
+    (measured, pessimistic) density instead of the harness's four
+    characters-per-token default.
 
     ``min_growth_tokens`` gates repeats exactly as in
     ``GrowthGatedCompaction``: a trim normally lands the history far below
@@ -293,6 +351,7 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
                 before_tokens,
                 after_tokens,
             )
+            self._warn_if_still_over(compacted, after_tokens, ctx)
         else:
             logger.warning(
                 "Sliding-window trim reclaimed nothing: %d message(s), ~%d token(s) survive the %s-token tail",
@@ -332,6 +391,37 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
             )
             return request_context
         return await super().before_model_request(ctx, request_context)
+
+    def _warn_if_still_over(
+        self,
+        compacted: list[ModelMessage],
+        after_tokens: int,
+        ctx: RunContext[AgentDepsT],
+    ) -> None:
+        """Say so when the retained tail alone still exceeds the trigger.
+
+        A trim that drops messages yet leaves the history over the trigger
+        cannot do better on the next request: the tail is what it is. That is
+        the p863 shape — one 380 538-char retry-feedback part made up 39% of
+        the request — and without this line the run looks trimmed and healthy
+        right up to the provider's 400.
+        """
+        fraction = self.max_fraction
+        if fraction is None:
+            return
+        window = self.context_window or resolve_context_window(ctx.model) or self.fallback_context_window
+        trigger = max(1, int(window * fraction))
+        if after_tokens <= trigger:
+            return
+        largest = max(estimate_message_tokens(compacted, self.tokenizer), default=0)
+        logger.warning(
+            "Sliding-window trim kept %d message(s) still at ~%d token(s) against a %d-token trigger "
+            "(largest ~%d token(s)); the retained tail cannot reclaim more",
+            len(compacted),
+            after_tokens,
+            trigger,
+            largest,
+        )
 
 
 class _LoggedSummarizingCompaction(SummarizingCompaction):
@@ -468,11 +558,13 @@ def build_fallback_compaction(
             max_fraction=compress_threshold,
             context_window=context_window,
             keep_pairs=_CLEAR_KEEP_PAIRS,
+            tokenizer=_conservative_tokens,
         ),
         DeduplicateFileReads(
             file_key=_file_key,
             max_fraction=compress_threshold,
             context_window=context_window,
+            tokenizer=_conservative_tokens,
         ),
     ]
     if judge is not None:
@@ -484,6 +576,7 @@ def build_fallback_compaction(
                 target_fraction=compress_threshold,
                 context_window=context_window,
                 keep_tokens=keep_tokens if keep_tokens is not None else _DEFAULT_KEEP_TOKENS,
+                tokenizer=_conservative_tokens,
             ),
         )
     tiers.append(summarizer)
@@ -492,8 +585,10 @@ def build_fallback_compaction(
             tiers=tiers,
             target_fraction=compress_threshold,
             context_window=context_window,
+            tokenizer=_conservative_tokens,
         ),
         min_growth_tokens=min_growth_tokens if min_growth_tokens is not None else _DEFAULT_MIN_GROWTH_TOKENS,
+        tokenizer=_conservative_tokens,
     )
     return _PinningFallbackCompaction(
         fallback_chain=[
@@ -502,6 +597,7 @@ def build_fallback_compaction(
                 max_fraction=compress_threshold,
                 context_window=context_window,
                 keep_tokens=int((context_window or DEFAULT_CONTEXT_WINDOW) * compress_threshold * _FALLBACK_KEEP_SHARE),
+                tokenizer=_conservative_tokens,
             ),
         ],
         fallback_on=(UnexpectedModelBehavior,),
@@ -522,16 +618,19 @@ def build_sliding_compaction(
 
     The trim keeps *message content* tokens, never a message count alone, and
     is gated so a history the tail cannot shrink is not re-trimmed on every
-    request (see ``_GuardedSlidingCompaction``).
+    request (see ``_GuardedSlidingCompaction``). Every trigger, tail and log
+    figure it reports is counted with ``_conservative_tokens``, kompend's
+    measured density floor, never the harness's four-chars-per-token default.
 
     Parameters
     ----------
     context_window:
         The model's input window; the trigger is a fraction of it.
     compress_threshold:
-        Fraction of the window at which the trim runs. Well below 1.0: the
-        estimate is a four-chars-per-token heuristic and under-states dense
-        content, so a trim right at the limit arrives too late.
+        Fraction of the window at which the trim runs. Well below 1.0: it
+        absorbs a server that enforces a smaller window than kompend was
+        configured for, so a trim that lands near the limit still arrives
+        before the provider rejects.
     keep_messages:
         Messages retained when no token tail applies (``keep_tokens`` of 0).
         It also stays the *retention* default; the trigger cap is
@@ -555,6 +654,7 @@ def build_sliding_compaction(
         keep_messages=keep_messages,
         keep_tokens=tail or None,
         min_growth_tokens=min_growth_tokens if min_growth_tokens is not None else _DEFAULT_MIN_GROWTH_TOKENS,
+        tokenizer=_conservative_tokens,
     )
 
 
@@ -607,6 +707,7 @@ def build_summarizing_compaction(
             max_fraction=compress_threshold,
             keep_messages=keep_messages,
             context_window=context_window,
+            tokenizer=_conservative_tokens,
         )
     return _LoggedSummarizingCompaction(
         model=model,
@@ -614,4 +715,5 @@ def build_summarizing_compaction(
         keep_messages=keep_messages,
         context_window=context_window,
         instructions=instructions,
+        tokenizer=_conservative_tokens,
     )
