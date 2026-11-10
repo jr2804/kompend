@@ -27,11 +27,11 @@ stage from extraction to write. Each concrete agent declares one
 flag, prompt hooks); `build_agent("name", ...)` materialises it. Add a `SPEC`
 or a registry entry in `agents/specs.py` instead of hand-wiring a class.
 
-Prompt or validation behaviour a template cannot express belongs on the spec
-as `user_prompt` / `system_prompt` / `validate_output`. The hook receives
-`(agent, deps)`, so it reads `agent.rlm`, `agent.skills` and
-`agent._template_loader`; the base installs it as the method. Never override
-`render_*` or `validate_output` in a concrete class.
+Prompt or validation behaviour a template cannot express belongs on the spec as
+`user_prompt` / `system_prompt` / `validate_output`. The hook receives `(agent,
+deps)`, so it reads `agent.rlm`, `agent.skills` and `agent._template_loader`;
+the base installs it as the method. Never override `render_*` or
+`validate_output` in a concrete class.
 
 ### The `base/` package
 
@@ -55,10 +55,9 @@ Four modules (`context.py`, `delta_retry.py`, `models.py`, `retries.py`) carry
 
 The base class provides:
 
-- **Model bridge** — `KompendModel` wraps a native pydantic-ai `Model`
-  built by `build_model()` from a `provider/model` string
-- **Lazy agent construction** — the `pydantic_ai.Agent` is built on first
-  `run()`, so tests import the class without a running model
+- **Model bridge** — `KompendModel` wraps a native pydantic-ai `Model` built by
+  `build_model()` from a `provider/model` string; the `pydantic_ai.Agent` is
+  built on first `run()`, so tests import the class without a running model
 - **Context management** — `build_fallback_compaction()`
   (`context_manager.py`) is attached from the `context_manager` preset
   (`"default"`/`"aggressive"`/`"sliding"`/`false`), tuned by

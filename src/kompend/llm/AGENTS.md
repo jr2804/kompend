@@ -18,14 +18,13 @@ import LLM SDKs directly.
 Resolution order:
 
 1. Look up the provider in the **models.dev catalogue** (`kompend.llm.catalog`,
-   backed by `llmdb` and a local cache).
-   - If the provider has a known `api` base URL (e.g. `claudinio`,
-     `opencode-zen`, `deepseek`), construct an OpenAI-compatible
-     `OpenAIChatModel` with the discovered endpoint and API key env var.
-   - Otherwise fall through to pydantic-ai native resolution.
-2. If the catalogue has no entry for the provider either, try
-   pydantic-ai's `infer_model()` (supports ollama, openai, anthropic,
-   google-gla, groq, mistral, cohere, bedrock, etc.).
+   backed by `llmdb` and a local cache). A provider with a known `api` base URL
+   (e.g. `claudinio`, `opencode-zen`, `deepseek`) becomes an OpenAI-compatible
+   `OpenAIChatModel` with the discovered endpoint and API key env var;
+   otherwise fall through to pydantic-ai native resolution.
+2. If the catalogue has no entry for the provider either, try pydantic-ai's
+   `infer_model()` (ollama, openai, anthropic, google-gla, groq, mistral,
+   cohere, bedrock, etc.).
 3. If all resolution paths fail, raise `ValueError`.
 
 | Prefix | Native model | Source |
@@ -39,20 +38,20 @@ Resolution order:
 | `anthropic/` | `AnthropicModel` | pydantic-ai `infer_model` |
 | `google/` | `GoogleModel` | pydantic-ai `infer_model` |
 
-`_split(model_string)` applies the `kompend.llm.model_id` rule (first `/` or `:` — whichever
-comes first — into `(provider, model_name)`, remainder verbatim). Provider ID aliases
-(`opencode-zen` → `opencode`) live in `_PROVIDER_ALIASES`, the module's only hardcoded mapping.
+`_split(model_string)` applies the `kompend.llm.model_id` rule (first `/` or `:` — whichever comes first
+— into `(provider, model_name)`, remainder verbatim). Provider ID aliases (`opencode-zen` → `opencode`)
+live in `_PROVIDER_ALIASES`, the module's only hardcoded mapping.
 
 `resolve_model_limits(model_id)` looks up `(max_input, max_output)` limits in the catalogue
 (`catalog.model(...)`); raises `KeyError` when the model is unlisted, `LookupError` when it
-carries no limit data — the caller (`discover_context_window`) handles the miss.
+carries no limit data — `discover_context_window` handles the miss.
 
 ## Model string parsing — `kompend.llm.model_id`
 
 `provider_id_of(model_string)` → provider, `None` when bare; `model_slug(model_string)` → model part.
-One rule for every consumer (`user_providers`, `debug`, `diagnostics`, `rag.vector_store`):
-first `/` or `:` wins (never position 0); model part may hold further separators
-(`ollama/hf.co/qwen3.6:latest` → `ollama`, `hf.co/qwen3.6:latest`). No call site keeps its own split.
+One rule for every consumer (`user_providers`, `debug`, `diagnostics`, `rag.vector_store`): first `/`
+or `:` wins (never position 0); the model part may hold further separators (`ollama/hf.co/qwen3.6:latest`
+→ `ollama`, `hf.co/qwen3.6:latest`). No call site keeps its own split.
 
 ## Context-window discovery
 
@@ -63,12 +62,10 @@ token limits through a first-hit chain: `[providers.<name>]` override
 fallback → global cap. Explicit user config always beats auto-discovery,
 mirroring `build_model()`'s `[providers.<name>]` precedence. The result
 records its `ContextSource` (`user_provider`, `ollama`, `models_dev`,
-`fallback`) for doctor diagnostics.
-
-An override-only `[providers.<name>]` block (no `base_url`) is valid for any
-provider resolvable natively or via the catalog — `is_known_provider()`
-(exported from `models.py`) is the predicate `kompend doctor` uses to
-distinguish such blocks from typo'd provider ids.
+`fallback`) for doctor diagnostics. An override-only `[providers.<name>]` block
+(no `base_url`) is valid for any provider resolvable natively or via the
+catalog — `is_known_provider()` (exported from `models.py`) is the predicate
+`kompend doctor` uses to distinguish such blocks from typo'd provider ids.
 
 ### Answer room — `ContextWindow`
 
@@ -91,13 +88,12 @@ fallback chains); OpenAI-compatible endpoints and Ollama get no ceiling at all.
 `kompend doctor` prints which rule applies in its `output-ceiling` check.
 
 **Catalog freshness.** `llmdb` downloads the models.dev payload instead of
-shipping it, and keeps it in memory only - so kompend caches it at
-`~/.cache/kompend/models.json` (see `kompend.llm.catalog`). Reads never touch
-the network; `kompend doctor` refreshes a cache older than
-`catalog.CACHE_TTL_HOURS` (168 h), and a cache miss downloads once. A brand-new
-model therefore shows up after a doctor run, not after a package upgrade. A
-model still missing from the payload makes kompend send the computed ceiling
-without a clamp and take the window from `[providers.<name>]` config.
+shipping it, so kompend caches it at `~/.cache/kompend/models.json` (see
+`kompend.llm.catalog`). Reads never touch the network; `kompend doctor`
+refreshes a cache older than `catalog.CACHE_TTL_HOURS` (168 h), so a brand-new
+model shows up after a doctor run. A model missing from the payload makes
+kompend send the computed ceiling without a clamp and take the window from
+`[providers.<name>]` config.
 
 ## Request-fit planner — `kompend.llm.request_budget`
 
@@ -194,16 +190,15 @@ formats, owning `salvage_json`, `encode_for_llm`, `decode_from_llm`,
 | `TOON` | 30-60% | `toon_format` (core dep) | input only |
 | `ISON` | 30-70% | `ison-py` → `ison_parser` (core dep) | input only |
 
-**Input only.** TOON and ISON apply to context data serialized into
-prompt templates. Model *output* stays JSON: providers enforce
-`response_format: json_object`, and the structured-output modes of
-pydantic-ai are JSON-schema based.
+**Input only.** TOON and ISON apply to context data serialized into prompt
+templates. Model *output* stays JSON: providers enforce `response_format:
+json_object`, and the structured-output modes of pydantic-ai are JSON-schema
+based.
 
-**Teach the format, or the model cannot read it.** `encode_payload(data, fmt)`
-appends the format specification (`format_note`, rendered from
-`templates/llm/format_<format>.md.j2`) to the encoded data. Use it for every
-structured blob injected into a prompt; use `encode_for_llm` only when the
-caller supplies the specification itself (e.g. console output in
+**Teach the format, or the model cannot read it.** `encode_payload(data, fmt)` appends the
+format specification (`format_note`, rendered from `templates/llm/format_<format>.md.j2`) to the
+encoded data. Use it for every structured blob injected into a prompt; use `encode_for_llm` only
+when the caller supplies the specification itself (e.g. console output in
 `cli/_query_helpers.py`, which is not a prompt).
 
 **The format travels with the agent.** `KompendAgentBase.data_format` holds the
@@ -233,16 +228,15 @@ that class and treat the rest as unretryable.
 (TypeSafe SystemOne / Jev): `ErrorAction = Literal["retry", "skip", "abort"]`
 and `ErrorDecision` (only `action` — a decision model can fill choices and
 booleans, never free text). `DECISION_RESULT_TYPES` is the single registry of
-every result type kompend ships to a decision model (label → model class), and
-`CandidateVerdict` (the one-boolean source-search verdict) lives here too so a
-consumer imports it from one place; `kompend.diagnostics.decision` walks the
-registry offline to prove the grammar still accepts each one, so appending a
-type to that tuple is what puts it under `kompend doctor`. The model itself is
-an ordinary agent
-(`kompend.agents.decision.DecisionAgent`) reached through pydantic-ai's
-`typesafe` provider, configured as `decision.enabled/model/api_key/base_url/
-timeout`. Every helper returns `None` when the sidecar is off or unreachable,
-so the deterministic classification stays the floor.
+every result type kompend ships to a decision model (label → model class) and
+holds `CandidateVerdict` (the one-boolean source-search verdict), so a
+consumer imports it from one place; the doctor's offline schema check walks
+that registry (`../diagnostics/AGENTS.md`). The model itself is an ordinary
+agent (`kompend.agents.decision.DecisionAgent`) reached through pydantic-ai's
+`typesafe` provider, configured as
+`decision.enabled/model/api_key/base_url/timeout`. Every helper returns `None`
+when the sidecar is off or unreachable, so the deterministic classification
+stays the floor.
 
 `build_decision_model` sends decision payloads uncompressed
 (`compression=False`): the SDK zstd-compresses bodies of 1 KiB and more, and
@@ -253,5 +247,4 @@ decompresses natively; nothing else is assumed to.
 
 ## Verification
 
-- `uv run pytest tests/unit/test_llm_models.py tests/unit/test_llm_context_window.py tests/unit/test_request_budget.py tests/unit/test_llm_overflow.py -x` — model construction, window discovery, request-fit planner, provider overflow
-- `uv run pytest tests/unit/test_doctor_decision.py -q` — the decision result-type registry against the real grammar
+- `uv run pytest tests/unit/test_llm_models.py tests/unit/test_llm_context_window.py tests/unit/test_request_budget.py tests/unit/test_llm_overflow.py tests/unit/test_doctor_decision.py -q` — model construction, window discovery, request-fit planner, provider overflow, the decision result-type registry against the real grammar
