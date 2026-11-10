@@ -741,6 +741,27 @@ class TestRemovedConfigKeys:
 
         assert cfg.kompend.display.excerpt_chars == 111
 
+    def test_removed_parsecraft_mirrors_load_with_a_warning(self, tmp_path: Any, monkeypatch: Any, caplog: pytest.LogCaptureFixture) -> None:
+        """The typed copies of parsecraft's backend options are gone from the schema.
+
+        An older vault that still carries them must load — parsecraft's option
+        map is the only spelling now.
+        """
+        config_file = tmp_path / "kompend.toml"
+        config_file.write_text('[ingest]\nparsecraft_effort = "flash"\nparsecraft_extract_vector_graphics = true\n')
+        monkeypatch.chdir(tmp_path)
+
+        with caplog.at_level("WARNING"):
+            cfg = resolve_config()
+            model = cfg.kompend
+
+        messages = [r.getMessage() for r in caplog.records]
+        for key in ("ingest.parsecraft_effort", "ingest.parsecraft_extract_vector_graphics"):
+            assert any(key in message for message in messages), key
+
+        assert not hasattr(model.ingest, "parsecraft_effort")
+        assert not hasattr(model.ingest, "parsecraft_extract_vector_graphics")
+
     def test_removed_key_is_reported_by_config_check(self, tmp_path: Any) -> None:
         config_file = tmp_path / "kompend.toml"
         config_file.write_text('[compile]\nmode = "full"\n')
