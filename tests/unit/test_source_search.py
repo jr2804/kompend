@@ -415,13 +415,6 @@ class TestVerdictSchemaIsAccepted:
 
     _LIMITS = decision_grammar._Limits(choice_options=None, score_levels=None, requires_instructions=False, questions=None)
 
-    @staticmethod
-    def _output_tool(model: type[BaseModel]) -> Any:
-        """The tool definition the decision model reads for this output type."""
-        toolset = _output.OutputToolset.build(cast("list[Any]", [model]))
-        assert toolset is not None
-        return toolset._tool_defs[0]
-
     def test_the_single_bool_verdict_becomes_a_yes_no_question(self) -> None:
         tool = self._output_tool(CandidateVerdict)
         assert decision_grammar._expressible(tool, None, self._LIMITS) is True
@@ -441,6 +434,13 @@ class TestVerdictSchemaIsAccepted:
         assert decision_grammar._expressible(tool, None, self._LIMITS) is False
         with pytest.raises(Exception, match="list must be of two or more string options"):
             decision_grammar._questions(decision_grammar._fields(tool), tool, None, self._LIMITS, label=None)
+
+    @staticmethod
+    def _output_tool(model: type[BaseModel]) -> Any:
+        """The tool definition the decision model reads for this output type."""
+        toolset = _output.OutputToolset.build(cast("list[Any]", [model]))
+        assert toolset is not None
+        return toolset._tool_defs[0]
 
 
 class _JudgePolicy:
@@ -470,12 +470,6 @@ class _JudgePolicy:
         """Patch ``build_agent`` for the ``with`` block."""
         return patch("kompend.compilation.source_search.build_agent", side_effect=self._build)
 
-    def _build(self, spec: Any, **kwargs: Any) -> _FakeJudge:
-        agent = _FakeJudge(self)
-        with self._lock:
-            self.builds.append(agent)
-        return agent
-
     def answer(self, deps: SourceSearchJudgeDeps) -> CandidateVerdict:
         with self._lock:
             self.calls.append(deps)
@@ -485,6 +479,12 @@ class _JudgePolicy:
         if deps.stem in self._fail_for:
             raise RuntimeError(f"judge request for {deps.stem} failed")
         return CandidateVerdict(relevant=deps.stem in self._relevant)
+
+    def _build(self, spec: Any, **kwargs: Any) -> _FakeJudge:
+        agent = _FakeJudge(self)
+        with self._lock:
+            self.builds.append(agent)
+        return agent
 
 
 class _FakeJudge:

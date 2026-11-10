@@ -107,15 +107,6 @@ class TestSlidingPreset:
     no log line — a message-count trigger cannot see that coming.
     """
 
-    def _capability(self, window: int = 64_000) -> SlidingWindowCompaction:
-        return build_sliding_compaction(
-            context_window=window,
-            compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
-            keep_messages=_SLIDING_KEEP_MESSAGES,
-            keep_tokens=8_000,
-            min_growth_tokens=2_048,
-        )
-
     def test_triggers_on_tokens_as_well_as_message_count(self) -> None:
         capability = self._capability()
 
@@ -238,6 +229,15 @@ class TestSlidingPreset:
         )
 
         assert capability.keep_tokens == int(8_000 * 0.8 * 0.5)
+
+    def _capability(self, window: int = 64_000) -> SlidingWindowCompaction:
+        return build_sliding_compaction(
+            context_window=window,
+            compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
+            keep_messages=_SLIDING_KEEP_MESSAGES,
+            keep_tokens=8_000,
+            min_growth_tokens=2_048,
+        )
 
 
 class TestFallbackCompaction:
