@@ -181,7 +181,9 @@ class SourceSplitter:
         decided_by = type(self.judge).__name__
         try:
             plan = self.judge.plan_pages(texts, self.rules)
-        except Exception as exc:  # noqa: BLE001 — the seam is third-party; a judge must never fail a run
+        except Exception as exc:
+            # The judge is a third-party seam: whatever the model layer raises
+            # must become a recorded decline, never a failed run.
             return SplitDecision(
                 reason=SplitReason.JUDGE_FAILED,
                 detail=f"{decided_by}: {type(exc).__name__}: {exc}",
