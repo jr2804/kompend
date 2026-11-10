@@ -88,7 +88,7 @@ Full option reference: `kompend <command> --help`
 | **Memory lifecycle** | Confidence decay, tier promotion (working → episodic → semantic → procedural), supersession detection.                                                    |
 | **Review queue**     | Route compiled pages through approve/reject/lock before publishing.                                                                                       |
 | **MCP server**       | Stdio server exposing `parse_document`, `compile_wiki`, `wiki_capture`, `wiki_learn` to Claude Code, Cursor, etc.                                         |
-| **ACP agent**        | Agent Client Protocol server: editors inject LLM credentials via `providers/set` — no API keys in your config.                                            |
+| **ACP agent**        | Agent Client Protocol server: editors drive kompend's own tools over stdio; the LLM model comes from your config.                                            |
 | **Configuration**    | 5-layer precedence: CLI > env (`KOMP_*`) > project (`.kompend/config.toml`, walks up) > global (`~/.config/kompend/`) > defaults.                               |
 
 ## LLM configuration

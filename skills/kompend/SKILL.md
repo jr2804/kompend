@@ -206,7 +206,7 @@ lint rule flags files whose slug matches no source.
 ### ACP Agent Mode
 
 kompend implements the **Agent Client Protocol (ACP)** to let editors and AI agents
-inject their LLM endpoint without sharing credentials. Run:
+drive kompend's own tools. Run:
 
 ```bash
 kompend agent
@@ -214,10 +214,10 @@ kompend agent
 
 This starts an ACP agent on stdio that:
 
-1. Advertises `providers: {}` capability on `initialize`
-2. Accepts `providers/set` to configure the LLM endpoint (base URL, auth headers, API type)
-3. Creates sessions and responds to prompts via a conversational agent loop
-4. Falls back to `/kompend <command>` subprocess dispatch when no LLM is configured
+1. Creates sessions and responds to prompts via a conversational agent loop
+2. Resolves the LLM model per prompt from `compile.llm.default_model` (the agent
+   carries no model of its own)
+3. Falls back to `/kompend <command>` subprocess dispatch when no LLM is configured
 
 **Conversational agents:** When an LLM is configured, prompts are routed through
 a tool-calling loop driven by TOML-defined agents. The LLM reasons over
@@ -232,9 +232,10 @@ See `kompend agents list` for available agents.
   so connected AI agents can call kompend's MCP tools directly
 
 **Why ACP instead of MCP sampling?** kompend needs full Pydantic structured output
-for compilation — MCP sampling is free-text only. With ACP `providers/set`,
-the editor configures kompend's LLM endpoint at init time, and kompend makes its own
-direct HTTP calls through its pydantic-ai pipeline.
+for compilation — MCP sampling is free-text only. The editor talks to kompend over
+ACP and kompend makes its own direct HTTP calls through its pydantic-ai pipeline.
+`providers/set` — letting the editor inject the endpoint at runtime — is not served
+yet; the model comes from kompend's own configuration.
 
 **Slash commands:**
 
@@ -248,10 +249,9 @@ direct HTTP calls through its pydantic-ai pipeline.
 
 **Config precedence when using ACP:**
 
-1. `providers/set` (ACP) — highest precedence
-2. Env vars (`KOMP_LLM_*`)
-3. `config.toml` `[compile.llm]`
-4. Built-in defaults
+1. Env vars (`KOMP_LLM_DEFAULT_MODEL`)
+2. `config.toml` `[compile.llm]`
+3. Built-in defaults
 
 This means even without an ACP client, kompend falls back to env vars or config,
 preserving `kompend compile` in terminal and `kompend mcp` for MCP-based agents.

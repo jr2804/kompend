@@ -3,7 +3,7 @@
 kompend can run as an **ACP (Agent Client Protocol) agent** that editors like
 opencode and Zed can connect to. This gives the editor's built-in AI agent
 access to kompend's compilation, query, and capture capabilities without
-sharing API keys — the editor injects the LLM endpoint via ``providers/set``.
+sharing API keys — the model comes from kompend's own configuration (see [Configuring the model](#configuring-the-model)).
 
 ## How it works
 
@@ -17,8 +17,9 @@ Editor ── ACP stdio ──→ kompend agent
 ```
 
 1. The editor starts ``kompend agent`` as a subprocess
-2. kompend advertises its capabilities (``providers/set``, slash commands)
-3. The editor calls ``providers/set`` to inject the LLM endpoint
+2. kompend advertises its capabilities (slash commands)
+3. The editor creates a session; the LLM model is resolved per prompt from
+   kompend's configuration
 4. The user types a prompt → kompend routes it through a conversational agent
    that can call tools (compile, query, capture) as needed
 
@@ -75,29 +76,39 @@ Add to your Zed settings (``~/.config/zed/settings.json``):
 }
 ```
 
-## Env-var fallback (no providers/set)
+## Configuring the model
 
-If your editor does not support the ``providers/set`` ACP extension, kompend
-falls back to its normal config precedence:
+The ACP agent carries no model of its own: every prompt resolves the model from
+kompend's normal config precedence — environment variables, then ``config.toml``
+in the vault, then the built-in defaults.
 
-1. Environment variables
-2. ``config.toml`` in the vault
-3. Built-in defaults
-
-Set these environment variables before starting the agent:
+Point kompend at a model before starting the agent:
 
 ```bash
 export KOMP_LLM_DEFAULT_MODEL="ollama-cloud/deepseek-v4-flash"
-export KOMP_LLM_API_BASE="https://api.ollama.cloud/v1"
-export KOMP_LLM_API_KEY="sk-..."
 ```
 
-Or configure them permanently in ``config.toml``:
+Or configure it permanently in ``config.toml``:
 
 ```toml
 [compile.llm]
 default_model = "ollama-cloud/deepseek-v4-flash"
 ```
+
+The endpoint follows the provider the model id names — a native provider, or a
+``[providers.<name>]`` block with a ``base_url``:
+
+```toml
+[providers.ollama-cloud]
+base_url = "https://ollama.com/v1"
+api_key = "sk-..."
+```
+
+Without a model the agent still starts; a prompt then fails with
+``No LLM model configured. Set compile.llm.default_model or run 'kompend config set'.``
+
+> ``providers/set`` — letting the editor inject the endpoint at runtime — is not
+> served yet; the editor cannot override the endpoint from the wire.
 
 ## Available slash commands
 
@@ -140,8 +151,9 @@ kompend agent --agent-file path/to/my-agent.toml
 
 **LLM not available:**
 
-- The editor must call ``providers/set`` with a valid LLM endpoint
-- Or set ``KOMP_LLM_DEFAULT_MODEL`` / ``KOMP_LLM_API_KEY`` env vars
+- Set ``compile.llm.default_model`` (or the ``KOMP_LLM_DEFAULT_MODEL`` env var)
+- Check the provider block the model id names (``[providers.<name>]`` with a
+  ``base_url``)
 - Run ``kompend doctor`` to verify LLM connectivity
 
 **Slash commands not working:**
