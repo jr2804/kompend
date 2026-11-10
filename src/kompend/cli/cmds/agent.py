@@ -16,14 +16,16 @@ on demand, so nothing is paid at ``kompend --help`` time.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 
 from pydantic_ai import Agent
 from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
 
 from kompend.acp import build_kompend_agent, kompend_session_config
 from kompend.cli.args.serving import AgentMcpPort
+from kompend.logging import get_logger
 from kompend.mcp.server import create_mcp_server
+
+logger = get_logger(__name__)
 
 
 def agent_cmd(
@@ -46,8 +48,12 @@ def agent_cmd(
             _run_sync(agent)
         finally:
             mcp_task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception, TimeoutError):
+            try:
                 asyncio.get_event_loop().run_until_complete(asyncio.wait_for(mcp_task, timeout=5))
+            except (asyncio.CancelledError, TimeoutError):
+                pass  # expected teardown outcomes: the task is cancelled and the wait is bounded
+            except Exception as exc:  # teardown must not mask the agent run, but failures are recorded
+                logger.debug("mcp server task failed during shutdown: %s", exc)
     else:
         _run_sync(agent)
 
