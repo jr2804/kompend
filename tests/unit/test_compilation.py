@@ -26,13 +26,14 @@ from kompend.compilation.two_phase import (
     Extraction,
     ExtractionSet,
     TwoPhaseCompiler,
+    extract_images_from_chunks,
     merge_node,
     slugify,
 )
 from kompend.compilation.two_phase.core import _SLUG_MAX_LENGTH
 from kompend.compilation.two_phase.state import _FAILURE_THRESHOLD_MIN
 from kompend.core.config import EmbeddingConfig, LLMConfig
-from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, ResolvedChunk, WikiNode
+from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, MetadataField, ResolvedChunk, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.core.models.metadata import meta_dict, meta_str, meta_str_list
 from kompend.core.pipeline.config import PipelineConfig
@@ -1423,6 +1424,54 @@ def _make_diverse_chunks() -> list[ResolvedChunk]:
             )
             chunks.append(rc)
     return chunks
+
+
+def test_a_split_childs_figure_names_the_parent_that_owns_it(tmp_path: Path) -> None:
+    """The extraction stamps the owner so the writer can pick the parent's directory.
+
+    The chunk carries the split provenance (stamped by the parse stage), the
+    child is the attribution (``source_file``), and the parent — resolved
+    through the splitting package, not by a literal key — is the owner.
+    """
+    child = tmp_path / "sources" / "packet#p005-009.pdf"
+    parent = tmp_path / "sources" / "packet.pdf"
+    rc = _image_chunk(
+        child,
+        metadata={
+            MetadataField.SPLIT_PARENT_STEM.value: "packet",
+            MetadataField.SPLIT_PARENT_SOURCE.value: parent.as_posix(),
+            MetadataField.SPLIT_PAGES.value: "p005-009",
+        },
+    )
+
+    (image,) = extract_images_from_chunks([rc])
+
+    assert image["source_file"] == str(child)
+    assert image["attachment_owner"] == parent.as_posix()
+
+
+def test_an_ordinary_sources_figure_carries_no_owner(tmp_path: Path) -> None:
+    """No split provenance → no owner key; the source owns its own figures."""
+    source = tmp_path / "sources" / "report.pdf"
+    (image,) = extract_images_from_chunks([_image_chunk(source)])
+
+    assert image["source_file"] == str(source)
+    assert "attachment_owner" not in image
+
+
+def _image_chunk(source_file: Path, *, metadata: dict[str, Any] | None = None) -> ResolvedChunk:
+    """A resolved image chunk, with the element metadata a parser would set."""
+    image_path = ".kompend/cache/images/fig.png"
+    return ResolvedChunk(
+        chunk=Chunk(
+            id="chunk_image",
+            text="",
+            element_types=[ElementType.IMAGE],
+            source_elements=[0],
+            source_file=source_file,
+            metadata={MetadataField.IMAGE_FILE.value: image_path, **(metadata or {})},
+        ),
+    )
 
 
 def _chunk(

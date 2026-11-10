@@ -25,6 +25,7 @@ from kompend.llm.request_budget import (
 )
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
+from kompend.preprocessing.splitting import parent_source_of
 
 # Maximum slug length. Windows limits a single path component to 255 chars;
 # the LLM sometimes emits a full sentence as a page title, which slugifies to
@@ -105,6 +106,12 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
     ``source_file`` is the document the figure came from — callers select the
     subset belonging to a page with :func:`images_for_provenance`.
 
+    A split child is a virtual source, so the figure it references is the
+    parent's extracted image; such a figure also carries ``attachment_owner``
+    (the parent's source path), which the writer uses to pick the attachment
+    directory. Attribution does not move: ``source_file`` stays the child, so
+    the child's pages still claim the figure.
+
     Only a real caption may be published: an entity of type
     ``image_description`` whose name is not one of the status names
     (``vlm_error``, ``vlm_filtered``, ``vlm_placeholder``, ``vlm_skipped``).
@@ -140,10 +147,23 @@ def extract_images_from_chunks(chunks: list[ResolvedChunk]) -> list[ImageRef]:
                 "caption": caption,
                 "element_type": "image",
                 "source_file": str(rc.chunk.source_file or ""),
+                **_attachment_owner(rc),
             }
         )  # ImageRef
 
     return images
+
+
+def _attachment_owner(rc: ResolvedChunk) -> dict[str, str]:
+    """The ``attachment_owner`` entry for *rc*'s figure, empty for a real source.
+
+    A split child has no file on disk; its attachments were registered against
+    the parent, so the parent owns the directory the figure is copied into.
+    The parent is read through the splitting package's own helper, never by
+    naming the metadata key here.
+    """
+    parent = parent_source_of(rc.chunk.metadata)
+    return {"attachment_owner": parent.as_posix()} if parent is not None else {}
 
 
 def compute_quality_score(nodes: list[WikiNode], edges: list[GraphEdge]) -> float:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, TypedDict
+from typing import Any, NotRequired, TypedDict
 
 from kompend.core.models.enums import ChunkField, ElementType, MetadataField
 from kompend.core.paths import safe_stem
@@ -83,6 +83,17 @@ class ImageRef(TypedDict):
     option was the run-global image list, which put every figure of every
     source on every page (and copied them into one attachment directory per
     page provenance value).
+    """
+
+    attachment_owner: NotRequired[str]
+    """Vault-relative path of the source that owns the attachment directory.
+
+    Present only when it differs from ``source_file``: a split child is a
+    virtual source with no file on disk, so its figures are the parent's
+    extracted images and belong in the parent's attachment directory. Absent
+    means ``source_file`` owns its figures itself, which is every ordinary
+    source. Attribution stays in ``source_file`` either way — this key decides
+    where the file is copied, never which page may embed it.
     """
 
 

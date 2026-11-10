@@ -151,6 +151,86 @@ def test_a_figure_reaches_the_page_with_its_caption(tmp_path: Path) -> None:
     assert "![A block diagram of the two-stage pipeline.]" in page
 
 
+def test_a_split_childs_figure_reaches_the_parents_attachment_directory(tmp_path: Path) -> None:
+    """The split chain, end to end: child chunk → parent-owned figure → parent dir.
+
+    A child is a virtual source with no file on disk, so its page may embed the
+    figure but may not own the attachment directory. Skipping this stage is how
+    the bug reached a vault: every stage looked right on its own, and the
+    figure landed in ``attachments/packet_p005-009/`` — a slug no live source
+    has, which the orphan rule deletes on ``lint --fix``.
+    """
+    parent = tmp_path / "sources" / "packet.pdf"
+    parent.parent.mkdir(parents=True)
+    parent.write_bytes(b"%PDF-1.4\n")
+    child = parent.with_name("packet#p005-009.pdf")
+
+    image = VaultPaths(base_dir=tmp_path).images_dir / "packet__fig9.png"
+    image.parent.mkdir(parents=True)
+    image.write_bytes(_png_bytes())
+
+    document = ParsedDocument(
+        source_file=child,
+        # The parse stage stamps a child's split provenance; page figures need
+        # the parent to own them.
+        metadata={
+            MetadataField.SPLIT_PARENT_STEM.value: "packet",
+            MetadataField.SPLIT_PARENT_SOURCE.value: parent.as_posix(),
+            MetadataField.SPLIT_PAGES.value: "p005-009",
+        },
+        elements=[
+            DocumentElement(type=ElementType.TEXT, content="Five pages of the packet.", page=5, source_file=child),
+            DocumentElement(
+                type=ElementType.IMAGE,
+                content=str(image),
+                page=5,
+                metadata={MetadataField.IMAGE_FILE: str(image)},
+                source_file=child,
+            ),
+        ],
+    )
+
+    tree = HierarchicalChunker(max_tokens=512).chunk(document)
+    # The parse stage copies the split keys onto every leaf chunk.
+    for leaf in tree.leaves():
+        if leaf.chunk is not None:
+            leaf.chunk.metadata.update(document.metadata)
+
+    pipeline = build_pipeline(_make_config(tmp_path))
+    pipeline.resolver = VLMEnricher(agent=_StubVlm(caption=""))  # ty: ignore[invalid-argument-type]
+    resolved = resolve_chunks(pipeline, [tree])
+
+    images = extract_images_from_chunks(resolved)
+    assert len(images) == 1
+    assert images[0]["attachment_owner"] == parent.as_posix()
+    # Attribution stays with the child — the virtual path is what its pages
+    # report as provenance.
+    assert images[0]["source_file"] == str(child)
+
+    wiki = CompiledWiki(
+        nodes=[
+            WikiNode(
+                id="packet-p005-009",
+                title="Packet [p005-009]",
+                content="Five pages of the packet.",
+                node_type=NodeType.CONCEPT,
+                metadata={
+                    MetadataField.IMAGES: images,
+                    MetadataField.PROVENANCE: [child.stem],
+                },
+            ),
+        ],
+        edges=[],
+        toc=[],
+    )
+    MarkdownWriter(flavor=Flavor.OBSIDIAN, vault_mode=True, base_dir=tmp_path).write(wiki, tmp_path / "wiki")
+
+    published = list((tmp_path / ATTACHMENTS_DIR_NAME).rglob("packet__fig9.png"))
+    assert [p.parent.name for p in published] == ["packet"]
+    page = next(p for p in tmp_path.rglob("packet-p005-009.md") if KOMP_DIR not in p.parts)
+    assert "attachments/packet/packet__fig9.png" in page.read_text(encoding="utf-8")
+
+
 def test_a_failed_caption_is_not_published_as_a_caption(tmp_path: Path) -> None:
     """A broken figure must not become a page caption."""
     source = tmp_path / "sources" / "report.pdf"

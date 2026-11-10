@@ -121,9 +121,19 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
         matches no provenance entry are dropped, so an unattributable figure
         cannot leave a ``.kompend/`` link behind (the lint rule that enforces the
         invariant forbids one).
+
+        A figure carrying ``attachment_owner`` (a split child's figure, whose
+        attachments belong to the parent) is copied into the OWNER's directory
+        instead of the matched entry's. The child is a virtual source: no file
+        under ``sources/`` backs it, so ``attachments/<child-slug>/`` matches no
+        live source and the orphan rule would delete it on the next
+        ``lint --fix``, leaving the page with a dangling link. Attribution is
+        untouched — the page still embeds the figure because its provenance
+        names the child.
         """
         if self._base_dir is None or not images:
             return images
+        base_dir = self._base_dir
         # Provenance entries arrive as bare stems ("report") or source-relative
         # paths ("sources/report.pdf"); attachment_slug() strips the sources/
         # prefix so both forms land on the same directory.
@@ -141,7 +151,7 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
             if rel is None:
                 out.append(img)
                 continue
-            src_file = self._base_dir / rel
+            src_file = base_dir / rel
             if not src_file.is_file():
                 out.append(img)
                 continue
@@ -152,16 +162,50 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
                 # than invent a directory or emit a .kompend/ link.
                 logger.debug("Dropping image with no provenance match: %s", rel)
                 continue
-            dest = self._base_dir / ATTACHMENTS_DIR_NAME / slug / src_file.name
+            owner = self._attachment_owner_rel(img, base_dir)
+            if owner is not None:
+                # The image belongs to a source that is not its own (a split
+                # child's figure lives in the parent's directory): slug the
+                # owner so the directory matches a live source and survives
+                # the orphan rule.
+                slug = attachment_slug(owner) or slug
+            dest = base_dir / ATTACHMENTS_DIR_NAME / slug / src_file.name
             if not dest.exists() or dest.read_bytes() != src_file.read_bytes():
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src_file, dest)
             target = Path(self._output_dir_name) / folder if folder else Path(self._output_dir_name)
-            link = dest.relative_to(self._base_dir).relative_to(target, walk_up=True).as_posix()
+            link = dest.relative_to(base_dir).relative_to(target, walk_up=True).as_posix()
             new_img = img.copy()
             new_img["path"] = link
             out.append(new_img)
         return out
+
+    @staticmethod
+    def _attachment_owner_rel(img: ImageRef, base_dir: Path) -> str | None:
+        """The source path whose attachment directory owns *img*, if not its own.
+
+        Only a figure from a split child carries an owner: the child is virtual
+        (no file under ``sources/``), so the parent stamped into the chunk at
+        split time is the source whose attachments the figure belongs to. The
+        stamped value is absolute on the normal pipeline path (the parse stage
+        restores the real source path) and relative when a caller partitions a
+        document directly; both reduce to a ``sources/``-relative path here, so
+        ``attachment_slug()`` derives the same directory from either shape.
+        """
+        raw = img.get("attachment_owner")
+        if not isinstance(raw, str) or not raw:
+            return None
+        path = Path(raw)
+        if path.is_absolute():
+            try:
+                path = path.relative_to(base_dir)
+            except ValueError:
+                # An owner outside the vault cannot own an attachments/
+                # directory; its bare name still names a live source's slug.
+                path = Path(path.name)
+        prefix = f"{DEFAULT_SOURCES_DIR_NAME}/"
+        text = path.as_posix()
+        return text[len(prefix) :] if text.startswith(prefix) else text
 
     def _write_vault(self, docs: list[Document], wiki: CompiledWiki, output_dir: Path) -> Path:
         """Write each document as a separate ``.md`` file, plus index/log pages."""
