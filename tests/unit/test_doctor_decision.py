@@ -37,15 +37,6 @@ class _BatchedVerdicts(BaseModel):
     verdicts: list[CandidateVerdict] = Field(description="One verdict per candidate.")
 
 
-def _overwide_choice(option_count: int) -> type[BaseModel]:
-    """A pick-one with *option_count* options, one past what the endpoint accepts."""
-    options = Enum("options", {f"option_{index}": f"option-{index}" for index in range(option_count)}, type=str)
-    return create_model(
-        "Overwide",
-        choice=(options, Field(description="Which option applies.")),
-    )
-
-
 class TestDecisionSchemaCheck:
     def test_it_accepts_every_shipped_result_type(self) -> None:
         result = check_decision_schema()
@@ -220,3 +211,12 @@ class TestDecisionChecksInTheRun:
         assert names.index(DECISION_SCHEMA_CHECK) < names.index(DECISION_CONNECTIVITY_CHECK)
         assert names.index(DECISION_CONNECTIVITY_CHECK) < names.index("connectivity-llm")
         assert names.index("output-directory") < names.index(DECISION_SCHEMA_CHECK)
+
+
+def _overwide_choice(option_count: int) -> type[BaseModel]:
+    """A pick-one with *option_count* options, one past what the endpoint accepts."""
+    options = Enum("options", {f"option_{index}": f"option-{index}" for index in range(option_count)}, type=str)
+    return create_model(
+        "Overwide",
+        choice=(options, Field(description="Which option applies.")),
+    )

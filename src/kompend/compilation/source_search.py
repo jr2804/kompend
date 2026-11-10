@@ -257,21 +257,6 @@ class SourceIndex:
         window = text[offset : offset + limit]
         return window, min(len(text), offset + len(window))
 
-    @classmethod
-    def from_segments(
-        cls,
-        segments: Iterable[Iterable[tuple[str, str]]],
-        *,
-        embedding_model: str = "",
-        decision: DecisionConfig | None = None,
-    ) -> SourceIndex:
-        """Build the index from generation segments (``[(label, text), ...]`` each)."""
-        return cls(
-            (pair for segment in segments for pair in segment),
-            embedding_model=embedding_model,
-            decision=decision,
-        )
-
     def close(self) -> None:
         """Release the judge pool; a later search rebuilds it if it is needed.
 
@@ -290,6 +275,21 @@ class SourceIndex:
             pool, self._judge_pool = self._judge_pool, None
         if pool is not None:
             pool.shutdown(wait=True, cancel_futures=True)
+
+    @classmethod
+    def from_segments(
+        cls,
+        segments: Iterable[Iterable[tuple[str, str]]],
+        *,
+        embedding_model: str = "",
+        decision: DecisionConfig | None = None,
+    ) -> SourceIndex:
+        """Build the index from generation segments (``[(label, text), ...]`` each)."""
+        return cls(
+            (pair for segment in segments for pair in segment),
+            embedding_model=embedding_model,
+            decision=decision,
+        )
 
     def _judge_rerank(self, query: str, terms: set[str], pool: Sequence[tuple[float, str]]) -> list[tuple[float, str]] | None:
         """Re-order the BM25-ranked *pool* by the judge's verdicts.

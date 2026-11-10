@@ -190,12 +190,6 @@ def _extraction_set() -> ExtractionSet:
     return ext_set
 
 
-def _page_output() -> GenerationOutput:
-    return GenerationOutput(
-        pages=[GenerationPage(title="Listening Effort", content="The effort to understand speech.", provenance=["sources/src.pdf"])],
-    )
-
-
 def _chunks(count: int = 3) -> list[ResolvedChunk]:
     return [
         ResolvedChunk(
@@ -235,6 +229,12 @@ def _answering_agent() -> MagicMock:
     agent = MagicMock()
     agent.run.return_value = _page_output()
     return agent
+
+
+def _page_output() -> GenerationOutput:
+    return GenerationOutput(
+        pages=[GenerationPage(title="Listening Effort", content="The effort to understand speech.", provenance=["sources/src.pdf"])],
+    )
 
 
 def _entity_extraction_set(entity_type: str, *, sources: int) -> ExtractionSet:
