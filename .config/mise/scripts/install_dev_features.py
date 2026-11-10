@@ -28,7 +28,7 @@ DATA = Path(__file__).resolve().parents[1] / "data"
 
 # add-mcp names agents after their CLIs (claude-code, gemini-cli, ...); map the
 # friendly spellings the task help advertises onto the canonical ones.
-AGENT_ALIASES: Final[dict[str, str]] = {
+AGENT_ALIASES: Final[dict[str, str]] = {  # nocheck: str-registry — friendly spellings a user types, deliberately literal
     "claude": "claude-code",
     "gemini": "gemini-cli",
     "copilot": "github-copilot-cli",
@@ -197,7 +197,7 @@ def add_mcp_servers(agent: str, mise_env: str | None = None) -> int:
     for feature in _features():
         if not feature.enabled:
             if feature.tool:
-                Command(("mise", "remove", "--env", "local", feature.tool)).run()
+                Command(("mise", "uninstall", "--env", "local", feature.tool)).run()
             if feature.mcp_name:
                 Command(("bun", "x", "add-mcp", "remove", feature.mcp_name)).opt("-a", agent).opt("-y").run()
             continue
