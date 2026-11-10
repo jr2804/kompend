@@ -114,7 +114,7 @@ def report_failure(message: str, info: ExcInfo, *, fallback: Callable[[], object
     """
     try:
         _failure_logger().error("%s", message, exc_info=cast("Any", info))
-    except BaseException:  # noqa: BLE001 - reporting must not replace the report
+    except Exception:  # reporting must not replace the report
         fallback()
 
 

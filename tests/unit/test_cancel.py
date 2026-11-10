@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
+import types
 from collections.abc import Callable
 from pathlib import Path
 from queue import Empty, SimpleQueue
@@ -17,7 +18,8 @@ from queue import Empty, SimpleQueue
 import pytest
 
 import kompend.cli.app as app_mod
-from kompend.cli.runtime.esc_watch import DOUBLE_ESC_REASON, EscDoublePressWatcher
+import kompend.cli.runtime.esc_watch as esc_mod
+from kompend.cli.runtime.esc_watch import DOUBLE_ESC_REASON, EscDoublePressWatcher, _make_platform_reader
 from kompend.cli.runtime.progress import PipelineProgress
 from kompend.core.cancel import CANCEL_EXIT_CODE, CANCEL_WINDOW_SECONDS, CancelState, KompendCancelled
 from kompend.core.config import resolve_config
@@ -84,7 +86,7 @@ class TestCancelState:
         def _swallower() -> None:
             try:
                 raise KompendCancelled("stop")
-            except Exception:  # noqa: BLE001 — proves the point
+            except Exception:  # KompendCancelled is a BaseException: this handler must not see it
                 msg = "must not be caught"
                 raise RuntimeError(msg) from None
 
@@ -225,6 +227,46 @@ class TestEscDoublePressWatcher:
         watcher.stop()
         assert thread is not None
         assert not thread.is_alive()
+
+
+class TestPlatformReader:
+    """The POSIX reader is an optional feature: an unusable terminal means no reader."""
+
+    def test_an_unusable_terminal_yields_no_reader(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """``termios.error`` is not an ``OSError``: the probe must catch it by name."""
+
+        class _TermiosError(Exception):
+            """Stand-in for ``termios.error``, deliberately not an ``OSError``."""
+
+        def _tcgetattr(_fd: int) -> list[object]:
+            raise _TermiosError(25, "Inappropriate ioctl for device")
+
+        fake_termios = types.SimpleNamespace(
+            error=_TermiosError,
+            ICANON=2,
+            ECHO=8,
+            VMIN=6,
+            VTIME=5,
+            TCSANOW=0,
+            TCSADRAIN=1,
+            tcgetattr=_tcgetattr,
+            tcsetattr=lambda *_args: None,
+        )
+        monkeypatch.setattr(esc_mod.sys, "platform", "linux")
+        monkeypatch.setattr(esc_mod.importlib, "import_module", lambda name: fake_termios if name == "termios" else _select())
+
+        assert _make_platform_reader() is None
+
+    def test_a_missing_module_yields_no_reader(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A platform without ``termios`` is the ``ImportError`` stage, not an error."""
+
+        def _missing(name: str) -> object:
+            raise ImportError(f"no module named {name}")
+
+        monkeypatch.setattr(esc_mod.sys, "platform", "linux")
+        monkeypatch.setattr(esc_mod.importlib, "import_module", _missing)
+
+        assert _make_platform_reader() is None
 
 
 class TestPipelineEmitCancel:
@@ -456,6 +498,11 @@ def _wait_until(predicate: Callable[[], bool], timeout: float = 2.0) -> bool:
             return True
         time.sleep(0.005)
     return predicate()
+
+
+def _select() -> object:
+    """A stand-in for the ``select`` module: the reader only needs the name."""
+    return types.SimpleNamespace(select=lambda *_args: ([], [], []))
 
 
 def _make_watcher(

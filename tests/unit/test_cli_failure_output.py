@@ -8,6 +8,8 @@ error, and the second exception went to the same dead stream.
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 from kompend.cli import app as cli_app
@@ -49,7 +51,28 @@ class TestWriteFailure:
 
         assert written == [b"boom\n"]
 
-    def test_both_writers_dead_is_still_not_an_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_a_closed_stream_falls_back_to_the_raw_descriptor(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        written: list[bytes] = []
+
+        class _ClosedStream:
+            """A stream already closed raises ValueError, not OSError."""
+
+            @staticmethod
+            def write(_text: str) -> int:
+                raise ValueError("I/O operation on closed file")
+
+            @staticmethod
+            def flush() -> None:
+                raise ValueError("I/O operation on closed file")
+
+        monkeypatch.setattr(cli_app.sys, "stderr", _ClosedStream())
+        monkeypatch.setattr(cli_app.os, "write", lambda _fd, data: written.append(data) or len(data))
+
+        cli_app._write_failure("boom")
+
+        assert written == [b"boom\n"]
+
+    def test_the_both_writers_dead_is_still_not_an_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def _broken(_fd: int, _data: bytes) -> int:
             raise OSError(9, "The handle is invalid")
 
@@ -67,3 +90,29 @@ class TestEndRun:
         monkeypatch.setattr(cli_app, "log_run_end", _broken)
 
         cli_app._end_run(None, status="error", error="boom")
+
+    def test_the_swallowed_failure_is_recorded(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        def _broken(*_args: object, **_kwargs: object) -> None:
+            raise RuntimeError("the run log is unavailable")
+
+        monkeypatch.setattr(cli_app, "log_run_end", _broken)
+
+        with caplog.at_level(logging.DEBUG, logger="kompend.cli.app"):
+            cli_app._end_run(None, status="error", error="boom")
+
+        assert "run record could not be closed" in caplog.text
+
+    def test_an_interrupt_is_not_swallowed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Ctrl-C must keep propagating: the audit trail is not a cancellation boundary."""
+
+        def _interrupted(*_args: object, **_kwargs: object) -> None:
+            raise KeyboardInterrupt
+
+        monkeypatch.setattr(cli_app, "log_run_end", _interrupted)
+
+        with pytest.raises(KeyboardInterrupt):
+            cli_app._end_run(None, status="error", error="boom")

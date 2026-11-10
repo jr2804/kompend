@@ -31,7 +31,15 @@ from kompend.cli.tree.registry import COMMANDS, PANEL_ORDER, HelpPanel, OnDemand
 from kompend.core.cancel import CANCEL_EXIT_CODE, KompendCancelled
 from kompend.core.reporting.handle import RunHandle
 from kompend.core.verbosity import is_verbose, set_verbose
-from kompend.logging import apply_logging_config, configure_logging, get_console, route_third_party_loggers
+from kompend.logging import (
+    apply_logging_config,
+    configure_logging,
+    get_console,
+    get_logger,
+    route_third_party_loggers,
+)
+
+logger = get_logger(__name__)
 
 Version = Annotated[
     bool,
@@ -199,7 +207,7 @@ def main() -> None:
         _end_run(handle, status="error", error="KeyboardInterrupt")
         _print_run_log_footer(handle)
         raise
-    except BaseException as exc:  # noqa: BLE001 — capture any crash for the audit trail
+    except BaseException as exc:  # capture any crash for the audit trail
         handle = _extract_handle()
         _end_run(handle, status="error", error=repr(exc))
         _write_failure(format_exception_for_cli(exc, verbose=is_verbose()))
@@ -231,8 +239,8 @@ def _end_run(handle: RunHandle | None, **fields: Any) -> None:
     """Close the run record; a broken audit trail must not hide the outcome."""
     try:
         log_run_end(handle, **fields)
-    except BaseException:  # noqa: BLE001 - the caller is already on an error path
-        return
+    except Exception:  # the caller is already on an error path
+        logger.debug("run record could not be closed", exc_info=True)
 
 
 def _write_failure(text: str) -> None:
@@ -244,13 +252,11 @@ def _write_failure(text: str) -> None:
     fallback is cheaper than the last and needs less of the process to work.
     """
     payload = text if text.endswith("\n") else f"{text}\n"
-    try:
+    with contextlib.suppress(OSError, ValueError):
         sys.stderr.write(payload)
         sys.stderr.flush()
         return
-    except BaseException:  # noqa: BLE001, S110 - a dead console is the case this exists for
-        pass
-    with contextlib.suppress(BaseException):
+    with contextlib.suppress(OSError):
         os.write(2, payload.encode("utf-8", "replace"))
 
 

@@ -65,7 +65,7 @@ def lint_all(
         merged = run_full_lint_flow(vp, cfg, fix=fix)
     except RuntimeError as exc:
         return {"status": "error", "message": str(exc)}
-    except Exception as exc:  # noqa: BLE001 — surface any flow failure to the MCP client
+    except Exception as exc:  # MCP trust boundary: surface any flow failure to the client
         return {"status": "error", "message": str(exc)}
     return {
         "status": "ok",

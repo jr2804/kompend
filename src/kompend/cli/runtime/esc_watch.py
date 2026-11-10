@@ -116,7 +116,7 @@ class EscDoublePressWatcher:
             return
         try:
             self._on_cancel(self.state.reason)
-        except Exception:  # noqa: BLE001 — notice hook must never break cancelling
+        except Exception:  # notice hook must never break cancelling
             logger.debug("cancel notice hook failed", exc_info=True)
 
 
@@ -132,7 +132,10 @@ def _make_platform_reader() -> tuple[KeyReader, Cleanup] | None:
     try:
         select = importlib.import_module("select")
         termios = importlib.import_module("termios")
-
+    except ImportError as exc:  # optional-feature probe: no POSIX terminal support
+        logger.debug("ESC cancel unavailable on this platform: %s", exc)
+        return None
+    try:
         fd = sys.stdin.fileno()
         saved = termios.tcgetattr(fd)
         # tcgetattr returns the POSIX cc_t list: [iflag, oflag, cflag, lflag,
@@ -156,7 +159,7 @@ def _make_platform_reader() -> tuple[KeyReader, Cleanup] | None:
                 logger.debug("termios restore failed — terminal may need reset")
 
         return _read, _restore
-    except Exception as exc:  # noqa: BLE001 — feature probe, not a pipeline error path
+    except (OSError, ValueError, termios.error) as exc:  # feature probe, not a pipeline error path
         logger.debug("ESC cancel unavailable on this terminal: %s", exc)
         return None
 

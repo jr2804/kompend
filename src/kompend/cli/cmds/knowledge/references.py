@@ -153,7 +153,7 @@ def references_fetch(*, source: ReferencesFetchSource = None, dry_run: Reference
             timeout=timeout,
             llm=cfg.kompend.compile.llm,
         )
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:  # CLI trust boundary: report the real cause and exit 1
         get_err_console().print(f"Could not initialise resolver agent: {exc}")
         raise SystemExit(1) from exc
 
