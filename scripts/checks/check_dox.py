@@ -47,6 +47,10 @@ CORE_AGENTS_FILES: tuple[str, ...] = (
 # short common phrases like "## Purpose" or "## Ownership").
 _MIN_DUP_LEN = 40
 
+#: Length of the sentence prefix used to fingerprint a DOX sentence for the
+#: duplication check — a comparison key, not a quoted crop.
+_FINGERPRINT_CHARS = 60
+
 # Ignore sentences matching these patterns (headings, list markers, code).
 _IGNORE_RE = re.compile(r"^(#+\s|[-*]\s|\d+\.\s|```|`[^`]+`$|\||\[rtk:|<!--|// )")
 
@@ -170,7 +174,7 @@ def _is_agents_core(path: Path, root: Path) -> bool:
         rel = path.relative_to(root)
     except ValueError:
         return False
-    if rel.parts[:1] != (".agents",):
+    if not rel.parts or rel.parts[0] != ".agents":
         return False
     return rel.name in ("POLICIES.md", "CHECKS.md", "FILES.md", "MAINTENANCE.md", "HISTORY.md")
 
@@ -183,8 +187,8 @@ def _check_duplication(files: list[Path]) -> list[str]:
     for path in files:
         text = path.read_text(encoding="utf-8")
         for sentence in _extract_sentences(text):
-            # Use first 60 chars as a fingerprint
-            fingerprint = sentence[:60].lower()
+            # A sentence's first ``_FINGERPRINT_CHARS`` are its identity here.
+            fingerprint = sentence[:_FINGERPRINT_CHARS].lower()
             sentence_map.setdefault(fingerprint, []).append(path)
 
     for fingerprint, paths in sentence_map.items():

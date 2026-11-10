@@ -72,6 +72,14 @@ _WINDOWS_DRIVE = re.compile(r"^[a-zA-Z]:[\\/]")
 _WINDOWS_UNC = re.compile(r"^\\{2}")
 
 
+#: Width of a violation's rendered line: a longer value is cut to this width
+#: so one finding stays on one line. The finding still carries the file and
+#: the field path, so nothing identifying is lost — only the quote is clipped.
+_VIOLATION_LINE_WIDTH = 80
+#: Room left for the ``...`` marker when a value is cut to that width.
+_ELLIPSIS = "..."
+
+
 @dataclass
 class Violation:
     """One absolute-path leak detected in a persisted artifact."""
@@ -81,7 +89,8 @@ class Violation:
     value: str
 
     def render(self) -> str:
-        truncated = self.value if len(self.value) <= 80 else self.value[:77] + "..."
+        room = _VIOLATION_LINE_WIDTH - len(_ELLIPSIS)
+        truncated = self.value if len(self.value) <= _VIOLATION_LINE_WIDTH else self.value[:room] + _ELLIPSIS
         return f"{self.file}:{self.field_path}  absolute-path-leak  {truncated!r}"
 
 
@@ -233,7 +242,7 @@ def _scan_table(conn: sqlite3.Connection, table: str, columns: list[str], acc: _
 def _try_decode(value: str) -> Any:
     """The decoded JSON value, or ``None`` when *value* is not JSON."""
     stripped = value.lstrip()
-    if stripped[:1] not in ("{", "["):
+    if not stripped.startswith(("{", "[")):
         return None
     try:
         return json.loads(value)

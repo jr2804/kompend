@@ -61,7 +61,7 @@ EXCLUDED_CLI_COMMANDS: set[str] = {
 # MCP tool name → the CLI command it covers, when the names cannot be derived
 # by the normalization rules above (e.g. a prefix/suffix rename).
 # Empty by default; maintained manually if a deliberate rename occurs.
-MCP_TO_CLI_ALIASES: dict[str, str] = {
+MCP_TO_CLI_ALIASES: dict[str, str] = {  # nocheck: str-registry — MCP wire tool names, deliberately literal
     # wiki_list_attachments covers `attachments list` but uses the
     # knowledge-loop `wiki_` prefix + noun-first ordering rather than the
     # `attachments list` group/verb ordering.
@@ -71,7 +71,7 @@ MCP_TO_CLI_ALIASES: dict[str, str] = {
 
 # CLI command groups that are aliases of another group and must not be
 # reported as separate commands (Cyclopts lists each group under every name).
-CLI_COMMAND_ALIASES: dict[str, str] = {"att": "attachments"}
+CLI_COMMAND_ALIASES: dict[str, str] = {"att": "attachments"}  # nocheck: str-registry — CLI group spelling, deliberately literal
 
 #: The quality family whose wire shapes are pinned. The set is explicit rather
 #: than "every tool on the server" so adding an unrelated tool does not churn

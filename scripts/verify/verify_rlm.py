@@ -36,6 +36,8 @@ MODEL = os.environ.get("KOMP_TEST_RLM_MODEL", "hf.co/unsloth/Qwen3.5-2B-MTP-GGUF
 #: Qwen3.5-2B-MTP calls execute_code and answers correctly (~9 min total).
 OLLAMA_URL = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 FILLER = "The quick brown fox jumps over the lazy dog. "
+#: How much of the model's answer the verdict line quotes.
+_ANSWER_PREVIEW_CHARS = 80
 
 
 def main() -> int:
@@ -64,13 +66,13 @@ def main() -> int:
     print("running rlm-off path (~4-5 min)...", flush=True)
     answer_off = run_query(question, corpus, rlm=None)
     off_ok = "cerulean" not in answer_off
-    print(f"[rlm off ] answer={answer_off[:80]!r} -> {'PASS' if off_ok else 'FAIL'}")
+    print(f"[rlm off ] answer={answer_off[:_ANSWER_PREVIEW_CHARS]!r} -> {'PASS' if off_ok else 'FAIL'}")
 
     # --- Path B: RLM on (code search over the full corpus in the REPL) ---
     print("running rlm-on path (~4-5 min)...", flush=True)
     answer_on = run_query(question, corpus, rlm=RlmConfig(enable=True))
     on_ok = "cerulean" in answer_on
-    print(f"[rlm on  ] answer={answer_on[:80]!r} -> {'PASS' if on_ok else 'FAIL'}")
+    print(f"[rlm on  ] answer={answer_on[:_ANSWER_PREVIEW_CHARS]!r} -> {'PASS' if on_ok else 'FAIL'}")
 
     if not (off_ok and on_ok):
         print("\nFAIL: RLM verification failed")

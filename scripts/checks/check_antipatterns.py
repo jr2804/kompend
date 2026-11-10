@@ -96,11 +96,12 @@ from _common import ScanError, repo_root, require_scanned
 REPO_ROOT = repo_root()
 SRC_ROOT = REPO_ROOT / "src" / "kompend"
 TESTS_ROOT = REPO_ROOT / "tests"
-#: Roots for the banned-suppression rule. A suppression marker is wrong
-#: wherever it stands, and the gate scripts are project code too, so this
-#: rule covers every Python file the project owns while the other rules stay
-#: scoped to the package and the tests.
-NOQA_ROOTS: tuple[Path, ...] = (
+#: Every root the project owns Python code in. One declared set, used by every
+#: rule: a violation in a gate script is the same blind spot as one in the
+#: package, and while the scans kept separate lists they drifted apart. The
+#: package and the tests stay named so `_PATHS_MODULE` and the vocabulary scan
+#: keep a single package root to read facts from. ``--src`` overrides the set.
+PROJECT_ROOTS: tuple[Path, ...] = (
     SRC_ROOT,
     TESTS_ROOT,
     REPO_ROOT / "scripts",
@@ -111,8 +112,16 @@ NOQA_ROOTS: tuple[Path, ...] = (
 # bypass uv.lock, so nothing is tracked and the environment stops being
 # reproducible - see .agents/POLICIES.md (Boundaries).
 _PIP_INSTALL_RE = re.compile(r"\buv pip install\b|\bpip3? install\b")
-#: The policy files must be able to name the forbidden form.
-_PIP_POLICY_FILES: frozenset[Path] = frozenset({REPO_ROOT / ".agents" / "POLICIES.md", REPO_ROOT / ".agents" / "CODE.md"})
+#: Files that must be able to name the forbidden form: the policy docs that
+#: forbid it, and this module, whose pattern and docstring spell it out. The
+#: exemption is by exact path — an install anywhere else is still a finding.
+_PIP_EXEMPT_FILES: frozenset[Path] = frozenset(
+    {
+        REPO_ROOT / ".agents" / "POLICIES.md",
+        REPO_ROOT / ".agents" / "CODE.md",
+        Path(__file__).resolve(),
+    }
+)
 #: Documentation and manifests that may spell out an install command.
 _DOC_GLOBS: tuple[str, ...] = (
     "*.md",
@@ -237,6 +246,14 @@ _STRING_TOKEN_TYPES: frozenset[int] = frozenset(
 _REASON_CODE_KEY = "reason_code"
 
 
+#: Width of the source line quoted beside a PIP-INSTALL finding — a preview,
+#: not a data crop: the finding names the line, the line is still in the file.
+_CONTEXT_PREVIEW_CHARS = 120
+
+#: How many registry keys a STR-KEYED-REGISTRY message previews before "…".
+_REGISTRY_PREVIEW_KEYS = 4
+
+
 @dataclass(frozen=True)
 class Comment:
     """One ``#`` comment token: its column and its text."""
@@ -280,20 +297,14 @@ def main() -> int:
         "--src",
         action="append",
         default=[],
-        help="Source root to scan (repeatable). Default: src/kompend + tests/unit.",
+        help="Source root to scan (repeatable). Default: every project Python root.",
     )
     args = parser.parse_args()
 
-    roots = [Path(p).resolve() for p in args.src] if args.src else [SRC_ROOT, TESTS_ROOT]
+    roots = [Path(p).resolve() for p in args.src] if args.src else list(PROJECT_ROOTS)
 
     try:
         py_files = discover_py_files(roots)
-    except ScanError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
-    noqa_roots = list(roots) if args.src else list(NOQA_ROOTS)
-    try:
-        noqa_files = discover_py_files(noqa_roots)
     except ScanError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -301,22 +312,11 @@ def main() -> int:
     # Per set, not on the sum: doc files are discovered repo-wide, so a sum
     # would let ``--src <empty dir>`` scan zero Python files and still pass.
     require_scanned(len(py_files), roots)
-    require_scanned(len(noqa_files), noqa_roots)
     require_scanned(len(doc_files), [REPO_ROOT])
     all_violations: list[Violation] = []
     try:
         for f in py_files:
             all_violations.extend(scan_file(f))
-    except ScanError as exc:
-        print(f"ERROR: {exc}", file=sys.stderr)
-        return 2
-    # Files outside the scanned roots still carry comments, and a banned
-    # suppression in a gate script is as blind a spot as one in the package.
-    scanned = set(py_files)
-    try:
-        for f in noqa_files:
-            if f not in scanned:
-                all_violations.extend(scan_noqa_only(f))
     except ScanError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
@@ -342,9 +342,7 @@ def main() -> int:
     else:
         touched = len({v.file for v in all_violations})
         print(
-            f"check-antipatterns: {len(all_violations)} violation(s) in {touched} file(s) with findings, "
-            f"{len(py_files)} python + {len(doc_files)} doc scanned, "
-            f"{len(noqa_files)} python checked for banned suppressions"
+            f"check-antipatterns: {len(all_violations)} violation(s) in {touched} file(s) with findings, {len(py_files)} python + {len(doc_files)} doc scanned",
         )
         if by_rule:
             print("  by rule:")
@@ -407,7 +405,7 @@ def scan_file(path: Path) -> list[Violation]:
 
 def scan_pip_installs(path: Path, lines: list[str]) -> list[Violation]:
     """Flag documentation that tells a reader to install with pip."""
-    if path in _PIP_POLICY_FILES:
+    if path.resolve() in _PIP_EXEMPT_FILES:
         return []
     out: list[Violation] = []
     for line_no, line in enumerate(lines, 1):
@@ -421,7 +419,7 @@ def scan_pip_installs(path: Path, lines: list[str]) -> list[Violation]:
                 col=match.start() + 1,
                 rule="PIP-INSTALL",
                 message="dependencies arrive through uv add / uv lock / uv sync, never pip (.agents/POLICIES.md)",
-                context=line.strip()[:120].encode("ascii", "replace").decode("ascii"),
+                context=line.strip()[:_CONTEXT_PREVIEW_CHARS].encode("ascii", "replace").decode("ascii"),
             )
         )
     return out
@@ -540,7 +538,7 @@ def scan_str_keyed_registries(path: Path, tree: ast.Module, lines: list[str], co
             continue
         if _waived(node.lineno, comments):
             continue
-        keys = ", ".join(repr(key.value) for key in value.keys[:4])
+        keys = ", ".join(repr(key.value) for key in value.keys[:_REGISTRY_PREVIEW_KEYS])
         out.append(
             Violation(
                 file=path,
@@ -685,22 +683,6 @@ def _vocab_enum_values() -> dict[str, set[str]]:
                 ):
                     value_map[stmt.value.value].add(node.name)
     return dict(value_map)
-
-
-def scan_noqa_only(path: Path) -> list[Violation]:
-    """Scan one file for banned suppressions only.
-
-    The other rules are scoped to the package and the tests; a suppression is
-    not, so this pass reaches the gate scripts as well. The file is read but
-    not parsed: a suppression is a comment, and a file that cannot be read is
-    still a gap in the scan.
-    """
-    try:
-        source = path.read_text(encoding="utf-8", errors="replace")
-    except OSError as exc:
-        raise ScanError(f"cannot read {path}: {exc}") from exc
-    _, comments = _split_comments(source)
-    return scan_noqa_bans(path, comments)
 
 
 def scan_noqa_bans(path: Path, comments: dict[int, Comment]) -> list[Violation]:

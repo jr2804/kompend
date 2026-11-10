@@ -85,7 +85,7 @@ ENFORCED_ENUMS: list[tuple[str, str, list[str]]] = [
 # name-based, so generic English words cause no false positives. These are
 # NOT added to ENFORCED_ENUMS to avoid repo-wide value-matching false
 # positives on common words ("default", "doctor", "verify", …).
-KEYWORD_ARG_ENUMS: dict[str, str] = {
+KEYWORD_ARG_ENUMS: dict[str, str] = {  # nocheck: str-registry — keys are keyword names, values are enum class names looked up later
     "role": "LLMRole",
     "task": "AgentTask",
     "compiler": "Compiler",

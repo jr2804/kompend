@@ -121,8 +121,43 @@ def test_the_banned_suppression_reaches_the_gate_scripts() -> None:
     """The gate scripts are project code; a suppression there is a blind spot too."""
     module = _antipatterns()
 
-    assert module.REPO_ROOT / "scripts" in module.NOQA_ROOTS
-    assert module.REPO_ROOT / ".config" / "mise" / "scripts" in module.NOQA_ROOTS
+    assert module.REPO_ROOT / "scripts" in module.PROJECT_ROOTS
+    assert module.REPO_ROOT / ".config" / "mise" / "scripts" in module.PROJECT_ROOTS
+
+
+def test_every_rule_scans_the_same_declared_root_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    """One root set, so the rule scan and the suppression scan cannot drift.
+
+    They were two lists: the suppression scan reached ``scripts/``, the rule
+    scan stopped at ``src/kompend`` + ``tests``, and 14 findings sat in the gap
+    nobody was looking at. ``--src`` still overrides the set.
+    """
+    module = _antipatterns()
+
+    assert module.PROJECT_ROOTS == (
+        module.SRC_ROOT,
+        module.TESTS_ROOT,
+        module.REPO_ROOT / "scripts",
+        module.REPO_ROOT / ".config" / "mise" / "scripts",
+    )
+
+    seen: list[list[Path]] = []
+
+    def record(roots: list[Path]) -> list[Path]:
+        seen.append(list(roots))
+        raise module.ScanError("recording only")
+
+    monkeypatch.setattr(module, "discover_py_files", record)
+    monkeypatch.setattr(sys, "argv", ["check_antipatterns.py"])
+    assert module.main() == 2
+    assert seen == [list(module.PROJECT_ROOTS)], "the default scan must use every project root"
+
+    seen.clear()
+    elsewhere = module.REPO_ROOT / "scripts"
+    monkeypatch.setattr(sys, "argv", ["check_antipatterns.py", "--src", str(elsewhere)])
+    assert module.main() == 2
+    assert seen, "--src must still be scanned"
+    assert seen[0] == [elsewhere.resolve()], "--src must override the set"
 
 
 def test_magic_crops_honours_a_bare_noqa_and_ignores_string_data() -> None:
@@ -396,15 +431,6 @@ def test_fact_fed_gates_abort_when_their_facts_vanish(tmp_path: Path) -> None:
         assert parity.main() == 2
 
 
-def _load_check(name: str) -> Any:
-    """Import a gate script by module name (scripts/checks is not a package)."""
-    sys.path.insert(0, str(CHECKS))
-    try:
-        return importlib.import_module(name)
-    finally:
-        sys.path.pop(0)
-
-
 def test_the_verdict_does_not_depend_on_where_the_scanner_stands(tmp_path: Path) -> None:
     """Level 0: identity. A gate must not silently judge some other project.
 
@@ -554,21 +580,88 @@ def test_every_module_constant_is_read_somewhere() -> None:
     assert not orphans, f"module-level constants with no reader in their own file: {orphans}"
 
 
-def test_every_pip_policy_file_actually_exists() -> None:
-    """A stale exemption path stops covering the policy doc that needs it.
+def test_a_real_install_in_another_scripts_file_is_still_caught(tmp_path: Path) -> None:
+    """The self-match exemption is one file, not a licence for ``scripts/``.
 
-    ``scan_pip_installs`` exempts ``_PIP_POLICY_FILES`` by membership. Measured:
-    a *wrong* entry (a path that does not exist) exempts nothing and the policy
-    file it was meant to cover is scanned normally — so the failure is a false
-    finding, loud rather than silent. This test still earns its place: the loud
-    failure would appear in an unrelated file with no hint that an exemption
-    drifted, and pinning existence turns that into a named error here.
+    The scanner must be able to spell out the form it forbids; every other
+    script that tells a reader to install with pip is still a finding.
+    """
+    module = _antipatterns()
+    forbidden = " ".join(("uv", "pip", "install"))
+    other_script = tmp_path / "other_script.py"
+    other_script.write_text(f"# set up with {forbidden} foo\n", encoding="utf-8")
+
+    assert module.scan_pip_installs(Path(module.__file__), [f"# {forbidden} x"]) == []
+    found = module.scan_pip_installs(other_script, other_script.read_text(encoding="utf-8").splitlines())
+
+    assert [v.rule for v in found] == ["PIP-INSTALL"]
+
+
+def test_a_string_registry_waiver_works_from_a_scripts_path(tmp_path: Path) -> None:
+    """The waiver is a line comment, so it works wherever the registry lives."""
+    module = _antipatterns()
+    waived = tmp_path / "waived.py"
+    waived.write_text(
+        'ALIASES: dict[str, str] = {  # nocheck: str-registry — wire names, deliberately literal\n    "att": "attachments",\n}\n',
+        encoding="utf-8",
+    )
+    bare = tmp_path / "bare.py"
+    bare.write_text('ALIASES: dict[str, str] = {\n    "att": "attachments",\n}\n', encoding="utf-8")
+
+    assert module.scan_file(waived) == []
+    assert [v.rule for v in module.scan_file(bare)] == ["STR-KEYED-REGISTRY"]
+
+
+def test_every_pip_exemption_still_names_an_existing_file() -> None:
+    """An exemption that matches nothing is a stale licence nobody notices.
+
+    ``scan_pip_installs`` exempts ``_PIP_EXEMPT_FILES`` by resolved path, so a
+    renamed or deleted entry quietly stops covering the file it was meant for.
     """
     module = _antipatterns()
 
-    missing = sorted(str(p.relative_to(module.REPO_ROOT)) for p in module._PIP_POLICY_FILES if not p.is_file())
+    missing = sorted(str(p.relative_to(module.REPO_ROOT)) for p in module._PIP_EXEMPT_FILES if not p.is_file())
 
-    assert not missing, f"_PIP_POLICY_FILES entries that no longer exist: {missing}"
+    assert not missing, f"_PIP_EXEMPT_FILES entries that no longer exist: {missing}"
+
+
+def test_a_named_constant_is_not_a_crop() -> None:
+    """A named bound is the traceable form the never-crop rule asks for."""
+    module = _antipatterns()
+
+    def crops(source: str) -> int:
+        code, comments = module._split_comments(source)
+        return len(module.scan_magic_crops(Path("a.py"), code, comments))
+
+    assert crops("title = text[: _PREVIEW_CHARS]") == 0
+    assert crops("title = text[:120]") == 1
+
+
+def test_the_rewritten_idioms_keep_their_truth_for_the_empty_case() -> None:
+    """``parts[:1] != ('.agents',)`` and ``stripped[:1]`` became ``startswith``.
+
+    Both rewrites must answer the empty input exactly as the slice did: an
+    empty tuple is not ``(".agents",)`` and an empty string starts with
+    neither ``{`` nor ``[``.
+    """
+    dox = _load_check("check_dox")
+    persisted = _load_check("check_persisted_paths")
+
+    assert dox._is_agents_core(ROOT / "AGENTS.md", ROOT) is False
+    assert dox._is_agents_core(ROOT / ".agents" / "POLICIES.md", ROOT) is True
+    assert persisted._try_decode("") is None
+    assert persisted._try_decode("   ") is None
+    assert persisted._try_decode('{"a": 1}') == {"a": 1}
+    assert persisted._try_decode("[1]") == [1]
+
+
+def _load_check(name: str) -> Any:
+    """Import a gate script by module name (scripts/checks is not a package)."""
+    sys.path.insert(0, str(CHECKS))
+    try:
+        return importlib.import_module(name)
+    finally:
+        sys.path.pop(0)
 
 
 def test_an_empty_source_root_is_not_a_pass(tmp_path: Path) -> None:
