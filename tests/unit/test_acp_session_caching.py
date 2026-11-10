@@ -26,7 +26,8 @@ def test_session_skips_caching_when_disabled(monkeypatch: pytest.MonkeyPatch, tm
 
     config = harness_adapter.kompend_session_config(_session(tmp_path))
 
-    assert config.capabilities is None
+    assert config.capabilities is not None
+    assert not any(isinstance(capability, Caching) for capability in config.capabilities)
 
 
 def _session(tmp_path: Any) -> AcpSession:

@@ -14,11 +14,12 @@ import lazy_loader as lazy
 
 __getattr__, __dir__, __all__ = lazy.attach(
     __name__,
-    submodules=["definitions", "registry", "provider_store"],
+    submodules=["definitions", "registry", "provider_store", "model_selection"],
     submod_attrs={
         "definitions": ["AgentDefinition", "AgentTask"],
         "registry": ["AgentRegistry"],
         "provider_store": ["LlmApiType", "ProviderConfig", "ProviderCredentials"],
+        "model_selection": ["NO_MODEL_MESSAGE", "ConfigModelSelector"],
         "harness_adapter": ["build_kompend_agent", "kompend_session_config"],
     },
 )

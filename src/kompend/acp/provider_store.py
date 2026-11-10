@@ -1,8 +1,15 @@
-"""Thread-safe LLM provider credential store for ACP providers/set.
+"""Thread-safe LLM provider credential store for ACP ``providers/set``.
 
-Stores the LLM endpoint configuration received via ACP ``providers/set``
-and reconfigures the pipeline's env-var-based resolution so kompend uses the
-configured endpoint.
+Holds the LLM endpoint configuration an editor would send via ACP
+``providers/set``, and reconfigures the pipeline's env-var-based resolution so
+kompend uses the configured endpoint.
+
+**Not reachable from the wire today.** The harness advertises no ``providers``
+capability and its router forwards only ``_``-prefixed methods to
+``ext_method``, so nothing constructs this store: the env writes below never
+run. The session model comes from the workspace config instead
+(:mod:`kompend.acp.model_selection`). Wiring ``providers/list|set|disable`` is
+its own ticket — do not build on this class until then.
 """
 
 from __future__ import annotations
