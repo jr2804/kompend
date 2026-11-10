@@ -655,6 +655,55 @@ def test_the_rewritten_idioms_keep_their_truth_for_the_empty_case() -> None:
     assert persisted._try_decode("[1]") == [1]
 
 
+def test_the_dox_walk_ignores_a_scratch_copy_of_the_project(tmp_path: Path) -> None:
+    """A copy under ``.kompend/tmp/`` is not a second set of contracts.
+
+    kompend-2 ran pyreorder over a copied tree, and the gate then reported
+    hundreds of duplicate sentences: the copy's AGENTS.md files say exactly
+    what the real ones say. The walk must measure the project's own contracts,
+    so it does not descend into dot-prefixed scratch / cache / virtualenv trees
+    or the un-prefixed build trees.
+    """
+    dox = _load_check("check_dox")
+    root = tmp_path / "project"
+    real = root / "src" / "pkg" / "AGENTS.md"
+    real.parent.mkdir(parents=True)
+    real.write_text("# Real\n\nThe real contract sentence is long enough to be fingerprinted by the gate.\n", encoding="utf-8")
+    (root / "AGENTS.md").write_text("# Root\n\nRoot contract text.\n", encoding="utf-8")
+    for scratch in (
+        root / ".kompend" / "tmp" / "copy" / "src" / "pkg" / "AGENTS.md",
+        root / ".venv" / "lib" / "AGENTS.md",
+        root / "build" / "AGENTS.md",
+        root / "node_modules" / "dep" / "AGENTS.md",
+    ):
+        scratch.parent.mkdir(parents=True, exist_ok=True)
+        scratch.write_text("# Copy\n\nThe real contract sentence is long enough to be fingerprinted by the gate.\n", encoding="utf-8")
+
+    collected = dox._collect_dox_files(root)
+
+    assert collected == [root / "AGENTS.md", real]
+    assert dox._check_duplication(collected) == []
+
+
+def test_the_dox_walk_still_collects_the_core_state_files(tmp_path: Path) -> None:
+    """Skipping dot-directories must not drop ``.agents/`` core files.
+
+    The core files sit inside a dot-directory, and they are the files the size
+    budget exists for; they come from the explicit branch, not the walk.
+    """
+    dox = _load_check("check_dox")
+    root = tmp_path / "project"
+    (root / ".agents").mkdir(parents=True)
+    for name in dox.CORE_AGENTS_FILES:
+        (root / ".agents" / name).write_text(f"# {name}\n", encoding="utf-8")
+    (root / "AGENTS.md").write_text("# Root\n", encoding="utf-8")
+
+    collected = dox._collect_dox_files(root)
+
+    assert root / "AGENTS.md" in collected
+    assert {p.name for p in collected if p.parent == root / ".agents"} == set(dox.CORE_AGENTS_FILES)
+
+
 def _load_check(name: str) -> Any:
     """Import a gate script by module name (scripts/checks is not a package)."""
     sys.path.insert(0, str(CHECKS))

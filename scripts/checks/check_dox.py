@@ -51,7 +51,13 @@ _MIN_DUP_LEN = 40
 #: duplication check — a comparison key, not a quoted crop.
 _FINGERPRINT_CHARS = 60
 
-# Ignore sentences matching these patterns (headings, list markers, code).
+#: Directories the DOX walk never descends into. Dot-prefixed trees
+#: (``.git``, ``.kompend``, ``.venv``, caches) are skipped by name prefix; these
+#: are the un-prefixed build and dependency trees that also hold generated
+#: copies of the project rather than the project's own contracts.
+_SKIPPED_DIRS: frozenset[str] = frozenset({"node_modules", "__pycache__", "build", "dist"})
+
+#: Sentences matching these patterns are headings, list markers or code.
 _IGNORE_RE = re.compile(r"^(#+\s|[-*]\s|\d+\.\s|```|`[^`]+`$|\||\[rtk:|<!--|// )")
 
 
@@ -116,12 +122,19 @@ def _collect_dox_files(root: Path) -> list[Path]:
     parallel example AGENTS.md files a skill ships as reference). Only the core
     files are checked; skipping the rest is what keeps the duplication check
     from flagging those examples as redundancy.
+
+    The walk does not descend into scratch, cache, virtualenv or build trees:
+    a copy of the project under ``.kompend/tmp/`` is not a second set of
+    contracts, and measuring it produced hundreds of false duplicate-sentence
+    findings. Every skipped directory is dot-prefixed or one of the build
+    names below, and the core ``.agents/`` files are collected by the explicit
+    branch after the walk, so nothing real is lost.
     """
     files: list[Path] = []
     # All AGENTS.md files outside .agents/ (root + subtree DOX contracts).
     agents_root = root / ".agents"
     for p in root.rglob("AGENTS.md"):
-        if ".venv" in p.parts or "node_modules" in p.parts or ".git" in p.parts:
+        if any(part.startswith(".") or part in _SKIPPED_DIRS for part in p.relative_to(root).parts[:-1]):
             continue
         if agents_root in p.parents:
             continue
