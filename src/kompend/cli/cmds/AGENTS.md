@@ -150,6 +150,18 @@ Example:
 - For a usage error (bad flag combination, malformed `key=value`), call `usage_error(...)` from `_shared.py` — it prints the message and exits 2
 - For unexpected errors, include stack trace in logs, brief message to user
 
+### Long-lived companions (`agent.py`)
+
+`kompend agent` blocks on an ACP stdio session, and the harness runs that
+session with `asyncio.run` — it owns and closes the main thread's loop. A
+companion server (`--mcp-port`) therefore gets its own loop on a daemon thread;
+scheduling it on the main loop would raise `RuntimeError: no running event loop`
+before the session starts, and would be starved anyway. Teardown drains the
+companion loop before stopping it, in a `finally`, so a wedged server cannot
+either hold the process open or mask the session's own exception. Both sides of
+that seam are `Protocol` objects, which is what makes the lifecycle testable
+without a real server.
+
 ### JSON output
 
 - Check for `--json` flag; if set, serialize output and print, no other behavior changes
