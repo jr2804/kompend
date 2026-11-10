@@ -37,8 +37,6 @@ from kompend.core.pipeline.backend_capture import (
 )
 from kompend.logging import get_logger
 
-logger = get_logger(__name__)
-
 #: Seconds to wait for a killed worker to disappear. A killed process normally
 #: exits at once; this only bounds a native library blocking in its finaliser.
 _REAP_TIMEOUT_S = 10.0
@@ -50,6 +48,8 @@ _STARTUP_TIMEOUT_S = 180.0
 
 #: Sentinel the parent sends to make the worker exit instead of parsing.
 _STOP = None
+
+logger = get_logger(__name__)
 
 
 class ParseDeadlineExceeded(RuntimeError):

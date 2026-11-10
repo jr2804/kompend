@@ -14,10 +14,10 @@ from kompend.core.models import load_cached_wiki
 from kompend.core.models.enums import ExtractionField, MetadataField
 from kompend.logging import get_logger
 
-logger = get_logger(__name__)
-
 #: SQLite codes that mean the cache is busy, not broken: another process holds it.
 _TRANSIENT_SQLITE_CODES = frozenset({sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED})
+
+logger = get_logger(__name__)
 
 
 def _categories_block(extras: dict[str, str]) -> str:
