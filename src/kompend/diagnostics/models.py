@@ -83,7 +83,7 @@ def ping_model(
         if result and result.strip():
             return CheckResult(name, True, f"{label} OK ({model}){rate_s}")
         return CheckResult(name, False, f"{label} returned empty response")
-    except Exception as exc:  # noqa: BLE001 — a failed ping is the fact being reported
+    except Exception as exc:  # a failed ping is the fact being reported
         return CheckResult(name, False, f"{label} failed: {exc}")
 
 
@@ -105,7 +105,7 @@ def ping_embed_model(model: str | None, *, recorded_model: str | None = None) ->
         embedder = build_embedder(pydantic_ai_string)
         result = embedder.embed_documents_sync(EMBED_PING_TEXT)
         dims = len(result.embeddings[0]) if result.embeddings else 0
-    except Exception as exc:  # noqa: BLE001 — a failed embed is the fact being reported
+    except Exception as exc:  # a failed embed is the fact being reported
         return CheckResult(name, False, f"embed failed: {exc}")
     identity_text, no_op_note = _ollama_identity_report(model, recorded_model)
     message = f"embed OK ({pydantic_ai_string}, {dims} dims){identity_text}"
@@ -196,7 +196,7 @@ def check_context_window(
 
     try:
         window = discover_context_window(model, llm_config=llm_config, context_window_cap=context_window)
-    except Exception as exc:  # noqa: BLE001 — an unresolvable window is the fact being reported
+    except Exception as exc:  # an unresolvable window is the fact being reported
         return CheckResult(name, False, f"{label} context window discovery failed: {exc}")
     source_label = window.source.value if hasattr(window.source, "value") else str(window.source)
     if window.source == "fallback":
@@ -230,7 +230,7 @@ def check_window_fit(
 
     try:
         window = discover_context_window(model, context_window_cap=context_window, llm_config=llm_config)
-    except Exception as exc:  # noqa: BLE001 — an unresolvable window is the fact being reported
+    except Exception as exc:  # an unresolvable window is the fact being reported
         return CheckResult(name, False, f"Cannot discover context window: {exc}")
 
     reserve = window.answer_reserve
@@ -262,14 +262,14 @@ def check_server_window(model: str | None, context_window: int | None = None) ->
         return CheckResult(name, True, "Not an Ollama model - skipped")
     try:
         server_ctx = _query_ollama_num_ctx(model_slug(model))
-    except Exception as exc:  # noqa: BLE001 — an unreachable daemon is reported, not raised
+    except Exception as exc:  # an unreachable daemon is reported, not raised
         return CheckResult(name, True, f"Ollama not reachable ({exc}) - skipped")
     if server_ctx is None:
         return CheckResult(name, True, "Ollama reports no context limit - skipped")
 
     try:
         effective = discover_context_window(model, context_window_cap=context_window)
-    except Exception:  # noqa: BLE001 — without a window there is nothing to compare
+    except Exception:  # without a window there is nothing to compare
         return CheckResult(name, True, f"Server serves {server_ctx} tokens - skipped")
 
     if effective.max_input <= server_ctx:
@@ -298,7 +298,7 @@ def check_output_ceiling(model: str | None, label: str) -> CheckResult:
         return CheckResult(name, True, f"No {label} model configured - skipped")
     try:
         native = build_model(model)
-    except Exception as exc:  # noqa: BLE001 — an unbuildable model is a fact to report
+    except Exception as exc:  # an unbuildable model is a fact to report
         return CheckResult(name, False, f"Cannot build the model: {exc}")
 
     if not requires_output_ceiling(native):

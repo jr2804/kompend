@@ -167,7 +167,7 @@ def _fetch() -> CatalogSnapshot | None:
     """Download the payload through ``llmdb``; ``None`` when the API is unreachable."""
     try:
         llmdb.db.refresh()
-    except Exception as exc:  # noqa: BLE001 - any transport/parse failure degrades to "no catalogue"
+    except Exception as exc:  # any transport/parse failure degrades to "no catalogue"
         logger.warning("Model catalogue refresh failed: %s", exc)
         return None
     providers = {provider.id: provider for provider in llmdb.db.providers.all()}

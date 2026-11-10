@@ -33,6 +33,11 @@ never raises.
 - **A check returns a result; it never raises.** A failure is a fact the doctor
   prints (`CheckResult(passed=False, message=…)`), so an unreachable provider,
   a missing wheel or an empty catalogue is reported, not thrown.
+- **Every probe of an external system is best-effort and RECORDS its failure** —
+  the catalogue, the Ollama daemon, a provider endpoint, a model build. The
+  failure is the report: it lands in the `CheckResult` message (or a debug log
+  when the degraded answer already speaks for itself), so a broad catch here is
+  the contract, not a suppression, and it is never silent.
 - **Order is part of the contract** (`runner.py` docstring): the catalogue
   first, then the free workspace checks, then the decision checks, then
   per-model blocks so a model is never swapped out between two of its own

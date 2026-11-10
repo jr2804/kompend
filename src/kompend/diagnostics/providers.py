@@ -100,7 +100,7 @@ def check_catalogue() -> CheckResult:
     try:
         refreshed = catalog.ensure_fresh()
         current = catalog.snapshot()
-    except Exception as exc:  # noqa: BLE001 — an unusable catalogue is the fact being reported
+    except Exception as exc:  # an unusable catalogue is the fact being reported
         return CheckResult(name, False, f"Model catalogue unavailable: {exc}")
     if current is None:
         return CheckResult(
@@ -241,7 +241,7 @@ def ollama_ps_lookup(model_name: str) -> OllamaLoadedModel | None:
 
     try:
         ps_models = ollama.ps().models
-    except Exception as exc:  # noqa: BLE001 — an unreachable daemon means "not loaded"
+    except Exception as exc:  # an unreachable daemon means "not loaded"
         logger.debug("ollama.ps() failed for device check: %s", exc)
         return None
 
@@ -281,7 +281,7 @@ def ollama_show_lookup(model_name: str) -> OllamaModelIdentity | None:
 
     try:
         shown = ollama.show(model_name)
-    except Exception as exc:  # noqa: BLE001 — an unreachable daemon means no identity
+    except Exception as exc:  # an unreachable daemon means no identity
         logger.debug("ollama.show(%s) failed: %s", model_name, exc)
         return None
     digest = None
@@ -309,7 +309,7 @@ def _ollama_list_digest(model_name: str) -> str | None:
 
     try:
         listing = ollama.list()
-    except Exception as exc:  # noqa: BLE001 — an unreachable daemon means no digest
+    except Exception as exc:  # an unreachable daemon means no digest
         logger.debug("ollama.list() failed: %s", exc)
         return None
     for entry in getattr(listing, "models", ()) or ():
