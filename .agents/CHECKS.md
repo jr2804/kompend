@@ -13,9 +13,9 @@ job does (see **Wiring** below).
 Two guarantees keep them honest: a scan that finds no files is an error (an
 empty scan is not a pass), and an enforced contract that no longer exists in
 the code (moved module, renamed enum) fails the script instead of warning.
-Per-line waivers exist for sites the rule cannot judge — `# nocheck: <reason>`
-in field-consistency. A banned suppression has no waiver: antipatterns rejects
-`# noqa: PLC0415`, `BLE001` and `S110` outright, package, tests and scripts alike.
+Per-line waivers exist for sites the rule cannot judge — `# nocheck: <rule> —
+reason` in field-consistency and the antipatterns scanner. A banned suppression
+has no waiver: `# noqa: PLC0415`, `BLE001` and `S110` are rejected outright.
 
 **Extension.** Adding a verification tool, enforcement script, or checklist item
 updates the matching section below.
@@ -53,7 +53,7 @@ Tick these BEFORE writing a function:
   tier, …) defined as a `StrEnum`? Dict keys, comparisons and defaults use
   members, never their bare string values (`STR-KEYED-REGISTRY` /
   `ENUM-VALUE-LITERAL` reject both).
-- **Noqa suppression** — `BLE001`/`S110` are banned outright; any other needs a justification comment?
+- **Noqa suppression** — banned outright, no waiver (CODE.md); a scanner's own directive names its target.
 
 ### Enforcement scripts
 
@@ -61,7 +61,7 @@ Tick these BEFORE writing a function:
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | `ruff check`                                | Most lint issues (PLC0415/E402 are warnings, not errors)                                                                                                                | ruff.toml        |
 | `scripts/checks/check_field_consistency.py` | Bare-string contract keys                                                                                                                                               | scripts/checks/  |
-| `scripts/checks/check_antipatterns.py`      | Banned-noqa (`PLC0415`, `BLE001`, `S110` — package, tests and gate scripts), magic crops, `try/except ImportError` guards, string-keyed registries, bare enum-value literals, bare reason-code literals, pip-side installs in code/docs | scripts/checks/  |
+| `scripts/checks/check_antipatterns.py`      | Banned-noqa (`PLC0415`, `BLE001`, `S110`), magic crops, `try/except ImportError` guards, string-keyed registries, bare enum-value literals, bare reason-code literals, pip-side installs in code/docs — every project Python root | scripts/checks/  |
 | `scripts/checks/check_persisted_paths.py`   | An absolute filesystem path persisted in `.kompend/` (every text column of `kompend.db` plus loose JSON/JSONL)                                                          | scripts/checks/  |
 | `scripts/checks/check_dox.py`               | DOX file size budgets, cross-file duplication                                                                                                                           | scripts/checks/  |
 | `scripts/checks/check_enum_cache.py`        | A `StrEnum` reachable from a cached dataclass missing from `_CACHE_ENUMS`                                                                                               | scripts/checks/  |

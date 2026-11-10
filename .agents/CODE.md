@@ -65,7 +65,8 @@ installs, banned suppressions). Run both before committing — see `CHECKS.md`.
 - **Never suppress** `PLC0415` (inline imports), `ANN001`/`ANN202` (missing
   annotations) — hard errors, no `# noqa`. For non-ruff scanner false positives
   (vibecheck, sloppylint, aislop) use that tool's own directive, so each
-  suppression names the scanner it targets.
+  suppression names the scanner it targets. A kompend scanner waives one line
+  with `# nocheck: <rule> — reason` (`CHECKS.md`); a banned noqa has no waiver.
 - **Heavy optional dependencies stay lazy** (parsecraft, torch, transformers,
   datasketch, scipy, crawl4ai, pydantic-ai, MCP SDK, sqlite-vec, flashrank) so CLI startup stays
   fast. Package level: `lazy.attach(__name__, submod_attrs={...})`. Function
