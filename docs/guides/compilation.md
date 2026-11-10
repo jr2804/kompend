@@ -221,7 +221,11 @@ ranking dropped. A candidate whose judge request fails is unjudged and keeps
 its BM25 rank; when every request fails, the log names the cause and the
 ranking falls back to the lower tiers — a schema rejection never reads as
 "nothing relevant". With no `[decision]` model the tier is absent — lexical
-search plus cosine when an embedding model is configured, exactly as before. To give generation more
+search plus cosine when an embedding model is configured, exactly as before.
+The judge's worker threads belong to the run, not to the process: the index
+that owns them is released when generation ends (including when it fails),
+so repeated compiles in one process do not accumulate idle threads.
+To give generation more
 source text, raise the model's context window - a bigger `chunk_size_max`
 alone cannot create room an answer needs:
 

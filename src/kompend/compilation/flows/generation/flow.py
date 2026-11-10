@@ -285,7 +285,7 @@ def run_generation_resumable(
     )
 
 
-def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; long by design
+def generate_all_pages_agentic(
     compiler: TwoPhaseRuntime,
     concepts: list[dict[str, Any]],
     source_segments: list[list[tuple[str, str]]],
@@ -297,6 +297,55 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
     known_titles_page_chars: int = 0,
     budget: RequestBudget | None = None,
     step_store: StepStore | None = None,
+) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
+    """Run the segment loop, and release the search index on the way out.
+
+    The index owns the judge pool — ``JUDGE_CONCURRENCY`` worker threads that
+    each build one judge agent. It serves this run only, so it is closed here:
+    after the last segment, and on the failing path too, because an exception
+    must not leave a compile's threads behind in a long-lived process (an MCP
+    server, repeated compiles). Closing is idempotent and the index stays
+    readable — the pool is rebuilt if a later search needs it.
+
+    The loop itself lives in :func:`_generate_pages_agentic`, which documents
+    the segment, recovery, and shrink behaviour.
+    """
+    source_index = SourceIndex.from_segments(
+        source_segments,
+        embedding_model=compiler._config.embedding.model,
+        decision=compiler._config.decision,
+    )
+    try:
+        return _generate_pages_agentic(
+            compiler,
+            concepts,
+            source_segments,
+            all_images,
+            pinned_facts=pinned_facts,
+            known_titles=known_titles,
+            known_titles_prompt=known_titles_prompt,
+            known_titles_page_chars=known_titles_page_chars,
+            budget=budget,
+            step_store=step_store,
+            source_index=source_index,
+        )
+    finally:
+        source_index.close()
+
+
+def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; long by design
+    compiler: TwoPhaseRuntime,
+    concepts: list[dict[str, Any]],
+    source_segments: list[list[tuple[str, str]]],
+    all_images: list[ImageRef],
+    *,
+    pinned_facts: list[str],
+    known_titles: list[str] | None = None,
+    known_titles_prompt: list[str] | None = None,
+    known_titles_page_chars: int = 0,
+    budget: RequestBudget | None = None,
+    step_store: StepStore | None = None,
+    source_index: SourceIndex,
 ) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
     """Generate wiki pages using per-segment agentic tool loop.
 
@@ -380,16 +429,8 @@ def generate_all_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery
     # Coverage credit: rapidfuzz T2 + embedding T3 (single instances shared
     # across segments so title/concept embeddings are cached compile-wide).
     coverage = _CoverageCredit(compiler._config.embedding.model)
-    # Segment-scoped generation is closed-world by default: the agent sees its
-    # own segment and the concepts assigned to it. The index gives it the
-    # reach a researcher has - name a concept, find the sources that mention
-    # it, then read them in windows. Built once per run from the same
-    # segments the plan slices up, so it costs one token scan per source.
-    source_index = SourceIndex.from_segments(
-        source_segments,
-        embedding_model=compiler._config.embedding.model,
-        decision=compiler._config.decision,
-    )
+    # The source index is the caller's (it owns the judge pool and releases
+    # it) — see generate_all_pages_agentic.
 
     def _absorb_pages(gen_output: GenerationOutput, seg_idx: int) -> set[str]:
         """Upsert a segment's produced pages into ``nodes``; return their titles."""

@@ -33,6 +33,11 @@ uses for page titles:
 Judge and embedding failures leave the lexical ranking in place: each tier
 is an enhancement over a working ranking, and a dead provider must not
 take the source search with it.
+
+The index is a run's object: its judge pool holds worker threads, and each
+thread builds one judge agent. :meth:`SourceIndex.close` releases them when
+the run ends (the generation flow calls it), so a process that compiles
+repeatedly does not accumulate idle threads.
 """
 
 from __future__ import annotations
@@ -196,8 +201,9 @@ class SourceIndex:
         #: is never shared across threads.
         self._judge_agents = threading.local()
         #: Bounded pool the judge requests run on, created on the first search
-        #: that needs it. An index without ``[decision]`` never creates one,
-        #: so no thread, key, or endpoint is touched.
+        #: that needs it and released by :meth:`close` when its run ends. An
+        #: index without ``[decision]`` never creates one, so no thread, key,
+        #: or endpoint is touched.
         self._judge_pool: ThreadPoolExecutor | None = None
         self._loop_warned = False
 
@@ -265,6 +271,25 @@ class SourceIndex:
             embedding_model=embedding_model,
             decision=decision,
         )
+
+    def close(self) -> None:
+        """Release the judge pool; a later search rebuilds it if it is needed.
+
+        The pool is per index, and an index is per run, so a long-lived
+        process that compiles repeatedly would otherwise keep one set of idle
+        judge threads (and the agent each thread built) per run. The owner of
+        the index calls this when its run ends, on the failing path too.
+
+        In-flight verdicts are awaited and queued ones cancelled: the replies
+        are already paid for, and dropping one would only turn a judged
+        candidate into an unjudged one. Closing is not final — the index stays
+        searchable, and the next search that needs the judge builds a fresh
+        pool whose worker threads build their own agents.
+        """
+        with self._verdict_lock:
+            pool, self._judge_pool = self._judge_pool, None
+        if pool is not None:
+            pool.shutdown(wait=True, cancel_futures=True)
 
     def _judge_rerank(self, query: str, terms: set[str], pool: Sequence[tuple[float, str]]) -> list[tuple[float, str]] | None:
         """Re-order the BM25-ranked *pool* by the judge's verdicts.
@@ -368,7 +393,11 @@ class SourceIndex:
         return verdict.relevant
 
     def _judge_executor(self) -> ThreadPoolExecutor:
-        """Return the bounded judge pool, creating it on first use."""
+        """Return the bounded judge pool, creating it on first use.
+
+        A pool released by :meth:`close` is rebuilt on demand, so the index
+        stays usable after its run released the threads.
+        """
         with self._verdict_lock:
             if self._judge_pool is None:
                 self._judge_pool = ThreadPoolExecutor(max_workers=JUDGE_CONCURRENCY, thread_name_prefix="source-search-judge")

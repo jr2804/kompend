@@ -404,6 +404,54 @@ class TestJudgeTier:
         index = _index(("beta.md", _BETA))
         assert [hit.stem for hit in index.search("POLQA")] == ["beta.md"]
 
+    def test_close_releases_the_pool_and_a_later_search_rebuilds_it(self) -> None:
+        """A finished run must not keep its judge threads; the index stays usable."""
+        index = _judged_index()
+        judge = _JudgePolicy(relevant={"source-0.md"})
+        with judge.installed():
+            first = index.search("transcoder", k=len(_JUDGE_SOURCES))
+            pool = index._judge_pool  # noqa: SLF001 — the lifecycle is the subject here
+            assert pool is not None, "the search never built the pool"
+
+            index.close()
+
+            assert index._judge_pool is None  # noqa: SLF001
+            # This pool's own workers are joined, not merely idle: the threads
+            # a finished run held are gone (earlier tests in this module leak
+            # their pools without close, so the count is per pool).
+            threads = list(pool._threads)  # noqa: SLF001 — the lifecycle is the subject here
+            assert threads, "the pool never started a worker"
+            assert all(not thread.is_alive() for thread in threads)
+            with pytest.raises(RuntimeError, match="cannot schedule new futures after shutdown"):
+                pool.submit(lambda: None)
+            # A closed index is still readable, and the judge still answers —
+            # releasing the threads must not turn the tier off. This query is
+            # fully cached, so it needs no pool at all.
+            cached = index.search("transcoder", k=len(_JUDGE_SOURCES))
+            assert index._judge_pool is None  # noqa: SLF001 — a cache hit needs no threads
+            # A query the cache does not cover builds a fresh pool on demand.
+            index.search("latency", k=len(_JUDGE_SOURCES))
+            assert index._judge_pool is not None  # noqa: SLF001 — rebuilt on demand
+            assert index._judge_pool is not pool  # noqa: SLF001
+
+        assert [hit.stem for hit in first] == [hit.stem for hit in cached]
+        assert first[0].stem == "source-0.md"
+
+    def test_close_is_idempotent_and_free_when_the_judge_never_ran(self) -> None:
+        """The flow closes the index on every exit, including the trivial ones."""
+        never_used = _index(("beta.md", _BETA))
+        never_used.close()
+        never_used.close()
+        assert never_used._judge_pool is None  # noqa: SLF001
+        assert [hit.stem for hit in never_used.search("POLQA")] == ["beta.md"]
+
+        used = _judged_index()
+        with _JudgePolicy(relevant={"source-0.md"}).installed():
+            used.search("transcoder")
+        used.close()
+        used.close()
+        assert used._judge_pool is None  # noqa: SLF001
+
 
 class TestVerdictSchemaIsAccepted:
     """The verdict type is checked against the real decision grammar.

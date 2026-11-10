@@ -103,6 +103,42 @@ class TestAgenticPassLoop:
         assert agent.run.call_count == 2
 
 
+class TestSourceIndexLifecycle:
+    """The run's search index owns judge threads, so the flow releases it."""
+
+    def test_the_flow_releases_the_index_after_a_successful_run(self) -> None:
+        compiler = _compiler()
+        index, closed = _fake_index()
+
+        with patch("kompend.compilation.flows.generation.flow.SourceIndex") as factory:
+            factory.from_segments.return_value = index
+            with (
+                patch.object(compiler, "extract", return_value=_extraction_set()),
+                patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=_answering_agent()),
+            ):
+                compiler.compile(_chunks())
+
+        assert closed == [index], "the index was never released"
+
+    def test_the_flow_releases_the_index_when_generation_fails(self) -> None:
+        """An exception must not leave a compile's judge threads behind."""
+        compiler = _compiler()
+        index, closed = _fake_index()
+        agent = MagicMock()
+        agent.run.side_effect = RuntimeError("boom")
+
+        with patch("kompend.compilation.flows.generation.flow.SourceIndex") as factory:
+            factory.from_segments.return_value = index
+            with (
+                patch.object(compiler, "extract", return_value=_extraction_set()),
+                patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
+                pytest.raises(LLMOutputError, match=r"produced no page\(s\)"),
+            ):
+                compiler.compile(_chunks())
+
+        assert closed == [index]
+
+
 class TestEntityPageSourceGate:
     """A single mention does not earn an entity its own page."""
 
@@ -185,6 +221,20 @@ def _compiler(*, budget: BudgetConfig | None = None) -> TwoPhaseCompiler:
     )
     config.no_cache = True
     return TwoPhaseCompiler(config=config, base=GraphCompiler("model"))
+
+
+def _fake_index() -> tuple[MagicMock, list[MagicMock]]:
+    """A stand-in source index that records whether its run released it."""
+    index = MagicMock()
+    closed: list[MagicMock] = []
+    index.close.side_effect = lambda: closed.append(index)
+    return index, closed
+
+
+def _answering_agent() -> MagicMock:
+    agent = MagicMock()
+    agent.run.return_value = _page_output()
+    return agent
 
 
 def _entity_extraction_set(entity_type: str, *, sources: int) -> ExtractionSet:
