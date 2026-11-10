@@ -12,6 +12,7 @@ through a hardcoded provider.
 from __future__ import annotations
 
 from enum import StrEnum
+from typing import Final
 
 from pydantic import BaseModel, Field
 
@@ -73,6 +74,33 @@ class FigureRelevanceDecision(BaseModel):
     """
 
     verdict: FigureRelevanceVerdict = Field(description="Whether the figure is worth captioning.")
+
+
+class CandidateVerdict(BaseModel):
+    """Whether one candidate chunk carries material that answers the query.
+
+    A single boolean field is the widest verdict the decision grammar can
+    carry here. A list of models is refused before any request is sent —
+    "Output field 'verdicts' is not supported by this model: a list must be of
+    two or more string options" — and a list of string options collapses
+    verdicts (3 candidates answered as 1), so the tier asks one candidate at
+    a time instead.
+    """
+
+    relevant: bool = Field(description="True when the chunk contains material that answers the query.")
+
+
+#: Every result type kompend hands to a decision model, with the stable label
+#: the doctor reports it under. One registry, one place: a decision grammar
+#: that refuses a type makes that type's tier silently degrade to a fallback,
+#: so ``kompend doctor`` validates this tuple offline (check
+#: ``decision-schema``) instead of finding out from a dead tier.
+DECISION_RESULT_TYPES: Final[tuple[tuple[str, type[BaseModel]], ...]] = (
+    ("error-triage", ErrorDecision),
+    ("query-intent", QueryIntentDecision),
+    ("figure-relevance", FigureRelevanceDecision),
+    ("source-search-verdict", CandidateVerdict),
+)
 
 
 def decision_model_string(config: DecisionConfig | None) -> str | None:

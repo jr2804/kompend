@@ -27,6 +27,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
     __name__,
     submod_attrs={
         "base": ["AgentSpec", "KompendAgentBase", "agent_class", "build_agent"],
+        "decision_probe": ["DecisionProbeAgent", "DecisionProbeDeps"],
         "deps": [
             "MemoryConsolidationDeps",
             "QueryDeps",

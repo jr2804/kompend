@@ -24,6 +24,7 @@ never raises.
 | `environment.py` | Sources/output directories, git, disk headroom, the parser build — the parts that need no model |
 | `providers.py` | Model catalogue, `[providers.<name>]` endpoints, Ollama offload + tag identity (`ollama_show_lookup`), `nvidia-smi` |
 | `models.py` | Connectivity pings, structured-output probes, context window discovery, window fit, server window, output ceiling |
+| `decision.py` | The two decision-model checks: the offline result-type grammar (`decision-schema`) and the live SystemOne ping (`connectivity-decision`) |
 | `capabilities.py` | The structured-output probes themselves (`probe_*`, `measure_compact_formats`) |
 | `runner.py` | `run_doctor` — which checks run, in which order |
 
@@ -33,11 +34,23 @@ never raises.
   prints (`CheckResult(passed=False, message=…)`), so an unreachable provider,
   a missing wheel or an empty catalogue is reported, not thrown.
 - **Order is part of the contract** (`runner.py` docstring): the catalogue
-  first, then the free workspace checks, then per-model blocks so a model is
-  never swapped out between two of its own checks, then the embedder last —
-  loading it evicts the completion models from VRAM.
+  first, then the free workspace checks, then the decision checks, then
+  per-model blocks so a model is never swapped out between two of its own
+  checks, then the embedder last — loading it evicts the completion models
+  from VRAM. The decision checks sit before the llm block because a decision
+  model speaks a different endpoint family (SystemOne): running it first keeps
+  a locally hosted decision model from evicting the completion model those
+  measurements just loaded.
 - **`CheckResult.name` is kebab-case and stable** — the JSON output and the MCP
-  tool expose it, so renaming one is a user-visible change.
+  tool expose it, so renaming one is a user-visible change. The decision checks
+  are `decision-schema` and `connectivity-decision`.
+- **A decision model is optional, its verdict is not.** `connectivity-decision`
+  is a WARNING when `[decision]` is disabled or has no model — the pipeline
+  keeps its deterministic fallbacks — and a FAILURE when a configured model
+  cannot answer. The offline schema check never touches the network: it builds
+  the request the grammar would build for every type in
+  `llm.decision.DECISION_RESULT_TYPES`, and if the pydantic-ai internals it reads
+  move, it reports that as a warning instead of passing silently.
 - **One side effect, one place.** `providers.check_catalogue()` calls
   `catalog.ensure_fresh()` (TTL-gated) and is the only refresher of the
   models.dev cache in the process; no other check writes anything, and none
@@ -58,6 +71,6 @@ never raises.
 
 ## Verification
 
-- `uv run pytest tests/unit/test_cli_doctor_status.py tests/unit/test_capability_probes.py -q`
+- `uv run pytest tests/unit/test_cli_doctor_status.py tests/unit/test_doctor_decision.py tests/unit/test_capability_probes.py -q`
 - `uv run python scripts/checks/check_field_consistency.py` (a renamed result
   field breaks the JSON contract silently otherwise)

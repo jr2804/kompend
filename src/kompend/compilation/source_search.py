@@ -48,12 +48,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Any, Final
 
-from pydantic import BaseModel, Field
-
 from kompend.agents.base import AgentSpec, build_agent
 from kompend.core.config._configs import DecisionConfig
 from kompend.core.text.matching import cosine
-from kompend.llm.decision import decision_model_string
+from kompend.llm.decision import CandidateVerdict, decision_model_string
 from kompend.llm.models import build_decision_model
 from kompend.logging import get_logger
 from kompend.rag.embedding_base import EmbeddingProvider
@@ -123,20 +121,6 @@ class SourceSearchJudgeDeps:
     query: str
     stem: str
     candidate: str
-
-
-class CandidateVerdict(BaseModel):
-    """Whether one candidate chunk carries material that answers the query.
-
-    A single boolean field is the widest verdict the decision grammar can
-    carry here. A list of models is refused before any request is sent —
-    "Output field 'verdicts' is not supported by this model: a list must be of
-    two or more string options" — and a list of string options collapses
-    verdicts (3 candidates answered as 1), so the tier asks one candidate at
-    a time instead.
-    """
-
-    relevant: bool = Field(description="True when the chunk contains material that answers the query.")
 
 
 #: The judge agent, materialised lazily on the first search that has both a

@@ -5,6 +5,10 @@ Order is part of the contract, not an accident of the file layout:
 * The catalogue comes first — provider and model resolution read it.
 * Workspace checks (directories, git, disk, the parser) cost nothing and fail
   fast, so a misconfigured vault never waits for a model download.
+* The decision checks follow the workspace checks and precede every completion
+  model: a decision model speaks a different endpoint family (SystemOne), and
+  running it before the completion-model measurements keeps a locally hosted
+  decision model from evicting the model those measurements just loaded.
 * The model checks run in per-model blocks (llm → vlm → embed) so a model is
   never swapped out between two of its own checks: a reload would otherwise
   show up as a bogus cold start in the reported throughput. The connectivity
@@ -17,9 +21,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.core.config import LLMConfig, ResolvedConfig
+from kompend.core.config import DecisionConfig, LLMConfig, ResolvedConfig
 from kompend.diagnostics.base import CheckResult
 from kompend.diagnostics.capabilities import measure_compact_formats
+from kompend.diagnostics.decision import check_decision_connectivity, check_decision_schema
 from kompend.diagnostics.environment import (
     check_disk_space,
     check_git_repo,
@@ -81,6 +86,7 @@ def run_doctor(
         Enable verbose debug logging for the connectivity checks.
     """
     llm = config.kompend.compile.llm if config is not None else LLMConfig()
+    decision = config.kompend.decision if config is not None else DecisionConfig()
     providers = config.kompend.providers if config is not None else {}
     results: list[CheckResult] = []
 
@@ -90,6 +96,9 @@ def run_doctor(
     results.append(check_parsers())
     results.append(check_git_repo())
     results.append(check_disk_space(sources_dir))
+
+    results.append(check_decision_schema())
+    results.append(check_decision_connectivity(decision))
 
     results.append(ping_model(default_model, "llm", verbose=verbose, timeout=llm.timeout, retries=llm.output_retries))
     results.extend(

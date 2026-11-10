@@ -21,7 +21,7 @@ This package is the **only** layer that talks to pydantic-ai `Agent` directly.
 ### Class hierarchy
 
 Every agent is a registered `AgentSpec`; the typed class is its facade and
-extends `KompendAgentBase[ResultT, DepsT]`. The 37 specs cover every pipeline
+extends `KompendAgentBase[ResultT, DepsT]`. The 38 specs cover every pipeline
 stage from extraction to write. Each concrete agent declares one
 `SPEC: AgentSpec` (name, `result_type`, `deps_type`, templates, delta-retry
 flag, prompt hooks); `build_agent("name", ...)` materialises it. Add a `SPEC`
@@ -213,6 +213,7 @@ History compression lives on the Agent layer (`build_fallback_compaction`,
 | `QueryDeps`         | QueryAgent (adds `retrieved_context`, `query`, `mode`)                                |
 | `Wicer*` deps       | the three WICER agents (probe, evaluate, diagnose)                                    |
 | `DoctorDeps`        | DoctorAgent                                                                           |
+| `DecisionProbeDeps` | DecisionProbeAgent (`decision_probe.py`, the `connectivity-decision` doctor ping: one typed yes/no through the SystemOne endpoint) |
 | `SummarizerDeps`    | AgenticSummarizerAgent (payload: `SummaryNode`)                                       |
 | `MemoryConsolidationDeps` | MemoryConsolidationAgent (`previous` + delta digest, `target_tokens`)      |
 | `ContextChunkDeps`  | AgenticContextChunkAgent (payload: `ContextChunk`)                                    |

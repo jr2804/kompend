@@ -232,7 +232,13 @@ that class and treat the rest as unretryable.
 `kompend.llm.decision` holds the vocabulary for the optional **decision model**
 (TypeSafe SystemOne / Jev): `ErrorAction = Literal["retry", "skip", "abort"]`
 and `ErrorDecision` (only `action` — a decision model can fill choices and
-booleans, never free text). The model itself is an ordinary agent
+booleans, never free text). `DECISION_RESULT_TYPES` is the single registry of
+every result type kompend ships to a decision model (label → model class), and
+`CandidateVerdict` (the one-boolean source-search verdict) lives here too so a
+consumer imports it from one place; `kompend.diagnostics.decision` walks the
+registry offline to prove the grammar still accepts each one, so appending a
+type to that tuple is what puts it under `kompend doctor`. The model itself is
+an ordinary agent
 (`kompend.agents.decision.DecisionAgent`) reached through pydantic-ai's
 `typesafe` provider, configured as `decision.enabled/model/api_key/base_url/
 timeout`. Every helper returns `None` when the sidecar is off or unreachable,
@@ -248,3 +254,4 @@ decompresses natively; nothing else is assumed to.
 ## Verification
 
 - `uv run pytest tests/unit/test_llm_models.py tests/unit/test_llm_context_window.py tests/unit/test_request_budget.py tests/unit/test_llm_overflow.py -x` — model construction, window discovery, request-fit planner, provider overflow
+- `uv run pytest tests/unit/test_doctor_decision.py -q` — the decision result-type registry against the real grammar
