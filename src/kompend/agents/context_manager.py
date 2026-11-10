@@ -175,17 +175,6 @@ _IDEMPOTENT_READ_TOOLS: Final[frozenset[str]] = frozenset(
 logger = get_logger(__name__)
 
 
-def _conservative_tokens(text: str) -> int:
-    """Count *text* at kompend's measured density floor, never the harness's 4.
-
-    The harness calls this only for the part of a request no provider count
-    covers — the messages after the newest usage-carrying response, and a
-    history with no usage at all. That is exactly where dense content lives,
-    and where under-counting lets a history blow the window.
-    """
-    return ceil(len(text) / _CONSERVATIVE_CHARS_PER_TOKEN)
-
-
 @dataclass
 class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
     """Run the wrapped tiered stack only when the context grew.
@@ -222,12 +211,17 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
     A skipped request leaves it alone so growth keeps accumulating.
     """
 
-    tokenizer: Callable[[str], int] = _conservative_tokens
+    tokenizer: Callable[[str], int] = field(default_factory=lambda: _conservative_tokens)
     """Counts *text* for every estimate this gate compares.
 
     Both operands come from the same callable, so the growth this gate measures
     and the ``min_growth_tokens`` it compares against stay on one scale — the
     conservative one, not the harness's optimistic four-chars-per-token default.
+
+    A factory, not a plain default: pyreorder orders module sections, so the
+    formatter places ``_conservative_tokens`` after the dataclasses. A plain
+    default would evaluate the name while the class body runs, before the
+    function exists, and the whole package would stop importing.
     """
 
     def with_focus(self, focus: str) -> GrowthGatedCompaction[AgentDepsT]:
@@ -717,3 +711,14 @@ def build_summarizing_compaction(
         instructions=instructions,
         tokenizer=_conservative_tokens,
     )
+
+
+def _conservative_tokens(text: str) -> int:
+    """Count *text* at kompend's measured density floor, never the harness's 4.
+
+    The harness calls this only for the part of a request no provider count
+    covers — the messages after the newest usage-carrying response, and a
+    history with no usage at all. That is exactly where dense content lives,
+    and where under-counting lets a history blow the window.
+    """
+    return ceil(len(text) / _CONSERVATIVE_CHARS_PER_TOKEN)
