@@ -97,7 +97,7 @@ class LintEntry(BaseModel):
         """Serialise to the column-keyed values of one ``lint_runs`` row."""
         return {
             "timestamp": self.timestamp,
-            "duration_seconds": self.duration_seconds,
+            "duration_seconds": self.duration_seconds,  # nocheck: lint_runs column, not a wiki field
             "options": _json_column(self.options),
             "llm": _json_column(self.llm) if self.llm is not None else None,
             "config_snapshot": _json_column(self.config_snapshot),

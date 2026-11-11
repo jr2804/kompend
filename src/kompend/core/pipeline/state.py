@@ -196,7 +196,7 @@ class TierStateStore:
             {
                 "key": entry.key,
                 "stem": entry.stem,
-                "source_file": entry.source_file,
+                "source_file": entry.source_file,  # nocheck: kompend.db column, not wiki metadata
                 "content_hash": entry.content_hash,
                 "current_tier": entry.current_tier,
                 "last_compile": entry.last_compile,
