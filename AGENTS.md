@@ -179,6 +179,12 @@ relevant child AGENTS.md. (Conventions, config, or boundary rules belong in
   outputs, no fallbacks where an exception belongs, no hand-crafted heuristic
   stand-ins for LLM calls without explicit approval.
 
+- Resource ceiling: never run an experiment, benchmark, or test that is bound
+  to exceed the host's system memory or VRAM. Cap the workload (one document,
+  one worker), measure on a host that can spare the memory, and report what
+  was skipped instead of pushing through. A run that takes the machine down
+  with it is not a measurement.
+
 ## Closeout
 
 1. Re-check changed paths against the DOX chain.
