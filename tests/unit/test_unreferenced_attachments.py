@@ -15,6 +15,7 @@ precise:
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 import pytest
@@ -205,6 +206,59 @@ def test_a_code_example_does_not_protect_a_file(tmp_path: Path, form: str) -> No
     _page_raw(tmp_path, form.format(link=f"../../{stale}"))
 
     assert unreferenced_attachment_files(tmp_path) == [stale]
+
+
+def test_an_unreadable_page_does_not_condemn_the_figure_it_links(tmp_path: Path) -> None:
+    """A page nobody can decode links *something* — never treat it as linking nothing.
+
+    The scanner used to swallow ``UnicodeDecodeError``, so a page with one bad
+    byte sequence read as "links nothing", its figure looked stale and
+    ``--fix-destructive`` deleted it without a trace.
+    """
+    _source(tmp_path)
+    stale = _writer_copy(tmp_path, _STEM, "report_img_11.png")
+    _page(tmp_path, stale)
+    broken = tmp_path / "wiki" / "concepts" / "broken.md"
+    broken.write_bytes(b"# Broken\n\n\xff\xfe not utf-8\n")
+
+    assert unreferenced_attachment_files(tmp_path) == []
+
+    rule = UnreferencedAttachmentsRule()
+    results = rule.check(_wiki(), sources_dir=str(VaultPaths(tmp_path).sources_dir))
+
+    assert [r.outcome for r in results] == [LintRuleOutcome.SKIP]
+    assert results[0].details["unreadable_pages"] == ["wiki/concepts/broken.md"]
+    assert "could not be read" in results[0].message
+    rule.fix(_wiki(), results)
+    assert (tmp_path / stale).is_file()
+
+
+def test_an_unreadable_page_is_reported_at_warning(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """The undecodable page must be visible in the log, not silently skipped."""
+    _source(tmp_path)
+    _writer_copy(tmp_path, _STEM, "report_img_12.png")
+    broken = tmp_path / "wiki" / "concepts" / "broken.md"
+    broken.parent.mkdir(parents=True, exist_ok=True)
+    broken.write_bytes(b"\xff\xfe")
+
+    with caplog.at_level(logging.WARNING, logger="kompend.lint.structural.attachments"):
+        unreferenced_attachment_files(tmp_path)
+
+    assert any("wiki/concepts/broken.md" in record.getMessage() for record in caplog.records)
+
+
+def test_a_readable_page_does_not_disable_the_rule(tmp_path: Path) -> None:
+    """The fail-closed path is for unreadable pages only — a clean vault still prunes."""
+    _source(tmp_path)
+    stale = _writer_copy(tmp_path, _STEM, "report_img_13.png")
+    _page(tmp_path, None)
+
+    rule = UnreferencedAttachmentsRule()
+    results = rule.check(_wiki(), sources_dir=str(VaultPaths(tmp_path).sources_dir))
+
+    assert [r.outcome for r in results] == [LintRuleOutcome.FAIL]
+    rule.fix(_wiki(), results)
+    assert not (tmp_path / stale).exists()
 
 
 def _source(base_dir: Path) -> None:

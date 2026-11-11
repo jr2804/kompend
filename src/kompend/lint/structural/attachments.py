@@ -18,6 +18,7 @@ import contextlib
 import os
 import re
 from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -45,6 +46,20 @@ _HTML_TARGET_RE = re.compile(
 )
 
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class _PageLinks:
+    """What one pass over the written pages found.
+
+    ``unreadable`` holds the vault-relative paths of pages that could not be
+    decoded. Their links are unknown, not absent: a page nobody can read may
+    link any attachment, so no destructive decision may rest on this scan
+    while the tuple is non-empty.
+    """
+
+    referenced: frozenset[str]
+    unreadable: tuple[str, ...]
 
 
 class UnreferencedAttachmentsRule(BaseLintRule):
@@ -86,6 +101,24 @@ class UnreferencedAttachmentsRule(BaseLintRule):
         vp = VaultPaths(base_dir)
         if not vp.attachments_dir.is_dir():
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No attachments directory")]
+
+        unreadable = _unreadable_pages(base_dir)
+        if unreadable:
+            # A page nobody can read may link any attachment, so this run cannot
+            # tell a stale copy from a used one. Deleting on that guess is how a
+            # wiki loses a figure: report the pages and delete nothing.
+            return [
+                LintResult(
+                    rule=self.name,
+                    outcome=LintRuleOutcome.SKIP,
+                    severity=Severity.WARNING,
+                    message=(
+                        f"No attachment was deleted: {len(unreadable)} page(s) could not be read, so their links "
+                        "are unknown (fix the encoding and rerun the lint)"
+                    ),
+                    details={"unreadable_pages": list(unreadable)},
+                )
+            ]
 
         stale = unreferenced_attachment_files(base_dir)
         if not stale:
@@ -207,8 +240,24 @@ class OrphanAttachmentsRule(BaseLintRule):
         sources_root = Path(sources_dir)
         orphans = orphan_attachment_dirs(base_dir, sources_root)
         # A page link outranks the slug: the file is in use even when its
-        # directory name comes from an older slug rule.
-        referenced = _referenced_attachment_paths(base_dir)
+        # directory name comes from an older slug rule. A page nobody can read
+        # may link any of them, so nothing is flagged while one is unreadable.
+        pages = _scan_pages(base_dir)
+        if pages.unreadable:
+            results.append(
+                LintResult(
+                    rule=self.name,
+                    outcome=LintRuleOutcome.SKIP,
+                    severity=Severity.WARNING,
+                    message=(
+                        f"No orphan was reported: {len(pages.unreadable)} page(s) could not be read, so their "
+                        "links are unknown (fix the encoding and rerun the lint)"
+                    ),
+                    details={"unreadable_pages": list(pages.unreadable)},
+                )
+            )
+            return results
+        referenced = set(pages.referenced)
         linked = [rel for rel in orphans if rel in referenced]
         orphans = [rel for rel in orphans if rel not in referenced]
 
@@ -332,12 +381,19 @@ def unreferenced_attachment_files(base_dir: Path) -> list[str]:
     :class:`OrphanAttachmentsRule`'s job — and only files byte-identical to an
     extracted image (:func:`_is_cached_extraction`), so nothing the wiki cannot
     recreate is ever reported.
+
+    Returns nothing when a page could not be read: an unreadable page may link
+    any of these files, so the question is unanswered rather than answered
+    "no". :meth:`UnreferencedAttachmentsRule.check` reports those pages.
     """
     vp = VaultPaths(base_dir)
     if not vp.attachments_dir.is_dir():
         return []
 
-    referenced = _referenced_attachment_paths(base_dir)
+    links = _scan_pages(base_dir)
+    if links.unreadable:
+        return []
+    referenced = set(links.referenced)
     live_slugs = _live_attachment_slugs(base_dir)
     cache_dir = vp.images_dir
 
@@ -421,15 +477,40 @@ def _referenced_attachment_paths(base_dir: Path) -> set[str]:
     paths to relative links at write time, so only the files on disk show what
     the wiki actually references. Links resolve page-relative first (what the
     wiki writer emits) and vault-relative as a fallback (what an export uses).
+
+    A page that cannot be decoded contributes nothing but is not pretended to be
+    empty — :func:`_scan_pages` reports it, and every caller that deletes files
+    checks that report first.
     """
+    return set(_scan_pages(base_dir).referenced)
+
+
+def _unreadable_pages(base_dir: Path) -> tuple[str, ...]:
+    """The vault-relative paths of written pages that could not be decoded."""
+    return _scan_pages(base_dir).unreadable
+
+
+def _scan_pages(base_dir: Path) -> _PageLinks:
+    """Scan the written pages once: the links they carry, and those unreadable."""
     referenced: set[str] = set()
+    unreadable: list[str] = []
     for md in base_dir.rglob("*.md"):
         parts = md.relative_to(base_dir).parts[:-1]
         if any(part in {".kompend", "sources", "attachments"} for part in parts):
             continue
         try:
             text = md.read_text(encoding="utf-8")
-        except (OSError, UnicodeDecodeError):
+        except UnicodeDecodeError as exc:
+            # Not an I/O miss: the page exists and has content, this run just
+            # cannot see it. Recorded, logged, and never read as "links nothing".
+            rel = md.relative_to(base_dir).as_posix()
+            unreadable.append(rel)
+            logger.warning("Cannot decode page %s, its links are unknown: %s", rel, exc)
+            continue
+        except OSError as exc:
+            rel = md.relative_to(base_dir).as_posix()
+            unreadable.append(rel)
+            logger.warning("Cannot read page %s, its links are unknown: %s", rel, exc)
             continue
         for raw in _link_targets(text):
             if "attachments/" not in raw:
@@ -439,7 +520,7 @@ def _referenced_attachment_paths(base_dir: Path) -> set[str]:
                 rel = _vault_relative(base_dir, candidate)
                 if rel is not None:
                     referenced.add(rel)
-    return referenced
+    return _PageLinks(referenced=frozenset(referenced), unreadable=tuple(unreadable))
 
 
 def _link_targets(text: str) -> list[str]:

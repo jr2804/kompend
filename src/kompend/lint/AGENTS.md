@@ -108,7 +108,13 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   invisible. A destination may hold balanced parentheses — a figure named
   ``..._Assessment_(POLQA),_Standard__0b467ca.jpg`` — and the parser resolves
   that too, so no depth counter is needed. Fenced and inline code yield no
-  link token: a documentation example never protects a file.
+  link token: a documentation example never protects a file. A reference
+  definition protects its target even when no link uses it — the definition is
+  page content an author wrote, not an optimisation to drop.
+- **An unreadable page cancels the destructive decision.** A page that cannot be
+  decoded may link any attachment, so a run with one gets a SKIP naming the
+  pages (``details["unreadable_pages"]``) and deletes nothing, rather than the
+  old silent ``continue`` that read "cannot read" as "links nothing".
 - **A code example is not a page link.** Both directions of the rule read only
   prose: a fenced block or an inline span that mentions
   ``attachments/<slug>/x.png`` neither protects a file the wiki dropped nor
