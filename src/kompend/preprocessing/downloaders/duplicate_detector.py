@@ -4,16 +4,16 @@ The URL → content-hash map lives in the ``downloaded`` table of the single
 ``.kompend/kompend.db`` store.
 """
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
-# no runtime value ever enters an identifier or statement.
-
 from __future__ import annotations
 
 import hashlib
 from pathlib import Path
 
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import DOWNLOADED_TABLE
+from sqlalchemy import select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import downloaded
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
@@ -57,10 +57,14 @@ class DuplicateDetector:
             sha256: The SHA256 hex digest of the downloaded content.
         """
         self._db[url] = sha256
-        with open_store(self._db_path) as conn:
-            conn.execute(
-                f"INSERT INTO {DOWNLOADED_TABLE}(url, sha256) VALUES (?, ?) ON CONFLICT(url) DO UPDATE SET sha256 = excluded.sha256",
-                (url, sha256),
+        values = {"url": url, "sha256": sha256}
+        statement = sqlite_insert(downloaded).values(**values)
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            core.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[downloaded.c.url],
+                    set_={column: statement.excluded[column] for column in values},
+                )
             )
 
     def batch_check(self, urls: list[str]) -> dict[str, bool]:
@@ -91,6 +95,6 @@ class DuplicateDetector:
         if not self._db_path.exists():
             self._db = {}
             return
-        with open_store(self._db_path) as conn:
-            rows = conn.execute(f"SELECT url, sha256 FROM {DOWNLOADED_TABLE}").fetchall()
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(select(downloaded.c.url, downloaded.c.sha256)).mappings().all()
         self._db = {row["url"]: row["sha256"] for row in rows}
