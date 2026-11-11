@@ -11,14 +11,15 @@ of the concept name; values are sanitized folder names (see
 :func:`kompend.compilation.flows.generation._sanitize_entity_type`).
 """
 
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
-
 from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import ENTITY_TYPES_TABLE
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import entity_types
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
@@ -49,18 +50,17 @@ class EntityTypeRegistry:
         if not self._db_path.exists():
             self._data = {}
             return
-        with open_store(self._db_path) as conn:
-            rows = conn.execute(f"SELECT concept_key, folder_name FROM {ENTITY_TYPES_TABLE}").fetchall()
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(select(entity_types)).mappings().all()
         self._data = {str(row["concept_key"]): str(row["folder_name"]) for row in rows}
 
     def save(self) -> None:
         """Persist the in-memory registry (full overwrite)."""
-        with open_store(self._db_path) as conn:
-            conn.execute(f"DELETE FROM {ENTITY_TYPES_TABLE}")
-            conn.executemany(
-                f"INSERT INTO {ENTITY_TYPES_TABLE}(concept_key, folder_name) VALUES (?, ?)",
-                list(self._data.items()),
-            )
+        rows = [{"concept_key": concept_key, "folder_name": folder_name} for concept_key, folder_name in self._data.items()]
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            core.execute(delete(entity_types))
+            if rows:
+                core.execute(sqlite_insert(entity_types), rows)
 
     def get(self, concept_key: str) -> str | None:
         """Return the registered type for *concept_key*, or None."""
