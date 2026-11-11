@@ -224,6 +224,115 @@ def test_the_reason_code_rule_can_be_waived_with_a_reason(tmp_path: Path) -> Non
     assert module.scan_file(probe) == []
 
 
+def test_a_vocabulary_value_passed_to_its_own_keyword_is_caught(tmp_path: Path) -> None:
+    """``detail="done"`` desyncs the emitter exactly as ``x == "done"`` does.
+
+    Position is what makes the keyword shape checkable at all: pydantic's
+    ``mode="json"`` and cyclopts' ``name="check"`` collide with member values
+    of unrelated vocabularies, so only the argument names that are the
+    documented carrier of a vocabulary are inspected.
+    """
+    module = _antipatterns()
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "def f(emit):\n"
+        '    emit(detail="done")  # nocheck: enum-literal — vendor payload\n'
+        '    emit(detail="starting")\n'
+        "    emit(detail=source_name)\n"
+        '    model_dump(mode="json")\n'
+        "    emit(detail=ProgressDetail.DONE)\n",
+        encoding="utf-8",
+    )
+
+    found = module.scan_file(probe)
+
+    assert [v.rule for v in found] == ["ENUM-VALUE-LITERAL"]
+    assert found[0].line == 3
+    assert "detail='starting'" in found[0].message
+    assert "ProgressDetail" in found[0].message
+
+
+def test_a_type_checking_guard_is_caught(tmp_path: Path) -> None:
+    """A name that exists only under the guard is a fiction the import cannot see."""
+    module = _antipatterns()
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "from __future__ import annotations\n"
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    from kompend.billing import Invoice\n"
+        "\n"
+        "def f() -> Invoice: ...\n",
+        encoding="utf-8",
+    )
+
+    found = module.scan_file(probe)
+
+    assert [v.rule for v in found] == ["TYPE-CHECKING-BLOCK"]
+    assert found[0].line == 3
+    assert "1 statement(s)" in found[0].message
+
+
+def test_a_pyreorder_marker_is_caught(tmp_path: Path) -> None:
+    """The marker hides an ordering decision; the sorter is the convention."""
+    module = _antipatterns()
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "# pyreorder: off — hand-tuned order\nimport b\nimport a\n",
+        encoding="utf-8",
+    )
+
+    found = module.scan_file(probe)
+
+    assert [v.rule for v in found] == ["PYREORDER-MARKER"]
+    assert found[0].line == 1
+
+
+def test_module_wide_noqa_needs_codes_and_a_reason(tmp_path: Path) -> None:
+    """Every module-wide suppression in this tree is load-bearing, so the rule
+
+    cannot be a ban: it asks the comment to say which codes and why, because an
+    unexamined blanket cannot be audited when the code under it changes.
+    """
+    module = _antipatterns()
+    cases = {
+        "blanket.py": (
+            "# ruff: noqa\n\nimport os\n",
+            "names no rule codes",
+        ),
+        "codes_only.py": (
+            "# ruff: noqa: S608\n\nQUERY = 'x'\n",
+            "states no reason",
+        ),
+        "justified.py": (
+            "# ruff: noqa: S608 — SQL is built from table-name constants\n\nQUERY = 'x'\n",
+            None,
+        ),
+    }
+    for name, (source, expected) in cases.items():
+        probe = tmp_path / name
+        probe.write_text(source, encoding="utf-8")
+        found = [v for v in module.scan_file(probe) if v.rule == "MODULE-NOQA"]
+        if expected is None:
+            assert found == [], name
+        else:
+            assert len(found) == 1, name
+            assert expected in found[0].message, name
+
+
+def test_every_keyword_vocabulary_still_names_a_real_argument() -> None:
+    """A typo'd argument name would silently disable that vocabulary's check.
+
+    The same failure mode as ``_VOCAB_ENUM_NAMES`` against the class list: a
+    wrong entry can only make the scanner quieter, so it is pinned.
+    """
+    module = _antipatterns()
+
+    wrong = [f"{argument}->{owner}" for argument, owner in module._VOCAB_KEYWORD_ARGUMENTS if owner not in module._VOCAB_ENUM_NAMES]
+
+    assert not wrong, f"_VOCAB_KEYWORD_ARGUMENTS owners that are not in _VOCAB_ENUM_NAMES: {wrong}"
+
+
 def test_require_facts_documents_its_precondition() -> None:
     """Zero has three meanings; the helper can only see the count.
 

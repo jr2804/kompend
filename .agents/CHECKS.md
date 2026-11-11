@@ -12,13 +12,12 @@ job does (see **Wiring** below).
 
 Two guarantees keep them honest: a scan that finds no files is an error (an
 empty scan is not a pass), and an enforced contract that no longer exists in
-the code (moved module, renamed enum) fails the script instead of warning.
-Per-line waivers exist for sites the rule cannot judge — `# nocheck: <rule> —
-reason` in field-consistency and the antipatterns scanner. A banned suppression
-has no waiver: `# noqa: PLC0415`, `BLE001` and `S110` are rejected outright.
+the code (moved module, renamed enum) fails instead of warning. Per-line
+waivers exist for sites the rule cannot judge — `# nocheck: <rule> — reason`
+in field-consistency and the antipatterns scanner; a banned suppression has none
+(`# noqa: PLC0415`, `BLE001`, `S110`).
 
-**Extension.** Adding a verification tool, enforcement script, or checklist item
-updates the matching section below.
+**Extension.** Adding a verification tool, enforcement script, or checklist item updates the section below.
 
 ## Project-specific Checks — kompend
 
@@ -49,11 +48,12 @@ Tick these BEFORE writing a function:
   computed → `@functools.cache` getter returning a frozen value; changing during
   the process → an object created and passed (or a `ContextVar` for a genuinely
   cross-thread switch). `# noqa: PLW0603` is never allowed.
-- **Vocabulary** — is a closed set of names (backend, matcher, flavor, preset,
-  tier, …) defined as a `StrEnum`? Dict keys, comparisons and defaults use
-  members, never their bare string values (`STR-KEYED-REGISTRY` /
-  `ENUM-VALUE-LITERAL` reject both).
-- **Noqa suppression** — banned outright, no waiver (CODE.md); a scanner's own directive names its target.
+- **Vocabulary** — a closed name set (backend, matcher, flavor, preset, tier) as a
+  `StrEnum`; keys, comparisons, defaults and its own keyword (`detail=`, `kind=`,
+  `page_type=`, `step=`) use members, never bare strings.
+- **Circular imports** — never `if TYPE_CHECKING:` (`TYPE-CHECKING-BLOCK`); break
+  the cycle with a runtime import or a protocol, so the import graph stays true.
+- **Noqa** — banned outright, no waiver (CODE.md); a scanner's own directive names its target. A file-level `# ruff: noqa` must name its codes and a reason (`MODULE-NOQA`).
 
 ### Enforcement scripts
 
@@ -61,7 +61,7 @@ Tick these BEFORE writing a function:
 | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------- |
 | `ruff check`                                | Most lint issues (PLC0415/E402 are warnings, not errors)                                                                                                                | ruff.toml        |
 | `scripts/checks/check_field_consistency.py` | Bare-string contract keys                                                                                                                                               | scripts/checks/  |
-| `scripts/checks/check_antipatterns.py`      | Banned-noqa (`PLC0415`, `BLE001`, `S110`), magic crops, `try/except ImportError` guards, string-keyed registries, bare enum-value literals, bare reason-code literals, pip-side installs in code/docs — every project Python root | scripts/checks/  |
+| `scripts/checks/check_antipatterns.py`      | Banned-noqa (`PLC0415`, `BLE001`, `S110`), unjustified file-level `# ruff: noqa` (`MODULE-NOQA`), magic crops, `try/except ImportError` guards, string-keyed registries, bare enum-value literals (comparisons and the vocabulary's own keyword), `if TYPE_CHECKING:` blocks, `# pyreorder: off` markers, bare reason-code literals, pip-side installs in code/docs — every project Python root | scripts/checks/  |
 | `scripts/checks/check_persisted_paths.py`   | An absolute filesystem path persisted in `.kompend/` (every text column of `kompend.db` plus loose JSON/JSONL)                                                          | scripts/checks/  |
 | `scripts/checks/check_dox.py`               | DOX file size budgets, cross-file duplication                                                                                                                           | scripts/checks/  |
 | `scripts/checks/check_enum_cache.py`        | A `StrEnum` reachable from a cached dataclass missing from `_CACHE_ENUMS`                                                                                               | scripts/checks/  |

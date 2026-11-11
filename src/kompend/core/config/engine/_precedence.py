@@ -1,7 +1,5 @@
 """5-layer config precedence: merge, resolve, and provenance tracking."""
 
-# ruff: noqa: I001
-
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -10,13 +8,13 @@ from typing import Any
 
 from kompend.core.config.engine._env import read_env_vars
 from kompend.core.config.engine._loading import (
-    load_toml,
-    wiki_dir_for_discovery,
     find_all_project_configs,
     find_global_config,
+    load_toml,
+    wiki_dir_for_discovery,
 )
 from kompend.core.config.engine._schema import DEFAULTS, DEPRECATED_ALIASES, REMOVED_KEYS, flat_keys
-from kompend.core.paths import VaultPaths
+from kompend.core.config.models import KompendConfig
 from kompend.core.keys import (
     COMPILE_OUTPUT_DIR,
     COMPILE_SOURCES_DIR,
@@ -24,11 +22,11 @@ from kompend.core.keys import (
     PATHS_SOURCES_DIR,
     PATHS_WIKI_DIR,
 )
+from kompend.core.paths import VaultPaths
 from kompend.core.utils.dicts import deep_merge, del_dot, get_dot, nest_flat, set_dot
+from kompend.llm.user_providers import set_user_providers
 from kompend.logging import get_logger
 from kompend.types import ConfigValue
-from kompend.llm.user_providers import set_user_providers
-from kompend.core.config.models import KompendConfig
 
 logger = get_logger(__name__)
 

@@ -49,8 +49,26 @@ LLM-coding mistakes observed in this codebase:
 - Comparisons against a bare string literal that duplicates a member value of
   a known project ``StrEnum`` are flagged (``ENUM-VALUE-LITERAL``): compare
   against the enum member instead, so a vocabulary change cannot silently
-  desync a call site. External vocabularies waive with
+  desync a call site. The same rule covers the keyword arguments that are the
+  documented carrier of a vocabulary (``detail=`` for ``ProgressDetail``,
+  ``kind=`` for ``CaptureKind``, ``page_type=`` for ``SourceZone``, ``step=``
+  for ``LintStep``) — see ``_VOCAB_KEYWORD_ARGUMENTS``. External vocabularies
+  and unrelated arguments that merely share a spelling waive with
   ``# nocheck: enum-literal — <reason>``.
+- ``if TYPE_CHECKING:`` blocks are flagged (``TYPE-CHECKING-BLOCK``). They
+  split runtime from the type checker: a name imported only under the guard is
+  invisible to an import cycle test and resolves to a different object than the
+  code it stands for. The fix is a runtime import, a protocol
+  (:mod:`kompend.agents.base.protocols`), or a local import cycle break — never
+  a guard.
+- ``# pyreorder: off`` markers are flagged (``PYREORDER-MARKER``). The sorter is
+  a project convention, not an obstacle; a module that cannot be sorted is a
+  module whose ordering needs a decision, and the marker hides that decision.
+- A file-level ``# ruff: noqa`` comment is flagged (``MODULE-NOQA``) when it
+  names no rule codes, or names codes but states no reason. Nineteen of these
+  exist and every one is load-bearing, so the rule is not "ban them": an
+  unjustified module-wide suppression is a licence nobody audits. Say which
+  codes and why, in the comment.
 - A bare string literal in a ``reason_code`` position — the keyword argument
   or the ``extra`` dict key the item path uses to carry a failure reason —
   is flagged (``REASON-CODE-LITERAL``). The reason-code vocabulary is a
@@ -207,8 +225,39 @@ _VOCAB_ENUM_NAMES: frozenset[str] = frozenset(
         "OutputFormat",
         "ReasoningEffort",
         "Tier",
+        # Added by the antipattern epic: vocabularies whose literals had leaked
+        # into call sites or into a second hand-written list.
+        "CaptureKind",
+        "LintStep",
+        "ProgressDetail",
+        "SourceZone",
     }
 )
+
+#: Keyword arguments that are the documented carrier of a project vocabulary.
+#: Pairs of (argument name, owning StrEnum) rather than a name-keyed dict: a
+#: dict here would itself be the STR-KEYED-REGISTRY shape it sits beside.
+#: Only these positions are checked — an unrelated ``mode="json"`` (pydantic)
+#: or ``name="capture"`` (an agent name) merely shares a spelling with a
+#: member value and is not drift.
+_VOCAB_KEYWORD_ARGUMENTS: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("detail", "ProgressDetail"),
+        ("kind", "CaptureKind"),
+        ("page_type", "SourceZone"),
+        ("step", "LintStep"),
+    }
+)
+
+#: Prefix of a file-level ruff suppression comment.
+_RUFF_NOQA_PREFIX_RE = re.compile(r"^#\s*ruff:\s*noqa", re.IGNORECASE)
+#: A ruff rule code (``S608``, ``I001``) or a whole prefix (``S``, ``PLR``),
+#: which ruff accepts as a file-level suppression too.
+_RUFF_CODE_RE = re.compile(r"^[A-Z]{1,4}[0-9]{0,4}$")
+
+#: Shortest reason accepted after a suppression's codes. Shorter is a shrug,
+#: not a justification.
+_MIN_NOQA_REASON_CHARS = 8
 
 #: Vendored skill assets quote other projects' instructions - not our policy.
 _DOC_EXCLUDED_PARTS: tuple[str, ...] = (".agents/skills", "tmp", "node_modules")
@@ -229,6 +278,9 @@ _NOQA_RE = re.compile(r"#\s*noqa(?:\s*:\s*(.*))?$", re.IGNORECASE)
 #: Separator inside a code list: ruff accepts commas and whitespace alike.
 _NOQA_CODE_SEP_RE = re.compile(r"[,\s]+")
 
+
+#: The pyreorder opt-out marker the sorter reads.
+_PYREORDER_OFF_RE = re.compile(r"#\s*pyreorder:\s*off", re.IGNORECASE)
 
 #: Token types whose text is literal, never code. F-string expressions are made
 #: of ordinary tokens between these, so they survive the blanking.
@@ -396,6 +448,9 @@ def scan_file(path: Path) -> list[Violation]:
     out.extend(scan_wiki_filenames(path, code_lines))
     out.extend(scan_str_keyed_registries(path, tree, code_lines, comments))
     out.extend(scan_enum_value_literals(path, tree, code_lines, comments))
+    out.extend(scan_type_checking_blocks(path, tree, comments))
+    out.extend(scan_pyreorder_markers(path, comments))
+    out.extend(scan_module_noqa(path, comments))
     out.extend(scan_reason_code_literals(path, tree, code_lines, comments))
     # Comments keep their own scan: a documented install command is still an
     # install command, and it is the form that actually reaches a reader.
@@ -600,7 +655,164 @@ def scan_enum_value_literals(path: Path, tree: ast.Module, lines: list[str], com
                     message=f'comparison with "{comparator.value}" duplicates a {names} member value — compare with the enum member',
                 )
             )
+    out.extend(_enum_keyword_literals(path, tree, values, comments))
     return out
+
+
+def _enum_keyword_literals(
+    path: Path,
+    tree: ast.Module,
+    values: dict[str, set[str]],
+    comments: dict[int, Comment],
+) -> list[Violation]:
+    """Flag a vocabulary value passed as the vocabulary's own keyword argument.
+
+    ``emit(detail="done")`` is the same desync as ``x == "done"``: the emitter
+    claims to speak :class:`ProgressDetail` and then spells a member by hand.
+    Position is what makes it checkable — only ``_VOCAB_KEYWORD_ARGUMENTS``
+    are inspected, so pydantic's ``mode="json"`` (which collides with
+    ``OutputFormat.JSON``) is never reported.
+    """
+    out: list[Violation] = []
+    by_argument = dict(_VOCAB_KEYWORD_ARGUMENTS)
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        for keyword in node.keywords:
+            if keyword.arg is None or not isinstance(keyword.value, ast.Constant):
+                continue
+            owner = by_argument.get(keyword.arg)
+            if owner is None or not isinstance(keyword.value.value, str):
+                continue
+            if owner not in values.get(keyword.value.value, set()):
+                continue
+            if _waived(node.lineno, comments):
+                continue
+            out.append(
+                Violation(
+                    file=path,
+                    line=node.lineno,
+                    col=node.col_offset + 1,
+                    rule="ENUM-VALUE-LITERAL",
+                    message=(f"{keyword.arg}={keyword.value.value!r} duplicates a {owner} member value — pass the enum member"),
+                )
+            )
+    return out
+
+
+def scan_type_checking_blocks(path: Path, tree: ast.Module, comments: dict[int, Comment]) -> list[Violation]:
+    """Flag ``if TYPE_CHECKING:`` guards.
+
+    The guard splits a name's runtime identity from the type checker's view:
+    a symbol that exists only under the guard is a different object than the
+    code it stands for, invisible to an import-cycle test, and it makes the
+    module's import graph a fiction. Break the cycle (a protocol, a runtime
+    import, a local import) instead of hiding it.
+    """
+    out: list[Violation] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.If):
+            continue
+        if not (isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING"):
+            continue
+        if _waived(node.lineno, comments):
+            continue
+        guarded = len(node.body)
+        out.append(
+            Violation(
+                file=path,
+                line=node.lineno,
+                col=node.col_offset + 1,
+                rule="TYPE-CHECKING-BLOCK",
+                message=(f"if TYPE_CHECKING guards {guarded} statement(s) — import at runtime, or break the cycle with a protocol"),
+            )
+        )
+    return out
+
+
+def scan_pyreorder_markers(path: Path, comments: dict[int, Comment]) -> list[Violation]:
+    """Flag ``# pyreorder: off`` markers.
+
+    The sorter is the project convention for statement order. A module that
+    cannot be sorted holds an ordering decision nobody wrote down, and the
+    marker is what keeps it undocumented.
+    """
+    out: list[Violation] = []
+    for line_no, comment in sorted(comments.items()):
+        if not _PYREORDER_OFF_RE.search(comment.text):
+            continue
+        out.append(
+            Violation(
+                file=path,
+                line=line_no,
+                col=comment.col + 1,
+                rule="PYREORDER-MARKER",
+                message="# pyreorder: off hides an ordering decision — order the module, or state why in prose",
+                context=comment.text.strip(),
+            )
+        )
+    return out
+
+
+def scan_module_noqa(path: Path, comments: dict[int, Comment]) -> list[Violation]:
+    """Flag a file-level ``# ruff: noqa`` that names no codes or no reason.
+
+    Every module-wide suppression in this tree is load-bearing (they silence
+    ``S608`` on SQL built from ``Final[str]`` table names, and one ``I001``),
+    so banning them would be a rule that lies. What is worth catching is the
+    unexamined one: a blanket with no codes silences everything, and one with
+    no stated reason cannot be audited when the code under it changes.
+    """
+    out: list[Violation] = []
+    for line_no, comment in sorted(comments.items()):
+        text = comment.text.strip()
+        if not _RUFF_NOQA_PREFIX_RE.match(text):
+            continue
+        codes, reason = _split_module_noqa(text)
+        if not codes:
+            message = "# ruff: noqa names no rule codes — it silences every rule; name the codes it silences"
+        elif len(reason) < _MIN_NOQA_REASON_CHARS:
+            message = f"# ruff: noqa: {', '.join(sorted(codes))} states no reason — say why the codes are safe to silence here"
+        else:
+            continue
+        out.append(
+            Violation(
+                file=path,
+                line=line_no,
+                col=comment.col + 1,
+                rule="MODULE-NOQA",
+                message=message,
+                context=text,
+            )
+        )
+    return out
+
+
+def _split_module_noqa(comment: str) -> tuple[set[str], str]:
+    """Split a file-level suppression into ``(rule codes, stated reason)``.
+
+    ``# ruff: noqa: S608 — SQL is built from table-name constants`` yields
+    ``({'S608'}, 'SQL is built from table-name constants')``. Codes are the
+    first comma-separated run of rule-shaped words; everything after it is the
+    reason, whichever separator the author used (``—``, ``--``, ``#``).
+    """
+    body = _RUFF_NOQA_PREFIX_RE.sub("", comment).strip()
+    if body.startswith(":"):
+        body = body[1:]
+    codes: set[str] = set()
+    reason_parts: list[str] = []
+    for chunk in _NOQA_CODE_SEP_RE.split(body):
+        token = chunk.strip()
+        if not token:
+            continue
+        if not reason_parts and _RUFF_CODE_RE.match(token):
+            codes.add(token)
+            continue
+        reason_parts.append(token)
+    reason = " ".join(reason_parts)
+    for separator in ("—", "--", "#"):
+        reason = reason.replace(separator, " ")
+    return codes, reason.strip()
 
 
 def scan_reason_code_literals(path: Path, tree: ast.Module, lines: list[str], comments: dict[int, Comment]) -> list[Violation]:
