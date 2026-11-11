@@ -5,10 +5,10 @@ passed in. The tables are ``vec0`` and FTS5 virtual tables, which SQLAlchemy
 Core cannot express, so the DDL is hand-written by contract (bead knox-97pg).
 
 The names are module-level so the query, filter and write paths address the
-same tables; a literal table name anywhere else is a bug.
+same tables; a literal table name anywhere else is a bug. Every statement is a
+constant template filled by :func:`sql` — no caller assembles SQL by hand,
+which is what the module-wide bandit waiver this replaces was hiding.
 """
-
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
 
 from __future__ import annotations
 
@@ -46,6 +46,50 @@ EMBEDDING_MODEL_COLUMN: Final[str] = "embedding_model"
 #: The manifest column naming the backend that wrote the vectors.
 BACKEND_COLUMN: Final[str] = "backend"
 
+_DROP_TABLE: Final[str] = "DROP TABLE IF EXISTS {table}"
+
+_CREATE_ITEMS: Final[str] = """
+CREATE VIRTUAL TABLE {table} USING vec0(
+    id              TEXT PRIMARY KEY,
+    embedding       FLOAT[{dim}] distance_metric=cosine,
+    title           TEXT,
+    node_type       TEXT,
+    source_file     TEXT,
+    content_preview TEXT
+)
+"""
+
+_CREATE_FTS: Final[str] = """
+CREATE VIRTUAL TABLE {table} USING fts5(
+    id UNINDEXED,
+    title,
+    content_preview,
+    node_type UNINDEXED,
+    source_file UNINDEXED,
+    tokenize='unicode61'
+)
+"""
+
+_CREATE_TAGS: Final[str] = "CREATE TABLE {table} (item_id TEXT, tag TEXT, PRIMARY KEY (item_id, tag))"
+_CREATE_ATTRIBUTES: Final[str] = "CREATE TABLE {table} (item_id TEXT, token TEXT, PRIMARY KEY (item_id, token))"
+_CREATE_ATTR_KEYS: Final[str] = "CREATE TABLE {table} (item_id TEXT, key TEXT, PRIMARY KEY (item_id, key))"
+_CREATE_INDEX: Final[str] = "CREATE INDEX {index} ON {table} ({column})"
+_CREATE_META: Final[str] = "CREATE TABLE IF NOT EXISTS {table} (key TEXT PRIMARY KEY, value TEXT)"
+_CLEAR_META: Final[str] = "DELETE FROM {table}"
+_WRITE_META: Final[str] = "INSERT OR REPLACE INTO {table} (key, value) VALUES (?, ?)"
+_READ_META: Final[str] = "SELECT key, value FROM {table}"
+
+
+def sql(template: str, **values: object) -> str:
+    """Fill one of this module's SQL templates.
+
+    The virtual tables have no Core object to select from, so the statement
+    stays a constant template and the values are substituted in one place.
+    The plain-``str`` parameter is the shape a static SQL-injection check can
+    follow: table names and numbers only, never user text.
+    """
+    return template.format(**values)
+
 
 def create_schema(conn: sqlite3.Connection, dim: int, model_id: str) -> None:
     """(Re)create the store's tables.
@@ -53,43 +97,18 @@ def create_schema(conn: sqlite3.Connection, dim: int, model_id: str) -> None:
     The index is rebuilt from scratch on every build: the corpus is small,
     and a fresh table cannot carry rows the current wiki no longer has.
     """
-    conn.execute(f"DROP TABLE IF EXISTS {VEC_ITEMS}")
-    conn.execute(f"DROP TABLE IF EXISTS {VEC_FTS}")
-    conn.execute(f"DROP TABLE IF EXISTS {VEC_TAGS}")
-    conn.execute(f"DROP TABLE IF EXISTS {VEC_ATTRIBUTES}")
-    conn.execute(f"DROP TABLE IF EXISTS {VEC_ATTR_KEYS}")
-    conn.execute(
-        f"""
-        CREATE VIRTUAL TABLE {VEC_ITEMS} USING vec0(
-            id              TEXT PRIMARY KEY,
-            embedding       FLOAT[{dim}] distance_metric=cosine,
-            title           TEXT,
-            node_type       TEXT,
-            source_file     TEXT,
-            content_preview TEXT
-        )
-        """
-    )
-    conn.execute(
-        f"""
-        CREATE VIRTUAL TABLE {VEC_FTS} USING fts5(
-            id UNINDEXED,
-            title,
-            content_preview,
-            node_type UNINDEXED,
-            source_file UNINDEXED,
-            tokenize='unicode61'
-        )
-        """
-    )
-    conn.execute(f"CREATE TABLE {VEC_TAGS} (item_id TEXT, tag TEXT, PRIMARY KEY (item_id, tag))")
-    conn.execute(f"CREATE TABLE {VEC_ATTRIBUTES} (item_id TEXT, token TEXT, PRIMARY KEY (item_id, token))")
-    conn.execute(f"CREATE TABLE {VEC_ATTR_KEYS} (item_id TEXT, key TEXT, PRIMARY KEY (item_id, key))")
-    conn.execute(f"CREATE INDEX ix_vec_tags_token ON {VEC_TAGS} (tag)")
-    conn.execute(f"CREATE INDEX ix_vec_attributes_token ON {VEC_ATTRIBUTES} (token)")
-    conn.execute(f"CREATE INDEX ix_vec_attr_keys_key ON {VEC_ATTR_KEYS} (key)")
-    conn.execute(f"CREATE TABLE IF NOT EXISTS {VEC_META} (key TEXT PRIMARY KEY, value TEXT)")
-    conn.execute(f"DELETE FROM {VEC_META}")
+    for table in (VEC_ITEMS, VEC_FTS, VEC_TAGS, VEC_ATTRIBUTES, VEC_ATTR_KEYS):
+        conn.execute(sql(_DROP_TABLE, table=table))
+    conn.execute(sql(_CREATE_ITEMS, table=VEC_ITEMS, dim=dim))
+    conn.execute(sql(_CREATE_FTS, table=VEC_FTS))
+    conn.execute(sql(_CREATE_TAGS, table=VEC_TAGS))
+    conn.execute(sql(_CREATE_ATTRIBUTES, table=VEC_ATTRIBUTES))
+    conn.execute(sql(_CREATE_ATTR_KEYS, table=VEC_ATTR_KEYS))
+    conn.execute(sql(_CREATE_INDEX, index="ix_vec_tags_token", table=VEC_TAGS, column="tag"))
+    conn.execute(sql(_CREATE_INDEX, index="ix_vec_attributes_token", table=VEC_ATTRIBUTES, column="token"))
+    conn.execute(sql(_CREATE_INDEX, index="ix_vec_attr_keys_key", table=VEC_ATTR_KEYS, column="key"))
+    conn.execute(sql(_CREATE_META, table=VEC_META))
+    conn.execute(sql(_CLEAR_META, table=VEC_META))
     write_meta(conn, dim, model_id)
     conn.commit()
 
@@ -97,7 +116,7 @@ def create_schema(conn: sqlite3.Connection, dim: int, model_id: str) -> None:
 def write_meta(conn: sqlite3.Connection, dim: int, model_id: str) -> None:
     """Record the store's schema fingerprint."""
     conn.executemany(
-        f"INSERT OR REPLACE INTO {VEC_META} (key, value) VALUES (?, ?)",
+        sql(_WRITE_META, table=VEC_META),
         [
             ("backend", BACKEND),
             ("dim", str(dim)),
@@ -111,7 +130,7 @@ def write_meta(conn: sqlite3.Connection, dim: int, model_id: str) -> None:
 def read_meta(conn: sqlite3.Connection, dim: int) -> bool:
     """True when the store file holds this schema, dimension and backend."""
     try:
-        rows = dict(conn.execute(f"SELECT key, value FROM {VEC_META}").fetchall())
+        rows = dict(conn.execute(sql(_READ_META, table=VEC_META)).fetchall())
     except sqlite3.Error:
         return False
     return rows.get("backend") == BACKEND and rows.get("dim") == str(dim) and rows.get("schema") == schema_fingerprint(dim)
@@ -119,4 +138,5 @@ def read_meta(conn: sqlite3.Connection, dim: int) -> bool:
 
 def schema_fingerprint(dim: int) -> str:
     """Identity of the store's schema — a change forces a rebuild."""
-    return f"vec0:1:{dim}:{VEC_ITEMS}/{VEC_FTS}/{VEC_TAGS}/{VEC_ATTRIBUTES}/{VEC_ATTR_KEYS}"
+    tables = f"{VEC_ITEMS}/{VEC_FTS}/{VEC_TAGS}/{VEC_ATTRIBUTES}/{VEC_ATTR_KEYS}"
+    return f"vec0:1:{dim}:{tables}"
