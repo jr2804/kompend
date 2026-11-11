@@ -72,7 +72,7 @@ class TestDestructiveGate:
         rule.fix(
             CompiledWiki(nodes=[], edges=[], toc=[]),
             [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
-            sources_dir=vault / "sources",
+            sources_dir=str(vault / "sources"),
         )
         # fix() itself still works when called directly — the gate lives in
         # the runner. Verify the runner gate instead below.

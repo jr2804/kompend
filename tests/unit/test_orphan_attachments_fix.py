@@ -39,7 +39,7 @@ def test_fix_removes_orphan_file_and_tombstones_manifest(tmp_path: Path) -> None
                 details={"path": rel_path},
             )
         ],
-        sources_dir=vault / "sources",
+        sources_dir=str(vault / "sources"),
     )
 
     assert len(results) == 1
@@ -65,7 +65,7 @@ def test_fix_removes_empty_slug_dir(tmp_path: Path) -> None:
     rule.fix(
         CompiledWiki(nodes=[], edges=[], toc=[]),
         [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
-        sources_dir=vault / "sources",
+        sources_dir=str(vault / "sources"),
     )
     assert not (vault / "attachments" / "orphan-source").exists()
 
@@ -78,7 +78,7 @@ def test_fix_noop_when_no_failures(tmp_path: Path) -> None:
     pass_result = LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.PASS, message="ok")
     skip_result = LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.SKIP, message="skipped")
 
-    out = rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), [pass_result, skip_result], sources_dir=vault / "sources")
+    out = rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), [pass_result, skip_result], sources_dir=str(vault / "sources"))
     assert out == [pass_result, skip_result]
 
 
@@ -95,7 +95,7 @@ def test_fix_records_os_error_in_details(tmp_path: Path) -> None:
         outcome=LintRuleOutcome.FAIL,
         details={"path": rel_path},
     )
-    out = rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), [result], sources_dir=vault / "sources")
+    out = rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), [result], sources_dir=str(vault / "sources"))
     # When the file doesn't exist, the rule treats that as success (already
     # gone) and tombstone-stamps the manifest. fix_applied=True.
     assert out[0].fix_applied is True
@@ -121,7 +121,7 @@ def test_fix_tombstone_prevents_readoption(tmp_path: Path) -> None:
     rule.fix(
         CompiledWiki(nodes=[], edges=[], toc=[]),
         [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
-        sources_dir=vault / "sources",
+        sources_dir=str(vault / "sources"),
     )
     assert not orphan.exists()
 
@@ -159,7 +159,7 @@ def test_fix_survives_an_empty_dir_it_cannot_remove(tmp_path: Path, monkeypatch:
         results = rule.fix(
             CompiledWiki(nodes=[], edges=[], toc=[]),
             [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
-            sources_dir=vault / "sources",
+            sources_dir=str(vault / "sources"),
         )
 
     assert results[0].fix_applied is True
@@ -191,7 +191,7 @@ def test_fix_acts_on_the_directory_the_caller_names(tmp_path: Path) -> None:
     rule.fix(
         CompiledWiki(nodes=[], edges=[], toc=[]),
         [r for r in results_first if r.outcome == LintRuleOutcome.FAIL],
-        sources_dir=first / "sources",
+        sources_dir=str(first / "sources"),
     )
 
     assert not orphan_first.exists()
@@ -206,7 +206,7 @@ def test_fix_acts_on_the_directory_the_caller_names(tmp_path: Path) -> None:
                 details={"path": orphan_second.relative_to(second).as_posix()},
             )
         ],
-        sources_dir=second / "sources",
+        sources_dir=str(second / "sources"),
     )
 
     assert not orphan_second.exists()

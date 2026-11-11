@@ -44,7 +44,7 @@ def test_the_destructive_fix_keeps_a_linked_legacy_file(tmp_path: Path) -> None:
 
     rule = OrphanAttachmentsRule()
     results = rule.check(_wiki(), sources_dir=str(vault / "sources"))
-    rule.fix(_wiki(), results, sources_dir=vault / "sources")
+    rule.fix(_wiki(), results, sources_dir=str(vault / "sources"))
 
     assert linked.is_file()
 
@@ -60,7 +60,7 @@ def test_an_unlinked_legacy_file_is_still_an_orphan(tmp_path: Path) -> None:
     fails = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
     assert [r.details["path"] for r in fails] == [dead.relative_to(vault).as_posix()]
 
-    rule.fix(_wiki(), results, sources_dir=vault / "sources")
+    rule.fix(_wiki(), results, sources_dir=str(vault / "sources"))
     assert not dead.exists()
     assert linked.is_file()
 
@@ -78,7 +78,7 @@ def test_an_unreadable_page_keeps_every_legacy_file(tmp_path: Path) -> None:
 
     assert [r.outcome for r in results] == [LintRuleOutcome.SKIP]
     assert results[0].details["unreadable_pages"] == ["wiki/concepts/broken.md"]
-    rule.fix(_wiki(), results, sources_dir=vault / "sources")
+    rule.fix(_wiki(), results, sources_dir=str(vault / "sources"))
     assert dead.is_file()
 
 
@@ -97,7 +97,7 @@ def test_a_protected_sources_figure_is_kept_by_the_orphan_rule(tmp_path: Path) -
     results = rule.check(_wiki(), sources_dir=str(vault / "sources"))
 
     assert [r.outcome for r in results] == [LintRuleOutcome.PASS]
-    rule.fix(_wiki(), results, sources_dir=vault / "sources")
+    rule.fix(_wiki(), results, sources_dir=str(vault / "sources"))
     assert figure.is_file()
 
 
@@ -117,8 +117,8 @@ def test_both_attachment_rules_agree_on_a_protected_slug(tmp_path: Path) -> None
 
     assert [r.outcome for r in orphan_results] == [LintRuleOutcome.PASS]
     assert [r.outcome for r in unreferenced_results] == [LintRuleOutcome.PASS]
-    orphan_rule.fix(_wiki(), orphan_results, sources_dir=vault / "sources")
-    unreferenced_rule.fix(_wiki(), unreferenced_results, sources_dir=vault / "sources")
+    orphan_rule.fix(_wiki(), orphan_results, sources_dir=str(vault / "sources"))
+    unreferenced_rule.fix(_wiki(), unreferenced_results, sources_dir=str(vault / "sources"))
     assert figure.is_file()
 
 
