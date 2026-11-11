@@ -86,6 +86,14 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   and ``broken-wikilinks`` findings carry the ``alias_of``/``target`` detail
   keys that ``compilation/flows/generation`` reads to learn aliases. Renaming
   a rule or a key degrades gap analysis and alias learning silently.
+- **One liveness answer.** ``live_attachment_slugs`` in
+  ``core/models/attachments.py`` is the only place that decides whether an
+  attachment slug belongs to a source: ``live`` for an ordinary source,
+  ``protected`` for one under ``sources/_captured/`` and friends, ``dead``
+  otherwise. Both destructive rules and auto-adoption call it — three copies
+  used to disagree, and ``orphan-attachments`` deleted the figures of a
+  captured note while ``unreferenced-attachments`` kept them. A protected slug
+  is neither an orphan nor prunable, and it is not adopted.
 - **The attachment rules delete files.** ``orphan-attachments`` and
   ``unreferenced-attachments`` are ``destructive`` and run only behind the
   runner's ``fix_destructive`` opt-in. Their ``fix()`` reads ``_last_sources_dir``,

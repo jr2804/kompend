@@ -18,6 +18,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final
 
@@ -25,7 +26,16 @@ from kompend.core.paths import ATTACHMENTS_DIR_NAME, VaultPaths, attachment_slug
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import ATTACHMENT_MANIFEST_TABLE
 
-__all__ = ["Attachment", "AttachmentManifest", "adopt_orphan_attachments", "attachments_relative", "compute_content_digest"]
+__all__ = [
+    "Attachment",
+    "AttachmentLiveness",
+    "AttachmentManifest",
+    "LiveSlugOutcome",
+    "adopt_orphan_attachments",
+    "attachments_relative",
+    "compute_content_digest",
+    "live_attachment_slugs",
+]
 
 # ── Ingestible file types ────────────────────────────────────────────────
 
@@ -343,6 +353,66 @@ def _attachment_from_row(row: Any) -> Attachment:
     )
 
 
+class LiveSlugOutcome(StrEnum):
+    """Why an attachment directory's slug counts as live — or does not."""
+
+    LIVE = "live"
+    #: The slug belongs to a source under a protected, tool-managed subdir
+    #: (``sources/_captured/`` and friends). Retiring it is a user decision, so
+    #: no rule may delete or flag the files.
+    PROTECTED = "protected"
+    DEAD = "dead"
+
+
+@dataclass(frozen=True, slots=True)
+class AttachmentLiveness:
+    """Which attachment slugs map to a source, and which map only to a protected one.
+
+    Both destructive rules and auto-adoption ask the same question — "is this
+    attachment directory still addressable from ``sources/``?" — and used to
+    answer it with three separate copies of the scan, two of which skipped
+    protected sources and one of which did not. That divergence let
+    ``orphan-attachments`` report (and, opted in, delete) the figures of a
+    captured source while ``unreferenced-attachments`` kept them.
+    """
+
+    live: frozenset[str]
+    protected: frozenset[str]
+
+    def outcome(self, slug: str) -> LiveSlugOutcome:
+        """How *slug* is classified. Live wins: a normal source outranks a protected one."""
+        if slug in self.live:
+            return LiveSlugOutcome.LIVE
+        if slug in self.protected:
+            return LiveSlugOutcome.PROTECTED
+        return LiveSlugOutcome.DEAD
+
+
+def live_attachment_slugs(sources_dir: Path) -> AttachmentLiveness:
+    """Classify every attachment slug derivable from the sources tree.
+
+    The one implementation of "which slugs are live". ``live`` holds slugs of
+    ordinary sources; ``protected`` holds slugs whose only source sits under a
+    protected subdir (:func:`is_protected_source`) — the compile lifecycle
+    owns those notes, so their attachments are neither orphaned nor prunable.
+    Matches both slug forms through :func:`attachment_slugs_for_source`.
+    """
+    sources_root = Path(sources_dir)
+    live: set[str] = set()
+    protected: set[str] = set()
+    if not sources_root.is_dir():
+        return AttachmentLiveness(live=frozenset(), protected=frozenset())
+    for path in sources_root.rglob("*"):
+        if not path.is_file():
+            continue
+        slugs = attachment_slugs_for_source(path.relative_to(sources_root).as_posix())
+        if is_protected_source(path, sources_root):
+            protected |= slugs
+        else:
+            live |= slugs
+    return AttachmentLiveness(live=frozenset(live), protected=frozenset(protected - live))
+
+
 def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> list[Attachment]:
     """Register orphaned attachment files found on disk (auto-adoption).
 
@@ -356,10 +426,12 @@ def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> 
     - ``embed`` — ``None`` (inherits the global ``attachments.embed``).
 
     Only subdirectories whose slug matches a live source in ``sources/``
-    are adopted. Tombstoned paths (explicit ``kompend attachments remove``)
-    are never re-adopted. Runs at compile start so recovery scenarios
-    (deleted manifest) and manually dropped files are picked up without
-    re-ingest.
+    are adopted. A slug that belongs only to a protected source
+    (``sources/_captured/`` and friends) is left alone: the lifecycle owns
+    that note, and adoption must not mint manifest rows for it. Tombstoned
+    paths (explicit ``kompend attachments remove``) are never re-adopted. Runs
+    at compile start so recovery scenarios (deleted manifest) and manually
+    dropped files are picked up without re-ingest.
 
     Returns the list of newly registered attachments (empty when nothing
     was adopted).
@@ -373,15 +445,7 @@ def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> 
     known = set(manifest.read_all())
     tombstoned = manifest.deleted_paths()
 
-    sources_dir = vp.sources_dir
-    live_slugs: set[str] = set()
-    if sources_dir.is_dir():
-        for p in sources_dir.rglob("*"):
-            if p.is_file() and not is_protected_source(p, sources_dir):
-                # Match both slug forms (full relative path + bare filename)
-                # so sources under subdirectories are adoptable — see
-                # attachment_slugs_for_source docstring.
-                live_slugs.update(attachment_slugs_for_source(p.relative_to(sources_dir).as_posix()))
+    live_slugs = live_attachment_slugs(vp.sources_dir).live
 
     adopted: list[Attachment] = []
     for slug_dir in sorted(attachments_root.iterdir()):

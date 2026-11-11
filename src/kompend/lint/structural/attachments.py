@@ -25,8 +25,8 @@ from typing import Any, ClassVar
 from markdown_it import MarkdownIt
 
 from kompend.core.models import CompiledWiki
-from kompend.core.models.attachments import AttachmentManifest
-from kompend.core.paths import VaultPaths, attachment_slugs_for_source, is_protected_source
+from kompend.core.models.attachments import AttachmentManifest, LiveSlugOutcome, live_attachment_slugs
+from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.state import TierStateStore
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from kompend.logging import get_logger
@@ -394,7 +394,7 @@ def unreferenced_attachment_files(base_dir: Path) -> list[str]:
     if links.unreadable:
         return []
     referenced = set(links.referenced)
-    live_slugs = _live_attachment_slugs(base_dir)
+    liveness = live_attachment_slugs(vp.sources_dir)
     cache_dir = vp.images_dir
 
     stale: list[str] = []
@@ -403,8 +403,8 @@ def unreferenced_attachment_files(base_dir: Path) -> list[str]:
             continue
         rel = path.relative_to(base_dir).as_posix()
         slug = path.relative_to(vp.attachments_dir).as_posix().split("/", 1)[0]
-        if slug not in live_slugs:
-            continue  # orphan-attachments owns directories with no live source
+        if liveness.outcome(slug) is not LiveSlugOutcome.LIVE:
+            continue  # orphan-attachments owns dead slugs, protected ones are never pruned
         if rel in referenced:
             continue
         if not _is_cached_extraction(path, cache_dir):
@@ -418,23 +418,24 @@ def orphan_attachment_dirs(base_dir: Path, sources_dir: Path) -> list[str]:
 
     Returns **vault-relative** paths (``attachments/<slug>/<file>``). Shared by
     :class:`OrphanAttachmentsRule` and ``kompend attachments verify`` so the slug
-    logic has exactly one implementation. Matches both slug forms (full
-    relative path and bare filename) — see :func:`attachment_slugs_for_source`.
+    logic has exactly one implementation — and that implementation is
+    :func:`kompend.core.models.attachments.live_attachment_slugs`, which auto-
+    adoption calls too. A slug that belongs only to a source under a protected
+    subdir of ``sources/`` (:func:`is_protected_source`) is **not** an orphan:
+    the capture/learn lifecycle owns that note, so its attachments are neither
+    deleted here nor pruned by :class:`UnreferencedAttachmentsRule`. Matches
+    both slug forms (full relative path and bare filename) — see
+    :func:`attachment_slugs_for_source`.
     """
     attachments_root = VaultPaths(base_dir).attachments_dir
     if not attachments_root.is_dir():
         return []
 
-    sources_root = Path(sources_dir)
-    live_slugs: set[str] = set()
-    if sources_root.is_dir():
-        for p in sources_root.rglob("*"):
-            if p.is_file() and not is_protected_source(p, sources_root):
-                live_slugs.update(attachment_slugs_for_source(p.relative_to(sources_root).as_posix()))
+    liveness = live_attachment_slugs(sources_dir)
 
     orphans: list[str] = []
     for slug_dir in sorted(attachments_root.iterdir()):
-        if not slug_dir.is_dir() or slug_dir.name in live_slugs:
+        if not slug_dir.is_dir() or liveness.outcome(slug_dir.name) is not LiveSlugOutcome.DEAD:
             continue
         for f in sorted(slug_dir.rglob("*")):
             if f.is_file():
@@ -443,15 +444,8 @@ def orphan_attachment_dirs(base_dir: Path, sources_dir: Path) -> list[str]:
 
 
 def _live_attachment_slugs(base_dir: Path) -> set[str]:
-    """Slug forms of every live source (both full-path and bare-name forms)."""
-    vp = VaultPaths(base_dir)
-    if not vp.sources_dir.is_dir():
-        return set()
-    slugs: set[str] = set()
-    for source in vp.sources_dir.rglob("*"):
-        if source.is_file():
-            slugs |= attachment_slugs_for_source(source.relative_to(vp.sources_dir))
-    return slugs
+    """Slugs of every live source — the shared liveness answer, for the rule."""
+    return set(live_attachment_slugs(VaultPaths(base_dir).sources_dir).live)
 
 
 def _is_cached_extraction(path: Path, cache_dir: Path) -> bool:
