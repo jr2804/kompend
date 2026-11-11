@@ -13,7 +13,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from kompend.types import ConfigValue
+from kompend.types import RawConfigValue
 
 __all__ = [
     "as_int",
@@ -28,19 +28,20 @@ __all__ = [
 ]
 
 
-def as_str(value: ConfigValue) -> str | None:
-    """Narrow an optional JSON/config value to ``str``.
+def as_str(value: RawConfigValue) -> str | None:
+    """Narrow an optional config value to ``str``.
 
-    Raises TypeError on non-string values so misconfiguration fails fast
-    instead of silently flowing into string-typed APIs.
+    Raises TypeError on non-string values (a live ``Path`` included) so
+    misconfiguration fails fast instead of silently flowing into
+    string-typed APIs.
     """
     if value is None or isinstance(value, str):
         return value
     raise TypeError(f"Expected a string value, got {type(value).__name__}: {value!r}")
 
 
-def as_int(value: ConfigValue) -> int | None:
-    """Narrow an optional JSON/config value to ``int`` (bools rejected)."""
+def as_int(value: RawConfigValue) -> int | None:
+    """Narrow an optional config value to ``int`` (bools rejected)."""
     if value is None:
         return None
     if isinstance(value, bool) or not isinstance(value, int):
@@ -48,14 +49,14 @@ def as_int(value: ConfigValue) -> int | None:
     return value
 
 
-def get_dot(
-    data: dict[str, ConfigValue],
+def get_dot[ValueT](
+    data: dict[str, ValueT],
     key: str,
-    default: ConfigValue = None,
-) -> ConfigValue:
+    default: ValueT | None = None,
+) -> ValueT | None:
     """Retrieve a dotted *key* from a nested dict, returning *default* if absent."""
     parts = key.split(".")
-    current: ConfigValue = data
+    current: Any = data
     for part in parts:
         if isinstance(current, dict):
             current = current.get(part)

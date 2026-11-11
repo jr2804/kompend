@@ -36,7 +36,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 
 from kompend.core.paths import run_log_file_name
-from kompend.types import ConfigValue
+from kompend.types import RawConfigValue
 
 DEFAULT_LEVEL: int = logging.WARNING
 
@@ -96,7 +96,7 @@ class _LoggingState:
 class _ConfigLike(Protocol):
     """The piece of a resolved config :func:`apply_logging_config` needs."""
 
-    def get(self, key: str, default: ConfigValue = None) -> ConfigValue: ...
+    def get(self, key: str, default: RawConfigValue = None) -> RawConfigValue: ...
 
 
 _state: Final[_LoggingState] = _LoggingState()
@@ -317,7 +317,7 @@ def apply_logging_config(config: _ConfigLike | None) -> None:
     Safe to call repeatedly; an empty mapping keeps the built-in levels.
     """
     raw = config.get("logging.modules") if config is not None else None
-    # ConfigValue is the wide JSON union; the LoggingConfig model guarantees
+    # RawConfigValue is the wide config union (JSON or a live Path); the
     # str levels, the isinstance filter just narrows the static type.
     overrides = {str(name): level for name, level in raw.items() if isinstance(level, (int, str))} if isinstance(raw, dict) and raw else None
     route_third_party_loggers(overrides=overrides)

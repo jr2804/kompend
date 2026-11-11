@@ -46,7 +46,7 @@ from kompend.cli.settings import (
     config_file_from_ctx,
     vault_paths_from_ctx,
 )
-from kompend.core.config import LLMConfig, resolve_config
+from kompend.core.config import resolve_config
 from kompend.core.config._configs import DecisionConfig, LlmDataFormat
 from kompend.core.models import load_wiki_from_files
 from kompend.core.paths import vault_paths
@@ -115,7 +115,7 @@ def query_cmd(  # noqa: PLR0917 — one parameter per CLI option
         embed_attachments=cfg.kompend.attachments.embed,
     )
     model = cfg.kompend.compile.llm.default_model
-    llm_cfg = LLMConfig(**cfg.raw.get("compile", {}).get("llm", {}))
+    llm_cfg = cfg.kompend.compile.llm
     cw = discover_context_window(model, llm_config=llm_cfg) if model else None
     if not model and not raw:
         # Keyword/vector search only feeds LLM synthesis — without a model the

@@ -36,7 +36,7 @@ from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, Severity
 from kompend.lint.details import details_from_storage
 from kompend.lint.runner import LintReportPayload, report_to_payload
 from kompend.llm.usage import UsageSnapshot
-from kompend.types import ConfigValue, JSONDict, JSONValue
+from kompend.types import JSONDict, JSONValue, RawConfigValue
 
 _COLUMNS: Final[tuple[str, ...]] = (
     "timestamp",
@@ -149,7 +149,7 @@ def persist_history(  # noqa: PLR0917 — a history entry needs every run fact
     report: LintReport,
     *,
     vp: VaultPaths,
-    config: Mapping[str, ConfigValue],
+    config: Mapping[str, RawConfigValue],
     context: str,
     elapsed: float,
     fix: bool,
@@ -177,7 +177,7 @@ def entry_from_report(
     *,
     duration_seconds: float,
     options: LintRunOptions,
-    config: Mapping[str, ConfigValue],
+    config: Mapping[str, RawConfigValue],
     node_count: int,
     llm: LintLlmMeta | None = None,
     timestamp: str | None = None,
@@ -225,7 +225,7 @@ def report_from_dict(report_dict: Mapping[str, JSONValue] | LintReportPayload) -
     )
 
 
-def _build_config_snapshot(cfg: Mapping[str, ConfigValue]) -> LintConfigSnapshot:
+def _build_config_snapshot(cfg: Mapping[str, RawConfigValue]) -> LintConfigSnapshot:
     """Extract the lint-relevant subset of a resolved config."""
     return LintConfigSnapshot(
         compiler=_config_text(cfg, COMPILE_COMPILER),
@@ -234,13 +234,14 @@ def _build_config_snapshot(cfg: Mapping[str, ConfigValue]) -> LintConfigSnapshot
     )
 
 
-def _config_text(cfg: Mapping[str, ConfigValue], key: str) -> str | None:
+def _config_text(cfg: Mapping[str, RawConfigValue], key: str) -> str | None:
     """Read one config value as text, refusing anything else.
 
-    A resolved config carries JSON values; the snapshot records the three keys
-    the history view compares. A key holding a non-text value means the caller
-    passed a different mapping, so it raises instead of recording a snapshot
-    that renders as a wrong type.
+    A resolved config carries JSON values or live ``Path`` objects (the
+    ``paths`` section); the snapshot records the three keys the history view
+    compares. A key holding a non-text value means the caller passed a
+    different mapping, so it raises instead of recording a snapshot that
+    renders as a wrong type.
     """
     value = cfg.get(key)
     if value is None or isinstance(value, str):
@@ -248,7 +249,7 @@ def _config_text(cfg: Mapping[str, ConfigValue], key: str) -> str | None:
     raise TypeError(f"{key} must be text in the config snapshot, not {type(value).__name__}: {value!r}")
 
 
-def _config_text_list(cfg: Mapping[str, ConfigValue], key: str) -> list[str] | None:
+def _config_text_list(cfg: Mapping[str, RawConfigValue], key: str) -> list[str] | None:
     """Read one config list value as text entries, refusing anything else."""
     value = cfg.get(key)
     if value is None:

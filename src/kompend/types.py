@@ -46,6 +46,16 @@ MetadataValue = str | bool | int | float | None | Sequence["MetadataValue"] | Ma
 # Configuration types
 ConfigDict = dict[str, JSONValue]  # Configuration dictionary
 ConfigValue = JSONValue  # Configuration value (a concrete JSON type)
+
+#: A resolved-config value before schema validation: a JSON value, or a live
+#: ``Path`` — the config engine writes ``Path`` objects into the ``paths``
+#: section, and ``ResolvedConfig.kompend`` coerces them to strings for
+#: validation while ``raw`` keeps the runtime objects for downstream
+#: consumers.
+RawConfigValue = ConfigValue | Path
+
+#: The merged five-layer config before validation (``ResolvedConfig.raw``).
+RawConfigDict = dict[str, RawConfigValue]
 Attributes = dict[str, str]  # Source-level key=value pairs (labels)
 
 

@@ -153,6 +153,10 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
 - **TOML only** — no YAML, no JSON config files. Python 3.11+ has `tomllib`.
 - **Dotted keys** — all config access uses dot-separated paths:
   `cfg.get("compile.llm.default_model")`. Never reach into `cfg.raw` directly.
+- **`raw` holds JSON or a live `Path`** — path resolution writes `Path`
+  objects into the `paths` section before validation, so the pre-validation
+  surface is `RawConfigValue`/`RawConfigDict` (`kompend.types`), not
+  `ConfigValue`; `cfg.kompend` is the validated, all-string view.
 - **`DEFAULTS` is a nested dict** — `DEFAULTS.get("display.x", fallback)` always
   returns the fallback, because `DEFAULTS` is `KompendConfig().model_dump()`
   (sections, not dotted keys). Read a value from the *resolved* config

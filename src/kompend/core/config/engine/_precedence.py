@@ -26,7 +26,7 @@ from kompend.core.paths import VaultPaths
 from kompend.core.utils.dicts import deep_merge, del_dot, get_dot, nest_flat, set_dot
 from kompend.llm.user_providers import set_user_providers
 from kompend.logging import get_logger
-from kompend.types import ConfigValue
+from kompend.types import RawConfigDict, RawConfigValue
 
 logger = get_logger(__name__)
 
@@ -48,13 +48,13 @@ class ConfigSource:
 class ResolvedConfig:
     """Fully merged configuration with provenance tracking."""
 
-    raw: dict[str, Any] = field(default_factory=dict)
+    raw: RawConfigDict = field(default_factory=dict)
     provenance: dict[str, ConfigSource] = field(default_factory=dict)
     project_config_file: Path | None = None
     project_config_paths: list[Path] = field(default_factory=list)
     global_config_file: Path | None = None
 
-    def get(self, key: str, default: ConfigValue = None) -> ConfigValue:
+    def get(self, key: str, default: RawConfigValue = None) -> RawConfigValue:
         """Get a dotted key from the resolved config."""
         return get_dot(self.raw, key, default)
 
@@ -81,9 +81,9 @@ class ResolvedConfig:
         """
         return KompendConfig.model_validate(_coerce_paths_to_str(_strip_removed_keys(self.raw)))
 
-    def flat(self) -> dict[str, Any]:
+    def flat(self) -> dict[str, RawConfigValue]:
         """Return a flat dotted-key dict of all values."""
-        result: dict[str, Any] = {}
+        result: dict[str, RawConfigValue] = {}
         for key in flat_keys(self.raw):
             result[key] = get_dot(self.raw, key)
         return result

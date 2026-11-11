@@ -40,7 +40,7 @@ from kompend.core.config import (
 )
 from kompend.core.keys import PATHS_WIKI_DIR
 from kompend.logging import get_console, get_err_console
-from kompend.types import JSON
+from kompend.types import JSON, RawConfigValue
 
 _ENV_REF_RE = re.compile(r"^\$\{\w+\}$")
 
@@ -258,7 +258,7 @@ def _exit_code_for(reports: list[ConfigCheckReport]) -> int:
     return 0
 
 
-def _format_value(value: JSON) -> str:
+def _format_value(value: RawConfigValue) -> str:
     """Format a config value for terminal output."""
     if value is None:
         return ""
@@ -269,7 +269,7 @@ def _format_value(value: JSON) -> str:
     return str(value)
 
 
-def _redact_api_key(key: str, value: JSON) -> JSON:
+def _redact_api_key(key: str, value: RawConfigValue) -> RawConfigValue:
     """Hide provider API keys in CLI output; env-var refs (``${VAR}``) stay visible."""
     if key.rsplit(".", maxsplit=1)[-1] == "api_key" and isinstance(value, str) and not _ENV_REF_RE.match(value):
         return "***"

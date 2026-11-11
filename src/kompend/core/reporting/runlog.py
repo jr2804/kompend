@@ -38,7 +38,7 @@ from kompend.core.store import core_connection, open_store, vault_db_path
 from kompend.core.store.tables import runs
 from kompend.core.utils.time import iso_local, now_local
 from kompend.logging import attach_run_log, detach_run_log, get_logger
-from kompend.types import ConfigValue
+from kompend.types import RawConfigValue
 
 _SOFT_CAP_ROWS = 1000
 _KEEP_ROWS = 500
@@ -147,7 +147,7 @@ def _display_limits(cfg: ResolvedConfig) -> DisplayConfig:
     )
 
 
-def _int_or(value: ConfigValue, fallback: int) -> int:
+def _int_or(value: RawConfigValue, fallback: int) -> int:
     """Return *value* when it is an int, else *fallback*."""
     return value if isinstance(value, int) and not isinstance(value, bool) else fallback
 
