@@ -11,10 +11,11 @@ from __future__ import annotations
 import hashlib
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, TypedDict
+from typing import TypedDict
 
 from sqlalchemy import delete, select
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+from sqlalchemy.engine import RowMapping
 
 from kompend.core.config import DEFAULT_MATCHERS, parse_matchers
 from kompend.core.keys import (
@@ -27,9 +28,6 @@ from kompend.core.store import core_connection, open_store, vault_db_path
 from kompend.core.store.tables import dedup_fingerprints
 from kompend.logging import get_logger
 from kompend.types import JSONDict, JSONValue
-
-if TYPE_CHECKING:
-    from sqlalchemy.engine import RowMapping
 
 # Current store schema version — bump when fingerprint format changes.
 _STORE_VERSION = "1"
