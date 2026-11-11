@@ -8,6 +8,7 @@ import paths stay valid.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any, Final
 
 import yaml
@@ -31,7 +32,7 @@ def okf_frontmatter_yaml(frontmatter: dict[str, Any]) -> str:
     dumper would otherwise emit a python-object tag for the enum member
     instead of the key name.
     """
-    plain = {str(key): value for key, value in frontmatter.items()}
+    plain = {str(key): _wire_value(value) for key, value in frontmatter.items()}
     yaml_str = yaml.dump(
         plain,
         Dumper=NoAliasDumper,
@@ -40,6 +41,16 @@ def okf_frontmatter_yaml(frontmatter: dict[str, Any]) -> str:
         sort_keys=True,
     ).strip()
     return f"---\n{yaml_str}\n---\n\n"
+
+
+def _wire_value(value: Any) -> Any:
+    """Replace a vocabulary member with the string it renders as.
+
+    The OKF frontmatter is a wire format: a ``StrEnum`` reaches the YAML dumper
+    as a Python object and renders as a ``!!python/object/apply`` tag, which no
+    reader can load. ``str()`` of such a member is exactly its wire value.
+    """
+    return str(value) if isinstance(value, StrEnum) else value
 
 
 def source_frontmatter(
@@ -60,11 +71,16 @@ def source_frontmatter(
     Values are returned as a mapping for :func:`okf_frontmatter_yaml` to render,
     never interpolated into a hand-built YAML string — a title or tag containing a
     colon or newline would produce invalid frontmatter.
+
+    ``page_type`` and ``timestamp_key`` go through ``str()`` because callers pass
+    vocabulary members: a ``StrEnum`` reaches the YAML dumper as a Python object
+    and renders as a ``!!python/object/apply`` tag, while ``str()`` of one is its
+    wire value.
     """
     frontmatter: dict[str, Any] = {
         "okf_version": OKF_VERSION,
-        "type": page_type,
-        timestamp_key: timestamp,
+        "type": str(page_type),
+        str(timestamp_key): timestamp,
         "tags": list(tags),  # nocheck: frontmatter dict, not wiki metadata
     }
     if title is not None:

@@ -256,6 +256,18 @@ class MetadataField(StrEnum):
     CONTEXT = "context"
     """Surrounding context carried by an element's metadata."""
 
+    # Source-note provenance — written into the OKF frontmatter of every note
+    # under ``sources/_captured/``, ``_learned/`` and ``_distilled/``, and read
+    # back by distilling and duplicate detection. A note's age is what decides
+    # which duplicate survives, so a typo in this key silently changes which
+    # file is archived.
+    CAPTURED_AT = "captured_at"
+    """When the note was captured or learned."""
+    DISTILLED_AT = "distilled_at"
+    """When the distilled page was synthesized from its source notes."""
+    SYNTHESIZED_FROM = "synthesized_from"
+    """Source-note file names a distilled page was built from."""
+
     # Split provenance — stamped by ``preprocessing.splitting`` on every child
     # document of a page-range cut and read back by figure attribution. The
     # values are contract: a child's virtual source path is built from them.

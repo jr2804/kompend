@@ -35,7 +35,7 @@ from typing import Final, Protocol
 from rich.console import Console
 from rich.logging import RichHandler
 
-from kompend.core.paths import RUN_LOG_FILE_TEMPLATE
+from kompend.core.paths import run_log_file_name
 from kompend.types import ConfigValue
 
 DEFAULT_LEVEL: int = logging.WARNING
@@ -206,7 +206,7 @@ def attach_run_log(run_id: str, logs_dir: Path) -> RunLogHandler:
     DEBUG so the ring sees everything; the terminal handler's own level keeps
     terminal output unchanged.
     """
-    handler = RunLogHandler(logs_dir / RUN_LOG_FILE_TEMPLATE.format(run_id=run_id))
+    handler = RunLogHandler(logs_dir / run_log_file_name(run_id))
     detach_run_log(failed=False)
     _state.run_log_handler = handler
     logging.root.addHandler(handler)

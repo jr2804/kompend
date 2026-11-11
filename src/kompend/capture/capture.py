@@ -7,6 +7,8 @@ from kompend.agents.capture import CaptureAgent
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug, make_title
+from kompend.capture.kinds import CAPTURE_SOURCE_ID, CaptureKind, SourceZone
+from kompend.core.models.enums import MetadataField
 from kompend.core.paths import CAPTURED_SUBDIR
 from kompend.core.text.pipes import escape_prose_pipes
 from kompend.core.utils.time import display_local
@@ -18,7 +20,7 @@ logger = get_logger(__name__)
 
 @dataclass
 class CapturedItem:
-    kind: str
+    kind: CaptureKind
     title: str
     content: str
     tags: list[str] = field(default_factory=list)
@@ -43,7 +45,7 @@ def capture(
     items = (
         _extract_with_agent(text, capture_agent, user_tags)
         if capture_agent is not None
-        else [CapturedItem(kind="note", title=make_title(text), content=text, tags=user_tags)]
+        else [CapturedItem(kind=CaptureKind.NOTE, title=make_title(text), content=text, tags=user_tags)]
     )
 
     paths: list[Path] = []
@@ -55,14 +57,14 @@ def capture(
 
         frontmatter = okf_frontmatter_yaml(
             source_frontmatter(
-                page_type=str(item.kind),
+                page_type=item.kind,
                 title=item.title,
                 timestamp=timestamp,
-                timestamp_key="captured_at",
+                timestamp_key=MetadataField.CAPTURED_AT,
                 tags=list(item.tags),
                 extra={
                     "attributes": dict(attributes or {}),  # nocheck: frontmatter dict, not wiki metadata
-                    "source": "capture",  # nocheck: frontmatter dict, not wiki metadata
+                    MetadataField.SOURCE: SourceZone.CAPTURE,
                 },
             ),
         )
@@ -85,13 +87,13 @@ def _extract_with_agent(text: str, capture_agent: CaptureAgent, user_tags: list[
     """
     tag_hint = f"\n\nThe user suggests these tags as a baseline (add more if relevant, keep these): {user_tags}." if user_tags else ""
     user_prompt = f"Extract knowledge items from this text:{tag_hint}\n\n{text}"
-    deps = PipelineAgentDeps(text=user_prompt, source_id="capture")
+    deps = PipelineAgentDeps(text=user_prompt, source_id=CAPTURE_SOURCE_ID)
 
     try:
         result = capture_agent.run(deps)
     except Exception:
         logger.warning("CaptureAgent failed, falling back to raw capture")
-        return [CapturedItem(kind="note", title=make_title(text), content=text)]
+        return [CapturedItem(kind=CaptureKind.NOTE, title=make_title(text), content=text)]
 
     if result.refused:
         reason = result.refusal_reason or "the input contains nothing extractable"
@@ -102,7 +104,7 @@ def _extract_with_agent(text: str, capture_agent: CaptureAgent, user_tags: list[
     for raw in result.items:
         items.append(
             CapturedItem(
-                kind=raw.kind or "note",
+                kind=CaptureKind.of(raw.kind),
                 title=raw.title or make_title(text),
                 content=raw.content or text,
                 tags=_merge_tags(user_tags, raw.tags),

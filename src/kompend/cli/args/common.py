@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Annotated, Any
+from enum import StrEnum
+from typing import Annotated, Any, Literal
 
 from cyclopts import Parameter
 
@@ -23,6 +24,12 @@ SOURCES_GROUP = "Sources"
 PIPELINE_GROUP = "Pipeline"
 OUTPUT_GROUP = "Output"
 LLM_GROUP = "LLM"
+
+
+#: Cyclopts' own parameter type for the shells in :class:`CompletionShell`.
+#: It cannot be derived from the enum (``Literal`` is static), so the adapter
+#: in ``cli/app.py`` casts the member value into it.
+ShellName = Literal["zsh", "bash", "fish", "powershell"]
 
 
 # ── Global / cross-command options ──────────────────────────────────────
@@ -107,6 +114,32 @@ CliSet = Annotated[
         group=PROJECT_GROUP,
     ),
 ]
+
+
+# ── Vocabularies ────────────────────────────────────────────────────────
+
+
+class CompletionShell(StrEnum):
+    """Shells the completion command can print a script for.
+
+    Mirrors the vocabulary Cyclopts' ``generate_completion`` accepts; the
+    enum exists so the CLI surface names each shell once instead of repeating
+    a ``Literal`` in the parameter annotation.
+    """
+
+    ZSH = "zsh"
+    BASH = "bash"
+    FISH = "fish"
+    POWERSHELL = "powershell"
+
+
+def shell_name(shell: CompletionShell | None) -> ShellName | None:
+    """Narrow a shell member to the literal Cyclopts accepts.
+
+    The two declarations cannot be merged (one is an enum, the other a static
+    literal), so one function owns the narrowing instead of every call site.
+    """
+    return shell.value if shell is not None else None
 
 
 def in_range(low: int, high: int | None = None) -> Callable[[Any, Any], None]:

@@ -4,6 +4,8 @@ from pathlib import Path
 
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug
+from kompend.capture.kinds import SourceZone
+from kompend.core.models.enums import MetadataField
 from kompend.core.paths import LEARNED_SUBDIR
 from kompend.core.text.pipes import escape_prose_pipes
 from kompend.core.utils.time import display_local
@@ -31,13 +33,13 @@ def learn(
 
     frontmatter = okf_frontmatter_yaml(
         source_frontmatter(
-            page_type="learn",
+            page_type=SourceZone.LEARN,
             timestamp=timestamp,
-            timestamp_key="captured_at",
+            timestamp_key=MetadataField.CAPTURED_AT,
             tags=list(tags or []),
             extra={
                 "attributes": dict(attributes or {}),  # nocheck: frontmatter dict, not wiki metadata
-                "source": "manual",  # nocheck: frontmatter dict, not wiki metadata
+                MetadataField.SOURCE: SourceZone.MANUAL,
             },
         ),
     )

@@ -36,9 +36,6 @@ __all__ = [
 REFERENCE_PAGE_SLUG = "references"
 REFERENCE_PAGE_TITLE = "References"
 
-#: Link format for a single reference on the references page.
-#: Uses an anchor fragment so links point to the specific entry.
-_REF_LINK_FORMAT = "[{label}](#{anchor})"
 
 #: Regex patterns for in-text citation markers.
 # Bracketed numeric: [1], [2, 3], [1-3], [1, 3-5]
@@ -268,7 +265,14 @@ def _format_ref_link(ref: Reference) -> str:
     """Format a citation link to the references page."""
     anchor = _slugify_ref(ref)
     label = ref.id or ref.short_label()
-    return _REF_LINK_FORMAT.format(label=label, anchor=anchor)
+    return _ref_link(label, anchor)
+
+
+#: Link format for a single reference on the references page.
+#: Uses an anchor fragment so links point to the specific entry.
+def _ref_link(label: str, anchor: str) -> str:
+    """Render a link to one entry of the references page."""
+    return f"[{label}](#{anchor})"
 
 
 def _slugify_ref(ref: Reference) -> str:

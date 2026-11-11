@@ -21,6 +21,7 @@ from .common import (
     PROJECT_GROUP,
     SOURCES_GROUP,
     CliSet,
+    CompletionShell,
     ConfigPath,
     JsonOutput,
     NoUserTracking,
@@ -29,6 +30,7 @@ from .common import (
     Verbose,
     WikiDir,
     in_range,
+    shell_name,
 )
 
 # Compile command
@@ -214,6 +216,7 @@ __all__ = [
     "CompileDistill",
     "CompileLint",
     "CompileLintAll",
+    "CompletionShell",
     # Config
     "ConfigCheckPaths",
     "ConfigGlobalOpt",
@@ -334,4 +337,5 @@ __all__ = [
     "WritePageTitle",
     "WriteSourceFiles",
     "in_range",
+    "shell_name",
 ]

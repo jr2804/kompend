@@ -20,6 +20,8 @@ from kompend.agents.distill_agentic import AgenticDistillAgent
 from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote, DistillPage
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug, make_title
+from kompend.capture.kinds import UNGROUPED_TAG, SourceZone
+from kompend.core.models.enums import MetadataField
 from kompend.core.paths import ARCHIVE_SUBDIR, CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
 from kompend.core.text.pipes import escape_prose_pipes
 from kompend.core.utils.time import display_local
@@ -101,9 +103,9 @@ def distill(
 
 
 def _archive_notes(notes: list[CapturedNote], sources_dir: Path) -> None:
-    """Move distilled source notes to ``sources/_archive/<kind>/``.
+    """Move distilled source notes to ``sources/_archive/<zone>/``.
 
-    The kind subdir mirrors the source zone (``capture`` / ``learn``) so
+    The zone subdir mirrors the source zone (``capture`` / ``learn``) so
     archived files stay identifiable. Files are moved, not copied — the
     distilled page is now the canonical home of the content.
     """
@@ -111,8 +113,8 @@ def _archive_notes(notes: list[CapturedNote], sources_dir: Path) -> None:
     for note in notes:
         if note.source_file is None or not note.source_file.exists():
             continue
-        kind = "capture" if CAPTURED_SUBDIR in note.source_file.parts else "learn"
-        dest_dir = archive_root / kind
+        zone = SourceZone.of_path(note.source_file)
+        dest_dir = archive_root / zone.archive_subdir
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest = dest_dir / note.source_file.name
         if dest.exists():
@@ -133,7 +135,7 @@ def _load_captured_notes(captured_dir: Path) -> list[CapturedNote]:
         title = meta.get("title") or make_title(body)
         tags_raw = meta.get("tags") or []  # nocheck: frontmatter dict, not wiki metadata
         tags = [str(t) for t in tags_raw] if isinstance(tags_raw, list) else []
-        captured_at = str(meta.get("captured_at") or "")
+        captured_at = str(meta.get(MetadataField.CAPTURED_AT) or "")
         notes.append(
             CapturedNote(
                 title=str(title),
@@ -168,7 +170,7 @@ def _group_by_tag(notes: list[CapturedNote]) -> dict[str, list[CapturedNote]]:
     """Group notes by their first tag.  Untagged notes go to ``general``."""
     groups: dict[str, list[CapturedNote]] = {}
     for note in notes:
-        key = note.tags[0] if note.tags else "general"
+        key = note.tags[0] if note.tags else UNGROUPED_TAG
         groups.setdefault(key, []).append(note)
     return groups
 
@@ -327,12 +329,12 @@ def _write_page(
     """Write a distilled page with frontmatter."""
     frontmatter = okf_frontmatter_yaml(
         source_frontmatter(
-            page_type="distilled",
+            page_type=SourceZone.DISTILLED,
             title=page["title"],
             timestamp=timestamp,
-            timestamp_key="distilled_at",
+            timestamp_key=MetadataField.DISTILLED_AT,
             tags=list(page["tags"]),  # nocheck: frontmatter dict, not wiki metadata
-            extra={"synthesized_from": list(source_files)},
+            extra={MetadataField.SYNTHESIZED_FROM: list(source_files)},
         ),
     )
     content = escape_prose_pipes(page["content"].strip())

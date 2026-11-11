@@ -20,11 +20,12 @@ import sys
 from functools import cache
 from pathlib import Path
 from types import ModuleType
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any
 
 from cyclopts import App, Group, Parameter
 
-from kompend.cli.args import ConfigPath, NoUserTracking, Verbose, WikiDir
+from kompend.cli.args import CompletionShell, ConfigPath, NoUserTracking, Verbose, WikiDir
+from kompend.cli.args.common import shell_name
 from kompend.cli.context import RunContext, use_run_context
 from kompend.cli.errors import format_exception_for_cli
 from kompend.cli.tree.registry import COMMANDS, PANEL_ORDER, HelpPanel, OnDemandModule
@@ -105,8 +106,8 @@ app.register_install_completion_command(
     help="Install shell completion for the detected shell.",
 )
 
-CompletionShell = Annotated[
-    Literal["zsh", "bash", "fish", "powershell"] | None,
+CompletionShellOption = Annotated[
+    CompletionShell | None,
     Parameter(name="--shell", help="Shell to print completion for (default: detect the current shell)."),
 ]
 
@@ -116,9 +117,9 @@ CompletionShell = Annotated[
     group=_panel_group(HelpPanel.SETUP),
     help="Print the shell completion script for the detected shell.",
 )
-def _show_completion(*, shell: CompletionShell = None) -> None:
+def _show_completion(*, shell: CompletionShellOption = None) -> None:
     """Write the completion script to stdout (redirect it into your shell's rc)."""
-    get_console().print(app.generate_completion(shell=shell))
+    get_console().print(app.generate_completion(shell=shell_name(shell)))
 
 
 @app.meta.default

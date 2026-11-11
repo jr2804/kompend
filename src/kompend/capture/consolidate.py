@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from kompend.capture.distill import CapturedNote, _load_captured_notes
+from kompend.capture.kinds import SourceZone
 from kompend.core.paths import ARCHIVE_SUBDIR, CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
 from kompend.core.text.matching import SemanticMatcher, similarity
 from kompend.logging import get_logger
@@ -79,8 +80,8 @@ def consolidate(
                 keeper = group.keeper.source_file.name if group.keeper.source_file else "?"
                 logger.info("consolidate: would archive %s (dup of %s)", dup.source_file.name, keeper)
                 continue
-            kind = _zone_kind(dup)
-            dest_dir = archive_root / kind
+            zone = SourceZone.of_path(dup.source_file)
+            dest_dir = archive_root / zone.archive_subdir
             dest_dir.mkdir(parents=True, exist_ok=True)
             dest = dest_dir / dup.source_file.name
             if dest.exists():
@@ -88,20 +89,6 @@ def consolidate(
             dup.source_file.rename(dest)
             logger.info("consolidate: archived %s -> %s", dup.source_file.name, dest)
     return groups
-
-
-def _zone_kind(note: CapturedNote) -> str:
-    """Map a note's source zone to its archive subdir name."""
-    if note.source_file is None:
-        return "unknown"
-    parts = note.source_file.parts
-    if CAPTURED_SUBDIR in parts:
-        return "capture"
-    if LEARNED_SUBDIR in parts:
-        return "learn"
-    if DISTILLED_SUBDIR in parts:
-        return "distilled"
-    return "unknown"
 
 
 def find_duplicates(
