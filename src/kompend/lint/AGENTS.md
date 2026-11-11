@@ -91,6 +91,14 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   runner's ``fix_destructive`` opt-in. Their ``fix()`` reads ``_last_sources_dir``,
   which ``check()`` set on the same instance — the runner must call ``check``
   and ``fix`` on one instance, or the fix silently no-ops.
+- **A page link outranks the slug.** ``orphan-attachments`` keeps every file a
+  compiled page links to, whatever its directory is named. A vault carries slug
+  forms from older kompend versions (the slug grew a path prefix when sources
+  moved into subdirectories) and the pages still link those directories — the
+  source is alive, only the directory name is history. Deleting such a file
+  breaks the wiki (371 files, 1391 links in the p863 vault). The kept files
+  are reported as one PASS summary; only files no page links to stay in the
+  FAIL set.
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.

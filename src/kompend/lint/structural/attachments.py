@@ -149,6 +149,14 @@ class OrphanAttachmentsRule(BaseLintRule):
     they are flagged here for manual intervention. ``--fix`` deletes them
     on disk + tombstones them in the ``attachment_manifest`` table (in ``.kompend/kompend.db``); the caller
     must opt in via the lint ``--fix`` flag.
+
+    A file a page still links to is never an orphan, whatever its slug says.
+    A vault carries slug forms from older kompend versions (the slug rule
+    changed when sources moved into subdirectories), and the compiled pages
+    still link those directories. The parent source is alive — only the
+    directory name is history — so deleting the file would break the wiki.
+    The rule keeps such files (reported as one PASS summary) and flags only
+    the files no page links to.
     """
 
     name = "orphan-attachments"
@@ -185,6 +193,18 @@ class OrphanAttachmentsRule(BaseLintRule):
 
         sources_root = Path(sources_dir)
         orphans = orphan_attachment_dirs(base_dir, sources_root)
+        # A page link outranks the slug: the file is in use even when its
+        # directory name comes from an older slug rule.
+        referenced = _referenced_attachment_paths(base_dir)
+        linked = [rel for rel in orphans if rel in referenced]
+        orphans = [rel for rel in orphans if rel not in referenced]
+
+        kept_note = (
+            f" — {len(linked)} attachment file(s) in legacy slug directories are still linked from the wiki "
+            "and were kept (migrate the links before deleting the directories)"
+            if linked
+            else ""
+        )
 
         if orphans:
             for rel in orphans:
@@ -200,8 +220,27 @@ class OrphanAttachmentsRule(BaseLintRule):
                         details={"path": rel},
                     )
                 )
+            if linked:
+                results.append(
+                    LintResult(
+                        rule=self.name,
+                        outcome=LintRuleOutcome.PASS,
+                        message=(
+                            f"{len(linked)} attachment file(s) in legacy slug directories are still linked "
+                            "from the wiki and were kept — migrate the links before deleting the directories"
+                        ),
+                        details={"kept_linked": len(linked)},
+                    )
+                )
         else:
-            results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No orphaned attachments"))
+            results.append(
+                LintResult(
+                    rule=self.name,
+                    outcome=LintRuleOutcome.PASS,
+                    message=f"No orphaned attachments{kept_note}",
+                    details={"kept_linked": len(linked)} if linked else {},
+                )
+            )
         return results
 
     def fix(
