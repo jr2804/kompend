@@ -151,9 +151,11 @@ class LintRunner:
                         )
                     else:
                         try:
-                            results = rule.fix(wiki, fixable)
+                            fixed = rule.fix(wiki, fixable, sources_dir=self.sources_dir)
                         except Exception as exc:
                             logger.warning("Fix for '%s' raised: %s", rule.name, exc, exc_info=True)
+                        else:
+                            results = _merge_fixed_results(results, fixable, fixed, rule_name=rule.name)
 
             all_results.extend(results)
 
@@ -215,6 +217,40 @@ class LintRunner:
                     rules.append(cls(**llm_kwargs))
 
         return rules
+
+
+def _merge_fixed_results(
+    results: list[LintResult],
+    fixable: list[LintResult],
+    fixed: list[LintResult],
+    *,
+    rule_name: str,
+) -> list[LintResult]:
+    """Splice a rule's fixed findings back into its full result list.
+
+    A rule's ``fix`` receives only the failing findings and returns one updated
+    finding per input, in the same order. The findings that passed (or were
+    skipped) are not part of that call, so the runner has to put them back:
+    dropping them empties the pass count, shrinks the check total and computes
+    the health score over the wrong denominator.
+
+    A rule that returns fewer findings than it was given lost one. That is a
+    bug in the rule, so it is logged as an error and the lost finding stays in
+    the report — a silent drop would read as "there was nothing to fix".
+    """
+    if len(fixed) != len(fixable):
+        logger.error(
+            "Lint rule '%s' returned %d finding(s) for %d fixable finding(s) — the report keeps every finding",
+            rule_name,
+            len(fixed),
+            len(fixable),
+        )
+        merged = list(fixed[: len(fixable)])
+        merged.extend(fixable[len(merged) :])
+    else:
+        merged = list(fixed)
+    replacement = {id(original): updated for original, updated in zip(fixable, merged, strict=False)}
+    return [replacement.get(id(result), result) for result in results]
 
 
 def _build_report(results: list[LintResult]) -> LintReport:

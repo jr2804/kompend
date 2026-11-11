@@ -116,8 +116,22 @@ class BaseLintRule(ABC):
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]: ...
 
     @staticmethod
-    def fix(wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
+    def fix(
+        wiki: CompiledWiki,
+        results: list[LintResult],
+        *,
+        sources_dir: str | None = None,
+    ) -> list[LintResult]:
         """Attempt auto-fix and return updated results.
+
+        The runner passes only the failing findings and expects one updated
+        finding per input, in the same order; it splices them back into the
+        rule's full result list. Returning fewer findings than you were given
+        loses a finding — the runner logs that as an error and keeps it.
+
+        *sources_dir* is the directory the scan looked at. A rule that acts on
+        files takes it from here, never from a directory remembered by an
+        earlier call.
 
         Default implementation returns results unchanged.
         """

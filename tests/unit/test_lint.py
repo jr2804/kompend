@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -24,7 +25,7 @@ from kompend.core.models.metadata import meta_dict, meta_str
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.lint import _remediation_gaps as gaps_module
-from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
+from kompend.lint.base import BaseLintRule, LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
 from kompend.lint.flow import CHECK_STEP_RULES
 from kompend.lint.history import LintRunOptions, entry_from_report, report_from_dict
 from kompend.lint.llm_rules import (
@@ -587,6 +588,68 @@ class TestLintRunner:
         runner = LintRunner(rules=["clarity-score"])
         report = runner.run(wiki)
         assert all(r.outcome == LintRuleOutcome.SKIP for r in report.results)
+
+
+class _MixedOutcomeRule(BaseLintRule):
+    """One passing and one failing finding — a fix must keep both."""
+
+    name = "mixed-outcome"
+    description = "test rule"
+
+    def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
+        return [
+            LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="nothing to fix"),
+            LintResult(rule=self.name, outcome=LintRuleOutcome.FAIL, message="broken link", page_id="n1"),
+        ]
+
+    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
+        for result in results:
+            result.fix_applied = True
+        return list(results)
+
+
+class _DroppingRule(_MixedOutcomeRule):
+    """A rule that loses a finding while fixing — the runner must not lose it too."""
+
+    name = "dropping-rule"
+
+    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
+        return []
+
+
+class TestLintRunnerFixResults:
+    """A fix must not drop the results the rule did not fix."""
+
+    def test_the_passing_result_survives_the_fix(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(RULE_BY_NAME, "mixed-outcome", _MixedOutcomeRule)
+        wiki = _make_wiki([_make_node()])
+        report = LintRunner(rules=["mixed-outcome"], fix=True).run(wiki)
+        assert report.passes == 1
+        assert report.failures == 1
+        assert report.total_checks == 2
+        # The counts must add up — the health score is computed over them.
+        assert report.passes + report.skips + report.failures == report.total_checks
+
+    def test_the_fixed_finding_is_reported_as_fixed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setitem(RULE_BY_NAME, "mixed-outcome", _MixedOutcomeRule)
+        wiki = _make_wiki([_make_node()])
+        report = LintRunner(rules=["mixed-outcome"], fix=True).run(wiki)
+        failed = [r for r in report.results if r.outcome == LintRuleOutcome.FAIL]
+        assert [r.fix_applied for r in failed] == [True]
+
+    def test_a_rule_that_drops_a_finding_keeps_it_and_says_so(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setitem(RULE_BY_NAME, "dropping-rule", _DroppingRule)
+        wiki = _make_wiki([_make_node()])
+        with caplog.at_level(logging.ERROR, logger="kompend.lint.runner"):
+            report = LintRunner(rules=["dropping-rule"], fix=True).run(wiki)
+        assert report.total_checks == 2
+        assert report.failures == 1
+        errors = [record.getMessage() for record in caplog.records if record.levelno == logging.ERROR]
+        assert any("dropping-rule" in message for message in errors)
 
 
 # ── Report formatting ───────────────────────────────────────────────────
