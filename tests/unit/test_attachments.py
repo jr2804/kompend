@@ -6,6 +6,7 @@ import hashlib
 import sqlite3
 from pathlib import Path
 
+from kompend.core.models import attachments as attachments_module
 from kompend.core.models.attachments import (
     IMAGE_EXTENSIONS,
     INGESTIBLE_EXTENSIONS,
@@ -418,3 +419,41 @@ def test_read_all_includes_deleted_on_request(tmp_path: Path) -> None:
     assert set(every) == {"doc/live.txt", "doc/gone.txt"}
     assert every["doc/gone.txt"].deleted is True
     assert every["doc/live.txt"].deleted is False
+
+
+# ── Statement construction ──────────────────────────────────────────────
+
+
+def test_manifest_carries_no_blanket_ruff_waiver() -> None:
+    """The manifest needs no ``S608`` waiver: statements go through Core.
+
+    A module-wide ``# ruff: noqa: S608`` hid the whole file from bandit, so any
+    later string-built statement would have landed silently. The statements are
+    SQLAlchemy Core statements over the shared table object instead; widening a
+    waiver back over the module would let the next one slip through unseen.
+    """
+    source = Path(attachments_module.__file__).read_text(encoding="utf-8")
+    assert "ruff: noqa" not in source
+    assert "noqa: S608" not in source
+
+
+def test_manifest_upsert_refreshes_every_column(tmp_path: Path) -> None:
+    """Re-registering a path overwrites every mutable column, not just some.
+
+    The upsert sets its ``SET`` clause from the inserted values, so a column
+    missing from that mapping keeps the previous row's value — a tombstone or a
+    stale digest would then outlive the re-registration.
+    """
+    manifest = AttachmentManifest(tmp_path / "attachments.jsonl")
+    manifest.append(Attachment(path="doc/a.txt", source="doc", ingestible=True, embed=True, content_digest="aa", registered_at="2026-01-01T00:00:00+00:00"))
+    assert manifest.remove("doc/a.txt") is True
+
+    manifest.append(Attachment(path="doc/a.txt", source="doc", ingestible=False, embed=False, content_digest="bb", registered_at="2026-02-02T00:00:00+00:00"))
+
+    row = manifest.read_all(include_deleted=True)["doc/a.txt"]
+    assert row.source == "doc"
+    assert row.ingestible is False
+    assert row.embed is False
+    assert row.content_digest == "bb"
+    assert row.registered_at == "2026-02-02T00:00:00+00:00"
+    assert row.deleted is False

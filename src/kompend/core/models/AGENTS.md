@@ -42,4 +42,9 @@ defined here. Import from the package root: `from kompend.core.models import Chu
   `MetadataValue`; read it with `meta_*` from `metadata.py` instead of casting
   by hand — they return an empty list/dict or the given default, never raise.
 - **No text-in-code.** See parent doc.
+- **Statements are Core objects, not SQL strings.** A model module that reads or
+  writes its table goes through `core_connection` and the shared table from
+  `core.store.tables` (`select(...)`, `sqlite_insert(...).on_conflict_do_update`).
+  String-built SQL would need a `# ruff: noqa: S608` waiver, and a module-wide
+  waiver hides every later statement in that file from bandit.
 - `enums.py` has zero internal dependencies; all other modules import from it.

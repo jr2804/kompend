@@ -63,9 +63,9 @@ def attachment_slugs_for_source(source_rel: Path | str) -> set[str]:
     (``attachment_slug("papers/thesis.pdf") == "papers_thesis"``) or the
     bare filename (``attachment_slug("thesis.pdf") == "thesis"``) — the
     ``kompend attachments add`` command passes the user's string verbatim.
-    Orphan detection and auto-adoption must match BOTH forms, otherwise
-    every attachment for a source under a subdirectory is falsely flagged
-    as orphaned, and the post-compile lint's ``--fix`` deletes 248 valid files.
+    Orphan detection and auto-adoption must match BOTH forms: matching one
+    form only flags every attachment of a source under a subdirectory as
+    orphaned, and ``lint --fix`` then deletes live attachment files.
     """
     rel = Path(source_rel)
     return {attachment_slug(rel), attachment_slug(rel.name)}

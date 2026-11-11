@@ -8,10 +8,11 @@ written or read).
 
 Each attachment has an explicit ``ingestible`` flag and an optional
 ``embed`` override for the global ``search.embed_attachments`` config.
-"""
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
-# no runtime value ever enters an identifier or statement.
+Statements go through SQLAlchemy Core against the shared table object, so the
+table name and columns live in one place and no identifier is ever built from a
+string.
+"""
 
 from __future__ import annotations
 
@@ -22,9 +23,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final
 
+from sqlalchemy import literal, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
 from kompend.core.paths import ATTACHMENTS_DIR_NAME, VaultPaths, attachment_slugs_for_source, is_protected_source
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import ATTACHMENT_MANIFEST_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import attachment_manifest
 
 __all__ = [
     "Attachment",
@@ -93,6 +97,17 @@ IMAGE_EXTENSIONS: Final[frozenset[str]] = frozenset(
 
 # All ingestible extensions
 INGESTIBLE_EXTENSIONS: Final[frozenset[str]] = TEXT_EXTENSIONS | IMAGE_EXTENSIONS
+
+
+class LiveSlugOutcome(StrEnum):
+    """Why an attachment directory's slug counts as live — or does not."""
+
+    LIVE = "live"
+    #: The slug belongs to a source under a protected, tool-managed subdir
+    #: (``sources/_captured/`` and friends). Retiring it is a user decision, so
+    #: no rule may delete or flag the files.
+    PROTECTED = "protected"
+    DEAD = "dead"
 
 
 @dataclass
@@ -193,6 +208,30 @@ class Attachment:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class AttachmentLiveness:
+    """Which attachment slugs map to a source, and which map only to a protected one.
+
+    Both destructive rules and auto-adoption ask the same question — "is this
+    attachment directory still addressable from ``sources/``?" — and used to
+    answer it with three separate copies of the scan, two of which skipped
+    protected sources and one of which did not. That divergence let
+    ``orphan-attachments`` report (and, opted in, delete) the figures of a
+    captured source while ``unreferenced-attachments`` kept them.
+    """
+
+    live: frozenset[str]
+    protected: frozenset[str]
+
+    def outcome(self, slug: str) -> LiveSlugOutcome:
+        """How *slug* is classified. Live wins: a normal source outranks a protected one."""
+        if slug in self.live:
+            return LiveSlugOutcome.LIVE
+        if slug in self.protected:
+            return LiveSlugOutcome.PROTECTED
+        return LiveSlugOutcome.DEAD
+
+
 class AttachmentManifest:
     """Attachment manifest backed by the single vault store.
 
@@ -220,8 +259,8 @@ class AttachmentManifest:
         """Whether the store currently holds any attachment row."""
         if not self._db_path.exists():
             return False
-        with open_store(self._db_path) as conn:
-            row = conn.execute(f"SELECT 1 FROM {ATTACHMENT_MANIFEST_TABLE} LIMIT 1").fetchone()
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            row = core.execute(select(literal(1)).select_from(attachment_manifest).limit(1)).first()
         return row is not None
 
     def read_all(self, *, include_deleted: bool = False) -> dict[str, Attachment]:
@@ -232,11 +271,11 @@ class AttachmentManifest:
         """
         if not self._db_path.exists():
             return {}
-        where = "" if include_deleted else " WHERE deleted = 0"
-        with open_store(self._db_path) as conn:
-            rows = conn.execute(
-                f"SELECT path, source, ingestible, embed, content_digest, registered_at, deleted FROM {ATTACHMENT_MANIFEST_TABLE}{where}",
-            ).fetchall()
+        statement = select(attachment_manifest)
+        if not include_deleted:
+            statement = statement.where(attachment_manifest.c.deleted == 0)
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(statement).mappings().all()
         return {row["path"]: _attachment_from_row(row) for row in rows}
 
     def read_for_source(self, source_stem: str) -> list[Attachment]:
@@ -295,32 +334,28 @@ class AttachmentManifest:
         """
         if not self._db_path.exists():
             return set()
-        with open_store(self._db_path) as conn:
-            rows = conn.execute(f"SELECT path FROM {ATTACHMENT_MANIFEST_TABLE} WHERE deleted = 1").fetchall()
-        return {row["path"] for row in rows}
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(select(attachment_manifest.c.path).where(attachment_manifest.c.deleted == 1)).scalars()
+            return set(rows)
 
     def _upsert(self, attachment: Attachment) -> None:
         key = attachments_relative(attachment.path)
-        with open_store(self._db_path) as conn:
-            conn.execute(
-                f"""INSERT INTO {ATTACHMENT_MANIFEST_TABLE}(path, source, ingestible, embed, content_digest, registered_at, deleted)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(path) DO UPDATE SET
-                    source = excluded.source,
-                    ingestible = excluded.ingestible,
-                    embed = excluded.embed,
-                    content_digest = excluded.content_digest,
-                    registered_at = excluded.registered_at,
-                    deleted = excluded.deleted""",
-                (
-                    key,
-                    attachment.source,
-                    int(attachment.ingestible),
-                    None if attachment.embed is None else int(attachment.embed),
-                    attachment.content_digest,
-                    attachment.registered_at,
-                    int(attachment.deleted),
-                ),
+        values = {
+            "path": key,
+            "source": attachment.source,
+            "ingestible": int(attachment.ingestible),
+            "embed": None if attachment.embed is None else int(attachment.embed),
+            "content_digest": attachment.content_digest,
+            "registered_at": attachment.registered_at,
+            "deleted": int(attachment.deleted),
+        }
+        statement = sqlite_insert(attachment_manifest).values(**values)
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            core.execute(
+                statement.on_conflict_do_update(
+                    index_elements=[attachment_manifest.c.path],
+                    set_={column: statement.excluded[column] for column in values},
+                )
             )
 
 
@@ -351,66 +386,6 @@ def _attachment_from_row(row: Any) -> Attachment:
         registered_at=row["registered_at"],
         deleted=bool(row["deleted"]),
     )
-
-
-class LiveSlugOutcome(StrEnum):
-    """Why an attachment directory's slug counts as live — or does not."""
-
-    LIVE = "live"
-    #: The slug belongs to a source under a protected, tool-managed subdir
-    #: (``sources/_captured/`` and friends). Retiring it is a user decision, so
-    #: no rule may delete or flag the files.
-    PROTECTED = "protected"
-    DEAD = "dead"
-
-
-@dataclass(frozen=True, slots=True)
-class AttachmentLiveness:
-    """Which attachment slugs map to a source, and which map only to a protected one.
-
-    Both destructive rules and auto-adoption ask the same question — "is this
-    attachment directory still addressable from ``sources/``?" — and used to
-    answer it with three separate copies of the scan, two of which skipped
-    protected sources and one of which did not. That divergence let
-    ``orphan-attachments`` report (and, opted in, delete) the figures of a
-    captured source while ``unreferenced-attachments`` kept them.
-    """
-
-    live: frozenset[str]
-    protected: frozenset[str]
-
-    def outcome(self, slug: str) -> LiveSlugOutcome:
-        """How *slug* is classified. Live wins: a normal source outranks a protected one."""
-        if slug in self.live:
-            return LiveSlugOutcome.LIVE
-        if slug in self.protected:
-            return LiveSlugOutcome.PROTECTED
-        return LiveSlugOutcome.DEAD
-
-
-def live_attachment_slugs(sources_dir: Path) -> AttachmentLiveness:
-    """Classify every attachment slug derivable from the sources tree.
-
-    The one implementation of "which slugs are live". ``live`` holds slugs of
-    ordinary sources; ``protected`` holds slugs whose only source sits under a
-    protected subdir (:func:`is_protected_source`) — the compile lifecycle
-    owns those notes, so their attachments are neither orphaned nor prunable.
-    Matches both slug forms through :func:`attachment_slugs_for_source`.
-    """
-    sources_root = Path(sources_dir)
-    live: set[str] = set()
-    protected: set[str] = set()
-    if not sources_root.is_dir():
-        return AttachmentLiveness(live=frozenset(), protected=frozenset())
-    for path in sources_root.rglob("*"):
-        if not path.is_file():
-            continue
-        slugs = attachment_slugs_for_source(path.relative_to(sources_root).as_posix())
-        if is_protected_source(path, sources_root):
-            protected |= slugs
-        else:
-            live |= slugs
-    return AttachmentLiveness(live=frozenset(live), protected=frozenset(protected - live))
 
 
 def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> list[Attachment]:
@@ -467,6 +442,31 @@ def adopt_orphan_attachments(base_dir: Path, *, ingest_adopted: bool = True) -> 
             known.add(rel)
             adopted.append(att)
     return adopted
+
+
+def live_attachment_slugs(sources_dir: Path) -> AttachmentLiveness:
+    """Classify every attachment slug derivable from the sources tree.
+
+    The one implementation of "which slugs are live". ``live`` holds slugs of
+    ordinary sources; ``protected`` holds slugs whose only source sits under a
+    protected subdir (:func:`is_protected_source`) — the compile lifecycle
+    owns those notes, so their attachments are neither orphaned nor prunable.
+    Matches both slug forms through :func:`attachment_slugs_for_source`.
+    """
+    sources_root = Path(sources_dir)
+    live: set[str] = set()
+    protected: set[str] = set()
+    if not sources_root.is_dir():
+        return AttachmentLiveness(live=frozenset(), protected=frozenset())
+    for path in sources_root.rglob("*"):
+        if not path.is_file():
+            continue
+        slugs = attachment_slugs_for_source(path.relative_to(sources_root).as_posix())
+        if is_protected_source(path, sources_root):
+            protected |= slugs
+        else:
+            live |= slugs
+    return AttachmentLiveness(live=frozenset(live), protected=frozenset(protected - live))
 
 
 def compute_content_digest(data: bytes) -> str:
