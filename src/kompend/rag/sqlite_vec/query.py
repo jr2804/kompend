@@ -5,11 +5,15 @@ The queries are hand-written SQL: ``vec0`` (``MATCH`` + ``k``) and FTS5
 express, so the query layer is SQL text by contract. The filters are rendered
 by :mod:`kompend.rag.sqlite_vec.filters`.
 
+Each query is one constant template filled through
+:func:`kompend.rag.sqlite_vec.schema.sql`: the table name, the FTS5 column the
+term matches (a :class:`~kompend.rag.vector_store.VectorField` member) and the
+filter clause, which is itself built from constant fragments. No user text ever
+reaches the statement — values are bound parameters.
+
 Scores are higher-is-better: the vector path returns ``1 - distance`` (the
 cosine similarity), the lexical path ``-bm25()``.
 """
-
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
 
 from __future__ import annotations
 
@@ -21,7 +25,7 @@ from typing import Any, Final
 import sqlite_vec
 
 from kompend.rag.sqlite_vec.filters import filter_clause
-from kompend.rag.sqlite_vec.schema import VEC_FTS, VEC_ITEMS
+from kompend.rag.sqlite_vec.schema import VEC_FTS, VEC_ITEMS, sql
 from kompend.rag.vector_store import VectorField
 
 #: Reciprocal-rank-fusion constant: a document's contribution is
@@ -39,6 +43,32 @@ FILTER_POOL_MIN: Final[int] = 50
 
 #: The word characters of a query — everything else is an FTS5 operator.
 TERM_RE: Final[re.Pattern[str]] = re.compile(r"\w+", re.UNICODE)
+
+#: The vector query. ``vec0`` takes the probe vector and the candidate count as
+#: bound ``MATCH``/``k`` parameters; the filter clause is rendered by
+#: :func:`~kompend.rag.sqlite_vec.filters.filter_clause` and is empty when the
+#: caller asked for no filters.
+_VECTOR_SQL: Final[str] = """
+        SELECT v.id, v.title, v.node_type, v.source_file, v.content_preview, v.distance
+        FROM {table} v
+        WHERE v.embedding MATCH ? AND v.k = ?
+        {clause}
+        ORDER BY v.distance
+    """
+
+#: The lexical query. FTS5 needs the real table name inside ``bm25()`` and the
+#: matched column qualifies the alias, so both are template values rather than
+#: literals here.
+_FTS_SQL: Final[str] = """
+        SELECT f.id, f.title, f.content_preview, f.node_type, f.source_file, bm25({table}) AS rank
+        FROM {table} f
+        WHERE f.{column} MATCH ? {clause}
+        ORDER BY rank
+        LIMIT ?
+    """
+
+#: Columns the lexical query may match — the FTS index's two indexed columns.
+_FTS_COLUMNS: Final[frozenset[VectorField]] = frozenset({VectorField.TITLE, VectorField.CONTENT_PREVIEW})
 
 
 class Hit:
@@ -96,14 +126,8 @@ def vector_hits(
         attribute_keys=attribute_keys,
     )
     pool = candidate_pool(top_k, filtered=bool(clause))
-    sql = f"""
-        SELECT v.id, v.title, v.node_type, v.source_file, v.content_preview, v.distance
-        FROM {VEC_ITEMS} v
-        WHERE v.embedding MATCH ? AND v.k = ?
-        {clause}
-        ORDER BY v.distance
-    """
-    rows = conn.execute(sql, (sqlite_vec.serialize_float32(embedding), pool, *params)).fetchall()
+    statement = sql(_VECTOR_SQL, table=VEC_ITEMS, clause=clause)
+    rows = conn.execute(statement, (sqlite_vec.serialize_float32(embedding), pool, *params)).fetchall()
     return [
         Hit(
             id=str(row[0]),
@@ -138,6 +162,8 @@ def fts_ranked(
     match = fts_match_expression(query)
     if match is None:
         return []
+    if VectorField(column) not in _FTS_COLUMNS:
+        raise ValueError(f"FTS column must be one of {sorted(_FTS_COLUMNS)}, got {column!r}")
     clause, params = filter_clause(
         "f",
         tags_all=tags_all,
@@ -145,14 +171,8 @@ def fts_ranked(
         attributes_all=attributes_all,
         attribute_keys=attribute_keys,
     )
-    sql = f"""
-        SELECT f.id, f.title, f.content_preview, f.node_type, f.source_file, bm25({VEC_FTS}) AS rank
-        FROM {VEC_FTS} f
-        WHERE f.{column} MATCH ? {clause}
-        ORDER BY rank
-        LIMIT ?
-    """
-    rows = conn.execute(sql, (match, *params, top_k)).fetchall()
+    statement = sql(_FTS_SQL, table=VEC_FTS, column=column, clause=clause)
+    rows = conn.execute(statement, (match, *params, top_k)).fetchall()
     return [
         Hit(
             id=str(row[0]),
