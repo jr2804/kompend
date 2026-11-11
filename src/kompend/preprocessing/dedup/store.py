@@ -6,16 +6,15 @@ store. The bookkeeping record
 JSON payload is stored in the ``embedding`` column.
 """
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
-# no runtime value ever enters an identifier or statement.
-
 from __future__ import annotations
 
 import hashlib
 import json
-import sqlite3
 from pathlib import Path
-from typing import TypedDict
+from typing import TYPE_CHECKING, TypedDict
+
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from kompend.core.config import DEFAULT_MATCHERS, parse_matchers
 from kompend.core.keys import (
@@ -24,10 +23,13 @@ from kompend.core.keys import (
     DEDUP_MINHASH_LSH_THRESHOLD,
     DEDUP_MODEL,
 )
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import DEDUP_FINGERPRINTS_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import dedup_fingerprints
 from kompend.logging import get_logger
 from kompend.types import JSONDict, JSONValue
+
+if TYPE_CHECKING:
+    from sqlalchemy.engine import RowMapping
 
 # Current store schema version — bump when fingerprint format changes.
 _STORE_VERSION = "1"
@@ -95,11 +97,8 @@ class DedupStore:
         self._entries = {}
         if not self._db_path.exists():
             return
-        with open_store(self._db_path) as conn:
-            rows = conn.execute(
-                f"SELECT slug, verdict, closest_match, closest_score, closest_method, "
-                f"embedding_score, minhash_score, embedding, minhash FROM {DEDUP_FINGERPRINTS_TABLE}",
-            ).fetchall()
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(select(dedup_fingerprints)).mappings().all()
         for row in rows:
             slug = str(row["slug"])
             if slug == _META_SLUG:
@@ -109,19 +108,16 @@ class DedupStore:
 
     def save(self) -> None:
         """Persist data to the vault store with the current stamp."""
-        with open_store(self._db_path) as conn:
-            conn.execute(f"DELETE FROM {DEDUP_FINGERPRINTS_TABLE}")
-            conn.execute(
-                f"INSERT INTO {DEDUP_FINGERPRINTS_TABLE}(slug, embedding) VALUES (?, ?)",
-                (_META_SLUG, json.dumps({"stamp": self.stamp, "store_version": _STORE_VERSION})),
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            core.execute(delete(dedup_fingerprints))
+            meta = sqlite_insert(dedup_fingerprints).values(
+                slug=_META_SLUG,
+                embedding=json.dumps({"stamp": self.stamp, "store_version": _STORE_VERSION}),
             )
-            conn.executemany(
-                f"INSERT INTO {DEDUP_FINGERPRINTS_TABLE}"
-                "(slug, verdict, closest_match, closest_score, closest_method, "
-                "embedding_score, minhash_score, embedding, minhash) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [_entry_row(slug, entry) for slug, entry in self._entries.items()],
-            )
+            core.execute(meta)
+            rows = [_entry_row(slug, entry) for slug, entry in self._entries.items()]
+            if rows:
+                core.execute(sqlite_insert(dedup_fingerprints), rows)
 
     def get(self, slug: str) -> StoreEntry | None:
         """Return fingerprint data for *slug*, or ``None``."""
@@ -204,7 +200,7 @@ def _decode_meta(raw: object) -> StoreMeta:
     return {"stamp": "", "store_version": _STORE_VERSION}
 
 
-def _decode_entry(row: sqlite3.Row) -> StoreEntry:
+def _decode_entry(row: RowMapping) -> StoreEntry:
     return StoreEntry(
         verdict=str(row["verdict"] or ""),
         closest_match=None if row["closest_match"] is None else str(row["closest_match"]),
@@ -227,18 +223,18 @@ def _decode_json_list(raw: object) -> list[JSONValue] | None:
     return data if isinstance(data, list) else None
 
 
-def _entry_row(slug: str, entry: StoreEntry) -> tuple[str, str, str | None, float, str, float | None, float | None, str | None, str | None]:
-    return (
-        slug,
-        entry["verdict"],
-        entry["closest_match"],
-        entry["closest_score"],
-        entry["closest_method"],
-        entry["embedding_score"],
-        entry["minhash_score"],
-        _encode_json_list(entry["embedding"]),
-        _encode_json_list(entry["minhash"]),
-    )
+def _entry_row(slug: str, entry: StoreEntry) -> dict[str, object]:
+    return {
+        "slug": slug,
+        "verdict": entry["verdict"],
+        "closest_match": entry["closest_match"],
+        "closest_score": entry["closest_score"],
+        "closest_method": entry["closest_method"],
+        "embedding_score": entry["embedding_score"],
+        "minhash_score": entry["minhash_score"],
+        "embedding": _encode_json_list(entry["embedding"]),
+        "minhash": _encode_json_list(entry["minhash"]),
+    }
 
 
 def _encode_json_list(value: list[JSONValue] | None) -> str | None:
