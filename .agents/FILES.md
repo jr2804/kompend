@@ -68,12 +68,20 @@ any `.py` file outside `paths.py`. Always import from `kompend.core.paths`.
 
 **Configurable directory names** (`"sources"`, `"wiki"`) live in `DEFAULTS`
 under `["paths"]["sources_dir"]` and `["paths"]["output_dir"]` — not in
-`paths.py`, because users can override them.
+`paths.py`, because users can override them. `.kompend/` is a vault artifact and
+a reserved name — see **Reserved directory** below.
 
 ### Project root naming
 
 The project root directory is always called `base_dir`. Never use `target_dir`,
 `resolved_base`, `project_root`, or `sources_dir.parent`.
+
+### Reserved directory: `.kompend/`
+
+`.kompend/` inside **this** checkout is a bug, not a workspace: the name belongs
+to wiki vaults (`KOMP_DIR`) and to derived state, so a copy in the source tree
+reads as a vault to every tool that scans for one. Scratch work goes in `tmp/`
+(gitignored, root-level) or the OS temp dir (`.agents/POLICIES.md`).
 
 ### VaultPaths
 
