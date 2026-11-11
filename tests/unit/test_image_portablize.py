@@ -138,7 +138,7 @@ def test_the_parents_directory_survives_lint_fix(tmp_path: Path) -> None:
     # found the parent's directory live — the figure is not an orphan.
     assert [r.outcome for r in results] == [LintRuleOutcome.PASS]
     # Running the destructive fix over that outcome removes nothing.
-    rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), results)
+    rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), results, sources_dir=tmp_path / "sources")
     assert (tmp_path / "attachments" / "packet" / "packet__fig9.png").is_file()
 
 
