@@ -3,9 +3,10 @@
 Opt-in and costly. The substring fallback makes the pipeline useful offline.
 Replaced the old segmented-excerpt loop with a single-pass approach:
 if the excerpt is too long, skip the LLM call and go straight to substring.
-"""
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
+The report row goes through SQLAlchemy Core against the shared
+``verification`` table, so the table and its columns are named once.
+"""
 
 from __future__ import annotations
 
@@ -14,13 +15,15 @@ import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import VerificationClaim, VerificationDeps, VerificationPage, VerificationSource
 from kompend.agents.verification import AgenticVerificationAgent, VerificationAgent
 from kompend.core.config._core import DEFAULTS
 from kompend.core.models import Citation, CompiledWiki, WikiNode, extract_citations
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import VERIFICATION_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import verification
 from kompend.core.templates import get_template_loader
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
@@ -94,17 +97,16 @@ def _persist_verification(base_dir: Path, result: VerificationResult) -> None:
     Each run appends a row; readers take the latest (``ORDER BY id DESC``).
     """
     claims_json = json.dumps([asdict(c) for c in result.claims], default=str)
-    with open_store(vault_db_path(base_dir)) as conn:
-        conn.execute(
-            f"INSERT INTO {VERIFICATION_TABLE} (written_at, total, verified, unsupported, average_confidence, claims) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                iso_local(),
-                result.total,
-                result.verified,
-                result.unsupported,
-                result.average_confidence,
-                claims_json,
-            ),
+    with open_store(vault_db_path(base_dir)) as conn, core_connection(conn) as core:
+        core.execute(
+            sqlite_insert(verification).values(
+                written_at=iso_local(),
+                total=result.total,
+                verified=result.verified,
+                unsupported=result.unsupported,
+                average_confidence=result.average_confidence,
+                claims=claims_json,
+            )
         )
 
 
