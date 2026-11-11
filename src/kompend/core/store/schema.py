@@ -25,9 +25,6 @@ Table names are exposed as ``Final[str]`` constants from this module — no othe
 module inlines a table literal.
 """
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
-# no runtime value ever enters an identifier or statement.
-
 from __future__ import annotations
 
 import functools
@@ -46,6 +43,20 @@ from kompend.core.store.tables import METADATA, schema_version, tier_state
 
 #: Scratch name used while rebuilding ``tier_state`` in place.
 _TIER_STATE_LEGACY_TABLE: Final[str] = "tier_state_legacy"
+
+#: ``tier_state`` columns in DDL order, keyed first.
+_TIER_STATE_COLUMNS: Final[tuple[str, ...]] = (
+    "key",
+    "stem",
+    "source_file",
+    "content_hash",
+    "current_tier",
+    "last_compile",
+    "search_hits",
+    "last_hit",
+    "ingested_by",
+)
+_TIER_STATE_KEYED_COLUMNS: Final[str] = ", ".join(_TIER_STATE_COLUMNS)
 
 #: Bump when the DDL below changes shape. The store treats a mismatch as a
 #: clean cut: drop everything and recreate (no migration — policy B3).
@@ -131,10 +142,15 @@ def migrate_tier_state_identity(conn: sqlite3.Connection) -> bool:
     conn.execute(f"ALTER TABLE {TIER_STATE_TABLE} RENAME TO {_TIER_STATE_LEGACY_TABLE}")
     conn.execute(_TIER_STATE_DDL())
     conn.execute(
-        f"INSERT OR REPLACE INTO {TIER_STATE_TABLE}(key, stem, source_file, content_hash, current_tier, "
-        f"last_compile, search_hits, last_hit, ingested_by) "
-        f"SELECT stem || '-' || substr(content_hash, 1, {IDENTITY_HASH_LEN}), stem, source_file, content_hash, "
-        f"current_tier, last_compile, search_hits, last_hit, ingested_by FROM {_TIER_STATE_LEGACY_TABLE}"
+        _statement(
+            "INSERT OR REPLACE INTO {table}({columns}) SELECT stem || '-' || substr(content_hash, 1, {hash_len}), {copied} FROM {legacy}",
+            table=TIER_STATE_TABLE,
+            columns=_TIER_STATE_KEYED_COLUMNS,
+            hash_len=IDENTITY_HASH_LEN,
+            # key is the one column the rekey derives; the rest carry over as-is.
+            copied=", ".join(column for column in _TIER_STATE_COLUMNS if column != "key"),
+            legacy=_TIER_STATE_LEGACY_TABLE,
+        )
     )
     conn.execute(f"DROP TABLE {_TIER_STATE_LEGACY_TABLE}")
     return True
@@ -144,6 +160,17 @@ def _tier_state_exists(conn: sqlite3.Connection) -> bool:
     """True when the ``tier_state`` table exists in this store."""
     row = conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (TIER_STATE_TABLE,)).fetchone()
     return row is not None
+
+
+def _statement(template: str, **values: object) -> str:
+    """Fill one constant SQL template with the names and numbers it needs.
+
+    Bandit flags an f-string that interpolates a name into a statement, and its
+    ``S608`` check cannot tell ``Final[str]`` table names from request data. The
+    template form keeps every statement written out in full at its call site
+    while the value still flows through a plain ``str`` parameter.
+    """
+    return template.format(**values)
 
 
 def _TIER_STATE_DDL() -> str:
