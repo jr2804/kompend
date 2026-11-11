@@ -17,9 +17,10 @@ Editor ── ACP stdio ──→ kompend agent
 ```
 
 1. The editor starts ``kompend agent`` as a subprocess
-2. kompend advertises its capabilities (slash commands)
+2. kompend advertises its capabilities (slash commands, ``providers``)
 3. The editor creates a session; the LLM model is resolved per prompt from
-   kompend's configuration
+   kompend's configuration, and an editor may inject an endpoint with
+   ``providers/set``
 4. The user types a prompt → kompend routes it through a conversational agent
    that can call tools (compile, query, capture) as needed
 
@@ -107,8 +108,13 @@ api_key = "sk-..."
 Without a model the agent still starts; a prompt then fails with
 ``No LLM model configured. Set compile.llm.default_model or run 'kompend config set'.``
 
-> ``providers/set`` — letting the editor inject the endpoint at runtime — is not
-> served yet; the editor cannot override the endpoint from the wire.
+The agent advertises the ACP ``providers`` capability, so an editor that speaks
+``providers/set`` can inject an endpoint at runtime: kompend answers
+``providers/list`` with the current endpoint (or none), stores the
+``apiType``/``baseUrl``/headers from ``providers/set``, and uses it for the next
+prompt. ``providers/disable`` drops the injected endpoint and returns to the
+configured model. An injected endpoint replaces where requests go, not which
+model answers — the model id still comes from ``compile.llm.default_model``.
 
 ## Available slash commands
 

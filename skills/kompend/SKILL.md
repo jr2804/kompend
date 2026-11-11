@@ -234,8 +234,11 @@ See `kompend agents list` for available agents.
 **Why ACP instead of MCP sampling?** kompend needs full Pydantic structured output
 for compilation — MCP sampling is free-text only. The editor talks to kompend over
 ACP and kompend makes its own direct HTTP calls through its pydantic-ai pipeline.
-`providers/set` — letting the editor inject the endpoint at runtime — is not served
-yet; the model comes from kompend's own configuration.
+The agent advertises the ACP `providers` capability: an editor can call
+`providers/set` to inject an endpoint (`apiType`/`baseUrl`/headers) and the next
+prompt uses it; `providers/disable` returns to the configured model. The injected
+endpoint replaces where requests go, not which model answers — the model id still
+comes from kompend's own configuration.
 
 **Slash commands:**
 

@@ -1,46 +1,36 @@
-"""Thread-safe LLM provider credential store for ACP ``providers/set``.
+"""Thread-safe store for the LLM endpoint an ACP client injects.
 
-Holds the LLM endpoint configuration an editor would send via ACP
-``providers/set``, and reconfigures the pipeline's env-var-based resolution so
-kompend uses the configured endpoint.
-
-**Not reachable from the wire today.** The harness advertises no ``providers``
-capability and its router forwards only ``_``-prefixed methods to
-``ext_method``, so nothing constructs this store: the env writes below never
-run. The session model comes from the workspace config instead
-(:mod:`kompend.acp.model_selection`). Wiring ``providers/list|set|disable`` is
-its own ticket — do not build on this class until then.
+The editor sends its endpoint through the ACP ``providers/set`` method; the
+routes live in :mod:`kompend.acp.provider_wire`, and model selection honours the
+stored endpoint in :mod:`kompend.acp.endpoint_model`. This module owns only the
+value and its locking — it deliberately does not touch ``os.environ``: kompend
+reads ``compile.llm.default_model`` and the ``[providers.*]`` blocks, so an
+env-var injection would be lost. The endpoint reaches the pipeline by being
+handed to the model constructor.
 """
 
 from __future__ import annotations
 
-import os
 import threading
 from copy import deepcopy
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Final
 
 from aenum import MultiValueEnum
 
-from kompend.core.keys import EnvVar
-
-
-class HttpHeader(StrEnum):
-    """Well-known HTTP header names used by the ACP provider config."""
-
-    AUTHORIZATION = "authorization"
+#: Header carrying the bearer token. Header names are case-insensitive.
+_AUTHORIZATION: Final[str] = "authorization"
+_BEARER_PREFIX: Final[str] = "bearer "
 
 
 class LlmApiType(StrEnum, MultiValueEnum):
     """Well-known ACP ``apiType`` identifiers.
 
-    The set of provider identifiers accepted by ``providers/set`` and
-    advertised via ``providers/list``. Values are the strings clients send
-    on the wire; we never re-type them at the call site.
+    The set of provider protocols ``providers/set`` accepts and ``providers/list``
+    advertises. Values are the strings clients send on the wire; we never
+    re-type them at the call site.
     """
-
-    def __init__(self, value: str, *aliases: str) -> None:
-        self.prefix = aliases[0] if aliases else value
 
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
@@ -56,65 +46,43 @@ class ProviderConfig:
     api_type: str
     base_url: str
     headers: dict[str, str] = field(default_factory=dict)
-    model: str | None = None
 
+    def api_key(self) -> str | None:
+        """Return the bearer token from the ``Authorization`` header, if any.
 
-class _IdentityDefaultDict(dict[str, str]):
-    """``dict`` subclass that returns the requested key as the default value.
-
-    Used to expose the well-known apiType → provider-prefix mapping with an
-    identity fallback for any unknown key. Mirrors the behaviour of a
-    ``defaultdict`` whose factory received the missing key, which the
-    stdlib does not support directly.
-    """
-
-    def __missing__(self, key: str) -> str:
-        return key
-
-
-def _provider_prefix(api_type: str) -> str:
-    """Return the provider prefix for an ACP ``api_type``.
-
-    Unknown ``api_type`` values pass through unchanged, so custom protocols
-    Just Work without registering an entry here. Used as the identity
-    default for ``LLM_PROVIDER_MAP`` lookups.
-    """
-    try:
-        return LlmApiType(api_type).prefix
-    except ValueError:
-        return api_type
-
-
-# Map of well-known apiTypes to their provider prefixes. Used by
-# ``providers/list`` to enumerate supported providers. Unrecognised keys
-# fall through to the identity mapping via ``_IdentityDefaultDict``.
-LLM_PROVIDER_MAP: _IdentityDefaultDict = _IdentityDefaultDict(
-    {api_type.value: _provider_prefix(api_type.value) for api_type in LlmApiType},
-)
+        The secret travels in that header — the only place the ACP provider
+        payload carries it — and is stripped of its scheme before use. Header
+        names are case-insensitive.
+        """
+        for key, value in self.headers.items():
+            if key.lower() != _AUTHORIZATION:
+                continue
+            token = value.strip()
+            if token.lower().startswith(_BEARER_PREFIX):
+                return token[len(_BEARER_PREFIX) :].strip()
+            return token
+        return None
 
 
 class ProviderCredentials:
     """Thread-safe store for the LLM endpoint configured via ACP ``providers/set``.
 
-    When a provider is set, the pipeline's env-var-based resolution is reconfigured
-    so the kompend pipeline uses the configured endpoint. When disabled, the
-    fallback chain (env vars → config.toml → DEFAULTS) is restored.
+    One endpoint is stored at a time: a later ``providers/set`` replaces it, and
+    ``providers/disable`` clears it so model selection falls back to the
+    workspace config.
     """
 
     def __init__(self) -> None:
         self._provider: ProviderConfig | None = None
         self._lock = threading.Lock()
-        # Snapshot of env vars before we touched them, for clean restore
-        self._saved_env: dict[str, str | None] = {}
 
     def set(self, provider: ProviderConfig) -> None:
-        """Store the provider config and reconfigure the pipeline.
+        """Store the provider config.
 
         Called from the ``providers/set`` handler.
         """
         with self._lock:
             self._provider = provider
-            self._reconfigure_env()
 
     def get(self) -> ProviderConfig | None:
         """Return a copy of the current provider config, or *None*."""
@@ -122,50 +90,20 @@ class ProviderCredentials:
             return deepcopy(self._provider)
 
     def disable(self) -> None:
-        """Clear the provider config and restore env-var fallback.
+        """Clear the provider config.
 
         Called from the ``providers/disable`` handler.
         """
         with self._lock:
             self._provider = None
-            self._restore_env()
 
-    def _reconfigure_env(self) -> None:
-        """Apply provider config to the pipeline's env-var-based resolution."""
-        if self._provider is None:
-            return
 
-        prefix = _provider_prefix(self._provider.api_type)
+_STORE = ProviderCredentials()
 
-        # Only inject the model when the provider names one — otherwise leave the
-        # pipeline's configured default in place (a fabricated "prefix/default"
-        # would be rejected by the LLM client).
-        # KOMP_LLM_DEFAULT_MODEL and KOMP_LLM_API_BASE are env keys the LLM client
-        # reads; they are injected here per ACP session, not written to kompend
-        # config.
-        if self._provider.model:
-            self._set_env(EnvVar.LLM_DEFAULT_MODEL, f"{prefix}/{self._provider.model}")
-        self._set_env(EnvVar.LLM_API_BASE, self._provider.base_url)
 
-        # ponytail: headers stay a plain map — ACP sends arbitrary header names
-        # (tests use e.g. ``x-api-key``) and only Authorization is consumed; a
-        # dataclass with one known field plus an unknown-header bag would be more
-        # code, not less. Header names are case-insensitive, hence ``.lower()``.
-        for key, val in self._provider.headers.items():
-            if key.lower() == HttpHeader.AUTHORIZATION:
-                self._set_env(EnvVar.LLM_API_KEY, val.removeprefix("Bearer ").strip())
+def credentials_store() -> ProviderCredentials:
+    """Return the process-wide store shared by the routes and model selection."""
+    return _STORE
 
-    def _set_env(self, key: str, value: str) -> None:
-        """Set an env var, saving the previous value for later restore."""
-        if key not in self._saved_env:
-            self._saved_env[key] = os.environ.get(key)
-        os.environ[key] = value
 
-    def _restore_env(self) -> None:
-        """Restore env vars to their pre-provider-set state."""
-        for key, old_val in self._saved_env.items():
-            if old_val is None:
-                os.environ.pop(key, None)
-            else:
-                os.environ[key] = old_val
-        self._saved_env.clear()
+__all__ = ["LlmApiType", "ProviderConfig", "ProviderCredentials", "credentials_store"]

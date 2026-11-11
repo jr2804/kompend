@@ -12,7 +12,6 @@ from unittest.mock import patch
 import pytest
 
 from kompend.acp.provider_store import (
-    LLM_PROVIDER_MAP,
     LlmApiType,
     ProviderConfig,
     ProviderCredentials,
@@ -73,7 +72,7 @@ class TestProviderCredentials:
         store.disable()
         assert store.get() is None
 
-    def test_set_reconfigures_env(self) -> None:
+    def test_set_and_get_stores_headers(self) -> None:
         store = ProviderCredentials()
         cfg = ProviderConfig(
             api_type="openai",
@@ -81,57 +80,50 @@ class TestProviderCredentials:
             headers={"Authorization": "Bearer sk-test"},
         )
         store.set(cfg)
-        # These names mirror provider_store's env injection (KOMP_LLM_DEFAULT_MODEL is a config-map key).
-        # No model on the provider → the pipeline's own default stays untouched.
-        assert EnvVar.LLM_DEFAULT_MODEL not in os.environ
-        assert os.environ.get(EnvVar.LLM_API_BASE) == "https://api.openai.com/v1"
-        assert os.environ.get(EnvVar.LLM_API_KEY) == "sk-test"
+        retrieved = store.get()
+        assert retrieved is not None
+        assert retrieved.api_key() == "sk-test"
 
-    def test_set_reconfigures_model_when_provided(self) -> None:
+    def test_set_does_not_touch_env(self) -> None:
+        # The store is the only channel: nothing reads KOMP_LLM_API_BASE, so an
+        # endpoint written to os.environ would be silently lost.
         store = ProviderCredentials()
+        store.set(ProviderConfig(api_type="openai", base_url="https://api.openai.com/v1"))
+        assert EnvVar.LLM_API_BASE not in os.environ
+        assert EnvVar.LLM_API_KEY not in os.environ
+        assert EnvVar.LLM_DEFAULT_MODEL not in os.environ
+
+    def test_api_key_is_none_without_authorization(self) -> None:
+        cfg = ProviderConfig(api_type="openai", base_url="https://example.test", headers={"x-other": "1"})
+        assert cfg.api_key() is None
+
+    def test_api_key_accepts_a_bare_token(self) -> None:
         cfg = ProviderConfig(
             api_type="openai",
-            model="gpt-4o",
-            base_url="https://api.openai.com/v1",
+            base_url="https://example.test",
+            headers={"authorization": "sk-plain"},
         )
-        store.set(cfg)
-        assert os.environ.get(EnvVar.LLM_DEFAULT_MODEL) == "openai/gpt-4o"
+        assert cfg.api_key() == "sk-plain"
 
-    def test_disable_restores_env(self) -> None:
+    def test_disable_clears_without_touching_env(self) -> None:
         store = ProviderCredentials()
-        cfg = ProviderConfig(api_type="openai", model="gpt-4o", base_url="https://api.openai.com/v1")
-        store.set(cfg)
-        assert os.environ.get(EnvVar.LLM_DEFAULT_MODEL) == "openai/gpt-4o"
+        store.set(ProviderConfig(api_type="openai", base_url="https://api.openai.com/v1"))
         store.disable()
-        assert EnvVar.LLM_DEFAULT_MODEL not in os.environ
+        assert store.get() is None
         assert EnvVar.LLM_API_BASE not in os.environ
 
-    def test_llm_provider_map(self) -> None:
-        # Well-known apiTypes — four are identity, vertex is overridden.
-        assert LLM_PROVIDER_MAP["anthropic"] == "anthropic"
-        assert LLM_PROVIDER_MAP["openai"] == "openai"
-        assert LLM_PROVIDER_MAP["azure"] == "azure"
-        assert LLM_PROVIDER_MAP["vertex"] == "vertex_ai"
-        assert LLM_PROVIDER_MAP["bedrock"] == "bedrock"
-
-    def test_llm_provider_map_identity_default(self) -> None:
-        # Unknown apiTypes fall through to the identity mapping so custom
-        # protocols Just Work without registering an entry.
-        assert LLM_PROVIDER_MAP["custom"] == "custom"
-        assert LLM_PROVIDER_MAP["my-thing"] == "my-thing"
-
-    def test_llm_provider_map_enumerates_well_known(self) -> None:
-        # `providers/list` advertises the well-known apiTypes only —
-        # unknown keys should not appear via the identity fallback.
-        assert sorted(LLM_PROVIDER_MAP.keys()) == sorted(member.value for member in LlmApiType)
-
     def test_llm_api_type_enum_values(self) -> None:
-        # Enum values must match the wire strings clients send on ACP.
+        # Enum values must match the wire strings clients send on ACP — they are
+        # what ``providers/list`` advertises as ``supported``.
         assert LlmApiType.ANTHROPIC.value == "anthropic"
         assert LlmApiType.OPENAI.value == "openai"
         assert LlmApiType.AZURE.value == "azure"
         assert LlmApiType.VERTEX.value == "vertex"
         assert LlmApiType.BEDROCK.value == "bedrock"
+
+    def test_llm_api_type_vertex_alias_resolves(self) -> None:
+        # Clients on older versions send the underscore spelling.
+        assert LlmApiType("vertex_ai") is LlmApiType.VERTEX
 
 
 class TestJsonProgressCallback:

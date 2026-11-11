@@ -20,6 +20,7 @@ from pydantic_ai.models.test import TestModel
 from pydantic_ai_harness.experimental.acp import AcpSession
 
 from kompend.acp import harness_adapter, model_selection
+from kompend.acp.endpoint_model import EndpointOverrideSelector
 from kompend.acp.model_selection import NO_MODEL_MESSAGE, ConfigModelSelector
 from kompend.llm.user_providers import set_user_providers
 
@@ -35,7 +36,7 @@ class TestBuildKompendAgent:
         agent = cast(Any, harness_adapter.build_kompend_agent())
 
         assert agent.root_capability._can_supply_model
-        assert isinstance(agent.root_capability.get_model(), ConfigModelSelector)
+        assert isinstance(agent.root_capability.get_model(), EndpointOverrideSelector)
 
 
 class TestConfigModelSelector:
@@ -112,8 +113,10 @@ class TestKompendSessionConfig:
         selectors = [c for c in config.capabilities if isinstance(c, SelectModel)]
         assert len(selectors) == 1
         selector = selectors[0].selector
-        assert isinstance(selector, ConfigModelSelector)
+        assert isinstance(selector, EndpointOverrideSelector)
         assert selector.base_dir == tmp_path
+        assert isinstance(selector.fallback, ConfigModelSelector)
+        assert selector.fallback.base_dir == tmp_path
 
     def test_caching_stays_first_when_enabled(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         _patch_session(monkeypatch, prompt_cache=True)

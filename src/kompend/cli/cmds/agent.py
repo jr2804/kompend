@@ -4,10 +4,10 @@ Usage::
 
     kompend agent [--mcp-port <port>]
 
-Starts an ACP agent on stdio via ``pydantic-ai-harness``'s
-``run_acp_stdio_sync``. The harness handles the ACP protocol, session
+Starts an ACP agent on stdio. The harness handles the ACP protocol, session
 management, streaming, tool approval, and cancellation. kompend provides
-the agent, tools, and per-session configuration.
+the agent, tools, per-session configuration, and the ``providers/*`` methods
+(see :mod:`kompend.acp.acp_agent`).
 
 The agent stack is imported at module level: Cyclopts resolves this module
 on demand, so nothing is paid at ``kompend --help`` time.
@@ -16,7 +16,7 @@ The MCP companion lifecycle (start the server task, run the ACP session,
 cancel and drain the task) lives behind :func:`_run_with_mcp_sidecar`, whose
 three collaborators are injectable. The command signature stays the CLI's.
 
-The companion cannot share the main thread's loop: ``run_acp_stdio_sync`` calls
+The companion cannot share the main thread's loop: the ACP session calls
 ``asyncio.run(...)`` and therefore owns — and finally closes — that loop, while
 ``asyncio.create_task`` needs a running one. So the server gets a private loop
 on a daemon thread and the ACP session keeps the main thread; the two loops
@@ -33,9 +33,9 @@ from collections.abc import Callable, Coroutine
 from typing import Any, Final, Protocol
 
 from pydantic_ai import Agent
-from pydantic_ai_harness.experimental.acp import run_acp_stdio_sync
 
-from kompend.acp import build_kompend_agent, kompend_session_config
+from kompend.acp import build_kompend_agent
+from kompend.acp.acp_agent import serve_sync
 from kompend.cli.args.serving import AgentMcpPort
 from kompend.logging import get_logger
 from kompend.mcp.server import create_mcp_server
@@ -242,10 +242,5 @@ def _run_with_mcp_sidecar(
 
 
 def _run_sync(agent: Agent[None, str]) -> None:
-    """Run the ACP agent synchronously."""
-    run_acp_stdio_sync(
-        agent,
-        session_config=kompend_session_config,
-        name="kompend",
-        version="0.1.0",
-    )
+    """Run the ACP agent synchronously, serving the provider routes."""
+    serve_sync(agent)

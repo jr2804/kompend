@@ -17,7 +17,9 @@ from pydantic_ai.capabilities import AbstractCapability, Caching, SelectModel
 from pydantic_ai_harness.experimental.acp import AcpSession, AcpSessionConfig
 
 from kompend.acp.definitions import AgentTask
+from kompend.acp.endpoint_model import EndpointOverrideSelector
 from kompend.acp.model_selection import ConfigModelSelector
+from kompend.acp.provider_store import credentials_store
 from kompend.acp.registry import AgentRegistry
 from kompend.acp.tools import build_toolset
 from kompend.core.config import resolve_config
@@ -44,7 +46,7 @@ def build_kompend_agent() -> Agent[None, str]:
         None,
         instructions="You are a kompend knowledge base assistant.",
         name="acp-session-agent",
-        capabilities=[SelectModel(ConfigModelSelector(Path.cwd()))],
+        capabilities=[SelectModel(_session_selector(Path.cwd()))],
     )
 
 
@@ -77,7 +79,8 @@ def kompend_session_config(session: AcpSession) -> AcpSessionConfig[None]:
     # open several project roots through one server. Run-level capabilities are
     # applied after the agent's own, and the combined capability keeps the last
     # model contribution, so this selector outranks the agent-level fallback.
-    capabilities: list[AbstractCapability[None]] = [SelectModel(ConfigModelSelector(Path(cwd)))]
+    # It also prefers an endpoint injected through ``providers/set``.
+    capabilities: list[AbstractCapability[None]] = [SelectModel(_session_selector(Path(cwd)))]
 
     # A conversational session resends its whole history on every turn, which
     # is exactly what prompt caching pays off on. The capability is the
@@ -91,4 +94,13 @@ def kompend_session_config(session: AcpSession) -> AcpSessionConfig[None]:
         deps=None,
         toolsets=[toolset],
         capabilities=capabilities,
+    )
+
+
+def _session_selector(base_dir: Path) -> EndpointOverrideSelector:
+    """Selector for one workspace: the injected endpoint if any, else the config model."""
+    return EndpointOverrideSelector(
+        base_dir=base_dir,
+        credentials=credentials_store(),
+        fallback=ConfigModelSelector(base_dir),
     )
