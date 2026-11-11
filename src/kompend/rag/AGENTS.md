@@ -43,8 +43,11 @@ retrievers.
   virtual-table grammars SQLAlchemy Core cannot express (bead knox-97pg), so
   splitting this store into ORM calls is out of scope. `schema.py`, `index.py`,
   `query.py` and `filters.py` take an open connection as an argument and never
-  open one — `store.py` owns the store's connection and its lifecycle.
-  `manifest.py` is the exception and opens `kompend.db` itself: the manifest row
+  open one — `store.py` owns the store's connection and its lifecycle. Every
+  statement is a `Final[str]` template filled by `schema.sql(template, **values)`:
+  the fill helper takes a plain `str`, which is the shape bandit accepts, so the
+  family carries no `S608` waiver (knox-88xy). `manifest.py` is the exception and
+  opens `kompend.db` itself: the manifest row
   is read by `recorded_embedding_model()` before any store is opened (the
   doctor calls it on another generation's store), so it cannot depend on a
   `SqliteVecWikiStore` instance. `sqlite_vec_store.py` is a compatibility
