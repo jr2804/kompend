@@ -113,18 +113,26 @@ class TestSaveLoad:
         assert loaded[0].report.results[0].details == {"target": "x"}
 
     def test_to_columns_keep_the_stored_shape(self, tmp_path: Path) -> None:
-        """The model serialises to exactly the seven legacy column values."""
+        """The model serialises to exactly the seven column values, keyed by name."""
         entry = _make_entry()
         columns = entry.to_columns()
-        assert len(columns) == 7
-        assert json.loads(str(columns[2])) == {"context": "check", "fix": False}
-        assert json.loads(str(columns[4])) == {
+        assert set(columns) == {
+            "timestamp",
+            "duration_seconds",
+            "options",
+            "llm",
+            "config_snapshot",
+            "wiki_meta",
+            "report",
+        }
+        assert json.loads(str(columns["options"])) == {"context": "check", "fix": False}
+        assert json.loads(str(columns["config_snapshot"])) == {
             "compile.compiler": "graph",
             "compile.llm.default_model": "test-model",
             "compile.llm.fallback_chain": [],
         }
-        assert json.loads(str(columns[5])) == {"node_count": 10}
-        assert json.loads(str(columns[6]))["health_score"] == 90.0
+        assert json.loads(str(columns["wiki_meta"])) == {"node_count": 10}
+        assert json.loads(str(columns["report"]))["health_score"] == 90.0
 
 
 class TestLastN:

@@ -3,14 +3,12 @@
 Each row holds: timestamp, duration_seconds, options, llm, config_snapshot,
 wiki_meta, report. The stored shape is exactly :meth:`LintEntry.to_columns`,
 and :meth:`LintEntry.from_row` is its inverse, so the table and the model
-cannot drift apart: add a column by adding a field to :class:`LintEntry` and a
-name to :data:`_COLUMNS`. Rows are validated on load, so a corrupt store fails
-here with the field name instead of downstream with a KeyError.
+cannot drift apart: add a column by adding a field to :class:`LintEntry` (a
+mapping key in ``to_columns``). Rows are validated on load, so a corrupt store
+fails here with the field name instead of downstream with a KeyError.
 
 Use save_lint_entry()/load_lint_history() for I/O.
 """
-
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
 
 from __future__ import annotations
 
@@ -22,6 +20,8 @@ from pathlib import Path
 from typing import Any, Final, cast
 
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from kompend.core.keys import (
     COMPILE_COMPILER,
@@ -29,8 +29,8 @@ from kompend.core.keys import (
     COMPILE_LLM_FALLBACK_CHAIN,
 )
 from kompend.core.paths import LINT_HISTORY_FILE, VaultPaths
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import LINT_RUNS_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import lint_runs
 from kompend.core.utils.time import iso_local, now_local
 from kompend.lint.base import LintDetails, LintReport, LintResult, LintRuleOutcome, Severity
 from kompend.lint.runner import LintReportPayload, report_to_payload
@@ -45,8 +45,6 @@ _COLUMNS: Final[tuple[str, ...]] = (
     "wiki_meta",
     "report",
 )
-_COLUMNS_SQL: Final[str] = ", ".join(_COLUMNS)
-_PLACEHOLDERS_SQL: Final[str] = ", ".join("?" * len(_COLUMNS))
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────
@@ -95,17 +93,17 @@ class LintEntry(BaseModel):
     wiki_meta: LintWikiMeta
     report: LintReportPayload
 
-    def to_columns(self) -> tuple[object, ...]:
-        """Serialise to the ``_COLUMNS`` values of one ``lint_runs`` row."""
-        return (
-            self.timestamp,
-            self.duration_seconds,
-            _json_column(self.options),
-            _json_column(self.llm) if self.llm is not None else None,
-            _json_column(self.config_snapshot),
-            _json_column(self.wiki_meta),
-            _json_column(self.report),
-        )
+    def to_columns(self) -> dict[str, object]:
+        """Serialise to the column-keyed values of one ``lint_runs`` row."""
+        return {
+            "timestamp": self.timestamp,
+            "duration_seconds": self.duration_seconds,
+            "options": _json_column(self.options),
+            "llm": _json_column(self.llm) if self.llm is not None else None,
+            "config_snapshot": _json_column(self.config_snapshot),
+            "wiki_meta": _json_column(self.wiki_meta),
+            "report": _json_column(self.report),
+        }
 
     @classmethod
     def from_row(cls, row: sqlite3.Row | Mapping[str, Any]) -> LintEntry:
@@ -223,11 +221,8 @@ def _build_config_snapshot(cfg: Mapping[str, Any]) -> LintConfigSnapshot:
 
 def save_lint_entry(entry: LintEntry, path: Path) -> None:
     """Append *entry* as one row in the ``lint_runs`` table for the vault at *path*."""
-    with open_store(vault_db_path(path)) as conn:
-        conn.execute(
-            f"INSERT INTO {LINT_RUNS_TABLE} ({_COLUMNS_SQL}) VALUES ({_PLACEHOLDERS_SQL})",
-            entry.to_columns(),
-        )
+    with open_store(vault_db_path(path)) as conn, core_connection(conn) as core:
+        core.execute(sqlite_insert(lint_runs).values(**entry.to_columns()))
 
 
 def prune_lint_history(
@@ -247,15 +242,15 @@ def prune_lint_history(
     if not db_path.is_file():
         return 0
 
-    with open_store(db_path) as conn:
-        rows = conn.execute(f"SELECT id, timestamp FROM {LINT_RUNS_TABLE} ORDER BY id").fetchall()
+    with open_store(db_path) as conn, core_connection(conn) as core:
+        rows = core.execute(select(lint_runs.c.id, lint_runs.c.timestamp).order_by(lint_runs.c.id)).mappings().all()
         if not rows:
             return 0
 
         # The survivor computation stays in Python: stored timestamps carry
         # the machine's local offset, and only parsed datetimes compare
         # mixed offsets correctly. The DELETE itself is one statement.
-        surviving = [(r["id"], r["timestamp"]) for r in rows]
+        surviving = [(row["id"], row["timestamp"]) for row in rows]
         if max_age_days is not None:
             cutoff = now_local() - timedelta(days=max_age_days)
             surviving = [(rid, ts) for rid, ts in surviving if _parse_timestamp(ts) >= cutoff]
@@ -263,12 +258,11 @@ def prune_lint_history(
             surviving = surviving[-keep_last:] if keep_last > 0 else []
 
         keep_ids = {rid for rid, _ in surviving}
-        doomed = [r["id"] for r in rows if r["id"] not in keep_ids]
+        doomed = [row["id"] for row in rows if row["id"] not in keep_ids]
         if not doomed:
             return 0
-        placeholders = ", ".join("?" * len(doomed))
-        cursor = conn.execute(f"DELETE FROM {LINT_RUNS_TABLE} WHERE id IN ({placeholders})", doomed)
-        return cursor.rowcount
+        result = core.execute(delete(lint_runs).where(lint_runs.c.id.in_(doomed)))
+        return result.rowcount
 
 
 def load_lint_history(
@@ -286,11 +280,11 @@ def load_lint_history(
     db_path = vault_db_path(path)
     entries: list[LintEntry] = []
     if db_path.is_file():
-        with open_store(db_path) as conn:
+        with open_store(db_path) as conn, core_connection(conn) as core:
             if last_n is None:
-                rows = conn.execute(f"SELECT {_COLUMNS_SQL} FROM {LINT_RUNS_TABLE} ORDER BY id").fetchall()
+                rows = core.execute(select(lint_runs).order_by(lint_runs.c.id)).mappings().all()
             else:
-                rows = conn.execute(f"SELECT {_COLUMNS_SQL} FROM {LINT_RUNS_TABLE} ORDER BY id DESC LIMIT ?", (last_n,)).fetchall()
+                rows = core.execute(select(lint_runs).order_by(lint_runs.c.id.desc()).limit(last_n)).mappings().all()
                 rows = rows[::-1]
         entries = [LintEntry.from_row(row) for row in rows]
 
