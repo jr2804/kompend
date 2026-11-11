@@ -119,6 +119,11 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   link token: a documentation example never protects a file. A reference
   definition protects its target even when no link uses it — the definition is
   page content an author wrote, not an optimisation to drop.
+- **A failed probe keeps the file.** ``_compare_with_cached_extraction`` returns
+  ``COPY`` / ``NOT_A_COPY`` / ``UNKNOWN``, never a bare bool: an ``OSError`` on
+  either side is ``UNKNOWN`` and the file is kept, with a WARNING naming it. An
+  empty directory that cannot be removed is logged at DEBUG and the run still
+  succeeds — ``contextlib.suppress`` used to report both as the happy path.
 - **An unreadable page cancels the destructive decision.** A page that cannot be
   decoded may link any attachment, so a run with one gets a SKIP naming the
   pages (``details["unreadable_pages"]``) and deletes nothing, rather than the

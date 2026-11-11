@@ -261,6 +261,34 @@ def test_a_readable_page_does_not_disable_the_rule(tmp_path: Path) -> None:
     assert not (tmp_path / stale).exists()
 
 
+def test_an_unreadable_cache_entry_keeps_the_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """A cache probe that fails must not read as "not a writer copy" — keep the file.
+
+    ``_is_cached_extraction`` turned ``OSError`` into ``False``, which is the
+    answer that lets the destructive rule delete. A file the rule cannot
+    compare is a file it cannot prove expendable.
+    """
+    _source(tmp_path)
+    kept = _writer_copy(tmp_path, _STEM, "report_img_14.png")
+    _page(tmp_path, None)
+    cache_file = VaultPaths(tmp_path).images_dir / "report_img_14.png"
+    real_read_bytes = Path.read_bytes
+
+    def _refuse(self: Path) -> bytes:
+        # The cache copy is readable; the attachment copy is not.
+        if self == tmp_path / kept:
+            raise OSError(5, "I/O error", str(self))
+        return real_read_bytes(self)
+
+    monkeypatch.setattr(Path, "read_bytes", _refuse)
+    with caplog.at_level(logging.WARNING, logger="kompend.lint.structural.attachments"):
+        flagged = unreferenced_attachment_files(tmp_path)
+
+    assert flagged == []
+    assert any("report_img_14.png" in record.getMessage() for record in caplog.records)
+    assert cache_file.is_file()
+
+
 def _source(base_dir: Path) -> None:
     """A live source, so the attachments dir counts as a live slug."""
     sources = VaultPaths(base_dir).sources_dir

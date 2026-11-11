@@ -14,11 +14,11 @@ the manifest row, and the lint runner gates them behind its
 
 from __future__ import annotations
 
-import contextlib
 import os
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -46,6 +46,15 @@ _HTML_TARGET_RE = re.compile(
 )
 
 logger = get_logger(__name__)
+
+
+class _CacheMatch(StrEnum):
+    """What comparing an attachment with its cached extraction proved."""
+
+    COPY = "copy"
+    NOT_A_COPY = "not-a-copy"
+    #: The comparison itself failed; nothing is known about the file.
+    UNKNOWN = "unknown"
 
 
 @dataclass(frozen=True, slots=True)
@@ -360,8 +369,7 @@ class OrphanAttachmentsRule(BaseLintRule):
         if vp.attachments_dir.is_dir():
             for slug_dir in sorted(vp.attachments_dir.iterdir()):
                 if slug_dir.is_dir() and not any(slug_dir.iterdir()):
-                    with contextlib.suppress(OSError):
-                        slug_dir.rmdir()
+                    _remove_empty_dir(slug_dir)
         return updated
 
 
@@ -379,7 +387,7 @@ def unreferenced_attachment_files(base_dir: Path) -> list[str]:
     written pages do not reference is not part of the wiki. Only directories
     whose slug matches a live source are considered — dead slugs are
     :class:`OrphanAttachmentsRule`'s job — and only files byte-identical to an
-    extracted image (:func:`_is_cached_extraction`), so nothing the wiki cannot
+    extracted image (:func:`_compare_with_cached_extraction`), so nothing the wiki cannot
     recreate is ever reported.
 
     Returns nothing when a page could not be read: an unreadable page may link
@@ -407,8 +415,8 @@ def unreferenced_attachment_files(base_dir: Path) -> list[str]:
             continue  # orphan-attachments owns dead slugs, protected ones are never pruned
         if rel in referenced:
             continue
-        if not _is_cached_extraction(path, cache_dir):
-            continue  # not a regenerable copy — leave it alone
+        if _compare_with_cached_extraction(path, cache_dir) is not _CacheMatch.COPY:
+            continue  # not a provable regenerable copy — leave it alone
         stale.append(rel)
     return stale
 
@@ -448,20 +456,26 @@ def _live_attachment_slugs(base_dir: Path) -> set[str]:
     return set(live_attachment_slugs(VaultPaths(base_dir).sources_dir).live)
 
 
-def _is_cached_extraction(path: Path, cache_dir: Path) -> bool:
+def _compare_with_cached_extraction(path: Path, cache_dir: Path) -> _CacheMatch:
     """Is *path* a byte-identical copy of an image the parser extracted?
 
     Compares content, not just the name: same-named files diverge when a source
     is re-parsed, and a re-parse invalidates the copy anyway. Cheap enough —
     the caller only asks about files no page references.
+
+    The three answers are distinct on purpose. An I/O failure on either side is
+    ``UNKNOWN``, not ``NOT_A_COPY``: the caller is a destructive rule, and a
+    file it cannot read is a file it cannot prove expendable. Both outcomes
+    keep the file, but only ``UNKNOWN`` says why anyone should care.
     """
     original = cache_dir / path.name
     try:
         if not original.is_file() or original.stat().st_size != path.stat().st_size:
-            return False
-        return original.read_bytes() == path.read_bytes()
-    except OSError:
-        return False
+            return _CacheMatch.NOT_A_COPY
+        return _CacheMatch.COPY if original.read_bytes() == path.read_bytes() else _CacheMatch.NOT_A_COPY
+    except OSError as exc:
+        logger.warning("Cannot compare %s with its cached extraction, keeping it: %s", path, exc)
+        return _CacheMatch.UNKNOWN
 
 
 def _referenced_attachment_paths(base_dir: Path) -> set[str]:
@@ -562,11 +576,26 @@ def _html_targets(fragment: str) -> Iterator[str]:
             yield value
 
 
+def _remove_empty_dir(path: Path) -> bool:
+    """Remove *path* when it is empty; report whether it is gone.
+
+    An empty directory nothing can delete (a lock, a permission, a handle held
+    by an editor) is not a lint failure — the files it held were already
+    deleted. It is a fact worth logging, because a directory that survives
+    every run is a hint that something is watching it.
+    """
+    try:
+        path.rmdir()
+    except OSError as exc:
+        logger.debug("Could not remove empty attachment directory %s: %s", path, exc)
+        return False
+    return True
+
+
 def _prune_empty_dirs(attachments_root: Path) -> None:
     """Remove directories left empty under ``attachments/`` (deepest first)."""
     for d in sorted((p for p in attachments_root.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
-        with contextlib.suppress(OSError):
-            d.rmdir()
+        _remove_empty_dir(d)
 
 
 def _vault_relative(base_dir: Path, candidate: Path) -> str | None:

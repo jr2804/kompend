@@ -7,7 +7,10 @@ nothing. ``fix()`` deletes the file on disk + tombstones the manifest entry.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+
+import pytest
 
 from kompend.core.models.attachments import Attachment, AttachmentManifest, adopt_orphan_attachments
 from kompend.core.models.wiki import CompiledWiki
@@ -125,6 +128,39 @@ def test_fix_tombstone_prevents_readoption(tmp_path: Path) -> None:
     adopted = adopt_orphan_attachments(vault)
     assert not any(a.path == "orphan-source/old.c" for a in adopted)
     assert "orphan-source/old.c" in AttachmentManifest(vault / ".kompend" / "attachments.jsonl").deleted_paths()
+
+
+def test_fix_survives_an_empty_dir_it_cannot_remove(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    """An undeletable empty directory is logged, not reported as removed.
+
+    ``contextlib.suppress(OSError)`` hid this: the run said "directory cleaned"
+    while the directory stayed, and the next run said it again.
+    """
+    vault = tmp_path
+    (vault / "sources").mkdir()
+    orphan = _make_orphan(vault, "orphan-source", "locked.c")
+    rel_path = orphan.relative_to(vault).as_posix()
+    slug_dir = orphan.parent
+    real_rmdir = Path.rmdir
+
+    def _refuse(self: Path, *args: object, **kwargs: object) -> None:
+        if self == slug_dir:
+            raise OSError(13, "Permission denied", str(self))
+        real_rmdir(self, *args, **kwargs)
+
+    rule = OrphanAttachmentsRule()
+    rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(vault / "sources"))
+    with monkeypatch.context() as m, caplog.at_level(logging.DEBUG, logger="kompend.lint.structural.attachments"):
+        m.setattr(Path, "rmdir", _refuse)
+        results = rule.fix(
+            CompiledWiki(nodes=[], edges=[], toc=[]),
+            [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
+        )
+
+    assert results[0].fix_applied is True
+    assert not orphan.exists()
+    assert slug_dir.is_dir(), "the directory could not be removed, so it is still there"
+    assert any(str(slug_dir) in record.getMessage() for record in caplog.records)
 
 
 def _seed_manifest(base_dir: Path, path: str) -> None:
