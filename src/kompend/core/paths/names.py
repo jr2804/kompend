@@ -55,6 +55,10 @@ PROJECT_CONFIG_FILE: Final[str] = "kompend.toml"
 #: :func:`kompend.core.paths.vault_paths` to fail fast when pointed at a
 #: non-vault directory.
 VAULT_MARKERS: Final[tuple[str, ...]] = (PROJECT_CONFIG_FILE, KOMP_CONFIG_FILE)
+#: The version-control rail file at the vault root. Its absence is what makes a
+#: directory look unversioned, so the gitignore scaffolding and the
+#: ``kompend gitignore`` command read the name from here, never inline.
+GITIGNORE_FILE: Final[str] = ".gitignore"
 RUMDL_CONFIG_FILE: Final[str] = f"{KOMP_DIR}/rumdl.toml"
 #: parsecraft's own configuration file inside a vault. parsecraft owns its
 #: routing vocabulary, so the file sits in the same tool directory as kompend's
