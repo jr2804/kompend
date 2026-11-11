@@ -77,6 +77,7 @@ class TestDistillSessionResume:
 
         bodies = [p.read_text(encoding="utf-8") for p in tmp_path.glob("*.md")]
         assert sum("LLM WROTE THIS" in body for body in bodies) == 1, "the page the round did save must survive"
+        assert len(bodies) == 1, "the group the failed round never reached must not get a deterministic page"
 
     def test_a_non_llm_failure_propagates_without_writing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")

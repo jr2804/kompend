@@ -221,7 +221,7 @@ def _distill_agentic(
                 logger.info("AgenticDistillAgent session %d exhausted its request budget; resuming with the remaining group(s)", sessions)
             else:
                 pages.update({entry["tag"]: deps.pages[entry["tag"]] for entry in pending if entry["tag"] in deps.pages})
-                kept = _write_group_pages(groups, pages, timestamp, output_dir)
+                kept = _write_group_pages(groups, pages, timestamp, output_dir, merge_missing=False)
                 remaining = [entry["tag"] for entry in pending if entry["tag"] not in pages]
                 logger.error(
                     "AgenticDistillAgent session %d failed after keeping %d page(s); %d group(s) left without a page: %s — rerun distill to retry them",
@@ -271,12 +271,21 @@ def _write_group_pages(
     pages: dict[str, DistillPage],
     timestamp: str,
     output_dir: Path,
+    *,
+    merge_missing: bool = True,
 ) -> list[Path]:
-    """Write one page per group, merging groups without an agent page deterministically."""
+    """Write one page per group, merging groups without an agent page deterministically.
+
+    ``merge_missing=False`` writes only groups the agent produced a page for.
+    A failed round keeps what it saved and must not paper over the groups it
+    never reached with a deterministic merge the caller believes is LLM work.
+    """
     written: list[Path] = []
     for tag, note_list in groups.items():
         page_data = pages.get(tag)
         if page_data is None:
+            if not merge_missing:
+                continue
             page = _synthesize_fallback(tag, note_list)
         else:
             raw_tags = page_data.get("tags")  # nocheck: OKF frontmatter key, not wiki metadata
