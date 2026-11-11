@@ -1,7 +1,5 @@
 """Compiled wiki graph models (Tier 4: Compilation output) and cache loading."""
 
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
-
 from __future__ import annotations
 
 import json
