@@ -45,8 +45,43 @@ def test_all_gates_runner_lists_the_guards() -> None:
     """`all.py` must invoke the guards - a gate nobody runs is not a gate."""
     source = (CHECKS / "all.py").read_text(encoding="utf-8")
 
-    for name in ("enum_cache", "config_literals", "cli_surface", "dox", "mcp_parity"):
+    for name in ("enum_cache", "config_literals", "cli_surface", "dox", "mcp_parity", "formatter"):
         assert name in source
+
+
+def test_the_formatter_gate_passes_on_the_current_tree() -> None:
+    """The sorter must be a no-op on the tree the gate judges."""
+    if shutil.which("rord") is None:
+        pytest.skip("the structural sorter is not installed in this environment")
+    result = _run("check_formatter.py")
+
+    assert result.returncode == 0, f"the formatter gate failed:\n{result.stdout}\n{result.stderr}"
+
+
+def test_the_formatter_gate_reports_a_missing_sorter_as_could_not_judge() -> None:
+    """A missing sorter is not a pass — the gate certified nothing."""
+    gate = _formatter_gate()
+
+    with mock.patch.object(gate.shutil, "which", return_value=None):
+        assert gate.main() == 2
+
+
+def test_the_formatter_gate_separates_violations_from_an_unjudgeable_sorter() -> None:
+    """Exit 1 is a finding; any other failure of the sorter is exit 2."""
+    gate = _formatter_gate()
+    violations = subprocess.CompletedProcess(args=[], returncode=1, stdout="would sort: x.py", stderr="")
+    broken = subprocess.CompletedProcess(args=[], returncode=3, stdout="", stderr="boom")
+
+    with (
+        mock.patch.object(gate.shutil, "which", return_value="rord"),
+        mock.patch.object(gate.subprocess, "run", return_value=violations),
+    ):
+        assert gate.main() == 1
+    with (
+        mock.patch.object(gate.shutil, "which", return_value="rord"),
+        mock.patch.object(gate.subprocess, "run", return_value=broken),
+    ):
+        assert gate.main() == 2
 
 
 def test_enum_cache_guard_knows_edge_type() -> None:
@@ -956,6 +991,15 @@ def _runner() -> Any:
     sys.path.insert(0, str(CHECKS))
     try:
         return importlib.import_module("all")
+    finally:
+        sys.path.pop(0)
+
+
+def _formatter_gate() -> Any:
+    """Import the formatter gate module (it lives outside the package tree)."""
+    sys.path.insert(0, str(CHECKS))
+    try:
+        return importlib.import_module("check_formatter")
     finally:
         sys.path.pop(0)
 

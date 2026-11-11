@@ -41,6 +41,7 @@ around it.
 | Absolute path in a `.kompend/` artifact (`citing_source = str(path)`) | ❌ | Relativize at the persistence boundary (`rel_to_vault(path, base_dir)`) |
 | `pip install` / `uv pip install` in code, docs or a comment | ❌ | `uv add` / `uv remove` / `uv lock` / `uv sync` — pip bypasses `uv.lock` (POLICIES, Boundaries) |
 | `pip install …` / `uv pip install …` in docs, scripts or a fix hint | ❌ | `uv add` / `uv lock` / `uv sync` — a pip install bypasses `uv.lock` (`POLICIES.md`, Boundaries) |
+| A dataclass default naming a module-level function or a class defined further down | ❌ | `field(default_factory=...)`, or define the name above its user — the sorter (`mise run format`) reorders the file, and the default then raises `NameError` at import (guard: `tests/unit/test_dataclass_defaults.py`) |
 
 The first five are instances of the universal magic-number rule
 (see `POLICIES.md`); rows 6–9 are kompend-specific. Three of them are enforced:

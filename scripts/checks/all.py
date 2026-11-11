@@ -140,6 +140,7 @@ def _steps(fast: bool, vault: Path) -> list[Step]:
             "antipatterns",
             "dox",
             "field_consistency",
+            "formatter",
             "mcp_parity",
         )
     ]
