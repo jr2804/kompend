@@ -9,17 +9,18 @@ are processed. A re-run merges new references with existing ones so the
 store is cumulative across compilations.
 """
 
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
-
 from __future__ import annotations
 
 import json
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import delete, literal_column, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
 from kompend.core.models.references import Reference
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import REFERENCES_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import bib_references
 from kompend.core.text.matching import cosine
 from kompend.core.types import ReasonCode
 from kompend.logging import get_logger
@@ -63,8 +64,11 @@ class ReferenceStore:
         if not self._db_path.exists():
             self._data = {}
             return
-        with open_store(self._db_path) as conn:
-            rows = conn.execute(f"SELECT source, payload FROM {REFERENCES_TABLE} ORDER BY rowid").fetchall()
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            # ``rowid`` is the implicit insertion order: the table has a composite
+            # primary key and therefore no declared ordering column, and the
+            # in-memory records must load back in the order they were saved.
+            rows = core.execute(select(bib_references).order_by(literal_column("rowid"))).mappings().all()
         data: dict[str, list[dict[str, Any]]] = {}
         for row in rows:
             try:
@@ -86,7 +90,7 @@ class ReferenceStore:
         within the source), else its list position; the full dict is preserved
         in the ``payload`` column, so load round-trips exactly.
         """
-        rows: list[tuple[str, str, str]] = []
+        rows: list[dict[str, str]] = []
         for source, refs in self._data.items():
             seen: set[str] = set()
             for index, ref in enumerate(refs):
@@ -97,13 +101,11 @@ class ReferenceStore:
                     ref_id = f"{base}#{suffix}"
                     suffix += 1
                 seen.add(ref_id)
-                rows.append((source, ref_id, json.dumps(ref)))
-        with open_store(self._db_path) as conn:
-            conn.execute(f"DELETE FROM {REFERENCES_TABLE}")
-            conn.executemany(
-                f"INSERT INTO {REFERENCES_TABLE}(source, ref_id, payload) VALUES (?, ?, ?)",
-                rows,
-            )
+                rows.append({"source": source, "ref_id": ref_id, "payload": json.dumps(ref)})
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            core.execute(delete(bib_references))
+            if rows:
+                core.execute(sqlite_insert(bib_references), rows)
 
     def add_source(self, source: str, refs: list[Reference]) -> int:
         """Replace the reference list for *source* with *refs*.
