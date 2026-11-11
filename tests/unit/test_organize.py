@@ -8,6 +8,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
+from sqlalchemy import select
 
 from kompend.agents.categorize import CategorizeAgent
 from kompend.agents.categorize_models import CategoryNode as PydanticNode
@@ -28,8 +29,9 @@ from kompend.core.models import CompiledWiki, WikiNode, load_cached_wiki
 from kompend.core.models.enums import NodeType
 from kompend.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, KOMP_DIR, ORGANIZE_REPORT_FILE
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import ORGANIZE_REPORTS_TABLE, PROVENANCE_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.schema import PROVENANCE_TABLE
+from kompend.core.store.tables import organize_reports
 from kompend.core.text.slug import slugify
 from kompend.organize import (
     CategoryNode,
@@ -721,13 +723,48 @@ class TestOrganizeSourcesApply:
         assert (sources / "papers" / "b.md").exists()
         assert len(result.moves) == 2
         # Report persisted to the store (organize_reports)
-        with open_store(vault_db_path(base)) as conn:
-            row = conn.execute(
-                f"SELECT dry_run, moves FROM {ORGANIZE_REPORTS_TABLE} ORDER BY id DESC LIMIT 1",  # noqa: S608
-            ).fetchone()
+        with open_store(vault_db_path(base)) as conn, core_connection(conn) as core:
+            row = core.execute(select(organize_reports).order_by(organize_reports.c.id.desc()).limit(1)).first()
         assert row is not None
-        assert row["dry_run"] == 0
-        assert len(json.loads(row["moves"])) == 2
+        assert row.dry_run == 0
+        assert len(json.loads(row.moves)) == 2
+
+    def test_report_row_carries_every_column(self, tmp_path: Path) -> None:
+        """The persisted row fills all five payload columns, not just the two read here.
+
+        The write is a Core insert of one values mapping; a missing key would
+        fall back to the column's server default and the run's categories or
+        link-update counters would silently read as empty later.
+        """
+        base = tmp_path
+        sources = base / "sources"
+        sources.mkdir()
+        (sources / "a.md").write_text("a")
+        _write_extraction(base, "a.md", "about a")
+
+        llm = _fake_llm(
+            {
+                "categories": [{"name": "papers", "files": ["a.md"], "subcategories": []}],
+                "unfiled": [],
+            },
+        )
+
+        organize_sources(
+            base_dir=base,
+            sources_dir=sources,
+            output_dir=base / "wiki",
+            categorize_agent=llm,
+            config=OrganizeConfig(),
+            dry_run=False,
+        )
+
+        with open_store(vault_db_path(base)) as conn, core_connection(conn) as core:
+            row = core.execute(select(organize_reports).order_by(organize_reports.c.id.desc()).limit(1)).first()
+        assert row is not None
+        assert row.written_at
+        assert json.loads(row.categories) == [{"name": "papers", "files": ["a.md"], "subcategories": []}]
+        assert json.loads(row.moves) == [{"old": "a.md", "new": "papers/a.md"}]
+        assert json.loads(row.link_updates) == {"provenance_files": 0, "tier_state": 0, "wiki_files": 0, "wiki_node_metadata": 0}
 
 
 class TestOrganizeReportPath:

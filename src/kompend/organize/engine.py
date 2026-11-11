@@ -5,10 +5,11 @@ loading, LLM categorisation, tree validation, file moves and wiki link
 updates.  Callers (CLI, tests) get back an :class:`OrganizeResult` that
 contains the proposed tree, the list of moves, and the link-updater
 counters so they can render a meaningful summary.
-"""
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
-# no runtime value ever enters an identifier or statement.
+The one write goes through SQLAlchemy Core against the shared table object,
+so the table and column names live in :mod:`kompend.core.store.tables` and no
+identifier is ever built from a string.
+"""
 
 from __future__ import annotations
 
@@ -17,11 +18,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
 from kompend.agents.categorize import CategorizeAgent
 from kompend.core.config import OrganizeConfig, resolve_config
 from kompend.core.paths import is_protected_source
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import ORGANIZE_REPORTS_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import organize_reports
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
 from kompend.organize.categorize import (
@@ -178,17 +181,15 @@ def _write_report(
     One row per run, so ``kompend organize`` history survives in ``kompend.db``.
     """
     db_path = vault_db_path(base_dir)
-    with open_store(db_path) as conn:
-        conn.execute(
-            f"INSERT INTO {ORGANIZE_REPORTS_TABLE}(written_at, dry_run, categories, moves, link_updates) VALUES (?, ?, ?, ?, ?)",
-            (
-                iso_local(),
-                int(dry_run),
-                json.dumps(_tree_to_json(tree), ensure_ascii=False),
-                json.dumps([{"old": m.old, "new": m.new} for m in moves], ensure_ascii=False),
-                json.dumps(link_updates, ensure_ascii=False),
-            ),
-        )
+    values = {
+        "written_at": iso_local(),
+        "dry_run": int(dry_run),
+        "categories": json.dumps(_tree_to_json(tree), ensure_ascii=False),
+        "moves": json.dumps([{"old": m.old, "new": m.new} for m in moves], ensure_ascii=False),
+        "link_updates": json.dumps(link_updates, ensure_ascii=False),
+    }
+    with open_store(db_path) as conn, core_connection(conn) as core:
+        core.execute(sqlite_insert(organize_reports).values(**values))
 
 
 def _tree_to_json(tree: CategoryTree) -> list[dict[str, object]]:
