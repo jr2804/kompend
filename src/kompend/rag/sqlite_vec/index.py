@@ -10,13 +10,11 @@ is the single rule, applied in ``build_index`` so the manifest records exactly
 what was embedded.
 """
 
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
-
 from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import sqlite_vec
 
@@ -31,10 +29,17 @@ from kompend.rag.sqlite_vec.schema import (
     VEC_FTS,
     VEC_ITEMS,
     VEC_TAGS,
+    sql,
 )
 from kompend.rag.vector_store import attributes_to_list, embed_node, embed_text, figure_paths
 
 logger = get_logger(__name__)
+
+_INSERT_ITEMS: Final[str] = "INSERT INTO {table} (id, embedding, title, node_type, source_file, content_preview) VALUES (?, ?, ?, ?, ?, ?)"
+_INSERT_FTS: Final[str] = "INSERT INTO {table} (id, title, content_preview, node_type, source_file) VALUES (?, ?, ?, ?, ?)"
+_INSERT_TAGS: Final[str] = "INSERT INTO {table} (item_id, tag) VALUES (?, ?)"
+_INSERT_ATTRIBUTES: Final[str] = "INSERT INTO {table} (item_id, token) VALUES (?, ?)"
+_INSERT_ATTR_KEYS: Final[str] = "INSERT INTO {table} (item_id, key) VALUES (?, ?)"
 
 
 def index_nodes(
@@ -65,16 +70,13 @@ def index_nodes(
             return 0
         count = len(items)
         conn.executemany(
-            f"INSERT INTO {VEC_ITEMS} (id, embedding, title, node_type, source_file, content_preview) VALUES (?, ?, ?, ?, ?, ?)",
+            sql(_INSERT_ITEMS, table=VEC_ITEMS),
             items,
         )
-        conn.executemany(
-            f"INSERT INTO {VEC_FTS} (id, title, content_preview, node_type, source_file) VALUES (?, ?, ?, ?, ?)",
-            fts_rows,
-        )
-        conn.executemany(f"INSERT INTO {VEC_TAGS} (item_id, tag) VALUES (?, ?)", tag_rows)
-        conn.executemany(f"INSERT INTO {VEC_ATTRIBUTES} (item_id, token) VALUES (?, ?)", attribute_rows)
-        conn.executemany(f"INSERT INTO {VEC_ATTR_KEYS} (item_id, key) VALUES (?, ?)", attr_key_rows)
+        conn.executemany(sql(_INSERT_FTS, table=VEC_FTS), fts_rows)
+        conn.executemany(sql(_INSERT_TAGS, table=VEC_TAGS), tag_rows)
+        conn.executemany(sql(_INSERT_ATTRIBUTES, table=VEC_ATTRIBUTES), attribute_rows)
+        conn.executemany(sql(_INSERT_ATTR_KEYS, table=VEC_ATTR_KEYS), attr_key_rows)
         items.clear()
         fts_rows.clear()
         tag_rows.clear()
