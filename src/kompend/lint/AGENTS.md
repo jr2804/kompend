@@ -17,7 +17,8 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 
 | Module | Contents |
 |--------|----------|
-| ``base.py`` | ``Severity``, ``LintRuleOutcome``, ``LintResult``, ``LintDetails`` (the documented keys of a finding's payload), ``BaseLintRule`` ABC |
+| ``base.py`` | ``Severity``, ``LintRuleOutcome``, ``LintResult``, ``BaseLintRule`` ABC |
+| ``details.py`` | ``LintDetails`` — the documented keys of a finding's payload; its own module because a dataclass default names it, and the formatter sorts plain classes BELOW the dataclasses |
 | ``runner.py`` | ``LintRunner``, ``LintReport`` — orchestrates rule execution; ``LintReportPayload``/``LintResultPayload`` are the validated wire shapes (dumped to JSON, loaded from history) |
 | ``structural/`` | The programmatic rules, one module per family (see **Structural families** below); ``structural/__init__.py`` is the registry — ``STRUCTURAL_RULES``, ``RULE_BY_NAME`` and the re-exported rule classes, so ``kompend.lint.structural`` stays the one import path |
 | ``flow.py`` | ``LintStep`` (the planned step names, also the history ``context``), ``run_full_lint_flow``/``_run_pass`` (one pass over a rule set, fixes persisted), ``persist_lint_fixes``, ``_make_lint_agent``, and ``CHECK_STEP_RULES`` — the deterministic rules of the ``check`` step |
@@ -84,7 +85,7 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   factories: they are registered by name in ``RULE_BY_NAME`` only and
   instantiated by ``LintRunner._resolve_rules``.
 - **A finding's details have a documented shape.** ``LintDetails`` in
-  ``base.py`` declares every key a rule writes into a finding's ``details``
+  ``details.py`` declares every key a rule writes into a finding's ``details``
   (``LintResult.details`` and ``RemediationAction.details`` are typed with
   it), so a typo in a key is a type error instead of a silently different
   record in the lint history. A new key is declared there first, in the block
