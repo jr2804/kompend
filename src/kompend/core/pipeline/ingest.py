@@ -23,6 +23,7 @@ from kompend.core.keys import (
 from kompend.core.models import ElementType, MetadataField, ParsedDocument
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.bounded_parse import DeadlineWorker, ParseDeadlineExceeded
+from kompend.core.pipeline.events import ProgressDetail
 from kompend.core.pipeline.failure_bundle import write_failure_bundle
 from kompend.core.pipeline.parse_cache import (
     PARSE_CACHE_PARSER_KEY,
@@ -418,7 +419,7 @@ def ingest_documents(  # noqa: PLR0915 — many statements for structured ingest
                 logger.info("Dedup: %d document(s) identified as identical and will be skipped during compile", dedup_skipped)
 
         if progress_fn is not None:
-            progress_fn(total, total, "done")
+            progress_fn(total, total, ProgressDetail.DONE)
 
         state_store.save(state)
     return IngestResult(

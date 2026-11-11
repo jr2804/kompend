@@ -30,7 +30,7 @@ persistence, and standalone ingestion.
 | `bounded_parse.py`            | `DeadlineWorker`, `ParseDeadlineExceeded` — per-file wall-clock budget, enforced by a reusable worker process (`ingest.parse_timeout_s`; `0` parses in-process) |
 | `stall_watch.py`              | `StallWatchdog`, `WatchStage`, `DEFAULT_STALL_WARN_S` — per-item heartbeat observer beside the `DeadlineWorker`: warns **once** per item whose beat goes silent ("no progress for N s in stage X: file"); one watchdog per run (`stall_warn_s`, default 30 s, `0` disables); `last_stage` feeds the deadline row's detail |
 | `backend_capture.py`          | `capture_backend_output`, `BackendBanners`, `backend_name` — per-thread stdout/stderr swap for the parse duration: backend banners (docling, transformers) become attributed INFO records in the run log instead of terminal noise; replace-not-tee, per-parse cap (`DEFAULT_MAX_BANNER_LINES`); the `DeadlineWorker` ships worker-process banners to the parent |
-| `events.py`                   | `PipelineEvent`, `PipelinePhase`, `PipelineEventKind`, `PipelineEventField`, `PipelineEventBus`, `PipelineEventSink` — the typed payload behind `WikiPipeline.emit`; the bus fans one event out to every registered sink. `PipelinePhase`/`PipelineEventKind` are the public vocabulary; `PipelineEventField` is the JSONL record contract |
+| `events.py`                   | `PipelineEvent`, `PipelinePhase`, `PipelineEventKind`, `ProgressDetail`, `PipelineEventField`, `PipelineEventBus`, `PipelineEventSink` — the typed payload behind `WikiPipeline.emit`; the bus fans one event out to every registered sink. `PipelinePhase`/`PipelineEventKind`/`ProgressDetail` are the public vocabulary (`ProgressDetail` is the closed set of `detail` sentinels: `starting`, `done`, `vlm`, `captioning`; any other `detail` names the current unit); `PipelineEventField` is the JSONL record contract |
 | `event_sinks.py`              | `CallbackSink` (the rich progress bar), `JsonlSink` (one JSON object per event, append mode), `CollectingSink` (in-memory test collector); a ledger or OTel adapter implements `PipelineEventSink` directly and is not special-cased |
 | `otel_sink.py`                | `OtelEventSink` — projects the same events onto `pipeline.run` → `pipeline.<phase>` → `pipeline.<phase>.source` spans; carries `kompend.run_id`/`phase`/`current`/`total`/`detail`/`source`/`duration_ms`, copies extra emit attributes as `kompend.<key>`, and closes a span still open at the run boundary with `kompend.incomplete=true`; inert unless `KOMP_OTEL_ENABLED` and the `otel` extra are present |
 | `reasons.py`                  | `reason_code_for` — maps a raised/worker-flattened exception to its `ReasonCode` |
@@ -177,9 +177,11 @@ persistence, and standalone ingestion.
   progress callback. Sinks register with `pipeline.subscribe_events(sink)` or
   `pipeline.event_bus.subscribe(sink)` — no emit call site changes when a
   consumer is added. A sink failure is logged at WARNING and skipped; a
-  diagnostic never aborts a run. The `PipelinePhase`/`PipelineEventKind`
-  values are public (JSONL consumers key on them): add, never rename. Stdlib
-  only — the bus is not a second logging framework.
+  diagnostic never aborts a run. The `PipelinePhase`/`PipelineEventKind`/
+  `ProgressDetail` values are public (JSONL consumers key on them): add, never
+  rename. Emit sites pass `ProgressDetail` members, never the string —
+  `tests/unit/test_progress_protocol.py` walks the emitters and fails on a
+  literal sentinel. Stdlib only — the bus is not a second logging framework.
 - **Machine spans ride the bus.** `OtelEventSink` is auto-subscribed by
   `WikiPipeline` when OTel is enabled: a phase span opens on `started`,
   per-source spans on `item_started` (bus-only, never on the bar), and both

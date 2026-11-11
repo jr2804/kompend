@@ -22,6 +22,7 @@ from kompend.cli.settings import build_cli_overrides, config_file_from_ctx, pars
 from kompend.cli.workflow.pipeline import resolve_compile_inputs
 from kompend.core.cancel import CancelState
 from kompend.core.config import resolve_config
+from kompend.core.pipeline.events import ProgressDetail
 from kompend.core.pipeline.ingest import ingest_documents
 from kompend.core.trust.actor import resolve_actor
 from kompend.logging import get_console, get_err_console
@@ -98,7 +99,7 @@ def ingest_cmd(
 
     def _progress(current: int, total: int, detail: str) -> None:
         nonlocal phase
-        if detail == "done":
+        if detail == ProgressDetail.DONE:
             tracker.update_progress(total, "Ingest complete")
         elif detail.startswith("embedding "):
             if phase == 0:

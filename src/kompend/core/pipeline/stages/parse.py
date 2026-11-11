@@ -28,6 +28,7 @@ from kompend.core.pipeline.attachments import (
     iter_ingestible_attachments,
 )
 from kompend.core.pipeline.config import PipelineConfig
+from kompend.core.pipeline.events import ProgressDetail
 from kompend.core.pipeline.parallelism import describe_parallelism
 from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.pipeline.runtime import PipelineRuntime
@@ -84,7 +85,7 @@ def parse_and_chunk(
     if not source_files:
         return []
 
-    pipeline.emit("parse", 0, len(source_files), "starting")
+    pipeline.emit("parse", 0, len(source_files), ProgressDetail.STARTING)
 
     # Auto-adopt orphaned attachments (files under attachments/<slug>/ with
     # no manifest entry — recovery after manifest loss, or files dropped in
@@ -212,7 +213,7 @@ def parse_and_chunk(
         finally:
             watchdog.close()
 
-        pipeline.emit("parse", len(source_files), len(source_files), "done")
+        pipeline.emit("parse", len(source_files), len(source_files), ProgressDetail.DONE)
 
         # ── Process ingestible attachments ──────────────────────────────
         att_trees = _process_attachments(pipeline, ledger)
@@ -223,11 +224,11 @@ def parse_and_chunk(
         # Summarization runs one LLM session per tree and can take hours for
         # large vaults — emit the summary sub-phase so the bar tracks it
         # instead of pinning at "Parsed N file(s) 100%".
-        pipeline.emit("summary", 0, len(trees), "starting")
+        pipeline.emit("summary", 0, len(trees), ProgressDetail.STARTING)
         for idx, tree in enumerate(trees):
             pipeline.emit("summary", idx + 1, len(trees), tree_label(tree))
             pipeline.summarizer.summarize(tree)
-        pipeline.emit("summary", len(trees), len(trees), "done")
+        pipeline.emit("summary", len(trees), len(trees), ProgressDetail.DONE)
 
     return trees
 
@@ -312,7 +313,7 @@ def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list
             logger.debug("VLM captioner not available for attachments: %s", exc, exc_info=is_verbose())
 
     trees: list[ChunkTree] = []
-    pipeline.emit("parse", 0, len(ingestible), "starting")
+    pipeline.emit("parse", 0, len(ingestible), ProgressDetail.STARTING)
     for idx, att in enumerate(ingestible):
         pipeline.emit("parse", idx + 1, len(ingestible), f"asset: {att.filename}")
 

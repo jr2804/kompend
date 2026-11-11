@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import cast
 
 from kompend.core.models import Chunk, ChunkTree, ElementType, MetadataField, ResolvedChunk
+from kompend.core.pipeline.events import ProgressDetail
 from kompend.core.pipeline.parse_cache import content_hash_prefix
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.resolution.entity_registry import EntityRegistry
@@ -141,10 +142,10 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
         # Signal a distinct VLM sub-phase so the CLI bar switches to
         # "Captioning images" — makes the (slow) VLM run visible instead
         # of looking like a stalled resolve progress bar.
-        pipeline.emit("resolve", 0, len(image_chunks), "vlm")
+        pipeline.emit("resolve", 0, len(image_chunks), ProgressDetail.VLM)
     for i, chunk in enumerate(image_chunks):
         resolved.append(_resolve_one(chunk))
-        pipeline.emit("resolve", i + 1, len(image_chunks), "captioning")
+        pipeline.emit("resolve", i + 1, len(image_chunks), ProgressDetail.CAPTIONING)
     _check_resolver_failures(pipeline.resolver)
     return resolved
 

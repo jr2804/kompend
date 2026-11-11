@@ -32,7 +32,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Final, Protocol
+from typing import Protocol
 
 from kompend.core.reporting.handle import current_run_id
 from kompend.core.verbosity import is_verbose
@@ -47,10 +47,8 @@ __all__ = [
     "PipelineEventKind",
     "PipelineEventSink",
     "PipelinePhase",
+    "ProgressDetail",
 ]
-
-_START_DETAIL: Final[str] = "starting"
-_DONE_DETAIL: Final[str] = "done"
 
 
 class PipelineEventField(StrEnum):
@@ -65,6 +63,24 @@ class PipelineEventField(StrEnum):
     ATTRIBUTES = "attributes"
     RUN_ID = "run_id"
     AT = "at"
+
+
+class ProgressDetail(StrEnum):
+    """Reserved ``detail`` strings carried by a progress event.
+
+    Everything else in ``detail`` names the unit currently being worked on (a
+    source file, a tree label, ``"asset: <name>"``), so this is the closed
+    set: the two phase sentinels plus the VLM sub-phase, which a progress
+    consumer shows as its own bar instead of as resolve progress.
+
+    The values are the strings the emitters already pass and a progress
+    callback keys on, so they are a wire contract: add freely, never rename.
+    """
+
+    STARTING = "starting"
+    DONE = "done"
+    VLM = "vlm"
+    CAPTIONING = "captioning"
 
 
 class PipelineEventKind(StrEnum):
@@ -248,8 +264,8 @@ def _phase_for(phase: str) -> PipelinePhase:
 
 def _kind_for(*, current: int, total: int, detail: str) -> PipelineEventKind:
     """Classify one emit from the detail strings the call sites already use."""
-    if detail == _START_DETAIL and current == 0:
+    if detail == ProgressDetail.STARTING and current == 0:
         return PipelineEventKind.STARTED
-    if detail == _DONE_DETAIL:
+    if detail == ProgressDetail.DONE:
         return PipelineEventKind.COMPLETED
     return PipelineEventKind.PROGRESS

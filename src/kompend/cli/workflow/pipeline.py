@@ -15,6 +15,7 @@ from kompend.agents.doctor import DoctorAgent, DoctorDeps
 from kompend.cli.args import Ignore, UrlFile
 from kompend.cli.runtime.progress import PipelineProgress
 from kompend.cli.sources.resolve import download_urls, ensure_in_sources, resolve_files
+from kompend.core.pipeline.events import ProgressDetail
 from kompend.core.pipeline.orchestrator import WikiPipeline
 from kompend.logging import get_console, get_err_console, get_logger, set_verbosity
 
@@ -36,15 +37,15 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
         if current == 0:
             tracker.start()
             tracker.reset_for_phase(total, "Parsing…")
-        elif detail == "done":
+        elif detail == ProgressDetail.DONE:
             tracker.update_progress(total, f"Parsed {total} file(s)")
         else:
             tracker.update_progress(current, f"[{current}/{total}] {detail}")
 
     def _summary(current: int, total: int, detail: str) -> None:
-        if detail == "starting":
+        if detail == ProgressDetail.STARTING:
             tracker.reset_for_phase(total, f"Summarizing sections ({total} source(s) to summarize)…")
-        elif detail == "done":
+        elif detail == ProgressDetail.DONE:
             if total:
                 tracker.update_progress(total, f"Summarized {total} source(s)")
             else:
@@ -61,13 +62,13 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
 
     def _resolve(current: int, total: int, detail: str) -> None:
         if current == 0:
-            if detail == "vlm":
+            if detail == ProgressDetail.VLM:
                 tracker.reset_for_phase(total, f"Captioning images ({total})…")
             else:
                 tracker.reset_for_phase(total, f"Resolving chunks ({total} total)…")
-        elif detail == "done":
+        elif detail == ProgressDetail.DONE:
             tracker.update_progress(total, "Resolve complete")
-        elif detail == "captioning":
+        elif detail == ProgressDetail.CAPTIONING:
             tracker.update_progress(current, f"Captioning image [{current}/{total}]")
         else:
             tracker.update_progress(current, f"Resolving [{current}/{total}]")
@@ -76,9 +77,9 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
         """output: indeterminate bar driven by start/done events."""
 
         def _cb(current: int, total: int, detail: str) -> None:
-            if detail == "done":
+            if detail == ProgressDetail.DONE:
                 tracker.message(done_msg)
-            elif detail == "starting":
+            elif detail == ProgressDetail.STARTING:
                 tracker.reset_for_phase(None, start_msg)
 
         return _cb
@@ -88,12 +89,12 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
         state: dict[str, int | None] = {"total": None}
 
         def _cb(current: int, total: int, detail: str) -> None:
-            if detail == "done":
+            if detail == ProgressDetail.DONE:
                 if state["total"] is not None:
                     tracker.update_progress(state["total"], "Compile complete")
                 else:
                     tracker.message("Compile complete")
-            elif detail == "starting":
+            elif detail == ProgressDetail.STARTING:
                 tracker.reset_for_phase(None, "Compiling wiki…")
                 state["total"] = None
             elif total and total != state["total"]:

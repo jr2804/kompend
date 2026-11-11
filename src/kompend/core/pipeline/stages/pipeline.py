@@ -27,7 +27,7 @@ from kompend.core.models import (
 )
 from kompend.core.paths import VaultPaths, rel_to_vault
 from kompend.core.pipeline.config import PipelineConfig, Tier
-from kompend.core.pipeline.events import PipelineEvent, PipelineEventBus, PipelineEventSink
+from kompend.core.pipeline.events import PipelineEvent, PipelineEventBus, PipelineEventSink, ProgressDetail
 from kompend.core.pipeline.otel_sink import OtelEventSink
 from kompend.core.pipeline.parse_cache import clear_documents
 from kompend.core.pipeline.stages.compile import load_compiled_wiki, run_compile_tier, run_output_tier
@@ -359,11 +359,11 @@ class WikiPipeline:
         self._tier_timings.clear()
 
         if self._should_run(Tier.INDEX):
-            self.emit("index", 0, 1, "starting")
+            self.emit("index", 0, 1, ProgressDetail.STARTING)
             _t0 = time.monotonic()
             self.run_tier(Tier.INDEX)
             self._tier_timings["index"] = time.monotonic() - _t0
-            self.emit("index", 1, 1, "done")
+            self.emit("index", 1, 1, ProgressDetail.DONE)
         if self._should_run(Tier.CHUNK):
             _t0 = time.monotonic()
             all_trees = parse_and_chunk(self, splitting=self.splitter)
@@ -374,17 +374,17 @@ class WikiPipeline:
             if not all_trees:
                 all_trees = parse_and_chunk(self, splitting=self.splitter)
             leaf_count = sum(1 for t in all_trees for _ in t.leaves())
-            self.emit("resolve", 0, leaf_count, "starting")
+            self.emit("resolve", 0, leaf_count, ProgressDetail.STARTING)
             _t0 = time.monotonic()
             resolved = resolve_chunks(self, all_trees)
             self._tier_timings["resolve"] = time.monotonic() - _t0
             self._record_tier_state(2)
-            self.emit("resolve", len(resolved), len(resolved), "done")
+            self.emit("resolve", len(resolved), len(resolved), ProgressDetail.DONE)
         if self._should_run(Tier.COMPILE):
             if not resolved:
                 all_trees = parse_and_chunk(self, splitting=self.splitter)
                 resolved = resolve_chunks(self, all_trees)
-            self.emit("compile", 0, 1, "starting")
+            self.emit("compile", 0, 1, ProgressDetail.STARTING)
             _t0 = time.monotonic()
             if self.compiler:
                 self.compiler.on_progress = lambda c, t, d: self.emit("compile", c, t, d)
@@ -396,18 +396,18 @@ class WikiPipeline:
                 wiki, _ = filter_wiki(wiki)
             self._tier_timings["compile"] = time.monotonic() - _t0
             self._record_tier_state(3)
-            self.emit("compile", 1, 1, "done")
+            self.emit("compile", 1, 1, ProgressDetail.DONE)
         else:
             wiki = load_compiled_wiki(self) or wiki
         if self._should_run(Tier.OUTPUT) and self.output_writer:
-            self.emit("output", 0, 1, "starting")
+            self.emit("output", 0, 1, ProgressDetail.STARTING)
             if self.config.privacy_filter:
                 wiki, _ = filter_wiki(wiki)
             _t0 = time.monotonic()
             self.output_writer.write(wiki, self.config.output_dir)
             self._tier_timings["output"] = time.monotonic() - _t0
             self._record_tier_state(4)
-            self.emit("output", 1, 1, "done")
+            self.emit("output", 1, 1, ProgressDetail.DONE)
 
         wiki.metadata[str(WikiField.TIER_TIMINGS)] = {k: round(v, 2) for k, v in self._tier_timings.items()}
         wiki.metadata[str(WikiField.LLM_MODEL)] = self.config.llm.default_model
