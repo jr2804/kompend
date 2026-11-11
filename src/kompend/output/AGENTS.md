@@ -25,6 +25,8 @@ builds the wiki index page and serves wiki page previews.
 | ``page_paths.py`` | Page layout vocabulary: ``PageLayoutMixin`` (``_KIND_FOLDERS`` / ``_folder_for_kind``), ``bundle_path``, ``page_stem`` |
 | ``surfaces.py`` | ``GeneratedSurfaceMixin`` — per-source summary pages (``summaries/``), ``references.md``, ``quality.md`` |
 | ``json_writer.py`` | ``JsonWriter`` — JSON output |
+| ``csl_bibtex.py`` | ``CSL_TO_BIBTEX_TYPE`` / ``DEFAULT_BIBTEX_ENTRY`` — the CSL type → BibTeX entry-type table, read-only data from a foreign specification (not a kompend vocabulary; do not turn it into an enum) |
+| ``bibtex.py`` | ``reference_to_bibtex_entry`` / ``references_to_bibtex`` — BibTeX rendering, reading the table from ``csl_bibtex.py`` |
 | ``typst.py`` | ``TypstWriter`` — Typst output |
 | ``wiki_index.py`` | Wiki index page construction |
 | ``models.py`` | Output-specific data models |

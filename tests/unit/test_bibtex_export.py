@@ -10,6 +10,8 @@ Covers ``kompend.output.bibtex``:
 
 from __future__ import annotations
 
+import pytest
+
 from kompend.core.models.references import Author, Reference
 from kompend.output.bibtex import reference_to_bibtex_entry, references_to_bibtex
 
@@ -226,6 +228,30 @@ class TestReferencesToBibtex:
         assert "10.1/xyz" in result
         assert "volume    = {1}" in result
         assert "pages     = {1--10}" in result
+
+
+class TestCslTable:
+    """The CSL→BibTeX table is data, kept read-only in its own module."""
+
+    def test_table_is_read_only(self) -> None:
+        from kompend.output.csl_bibtex import CSL_TO_BIBTEX_TYPE
+
+        with pytest.raises(TypeError):
+            CSL_TO_BIBTEX_TYPE["book"] = "misc"  # type: ignore[index]
+
+    def test_table_values_are_bibtex_entry_types(self) -> None:
+        from kompend.output.csl_bibtex import CSL_TO_BIBTEX_TYPE
+
+        assert CSL_TO_BIBTEX_TYPE["article-journal"] == "article"
+        assert CSL_TO_BIBTEX_TYPE["chapter"] == "incollection"
+        assert CSL_TO_BIBTEX_TYPE["pamphlet"] == "booklet"
+        assert CSL_TO_BIBTEX_TYPE["review"] == "article"
+        assert len(CSL_TO_BIBTEX_TYPE) == 33
+
+    def test_known_and_unknown_types_keep_their_entry_types(self) -> None:
+        assert reference_to_bibtex_entry(_ref(type="thesis")).startswith("@phdthesis{")
+        assert reference_to_bibtex_entry(_ref(type="not-a-csl-type")).startswith("@misc{")
+
 
 
 # ---------------------------------------------------------------------------

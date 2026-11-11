@@ -4,7 +4,8 @@ Converts the CSL JSON-aligned :class:`Reference` objects to BibTeX format.
 BibTeX generation is implemented natively — no external dependency required.
 
 CSL type → BibTeX entry-type mapping follows the `citeproc-py` /
-`pandoc-citeproc` conventions.
+`pandoc-citeproc` conventions; the table itself is data and lives in
+:mod:`kompend.output.csl_bibtex`.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from io import StringIO
 
 from kompend.core.models.references import YEAR_DIGITS, Reference
 from kompend.logging import get_logger
+from kompend.output.csl_bibtex import CSL_TO_BIBTEX_TYPE, DEFAULT_BIBTEX_ENTRY
 
 #: Maximum characters of an author family name used in a citation key.
 _AUTHOR_KEY_MAX = 20
@@ -22,44 +24,6 @@ __all__ = [
     "reference_to_bibtex_entry",
     "references_to_bibtex",
 ]
-
-#: CSL type → BibTeX entry-type.
-#: Unmapped CSL types fall back to ``misc``.
-_CSL_TO_BIBTEX_TYPE: dict[str, str] = {  # nocheck: str-registry — external CSL-JSON type vocabulary
-    "article-journal": "article",
-    "article-magazine": "article",
-    "article-newspaper": "article",
-    "book": "book",
-    "chapter": "incollection",
-    "paper-conference": "inproceedings",
-    "report": "techreport",
-    "thesis": "phdthesis",
-    "webpage": "misc",
-    "manuscript": "unpublished",
-    "patent": "misc",
-    "interview": "misc",
-    "speech": "misc",
-    "personal-communication": "misc",
-    "map": "misc",
-    "broadcast": "misc",
-    "software": "misc",
-    "dataset": "misc",
-    "entry-dictionary": "misc",
-    "entry-encyclopedia": "misc",
-    "figure": "misc",
-    "graphic": "misc",
-    "legal-case": "misc",
-    "legislation": "misc",
-    "motion_picture": "misc",
-    "musical_score": "misc",
-    "pamphlet": "booklet",
-    "post": "misc",
-    "post-weblog": "misc",
-    "review": "article",
-    "review-book": "misc",
-    "song": "misc",
-    "treaty": "misc",
-}
 
 #: Characters that need escaping in BibTeX field values.
 _BIBTEX_SPECIAL = str.maketrans(
@@ -115,7 +79,7 @@ def reference_to_bibtex_entry(ref: Reference, index: int = 0) -> str:
           ...
         }
     """
-    entry_type = _CSL_TO_BIBTEX_TYPE.get(ref.type, "misc")
+    entry_type = CSL_TO_BIBTEX_TYPE.get(ref.type, DEFAULT_BIBTEX_ENTRY)
     cite_key = _make_citation_key(ref, index)
     lines: list[str] = [f"@{entry_type}{{{cite_key},"]
 
