@@ -9,6 +9,7 @@ override, then compile.llm.default_model).
 from __future__ import annotations
 
 import time
+from enum import StrEnum
 from typing import Any
 
 import yaml
@@ -34,6 +35,25 @@ from kompend.output.renderer import format_output
 
 LLM_STEP_WEIGHT = 100
 DETERMINISTIC_STEP_WEIGHT = 1
+
+
+class LintStep(StrEnum):
+    """The steps :func:`run_full_lint_flow` plans, in their fixed order.
+
+    Two of them record their own history row, so the value is also the
+    ``LintRunOptions.context`` a run is filed under: ``kompend lint all``
+    writes ``all``, and each single-step command writes its own name. A step
+    value is what the progress bar shows (``lint [check]``) and what a history
+    row records it ran, so the values are a contract: add, never rename.
+    """
+
+    CHECK = "check"
+    FORMAT = "format"
+    SEMANTIC = "semantic"
+    GAPS = "gaps"
+    REMEDIATE = "remediate"
+    ALL = "all"
+
 
 #: The deterministic rules of the ``check`` step: everything structural except
 #: rumdl (which is the separate ``format`` step).
@@ -81,16 +101,16 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
             items = int(step["items"])
             if progress is not None and task_id is not None:
                 progress.update(task_id, description=f"lint [{name}]")
-            if name == "check":
+            if name == LintStep.CHECK:
                 check_report, _ = _run_pass(wiki, vp, cfg, rules=None, enable_llm=False, lint_agent=None, fix=fix, fix_destructive=fix_destructive)
-            elif name == "format":
+            elif name == LintStep.FORMAT:
                 _format_output_phase(vp, cfg)
-            elif name == "semantic":
+            elif name == LintStep.SEMANTIC:
                 semantic_report, _ = _run_pass(wiki, vp, cfg, rules=None, enable_llm=True, lint_agent=lint_agent, fix=False)
-            elif name == "gaps":
+            elif name == LintStep.GAPS:
                 merged_results = _merge_results(check_report, semantic_report)
                 analyze_gaps(LintReport(results=merged_results), load_degree_map(vp.base_dir), cfg.kompend.display)
-            elif name == "remediate":
+            elif name == LintStep.REMEDIATE:
                 merged_results = _merge_results(check_report, semantic_report)
                 actions = _remediate_phase(wiki, vp, cfg, merged_results, fix)
                 step["items"] = max(len(actions), 1)
@@ -122,7 +142,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     entry = entry_from_report(
         merged_report,
         duration_seconds=time.monotonic() - flow_start,
-        options=LintRunOptions(context="all", fix=fix),
+        options=LintRunOptions(context=LintStep.ALL, fix=fix),
         config=cfg.raw,
         node_count=node_count,
         llm=llm_meta,
@@ -337,13 +357,13 @@ def _plan(vp: VaultPaths, cfg: Any, lint_agent: Any) -> list[dict[str, Any]]:
     node_count = sum(1 for _ in vp.output_dir.rglob("node_*.md")) or 1
     fmt_files = sum(1 for _ in vp.output_dir.rglob("*.md"))
     steps: list[dict[str, Any]] = [
-        {"name": "check", "weight": DETERMINISTIC_STEP_WEIGHT, "items": node_count},
-        {"name": "format", "weight": DETERMINISTIC_STEP_WEIGHT, "items": max(fmt_files, 1)},
-        {"name": "gaps", "weight": DETERMINISTIC_STEP_WEIGHT, "items": 1},
+        {"name": LintStep.CHECK, "weight": DETERMINISTIC_STEP_WEIGHT, "items": node_count},
+        {"name": LintStep.FORMAT, "weight": DETERMINISTIC_STEP_WEIGHT, "items": max(fmt_files, 1)},
+        {"name": LintStep.GAPS, "weight": DETERMINISTIC_STEP_WEIGHT, "items": 1},
     ]
     if lint_agent is not None:
-        steps.insert(2, {"name": "semantic", "weight": LLM_STEP_WEIGHT, "items": node_count})
-        steps.append({"name": "remediate", "weight": LLM_STEP_WEIGHT, "items": 0})
+        steps.insert(2, {"name": LintStep.SEMANTIC, "weight": LLM_STEP_WEIGHT, "items": node_count})
+        steps.append({"name": LintStep.REMEDIATE, "weight": LLM_STEP_WEIGHT, "items": 0})
     else:
         get_err_console().print(
             "Note: no LLM configured (compile.lint.model / compile.llm.default_model) - skipping semantic and remediate steps.\n",

@@ -26,6 +26,7 @@ from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import load_cached_wiki
 from kompend.lint.flow import (
     CHECK_STEP_RULES,
+    LintStep,
     _make_lint_agent,
     persist_lint_fixes,
     run_full_lint_flow,
@@ -103,7 +104,7 @@ def lint_check(
         report,
         vp=vp,
         config=cfg.raw,
-        context="check",
+        context=LintStep.CHECK,
         elapsed=elapsed,
         fix=fix,
         node_count=len(wiki.nodes),
@@ -147,7 +148,7 @@ def lint_semantic(
         report,
         vp=vp,
         config=cfg.raw,
-        context="semantic",
+        context=LintStep.SEMANTIC,
         elapsed=elapsed,
         fix=False,
         node_count=len(wiki.nodes),

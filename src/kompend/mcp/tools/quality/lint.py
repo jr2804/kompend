@@ -22,7 +22,7 @@ from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import load_wiki_from_files
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, VaultPaths, vault_paths
 from kompend.lint.base import RemediationStatus
-from kompend.lint.flow import CHECK_STEP_RULES, _make_lint_agent, persist_lint_fixes, run_full_lint_flow
+from kompend.lint.flow import CHECK_STEP_RULES, LintStep, _make_lint_agent, persist_lint_fixes, run_full_lint_flow
 from kompend.lint.flow import _run_pass as _run_rules_pass
 from kompend.lint.gap_analysis import analyze_gaps, gaps_to_text
 from kompend.lint.history import (
@@ -93,7 +93,7 @@ def lint_check(
     fixes_applied = 0
     if fix and any(r.fix_applied for r in report.results):
         fixes_applied = persist_lint_fixes(wiki, vp)
-    persist_history(report, vp=vp, config=cfg.raw, context="check", elapsed=elapsed, fix=fix, node_count=len(wiki.nodes), llm=None)
+    persist_history(report, vp=vp, config=cfg.raw, context=LintStep.CHECK, elapsed=elapsed, fix=fix, node_count=len(wiki.nodes), llm=None)
     return {
         "status": "ok",
         "health_score": report.health_score,
@@ -121,7 +121,7 @@ def lint_semantic(
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
     llm_meta = LintLlmMeta(model=model, usage=lint_agent.usage.to_snapshot()) if model is not None and lint_agent.usage is not None else None
-    persist_history(report, vp=vp, config=cfg.raw, context="semantic", elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm=llm_meta)
+    persist_history(report, vp=vp, config=cfg.raw, context=LintStep.SEMANTIC, elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm=llm_meta)
     return {
         "status": "ok",
         "health_score": report.health_score,
