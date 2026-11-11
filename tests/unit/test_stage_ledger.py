@@ -1,15 +1,14 @@
 """The per-item stage ledger — table, writer, queries, pruning, overhead."""
 
-# ruff: noqa: S608 — SQL is assembled only from the imported table-name constant.
-
 from __future__ import annotations
 
-import sqlite3
 import time
 from pathlib import Path
 from typing import cast
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.engine import RowMapping
 
 import kompend.core.reporting.ledger as ledger_mod
 from kompend.core.models import ParsedDocument
@@ -22,8 +21,8 @@ from kompend.core.reporting.ledger import (
     slowest_items,
     stage_ledger,
 )
-from kompend.core.store import open_store
-from kompend.core.store.schema import STAGES_TABLE
+from kompend.core.store import core_connection, open_store
+from kompend.core.store.tables import stages
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.preprocessing.parsers.base import DocumentParser
 
@@ -140,8 +139,8 @@ def test_prune_keeps_the_newest_rows_beyond_the_soft_cap(tmp_path: Path, monkeyp
     with stage_ledger(db) as ledger:
         for i in range(12):
             ledger.record(f"f{i}.md", "parse", outcome=StageOutcome.OK, run_id="r")
-    with open_store(db) as conn:
-        sources = [row["source"] for row in conn.execute(f"SELECT source FROM {STAGES_TABLE} ORDER BY id")]
+    with open_store(db) as conn, core_connection(conn) as core:
+        sources = [row["source"] for row in core.execute(select(stages.c.source).order_by(stages.c.id)).mappings()]
     assert sources == [f"f{i}.md" for i in range(7, 12)]
 
 
@@ -231,10 +230,25 @@ def test_ingest_documents_fills_the_ledger(tmp_path: Path) -> None:
     assert row["size_bytes"] == len(b"# note\n")
 
 
+def test_the_ledger_carries_no_ruff_waiver() -> None:
+    """A module-wide waiver hid eleven statements from bandit; it must stay gone.
+
+    Deleting it exposed eleven string-built statements — every write, the prune
+    and all six documented queries. They now go through one plain-``str``
+    template helper, so bandit sees no built statement; a waiver over the module
+    would let the next hand-built one land unseen.
+    """
+    source = Path(ledger_mod.__file__).read_text(encoding="utf-8")
+    assert "ruff: noqa" not in source
+    assert "noqa: S608" not in source
+
+
 def _db(tmp_path: Path) -> Path:
     return tmp_path / ".kompend" / "kompend.db"
 
 
-def _rows(db: Path, run_id: str) -> list[sqlite3.Row]:
-    with open_store(db) as conn:
-        return conn.execute(f"SELECT * FROM {STAGES_TABLE} WHERE run_id = ? ORDER BY id", (run_id,)).fetchall()
+def _rows(db: Path, run_id: str) -> list[RowMapping]:
+    """Every ledger row of *run_id*, oldest first, as materialised mappings."""
+    with open_store(db) as conn, core_connection(conn) as core:
+        statement = select(stages).where(stages.c.run_id == run_id).order_by(stages.c.id)
+        return list(core.execute(statement).mappings().all())

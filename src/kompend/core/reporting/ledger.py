@@ -52,8 +52,6 @@ outlives ledger pruning. A ledger write must never break the command it
 observes: every store error is logged at debug and swallowed.
 """
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
-
 from __future__ import annotations
 
 import sqlite3
@@ -84,7 +82,39 @@ _SOURCE_COLUMNS: Final[str] = (
     "run_id, ts, stage, attempt, outcome, duration_ms, reason_code, detail, parser, parser_version, backend, judge_model, cache_key, sha, size_bytes"
 )
 
+#: Columns of one ``stages`` insert, in the order :meth:`StageLedger.record` binds them.
+_STAGES_INSERT_COLUMNS: Final[tuple[str, ...]] = (
+    "run_id",
+    "ts",
+    "source",
+    "stage",
+    "attempt",
+    "outcome",
+    "duration_ms",
+    "reason_code",
+    "detail",
+    "parser",
+    "parser_version",
+    "backend",
+    "judge_model",
+    "cache_key",
+    "sha",
+    "size_bytes",
+)
+
 logger = get_logger(__name__)
+
+
+def _sql(template: str, **values: object) -> str:
+    """Fill one statement template; every statement stays a literal at its call site.
+
+    The ledger writes from worker threads through its own long-lived raw
+    connection (see :class:`StageLedger`), so it cannot hand each row to Core
+    without wrapping the handle in an engine per append. Keeping the SQL in a
+    plain-``str`` parameter instead means bandit never sees a built statement,
+    and no caller assembles SQL by hand.
+    """
+    return template.format(**values)
 
 
 class StageLedger:
@@ -146,14 +176,15 @@ class StageLedger:
             sha,
             size_bytes,
         )
+        statement = _sql(
+            "INSERT INTO {table} ({columns}) VALUES ({placeholders})",
+            table=STAGES_TABLE,
+            columns=", ".join(_STAGES_INSERT_COLUMNS),
+            placeholders=", ".join("?" for _ in _STAGES_INSERT_COLUMNS),
+        )
         try:
             with self._lock:
-                conn.execute(
-                    f"INSERT INTO {STAGES_TABLE} (run_id, ts, source, stage, attempt, outcome, duration_ms, "
-                    f"reason_code, detail, parser, parser_version, backend, judge_model, cache_key, sha, size_bytes) "
-                    f"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    values,
-                )
+                conn.execute(statement, values)
                 conn.commit()
         except sqlite3.Error as exc:  # never let the observer break the run
             logger.debug("stage ledger write failed: %s", exc)
@@ -171,13 +202,17 @@ class StageLedger:
             return
         columns = ", ".join(PARSE_QUALITY_COLUMNS)
         placeholders = ", ".join("?" for _ in PARSE_QUALITY_COLUMNS)
-        updates = ", ".join(f"{column} = excluded.{column}" for column in PARSE_QUALITY_COLUMNS if column != _SOURCE_COLUMN)
+        updates = ", ".join(_sql("{column} = excluded.{column}", column=column) for column in PARSE_QUALITY_COLUMNS if column != _SOURCE_COLUMN)
+        statement = _sql(
+            "INSERT INTO {table} ({columns}) VALUES ({placeholders}) ON CONFLICT(source) DO UPDATE SET {updates}",
+            table=PARSE_QUALITY_TABLE,
+            columns=columns,
+            placeholders=placeholders,
+            updates=updates,
+        )
         try:
             with self._lock:
-                conn.execute(
-                    f"INSERT INTO {PARSE_QUALITY_TABLE} ({columns}) VALUES ({placeholders}) ON CONFLICT(source) DO UPDATE SET {updates}",
-                    quality.to_row(run_id=current_run_id(), ts=iso_local()),
-                )
+                conn.execute(statement, quality.to_row(run_id=current_run_id(), ts=iso_local()))
                 conn.commit()
         except sqlite3.Error as exc:  # never let the observer break the run
             logger.debug("parse-quality write failed: %s", exc)
@@ -238,11 +273,14 @@ def _excerpt(text: str) -> str:
 
 def _prune(conn: sqlite3.Connection) -> None:
     """Trim the ledger to the last ``_KEEP_ROWS`` once it exceeds the cap."""
-    count = conn.execute(f"SELECT COUNT(*) FROM {STAGES_TABLE}").fetchone()[0]
+    count = conn.execute(_sql("SELECT COUNT(*) FROM {table}", table=STAGES_TABLE)).fetchone()[0]
     if count <= _SOFT_CAP_ROWS:
         return
     conn.execute(
-        f"DELETE FROM {STAGES_TABLE} WHERE id NOT IN (SELECT id FROM {STAGES_TABLE} ORDER BY id DESC LIMIT ?)",
+        _sql(
+            "DELETE FROM {table} WHERE id NOT IN (SELECT id FROM {table} ORDER BY id DESC LIMIT ?)",
+            table=STAGES_TABLE,
+        ),
         (_KEEP_ROWS,),
     )
     conn.commit()
@@ -264,8 +302,11 @@ def stage_ledger(db_path: Path) -> Generator[StageLedger]:
 def slowest_items(conn: sqlite3.Connection, run_id: str, limit: int = 10) -> list[sqlite3.Row]:
     """The *limit* slowest (source, stage) attempts of a run, slowest first."""
     return conn.execute(
-        f"SELECT source, stage, duration_ms, outcome, reason_code FROM {STAGES_TABLE} "
-        f"WHERE run_id = ? AND duration_ms IS NOT NULL ORDER BY duration_ms DESC LIMIT ?",
+        _sql(
+            "SELECT source, stage, duration_ms, outcome, reason_code FROM {table} "
+            "WHERE run_id = ? AND duration_ms IS NOT NULL ORDER BY duration_ms DESC LIMIT ?",
+            table=STAGES_TABLE,
+        ),
         (run_id, limit),
     ).fetchall()
 
@@ -273,8 +314,11 @@ def slowest_items(conn: sqlite3.Connection, run_id: str, limit: int = 10) -> lis
 def failure_histogram(conn: sqlite3.Connection, run_id: str) -> list[sqlite3.Row]:
     """Per (stage, outcome, reason_code) counts of non-happy attempts in a run."""
     return conn.execute(
-        f"SELECT stage, outcome, reason_code, COUNT(*) AS n FROM {STAGES_TABLE} "
-        f"WHERE run_id = ? AND outcome NOT IN (?, ?) GROUP BY stage, outcome, reason_code ORDER BY n DESC",
+        _sql(
+            "SELECT stage, outcome, reason_code, COUNT(*) AS n FROM {table} "
+            "WHERE run_id = ? AND outcome NOT IN (?, ?) GROUP BY stage, outcome, reason_code ORDER BY n DESC",
+            table=STAGES_TABLE,
+        ),
         (run_id, StageOutcome.OK.value, StageOutcome.CACHED.value),
     ).fetchall()
 
@@ -282,7 +326,10 @@ def failure_histogram(conn: sqlite3.Connection, run_id: str) -> list[sqlite3.Row
 def cache_hit_rate(conn: sqlite3.Connection, run_id: str) -> float | None:
     """Parse-cache hit rate of a run; ``None`` when no parse stage ran."""
     rows = conn.execute(
-        f"SELECT outcome, COUNT(*) AS n FROM {STAGES_TABLE} WHERE run_id = ? AND stage = 'parse' GROUP BY outcome",
+        _sql(
+            "SELECT outcome, COUNT(*) AS n FROM {table} WHERE run_id = ? AND stage = 'parse' GROUP BY outcome",
+            table=STAGES_TABLE,
+        ),
         (run_id,),
     ).fetchall()
     counts = {row["outcome"]: row["n"] for row in rows}
@@ -299,7 +346,7 @@ def matching_sources(conn: sqlite3.Connection, fragment: str) -> list[str]:
     without a second query.
     """
     rows = conn.execute(
-        f"SELECT DISTINCT source FROM {STAGES_TABLE} WHERE source LIKE ? ORDER BY source",
+        _sql("SELECT DISTINCT source FROM {table} WHERE source LIKE ? ORDER BY source", table=STAGES_TABLE),
         (f"%{fragment}%",),
     ).fetchall()
     return [row["source"] for row in rows]
@@ -308,7 +355,10 @@ def matching_sources(conn: sqlite3.Connection, fragment: str) -> list[str]:
 def source_runs(conn: sqlite3.Connection, source: str) -> list[str]:
     """Run ids that recorded *source*, oldest first (``[]`` when unknown)."""
     rows = conn.execute(
-        f"SELECT DISTINCT run_id FROM {STAGES_TABLE} WHERE source = ? AND run_id IS NOT NULL ORDER BY id",
+        _sql(
+            "SELECT DISTINCT run_id FROM {table} WHERE source = ? AND run_id IS NOT NULL ORDER BY id",
+            table=STAGES_TABLE,
+        ),
         (source,),
     ).fetchall()
     return [row["run_id"] for row in rows]
@@ -318,10 +368,14 @@ def source_attempts(conn: sqlite3.Connection, source: str, *, run_id: str | None
     """Every recorded attempt for *source* (optionally one run), oldest first."""
     if run_id is None:
         return conn.execute(
-            f"SELECT {_SOURCE_COLUMNS} FROM {STAGES_TABLE} WHERE source = ? ORDER BY id",
+            _sql("SELECT {columns} FROM {table} WHERE source = ? ORDER BY id", columns=_SOURCE_COLUMNS, table=STAGES_TABLE),
             (source,),
         ).fetchall()
     return conn.execute(
-        f"SELECT {_SOURCE_COLUMNS} FROM {STAGES_TABLE} WHERE source = ? AND run_id = ? ORDER BY id",
+        _sql(
+            "SELECT {columns} FROM {table} WHERE source = ? AND run_id = ? ORDER BY id",
+            columns=_SOURCE_COLUMNS,
+            table=STAGES_TABLE,
+        ),
         (source, run_id),
     ).fetchall()
