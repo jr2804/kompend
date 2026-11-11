@@ -104,6 +104,20 @@ class _CoverageCredit:
         return vec
 
 
+class FailureVerdict(NamedTuple):
+    """What to do with a failed pass, and who decided it.
+
+    ``from_model`` separates a deliberate decision from the deterministic
+    fallback. The two skips mean different things: the decision model's skip
+    is "do not spend more passes here", while the fallback's only says
+    "repeating this identical request cannot help". Only the first one lets
+    the segment end without failing the run.
+    """
+
+    action: ErrorAction
+    from_model: bool
+
+
 class _SegmentUnit(NamedTuple):
     """One generation work unit: Loop 1 splits a segment into smaller ones."""
 
@@ -216,6 +230,10 @@ def _shrink_and_requeue(
     The parent pool is drained on a split, so the tail sees no uncovered
     remainder; the halves carry their own broker pools and transcript
     prefixes.
+
+    SKIP and ABORT are always a model's verdict: Loop 2 only reaches them
+    after the decision model answered, and the deterministic path never
+    produces them.
     """
     # Fetched-but-unpaged concepts are stranded in the parent pool once it
     # drains — they move to the halves with the unfetched remainder, or the
@@ -343,12 +361,16 @@ def _failure_action(
     attempt: int,
     max_attempts: int,
     transient: bool,
-) -> ErrorAction:
+) -> FailureVerdict:
     """Decide what to do with a failed generation call.
 
     The optional decision model answers this when it is configured. Without it
     the fallback is deterministic: a transport failure is worth repeating, a
     semantic failure is not - repeating it would produce the same output.
+
+    The verdict says who decided, because the two skips mean different
+    things: only the model's skip is a deliberate "stop spending passes
+    here", and only that one may end a segment without failing the run.
     """
     decided = decide_error_action(
         compiler._config.decision,
@@ -359,5 +381,5 @@ def _failure_action(
         context=f"model={compiler._model or '?'}",
     )
     if decided is not None:
-        return decided
-    return ErrorAction.RETRY if transient else ErrorAction.SKIP
+        return FailureVerdict(action=decided, from_model=True)
+    return FailureVerdict(action=ErrorAction.RETRY if transient else ErrorAction.SKIP, from_model=False)

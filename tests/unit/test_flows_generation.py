@@ -6,6 +6,11 @@ that returned nothing once does not cost the whole segment. Every other
 failure keeps the old behaviour - the segment stops and the compile
 fails loudly, so nothing downstream reports a partial wiki as a complete
 one.
+
+A decision-model skip is the one deliberate exception: it spends a pass
+and the segment asks again, and a segment the model skipped outright
+costs its page, not the compile - the run says so in the log and in the
+verdict it prints.
 """
 
 from __future__ import annotations
@@ -29,6 +34,7 @@ from kompend.core.config import BudgetConfig, EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, ElementType, ResolvedChunk
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.utils.exceptions import LLMOutputError
+from kompend.llm.decision import ErrorAction, ErrorDecision
 from tests.conftest import make_tmp_vault
 
 
@@ -89,6 +95,117 @@ class TestAgenticPassLoop:
 
     def test_empty_answers_on_every_pass_still_fail_loudly(self) -> None:
         """The segment runs out of passes - then the compile fails, as before."""
+        compiler = _compiler()
+        agent = MagicMock()
+        agent.run.side_effect = EmptyAnswerError("the model returned nothing")
+
+        with (
+            patch.object(compiler, "extract", return_value=_extraction_set()),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
+            pytest.raises(LLMOutputError, match=r"produced no page\(s\)"),
+        ):
+            compiler.compile(_chunks())
+
+        assert agent.run.call_count == 2
+
+
+class TestModelSkipVerdict:
+    """A decision-model skip ends the attempt, not the segment.
+
+    The decision model can say "stop spending passes here" for a failure
+    the deterministic path found ambiguous. That verdict belongs to the
+    attempt: the next pass carries new material, so the segment asks
+    again within its budget. Only the tail decides the run outcome - a
+    segment the model skipped is recorded, not fatal.
+    """
+
+    def test_a_model_skip_consumes_a_pass_and_the_segment_asks_again(self) -> None:
+        """The skip spends one pass; the segment still has budget left."""
+        compiler = _compiler()
+        agent = MagicMock()
+        agent.run.side_effect = [
+            EmptyAnswerError("the model returned nothing"),
+            _page_output(),
+        ]
+
+        with (
+            patch.object(compiler, "extract", return_value=_extraction_set()),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
+            patch("kompend.compilation.flows.generation.segments.decide_error_action", return_value=ErrorAction.RETRY),
+            patch(
+                "kompend.compilation.flows.generation.segments.decide_unit_adaptation",
+                return_value=ErrorDecision(action=ErrorAction.SKIP, shrink=False),
+            ),
+        ):
+            wiki = compiler.compile(_chunks())
+
+        assert agent.run.call_count == 2
+        assert any(node.title == "Listening Effort" for node in wiki.nodes)
+
+    def test_a_skipped_segment_does_not_fail_the_run(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A segment the model skipped costs its page, not the compile."""
+        compiler = _compiler()
+        agent = MagicMock()
+        agent.run.side_effect = [
+            EmptyAnswerError("the model returned nothing"),
+            EmptyAnswerError("the model returned nothing"),
+            _page_output(title="Rainfall Accumulation"),
+        ]
+
+        with (
+            patch.object(compiler, "extract", return_value=_two_concept_extraction_set()),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
+            patch(
+                "kompend.compilation.flows.generation.flow.prepare_source_segments",
+                return_value=[[("first.pdf", "first")], [("second.pdf", "second")]],
+            ),
+            patch("kompend.compilation.flows.generation.segments.decide_error_action", return_value=ErrorAction.RETRY),
+            patch(
+                "kompend.compilation.flows.generation.segments.decide_unit_adaptation",
+                return_value=ErrorDecision(action=ErrorAction.SKIP, shrink=False),
+            ),
+            caplog.at_level(logging.WARNING),
+        ):
+            wiki = compiler.compile(_chunks())
+
+        assert [node.title for node in wiki.nodes] == ["Rainfall Accumulation"]
+        assert "the decision model skipped it" in caplog.text
+        assert "verdict=skip" in caplog.text
+        assert "passes=2, cap=2" in caplog.text
+
+    def test_a_run_where_every_segment_is_skipped_still_fails(self) -> None:
+        """A wiki with no page at all is a failure, not a quiet success."""
+        compiler = _compiler()
+        agent = MagicMock()
+        agent.run.side_effect = EmptyAnswerError("the model returned nothing")
+
+        with (
+            patch.object(compiler, "extract", return_value=_extraction_set()),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
+            patch("kompend.compilation.flows.generation.segments.decide_error_action", return_value=ErrorAction.RETRY),
+            patch(
+                "kompend.compilation.flows.generation.segments.decide_unit_adaptation",
+                return_value=ErrorDecision(action=ErrorAction.SKIP, shrink=False),
+            ),
+            pytest.raises(LLMOutputError, match=r"Generation failed: 0 of"),
+        ):
+            compiler.compile(_chunks())
+
+    def test_the_failure_message_names_the_verdict_and_the_pass_count(self) -> None:
+        """A reader greps the message to learn why a segment gave up."""
+        compiler = _compiler()
+        agent = MagicMock()
+        agent.run.side_effect = RuntimeError("boom")
+
+        with (
+            patch.object(compiler, "extract", return_value=_extraction_set()),
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
+            pytest.raises(LLMOutputError, match=r"verdict=gave-up"),
+        ):
+            compiler.compile(_chunks())
+
+    def test_the_deterministic_fallback_still_fails_loudly(self) -> None:
+        """Without a decision model, an empty answer still ends the run."""
         compiler = _compiler()
         agent = MagicMock()
         agent.run.side_effect = EmptyAnswerError("the model returned nothing")
@@ -231,10 +348,28 @@ def _answering_agent() -> MagicMock:
     return agent
 
 
-def _page_output() -> GenerationOutput:
+def _page_output(title: str = "Listening Effort") -> GenerationOutput:
     return GenerationOutput(
-        pages=[GenerationPage(title="Listening Effort", content="The effort to understand speech.", provenance=["sources/src.pdf"])],
+        pages=[GenerationPage(title=title, content="The effort to understand speech.", provenance=["sources/src.pdf"])],
     )
+
+
+def _two_concept_extraction_set() -> ExtractionSet:
+    """Two concepts in two sources, so each segment owns one of them."""
+    ext_set = ExtractionSet()
+    ext_set.add(
+        Extraction(
+            source="first.pdf",
+            concepts=[Concept(name="Listening Effort", definition="The effort to understand speech.")],
+        )
+    )
+    ext_set.add(
+        Extraction(
+            source="second.pdf",
+            concepts=[Concept(name="Rainfall Accumulation", definition="The depth of rain over time.")],
+        )
+    )
+    return ext_set
 
 
 def _entity_extraction_set(entity_type: str, *, sources: int) -> ExtractionSet:

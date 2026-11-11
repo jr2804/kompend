@@ -31,6 +31,7 @@ from kompend.compilation.flows.generation.budget import (
 from kompend.compilation.flows.generation.prompt import _categories_block, build_known_titles
 from kompend.compilation.flows.generation.segments import (
     _PASS_CONTINUATION_KINDS,
+    FailureVerdict,
     _CoverageCredit,
     _failure_action,
     _format_uncovered_concepts,
@@ -517,6 +518,9 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
         )
         for i, segment in enumerate(segment_plan)
     )
+    # Segments the decision model skipped: they contribute no page, and the
+    # run says so once, at the end, instead of leaving a silent hole.
+    skipped_segments: list[str] = []
     while pending:
         unit = pending.popleft()
         seg_label, seg_id, segment, seg_prefix, seg_idx, depth = unit
@@ -630,6 +634,12 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
         passes = 0
         gen_output = None
         last_error: str | None = None
+        # The verdict that consumed the segment's last pass, and whether the
+        # decision model asked for it. The tail decides the run outcome from
+        # these two facts, so a reader never has to reconstruct them.
+        last_verdict = "none"
+        last_kind: AgentFailureKind | None = None
+        model_skip = False
         seg_start_nodes = len(nodes)
         seg_titles: set[str] = set()  # normalized page titles produced for this segment
         seg_consumed_names: list[str] = list(caller_progress.get(seg_id, []))  # recovered from the transcript store
@@ -658,6 +668,11 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
             last_error = None
             action = ErrorAction.SKIP
             retry_pass = False
+            # The verdict that consumed this pass. The tail reports it, so a
+            # reader can tell a spent budget from an abandoned segment.
+            last_verdict = "none"
+            last_kind = None
+            model_skip = False
             try:
                 gen_output = agent.run(
                     deps,
@@ -675,6 +690,7 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                 # The unit did not fit the provider's window. Loop 1 earns
                 # it a smaller re-plan; only a unit that cannot shrink keeps
                 # the loud failure the error carries.
+                last_kind = AgentFailureKind.CONTEXT_OVERFLOW
                 outcome = _shrink_and_requeue(
                     broker,
                     coverage,
@@ -688,18 +704,22 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                     err=str(exc),
                 )
                 if outcome is ShrinkOutcome.SPLIT:
+                    last_verdict = "split"
                     gen_output = None
                     break
                 if outcome is ShrinkOutcome.ABORT:
                     raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
                 if outcome is ShrinkOutcome.SKIP:
+                    last_verdict = "skip"
+                    model_skip = True
                     gen_output = None
                     last_error = str(exc)
                     break
                 raise
             except (LLMTransientError, LLMOutputError) as exc:
                 kind = classify_agent_failure(exc)
-                action = _failure_action(
+                last_kind = kind
+                verdict = _failure_action(
                     compiler,
                     exc,
                     stage=f"agentic-generation:{seg_id}",
@@ -707,6 +727,7 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                     max_attempts=cap,
                     transient=kind is AgentFailureKind.TRANSIENT,
                 )
+                action = verdict.action
                 record_unit_failure(stage="agentic-generation", unit=seg_id, exc=exc, attempts=passes)
                 if action is ErrorAction.ABORT:
                     raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
@@ -725,19 +746,31 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                     err=str(exc),
                 )
                 if outcome is ShrinkOutcome.SPLIT:
+                    last_verdict = "split"
                     break
                 if outcome is ShrinkOutcome.ABORT:
                     raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
                 retry_pass = kind in _PASS_CONTINUATION_KINDS or (kind is AgentFailureKind.TRANSIENT and action is ErrorAction.RETRY)
-                if outcome is ShrinkOutcome.SKIP:
-                    retry_pass = False
+                # A skip ends the ATTEMPT, not the segment: the next pass
+                # carries different material (the concepts the broker still
+                # holds and a fresh prompt), so the segment keeps asking
+                # within its budget. A request that died has nothing new to
+                # offer - there the skip ends the segment as well.
+                model_skip = (verdict.from_model and action is ErrorAction.SKIP) or outcome is ShrinkOutcome.SKIP
+                if model_skip:
+                    last_verdict = "skip"
+                    retry_pass = kind in _PASS_CONTINUATION_KINDS
+                else:
+                    last_verdict = "retry" if retry_pass else "gave-up"
             except Exception as exc:  # PydanticAI raises many subclassed errors; treat uniformly
                 kind = classify_agent_failure(exc)
+                last_kind = kind
                 record_unit_failure(stage="agentic-generation", unit=seg_id, exc=exc, attempts=passes)
                 gen_output = None
                 last_error = str(exc)
+                verdict = FailureVerdict(action=ErrorAction.SKIP, from_model=False)
                 if kind is AgentFailureKind.TRANSIENT:
-                    action = _failure_action(
+                    verdict = _failure_action(
                         compiler,
                         exc,
                         stage=f"agentic-generation:{seg_id}",
@@ -745,6 +778,7 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                         max_attempts=cap,
                         transient=True,
                     )
+                    action = verdict.action
                     if action is ErrorAction.ABORT:
                         raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
                     retry_pass = action is ErrorAction.RETRY
@@ -763,11 +797,16 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                     err=str(exc),
                 )
                 if outcome is ShrinkOutcome.SPLIT:
+                    last_verdict = "split"
                     break
                 if outcome is ShrinkOutcome.ABORT:
                     raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
-                if outcome is ShrinkOutcome.SKIP:
-                    retry_pass = False
+                model_skip = (verdict.from_model and action is ErrorAction.SKIP) or outcome is ShrinkOutcome.SKIP
+                if model_skip:
+                    last_verdict = "skip"
+                    retry_pass = kind in _PASS_CONTINUATION_KINDS
+                else:
+                    last_verdict = "retry" if retry_pass else "gave-up"
             debug_file = getattr(agent, "_last_debug_file", None)
 
             compiler._batch_tracker.record(failed=gen_output is None)
@@ -854,30 +893,51 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
             sample = _format_uncovered_concepts(broker, seg_id, limit=10)
             debug_hint = f" (debug: {debug_file})" if debug_file else ""
             if not seg_titles:
-                # Hard fail: no pages at all. The transcript is already in
-                # the step store, so re-running retries only this segment.
-                # Distinguish a model that never called the tool (tool-call
-                # support problem) from one that fetched and then the request
-                # died (timeout/overflow — a sizing or provider problem).
-                fetched = broker.consumed(seg_id)
-                if fetched:
-                    cause = f"it called fetch_concepts {len(fetched)}× but the request failed: {last_error}"
-                    hint = "This is not a tool-calling problem — check the request size vs the model's context window."
-                elif last_error:
-                    cause = f"the request failed before it called fetch_concepts: {last_error}"
-                    hint = (
-                        "The tool was never reached — check the request size vs the model's context window "
-                        "(a failed context compaction surfaces here) before suspecting tool-calling support."
+                if model_skip and last_kind is AgentFailureKind.EMPTY_ANSWER:
+                    # The decision model told us to stop spending passes on
+                    # this segment, and the request did not die - it came
+                    # back empty. The segment has no page; the run continues
+                    # with the other segments and the reason is recorded.
+                    logger.warning(
+                        "TwoPhase: agentic %s (caller_id=%s) produced no page(s) for any of its %d assigned "
+                        "concept(s) (passes=%d, cap=%d, verdict=%s) - the decision model skipped it: %s. "
+                        "The segment contributes no page and the run continues. Uncovered: [%s].%s",
+                        seg_label,
+                        seg_id,
+                        start_remaining,
+                        passes,
+                        cap,
+                        last_verdict,
+                        last_error or "no error text",
+                        sample,
+                        debug_hint,
                     )
+                    skipped_segments.append(seg_label)
                 else:
-                    cause = "it never called the fetch_concepts tool"
-                    hint = "The model is not using the fetch_concepts tool; check its tool-calling support."
-                raise LLMOutputError(
-                    f"Agentic generation for {seg_label} (caller_id={seg_id}) produced no page(s) for any of its "
-                    f"{start_remaining} assigned concept(s) (passes={passes}, cap={cap}): {cause}. "
-                    f"caller_progress={caller_progress.get(seg_id, [])}. "
-                    f"Uncovered: [{sample}].{debug_hint} {hint}"
-                )
+                    # Hard fail: no pages at all. The transcript is already in
+                    # the step store, so re-running retries only this segment.
+                    # Distinguish a model that never called the tool (tool-call
+                    # support problem) from one that fetched and then the request
+                    # died (timeout/overflow - a sizing or provider problem).
+                    fetched = broker.consumed(seg_id)
+                    if fetched:
+                        cause = f"it called fetch_concepts {len(fetched)}× but the request failed: {last_error}"
+                        hint = "This is not a tool-calling problem — check the request size vs the model's context window."
+                    elif last_error:
+                        cause = f"the request failed before it called fetch_concepts: {last_error}"
+                        hint = (
+                            "The tool was never reached — check the request size vs the model's context window "
+                            "(a failed context compaction surfaces here) before suspecting tool-calling support."
+                        )
+                    else:
+                        cause = "it never called the fetch_concepts tool"
+                        hint = "The model is not using the fetch_concepts tool; check its tool-calling support."
+                    raise LLMOutputError(
+                        f"Agentic generation for {seg_label} (caller_id={seg_id}) produced no page(s) for any of its "
+                        f"{start_remaining} assigned concept(s) (passes={passes}, cap={cap}, verdict={last_verdict}): {cause}. "
+                        f"caller_progress={caller_progress.get(seg_id, [])}. "
+                        f"Uncovered: [{sample}].{debug_hint} {hint}"
+                    )
             else:
                 logger.warning(
                     "TwoPhase: agentic %s (caller_id=%s) ended with %d/%d concept(s) still uncovered "
@@ -905,6 +965,13 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
             caller_progress[parent] = merged
             for k in subs:
                 del caller_progress[k]
+
+    if skipped_segments:
+        logger.warning(
+            "TwoPhase: %d segment(s) were skipped by the decision model and contribute no page: %s",
+            len(skipped_segments),
+            ", ".join(skipped_segments),
+        )
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx, caller_progress
