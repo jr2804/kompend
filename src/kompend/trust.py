@@ -1,7 +1,5 @@
 """Privacy redaction, private flag, lifecycle states for compiled output."""
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
-
 from __future__ import annotations
 
 import json
@@ -9,6 +7,9 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
+
+from sqlalchemy import delete
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from kompend.core.models import (
     LIFECYCLE_ARCHIVED,
@@ -18,8 +19,8 @@ from kompend.core.models import (
     CompiledWiki,
     WikiNode,
 )
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import PRIVATE_PAGES_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import private_pages
 from kompend.core.utils.time import iso_local, now_local
 from kompend.logging import get_logger
 
@@ -173,12 +174,11 @@ def mark_wiki_private(wiki: CompiledWiki, base_dir: Path) -> None:
     Snapshot semantics: the previous index is replaced.
     """
     saved_at = iso_local()
-    with open_store(vault_db_path(base_dir)) as conn:
-        conn.execute(f"DELETE FROM {PRIVATE_PAGES_TABLE}")
-        conn.executemany(
-            f"INSERT OR REPLACE INTO {PRIVATE_PAGES_TABLE} (id, title, saved_at) VALUES (?, ?, ?)",
-            [(n.id, n.title, saved_at) for n in wiki.nodes],
-        )
+    rows = [{"id": n.id, "title": n.title, "saved_at": saved_at} for n in wiki.nodes]
+    with open_store(vault_db_path(base_dir)) as conn, core_connection(conn) as core:
+        core.execute(delete(private_pages))
+        if rows:
+            core.execute(sqlite_insert(private_pages), rows)
 
 
 def mark_stale(
