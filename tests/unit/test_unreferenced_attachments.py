@@ -135,6 +135,29 @@ def test_rule_is_destructive_so_plain_fix_is_gated(tmp_path: Path) -> None:
     assert not (tmp_path / stale).exists(), "--fix-destructive must delete them"
 
 
+def test_a_linked_file_whose_name_contains_a_parenthesis_survives(tmp_path: Path) -> None:
+    """A figure name may contain ")" — the link must not be cut at the first one.
+
+    The p863 wiki links figures named
+    ``Perceptual_Objective_Listening_Quality_Assessment_(POLQA),_…__0b467ca03243dedc.jpg``;
+    a link target read up to the first ")" resolves to nothing, so the file
+    looks unreferenced and the destructive rule deletes a page's own figure.
+    """
+    _source(tmp_path)
+    name = "Perceptual_Objective_Listening_Quality_Assessment_(POLQA),_Standard__0b467ca03243dedc.jpg"
+    link = _writer_copy(tmp_path, _STEM, name)
+    _page(tmp_path, link)
+
+    assert unreferenced_attachment_files(tmp_path) == []
+
+    rule = UnreferencedAttachmentsRule()
+    sources_dir = str(VaultPaths(tmp_path).sources_dir)
+    results = rule.check(_wiki(), sources_dir=sources_dir)
+    rule.fix(_wiki(), results)
+
+    assert (tmp_path / link).is_file()
+
+
 def _source(base_dir: Path) -> None:
     """A live source, so the attachments dir counts as a live slug."""
     sources = VaultPaths(base_dir).sources_dir

@@ -99,6 +99,12 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   breaks the wiki (371 files, 1391 links in the p863 vault). The kept files
   are reported as one PASS summary; only files no page links to stay in the
   FAIL set.
+- **A link target ends at its own closing parenthesis.** A destination may
+  hold balanced parentheses — a figure named
+  ``..._Assessment_(POLQA),_Standard__0b467ca.jpg`` has them — so the target
+  is read with a depth counter, not cut at the first ``)``. A truncated target
+  resolves to nothing, the file behind it looks unreferenced, and the
+  destructive rules delete a page's own figure (18 files in the p863 vault).
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.

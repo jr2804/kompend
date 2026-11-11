@@ -27,9 +27,8 @@ from kompend.core.pipeline.state import TierStateStore
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from kompend.logging import get_logger
 
-#: Markdown link or embed target pointing into an ``attachments/`` folder
-#: (``](…/attachments/…)``), as emitted by the wiki writer and exports.
-_ATTACHMENT_LINK_RE = re.compile(r"\]\((?P<target>[^)]*attachments/[^)]+)\)")
+#: The start of a markdown link or embed destination (``](target)``).
+_LINK_START_RE = re.compile(r"\]\(")
 
 logger = get_logger(__name__)
 
@@ -401,6 +400,38 @@ def _is_cached_extraction(path: Path, cache_dir: Path) -> bool:
         return False
 
 
+def _link_targets(text: str) -> list[str]:
+    """The destination of every markdown link in *text*.
+
+    A destination may hold balanced parentheses — a figure name such as
+    ``Perceptual_Objective_Listening_Quality_Assessment_(POLQA),_…jpg`` has
+    them — so a destination ends at the parenthesis that CLOSES the link, not
+    at the first one. Cutting it early leaves a path that resolves to
+    nothing, the file behind it looks unreferenced, and the destructive rules
+    delete a page's own figure.
+    """
+    targets: list[str] = []
+    for match in _LINK_START_RE.finditer(text):
+        close = _closing_paren(text, match.end() - 1)
+        if close is not None:
+            targets.append(text[match.end() : close])
+    return targets
+
+
+def _closing_paren(text: str, open_at: int) -> int | None:
+    """The index of the parenthesis closing the one at *open_at*, else ``None``."""
+    depth = 0
+    for index in range(open_at, len(text)):
+        char = text[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
 def _referenced_attachment_paths(base_dir: Path) -> set[str]:
     """Every vault-relative ``attachments/...`` path linked from a markdown file.
 
@@ -418,7 +449,9 @@ def _referenced_attachment_paths(base_dir: Path) -> set[str]:
             text = md.read_text(encoding="utf-8")
         except (OSError, UnicodeDecodeError):
             continue
-        for raw in _ATTACHMENT_LINK_RE.findall(text):
+        for raw in _link_targets(text):
+            if "attachments/" not in raw:
+                continue
             link = raw.strip().strip("<>").split("#", 1)[0]
             for candidate in (md.parent / link, base_dir / link):
                 rel = _vault_relative(base_dir, candidate)
