@@ -17,6 +17,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.attachments import Attachment, AttachmentManifest
 from kompend.core.models.enums import NodeType
@@ -158,6 +160,53 @@ def test_a_linked_file_whose_name_contains_a_parenthesis_survives(tmp_path: Path
     assert (tmp_path / link).is_file()
 
 
+@pytest.mark.parametrize(
+    "form",
+    [
+        '![fig]({link} "Figure 1")',
+        "![fig](<{link}>)",
+        "[figure]: {link}\n\n![fig][figure]",
+        "[figure]: {link}\n",
+        '<img src="{link}" alt="fig">',
+        "[fig]({link})",
+    ],
+    ids=["title", "angle-brackets", "reference-used", "reference-declared", "html-img", "plain-link"],
+)
+def test_every_link_form_keeps_the_figure(tmp_path: Path, form: str) -> None:
+    """One case per markdown form that used to resolve to nothing.
+
+    A titled link, an angle-bracket destination, a reference definition and an
+    HTML ``src`` each left the target unparsed, so the file looked unreferenced
+    and ``--fix-destructive`` deleted a page's own figure.
+    """
+    _source(tmp_path)
+    link = _writer_copy(tmp_path, _STEM, "report_img_9.png")
+    _page_raw(tmp_path, form.format(link=f"../../{link}"))
+
+    assert unreferenced_attachment_files(tmp_path) == []
+
+    rule = UnreferencedAttachmentsRule()
+    results = rule.check(_wiki(), sources_dir=str(VaultPaths(tmp_path).sources_dir))
+    fixed = rule.fix(_wiki(), results)
+
+    assert [r.outcome for r in fixed if r.fix_applied] == []
+    assert (tmp_path / link).is_file()
+
+
+@pytest.mark.parametrize(
+    "form",
+    ["```\n![fig]({link})\n```", "`![fig]({link})`"],
+    ids=["fenced-code", "inline-code"],
+)
+def test_a_code_example_does_not_protect_a_file(tmp_path: Path, form: str) -> None:
+    """Code is example text, not a published reference — the file stays prunable."""
+    _source(tmp_path)
+    stale = _writer_copy(tmp_path, _STEM, "report_img_10.png")
+    _page_raw(tmp_path, form.format(link=f"../../{stale}"))
+
+    assert unreferenced_attachment_files(tmp_path) == [stale]
+
+
 def _source(base_dir: Path) -> None:
     """A live source, so the attachments dir counts as a live slug."""
     sources = VaultPaths(base_dir).sources_dir
@@ -186,6 +235,13 @@ def _page(base_dir: Path, link: str | None) -> None:
     page.parent.mkdir(parents=True, exist_ok=True)
     embed = f"\n![fig](../../{link})\n" if link else "\nNo media here.\n"
     page.write_text(f"---\ntitle: One\n---\n\n# One\n{embed}", encoding="utf-8")
+
+
+def _page_raw(base_dir: Path, body: str) -> None:
+    """A page whose body is written verbatim (one link form per test)."""
+    page = base_dir / "wiki" / "concepts" / "one.md"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text(f"---\ntitle: One\n---\n\n# One\n\n{body}\n", encoding="utf-8")
 
 
 def _wiki() -> CompiledWiki:

@@ -17,8 +17,11 @@ from __future__ import annotations
 import contextlib
 import os
 import re
+from collections.abc import Iterator
 from pathlib import Path
-from typing import ClassVar
+from typing import Any, ClassVar
+
+from markdown_it import MarkdownIt
 
 from kompend.core.models import CompiledWiki
 from kompend.core.models.attachments import AttachmentManifest
@@ -27,8 +30,19 @@ from kompend.core.pipeline.state import TierStateStore
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from kompend.logging import get_logger
 
-#: The start of a markdown link or embed destination (``](target)``).
-_LINK_START_RE = re.compile(r"\]\(")
+#: The markdown reader behind :func:`_link_targets`. ``commonmark`` resolves
+#: inline destinations (with titles and balanced parentheses), angle-bracket
+#: destinations and reference definitions; ``html`` keeps raw HTML as its own
+#: tokens so ``<img src>`` / ``<a href>`` stay readable. Fenced and inline code
+#: never produce a link token, so a documentation example cannot protect a
+#: file the wiki no longer shows.
+_MARKDOWN = MarkdownIt("commonmark", {"html": True})
+
+#: ``src``/``href`` inside a raw HTML tag, double-, single- or unquoted.
+_HTML_TARGET_RE = re.compile(
+    r"""\b(?:src|href)\s*=\s*(?:"(?P<double>[^"]*)"|'(?P<single>[^']*)'|(?P<bare>[^\s"'=<>`]+))""",
+    re.IGNORECASE,
+)
 
 logger = get_logger(__name__)
 
@@ -400,38 +414,6 @@ def _is_cached_extraction(path: Path, cache_dir: Path) -> bool:
         return False
 
 
-def _link_targets(text: str) -> list[str]:
-    """The destination of every markdown link in *text*.
-
-    A destination may hold balanced parentheses — a figure name such as
-    ``Perceptual_Objective_Listening_Quality_Assessment_(POLQA),_…jpg`` has
-    them — so a destination ends at the parenthesis that CLOSES the link, not
-    at the first one. Cutting it early leaves a path that resolves to
-    nothing, the file behind it looks unreferenced, and the destructive rules
-    delete a page's own figure.
-    """
-    targets: list[str] = []
-    for match in _LINK_START_RE.finditer(text):
-        close = _closing_paren(text, match.end() - 1)
-        if close is not None:
-            targets.append(text[match.end() : close])
-    return targets
-
-
-def _closing_paren(text: str, open_at: int) -> int | None:
-    """The index of the parenthesis closing the one at *open_at*, else ``None``."""
-    depth = 0
-    for index in range(open_at, len(text)):
-        char = text[index]
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-            if depth == 0:
-                return index
-    return None
-
-
 def _referenced_attachment_paths(base_dir: Path) -> set[str]:
     """Every vault-relative ``attachments/...`` path linked from a markdown file.
 
@@ -458,6 +440,51 @@ def _referenced_attachment_paths(base_dir: Path) -> set[str]:
                 if rel is not None:
                     referenced.add(rel)
     return referenced
+
+
+def _link_targets(text: str) -> list[str]:
+    """The destination of every link, image and raw-HTML reference in *text*.
+
+    Read with a markdown parser, not a pattern: the forms a hand-rolled reader
+    got wrong (a link title, an angle-bracket destination, a reference
+    definition, ``<img src>``) each used to resolve to nothing, so the figure
+    behind them looked unreferenced and the destructive rules deleted a page's
+    own media. Code spans and fences yield no link tokens here, so a
+    documentation example cannot protect a file either.
+
+    A link target may hold balanced parentheses — a figure named
+    ``Perceptual_Objective_Listening_Quality_Assessment_(POLQA),_…jpg`` has
+    them — and the parser resolves that case too.
+    """
+    targets: list[str] = []
+    env: dict[str, Any] = {}
+    for token in _MARKDOWN.parse(text, env):
+        if token.type == "inline":
+            for child in token.children or ():
+                if child.type == "image" and child.attrGet("src"):
+                    targets.append(str(child.attrGet("src")))
+                elif child.type == "link_open" and child.attrGet("href"):
+                    targets.append(str(child.attrGet("href")))
+                elif child.type == "html_inline":
+                    targets.extend(_html_targets(child.content))
+        elif token.type == "html_block":
+            targets.extend(_html_targets(token.content))
+    # A reference definition authors the reference even before a link uses it:
+    # the definition is page content, and the destructive rules must not delete
+    # what the author declared.
+    for definition in (env.get("references") or {}).values():
+        href = definition.get("href") if isinstance(definition, dict) else None
+        if href:
+            targets.append(str(href))
+    return targets
+
+
+def _html_targets(fragment: str) -> Iterator[str]:
+    """The ``src``/``href`` values in one raw HTML fragment."""
+    for match in _HTML_TARGET_RE.finditer(fragment):
+        value = match.group("double") or match.group("single") or match.group("bare")
+        if value:
+            yield value
 
 
 def _prune_empty_dirs(attachments_root: Path) -> None:

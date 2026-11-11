@@ -99,12 +99,21 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   breaks the wiki (371 files, 1391 links in the p863 vault). The kept files
   are reported as one PASS summary; only files no page links to stay in the
   FAIL set.
-- **A link target ends at its own closing parenthesis.** A destination may
-  hold balanced parentheses — a figure named
-  ``..._Assessment_(POLQA),_Standard__0b467ca.jpg`` has them — so the target
-  is read with a depth counter, not cut at the first ``)``. A truncated target
-  resolves to nothing, the file behind it looks unreferenced, and the
-  destructive rules delete a page's own figure (18 files in the p863 vault).
+- **A link target is parsed, not pattern-matched.** ``_link_targets`` reads a
+  page with markdown-it-py (``commonmark`` + ``html``) and takes the
+  destination from image/link tokens plus ``src``/``href`` in raw HTML. Three
+  hand-rolled misses each deleted a page's own figure: a link title
+  (``![f](x.png "Figure 1")``) kept the title inside the path, an
+  angle-bracket destination kept its brackets, and a reference definition was
+  invisible. A destination may hold balanced parentheses — a figure named
+  ``..._Assessment_(POLQA),_Standard__0b467ca.jpg`` — and the parser resolves
+  that too, so no depth counter is needed. Fenced and inline code yield no
+  link token: a documentation example never protects a file.
+- **A code example is not a page link.** Both directions of the rule read only
+  prose: a fenced block or an inline span that mentions
+  ``attachments/<slug>/x.png`` neither protects a file the wiki dropped nor
+  condemns one it shows. The same reader is the sole source for both
+  destructive rules, so they cannot disagree about what a page links.
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.
