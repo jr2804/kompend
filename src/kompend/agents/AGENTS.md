@@ -6,8 +6,8 @@
 ## Purpose
 
 PydanticAI-based agents for every LLM call in the kompend pipeline. Each
-pipeline stage is a structured-output agent returning a typed Pydantic model.
-This package is the **only** layer that talks to pydantic-ai `Agent` directly.
+pipeline stage is a structured-output agent returning a typed Pydantic model;
+this package is the **only** layer that talks to pydantic-ai `Agent` directly.
 
 ## Ownership
 
@@ -29,9 +29,8 @@ or a registry entry in `agents/specs.py` instead of hand-wiring a class.
 
 Prompt or validation behaviour a template cannot express belongs on the spec as
 `user_prompt` / `system_prompt` / `validate_output`. The hook receives `(agent,
-deps)`, so it reads `agent.rlm`, `agent.skills` and `agent._template_loader`;
-the base installs it as the method. Never override `render_*` or
-`validate_output` in a concrete class.
+deps)`, so it reads `agent.rlm`, `agent.skills` and `agent._template_loader`; the
+base installs it as the method. Never override `render_*` or `validate_output`.
 
 ### The `base/` package
 
@@ -85,21 +84,20 @@ The base class provides:
   `compact_on_request: ClassVar[bool]` (default `False`) adds
   model-triggered `CompactOnRequest` for history-threading agents only.
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
-  `[rlm]` extra) attaches from the `compile.llm.rlm` group (`RlmConfig` in
-  `core/config/_configs.py`; `enable` is the only switch, explicit fields
-  override the preset baseline). It registers an `execute_code` tool
-  (sandboxed REPL, deps context pre-loaded from `rlm_context_field`) plus RLM
-  instructions; the sub-model powers `llm_query()` in the REPL and is
-  usage-tracked via `KompendModel`. With `max_depth > 0` the REPL also exposes
-  `rlm_query(prompt, slice)` — a child agent (same main model, own REPL)
-  recursing to the depth budget, guarded by a per-root-run node budget
-  (default 16) and cycle detection on (depth, prompt, context fingerprint).
-  The per-run REPL cache is keyed by `id(deps)` and a lookup must confirm the
-  entry still belongs to that deps object (ids are recycled; a stale REPL
-  would run against the previous run's namespace, guard and model). When RLM
-  is enabled the `rlm_context_field` deps value is replaced in rendered prompts
-  by `RLM_CONTEXT_PLACEHOLDER` (the deps keep the full value for the REPL).
-  Disabled by default (`rlm=False`).
+  `[rlm]` extra) attaches from the `compile.llm.rlm` group (`RlmConfig`;
+  `enable` is the only switch, explicit fields override the preset baseline).
+  It registers an `execute_code` tool (sandboxed REPL, deps context pre-loaded
+  from `rlm_context_field`) plus RLM instructions; the sub-model powers
+  `llm_query()` in the REPL and is usage-tracked via `KompendModel`. With
+  `max_depth > 0` the REPL also exposes `rlm_query(prompt, slice)` — a child
+  agent (same main model, own REPL) recursing to the depth budget, guarded by
+  a per-root-run node budget (default 16) and cycle detection on (depth,
+  prompt, context fingerprint). The per-run REPL cache is keyed by `id(deps)`
+  and a lookup must confirm the entry still belongs to that deps object (ids
+  are recycled; a stale REPL would run against the previous namespace, guard
+  and model). When RLM is enabled the `rlm_context_field` deps value is
+  replaced in rendered prompts by `RLM_CONTEXT_PLACEHOLDER` (the deps keep the
+  full value for the REPL). Disabled by default (`rlm=False`).
 - **Skill injection** — `compile.skills` entries are appended to the system
   prompt under `## Skill: <name>` headings
 - **Output validation + retry** — PydanticAI validates against
@@ -121,13 +119,10 @@ The base class provides:
 
 ### Construction contract
 
-Agents take their limits from the config, not from the call site. A
-construction site hands over the two config groups and gets every limit it
-did not spell out:
-
-| Kwarg | Source |
-|-------|--------|
-| `llm` | the `compile.llm` group — timeout, retries, reasoning effort, context manager, context window, fallback chain, delta-retry switch, data format |
+Agents take their limits from the config, not from the call site: a
+construction site hands over the `llm` group (`compile.llm` — timeout, retries,
+reasoning effort, context manager, context window, fallback chain, delta-retry
+switch, data format) and gets every limit it did not spell out.
 
 `_apply_config_defaults()` (in `base/agent.py`) fills every gap from its
 `compile.llm` twin (the tool/output retry split collapses to 0 when
@@ -155,10 +150,15 @@ other axes.
 
 `classify_agent_failure(exc)` maps any raised error onto an `AgentFailureKind`
 (`empty_answer`, `schema_mismatch`, `context_overflow`, `transient`, `other`);
-`is_retry_pointless(kind)` says when re-sending cannot help. An empty answer
-never spends the output budget: `KompendModel` resamples a blank
-structured-output response once, then raises `EmptyAnswerError` (every mode
-except `text`) — retry feedback cannot fix a blank answer. Stages call
+`is_retry_pointless(kind)` says when re-sending cannot help. What escapes
+`run()`/`run_with_messages()` is always an `LLMOutputError` (or
+`LLMTransientError`/`LLMContextOverflowError`) with `__cause__` set — callers
+catch that type, not `Exception`. The two broad catches in `base/agent.py` and
+the one in `base/retries.py` are THE mapping boundary, re-raising typed, and
+the only ones allowed in `base/**`. An empty answer never spends the output
+budget: `KompendModel` resamples a blank structured-output response once, then
+raises `EmptyAnswerError` (every mode except `text`) — retry feedback cannot
+fix a blank answer. Stages call
 `record_unit_failure(...)` per failed unit (one log line naming unit, kind and
 request count) and `UnitFailureLog.check()` raises once more than
 `compile.llm.batch_failure_threshold_ratio` of the units failed. A stage never
@@ -178,10 +178,11 @@ tool pair: an invented file name gets `ModelRetry`, and once the tool budget
 is spent the run dies with the node left unsummarized. `compile.llm.agent_memory`
 (default on) decides which stages request it; it only helps a stage where one
 instance handles MANY outputs (summarisation, verification, remediation,
-distillation) — fresh-agent-per-unit stages gain nothing. `compile.llm.memory_store` (default `vault`) picks the
-backend: `vault` roots it at `.kompend/agent-memory/<agent_name>/MEMORY.md`
-via `DirectoryMemoryStore` (`vault_memory.py`), resolved by
-`build_notebook_store(llm, memory_dir)`. It is prompt context, not a cache key.
+distillation) — fresh-agent-per-unit stages gain nothing. `compile.llm.memory_store`
+(default `vault`) picks the backend: `vault` roots it at
+`.kompend/agent-memory/<agent_name>/MEMORY.md` via `DirectoryMemoryStore`
+(`vault_memory.py`), resolved by `build_notebook_store(llm, memory_dir)` — prompt
+context, not a cache key.
 
 Three harness capabilities ride on `AgenticHarness` (`agentic_harness.py`):
 **StepPersistence** (`step_store`) saves each run's transcript per turn, so a
@@ -191,8 +192,8 @@ a BM25 tool over that store; **SystemReminders** (`reminder_content` +
 `reminder_interval`) appends a cache-safe tail reminder from a template.
 
 The delta-retry salvage hook (`base/delta_retry.py`) is opt-in per class via
-`supports_delta_retry: ClassVar[bool] = True` (a plain attribute would
-`__init__` and never take effect) and fires only with `llm.delta_retry_enabled`.
+`supports_delta_retry: ClassVar[bool] = True` (a plain attribute would `__init__`
+and never take effect) and fires only with `llm.delta_retry_enabled`.
 
 ### KompendModel (`kompend_model.py`)
 
@@ -222,9 +223,8 @@ History compression lives on the Agent layer (`build_fallback_compaction`,
 | `WriteDeps`         | AgenticWriteAgent (`source_texts`, served in `source_char_max` windows)                |
 | `VlmDeps`          | VlmAgent (`image_file`, the figure's `context`)                                        |
 
-Agentic-session payloads are `TypedDict`s in `types.py`, never bare
-`dict[str, Any]` at the agent boundary; `DistillPage` is `total=False` because
-it mirrors untrusted model output.
+Agentic-session payloads are `TypedDict`s in `types.py`; `DistillPage` is
+`total=False` because it mirrors untrusted model output.
 
 ## Local Contracts
 
@@ -240,8 +240,8 @@ it mirrors untrusted model output.
   consuming module (e.g. `kompend.compilation.schema.ExtractionOutput`).
   The package surface is attached **lazily** (`lazy_loader.attach`, mirroring
   `kompend.rag`): importing `kompend.agents` must not pull the pydantic-ai
-  stack — extend the module's list in the `submod_attrs` map instead of adding
-  a module-level import (the eager facade cost ~4-5 s per CLI spawn).
+  stack — extend the `submod_attrs` map instead of adding a module-level import
+  (the eager facade cost ~4-5 s per CLI spawn).
 
 ## Relationship to other layers
 
