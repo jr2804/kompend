@@ -65,7 +65,7 @@ from kompend.core.pipeline.state import (
 )
 from kompend.core.store import open_store
 from kompend.core.store.schema import PRIVATE_PAGES_TABLE, PROVENANCE_TABLE, VERIFICATION_TABLE
-from kompend.core.utils.exceptions import LLMContextOverflowError
+from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.llm.request_budget import RequestBudget
 from kompend.provenance import annotate_wiki_with_provenance
@@ -1009,6 +1009,10 @@ class TestAgenticSegmentSizing:
 
         Unbounded after a clamp, the block keeps paying the old window's 10%
         and the re-segmentation gains nothing.
+
+        The clamp lands on 16384 tokens — a window that still leaves room for
+        a segment beside the agentic overhead. A window that does not is
+        refused by the planner (see the next test).
         """
         compiler = self._compiler(context_window=65536)
         compiler._context_window = ContextWindow(max_input=65536, max_output=8192, source=ContextSource.OLLAMA)
@@ -1030,7 +1034,7 @@ class TestAgenticSegmentSizing:
             assert known_titles_prompt is not None
             calls.append((len(known_titles_prompt), len(known_titles or []) == len(known_titles_prompt)))
             if len(calls) == 1:
-                raise LLMContextOverflowError("too big", stated_limit=8192)
+                raise LLMContextOverflowError("too big", stated_limit=16384)
             raise RuntimeError("stop after the re-plan")
 
         monkeypatch.setattr(gen_module, "prepare_concepts", lambda *_args, **_kwargs: concepts)
@@ -1039,14 +1043,42 @@ class TestAgenticSegmentSizing:
         with pytest.raises(RuntimeError, match="stop after the re-plan"):
             gen_module.run_generation(compiler, ExtractionSet(), [])
 
-        assert compiler._context_window.max_input == 8192
+        assert compiler._context_window.max_input == 16384
         assert len(calls) == 2
         assert calls[0][1] is False  # 3000 titles do not fit a 64K window inline
-        assert calls[1][0] < calls[0][0]  # the head re-windows to the 8K window
+        assert calls[1][0] < calls[0][0]  # the head re-windows to the 16K window
         assert calls[1][1] is False
         # The full list stays intact; only the windows moved.
         assert calls[0][0] > 0
         assert calls[1][0] > 0
+
+    def test_a_clamped_window_that_cannot_host_the_turn_fails_at_planning(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A window without room for a segment is refused in the planner.
+
+        The fixed overhead of an agentic turn (system prompt, tool framing,
+        titles window) is counted with the same pessimistic ratio as the
+        content. An 8192-token window therefore leaves 264 content tokens —
+        below the 512-token floor. The planner says so instead of sending a
+        request that cannot fit.
+        """
+        compiler = self._compiler(context_window=65536)
+        compiler._context_window = ContextWindow(max_input=65536, max_output=8192, source=ContextSource.OLLAMA)
+        concepts = [{"name": f"Concept-{i}-with-a-longish-name"} for i in range(3000)]
+        calls: list[int] = []
+
+        def fake_generation(*_args: object, **_kwargs: object) -> tuple[object, dict[str, int], dict[str, list[str]]]:
+            calls.append(1)
+            raise LLMContextOverflowError("too big", stated_limit=8192)
+
+        monkeypatch.setattr(gen_module, "prepare_concepts", lambda *_args, **_kwargs: concepts)
+        monkeypatch.setattr(gen_module, "run_generation_resumable", fake_generation)
+
+        with pytest.raises(LLMOutputError, match="Segment sizing impossible"):
+            gen_module.run_generation(compiler, ExtractionSet(), [])
+        # The first request was rejected, the re-plan refused — no second
+        # request was sent against a window that cannot hold one.
+        assert len(calls) == 1
+        assert compiler._context_window.max_input == 8192
 
     def test_repeated_clamps_keep_re_planning(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A second, lower limit is honoured instead of raising on the retry.

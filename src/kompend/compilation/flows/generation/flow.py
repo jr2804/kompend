@@ -160,7 +160,19 @@ def run_generation(
             # list is untouched — only the window sizes move.
             titles_prompt, titles_page_chars = _known_titles_windows(compiler, known_titles)
             budget = _agentic_budget(compiler, titles_prompt, titles_page_chars, pinned_clean)
-            source_segments = prepare_source_segments(compiler, chunks, budget=budget)
+            try:
+                source_segments = prepare_source_segments(compiler, chunks, budget=budget)
+            except LLMOutputError as exc:
+                # The clamped window cannot host the agentic turn: its fixed
+                # overhead (system prompt, tool framing, titles window) no
+                # longer leaves room for a segment. The generic handler would
+                # point at the transcripts, but the run died in the planner.
+                logger.error(
+                    "TwoPhase: the clamped window (%d tokens) cannot host the agentic turn — %s",
+                    compiler._context_window.max_input,
+                    exc,
+                )
+                raise
         except LLMOutputError:
             # Generation produced no pages for at least one segment. The step
             # store keeps every segment transcript; a re-run recovers finished
