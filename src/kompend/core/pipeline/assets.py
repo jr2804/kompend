@@ -10,8 +10,6 @@ dedup to a single record; ``ref_count`` is incremented for each referencing
 node, so the store is cumulative across compilations.
 """
 
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
-
 from __future__ import annotations
 
 import json
@@ -19,9 +17,12 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, cast
 
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
 from kompend.core.models.assets import AssetField, AssetRecord
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import ASSETS_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import assets
 from kompend.core.types import ReasonCode
 from kompend.logging import get_logger
 from kompend.types import JSONDict
@@ -61,8 +62,8 @@ class AssetStore:
         if not self._db_path.exists():
             self._data = {}
             return
-        with open_store(self._db_path) as conn:
-            rows = conn.execute(f"SELECT id, kind, source, data, summary, ref_count FROM {ASSETS_TABLE}").fetchall()
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(select(assets)).mappings().all()
         data: dict[str, dict[str, Any]] = {}
         for row in rows:
             try:
@@ -82,23 +83,22 @@ class AssetStore:
 
     def save(self) -> None:
         """Persist the in-memory records (full overwrite). Best-effort."""
+        rows = [
+            {
+                "id": record[AssetField.ID],
+                "kind": record[AssetField.KIND],
+                "source": record[AssetField.SOURCE],
+                "summary": record[AssetField.SUMMARY],
+                "ref_count": record[AssetField.REF_COUNT],
+                "data": json.dumps(record[AssetField.DATA], ensure_ascii=False),
+            }
+            for record in self._data.values()
+        ]
         try:
-            with open_store(self._db_path) as conn:
-                conn.execute(f"DELETE FROM {ASSETS_TABLE}")
-                conn.executemany(
-                    f"INSERT INTO {ASSETS_TABLE}(id, kind, source, summary, ref_count, data) VALUES (?, ?, ?, ?, ?, ?)",
-                    [
-                        (
-                            record[AssetField.ID],
-                            record[AssetField.KIND],
-                            record[AssetField.SOURCE],
-                            record[AssetField.SUMMARY],
-                            record[AssetField.REF_COUNT],
-                            json.dumps(record[AssetField.DATA], ensure_ascii=False),
-                        )
-                        for record in self._data.values()
-                    ],
-                )
+            with open_store(self._db_path) as conn, core_connection(conn) as core:
+                core.execute(delete(assets))
+                if rows:
+                    core.execute(sqlite_insert(assets), rows)
         except Exception as exc:  # pragma: no cover — DB-dependent
             logger.warning("Could not write asset store (%s): %s", self._db_path, exc)
 
