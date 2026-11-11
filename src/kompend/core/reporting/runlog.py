@@ -9,9 +9,10 @@ through, and if not, where did it stop?":
 - a ``start`` row with no matching ``end`` → process was killed / hung
 
 Rows are tiny; the table is pruned to a soft cap so the store stays bounded.
-"""
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
+The three statements are SQLAlchemy Core statements against the shared ``runs``
+table object, so the column names live in one place.
+"""
 
 from __future__ import annotations
 
@@ -20,6 +21,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import NotRequired, TypedDict
+
+from sqlalchemy import delete, func, insert, select
 
 from kompend.core.config import ResolvedConfig, resolve_config
 from kompend.core.config._configs import DisplayConfig
@@ -31,8 +34,8 @@ from kompend.core.keys import (
 )
 from kompend.core.paths import CONFIG_FILE, LOGS_SUBDIR
 from kompend.core.reporting.handle import RunHandle, set_current_run_id
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import RUNS_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import runs
 from kompend.core.utils.time import iso_local, now_local
 from kompend.logging import attach_run_log, detach_run_log, get_logger
 from kompend.types import ConfigValue
@@ -70,11 +73,8 @@ def log_run_start(wiki_dir: str | None = None, *, cmd_tokens: list[str] | None =
     start_iso = iso_local()
     cmd = _command_label(cmd_tokens or [], display)
     try:
-        with open_store(db_path) as conn:
-            conn.execute(
-                f"INSERT INTO {RUNS_TABLE} (event, run_id, cmd, ts) VALUES (?, ?, ?, ?)",
-                ("start", run_id, cmd, start_iso),
-            )
+        with open_store(db_path) as conn, core_connection(conn) as core:
+            core.execute(insert(runs).values(event="start", run_id=run_id, cmd=cmd, ts=start_iso))
     except sqlite3.Error as exc:  # never let logging crash the command
         logger.debug("run-log start write failed: %s", exc)
         return None
@@ -181,10 +181,18 @@ def log_run_end(
         limit = handle.error_chars if handle.error_chars is not None else DisplayConfig().log_error_chars
         capped_error = error[:limit]
     try:
-        with open_store(handle.db_path) as conn:
-            conn.execute(
-                f"INSERT INTO {RUNS_TABLE} (event, run_id, cmd, ts, status, duration_s, exit, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                ("end", handle.run_id, handle.cmd, iso_local(), status, round(duration, 2), exit_code, capped_error),
+        with open_store(handle.db_path) as conn, core_connection(conn) as core:
+            core.execute(
+                insert(runs).values(
+                    event="end",
+                    run_id=handle.run_id,
+                    cmd=handle.cmd,
+                    ts=iso_local(),
+                    status=status,
+                    duration_s=round(duration, 2),
+                    exit=exit_code,
+                    error=capped_error,
+                )
             )
     except sqlite3.Error as exc:
         logger.debug("run-log end write failed: %s", exc)
@@ -201,13 +209,11 @@ def _parse_iso(iso: str) -> datetime:
 def _maybe_prune(db_path: Path) -> None:
     """Trim the run log to the last ``_KEEP_ROWS`` once it exceeds the cap."""
     try:
-        with open_store(db_path) as conn:
-            count = conn.execute(f"SELECT COUNT(*) FROM {RUNS_TABLE}").fetchone()[0]
+        with open_store(db_path) as conn, core_connection(conn) as core:
+            count = core.execute(select(func.count()).select_from(runs)).scalar_one()
             if count <= _SOFT_CAP_ROWS:
                 return
-            conn.execute(
-                f"DELETE FROM {RUNS_TABLE} WHERE id NOT IN (SELECT id FROM {RUNS_TABLE} ORDER BY id DESC LIMIT ?)",
-                (_KEEP_ROWS,),
-            )
+            kept = select(runs.c.id).order_by(runs.c.id.desc()).limit(_KEEP_ROWS)
+            core.execute(delete(runs).where(runs.c.id.not_in(kept)))
     except sqlite3.Error as exc:
         logger.debug("run-log prune failed: %s", exc)
