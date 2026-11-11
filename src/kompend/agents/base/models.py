@@ -1,5 +1,3 @@
-# pyreorder: off — the TYPE_CHECKING import below is deliberate: base.agent
-# imports these helpers, so a runtime import would close a cycle. Keep the guard.
 """Model wiring for the agent base: top-level model and output ceilings.
 
 ``build_top_level_model`` builds the failover chain wrapped in
@@ -8,27 +6,28 @@ protocol-mandated ``max_tokens`` per request (window minus prompt minus
 margin, clamped by the catalog's output limit). All of them read only
 construction state off the agent, so they live here as free functions;
 the agent class keeps thin delegating methods.
+
+The agent is typed as :class:`~kompend.agents.base.protocols.ModelHost`
+rather than :class:`KompendAgentBase`: ``agent.py`` imports this module,
+so naming the class at runtime would close the cycle.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING
 
+from pydantic_ai import RunContext
+from pydantic_ai.agent import AgentModelSettings
 from pydantic_ai.messages import ModelMessage, ModelMessagesTypeAdapter
 from pydantic_ai.models import Model
 from pydantic_ai.models.fallback import FallbackModel
+from pydantic_ai.settings import ModelSettings
 
+from kompend.agents.base.protocols import ModelHost
 from kompend.agents.kompend_model import KompendModel
+from kompend.core.text.density import CONSERVATIVE_CHARS_PER_TOKEN
 from kompend.llm.models import build_model, resolve_model_limits
 from kompend.logging import get_logger
-
-if TYPE_CHECKING:
-    from pydantic_ai import RunContext
-    from pydantic_ai.agent import AgentModelSettings
-    from pydantic_ai.settings import ModelSettings
-
-    from kompend.agents.base.agent import KompendAgentBase
 
 #: Share of the window kept free on top of the estimated prompt when a
 #: protocol demands an explicit output ceiling.
@@ -38,12 +37,14 @@ _CEILING_MARGIN_FRACTION: float = 0.05
 _CEILING_MARGIN_MIN: int = 256
 
 #: Chars-per-token used when the agent has no ``compile.llm`` config group.
-_FALLBACK_CHARS_PER_TOKEN: float = 4.0
+#: The shared pessimistic bound, not the harness's 4: an agent without a
+#: config group must not size its payload optimistically.
+_FALLBACK_CHARS_PER_TOKEN: float = CONSERVATIVE_CHARS_PER_TOKEN
 
 logger = get_logger(__name__)
 
 
-def build_top_level_model(agent: KompendAgentBase) -> Model:
+def build_top_level_model(agent: ModelHost) -> Model:
     """Build the model (with failover + kompend wrapper) for the Agent."""
     primary = KompendModel(
         build_model(agent.model_string),
@@ -69,7 +70,7 @@ def build_top_level_model(agent: KompendAgentBase) -> Model:
 
 
 def ceiling_model_settings(
-    agent: KompendAgentBase,
+    agent: ModelHost,
     base: ModelSettings,
 ) -> AgentModelSettings:
     """Per-request settings that add the protocol-mandated ``max_tokens``.
@@ -88,7 +89,7 @@ def ceiling_model_settings(
     return _settings
 
 
-def output_ceiling(agent: KompendAgentBase, messages: Sequence[ModelMessage]) -> int | None:
+def output_ceiling(agent: ModelHost, messages: Sequence[ModelMessage]) -> int | None:
     """Tokens this request may generate, or ``None`` when nothing is sent.
 
     The value is the physical maximum, not a configured cap: the model's
@@ -109,7 +110,7 @@ def output_ceiling(agent: KompendAgentBase, messages: Sequence[ModelMessage]) ->
     return max(1, available)
 
 
-def estimate_prompt_tokens(agent: KompendAgentBase, messages: Sequence[ModelMessage]) -> int | None:
+def estimate_prompt_tokens(agent: ModelHost, messages: Sequence[ModelMessage]) -> int | None:
     """Rough token count of the request payload, ``None`` when unknown.
 
     An estimate of zero is not an answer, so an unknown size is reported as
@@ -127,7 +128,7 @@ def estimate_prompt_tokens(agent: KompendAgentBase, messages: Sequence[ModelMess
     return max(1, int(len(payload) / chars_per_token))
 
 
-def model_max_output(agent: KompendAgentBase) -> int | None:
+def model_max_output(agent: ModelHost) -> int | None:
     """The model's own output limit from the catalog, or ``None`` if unknown."""
     try:
         _, max_output = resolve_model_limits(agent.model_string)

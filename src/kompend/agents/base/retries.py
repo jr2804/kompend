@@ -1,5 +1,3 @@
-# pyreorder: off — the TYPE_CHECKING import below is deliberate: base.agent
-# imports these helpers, so a runtime import would close a cycle. Keep the guard.
 """Transient-retry policy, failure mapping and cache-rejection sniffing.
 
 The transient-retry loop (``invoke_agent`` and its helpers) retries transient
@@ -10,6 +8,10 @@ unmolested — an empty answer must fail fast, a transient one retries;
 do not simplify either half. ``_map_agent_error`` turns everything else
 into the exception type the stage reports, and ``_is_cache_rejection``
 recognises provider schema mismatches that no retry can fix.
+
+The agent is typed as :class:`~kompend.agents.base.protocols.RetryHost`
+rather than :class:`KompendAgentBase`: ``agent.py`` imports this module,
+so naming the class at runtime would close the cycle.
 """
 
 from __future__ import annotations
@@ -17,11 +19,13 @@ from __future__ import annotations
 import logging
 import math
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from pydantic_ai import UsageLimits
 from pydantic_ai.messages import ModelMessage
 
+from kompend.agents.base.deps import DepsT
+from kompend.agents.base.protocols import RetryHost
 from kompend.agents.failure import EmptyAnswerError
 from kompend.core.utils.exceptions import (
     LLMContextOverflowError,
@@ -32,10 +36,6 @@ from kompend.llm.errors import is_transient_error
 from kompend.llm.overflow import is_context_overflow, stated_context_size
 from kompend.llm.usage import UsageTracker
 
-if TYPE_CHECKING:
-    from kompend.agents.base.agent import KompendAgentBase
-    from kompend.agents.base.deps import DepsT
-
 #: Transient retries when no config is handed over (``compile.llm`` unset).
 _DEFAULT_TRANSIENT_RETRIES: int = 2
 _DEFAULT_TRANSIENT_BACKOFF_SECONDS: float = 5.0
@@ -43,16 +43,24 @@ _DEFAULT_TRANSIENT_BACKOFF_SECONDS: float = 5.0
 logger = logging.getLogger(__name__)
 
 
-def _is_cache_rejection(exc: BaseException) -> bool:
-    """True for provider rejections that no retry can fix.
+def failure(agent: RetryHost, exc: Exception, deps: DepsT) -> LLMOutputError:
+    """Log a failed run once and return the exception the stage must see.
 
-    These are schema mismatches — an unknown field, an extra input —
-    reported by the provider as a 4xx cache write rejection; retrying
-    would only burn budget.
+    Both entry points (``run`` and ``run_with_messages``) fail the same
+    way, so the log line and the mapping live here instead of in two
+    identical ``except`` blocks that could drift apart.
     """
-    status = getattr(exc, "status_code", None)
-    text = str(exc).lower()
-    return status in {400, 404, 422} and ("cache" in text or "unknown field" in text or "extra inputs" in text)
+    debug_hint = f" (debug: {agent._last_debug_file})" if agent._last_debug_file else ""
+    ctx_info = _context_usage_str(agent.usage_tracker)
+    logger.warning(
+        "Agent '%s' failed on '%s': %s%s%s",
+        type(agent).__name__,
+        deps.source_id,
+        exc,
+        debug_hint,
+        ctx_info,
+    )
+    return _map_agent_error(exc, model_string=agent.model_string, debug_hint=debug_hint)
 
 
 def _context_usage_str(tracker: UsageTracker | None) -> str:
@@ -92,28 +100,8 @@ def _map_agent_error(exc: Exception, *, model_string: str, debug_hint: str) -> L
     return LLMOutputError(message)
 
 
-def failure(agent: KompendAgentBase, exc: Exception, deps: DepsT) -> LLMOutputError:
-    """Log a failed run once and return the exception the stage must see.
-
-    Both entry points (``run`` and ``run_with_messages``) fail the same
-    way, so the log line and the mapping live here instead of in two
-    identical ``except`` blocks that could drift apart.
-    """
-    debug_hint = f" (debug: {agent._last_debug_file})" if agent._last_debug_file else ""
-    ctx_info = _context_usage_str(agent.usage_tracker)
-    logger.warning(
-        "Agent '%s' failed on '%s': %s%s%s",
-        type(agent).__name__,
-        deps.source_id,
-        exc,
-        debug_hint,
-        ctx_info,
-    )
-    return _map_agent_error(exc, model_string=agent.model_string, debug_hint=debug_hint)
-
-
 def invoke_agent(
-    agent: KompendAgentBase,
+    agent: RetryHost,
     user_prompt: str,
     deps: DepsT,
     system_prompt: str,
@@ -174,17 +162,29 @@ def invoke_agent(
             time.sleep(delay)
 
 
-def transient_retries(agent: KompendAgentBase) -> int:
+def _is_cache_rejection(exc: BaseException) -> bool:
+    """True for provider rejections that no retry can fix.
+
+    These are schema mismatches — an unknown field, an extra input —
+    reported by the provider as a 4xx cache write rejection; retrying
+    would only burn budget.
+    """
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    return status in {400, 404, 422} and ("cache" in text or "unknown field" in text or "extra inputs" in text)
+
+
+def transient_retries(agent: RetryHost) -> int:
     """Configured whole-request retries after a transient failure."""
     return agent.llm.transient_retries if agent.llm is not None else _DEFAULT_TRANSIENT_RETRIES
 
 
-def transient_backoff(agent: KompendAgentBase) -> float:
+def transient_backoff(agent: RetryHost) -> float:
     """Configured first backoff (seconds) for a transient retry."""
     return agent.llm.transient_backoff if agent.llm is not None else _DEFAULT_TRANSIENT_BACKOFF_SECONDS
 
 
-def usage_limits_for(agent: KompendAgentBase, deps: DepsT) -> UsageLimits | None:
+def usage_limits_for(agent: RetryHost, deps: DepsT) -> UsageLimits | None:
     """Per-run UsageLimits; default is the RLM preset limits (or None).
 
     pydantic-ai's implicit default caps a run at 50 requests, which is
@@ -195,7 +195,7 @@ def usage_limits_for(agent: KompendAgentBase, deps: DepsT) -> UsageLimits | None
 
 
 def session_limits(
-    agent: KompendAgentBase,
+    agent: RetryHost,
     *,
     units: int,
     per_unit: int,
@@ -220,7 +220,7 @@ def session_limits(
     return UsageLimits(request_limit=math.ceil(planned * headroom_frac))
 
 
-def retry_requests(agent: KompendAgentBase) -> int:
+def retry_requests(agent: RetryHost) -> int:
     """Requests the configured retry budgets may add to one run.
 
     A retried tool call and a rejected structured output each cost another

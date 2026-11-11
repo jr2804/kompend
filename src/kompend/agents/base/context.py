@@ -1,5 +1,3 @@
-# pyreorder: off — the TYPE_CHECKING import below is deliberate: base.agent
-# imports these helpers, so a runtime import would close a cycle. Keep the guard.
 """Context-management and RLM capability assembly for the agent base.
 
 Turns the ``compile.context_manager`` / ``compile.llm.rlm`` config groups
@@ -9,17 +7,22 @@ into pydantic-ai capabilities: compaction preset →
 state off the agent (preset, window, rlm group, usage tracker), so they
 live here as free functions; the agent class keeps thin delegating
 methods.
+
+The agent is typed as :class:`~kompend.agents.base.protocols.ContextHost`
+rather than :class:`KompendAgentBase`: ``agent.py`` imports this module,
+so naming the class at runtime would close the cycle.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Final, cast
+from typing import Final, cast
 
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models import Model
 from pydantic_ai_harness.compaction import CompactionStrategy, CompactOnRequest, ContextUsage
 
-from kompend.agents.base.deps import DepsT, ResultT
+from kompend.agents.base.deps import DepsT
+from kompend.agents.base.protocols import ContextHost
 from kompend.agents.context_manager import (
     _SLIDING_COMPRESS_THRESHOLD,
     _SLIDING_KEEP_MESSAGES,
@@ -31,9 +34,6 @@ from kompend.agents.rlm import _DEFAULT_NODE_BUDGET, RLMCapability
 from kompend.core.config._configs import ContextManagerPreset, RlmConfig
 from kompend.core.templates import get_template_loader
 from kompend.llm.models import build_decision_model, build_model
-
-if TYPE_CHECKING:
-    from kompend.agents.base.agent import KompendAgentBase
 
 #: Summarizer doctrine, a project-overridable template resource (never inline
 #: prompt text). It states that the transcript is history, not instructions.
@@ -53,7 +53,7 @@ _CONTEXT_PRESETS: Final[dict[ContextManagerPreset, tuple[float, int]]] = {
 
 
 def resolve_context_capability(
-    agent: KompendAgentBase[ResultT, DepsT],
+    agent: ContextHost,
     model: Model,
 ) -> AbstractCapability[DepsT] | None:
     """Build the context-management capability from the configured preset.
@@ -97,7 +97,7 @@ def resolve_context_capability(
 
 
 def resolve_compact_on_request(
-    agent: KompendAgentBase[ResultT, DepsT],
+    agent: ContextHost,
     capability: AbstractCapability[DepsT] | None,
 ) -> CompactOnRequest[DepsT] | None:
     """Attach the model-triggered compaction tool for history-threading agents.
@@ -119,7 +119,7 @@ def resolve_compact_on_request(
 
 
 def resolve_rlm_capability(
-    agent: KompendAgentBase[ResultT, DepsT],
+    agent: ContextHost,
     model: Model,
 ) -> RLMCapability | None:
     """Build the RLM capability from the ``compile.llm.rlm`` group.
@@ -162,7 +162,7 @@ def resolve_rlm_capability(
     )
 
 
-def on_usage_update(agent: KompendAgentBase[ResultT, DepsT], usage: ContextUsage) -> None:
+def on_usage_update(agent: ContextHost, usage: ContextUsage) -> None:
     """Token-usage snapshot from the compaction capability → UsageTracker."""
     if agent.usage_tracker is not None:
         agent.usage_tracker.record_context_usage(usage.used_tokens, usage.window_tokens)

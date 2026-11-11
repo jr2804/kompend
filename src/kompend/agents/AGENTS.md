@@ -48,10 +48,10 @@ surface, so importers never name a submodule:
 | `base/context.py` | context-manager and RLM capability assembly, `_CONTEXT_PRESETS`, `resolve_compact_on_request` |
 | `base/retries.py` | transient-retry loop, failure mapping, cache-rejection sniffing, session limits |
 | `base/delta_retry.py` | the delta-retry salvage hook and its six helpers |
+| `base/protocols.py` | `ContextHost`, `ModelHost`, `RetryHost`, `DeltaRetryHost` — the agent surface each helper reads |
 
-Four modules (`context.py`, `delta_retry.py`, `models.py`, `retries.py`) carry
-`# pyreorder: off`: `base/agent.py` imports their builders, so their
-`TYPE_CHECKING` import of `KompendAgentBase` is deliberate — keep the guard.
+A helper takes its agent as one of those protocols, never as `KompendAgentBase`:
+`base/agent.py` imports the helpers, so naming the class would close the cycle.
 
 The base class provides:
 
@@ -71,7 +71,7 @@ The base class provides:
   pydantic/pydantic-ai#12307). The `sliding` preset is
   `build_sliding_compaction()`: a `_GuardedSlidingCompaction` trim on a token
   trigger (not just the 100-message count) with the same pin and gate, every
-  figure using `_conservative_tokens` (2.5 chars/token; see the guide).
+  figure using `conservative_tokens` (the shared density floor, see the guide).
 - **Compaction invariants** — `_pin_first_user_turn` pins the task assignment
   (harness `pin()`, model-invisible) before any tier runs and every strategy
   re-injects it; the gate re-arms only after `min_growth_tokens` of growth since

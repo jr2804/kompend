@@ -15,31 +15,33 @@ public API only: ``Connection.send_request`` / ``send_notification`` plus the
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import acp
 from acp import CLIENT_METHODS, schema
+from acp.connection import Connection
 from acp.utils import notify_model, request_model, request_optional_model, serialize_params
 from pydantic import TypeAdapter
 
-if TYPE_CHECKING:
-    from acp.connection import Connection
-
-    SessionUpdate = (
-        schema.UserMessageChunk
-        | schema.AgentMessageChunk
-        | schema.AgentThoughtChunk
-        | schema.ToolCallStart
-        | schema.ToolCallProgress
-        | schema.AgentPlanUpdate
-        | schema.AgentPlanContentUpdate
-        | schema.AgentPlanRemovedUpdate
-        | schema.AvailableCommandsUpdate
-        | schema.CurrentModeUpdate
-        | schema.ConfigOptionUpdate
-        | schema.SessionInfoUpdate
-        | schema.UsageUpdate
-    )
+#: Every ``session/update`` payload the adapter may send. Owned here rather
+#: than in a typing-only guard: the union is the parameter type of a public
+#: method, and the SDK's own ``acp.helpers.SessionUpdate`` omits five kinds
+#: kompend forwards (config option, plan content/removal, usage).
+type SessionUpdate = (
+    schema.UserMessageChunk
+    | schema.AgentMessageChunk
+    | schema.AgentThoughtChunk
+    | schema.ToolCallStart
+    | schema.ToolCallProgress
+    | schema.AgentPlanUpdate
+    | schema.AgentPlanContentUpdate
+    | schema.AgentPlanRemovedUpdate
+    | schema.AvailableCommandsUpdate
+    | schema.CurrentModeUpdate
+    | schema.ConfigOptionUpdate
+    | schema.SessionInfoUpdate
+    | schema.UsageUpdate
+)
 
 
 _CREATE_ELICITATION_RESPONSE = TypeAdapter(
