@@ -15,7 +15,7 @@ shows, and the cost of the margin is a smaller batch — never a cropped one.
 
 Measured on the p863 corpus (733 request tails: the context growth between
 two responses that each reported usage, minus the later response's output),
-reproducible with ``.kompend/tmp/measure_token_density.py``:
+reproducible with a throwaway probe in the OS temp dir:
 p01 2.65, p05 2.95, p10 3.18, median 3.86 chars per token. Tool returns —
 JSON, tables, standard clauses — carry the dense end. At the harness's 4 the
 estimate under-counts 560 of those 733 tails (76 %), worst by 2.02x; at this
