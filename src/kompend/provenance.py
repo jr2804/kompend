@@ -15,21 +15,20 @@ persisted in the ``provenance`` table of ``.kompend/kompend.db``.
    lifecycle constants live in :mod:`kompend.core.models`; import them there.
 """
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
-# no runtime value ever enters an identifier or statement.
-
 from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
 from kompend.core.models import (
     CompiledWiki,
     WikiNode,
     extract_citations,
 )
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import PROVENANCE_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import provenance
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
@@ -42,11 +41,17 @@ def annotate_wiki_with_provenance(wiki: CompiledWiki, base_dir: Path) -> Compile
     store. The wiki itself is returned with updated metadata so callers can
     chain output steps.
     """
-    rows: list[tuple[str, str, str]] = []
+    rows: list[dict[str, str]] = []
     new_nodes: list[WikiNode] = []
     for node in wiki.nodes:
         citations = extract_citations(node.content)
-        rows.append((node.id, node.title, json.dumps([c.to_marker() for c in citations], ensure_ascii=False)))
+        rows.append(
+            {
+                "node_id": node.id,
+                "title": node.title,
+                "citations": json.dumps([c.to_marker() for c in citations], ensure_ascii=False),
+            }
+        )
         new_nodes.append(
             WikiNode(
                 id=node.id,
@@ -58,12 +63,14 @@ def annotate_wiki_with_provenance(wiki: CompiledWiki, base_dir: Path) -> Compile
             )
         )
 
-    with open_store(vault_db_path(base_dir)) as conn:
-        conn.executemany(
-            f"INSERT INTO {PROVENANCE_TABLE}(node_id, title, citations) VALUES (?, ?, ?) "
-            f"ON CONFLICT(node_id) DO UPDATE SET title = excluded.title, citations = excluded.citations",
-            rows,
-        )
+    statement = sqlite_insert(provenance)
+    statement = statement.on_conflict_do_update(
+        index_elements=[provenance.c.node_id],
+        set_={"title": statement.excluded.title, "citations": statement.excluded.citations},
+    )
+    with open_store(vault_db_path(base_dir)) as conn, core_connection(conn) as core:
+        if rows:
+            core.execute(statement, rows)
 
     return CompiledWiki(
         nodes=new_nodes,
