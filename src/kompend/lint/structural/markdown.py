@@ -94,7 +94,7 @@ class RumdlRule(BaseLintRule):
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All markdown files pass rumdl checks")]
         return [self._to_result(f) for f in findings]
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: str | None = None) -> list[LintResult]:
         """Apply ``rumdl check --fix`` to the files with fixable findings."""
         exe = shutil.which("rumdl")
         if not exe:

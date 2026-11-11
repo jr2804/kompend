@@ -14,19 +14,18 @@ the manifest row, and the lint runner gates them behind its
 
 from __future__ import annotations
 
-import os
 import re
 from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
-from pathlib import Path
-from typing import Any, ClassVar
+from pathlib import Path, PurePosixPath
+from typing import Any, ClassVar, Final
 
 from markdown_it import MarkdownIt
 
 from kompend.core.models import CompiledWiki
 from kompend.core.models.attachments import AttachmentManifest, LiveSlugOutcome, live_attachment_slugs
-from kompend.core.paths import VaultPaths
+from kompend.core.paths import ATTACHMENTS_DIR_NAME, DEFAULT_SOURCES_DIR_NAME, KOMP_DIR, VaultPaths, rel_to_vault
 from kompend.core.pipeline.state import TierStateStore
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from kompend.logging import get_logger
@@ -38,6 +37,11 @@ from kompend.logging import get_logger
 #: never produce a link token, so a documentation example cannot protect a
 #: file the wiki no longer shows.
 _MARKDOWN = MarkdownIt("commonmark", {"html": True})
+
+#: Vault-root directory names the page scan never descends into: tool state,
+#: the sources tree (its ``.md`` files are inputs, not pages) and the
+#: attachments tree itself.
+_UNSCANNED_ROOT_DIRS: Final[frozenset[str]] = frozenset({KOMP_DIR, DEFAULT_SOURCES_DIR_NAME, ATTACHMENTS_DIR_NAME})
 
 #: ``src``/``href`` inside a raw HTML tag, double-, single- or unquoted.
 _HTML_TARGET_RE = re.compile(
@@ -133,21 +137,18 @@ class UnreferencedAttachmentsRule(BaseLintRule):
                 rule=self.name,
                 outcome=LintRuleOutcome.FAIL,
                 severity=Severity.WARNING,
-                message=(
-                    f"Unreferenced attachment '{rel}' — no page links it and the manifest does not "
-                    "register it (recompile after a page change, or delete it with --fix-destructive)"
-                ),
+                message=(f"Unreferenced attachment '{rel}' — no page links it (recompile after a page change, or delete it with --fix-destructive)"),
                 details={"path": rel},
             )
             for rel in stale
         ]
 
-    def fix(  # noqa: PLR6301 — the base declares an instance method so a rule can use state
+    def fix(
         self,
         wiki: CompiledWiki,
         results: list[LintResult],
         *,
-        sources_dir: Path | None = None,
+        sources_dir: str | None = None,
     ) -> list[LintResult]:
         """Delete unreferenced, unregistered attachment files (destructive).
 
@@ -164,7 +165,7 @@ class UnreferencedAttachmentsRule(BaseLintRule):
         if not results or sources_dir is None:
             return list(results)
 
-        base_dir = sources_dir.parent
+        base_dir = Path(sources_dir).parent
         vp = VaultPaths(base_dir)
         manifest = AttachmentManifest(vp.attachments_manifest_file)
         updated: list[LintResult] = []
@@ -195,7 +196,7 @@ class UnreferencedAttachmentsRule(BaseLintRule):
             updated.append(r)
 
         if deleted:
-            logger.info("Deleted %d unreferenced attachment file(s)", deleted)
+            logger.info("%s: deleted %d unreferenced attachment file(s)", self.name, deleted)
             _prune_empty_dirs(vp.attachments_dir)
         return updated
 
@@ -225,7 +226,7 @@ class OrphanAttachmentsRule(BaseLintRule):
 
     #: Deletes files on disk — never auto-run by the post-compile lint or
     #: default ``kompend lint check``. Only an explicit ``fix_destructive``
-    #: opt-in triggers deletion (p863 wiki roundup 2026-09-10).
+    #: opt-in triggers deletion.
     destructive: ClassVar[bool] = True
 
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
@@ -315,12 +316,12 @@ class OrphanAttachmentsRule(BaseLintRule):
             )
         return results
 
-    def fix(  # noqa: PLR6301 — see UnreferencedAttachmentsRule.fix
+    def fix(
         self,
         wiki: CompiledWiki,
         results: list[LintResult],
         *,
-        sources_dir: Path | None = None,
+        sources_dir: str | None = None,
     ) -> list[LintResult]:
         """Delete orphan attachment files from disk + tombstone in the manifest.
 
@@ -342,7 +343,7 @@ class OrphanAttachmentsRule(BaseLintRule):
         if not results or sources_dir is None:
             return list(results)
 
-        base_dir = sources_dir.parent
+        base_dir = Path(sources_dir).parent
         vp = VaultPaths(base_dir)
         manifest = AttachmentManifest(vp.attachments_manifest_file)
 
@@ -362,7 +363,7 @@ class OrphanAttachmentsRule(BaseLintRule):
                 manifest.remove(rel_path)
                 r.fix_applied = True
                 r.message = f"Deleted orphan attachment '{rel_path}' (was unrecoverable)"
-                logger.info("Deleted orphan attachment: %s", rel_path)
+                logger.info("%s: deleted orphan attachment: %s", self.name, rel_path)
             except OSError as exc:
                 logger.warning("Could not delete orphan attachment %s: %s", abs_path, exc)
                 r.message = f"Could not delete orphan attachment '{rel_path}': {exc}"
@@ -508,7 +509,7 @@ def _scan_pages(base_dir: Path) -> _PageLinks:
     unreadable: list[str] = []
     for md in base_dir.rglob("*.md"):
         parts = md.relative_to(base_dir).parts[:-1]
-        if any(part in {".kompend", "sources", "attachments"} for part in parts):
+        if any(part in _UNSCANNED_ROOT_DIRS for part in parts):
             continue
         try:
             text = md.read_text(encoding="utf-8")
@@ -603,8 +604,31 @@ def _remove_empty_dir(path: Path) -> bool:
 
 
 def _vault_relative(base_dir: Path, candidate: Path) -> str | None:
-    """``candidate`` as a vault-relative posix path, or ``None`` when outside."""
-    try:
-        return Path(os.path.normpath(candidate)).relative_to(base_dir).as_posix()
-    except ValueError:
-        return None
+    """``candidate`` as a vault-relative posix path, or ``None`` when outside.
+
+    A link is written relative to the page, so the candidate usually still
+    carries ``..`` segments; they are collapsed **lexically**, which is why this
+    does not call :meth:`Path.resolve`: resolving follows symlinks, and a
+    symlinked figure inside ``attachments/`` would then resolve to a path
+    outside the vault, answer ``None`` ("unknown"), and be deleted as
+    unreferenced by the destructive rules. Lexically the link names a file in
+    the vault, so it protects the file the page shows.
+
+    A path that climbs out of the vault — or comes in already absolute, as an
+    ``attachments/...`` href written by an export does — answers ``None``:
+    unknown, not linkless, so the scan never records a foreign file as a
+    reference.
+    """
+    rel = rel_to_vault(candidate, base_dir)
+    if not rel or Path(rel).is_absolute():
+        return None  # outside the vault — unknowable, not empty
+
+    collapsed: list[str] = []
+    for part in PurePosixPath(rel).parts:
+        if part == "..":
+            if not collapsed:
+                return None  # climbed out of the vault
+            collapsed.pop()
+        elif part != ".":
+            collapsed.append(part)
+    return PurePosixPath(*collapsed).as_posix() if collapsed else None

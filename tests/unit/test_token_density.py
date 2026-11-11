@@ -18,11 +18,6 @@ from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.llm.request_budget import DEFAULT_CHARS_PER_TOKEN, RequestBudget, chars_to_tokens
 
 
-def _window(max_input: int = 131_072) -> ContextWindow:
-    """A window like the one the p863 vault compiles with."""
-    return ContextWindow(max_input=max_input, max_output=8_192, source=ContextSource.MODELS_DEV)
-
-
 def test_the_default_ratio_is_the_pessimistic_density_bound() -> None:
     """One number owns the heuristic — the nominal median is gone."""
     assert CONSERVATIVE_CHARS_PER_TOKEN == 2.5
@@ -52,6 +47,11 @@ def test_a_dense_segment_is_refused_before_the_provider_sees_it() -> None:
     assert pessimistic > budget.content_tokens
     with pytest.raises(LLMOutputError):
         budget.require(pessimistic, stage="Agentic generation")
+
+
+def _window(max_input: int = 131_072) -> ContextWindow:
+    """A window like the one the p863 vault compiles with."""
+    return ContextWindow(max_input=max_input, max_output=8_192, source=ContextSource.MODELS_DEV)
 
 
 def test_a_configured_ratio_moves_the_planner_and_the_guard_together() -> None:

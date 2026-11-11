@@ -5,7 +5,6 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
-from pathlib import Path
 from typing import Any, ClassVar
 
 from kompend.core.models import CompiledWiki
@@ -116,12 +115,12 @@ class BaseLintRule(ABC):
     @abstractmethod
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]: ...
 
-    def fix(  # noqa: PLR6301 — the base declares an instance method so a rule can use state
+    def fix(  # noqa: PLR6301 — the base method every rule overrides
         self,
         wiki: CompiledWiki,
         results: list[LintResult],
         *,
-        sources_dir: Path | None = None,
+        sources_dir: str | None = None,
     ) -> list[LintResult]:
         """Attempt auto-fix and return updated results.
 
@@ -130,9 +129,9 @@ class BaseLintRule(ABC):
         rule's full result list. Returning fewer findings than you were given
         loses a finding — the runner logs that as an error and keeps it.
 
-        *sources_dir* is the directory the scan looked at. A rule that acts on
-        files takes it from here, never from a directory remembered by an
-        earlier call.
+        *sources_dir* is the directory the scan looked at, as the runner
+        received it. A rule that acts on files takes it from here, never from a
+        directory remembered by an earlier call.
 
         Default implementation returns results unchanged.
         """

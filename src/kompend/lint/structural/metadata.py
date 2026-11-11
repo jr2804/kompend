@@ -6,8 +6,6 @@ carries the frontmatter fields the wiki format requires.
 
 from __future__ import annotations
 
-from pathlib import Path
-
 from kompend.core.models import CompiledWiki, MetadataField
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 
@@ -42,7 +40,7 @@ class MissingFrontmatterRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All pages have frontmatter"))
         return results
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:  # noqa: PLR6301
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: str | None = None) -> list[LintResult]:  # noqa: PLR6301 — the fix adds frontmatter; it reads no rule state
         """Add minimal frontmatter to pages that lack it."""
         fixed = list(results)
         for r in fixed:

@@ -8,7 +8,6 @@ flags ``[[img.png]]`` written as a plain link instead of an embed.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 from kompend.core.models import CompiledWiki
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
@@ -59,7 +58,7 @@ class ImageEmbedRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All image links use embed syntax"))
         return results
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:  # noqa: PLR6301
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: str | None = None) -> list[LintResult]:  # noqa: PLR6301 — the fix rewrites page content; it reads no rule state
         """Rewrite ``[[img.png]]`` → ``![[img.png]]`` in page content."""
         fixed = list(results)
         for node in wiki.nodes:

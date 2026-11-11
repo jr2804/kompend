@@ -146,7 +146,9 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   drop reads as "there was nothing to fix".
 - **A fix sees the same directory the scan saw.** ``fix()`` receives the
   ``sources_dir`` of the run that produced the findings, so it can never act on
-  a vault the scan did not look at.
+  a vault the scan did not look at. The rule boundary speaks ``str | None``
+  for that directory — the runner stores a string and passes it unchanged; a
+  rule that touches files converts it to a ``Path`` itself.
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.

@@ -22,6 +22,7 @@ from kompend.core.config.rumdl import _shipped_hash, resolve_rumdl_config
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.core.models.metadata import meta_dict, meta_str
+from kompend.core.paths import ATTACHMENTS_DIR_NAME, KOMP_DIR
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.lint import _remediation_gaps as gaps_module
@@ -54,7 +55,7 @@ from kompend.lint.structural import (
     SourceNotFoundRule,
     StalePageRule,
 )
-from kompend.lint.structural.markdown import _RUMDL_FINDINGS
+from kompend.lint.structural.markdown import _EXCLUDED_ROOT_DIRS, _RUMDL_FINDINGS
 
 # ── Rule 1: broken-wikilinks ────────────────────────────────────────────
 
@@ -602,7 +603,7 @@ class _MixedOutcomeRule(BaseLintRule):
             LintResult(rule=self.name, outcome=LintRuleOutcome.FAIL, message="broken link", page_id="n1"),
         ]
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: str | None = None) -> list[LintResult]:
         for result in results:
             result.fix_applied = True
         return list(results)
@@ -613,7 +614,7 @@ class _DroppingRule(_MixedOutcomeRule):
 
     name = "dropping-rule"
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: str | None = None) -> list[LintResult]:
         return []
 
 
@@ -621,9 +622,9 @@ class _SourcesDirRule(_MixedOutcomeRule):
     """A rule that records the directory the runner handed it."""
 
     name = "sources-dir-rule"
-    seen: ClassVar[list[Path | None]] = []
+    seen: ClassVar[list[str | None]] = []
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: str | None = None) -> list[LintResult]:
         type(self).seen.append(sources_dir)
         return list(results)
 
@@ -673,7 +674,7 @@ class TestLintRunnerFixResults:
         wiki = _make_wiki([_make_node()])
         runner = LintRunner(rules=["sources-dir-rule"], fix=True, sources_dir=str(tmp_path / "sources"))
         runner.run(wiki)
-        assert _SourcesDirRule.seen == [tmp_path / "sources"]
+        assert _SourcesDirRule.seen == [str(tmp_path / "sources")]
 
 
 # ── Report formatting ───────────────────────────────────────────────────
@@ -828,6 +829,26 @@ class TestRumdlRule:
         (base / "wiki" / "ok.md").write_text("# Ok\n\n## One\n\n### Two\n", encoding="utf-8")
         results = RumdlRule().check(_make_wiki([]), sources_dir=str(base / "sources"))
         assert all(r.outcome == LintRuleOutcome.PASS for r in results)
+
+    def test_excluded_folders_come_from_the_path_author(self, tmp_path: Path) -> None:
+        """The excluded vault folders are the canonical names, not local copies.
+
+        The scan skips tool state and user attachments. Spelling those names
+        here made a rename in :mod:`kompend.core.paths` silently start checking
+        (and, on ``--fix``, rewriting) tool state. The filter must read the
+        authority, and must still exclude exactly those two folders.
+        """
+        assert frozenset({KOMP_DIR, ATTACHMENTS_DIR_NAME}) == _EXCLUDED_ROOT_DIRS
+
+        base = self._vault(tmp_path)
+        (base / KOMP_DIR / "state.md").write_text("# State\n", encoding="utf-8")
+        (base / ATTACHMENTS_DIR_NAME).mkdir()
+        (base / ATTACHMENTS_DIR_NAME / "note.md").write_text("# Note\n", encoding="utf-8")
+        (base / "notes").mkdir()
+        (base / "notes" / "kept.md").write_text("# Kept\n", encoding="utf-8")
+
+        files = {Path(p).name for p in RumdlRule._md_files(str(base / "sources"))}
+        assert files == {"kept.md"}
 
     def test_fix_reformats_self_written_note(self, tmp_path: Path) -> None:
         base = self._vault(tmp_path)
