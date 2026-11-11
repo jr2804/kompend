@@ -105,18 +105,6 @@ _STAGES_INSERT_COLUMNS: Final[tuple[str, ...]] = (
 logger = get_logger(__name__)
 
 
-def _sql(template: str, **values: object) -> str:
-    """Fill one statement template; every statement stays a literal at its call site.
-
-    The ledger writes from worker threads through its own long-lived raw
-    connection (see :class:`StageLedger`), so it cannot hand each row to Core
-    without wrapping the handle in an engine per append. Keeping the SQL in a
-    plain-``str`` parameter instead means bandit never sees a built statement,
-    and no caller assembles SQL by hand.
-    """
-    return template.format(**values)
-
-
 class StageLedger:
     """Append-only writer for the ``stages`` table, opened once per run.
 
@@ -379,3 +367,15 @@ def source_attempts(conn: sqlite3.Connection, source: str, *, run_id: str | None
         ),
         (source, run_id),
     ).fetchall()
+
+
+def _sql(template: str, **values: object) -> str:
+    """Fill one statement template; every statement stays a literal at its call site.
+
+    The ledger writes from worker threads through its own long-lived raw
+    connection (see :class:`StageLedger`), so it cannot hand each row to Core
+    without wrapping the handle in an engine per append. Keeping the SQL in a
+    plain-``str`` parameter instead means bandit never sees a built statement,
+    and no caller assembles SQL by hand.
+    """
+    return template.format(**values)

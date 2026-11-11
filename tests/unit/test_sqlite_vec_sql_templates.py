@@ -41,43 +41,6 @@ _WAIVERED_MODULES: tuple[ModuleType, ...] = (
 )
 
 
-@pytest.fixture
-def connection() -> Iterator[sqlite3.Connection]:
-    """A connection that is never queried — the guards run before any SQL."""
-    conn = sqlite3.connect(":memory:")
-    try:
-        yield conn
-    finally:
-        conn.close()
-
-
-@pytest.mark.parametrize("module", _WAIVERED_MODULES, ids=lambda m: Path(module_file(m)).name)
-def test_the_module_carries_no_ruff_waiver(module: ModuleType) -> None:
-    """The conversion is the point: the waiver must not come back.
-
-    A module-wide waiver silences bandit for the file, so any later statement
-    built from an outside string lands unnoticed. The statements are templates
-    filled in one place instead, and ``ruff check`` on each file is clean.
-    """
-    source = Path(module_file(module)).read_text(encoding="utf-8")
-    assert "ruff: noqa" not in source
-    assert "noqa: S608" not in source
-
-
-def module_file(module: ModuleType) -> str:
-    """The source file of a module — every module here is imported from disk."""
-    path = module.__file__
-    assert path is not None, f"{module.__name__} has no source file"
-    return path
-
-
-def test_sql_fills_only_the_named_placeholders() -> None:
-    """``sql`` is a plain fill: a missing value fails loudly instead of leaking a brace."""
-    assert sql("SELECT {column} FROM {table}", column="id", table="t") == "SELECT id FROM t"
-    with pytest.raises(KeyError):
-        sql("SELECT {column} FROM {table}", column="id")
-
-
 class TestFilterClause:
     """The clause is still one ``EXISTS`` per value, parameters in call order."""
 
@@ -132,3 +95,40 @@ class TestFtsColumn:
     def test_an_empty_query_short_circuits(self, connection: sqlite3.Connection) -> None:
         """No terms means no statement at all — the store answers ``[]``."""
         assert query.fts_ranked(connection, query="---", top_k=1) == []
+
+
+@pytest.fixture
+def connection() -> Iterator[sqlite3.Connection]:
+    """A connection that is never queried — the guards run before any SQL."""
+    conn = sqlite3.connect(":memory:")
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("module", _WAIVERED_MODULES, ids=lambda m: Path(module_file(m)).name)
+def test_the_module_carries_no_ruff_waiver(module: ModuleType) -> None:
+    """The conversion is the point: the waiver must not come back.
+
+    A module-wide waiver silences bandit for the file, so any later statement
+    built from an outside string lands unnoticed. The statements are templates
+    filled in one place instead, and ``ruff check`` on each file is clean.
+    """
+    source = Path(module_file(module)).read_text(encoding="utf-8")
+    assert "ruff: noqa" not in source
+    assert "noqa: S608" not in source
+
+
+def module_file(module: ModuleType) -> str:
+    """The source file of a module — every module here is imported from disk."""
+    path = module.__file__
+    assert path is not None, f"{module.__name__} has no source file"
+    return path
+
+
+def test_sql_fills_only_the_named_placeholders() -> None:
+    """``sql`` is a plain fill: a missing value fails loudly instead of leaking a brace."""
+    assert sql("SELECT {column} FROM {table}", column="id", table="t") == "SELECT id FROM t"
+    with pytest.raises(KeyError):
+        sql("SELECT {column} FROM {table}", column="id")

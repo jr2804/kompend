@@ -11,16 +11,6 @@ from kompend.core.models.enums import ElementType
 __all__ = ["DocumentElement", "ParsedDocument", "binary_placeholder", "element_text"]
 
 
-def binary_placeholder(size: int) -> str:
-    r"""Describe skipped binary content of *size* bytes.
-
-    Binary payloads cannot be embedded, and their ``repr`` (``"b'\\x89PNG...'"``)
-    is noise that would pollute the vector space with a meaningless token per
-    page.
-    """
-    return f"[binary content: {size} bytes, not text]"
-
-
 @dataclass
 class DocumentElement:
     """A single element from a parsed document (text, heading, table, etc.)."""
@@ -72,3 +62,13 @@ def element_text(content: str | list[list[str]] | bytes) -> str:
     # list[list[str]] - a table. Rendered as rows so cell values stay
     # embeddable rather than collapsing into a Python list repr.
     return "\n".join(" | ".join(cell for cell in row) for row in content)
+
+
+def binary_placeholder(size: int) -> str:
+    r"""Describe skipped binary content of *size* bytes.
+
+    Binary payloads cannot be embedded, and their ``repr`` (``"b'\\x89PNG...'"``)
+    is noise that would pollute the vector space with a meaningless token per
+    page.
+    """
+    return f"[binary content: {size} bytes, not text]"

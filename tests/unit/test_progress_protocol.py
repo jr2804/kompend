@@ -53,6 +53,19 @@ def test_a_unit_label_is_not_a_sentinel() -> None:
     assert PipelineEvent.from_emit("parse", 1, 3, "doc17.pdf").kind is PipelineEventKind.PROGRESS
 
 
+def test_no_emitter_spells_a_sentinel_as_a_string() -> None:
+    """A literal sentinel at an emit site is how the vocabulary drifts apart."""
+    offenders: list[str] = []
+    for path in sorted(_SOURCE_ROOT.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in _emitter_detail_nodes(tree):
+            if isinstance(node, ast.Constant) and node.value in _RESERVED:
+                relative = path.relative_to(_SOURCE_ROOT.parents[1]).as_posix()
+                offenders.append(f"{relative}:{node.lineno} passes {node.value!r}")
+
+    assert offenders == [], "use ProgressDetail instead of the literal:\n" + "\n".join(offenders)
+
+
 def _emitter_detail_nodes(tree: ast.AST) -> list[ast.expr]:
     """Every ``detail`` argument passed to an emitter call, positionally or by keyword."""
     found: list[ast.expr] = []
@@ -71,16 +84,3 @@ def _emitter_detail_nodes(tree: ast.AST) -> list[ast.expr]:
         elif name == "progress_fn" and len(node.args) >= 3:  # progress_fn(current, total, detail)
             found.append(node.args[2])
     return found
-
-
-def test_no_emitter_spells_a_sentinel_as_a_string() -> None:
-    """A literal sentinel at an emit site is how the vocabulary drifts apart."""
-    offenders: list[str] = []
-    for path in sorted(_SOURCE_ROOT.rglob("*.py")):
-        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-        for node in _emitter_detail_nodes(tree):
-            if isinstance(node, ast.Constant) and node.value in _RESERVED:
-                relative = path.relative_to(_SOURCE_ROOT.parents[1]).as_posix()
-                offenders.append(f"{relative}:{node.lineno} passes {node.value!r}")
-
-    assert offenders == [], "use ProgressDetail instead of the literal:\n" + "\n".join(offenders)

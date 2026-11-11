@@ -111,12 +111,6 @@ class TestIsCurrent:
 
 
 class TestGitignoreCommand:
-    def _vault(self, tmp_path: Path) -> Path:
-        """A minimal vault: kompend.toml marks the root, sources/ is the input."""
-        (tmp_path / "kompend.toml").write_text("# vault\n", encoding="utf-8")
-        (tmp_path / "sources").mkdir()
-        return tmp_path
-
     def test_creates_the_file(self, tmp_path: Path) -> None:
         vault = self._vault(tmp_path)
         result = runner.invoke(app, ["-w", str(vault), "gitignore"])
@@ -169,6 +163,12 @@ class TestGitignoreCommand:
         assert result.exit_code == 0
         assert BLOCK_BEGIN in result.stdout
         assert not (vault / GITIGNORE_FILE).exists()
+
+    def _vault(self, tmp_path: Path) -> Path:
+        """A minimal vault: kompend.toml marks the root, sources/ is the input."""
+        (tmp_path / "kompend.toml").write_text("# vault\n", encoding="utf-8")
+        (tmp_path / "sources").mkdir()
+        return tmp_path
 
 
 def _rules(text: str) -> set[str]:

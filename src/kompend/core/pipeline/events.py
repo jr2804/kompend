@@ -65,24 +65,6 @@ class PipelineEventField(StrEnum):
     AT = "at"
 
 
-class ProgressDetail(StrEnum):
-    """Reserved ``detail`` strings carried by a progress event.
-
-    Everything else in ``detail`` names the unit currently being worked on (a
-    source file, a tree label, ``"asset: <name>"``), so this is the closed
-    set: the two phase sentinels plus the VLM sub-phase, which a progress
-    consumer shows as its own bar instead of as resolve progress.
-
-    The values are the strings the emitters already pass and a progress
-    callback keys on, so they are a wire contract: add freely, never rename.
-    """
-
-    STARTING = "starting"
-    DONE = "done"
-    VLM = "vlm"
-    CAPTIONING = "captioning"
-
-
 class PipelineEventKind(StrEnum):
     """Where an event sits in its phase's lifetime."""
 
@@ -109,6 +91,24 @@ class PipelinePhase(StrEnum):
     COMPILE = "compile"
     OUTPUT = "output"
     OTHER = "other"
+
+
+class ProgressDetail(StrEnum):
+    """Reserved ``detail`` strings carried by a progress event.
+
+    Everything else in ``detail`` names the unit currently being worked on (a
+    source file, a tree label, ``"asset: <name>"``), so this is the closed
+    set: the two phase sentinels plus the VLM sub-phase, which a progress
+    consumer shows as its own bar instead of as resolve progress.
+
+    The values are the strings the emitters already pass and a progress
+    callback keys on, so they are a wire contract: add freely, never rename.
+    """
+
+    STARTING = "starting"
+    DONE = "done"
+    VLM = "vlm"
+    CAPTIONING = "captioning"
 
 
 @dataclass(frozen=True, slots=True)

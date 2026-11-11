@@ -33,13 +33,13 @@ from kompend.rag.sqlite_vec.schema import (
 )
 from kompend.rag.vector_store import attributes_to_list, embed_node, embed_text, figure_paths
 
-logger = get_logger(__name__)
-
 _INSERT_ITEMS: Final[str] = "INSERT INTO {table} (id, embedding, title, node_type, source_file, content_preview) VALUES (?, ?, ?, ?, ?, ?)"
 _INSERT_FTS: Final[str] = "INSERT INTO {table} (id, title, content_preview, node_type, source_file) VALUES (?, ?, ?, ?, ?)"
 _INSERT_TAGS: Final[str] = "INSERT INTO {table} (item_id, tag) VALUES (?, ?)"
 _INSERT_ATTRIBUTES: Final[str] = "INSERT INTO {table} (item_id, token) VALUES (?, ?)"
 _INSERT_ATTR_KEYS: Final[str] = "INSERT INTO {table} (item_id, key) VALUES (?, ?)"
+
+logger = get_logger(__name__)
 
 
 def index_nodes(

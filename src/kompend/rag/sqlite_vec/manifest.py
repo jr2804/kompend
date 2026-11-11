@@ -33,10 +33,10 @@ from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 from kompend.rag.sqlite_vec.schema import BACKEND, BACKEND_COLUMN, EMBEDDING_MODEL_COLUMN
 from kompend.rag.vector_store import EMBED_TEXT_VERSION, content_hash
 
-logger = get_logger(__name__)
-
 #: The manifest is one row, keyed by a fixed id.
 _MANIFEST_ROW_ID = 1
+
+logger = get_logger(__name__)
 
 
 def write_manifest(db_file: Path, nodes: list[WikiNode], model_id: str) -> None:

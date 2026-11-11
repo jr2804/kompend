@@ -1048,16 +1048,6 @@ class _RecordingStrategy(AbstractCapability[object]):
     compact_calls: int = 0
     before_calls: int = 0
 
-    def _target(self, model: object) -> int:
-        """The clamp budget `GrowthGatedCompaction` reads through `_tiered_target`.
-
-        The real `TieredCompaction._target` is private harness API — a stub
-        without it now fails loudly, so this mirrors the method at the
-        sliding preset's 64 000-token window. Unread when the stub sits
-        inside a real `TieredCompaction`.
-        """
-        return int(64_000 * _SLIDING_COMPRESS_THRESHOLD)
-
     async def compact(self, messages: list[ModelMessage], ctx: RunContext[object]) -> list[ModelMessage]:
         self.compact_calls += 1
         return messages
@@ -1069,6 +1059,16 @@ class _RecordingStrategy(AbstractCapability[object]):
     ) -> ModelRequestContext:
         self.before_calls += 1
         return request_context
+
+    def _target(self, model: object) -> int:
+        """The clamp budget `GrowthGatedCompaction` reads through `_tiered_target`.
+
+        The real `TieredCompaction._target` is private harness API — a stub
+        without it now fails loudly, so this mirrors the method at the
+        sliding preset's 64 000-token window. Unread when the stub sits
+        inside a real `TieredCompaction`.
+        """
+        return int(64_000 * _SLIDING_COMPRESS_THRESHOLD)
 
 
 class _TargetlessStrategy(AbstractCapability[object]):

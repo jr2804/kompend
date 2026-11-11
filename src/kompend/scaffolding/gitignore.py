@@ -145,12 +145,6 @@ def dir_name(value: object, *, fallback: str) -> str:
     return Path(value).name or fallback
 
 
-def managed_block(text: str) -> str | None:
-    """Return the managed block inside *text*, or ``None`` when it is absent."""
-    match = _BLOCK_RE.search(text)
-    return match.group(0) if match is not None else None
-
-
 def merge_gitignore(existing: str, rendered: str) -> str:
     """Replace the managed block in *existing* with the one from *rendered*.
 
@@ -176,3 +170,9 @@ def merge_gitignore(existing: str, rendered: str) -> str:
 def is_current(existing: str, rendered: str) -> bool:
     """True when *existing* carries exactly the managed block *rendered* proposes."""
     return managed_block(existing) == managed_block(rendered)
+
+
+def managed_block(text: str) -> str | None:
+    """Return the managed block inside *text*, or ``None`` when it is absent."""
+    match = _BLOCK_RE.search(text)
+    return match.group(0) if match is not None else None

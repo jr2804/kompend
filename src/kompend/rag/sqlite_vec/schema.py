@@ -80,17 +80,6 @@ _WRITE_META: Final[str] = "INSERT OR REPLACE INTO {table} (key, value) VALUES (?
 _READ_META: Final[str] = "SELECT key, value FROM {table}"
 
 
-def sql(template: str, **values: object) -> str:
-    """Fill one of this module's SQL templates.
-
-    The virtual tables have no Core object to select from, so the statement
-    stays a constant template and the values are substituted in one place.
-    The plain-``str`` parameter is the shape a static SQL-injection check can
-    follow: table names and numbers only, never user text.
-    """
-    return template.format(**values)
-
-
 def create_schema(conn: sqlite3.Connection, dim: int, model_id: str) -> None:
     """(Re)create the store's tables.
 
@@ -134,6 +123,17 @@ def read_meta(conn: sqlite3.Connection, dim: int) -> bool:
     except sqlite3.Error:
         return False
     return rows.get("backend") == BACKEND and rows.get("dim") == str(dim) and rows.get("schema") == schema_fingerprint(dim)
+
+
+def sql(template: str, **values: object) -> str:
+    """Fill one of this module's SQL templates.
+
+    The virtual tables have no Core object to select from, so the statement
+    stays a constant template and the values are substituted in one place.
+    The plain-``str`` parameter is the shape a static SQL-injection check can
+    follow: table names and numbers only, never user text.
+    """
+    return template.format(**values)
 
 
 def schema_fingerprint(dim: int) -> str:

@@ -42,17 +42,6 @@ _MEMORY_META: Final[str] = "memory_meta"
 _MEMORY_BACKEND: Final[str] = "sqlite-vec"
 
 
-def _sql(template: str, **values: object) -> str:
-    """Fill a ``vec0`` statement template with its table name and parameters.
-
-    The vec index is a virtual table, so it has no Core object to select from.
-    Keeping every statement as one constant template, filled here, means no
-    caller assembles SQL by hand — which is what the module-wide bandit waiver
-    this replaces was hiding.
-    """
-    return template.format(**values)
-
-
 logger = get_logger(__name__)
 
 
@@ -315,3 +304,14 @@ def _meta_matches(conn: sqlite3.Connection, dim: int) -> bool:
     except sqlite3.Error:
         return False
     return rows.get("backend") == _MEMORY_BACKEND and rows.get("dim") == str(dim)
+
+
+def _sql(template: str, **values: object) -> str:
+    """Fill a ``vec0`` statement template with its table name and parameters.
+
+    The vec index is a virtual table, so it has no Core object to select from.
+    Keeping every statement as one constant template, filled here, means no
+    caller assembles SQL by hand — which is what the module-wide bandit waiver
+    this replaces was hiding.
+    """
+    return template.format(**values)
