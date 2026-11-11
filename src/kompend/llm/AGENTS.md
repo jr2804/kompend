@@ -97,8 +97,7 @@ kompend send the computed ceiling without a clamp and take the window from
 
 `RequestBudget` is the one place that decides whether a request fits the
 window. A stage declares the window and the **named** payloads it reserves
-(system prompt, known titles, pinned facts, tool framing) and reads the
-content budget from it:
+(system prompt, known titles, pinned facts) and reads the content budget:
 
 ```python
 budget = RequestBudget(window=cw, reserved={"system": sys_tokens})
@@ -124,10 +123,11 @@ Contracts:
 - The answer reserve and the safety margin are paid by default, so a stage
   cannot forget either by accident.
 - `context_safety_tokens` is defined **once** here (8% of the window, floor
-  512 tokens). `kompend.compilation.two_phase` re-exports it for the
-  package-root import path — a second definition is how stages drift apart.
+  512 tokens); `kompend.compilation.two_phase` re-exports it for the root path.
 - `chars_to_tokens` / `tokens_to_chars` are the single chars-per-token
-  conversion; pass the configured `compile.llm.default_chars_per_token`.
+  conversion; pass the configured `compile.llm.default_chars_per_token`, whose
+  default is the shared bound in `core.text.density` — planner and guard count
+  in one unit (see `core/AGENTS.md`).
 
 Stages that size a request must use this planner rather than their own
 arithmetic: extraction batching, agentic generation segments, reference

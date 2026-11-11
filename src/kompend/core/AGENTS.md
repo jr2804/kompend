@@ -25,6 +25,11 @@ other kompend subsystems build on.
   `windows.py` line-aligned content windowing, `page_media.py` the figures
   and tables a page body shows). They are the only sanctioned
   place for string-in/string-out helpers shared across tiers.
+- `core/text/density.py` owns the chars-per-token heuristic
+  (`CONSERVATIVE_CHARS_PER_TOKEN`, `conservative_tokens`). Every stage that
+  sizes a request counts with it — the planner, the request-fit guard and the
+  compaction estimator — so a planned request cannot arrive over the window.
+  A second ratio anywhere else is a bug.
 - `identity.py` owns **how a source is identified**: `source_key(stem,
   content_hash)` → `<stem>-<hash8>`, never the path. The parse cache, the chunk
   cache and `tier_state` all derive their keys from it, so a source may be

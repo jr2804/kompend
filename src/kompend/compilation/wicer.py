@@ -32,7 +32,7 @@ from kompend.llm.request_budget import RequestBudget
 from kompend.logging import get_logger
 
 # Fraction of the available context window (after reserves) allocated to
-# WiCER probe input text.  The chars-per-token heuristic (3.85) is too
+# WiCER probe input text.  The chars-per-token heuristic (2.5) is too
 # optimistic for models like Gemma (actual ~2.0), causing the batch to
 # overshoot the real token limit.  A utilization factor leaves headroom
 # for tokenizer density variation across model families.

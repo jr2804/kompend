@@ -31,6 +31,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 
+from kompend.core.text.density import CONSERVATIVE_CHARS_PER_TOKEN
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow
 
@@ -51,8 +52,10 @@ CONTEXT_SAFETY_FRACTION: float = 0.08
 CONTEXT_SAFETY_TOKENS: int = 512
 
 #: Default chars-per-token heuristic. Configurable via ``compile.llm.default_chars_per_token``
-#: (env override ``KOMP_LLM_DEFAULT_CHARS_PER_TOKEN``).
-DEFAULT_CHARS_PER_TOKEN: float = 3.85
+#: (env override ``KOMP_LLM_DEFAULT_CHARS_PER_TOKEN``). The value is the pessimistic
+#: density bound every stage shares, so the planner and the request-fit guard count
+#: a request in the same unit — see :mod:`kompend.core.text.density`.
+DEFAULT_CHARS_PER_TOKEN: float = CONSERVATIVE_CHARS_PER_TOKEN
 
 
 @dataclass(frozen=True)

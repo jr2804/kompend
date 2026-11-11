@@ -36,7 +36,7 @@ A message count alone cannot protect a token budget: a p863 vault set this
 preset and the provider rejected one request at 90 154 actual tokens
 against a 65 536-token window.
 
-How the estimate is defended (``_conservative_tokens``): the harness anchors
+How the estimate is defended (``conservative_tokens``): the harness anchors
 ``estimate_context_tokens`` on the newest provider-reported usage, so most of
 any history is measured exactly and only the messages after that anchor are
 estimated. Those messages are the dense ones — tool returns, tables, retry
@@ -66,7 +66,6 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
-from math import ceil
 from typing import Any, Final
 
 from pydantic_ai.capabilities import AbstractCapability
@@ -100,6 +99,7 @@ from pydantic_ai_harness.compaction import (
 )
 from pydantic_core import ValidationError
 
+from kompend.core.text.density import conservative_tokens
 from kompend.logging import get_logger
 
 #: Sliding-window defaults (zero-cost, no LLM call). Owned here so the
@@ -110,32 +110,18 @@ _SLIDING_KEEP_MESSAGES: Final[int] = 50
 
 #: Token trigger of the ``sliding`` preset: the fraction of the window at
 #: which the trim runs. The estimate itself is now conservative (see
-#: ``_CONSERVATIVE_CHARS_PER_TOKEN``), so this headroom no longer carries the
+#: ``CONSERVATIVE_CHARS_PER_TOKEN``), so this headroom no longer carries the
 #: whole error budget: it also absorbs the drift between what a server
 #: advertises and what it enforces — one p863 server served 64 000 tokens,
 #: enforced 65 536, and the run was configured for 128 000.
 _SLIDING_COMPRESS_THRESHOLD: Final[float] = 0.8
 
+
 #: Characters per token kompend assumes where the provider's own count is not
-#: available. The harness defaults to 4, which is honest for English prose and
-#: optimistic for everything else a run puts in a request.
-#:
-#: Measured on the p863 corpus (733 request tails: the context growth between
-#: two responses that each reported usage, minus the later response's output),
-#: reproducible with ``.kompend/tmp/measure_token_density.py``.
-#: p01 2.65, p05 2.95, p10 3.18, median 3.86 chars per token. Tool returns —
-#: JSON, tables, standard clauses — carry the dense end. At the harness's 4
-#: the estimate under-counts 560 of those 733 tails (76%), worst by 2.02x; at
-#: this value it covers 726 of 733 (99.0%) and the seven it leaves under-count
-#: by at most 1.27x, which the trigger's headroom absorbs.
-#:
-#: Erring high is the cheap failure — a trim slightly early costs prompt-cache
-#: writes; a trim late is a provider 400 after minutes of upstream work, and
-#: the anchored part of the estimate (below) is exact, so only the tail can
-#: drift. The cost of the margin: a ``keep_tokens`` tail is counted in these
-#: units, so a named 8 000-token tail retains roughly 5 200 real tokens of the
-#: same text (it held ~8 300 at 4 chars/token).
-_CONSERVATIVE_CHARS_PER_TOKEN: Final[float] = 2.5
+#: available. The number, the measurement behind it and the counting function
+#: live in :mod:`kompend.core.text.density`, so the planner, the request-fit
+#: guard and this estimator count in one unit: a request planned against the
+#: window cannot arrive over it.
 
 #: Share of the compaction trigger the fallback retains as message-content
 #: tokens. Below 1.0 so the fallback actually reclaims room — a result still
@@ -252,7 +238,7 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
     A skipped request leaves it alone so growth keeps accumulating.
     """
 
-    tokenizer: Callable[[str], int] = field(default_factory=lambda: _conservative_tokens)
+    tokenizer: Callable[[str], int] = field(default_factory=lambda: conservative_tokens)
     """Counts *text* for every estimate this gate compares.
 
     Both operands come from the same callable, so the growth this gate measures
@@ -260,7 +246,7 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
     conservative one, not the harness's optimistic four-chars-per-token default.
 
     A factory, not a plain default: pyreorder orders module sections, so the
-    formatter places ``_conservative_tokens`` after the dataclasses. A plain
+    formatter places ``conservative_tokens`` after the dataclasses. A plain
     default would evaluate the name while the class body runs, before the
     function exists, and the whole package would stop importing.
     """
@@ -366,7 +352,7 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
       line names both what the clamp dropped and the largest survivor, so a
       run log explains the ranking the provider saw.
 
-    Every count this class compares comes from ``_conservative_tokens``, so
+    Every count this class compares comes from ``conservative_tokens``, so
     the trigger, the recorded figures and ``keep_tokens`` all speak the same
     (measured, pessimistic) density instead of the harness's four
     characters-per-token default.
@@ -608,13 +594,13 @@ def build_fallback_compaction(
             max_fraction=compress_threshold,
             context_window=context_window,
             keep_pairs=_CLEAR_KEEP_PAIRS,
-            tokenizer=_conservative_tokens,
+            tokenizer=conservative_tokens,
         ),
         DeduplicateFileReads(
             file_key=_file_key,
             max_fraction=compress_threshold,
             context_window=context_window,
-            tokenizer=_conservative_tokens,
+            tokenizer=conservative_tokens,
         ),
     ]
     if judge is not None:
@@ -626,7 +612,7 @@ def build_fallback_compaction(
                 target_fraction=compress_threshold,
                 context_window=context_window,
                 keep_tokens=keep_tokens if keep_tokens is not None else _DEFAULT_KEEP_TOKENS,
-                tokenizer=_conservative_tokens,
+                tokenizer=conservative_tokens,
             ),
         )
     tiers.append(summarizer)
@@ -635,10 +621,10 @@ def build_fallback_compaction(
             tiers=tiers,
             target_fraction=compress_threshold,
             context_window=context_window,
-            tokenizer=_conservative_tokens,
+            tokenizer=conservative_tokens,
         ),
         min_growth_tokens=min_growth_tokens if min_growth_tokens is not None else _DEFAULT_MIN_GROWTH_TOKENS,
-        tokenizer=_conservative_tokens,
+        tokenizer=conservative_tokens,
     )
     return _PinningFallbackCompaction(
         fallback_chain=[
@@ -647,7 +633,7 @@ def build_fallback_compaction(
                 max_fraction=compress_threshold,
                 context_window=context_window,
                 keep_tokens=int((context_window or DEFAULT_CONTEXT_WINDOW) * compress_threshold * _FALLBACK_KEEP_SHARE),
-                tokenizer=_conservative_tokens,
+                tokenizer=conservative_tokens,
             ),
         ],
         fallback_on=(UnexpectedModelBehavior,),
@@ -669,7 +655,7 @@ def build_sliding_compaction(
     The trim keeps *message content* tokens, never a message count alone, and
     is gated so a history the tail cannot shrink is not re-trimmed on every
     request (see ``_GuardedSlidingCompaction``). Every trigger, tail and log
-    figure it reports is counted with ``_conservative_tokens``, kompend's
+    figure it reports is counted with ``conservative_tokens``, kompend's
     measured density floor, never the harness's four-chars-per-token default.
 
     Parameters
@@ -704,7 +690,7 @@ def build_sliding_compaction(
         keep_messages=keep_messages,
         keep_tokens=tail or None,
         min_growth_tokens=min_growth_tokens if min_growth_tokens is not None else _DEFAULT_MIN_GROWTH_TOKENS,
-        tokenizer=_conservative_tokens,
+        tokenizer=conservative_tokens,
     )
 
 
@@ -757,7 +743,7 @@ def build_summarizing_compaction(
             max_fraction=compress_threshold,
             keep_messages=keep_messages,
             context_window=context_window,
-            tokenizer=_conservative_tokens,
+            tokenizer=conservative_tokens,
         )
     return _LoggedSummarizingCompaction(
         model=model,
@@ -765,7 +751,7 @@ def build_summarizing_compaction(
         keep_messages=keep_messages,
         context_window=context_window,
         instructions=instructions,
-        tokenizer=_conservative_tokens,
+        tokenizer=conservative_tokens,
     )
 
 
@@ -941,14 +927,3 @@ def _warn_if_still_over(
         largest,
         verdict,
     )
-
-
-def _conservative_tokens(text: str) -> int:
-    """Count *text* at kompend's measured density floor, never the harness's 4.
-
-    The harness calls this only for the part of a request no provider count
-    covers — the messages after the newest usage-carrying response, and a
-    history with no usage at all. That is exactly where dense content lives,
-    and where under-counting lets a history blow the window.
-    """
-    return ceil(len(text) / _CONSERVATIVE_CHARS_PER_TOKEN)

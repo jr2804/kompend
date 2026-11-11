@@ -9,6 +9,7 @@ from pydantic import BeforeValidator, Field
 from kompend.core.config.enums import ContextManagerPreset, ExtractionStrategy, LlmApiType, LlmMemoryStore, ReasoningEffort
 from kompend.core.config.models._base import _KompendBaseModel
 from kompend.core.keys import EnvVar
+from kompend.core.text.density import CONSERVATIVE_CHARS_PER_TOKEN
 from kompend.core.vocab import LlmDataFormat
 
 _CONTEXT_OFF_WORDS: Final[frozenset[str]] = frozenset({"", "off", "false", "none", "no"})
@@ -156,7 +157,16 @@ class LLMConfig(_KompendBaseModel):
     slug_max_length: int = Field(default=80, validation_alias=EnvVar.LLM_SLUG_MAX_LENGTH)
     batch_retry_attempts: int = Field(default=3, validation_alias=EnvVar.LLM_BATCH_RETRY_ATTEMPTS)
     min_segment_tokens: int = Field(default=512, validation_alias=EnvVar.LLM_MIN_SEGMENT_TOKENS)
-    default_chars_per_token: float = Field(default=3.85, validation_alias=EnvVar.LLM_DEFAULT_CHARS_PER_TOKEN)
+    default_chars_per_token: float = Field(
+        default=CONSERVATIVE_CHARS_PER_TOKEN,
+        validation_alias=EnvVar.LLM_DEFAULT_CHARS_PER_TOKEN,
+        description=(
+            "How many characters one token occupies in this vault's content. The default "
+            f"({CONSERVATIVE_CHARS_PER_TOKEN}) is the pessimistic bound measured across the corpus, and the "
+            "planner and the request-fit guard both size with it, so a planned request cannot arrive over the "
+            "window. Raising it makes larger requests and risks a provider context overflow."
+        ),
+    )
 
 
 class EmbeddingConfig(_KompendBaseModel):

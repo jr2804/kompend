@@ -540,8 +540,12 @@ throughput_window_tokens = 1000
 # slug_max_length = 80
 
 # Chars-per-token heuristic for budget estimation. Also overridable via the
-# KOMP_CHARS_PER_TOKEN environment variable.
-# default_chars_per_token = 3.85
+# KOMP_CHARS_PER_TOKEN environment variable. The default (2.5) is the
+# pessimistic density bound measured across a corpus: the planner and the
+# request-fit guard both size with it, so a planned request cannot arrive
+# over the context window. Raising it makes larger requests and risks a
+# provider context overflow.
+# default_chars_per_token = 2.5
 
 # Minimum input tokens per generation segment. Prevents absurdly tiny segments
 # when the model's context window is small.

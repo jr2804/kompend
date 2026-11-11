@@ -119,10 +119,13 @@ Two reasons it is not simply "whatever the measured overhead leaves free":
 
 1. A server's **effective** usable context is smaller than the nominal window
    (KV-cache slotting, prompt-cache rollover).
-2. ``default_chars_per_token`` (3.85) is a heuristic — it **undercounts**
+2. ``default_chars_per_token`` (2.5) is a heuristic — it **undercounts**
    token-dense content (formulas, tables, identifiers), so a nominally
    exact-fit request can still overflow. Observed on a formula-heavy standard:
    `request (65762 tokens) exceeds the available context size (65536 tokens)`.
+   The value is the pessimistic density bound measured across a corpus, and
+   the planner and the request-fit guard both size with it, so a planned
+   request cannot arrive over the window.
 
 The margin never crops content — the content budget shrinks, so the work
 splits across more batches or segments.
@@ -389,7 +392,7 @@ messages after the anchor are estimated from characters, and those are the
 dense ones — tool returns, tables, minified JSON, retry echoes.
 
 Kompend counts that tail at **2.5 characters per token**, not the harness's
-default of 4 (`_conservative_tokens` in `kompend.agents.context_manager`).
+default of 4 (`conservative_tokens` in `kompend.core.text.density`).
 Every compaction strategy kompend builds gets the same callable, so a
 trigger, its reclaim accounting and its logged figures cannot disagree
 about the size of the context.

@@ -39,7 +39,6 @@ from kompend.agents.base import _CONTEXT_PRESETS, _SLIDING_COMPRESS_THRESHOLD, _
 from kompend.agents.base.context import resolve_context_capability
 from kompend.agents.context_manager import (
     GrowthGatedCompaction,
-    _conservative_tokens,  # noqa: PLC2701
     _file_key,  # noqa: PLC2701
     _GuardedSlidingCompaction,  # noqa: PLC2701
     _pin_first_user_turn,  # noqa: PLC2701
@@ -49,6 +48,7 @@ from kompend.agents.context_manager import (
 )
 from kompend.core.config import CompactionConfig, ContextManagerPreset
 from kompend.core.templates import get_template_loader
+from kompend.core.text.density import conservative_tokens
 
 
 class TestBuildSummarizingCompaction:
@@ -255,12 +255,12 @@ class TestConservativeDensity:
     def test_counts_dense_text_at_the_measured_density_floor(self) -> None:
         dense = "x" * 25_000
 
-        assert _conservative_tokens(dense) == 10_000
-        assert _conservative_tokens(dense) > len(dense) // 4
+        assert conservative_tokens(dense) == 10_000
+        assert conservative_tokens(dense) > len(dense) // 4
 
     def test_rounds_up_so_a_nonempty_part_never_weighs_nothing(self) -> None:
-        assert _conservative_tokens("x") == 1
-        assert _conservative_tokens("") == 0
+        assert conservative_tokens("x") == 1
+        assert conservative_tokens("") == 0
 
     def test_every_strategy_the_builders_return_counts_the_kompend_way(self) -> None:
         """One scale for triggers, reclaim accounting and logged figures."""
@@ -277,13 +277,13 @@ class TestConservativeDensity:
             judge=TestModel(),
         )
 
-        assert sliding.tokenizer is _conservative_tokens
+        assert sliding.tokenizer is conservative_tokens
         gated = fallback.fallback_chain[0]
         assert isinstance(gated, GrowthGatedCompaction)
-        assert gated.tokenizer is _conservative_tokens
+        assert gated.tokenizer is conservative_tokens
         tiers = gated.strategy.tiers
-        assert all(cast("Any", tier).tokenizer is _conservative_tokens for tier in tiers)
-        assert cast("Any", fallback.fallback_chain[1]).tokenizer is _conservative_tokens
+        assert all(cast("Any", tier).tokenizer is conservative_tokens for tier in tiers)
+        assert cast("Any", fallback.fallback_chain[1]).tokenizer is conservative_tokens
 
     async def test_a_dense_tail_the_heuristic_would_miss_trims_anyway(self) -> None:
         """130 000 chars is 32 500 tokens at 4 chars, 52 000 at 2.5.
@@ -320,9 +320,9 @@ class TestConservativeDensity:
             tail,
         ]
 
-        estimated = estimate_context_tokens(messages, _conservative_tokens)
+        estimated = estimate_context_tokens(messages, conservative_tokens)
 
-        assert estimated == 40_500 + _conservative_tokens("y" * 5_000)
+        assert estimated == 40_500 + conservative_tokens("y" * 5_000)
 
     async def test_a_trim_that_still_exceeds_the_trigger_says_so(self, caplog: pytest.LogCaptureFixture) -> None:
         """A part the clamp may not drop — half a tool pair — still warns.
@@ -387,7 +387,7 @@ class TestOversizedPartClamp:
 
         assert echo not in ctx.messages
         trigger = int(64_000 * _SLIDING_COMPRESS_THRESHOLD)
-        assert estimate_context_tokens(ctx.messages, _conservative_tokens) <= trigger
+        assert estimate_context_tokens(ctx.messages, conservative_tokens) <= trigger
         assert "dropped the oversized part(s) no trim could fit" in caplog.text
 
     async def test_a_clamp_only_pass_is_not_logged_as_a_trim(
@@ -508,10 +508,10 @@ class TestOversizedPartClamp:
                 tiers=[cast(Any, _RecordingStrategy())],
                 target_fraction=_SLIDING_COMPRESS_THRESHOLD,
                 context_window=64_000,
-                tokenizer=_conservative_tokens,
+                tokenizer=conservative_tokens,
             ),
             min_growth_tokens=0,
-            tokenizer=_conservative_tokens,
+            tokenizer=conservative_tokens,
         )
         echo = _echo(chars=300_000)
         messages = [*_heavy_history(messages=6, chars_per_message=9_200), echo]
@@ -538,10 +538,10 @@ class TestOversizedPartClamp:
                 tiers=[cast(Any, recording)],
                 target_fraction=_SLIDING_COMPRESS_THRESHOLD,
                 context_window=64_000,
-                tokenizer=_conservative_tokens,
+                tokenizer=conservative_tokens,
             ),
             min_growth_tokens=0,
-            tokenizer=_conservative_tokens,
+            tokenizer=conservative_tokens,
         )
         echo = _echo(chars=300_000)
         ctx = _ctx()
@@ -574,10 +574,10 @@ class TestOversizedPartClamp:
             strategy=TieredCompaction(
                 tiers=[cast(Any, recording)],
                 target_fraction=_SLIDING_COMPRESS_THRESHOLD,
-                tokenizer=_conservative_tokens,
+                tokenizer=conservative_tokens,
             ),
             min_growth_tokens=0,
-            tokenizer=_conservative_tokens,
+            tokenizer=conservative_tokens,
         )
         echo = _echo(chars=100_000)
         wide = TestModel(profile=ModelProfile(context_window=128_000))

@@ -36,7 +36,7 @@ from kompend.core.paths import rel_to_vault
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.templates import get_template_loader
 from kompend.core.text.windows import split_text_windows
-from kompend.llm.request_budget import RequestBudget, chars_to_tokens
+from kompend.llm.request_budget import DEFAULT_CHARS_PER_TOKEN, RequestBudget, chars_to_tokens
 from kompend.logging import get_logger
 
 #: System-prompt template of the reference extraction agent. Its rendered
@@ -265,7 +265,7 @@ def _reference_answer_tokens(compiler: TwoPhaseRuntime) -> int:
 
 
 @functools.lru_cache(maxsize=1)
-def _reference_system_tokens(chars_per_token: float = 3.85) -> int:
+def _reference_system_tokens(chars_per_token: float = DEFAULT_CHARS_PER_TOKEN) -> int:
     """Estimated token cost of the reference-extraction system prompt.
 
     Measured with the configured chars-per-token heuristic

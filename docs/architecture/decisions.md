@@ -189,6 +189,13 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 **Decision:** Every preset trims on tokens. The `sliding` preset gets a token trigger (a fraction of the request's window, resolved per request from the model, with the message cap kept as a coarser second bound) instead of the message count alone, pins the first user turn so the task statement cannot be trimmed away, keeps a token-bounded tail, and logs each trim with the messages dropped and the estimated tokens before and after. The other presets keep their existing tiers and thresholds — they are byte-identical — and the tier chain is gated on growth, so an unchanged history is not trimmed again.  
 **Consequences:** The estimator the harness uses is a characters-per-token heuristic that under-counts dense content, so the sliding threshold sits below the point where an estimate is trusted rather than at it; a trim that reclaims nothing is reported as such rather than passed off as a successful trim. Trimming is lossy by construction and the pin is what keeps the loss bounded: the task survives, the middle of the history does not.
 
+### Decision: One chars-per-token heuristic sizes every request
+
+**Date:** Nov 11, 2026  
+**Context:** A request is sized in characters and paid for in tokens, so every stage that plans content needs one ratio. Two were in play: the compilation planner sized a segment with the nominal corpus median (3.85 chars per token) while the request-fit guard counted the same segment with the pessimistic density floor (2.5). A segment planned at 3.85 therefore arrived roughly 54 % over the window — the p863 wiki compile (run 2fe130fb, 2026-11-11) died on the provider's answer "prompt too long; exceeded max context length by 2853 tokens" after minutes of upstream work, and the guard's refusal came too late to save the run.  
+**Decision:** One heuristic, owned by `kompend.core.text.density` (`CONSERVATIVE_CHARS_PER_TOKEN`, `conservative_tokens`). The planner, the request-fit guard, the extraction/reference/WiCER budgets and the compaction estimator all count with it, and `compile.llm.default_chars_per_token` (now defaulting to the same 2.5) is the single knob. The floor was measured on 733 request tails of the p863 corpus (p01 2.65, median 3.86 chars per token); at the harness's 4 the estimate under-counts 560 of those tails, worst by 2.02x, while at 2.5 it covers 726 of 733.  
+**Consequences:** A planned request cannot arrive over the window, and the cost of the margin is a smaller batch — a segment holds about 35 % fewer characters, so the work splits across more requests and no content is cropped. A vault that raises the ratio opts out of the guarantee and can meet the provider's 400 again.
+
 ## Output
 
 ### Decision: Markdown emission escapes prose pipes (generation contract)
@@ -322,7 +329,7 @@ flowchart LR
 | `batch_retry_attempts`          | 3       | Extra per-batch retries before counting as failed         |
 | `slug_max_length`               | 80      | Max concept-page slug length                              |
 | `min_segment_tokens`            | 512     | Min tokens per generation segment                         |
-| `default_chars_per_token`       | 3.85    | Token budget estimation heuristic                         |
+| `default_chars_per_token`       | 2.5     | Token budget estimation heuristic (pessimistic density)  |
 
 **Rationale:** Rather than increasing retries (which makes the problem worse for unsuitable models), we detect unsuitability early, fail fast, and expose every threshold to user configuration. The doctor command now includes a structured-output pre-check that probes for model capability before compilation begins.
 
