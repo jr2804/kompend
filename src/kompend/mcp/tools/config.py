@@ -13,10 +13,11 @@ from kompend.core.config import (
     set_config_file_value,
     validate_config_key,
 )
-from kompend.core.keys import PATHS_WIKI_DIR
-from kompend.core.utils.dicts import as_int
+from kompend.core.keys import PATHS_OUTPUT_DIR, PATHS_SOURCES_DIR, PATHS_WIKI_DIR
+from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, DEFAULT_SOURCES_DIR_NAME, GITIGNORE_FILE
+from kompend.core.utils.dicts import as_int, as_str
 from kompend.logging import get_logger
-from kompend.scaffolding import ScaffoldError, scaffold_project
+from kompend.scaffolding import ScaffoldError, dir_name, is_current, merge_gitignore, render_gitignore, scaffold_project
 
 _ENV_REF_RE = __import__("re").compile(r"^\$\{\w+\}$")
 
@@ -152,6 +153,40 @@ def config_path(
     except Exception as exc:
         return {"status": "error", "message": str(exc)}
     return {"status": "ok", "path": str(path)}
+
+
+def gitignore_wiki(
+    wiki_dir: str | None = None,
+    check: bool = False,
+) -> dict[str, Any]:
+    """Write or check the managed `.gitignore` block of a kompend vault.
+
+    Mirrors ``kompend gitignore``: the managed block is re-rendered from the
+    artifact names, every rule the user wrote around it survives, and
+    ``check=True`` reports drift without touching the file.
+    """
+    overrides: dict[str, Any] = {}
+    if wiki_dir:
+        overrides[PATHS_WIKI_DIR] = str(wiki_dir)
+    try:
+        cfg = resolve_config(cli_overrides=overrides)
+        base_dir = Path(as_str(cfg.get(PATHS_WIKI_DIR)) or str(Path.cwd()))
+        rendered = render_gitignore(
+            sources_dir=dir_name(cfg.get(PATHS_SOURCES_DIR), fallback=DEFAULT_SOURCES_DIR_NAME),
+            output_dir=dir_name(cfg.get(PATHS_OUTPUT_DIR), fallback=DEFAULT_OUTPUT_DIR_NAME),
+        )
+        path = base_dir / GITIGNORE_FILE
+        existing = path.read_text(encoding="utf-8") if path.is_file() else None
+        if check:
+            current = existing is not None and is_current(existing, rendered)
+            return {"status": "ok" if current else "error", "path": str(path), "current": current}
+        text = rendered if existing is None else merge_gitignore(existing, rendered)
+        if text == existing:
+            return {"status": "ok", "path": str(path), "changed": False}
+        path.write_text(text, encoding="utf-8")
+        return {"status": "ok", "path": str(path), "changed": True, "created": existing is None}
+    except Exception as exc:
+        return {"status": "error", "message": str(exc)}
 
 
 def _redact_api_key(key: str, value: Any) -> Any:

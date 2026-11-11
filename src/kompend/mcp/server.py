@@ -26,6 +26,7 @@ from kompend.mcp.tools import (
     config_set,
     doctor,
     explain,
+    gitignore_wiki,
     init_wiki,
     lint_all,
     lint_check,
@@ -107,6 +108,7 @@ def _register_all(srv: FastMCP) -> None:  # noqa: PLR0915 — one registration p
     srv.tool(name="config_list")(config_list)
     srv.tool(name="config_path")(config_path)
     srv.tool(name="config_check")(config_check)
+    srv.tool(name="wiki_gitignore")(gitignore_wiki)
     srv.tool(name="sources_list")(sources_list)
     srv.tool(name="sources_tag")(sources_tag)
     srv.tool(name="sources_untag")(sources_untag)

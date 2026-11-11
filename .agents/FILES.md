@@ -43,6 +43,7 @@ any `.py` file outside `paths.py`. Always import from `kompend.core.paths`.
 | Constant | Value | Usage |
 |----------|-------|-------|
 | `KOMP_DIR` | `".kompend"` | Root metadata directory |
+| `GITIGNORE_FILE` | `".gitignore"` | Version-control rail file at the vault root (`kompend gitignore` owns its managed block) |
 | `KOMP_DB_FILE` | `"kompend.db"` | Single non-vector SQLite store (`.kompend/kompend.db`) |
 | `CACHE_SUBDIR` | `"cache"` | Cache component within `KOMP_DIR` |
 | `CACHE_DIR` | `".kompend/cache"` | Full relative cache path (for DEFAULTS) |

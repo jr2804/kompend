@@ -1,11 +1,61 @@
-# ── Compiled output (regenerable) ────────────────────────────────────────
+# ── What belongs in version control ───────────────────────────────────────
+# Commit   : {{ sources_dir }}/ — every source document, including the
+#            _captured/, _learned/ and _distilled/ notes; they exist nowhere
+#            else.
+# Also commit: this file, the root *.md files (README, AGENTS, NOTES), and
+#            {{ kompend_dir }}/{{ config_file }} — the settings that produce the
+#            wiki, including any hand edits.
+# Commit   : {{ kompend_dir }}/{{ kompend_db }} — the vault store. It holds
+#            tables that exist nowhere else: the memory log, review decisions,
+#            bibliographic references and the stable entity-kind registry.
+#            Commit it only when no `kompend` process is running (SQLite runs
+#            in WAL mode; a copy taken mid-run can hold stale pages).
+# Optional : the compiled wiki, attachments/, exports, review drafts and the
+#            agent notebook — see the commented block at the end.
+# Never    : everything below "Derived state" — `kompend` rebuilds all of it
+#            from the sources and the store. Regenerate this block with
+#            `kompend gitignore`.
+
+# >>> kompend gitignore (managed — regenerate with `kompend gitignore`) >>>
+
+# ── Compiled output (rebuild with `kompend compile`) ───────────────────────
+# Remove this line to commit the wiki and review page changes as diffs.
 {{ output_dir }}/
 
-# ── Internal state (regenerable) ─────────────────────────────────────────
-.kompend/cache/
-.kompend/state.json
-.kompend/compile_state.json
+# ── Derived state (rebuild from {{ sources_dir }}/ and the store) ──────────────
+{{ kompend_dir }}/{{ cache_subdir }}/
+{{ kompend_dir }}/{{ logs_subdir }}/
+{{ kompend_dir }}/{{ tmp_subdir }}/
+{{ kompend_dir }}/{{ vectors_db }}*
+{{ kompend_dir }}/{{ memory_db }}*
+{{ kompend_dir }}/{{ steps_db }}*
+{{ kompend_dir }}/{{ provenance_dir }}/
+{{ kompend_dir }}/{{ dedup_dir }}/
 
-# ── Local overrides (machine-specific secrets, mise-style) ────────────────
-.kompend/config.local.toml
-kompend.local.toml
+# ── Legacy flat artifacts (their content now lives in {{ kompend_db }}) ───────
+{{ kompend_dir }}/{{ compile_state_file }}
+{{ kompend_dir }}/{{ state_file }}
+{{ kompend_dir }}/{{ organize_report_file }}
+{{ kompend_dir }}/{{ vectors_manifest_file }}
+{{ kompend_dir }}/{{ memory_log_file }}
+{{ kompend_dir }}/{{ memory_store_file }}
+{{ kompend_dir }}/{{ attachments_manifest }}
+{{ kompend_dir }}/{{ verification_file }}
+{{ kompend_dir }}/{{ references_file }}
+{{ kompend_dir }}/{{ entity_types_file }}
+{{ kompend_dir }}/{{ assets_file }}
+{{ kompend_dir }}/{{ private_file }}
+{{ kompend_dir }}/{{ lint_history_file }}
+{{ kompend_dir }}/{{ runs_file }}
+
+# ── Machine-local overrides (never shared) ─────────────────────────────────
+*.local.toml
+
+# <<< kompend gitignore (managed) <<<
+
+# ── Optional: uncomment the lines that fit your workflow ───────────────────
+# {{ attachments_dir }}/           # media the wiki embeds (needed to render it offline)
+# {{ exported_dir }}/              # full-text source exports (regenerable on demand)
+# {{ kompend_dir }}/{{ review_dir }}/       # review drafts and decisions (the decisions also live in the store)
+# {{ kompend_dir }}/{{ agent_memory_dir }}/  # agent notebook (holds hand-written notes)
+# {{ kompend_dir }}/{{ log_file }}        # rendered pipeline log (regenerable on demand)

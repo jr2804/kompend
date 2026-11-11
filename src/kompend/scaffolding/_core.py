@@ -20,14 +20,14 @@ import jinja2
 
 from kompend.core.config._core import DEFAULTS
 from kompend.core.config.generate import generate_scaffold_config
-from kompend.core.paths import CACHE_DIR, CACHE_SUBDIR, DEDUP_DIR, KOMP_CONFIG_FILE, KOMP_DIR, PROJECT_CONFIG_FILE
+from kompend.core.paths import CACHE_DIR, CACHE_SUBDIR, DEDUP_DIR, GITIGNORE_FILE, KOMP_CONFIG_FILE, KOMP_DIR, PROJECT_CONFIG_FILE
 from kompend.logging import get_logger
+from kompend.scaffolding.gitignore import merge_gitignore, render_gitignore
 
 TEMPLATES_PACKAGE: Final[str] = "kompend.scaffolding.templates"
 
 TEMPLATE_NOTES: Final[str] = "NOTES.md"  # copied verbatim (contains user-facing {{ user_notes }})
 TEMPLATE_README: Final[str] = "README.md.j2"  # rendered with config paths
-TEMPLATE_GITIGNORE: Final[str] = "gitignore.j2"  # rendered with config paths
 TEMPLATE_NEXT_STEPS: Final[str] = "next_steps.txt.j2"  # rendered with config paths (console output only)
 TEMPLATE_AGENTS: Final[str] = "AGENTS.md.j2"  # rendered with config paths (agent instructions)
 
@@ -40,7 +40,7 @@ AUTHORED_TEMPLATES: Final[tuple[str, ...]] = ("NOTES.md", "README.md")
 #: caller can warn. NOTES.md is the user-authored equivalent: the
 #: scaffold only writes it in default mode (not bare), and an existing
 #: file is treated the same way.
-RAIL_FILES: Final[tuple[str, ...]] = (".gitignore", "AGENTS.md", "README.md")
+RAIL_FILES: Final[tuple[str, ...]] = (GITIGNORE_FILE, "AGENTS.md", "README.md")
 
 PROJECT_MARKERS: Final[tuple[str, ...]] = (PROJECT_CONFIG_FILE, KOMP_CONFIG_FILE)
 
@@ -191,6 +191,14 @@ def scaffold_project(
     ):
         result.created_dirs.append(_create_directory(resolved_target_dir, relative))
 
+    # The gitignore is one managed block inside a possibly user-owned file: the
+    # scaffold seeds it on a fresh vault and merges (never discards) the user's
+    # own rules when one already exists.
+    gitignore_path = resolved_target_dir / GITIGNORE_FILE
+    rendered_gitignore = render_gitignore(sources_dir=sources_dir_name, output_dir=output_dir_name)
+    existing_gitignore = gitignore_path.read_text(encoding="utf-8") if gitignore_path.is_file() else None
+    gitignore_text = rendered_gitignore if existing_gitignore is None else merge_gitignore(existing_gitignore, rendered_gitignore)
+
     # Plan every file the scaffold may write. Each entry is (relative_path, writer).
     # NOTES.md is always checked: under --bare the scaffold does not write it,
     # but an existing user-owned NOTES.md still triggers a refusal. We split
@@ -198,8 +206,8 @@ def scaffold_project(
     # an additional check-only entry so --bare still guards the user's copy.
     planned: list[tuple[str, Callable[[], object]]] = [
         (
-            ".gitignore",
-            lambda: resolved_target_dir.joinpath(".gitignore").write_text(_render_template(TEMPLATE_GITIGNORE, **render_vars), encoding="utf-8"),
+            GITIGNORE_FILE,
+            lambda: gitignore_path.write_text(gitignore_text, encoding="utf-8"),
         ),
     ]
     if not bare:

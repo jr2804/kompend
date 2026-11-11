@@ -32,6 +32,7 @@ Arguments organized by domain/command group:
 | `serving.py` | Serving command arguments | serve, mcp, agent |
 | `config.py` | Config subcommand arguments | `/kompend config` sub-app |
 | `init.py` | Init subcommand arguments | `/kompend init` sub-app |
+| `gitignore.py` | Vault `.gitignore` command arguments | `/kompend gitignore` |
 | `memory.py` | Memory command group arguments | `/kompend memory` sub-app |
 
 ### Naming conventions

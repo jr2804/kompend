@@ -105,9 +105,13 @@ is for kompend-derived data only.
 
 ### Creation
 
-`.kompend/` is created on demand during `kompend compile`. It is **not** versioned
-in git — the directory should be added to `.gitignore` (it is by default in
-the kompend project template).
+`.kompend/` is created on demand during `kompend compile`. The scaffold writes a
+`.gitignore` that ignores the derived state — cache, indexes, logs, transcripts —
+but **not** the config or `kompend.db` (they hold hand edits and the only copy of
+the memory log, review decisions, references and entity kinds). Refreshing the
+managed block is `kompend gitignore`; see
+[Wiki Structure](../guides/wiki-structure.md#version-control) for the per-artifact
+decision.
 
 ### Invalidation
 

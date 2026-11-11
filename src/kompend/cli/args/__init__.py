@@ -58,6 +58,7 @@ from .config import (
 )
 
 # Init command
+from .gitignore import GitignoreCheck, GitignorePrint
 from .init import InitBare, InitConfig, InitForce, InitGit, InitKeepCache, InitTarget, InitWikiDir
 
 # Knowledge commands (attachments, references, capture, pack, organize, agents)
@@ -232,6 +233,8 @@ __all__ = [
     "ExportSummary",
     "ForceTier",
     "Frontmatter",
+    "GitignoreCheck",
+    "GitignorePrint",
     "Ignore",
     "IgnoreModelFlag",
     "InPlaceFlag",

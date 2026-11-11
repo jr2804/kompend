@@ -28,6 +28,7 @@ are subpackages:
 | `agent.py` | Agent CLI (ACP interactive) | `/kompend agent` |
 | `agents.py` | Agent management | `/kompend agents` |
 | `init.py` | Project initialization | `/kompend init` (sub-app: bare, scaffold, bootstrap) |
+| `gitignore.py` | Vault `.gitignore` managed block | `/kompend gitignore` |
 | `serve.py` | MCP + web server | `/kompend mcp`, `/kompend serve` |
 | `knowledge/` | Capture, query, memory, organize, pack, attachments, references | `/kompend capture`, `/kompend learn`, `/kompend distill`, `/kompend write`, `/kompend query`, `/kompend memory`, `/kompend organize`, `/kompend pack-list`, `/kompend pack-install`, `/kompend attachments`, `/kompend references` |
 | `pipeline/` | Parse, compile, ingest, index, config, sources | `/kompend parse`, `/kompend compile`, `/kompend ingest`, `/kompend index`, `/kompend config`, `/kompend sources` |

@@ -45,6 +45,7 @@ class CommandModule(StrEnum):
     CONFIG = "kompend.cli.cmds.pipeline.config"
     DOCTOR = "kompend.cli.cmds.quality.doctor_cmd"
     EXPLAIN = "kompend.cli.cmds.quality.explain_cmd"
+    GITIGNORE = "kompend.cli.cmds.gitignore"
     INDEX = "kompend.cli.cmds.pipeline.index"
     INGEST = "kompend.cli.cmds.pipeline.ingest"
     INIT = "kompend.cli.cmds.init"
@@ -78,6 +79,7 @@ class CommandName(StrEnum):
     DISTILL = "distill"
     DOCTOR = "doctor"
     EXPLAIN = "explain"
+    GITIGNORE = "gitignore"
     INDEX = "index"
     INGEST = "ingest"
     INIT = "init"
@@ -316,6 +318,12 @@ COMMANDS: Final[dict[CommandName, CommandSpec]] = {
         "config_app",
         HelpPanel.SETUP,
         "Inspect and edit kompend configuration.",
+    ),
+    CommandName.GITIGNORE: CommandSpec(
+        CommandModule.GITIGNORE,
+        "gitignore_cmd",
+        HelpPanel.SETUP,
+        "Write or check the vault's managed .gitignore block.",
     ),
     # Serving
     CommandName.MCP: CommandSpec(

@@ -102,8 +102,32 @@ Creates the following structure:
 │   └── cache/         # Runtime cache
 ├── NOTES.md           # Free-form notes (injected into LLM templates)
 ├── README.md          # Project readme
-└── .gitignore         # Ignores wiki/, .kompend/cache/, state files
+└── .gitignore         # Managed block: derived state is ignored
 ```
+
+## `kompend gitignore`
+
+Write or refresh the managed `.gitignore` block of the current vault.
+
+```text
+kompend gitignore [--check | --print]
+```
+
+| Option | Effect |
+|--------|--------|
+| *(none)* | Create the file, or replace its managed block in place |
+| `--check` | Exit 1 when the block is missing or outdated, without writing |
+| `--print` | Print the rendered file instead of writing it |
+
+Only the block between `# >>> kompend gitignore (managed …)` and
+`# <<< kompend gitignore (managed) <<<` belongs to kompend; every other line is
+preserved. The block lists the artifacts `kompend` rebuilds on demand (cache,
+vector/memory/step indexes, run logs, failure bundles, dedup fingerprints, legacy
+flat state) plus the compiled wiki and `*.local.toml`. It does **not** list the
+config or `.kompend/kompend.db` — those hold hand edits and rows that exist
+nowhere else. See [Wiki Structure](./wiki-structure.md#version-control) for the
+commit/optional/never decision per artifact. The MCP equivalent is
+`wiki_gitignore`.
 
 ## `kompend config`
 

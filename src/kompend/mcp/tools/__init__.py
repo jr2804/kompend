@@ -26,6 +26,7 @@ from kompend.mcp.tools.config import (
     config_list,
     config_path,
     config_set,
+    gitignore_wiki,
     init_wiki,
 )
 from kompend.mcp.tools.knowledge import (
@@ -89,6 +90,7 @@ __all__ = [
     "config_set",
     "doctor",
     "explain",
+    "gitignore_wiki",
     "init_wiki",
     "lint_all",
     "lint_check",

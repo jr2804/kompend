@@ -22,7 +22,7 @@ Use ``from fastmcp import FastMCP`` — never the SDK's renamed
 |--------|----------|
 | ``server.py`` | ``FastMCP`` instance, tool registration, ``main()`` entry point |
 | ``tools/`` | Tool implementation modules |
-| ``tools/config.py`` | ``config_get``, ``config_set``, ``config_check`` — wiki config inspection/mutation/diff |
+| ``tools/config.py`` | ``config_get``, ``config_set``, ``config_check`` — wiki config inspection/mutation/diff; ``init_wiki``; ``gitignore_wiki`` (mirrors ``kompend gitignore``) |
 | ``tools/knowledge.py`` | ``wiki_capture``, ``wiki_distill``, ``wiki_learn``, ``query_wiki`` |
 | ``tools/memory.py`` | ``memory_add``, ``memory_search``, ``memory_synthesize`` |
 | ``tools/query.py`` | ``query_wiki`` — markdown-first search (vector search optional, keyword fallback) |

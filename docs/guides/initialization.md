@@ -25,10 +25,11 @@ kompend init ./my-vault --seed-config scripts/configs/demo.toml
 ├── wiki/              # Compiled wiki output
 ├── .kompend/
 │   ├── config.toml    # Project configuration
+│   ├── kompend.db     # Vault store (memory log, review decisions, references)
 │   └── cache/         # Runtime cache
 ├── NOTES.md           # Free-form notes (injected into LLM templates)
 ├── README.md          # Project readme
-└── .gitignore         # Ignores wiki/, .kompend/cache/, state files
+└── .gitignore         # Managed block: derived state is ignored
 ```
 
 ### `.kompend/config.toml`
@@ -45,14 +46,32 @@ A starter readme with a brief project description and quick-start instructions.
 
 ### `.gitignore`
 
-Standard ignore entries for generated content:
+A managed block lists every artifact that is derived state — the cache, the
+vector/memory/step indexes, run logs, failure bundles, dedup fingerprints, and
+the legacy flat JSON files whose content moved into the store — plus the
+compiled wiki and machine-local `*.local.toml` overrides. Rules outside the
+managed block are yours: `kompend gitignore` replaces only the block, so a
+hand-written rule above or below it survives.
 
 ```text
+# >>> kompend gitignore (managed — regenerate with `kompend gitignore`) >>>
 wiki/
 .kompend/cache/
-.kompend/state.json
-.kompend/compile_state.json
+.kompend/vectors.db*
+.kompend/memory.db*
+.kompend/steps.db*
+…
+# <<< kompend gitignore (managed) <<<
 ```
+
+The store (`.kompend/kompend.db`) and the config (`.kompend/config.toml`) are
+*not* ignored: the store holds the memory log, review decisions, bibliographic
+references and the entity-kind registry, which nothing regenerates. Commit it
+only while no `kompend` process runs — SQLite runs in WAL mode, so a copy taken
+mid-write can hold stale pages.
+
+Which artifacts to commit, keep local, or delete is spelled out in
+[Wiki Structure](./wiki-structure.md#version-control).
 
 ## Options
 

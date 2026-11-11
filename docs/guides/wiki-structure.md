@@ -188,4 +188,39 @@ parse → chunk → resolve → compile on every run. `kompend organize` treats
 `_captured/` and `_distilled/` as protected tool-managed zones — it never
 flattens or relocates them.
 
-```text
+## Version control
+
+A vault mixes three kinds of files. Only the first two have to be committed for
+the wiki to work: **everything needed to rebuild the wiki is `sources/` plus
+`kompend.toml` and `.kompend/config.toml`** — with the store added when you want
+the state that nothing regenerates.
+
+| Artifact | Commit? | Why |
+|----------|---------|-----|
+| `sources/**` (incl. `_captured/`, `_learned/`, `_distilled/`, `_archive/`) | **Yes** | The input. Nothing regenerates it; the wiki is derived from it. |
+| `kompend.toml`, `.kompend/config.toml`, `.kompend/rumdl.toml`, `.kompend/parsecraft.toml` | **Yes** | Settings, including hand edits made below the generated comments. |
+| `README.md`, `AGENTS.md`, `NOTES.md`, `.gitignore` | **Yes** | Authored files; `NOTES.md` feeds the prompts. |
+| `.kompend/agents/*.toml` | **Yes** | Your agent definitions. |
+| `.kompend/kompend.db` | **Yes, with care** | Holds rows that exist nowhere else — the memory log, review decisions, bibliographic references, the entity-kind registry. Commit only while no kompend process runs: SQLite is in WAL mode, so a copy taken mid-write can hold stale pages (include the `-wal` file or checkpoint first). |
+| `wiki/` | **Optional** | The product. Committing it gives reviewable page diffs; ignore it and the vault is ~one third the size. Ignored by the template. |
+| `attachments/`, `exported/` | **Optional** | Media the wiki embeds and on-demand source dumps. Commit them to render the wiki offline without a re-parse. |
+| `.kompend/review/*.md` (drafts), `.kompend/review/*.locked` | **Optional** | Drafts are recompilable; a `.locked` page is never recompiled, so it is the one review artifact worth keeping. Decisions (`_state.json`, `*.approved.md`, `*.rejected.md`) live in the store as well. |
+| `.kompend/agent-memory/` | **Optional** | The agent notebook holds hand-written notes; `llm.agent_memory` defaults to on. |
+| `.kompend/vectors.db`, `memory.db`, `steps.db` | **Never** | Pure rebuild: embeddings, the memory index, and every generation transcript. |
+| `.kompend/cache/`, `.kompend/logs/`, `.kompend/tmp/` | **Never** | Extracted images, run logs, and failure bundles (which hold source bytes). |
+| `.kompend/dedup/`, `.kompend/provenance/` | **Never** | Fingerprints and provenance rows; the store owns the live copy. |
+| legacy flat state (`state.json`, `compile_state.json`, `last_organize.json`, `vectors.manifest.json`, `*.jsonl`) | **Never** | Their content moved into `kompend.db`. |
+| `*.local.toml` | **Never** | Machine-local overrides. |
+
+`kompend init` seeds a `.gitignore` with the never-commit set in a managed
+block. Re-render that block at any time — after an upgrade, or in a vault
+created by an older version:
+
+```bash
+kompend gitignore           # create or refresh the managed block
+kompend gitignore --check   # exit 1 when the block is missing or outdated
+kompend gitignore --print   # show what would be written
+```
+
+Rules outside the managed block are yours and survive every refresh. The same
+operation is available over MCP as `wiki_gitignore`.

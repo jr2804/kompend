@@ -29,9 +29,13 @@ To inspect or modify configuration values from the CLI:
 | -------------- | ------------------------------------------------ |
 | `{{ sources_dir }}/` | Input documents (PDF, DOCX, MD, …)               |
 | `{{ output_dir }}/`  | Compiled output (Markdown + Obsidian frontmatter)|
-| `.kompend/`       | Internal state (cache, config) — gitignored      |
+| `.kompend/kompend.db` | Vault store (memory log, review decisions, references) — commit it |
 | `.kompend/config.toml` | Project configuration (created by `kompend init`) |
 | `NOTES.md`     | User-authored notes (read-only to kompend)          |
+
+`.gitignore` keeps the rebuilt-on-demand state (cache, indexes, logs,
+generation transcripts) out of version control and lists the entries you can
+opt into. Re-render it at any time with `kompend gitignore`.
 
 ## Next steps
 

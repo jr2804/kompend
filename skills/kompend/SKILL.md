@@ -79,6 +79,31 @@ uv tool install --git https://github.com/jr2804/kompend
 **Markdown-only invariant:** the wiki is complete in its generated pages;
 `.kompend/` is regenerable derived state. Wiki pages never reference `.kompend/`.
 
+## Version control
+
+Commit `sources/` plus `kompend.toml` and `.kompend/config.toml` — that is the
+minimum for the wiki to work: everything else is rebuilt from them.
+
+| Artifact | Commit? | Why |
+|----------|---------|-----|
+| `sources/**` (incl. `_captured/`, `_learned/`, `_distilled/`, `_archive/`) | **Yes** | The input; nothing regenerates it. |
+| `kompend.toml`, `.kompend/config.toml`, `.kompend/rumdl.toml`, `.kompend/parsecraft.toml` | **Yes** | Settings, including hand edits below the generated comments. |
+| `README.md`, `AGENTS.md`, `NOTES.md`, `.gitignore`, `.kompend/agents/` | **Yes** | Authored by you; `NOTES.md` feeds the prompts, `agents/` holds your agent definitions. |
+| `.kompend/kompend.db` | **Yes, with care** | Holds rows that exist nowhere else: memory log, review decisions, bibliographic references, entity-kind registry. Commit only while no kompend process runs (SQLite WAL: a mid-write copy can hold stale pages). |
+| `wiki/` | **Optional** | The product. Commit it for reviewable page diffs; ignore it (the template does) for a smaller repo. |
+| `attachments/`, `exported/` | **Optional** | Media the wiki embeds and on-demand source dumps; commit to render the wiki offline. |
+| `.kompend/review/` | **Optional** | Drafts are recompilable; `.locked` pages are never recompiled and are worth keeping. Decisions also live in the store. |
+| `.kompend/agent-memory/` | **Optional** | Hand-written notebook (`llm.agent_memory` defaults to on). |
+| `.kompend/vectors.db`, `memory.db`, `steps.db`, `cache/`, `logs/`, `tmp/`, `dedup/`, `provenance/` | **Never** | Rebuilt on demand: embeddings, indexes, transcripts, images, run logs, failure bundles, fingerprints. |
+| legacy flat state (`state.json`, `compile_state.json`, `*.jsonl`) | **Never** | Content moved into `kompend.db`. |
+| `*.local.toml` | **Never** | Machine-local overrides. |
+
+`kompend init` seeds a `.gitignore` whose managed block holds the never-commit
+set; `kompend gitignore` refreshes it in place (only the block between the
+`# >>> kompend gitignore (managed …)` and `# <<< kompend gitignore (managed) <<<`
+markers changes — your own rules survive). Use `--check` in CI to catch drift and
+`--print` to see the rendered file.
+
 ## Vault without kompend
 
 For agents consuming a vault with no kompend CLI/MCP (or a vault shared
@@ -186,6 +211,7 @@ lint rule flags files whose slug matches no source.
 | `kompend config get <key>` | Show resolved config value |
 | `kompend config set <key> <value>` | Set a value in `.kompend/config.toml` |
 | `kompend config list` | List all resolved config values with sources |
+| `kompend gitignore` | Create or refresh the vault's managed `.gitignore` block (`--check` for CI, `--print` to preview) |
 
 ### Quality & Diagnostics
 
