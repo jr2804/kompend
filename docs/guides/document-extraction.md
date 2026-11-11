@@ -418,16 +418,16 @@ into slower arithmetic.
 
 ### Bounding a docling pass's memory
 
-A docling conversion is the heaviest thing an ingest does. Its cost is **fixed
+A docling conversion is the heaviest thing an ingest does. Its cost is **mostly
 per pass, not per page**: docling-rs loads its layout, table-structure and OCR
-models plus an ONNX arena inside the Rust extension, so one 8-page PDF and one
-113-page PDF both peak at about the same commit charge (1830 MB at four
-threads). Two knobs bound it, and one default assumes them.
+models plus an ONNX arena inside the Rust extension, so an 8-page PDF peaks at
+about 2950 MB of commit charge at four threads while a 113-page PDF peaks at
+about 3700 MB. Two knobs bound it, and one default assumes them.
 
 ```toml
 [ingest]
 parsecraft_docling_threads = 4          # ONNX threads; default 4 on a big host
-parse_min_free_commit_mb = 4096         # refuse a heavy plan below this; 0 = off
+parse_min_free_commit_mb = 5120         # refuse a heavy plan below this; 0 = off
 max_concurrent_heavy_parses = 1         # parallel docling/mineru passes
 
 # ~/.config/parsecraft/config.toml or <wiki>/.kompend/parsecraft.toml
@@ -440,10 +440,11 @@ do_table_structure = false              # skip the table model (~1.6 GB)
   `DOCLING_RS_PDF_THREADS` at parser construction, whether or not this run
   routes a page to docling (setting it late changes nothing — the engine reads
   it when it builds its converter). The default is `min(4, cores)`. Measured on
-  Windows with docling-rs 2.65.1, one 8-page PDF: engine default 7.1 s /
-  2790 MB peak commit, 4 threads 7.4 s / 1830 MB, 1 thread 16.3 s / 1533 MB —
-  four is the knee. An explicit `DOCLING_RS_PDF_THREADS` in the environment
-  wins over the config key.
+  Windows with docling-rs 2.80.0, one 8-page PDF: engine default (16 threads)
+  3851 MB peak commit, 4 threads about 2950 MB, 1 thread 2577 MB — four is the
+  knee. A 113-page PDF peaks at 3697 MB, so the peak grows with the document.
+  An explicit `DOCLING_RS_PDF_THREADS` in the environment wins over the config
+  key.
 - **`[routing.backend_options]`** (in parsecraft's config) forwards options to
   one sub-backend's converter. Skipping the OCR and table models on a
   text-layer PDF removes docling's biggest memory consumers; only do it for

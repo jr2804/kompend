@@ -123,12 +123,12 @@ file = "NOTES.md"
 # ONNX thread bound for the docling engine (engine env DOCLING_RS_PDF_THREADS).
 # Applied at parser construction whether or not this run routes anything to
 # docling; an explicit DOCLING_RS_PDF_THREADS in the environment wins. Measured
-# on Windows with docling-rs 2.65.1 (2026-11-04), one 8-page PDF: engine default
-# 7.1 s / 2790 MB peak commit, 4 threads 7.4 s / 1830 MB, 1 thread 16.3 s /
-# 1533 MB. For a text-layer PDF, adding do_ocr = false and
-# do_table_structure = false to [routing.backend_options.docling] (in
-# parsecraft's config) took the same file to 10.3 s / 2.9 GB. Must be set
-# before the first conversion.
+# on Windows with docling-rs 2.80.0 (2026-11-11), one 8-page PDF: engine
+# default (16 threads) 3851 MB peak commit, 4 threads about 2950 MB, 1 thread
+# 2577 MB. A 113-page PDF peaks at 3697 MB. For a text-layer PDF, adding
+# do_ocr = false and do_table_structure = false to
+# [routing.backend_options.docling] (in parsecraft's config) skips the OCR and
+# table models. Must be set before the first conversion.
 # Env: KOMP_INGEST_PARSECRAFT_DOCLING_THREADS
 # parsecraft_docling_threads = 4
 
@@ -136,12 +136,12 @@ file = "NOTES.md"
 # follows the routing plan: a source is only held to this budget when an
 # engine it actually routes to loads a model stack — a PDF liteparse reads is
 # not. A guarded parse needs at least this much free commit memory (MB) and at
-# most max_concurrent_heavy_parses run at once. Measured: 1830 MB per docling
-# pass at four threads, independent of page count. 0 disables the headroom
-# check (the concurrency cap stays); a blocked source fails loudly as skipped,
-# never silently.
+# most max_concurrent_heavy_parses run at once. Measured: about 3700 MB per
+# docling pass at four threads (the 113-page worst case; an 8-page PDF peaks
+# at about 2950 MB). 0 disables the headroom check (the concurrency cap
+# stays); a blocked source fails loudly as skipped, never silently.
 # Env: KOMP_INGEST_PARSE_MIN_FREE_COMMIT_MB
-# parse_min_free_commit_mb = 4096
+# parse_min_free_commit_mb = 5120
 # Env: KOMP_INGEST_MAX_CONCURRENT_HEAVY_PARSES
 # max_concurrent_heavy_parses = 1
 

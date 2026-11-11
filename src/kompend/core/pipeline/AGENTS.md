@@ -145,15 +145,16 @@ persistence, and standalone ingestion.
   loads at all — a PDF liteparse reads needs hundreds of megabytes, the same
   PDF routed to docling needs gigabytes. A planned backend outside
   `LIGHT_BACKENDS` needs `ingest.parse_min_free_commit_mb` of free commit
-  charge (measured peak of one docling conversion: 1830 MB at the default
-  four threads, independent of page count — knox-b9p2); `0` disables the
+  charge (measured peak of one docling conversion: about 2950 MB for an
+  8-page PDF and about 3700 MB for a 113-page one at the default four
+  threads, docling-rs 2.80.0 — knox-b9p2); `0` disables the
   headroom check, the cap stays. A refused source is skipped loudly per-file;
   the run continues. The docling engine's ONNX thread count
   (`ingest.parsecraft_docling_threads` → `DOCLING_RS_PDF_THREADS`, set at
   parser construction, before the first conversion) is the engine-side
-  lever; the default is `min(4, cores)` — the measured knee (7.4 s / 1830 MB
-  vs 7.1 s / 2790 MB at the engine default and 16.3 s / 1533 MB at one
-  thread).
+  lever; the default is `min(4, cores)` — the measured knee (about 2950 MB
+  peak commit at four threads vs 3851 MB at the engine default and 2577 MB
+  at one thread).
 - **Recoverable-log rule:** a log call that attaches a traceback gates it on
   `kompend.core.verbosity.is_verbose()` (`exc_info=is_verbose()`). The switch is
   a `ContextVar`, so a worker thread only sees it when the submission carries

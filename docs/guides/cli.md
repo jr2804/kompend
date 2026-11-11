@@ -319,7 +319,7 @@ and ignores the key; they live in `REMOVED_KEYS`. The live shape is:
 [ingest]
 # parse_timeout_s       = 0.0      # 0 parses in-process, no bound
 # parsecraft_docling_threads = 4  # ONNX thread bound for the docling engine
-# parse_min_free_commit_mb = 4096   # free commit charge a planned engine needs
+# parse_min_free_commit_mb = 5120   # free commit charge a planned engine needs
 # max_concurrent_heavy_parses = 1   # heavy parses running at once
 ```
 

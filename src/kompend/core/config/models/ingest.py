@@ -13,10 +13,10 @@ from kompend.core.keys import EnvVar
 _DEFAULT_DOCLING_THREADS: Final[int] = min(4, os.cpu_count() or 4)
 
 #: Measured peak commit charge of one docling conversion at four threads is
-#: about 1830 MB; the default leaves room for the rest of the process on top.
+#: about 3700 MB; the default leaves room for the rest of the process on top.
 #: The previous 10240 MB was derived from a 2.55.4 measurement (8.0 GB) and is
 #: unreachable on an ordinary 16 GB host, so it skipped every heavy source.
-_DEFAULT_PARSE_MIN_FREE_COMMIT_MB: Final[int] = 4096
+_DEFAULT_PARSE_MIN_FREE_COMMIT_MB: Final[int] = 5120
 
 
 class IngestConfig(_KompendBaseModel):
@@ -41,10 +41,10 @@ class IngestConfig(_KompendBaseModel):
             "construction whether or not the run routes anything to docling. Defaults to 4 (or fewer on a "
             "smaller host). It is a bound, not a target: the engine still spreads work across its own "
             "pool, and an explicit `DOCLING_RS_PDF_THREADS` in the environment always wins. Measured on "
-            "Windows with docling-rs 2.65.1 (2026-11-04), one 8-page PDF: engine default 7.1 s / "
-            "2790 MB peak commit, 4 threads 7.4 s / 1830 MB, 1 thread 16.3 s / 1533 MB — 4 is the knee. "
-            "The thread count changes neither the extracted text nor the routing, so it is not part of "
-            "the parse-cache fingerprint."
+            "Windows with docling-rs 2.80.0 (2026-11-11), one 8-page PDF: engine default (16 threads) "
+            "3851 MB peak commit, 4 threads about 2950 MB, 1 thread 2577 MB — 4 is the knee. A 113-page "
+            "PDF peaks at 3697 MB, so the peak grows with the document. The thread count changes neither "
+            "the extracted text nor the routing, so it is not part of the parse-cache fingerprint."
         ),
     )
     parse_min_free_commit_mb: int = Field(
@@ -54,9 +54,9 @@ class IngestConfig(_KompendBaseModel):
         description=(
             "Free commit charge (MB) a parse whose plan routes it to a heavy engine requires. The plan "
             "counts, not the suffix: a PDF routed to liteparse is never held to docling's budget. The "
-            "default (4096) sits above the measured peak of one docling conversion at the configured "
-            "thread count (about 1830 MB) plus room for the rest of the process; `0` disables the check "
-            "and leaves only the concurrency cap."
+            "default (5120) sits above the measured peak of one docling conversion at the configured "
+            "thread count (about 3700 MB for a 113-page PDF, about 2950 MB for an 8-page one) plus room "
+            "for the rest of the process; `0` disables the check and leaves only the concurrency cap."
         ),
     )
     max_concurrent_heavy_parses: int = Field(

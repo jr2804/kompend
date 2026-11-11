@@ -2,11 +2,11 @@
 
 A heavy conversion is a memory cost, not a CPU cost: the docling engine loads
 its layout, table-structure and OCR models plus an ONNX arena, which peaks at
-about 1830 MB of commit charge for one document at the configured four threads
-(2790 MB at the engine's own thread count, 1533 MB at a single thread) —
-measured on Windows with docling-rs 2.65.1 (2026-11-04). The peak is a fixed
-per-conversion cost, not a per-page one: an 8-page and a 113-page PDF both cost
-about the same.
+about 2950 MB of commit charge for an 8-page document at the configured four
+threads (3850 MB at the engine's own thread count, 2580 MB at a single thread)
+— measured on Windows with docling-rs 2.80.0 (2026-11-11). The peak grows
+with the document: a 113-page PDF peaks at about 3700 MB, so the guard budgets
+the worst measurement rather than the average one.
 
 Which engine a source reaches is decided per page by parsecraft's router, and
 that decision is what the budget depends on: the same PDF needs a few hundred
@@ -71,7 +71,10 @@ LIGHT_BACKENDS: Final[frozenset[str]] = frozenset(
 #: Measured peak commit charge of one conversion, per engine, at this project's
 #: defaults. Only measured engines are listed: an unmeasured heavy backend is
 #: still guarded, its message just omits a figure instead of inventing one.
-MEASURED_ENGINE_COMMIT_MB: Final[Mapping[str, int]] = MappingProxyType({"docling": 1830})
+#: The docling figure is the worst measurement, not the average one: four runs
+#: on an 8-page PDF gave 2921-3042 MB and a 113-page PDF gave 3697 MB, and a
+#: guard that under-estimates lets the host die mid-parse.
+MEASURED_ENGINE_COMMIT_MB: Final[Mapping[str, int]] = MappingProxyType({"docling": 3700})
 
 logger = get_logger(__name__)
 

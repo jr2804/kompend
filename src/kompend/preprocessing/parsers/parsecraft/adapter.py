@@ -276,12 +276,12 @@ class ParsecraftParser:
 
         The docling engine loads its layout, table-structure and OCR models
         plus an ONNX arena; the arena scales with the thread count. Measured
-        on Windows with docling-rs 2.65.1 (2026-11-04), one 8-page PDF: the
-        engine default costs 7.1 s and 2790 MB of peak commit, four threads
-        7.4 s and 1830 MB, a single thread 16.3 s and 1533 MB. Four is the
-        knee, so it is the configured default. It is applied whether or not
-        this run routes anything to docling: the bound only matters when the
-        engine loads, and setting it late changes nothing.
+        on Windows with docling-rs 2.80.0 (2026-11-11), one 8-page PDF: the
+        engine default costs 3851 MB of peak commit, four threads about
+        2950 MB, a single thread 2577 MB. Four is the knee, so it is the
+        configured default. It is applied whether or not this run routes
+        anything to docling: the bound only matters when the engine loads,
+        and setting it late changes nothing.
 
         The value is process-wide because the engine reads it from the
         environment; it does not change the extracted text, so it is not part

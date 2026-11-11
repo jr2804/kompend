@@ -91,7 +91,7 @@ def test_the_refusal_names_the_plan_the_shortfall_and_the_levers(monkeypatch: py
     assert "512 MB" in message
     assert "4096 MB" in message
     assert "docling" in message
-    assert "1830 MB" in message  # the measured peak, not a guess
+    assert "3700 MB" in message  # the measured peak, not a guess
     assert "[ingest] parse_min_free_commit_mb" in message
     assert "[ingest] parsecraft_docling_threads = 1" in message
 
@@ -170,10 +170,11 @@ def test_a_text_source_never_takes_a_slot() -> None:
 
 def test_the_config_fields_exist_with_the_measured_defaults() -> None:
     config = KompendConfig()
-    # Four threads is the measured sweet spot: the peak drops from 2790 MB at
-    # the engine's own count to 1830 MB, for 0.3 s more per 8-page document.
+    # Four threads is the measured sweet spot: the peak drops from 3851 MB at
+    # the engine's own count to about 2950 MB, and the guard budgets the worst
+    # measurement (3700 MB, a 113-page document) rather than the average one.
     assert config.ingest.parsecraft_docling_threads == 4
-    assert config.ingest.parse_min_free_commit_mb == 4096
+    assert config.ingest.parse_min_free_commit_mb == 5120
     assert config.ingest.max_concurrent_heavy_parses == 1
 
 

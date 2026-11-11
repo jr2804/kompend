@@ -95,6 +95,13 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 **Decision:** The headroom check moved into the parsecraft adapter, the only layer that holds a routing plan: `ParserOptions.parse_min_free_commit_mb` reaches it as bytes and `_ensure_headroom` budgets the *chosen* pass — a native page lists docling as a fallback candidate even when liteparse wins, so budgeting candidates would refuse files for an engine they never run. The suffix-based `HeavyParseGuard` keeps the concurrency cap only. Default lowered to 4096 MB; the refusal names the planned engine, and the terminal handler now runs with `markup=False` so `[ingest]` reaches the user as the config table it is instead of vanishing as a Rich style tag.  
 **Consequences:** A PDF routed to liteparse is never refused for docling's budget; a fallback pass can still load an engine after the chosen pass produced nothing, which the concurrency cap serializes and the per-file failure path contains. `kompend parse` and the MCP parse tools are guarded too, because the check lives in the parser instead of the pipeline stage.
 
+### Decision: The parse memory budget follows the engine version
+
+**Date:** Nov 11, 2026  
+**Context:** The 1830 MB figure behind the headroom budget came from docling-rs 2.65.1; the host now runs 2.80.0. Re-measured on Windows with the same 8-page PDF and one 113-page PDF: 2921–3042 MB at four threads, 3851 MB at the engine's own thread count, 2577 MB at one thread, 3697 MB for the 113-page document. The peak grows with the document, so "one pass costs the same whatever the length" was wrong.  
+**Decision:** `MEASURED_ENGINE_COMMIT_MB` holds the worst measurement (3700 MB), not the average, and `ingest.parse_min_free_commit_mb` defaults to 5120 MB. A guard that under-estimates lets the host die mid-parse; a budget taken from a measurement that no longer exists skips every heavy source.  
+**Consequences:** The threshold rises by a gigabyte, so a host with 4–5 GB free commit charge now refuses a docling pass it used to attempt. Measure the peak before moving the default again, and never measure on a host that cannot spare the memory.
+
 ### Decision: A blank answer is resampled once, and the window is not a content budget
 
 **Date:** Nov 9, 2026  

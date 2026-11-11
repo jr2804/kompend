@@ -448,7 +448,7 @@ Key config keys:
 | `compile.compiler` | `graph` | Compiler backend (graph, wicer) |
 | `compile.workers` | `1` | Parallel worker count |
 | `ingest.parsecraft_docling_threads` | `min(4, cpu_count)` | ONNX intra-op threads a docling pass may use. `1` roughly halves the pass's commit charge and doubles its wall time |
-| `ingest.parse_min_free_commit_mb` | `4096` | Free commit charge a parse needs when its routing plan names an engine that loads a model stack (`0` disables the check; a PDF liteparse reads is exempt) |
+| `ingest.parse_min_free_commit_mb` | `5120` | Free commit charge a parse needs when its routing plan names an engine that loads a model stack (`0` disables the check; a PDF liteparse reads is exempt) |
 | `ingest.max_concurrent_heavy_parses` | `1` | Heavy parses allowed at once, independent of `compile.workers` |
 | `compile.memory_enabled` | `true` | Enable memory store |
 | `dedup.enabled` | `false` | Enable deduplication |
