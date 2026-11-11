@@ -282,17 +282,17 @@ class MemoryStore:
         if not db_path.exists():
             return cls()
         with open_store(db_path) as conn, core_connection(conn) as core:
-            rows = core.execute(select(memory_states)).all()
+            rows = core.execute(select(memory_states)).mappings().all()
         states: dict[str, NodeState] = {}
         for row in rows:
             state = NodeState(
-                node_id=row.node_id,
-                title=row.title,
-                confidence=float(row.confidence),
-                tier=row.tier,
-                birth_at=row.birth_at,
-                review_at=row.review_at,
-                review_count=int(row.review_count),
+                node_id=row["node_id"],
+                title=row["title"],
+                confidence=float(row["confidence"]),
+                tier=row["tier"],
+                birth_at=row["birth_at"],
+                review_at=row["review_at"],
+                review_count=int(row["review_count"]),
                 superseded_by=row.superseded_by,
             )
             states[state.node_id] = state

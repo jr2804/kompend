@@ -204,14 +204,14 @@ class MemoryStore:
         if not self._log_db_path.exists():
             return []
         with open_store(self._log_db_path) as conn, core_connection(conn) as core:
-            rows = core.execute(select(memory_log).order_by(memory_log.c.id.desc()).limit(limit)).fetchall()
+            rows = core.execute(select(memory_log).order_by(memory_log.c.id.desc()).limit(limit)).mappings().all()
         return [
             {
-                "timestamp": row.ts,
-                "query": row.query,
-                "answer": row.answer,
-                "feedback": row.feedback,
-                "memory_by": row.memory_by,
+                "timestamp": row["ts"],
+                "query": row["query"],
+                "answer": row["answer"],
+                "feedback": row["feedback"],
+                "memory_by": row["memory_by"],
             }
             for row in rows
         ]
