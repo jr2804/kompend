@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -454,7 +454,7 @@ class SqliteVecWikiStore:
                 exc,
             )
 
-    def _manifest_mismatch(self, row: sqlite3.Row) -> str | None:
+    def _manifest_mismatch(self, row: Mapping[str, Any]) -> str | None:
         """Why the manifest does not describe the current vectors, or ``None``."""
         current_model = self._provider.model_id if self._provider is not None else ""
         return manifest_mismatch(row, current_model)
@@ -528,6 +528,6 @@ class SqliteVecWikiStore:
         return row is not None
 
     @staticmethod
-    def _read_manifest(manifest_db: Path) -> sqlite3.Row | None:
+    def _read_manifest(manifest_db: Path) -> Mapping[str, Any] | None:
         """The manifest row of the last build, or ``None`` when there is none."""
         return read_manifest(manifest_db)
