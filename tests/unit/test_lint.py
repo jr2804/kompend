@@ -483,6 +483,7 @@ class TestStalePageRule:
         results = rule.check(wiki, sources_dir=str(tmp_path))
         failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 1
+        assert failures[0].details.get(LintField.SOURCE_FILE) == Path("missing.pdf"), "the finding names a file as a Path"
 
     def test_source_file_exists_passes(self, tmp_path: Any) -> None:
         (tmp_path / "exists.pdf").write_text("pdf content")
@@ -537,6 +538,7 @@ class TestSourceNotFoundRule:
         results = rule.check(wiki, sources_dir=str(tmp_path))
         failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 1
+        assert failures[0].details.get(LintField.SOURCE_FILE) == Path("gone.pdf")
 
 
 # ── LintRunner ───────────────────────────────────────────────────────────
@@ -755,7 +757,7 @@ class TestEntryFromReport:
                     message="m",
                     page_id="n1",
                     fix_applied=True,
-                    details={"target": "x"},
+                    details={LintField.TARGET: "x"},
                 )
             ],
             total_checks=1,
@@ -819,11 +821,14 @@ class TestRumdlRule:
 
         results = RumdlRule().check(_make_wiki([]), sources_dir=str(base / "sources"))
         failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
-        checked_files = {r.details["file"] for r in failures}
-        assert all("sources" not in f for f in checked_files)
-        assert any(f.endswith("page.md") for f in checked_files)
-        assert any(f.endswith("note.md") for f in checked_files)
-        assert all(r.details["rumdl_rule"] for r in failures)
+        checked_files = {r.details.get(LintField.MARKDOWN_FILE) for r in failures}
+        named = [f for f in checked_files if f is not None]
+        assert len(named) == len(failures), "every finding names the file it came from"
+        assert all(f.is_absolute() is False for f in named), "a persisted finding keeps a vault-relative path"
+        assert all("sources" not in f.parts for f in named)
+        assert any(f.name == "page.md" for f in named)
+        assert any(f.name == "note.md" for f in named)
+        assert all(r.details.get(LintField.RUMDL_RULE) for r in failures)
 
     def test_clean_vault_passes(self, tmp_path: Path) -> None:
         base = self._vault(tmp_path)
@@ -858,10 +863,10 @@ class TestRumdlRule:
         note.write_text("# Note\n\nText.\n\n\n\n", encoding="utf-8")
         rule = RumdlRule()
         results = rule.check(_make_wiki([]), sources_dir=str(base / "sources"))
-        fixable = [r for r in results if r.outcome == LintRuleOutcome.FAIL and r.details["fixable"]]
+        fixable = [r for r in results if r.outcome == LintRuleOutcome.FAIL and r.details.get(LintField.FIXABLE)]
         assert fixable, "expected at least one fixable finding"
-        fixed = rule.fix(_make_wiki([]), results)
-        assert all(r.fix_applied for r in fixed if r.details.get("fixable"))
+        fixed = rule.fix(_make_wiki([]), results, sources_dir=str(base / "sources"))
+        assert all(r.fix_applied for r in fixed if r.details.get(LintField.FIXABLE))
         assert note.read_text(encoding="utf-8").endswith("Text.\n")
 
     def test_skips_when_rumdl_missing(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -928,12 +933,17 @@ class TestRumdlFindings:
         )
         assert RumdlRule._run_rumdl("rumdl", ["check"]) == []
 
-    def test_to_result_reads_model_attributes(self) -> None:
-        result = RumdlRule()._to_result(RumdlFinding(file="a.md", line=3, column=1, rule="MD001", message="m", severity="error", fixable=True))
+    def test_to_result_reads_model_attributes(self, tmp_path: Path) -> None:
+        base = tmp_path
+        (base / "wiki").mkdir()
+        result = RumdlRule()._to_result(
+            RumdlFinding(file=str(base / "wiki" / "a.md"), line=3, column=1, rule="MD001", message="m", severity="error", fixable=True),
+            base,
+        )
         assert result.outcome == LintRuleOutcome.FAIL
-        assert result.message == "a.md:3 MD001: m"
-        assert result.details["file"] == "a.md"
-        assert result.details["fixable"] is True
+        assert result.details.get(LintField.MARKDOWN_FILE) == Path("wiki/a.md"), "rumdl echoes an absolute path; the finding keeps a vault-relative one"
+        assert result.details.get(LintField.FIXABLE) is True
+        assert result.details.get(LintField.RUMDL_RULE) == "MD001"
 
 
 class TestEdgeCases:

@@ -16,8 +16,9 @@ from typing import Final
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from kompend.core.models import CompiledWiki
-from kompend.core.paths import ATTACHMENTS_DIR_NAME, KOMP_DIR
-from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from kompend.core.paths import ATTACHMENTS_DIR_NAME, KOMP_DIR, rel_to_vault
+from kompend.lint.base import BaseLintRule, LintDetails, LintResult, LintRuleOutcome, Severity
+from kompend.lint.details import LintField
 from kompend.logging import get_logger
 
 #: Leading argv entries of the rumdl command shown in a failure warning —
@@ -87,25 +88,35 @@ class RumdlRule(BaseLintRule):
         if not files:
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="No markdown files to check")]
 
+        base_dir = Path(sources_dir).parent
         findings: list[RumdlFinding] = []
         for batch in _batched(files, self._BATCH_SIZE):
             findings.extend(self._run_rumdl(exe, ["check", *self._config_args(), "--output-format", "json", *batch]))
         if not findings:
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All markdown files pass rumdl checks")]
-        return [self._to_result(f) for f in findings]
+        return [self._to_result(f, base_dir) for f in findings]
 
     def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: str | None = None) -> list[LintResult]:
-        """Apply ``rumdl check --fix`` to the files with fixable findings."""
+        """Apply ``rumdl check --fix`` to the files with fixable findings.
+
+        The stored file is vault-relative, so the fix needs the directory the
+        scan ran against to name it again; without it there is nothing to fix.
+        """
         exe = shutil.which("rumdl")
-        if not exe:
+        if not exe or not sources_dir:
             return results
+        base_dir = Path(sources_dir).parent
         fixable_files = sorted(
-            {r.details.get("file", "") for r in results if r.outcome == LintRuleOutcome.FAIL and r.details.get("fixable") and r.details.get("file")}
+            {
+                str(base_dir / markdown_file)
+                for r in results
+                if r.outcome == LintRuleOutcome.FAIL and r.details.get(LintField.FIXABLE) and (markdown_file := r.details.get(LintField.MARKDOWN_FILE))
+            }
         )
         for batch in _batched(fixable_files, self._BATCH_SIZE):
             self._run_rumdl(exe, ["check", "--fix", *self._config_args(), "--output-format", "json", *batch])
         for r in results:
-            if r.outcome == LintRuleOutcome.FAIL and r.details.get("fixable"):
+            if r.outcome == LintRuleOutcome.FAIL and r.details.get(LintField.FIXABLE):
                 r.fix_applied = True
         return results
 
@@ -113,21 +124,28 @@ class RumdlRule(BaseLintRule):
         """``--config`` args when a custom rumdl config is set (else auto-discovery)."""
         return ["--config", str(self.rumdl_config)] if self.rumdl_config else []
 
-    def _to_result(self, finding: RumdlFinding) -> LintResult:
+    def _to_result(self, finding: RumdlFinding, base_dir: Path) -> LintResult:
         severity = Severity.ERROR if finding.severity == "error" else Severity.WARNING
+        # rumdl echoes the absolute path it was handed. The payload is persisted
+        # in `.kompend/kompend.db`, which keeps only vault-relative paths, so the
+        # file is relativised here, at the boundary that writes it.
+        path_fields: dict[str, Path] = {}
+        if finding.file:
+            path_fields[LintField.MARKDOWN_FILE] = Path(rel_to_vault(finding.file, base_dir))
+        details = LintDetails(
+            line=finding.line,
+            column=finding.column,
+            rumdl_rule=finding.rule,
+            fixable=finding.fixable,
+            **path_fields,
+        )
         return LintResult(
             rule=self.name,
             outcome=LintRuleOutcome.FAIL,
             severity=severity,
             message=f"{finding.file}:{finding.line} {finding.rule}: {finding.message}",
             page_id="",
-            details={
-                "file": finding.file or "",
-                "line": finding.line,
-                "column": finding.column,
-                "rumdl_rule": finding.rule,
-                "fixable": finding.fixable,
-            },
+            details=details,
         )
 
     @staticmethod

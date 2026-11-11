@@ -7,12 +7,13 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from kompend.core.config._configs import LintConfig, LlmDataFormat
 from kompend.core.models import CompiledWiki
 from kompend.lint.base import BaseLintRule, LintReport, LintResult, LintRuleOutcome, Severity
-from kompend.lint.llm_rules import LLM_RULE_BY_NAME
+from kompend.lint.details import details_for_storage
+from kompend.lint.llm_rules import LLM_RULE_BY_NAME, LlmRuleOptions
 from kompend.lint.structural import RULE_BY_NAME, STRUCTURAL_RULES, DuplicateReferencesRule, RumdlRule
 from kompend.logging import get_logger
 
@@ -32,7 +33,7 @@ class LintResultPayload(BaseModel):
     message: str
     page_id: str
     fix_applied: bool
-    details: dict[str, Any] = Field(default_factory=dict)
+    details: dict[str, JsonValue] = Field(default_factory=dict)
 
 
 class LintReportPayload(BaseModel):
@@ -169,28 +170,22 @@ class LintRunner:
         """Build the list of rule instances to run."""
         rules: list[BaseLintRule] = []
 
-        llm_kwargs = {
-            "agent": self._lint_agent,
-            "lint_page_budget": self.lint_page_budget,
-            "data_format": self.data_format,
-        }
+        llm_options = LlmRuleOptions(
+            agent=self._lint_agent,
+            lint_page_budget=self.lint_page_budget,
+            data_format=self.data_format,
+        )
         if self.failure_ratio is not None:
-            llm_kwargs["failure_ratio"] = self.failure_ratio
+            llm_options["failure_ratio"] = self.failure_ratio
         if self.failure_min is not None:
-            llm_kwargs["failure_min"] = self.failure_min
-
-        # Config-derived values for DuplicateReferencesRule / RumdlRule
-        ref_kwargs: dict[str, Any] = {}
-        rumdl_kwargs: dict[str, Any] = {"rumdl_config": self.rumdl_config}
-        if self._lint_config is not None:
-            ref_kwargs["fuzzy_threshold"] = self._lint_config.fuzzy_threshold
+            llm_options["failure_min"] = self.failure_min
 
         def _resolve_entry(name: str) -> BaseLintRule | None:
             """Resolve a rule name to an instance, handling class-vs-singleton."""
             if name == "duplicate-references":
-                return DuplicateReferencesRule(**ref_kwargs)
+                return self._references_rule()
             if name == "rumdl":
-                return RumdlRule(**rumdl_kwargs)
+                return RumdlRule(rumdl_config=self.rumdl_config)
             entry = RULE_BY_NAME.get(name)
             if entry is None:
                 return None
@@ -201,7 +196,7 @@ class LintRunner:
         if self.requested_rules:
             for name in self.requested_rules:
                 if name in LLM_RULE_BY_NAME:
-                    rules.append(LLM_RULE_BY_NAME[name](**llm_kwargs))
+                    rules.append(LLM_RULE_BY_NAME[name](**llm_options))
                 else:
                     rule = _resolve_entry(name)
                     if rule is not None:
@@ -211,16 +206,22 @@ class LintRunner:
         else:
             rules.extend(STRUCTURAL_RULES)
             # Non-singletons — instantiate with config values
-            rules.append(DuplicateReferencesRule(**ref_kwargs))
-            rules.append(RumdlRule(**rumdl_kwargs))
+            rules.append(self._references_rule())
+            rules.append(RumdlRule(rumdl_config=self.rumdl_config))
 
         if self.enable_llm:
             existing_names = {r.name for r in rules}
             for name, cls in LLM_RULE_BY_NAME.items():
                 if name not in existing_names:
-                    rules.append(cls(**llm_kwargs))
+                    rules.append(cls(**llm_options))
 
         return rules
+
+    def _references_rule(self) -> BaseLintRule:
+        """The duplicate-reference rule, configured or on its own default."""
+        if self._lint_config is None:
+            return DuplicateReferencesRule()
+        return DuplicateReferencesRule(fuzzy_threshold=self._lint_config.fuzzy_threshold)
 
 
 def _merge_fixed_results(
@@ -331,7 +332,7 @@ def report_to_payload(report: LintReport) -> LintReportPayload:
                 message=r.message,
                 page_id=r.page_id,
                 fix_applied=r.fix_applied,
-                details=dict(r.details),
+                details=details_for_storage(r.details),
             )
             for r in report.results
         ],

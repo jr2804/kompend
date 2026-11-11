@@ -9,6 +9,7 @@ override, then compile.llm.default_model).
 from __future__ import annotations
 
 import time
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
@@ -37,6 +38,13 @@ LLM_STEP_WEIGHT = 100
 DETERMINISTIC_STEP_WEIGHT = 1
 
 
+#: The deterministic rules of the ``check`` step: everything structural except
+#: rumdl (which is the separate ``format`` step).
+CHECK_STEP_RULES: list[str] = [rule.name for rule in STRUCTURAL_RULES] + ["duplicate-references"]
+
+logger = get_logger(__name__)
+
+
 class LintStep(StrEnum):
     """The steps :func:`run_full_lint_flow` plans, in their fixed order.
 
@@ -55,11 +63,19 @@ class LintStep(StrEnum):
     ALL = "all"
 
 
-#: The deterministic rules of the ``check`` step: everything structural except
-#: rumdl (which is the separate ``format`` step).
-CHECK_STEP_RULES: list[str] = [rule.name for rule in STRUCTURAL_RULES] + ["duplicate-references"]
+@dataclass(slots=True)
+class LintPlanStep:
+    """One planned step of :func:`run_full_lint_flow`, with its progress weight.
 
-logger = get_logger(__name__)
+    The weight is what makes the single progress bar honest: a deterministic
+    step costs one unit per item, an LLM step a hundred, so the bar moves at the
+    pace of the work rather than the number of steps. ``items`` is mutable
+    because the remediate step only learns its item count once it has run.
+    """
+
+    name: LintStep
+    weight: int
+    items: int
 
 
 def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration takes many params
@@ -85,7 +101,7 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
     node_count = len(wiki.nodes)
     lint_agent, lint_model = _make_lint_agent(cfg)
     steps = _plan(vp, cfg, lint_agent)
-    grand_total = sum(s["weight"] * s["items"] for s in steps)
+    grand_total = sum(step.weight * step.items for step in steps)
 
     progress = _build_progress() if show_progress else None
     task_id = progress.add_task("lint", total=grand_total) if progress is not None else None
@@ -96,9 +112,9 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
 
     try:
         for step in steps:
-            name = step["name"]
-            weight = int(step["weight"])
-            items = int(step["items"])
+            name = step.name
+            weight = step.weight
+            items = step.items
             if progress is not None and task_id is not None:
                 progress.update(task_id, description=f"lint [{name}]")
             if name == LintStep.CHECK:
@@ -113,9 +129,9 @@ def run_full_lint_flow(  # noqa: PLR0917, PLR0915 — pipeline orchestration tak
             elif name == LintStep.REMEDIATE:
                 merged_results = _merge_results(check_report, semantic_report)
                 actions = _remediate_phase(wiki, vp, cfg, merged_results, fix)
-                step["items"] = max(len(actions), 1)
+                step.items = max(len(actions), 1)
                 if progress is not None and task_id is not None:
-                    progress.update(task_id, total=sum(s["weight"] * s["items"] for s in steps))
+                    progress.update(task_id, total=sum(step.weight * step.items for step in steps))
             completed += weight * items
             if progress is not None and task_id is not None:
                 progress.update(task_id, completed=completed, description=f"lint [{name}] done")
@@ -353,17 +369,17 @@ def _build_progress() -> Progress:
     )
 
 
-def _plan(vp: VaultPaths, cfg: Any, lint_agent: Any) -> list[dict[str, Any]]:
+def _plan(vp: VaultPaths, cfg: Any, lint_agent: Any) -> list[LintPlanStep]:
     node_count = sum(1 for _ in vp.output_dir.rglob("node_*.md")) or 1
     fmt_files = sum(1 for _ in vp.output_dir.rglob("*.md"))
-    steps: list[dict[str, Any]] = [
-        {"name": LintStep.CHECK, "weight": DETERMINISTIC_STEP_WEIGHT, "items": node_count},
-        {"name": LintStep.FORMAT, "weight": DETERMINISTIC_STEP_WEIGHT, "items": max(fmt_files, 1)},
-        {"name": LintStep.GAPS, "weight": DETERMINISTIC_STEP_WEIGHT, "items": 1},
+    steps: list[LintPlanStep] = [
+        LintPlanStep(name=LintStep.CHECK, weight=DETERMINISTIC_STEP_WEIGHT, items=node_count),
+        LintPlanStep(name=LintStep.FORMAT, weight=DETERMINISTIC_STEP_WEIGHT, items=max(fmt_files, 1)),
+        LintPlanStep(name=LintStep.GAPS, weight=DETERMINISTIC_STEP_WEIGHT, items=1),
     ]
     if lint_agent is not None:
-        steps.insert(2, {"name": LintStep.SEMANTIC, "weight": LLM_STEP_WEIGHT, "items": node_count})
-        steps.append({"name": LintStep.REMEDIATE, "weight": LLM_STEP_WEIGHT, "items": 0})
+        steps.insert(2, LintPlanStep(name=LintStep.SEMANTIC, weight=LLM_STEP_WEIGHT, items=node_count))
+        steps.append(LintPlanStep(name=LintStep.REMEDIATE, weight=LLM_STEP_WEIGHT, items=0))
     else:
         get_err_console().print(
             "Note: no LLM configured (compile.lint.model / compile.llm.default_model) - skipping semantic and remediate steps.\n",

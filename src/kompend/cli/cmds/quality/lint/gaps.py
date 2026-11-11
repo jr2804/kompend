@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import TypedDict
 
 from kompend.agents.remediate import make_agentic_remediation_agent
 from kompend.cli.args import JsonOutput, LintGapsFix, LintSemantic
@@ -17,8 +17,26 @@ from kompend.lint.base import LintReport, RemediationStatus
 from kompend.lint.gap_analysis import analyze_gaps, gaps_to_text, load_degree_map
 from kompend.lint.history import load_lint_history, report_from_dict
 from kompend.lint.remediation import remediate, remediation_to_text
-from kompend.lint.semantic_gaps import verify_topics
+from kompend.lint.semantic_gaps import TopicCoverage, verify_topics
 from kompend.logging import get_console, get_err_console
+
+
+class GapsJsonRecord(TypedDict, total=False):
+    """One record of ``kompend lint gaps --json``.
+
+    A recommendation carries the five fields the text report prints; the
+    trailing semantic-coverage summary is a record too, and it carries only
+    ``category`` and its per-topic ``topics`` map. Total is false because one
+    shape holds either set.
+    """
+
+    priority: str
+    category: str
+    finding: str
+    action: str
+    resolution: str
+    topics: dict[str, dict[str, float | str]]
+
 
 __all__ = ["lint_gaps"]
 
@@ -71,7 +89,7 @@ def lint_gaps(
 
     # Semantic source-coverage verification for missing topics.
     embed_model = cfg.kompend.compile.embedding.model
-    covered_topics: dict[str, Any] = {}
+    covered_topics: dict[str, TopicCoverage] = {}
     if semantic and embed_model:
         missing = [r for r in recs if r.resolution == "missing" and r.category == "Missing topic"]
         topics: list[str] = []
@@ -84,7 +102,7 @@ def lint_gaps(
             topic = m.group(1) if m else rec.finding
             cov = coverage.get(topic)
             if cov is not None and cov.covered:
-                covered_topics[topic] = {"score": cov.best_score, "source": cov.best_source}
+                covered_topics[topic] = cov
                 rec.category = "Covered in sources (no page)"
                 rec.resolution = "source-covered"
                 rec.action = (
@@ -98,11 +116,23 @@ def lint_gaps(
         _run_remediation_for_gaps(vp, cfg, report)
 
     if json_output:
-        payload: list[dict[str, Any]] = [
-            {"priority": r.priority, "category": r.category, "finding": r.finding, "action": r.action, "resolution": r.resolution} for r in recs
+        payload: list[GapsJsonRecord] = [
+            GapsJsonRecord(
+                priority=r.priority,
+                category=r.category,
+                finding=r.finding,
+                action=r.action,
+                resolution=r.resolution,
+            )
+            for r in recs
         ]
         if covered_topics:
-            payload.append({"category": "_semantic_coverage", "topics": covered_topics})
+            payload.append(
+                {
+                    "category": "_semantic_coverage",
+                    "topics": {topic: {"score": cov.best_score, "source": cov.best_source} for topic, cov in covered_topics.items()},
+                }
+            )
         get_console().print(json.dumps(payload, indent=2, ensure_ascii=False))
     else:
         ts = entries[-1].timestamp

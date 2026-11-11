@@ -17,7 +17,7 @@ import sqlite3
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Final, cast
+from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import delete, select
@@ -32,9 +32,11 @@ from kompend.core.paths import LINT_HISTORY_FILE, VaultPaths
 from kompend.core.store import core_connection, open_store, vault_db_path
 from kompend.core.store.tables import lint_runs
 from kompend.core.utils.time import iso_local, now_local
-from kompend.lint.base import LintDetails, LintReport, LintResult, LintRuleOutcome, Severity
+from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, Severity
+from kompend.lint.details import details_from_storage
 from kompend.lint.runner import LintReportPayload, report_to_payload
 from kompend.llm.usage import UsageSnapshot
+from kompend.types import ConfigValue, JSONDict, JSONValue
 
 _COLUMNS: Final[tuple[str, ...]] = (
     "timestamp",
@@ -93,7 +95,7 @@ class LintEntry(BaseModel):
     wiki_meta: LintWikiMeta
     report: LintReportPayload
 
-    def to_columns(self) -> dict[str, object]:
+    def to_columns(self) -> JSONDict:
         """Serialise to the column-keyed values of one ``lint_runs`` row."""
         return {
             "timestamp": self.timestamp,
@@ -106,7 +108,7 @@ class LintEntry(BaseModel):
         }
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row | Mapping[str, Any]) -> LintEntry:
+    def from_row(cls, row: sqlite3.Row | Mapping[str, JSONValue]) -> LintEntry:
         """Rebuild an entry from a ``lint_runs`` row, validating every JSON column.
 
         The nested records are validated too, so a corrupt row raises here
@@ -116,13 +118,26 @@ class LintEntry(BaseModel):
             {
                 "timestamp": row["timestamp"],
                 "duration_seconds": row["duration_seconds"],  # nocheck: lint_history column/payload key
-                "options": json.loads(row["options"]),
-                "llm": json.loads(row["llm"]) if row["llm"] is not None else None,
-                "config_snapshot": json.loads(row["config_snapshot"]),
-                "wiki_meta": json.loads(row["wiki_meta"]),
-                "report": json.loads(row["report"]),
+                "options": _load_column(row, "options"),
+                "llm": _load_column(row, "llm") if row["llm"] is not None else None,
+                "config_snapshot": _load_column(row, "config_snapshot"),
+                "wiki_meta": _load_column(row, "wiki_meta"),
+                "report": _load_column(row, "report"),
             }
         )
+
+
+def _load_column(row: sqlite3.Row | Mapping[str, JSONValue], key: str) -> JSONValue:
+    """Decode one JSON ``TEXT`` column, naming the column when it is not text.
+
+    A ``TEXT`` column always yields ``str``; anything else means the row was
+    written by something other than this schema, so it raises instead of
+    silently feeding a non-JSON value into ``model_validate``.
+    """
+    raw = row[key]
+    if not isinstance(raw, str):
+        raise TypeError(f"lint_runs.{key} must be JSON text, not {type(raw).__name__}: {raw!r}")
+    return json.loads(raw)
 
 
 def _json_column(value: BaseModel) -> str:
@@ -134,7 +149,7 @@ def persist_history(  # noqa: PLR0917 — a history entry needs every run fact
     report: LintReport,
     *,
     vp: VaultPaths,
-    config: Mapping[str, Any],
+    config: Mapping[str, ConfigValue],
     context: str,
     elapsed: float,
     fix: bool,
@@ -162,7 +177,7 @@ def entry_from_report(
     *,
     duration_seconds: float,
     options: LintRunOptions,
-    config: Mapping[str, Any],
+    config: Mapping[str, ConfigValue],
     node_count: int,
     llm: LintLlmMeta | None = None,
     timestamp: str | None = None,
@@ -179,7 +194,7 @@ def entry_from_report(
     )
 
 
-def report_from_dict(report_dict: Mapping[str, Any] | LintReportPayload) -> LintReport:
+def report_from_dict(report_dict: Mapping[str, JSONValue] | LintReportPayload) -> LintReport:
     """Parse a ``lint_runs`` report payload back into :class:`LintReport`.
 
     The inverse of :func:`kompend.lint.runner.report_to_payload`, and the one
@@ -198,7 +213,7 @@ def report_from_dict(report_dict: Mapping[str, Any] | LintReportPayload) -> Lint
                 message=r.message,
                 page_id=r.page_id,
                 fix_applied=r.fix_applied,
-                details=cast("LintDetails", dict(r.details)),
+                details=details_from_storage(r.details),
             )
             for r in payload.results
         ],
@@ -210,13 +225,42 @@ def report_from_dict(report_dict: Mapping[str, Any] | LintReportPayload) -> Lint
     )
 
 
-def _build_config_snapshot(cfg: Mapping[str, Any]) -> LintConfigSnapshot:
+def _build_config_snapshot(cfg: Mapping[str, ConfigValue]) -> LintConfigSnapshot:
     """Extract the lint-relevant subset of a resolved config."""
     return LintConfigSnapshot(
-        compiler=cfg.get(COMPILE_COMPILER),
-        default_model=cfg.get(COMPILE_LLM_DEFAULT_MODEL),
-        fallback_chain=cfg.get(COMPILE_LLM_FALLBACK_CHAIN),
+        compiler=_config_text(cfg, COMPILE_COMPILER),
+        default_model=_config_text(cfg, COMPILE_LLM_DEFAULT_MODEL),
+        fallback_chain=_config_text_list(cfg, COMPILE_LLM_FALLBACK_CHAIN),
     )
+
+
+def _config_text(cfg: Mapping[str, ConfigValue], key: str) -> str | None:
+    """Read one config value as text, refusing anything else.
+
+    A resolved config carries JSON values; the snapshot records the three keys
+    the history view compares. A key holding a non-text value means the caller
+    passed a different mapping, so it raises instead of recording a snapshot
+    that renders as a wrong type.
+    """
+    value = cfg.get(key)
+    if value is None or isinstance(value, str):
+        return value
+    raise TypeError(f"{key} must be text in the config snapshot, not {type(value).__name__}: {value!r}")
+
+
+def _config_text_list(cfg: Mapping[str, ConfigValue], key: str) -> list[str] | None:
+    """Read one config list value as text entries, refusing anything else."""
+    value = cfg.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        raise TypeError(f"{key} must be a list in the config snapshot, not {type(value).__name__}: {value!r}")
+    entries: list[str] = []
+    for entry in value:
+        if not isinstance(entry, str):
+            raise TypeError(f"{key} entries must be text, not {type(entry).__name__}: {entry!r}")
+        entries.append(entry)
+    return entries
 
 
 def save_lint_entry(entry: LintEntry, path: Path) -> None:

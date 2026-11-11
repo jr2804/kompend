@@ -93,7 +93,7 @@
         "type": "object"
       },
       "output_schema": {
-        "additionalProperties": true,
+        "additionalProperties": {},
         "type": "object"
       },
       "payload_keys": [
@@ -145,7 +145,7 @@
         "type": "object"
       },
       "output_schema": {
-        "additionalProperties": true,
+        "additionalProperties": {},
         "type": "object"
       },
       "payload_keys": [
@@ -197,7 +197,7 @@
         "type": "object"
       },
       "output_schema": {
-        "additionalProperties": true,
+        "additionalProperties": {},
         "type": "object"
       },
       "payload_keys": [
@@ -246,7 +246,7 @@
         "type": "object"
       },
       "output_schema": {
-        "additionalProperties": true,
+        "additionalProperties": {},
         "type": "object"
       },
       "payload_keys": [
@@ -308,7 +308,7 @@
         "type": "object"
       },
       "output_schema": {
-        "additionalProperties": true,
+        "additionalProperties": {},
         "type": "object"
       },
       "payload_keys": [
@@ -374,7 +374,7 @@
         "type": "object"
       },
       "output_schema": {
-        "additionalProperties": true,
+        "additionalProperties": {},
         "type": "object"
       },
       "payload_keys": [
@@ -427,7 +427,7 @@
         "type": "object"
       },
       "output_schema": {
-        "additionalProperties": true,
+        "additionalProperties": {},
         "type": "object"
       },
       "payload_keys": [
@@ -480,7 +480,7 @@
         "type": "object"
       },
       "output_schema": {
-        "additionalProperties": true,
+        "additionalProperties": {},
         "type": "object"
       },
       "payload_keys": [
@@ -542,7 +542,7 @@
         "type": "object"
       },
       "output_schema": {
-        "additionalProperties": true,
+        "additionalProperties": {},
         "type": "object"
       },
       "payload_keys": [

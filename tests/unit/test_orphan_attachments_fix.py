@@ -16,6 +16,7 @@ from kompend.core.models.attachments import Attachment, AttachmentManifest, adop
 from kompend.core.models.wiki import CompiledWiki
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.lint.base import LintResult, LintRuleOutcome, Severity
+from kompend.lint.details import LintField
 from kompend.lint.structural import OrphanAttachmentsRule
 
 
@@ -36,7 +37,7 @@ def test_fix_removes_orphan_file_and_tombstones_manifest(tmp_path: Path) -> None
                 outcome=LintRuleOutcome.FAIL,
                 severity=Severity.WARNING,
                 message="orphaned",
-                details={"path": rel_path},
+                details={LintField.ATTACHMENT_FILE: Path(rel_path)},
             )
         ],
         sources_dir=str(vault / "sources"),
@@ -64,7 +65,7 @@ def test_fix_removes_empty_slug_dir(tmp_path: Path) -> None:
     rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(vault / "sources"))
     rule.fix(
         CompiledWiki(nodes=[], edges=[], toc=[]),
-        [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
+        [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={LintField.ATTACHMENT_FILE: Path(rel_path)})],
         sources_dir=str(vault / "sources"),
     )
     assert not (vault / "attachments" / "orphan-source").exists()
@@ -93,7 +94,7 @@ def test_fix_records_os_error_in_details(tmp_path: Path) -> None:
     result = LintResult(
         rule="orphan-attachments",
         outcome=LintRuleOutcome.FAIL,
-        details={"path": rel_path},
+        details={LintField.ATTACHMENT_FILE: Path(rel_path)},
     )
     out = rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), [result], sources_dir=str(vault / "sources"))
     # When the file doesn't exist, the rule treats that as success (already
@@ -120,7 +121,7 @@ def test_fix_tombstone_prevents_readoption(tmp_path: Path) -> None:
     rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(vault / "sources"))
     rule.fix(
         CompiledWiki(nodes=[], edges=[], toc=[]),
-        [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
+        [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={LintField.ATTACHMENT_FILE: Path(rel_path)})],
         sources_dir=str(vault / "sources"),
     )
     assert not orphan.exists()
@@ -158,7 +159,7 @@ def test_fix_survives_an_empty_dir_it_cannot_remove(tmp_path: Path, monkeypatch:
         m.setattr(Path, "rmdir", _refuse)
         results = rule.fix(
             CompiledWiki(nodes=[], edges=[], toc=[]),
-            [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
+            [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={LintField.ATTACHMENT_FILE: Path(rel_path)})],
             sources_dir=str(vault / "sources"),
         )
 
@@ -203,7 +204,7 @@ def test_fix_acts_on_the_directory_the_caller_names(tmp_path: Path) -> None:
             LintResult(
                 rule="orphan-attachments",
                 outcome=LintRuleOutcome.FAIL,
-                details={"path": orphan_second.relative_to(second).as_posix()},
+                details={LintField.ATTACHMENT_FILE: Path(orphan_second.relative_to(second).as_posix())},
             )
         ],
         sources_dir=str(second / "sources"),

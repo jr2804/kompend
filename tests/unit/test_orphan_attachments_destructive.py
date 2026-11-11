@@ -25,6 +25,7 @@ from kompend.core.models.wiki import CompiledWiki
 from kompend.core.paths import attachment_slugs_for_source
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.lint.base import LintResult, LintRuleOutcome
+from kompend.lint.details import LintField
 from kompend.lint.runner import LintRunner
 from kompend.lint.structural import OrphanAttachmentsRule
 
@@ -71,7 +72,7 @@ class TestDestructiveGate:
         rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(vault / "sources"))
         rule.fix(
             CompiledWiki(nodes=[], edges=[], toc=[]),
-            [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
+            [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={LintField.ATTACHMENT_FILE: Path(rel_path)})],
             sources_dir=str(vault / "sources"),
         )
         # fix() itself still works when called directly — the gate lives in

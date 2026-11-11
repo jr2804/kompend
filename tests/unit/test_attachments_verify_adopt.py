@@ -17,6 +17,7 @@ from kompend.core.models.wiki import CompiledWiki
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.lint.base import LintRuleOutcome
+from kompend.lint.details import LintField
 from kompend.lint.structural import OrphanAttachmentsRule, orphan_attachment_dirs
 from tests.helpers.cli import CliRunner
 
@@ -84,7 +85,8 @@ def test_verify_agrees_with_orphan_rule(tmp_path: Path) -> None:
 
     rule = OrphanAttachmentsRule()
     results = rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(base / "sources"))
-    rule_paths = {(r.details or {}).get("path") for r in results if r.outcome == LintRuleOutcome.FAIL}
+    rule_files = [(r.details or {}).get(LintField.ATTACHMENT_FILE) for r in results if r.outcome == LintRuleOutcome.FAIL]
+    rule_paths = {attachment_file.as_posix() for attachment_file in rule_files if attachment_file is not None}
 
     assert rule_paths == set(orphan_attachment_dirs(base, base / "sources"))
     assert rule_paths == {"attachments/ghost/x.txt", "attachments/phantom/x.txt"}

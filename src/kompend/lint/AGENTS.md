@@ -91,8 +91,18 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   enum member — a bare key string is a field-name literal. A typo is then a
   type error instead of a silently different record in the lint history. A new
   key is declared in both, in the block of the rule that owns it; a fix path
-  may add ``error`` to a finding that already carries ``path``. The reader
-  drops nothing — a legacy record keeps every key it carries.
+  may add ``error`` to a finding that already carries one.
+- **A detail key that names a file holds a ``Path``, and says ``_file``.**
+  ``attachment_file``, ``markdown_file``, ``source_file`` — never ``path``,
+  ``file`` or ``target`` for a filesystem path; those bare nouns name nothing
+  a reader can act on. ``_PATH_KEYS`` in ``details.py`` lists them and
+  ``tests/unit/test_lint_details.py`` pins the set to the annotations, so a new
+  path key cannot be added as a string. The payload is relative in memory and a
+  relative POSIX string in the store: ``details_for_storage`` refuses an
+  absolute path at that boundary, because ``.kompend/kompend.db`` must survive a
+  moved vault. ``target`` stays a ``str`` — a wikilink target is a page name.
+- **The reader drops nothing** — a legacy record keeps every key it carries, and
+  a string under a path key (a row an older build wrote) loads as a ``Path``.
 - **Rule names and detail keys are contracts.** Rule names are dispatched by
   string outside this package (``gap_analysis.py``, ``runner.py``, ``flow.py``),
   and ``broken-wikilinks`` findings carry the ``alias_of``/``target`` detail
@@ -139,7 +149,7 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   succeeds — ``contextlib.suppress`` used to report both as the happy path.
 - **An unreadable page cancels the destructive decision.** A page that cannot be
   decoded may link any attachment, so a run with one gets a SKIP naming the
-  pages (``details["unreadable_pages"]``) and deletes nothing, rather than the
+  pages (``details[LintField.UNREADABLE_PAGES]``) and deletes nothing, rather than the
   old silent ``continue`` that read "cannot read" as "links nothing".
 - **A code example is not a page link.** Both directions of the rule read only
   prose: a fenced block or an inline span that mentions

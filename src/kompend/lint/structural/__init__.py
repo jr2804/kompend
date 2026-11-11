@@ -13,8 +13,6 @@ classes, so ``kompend.lint.structural`` stays the one import path.
 
 from __future__ import annotations
 
-from typing import Any
-
 from kompend.lint.base import BaseLintRule
 from kompend.lint.base import Severity as Severity
 from kompend.lint.structural.attachments import ATTACHMENT_RULES
@@ -76,7 +74,7 @@ STRUCTURAL_RULES: list[BaseLintRule] = [
     *ATTACHMENT_RULES,
 ]
 
-RULE_BY_NAME: dict[str, Any] = {r.name: r for r in STRUCTURAL_RULES}
+RULE_BY_NAME: dict[str, type[BaseLintRule] | BaseLintRule] = {r.name: r for r in STRUCTURAL_RULES}
 # RumdlRule and DuplicateReferencesRule are not singletons — register factory
 # references so they can be looked up by name and instantiated with config
 # values in LintRunner._resolve_rules.

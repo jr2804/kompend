@@ -16,11 +16,14 @@ wiki directly.
 
 from __future__ import annotations
 
+from typing import cast
+
 from pydantic_ai import RunContext, Tool
 
 from kompend.agents.types import RemediationDeps, RemediationPageResult
 from kompend.core.config._configs import LlmDataFormat
 from kompend.llm.format import encode_for_llm
+from kompend.types import JSONReadable
 
 
 def build_remediation_tools() -> list[Tool[RemediationDeps]]:
@@ -47,7 +50,10 @@ async def fetch_gaps(ctx: RunContext[RemediationDeps], limit: int = 5) -> str:
     batch = ctx.deps.gaps.fetch("remediate", limit=max(min(limit, 20), 1))
     if not batch:
         return "[]"
-    return encode_for_llm(batch, LlmDataFormat.JSON)
+    # A TypedDict is JSON-shaped but ty cannot relate one to the covariant
+    # recursive ``JSONReadable`` union, so the widening happens here once,
+    # at the serialisation boundary, instead of at every reader.
+    return encode_for_llm(cast("JSONReadable", batch), LlmDataFormat.JSON)
 
 
 async def save_page(ctx: RunContext[RemediationDeps], name: str, content: str) -> str:

@@ -7,7 +7,6 @@ under 350 lines.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
@@ -20,7 +19,8 @@ from kompend.core.text.matching import best_match
 from kompend.core.text.slug import slugify
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.lint.base import LintResult, RemediationAction, RemediationStatus
-from kompend.lint.gap_broker import GapBroker
+from kompend.lint.details import LintField
+from kompend.lint.gap_broker import GapBroker, GapConcept, gap_concept
 from kompend.logging import get_logger
 from kompend.organize.categorize import load_all_extractions
 from kompend.output.markdown import MarkdownWriter
@@ -47,15 +47,15 @@ def remediate_coverage_gaps(
     once over all matched gaps via a :class:`GapBroker` — collapsing N
     per-gap calls into a single multi-turn session.
     """
-    gap_concepts: list[str] = []
+    gap_names: list[str] = []
     for r in results:
         if r.rule != "coverage-gap" or r.outcome != "fail":
             continue
-        concept = r.details.get("concept") or r.message
+        concept = r.details.get(LintField.CONCEPT) or r.message
         if concept:
-            gap_concepts.append(concept)
+            gap_names.append(concept)
 
-    if not gap_concepts:
+    if not gap_names:
         return []
 
     extraction_map = load_all_extractions(base_dir, base_dir / "sources")
@@ -78,10 +78,10 @@ def remediate_coverage_gaps(
     node_index: dict[str, int] = {n.id: i for i, n in enumerate(wiki.nodes)}
 
     # Deterministic pre-filtering: fuzzy-match + existence check.
-    matched_buckets: list[dict[str, Any]] = []
+    matched_buckets: list[GapConcept] = []
     actions: list[RemediationAction] = []
 
-    for gap in gap_concepts:
+    for gap in gap_names:
         matched = _fuzzy_match_concept(gap.lower().strip(), concept_lookup)
         if not matched:
             logger.info("'%s' not found in cached extractions; see 'kompend lint gaps' for recommendations", gap)
@@ -96,7 +96,7 @@ def remediate_coverage_gaps(
                     category="Coverage gap",
                     description=f"Would generate concept page for '{concept_name}'",
                     status=RemediationStatus.SKIPPED,
-                    details={"sources": matched.get("sources", []), "concept": gap, "matched_concept": concept_name},
+                    details={LintField.SOURCES: matched.get("sources", []), LintField.CONCEPT: gap, LintField.MATCHED_CONCEPT: concept_name},
                 )
             )
             continue
@@ -137,7 +137,7 @@ def remediate_coverage_gaps(
                     category="Coverage gap",
                     description=f"Generated concept page for '{concept_name}'",
                     status=RemediationStatus.APPLIED,
-                    details={"concept": concept_name, "id": page_id},
+                    details={LintField.CONCEPT: concept_name, LintField.ID: page_id},
                 )
             )
 
@@ -147,7 +147,7 @@ def remediate_coverage_gaps(
                     category="Coverage gap (unfixable)",
                     description=f"Cannot generate page for '{gap_name}': {reason}",
                     status=RemediationStatus.SKIPPED,
-                    details={"concept": gap_name, "reason": reason},
+                    details={LintField.CONCEPT: gap_name, LintField.REASON: reason},
                 )
             )
 
@@ -166,7 +166,7 @@ def remediate_coverage_gaps(
                     category="Coverage gap (LLM failed)",
                     description=f"Failed to generate page for '{concept_name}'",
                     status=RemediationStatus.SKIPPED,
-                    details={"concept": concept_name},
+                    details={LintField.CONCEPT: concept_name},
                 )
             )
             continue
@@ -194,7 +194,7 @@ def remediate_coverage_gaps(
                 category="Coverage gap",
                 description=f"Generated concept page '{concept_name}' from {len(matched.get('sources', []))} source(s)",
                 status=RemediationStatus.APPLIED,
-                details={"sources": matched.get("sources", []), "concept": gap, "matched_concept": concept_name},
+                details={LintField.SOURCES: matched.get("sources", []), LintField.CONCEPT: gap, LintField.MATCHED_CONCEPT: concept_name},
             )
         )
 
@@ -206,14 +206,15 @@ def remediate_coverage_gaps(
 
 def _build_concept_lookup(
     extraction_map: dict[str, Extraction],
-) -> dict[str, dict[str, Any]]:
+) -> dict[str, GapConcept]:
     """Build a normalized concept lookup from cached extractions."""
     ext_set = ExtractionSet(extractions=list(extraction_map.values()))
-    concept_lookup: dict[str, dict[str, Any]] = {}
+    concept_lookup: dict[str, GapConcept] = {}
     for cp in ext_set.concept_pages():
-        name = cp.get("name", "")
+        bucket = gap_concept(cp)
+        name = bucket["name"]
         if name:
-            concept_lookup[name.lower().strip()] = cp
+            concept_lookup[name.lower().strip()] = bucket
 
     for ext in extraction_map.values():
         for ent in ext.entities:
@@ -221,17 +222,21 @@ def _build_concept_lookup(
             if not name:
                 continue
             key = name.lower().strip()
-            bucket = concept_lookup.setdefault(key, {"name": name, "sources": [], "definitions": []})
-            if ext.source not in bucket["sources"]:
-                bucket["sources"].append(ext.source)
+            bucket = concept_lookup.setdefault(key, GapConcept(name=name, sources=[], definitions=[]))
+            sources = bucket["sources"]
+            if ext.source not in sources:
+                sources.append(ext.source)
+            bucket["sources"] = sources
+            definitions = bucket["definitions"]
             context = ent.context
-            if context and context not in bucket["definitions"]:
-                bucket["definitions"].append(context)
+            if context and context not in definitions:
+                definitions.append(context)
+            bucket["definitions"] = definitions
 
     summary_by_source: dict[str, str] = {ext.source: ext.summary for ext in extraction_map.values() if ext.summary}
     for bucket in concept_lookup.values():
         bucket_summaries: list[str] = []
-        for src in bucket.get("sources", []):
+        for src in bucket["sources"]:
             text = summary_by_source.get(src, "")
             if text and text not in bucket_summaries:
                 bucket_summaries.append(text)
@@ -240,7 +245,7 @@ def _build_concept_lookup(
     return concept_lookup
 
 
-def _generate_concept_page(agent: RemediationAgent, concept_data: dict[str, Any]) -> str | None:
+def _generate_concept_page(agent: RemediationAgent, concept_data: GapConcept) -> str | None:
     """Use the remediation agent to generate a wiki page for a concept."""
     loader = get_template_loader()
     prompt = loader.render(
@@ -263,9 +268,9 @@ def _generate_concept_page(agent: RemediationAgent, concept_data: dict[str, Any]
 
 def _fuzzy_match_concept(
     normalized: str,
-    lookup: dict[str, dict[str, Any]],
+    lookup: dict[str, GapConcept],
     token_index: dict[str, list[str]] | None = None,
-) -> dict[str, Any] | None:
+) -> GapConcept | None:
     """Find the best matching concept for a normalized gap name.
 
     Exact key first, then rapidfuzz similarity over the lookup keys

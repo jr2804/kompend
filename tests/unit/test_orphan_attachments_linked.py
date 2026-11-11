@@ -19,6 +19,7 @@ from kompend.core.models.attachments import adopt_orphan_attachments
 from kompend.core.models.wiki import CompiledWiki
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.lint.base import LintRuleOutcome
+from kompend.lint.details import LintField
 from kompend.lint.structural import OrphanAttachmentsRule, UnreferencedAttachmentsRule
 
 _DEAD_SLUG = "polqaoemlibmanualv3"
@@ -34,7 +35,7 @@ def test_linked_legacy_file_is_not_an_orphan(tmp_path: Path) -> None:
 
     assert [r.outcome for r in results] == [LintRuleOutcome.PASS]
     assert "still linked" in results[0].message
-    assert results[0].details["kept_linked"] == 1
+    assert results[0].details.get(LintField.KEPT_LINKED) == 1
 
 
 def test_the_destructive_fix_keeps_a_linked_legacy_file(tmp_path: Path) -> None:
@@ -58,7 +59,9 @@ def test_an_unlinked_legacy_file_is_still_an_orphan(tmp_path: Path) -> None:
     rule = OrphanAttachmentsRule()
     results = rule.check(_wiki(), sources_dir=str(vault / "sources"))
     fails = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
-    assert [r.details["path"] for r in fails] == [dead.relative_to(vault).as_posix()]
+    attachment_files = [r.details.get(LintField.ATTACHMENT_FILE) for r in fails]
+    named = [attachment_file.as_posix() for attachment_file in attachment_files if attachment_file is not None]
+    assert named == [dead.relative_to(vault).as_posix()]
 
     rule.fix(_wiki(), results, sources_dir=str(vault / "sources"))
     assert not dead.exists()
@@ -77,7 +80,7 @@ def test_an_unreadable_page_keeps_every_legacy_file(tmp_path: Path) -> None:
     results = rule.check(_wiki(), sources_dir=str(vault / "sources"))
 
     assert [r.outcome for r in results] == [LintRuleOutcome.SKIP]
-    assert results[0].details["unreadable_pages"] == ["wiki/concepts/broken.md"]
+    assert results[0].details.get(LintField.UNREADABLE_PAGES) == ["wiki/concepts/broken.md"]
     rule.fix(_wiki(), results, sources_dir=str(vault / "sources"))
     assert dead.is_file()
 

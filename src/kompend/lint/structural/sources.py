@@ -13,6 +13,7 @@ from pathlib import Path
 from kompend.core.models import CompiledWiki, MetadataField
 from kompend.core.models.metadata import meta_str
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from kompend.lint.details import LintField
 
 
 class StalePageRule(BaseLintRule):
@@ -37,7 +38,7 @@ class StalePageRule(BaseLintRule):
                     if not source_file_str:
                         continue
                     source_file = _resolve_source_file(source_file_str, sources_root)
-                    if not Path(source_file).exists():
+                    if not (sources_root.parent / source_file).exists():
                         results.append(
                             LintResult(
                                 rule=self.name,
@@ -45,7 +46,7 @@ class StalePageRule(BaseLintRule):
                                 severity=Severity.WARNING,
                                 message=f"Source file not found for page '{node.title}': {source_file}",
                                 page_id=node.id,
-                                details={MetadataField.SOURCE_FILE: str(source_file)},
+                                details={LintField.SOURCE_FILE: source_file},
                             )
                         )
 
@@ -63,7 +64,7 @@ class StalePageRule(BaseLintRule):
                         severity=Severity.WARNING,
                         message=f"Page '{node.title}' has been superseded by a newer node",
                         page_id=node.id,
-                        details={"reason": "superseded"},
+                        details={LintField.REASON: "superseded"},
                     )
                 )
             elif node.id in stale_ids:
@@ -74,7 +75,7 @@ class StalePageRule(BaseLintRule):
                         severity=Severity.INFO,
                         message=f"Page '{node.title}' has decayed below retention threshold",
                         page_id=node.id,
-                        details={"reason": "decayed"},
+                        details={LintField.REASON: "decayed"},
                     )
                 )
 
@@ -106,7 +107,7 @@ class SourceNotFoundRule(BaseLintRule):
             if not source_file_str:
                 continue
             source_file = _resolve_source_file(source_file_str, sources_root)
-            if not Path(source_file).exists():
+            if not (sources_root.parent / source_file).exists():
                 results.append(
                     LintResult(
                         rule=self.name,
@@ -114,7 +115,7 @@ class SourceNotFoundRule(BaseLintRule):
                         severity=Severity.ERROR,
                         message=f"Source file missing for page '{node.title}': {source_file}",
                         page_id=node.id,
-                        details={MetadataField.SOURCE_FILE: str(source_file)},
+                        details={LintField.SOURCE_FILE: source_file},
                     )
                 )
         if not results:
@@ -126,17 +127,24 @@ class SourceNotFoundRule(BaseLintRule):
 SOURCE_RULES: tuple[BaseLintRule, ...] = (StalePageRule(), SourceNotFoundRule())
 
 
-def _resolve_source_file(source_file_str: str, sources_root: Path) -> str:
-    """The source file a page names, resolved the way the vault lays it out.
+def _resolve_source_file(source_file_str: str, sources_root: Path) -> Path:
+    """The source file a page names, as a path relative to the vault.
 
     Tries the base-dir-relative form first (``sources/paper.pdf``), then the
-    sources-dir-relative form (``paper.pdf``); when neither exists it returns
-    the base-dir form, so the finding names the path the page claims.
+    sources-dir-relative form (``paper.pdf``), and returns the form that exists.
+    When neither exists it returns the path the page claims, unchanged — a
+    finding that the vault does not resolve must still print the file the page
+    names, and it must stay relative so the persisted payload does not carry a
+    machine-specific absolute path.
     """
-    source_file = Path(source_file_str)
-    if source_file.is_absolute():
-        return str(source_file)
-    for root in (sources_root.parent, sources_root):
-        if (root / source_file).exists():
-            return str(root / source_file)
-    return str(sources_root.parent / source_file)
+    vault_root = sources_root.parent
+    claimed = Path(source_file_str)
+    if claimed.is_absolute():
+        # A vault-relative payload is the contract; an absolute path inside the
+        # vault is relativized, one outside it is left alone so the persistence
+        # boundary refuses it loudly instead of writing a machine path.
+        return claimed.relative_to(vault_root) if claimed.is_relative_to(vault_root) else claimed
+    for root in (vault_root, sources_root):
+        if (root / claimed).exists():
+            return (root / claimed).relative_to(vault_root)
+    return claimed

@@ -86,7 +86,7 @@ class DuplicateTitleRule(BaseLintRule):
                             severity=Severity.ERROR,
                             message=f"Duplicate title '{title_key}' shared by {len(node_ids)} pages",
                             page_id=nid,
-                            details={"duplicate_ids": node_ids},
+                            details={LintField.DUPLICATE_IDS: node_ids},
                         )
                     )
         if not results:

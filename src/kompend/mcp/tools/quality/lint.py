@@ -12,7 +12,8 @@ wrappers that resolve the vault, run the flow and shape the payload.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+
+from pydantic import JsonValue
 
 from kompend.agents.remediate import make_agentic_remediation_agent
 from kompend.cli.settings import build_cli_overrides
@@ -22,6 +23,7 @@ from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import load_wiki_from_files
 from kompend.core.paths import INDEX_FILE, LINT_HISTORY_FILE, OVERVIEW_MD, VaultPaths, vault_paths
 from kompend.lint.base import RemediationStatus
+from kompend.lint.details import details_for_storage
 from kompend.lint.flow import CHECK_STEP_RULES, LintStep, _make_lint_agent, persist_lint_fixes, run_full_lint_flow
 from kompend.lint.flow import _run_pass as _run_rules_pass
 from kompend.lint.gap_analysis import analyze_gaps, gaps_to_text
@@ -52,7 +54,7 @@ def lint_all(
     wiki_dir: str | None = None,
     fix: bool = True,
     config_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Run the full lint pipeline: check, format, semantic, gaps, remediate.
 
     Deterministic steps weight 1/item, LLM steps weight 100/item on the
@@ -82,7 +84,7 @@ def lint_check(
     wiki_dir: str | None = None,
     fix: bool = True,
     config_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Run deterministic structural lint rules (no LLM)."""
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
@@ -108,7 +110,7 @@ def lint_check(
 def lint_semantic(
     wiki_dir: str | None = None,
     config_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Run the LLM-powered lint rules (needs compile.lint.model or compile.llm.default_model)."""
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
@@ -143,7 +145,7 @@ def lint_history(
     trend: bool = False,
     json_output: bool = False,
     config_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Query the lint history log."""
     vp = vault_paths(wiki_dir)
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
@@ -161,7 +163,7 @@ def lint_show(
     run: str | None = None,
     json_output: bool = False,
     config_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Return the detailed report of a lint run (default: the newest)."""
     vp = vault_paths(wiki_dir)
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
@@ -189,7 +191,7 @@ def lint_prune(
     keep_last: int | None = None,
     max_age_days: int | None = None,
     config_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Remove old entries from lint history."""
     if keep_last is None and max_age_days is None:
         return {"status": ToolStatus.ERROR, "message": "At least one of keep_last or max_age_days must be provided."}
@@ -213,7 +215,7 @@ def lint_gaps(
     wiki_dir: str | None = None,
     json_output: bool = False,
     config_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Analyze the latest lint run for knowledge gaps and source recommendations."""
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
@@ -248,7 +250,7 @@ def lint_remediate(
     dry_run: bool = False,
     json_output: bool = False,
     config_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Generate missing concept pages for coverage-gap findings."""
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
@@ -300,7 +302,7 @@ def lint_remediate(
                     "category": a.category,
                     "description": a.description,  # nocheck: MCP response payload
                     "status": a.status.value if hasattr(a.status, "value") else str(a.status),
-                    "details": a.details,
+                    "details": details_for_storage(a.details),
                 }
                 for a in actions
             ],
@@ -323,7 +325,7 @@ def lint_format(
     wiki_dir: str | None = None,
     check: bool = False,
     config_file: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, JsonValue]:
     """Run rumdl fmt over the compiled output."""
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)

@@ -25,6 +25,7 @@ from kompend.core.models.attachments import Attachment, AttachmentManifest
 from kompend.core.models.enums import NodeType
 from kompend.core.paths import VaultPaths
 from kompend.lint.base import LintRuleOutcome
+from kompend.lint.details import LintField
 from kompend.lint.runner import LintRunner
 from kompend.lint.structural import UnreferencedAttachmentsRule, unreferenced_attachment_files
 
@@ -85,12 +86,6 @@ def test_registered_user_file_survives(tmp_path: Path) -> None:
     _page(tmp_path, None)
 
     assert unreferenced_attachment_files(tmp_path) == []
-
-
-def _register(base_dir: Path, rel: str) -> None:
-    manifest = AttachmentManifest(VaultPaths(base_dir).attachments_manifest_file)
-    inner = rel[len("attachments/") :]
-    manifest.append(Attachment(path=inner, source=inner.split("/", 1)[0], ingestible=False))
 
 
 def test_unregistered_user_file_survives(tmp_path: Path) -> None:
@@ -227,7 +222,7 @@ def test_an_unreadable_page_does_not_condemn_the_figure_it_links(tmp_path: Path)
     results = rule.check(_wiki(), sources_dir=str(VaultPaths(tmp_path).sources_dir))
 
     assert [r.outcome for r in results] == [LintRuleOutcome.SKIP]
-    assert results[0].details["unreadable_pages"] == ["wiki/concepts/broken.md"]
+    assert results[0].details.get(LintField.UNREADABLE_PAGES) == ["wiki/concepts/broken.md"]
     assert "could not be read" in results[0].message
     rule.fix(_wiki(), results, sources_dir=str(VaultPaths(tmp_path).sources_dir))
     assert (tmp_path / stale).is_file()
@@ -279,9 +274,17 @@ def test_the_finding_names_the_rule_not_the_manifest(tmp_path: Path) -> None:
     results = rule.check(_wiki(), sources_dir=str(VaultPaths(tmp_path).sources_dir))
 
     assert [r.outcome for r in results] == [LintRuleOutcome.FAIL]
-    assert results[0].details["path"] == stale
+    attachment_file = results[0].details.get(LintField.ATTACHMENT_FILE)
+    assert attachment_file is not None, "the finding names the file it condemns"
+    assert attachment_file.as_posix() == stale
     assert "manifest" not in results[0].message
     assert results[0].message.startswith(f"Unreferenced attachment '{stale}' — no page links it")
+
+
+def _register(base_dir: Path, rel: str) -> None:
+    manifest = AttachmentManifest(VaultPaths(base_dir).attachments_manifest_file)
+    inner = rel[len("attachments/") :]
+    manifest.append(Attachment(path=inner, source=inner.split("/", 1)[0], ingestible=False))
 
 
 def test_a_link_that_climbs_out_of_the_vault_proves_nothing(tmp_path: Path) -> None:

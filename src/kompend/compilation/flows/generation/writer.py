@@ -26,6 +26,7 @@ from kompend.core.models.enums import ExtractionField, MetadataField, NodeType
 from kompend.core.pipeline.entity_types import EntityTypeRegistry
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.lint.base import LintRuleOutcome
+from kompend.lint.details import LintField
 from kompend.lint.structural import BrokenWikilinksRule
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 
@@ -328,9 +329,9 @@ def learn_wikilink_aliases(nodes: list[WikiNode]) -> dict[str, str]:
     for result in BrokenWikilinksRule().check(wiki):
         if result.outcome != LintRuleOutcome.FAIL:
             continue
-        alias_of = result.details.get("alias_of")
+        alias_of = result.details.get(LintField.ALIAS_OF)
         canonical = id_to_title.get(str(alias_of))
         if canonical:
-            aliases.setdefault(result.details.get("target", ""), canonical)
+            aliases.setdefault(result.details.get(LintField.TARGET, ""), canonical)
     aliases.pop("", None)
     return aliases

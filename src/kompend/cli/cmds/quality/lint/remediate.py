@@ -12,6 +12,7 @@ from kompend.core.config import resolve_config
 from kompend.core.models import load_cached_wiki
 from kompend.core.paths import LINT_HISTORY_FILE
 from kompend.lint.base import RemediationStatus
+from kompend.lint.details import details_for_storage
 from kompend.lint.history import load_lint_history, report_from_dict
 from kompend.lint.remediation import remediate, remediation_to_text
 from kompend.logging import get_console, get_err_console
@@ -93,7 +94,7 @@ def lint_remediate(
                         "category": a.category,
                         "description": a.description,  # nocheck: CLI JSON output payload
                         "status": a.status,
-                        "details": a.details,
+                        "details": details_for_storage(a.details),
                     }
                     for a in actions
                 ],

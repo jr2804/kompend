@@ -30,6 +30,14 @@ def test_the_wire_values_are_the_planned_step_names() -> None:
     assert {member.value for member in LintStep} == {"check", "format", "semantic", "gaps", "remediate", "all"}
 
 
+@pytest.mark.parametrize("path", _CONSUMER_FILES, ids=lambda path: path.name)
+def test_no_consumer_spells_a_step_as_a_string(path: Path) -> None:
+    """A literal step name is how a history row ends up under a step that never ran."""
+    offenders = [f"{path.name}:{line} uses {value!r}" for line, value in _step_literals(path)]
+
+    assert offenders == [], "use LintStep instead of the literal:\n" + "\n".join(offenders)
+
+
 def _step_literals(path: Path) -> list[tuple[int, str]]:
     """String literals equal to an enum value, outside the enum's own body."""
     steps = {member.value for member in LintStep if member is not LintStep.ALL}
@@ -43,11 +51,3 @@ def _step_literals(path: Path) -> list[tuple[int, str]]:
         for node in ast.walk(tree)
         if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in inside_enum and node.value in steps
     ]
-
-
-@pytest.mark.parametrize("path", _CONSUMER_FILES, ids=lambda path: path.name)
-def test_no_consumer_spells_a_step_as_a_string(path: Path) -> None:
-    """A literal step name is how a history row ends up under a step that never ran."""
-    offenders = [f"{path.name}:{line} uses {value!r}" for line, value in _step_literals(path)]
-
-    assert offenders == [], "use LintStep instead of the literal:\n" + "\n".join(offenders)

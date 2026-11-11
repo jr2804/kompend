@@ -458,6 +458,22 @@ class SourceSearchProtocol(Protocol):
     def total_chars(self, stem: str) -> int: ...
 
 
+class GapConcept(TypedDict, total=False):
+    """One coverage-gap concept bucket handed to the remediation agent.
+
+    The shape :meth:`~kompend.compilation.two_phase.state.ExtractionSet.concept_pages`
+    produces, narrowed: a canonical ``name``, the ``sources`` that mention it,
+    one ``definition`` per mention, and the ``summaries`` of those sources.
+    Every key is optional because a concept extracted from a single source may
+    carry no definition or summary yet.
+    """
+
+    name: str
+    sources: list[str]
+    definitions: list[str]
+    summaries: list[str]
+
+
 class GapBrokerProtocol(Protocol):
     """Minimal broker surface used by the agentic remediation tools.
 
@@ -465,7 +481,7 @@ class GapBrokerProtocol(Protocol):
     ``agents.types`` stays a zero-``kompend.lint``-import leaf module.
     """
 
-    def fetch(self, caller_id: str, limit: int = 5) -> list[dict[str, Any]]: ...
+    def fetch(self, caller_id: str, limit: int = 5) -> list[GapConcept]: ...
 
     def remaining(self) -> int: ...
 

@@ -7,7 +7,7 @@ default and only run when the user passes ``--llm``.
 
 from __future__ import annotations
 
-from typing import Any, Final
+from typing import Any, Final, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -28,9 +28,25 @@ from kompend.logging import get_logger
 _DEFAULT_FAILURE_RATIO: Final[float] = 0.5
 _DEFAULT_FAILURE_MIN: Final[int] = 5
 
+
 logger = get_logger(__name__)
 
 _loader = get_template_loader()
+
+
+class LlmRuleOptions(TypedDict, total=False):
+    """The knobs :class:`~kompend.lint.runner.LintRunner` hands every LLM rule.
+
+    Every key names a parameter of :meth:`LlmLintRule.__init__`, so the runner
+    forwards the set as ``**options`` and a renamed or dropped parameter fails
+    at type-check time instead of being silently swallowed.
+    """
+
+    agent: LintRuleAgent | None
+    lint_page_budget: int
+    data_format: LlmDataFormat
+    failure_ratio: float
+    failure_min: int
 
 
 # ── Pydantic output schemas for lint rules ───────────────────────────────
@@ -557,11 +573,11 @@ class ContradictionDetectionRule(LlmLintRule):
 
 # ── Registry ────────────────────────────────────────────────────────────
 
-LLM_RULES: list[type[BaseLintRule]] = [
+LLM_RULES: list[type[LlmLintRule]] = [
     FactualConsistencyRule,
     ClarityScoreRule,
     CoverageGapRule,
     ContradictionDetectionRule,
 ]
 
-LLM_RULE_BY_NAME: dict[str, type[BaseLintRule]] = {r.name: r for r in LLM_RULES}
+LLM_RULE_BY_NAME: dict[str, type[LlmLintRule]] = {r.name: r for r in LLM_RULES}

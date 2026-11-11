@@ -9,12 +9,13 @@ multi-source corpora.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
 from kompend.core.models import CompiledWiki
 from kompend.core.paths import REFERENCES_FILE, VaultPaths
 from kompend.core.pipeline.references import ReferenceStore, consolidate_references
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from kompend.lint.details import DuplicateReferenceDetail, LintField, NearDuplicateReferenceDetail
+from kompend.types import JSONDict
 
 #: Max chars of a reference title used for display labels in lint findings.
 _REF_LABEL_TITLE_MAX = 40
@@ -86,7 +87,7 @@ class DuplicateReferencesRule(BaseLintRule):
                     outcome=LintRuleOutcome.FAIL,
                     severity=Severity.INFO,
                     message=msg,
-                    details={"duplicates": duplicates, "near_duplicates": near_dupes},
+                    details={LintField.DUPLICATES: duplicates, LintField.NEAR_DUPLICATES: near_dupes},
                 )
             )
         else:
@@ -94,9 +95,9 @@ class DuplicateReferencesRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message=msg))
         return results
 
-    def _find_fuzzy_duplicates(self, store: ReferenceStore) -> list[dict[str, Any]]:
+    def _find_fuzzy_duplicates(self, store: ReferenceStore) -> list[NearDuplicateReferenceDetail]:
         """Find near-duplicate references via embedding cosine similarity."""
-        near_dupes: list[dict[str, Any]] = []
+        near_dupes: list[NearDuplicateReferenceDetail] = []
         if not self.embedding_model:
             return near_dupes
 
@@ -120,8 +121,8 @@ class DuplicateReferencesRule(BaseLintRule):
 
     @staticmethod
     def _find_exact_duplicates(
-        raw_data: dict[str, list[dict[str, Any]]],
-    ) -> list[dict[str, Any]]:
+        raw_data: dict[str, list[JSONDict]],
+    ) -> list[DuplicateReferenceDetail]:
         """Find exact-duplicate references (DOI, title+author, raw)."""
         by_doi: dict[str, list[tuple[str, str]]] = {}
         by_title_author: dict[str, list[tuple[str, str]]] = {}
@@ -130,14 +131,12 @@ class DuplicateReferencesRule(BaseLintRule):
         for source, ref_list in raw_data.items():
             source_name = Path(source).name
             for ref_dict in ref_list:
-                label = ref_dict.get("id") or ref_dict.get("title", "")[:_REF_LABEL_TITLE_MAX]
-                doi = ref_dict.get("doi", "").strip().lower()
-                title = ref_dict.get("title", "").strip().lower()
-                raw = ref_dict.get("raw", "").strip()
-                authors = ref_dict.get("author", [])
-                first_family = ""
-                if authors and isinstance(authors, list):
-                    first_family = authors[0].get("family", "") if isinstance(authors[0], dict) else ""
+                title_field = _text_field(ref_dict, "title")
+                label = _text_field(ref_dict, "id") or title_field[:_REF_LABEL_TITLE_MAX]
+                doi = _text_field(ref_dict, "doi").strip().lower()
+                title = title_field.strip().lower()
+                raw = _text_field(ref_dict, "raw").strip()
+                first_family = _first_author_family(ref_dict)
 
                 if doi:
                     by_doi.setdefault(doi, []).append((source_name, label))
@@ -147,7 +146,7 @@ class DuplicateReferencesRule(BaseLintRule):
                 if raw:
                     by_raw.append((raw.lower(), source_name, label))
 
-        duplicates: list[dict[str, Any]] = []
+        duplicates: list[DuplicateReferenceDetail] = []
 
         for doi, entries in by_doi.items():
             sources_seen = {s for s, _ in entries}
@@ -173,3 +172,27 @@ class DuplicateReferencesRule(BaseLintRule):
                 duplicates.append({"type": "raw", "raw": raw_text[:_DUPLICATE_RAW_MAX], "sources": sorted(unique_sources)})
 
         return duplicates
+
+
+def _text_field(reference: JSONDict, key: str) -> str:
+    """One CSL field read as text, empty when the payload holds another type.
+
+    A stored reference is CSL JSON — every value is a ``JSONValue``, so a field
+    that should be a string has to be narrowed before it can be stripped or
+    sliced. Reading it as text and defaulting to empty keeps a malformed record
+    from raising mid-scan; the finding it produces is still worth reporting.
+    """
+    value = reference.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _first_author_family(reference: JSONDict) -> str:
+    """The first author's family name, empty when the payload carries none."""
+    authors = reference.get("author")
+    if not isinstance(authors, list) or not authors:
+        return ""
+    first = authors[0]
+    if not isinstance(first, dict):
+        return ""
+    family = first.get("family")
+    return family if isinstance(family, str) else ""

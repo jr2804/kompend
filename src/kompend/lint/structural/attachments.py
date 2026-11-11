@@ -15,11 +15,11 @@ the manifest row, and the lint runner gates them behind its
 from __future__ import annotations
 
 import re
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Any, ClassVar, Final, cast
+from typing import ClassVar, Final, cast
 
 from markdown_it import MarkdownIt
 
@@ -28,6 +28,7 @@ from kompend.core.models.attachments import AttachmentManifest, LiveSlugOutcome,
 from kompend.core.paths import ATTACHMENTS_DIR_NAME, DEFAULT_SOURCES_DIR_NAME, KOMP_DIR, VaultPaths, rel_to_vault
 from kompend.core.pipeline.state import TierStateStore
 from kompend.lint.base import BaseLintRule, LintDetails, LintResult, LintRuleOutcome, Severity
+from kompend.lint.details import LintField
 from kompend.logging import get_logger
 
 #: The markdown reader behind :func:`_link_targets`. ``commonmark`` resolves
@@ -125,7 +126,7 @@ class UnreferencedAttachmentsRule(BaseLintRule):
                         f"No attachment was deleted: {len(unreadable)} page(s) could not be read, so their links "
                         "are unknown (fix the encoding and rerun the lint)"
                     ),
-                    details={"unreadable_pages": list(unreadable)},
+                    details={LintField.UNREADABLE_PAGES: list(unreadable)},
                 )
             ]
 
@@ -138,7 +139,7 @@ class UnreferencedAttachmentsRule(BaseLintRule):
                 outcome=LintRuleOutcome.FAIL,
                 severity=Severity.WARNING,
                 message=(f"Unreferenced attachment '{rel}' — no page links it (recompile after a page change, or delete it with --fix-destructive)"),
-                details={"path": rel},
+                details={LintField.ATTACHMENT_FILE: Path(rel)},
             )
             for rel in stale
         ]
@@ -174,25 +175,25 @@ class UnreferencedAttachmentsRule(BaseLintRule):
             if r.outcome != LintRuleOutcome.FAIL:
                 updated.append(r)
                 continue
-            rel_path = r.details.get("path")
-            if not rel_path:
+            rel_file = r.details.get(LintField.ATTACHMENT_FILE)
+            if rel_file is None:
                 updated.append(r)
                 continue
-            abs_path = base_dir / rel_path
+            abs_path = base_dir / rel_file
+            rel_posix = rel_file.as_posix()
             try:
                 if abs_path.is_file():
                     abs_path.unlink()
                     deleted += 1
                 # Tombstone the manifest row (auto-adoption registered writer
-                # copies too) so the manifest does not keep pointing at a file
-                # that is gone — the row keeps its history, marked deleted.
-                manifest.remove(rel_path)
+                # copies too) so the manifest does not keep pointing at a file                # that is gone — the row keeps its history, marked deleted.
+                manifest.remove(rel_posix)
                 r.fix_applied = True
-                r.message = f"Deleted unreferenced attachment '{rel_path}'"
+                r.message = f"Deleted unreferenced attachment '{rel_posix}'"
             except OSError as exc:
                 logger.warning("Could not delete unreferenced attachment %s: %s", abs_path, exc)
-                r.message = f"Could not delete unreferenced attachment '{rel_path}': {exc}"
-                r.details = cast("LintDetails", {**r.details, "error": str(exc)})
+                r.message = f"Could not delete unreferenced attachment '{rel_posix}': {exc}"
+                r.details = cast("LintDetails", {**r.details, LintField.ERROR: str(exc)})
             updated.append(r)
 
         if deleted:
@@ -264,7 +265,7 @@ class OrphanAttachmentsRule(BaseLintRule):
                         f"No orphan was reported: {len(pages.unreadable)} page(s) could not be read, so their "
                         "links are unknown (fix the encoding and rerun the lint)"
                     ),
-                    details={"unreadable_pages": list(pages.unreadable)},
+                    details={LintField.UNREADABLE_PAGES: list(pages.unreadable)},
                 )
             )
             return results
@@ -290,7 +291,7 @@ class OrphanAttachmentsRule(BaseLintRule):
                             f"Orphaned attachment '{rel}' — slug matches no source in sources/ "
                             "(re-add the source, move the file under the correct slug, or delete it)"
                         ),
-                        details={"path": rel},
+                        details={LintField.ATTACHMENT_FILE: Path(rel)},
                     )
                 )
             if linked:
@@ -302,7 +303,7 @@ class OrphanAttachmentsRule(BaseLintRule):
                             f"{len(linked)} attachment file(s) in legacy slug directories are still linked "
                             "from the wiki and were kept — migrate the links before deleting the directories"
                         ),
-                        details={"kept_linked": len(linked)},
+                        details={LintField.KEPT_LINKED: len(linked)},
                     )
                 )
         else:
@@ -311,7 +312,7 @@ class OrphanAttachmentsRule(BaseLintRule):
                     rule=self.name,
                     outcome=LintRuleOutcome.PASS,
                     message=f"No orphaned attachments{kept_note}",
-                    details={"kept_linked": len(linked)} if linked else {},
+                    details={LintField.KEPT_LINKED: len(linked)} if linked else {},
                 )
             )
         return results
@@ -352,22 +353,23 @@ class OrphanAttachmentsRule(BaseLintRule):
             if r.outcome != LintRuleOutcome.FAIL:
                 updated.append(r)
                 continue
-            rel_path = r.details.get("path")
-            if not rel_path:
+            rel_file = r.details.get(LintField.ATTACHMENT_FILE)
+            if rel_file is None:
                 updated.append(r)
                 continue
-            abs_path = base_dir / rel_path
+            abs_path = base_dir / rel_file
+            rel_posix = rel_file.as_posix()
             try:
                 if abs_path.is_file():
                     abs_path.unlink()
-                manifest.remove(rel_path)
+                manifest.remove(rel_posix)
                 r.fix_applied = True
-                r.message = f"Deleted orphan attachment '{rel_path}' (was unrecoverable)"
-                logger.info("%s: deleted orphan attachment: %s", self.name, rel_path)
+                r.message = f"Deleted orphan attachment '{rel_posix}' (was unrecoverable)"
+                logger.info("%s: deleted orphan attachment: %s", self.name, rel_posix)
             except OSError as exc:
                 logger.warning("Could not delete orphan attachment %s: %s", abs_path, exc)
-                r.message = f"Could not delete orphan attachment '{rel_path}': {exc}"
-                r.details = cast("LintDetails", {**r.details, "error": str(exc)})
+                r.message = f"Could not delete orphan attachment '{rel_posix}': {exc}"
+                r.details = cast("LintDetails", {**r.details, LintField.ERROR: str(exc)})
             updated.append(r)
 
         # Clean up empty slug directories.
@@ -551,7 +553,10 @@ def _link_targets(text: str) -> list[str]:
     them — and the parser resolves that case too.
     """
     targets: list[str] = []
-    env: dict[str, Any] = {}
+    # The parser's plugin sandbox. It stays empty because no plugin is
+    # registered, so it is typed by what the parser needs (a mutable mapping),
+    # not by a payload shape this module would have to invent.
+    env: dict[str, object] = {}
     for token in _MARKDOWN.parse(text, env):
         if token.type == "inline":
             for child in token.children or ():
@@ -566,11 +571,26 @@ def _link_targets(text: str) -> list[str]:
     # A reference definition authors the reference even before a link uses it:
     # the definition is page content, and the destructive rules must not delete
     # what the author declared.
-    for definition in (env.get("references") or {}).values():
-        href = definition.get("href") if isinstance(definition, dict) else None
+    for definition in _declared_references(env):
+        href = definition.get("href")
         if href:
             targets.append(str(href))
     return targets
+
+
+def _declared_references(env: Mapping[str, object]) -> Iterator[Mapping[str, object]]:
+    """The reference definitions the parser recorded while reading the page.
+
+    The parser's environment is a loose plugin sandbox, so the entry is
+    narrowed to the shape a definition has — a mapping — and anything else is
+    skipped rather than trusted.
+    """
+    declared = env.get("references")
+    if not isinstance(declared, Mapping):
+        return
+    for definition in declared.values():
+        if isinstance(definition, Mapping):
+            yield definition
 
 
 def _html_targets(fragment: str) -> Iterator[str]:

@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import LINT_RUNS_TABLE
 from kompend.lint.base import LintResult, LintRuleOutcome, Severity
+from kompend.lint.details import LintField
 from kompend.lint.history import (
     LintConfigSnapshot,
     LintEntry,
@@ -23,6 +24,7 @@ from kompend.lint.history import (
     history_to_text,
     load_lint_history,
     prune_lint_history,
+    report_from_dict,
     save_lint_entry,
 )
 from kompend.lint.runner import LintReport, _build_report, report_to_payload
@@ -284,28 +286,28 @@ class TestDetailsRoundTrip:
                     outcome=LintRuleOutcome.FAIL,
                     severity=Severity.WARNING,
                     message="Unreferenced attachment 'a/b.png'",
-                    details={"path": "attachments/a/b.png"},
+                    details={LintField.ATTACHMENT_FILE: Path("attachments/a/b.png")},
                 ),
                 LintResult(
                     rule="unreferenced-attachments",
                     outcome=LintRuleOutcome.FAIL,
                     severity=Severity.WARNING,
                     message="The scan could not read a page",
-                    details={"unreadable_pages": ["sources/x.md"]},
+                    details={LintField.UNREADABLE_PAGES: ["sources/x.md"]},
                 ),
                 LintResult(
                     rule="orphan-attachments",
                     outcome=LintRuleOutcome.PASS,
                     severity=Severity.INFO,
                     message="Kept the linked files",
-                    details={"kept_linked": 3},
+                    details={LintField.KEPT_LINKED: 3},
                 ),
                 LintResult(
                     rule="unreferenced-attachments",
                     outcome=LintRuleOutcome.FAIL,
                     severity=Severity.WARNING,
                     message="Could not delete the attachment",
-                    details={"path": "attachments/a/c.png", "error": "locked"},
+                    details={LintField.ATTACHMENT_FILE: Path("attachments/a/c.png"), LintField.ERROR: "locked"},
                 ),
             ]
         )
@@ -318,19 +320,28 @@ class TestDetailsRoundTrip:
         )
         save_lint_entry(entry, path)
 
-        expected = [
-            {"path": "attachments/a/b.png"},
+        stored_expected = [
+            {"attachment_file": "attachments/a/b.png"},
             {"unreadable_pages": ["sources/x.md"]},
             {"kept_linked": 3},
-            {"path": "attachments/a/c.png", "error": "locked"},
+            {"attachment_file": "attachments/a/c.png", "error": "locked"},
+        ]
+        loaded_expected = [
+            {"attachment_file": Path("attachments/a/b.png")},
+            {"unreadable_pages": ["sources/x.md"]},
+            {"kept_linked": 3},
+            {"attachment_file": Path("attachments/a/c.png"), "error": "locked"},
         ]
         loaded = load_lint_history(path)
-        assert [r.details for r in loaded[0].report.results] == expected
+        assert [r.details for r in loaded[0].report.results] == stored_expected
 
         with open_store(vault_db_path(path)) as conn:
             row = conn.execute(f"SELECT report FROM {LINT_RUNS_TABLE}").fetchone()  # noqa: S608 — table name is a Final[str] constant
         stored = json.loads(row["report"])
-        assert [r["details"] for r in stored["results"]] == expected
+        assert [r["details"] for r in stored["results"]] == stored_expected
+
+        # The row is wire data; the Path comes back when a reader types it.
+        assert [r.details for r in report_from_dict(loaded[0].report).results] == loaded_expected
 
     def test_a_legacy_row_with_an_unknown_key_loads_unchanged(self, tmp_path: Path) -> None:
         """The reader drops nothing: an old record keeps every key it carries."""
