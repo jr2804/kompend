@@ -74,6 +74,7 @@ from kompend.core.paths.names import (
     WIKI_CACHE_FILE,
     WIKI_MARKDOWN_FILE,
     VaultPaths,
+    run_log_file_name,
 )
 from kompend.core.paths.resolve import (
     attachment_slug,
@@ -150,6 +151,7 @@ __all__ = [
     "attachment_slugs_for_source",
     "is_protected_source",
     "rel_to_vault",
+    "run_log_file_name",
     "safe_stem",
     "set_default_wiki_dir",
     "vault_paths",

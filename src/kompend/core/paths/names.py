@@ -147,6 +147,7 @@ LOG_FILE: Final[str] = "log.md"
 LOGS_SUBDIR: Final[str] = "logs"
 RUN_LOG_FILE_TEMPLATE: Final[str] = "run-{run_id}.log"
 
+
 # ── Trust / Privacy ─────────────────────────────────────────────────────
 PRIVATE_FILE: Final[str] = "private.json"
 
@@ -319,7 +320,7 @@ class VaultPaths:
 
     def run_log_file(self, run_id: str) -> Path:
         """Flight-recorder log for one CLI run (``run-<run_id>.log``)."""
-        return self.logs_dir / RUN_LOG_FILE_TEMPLATE.format(run_id=run_id)
+        return self.logs_dir / run_log_file_name(run_id)
 
     @property
     def step_db_file(self) -> Path:
@@ -505,3 +506,13 @@ class VaultPaths:
             self.review_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
+
+
+def run_log_file_name(run_id: str) -> str:
+    """File name of the flight-recorder log for *run_id*.
+
+    The template is data (``.agents/FILES.md`` documents it), so one function
+    owns the substitution; callers never format it themselves. ``str.format``
+    is kept over an f-string because the template stays inspectable.
+    """
+    return RUN_LOG_FILE_TEMPLATE.format(run_id=run_id)
