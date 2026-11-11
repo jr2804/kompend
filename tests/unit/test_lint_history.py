@@ -264,6 +264,110 @@ class TestEntryFromReport:
             LintEntry.from_row(row)
 
 
+class TestDetailsRoundTrip:
+    """The ``details`` payload keeps its documented keys across the history."""
+
+    def test_the_stored_details_keep_exactly_the_documented_keys(self, tmp_path: Path) -> None:
+        path = _hist(tmp_path)
+        report = _build_report(
+            [
+                LintResult(
+                    rule="unreferenced-attachments",
+                    outcome=LintRuleOutcome.FAIL,
+                    severity=Severity.WARNING,
+                    message="Unreferenced attachment 'a/b.png'",
+                    details={"path": "attachments/a/b.png"},
+                ),
+                LintResult(
+                    rule="unreferenced-attachments",
+                    outcome=LintRuleOutcome.FAIL,
+                    severity=Severity.WARNING,
+                    message="The scan could not read a page",
+                    details={"unreadable_pages": ["sources/x.md"]},
+                ),
+                LintResult(
+                    rule="orphan-attachments",
+                    outcome=LintRuleOutcome.PASS,
+                    severity=Severity.INFO,
+                    message="Kept the linked files",
+                    details={"kept_linked": 3},
+                ),
+                LintResult(
+                    rule="unreferenced-attachments",
+                    outcome=LintRuleOutcome.FAIL,
+                    severity=Severity.WARNING,
+                    message="Could not delete the attachment",
+                    details={"path": "attachments/a/c.png", "error": "locked"},
+                ),
+            ]
+        )
+        entry = entry_from_report(
+            report,
+            duration_seconds=1.0,
+            options=LintRunOptions(context="check", fix=False),
+            config={},
+            node_count=1,
+        )
+        save_lint_entry(entry, path)
+
+        expected = [
+            {"path": "attachments/a/b.png"},
+            {"unreadable_pages": ["sources/x.md"]},
+            {"kept_linked": 3},
+            {"path": "attachments/a/c.png", "error": "locked"},
+        ]
+        loaded = load_lint_history(path)
+        assert [r.details for r in loaded[0].report.results] == expected
+
+        with open_store(vault_db_path(path)) as conn:
+            row = conn.execute(f"SELECT report FROM {LINT_RUNS_TABLE}").fetchone()  # noqa: S608 — table name is a Final[str] constant
+        stored = json.loads(row["report"])
+        assert [r["details"] for r in stored["results"]] == expected
+
+    def test_a_legacy_row_with_an_unknown_key_loads_unchanged(self, tmp_path: Path) -> None:
+        """The reader drops nothing: an old record keeps every key it carries."""
+        path = _hist(tmp_path)
+        legacy_report = {
+            "health_score": 77.0,
+            "total_checks": 1,
+            "failures": 1,
+            "passes": 0,
+            "skips": 0,
+            "results": [
+                {
+                    "rule": "unreferenced-attachments",
+                    "outcome": "fail",
+                    "severity": "warning",
+                    "message": "Unreferenced attachment",
+                    "page_id": "",
+                    "fix_applied": False,
+                    "details": {"path": "attachments/a/b.png", "legacy_note": "from an older rule"},
+                }
+            ],
+        }
+        with open_store(vault_db_path(path)) as conn:
+            conn.execute(
+                f"INSERT INTO {LINT_RUNS_TABLE} "  # noqa: S608 — table name is a Final[str] constant
+                "(timestamp, duration_seconds, options, llm, config_snapshot, wiki_meta, report) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    "2025-01-01T00:00:00+00:00",
+                    1.0,
+                    json.dumps({"context": "check", "fix": False}),
+                    None,
+                    json.dumps({"compile.compiler": "graph", "compile.llm.default_model": "test-model", "compile.llm.fallback_chain": []}),
+                    json.dumps({"node_count": 1}),
+                    json.dumps(legacy_report),
+                ),
+            )
+
+        loaded = load_lint_history(path)
+        assert loaded[0].report.results[0].details == {
+            "path": "attachments/a/b.png",
+            "legacy_note": "from an older rule",
+        }
+
+
 class TestFormatting:
     def test_history_to_text_empty(self) -> None:
         text = history_to_text([])

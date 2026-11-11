@@ -19,7 +19,7 @@ import sqlite3
 from collections.abc import Mapping
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -32,7 +32,7 @@ from kompend.core.paths import LINT_HISTORY_FILE, VaultPaths
 from kompend.core.store import open_store, vault_db_path
 from kompend.core.store.schema import LINT_RUNS_TABLE
 from kompend.core.utils.time import iso_local, now_local
-from kompend.lint.base import LintReport, LintResult, LintRuleOutcome, Severity
+from kompend.lint.base import LintDetails, LintReport, LintResult, LintRuleOutcome, Severity
 from kompend.lint.runner import LintReportPayload, report_to_payload
 from kompend.llm.usage import UsageSnapshot
 
@@ -200,7 +200,7 @@ def report_from_dict(report_dict: Mapping[str, Any] | LintReportPayload) -> Lint
                 message=r.message,
                 page_id=r.page_id,
                 fix_applied=r.fix_applied,
-                details=dict(r.details),
+                details=cast("LintDetails", dict(r.details)),
             )
             for r in payload.results
         ],

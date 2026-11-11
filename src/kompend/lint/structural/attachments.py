@@ -19,7 +19,7 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PurePosixPath
-from typing import Any, ClassVar, Final
+from typing import Any, ClassVar, Final, cast
 
 from markdown_it import MarkdownIt
 
@@ -27,7 +27,7 @@ from kompend.core.models import CompiledWiki
 from kompend.core.models.attachments import AttachmentManifest, LiveSlugOutcome, live_attachment_slugs
 from kompend.core.paths import ATTACHMENTS_DIR_NAME, DEFAULT_SOURCES_DIR_NAME, KOMP_DIR, VaultPaths, rel_to_vault
 from kompend.core.pipeline.state import TierStateStore
-from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from kompend.lint.base import BaseLintRule, LintDetails, LintResult, LintRuleOutcome, Severity
 from kompend.logging import get_logger
 
 #: The markdown reader behind :func:`_link_targets`. ``commonmark`` resolves
@@ -174,7 +174,7 @@ class UnreferencedAttachmentsRule(BaseLintRule):
             if r.outcome != LintRuleOutcome.FAIL:
                 updated.append(r)
                 continue
-            rel_path = (r.details or {}).get("path")
+            rel_path = r.details.get("path")
             if not rel_path:
                 updated.append(r)
                 continue
@@ -192,7 +192,7 @@ class UnreferencedAttachmentsRule(BaseLintRule):
             except OSError as exc:
                 logger.warning("Could not delete unreferenced attachment %s: %s", abs_path, exc)
                 r.message = f"Could not delete unreferenced attachment '{rel_path}': {exc}"
-                r.details = {**(r.details or {}), "error": str(exc)}
+                r.details = cast("LintDetails", {**r.details, "error": str(exc)})
             updated.append(r)
 
         if deleted:
@@ -352,7 +352,7 @@ class OrphanAttachmentsRule(BaseLintRule):
             if r.outcome != LintRuleOutcome.FAIL:
                 updated.append(r)
                 continue
-            rel_path = (r.details or {}).get("path")
+            rel_path = r.details.get("path")
             if not rel_path:
                 updated.append(r)
                 continue
@@ -367,7 +367,7 @@ class OrphanAttachmentsRule(BaseLintRule):
             except OSError as exc:
                 logger.warning("Could not delete orphan attachment %s: %s", abs_path, exc)
                 r.message = f"Could not delete orphan attachment '{rel_path}': {exc}"
-                r.details = {**(r.details or {}), "error": str(exc)}
+                r.details = cast("LintDetails", {**r.details, "error": str(exc)})
             updated.append(r)
 
         # Clean up empty slug directories.

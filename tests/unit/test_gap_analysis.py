@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from kompend.lint.base import LintReport, LintResult, LintRuleOutcome
+from kompend.lint.base import LintDetails, LintReport, LintResult, LintRuleOutcome
 from kompend.lint.gap_analysis import (
     GapPriority,
     _analyze_broken_wikilinks,
@@ -116,7 +116,7 @@ def test_missing_topic_hub_ref_upgrades_priority() -> None:
 
 def _lr(target: str, alias_of: str | None = None, page_id: str = "n1") -> LintResult:
     """Build a failing broken-wikilinks LintResult."""
-    details: dict[str, str] = {"target": target}
+    details: LintDetails = {"target": target}
     if alias_of is not None:
         details["alias_of"] = alias_of
     return LintResult(

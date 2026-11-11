@@ -11,14 +11,13 @@ from __future__ import annotations
 
 import re
 from pathlib import Path, PurePosixPath
-from typing import Any
 
 from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.core.models import KIND_FOLDERS, CompiledWiki, MetadataField
 from kompend.core.models.metadata import meta_dict_list, meta_str
 from kompend.core.paths import KOMP_DIR
 from kompend.core.text.matching import best_match
-from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from kompend.lint.base import BaseLintRule, LintDetails, LintResult, LintRuleOutcome, Severity
 from kompend.lint.structural.images import _IMAGE_EXTENSIONS
 
 #: Markdown link or embed target pointing into the ``.kompend/`` state dir
@@ -72,7 +71,7 @@ class BrokenWikilinksRule(BaseLintRule):
                         if best and best[1] >= _WIKILINK_ALIAS_MIN_DETECT:
                             alias_of = alias_index[best[0]]
                             similarity_score = best[1]
-                    details: dict[str, Any] = {"target": target_title}
+                    details: LintDetails = {"target": target_title}
                     if alias_of:
                         details["alias_of"] = alias_of
                         details["alias_similarity"] = round(similarity_score, 1)
