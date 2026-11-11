@@ -3,9 +3,11 @@
 The vector index is derived data: whenever the store cannot describe the
 vectors it holds — a different dimension, a different schema, another
 backend's manifest — the file is dropped and rebuilt rather than reopened.
-"""
 
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
+The two statements that poke `vector_manifest` directly are constant templates
+filled by :func:`kompend.rag.sqlite_vec.schema.sql`, the same helper the store
+uses, so a test cannot drift from the production statement shape.
+"""
 
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import json
 import logging
 import sqlite3
 from pathlib import Path
+from typing import Final
 
 import pytest
 import sqlite_vec
@@ -26,6 +29,13 @@ from kompend.core.store.schema import VECTOR_MANIFEST_TABLE
 from kompend.memory.store import MemoryStore
 from kompend.rag import SqliteVecWikiStore, recorded_embedding_model
 from kompend.rag.embedding_base import EmbeddingProvider
+from kompend.rag.sqlite_vec.schema import BACKEND_COLUMN, sql
+
+#: Rewrites the manifest's backend so the next open sees another store's row.
+_OVERWRITE_BACKEND: Final[str] = "UPDATE {table} SET {column} = ? WHERE id = 1"
+
+#: Reads the indexed id set the last build recorded.
+_READ_IDS: Final[str] = "SELECT ids FROM {table} WHERE id = 1"
 
 
 class StubProvider(EmbeddingProvider):
@@ -250,7 +260,7 @@ def test_manifest_from_another_backend_is_stale(tmp_path: Path) -> None:
     store.close()
 
     with sqlite3.connect(tmp_path / "kompend.db") as conn:
-        conn.execute(f"UPDATE {VECTOR_MANIFEST_TABLE} SET backend = 'zvec' WHERE id = 1")
+        conn.execute(sql(_OVERWRITE_BACKEND, table=VECTOR_MANIFEST_TABLE, column=BACKEND_COLUMN), ("zvec",))
         conn.commit()
 
     other = SqliteVecWikiStore(db_file=db, embedding_provider=StubProvider(4))
@@ -283,7 +293,7 @@ def _memory_dim(base_dir: Path) -> str:
 def _manifest_ids(db_path: Path) -> list[str]:
     """Indexed id set recorded by the last build (kompend.db ``vector_manifest``)."""
     with sqlite3.connect(db_path) as conn:
-        row = conn.execute(f"SELECT ids FROM {VECTOR_MANIFEST_TABLE} WHERE id = 1").fetchone()
+        row = conn.execute(sql(_READ_IDS, table=VECTOR_MANIFEST_TABLE)).fetchone()
     assert row is not None, "build_index must record a vector manifest row"
     return json.loads(row[0])
 

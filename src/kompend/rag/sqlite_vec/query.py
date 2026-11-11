@@ -67,8 +67,10 @@ _FTS_SQL: Final[str] = """
         LIMIT ?
     """
 
-#: Columns the lexical query may match — the FTS index's two indexed columns.
-_FTS_COLUMNS: Final[frozenset[VectorField]] = frozenset({VectorField.TITLE, VectorField.CONTENT_PREVIEW})
+#: Columns the lexical query may match — the FTS index's two indexed columns,
+#: by their wire names. Anything else would run a ``MATCH`` against a column the
+#: index does not hold, which silently matches nothing.
+_FTS_COLUMN_NAMES: Final[frozenset[str]] = frozenset({VectorField.TITLE.value, VectorField.CONTENT_PREVIEW.value})
 
 
 class Hit:
@@ -162,8 +164,8 @@ def fts_ranked(
     match = fts_match_expression(query)
     if match is None:
         return []
-    if VectorField(column) not in _FTS_COLUMNS:
-        raise ValueError(f"FTS column must be one of {sorted(_FTS_COLUMNS)}, got {column!r}")
+    if column not in _FTS_COLUMN_NAMES:
+        raise ValueError(f"FTS column must be one of {sorted(_FTS_COLUMN_NAMES)}, got {column!r}")
     clause, params = filter_clause(
         "f",
         tags_all=tags_all,
