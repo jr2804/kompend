@@ -1,8 +1,13 @@
 """Tests for the kompend HierarchicalChunker."""
 
 from pathlib import Path
-from typing import Protocol, TypeGuard
+from types import SimpleNamespace
+from typing import Any, Protocol, TypeGuard
 
+import pytest
+
+from kompend.chunking import hierarchical
+from kompend.chunking.errors import ChunkingError
 from kompend.chunking.hierarchical import HierarchicalChunker
 from kompend.core.models import (
     Chunk,
@@ -357,6 +362,48 @@ class TestContextWindowClamp:
         assert chunker._effective_max == 819
 
 
+class TestSplitterFailure:
+    """A section that cannot be split must say so, not pass itself off as chunked.
+
+    Bead knox-sfqg: ``_split_text`` used to log the failure and return the
+    unsplit section, so an oversized section reached embedding and search as if
+    chunking had worked and the run log carried no trace of it.
+    """
+
+    def test_a_splitter_failure_escapes_named_for_the_section(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        boom = ValueError("tokenizer exploded")
+        monkeypatch.setattr(hierarchical, "import_module", _stub_chonkie(raises=boom))
+        doc = _make_doc(_text_elements(["word " * 500]))
+
+        with pytest.raises(ChunkingError) as caught:
+            HierarchicalChunker(max_tokens=100, reserve_tokens=0).chunk(doc)
+
+        message = str(caught.value)
+        assert "Cannot split a 2500-character section" in message
+        assert "chonkie" in message
+        assert "cl100k_base" in message
+        assert "ValueError: tokenizer exploded" in message
+        assert caught.value.__cause__ is boom
+
+    def test_an_empty_split_result_still_yields_the_unsplit_section(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A splitter that returns nothing is not a failure — the text is kept."""
+        monkeypatch.setattr(hierarchical, "import_module", _stub_chonkie(result=[]))
+        text = "word " * 500
+        doc = _make_doc(_text_elements([text]))
+
+        tree = HierarchicalChunker(max_tokens=100, reserve_tokens=0).chunk(doc)
+
+        leaves = _text_leaves(tree)
+        assert len(leaves) == 1
+        assert leaves[0].chunk.text == text
+
+
 class _TextLeaf(Protocol):
     """A leaf node whose ``chunk`` is present (see ``_is_text_leaf``).
 
@@ -369,6 +416,26 @@ class _TextLeaf(Protocol):
 
     chunk: Chunk
     heading_chain: tuple[str, ...]
+
+
+def _stub_chonkie(*, raises: Exception | None = None, result: list[Any] | None = None) -> Any:
+    """A stand-in ``import_module`` that hands back a controllable chonkie."""
+
+    class _Chunker:
+        def __init__(self, **_kwargs: Any) -> None:
+            pass
+
+        def chunk(self, _text: str) -> list[Any]:
+            if raises is not None:
+                raise raises
+            return result or []
+
+    module = SimpleNamespace(
+        RecursiveChunker=_Chunker,
+        RecursiveRules=lambda **_kwargs: None,
+        RecursiveLevel=lambda **_kwargs: None,
+    )
+    return lambda _name: module
 
 
 def _make_doc(elements: list[DocumentElement], title: str = "test") -> ParsedDocument:

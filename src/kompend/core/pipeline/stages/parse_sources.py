@@ -19,6 +19,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from kompend.chunking.errors import ChunkingError
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.identity import source_key
 from kompend.core.models import (
@@ -326,9 +327,39 @@ def _chunk_document(
     if pipeline.chunker is None:
         return None
 
-    # Chunk and cache.
+    # Chunk and cache. A splitter failure is the item's failure, recorded and
+    # given the same repro bundle a parse failure gets: the run continues with
+    # the remaining sources (bead knox-sfqg).
     chunk_start = time.perf_counter()
-    tree = pipeline.chunker.chunk(document)
+    try:
+        tree = pipeline.chunker.chunk(document)
+    except ChunkingError as exc:
+        logger.error(
+            "Failed to chunk %s: %s",
+            source_label,
+            exc,
+            exc_info=is_verbose(),
+            extra={"reason_code": reason_code_for(exc)},
+        )
+        write_failure_bundle(
+            base_dir=pipeline.base_directory,
+            source=source_label,
+            source_file=tag_source,
+            error=exc,
+            reason_code=reason_code_for(exc),
+            stage="chunk",
+            sha=content_hash,
+        )
+        ledger.record(
+            source_label,
+            "chunk",
+            outcome=StageOutcome.FAILED,
+            duration_ms=(time.perf_counter() - chunk_start) * 1000.0,
+            reason_code=reason_code_for(exc),
+            detail=str(exc),
+            sha=content_hash or None,
+        )
+        return None
     _stamp_split_provenance(tree, document)
     pipeline.apply_tags_to_tree(tree, tag_source)
     ledger.record(

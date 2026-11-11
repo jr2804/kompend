@@ -17,6 +17,7 @@ from typing import Any
 from kompend.agents.decision import FigureRelevanceAgent
 from kompend.agents.failure import UnitFailureLog
 from kompend.agents.vlm import VlmAgent
+from kompend.chunking.errors import ChunkingError
 from kompend.core.models import (
     ChunkTree,
 )
@@ -326,7 +327,26 @@ def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list
                 continue
 
             chunk_start = time.perf_counter()
-            tree = pipeline.chunker.chunk(doc)
+            try:
+                tree = pipeline.chunker.chunk(doc)
+            except ChunkingError as exc:
+                # The attachment keeps its turn: the failure is recorded against
+                # the chunk stage and the run moves on (bead knox-sfqg).
+                logger.warning(
+                    "Failed to chunk attachment %s: %s",
+                    att.filename,
+                    exc,
+                    extra={"reason_code": reason_code_for(exc)},
+                )
+                ledger.record(
+                    att.path,
+                    "chunk",
+                    outcome=StageOutcome.FAILED,
+                    duration_ms=(time.perf_counter() - chunk_start) * 1000.0,
+                    reason_code=reason_code_for(exc),
+                    detail=str(exc),
+                )
+                continue
             ledger.record(
                 att.path,
                 "chunk",

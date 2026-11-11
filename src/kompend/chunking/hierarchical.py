@@ -17,6 +17,7 @@ import math
 from importlib import import_module
 from typing import Any, Final
 
+from kompend.chunking.errors import ChunkingError
 from kompend.chunking.extractors import extract_structured
 from kompend.core.models import (
     Chunk,
@@ -29,15 +30,12 @@ from kompend.core.models import (
 )
 from kompend.core.utils.tokens import estimate_tokens
 from kompend.llm.context_window import ContextWindow
-from kompend.logging import get_logger
 
 # Absolute token reserve carved out of the context window before computing the
 # effective chunk size.  Replaces an earlier `reserve_ratio` (20%) that wasted
 # ~25K tokens on a 128K-context model and ~200K on a 1M-context model — even
 # though real LLM-call overhead (system prompt + output budget) is bounded.
 _DEFAULT_RESERVE_TOKENS: Final[int] = 8192
-
-logger = get_logger(__name__)
 
 
 class HierarchicalChunker:
@@ -114,9 +112,15 @@ class HierarchicalChunker:
                 rules=_boundary_rules(),
             )
             result = rc.chunk(text)
-        except Exception:
-            logger.exception("Chonkie chunking failed; returning unsplit text")
-            return [text]
+        except Exception as exc:
+            # A section that did not fit could not be split: say so and let it
+            # escape. Returning the unsplit text here would hand an oversized
+            # section to embedding and search as if chunking had worked, and the
+            # run log would carry no trace of the failure (bead knox-sfqg).
+            raise ChunkingError(
+                f"Cannot split a {len(text)}-character section to {self._effective_max} tokens "
+                f"with chonkie ({self.tokenizer_name}): {type(exc).__name__}: {exc}",
+            ) from exc
 
         if not result:
             return [text] if text.strip() else []

@@ -17,6 +17,7 @@ each model's auto-detected context window. Atomic elements are never split.
 | Module | Contents |
 |--------|----------|
 | ``hierarchical.py`` | ``ChunkTreeBuilder`` — hierarchical chunking from ``ParsedDocument`` |
+| ``errors.py`` | ``ChunkingError`` — the splitter could not split a section |
 | ``extractors.py`` | ``ContentExtractors`` — per-element-type extraction helpers |
 | ``summarizer.py`` | ``NodeSummarizer`` — bottom-up node summaries via ``SummarizerAgent`` or the agentic summarizer session; ``SummarizerSessionPolicy`` (batch size, stall retries), ``SummarizerContentPolicy`` (content chars, window chars, target chars, skip-single-child) |
 | ``contextual.py`` | ``ContextualEnricher`` — prepend situating context to chunks before embedding |
@@ -26,6 +27,11 @@ each model's auto-detected context window. Atomic elements are never split.
 - Import: ``from kompend.chunking.hierarchical import ChunkTreeBuilder``.
 - Chunk boundaries respect element types: heading-delimited sections and
   ``ATOMIC_TYPES`` (tables, code blocks, equations) are never split.
+- A section the splitter cannot split raises ``ChunkingError`` naming the
+  tokenizer and chunk size, with the splitter's own error as ``__cause__``.
+  It is never returned unsplit: an oversized section would then be embedded
+  and searched as if chunking had worked. An *empty* result from a successful
+  split is a different case and still yields the section unchanged.
 - Context-window size comes from ``discover_context_window()`` — not hardcoded.
 - Tags from ``ParsedDocument.metadata["tags"]`` propagate through ``ChunkTree``.
 - ``NodeSummarizer`` runs agentic summaries in bounded batches
