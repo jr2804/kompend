@@ -15,19 +15,19 @@ This is the API surface: ``kompend log`` is a thin CLI wrapper around
 :func:`build_log_report`.
 """
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants.
-
 from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
 
+from sqlalchemy import select
+
 from kompend.core.models import load_cached_wiki
 from kompend.core.page_builder import PageBuilder, code_span, em
 from kompend.core.paths import VaultPaths
 from kompend.core.reporting.runlog import RunEvent
-from kompend.core.store import open_store
-from kompend.core.store.schema import RUNS_TABLE
+from kompend.core.store import core_connection, open_store
+from kompend.core.store.tables import runs
 from kompend.lint.history import history_to_text, load_lint_history
 from kompend.logging import get_logger
 from kompend.output.wiki_index import LogStage, generate_log_entry
@@ -129,8 +129,8 @@ def _load_runs(db_path: Path) -> list[RunEvent]:
     if not db_path.is_file():
         return out
     try:
-        with open_store(db_path) as conn:
-            rows = conn.execute(f"SELECT event, run_id, cmd, ts, status, duration_s, exit, error FROM {RUNS_TABLE} ORDER BY id").fetchall()
+        with open_store(db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(select(runs).order_by(runs.c.id)).mappings().all()
     except sqlite3.Error as exc:
         logger.debug("could not read runs table: %s", exc)
         return out
