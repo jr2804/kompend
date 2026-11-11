@@ -5,6 +5,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, ClassVar
 
 from kompend.core.models import CompiledWiki
@@ -115,12 +116,12 @@ class BaseLintRule(ABC):
     @abstractmethod
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]: ...
 
-    @staticmethod
-    def fix(
+    def fix(  # noqa: PLR6301 — the base declares an instance method so a rule can use state
+        self,
         wiki: CompiledWiki,
         results: list[LintResult],
         *,
-        sources_dir: str | None = None,
+        sources_dir: Path | None = None,
     ) -> list[LintResult]:
         """Attempt auto-fix and return updated results.
 

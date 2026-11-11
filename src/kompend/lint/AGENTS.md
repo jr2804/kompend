@@ -20,7 +20,7 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 | ``base.py`` | ``Severity``, ``LintRuleOutcome``, ``LintResult``, ``BaseLintRule`` ABC |
 | ``runner.py`` | ``LintRunner``, ``LintReport`` — orchestrates rule execution; ``LintReportPayload``/``LintResultPayload`` are the validated wire shapes (dumped to JSON, loaded from history) |
 | ``structural/`` | The programmatic rules, one module per family (see **Structural families** below); ``structural/__init__.py`` is the registry — ``STRUCTURAL_RULES``, ``RULE_BY_NAME`` and the re-exported rule classes, so ``kompend.lint.structural`` stays the one import path |
-| ``flow.py`` | ``run_full_lint_flow``/``_run_pass`` (one pass over a rule set, fixes persisted), ``persist_lint_fixes``, ``_make_lint_agent``, and ``CHECK_STEP_RULES`` — the deterministic rules of the ``check`` step |
+| ``flow.py`` | ``LintStep`` (the planned step names, also the history ``context``), ``run_full_lint_flow``/``_run_pass`` (one pass over a rule set, fixes persisted), ``persist_lint_fixes``, ``_make_lint_agent``, and ``CHECK_STEP_RULES`` — the deterministic rules of the ``check`` step |
 | ``llm_rules.py`` | ``LLM_RULE_BY_NAME`` — LLM-powered semantic rules |
 | ``remediation.py`` | ``RemediationAutoFixer`` — auto-fix for structural + LLM findings |
 | ``gap_analysis.py`` | Gap recommendations from lint reports; broken-wikilink findings stratified into ``alias`` vs ``missing`` resolutions |
@@ -69,8 +69,10 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   `BaseModel | str` output cannot produce a page and fails validation. A single
   failed page is a skipped action, never an exception that ends `lint all`.
 - **One definition per question.** Which rules count as the deterministic
-  ``check`` step (``flow.CHECK_STEP_RULES``) and how a finished run becomes a
-  history entry (``history.persist_history``) live here, never in a caller: the
+  ``check`` step (``flow.CHECK_STEP_RULES``), what the steps are called
+  (``flow.LintStep`` — the same values the history row records as
+  ``context``), and how a finished run becomes a history entry
+  (``history.persist_history``) live here, never in a caller: the
   CLI commands and the MCP tools both consume them, and a copy in either layer
   drifts (the MCP tools used to import both from the CLI command module).
 - **One home for the structural registry.** ``structural/__init__.py`` owns
@@ -96,9 +98,10 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   is neither an orphan nor prunable, and it is not adopted.
 - **The attachment rules delete files.** ``orphan-attachments`` and
   ``unreferenced-attachments`` are ``destructive`` and run only behind the
-  runner's ``fix_destructive`` opt-in. Their ``fix()`` reads ``_last_sources_dir``,
-  which ``check()`` set on the same instance — the runner must call ``check``
-  and ``fix`` on one instance, or the fix silently no-ops.
+  runner's ``fix_destructive`` opt-in. Their ``fix()`` takes the ``sources_dir``
+  it is told about, exactly as ``check()`` does — never a directory remembered
+  from an earlier call, which is how a fix once deleted figures in a vault the
+  scan it answered had never seen.
 - **A page link outranks the slug.** ``orphan-attachments`` keeps every file a
   compiled page links to, whatever its directory is named. A vault carries slug
   forms from older kompend versions (the slug grew a path prefix when sources
@@ -133,6 +136,17 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   ``attachments/<slug>/x.png`` neither protects a file the wiki dropped nor
   condemns one it shows. The same reader is the sole source for both
   destructive rules, so they cannot disagree about what a page links.
+- **A fix never drops a finding.** A rule's ``fix()`` receives only the failing
+  findings and returns one updated finding per input, in the same order; the
+  runner splices them back into the rule's full result list. The findings that
+  passed (or were skipped) must survive the fix — otherwise the pass count
+  collapses, the check total shrinks and the health score is computed over the
+  wrong denominator. A rule that returns fewer findings than it was given lost
+  one: the runner logs an ERROR and keeps the lost finding, because a silent
+  drop reads as "there was nothing to fix".
+- **A fix sees the same directory the scan saw.** ``fix()`` receives the
+  ``sources_dir`` of the run that produced the findings, so it can never act on
+  a vault the scan did not look at.
 - Import: ``from kompend.lint.runner import LintRunner``,
   ``from kompend.lint.base import LintResult``.
 - Structural rules are fast and run always; LLM rules are gated by config.

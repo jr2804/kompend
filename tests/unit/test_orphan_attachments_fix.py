@@ -14,6 +14,7 @@ import pytest
 
 from kompend.core.models.attachments import Attachment, AttachmentManifest, adopt_orphan_attachments
 from kompend.core.models.wiki import CompiledWiki
+from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.lint.base import LintResult, LintRuleOutcome, Severity
 from kompend.lint.structural import OrphanAttachmentsRule
 
@@ -38,6 +39,7 @@ def test_fix_removes_orphan_file_and_tombstones_manifest(tmp_path: Path) -> None
                 details={"path": rel_path},
             )
         ],
+        sources_dir=vault / "sources",
     )
 
     assert len(results) == 1
@@ -63,6 +65,7 @@ def test_fix_removes_empty_slug_dir(tmp_path: Path) -> None:
     rule.fix(
         CompiledWiki(nodes=[], edges=[], toc=[]),
         [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
+        sources_dir=vault / "sources",
     )
     assert not (vault / "attachments" / "orphan-source").exists()
 
@@ -75,7 +78,7 @@ def test_fix_noop_when_no_failures(tmp_path: Path) -> None:
     pass_result = LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.PASS, message="ok")
     skip_result = LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.SKIP, message="skipped")
 
-    out = rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), [pass_result, skip_result])
+    out = rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), [pass_result, skip_result], sources_dir=vault / "sources")
     assert out == [pass_result, skip_result]
 
 
@@ -92,7 +95,7 @@ def test_fix_records_os_error_in_details(tmp_path: Path) -> None:
         outcome=LintRuleOutcome.FAIL,
         details={"path": rel_path},
     )
-    out = rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), [result])
+    out = rule.fix(CompiledWiki(nodes=[], edges=[], toc=[]), [result], sources_dir=vault / "sources")
     # When the file doesn't exist, the rule treats that as success (already
     # gone) and tombstone-stamps the manifest. fix_applied=True.
     assert out[0].fix_applied is True
@@ -118,6 +121,7 @@ def test_fix_tombstone_prevents_readoption(tmp_path: Path) -> None:
     rule.fix(
         CompiledWiki(nodes=[], edges=[], toc=[]),
         [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
+        sources_dir=vault / "sources",
     )
     assert not orphan.exists()
 
@@ -155,12 +159,66 @@ def test_fix_survives_an_empty_dir_it_cannot_remove(tmp_path: Path, monkeypatch:
         results = rule.fix(
             CompiledWiki(nodes=[], edges=[], toc=[]),
             [LintResult(rule="orphan-attachments", outcome=LintRuleOutcome.FAIL, details={"path": rel_path})],
+            sources_dir=vault / "sources",
         )
 
     assert results[0].fix_applied is True
     assert not orphan.exists()
     assert slug_dir.is_dir(), "the directory could not be removed, so it is still there"
     assert any(str(slug_dir) in record.getMessage() for record in caplog.records)
+
+
+def test_fix_acts_on_the_directory_the_caller_names(tmp_path: Path) -> None:
+    """Two vaults, one check pass each: the fix must act on the one it is told.
+
+    The rules used to remember whatever ``check()`` saw on the instance,
+    which is the module-level singleton the runner holds. A fix for vault A
+    issued after a scan of vault B therefore deleted vault B's figures — the
+    caller could not say which vault it meant. The directory is a parameter
+    now, so the second call acts on the second vault.
+    """
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    orphan_first = _make_orphan(first, "orphan-source", "first.c")
+    orphan_second = _make_orphan(second, "orphan-source", "second.c")
+    _seed_compile_state(first, "first")
+    _seed_compile_state(second, "second")
+
+    rule = OrphanAttachmentsRule()
+    results_first = rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(first / "sources"))
+    rule.check(CompiledWiki(nodes=[], edges=[], toc=[]), sources_dir=str(second / "sources"))
+
+    rule.fix(
+        CompiledWiki(nodes=[], edges=[], toc=[]),
+        [r for r in results_first if r.outcome == LintRuleOutcome.FAIL],
+        sources_dir=first / "sources",
+    )
+
+    assert not orphan_first.exists()
+    assert orphan_second.is_file(), "the second vault was never the subject of this fix"
+
+    rule.fix(
+        CompiledWiki(nodes=[], edges=[], toc=[]),
+        [
+            LintResult(
+                rule="orphan-attachments",
+                outcome=LintRuleOutcome.FAIL,
+                details={"path": orphan_second.relative_to(second).as_posix()},
+            )
+        ],
+        sources_dir=second / "sources",
+    )
+
+    assert not orphan_second.exists()
+
+
+def _seed_compile_state(vault: Path, stem: str) -> None:
+    """Seed tier state so the orphan rule's "has a compile run" gate passes."""
+    sources = vault / "sources"
+    sources.mkdir(parents=True, exist_ok=True)
+    (sources / f"{stem}.md").write_text("# note\n", encoding="utf-8")
+    store = TierStateStore(vault / ".kompend" / "compile_state.json")
+    store.save(TierState(entries={stem: SourceState(stem=stem, source_file=f"sources/{stem}.md", content_hash="h")}))
 
 
 def _seed_manifest(base_dir: Path, path: str) -> None:

@@ -50,7 +50,7 @@ def test_unreferenced_writer_copy_is_flagged_and_deleted(tmp_path: Path) -> None
     sources_dir = str(VaultPaths(tmp_path).sources_dir)
     results = rule.check(_wiki(), sources_dir=sources_dir)
     assert [r.outcome for r in results] == [LintRuleOutcome.FAIL]
-    fixed = rule.fix(_wiki(), results)
+    fixed = rule.fix(_wiki(), results, sources_dir=VaultPaths(tmp_path).sources_dir)
 
     assert fixed[0].fix_applied is True
     assert not (tmp_path / stale).exists()
@@ -69,7 +69,7 @@ def test_adopted_writer_copy_is_still_pruned_and_tombstoned(tmp_path: Path) -> N
     rule = UnreferencedAttachmentsRule()
     sources_dir = str(VaultPaths(tmp_path).sources_dir)
     results = rule.check(_wiki(), sources_dir=sources_dir)
-    rule.fix(_wiki(), results)
+    rule.fix(_wiki(), results, sources_dir=VaultPaths(tmp_path).sources_dir)
 
     assert not (tmp_path / stale).exists()
     # The row survives as a tombstone rather than pointing at a missing file.
@@ -156,7 +156,7 @@ def test_a_linked_file_whose_name_contains_a_parenthesis_survives(tmp_path: Path
     rule = UnreferencedAttachmentsRule()
     sources_dir = str(VaultPaths(tmp_path).sources_dir)
     results = rule.check(_wiki(), sources_dir=sources_dir)
-    rule.fix(_wiki(), results)
+    rule.fix(_wiki(), results, sources_dir=VaultPaths(tmp_path).sources_dir)
 
     assert (tmp_path / link).is_file()
 
@@ -188,7 +188,7 @@ def test_every_link_form_keeps_the_figure(tmp_path: Path, form: str) -> None:
 
     rule = UnreferencedAttachmentsRule()
     results = rule.check(_wiki(), sources_dir=str(VaultPaths(tmp_path).sources_dir))
-    fixed = rule.fix(_wiki(), results)
+    fixed = rule.fix(_wiki(), results, sources_dir=VaultPaths(tmp_path).sources_dir)
 
     assert [r.outcome for r in fixed if r.fix_applied] == []
     assert (tmp_path / link).is_file()
@@ -229,7 +229,7 @@ def test_an_unreadable_page_does_not_condemn_the_figure_it_links(tmp_path: Path)
     assert [r.outcome for r in results] == [LintRuleOutcome.SKIP]
     assert results[0].details["unreadable_pages"] == ["wiki/concepts/broken.md"]
     assert "could not be read" in results[0].message
-    rule.fix(_wiki(), results)
+    rule.fix(_wiki(), results, sources_dir=VaultPaths(tmp_path).sources_dir)
     assert (tmp_path / stale).is_file()
 
 
@@ -257,7 +257,7 @@ def test_a_readable_page_does_not_disable_the_rule(tmp_path: Path) -> None:
     results = rule.check(_wiki(), sources_dir=str(VaultPaths(tmp_path).sources_dir))
 
     assert [r.outcome for r in results] == [LintRuleOutcome.FAIL]
-    rule.fix(_wiki(), results)
+    rule.fix(_wiki(), results, sources_dir=VaultPaths(tmp_path).sources_dir)
     assert not (tmp_path / stale).exists()
 
 

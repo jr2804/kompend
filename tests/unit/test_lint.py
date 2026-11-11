@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, ClassVar
 from unittest.mock import MagicMock
 
 import pytest
@@ -602,7 +602,7 @@ class _MixedOutcomeRule(BaseLintRule):
             LintResult(rule=self.name, outcome=LintRuleOutcome.FAIL, message="broken link", page_id="n1"),
         ]
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:
         for result in results:
             result.fix_applied = True
         return list(results)
@@ -613,8 +613,19 @@ class _DroppingRule(_MixedOutcomeRule):
 
     name = "dropping-rule"
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:
         return []
+
+
+class _SourcesDirRule(_MixedOutcomeRule):
+    """A rule that records the directory the runner handed it."""
+
+    name = "sources-dir-rule"
+    seen: ClassVar[list[Path | None]] = []
+
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:
+        type(self).seen.append(sources_dir)
+        return list(results)
 
 
 class TestLintRunnerFixResults:
@@ -650,6 +661,19 @@ class TestLintRunnerFixResults:
         assert report.failures == 1
         errors = [record.getMessage() for record in caplog.records if record.levelno == logging.ERROR]
         assert any("dropping-rule" in message for message in errors)
+
+    def test_the_fix_sees_the_directory_the_scan_saw(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """A fix acts on the vault the scan looked at — not a remembered one."""
+        monkeypatch.setitem(RULE_BY_NAME, "sources-dir-rule", _SourcesDirRule)
+        _SourcesDirRule.seen.clear()
+        wiki = _make_wiki([_make_node()])
+        runner = LintRunner(rules=["sources-dir-rule"], fix=True, sources_dir=str(tmp_path / "sources"))
+        runner.run(wiki)
+        assert _SourcesDirRule.seen == [tmp_path / "sources"]
 
 
 # ── Report formatting ───────────────────────────────────────────────────

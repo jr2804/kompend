@@ -98,11 +98,7 @@ class UnreferencedAttachmentsRule(BaseLintRule):
     #: :class:`OrphanAttachmentsRule`.
     destructive: ClassVar[bool] = True
 
-    # Populated by check() so fix() does not need sources_dir threaded through.
-    _last_sources_dir: str | None = None
-
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
-        self._last_sources_dir = sources_dir
         if sources_dir is None:
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided")]
 
@@ -146,19 +142,29 @@ class UnreferencedAttachmentsRule(BaseLintRule):
             for rel in stale
         ]
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
+    def fix(  # noqa: PLR6301 — the base declares an instance method so a rule can use state
+        self,
+        wiki: CompiledWiki,
+        results: list[LintResult],
+        *,
+        sources_dir: Path | None = None,
+    ) -> list[LintResult]:
         """Delete unreferenced, unregistered attachment files (destructive).
 
         Mirrors :meth:`OrphanAttachmentsRule.fix`: the lint runner's
         ``--fix-destructive`` opt-in is the only trigger, and a failure leaves
         the result FAIL with the error recorded. Empty slug directories are
         pruned afterwards.
+
+        The directory comes from the ``sources_dir`` the caller names, never
+        from an earlier :meth:`check` — a fix must act on the vault the scan
+        it is answering looked at. ``None`` (no sources directory in this run)
+        leaves every finding untouched.
         """
-        sources_dir = self._last_sources_dir
         if not results or sources_dir is None:
             return list(results)
 
-        base_dir = Path(sources_dir).parent
+        base_dir = sources_dir.parent
         vp = VaultPaths(base_dir)
         manifest = AttachmentManifest(vp.attachments_manifest_file)
         updated: list[LintResult] = []
@@ -222,12 +228,7 @@ class OrphanAttachmentsRule(BaseLintRule):
     #: opt-in triggers deletion (p863 wiki roundup 2026-09-10).
     destructive: ClassVar[bool] = True
 
-    # Stored on the instance by check() so fix() can locate the manifest
-    # without the lint runner needing to thread ``sources_dir`` through.
-    _last_sources_dir: str | None = None
-
     def check(self, wiki: CompiledWiki, *, sources_dir: str | None = None) -> list[LintResult]:
-        self._last_sources_dir = sources_dir
         results: list[LintResult] = []
         if sources_dir is None:
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.SKIP, message="No sources directory provided"))
@@ -314,10 +315,12 @@ class OrphanAttachmentsRule(BaseLintRule):
             )
         return results
 
-    def fix(
+    def fix(  # noqa: PLR6301 — see UnreferencedAttachmentsRule.fix
         self,
         wiki: CompiledWiki,
         results: list[LintResult],
+        *,
+        sources_dir: Path | None = None,
     ) -> list[LintResult]:
         """Delete orphan attachment files from disk + tombstone in the manifest.
 
@@ -330,15 +333,16 @@ class OrphanAttachmentsRule(BaseLintRule):
         The lint runner's ``--fix`` flag is the user's opt-in to this
         destructive action. There is no dry-run.
 
-        Reads ``sources_dir`` from the instance attribute populated by the
-        most recent :meth:`check` call — the lint runner calls them in
-        sequence (``check`` → ``fix``) on the same rule instance.
+        The directory comes from the ``sources_dir`` the caller names, never
+        from an earlier :meth:`check` — a fix must act on the vault the scan
+        it is answering looked at, even when this process has scanned another
+        vault since. ``None`` (no sources directory in this run) leaves every
+        finding untouched.
         """
-        sources_dir = self._last_sources_dir
         if not results or sources_dir is None:
             return list(results)
 
-        base_dir = Path(sources_dir).parent
+        base_dir = sources_dir.parent
         vp = VaultPaths(base_dir)
         manifest = AttachmentManifest(vp.attachments_manifest_file)
 
@@ -576,6 +580,12 @@ def _html_targets(fragment: str) -> Iterator[str]:
             yield value
 
 
+def _prune_empty_dirs(attachments_root: Path) -> None:
+    """Remove directories left empty under ``attachments/`` (deepest first)."""
+    for d in sorted((p for p in attachments_root.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+        _remove_empty_dir(d)
+
+
 def _remove_empty_dir(path: Path) -> bool:
     """Remove *path* when it is empty; report whether it is gone.
 
@@ -590,12 +600,6 @@ def _remove_empty_dir(path: Path) -> bool:
         logger.debug("Could not remove empty attachment directory %s: %s", path, exc)
         return False
     return True
-
-
-def _prune_empty_dirs(attachments_root: Path) -> None:
-    """Remove directories left empty under ``attachments/`` (deepest first)."""
-    for d in sorted((p for p in attachments_root.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
-        _remove_empty_dir(d)
 
 
 def _vault_relative(base_dir: Path, candidate: Path) -> str | None:

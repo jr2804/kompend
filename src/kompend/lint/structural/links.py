@@ -96,7 +96,7 @@ class BrokenWikilinksRule(BaseLintRule):
             results.append(LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All wikilinks resolve"))
         return results
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:  # noqa: PLR6301
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:  # noqa: PLR6301
         """Repair broken wikilinks in page content.
 
         Alias-resolvable links (the LLM used a short form of an existing

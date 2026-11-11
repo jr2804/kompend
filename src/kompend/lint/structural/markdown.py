@@ -11,16 +11,22 @@ from __future__ import annotations
 import shutil
 import subprocess
 from pathlib import Path
+from typing import Final
 
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from kompend.core.models import CompiledWiki
+from kompend.core.paths import ATTACHMENTS_DIR_NAME, KOMP_DIR
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
 from kompend.logging import get_logger
 
 #: Leading argv entries of the rumdl command shown in a failure warning —
 #: enough to identify the invocation without echoing every path.
 _CMD_PREVIEW_ARGS = 4
+
+#: Vault-root directories a markdown style check must never descend into:
+#: tool state and user attachments are neither prose nor authored pages.
+_EXCLUDED_ROOT_DIRS: Final[frozenset[str]] = frozenset({KOMP_DIR, ATTACHMENTS_DIR_NAME})
 
 logger = get_logger(__name__)
 
@@ -88,7 +94,7 @@ class RumdlRule(BaseLintRule):
             return [LintResult(rule=self.name, outcome=LintRuleOutcome.PASS, message="All markdown files pass rumdl checks")]
         return [self._to_result(f) for f in findings]
 
-    def fix(self, wiki: CompiledWiki, results: list[LintResult]) -> list[LintResult]:
+    def fix(self, wiki: CompiledWiki, results: list[LintResult], *, sources_dir: Path | None = None) -> list[LintResult]:
         """Apply ``rumdl check --fix`` to the files with fixable findings."""
         exe = shutil.which("rumdl")
         if not exe:
@@ -126,16 +132,15 @@ class RumdlRule(BaseLintRule):
 
     @staticmethod
     def _md_files(sources_dir: str) -> list[str]:
-        """All ``*.md`` files under the vault root, excluding sources/.kompend/attachments."""
+        """All ``*.md`` files under the vault root, excluding sources/, .kompend/ and attachments/."""
         base = Path(sources_dir).parent
         sources_path = Path(sources_dir)
-        excluded_names = {".kompend", "attachments"}
         files: list[str] = []
         for path in base.rglob("*.md"):
             rel = path.relative_to(base)
             if sources_path in path.parents:
                 continue
-            if any(part in excluded_names for part in rel.parts[:-1]):
+            if any(part in _EXCLUDED_ROOT_DIRS for part in rel.parts[:-1]):
                 continue
             files.append(str(path))
         return sorted(files)

@@ -151,7 +151,11 @@ class LintRunner:
                         )
                     else:
                         try:
-                            fixed = rule.fix(wiki, fixable, sources_dir=self.sources_dir)
+                            fixed = rule.fix(
+                                wiki,
+                                fixable,
+                                sources_dir=Path(self.sources_dir) if self.sources_dir else None,
+                            )
                         except Exception as exc:
                             logger.warning("Fix for '%s' raised: %s", rule.name, exc, exc_info=True)
                         else:
