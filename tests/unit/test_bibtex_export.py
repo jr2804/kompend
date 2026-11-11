@@ -10,10 +10,14 @@ Covers ``kompend.output.bibtex``:
 
 from __future__ import annotations
 
+from collections.abc import MutableMapping
+from typing import cast
+
 import pytest
 
 from kompend.core.models.references import Author, Reference
 from kompend.output.bibtex import reference_to_bibtex_entry, references_to_bibtex
+from kompend.output.csl_bibtex import CSL_TO_BIBTEX_TYPE
 
 # ---------------------------------------------------------------------------
 # reference_to_bibtex_entry
@@ -234,14 +238,11 @@ class TestCslTable:
     """The CSL→BibTeX table is data, kept read-only in its own module."""
 
     def test_table_is_read_only(self) -> None:
-        from kompend.output.csl_bibtex import CSL_TO_BIBTEX_TYPE
-
+        mutable = cast("MutableMapping[str, str]", CSL_TO_BIBTEX_TYPE)
         with pytest.raises(TypeError):
-            CSL_TO_BIBTEX_TYPE["book"] = "misc"  # type: ignore[index]
+            mutable["book"] = "misc"
 
     def test_table_values_are_bibtex_entry_types(self) -> None:
-        from kompend.output.csl_bibtex import CSL_TO_BIBTEX_TYPE
-
         assert CSL_TO_BIBTEX_TYPE["article-journal"] == "article"
         assert CSL_TO_BIBTEX_TYPE["chapter"] == "incollection"
         assert CSL_TO_BIBTEX_TYPE["pamphlet"] == "booklet"
@@ -251,7 +252,6 @@ class TestCslTable:
     def test_known_and_unknown_types_keep_their_entry_types(self) -> None:
         assert reference_to_bibtex_entry(_ref(type="thesis")).startswith("@phdthesis{")
         assert reference_to_bibtex_entry(_ref(type="not-a-csl-type")).startswith("@misc{")
-
 
 
 # ---------------------------------------------------------------------------

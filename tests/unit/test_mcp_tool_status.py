@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 
 from kompend.mcp.tools._helpers import ToolStatus
+from kompend.mcp.tools.config import config_get
+from kompend.mcp.tools.packs import pack_list
 
 TOOLS_DIR = Path(__file__).resolve().parents[2] / "src" / "kompend" / "mcp" / "tools"
 
@@ -50,11 +52,7 @@ class TestEnvelopeLiterals:
         assert offenders == [], "envelope values must be ToolStatus members:\n" + "\n".join(offenders)
 
     def test_every_tool_module_imports_the_vocabulary(self) -> None:
-        missing = [
-            path.name
-            for path in sorted(TOOLS_DIR.rglob("*.py"))
-            if _envelopes(path) and "ToolStatus" not in path.read_text(encoding="utf-8")
-        ]
+        missing = [path.name for path in sorted(TOOLS_DIR.rglob("*.py")) if _envelopes(path) and "ToolStatus" not in path.read_text(encoding="utf-8")]
         assert missing == []
 
 
@@ -62,15 +60,11 @@ class TestSerializedEnvelope:
     """The wire payload a client sees is byte-for-byte what it was."""
 
     def test_ok_envelope_serializes_as_before(self) -> None:
-        from kompend.mcp.tools.packs import pack_list
-
         payload = pack_list()
         assert payload["status"] == "ok"
         assert json.loads(json.dumps(payload))["status"] == "ok"
 
     def test_error_envelope_serializes_as_before(self) -> None:
-        from kompend.mcp.tools.config import config_get
-
         payload = config_get("not.a.key")
         assert payload["status"] == "error"
         assert payload["message"]
@@ -84,10 +78,7 @@ class TestSerializedEnvelope:
 def _envelopes(path: Path) -> bool:
     """Whether ``path`` builds a ``status`` envelope at all."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    return any(
-        isinstance(node, ast.Constant) and node.value == "status"
-        for node in ast.walk(tree)
-    )
+    return any(isinstance(node, ast.Constant) and node.value == "status" for node in ast.walk(tree))
 
 
 def _inside_status_enum(tree: ast.Module, node: ast.Constant) -> bool:
