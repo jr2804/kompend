@@ -18,7 +18,7 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 | Module | Contents |
 |--------|----------|
 | ``base.py`` | ``Severity``, ``LintRuleOutcome``, ``LintResult``, ``BaseLintRule`` ABC |
-| ``details.py`` | ``LintDetails`` — the documented keys of a finding's payload; its own module because a dataclass default names it, and the formatter sorts plain classes BELOW the dataclasses |
+| ``details.py`` | ``LintField`` — the only owner of a finding's ``details`` keys — and ``LintDetails``, the shape those keys describe. Its own module because a dataclass default names it, and the formatter sorts plain classes BELOW the dataclasses |
 | ``runner.py`` | ``LintRunner``, ``LintReport`` — orchestrates rule execution; ``LintReportPayload``/``LintResultPayload`` are the validated wire shapes (dumped to JSON, loaded from history) |
 | ``structural/`` | The programmatic rules, one module per family (see **Structural families** below); ``structural/__init__.py`` is the registry — ``STRUCTURAL_RULES``, ``RULE_BY_NAME`` and the re-exported rule classes, so ``kompend.lint.structural`` stays the one import path |
 | ``flow.py`` | ``LintStep`` (the planned step names, also the history ``context``), ``run_full_lint_flow``/``_run_pass`` (one pass over a rule set, fixes persisted), ``persist_lint_fixes``, ``_make_lint_agent``, and ``CHECK_STEP_RULES`` — the deterministic rules of the ``check`` step |
@@ -84,14 +84,15 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   changing. ``rumdl`` and ``duplicate-references`` are config-dependent
   factories: they are registered by name in ``RULE_BY_NAME`` only and
   instantiated by ``LintRunner._resolve_rules``.
-- **A finding's details have a documented shape.** ``LintDetails`` in
-  ``details.py`` declares every key a rule writes into a finding's ``details``
-  (``LintResult.details`` and ``RemediationAction.details`` are typed with
-  it), so a typo in a key is a type error instead of a silently different
-  record in the lint history. A new key is declared there first, in the block
-  of the rule that owns it; a fix path may add ``error`` to a finding that
-  already carries ``path``. The reader drops nothing — a legacy record keeps
-  every key it carries.
+- **A finding's details have a documented shape.** ``LintField`` in
+  ``details.py`` owns every key a rule writes into a finding's ``details``;
+  ``LintDetails`` declares its type, and both ``LintResult.details`` and
+  ``RemediationAction.details`` are typed with it. Write and read through the
+  enum member — a bare key string is a field-name literal. A typo is then a
+  type error instead of a silently different record in the lint history. A new
+  key is declared in both, in the block of the rule that owns it; a fix path
+  may add ``error`` to a finding that already carries ``path``. The reader
+  drops nothing — a legacy record keeps every key it carries.
 - **Rule names and detail keys are contracts.** Rule names are dispatched by
   string outside this package (``gap_analysis.py``, ``runner.py``, ``flow.py``),
   and ``broken-wikilinks`` findings carry the ``alias_of``/``target`` detail

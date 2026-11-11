@@ -27,6 +27,7 @@ from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.lint import _remediation_gaps as gaps_module
 from kompend.lint.base import BaseLintRule, LintReport, LintResult, LintRuleOutcome, RemediationStatus, Severity
+from kompend.lint.details import LintField
 from kompend.lint.flow import CHECK_STEP_RULES
 from kompend.lint.history import LintRunOptions, entry_from_report, report_from_dict
 from kompend.lint.llm_rules import (
@@ -441,8 +442,8 @@ class TestHeadingSkipRule:
         results = rule.check(wiki)
         failures = [r for r in results if r.outcome == LintRuleOutcome.FAIL]
         assert len(failures) == 1
-        assert failures[0].details["from"] == 1
-        assert failures[0].details["to"] == 3
+        assert failures[0].details.get(LintField.START) == 1
+        assert failures[0].details.get(LintField.STOP) == 3
 
     def test_no_headings_passes(self) -> None:
         wiki = _make_wiki([_make_node("n1", "Alpha", "No headings here")])

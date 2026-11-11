@@ -12,6 +12,7 @@ import re
 
 from kompend.core.models import CompiledWiki
 from kompend.lint.base import BaseLintRule, LintResult, LintRuleOutcome, Severity
+from kompend.lint.details import LintField
 from kompend.lint.structural.links import _extract_wikilinks, _node_titles_index
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s", re.MULTILINE)
@@ -142,7 +143,7 @@ class HeadingSkipRule(BaseLintRule):
                             severity=Severity.WARNING,
                             message=f"Heading skip h{prev} → h{level} in page '{node.title}'",
                             page_id=node.id,
-                            details={"from": prev, "to": level},
+                            details={LintField.START: prev, LintField.STOP: level},
                         )
                     )
                 prev = level
