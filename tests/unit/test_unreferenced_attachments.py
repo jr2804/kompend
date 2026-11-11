@@ -261,6 +261,45 @@ def test_a_readable_page_does_not_disable_the_rule(tmp_path: Path) -> None:
     assert not (tmp_path / stale).exists()
 
 
+def test_the_finding_names_the_rule_not_the_manifest(tmp_path: Path) -> None:
+    """The message states what condemns the file, and it is not the manifest.
+
+    The manifest is consulted only for tombstoning (:meth:`fix`), because
+    auto-adoption registers writer copies too — so a file with a manifest row is
+    prunable and one without a row is not more prunable. The old wording
+    ("and the manifest does not register it") described the opposite rule and
+    contradicted the class docstring a reader checks it against.
+    """
+    _source(tmp_path)
+    stale = _writer_copy(tmp_path, _STEM, "report_img_15.png")
+    _register(tmp_path, stale)  # a manifest row changes nothing
+    _page(tmp_path, None)
+
+    rule = UnreferencedAttachmentsRule()
+    results = rule.check(_wiki(), sources_dir=str(VaultPaths(tmp_path).sources_dir))
+
+    assert [r.outcome for r in results] == [LintRuleOutcome.FAIL]
+    assert results[0].details["path"] == stale
+    assert "manifest" not in results[0].message
+    assert results[0].message.startswith(f"Unreferenced attachment '{stale}' — no page links it")
+
+
+def test_a_link_that_climbs_out_of_the_vault_proves_nothing(tmp_path: Path) -> None:
+    """An out-of-vault target is unknown, not a reference — and not a crash.
+
+    Not a regression test for the ``rel_to_vault`` swap: the old ``os.path``
+    body answered ``None`` here too, and the nine link-form tests already fail
+    on a careless one-line swap. This pins the third answer itself, so a later
+    rewrite (a bare ``rel_to_vault`` call, or one that resolves symlinks) cannot
+    turn a foreign path into a false reference or an exception.
+    """
+    _source(tmp_path)
+    stale = _writer_copy(tmp_path, _STEM, "report_img_16.png")
+    _page_raw(tmp_path, "![fig](../../../../elsewhere/attachments/report/report_img_16.png)")
+
+    assert unreferenced_attachment_files(tmp_path) == [stale]
+
+
 def test_an_unreadable_cache_entry_keeps_the_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
     """A cache probe that fails must not read as "not a writer copy" — keep the file.
 

@@ -107,9 +107,9 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   forms from older kompend versions (the slug grew a path prefix when sources
   moved into subdirectories) and the pages still link those directories — the
   source is alive, only the directory name is history. Deleting such a file
-  breaks the wiki (371 files, 1391 links in the p863 vault). The kept files
-  are reported as one PASS summary; only files no page links to stay in the
-  FAIL set.
+  breaks the wiki (a legacy-slug vault had 1391 live links into it). The kept
+  files are reported as one PASS summary; only files no page links to stay in
+  the FAIL set.
 - **A link target is parsed, not pattern-matched.** ``_link_targets`` reads a
   page with markdown-it-py (``commonmark`` + ``html``) and takes the
   destination from image/link tokens plus ``src``/``href`` in raw HTML. Three
