@@ -99,6 +99,6 @@ goes to the active conversational agent.
   tests/unit/test_acp_provider_wire.py -q` — provider store and wire routes,
   agent install/remove, definitions, registry, model selection, session
   capabilities.
-- End to end: `.kompend/tmp/smoke_providers_wire.py` (real `kompend agent` over
+- End to end: a throwaway probe in the OS temp dir (real `kompend agent` over
   stdio JSON-RPC against a local OpenAI stand-in) shows `providers/set` then a
   prompt reaching the injected `baseUrl` with the injected auth header.
