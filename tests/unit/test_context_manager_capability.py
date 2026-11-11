@@ -14,6 +14,7 @@ from pydantic_ai.messages import (
     ModelResponse,
     TextPart,
     ToolCallPart,
+    ToolReturnPart,
     UserPromptPart,
 )
 from pydantic_ai.models import ModelRequestContext, ModelRequestParameters
@@ -323,7 +324,12 @@ class TestConservativeDensity:
         assert estimated == 40_500 + _conservative_tokens("y" * 5_000)
 
     async def test_a_trim_that_still_exceeds_the_trigger_says_so(self, caplog: pytest.LogCaptureFixture) -> None:
-        """The retained tail itself can be over budget — one part no trim can drop."""
+        """A part the clamp may not drop — half a tool pair — still warns.
+
+        The return cannot go without its call (a provider rejects it), so the
+        request stays over budget and the line has to say so instead of
+        pretending the trim fixed it.
+        """
         capability = build_sliding_compaction(
             context_window=64_000,
             compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
@@ -331,17 +337,19 @@ class TestConservativeDensity:
             keep_tokens=8_000,
         )
         messages = _heavy_history(messages=6, chars_per_message=9_200)
-        echo = ModelRequest(parts=[UserPromptPart(content="z" * 300_000)])
-        messages.append(echo)
+        messages.append(ModelResponse(parts=[ToolCallPart(tool_name="read_source", args={}, tool_call_id="call-1")]))
+        messages.append(ModelRequest(parts=[ToolReturnPart(tool_name="read_source", content="z" * 300_000, tool_call_id="call-1")]))
         ctx = _ctx()
         ctx.messages[:] = messages
 
-        with caplog.at_level("WARNING", logger="kompend.agents.context_manager"):
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
             await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
 
         text = caplog.text
-        assert "trim kept" in text
+        assert "Sliding-window trim" in text
+        assert "largest ~" in text
         assert "cannot reclaim more" in text
+        assert "dropped the oversized part(s)" not in text
 
     def _capability(self) -> SlidingWindowCompaction:
         return build_sliding_compaction(
@@ -350,6 +358,112 @@ class TestConservativeDensity:
             keep_messages=_SLIDING_KEEP_MESSAGES,
             keep_tokens=8_000,
         )
+
+
+class TestOversizedPartClamp:
+    """A trim that still exceeds the trigger must not keep one oversized part.
+
+    Regression: the p863 run trimmed 40 messages and still carried one
+    380 538-character retry-feedback part — an echo of a response that had
+    already reported 84 325 output tokens. No amount of dropping older
+    messages could bring that request under budget, and the provider refused
+    it ("request (90154 tokens) exceeds the available context size (65536)").
+    Such a part is dropped, and the trim's one log line says so.
+    """
+
+    async def test_an_oversized_part_is_dropped_and_the_history_fits(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """(a) The p863 shape: drop the echo, and the retained tail now fits."""
+        capability = _sliding()
+        echo = _echo(chars=300_000)
+        ctx = _ctx()
+        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), echo]
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert echo not in ctx.messages
+        trigger = int(64_000 * _SLIDING_COMPRESS_THRESHOLD)
+        assert estimate_context_tokens(ctx.messages, _conservative_tokens) <= trigger
+        assert "dropped the oversized part(s) no trim could fit" in caplog.text
+
+    async def test_the_pinned_task_assignment_is_never_dropped(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """(b) A task assignment over budget is kept, and the log says so loudly."""
+        capability = _sliding()
+        task = ModelRequest(parts=[pin("w" * 400_000)])
+        ctx = _ctx()
+        ctx.messages[:] = [task, *_heavy_history(messages=3, chars_per_message=9_200)[1:]]
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        pinned = [
+            len(_text(part))
+            for message in ctx.messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, UserPromptPart) and is_pinned(part)
+        ]
+        assert pinned == [400_000]
+        assert "this request cannot be saved" in caplog.text
+
+    async def test_a_normal_history_is_untouched_and_stays_quiet(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """(c) Nothing oversized means no drop and no clamp line."""
+        capability = _sliding()
+        ctx = _ctx()
+        ctx.messages[:] = _heavy_history(messages=6, chars_per_message=9_200)
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert "dropped the oversized part(s)" not in caplog.text
+        assert "cannot reclaim more" not in caplog.text
+
+    async def test_the_log_names_the_dropped_part_and_the_largest_survivor(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """(d) One line carries both facts, so a run log explains the ranking."""
+        capability = _sliding()
+        echo = _echo(chars=300_000)
+        ctx = _ctx()
+        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), echo]
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        record = next(record for record in caplog.records if "dropped the oversized part(s)" in record.getMessage())
+        text = record.getMessage()
+        assert "request ~120000 token(s) [user-prompt]" in text
+        assert "largest ~" in text
+
+    async def test_the_growth_gated_stack_clamps_too(self) -> None:
+        """The tiered path is clamped as well, not just the sliding preset."""
+        gate = GrowthGatedCompaction(
+            strategy=TieredCompaction(
+                tiers=[cast(Any, _RecordingStrategy())],
+                target_fraction=_SLIDING_COMPRESS_THRESHOLD,
+                context_window=64_000,
+                tokenizer=_conservative_tokens,
+            ),
+            min_growth_tokens=0,
+            tokenizer=_conservative_tokens,
+        )
+        echo = _echo(chars=300_000)
+        messages = [*_heavy_history(messages=6, chars_per_message=9_200), echo]
+
+        result = await gate.compact(messages, _ctx())
+
+        assert echo not in result
+        assert result
 
 
 class TestFallbackCompaction:
@@ -824,6 +938,25 @@ def _short_history() -> list[ModelMessage]:
         ModelRequest(parts=[UserPromptPart(content="next step")]),
         ModelResponse(parts=[TextPart(content="more work")]),
     ]
+
+
+def _sliding() -> SlidingWindowCompaction:
+    """The ``sliding`` preset as the agent builds it, for the clamp tests."""
+    return build_sliding_compaction(
+        context_window=64_000,
+        compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
+        keep_messages=_SLIDING_KEEP_MESSAGES,
+        keep_tokens=8_000,
+    )
+
+
+def _echo(*, chars: int) -> ModelRequest:
+    """One oversized user-voice message: the p863 retry echo, by size.
+
+    ``retry-feedback`` is what the real one was; a user prompt is the same
+    shape for the clamp, which only reads size and the pin.
+    """
+    return ModelRequest(parts=[UserPromptPart(content="z" * chars)])
 
 
 def _heavy_history(*, messages: int, chars_per_message: int) -> list[ModelMessage]:

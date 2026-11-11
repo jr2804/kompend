@@ -417,10 +417,16 @@ What the estimate cannot save is a request dominated by one part. In the
 p863 failure the retained tail held a single 380 538-character
 `RetryFeedbackPart` — an echo of a response that had already reported
 84 325 output tokens — so no amount of dropping older messages could bring
-the request under the window. The preset therefore also warns when a trim
-succeeded but the surviving tail is still over the trigger, naming the
-largest message; that is the signal to look at the oversized part, not at
-the trigger.
+the request under the window. Trims therefore also **drop** a retained
+message whose estimate alone exceeds the trigger: it is an echo of an
+already-counted response, and keeping it makes the request unshippable. Two
+messages are never dropped that way — the pinned first user turn (the task
+assignment; if it alone is over budget the trim warns that the request
+cannot be saved) and either half of a tool call/return pair (a provider
+rejects a return without its call). One log line carries both facts: the
+dropped part with its size, and the largest surviving message with its
+role and estimate, so a run log explains a ranking instead of merely
+complaining about it.
 
 The stack runs cheapest first and stops as soon as the history fits:
 

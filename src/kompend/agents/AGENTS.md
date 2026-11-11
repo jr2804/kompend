@@ -60,28 +60,28 @@ The base class provides:
   built on first `run()`, so tests import the class without a running model
 - **Context management** — `build_fallback_compaction()`
   (`context_manager.py`) comes from the `context_manager` preset
-  (`"default"`/`"aggressive"`/`"sliding"`/`false`) and is tuned by
+  (`"default"`/`"aggressive"`/`"sliding"`/`false`), tuned by
   `[compile.llm.compaction]` (`CompactionConfig`: `judge`, `keep_tokens`,
-  `min_growth_tokens`). Default/aggressive is a `_PinningFallbackCompaction`
-  whose first entry is a `GrowthGatedCompaction` around a `TieredCompaction`
-  (clear tool results → dedupe superseded reads via `_file_key` →
-  `RelevanceCompaction` when a `judge` is set → doctrine summarizer; cheapest
-  tier first, stopping when the history fits); the second entry is a
-  token-triggered `SlidingWindowCompaction` used only when the summarizer
-  cannot answer (`UnexpectedModelBehavior`, pydantic/pydantic-ai#12307).
-  The `sliding` preset is `build_sliding_compaction()`: a
-  `_GuardedSlidingCompaction` trim on a token trigger (not just the
-  100-message count) with the same pin, gate and per-trim log, every figure
-  using `_conservative_tokens` (2.5 chars/token, measured; see the guide).
+  `min_growth_tokens`). Default/aggressive is a `_PinningFallbackCompaction`:
+  a `GrowthGatedCompaction` around a `TieredCompaction` (clear tool results →
+  dedupe superseded reads via `_file_key` → `RelevanceCompaction` when a
+  `judge` is set → doctrine summarizer; cheapest first, stopping when the
+  history fits), then a token-triggered `SlidingWindowCompaction` for when the
+  summarizer cannot answer (`UnexpectedModelBehavior`,
+  pydantic/pydantic-ai#12307). The `sliding` preset is
+  `build_sliding_compaction()`: a `_GuardedSlidingCompaction` trim on a token
+  trigger (not just the 100-message count) with the same pin and gate, every
+  figure using `_conservative_tokens` (2.5 chars/token; see the guide).
 - **Compaction invariants** — `_pin_first_user_turn` pins the task assignment
   (harness `pin()`, model-invisible) before any tier runs and every strategy
-  re-injects it; the gate re-arms only after `min_growth_tokens` of growth
-  since the last pass through it — a skip never moves the baseline, so growth
-  accumulates (a fold invalidates the provider prompt cache from the rewrite
-  point on); summaries come from `templates/compaction/doctrine.md.j2`;
-  every trim is logged with kept/dropped counts and token estimates — a silent
-  trim is indistinguishable from no compaction. Never add a compaction path
-  that skips the pin, crops instead of folding, or fires on message count alone.
+  re-injects it; the gate re-arms only after `min_growth_tokens` of growth since
+  the last pass — a skip never moves the baseline, so growth accumulates (a fold
+  invalidates the provider prompt cache from the rewrite point on); summaries
+  come from `templates/compaction/doctrine.md.j2`; every trim is logged, and a
+  retained message that alone exceeds the trigger is dropped (an echo of an
+  already-counted response) — never the pin, never half a tool call/return pair.
+  A silent trim is indistinguishable from no compaction; never add a path that
+  skips the pin, crops instead of folding, or fires on message count alone.
   `compact_on_request: ClassVar[bool]` (default `False`) adds
   model-triggered `CompactOnRequest` for history-threading agents only.
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional

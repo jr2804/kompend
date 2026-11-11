@@ -71,8 +71,15 @@ from typing import Any, Final
 
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.exceptions import UnexpectedModelBehavior
-from pydantic_ai.messages import INVALID_JSON_KEY, ModelMessage, ModelRequest, ToolCallPart, UserPromptPart
-from pydantic_ai.models import Model, ModelRequestContext
+from pydantic_ai.messages import (
+    INVALID_JSON_KEY,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
+    ToolCallPart,
+    UserPromptPart,
+)
+from pydantic_ai.models import AbstractModel, Model, ModelRequestContext
 from pydantic_ai.tools import AgentDepsT, RunContext
 from pydantic_ai_harness.compaction import (
     DEFAULT_CONTEXT_WINDOW,
@@ -175,6 +182,40 @@ _IDEMPOTENT_READ_TOOLS: Final[frozenset[str]] = frozenset(
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True)
+class _ClampOutcome:
+    """What a clamp pass left behind, and what it says about the budget.
+
+    ``messages`` is the surviving history, ``dropped`` names every oversized
+    message that went (for one log line, not one line each), and ``pinned_over``
+    records that the task assignment itself exceeds the trigger — the case no
+    later trim can rescue.
+    """
+
+    messages: list[ModelMessage]
+    """The history after the clamp."""
+
+    dropped: list[str]
+    """Role and size of each dropped message, e.g. ``request ~152215 token(s) [retry-feedback]``."""
+
+    pinned_over: bool
+    """Whether the pinned task assignment alone exceeds the trigger."""
+
+    def merged_with(self, prior: _ClampOutcome) -> _ClampOutcome:
+        """Fold an earlier clamp pass into this one, for a single log line.
+
+        A wrapper clamps twice — before the strategy runs, so an un-fittable
+        part cannot skew what the strategy keeps, and after it, so the
+        guarantee holds whatever the strategy returned. Both passes feed one
+        line, or the log would report two partial stories.
+        """
+        return _ClampOutcome(
+            messages=self.messages,
+            dropped=[*prior.dropped, *self.dropped],
+            pinned_over=self.pinned_over or prior.pinned_over,
+        )
+
+
 @dataclass
 class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
     """Run the wrapped tiered stack only when the context grew.
@@ -249,9 +290,13 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
         pinned = _pin_first_user_turn(messages)
         if not self._gate_open(pinned):
             return pinned
-        compacted = await self.strategy.compact(pinned, ctx)
-        self._baseline_tokens = estimate_context_tokens(compacted, self.tokenizer)
-        return compacted
+        trigger = _tiered_target(self.strategy, ctx.model)
+        before = _clamp_oversized(pinned, trigger, self.tokenizer)
+        compacted = await self.strategy.compact(before.messages, ctx)
+        outcome = _clamp_oversized(compacted, trigger, self.tokenizer).merged_with(before)
+        _warn_if_still_over(outcome, trigger, self.tokenizer, label="Context compaction")
+        self._baseline_tokens = estimate_context_tokens(outcome.messages, self.tokenizer)
+        return outcome.messages
 
     async def before_model_request(
         self,
@@ -263,8 +308,17 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
         ctx.messages[:] = pinned
         if not self._gate_open(pinned):
             return request_context
+        trigger = _tiered_target(self.strategy, ctx.model)
+        before = _clamp_oversized(pinned, trigger, self.tokenizer)
+        if before.dropped:
+            ctx.messages[:] = before.messages
         request_context = await self.strategy.before_model_request(ctx, request_context)
-        self._baseline_tokens = estimate_context_tokens(ctx.messages, self.tokenizer)
+        outcome = _clamp_oversized(list(ctx.messages), trigger, self.tokenizer).merged_with(before)
+        if outcome.dropped:
+            ctx.messages[:] = outcome.messages
+            request_context = replace(request_context, messages=outcome.messages)
+        _warn_if_still_over(outcome, trigger, self.tokenizer, label="Context compaction")
+        self._baseline_tokens = estimate_context_tokens(outcome.messages, self.tokenizer)
         return request_context
 
     def _gate_open(self, pinned: list[ModelMessage]) -> bool:
@@ -298,11 +352,16 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
     * **Pinned task assignment.** The first user turn is marked with the pin
       contract before the trim (``_pin_first_user_turn``), so the trimmed
       history keeps the run's task verbatim.
+    * **A clamp.** A retained message that alone exceeds the trigger is
+      dropped: it is an echo of a response the provider already counted, and
+      trimming around it can never bring the request under budget. The p863
+      tail held one 380 538-char retry-feedback part, so dropping every older
+      message left the request at 90 154 actual tokens. The pinned task
+      assignment and either half of a tool call/return pair are never dropped.
     * **A record.** Every trim logs kept/dropped messages and the token
-      estimate before/after; a trim that reclaims nothing says so, and a trim
-      that leaves more than the trigger behind says that too — the p863 tail
-      held one 380 538-char retry-feedback part, so dropping every older
-      message could never have brought it under budget.
+      estimate before/after; a trim that reclaims nothing says so, and one
+      line names both what the clamp dropped and the largest survivor, so a
+      run log explains the ranking the provider saw.
 
     Every count this class compares comes from ``_conservative_tokens``, so
     the trigger, the recorded figures and ``keep_tokens`` all speak the same
@@ -327,10 +386,14 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
         messages: list[ModelMessage],
         ctx: RunContext[AgentDepsT],
     ) -> list[ModelMessage]:
-        """Trim, then record what was kept, what was dropped, and the cost."""
+        """Trim, clamp the tail, then record what was kept, what was dropped, and the cost."""
         before_messages = len(messages)
         before_tokens = estimate_context_tokens(messages, self.tokenizer)
-        compacted = await super().compact(messages, ctx)
+        trigger = self._trigger_tokens(ctx.model)
+        before = _clamp_oversized(messages, trigger, self.tokenizer)
+        compacted = await super().compact(before.messages, ctx)
+        outcome = _clamp_oversized(compacted, trigger, self.tokenizer).merged_with(before)
+        compacted = outcome.messages
         after_tokens = estimate_context_tokens(compacted, self.tokenizer)
         dropped = before_messages - len(compacted)
         if dropped > 0:
@@ -345,7 +408,6 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
                 before_tokens,
                 after_tokens,
             )
-            self._warn_if_still_over(compacted, after_tokens, ctx)
         else:
             logger.warning(
                 "Sliding-window trim reclaimed nothing: %d message(s), ~%d token(s) survive the %s-token tail",
@@ -353,6 +415,7 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
                 after_tokens,
                 self.keep_tokens,
             )
+        _warn_if_still_over(outcome, trigger, self.tokenizer, label="Sliding-window trim")
         return compacted
 
     async def before_model_request(
@@ -386,35 +449,13 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
             return request_context
         return await super().before_model_request(ctx, request_context)
 
-    def _warn_if_still_over(
-        self,
-        compacted: list[ModelMessage],
-        after_tokens: int,
-        ctx: RunContext[AgentDepsT],
-    ) -> None:
-        """Say so when the retained tail alone still exceeds the trigger.
-
-        A trim that drops messages yet leaves the history over the trigger
-        cannot do better on the next request: the tail is what it is. That is
-        the p863 shape — one 380 538-char retry-feedback part made up 39% of
-        the request — and without this line the run looks trimmed and healthy
-        right up to the provider's 400.
-        """
-        fraction = self.max_fraction
-        if fraction is None:
-            return
-        window = self.context_window or resolve_context_window(ctx.model) or self.fallback_context_window
-        trigger = max(1, int(window * fraction))
-        if after_tokens <= trigger:
-            return
-        largest = max(estimate_message_tokens(compacted, self.tokenizer), default=0)
-        logger.warning(
-            "Sliding-window trim kept %d message(s) still at ~%d token(s) against a %d-token trigger "
-            "(largest ~%d token(s)); the retained tail cannot reclaim more",
-            len(compacted),
-            after_tokens,
-            trigger,
-            largest,
+    def _trigger_tokens(self, model: AbstractModel | str) -> int | None:
+        """The token budget this trim compares against, ``None`` when it has none."""
+        return _fraction_trigger(
+            fraction=self.max_fraction,
+            context_window=self.context_window,
+            fallback_context_window=self.fallback_context_window,
+            model=model,
         )
 
 
@@ -444,9 +485,18 @@ class _LoggedSlidingWindowCompaction(SlidingWindowCompaction):
             "Summarizer failed; falling back to sliding-window trimming of %d message(s)",
             len(messages),
         )
-        compacted = await super().compact(messages, ctx)
-        logger.warning("Sliding-window fallback kept %d of %d message(s)", len(compacted), len(messages))
-        return compacted
+        trigger = _fraction_trigger(
+            fraction=self.max_fraction,
+            context_window=self.context_window,
+            fallback_context_window=self.fallback_context_window,
+            model=ctx.model,
+        )
+        before = _clamp_oversized(messages, trigger, self.tokenizer)
+        compacted = await super().compact(before.messages, ctx)
+        outcome = _clamp_oversized(compacted, trigger, self.tokenizer).merged_with(before)
+        logger.warning("Sliding-window fallback kept %d of %d message(s)", len(outcome.messages), len(messages))
+        _warn_if_still_over(outcome, trigger, self.tokenizer, label="Sliding-window fallback")
+        return outcome.messages
 
 
 class _PinningFallbackCompaction(FallbackCompaction):
@@ -710,6 +760,170 @@ def build_summarizing_compaction(
         context_window=context_window,
         instructions=instructions,
         tokenizer=_conservative_tokens,
+    )
+
+
+def _fraction_trigger(
+    *,
+    fraction: float | None,
+    context_window: int | None,
+    fallback_context_window: int,
+    model: AbstractModel | str,
+) -> int | None:
+    """Resolve a fractional trigger to tokens, or ``None`` when there is none.
+
+    Mirrors the harness's own resolution so kompend's clamp measures against
+    exactly the budget the strategy measured against.
+    """
+    if fraction is None:
+        return None
+    window = context_window or resolve_context_window(model) or fallback_context_window
+    return max(1, int(window * fraction))
+
+
+def _tiered_target(strategy: Any, model: AbstractModel | str) -> int | None:
+    """The token target a ``TieredCompaction`` escalates toward.
+
+    Read through ``_target`` — the harness method the tiered stack itself
+    calls — so the clamp cannot disagree with the escalation loop about the
+    budget, and so a stack configured with an absolute target works too.
+    """
+    target = getattr(strategy, "_target", None)
+    if target is None:
+        return None
+    resolved: int | None = target(model)
+    return resolved
+
+
+def _clamp_oversized(
+    messages: list[ModelMessage],
+    trigger: int | None,
+    tokenizer: Callable[[str], int] | None,
+) -> _ClampOutcome:
+    """Drop retained messages that alone exceed *trigger*; report what went.
+
+    A message the provider already counted can be larger than the budget for
+    the whole request. No amount of trimming around it makes the request fit,
+    and re-sending it can only end in a provider 400 after minutes of upstream
+    work — the p863 run sent one 380 538-char retry-feedback part inside a
+    65 536-token window and was refused. Such a message is an echo of a
+    response whose cost is already in that response's usage, so it is dropped
+    rather than split: a truncated echo would still be sent as prompt text.
+
+    Two things are never dropped, because a request without them answers the
+    wrong question:
+
+    * the pinned first user turn — the run's task assignment. If it alone is
+      over budget the request cannot be saved, and the caller says so loudly.
+    * either half of a tool call/return pair — a provider rejects a return
+      whose call is gone, so the pair outlives the budget instead.
+    """
+    if trigger is None or not messages:
+        return _ClampOutcome(messages, [], False)
+    counts = estimate_message_tokens(messages, tokenizer)
+    if len(counts) != len(messages):  # pragma: no cover - the harness pairs them
+        return _ClampOutcome(messages, [], False)
+    oversized = [index for index, count in enumerate(counts) if count > trigger]
+    if not oversized:
+        return _ClampOutcome(messages, [], False)
+    pinned_index = _pinned_index(messages)
+    paired = _paired_indexes(messages)
+    dropped: list[str] = []
+    survivors: list[ModelMessage] = []
+    for index, message in enumerate(messages):
+        if index not in oversized or index == pinned_index or index in paired:
+            survivors.append(message)
+            continue
+        dropped.append(_describe(message, counts[index]))
+    return _ClampOutcome(survivors, dropped, pinned_index in oversized)
+
+
+def _pinned_index(messages: Sequence[ModelMessage]) -> int | None:
+    """Index of the message holding the pinned task assignment, if any."""
+    for index, message in enumerate(messages):
+        if isinstance(message, ModelRequest) and any(is_pinned(part) for part in message.parts):
+            return index
+    return None
+
+
+def _paired_indexes(messages: Sequence[ModelMessage]) -> set[int]:
+    """Indexes of messages on either side of a tool call/return pair.
+
+    A return whose call was dropped is rejected by the provider, so the pair
+    is kept whole rather than half-dropped. Call ids are only unique within a
+    run, and a provider may reuse one, so a return is matched to the nearest
+    preceding call.
+    """
+    calls: dict[str, int] = {}
+    pairs: set[int] = set()
+    for index, message in enumerate(messages):
+        if isinstance(message, ModelResponse):
+            for part in message.parts:
+                if isinstance(part, ToolCallPart) and part.tool_call_id:
+                    calls[part.tool_call_id] = index
+            continue
+        for part in message.parts:
+            tool_call_id = getattr(part, "tool_call_id", None)
+            call_index = calls.get(tool_call_id) if isinstance(tool_call_id, str) else None
+            if call_index is not None:
+                pairs.update((call_index, index))
+    return pairs
+
+
+def _describe(message: ModelMessage, tokens: int) -> str:
+    """Name a dropped message by role and size, for the trim's log line."""
+    role = "response" if isinstance(message, ModelResponse) else "request"
+    kinds = ",".join(sorted({part.part_kind for part in message.parts}))
+    return f"{role} ~{tokens} token(s) [{kinds}]"
+
+
+def _warn_if_still_over(
+    outcome: _ClampOutcome,
+    trigger: int | None,
+    tokenizer: Callable[[str], int] | None,
+    *,
+    label: str,
+) -> None:
+    """One line naming what the clamp dropped and the largest survivor.
+
+    Two facts belong together because either alone misleads: a trim that
+    dropped the oversized part and now fits is a success, while one that kept
+    it is a request about to be refused, and only the pair says which happened.
+    The largest survivor is also the number to look at when the request is
+    still over budget — the tail is what it is — so the line keeps the wording
+    an operator greps for and takes the severity that matches the outcome.
+
+    A pinned task assignment that alone exceeds the trigger is the one case no
+    later trim can rescue: it is kept, and the warning says the request cannot
+    be saved rather than implying another pass would help.
+    """
+    if trigger is None:
+        return
+    counts = estimate_message_tokens(outcome.messages, tokenizer)
+    largest = max(counts, default=0)
+    estimated = estimate_context_tokens(outcome.messages, tokenizer)
+    over = estimated > trigger
+    if not outcome.dropped and not over:
+        return
+    clamp = ""
+    if outcome.dropped:
+        clamp = f"dropped the oversized part(s) no trim could fit ({'; '.join(outcome.dropped)}); "
+    if outcome.pinned_over:
+        verdict = "the pinned task assignment alone exceeds it, so this request cannot be saved"
+    elif over:
+        verdict = "the retained tail cannot reclaim more"
+    else:
+        verdict = "it fits now"
+    emit = logger.warning if (over or outcome.pinned_over) else logger.info
+    emit(
+        "%s %skept %d message(s) at ~%d token(s) against a %d-token trigger (largest ~%d token(s)); %s",
+        label,
+        clamp,
+        len(outcome.messages),
+        estimated,
+        trigger,
+        largest,
+        verdict,
     )
 
 
