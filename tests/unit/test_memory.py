@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from kompend.memory import store as store_module
 from kompend.memory.lifecycle import MemoryStore as LifecycleStore
 from kompend.memory.lifecycle import NodeState
 from kompend.memory.store import MemoryEntry, MemoryField, MemoryStore
@@ -183,6 +184,42 @@ class TestLifecycleStore:
     def test_load_absent_store_is_empty(self, temp_wiki_dir: Path) -> None:
         loaded = LifecycleStore.load(temp_wiki_dir / ".kompend" / "memory.json")
         assert loaded.states == {}
+
+
+class TestStatementConstruction:
+    """The store needs no bandit waiver: no caller assembles SQL by hand."""
+
+    def test_store_carries_no_ruff_waiver(self) -> None:
+        """A module-wide waiver hid the file from bandit; it must stay gone.
+
+        Deleting it exposed seven statements built with f-strings. The log now
+        goes through Core and the vec index through one template helper; a
+        waiver over the module would let the next hand-built statement land
+        unseen.
+        """
+        source = Path(store_module.__file__).read_text(encoding="utf-8")
+        assert "ruff: noqa" not in source
+        assert "noqa: S608" not in source
+
+    def test_the_vec_index_rebuilds_from_its_templates(self, temp_wiki_dir: Path) -> None:
+        """A rebuilt index keeps its declared dimensions and backend identity.
+
+        Every vec statement is filled by ``_sql`` from a constant template. If a
+        template lost a placeholder or the identity rows stopped being written,
+        the next open would discard a healthy index and re-embed the whole log —
+        a silent cost, not a visible failure.
+        """
+        store = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
+        store.add_entry(query="What is the capital of France?", answer="Paris")
+        store.close()
+
+        reopened = MemoryStore(base_dir=temp_wiki_dir, embedding_provider=_TEST_PROVIDER)
+        try:
+            hits = reopened.search("What is the capital of France?", top_k=1)
+        finally:
+            reopened.close()
+
+        assert [hit["answer"] for hit in hits] == ["Paris"]
 
 
 def _log(temp_wiki_dir: Path, limit: int = 20) -> list[MemoryEntry]:

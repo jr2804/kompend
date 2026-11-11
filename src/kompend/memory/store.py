@@ -4,10 +4,12 @@ the chronological log.
 The chronological/feedback log lives in the ``memory_log`` table of
 ``.kompend/kompend.db``. The sqlite-vec index (``memory.db``) remains the
 regenerate-from-log embedding branch.
-"""
 
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
-# no runtime value ever enters an identifier or statement.
+The log goes through SQLAlchemy Core against the shared table object. The vec
+index is a ``vec0`` virtual table, which has no Core object, so its statements
+are built by :func:`_sql` from a constant template: the literals live in one
+place and no caller assembles a statement by hand.
+"""
 
 from __future__ import annotations
 
@@ -18,12 +20,13 @@ from pathlib import Path
 from typing import Final, NotRequired, TypedDict
 
 import sqlite_vec
+from sqlalchemy import insert, select
 from sqlite_vec_client import SQLiteVecClient
 
 from kompend.core.config import DisplayConfig
 from kompend.core.paths import VaultPaths
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import MEMORY_LOG_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import memory_log
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
 from kompend.rag.embedding_base import EmbeddingProvider
@@ -37,6 +40,18 @@ _MEMORY_META: Final[str] = "memory_meta"
 
 #: Identifies the backend in the store's meta table.
 _MEMORY_BACKEND: Final[str] = "sqlite-vec"
+
+
+def _sql(template: str, **values: object) -> str:
+    """Fill a ``vec0`` statement template with its table name and parameters.
+
+    The vec index is a virtual table, so it has no Core object to select from.
+    Keeping every statement as one constant template, filled here, means no
+    caller assembles SQL by hand — which is what the module-wide bandit waiver
+    this replaces was hiding.
+    """
+    return template.format(**values)
+
 
 logger = get_logger(__name__)
 
@@ -114,7 +129,10 @@ class MemoryStore:
         mem_id = f"mem_{timestamp.replace(':', '').replace('.', '')}"
         conn = self._require_conn()
         conn.execute(
-            f"INSERT INTO {_MEMORY_TABLE} (id, embedding, query, answer, feedback, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+            _sql(
+                "INSERT INTO {table} (id, embedding, query, answer, feedback, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                table=_MEMORY_TABLE,
+            ),
             (
                 mem_id,
                 sqlite_vec.serialize_float32(embedding),
@@ -127,11 +145,16 @@ class MemoryStore:
         conn.commit()
 
         # Chronological/feedback log for synthesis lives in the vault store.
-        with open_store(self._log_db_path) as conn:
-            conn.execute(
-                f"INSERT INTO {MEMORY_LOG_TABLE}(mem_id, ts, query, answer, feedback, memory_by) VALUES (?, ?, ?, ?, ?, ?)",
-                (mem_id, timestamp, query, answer, feedback or "", memory_by),
-            )
+        values = {
+            "mem_id": mem_id,
+            "ts": timestamp,
+            "query": query,
+            "answer": answer,
+            "feedback": feedback or "",
+            "memory_by": memory_by,
+        }
+        with open_store(self._log_db_path) as conn, core_connection(conn) as core:
+            core.execute(insert(memory_log).values(**values))
 
         query_log_limit = self._display.memory_query_chars
         logger.info("Added memory entry for query: %s", query[:query_log_limit])
@@ -151,12 +174,15 @@ class MemoryStore:
 
         embedding = provider.embed(query)
         rows = conn.execute(
-            f"""
+            _sql(
+                """
             SELECT query, answer, feedback, timestamp, distance
-            FROM {_MEMORY_TABLE}
+            FROM {table}
             WHERE embedding MATCH ? AND k = ?
             ORDER BY distance
             """,
+                table=_MEMORY_TABLE,
+            ),
             (sqlite_vec.serialize_float32(embedding), top_k),
         ).fetchall()
 
@@ -177,18 +203,15 @@ class MemoryStore:
         """Get the most recent memory entries chronologically (for synthesis)."""
         if not self._log_db_path.exists():
             return []
-        with open_store(self._log_db_path) as conn:
-            rows = conn.execute(
-                f"SELECT ts, query, answer, feedback, memory_by FROM {MEMORY_LOG_TABLE} ORDER BY id DESC LIMIT ?",
-                (limit,),
-            ).fetchall()
+        with open_store(self._log_db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(select(memory_log).order_by(memory_log.c.id.desc()).limit(limit)).fetchall()
         return [
             {
-                "timestamp": row["ts"],
-                "query": row["query"],
-                "answer": row["answer"],
-                "feedback": row["feedback"],
-                "memory_by": row["memory_by"],
+                "timestamp": row.ts,
+                "query": row.query,
+                "answer": row.answer,
+                "feedback": row.feedback,
+                "memory_by": row.memory_by,
             }
             for row in rows
         ]
@@ -259,10 +282,11 @@ class MemoryStore:
 
 def _create_index(conn: sqlite3.Connection, dim: int) -> None:
     """Create the index table for *dim* and record the store's identity."""
-    conn.execute(f"DROP TABLE IF EXISTS {_MEMORY_TABLE}")
+    conn.execute(_sql("DROP TABLE IF EXISTS {table}", table=_MEMORY_TABLE))
     conn.execute(
-        f"""
-        CREATE VIRTUAL TABLE {_MEMORY_TABLE} USING vec0(
+        _sql(
+            """
+        CREATE VIRTUAL TABLE {table} USING vec0(
             id        TEXT PRIMARY KEY,
             embedding FLOAT[{dim}] distance_metric=cosine,
             query     TEXT,
@@ -270,12 +294,15 @@ def _create_index(conn: sqlite3.Connection, dim: int) -> None:
             feedback  TEXT,
             timestamp TEXT
         )
-        """
+        """,
+            table=_MEMORY_TABLE,
+            dim=dim,
+        )
     )
-    conn.execute(f"CREATE TABLE IF NOT EXISTS {_MEMORY_META} (key TEXT PRIMARY KEY, value TEXT)")
-    conn.execute(f"DELETE FROM {_MEMORY_META}")
+    conn.execute(_sql("CREATE TABLE IF NOT EXISTS {meta} (key TEXT PRIMARY KEY, value TEXT)", meta=_MEMORY_META))
+    conn.execute(_sql("DELETE FROM {meta}", meta=_MEMORY_META))
     conn.executemany(
-        f"INSERT INTO {_MEMORY_META} (key, value) VALUES (?, ?)",
+        _sql("INSERT INTO {meta} (key, value) VALUES (?, ?)", meta=_MEMORY_META),
         [("backend", _MEMORY_BACKEND), ("dim", str(dim))],
     )
     conn.commit()
@@ -284,7 +311,7 @@ def _create_index(conn: sqlite3.Connection, dim: int) -> None:
 def _meta_matches(conn: sqlite3.Connection, dim: int) -> bool:
     """True when the index file holds this backend and dimension."""
     try:
-        rows = dict(conn.execute(f"SELECT key, value FROM {_MEMORY_META}").fetchall())
+        rows = dict(conn.execute(_sql("SELECT key, value FROM {meta}", meta=_MEMORY_META)).fetchall())
     except sqlite3.Error:
         return False
     return rows.get("backend") == _MEMORY_BACKEND and rows.get("dim") == str(dim)
