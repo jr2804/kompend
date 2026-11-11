@@ -41,10 +41,11 @@ from kompend.compilation.flows.generation.segments import (
 from kompend.compilation.flows.generation.writer import (
     _SOURCE_WIKILINK_RE,
     PlaceholderPageError,
-    _reject_placeholder_pages,
     _resolve_page_kind,
     _sanitize_entity_type,
     assemble_wiki,
+    drop_placeholder_pages,
+    drop_unnameable_concepts,
 )
 from kompend.compilation.schema import GenerationOutput
 from kompend.compilation.source_search import SourceIndex
@@ -75,7 +76,7 @@ from kompend.core.utils.exceptions import (
 )
 from kompend.llm.decision import ErrorAction
 from kompend.llm.request_budget import RequestBudget
-from kompend.logging import get_logger
+from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 
 logger = get_logger(__name__)
 
@@ -192,6 +193,13 @@ def prepare_concepts(compiler: TwoPhaseRuntime, extractions: ExtractionSet) -> l
         max_sources=budget.concept_merge_max_sources,
     )
     concepts = _with_entity_pages(compiler, extractions, concepts)
+    concepts, unnameable = drop_unnameable_concepts(concepts)
+    if unnameable:
+        logger.warning(
+            "TwoPhase: dropped %d concept(s) whose name cannot carry a page title — %s",
+            len(unnameable),
+            ", ".join(repr(name) for name in unnameable[:LOG_SAMPLE_LIMIT]),
+        )
     if concepts:
         sample_limit = compiler._config.display.concept_names
         logger.info(
@@ -520,7 +528,7 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
             rejected_recovery = False
             if recovered is not None:
                 try:
-                    _reject_placeholder_pages(recovered, unit=seg_label)
+                    recovered = drop_placeholder_pages(recovered, unit=seg_label)
                 except PlaceholderPageError as exc:
                     rejected_recovery = True
                     record_unit_failure(
@@ -647,9 +655,10 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                     run_id=pass_run_id(seg_prefix, recovery.attempts + 1, passes) if seg_prefix else None,
                 )
                 resume_history = None  # only the first pass continues the old conversation
-                # Ingestion gate: a placeholder page must fail the unit on
-                # the existing failure path, never reach the wiki.
-                _reject_placeholder_pages(gen_output, unit=seg_label)
+                # Ingestion gate: a placeholder page never reaches the wiki.
+                # One junk page does not sink the honest pages beside it —
+                # the gate drops the offender and names it.
+                gen_output = drop_placeholder_pages(gen_output, unit=seg_label)
             except LLMContextOverflowError as exc:
                 # The unit did not fit the provider's window. Loop 1 earns
                 # it a smaller re-plan; only a unit that cannot shrink keeps

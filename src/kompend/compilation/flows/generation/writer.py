@@ -76,23 +76,70 @@ class PlaceholderPageError(EmptyAnswerError):
     """
 
 
-def _reject_placeholder_pages(gen_output: GenerationOutput, *, unit: str) -> None:
-    """Refuse the whole submission when any submitted page is a placeholder.
+def drop_placeholder_pages(gen_output: GenerationOutput, *, unit: str) -> GenerationOutput:
+    """Return *gen_output* without its placeholder pages.
 
     The gate sits where a model submission enters the pipeline: the live
-    pass result, and a transcript replayed from the step store. The
-    offender is never silently dropped — the whole
-    :class:`~kompend.compilation.schema.GenerationOutput` is refused with
-    :class:`PlaceholderPageError`, which routes through the pass loop's
-    existing failure path: the unit is recorded, and the segment either
-    re-runs or fails loudly. The placeholder page never reaches the wiki.
+    pass result, and a transcript replayed from the step store. A
+    placeholder page is not content — it cites no source, carries filler
+    body text, or wears a test identity for a title — so it never reaches
+    the wiki. It must not take the honest pages of the same submission
+    down with it, though: the offending page is dropped and named in a
+    warning, and the submission survives as long as one legitimate page
+    remains. Only when EVERY page is a placeholder is the submission
+    refused outright with :class:`PlaceholderPageError`, which routes
+    through the pass loop's existing failure path: the unit is recorded,
+    and the segment either re-runs or fails loudly.
+
+    A model that answers ten pages, nine of them sourced prose and one of
+    them a one-character title, has written nine pages worth keeping.
+    Refusing all ten turned one junk title into a failed segment, and a
+    failed segment into a failed run.
     """
+    kept: list[GenerationPage] = []
     offenders: list[str] = []
     for page in gen_output.pages:
-        if reasons := _placeholder_reasons(page):
+        reasons = _placeholder_reasons(page)
+        if reasons:
             offenders.append(f"'{page.title or '(untitled)'}' ({'; '.join(reasons)})")
-    if offenders:
+            continue
+        kept.append(page)
+    if not offenders:
+        return gen_output
+    if not kept:
         raise PlaceholderPageError(f"{unit}: rejected {len(offenders)} placeholder page(s) — {'; '.join(offenders)}")
+    logger.warning(
+        "%s: dropped %d placeholder page(s) of %d — %s",
+        unit,
+        len(offenders),
+        len(gen_output.pages),
+        "; ".join(offenders),
+    )
+    return GenerationOutput(pages=kept)
+
+
+def drop_unnameable_concepts(concepts: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], list[str]]:
+    """Split off concepts whose name cannot become a page title.
+
+    A concept name shorter than :data:`_MIN_PAGE_TITLE_CHARS` characters —
+    a bare ``x`` lifted out of a code listing — can never carry a page:
+    the ingestion gate rejects every page written for it, so the
+    generation loop chases that one concept until its pass budget runs
+    out and the segment fails. Such a name is extraction noise, not a
+    topic, and it is dropped here — loudly — before it reaches the
+    concept pool.
+
+    Returns the kept concepts and the dropped names.
+    """
+    kept: list[dict[str, Any]] = []
+    dropped: list[str] = []
+    for concept in concepts:
+        name = str(concept.get(ExtractionField.NAME, "")).strip()
+        if len(name) < _MIN_PAGE_TITLE_CHARS:
+            dropped.append(name or "(untitled)")
+            continue
+        kept.append(concept)
+    return kept, dropped
 
 
 def _placeholder_reasons(page: GenerationPage) -> list[str]:

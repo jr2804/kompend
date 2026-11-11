@@ -4,9 +4,11 @@ The two-phase writer can self-test its ``final_result`` tool and submit
 placeholder pages instead of summaries — bodies of filler text, bare
 "x" titles, pages with no provenance at all. A reviewed wiki carried
 exactly such pages (``concepts/x.md``, ``entities/entity/rs-polq-cli.md``),
-so the gate refuses the whole submission the moment a placeholder page
-enters the pipeline: the unit fails on the existing empty-answer path,
-and the placeholder page is never written to the wiki.
+so the gate never lets a placeholder page into the pipeline: the
+offending page is dropped and named, and a submission that is nothing
+but placeholders fails the unit on the existing empty-answer path. The
+honest pages beside one junk page survive — a model that answers ten
+pages, nine of them sourced prose, has written nine pages worth keeping.
 """
 
 from __future__ import annotations
@@ -27,7 +29,8 @@ from kompend.compilation.flows.generation import (
     PlaceholderMarker,
     PlaceholderPageError,
     _placeholder_reasons,
-    _reject_placeholder_pages,
+    drop_placeholder_pages,
+    drop_unnameable_concepts,
     generate_all_pages_agentic,
 )
 from kompend.compilation.schema import (
@@ -114,36 +117,62 @@ class TestPlaceholderReasons:
 
 
 class TestRejectPlaceholderPages:
-    """The gate refuses a submission that carries any placeholder page."""
+    """The gate refuses the placeholder pages, not the honest ones beside them."""
 
     def test_valid_submission_passes(self) -> None:
-        """A submission of legitimate pages raises nothing."""
+        """A submission of legitimate pages comes back untouched."""
         gen_output = GenerationOutput(
             pages=[
                 GenerationPage(title="Listening Effort", content="Real prose body about listening.", provenance=["sources/src.pdf"]),
                 GenerationPage(title="Noise", content="More real prose about noise.", provenance=["sources/src.pdf"]),
             ]
         )
-        _reject_placeholder_pages(gen_output, unit="src.pdf")
+        assert drop_placeholder_pages(gen_output, unit="src.pdf") is gen_output
 
     def test_empty_submission_passes(self) -> None:
         """No pages — nothing to reject; the pass loop handles that its way."""
-        _reject_placeholder_pages(GenerationOutput(pages=[]), unit="src.pdf")
+        gen_output = GenerationOutput(pages=[])
+        assert drop_placeholder_pages(gen_output, unit="src.pdf") is gen_output
 
-    def test_mixed_submission_names_every_offender(self) -> None:
-        """One placeholder page refuses the whole submission, naming it."""
+    def test_mixed_submission_keeps_the_honest_pages(self) -> None:
+        """One junk page does not sink the sourced prose beside it."""
         gen_output = GenerationOutput(
             pages=[
                 GenerationPage(title="Listening Effort", content="Real prose body about listening.", provenance=["sources/src.pdf"]),
                 GenerationPage(title="x", content="Placeholder removed."),
             ]
         )
+        kept = drop_placeholder_pages(gen_output, unit="seg 'src.pdf'")
+        assert [page.title for page in kept.pages] == ["Listening Effort"]
+
+    def test_mixed_submission_names_the_offender(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The dropped page is named, so the drop is never silent."""
+        gen_output = GenerationOutput(
+            pages=[
+                GenerationPage(title="Listening Effort", content="Real prose body about listening.", provenance=["sources/src.pdf"]),
+                GenerationPage(title="x", content="Placeholder removed."),
+            ]
+        )
+        with caplog.at_level(logging.WARNING):
+            drop_placeholder_pages(gen_output, unit="seg 'src.pdf'")
+        assert "dropped 1 placeholder page(s) of 2" in caplog.text
+        assert "'x'" in caplog.text
+        assert "shorter than" in caplog.text
+        assert "filler body text" in caplog.text
+        assert "empty provenance" in caplog.text
+
+    def test_all_placeholder_submission_is_refused(self) -> None:
+        """Nothing legitimate survives — the submission fails the unit loudly."""
+        gen_output = GenerationOutput(
+            pages=[
+                GenerationPage(title="x", content="Placeholder removed."),
+            ]
+        )
         with pytest.raises(PlaceholderPageError) as excinfo:
-            _reject_placeholder_pages(gen_output, unit="seg 'src.pdf'")
+            drop_placeholder_pages(gen_output, unit="seg 'src.pdf'")
         message = str(excinfo.value)
         assert "1 placeholder page(s)" in message
         assert "'x'" in message
-        assert "Listening Effort" not in message
         assert "filler body text" in message
         assert "empty provenance" in message
         assert "shorter than" in message
@@ -152,6 +181,29 @@ class TestRejectPlaceholderPages:
         """PlaceholderPageError classifies as an empty answer, not OTHER."""
         kind = classify_agent_failure(PlaceholderPageError("seg: rejected 1 placeholder page(s)"))
         assert kind is AgentFailureKind.EMPTY_ANSWER
+
+
+class TestDropUnnameableConcepts:
+    """A concept whose name cannot carry a page title never enters the pool."""
+
+    def test_a_one_character_name_is_extraction_noise(self) -> None:
+        """A bare "x" lifted from a code listing is not a topic."""
+        concepts = [{"name": "X", "kind": "concept"}, {"name": "Listening Effort", "kind": "concept"}]
+        kept, dropped = drop_unnameable_concepts(concepts)
+        assert [concept["name"] for concept in kept] == ["Listening Effort"]
+        assert dropped == ["X"]
+
+    def test_an_empty_name_is_dropped_too(self) -> None:
+        """An empty name cannot become a page title either."""
+        kept, dropped = drop_unnameable_concepts([{"name": "  "}, {"name": "3D"}])
+        assert [concept["name"] for concept in kept] == ["3D"]
+        assert dropped == ["(untitled)"]
+
+    def test_two_characters_are_a_real_name(self) -> None:
+        """A two-character name is a real concept name and stays in the pool."""
+        kept, dropped = drop_unnameable_concepts([{"name": "3D"}])
+        assert len(kept) == 1
+        assert dropped == []
 
 
 class TestAgenticIngestionGate:
