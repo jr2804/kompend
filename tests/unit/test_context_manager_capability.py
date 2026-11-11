@@ -19,6 +19,7 @@ from pydantic_ai.messages import (
 )
 from pydantic_ai.models import ModelRequestContext, ModelRequestParameters
 from pydantic_ai.models.test import TestModel
+from pydantic_ai.profiles import ModelProfile
 from pydantic_ai.tools import RunContext
 from pydantic_ai.usage import RequestUsage, RunUsage
 from pydantic_ai_harness.compaction import (
@@ -389,6 +390,32 @@ class TestOversizedPartClamp:
         assert estimate_context_tokens(ctx.messages, _conservative_tokens) <= trigger
         assert "dropped the oversized part(s) no trim could fit" in caplog.text
 
+    async def test_a_clamp_only_pass_is_not_logged_as_a_trim(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """(a2) The trim line counts what the trim dropped; the clamp owns its drop.
+
+        The echo alone exceeds the trigger and everything around it is tiny,
+        so the trim reclaims nothing while the clamp drops the echo: the trim
+        must say exactly that instead of charging the clamp's drop to
+        "Sliding-window trim", and a no-op trim must not move the baseline.
+        """
+        capability = _sliding()
+        echo = _echo(chars=300_000)
+        ctx = _ctx()
+        ctx.messages[:] = [*_short_history(), echo]
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert echo not in ctx.messages
+        assert "Sliding-window trim reclaimed nothing: 4 message(s)" in caplog.text
+        assert "Sliding-window trim: dropped" not in caplog.text
+        assert "dropped the oversized part(s) no trim could fit" in caplog.text
+        guarded = cast("_GuardedSlidingCompaction", capability)
+        assert guarded._baseline_tokens is None  # noqa: SLF001
+
     async def test_the_pinned_task_assignment_is_never_dropped(
         self,
         caplog: pytest.LogCaptureFixture,
@@ -410,6 +437,35 @@ class TestOversizedPartClamp:
             if isinstance(part, UserPromptPart) and is_pinned(part)
         ]
         assert pinned == [400_000]
+        assert "this request cannot be saved" in caplog.text
+
+    async def test_a_second_pinned_part_is_never_dropped(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """(b2) The pin contract protects every pinned part, not only the first.
+
+        The harness re-injects each pinned part after a trim, so a clamp
+        that spared only the first pin would drop a later one the strategies
+        would faithfully have re-injected.
+        """
+        capability = _sliding()
+        second_pin = ModelRequest(parts=[pin("q" * 300_000)])
+        ctx = _ctx()
+        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), second_pin]
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        pinned = [
+            _text(part)
+            for message in ctx.messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, UserPromptPart) and is_pinned(part)
+        ]
+        assert "the task assignment" in pinned
+        assert "q" * 300_000 in pinned
         assert "this request cannot be saved" in caplog.text
 
     async def test_a_normal_history_is_untouched_and_stays_quiet(
@@ -464,6 +520,83 @@ class TestOversizedPartClamp:
 
         assert echo not in result
         assert result
+
+    async def test_the_growth_gated_stack_clamps_before_model_request_too(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """The request path rewrites both histories even when the stack declines.
+
+        The echo alone exceeds the 51 200-token trigger, so the pre-strategy
+        clamp drops it from the run's history; the ~44 000 surviving tokens
+        sit under the trigger, the tiered stack declines to run, and only the
+        merged outcome's replace carries the drop into the request context.
+        """
+        recording = _RecordingStrategy()
+        gate = GrowthGatedCompaction(
+            strategy=TieredCompaction(
+                tiers=[cast(Any, recording)],
+                target_fraction=_SLIDING_COMPRESS_THRESHOLD,
+                context_window=64_000,
+                tokenizer=_conservative_tokens,
+            ),
+            min_growth_tokens=0,
+            tokenizer=_conservative_tokens,
+        )
+        echo = _echo(chars=300_000)
+        ctx = _ctx()
+        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), echo]
+        request_context = _request_context(list(ctx.messages))
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            returned = await gate.before_model_request(ctx, request_context)
+
+        assert echo not in ctx.messages
+        assert echo not in returned.messages
+        assert recording.compact_calls == 0  # the stack declined; the clamp did the work
+        clamp_records = [record for record in caplog.records if "dropped the oversized part(s)" in record.getMessage()]
+        assert len(clamp_records) == 1
+
+    async def test_the_clamp_uses_the_request_model_not_the_run_model(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A capability that swaps the model must shrink the clamp budget.
+
+        The run's model has a 128 000-token window (102 400-token trigger),
+        the request's a 32 000-token one (25 600-token trigger) — the same
+        budget the wrapped tiered stack escalates toward. The 40 000-token
+        echo fits the run's trigger but not the request's, so resolving from
+        the wrong model would keep a part the smaller window cannot afford.
+        """
+        recording = _RecordingStrategy()
+        gate = GrowthGatedCompaction(
+            strategy=TieredCompaction(
+                tiers=[cast(Any, recording)],
+                target_fraction=_SLIDING_COMPRESS_THRESHOLD,
+                tokenizer=_conservative_tokens,
+            ),
+            min_growth_tokens=0,
+            tokenizer=_conservative_tokens,
+        )
+        echo = _echo(chars=100_000)
+        wide = TestModel(profile=ModelProfile(context_window=128_000))
+        narrow = TestModel(profile=ModelProfile(context_window=32_000))
+        ctx = RunContext(deps=object(), model=wide, usage=RunUsage())
+        ctx.messages[:] = [*_heavy_history(messages=2, chars_per_message=9_200), echo]
+        request_context = ModelRequestContext(
+            model=narrow,
+            messages=list(ctx.messages),
+            model_settings=None,
+            model_request_parameters=ModelRequestParameters(),
+        )
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            returned = await gate.before_model_request(ctx, request_context)
+
+        assert echo not in ctx.messages
+        assert echo not in returned.messages
+        assert any("dropped the oversized part(s) no trim could fit" in record.getMessage() for record in caplog.records)
 
 
 class TestFallbackCompaction:
@@ -698,6 +831,19 @@ class TestGrowthGate:
         assert returned is request_context
         assert strategy.before_calls == 0
 
+    async def test_a_strategy_without_the_harness_target_method_fails_loudly(self) -> None:
+        """A renamed harness `_target` must not silently disable the clamp.
+
+        `GrowthGatedCompaction` reads its clamp budget through the harness
+        `TieredCompaction._target`; if that private method disappears, the
+        gated stack must fail loudly rather than skip clamping (and the
+        still-over warning) for every request.
+        """
+        gate = GrowthGatedCompaction(strategy=cast(Any, _TargetlessStrategy()), min_growth_tokens=10)
+
+        with pytest.raises(AttributeError, match=r"no `_target\(model\)` method"):
+            await gate.compact(_short_history(), _ctx())
+
     def test_with_focus_keeps_the_baseline(self) -> None:
         gate = GrowthGatedCompaction(strategy=cast(Any, _RecordingStrategy()), min_growth_tokens=7)
         gate._baseline_tokens = 123  # noqa: SLF001
@@ -902,6 +1048,16 @@ class _RecordingStrategy(AbstractCapability[object]):
     compact_calls: int = 0
     before_calls: int = 0
 
+    def _target(self, model: object) -> int:
+        """The clamp budget `GrowthGatedCompaction` reads through `_tiered_target`.
+
+        The real `TieredCompaction._target` is private harness API — a stub
+        without it now fails loudly, so this mirrors the method at the
+        sliding preset's 64 000-token window. Unread when the stub sits
+        inside a real `TieredCompaction`.
+        """
+        return int(64_000 * _SLIDING_COMPRESS_THRESHOLD)
+
     async def compact(self, messages: list[ModelMessage], ctx: RunContext[object]) -> list[ModelMessage]:
         self.compact_calls += 1
         return messages
@@ -912,6 +1068,20 @@ class _RecordingStrategy(AbstractCapability[object]):
         request_context: ModelRequestContext,
     ) -> ModelRequestContext:
         self.before_calls += 1
+        return request_context
+
+
+class _TargetlessStrategy(AbstractCapability[object]):
+    """Stand-in for a harness whose `TieredCompaction` renamed `_target`."""
+
+    async def compact(self, messages: list[ModelMessage], ctx: RunContext[object]) -> list[ModelMessage]:
+        return messages
+
+    async def before_model_request(
+        self,
+        ctx: RunContext[object],
+        request_context: ModelRequestContext,
+    ) -> ModelRequestContext:
         return request_context
 
 

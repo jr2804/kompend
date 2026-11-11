@@ -199,7 +199,7 @@ class _ClampOutcome:
     """Role and size of each dropped message, e.g. ``request ~152215 token(s) [retry-feedback]``."""
 
     pinned_over: bool
-    """Whether the pinned task assignment alone exceeds the trigger."""
+    """Whether a pinned part alone exceeds the trigger."""
 
     def merged_with(self, prior: _ClampOutcome) -> _ClampOutcome:
         """Fold an earlier clamp pass into this one, for a single log line.
@@ -308,7 +308,10 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
         ctx.messages[:] = pinned
         if not self._gate_open(pinned):
             return request_context
-        trigger = _tiered_target(self.strategy, ctx.model)
+        # The request's model, not the run's: the wrapped tiered stack resolves its
+        # own escalation target from the request context's model, so a capability
+        # that swaps in a smaller-window model must shrink the clamp budget too.
+        trigger = _tiered_target(self.strategy, request_context.model)
         before = _clamp_oversized(pinned, trigger, self.tokenizer)
         if before.dropped:
             ctx.messages[:] = before.messages
@@ -387,15 +390,18 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
         ctx: RunContext[AgentDepsT],
     ) -> list[ModelMessage]:
         """Trim, clamp the tail, then record what was kept, what was dropped, and the cost."""
-        before_messages = len(messages)
-        before_tokens = estimate_context_tokens(messages, self.tokenizer)
         trigger = self._trigger_tokens(ctx.model)
         before = _clamp_oversized(messages, trigger, self.tokenizer)
+        # The trim is measured against the post-clamp list: a clamp drop charged
+        # to the trim would misname the mechanism, and a clamp-only pass — where
+        # the trim itself reclaimed nothing — must still hit the warning below.
+        trim_from = len(before.messages)
+        before_tokens = estimate_context_tokens(before.messages, self.tokenizer)
         compacted = await super().compact(before.messages, ctx)
         outcome = _clamp_oversized(compacted, trigger, self.tokenizer).merged_with(before)
         compacted = outcome.messages
         after_tokens = estimate_context_tokens(compacted, self.tokenizer)
-        dropped = before_messages - len(compacted)
+        dropped = trim_from - len(compacted)
         if dropped > 0:
             # Only an effective trim moves the baseline: a no-op trim rewrote
             # nothing, so the next request must be free to try again.
@@ -403,7 +409,7 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
             logger.info(
                 "Sliding-window trim: dropped %d of %d message(s), kept %d; ~%d → ~%d token(s)",
                 dropped,
-                before_messages,
+                trim_from,
                 len(compacted),
                 before_tokens,
                 after_tokens,
@@ -787,10 +793,16 @@ def _tiered_target(strategy: Any, model: AbstractModel | str) -> int | None:
     Read through ``_target`` — the harness method the tiered stack itself
     calls — so the clamp cannot disagree with the escalation loop about the
     budget, and so a stack configured with an absolute target works too.
+    ``None`` only ever means "realtime model, nothing to clamp against"; a
+    strategy without the method is a changed harness contract, and raising
+    beats silently disabling the clamp and the still-over warning.
     """
     target = getattr(strategy, "_target", None)
     if target is None:
-        return None
+        raise AttributeError(
+            f"{type(strategy).__name__} has no `_target(model)` method, so the clamp cannot resolve its budget; "
+            "the harness TieredCompaction private API changed; update `_tiered_target` to match"
+        )
     resolved: int | None = target(model)
     return resolved
 
@@ -813,8 +825,10 @@ def _clamp_oversized(
     Two things are never dropped, because a request without them answers the
     wrong question:
 
-    * the pinned first user turn — the run's task assignment. If it alone is
-      over budget the request cannot be saved, and the caller says so loudly.
+    * pinned messages — the task assignment first, then any later part the
+      pin contract marks: every strategy re-injects each one, so the clamp
+      may not drop them either. If one alone is over budget the request
+      cannot be saved, and the caller says so loudly.
     * either half of a tool call/return pair — a provider rejects a return
       whose call is gone, so the pair outlives the budget instead.
     """
@@ -826,24 +840,26 @@ def _clamp_oversized(
     oversized = [index for index, count in enumerate(counts) if count > trigger]
     if not oversized:
         return _ClampOutcome(messages, [], False)
-    pinned_index = _pinned_index(messages)
+    pinned = _pinned_indexes(messages)
     paired = _paired_indexes(messages)
     dropped: list[str] = []
     survivors: list[ModelMessage] = []
     for index, message in enumerate(messages):
-        if index not in oversized or index == pinned_index or index in paired:
+        if index not in oversized or index in pinned or index in paired:
             survivors.append(message)
             continue
         dropped.append(_describe(message, counts[index]))
-    return _ClampOutcome(survivors, dropped, pinned_index in oversized)
+    return _ClampOutcome(survivors, dropped, bool(pinned.intersection(oversized)))
 
 
-def _pinned_index(messages: Sequence[ModelMessage]) -> int | None:
-    """Index of the message holding the pinned task assignment, if any."""
-    for index, message in enumerate(messages):
-        if isinstance(message, ModelRequest) and any(is_pinned(part) for part in message.parts):
-            return index
-    return None
+def _pinned_indexes(messages: Sequence[ModelMessage]) -> set[int]:
+    """Indexes of every message holding a pinned part, not just the first.
+
+    The harness pin contract (``reinject_pinned``) protects each pinned
+    part, so a clamp that spared only the first would drop a later pin the
+    strategies would faithfully re-inject.
+    """
+    return {index for index, message in enumerate(messages) if isinstance(message, ModelRequest) and any(is_pinned(part) for part in message.parts)}
 
 
 def _paired_indexes(messages: Sequence[ModelMessage]) -> set[int]:
@@ -893,9 +909,9 @@ def _warn_if_still_over(
     still over budget — the tail is what it is — so the line keeps the wording
     an operator greps for and takes the severity that matches the outcome.
 
-    A pinned task assignment that alone exceeds the trigger is the one case no
-    later trim can rescue: it is kept, and the warning says the request cannot
-    be saved rather than implying another pass would help.
+    A pinned part that alone exceeds the trigger is the one case no
+    later trim can rescue: it is kept, and the warning says the request
+    cannot be saved rather than implying another pass would help.
     """
     if trigger is None:
         return
@@ -909,7 +925,7 @@ def _warn_if_still_over(
     if outcome.dropped:
         clamp = f"dropped the oversized part(s) no trim could fit ({'; '.join(outcome.dropped)}); "
     if outcome.pinned_over:
-        verdict = "the pinned task assignment alone exceeds it, so this request cannot be saved"
+        verdict = "a pinned part alone exceeds it, so this request cannot be saved"
     elif over:
         verdict = "the retained tail cannot reclaim more"
     else:
