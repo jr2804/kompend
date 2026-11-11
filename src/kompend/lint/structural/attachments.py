@@ -623,6 +623,9 @@ def _vault_relative(base_dir: Path, candidate: Path) -> str | None:
     if not rel or Path(rel).is_absolute():
         return None  # outside the vault — unknowable, not empty
 
+    # Do not resolve() the candidate here: it follows symlinks, and a figure
+    # symlinked out of attachments/ would then look unreferenced and be deleted.
+
     collapsed: list[str] = []
     for part in PurePosixPath(rel).parts:
         if part == "..":
