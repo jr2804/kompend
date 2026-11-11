@@ -7,8 +7,6 @@ counters. The state lives in the ``tier_state`` table of the single
 run left off.
 """
 
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
-
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, field
@@ -17,11 +15,14 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final
 
+from sqlalchemy import delete, select
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
 from kompend.core.identity import source_key
 from kompend.core.models import MetadataField
 from kompend.core.pipeline.config import Tier
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import TIER_STATE_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import tier_state
 from kompend.core.utils.time import iso_local, now_local
 from kompend.logging import get_logger
 
@@ -171,10 +172,8 @@ class TierStateStore:
         """
         if not self._db_path.exists():
             return TierState()
-        with open_store(self._db_path) as conn:
-            rows = conn.execute(
-                f"SELECT key, stem, source_file, content_hash, current_tier, last_compile, search_hits, last_hit, ingested_by FROM {TIER_STATE_TABLE}"
-            ).fetchall()
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(select(tier_state)).mappings().all()
         return TierState(
             entries={
                 row["key"]: SourceState(
@@ -193,26 +192,24 @@ class TierStateStore:
 
     def save(self, state: TierState) -> None:
         """Replace the stored tier state with *state* (full overwrite)."""
-        with open_store(self._db_path) as conn:
-            conn.execute(f"DELETE FROM {TIER_STATE_TABLE}")
-            conn.executemany(
-                f"INSERT INTO {TIER_STATE_TABLE}(key, stem, source_file, content_hash, current_tier, "
-                f"last_compile, search_hits, last_hit, ingested_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                [
-                    (
-                        entry.key,
-                        entry.stem,
-                        entry.source_file,
-                        entry.content_hash,
-                        entry.current_tier,
-                        entry.last_compile,
-                        entry.search_hits,
-                        entry.last_hit,
-                        entry.ingested_by,
-                    )
-                    for entry in state.entries.values()
-                ],
-            )
+        rows = [
+            {
+                "key": entry.key,
+                "stem": entry.stem,
+                "source_file": entry.source_file,
+                "content_hash": entry.content_hash,
+                "current_tier": entry.current_tier,
+                "last_compile": entry.last_compile,
+                "search_hits": entry.search_hits,
+                "last_hit": entry.last_hit,
+                "ingested_by": entry.ingested_by,
+            }
+            for entry in state.entries.values()
+        ]
+        with open_store(self._db_path) as conn, core_connection(conn) as core:
+            core.execute(delete(tier_state))
+            if rows:
+                core.execute(sqlite_insert(tier_state), rows)
 
     def record(
         self,
