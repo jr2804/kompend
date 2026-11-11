@@ -7,15 +7,21 @@ so the filter runs per candidate in SQLite instead of in Python; a test pins
 the two implementations to each other.
 
 Every value travels as a bound parameter; a value never enters the SQL text.
+Each fragment is a constant template whose only substitutions are the table
+name constant and the caller's column alias, so the statement is auditable
+without a module-wide waiver.
 """
-
-# ruff: noqa: S608 — SQL is built from Final[str] table-name constants only.
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Final
 
-from kompend.rag.sqlite_vec.schema import VEC_ATTR_KEYS, VEC_ATTRIBUTES, VEC_TAGS
+from kompend.rag.sqlite_vec.schema import VEC_ATTR_KEYS, VEC_ATTRIBUTES, VEC_TAGS, sql
+
+#: One ``EXISTS`` per required value; ``alias`` is the correlated side of the
+#: caller's query, ``column`` the side table's value column.
+_EXISTS_BY_VALUE: Final[str] = "EXISTS (SELECT 1 FROM {table} {side} WHERE {side}.item_id = {alias}.id AND {side}.{column} = ?)"
 
 
 def filter_clause(
@@ -42,8 +48,12 @@ def filter_clause(
     clauses: list[str] = []
     params: list[str] = []
 
+    def exists(table: str, *, side: str, column: str) -> str:
+        """One ``EXISTS`` against *table*, correlated to the caller's *alias*."""
+        return sql(_EXISTS_BY_VALUE, table=table, side=side, column=column, alias=alias)
+
     for tag in tags_all or ():
-        clauses.append(f"EXISTS (SELECT 1 FROM {VEC_TAGS} t WHERE t.item_id = {alias}.id AND t.tag = ?)")
+        clauses.append(exists(VEC_TAGS, side="t", column="tag"))
         params.append(str(tag))
 
     groups: list[str] = []
@@ -52,7 +62,7 @@ def filter_clause(
         members = [str(tag) for tag in group]
         if not members:
             continue
-        group_clauses = [f"EXISTS (SELECT 1 FROM {VEC_TAGS} t WHERE t.item_id = {alias}.id AND t.tag = ?)" for _ in members]
+        group_clauses = [exists(VEC_TAGS, side="t", column="tag") for _ in members]
         groups.append(" AND ".join(group_clauses))
         group_params.extend(members)
     if groups:
@@ -60,11 +70,11 @@ def filter_clause(
         params.extend(group_params)
 
     for token in attributes_all or ():
-        clauses.append(f"EXISTS (SELECT 1 FROM {VEC_ATTRIBUTES} a WHERE a.item_id = {alias}.id AND a.token = ?)")
+        clauses.append(exists(VEC_ATTRIBUTES, side="a", column="token"))
         params.append(str(token))
 
     for key in attribute_keys or ():
-        clauses.append(f"EXISTS (SELECT 1 FROM {VEC_ATTR_KEYS} k WHERE k.item_id = {alias}.id AND k.key = ?)")
+        clauses.append(exists(VEC_ATTR_KEYS, side="k", column="key"))
         params.append(str(key))
 
     if not clauses:
