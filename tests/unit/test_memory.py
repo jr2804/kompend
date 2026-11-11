@@ -185,6 +185,23 @@ class TestLifecycleStore:
         loaded = LifecycleStore.load(temp_wiki_dir / ".kompend" / "memory.json")
         assert loaded.states == {}
 
+    def test_save_replaces_the_table_and_load_reads_it_back(self, temp_wiki_dir: Path) -> None:
+        """A second save replaces the whole set instead of accumulating rows.
+
+        The write is a Core delete followed by a Core bulk insert of mappings.
+        Keeping the rows as tuples would bind positionally against a column
+        order the table alone defines — a renamed or reordered column would
+        land a tier in the review count without any error.
+        """
+        first = LifecycleStore(states={"n1": NodeState(node_id="n1", title="Alpha"), "n2": NodeState(node_id="n2", title="Beta")})
+        first.save(temp_wiki_dir)
+        second = LifecycleStore(states={"n3": NodeState(node_id="n3", title="Gamma")})
+        second.save(temp_wiki_dir)
+
+        loaded = LifecycleStore.load(temp_wiki_dir)
+        assert set(loaded.states) == {"n3"}
+        assert loaded.states["n3"].title == "Gamma"
+
 
 class TestStatementConstruction:
     """The store needs no bandit waiver: no caller assembles SQL by hand."""

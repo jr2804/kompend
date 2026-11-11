@@ -13,11 +13,9 @@ Implements the Rohit-v2 memory lifecycle concepts:
   candidates.
 
 State lives in the single vault store (``.kompend/kompend.db``, ``memory_states``
-table).
+table). The writes and reads go through SQLAlchemy Core against the shared
+table object, so the column names live in one place.
 """
-
-# ruff: noqa: S608 — SQL is assembled only from Final[str] table-name constants;
-# no runtime value ever enters an identifier or statement.
 
 from __future__ import annotations
 
@@ -28,10 +26,12 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy import delete, insert, select
+
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.paths import VaultPaths
-from kompend.core.store import open_store, vault_db_path
-from kompend.core.store.schema import MEMORY_STATES_TABLE
+from kompend.core.store import core_connection, open_store, vault_db_path
+from kompend.core.store.tables import memory_states
 from kompend.core.utils.time import iso_local, now_local
 from kompend.logging import get_logger
 
@@ -151,14 +151,23 @@ class MemoryStore:
         ``memory_states`` table is replaced with the in-memory set.
         """
         db_path = vault_db_path(store_file)
-        rows = [(s.node_id, s.title, s.confidence, s.tier, s.birth_at, s.review_at, s.review_count, s.superseded_by) for s in self.states.values()]
-        with open_store(db_path) as conn:
-            conn.execute(f"DELETE FROM {MEMORY_STATES_TABLE}")
-            conn.executemany(
-                f"INSERT INTO {MEMORY_STATES_TABLE}(node_id, title, confidence, tier, birth_at, review_at, review_count, superseded_by) "
-                f"VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                rows,
-            )
+        rows = [
+            {
+                "node_id": s.node_id,
+                "title": s.title,
+                "confidence": s.confidence,
+                "tier": s.tier,
+                "birth_at": s.birth_at,
+                "review_at": s.review_at,
+                "review_count": s.review_count,
+                "superseded_by": s.superseded_by,
+            }
+            for s in self.states.values()
+        ]
+        with open_store(db_path) as conn, core_connection(conn) as core:
+            core.execute(delete(memory_states))
+            if rows:
+                core.execute(insert(memory_states), rows)
 
     # ── Access ────────────────────────────────────────────────────────
 
@@ -272,19 +281,19 @@ class MemoryStore:
         db_path = vault_db_path(store_file)
         if not db_path.exists():
             return cls()
-        with open_store(db_path) as conn:
-            rows = conn.execute(f"SELECT * FROM {MEMORY_STATES_TABLE}").fetchall()
+        with open_store(db_path) as conn, core_connection(conn) as core:
+            rows = core.execute(select(memory_states)).all()
         states: dict[str, NodeState] = {}
         for row in rows:
             state = NodeState(
-                node_id=row["node_id"],
-                title=row["title"],
-                confidence=float(row["confidence"]),
-                tier=row["tier"],
-                birth_at=row["birth_at"],
-                review_at=row["review_at"],
-                review_count=int(row["review_count"]),
-                superseded_by=row["superseded_by"],
+                node_id=row.node_id,
+                title=row.title,
+                confidence=float(row.confidence),
+                tier=row.tier,
+                birth_at=row.birth_at,
+                review_at=row.review_at,
+                review_count=int(row.review_count),
+                superseded_by=row.superseded_by,
             )
             states[state.node_id] = state
         return cls(states=states)
