@@ -39,6 +39,7 @@ from kompend.lint.log import latest_lint_log, lint_log_dir, read_lint_log
 from kompend.lint.remediation import remediate, remediation_to_text
 from kompend.lint.runner import report_to_text
 from kompend.logging import get_logger
+from kompend.mcp.tools._helpers import ToolStatus
 from kompend.output.renderer import format_output
 
 logger = get_logger(__name__)
@@ -64,11 +65,11 @@ def lint_all(
 
         merged = run_full_lint_flow(vp, cfg, fix=fix)
     except RuntimeError as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
     except Exception as exc:  # MCP trust boundary: surface any flow failure to the client
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "health_score": merged.health_score,
         "passes": merged.passes,
         "failures": merged.failures,
@@ -87,7 +88,7 @@ def lint_check(
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
     wiki = load_wiki_from_files(vp.output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No wiki pages found in {vp.output_dir}. Run 'wiki_compile' first."}
+        return {"status": ToolStatus.ERROR, "message": f"No wiki pages found in {vp.output_dir}. Run 'wiki_compile' first."}
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=CHECK_STEP_RULES, enable_llm=False, lint_agent=None, fix=fix)
     fixes_applied = 0
@@ -95,7 +96,7 @@ def lint_check(
         fixes_applied = persist_lint_fixes(wiki, vp)
     persist_history(report, vp=vp, config=cfg.raw, context=LintStep.CHECK, elapsed=elapsed, fix=fix, node_count=len(wiki.nodes), llm=None)
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "health_score": report.health_score,
         "passes": report.passes,
         "total_checks": report.total_checks,
@@ -113,17 +114,17 @@ def lint_semantic(
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
     wiki = load_wiki_from_files(vp.output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No wiki pages found in {vp.output_dir}. Run 'wiki_compile' first."}
+        return {"status": ToolStatus.ERROR, "message": f"No wiki pages found in {vp.output_dir}. Run 'wiki_compile' first."}
 
     lint_agent, model = _make_lint_agent(cfg)
     if lint_agent is None:
-        return {"status": "error", "message": "LLM lint rules require a model. Set compile.lint.model or compile.llm.default_model."}
+        return {"status": ToolStatus.ERROR, "message": "LLM lint rules require a model. Set compile.lint.model or compile.llm.default_model."}
 
     report, elapsed = _run_rules_pass(wiki, vp, cfg, rules=list(LLM_RULE_BY_NAME.keys()), enable_llm=True, lint_agent=lint_agent, fix=False)
     llm_meta = LintLlmMeta(model=model, usage=lint_agent.usage.to_snapshot()) if model is not None and lint_agent.usage is not None else None
     persist_history(report, vp=vp, config=cfg.raw, context=LintStep.SEMANTIC, elapsed=elapsed, fix=False, node_count=len(wiki.nodes), llm=llm_meta)
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "health_score": report.health_score,
         "passes": report.passes,
         "total_checks": report.total_checks,
@@ -151,8 +152,8 @@ def lint_history(
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=last)
 
     if json_output:
-        return {"status": "ok", "entries": history_to_json(entries)}
-    return {"status": "ok", "entries_text": history_to_text(entries, show_trend=trend)}
+        return {"status": ToolStatus.OK, "entries": history_to_json(entries)}
+    return {"status": ToolStatus.OK, "entries_text": history_to_text(entries, show_trend=trend)}
 
 
 def lint_show(
@@ -168,16 +169,16 @@ def lint_show(
     if run:
         path = directory / f"{run}.{'json' if json_output else 'md'}"
         if not path.exists():
-            return {"status": "error", "message": f"No lint report named '{run}' in {directory}."}
+            return {"status": ToolStatus.ERROR, "message": f"No lint report named '{run}' in {directory}."}
     else:
         markdown = latest_lint_log(vp.base_dir)
         if markdown is None:
-            return {"status": "error", "message": "No lint report found - run 'kompend lint all' or 'kompend compile' first."}
+            return {"status": ToolStatus.ERROR, "message": "No lint report found - run 'kompend lint all' or 'kompend compile' first."}
         path = markdown.with_suffix(".json") if json_output else markdown
     content = read_lint_log(path)
     if json_output:
-        return {"status": "ok", "entry": content}
-    return {"status": "ok", "report": content}
+        return {"status": ToolStatus.OK, "entry": content}
+    return {"status": ToolStatus.OK, "report": content}
 
 
 # ── lint_prune ────────────────────────────────────────────────────────────
@@ -191,7 +192,7 @@ def lint_prune(
 ) -> dict[str, Any]:
     """Remove old entries from lint history."""
     if keep_last is None and max_age_days is None:
-        return {"status": "error", "message": "At least one of keep_last or max_age_days must be provided."}
+        return {"status": ToolStatus.ERROR, "message": "At least one of keep_last or max_age_days must be provided."}
 
     vp = vault_paths(wiki_dir)
     resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides(), config_file=config_file)
@@ -202,7 +203,7 @@ def lint_prune(
         keep_last=keep_last,
         max_age_days=max_age_days,
     )
-    return {"status": "ok", "removed": removed, "message": f"Removed {removed} entr{'y' if removed == 1 else 'ies'}."}
+    return {"status": ToolStatus.OK, "removed": removed, "message": f"Removed {removed} entr{'y' if removed == 1 else 'ies'}."}
 
 
 # ── lint_gaps ─────────────────────────────────────────────────────────────
@@ -220,7 +221,7 @@ def lint_gaps(
 
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
     if not entries:
-        return {"status": "error", "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
+        return {"status": ToolStatus.ERROR, "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
 
     report_payload = entries[-1].report
     report = report_from_dict(report_payload)
@@ -228,12 +229,12 @@ def lint_gaps(
 
     if json_output:
         return {
-            "status": "ok",
+            "status": ToolStatus.OK,
             "recommendations": [{"priority": r.priority, "category": r.category, "finding": r.finding, "action": r.action} for r in recs],
             "based_on": {"timestamp": entries[-1].timestamp, "score": report_payload.health_score},
         }
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "recommendations_text": gaps_to_text(recs),
         "based_on": {"timestamp": entries[-1].timestamp, "score": report_payload.health_score},
     }
@@ -257,14 +258,14 @@ def lint_remediate(
 
     entries = load_lint_history(state_dir / LINT_HISTORY_FILE, last_n=1)
     if not entries:
-        return {"status": "error", "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
+        return {"status": ToolStatus.ERROR, "message": "No lint history found. Run 'lint_all' or compile with --lint first."}
 
     report_payload = entries[-1].report
     report = report_from_dict(report_payload)
 
     wiki = load_wiki_from_files(VaultPaths(base_dir).output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
+        return {"status": ToolStatus.ERROR, "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
     default_model = cfg.kompend.compile.llm.default_model
     agent = (
@@ -293,7 +294,7 @@ def lint_remediate(
 
     if json_output:
         return {
-            "status": "ok",
+            "status": ToolStatus.OK,
             "actions": [
                 {
                     "category": a.category,
@@ -307,7 +308,7 @@ def lint_remediate(
             "dry_run": dry_run,
         }
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "actions_text": remediation_to_text(actions),
         "applied": applied_count,
         "dry_run": dry_run,
@@ -342,11 +343,11 @@ def lint_format(
     if check:
         if changed:
             return {
-                "status": "error",
+                "status": ToolStatus.ERROR,
                 "message": f"{len(changed)} file(s) need formatting.",
                 "changed": [str(c) for c in changed],
             }
-        return {"status": "ok", "message": "All generated markdown is formatted."}
+        return {"status": ToolStatus.OK, "message": "All generated markdown is formatted."}
     if changed:
-        return {"status": "ok", "message": f"Formatted {len(changed)} file(s) with rumdl.", "changed": [str(c) for c in changed]}
-    return {"status": "ok", "message": "No formatting changes needed."}
+        return {"status": ToolStatus.OK, "message": f"Formatted {len(changed)} file(s) with rumdl.", "changed": [str(c) for c in changed]}
+    return {"status": ToolStatus.OK, "message": "No formatting changes needed."}

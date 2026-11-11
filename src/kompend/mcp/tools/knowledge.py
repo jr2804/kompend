@@ -25,6 +25,7 @@ from kompend.core.pipeline.config import Compiler, ImageMode, OutputConfig, Outp
 from kompend.core.pipeline.orchestrator import build_pipeline
 from kompend.core.text.matching import SemanticMatcher
 from kompend.logging import get_logger
+from kompend.mcp.tools._helpers import ToolStatus
 from kompend.preprocessing.parsers import build_parser
 from kompend.rag.embedding_pydantic import make_provider
 
@@ -35,7 +36,7 @@ def parse_document(file: str) -> dict[str, Any]:
     """Parse a document and return structured elements."""
     doc_file = Path(file)
     if not doc_file.exists():
-        return {"status": "error", "message": f"File not found: {file}"}
+        return {"status": ToolStatus.ERROR, "message": f"File not found: {file}"}
 
     parser = build_parser()
 
@@ -43,7 +44,7 @@ def parse_document(file: str) -> dict[str, Any]:
     try:
         doc = parser.parse(doc_file)
         return {
-            "status": "ok",
+            "status": ToolStatus.OK,
             "title": doc.title or doc_file.name,
             "page_count": doc.page_count,
             "elements": [
@@ -58,7 +59,7 @@ def parse_document(file: str) -> dict[str, Any]:
             "metadata": doc.metadata,
         }
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def compile_wiki(
@@ -79,13 +80,13 @@ def compile_wiki(
     """
     source_dir = Path(sources_dir)
     if not source_dir.exists():
-        return {"status": "error", "message": f"Sources directory not found: {sources_dir}"}
+        return {"status": ToolStatus.ERROR, "message": f"Sources directory not found: {sources_dir}"}
 
     try:
         compiler_enum = Compiler(compiler)
     except ValueError:
         return {
-            "status": "error",
+            "status": ToolStatus.ERROR,
             "message": f"Unknown compiler: {compiler!r}. Use graph or wicer.",
         }
 
@@ -93,14 +94,14 @@ def compile_wiki(
         format_enum = OutputFormat(output_format)
     except ValueError:
         return {
-            "status": "error",
+            "status": ToolStatus.ERROR,
             "message": f"Unknown format: {output_format}. Use markdown, json, or typst.",
         }
 
     try:
         image_mode_enum = ImageMode(image_mode)
     except ValueError:
-        return {"status": "error", "message": f"Unknown image_mode: {image_mode!r}. Use file or base64."}
+        return {"status": ToolStatus.ERROR, "message": f"Unknown image_mode: {image_mode!r}. Use file or base64."}
 
     config = PipelineConfig(
         source_dir=source_dir,
@@ -120,7 +121,7 @@ def compile_wiki(
         ext = "md" if format_enum is OutputFormat.MARKDOWN else format_enum.value
         output_file = Path(output) / f"wiki.{ext}"
         return {
-            "status": "ok",
+            "status": ToolStatus.OK,
             MetadataField.NODE_COUNT: len(wiki.nodes),
             MetadataField.EDGE_COUNT: len(wiki.edges),
             "toc_count": len(wiki.toc),
@@ -136,7 +137,7 @@ def compile_wiki(
         }
     except Exception as exc:
         logger.exception("Compilation failed")
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def wiki_capture(
@@ -174,12 +175,12 @@ def wiki_capture(
     try:
         paths = capture(text, sources_dir=source_dir, capture_agent=capture_agent, tags=tags)
         return {
-            "status": "ok",
+            "status": ToolStatus.OK,
             "count": len(paths),
             "files": [str(p) for p in paths],
         }
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def wiki_learn(
@@ -197,11 +198,11 @@ def wiki_learn(
     try:
         learned_file = learn(text, sources_dir=source_dir, tags=tags)
         return {
-            "status": "ok",
+            "status": ToolStatus.OK,
             "file": str(learned_file),
         }
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def wiki_distill(
@@ -241,12 +242,12 @@ def wiki_distill(
 
         paths = distill(sources_dir, distill_agent=distill_agent)
         return {
-            "status": "ok",
+            "status": ToolStatus.OK,
             "count": len(paths),
             "files": [str(p) for p in paths],
         }
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def wiki_consolidate(
@@ -276,7 +277,7 @@ def wiki_consolidate(
 
         groups = consolidate(sources_dir, matcher=matcher, dry_run=dry_run, archive=not dry_run)
         return {
-            "status": "ok",
+            "status": ToolStatus.OK,
             "groups": [
                 {
                     "keeper": g.keeper.source_file.name if g.keeper.source_file else "?",
@@ -286,7 +287,7 @@ def wiki_consolidate(
             ],
         }
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def wiki_list_attachments(
@@ -306,14 +307,14 @@ def wiki_list_attachments(
     vp = vault_paths(wiki_dir)
     manifest = AttachmentManifest(vp.attachments_manifest_file)
     if not manifest.exists():
-        return {"status": "ok", "attachments": [], "count": 0}
+        return {"status": ToolStatus.OK, "attachments": [], "count": 0}
 
     entries = manifest.read_all().values()
     if source:
         entries = [a for a in entries if a.source == source]
 
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "count": len(entries),
         "attachments": [
             {
@@ -359,10 +360,10 @@ def wiki_read_attachment(
     att_file = vp.attachments_dir / att_file
 
     if not att_file.exists():
-        return {"status": "error", "message": f"Attachment not found: {att_file}"}
+        return {"status": ToolStatus.ERROR, "message": f"Attachment not found: {att_file}"}
 
     info = {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "source": source,
         "path": att_file,
         "size": att_file.stat().st_size,
@@ -409,7 +410,7 @@ def wiki_attachment_info(
     att_file = vp.attachments_dir / att_file
 
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "source": source,
         "path": att_file,
         "registered": entry is not None,

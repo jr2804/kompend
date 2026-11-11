@@ -17,6 +17,7 @@ from kompend.core.models.attachments import (
 from kompend.core.paths import attachment_slug, vault_paths
 from kompend.lint.structural import orphan_attachment_dirs
 from kompend.logging import get_logger
+from kompend.mcp.tools._helpers import ToolStatus
 
 logger = get_logger(__name__)
 
@@ -40,15 +41,15 @@ def attachments_add(
 
     att_path = Path(attachment_file)
     if not att_path.exists():
-        return {"status": "error", "message": f"Attachment file not found: {attachment_file}"}
+        return {"status": ToolStatus.ERROR, "message": f"Attachment file not found: {attachment_file}"}
     if att_path.is_dir():
-        return {"status": "error", "message": f"Attachment must be a file, not a directory: {attachment_file}"}
+        return {"status": ToolStatus.ERROR, "message": f"Attachment must be a file, not a directory: {attachment_file}"}
 
     ext = att_path.suffix.lower()
 
     if ingest and ext not in IMAGE_EXTENSIONS and is_binary(str(att_path)):
         return {
-            "status": "error",
+            "status": ToolStatus.ERROR,
             "message": "Cannot ingest '{att_path.name}': binary files are not ingestible. Only text files and images (via VLM) can be ingested.",
         }
 
@@ -73,7 +74,7 @@ def attachments_add(
     manifest.append(att)
 
     info = {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "registered": relative_file,
         "ingestible": ingest,
     }
@@ -94,7 +95,7 @@ def attachments_remove(
 
     manifest = AttachmentManifest(vp.attachments_manifest_file)
     if not manifest.exists():
-        return {"status": "error", "message": "No attachment manifest found."}
+        return {"status": ToolStatus.ERROR, "message": "No attachment manifest found."}
 
     existing = manifest.read_all()
 
@@ -106,16 +107,16 @@ def attachments_remove(
             resolved_file = matches[0]
         elif len(matches) > 1:
             return {
-                "status": "error",
+                "status": ToolStatus.ERROR,
                 "message": f"Multiple matches for '{attachment_file}': {matches}. Use the full path (e.g. 'slug/filename').",
             }
 
     if resolved_file not in existing:
-        return {"status": "error", "message": f"Attachment not found: {resolved_file}"}
+        return {"status": ToolStatus.ERROR, "message": f"Attachment not found: {resolved_file}"}
 
     if manifest.remove(resolved_file):
-        return {"status": "ok", "message": f"Removed attachment: {resolved_file}"}
-    return {"status": "error", "message": f"Failed to remove attachment: {resolved_file}"}
+        return {"status": ToolStatus.OK, "message": f"Removed attachment: {resolved_file}"}
+    return {"status": ToolStatus.ERROR, "message": f"Failed to remove attachment: {resolved_file}"}
 
 
 def attachments_ingest(
@@ -162,17 +163,17 @@ def _set_ingestible(
 
     manifest = AttachmentManifest(vp.attachments_manifest_file)
     if not manifest.exists():
-        return {"status": "error", "message": "No attachment manifest found."}
+        return {"status": ToolStatus.ERROR, "message": "No attachment manifest found."}
 
     existing = manifest.read_all()
     if not existing:
-        return {"status": "error", "message": "No attachments registered."}
+        return {"status": ToolStatus.ERROR, "message": "No attachments registered."}
 
     if all_attachments:
         targets = list(existing)
     else:
         if not attachment_file:
-            return {"status": "error", "message": "Provide attachment_file or set all_attachments=True."}
+            return {"status": ToolStatus.ERROR, "message": "Provide attachment_file or set all_attachments=True."}
         resolved_file = attachment_file
         if "/" not in attachment_file and "\\" not in attachment_file:
             matches = [p for p in existing if Path(p).name == attachment_file]
@@ -180,17 +181,17 @@ def _set_ingestible(
                 resolved_file = matches[0]
             elif len(matches) > 1:
                 return {
-                    "status": "error",
+                    "status": ToolStatus.ERROR,
                     "message": f"Multiple matches for '{attachment_file}': {matches}. Use the full path (e.g. 'slug/filename').",
                 }
         if resolved_file not in existing:
-            return {"status": "error", "message": f"Attachment not found: {resolved_file}"}
+            return {"status": ToolStatus.ERROR, "message": f"Attachment not found: {resolved_file}"}
         targets = [resolved_file]
 
     for path in targets:
         manifest.set_ingestible(path, ingestible)
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "updated": len(targets),
         "ingestible": ingestible,
     }
@@ -207,7 +208,7 @@ def attachments_verify(wiki_dir: str | None = None) -> dict[str, Any]:
     manifest = AttachmentManifest(vp.attachments_manifest_file)
     missing = [a.path for a in manifest.read_all().values() if not (vp.attachments_dir / a.path).is_file()]
     return {
-        "status": "error" if (orphans or missing) else "ok",
+        "status": ToolStatus.ERROR if (orphans or missing) else ToolStatus.OK,
         "orphan_attachments": orphans,
         "missing_files": missing,
     }
@@ -222,4 +223,4 @@ def attachments_adopt(wiki_dir: str | None = None) -> dict[str, Any]:
     vp = vault_paths(wiki_dir)
     cfg = resolve_config(base_dir=vp.base_dir)
     adopted = adopt_orphan_attachments(vp.base_dir, ingest_adopted=bool(cfg.kompend.attachments.ingest_adopted))
-    return {"status": "ok", "adopted": [a.path for a in adopted], "count": len(adopted)}
+    return {"status": ToolStatus.OK, "adopted": [a.path for a in adopted], "count": len(adopted)}

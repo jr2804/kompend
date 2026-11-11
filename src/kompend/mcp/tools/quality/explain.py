@@ -8,6 +8,7 @@ from kompend.cli.settings import build_cli_overrides
 from kompend.core.config import resolve_config
 from kompend.core.paths import vault_paths
 from kompend.core.reporting.explain import AmbiguousSourceError, build_explain_report, render_explain
+from kompend.mcp.tools._helpers import ToolStatus
 
 
 def explain(
@@ -22,7 +23,7 @@ def explain(
     try:
         report = build_explain_report(vp.base_dir, source, run_id=run_id)
     except AmbiguousSourceError as exc:
-        return {"status": "error", "message": str(exc), "candidates": exc.candidates}
+        return {"status": ToolStatus.ERROR, "message": str(exc), "candidates": exc.candidates}
     if report is None:
-        return {"status": "error", "message": f"No ledger rows found for {source!r}."}
-    return {"status": "ok", "report": report, "report_text": render_explain(report)}
+        return {"status": ToolStatus.ERROR, "message": f"No ledger rows found for {source!r}."}
+    return {"status": ToolStatus.OK, "report": report, "report_text": render_explain(report)}

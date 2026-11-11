@@ -11,6 +11,7 @@ from kompend.core.models import load_wiki_from_files
 from kompend.core.paths import VECTORS_DB_FILE, vault_paths
 from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_logger
+from kompend.mcp.tools._helpers import ToolStatus
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.search.filters import matches_attr_filter
 from kompend.search.retriever import HybridRetriever, KeywordRetriever, run_agentic_query
@@ -43,7 +44,7 @@ def query_wiki(
 
     wiki = load_wiki_from_files(output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
+        return {"status": ToolStatus.ERROR, "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
     vector_store: SqliteVecWikiStore | None = None
     if state_dir and (state_dir / VECTORS_DB_FILE).exists():
@@ -71,13 +72,13 @@ def query_wiki(
                 attr_filters=_parse_attr_filters(attributes) if attributes else [],
                 llm=cfg.kompend.compile.llm,
             )
-            return {"status": "ok", "results": [], "raw": False, "synthesis": {"answer": answer, "citations": []}}
+            return {"status": ToolStatus.OK, "results": [], "raw": False, "synthesis": {"answer": answer, "citations": []}}
         expand_graph = search_mode == SearchMode.GRAPH
         mode = SearchMode.HYBRID if search_mode == SearchMode.GRAPH else search_mode
 
         if mode == SearchMode.RAW:
             if not sources_dir.exists():
-                return {"status": "error", "message": "No sources directory found for raw search."}
+                return {"status": ToolStatus.ERROR, "message": "No sources directory found for raw search."}
             results = retriever.search(query, top_k=top_k)
             raw = True
         elif mode == SearchMode.HYBRID:
@@ -94,7 +95,7 @@ def query_wiki(
 
     result_dicts = [dataclasses.asdict(r) for r in results] if results else []
     if not results:
-        return {"status": "ok", "results": result_dicts, "synthesis": None, "raw": True}
+        return {"status": ToolStatus.OK, "results": result_dicts, "synthesis": None, "raw": True}
 
     try:
         model = cfg.kompend.compile.llm.default_model or ""
@@ -106,7 +107,7 @@ def query_wiki(
     # a useful answer.
     if not model and not raw:
         return {
-            "status": "error",
+            "status": ToolStatus.ERROR,
             "message": NO_MODEL_CONFIGURED_MESSAGE + " Query requires a model to synthesize an answer."
             " Use --raw for retrieval-only output, or configure an embedding model"
             " (compile.embedding.model) for raw semantic search.",
@@ -124,7 +125,7 @@ def query_wiki(
                 llm=cfg.kompend.compile.llm,
             )
             return {
-                "status": "ok",
+                "status": ToolStatus.OK,
                 "results": result_dicts,
                 "raw": False,
                 "synthesis": {
@@ -142,7 +143,7 @@ def query_wiki(
         except Exception:
             logger.warning("LLM synthesis failed for query", exc_info=True)
 
-    return {"status": "ok", "results": result_dicts, "synthesis": None, "raw": True}
+    return {"status": ToolStatus.OK, "results": result_dicts, "synthesis": None, "raw": True}
 
 
 def wiki_status(
@@ -159,6 +160,6 @@ def wiki_status(
             output_dir=output_dir if output_dir.exists() else None,
             config_file=vp.config_file if vp.config_file.exists() else None,
         )
-        return {"status": "ok", "stats": stats}
+        return {"status": ToolStatus.OK, "stats": stats}
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}

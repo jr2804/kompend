@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from kompend.mcp.tools._helpers import ToolStatus
 from kompend.preprocessing.parsers import PARSER_PARSECRAFT, build_parser
 
 
@@ -24,6 +25,6 @@ def list_parsers(
     ]
 
     if json_output:
-        return {"status": "ok", "parsers": parsers}
+        return {"status": ToolStatus.OK, "parsers": parsers}
 
-    return {"status": "ok", "parsers_text": f"Ingestion parser: {PARSER_PARSECRAFT} (built-in)\nFormats ({len(extensions)}): {', '.join(extensions)}"}
+    return {"status": ToolStatus.OK, "parsers_text": f"Ingestion parser: {PARSER_PARSECRAFT} (built-in)\nFormats ({len(extensions)}): {', '.join(extensions)}"}

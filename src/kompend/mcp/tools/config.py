@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import Any
 
 from kompend.core.config import (
+    STATUS_ERROR,
+    STATUS_OK,
     check_config_file,
     check_config_files,
     coerce_config_value,
@@ -17,6 +19,7 @@ from kompend.core.keys import PATHS_OUTPUT_DIR, PATHS_SOURCES_DIR, PATHS_WIKI_DI
 from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME, DEFAULT_SOURCES_DIR_NAME, GITIGNORE_FILE
 from kompend.core.utils.dicts import as_int, as_str
 from kompend.logging import get_logger
+from kompend.mcp.tools._helpers import ToolStatus
 from kompend.scaffolding import ScaffoldError, dir_name, is_current, merge_gitignore, render_gitignore, scaffold_project
 
 _ENV_REF_RE = __import__("re").compile(r"^\$\{\w+\}$")
@@ -34,7 +37,7 @@ def init_wiki(
     try:
         result = scaffold_project(Path(target), bare=bare, force=force, git=git)
         return {
-            "status": "ok",
+            "status": ToolStatus.OK,
             "target_dir": str(result.target_dir),
             "created_dirs": [str(d) for d in result.created_dirs],
             "copied_files": [str(f) for f in result.copied_files],
@@ -42,9 +45,9 @@ def init_wiki(
             "git_initialised": result.git_initialised,
         }
     except ScaffoldError as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def config_get(
@@ -52,13 +55,13 @@ def config_get(
 ) -> dict[str, Any]:
     """Print a resolved config value."""
     if not validate_config_key(key):
-        return {"status": "error", "message": f"Unknown config key: {key}"}
+        return {"status": ToolStatus.ERROR, "message": f"Unknown config key: {key}"}
     try:
         cfg = resolve_config()
         value = cfg.get(key)
-        return {"status": "ok", "key": key, "value": value}
+        return {"status": ToolStatus.OK, "key": key, "value": value}
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def config_set(
@@ -68,23 +71,23 @@ def config_set(
 ) -> dict[str, Any]:
     """Set a config value."""
     if not validate_config_key(key):
-        return {"status": "error", "message": f"Unknown config key: {key}"}
+        return {"status": ToolStatus.ERROR, "message": f"Unknown config key: {key}"}
     try:
         coerced = coerce_config_value(value, key)
     except ValueError as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
     if global_:
         config_file = get_global_config_file(create=True)
     else:
         config_file = get_project_config_file()
         if not config_file.exists():
-            return {"status": "error", "message": "Not in a kompend vault â€” run `kompend init` first or use `--global`"}
+            return {"status": ToolStatus.ERROR, "message": "Not in a kompend vault â€” run `kompend init` first or use `--global`"}
     try:
         set_config_file_value(config_file, key, coerced)
-        return {"status": "ok", "key": key, "value": coerced, "file": str(config_file)}
+        return {"status": ToolStatus.OK, "key": key, "value": coerced, "file": str(config_file)}
     except (OSError, ValueError) as exc:
-        return {"status": "error", "message": f"Failed to write {config_file}: {exc}"}
+        return {"status": ToolStatus.ERROR, "message": f"Failed to write {config_file}: {exc}"}
 
 
 def config_check(
@@ -105,18 +108,19 @@ def config_check(
         else:
             payload = [check_config_file(p).to_dict() for p in file_paths]
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
-    totals: dict[str, int] = {"ok": 0, "modified": 0, "error": 0}
+    # The report counts are keyed by the config-check vocabulary.
+    totals: dict[str, int] = {STATUS_OK: 0, "modified": 0, STATUS_ERROR: 0}
     for report in payload:
-        for key in ("ok", "modified", "error"):
+        for key in (STATUS_OK, "modified", STATUS_ERROR):
             value = as_int(report[key])
             if value is None:
                 raise ValueError(f"Config check report is missing the {key!r} count")
             totals[key] += value
 
     return {
-        "status": "ok" if totals["error"] == 0 else "error",
+        "status": ToolStatus.OK if totals[STATUS_ERROR] == 0 else ToolStatus.ERROR,
         "totals": totals,
         "reports": payload,
     }
@@ -133,14 +137,14 @@ def config_list(
     try:
         cfg = resolve_config(cli_overrides=overrides)
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
     entries = []
     for key, value in sorted(cfg.flat().items()):
         source = cfg.source_of(key)
         redacted = _redact_api_key(key, value)
         entries.append({"key": key, "value": redacted, "source": source})
-    return {"status": "ok", "count": len(entries), "entries": entries}
+    return {"status": ToolStatus.OK, "count": len(entries), "entries": entries}
 
 
 def config_path(
@@ -151,8 +155,8 @@ def config_path(
     try:
         path = get_global_config_file(create=False) if global_ else get_project_config_file(start_dir=Path(wiki_dir) if wiki_dir else None)
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
-    return {"status": "ok", "path": str(path)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
+    return {"status": ToolStatus.OK, "path": str(path)}
 
 
 def gitignore_wiki(
@@ -179,14 +183,14 @@ def gitignore_wiki(
         existing = path.read_text(encoding="utf-8") if path.is_file() else None
         if check:
             current = existing is not None and is_current(existing, rendered)
-            return {"status": "ok" if current else "error", "path": str(path), "current": current}
+            return {"status": ToolStatus.OK if current else ToolStatus.ERROR, "path": str(path), "current": current}
         text = rendered if existing is None else merge_gitignore(existing, rendered)
         if text == existing:
-            return {"status": "ok", "path": str(path), "changed": False}
+            return {"status": ToolStatus.OK, "path": str(path), "changed": False}
         path.write_text(text, encoding="utf-8")
-        return {"status": "ok", "path": str(path), "changed": True, "created": existing is None}
+        return {"status": ToolStatus.OK, "path": str(path), "changed": True, "created": existing is None}
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def _redact_api_key(key: str, value: Any) -> Any:

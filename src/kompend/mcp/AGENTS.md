@@ -27,11 +27,16 @@ Use ``from fastmcp import FastMCP`` — never the SDK's renamed
 | ``tools/memory.py`` | ``memory_add``, ``memory_search``, ``memory_synthesize`` |
 | ``tools/query.py`` | ``query_wiki`` — markdown-first search (vector search optional, keyword fallback) |
 | ``tools/quality/`` | Quality & diagnostics family: ``lint_*`` (9 tools), ``doctor``, ``review``, ``provenance``, ``log``, ``list_parsers`` |
-| ``tools/_helpers.py`` | Shared tool utilities (wiki dir resolution, error formatting) |
+| ``tools/_helpers.py`` | Shared tool utilities (wiki dir resolution, error formatting); ``ToolStatus`` — the two-value ``status`` envelope vocabulary every tool answers with |
 
 ## Rules
 
 - Tool implementations go in ``tools/``, not in ``server.py``.
+- Every tool answers with an envelope whose ``status`` is ``ToolStatus.OK`` or
+  ``ToolStatus.ERROR`` — the values (``ok`` / ``error``) are a JSON contract, so
+  they are named once in ``tools/_helpers.py`` and never spelled out in a tool
+  module. ``tests/unit/test_mcp_tool_status.py`` walks the AST and fails on a
+  bare envelope literal.
 - ``tools/quality/`` keeps one module per tool family; ``__init__.py`` only
   re-exports, and its ``__all__`` — the 15 tool names — is the MCP contract.
   ``tests/unit/test_mcp_quality.py`` pins the names, the input schemas and the

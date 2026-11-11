@@ -7,7 +7,7 @@ from kompend.core.config import resolve_config
 from kompend.core.paths import MEMORY_CONTEXT_FILE, MEMORY_SUBDIR
 from kompend.core.templates import get_template_loader
 from kompend.logging import get_logger
-from kompend.mcp.tools._helpers import make_memory_store, resolve_wiki_dir
+from kompend.mcp.tools._helpers import ToolStatus, make_memory_store, resolve_wiki_dir
 
 logger = get_logger(__name__)
 
@@ -24,9 +24,9 @@ def memory_add(
         store, actor = make_memory_store(resolved_dir)
         store.add_entry(query=query, answer=answer, feedback=feedback, memory_by=actor)
         store.close()
-        return {"status": "ok", "message": "Memory entry added successfully."}
+        return {"status": ToolStatus.OK, "message": "Memory entry added successfully."}
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def memory_search(
@@ -40,9 +40,9 @@ def memory_search(
         store, _actor = make_memory_store(resolved_dir)
         results = store.search(query=query, top_k=top_k)
         store.close()
-        return {"status": "ok", "results": results}
+        return {"status": ToolStatus.OK, "results": results}
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
 
 def memory_synthesize(
@@ -56,7 +56,7 @@ def memory_synthesize(
         entries = store.get_recent_entries(limit=limit)
         if not entries:
             store.close()
-            return {"status": "ok", "message": "No memory entries found to synthesize."}
+            return {"status": ToolStatus.OK, "message": "No memory entries found to synthesize."}
 
         base_dir = Path(resolved_dir)
         cfg = resolve_config(base_dir=resolved_dir)
@@ -71,6 +71,6 @@ def memory_synthesize(
         context_file.write_text(content, encoding="utf-8")
 
         store.close()
-        return {"status": "ok", "message": f"Synthesized context written to {context_file}"}
+        return {"status": ToolStatus.OK, "message": f"Synthesized context written to {context_file}"}
     except Exception as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}

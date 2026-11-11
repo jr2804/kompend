@@ -11,6 +11,7 @@ from kompend.core.paths import EXPORTED_DIR_NAME, INDEX_FILE, safe_stem, vault_p
 from kompend.core.pipeline.export import export_source
 from kompend.core.utils.dicts import as_str
 from kompend.logging import get_logger
+from kompend.mcp.tools._helpers import ToolStatus
 from kompend.output.pages.index import sync_exported_sources_section
 
 logger = get_logger(__name__)
@@ -31,7 +32,7 @@ def sources_list(
 
     cache_data = source_metadata.load_source_entries(cache_dir)
     if not cache_data:
-        return {"status": "ok", "sources": [], "count": 0, "message": "No sources found. Run 'wiki_ingest' first."}
+        return {"status": ToolStatus.OK, "sources": [], "count": 0, "message": "No sources found. Run 'wiki_ingest' first."}
 
     # Parse tag filter groups (AND within group, OR between groups)
     tag_groups = []
@@ -53,9 +54,9 @@ def sources_list(
         results.append({"file": file, "tags": source_tags})  # nocheck: MCP response payload
 
     if not results:
-        return {"status": "ok", "sources": [], "count": 0, "message": "No sources match the given tag filter."}
+        return {"status": ToolStatus.OK, "sources": [], "count": 0, "message": "No sources match the given tag filter."}
 
-    return {"status": "ok", "sources": results, "count": len(results)}
+    return {"status": ToolStatus.OK, "sources": results, "count": len(results)}
 
 
 def sources_tag(
@@ -142,12 +143,12 @@ def sources_export(
 
     if export_all:
         if source_id:
-            return {"status": "error", "message": "SOURCE_ID cannot be combined with export_all=True."}
+            return {"status": ToolStatus.ERROR, "message": "SOURCE_ID cannot be combined with export_all=True."}
         if output:
-            return {"status": "error", "message": "export_all=True exports into exported/; OUTPUT must be empty."}
+            return {"status": ToolStatus.ERROR, "message": "export_all=True exports into exported/; OUTPUT must be empty."}
         cache_data = source_metadata.load_source_entries(vp.cache_dir)
         if not cache_data:
-            return {"status": "ok", "exported": [], "count": 0, "message": "No sources found. Run 'wiki_ingest' first."}
+            return {"status": ToolStatus.OK, "exported": [], "count": 0, "message": "No sources found. Run 'wiki_ingest' first."}
         exported_dir = vp.base_dir / EXPORTED_DIR_NAME
         exported_dir.mkdir(parents=True, exist_ok=True)
         exported: list[str] = []
@@ -169,10 +170,10 @@ def sources_export(
             except FileNotFoundError as exc:
                 skipped.append(str(exc))
         sync_exported_sources_section(vp.base_dir / INDEX_FILE, vp.base_dir)
-        return {"status": "ok", "exported": exported, "count": len(exported), "skipped": skipped}
+        return {"status": ToolStatus.OK, "exported": exported, "count": len(exported), "skipped": skipped}
 
     if not source_id:
-        return {"status": "error", "message": "Pass a source_id or use export_all=True."}
+        return {"status": ToolStatus.ERROR, "message": "Pass a source_id or use export_all=True."}
     if output:
         output_file = Path(output)
     else:
@@ -180,7 +181,7 @@ def sources_export(
         output_file = exported_dir / f"{safe_stem(source_id) or 'source'}.md"
         output_file.parent.mkdir(parents=True, exist_ok=True)
     if output_file.suffix.lower() != ".md":
-        return {"status": "error", "message": f"Output file must end in .md, got '{output_file.suffix or '<none>'}'"}
+        return {"status": ToolStatus.ERROR, "message": f"Output file must end in .md, got '{output_file.suffix or '<none>'}'"}
 
     try:
         export_source(
@@ -194,10 +195,10 @@ def sources_export(
             doc_headings=doc_headings,
         )
     except FileNotFoundError as exc:
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
     if not output:
         sync_exported_sources_section(vp.base_dir / INDEX_FILE, vp.base_dir)
-    return {"status": "ok", "message": f"Exported {source_id} -> {output_file}"}
+    return {"status": ToolStatus.OK, "message": f"Exported {source_id} -> {output_file}"}
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
@@ -208,8 +209,8 @@ def _mutate_tags(cache_dir: Path, file: str, tag: str, add: bool) -> dict[str, A
     try:
         result = source_metadata.apply_tag(cache_dir, file, tag, add=add)
     except LookupError:
-        return {"status": "error", "message": f"No cache entry found for '{file}'. Run 'wiki_ingest' first."}
-    return {"status": "ok", "message": result.message, "changed": result.changed}
+        return {"status": ToolStatus.ERROR, "message": f"No cache entry found for '{file}'. Run 'wiki_ingest' first."}
+    return {"status": ToolStatus.OK, "message": result.message, "changed": result.changed}
 
 
 def _mutate_attributes(cache_dir: Path, file: str, key_value: str, add: bool) -> dict[str, Any]:
@@ -217,7 +218,7 @@ def _mutate_attributes(cache_dir: Path, file: str, key_value: str, add: bool) ->
     try:
         result = source_metadata.apply_attribute(cache_dir, file, key_value, add=add)
     except LookupError:
-        return {"status": "error", "message": f"No cache entry found for '{file}'. Run 'wiki_ingest' first."}
+        return {"status": ToolStatus.ERROR, "message": f"No cache entry found for '{file}'. Run 'wiki_ingest' first."}
     except ValueError:
-        return {"status": "error", "message": f"Use KEY=VALUE format for attributes, got: '{key_value}'"}
-    return {"status": "ok", "message": result.message, "changed": result.changed}
+        return {"status": ToolStatus.ERROR, "message": f"Use KEY=VALUE format for attributes, got: '{key_value}'"}
+    return {"status": ToolStatus.OK, "message": result.message, "changed": result.changed}

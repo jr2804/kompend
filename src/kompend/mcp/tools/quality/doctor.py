@@ -15,6 +15,7 @@ from kompend.core.paths import vault_paths
 from kompend.core.reporting.last_run import build_last_run_report
 from kompend.core.utils.dicts import as_str
 from kompend.diagnostics import run_doctor
+from kompend.mcp.tools._helpers import ToolStatus
 from kompend.rag import recorded_embedding_model
 
 
@@ -32,7 +33,7 @@ def doctor(
     embed_model = as_str(cfg.get(COMPILE_EMBEDDING_MODEL))
 
     if not wiki_dir and not output_dir.exists():
-        return {"status": "error", "message": f"No wiki found at {output_dir}. Use wiki_dir parameter."}
+        return {"status": ToolStatus.ERROR, "message": f"No wiki found at {output_dir}. Use wiki_dir parameter."}
     results = run_doctor(
         sources_dir=sources_dir,
         output_dir=output_dir,
@@ -46,7 +47,7 @@ def doctor(
     # We can't easily capture print_doctor_results output, so return the raw results
     last_run = build_last_run_report(vp.base_dir).to_dict()
     if json_output:
-        return {"status": "ok", "results": [r.to_dict() for r in results], "last_run": last_run}
+        return {"status": ToolStatus.OK, "results": [r.to_dict() for r in results], "last_run": last_run}
     # Build a text summary
     lines = []
     all_ok = True
@@ -56,4 +57,4 @@ def doctor(
         lines.append(f"{r.name}: {'OK' if r.passed else 'FAIL'}")
         if verbose and r.message:
             lines.append(f"  {r.message}")
-    return {"status": "ok" if all_ok else "error", "summary": "\n".join(lines), "last_run": last_run}
+    return {"status": ToolStatus.OK if all_ok else ToolStatus.ERROR, "summary": "\n".join(lines), "last_run": last_run}

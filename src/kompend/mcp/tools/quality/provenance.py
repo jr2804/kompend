@@ -9,6 +9,7 @@ from kompend.cli.settings import build_cli_overrides
 from kompend.core.config import resolve_config
 from kompend.core.models import MetadataField, load_wiki_from_files
 from kompend.core.paths import VaultPaths, vault_paths
+from kompend.mcp.tools._helpers import ToolStatus
 
 
 def provenance(
@@ -29,7 +30,7 @@ def provenance(
 
     wiki = load_wiki_from_files(VaultPaths(base_dir).output_dir)
     if wiki is None:
-        return {"status": "error", "message": "No wiki pages found. Run 'wiki_compile' first."}
+        return {"status": ToolStatus.ERROR, "message": "No wiki pages found. Run 'wiki_compile' first."}
 
     slugs = page_slugs or []
 
@@ -39,11 +40,11 @@ def provenance(
             key=lambda p: p[0],
         )
         if json_output:
-            return {"status": "ok", "pages": [{"slug": s, "title": t, "sources": c} for s, t, c in pages]}
+            return {"status": ToolStatus.OK, "pages": [{"slug": s, "title": t, "sources": c} for s, t, c in pages]}
         lines = [f"{len(pages)} page(s) in compiled wiki:\n"]
         for slug, title, count in pages:
             lines.append(f"  {slug:<40} ({count} sources)  {title}")
-        return {"status": "ok", "pages_text": "\n".join(lines)}
+        return {"status": ToolStatus.OK, "pages_text": "\n".join(lines)}
 
     seen_slugs: set[str] = set()
     matched: list = []
@@ -61,7 +62,7 @@ def provenance(
 
     if json_output:
         entries = [{"page": n.title, "slug": n.id, "sources": _node_sources(n, sources_dir)} for n in matched]
-        return {"status": "ok" if not missing else "error", "pages": entries[0] if len(entries) == 1 else entries, "missing": missing}
+        return {"status": ToolStatus.OK if not missing else ToolStatus.ERROR, "pages": entries[0] if len(entries) == 1 else entries, "missing": missing}
 
     lines = []
     for node in matched:
@@ -76,9 +77,9 @@ def provenance(
 
     if missing:
         lines.append("Missing: " + ", ".join(missing))
-        return {"status": "error", "pages_text": "\n".join(lines), "missing": missing}
+        return {"status": ToolStatus.ERROR, "pages_text": "\n".join(lines), "missing": missing}
 
-    return {"status": "ok", "pages_text": "\n".join(lines)}
+    return {"status": ToolStatus.OK, "pages_text": "\n".join(lines)}
 
 
 def _node_sources(node: Any, sources_dir: Path) -> list[str]:

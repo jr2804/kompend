@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from pathlib import Path
 
 from kompend.core.config import resolve_config
@@ -14,6 +15,19 @@ from kompend.logging import get_logger
 from kompend.memory import MemoryStore
 
 logger = get_logger(__name__)
+
+
+class ToolStatus(StrEnum):
+    """The outcome a tool reports in its ``status`` envelope field.
+
+    Two values only: a tool either did the work (``OK``) or explained why it
+    could not (``ERROR``). Tools never raise into the protocol layer — an
+    agent calling across a process boundary needs a payload it can read, not
+    a transport failure — so this pair is the whole vocabulary.
+    """
+
+    OK = "ok"
+    ERROR = "error"
 
 
 def resolve_wiki_dir(wiki_dir: str | None = None) -> str:

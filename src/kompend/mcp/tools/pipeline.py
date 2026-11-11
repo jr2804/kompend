@@ -37,6 +37,7 @@ from kompend.core.utils.time import iso_local
 from kompend.llm.format import strip_reasoning
 from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_logger
+from kompend.mcp.tools._helpers import ToolStatus
 from kompend.organize.engine import organize_sources, resolve_organize_config
 from kompend.output.markdown import MarkdownWriter
 from kompend.output.models import Document
@@ -86,7 +87,7 @@ def wiki_ingest(
         undetected=cfg.kompend.downloader.undetected,
     )
     if not all_input_files:
-        return {"status": "error", "message": f"No supported files found in {sources_dir}."}
+        return {"status": ToolStatus.ERROR, "message": f"No supported files found in {sources_dir}."}
 
     document_parser = build_parser(ParserOptions.from_config(cfg, base_dir=base_dir))
 
@@ -106,7 +107,7 @@ def wiki_ingest(
         elapsed = time.monotonic() - ingest_start
     except Exception as exc:
         logger.exception("Ingest failed")
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
     summary = f"Ingested {result.count} document(s) into {result.cache_dir}"
     if result.cached:
@@ -119,7 +120,7 @@ def wiki_ingest(
         summary += f" ({result.dedup_skipped} duplicates identified)"
 
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "count": result.count,
         "cached": result.cached,
         "skipped": result.skipped,
@@ -143,11 +144,11 @@ def wiki_index(
 
     wiki = load_wiki_from_files(vp.output_dir)
     if wiki is None:
-        return {"status": "error", "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
+        return {"status": ToolStatus.ERROR, "message": f"No wiki pages found in {output_dir}. Run 'wiki_compile' first."}
 
     resolved_model = embed_model or cfg.kompend.compile.embedding.model
     if not resolved_model:
-        return {"status": "error", "message": "No embedding model configured. Set compile.embedding.model or pass embed_model."}
+        return {"status": ToolStatus.ERROR, "message": "No embedding model configured. Set compile.embedding.model or pass embed_model."}
 
     embed_attachments = cfg.kompend.attachments.embed
 
@@ -161,7 +162,7 @@ def wiki_index(
         )
     except Exception as exc:
         logger.exception("Index build failed")
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
     wiki.metadata[str(MetadataField.EMBEDDING_MODEL)] = resolved_model
     # Write the model through the snapshot wiki: the files-loaded wiki above has
@@ -173,8 +174,8 @@ def wiki_index(
         write_wiki_cache(cached, vp.base_dir)
 
     if count > 0:
-        return {"status": "ok", "count": count, "message": f"Indexed {count} nodes in the vector store for semantic search."}
-    return {"status": "ok", "count": 0, "message": "Warning: no nodes indexed — vector index is empty."}
+        return {"status": ToolStatus.OK, "count": count, "message": f"Indexed {count} nodes in the vector store for semantic search."}
+    return {"status": ToolStatus.OK, "count": 0, "message": "Warning: no nodes indexed — vector index is empty."}
 
 
 def wiki_write(
@@ -241,7 +242,7 @@ def wiki_write(
     rendered = writer.renderer.render(doc)
     output_file.write_text(rendered, encoding="utf-8")
 
-    return {"status": "ok", "file": str(output_file), "message": f"Written: {output_file}"}
+    return {"status": ToolStatus.OK, "file": str(output_file), "message": f"Written: {output_file}"}
 
 
 def wiki_organize(
@@ -271,7 +272,7 @@ def wiki_organize(
     timeout = cfg.kompend.compile.llm.timeout
     default_model = cfg.kompend.compile.llm.default_model
     if not default_model:
-        return {"status": "error", "message": NO_MODEL_CONFIGURED_MESSAGE}
+        return {"status": ToolStatus.ERROR, "message": NO_MODEL_CONFIGURED_MESSAGE}
 
     categorize_agent = CategorizeAgent(
         default_model,
@@ -290,10 +291,10 @@ def wiki_organize(
         )
     except Exception as exc:
         logger.exception("Organize failed")
-        return {"status": "error", "message": str(exc)}
+        return {"status": ToolStatus.ERROR, "message": str(exc)}
 
     return {
-        "status": "ok",
+        "status": ToolStatus.OK,
         "dry_run": dry_run,
         "categories": len(result.tree.categories),
         "moved_count": result.moved_count,

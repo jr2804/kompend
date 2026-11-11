@@ -14,6 +14,7 @@ from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_logger
+from kompend.mcp.tools._helpers import ToolStatus
 from kompend.output.bibtex import references_to_bibtex
 
 logger = get_logger(__name__)
@@ -27,18 +28,18 @@ def references_list(
     vp = vault_paths(wiki_dir)
     ref_file = vp.references_file
     if not ref_file.exists():
-        return {"status": "ok", "references": [], "count": 0, "message": "No references found. Run a compile first."}
+        return {"status": ToolStatus.OK, "references": [], "count": 0, "message": "No references found. Run a compile first."}
 
     store = ReferenceStore(ref_file)
 
     if source:
         refs = store.get_source(source)
         if not refs:
-            return {"status": "ok", "references": [], "count": 0, "message": f"No references found for source: {source}"}
+            return {"status": ToolStatus.OK, "references": [], "count": 0, "message": f"No references found for source: {source}"}
     else:
         refs = store.all_references()
         if not refs:
-            return {"status": "ok", "references": [], "count": 0, "message": "No references found."}
+            return {"status": ToolStatus.OK, "references": [], "count": 0, "message": "No references found."}
 
     ref_dicts = []
     for i, ref in enumerate(refs, 1):
@@ -54,7 +55,7 @@ def references_list(
             }
         )
 
-    return {"status": "ok", "references": ref_dicts, "count": len(ref_dicts)}
+    return {"status": ToolStatus.OK, "references": ref_dicts, "count": len(ref_dicts)}
 
 
 def references_export(
@@ -66,19 +67,19 @@ def references_export(
     vp = vault_paths(wiki_dir)
     ref_file = vp.references_file
     if not ref_file.exists():
-        return {"status": "error", "message": "No references found. Run a compile first."}
+        return {"status": ToolStatus.ERROR, "message": "No references found. Run a compile first."}
 
     store = ReferenceStore(ref_file)
 
     if source:
         refs = store.get_source(source)
         if not refs:
-            return {"status": "error", "message": f"No references found for source: {source}"}
+            return {"status": ToolStatus.ERROR, "message": f"No references found for source: {source}"}
     else:
         refs = store.all_references()
 
     if not refs:
-        return {"status": "error", "message": "No references to export."}
+        return {"status": ToolStatus.ERROR, "message": "No references to export."}
 
     out_file = Path(output)
     suffix = out_file.suffix.lower()
@@ -87,10 +88,10 @@ def references_export(
     elif suffix == ".json":
         content = json.dumps([r.to_csl() for r in refs], indent=2, ensure_ascii=False)
     else:
-        return {"status": "error", "message": f"Unknown format '{suffix}'. Use .bib (BibTeX) or .json (CSL JSON)."}
+        return {"status": ToolStatus.ERROR, "message": f"Unknown format '{suffix}'. Use .bib (BibTeX) or .json (CSL JSON)."}
 
     out_file.write_text(content, encoding="utf-8")
-    return {"status": "ok", "count": len(refs), "message": f"Exported {len(refs)} reference(s) to {output}"}
+    return {"status": ToolStatus.OK, "count": len(refs), "message": f"Exported {len(refs)} reference(s) to {output}"}
 
 
 def references_fetch(
@@ -103,16 +104,16 @@ def references_fetch(
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
     ref_file = vp.references_file
     if not ref_file.exists():
-        return {"status": "ok", "count": 0, "message": "No references found. Run a compile first."}
+        return {"status": ToolStatus.OK, "count": 0, "message": "No references found. Run a compile first."}
 
     store = ReferenceStore(ref_file)
     pending = store.unresolved_indices(source)
     if not pending:
-        return {"status": "ok", "count": 0, "message": "All references already have a DOI or URL."}
+        return {"status": ToolStatus.OK, "count": 0, "message": "All references already have a DOI or URL."}
 
     model = cfg.kompend.compile.llm.default_model
     if not model:
-        return {"status": "error", "message": NO_MODEL_CONFIGURED_MESSAGE}
+        return {"status": ToolStatus.ERROR, "message": NO_MODEL_CONFIGURED_MESSAGE}
 
     timeout = float(cfg.kompend.compile.llm.timeout)
     try:
@@ -122,7 +123,7 @@ def references_fetch(
             llm=cfg.kompend.compile.llm,
         )
     except Exception as exc:
-        return {"status": "error", "message": f"Could not initialise resolver agent: {exc}"}
+        return {"status": ToolStatus.ERROR, "message": f"Could not initialise resolver agent: {exc}"}
 
     try:
         resolved = resolve_unresolved_references(
@@ -135,11 +136,16 @@ def references_fetch(
             failure_min_units=cfg.kompend.compile.llm.batch_failure_threshold_min,
         )
     except LLMOutputError as exc:
-        return {"status": "error", "message": f"Reference resolution failed: {exc}"}
+        return {"status": ToolStatus.ERROR, "message": f"Reference resolution failed: {exc}"}
 
     if dry_run:
-        return {"status": "ok", "count": resolved, "dry_run": True, "message": f"[dry-run] {resolved} reference(s) would be resolved."}
+        return {"status": ToolStatus.OK, "count": resolved, "dry_run": True, "message": f"[dry-run] {resolved} reference(s) would be resolved."}
     if resolved:
         remaining = len(store.unresolved_indices(source))
-        return {"status": "ok", "count": resolved, "remaining": remaining, "message": f"Resolved {resolved} reference(s). {remaining} still unresolved."}
-    return {"status": "ok", "count": 0, "message": "No references could be resolved."}
+        return {
+            "status": ToolStatus.OK,
+            "count": resolved,
+            "remaining": remaining,
+            "message": f"Resolved {resolved} reference(s). {remaining} still unresolved.",
+        }
+    return {"status": ToolStatus.OK, "count": 0, "message": "No references could be resolved."}
