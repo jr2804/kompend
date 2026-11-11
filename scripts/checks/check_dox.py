@@ -124,7 +124,7 @@ def _collect_dox_files(root: Path) -> list[Path]:
     from flagging those examples as redundancy.
 
     The walk does not descend into scratch, cache, virtualenv or build trees:
-    a copy of the project under ``.kompend/tmp/`` is not a second set of
+    a copy of the project in the OS temp dir is not a second set of
     contracts, and measuring it produced hundreds of false duplicate-sentence
     findings. Every skipped directory is dot-prefixed or one of the build
     names below, and the core ``.agents/`` files are collected by the explicit

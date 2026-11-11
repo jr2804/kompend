@@ -765,7 +765,7 @@ def test_the_rewritten_idioms_keep_their_truth_for_the_empty_case() -> None:
 
 
 def test_the_dox_walk_ignores_a_scratch_copy_of_the_project(tmp_path: Path) -> None:
-    """A copy under ``.kompend/tmp/`` is not a second set of contracts.
+    """A copy in the OS temp dir is not a second set of contracts.
 
     kompend-2 ran pyreorder over a copied tree, and the gate then reported
     hundreds of duplicate sentences: the copy's AGENTS.md files say exactly
