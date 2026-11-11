@@ -12,6 +12,7 @@ from kompend.core.models.references import SHORT_LABEL_TITLE_MAX
 from kompend.core.paths import vault_paths
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.utils.exceptions import LLMOutputError
+from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_logger
 from kompend.output.bibtex import references_to_bibtex
 
@@ -111,7 +112,7 @@ def references_fetch(
 
     model = cfg.kompend.compile.llm.default_model
     if not model:
-        return {"status": "error", "message": "No LLM model configured (KOMP_LLM_DEFAULT_MODEL)."}
+        return {"status": "error", "message": NO_MODEL_CONFIGURED_MESSAGE}
 
     timeout = float(cfg.kompend.compile.llm.timeout)
     try:

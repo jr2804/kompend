@@ -35,6 +35,7 @@ from kompend.core.text.windows import split_text_windows
 from kompend.core.trust.actor import resolve_actor
 from kompend.core.utils.time import iso_local
 from kompend.llm.format import strip_reasoning
+from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_logger
 from kompend.organize.engine import organize_sources, resolve_organize_config
 from kompend.output.markdown import MarkdownWriter
@@ -270,7 +271,7 @@ def wiki_organize(
     timeout = cfg.kompend.compile.llm.timeout
     default_model = cfg.kompend.compile.llm.default_model
     if not default_model:
-        return {"status": "error", "message": "No LLM model configured. Set compile.llm.default_model in config."}
+        return {"status": "error", "message": NO_MODEL_CONFIGURED_MESSAGE}
 
     categorize_agent = CategorizeAgent(
         default_model,
@@ -341,7 +342,7 @@ def _synthesize_write_page(
     references_section = _build_references_section(source_texts, related_titles)
 
     if not model:
-        raise RuntimeError("No LLM model configured for write-page synthesis")
+        raise RuntimeError(NO_MODEL_CONFIGURED_MESSAGE)
 
     agent = WriteAgent(
         model,

@@ -41,7 +41,6 @@ Resolution order:
 `_split(model_string)` applies the `kompend.llm.model_id` rule (first `/` or `:` — whichever comes first
 — into `(provider, model_name)`, remainder verbatim). Provider ID aliases (`opencode-zen` → `opencode`)
 live in `_PROVIDER_ALIASES`, the module's only hardcoded mapping.
-
 `resolve_model_limits(model_id)` looks up `(max_input, max_output)` limits in the catalogue
 (`catalog.model(...)`); raises `KeyError` when the model is unlisted, `LookupError` when it
 carries no limit data — `discover_context_window` handles the miss.
@@ -77,7 +76,6 @@ when it decides how much input to pack: a quarter of the window, clamped to
 `history_budget` (twice the reserve) is where threaded message history gets
 compacted. These values never travel to a provider — they only split work into
 requests that fit. `kompend doctor` reports them in its `window-fit` check.
-
 **One exception, and it is not a cap.** The Anthropic protocol rejects a
 request without `max_tokens` (pydantic-ai then substitutes 4096, capping every
 reply, thinking included). For that protocol only, the agent passes a callable
@@ -192,26 +190,28 @@ formats, owning `salvage_json`, `encode_for_llm`, `decode_from_llm`,
 
 **Input only.** TOON and ISON apply to context data serialized into prompt
 templates. Model *output* stays JSON: providers enforce `response_format:
-json_object`, and the structured-output modes of pydantic-ai are JSON-schema
-based.
+json_object`, and pydantic-ai's structured-output modes are JSON-schema based.
 
-**Teach the format, or the model cannot read it.** `encode_payload(data, fmt)` appends the
-format specification (`format_note`, rendered from `templates/llm/format_<format>.md.j2`) to the
-encoded data. Use it for every structured blob injected into a prompt; use `encode_for_llm` only
-when the caller supplies the specification itself (e.g. console output in
-`cli/_query_helpers.py`, which is not a prompt).
+**Teach the format, or the model cannot read it.** `encode_payload(data, fmt)` appends the format
+specification (`format_note`, rendered from `templates/llm/format_<format>.md.j2`) to the encoded
+data — use it for every structured blob injected into a prompt. `encode_for_llm` is only for a
+caller that supplies the specification itself (e.g. console output in `cli/_query_helpers.py`).
 
-**The format travels with the agent.** `KompendAgentBase.data_format` holds the
-resolved `compile.llm.data_format`; prompt-building sites read it off the agent
-instead of threading a new parameter (`CategorizeAgent` → `_build_files_payload`).
-Config holders without an agent read `config.llm.data_format` directly.
+**The format travels with the agent.** `KompendAgentBase.data_format` holds the resolved
+`compile.llm.data_format`; prompt-building sites read it off the agent
+(`CategorizeAgent` → `_build_files_payload`), and config holders without an agent read
+`config.llm.data_format` directly.
 
 **`decode_from_llm(text, fmt)`** is the inverse and never raises: a model that
 cannot produce the format is a fact to report (`kompend doctor`), not an error.
 
-`kompend doctor` probes each format on the configured model
-(`cli/cmds/quality/_capabilities.py`) and prints the input-side size saving, so
-the format choice is evidence-based.
+## One sentence for a missing model
+
+`kompend.llm.messages.NO_MODEL_CONFIGURED_MESSAGE` is the single wording every surface raises
+when `compile.llm.default_model` is unset; it names the key and `kompend config set`, a surface
+appends only its own next step, and `tests/unit/test_llm_messages.py` fails on a second copy of
+the literal. `kompend doctor` probes each format on the configured model
+(`cli/cmds/quality/_capabilities.py`) and prints the input-side size saving.
 
 ## Failure classification and the decision sidecar
 
@@ -228,12 +228,12 @@ that class and treat the rest as unretryable.
 (TypeSafe SystemOne / Jev): `ErrorAction = Literal["retry", "skip", "abort"]`
 and `ErrorDecision` (only `action` — a decision model can fill choices and
 booleans, never free text). `DECISION_RESULT_TYPES` maps every result type
-kompend ships to a decision model to its class, `CandidateVerdict` included;
-the doctor's offline schema check walks it (`../diagnostics/AGENTS.md`). The
-model is an ordinary agent (`kompend.agents.decision.DecisionAgent`) reached
-through pydantic-ai's `typesafe` provider; `decision.enabled/model/timeout`
-name it, `[providers.*]` carries the credentials. Every helper returns `None`
-when the sidecar is off or unreachable, so the deterministic floor holds.
+kompend ships to a decision model to its class, `CandidateVerdict` included; the doctor's offline schema
+check walks it (`../diagnostics/AGENTS.md`). The model is an ordinary agent
+(`kompend.agents.decision.DecisionAgent`) reached through pydantic-ai's
+`typesafe` provider; `decision.enabled/model/timeout` name it, `[providers.*]`
+carries the credentials. Every helper returns `None` when the sidecar is off or
+unreachable, so the deterministic floor holds.
 **The decision endpoint follows the config, not the call order**:
 `build_decision_model` resolves the config itself when nobody has yet, and a
 provider nobody configured raises rather than trusting the SDK default — a
@@ -247,4 +247,4 @@ decompresses natively; nothing else is assumed to.
 
 ## Verification
 
-- `uv run pytest tests/unit/test_llm_models.py tests/unit/test_llm_context_window.py tests/unit/test_request_budget.py tests/unit/test_llm_overflow.py tests/unit/test_doctor_decision.py -q` — model construction, window discovery, request-fit planner, provider overflow, the decision result-type registry against the real grammar
+- `uv run pytest tests/unit/test_llm_models.py tests/unit/test_llm_context_window.py tests/unit/test_request_budget.py tests/unit/test_llm_overflow.py tests/unit/test_doctor_decision.py tests/unit/test_llm_messages.py -q` — model construction, window discovery, request-fit planner, provider overflow, the decision result-type registry against the real grammar, the missing-model sentence

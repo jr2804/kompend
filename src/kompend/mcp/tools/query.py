@@ -9,6 +9,7 @@ from kompend.cli.cmds.pipeline.status import collect_stats
 from kompend.core.config import RlmConfig, resolve_config
 from kompend.core.models import load_wiki_from_files
 from kompend.core.paths import VECTORS_DB_FILE, vault_paths
+from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_logger
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.search.filters import matches_attr_filter
@@ -106,8 +107,7 @@ def query_wiki(
     if not model and not raw:
         return {
             "status": "error",
-            "message": "No LLM model configured (compile.llm.default_model)."
-            " Query requires a model to synthesize an answer."
+            "message": NO_MODEL_CONFIGURED_MESSAGE + " Query requires a model to synthesize an answer."
             " Use --raw for retrieval-only output, or configure an embedding model"
             " (compile.embedding.model) for raw semantic search.",
         }

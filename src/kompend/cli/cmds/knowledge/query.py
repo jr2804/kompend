@@ -51,6 +51,7 @@ from kompend.core.config._configs import DecisionConfig, LlmDataFormat
 from kompend.core.models import load_wiki_from_files
 from kompend.core.paths import vault_paths
 from kompend.llm.context_window import discover_context_window
+from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.pages.log import log_stage
 from kompend.search.classifier import classify
@@ -121,9 +122,7 @@ def query_cmd(  # noqa: PLR0917 — one parameter per CLI option
         # query cannot produce an answer. Fail fast instead of degrading to raw
         # scored results that mask the missing configuration.
         get_err_console().print(
-            "error: No LLM model configured (compile.llm.default_model)."
-            " Query requires a model to synthesize an answer from the wiki."
-            " Use --raw for retrieval-only output."
+            NO_MODEL_CONFIGURED_MESSAGE + " Query requires a model to synthesize an answer from the wiki. Use --raw for retrieval-only output.",
         )
         raise SystemExit(1)
 

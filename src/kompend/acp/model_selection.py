@@ -26,6 +26,7 @@ import acp
 from pydantic_ai.models import Model, ModelSelectionContext
 
 from kompend.core.config import resolve_config
+from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.llm.models import build_model
 
 #: JSON-RPC code the client receives with the house sentence. The sentence is
@@ -33,9 +34,9 @@ from kompend.llm.models import build_model
 #: ``RequestError`` verbatim and wraps anything else in "Internal error".
 _INTERNAL_ERROR: Final[int] = -32603
 
-#: The one sentence every stage prints when no model is configured. Repeated
-#: here verbatim because the ACP server has no terminal to show a hint on.
-NO_MODEL_MESSAGE: Final[str] = "No LLM model configured. Set compile.llm.default_model or run 'kompend config set'."
+#: The house sentence, kept under its own name because the ACP rail and the
+#: tests name it here. The wording lives in :mod:`kompend.llm.messages`.
+NO_MODEL_MESSAGE: Final[str] = NO_MODEL_CONFIGURED_MESSAGE
 
 
 class ConfigModelSelector:

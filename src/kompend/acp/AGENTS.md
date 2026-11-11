@@ -50,8 +50,9 @@ goes to the active conversational agent.
   `compile.llm.default_model` once per session (from the session's `cwd`, so it
   outranks the process-cwd fallback) and reuses it for every later step. A
   session with nothing configured starts fine and fails its first prompt with
-  `NO_MODEL_MESSAGE` raised as `acp.RequestError` — never pydantic-ai's
-  `UserError`: the connection forwards `RequestError` verbatim.
+  `NO_MODEL_MESSAGE` (a re-export of `kompend.llm.messages.NO_MODEL_CONFIGURED_MESSAGE`)
+  raised as `acp.RequestError` — never pydantic-ai's `UserError`: the
+  connection forwards `RequestError` verbatim.
 - Sessions keep their history across turns (`SessionState.history`); a turn is
   not committed when it is cancelled.
 - Tools are the MCP server's functions — add a tool by adding an MCP tool, not a

@@ -44,6 +44,7 @@ from kompend.core.text.matching import SemanticMatcher
 from kompend.core.text.slug import slugify
 from kompend.core.utils.time import iso_local
 from kompend.llm.format import strip_reasoning
+from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.markdown import MarkdownWriter
 from kompend.output.models import Document
@@ -328,7 +329,7 @@ def _synthesize_write_page(
     references_section = _build_references_section(source_texts, related_titles)
 
     if not model:
-        raise RuntimeError("No LLM model configured for write-page synthesis")
+        raise RuntimeError(NO_MODEL_CONFIGURED_MESSAGE)
 
     agent = make_agentic_write_agent(
         model_string=model,

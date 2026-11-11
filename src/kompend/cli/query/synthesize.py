@@ -23,6 +23,7 @@ from kompend.core.models import CompiledWiki
 from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME
 from kompend.core.trust.actor import resolve_actor
 from kompend.llm.context_window import ContextWindow
+from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.memory import MemoryStore
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
@@ -58,7 +59,7 @@ def run_agentic_query_output(
     """
     model = cfg.kompend.search.agentic.model or cfg.kompend.compile.llm.default_model
     if not model:
-        get_err_console().print("error: No LLM model configured for agentic query.")
+        get_err_console().print(NO_MODEL_CONFIGURED_MESSAGE + " Agentic query needs a model to answer.")
         raise SystemExit(1)
     retriever = (
         HybridRetriever(wiki, vector_store=vector_store, display=cfg.kompend.display)

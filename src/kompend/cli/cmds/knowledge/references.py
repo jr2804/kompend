@@ -29,6 +29,7 @@ from kompend.core.config import resolve_config
 from kompend.core.models.references import SHORT_LABEL_TITLE_MAX
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.utils.exceptions import LLMOutputError
+from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.output.bibtex import references_to_bibtex
 
@@ -125,7 +126,7 @@ def references_fetch(*, source: ReferencesFetchSource = None, dry_run: Reference
     written back to the references store so the wiki's reference links
     become resolvable.
 
-    Requires an LLM model to be configured (``KOMP_LLM_DEFAULT_MODEL``).
+    Requires an LLM model to be configured (``compile.llm.default_model``).
     """
     vp = vault_paths_from_ctx()
     cfg = resolve_config(base_dir=vp.base_dir, cli_overrides=build_cli_overrides())
@@ -141,9 +142,7 @@ def references_fetch(*, source: ReferencesFetchSource = None, dry_run: Reference
 
     model = cfg.kompend.compile.llm.default_model
     if not model:
-        get_err_console().print(
-            "No LLM model configured. Set KOMP_LLM_DEFAULT_MODEL or run 'kompend config set'.",
-        )
+        get_err_console().print(NO_MODEL_CONFIGURED_MESSAGE)
         raise SystemExit(1)
 
     timeout = float(cfg.kompend.compile.llm.timeout)
