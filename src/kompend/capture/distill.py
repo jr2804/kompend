@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import TypedDict
 
 import yaml
+from pydantic_ai.exceptions import UsageLimitExceeded
 
 from kompend.agents.deps import DistillDeps
 from kompend.agents.distill import DistillAgent
@@ -24,6 +25,7 @@ from kompend.capture.kinds import UNGROUPED_TAG, SourceZone
 from kompend.core.models.enums import MetadataField
 from kompend.core.paths import ARCHIVE_SUBDIR, CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
 from kompend.core.text.pipes import escape_prose_pipes
+from kompend.core.utils.exceptions import LLMOutputError
 from kompend.core.utils.time import display_local
 from kompend.logging import get_logger
 from kompend.output.frontmatter import okf_frontmatter_yaml, source_frontmatter
@@ -190,6 +192,13 @@ def _distill_agentic(
     stops as soon as a round saves nothing new; whatever is still missing then
     falls back to the deterministic per-group merge, so a partial session
     never discards work the agent already did.
+
+    A round that stops because its request budget ran out is expected mid-work:
+    the pages it recorded are kept and the remaining groups are re-run in a
+    fresh session, exactly as before. A round whose LLM work failed is not that:
+    the pages it had already recorded are written, one error names the groups
+    left without a page, and the exception propagates. A failed session must
+    not read as a session that saved nothing.
     """
     groups_data: list[DistillGroup] = [
         DistillGroup(
@@ -207,20 +216,64 @@ def _distill_agentic(
         sessions += 1
         try:
             distill_agent.run(deps)
-        except Exception as exc:
-            logger.warning("AgenticDistillAgent session %d failed: %s", sessions, exc)
+        except (LLMOutputError, UsageLimitExceeded) as exc:
+            if _is_budget_exhaustion(exc):
+                logger.info("AgenticDistillAgent session %d exhausted its request budget; resuming with the remaining group(s)", sessions)
+            else:
+                pages.update({entry["tag"]: deps.pages[entry["tag"]] for entry in pending if entry["tag"] in deps.pages})
+                kept = _write_group_pages(groups, pages, timestamp, output_dir)
+                remaining = [entry["tag"] for entry in pending if entry["tag"] not in pages]
+                logger.error(
+                    "AgenticDistillAgent session %d failed after keeping %d page(s); %d group(s) left without a page: %s — rerun distill to retry them",
+                    sessions,
+                    len(kept),
+                    len(remaining),
+                    ", ".join(remaining),
+                )
+                raise
         recorded = {entry["tag"] for entry in pending if entry["tag"] in deps.pages}
         if not recorded:
             logger.warning(
-                "AgenticDistillAgent saved no pages for %d group(s) after %d session(s) — merging those deterministically",
+                "AgenticDistillAgent saved no pages for %d group(s) after %d session(s) — merging %s deterministically",
                 len(pending),
                 sessions,
+                ", ".join(entry["tag"] for entry in pending),
             )
             break
         pages.update({tag: deps.pages[tag] for tag in recorded})
         pending = [entry for entry in pending if entry["tag"] not in recorded]
 
-    written = []
+    return _write_group_pages(groups, pages, timestamp, output_dir)
+
+
+def _is_budget_exhaustion(exc: BaseException) -> bool:
+    """Whether *exc* is the agent's request budget running out rather than a failure.
+
+    The agent boundary re-wraps every failure as
+    :class:`~kompend.core.utils.exceptions.LLMOutputError`, so the original
+    :class:`~pydantic_ai.exceptions.UsageLimitExceeded` is one link down the
+    cause chain. Budget exhaustion is the resume contract working as designed:
+    the pages the round saved are kept and the remaining groups get a fresh
+    session, so it must not be reported as a failure.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        if isinstance(current, UsageLimitExceeded):
+            return True
+        seen.add(id(current))
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _write_group_pages(
+    groups: dict[str, list[CapturedNote]],
+    pages: dict[str, DistillPage],
+    timestamp: str,
+    output_dir: Path,
+) -> list[Path]:
+    """Write one page per group, merging groups without an agent page deterministically."""
+    written: list[Path] = []
     for tag, note_list in groups.items():
         page_data = pages.get(tag)
         if page_data is None:
@@ -293,9 +346,9 @@ def _synthesize_with_agent(
 
     try:
         result = distill_agent.run(deps)
-    except Exception:
-        logger.warning("DistillAgent failed for tag '%s', using fallback", tag)
-        return _synthesize_fallback(tag, notes)
+    except LLMOutputError:
+        logger.error("DistillAgent failed for tag %r (%d note(s)) — no page was written for it", tag, len(notes))
+        raise
 
     return {
         "title": result.title or tag.replace("-", " ").replace("_", " ").title(),

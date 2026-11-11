@@ -11,6 +11,7 @@ from kompend.capture.kinds import CAPTURE_SOURCE_ID, CaptureKind, SourceZone
 from kompend.core.models.enums import MetadataField
 from kompend.core.paths import CAPTURED_SUBDIR
 from kompend.core.text.pipes import escape_prose_pipes
+from kompend.core.utils.exceptions import LLMOutputError
 from kompend.core.utils.time import display_local
 from kompend.logging import get_logger
 from kompend.output.frontmatter import okf_frontmatter_yaml, source_frontmatter
@@ -83,7 +84,11 @@ def _extract_with_agent(text: str, capture_agent: CaptureAgent, user_tags: list[
 
     Returns an empty list when the agent refuses the input (nonsense,
     nothing extractable) — the caller warns and writes nothing. Falls back
-    to a raw note only when the agent itself fails (not when it refuses).
+    to a raw note only when the agent's own LLM work fails
+    (:class:`~kompend.core.utils.exceptions.LLMOutputError`): the text is
+    still worth keeping, and the caller's tags ride along so they are not
+    silently lost. Any other exception is a bug in the capture path, not a
+    degraded capture, and escapes.
     """
     tag_hint = f"\n\nThe user suggests these tags as a baseline (add more if relevant, keep these): {user_tags}." if user_tags else ""
     user_prompt = f"Extract knowledge items from this text:{tag_hint}\n\n{text}"
@@ -91,9 +96,9 @@ def _extract_with_agent(text: str, capture_agent: CaptureAgent, user_tags: list[
 
     try:
         result = capture_agent.run(deps)
-    except Exception:
-        logger.warning("CaptureAgent failed, falling back to raw capture")
-        return [CapturedItem(kind=CaptureKind.NOTE, title=make_title(text), content=text)]
+    except LLMOutputError as exc:
+        logger.warning("CaptureAgent failed, keeping the text as one raw note: %s", exc, exc_info=True)
+        return [CapturedItem(kind=CaptureKind.NOTE, title=make_title(text), content=text, tags=list(user_tags))]
 
     if result.refused:
         reason = result.refusal_reason or "the input contains nothing extractable"

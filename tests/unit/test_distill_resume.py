@@ -18,6 +18,7 @@ from kompend.agents.distill_agentic import make_agentic_distill_agent
 from kompend.agents.types import DistillAgentDeps, DistillPage
 from kompend.capture import distill as distill_mod
 from kompend.capture.distill import CapturedNote, _distill_agentic
+from kompend.core.utils.exceptions import LLMOutputError
 
 TIMESTAMP = "20261019T120000Z"
 
@@ -52,7 +53,7 @@ class TestDistillSessionResume:
 
         def _run(deps: DistillAgentDeps) -> str:
             seen.append([group["tag"] for group in deps.groups])
-            raise UsageLimitExceeded("The next request would exceed the request_limit of 12.")
+            return ""
 
         monkeypatch.setattr(agent, "run", _run)
 
@@ -60,6 +61,34 @@ class TestDistillSessionResume:
 
         assert len(seen) == 1, "a round that saves nothing must not be re-run"
         assert len(written) == 2  # both groups still get a deterministic page
+
+    def test_a_failed_round_keeps_saved_pages_and_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A session that raised is not a session that saved nothing."""
+        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+
+        def _run(deps: DistillAgentDeps) -> str:
+            deps.pages["alpha"] = DistillPage(title="Alpha", content="LLM WROTE THIS", tags=["alpha"])
+            raise LLMOutputError("provider returned an empty answer")
+
+        monkeypatch.setattr(agent, "run", _run)
+
+        with pytest.raises(LLMOutputError):
+            _distill_agentic(_groups("alpha", "beta"), [], agent, TIMESTAMP, tmp_path)
+
+        bodies = [p.read_text(encoding="utf-8") for p in tmp_path.glob("*.md")]
+        assert sum("LLM WROTE THIS" in body for body in bodies) == 1, "the page the round did save must survive"
+
+    def test_a_non_llm_failure_propagates_without_writing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+
+        def _run(deps: DistillAgentDeps) -> str:
+            raise RuntimeError("bug, not an LLM failure")
+
+        monkeypatch.setattr(agent, "run", _run)
+
+        with pytest.raises(RuntimeError):
+            _distill_agentic(_groups("alpha"), [], agent, TIMESTAMP, tmp_path)
+        assert list(tmp_path.glob("*.md")) == []
 
     def test_pages_saved_outside_the_payload_do_not_count(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """A tag the session was never asked about is not progress."""

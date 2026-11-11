@@ -36,6 +36,13 @@ patterns across captures.
   keeps the pages it saved, and a further session runs for the tag groups still
   without one. It stops when a round saves nothing new; groups still missing
   then merge deterministically.
+- An agent failure is not a fallback trigger. `capture` keeps one raw note only
+  on `LLMOutputError` (and keeps the caller's tags on it); `_synthesize_with_agent`
+  re-raises; `_distill_agentic` writes the pages the failed round had already
+  recorded, names the groups left without one, and re-raises. Any other
+  exception is a bug and escapes. Budget exhaustion is the one resumable case:
+  it takes the resume path above, distinguished down the cause chain by
+  `_is_budget_exhaustion`.
 - Capture agents (``CaptureAgent``, ``DistillAgent``) live in
   ``kompend.agents.capture`` — this package contains orchestration and
   non-agent logic only.

@@ -24,12 +24,14 @@ from kompend.capture.distill import (
     _parse_frontmatter,
     distill,
 )
+from kompend.capture.kinds import CaptureKind
 from kompend.capture.learn import learn
 from kompend.cli.cmds.knowledge.capture import _build_references_section
 from kompend.core.models.enums import NodeType
 from kompend.core.pipeline.ingest import extract_text_from_cached
 from kompend.core.pipeline.parse_cache import write_document
 from kompend.core.store import vault_db_path
+from kompend.core.utils.exceptions import LLMOutputError
 from kompend.output.markdown import MarkdownWriter
 from kompend.output.models import Document
 
@@ -134,7 +136,7 @@ class TestDistill:
         assert "synthesized" in output
         assert mock_agent.run.called
 
-    def test_llm_failure_falls_back(self, tmp_path: Path) -> None:
+    def test_agent_failure_raises_instead_of_writing_a_fallback_page(self, tmp_path: Path) -> None:
         sources_dir = tmp_path / "sources"
         captured_dir = sources_dir / "_captured"
         captured_dir.mkdir(parents=True)
@@ -143,16 +145,30 @@ class TestDistill:
             encoding="utf-8",
         )
 
-        mock_result = MagicMock()
-        mock_result.json_data = None
         mock_agent = MagicMock()
-        mock_agent.run.side_effect = Exception("LLM failed")
+        mock_agent.run.side_effect = LLMOutputError("LLM failed")
         mock_agent.timeout = 120
 
-        paths = distill(sources_dir, distill_agent=mock_agent)
-        assert len(paths) == 1
-        output = paths[0].read_text(encoding="utf-8")
-        assert "Content A" in output
+        with pytest.raises(LLMOutputError):
+            distill(sources_dir, distill_agent=mock_agent)
+        assert list((sources_dir / "_distilled").glob("*.md")) == []
+
+    def test_non_llm_failure_propagates(self, tmp_path: Path) -> None:
+        sources_dir = tmp_path / "sources"
+        captured_dir = sources_dir / "_captured"
+        captured_dir.mkdir(parents=True)
+        (captured_dir / "note-1.md").write_text(
+            "---\ntitle: Note A\ntags:\n  - test\n---\n\nContent A.\n",
+            encoding="utf-8",
+        )
+
+        mock_agent = MagicMock()
+        mock_agent.run.side_effect = RuntimeError("bug in the capture path")
+        mock_agent.timeout = 120
+
+        with pytest.raises(RuntimeError):
+            distill(sources_dir, distill_agent=mock_agent)
+        assert list((sources_dir / "_distilled").glob("*.md")) == []
 
     def test_multiple_tags_produce_multiple_pages(self, tmp_path: Path) -> None:
         sources_dir = tmp_path / "sources"
@@ -302,6 +318,31 @@ class TestCaptureSufficiency:
         agent.run.return_value = CaptureOutput(items=[])
         paths = capture("Just a greeting, nothing else here.", sources_dir=tmp_path, capture_agent=agent)
         assert paths == []
+
+    def test_agent_failure_keeps_one_note_with_tags_and_attributes(self, tmp_path: Path) -> None:
+        agent = Mock()
+        agent.run.side_effect = LLMOutputError("model exploded")
+
+        paths = capture(
+            "The transformer uses d_model=512 with RoPE positional encodings.",
+            sources_dir=tmp_path,
+            tags=["architecture"],
+            attributes={"version": "2"},
+            capture_agent=agent,
+        )
+
+        assert len(paths) == 1
+        meta = yaml.safe_load(paths[0].read_text(encoding="utf-8")[4:].split("\n---\n", 1)[0])
+        assert meta["tags"] == ["architecture"]
+        assert meta["attributes"] == {"version": "2"}
+        assert meta["type"] == CaptureKind.NOTE
+
+    def test_non_llm_agent_failure_propagates(self, tmp_path: Path) -> None:
+        agent = Mock()
+        agent.run.side_effect = RuntimeError("bug, not an LLM failure")
+
+        with pytest.raises(RuntimeError):
+            capture("The transformer uses d_model=512.", sources_dir=tmp_path, capture_agent=agent)
 
     def test_attributes_in_frontmatter(self, tmp_path: Path) -> None:
         paths = capture(
