@@ -80,6 +80,18 @@ class SplittingConfig(_KompendBaseModel):
             "allows any source with more than one page."
         ),
     )
+    min_segment_pages: int = Field(
+        default=3,
+        ge=2,
+        validation_alias=EnvVar.SPLITTING_MIN_SEGMENT_PAGES,
+        description=(
+            "Fewest pages a segment may have: a cut that would leave either side shorter is "
+            "refused, so no fragment is ever written as a document. Mirrors "
+            "`kompend.preprocessing.splitting.DEFAULT_MIN_SEGMENT_PAGES`; `2` permits any cut "
+            "that leaves two single pages, which is what fragmented a 38-page packet of three "
+            "standards into nine sources before this floor existed."
+        ),
+    )
     max_page_chars: int = Field(
         default=12_000,
         ge=1,

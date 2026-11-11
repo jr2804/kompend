@@ -16,11 +16,14 @@ import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol
+from typing import Final, Protocol
 
 __all__ = [
+    "DEFAULT_MIN_SEGMENT_PAGES",
+    "MIN_SEGMENT_PAGES",
     "NeverSplit",
     "PageText",
+    "SegmentTooShortError",
     "SplitJudge",
     "SplitPlan",
     "SplitPlanError",
@@ -30,6 +33,19 @@ __all__ = [
     "rules_digest",
     "validate_plan",
 ]
+
+
+#: Fewest pages a segment may have when a source is cut.
+#:
+#: A cut is only worth making when both sides stay documents: a one- or
+#: two-page fragment becomes its own source, gets its own chunk tree, its own
+#: generation segment and its own concepts, and the fragments' concepts replace
+#: the ones the whole document would have produced (measured on a 38-page
+#: packet: nine segments, five of them single pages, losing five coherent
+#: concepts and adding four noisy ones). Two is the floor that still allows a
+#: cut; three is the default, because a two-page fragment is rarely a document.
+MIN_SEGMENT_PAGES: Final[int] = 2
+DEFAULT_MIN_SEGMENT_PAGES: Final[int] = 3
 
 
 class SplitReason(StrEnum):
@@ -48,6 +64,10 @@ class SplitReason(StrEnum):
     PAGE_OVERSIZED = "page_oversized"
     #: The judge returned a plan that violates the partition invariant.
     PLAN_INVALID = "plan_invalid"
+    #: The judge cut a document into a fragment below
+    #: :data:`DEFAULT_MIN_SEGMENT_PAGES`: a fragment is a page neighbourhood of
+    #: its own downstream, so a cut that leaves one is refused.
+    SEGMENT_TOO_SHORT = "segment_too_short"
     #: The judge raised (unavailable, timed out, unparseable output).
     JUDGE_FAILED = "judge_failed"
 
@@ -110,6 +130,15 @@ class SplitPlanError(ValueError):
     """A split plan that is not a partition of the document's pages."""
 
 
+class SegmentTooShortError(SplitPlanError):
+    """A cut that would leave a fragment below the configured floor.
+
+    A :class:`SplitPlanError` so every caller that already fails closed on an
+    unusable plan keeps doing so; separate so the ledger can say *why* the plan
+    was refused.
+    """
+
+
 class SplitJudge(Protocol):
     """The decision-model seam.
 
@@ -153,15 +182,20 @@ def rules_digest(rules: Sequence[SplitRule]) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def validate_plan(plan: SplitPlan, *, first_page: int, last_page: int) -> None:
+def validate_plan(plan: SplitPlan, *, first_page: int, last_page: int, min_segment_pages: int = 1) -> None:
     """Raise :class:`SplitPlanError` unless *plan* partitions ``first_page..last_page``.
 
     Checks, in order: no empty plan, every segment inside the range and
     non-inverted, each segment starting on the page after the previous one
-    ended (which rejects both gaps and overlaps), and the last segment
-    reaching *last_page*. Nothing is repaired — a violating plan means the
-    judge is not trustworthy for this document, and the caller keeps the
-    source whole.
+    ended (which rejects both gaps and overlaps), the last segment reaching
+    *last_page*, and — when the plan actually cuts — no segment shorter than
+    *min_segment_pages* (which raises :class:`SegmentTooShortError`). Nothing is
+    repaired — a violating plan means the judge is not trustworthy for this
+    document, and the caller keeps the source whole.
+
+    The floor applies to a plan that cuts only: a single segment is the whole
+    document, and a document shorter than the floor is not a fragment of
+    itself.
     """
     if not plan.segments:
         raise SplitPlanError(f"split plan has no segments (expected {first_page}..{last_page})")
@@ -177,3 +211,15 @@ def validate_plan(plan: SplitPlan, *, first_page: int, last_page: int) -> None:
         expected = segment.end_page + 1
     if expected != last_page + 1:
         raise SplitPlanError(f"split plan stops at page {expected - 1}, expected {last_page}")
+    if len(plan.segments) > 1:
+        for segment in plan.segments:
+            length = segment_length(segment)
+            if length < min_segment_pages:
+                raise SegmentTooShortError(
+                    f"segment {segment.label()} is {length} page(s), below min_segment_pages {min_segment_pages}",
+                )
+
+
+def segment_length(segment: SplitSegment) -> int:
+    """Number of pages *segment* covers."""
+    return segment.end_page - segment.start_page + 1

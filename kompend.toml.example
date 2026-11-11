@@ -772,6 +772,9 @@ enable = false                    # on/off switch
 # Fewest pages a source must have before a split is considered; below it
 # no judge call is spent.
 # min_pages = 6
+# Fewest pages a segment may have. A cut that would leave either side
+# shorter is refused, so a fragment is never written as a document.
+# min_segment_pages = 3
 # Most characters one page may contribute to the judge's request. A page
 # above it declines the split - a cropped page is a page the judge never
 # saw.

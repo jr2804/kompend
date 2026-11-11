@@ -93,7 +93,7 @@ def check_decision_schema() -> CheckResult:
     family: list[tuple[str, type[BaseModel]]] = list(DECISION_RESULT_TYPES)
     unchecked: str | None = None
     try:
-        family.append((f"split-boundary-verdict({_BOUNDARY_PAGES} pages)", _split_boundary_result_type()))
+        family.extend(_split_boundary_family())
     except (ImportError, AttributeError, ValueError) as exc:
         # The splitting package is optional for a doctor run on a tree where it is
         # not installed; an unvalidated family is a warning, never a failure.
@@ -137,14 +137,24 @@ def _shipped_limits(grammar: Any) -> Any:
     )
 
 
-def _split_boundary_result_type() -> type[BaseModel]:
-    """One representative of the dynamic split-boundary verdict family.
+def _split_boundary_family() -> list[tuple[str, type[BaseModel]]]:
+    """Two representatives of the dynamic split-boundary verdict family.
 
     Imported lazily: the doctor must not pull the preprocessing machinery in at
-    start-up for a check that is only about the result shape.
+    start-up for a check that is only about the result shape. The verdict would
+    otherwise go unchecked for the whole family, and a regression that only
+    shows on wider packets would be reported as clean — so the narrowest packet
+    that reaches a judge is validated, and so is the widest window a long packet
+    is ever asked about.
     """
-    factory = import_module(_SPLITTING_MODULE).boundary_verdict_model
-    return factory(_BOUNDARY_PAGES)
+    module = import_module(_SPLITTING_MODULE)
+    return [
+        (f"split-boundary-verdict({_BOUNDARY_PAGES} pages)", module.boundary_verdict_model(_BOUNDARY_PAGES)),
+        (
+            f"split-boundary-window({module.MAX_QUESTIONS_PER_REQUEST} transitions)",
+            module.window_verdict_model(1, module.MAX_QUESTIONS_PER_REQUEST),
+        ),
+    ]
 
 
 def check_decision_connectivity(config: DecisionConfig | None) -> CheckResult:

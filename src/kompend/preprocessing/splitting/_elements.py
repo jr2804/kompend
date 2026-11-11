@@ -25,8 +25,10 @@ from kompend.core.models import DocumentElement, MetadataField, ParsedDocument
 from kompend.core.models.elements import element_text
 
 from ._plan import (
+    DEFAULT_MIN_SEGMENT_PAGES,
     NeverSplit,
     PageText,
+    SegmentTooShortError,
     SplitJudge,
     SplitPlanError,
     SplitReason,
@@ -138,6 +140,10 @@ class SourceSplitter:
             the plumbing is exercised without a model.
         rules: Category rules handed to the judge (from the rules resource).
         min_pages: Floor below which a judgement is not worth its cost.
+        min_segment_pages: Floor below which a segment is a fragment rather
+            than a document. A cut that would leave either side shorter is
+            refused by the plan builder; this floor is the backstop that
+            catches it in any plan a judge returns.
         max_page_chars: Ceiling for one page's text. A page above it declines
             the whole split — pages are never cropped to fit.
     """
@@ -145,6 +151,7 @@ class SourceSplitter:
     judge: SplitJudge = field(default_factory=NeverSplit)
     rules: tuple[SplitRule, ...] = ()
     min_pages: int = 6
+    min_segment_pages: int = DEFAULT_MIN_SEGMENT_PAGES
     max_page_chars: int = 12_000
 
     def decide(self, document: ParsedDocument) -> SplitDecision:
@@ -193,7 +200,16 @@ class SourceSplitter:
                 last_page=last_page,
             )
         try:
-            validate_plan(plan, first_page=first_page, last_page=last_page)
+            validate_plan(plan, first_page=first_page, last_page=last_page, min_segment_pages=self.min_segment_pages)
+        except SegmentTooShortError as exc:
+            return SplitDecision(
+                reason=SplitReason.SEGMENT_TOO_SHORT,
+                detail=f"{decided_by}: {exc}",
+                decided_by=decided_by,
+                rules_sha256=digest,
+                first_page=first_page,
+                last_page=last_page,
+            )
         except SplitPlanError as exc:
             return SplitDecision(
                 reason=SplitReason.PLAN_INVALID,

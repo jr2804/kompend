@@ -47,7 +47,7 @@ class TestDecisionSchemaCheck:
         assert result.name == DECISION_SCHEMA_CHECK
         assert result.passed
         assert not result.warning
-        assert f"{len(DECISION_RESULT_TYPES) + 1} decision result types accepted" in result.message
+        assert f"{len(DECISION_RESULT_TYPES) + 2} decision result types accepted" in result.message
         for label, _ in DECISION_RESULT_TYPES:
             assert label in result.message
 
@@ -56,6 +56,13 @@ class TestDecisionSchemaCheck:
 
         assert result.passed
         assert "split-boundary-verdict(6 pages)" in result.message
+
+    def test_the_widest_judging_window_fits_the_endpoint_cap(self) -> None:
+        """A long packet is asked in windows; the widest window must be askable."""
+        result = check_decision_schema()
+
+        assert result.passed
+        assert "split-boundary-window(64 transitions)" in result.message
 
     def test_the_registry_names_are_the_documented_ones(self) -> None:
         names = [label for label, _ in DECISION_RESULT_TYPES]

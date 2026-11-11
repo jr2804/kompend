@@ -42,12 +42,21 @@ def build_splitter(
     if not splitting.enabled:
         return None
     model_string = resolve_judge_model(splitting, decision)
-    judge = DecisionModelSplitJudge(model_string, timeout=splitting.judge_timeout) if model_string is not None else NoDecisionModel()
+    judge = (
+        DecisionModelSplitJudge(
+            model_string,
+            timeout=splitting.judge_timeout,
+            min_segment_pages=splitting.min_segment_pages,
+        )
+        if model_string is not None
+        else NoDecisionModel()
+    )
     rules = load_rules(resolve_rules_file(splitting, base_dir))
     return SourceSplitter(
         judge=judge,
         rules=rules,
         min_pages=splitting.min_pages,
+        min_segment_pages=splitting.min_segment_pages,
         max_page_chars=splitting.max_page_chars,
     )
 

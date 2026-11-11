@@ -4,12 +4,16 @@ variables:
     required: true
   - name: rules
     required: true
+  - name: whole
+    required: true
 role: decision.split-boundary
 response_format: text
 temperature: 0.0
 ---
-A single file holds one or more documents. Below is every page of it, in
-order, each marked with its page number.
+{% if whole %}A single file holds one or more documents. Below is every page of it, in
+order, each marked with its page number.{% else %}The file continues outside this window. Below are the pages of one window cut
+from it, in order, each marked with its page number — later windows carry the
+pages after these, and earlier ones the pages before.{% endif %}
 
 {{ pages }}
 
@@ -27,6 +31,7 @@ or annex. A page that continues the argument, table, list or clause count of
 the page before it is not a new document, even when it carries a running
 header, a page number, or a repeated title line.
 
-Judge the packet as one thing: the first page starts the first document, and
-every transition afterwards is a yes or a no. Say no when you cannot tell —
-keeping a document whole is better than cutting one in half.
+Judge the pages you are shown: the first page of this view may continue a
+document that began before it, and the last may continue into a page you do not
+see, so neither its start nor its end is a boundary. Say no when you cannot
+tell — keeping a document whole is better than cutting one in half.

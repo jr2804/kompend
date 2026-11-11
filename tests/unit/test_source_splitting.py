@@ -52,10 +52,12 @@ from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.splitting import (
     LEDGER_DETAIL_CHARS,
+    MAX_QUESTIONS_PER_REQUEST,
     SPLIT_FIELDS,
     DecisionModelSplitJudge,
     NeverSplit,
     PageText,
+    SegmentTooShortError,
     SourceSplitter,
     SplitDecision,
     SplitJudgeDeps,
@@ -77,12 +79,16 @@ from kompend.preprocessing.splitting import (
     parent_source_of,
     parse_rules,
     partition_document,
+    plan_from_answers,
     plan_from_verdict,
+    question_windows,
     render_pages,
     render_rules,
+    segment_length,
     spec_name,
     split_keys,
     validate_plan,
+    window_verdict_model,
 )
 from kompend.types import JSONDict, JSONList
 from tests.conftest import make_tmp_vault
@@ -690,6 +696,147 @@ def test_the_spec_is_named_by_the_number_of_questions_it_asks() -> None:
     assert spec_name(9) != spec_name(10)
 
 
+def test_a_windowed_spec_is_named_by_the_first_question_it_asks() -> None:
+    """Two windows of one packet ask different questions, so they get different names."""
+    assert spec_name(65, first_transition=1) == "split_boundary_judge_65"
+    assert spec_name(65, first_transition=2) != spec_name(65, first_transition=1)
+
+
+# ── Judging windows ────────────────────────────────────────────────────
+
+
+def test_the_service_ceiling_is_the_window_size() -> None:
+    """The number is the service's limit, quoted from its own refusal."""
+    assert MAX_QUESTIONS_PER_REQUEST == 64
+
+
+def test_a_packet_inside_the_ceiling_is_one_window() -> None:
+    assert question_windows(2) == ((1, 1),)
+    assert question_windows(65) == ((1, 64),)
+
+
+def test_a_long_packet_is_judged_in_consecutive_windows() -> None:
+    """Every transition is asked about exactly once, and no window exceeds the ceiling."""
+    windows = question_windows(200)
+
+    assert windows == ((1, 64), (65, 128), (129, 192), (193, 199))
+    covered = [index for first, last in windows for index in range(first, last + 1)]
+    assert covered == list(range(1, 200))
+    assert all(last - first + 1 <= MAX_QUESTIONS_PER_REQUEST for first, last in windows)
+
+
+def test_a_window_asks_about_its_own_transitions_and_names_them_by_index() -> None:
+    """Field names carry the global index, so no window can be read as another's."""
+    fields = list(window_verdict_model(65, 128).model_fields)
+
+    assert fields[0] == boundary_field_name(65)
+    assert fields[-1] == boundary_field_name(128)
+    assert len(fields) == 64
+
+
+def test_a_window_with_no_transition_is_refused() -> None:
+    with pytest.raises(ValueError, match="1 <= first <= last"):
+        window_verdict_model(5, 4)
+
+
+def test_a_space_cannot_be_asked_about_nothing(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="at least one question"):
+        question_windows(10, max_questions=0)
+
+
+# ── The segment floor ──────────────────────────────────────────────────
+
+
+def test_a_cut_that_would_leave_a_fragment_is_refused_not_applied() -> None:
+    """Every seam answered yes on eight pages still yields documents, not fragments.
+
+    This is the shape of the 38-page over-split: the model said "boundary" at
+    seven of the eight seams, five of them between single pages.
+    """
+    answers = {boundary_field_name(index): True for index in range(1, 8)}
+
+    plan = plan_from_answers(answers, page_numbers=list(range(1, 9)), min_segment_pages=3, decided_by="jev", rules_sha256="")
+
+    assert [(segment.start_page, segment.end_page) for segment in plan.segments] == [(1, 3), (4, 8)]
+    assert all(segment_length(segment) >= 3 for segment in plan.segments)
+
+
+def test_the_measured_over_split_collapses_to_documents_without_fragments() -> None:
+    """The observed nine-fragment cut on a 38-page packet, re-built under the floor.
+
+    The judge answered "boundary" at 7, 8, 9, 10, 11, 19, 21 and 22 (the true
+    boundaries sit at 9 and 21). The answers are unchanged — the floor only
+    refuses the cuts that would leave a page or two on one side.
+    """
+    answers = {boundary_field_name(index): index in {7, 8, 9, 10, 11, 19, 21, 22} for index in range(1, 38)}
+
+    plan = plan_from_answers(answers, page_numbers=list(range(1, 39)), min_segment_pages=3, decided_by="jev", rules_sha256="")
+
+    assert [(segment.start_page, segment.end_page) for segment in plan.segments] == [
+        (1, 7),
+        (8, 10),
+        (11, 19),
+        (20, 22),
+        (23, 38),
+    ]
+    assert all(segment_length(segment) >= 3 for segment in plan.segments)
+
+
+def test_a_boundary_the_floor_allows_is_still_applied() -> None:
+    answers = {boundary_field_name(index): index in {3, 6} for index in range(1, 10)}
+
+    plan = plan_from_answers(answers, page_numbers=list(range(1, 10)), min_segment_pages=3, decided_by="jev", rules_sha256="")
+
+    assert [(segment.start_page, segment.end_page) for segment in plan.segments] == [(1, 3), (4, 6), (7, 9)]
+
+
+def test_a_tail_below_the_floor_folds_into_the_last_document() -> None:
+    """A last page on its own is a fragment, so the cut before it is refused."""
+    answers = {boundary_field_name(index): index == 7 for index in range(1, 9)}
+
+    plan = plan_from_answers(answers, page_numbers=list(range(1, 9)), min_segment_pages=3, decided_by="jev", rules_sha256="")
+
+    assert [(segment.start_page, segment.end_page) for segment in plan.segments] == [(1, 8)]
+
+
+def test_a_packet_without_two_floors_is_never_cut() -> None:
+    answers = {boundary_field_name(index): True for index in range(1, 5)}
+
+    plan = plan_from_answers(answers, page_numbers=list(range(1, 6)), min_segment_pages=3, decided_by="jev", rules_sha256="")
+
+    assert [(segment.start_page, segment.end_page) for segment in plan.segments] == [(1, 5)]
+
+
+def test_a_fragment_from_any_judge_is_a_recorded_decline() -> None:
+    """The floor is also a backstop: a plan that arrives fragmenting is refused."""
+    judge = _FixedJudge([SplitSegment(start_page=1, end_page=1), SplitSegment(start_page=2, end_page=9)])
+    splitter = SourceSplitter(judge=judge, min_segment_pages=3)
+
+    decision = splitter.decide(_document(9))
+
+    assert decision.reason is SplitReason.SEGMENT_TOO_SHORT
+    assert decision.applies is False
+    assert "below min_segment_pages 3" in decision.detail
+
+
+def test_validate_plan_bounds_every_segment_of_a_cut_plan() -> None:
+    plan = SplitPlan(
+        segments=(SplitSegment(start_page=1, end_page=1), SplitSegment(start_page=2, end_page=9)),
+        decided_by="jev",
+        rules_sha256="",
+    )
+
+    with pytest.raises(SegmentTooShortError, match="p001-001 is 1 page"):
+        validate_plan(plan, first_page=1, last_page=9, min_segment_pages=3)
+
+
+def test_a_whole_document_is_not_held_to_the_segment_floor() -> None:
+    """The floor bounds a cut, not a document: an unsplit packet is one segment."""
+    plan = SplitPlan(segments=(SplitSegment(start_page=1, end_page=2),), decided_by="never", rules_sha256="")
+
+    validate_plan(plan, first_page=1, last_page=2, min_segment_pages=3)
+
+
 # ── The judge templates ────────────────────────────────────────────────
 
 
@@ -698,17 +845,29 @@ def test_the_judge_templates_resolve_and_render() -> None:
     loader = get_template_loader()
     deps = SplitJudgeDeps(source_id="split-judge", pages="<<< page 1 >>>\nbody", rules="- contract: An agreement.")
 
-    body = loader.render("decision/split_boundary.md.j2", pages=deps.pages, rules=deps.rules)
+    body = loader.render("decision/split_boundary.md.j2", pages=deps.pages, rules=deps.rules, whole=True)
 
     assert "<<< page 1 >>>" in body
     assert "- contract: An agreement." in body
     assert "one typed question per page transition" in body
+    assert "every page of it" in body
     assert loader.get_body("decision/split_boundary_system.md.j2").strip()
+
+
+def test_a_windowed_judgement_is_told_the_packet_continues() -> None:
+    """A window's first page is not a document start, and the template says so."""
+    loader = get_template_loader()
+
+    body = loader.render("decision/split_boundary.md.j2", pages="<<< page 65 >>>\nbody", rules="- contract: An agreement.", whole=False)
+
+    assert "The file continues outside this window" in body
+    assert "neither its start nor its end is a boundary" in body
+    assert "every page of it" not in body
 
 
 def test_the_judge_templates_declare_only_what_the_questions_carry() -> None:
     meta = get_template_loader().get_meta("decision/split_boundary.md.j2")
-    assert {variable["name"] for variable in meta.variables} == {"pages", "rules"}
+    assert {variable["name"] for variable in meta.variables} == {"pages", "rules", "whole"}
 
 
 # ── Rules ──────────────────────────────────────────────────────────────

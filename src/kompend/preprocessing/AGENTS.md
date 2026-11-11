@@ -19,7 +19,7 @@ heavy parses. Parsing itself lives in the child package `parsers/`.
 
 | Module | Contents |
 |--------|----------|
-| `splitting/` | Page-range splitting of a parsed packet into independent child sources: `_plan` (plan vocabulary, `SplitJudge` seam, `validate_plan` partition invariant), `_elements` (`SourceSplitter`, `SplitDecision`, `partition_document`, `SPLIT_FIELDS`), `_judge` (`DecisionModelSplitJudge`, the verdict model, prompt rendering), `_rules` (category rules), `_provenance` (who owns a child's attachments), `_build` (`build_splitter` — the one config→judge site) |
+| `splitting/` | Page-range splitting of a parsed packet into independent child sources: `_plan` (plan vocabulary, `SplitJudge` seam, `validate_plan` partition invariant and segment floor, `SplitReason`), `_elements` (`SourceSplitter`, `SplitDecision`, `partition_document`, `SPLIT_FIELDS`), `_judge` (`DecisionModelSplitJudge`, verdict models, judging windows, prompt rendering), `_rules` (category rules), `_provenance` (who owns a child's attachments), `_build` (`build_splitter` — the one config→judge site) |
 | `host_memory.py` | `HeavyParseGuard`, `ensure_engine_headroom`, `available_commit_bytes`, `is_heavy_source` — the memory half of "one heavy parse at a time" |
 | `images.py` | `ImageStore`, `store_asset`, rasterising/vector conversion helpers — figure bytes land here, the mapping lives in `parsers/parsecraft/assets.py` |
 | `dedup/` | `DedupOrchestrator`, `DedupStore`, the MinHash/embedding matchers |
@@ -37,8 +37,17 @@ unusable plan leaves the source whole and records why; the parse stage turns
 that record into a ledger row (`DEGRADED`/`JUDGE_DEGRADED` for a real failure,
 `SKIPPED` for an ordinary decline).
 
+A cut must also leave a document on both sides: `splitting.min_segment_pages`
+(`DEFAULT_MIN_SEGMENT_PAGES` = 3) bounds every segment, so a fragment is never
+written as a source. The floor is enforced twice — `plan_from_answers` refuses
+an individual cut that would leave a short side (the rest of the plan is still
+the judge's), and `validate_plan` raises `SegmentTooShortError` for any plan
+that arrives fragmenting, which `SourceSplitter.decide` records as
+`SplitReason.SEGMENT_TOO_SHORT`. The floor bounds a *cut*: a one-segment plan is
+the whole document and is not held to it.
+
 There is no deterministic fallback. A page count cannot tell an amendment from
-a chapter, so a heuristic that guessed would fragment real documents — with no
+chapter, so a heuristic that guessed would fragment real documents — with no
 judge reachable, the source is kept whole (`.agents/CODE.md`, LLM I/O policy).
 
 ### The judge answers one bool per candidate cut point
@@ -47,9 +56,19 @@ judge reachable, the source is kept whole (`.agents/CODE.md`, LLM I/O policy).
 one boolean field per transition between consecutive pages, the first page never
 a candidate. It is not a list of segment models — the decision grammar refuses
 `list[BaseModel]` — and it is not a list of strings, which collapses N questions
-into N/4. `plan_from_verdict` turns answers into segments; a missing answer is a
-continuation, never a boundary. The judge sees every page in full: a page too
-large to fit declines the split instead of being cropped.
+into N/4. `plan_from_verdict`/`plan_from_answers` turn answers into segments; a
+missing answer is a continuation, never a boundary. The judge sees every page in
+full: a page too large to fit declines the split instead of being cropped.
+
+The decision service refuses more than `MAX_QUESTIONS_PER_REQUEST` = 64
+questions in one request, so a longer packet is judged in consecutive windows
+(`question_windows`): a window asks about a contiguous run of transitions and
+sees exactly the pages those transitions sit between. Answers are keyed by the
+*global* transition index (`window_verdict_model`), so windows compose; the
+prompt's `whole` flag tells the model its first and last page are not boundaries;
+and a window that fails raises `SplitWindowFailed` naming the window and its
+page range, so the ledger row carries a structural failure rather than a bare
+model error. Windows partition the *questions*, never a page.
 
 ### Rules are a resource, not a literal
 
