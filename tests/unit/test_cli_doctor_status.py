@@ -14,6 +14,7 @@ from kompend.cli.app import app
 from kompend.cli.cmds.pipeline.status import collect_stats, print_status
 from kompend.cli.cmds.quality.doctor import print_doctor_results
 from kompend.core.config import ProviderEndpoint
+from kompend.core.config.engine import _precedence
 from kompend.core.paths import COMPILE_STATE_FILE, KOMP_DB_FILE
 from kompend.core.pipeline.state import SourceState, TierState, TierStateStore
 from kompend.diagnostics import models, providers
@@ -132,6 +133,21 @@ class TestDoctorWikiContext:
         result = runner.invoke(app, ["--wiki-dir", str(tmp_path), "doctor"])
         assert "not a kompend vault root" not in result.output
         assert "checks passed" in result.output
+
+    @pytest.fixture(autouse=True)
+    def _no_global_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Keep the tmp-vault doctor run off the developer's global config.
+
+        Layer 4 reads ``~/.config/kompend/config.toml`` regardless of the CWD,
+        so a CLI-level doctor run here otherwise resolves the host's real
+        default model and pings Ollama through the transient-retry loop. With
+        the global layer gone, the empty vault config and the stripped
+        environment resolve to no model at all — every connectivity check takes
+        its skip path, and the catalogue refresh stays pinned to the local
+        cache.
+        """
+        monkeypatch.setattr(_precedence, "find_global_config", lambda: None)
+        monkeypatch.setattr(providers.catalog, "ensure_fresh", lambda ttl_hours=None: False)
 
 
 class TestCollectStats:
