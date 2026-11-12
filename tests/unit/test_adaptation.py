@@ -8,6 +8,7 @@ bounded by ``budget.segment_shrink_attempts``.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -341,16 +342,33 @@ class TestLoop2Shrink:
         assert sorted(caller_progress.keys()) == ["seg_0"]
         assert len(nodes) == 4
 
-    def test_model_skip_stops_the_retries(self) -> None:
+    def test_a_model_skip_spends_the_budget_and_is_recorded_as_a_hole(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A skip belongs to the attempt: an empty answer keeps asking.
+
+        The ADR "A skip verdict ends the attempt, not the segment" reversed
+        the old rule that one skip ended the segment. An empty answer is a
+        continuation kind, so every pass carries a fresh prompt and the
+        verdict must not cut the segment short of its budget; the tail then
+        records the hole instead of calling it a hard failure.
+        """
+
         def _fail(source_id: str, batch: list[dict[str, Any]]) -> None:
             raise EmptyAnswerError("Please return text or include your response in a tool call")
 
         def _decide(signal: AdaptationSignal) -> ErrorDecision:
             return ErrorDecision(action=ErrorAction.SKIP)
 
-        calls, seen_signals, exc = self._run_loop(_fail, _decide)
-        assert calls == ["seg_0"]
-        assert isinstance(exc, LLMOutputError)
+        with caplog.at_level(logging.WARNING):
+            calls, seen_signals, result = self._run_loop(_fail, _decide)
+        assert calls == ["seg_0"] * 5
+        assert "the decision model skipped it" in caplog.text
+        assert "verdict=skip" in caplog.text
+        # The tail decides the run outcome: a skipped segment is a recorded
+        # hole, not a failure - this run only has the one segment, so the
+        # result carries no page while the call itself returns normally.
+        nodes, _, caller_progress = result
+        assert nodes == []
+        assert caller_progress == {"seg_0": []}
 
     def test_no_model_keeps_todays_retry_path(self) -> None:
         def _fail(source_id: str, batch: list[dict[str, Any]]) -> None:

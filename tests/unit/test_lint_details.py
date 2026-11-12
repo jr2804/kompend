@@ -70,8 +70,13 @@ def test_a_path_key_is_a_string_in_the_store() -> None:
 
 def test_an_absolute_path_is_refused_at_the_boundary() -> None:
     """Persistence is where a vault stops being relocatable, so it must fail there."""
+    # Anchored on THIS host's drive: a hard-coded "C:/" is absolute only on
+    # Windows and a leading "/" only on POSIX, so either spelling would pass
+    # on one platform and go untested on the other. ``anchor`` is the drive on
+    # Windows (``D:\\``) and the root on POSIX (``/``).
+    absolute = Path(Path.cwd().anchor) / "elsewhere" / "a.png"
     with pytest.raises(ValueError, match="vault-relative"):
-        details_for_storage({LintField.ATTACHMENT_FILE: Path("C:/elsewhere/a.png")})
+        details_for_storage({LintField.ATTACHMENT_FILE: absolute})
 
 
 def test_a_string_under_a_path_key_is_refused() -> None:
