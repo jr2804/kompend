@@ -100,6 +100,7 @@ nav:
     - Duplicate Detection: guides/dedup.md
   - Architecture:
     - Overview: architecture/index.md
+    - The Agentic Layer: architecture/agentic-layer.md
     - Output: architecture/output.md
     - Cache & State: architecture/cache.md
     - Decision Log: architecture/decisions.md
