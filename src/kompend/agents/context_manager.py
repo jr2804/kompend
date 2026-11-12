@@ -350,7 +350,13 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
     * **A record.** Every trim logs kept/dropped messages and the token
       estimate before/after; a trim that reclaims nothing says so, and one
       line names both what the clamp dropped and the largest survivor, so a
-      run log explains the ranking the provider saw.
+      run log explains the ranking the provider saw. A tail that cannot
+      shrink otherwise logs both lines on every request, so each says it
+      once: the no-op warning once per streak (an effective trim re-arms
+      it), the still-over line once per distinct (kept, largest) tail. Both lines hold one
+      situation for many requests when the tail cannot shrink, so the
+      no-op warning fires once per streak and the still-over line once per
+      distinct ``(kept, largest)`` pair; repeats drop to debug.
 
     Every count this class compares comes from ``conservative_tokens``, so
     the trigger, the recorded figures and ``keep_tokens`` all speak the same
@@ -369,6 +375,12 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
 
     _baseline_tokens: int | None = field(default=None, repr=False, compare=False)
     """Estimated tokens after the last trim; ``None`` until one ran."""
+
+    _noop_streak: int = field(default=0, repr=False, compare=False)
+    """Consecutive no-op trims; only the first of a streak warns."""
+
+    _still_over_seen: set[tuple[int, int]] = field(default_factory=set, repr=False, compare=False)
+    """(kept messages, largest survivor) tails already reported at warning level."""
 
     async def compact(
         self,
@@ -392,6 +404,7 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
             # Only an effective trim moves the baseline: a no-op trim rewrote
             # nothing, so the next request must be free to try again.
             self._baseline_tokens = after_tokens
+            self._noop_streak = 0
             logger.info(
                 "Sliding-window trim: dropped %d of %d message(s), kept %d; ~%d → ~%d token(s)",
                 dropped,
@@ -401,13 +414,20 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
                 after_tokens,
             )
         else:
-            logger.warning(
-                "Sliding-window trim reclaimed nothing: %d message(s), ~%d token(s) survive the %s-token tail",
+            # The situation is the same until an effective trim lands, so the
+            # warning fires once per streak; a repeat is the same fact and
+            # drops to debug, keeping the run log readable.
+            self._noop_streak += 1
+            repeat = f" (repeat {self._noop_streak})" if self._noop_streak > 1 else ""
+            log = logger.warning if self._noop_streak == 1 else logger.debug
+            log(
+                "Sliding-window trim reclaimed nothing%s: %d message(s); an estimated ~%d token(s) survive the %s-token tail",
+                repeat,
                 len(compacted),
                 after_tokens,
                 self.keep_tokens,
             )
-        _warn_if_still_over(outcome, trigger, self.tokenizer, label="Sliding-window trim")
+        _warn_if_still_over(outcome, trigger, self.tokenizer, label="Sliding-window trim", seen=self._still_over_seen)
         return compacted
 
     async def before_model_request(
@@ -885,6 +905,7 @@ def _warn_if_still_over(
     tokenizer: Callable[[str], int] | None,
     *,
     label: str,
+    seen: set[tuple[int, int]] | None = None,
 ) -> None:
     """One line naming what the clamp dropped and the largest survivor.
 
@@ -898,6 +919,11 @@ def _warn_if_still_over(
     A pinned part that alone exceeds the trigger is the one case no
     later trim can rescue: it is kept, and the warning says the request
     cannot be saved rather than implying another pass would help.
+
+    A request whose tail cannot shrink logs this line every turn, so
+    *seen* dedupes it: a tail described by the same kept count and largest
+    survivor reports once at warning level and exact repeats at debug, and
+    only a changed tail warns again.
     """
     if trigger is None:
         return
@@ -917,8 +943,14 @@ def _warn_if_still_over(
     else:
         verdict = "it fits now"
     emit = logger.warning if (over or outcome.pinned_over) else logger.info
+    if seen is not None:
+        signature = (len(outcome.messages), largest)
+        if signature in seen:
+            emit = logger.debug
+        else:
+            seen.add(signature)
     emit(
-        "%s %skept %d message(s) at ~%d token(s) against a %d-token trigger (largest ~%d token(s)); %s",
+        "%s %skept %d message(s) at ~%d token(s) against an estimated trigger of %d token(s) (largest ~%d token(s)); %s",
         label,
         clamp,
         len(outcome.messages),

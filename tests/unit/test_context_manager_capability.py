@@ -352,6 +352,55 @@ class TestConservativeDensity:
         assert "cannot reclaim more" in text
         assert "dropped the oversized part(s)" not in text
 
+    async def test_a_repeated_no_op_trim_warns_once_per_streak(self, caplog: pytest.LogCaptureFixture) -> None:
+        """The same fact must not flood the log request after request.
+
+        A protected part larger than the trigger (a pinned task, half a tool
+        pair) makes every trim a no-op; the p863 run repeated the reclaim
+        warning on every request. The first says so at warning level and
+        exact repeats drop to debug; the wording names the estimate so an
+        operator does not read the line as a refused request.
+        """
+        capability = self._capability()
+        call = ModelResponse(parts=[ToolCallPart(tool_name="read_source", args={}, tool_call_id="call-1")])
+        giant_return = ModelRequest(parts=[ToolReturnPart(tool_name="read_source", content="z" * 300_000, tool_call_id="call-1")])
+        messages = _heavy_history(messages=6, chars_per_message=9_200) + [call, giant_return]
+        ctx = _ctx()
+
+        with caplog.at_level("DEBUG", logger="kompend.agents.context_manager"):
+            trimmed = await capability.compact(list(messages), ctx)
+            await capability.compact(list(trimmed), ctx)
+
+        noops = [record for record in caplog.records if "reclaimed nothing" in record.getMessage()]
+        assert len(noops) == 1
+        assert noops[0].levelname == "WARNING"
+        assert "an estimated ~" in noops[0].getMessage()
+
+    async def test_the_still_over_line_warns_once_per_distinct_tail(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A repeat of the same over-budget tail is debug; a changed one warns.
+
+        The still-over line names the largest survivor, and a request that
+        keeps re-sending one protected giant part repeats it identically.
+        Only the (kept, largest) pair carries information, so an unchanged
+        tail reports once and a grown tail warns again.
+        """
+        capability = self._capability()
+        call_1 = ModelResponse(parts=[ToolCallPart(tool_name="read_source", args={}, tool_call_id="call-1")])
+        ret_1 = ModelRequest(parts=[ToolReturnPart(tool_name="read_source", content="z" * 300_000, tool_call_id="call-1")])
+        call_2 = ModelResponse(parts=[ToolCallPart(tool_name="read_source", args={}, tool_call_id="call-2")])
+        ret_2 = ModelRequest(parts=[ToolReturnPart(tool_name="read_source", content="z" * 400_000, tool_call_id="call-2")])
+        base = _heavy_history(messages=6, chars_per_message=9_200)
+        ctx = _ctx()
+
+        with caplog.at_level("DEBUG", logger="kompend.agents.context_manager"):
+            trimmed = await capability.compact(list(base + [call_1, ret_1]), ctx)
+            await capability.compact(list(trimmed), ctx)
+            await capability.compact(list(trimmed) + [call_2, ret_2], ctx)
+
+        stills = [record for record in caplog.records if "estimated trigger" in record.getMessage()]
+        assert [record.levelname for record in stills] == ["WARNING", "DEBUG", "WARNING"]
+        assert "an estimated trigger of" in stills[0].getMessage()
+
     def _capability(self) -> SlidingWindowCompaction:
         return build_sliding_compaction(
             context_window=64_000,
