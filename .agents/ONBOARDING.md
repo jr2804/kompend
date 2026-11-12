@@ -87,6 +87,7 @@ uv run mkdocs build --strict                        # doc build check
 ### 5. Key conventions
 
 - **`uv run`** for everything — never `python`, `python3`, `pip`
+- **Python 3.13** — pinned via `.python-version` (uv reads it; CI builds on the same line)
 - **`base_dir`** — canonical name for the project root directory
 - **`paths.py`** — all artifact names live here; never hard-code `.kompend`, `cache`, etc.
 - **`VaultPaths`** — resolve concrete paths with `VaultPaths(base_dir)`
