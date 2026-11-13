@@ -237,6 +237,22 @@ image_mode = "file"  # base64 | none
 # vlm_min_image_bytes = 2048
 # vlm_min_image_dimension = 64
 
+# Model-free pre-filter ahead of the VLM call. Off by default: the byte and
+# dimension floors above stay the only always-on filter. When enabled, a thin
+# line-like canvas, a near-uniform fill, or a near-blank frame is dropped with
+# an explicit image_caption_status reason; ambiguous figures still reach the
+# VLM. The pixel sample is bounded by vlm_heuristic_max_analysis_edge/pixels.
+# vlm_heuristic_filter_enabled = false
+# vlm_heuristic_min_aspect_ratio = 20.0
+# vlm_heuristic_max_thin_edge = 96
+# vlm_heuristic_max_analysis_edge = 320
+# vlm_heuristic_max_analysis_pixels = 2000000
+# vlm_heuristic_uniform_stddev = 1.0
+# vlm_heuristic_near_blank_stddev = 4.0
+# vlm_heuristic_near_blank_edge_density = 0.001
+# vlm_heuristic_transparency_ratio = 0.995
+# vlm_heuristic_min_confidence = 0.9
+
 # Maximum number of characters of surrounding text handed to the VLM when it
 # captions a figure (section heading, neighbouring text, LLM context).
 # vlm_context_chars = 1200

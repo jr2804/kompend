@@ -78,6 +78,16 @@ class PipelineConfig:
     vlm_min_image_bytes: int = 2048
     vlm_min_image_dimension: int = 64
     vlm_context_chars: int = 1200
+    vlm_heuristic_filter_enabled: bool = False
+    vlm_heuristic_min_aspect_ratio: float = 20.0
+    vlm_heuristic_max_thin_edge: int = 96
+    vlm_heuristic_max_analysis_edge: int = 320
+    vlm_heuristic_max_analysis_pixels: int = 2_000_000
+    vlm_heuristic_uniform_stddev: float = 1.0
+    vlm_heuristic_near_blank_stddev: float = 4.0
+    vlm_heuristic_near_blank_edge_density: float = 0.001
+    vlm_heuristic_transparency_ratio: float = 0.995
+    vlm_heuristic_min_confidence: float = 0.9
     online_sources: list[str] = field(default_factory=list)
     input_files: list[Path] | None = None  # explicit file list; None = auto-discover from source_dir
     cache_dir: Path | None = None  # None = base_dir/.kompend/cache
@@ -197,6 +207,16 @@ class PipelineConfig:
             vlm_min_image_bytes=kompend.compile.vlm_min_image_bytes,
             vlm_min_image_dimension=kompend.compile.vlm_min_image_dimension,
             vlm_context_chars=kompend.compile.vlm_context_chars,
+            vlm_heuristic_filter_enabled=kompend.compile.vlm_heuristic_filter_enabled,
+            vlm_heuristic_min_aspect_ratio=kompend.compile.vlm_heuristic_min_aspect_ratio,
+            vlm_heuristic_max_thin_edge=kompend.compile.vlm_heuristic_max_thin_edge,
+            vlm_heuristic_max_analysis_edge=kompend.compile.vlm_heuristic_max_analysis_edge,
+            vlm_heuristic_max_analysis_pixels=kompend.compile.vlm_heuristic_max_analysis_pixels,
+            vlm_heuristic_uniform_stddev=kompend.compile.vlm_heuristic_uniform_stddev,
+            vlm_heuristic_near_blank_stddev=kompend.compile.vlm_heuristic_near_blank_stddev,
+            vlm_heuristic_near_blank_edge_density=kompend.compile.vlm_heuristic_near_blank_edge_density,
+            vlm_heuristic_transparency_ratio=kompend.compile.vlm_heuristic_transparency_ratio,
+            vlm_heuristic_min_confidence=kompend.compile.vlm_heuristic_min_confidence,
             online_sources=[],
             input_files=input_files,
             cache_dir=Path(kompend.paths.cache_dir) if kompend.paths.cache_dir else None,

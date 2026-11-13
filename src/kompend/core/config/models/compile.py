@@ -145,6 +145,24 @@ class CompileConfig(_KompendBaseModel):
     vlm_min_image_bytes: int = 2048
     vlm_min_image_dimension: int = 64
     vlm_context_chars: int = 1200
+    # Model-free pre-filter ahead of the caption call. Off by default: the
+    # byte/dimension floors above remain the only always-on filter, so the
+    # rollout is opt-in and gate-off is byte-for-byte the old behaviour.
+    vlm_heuristic_filter_enabled: bool = Field(default=False, validation_alias=EnvVar.VLM_HEURISTIC_FILTER_ENABLED)
+    # A canvas this elongated, with a short edge this thin, is a line/border.
+    vlm_heuristic_min_aspect_ratio: float = Field(default=20.0, validation_alias=EnvVar.VLM_HEURISTIC_MIN_ASPECT_RATIO)
+    vlm_heuristic_max_thin_edge: int = Field(default=96, validation_alias=EnvVar.VLM_HEURISTIC_MAX_THIN_EDGE)
+    # Bounded pixel sample: the long edge and the decoded pixel budget.
+    vlm_heuristic_max_analysis_edge: int = Field(default=320, validation_alias=EnvVar.VLM_HEURISTIC_MAX_ANALYSIS_EDGE)
+    vlm_heuristic_max_analysis_pixels: int = Field(default=2_000_000, validation_alias=EnvVar.VLM_HEURISTIC_MAX_ANALYSIS_PIXELS)
+    # Grayscale standard deviation at or below this is a solid/near-solid fill.
+    vlm_heuristic_uniform_stddev: float = Field(default=1.0, validation_alias=EnvVar.VLM_HEURISTIC_UNIFORM_STDDEV)
+    # Near-blank: low variance and almost no edge pixels.
+    vlm_heuristic_near_blank_stddev: float = Field(default=4.0, validation_alias=EnvVar.VLM_HEURISTIC_NEAR_BLANK_STDDEV)
+    vlm_heuristic_near_blank_edge_density: float = Field(default=0.001, validation_alias=EnvVar.VLM_HEURISTIC_NEAR_BLANK_EDGE_DENSITY)
+    # Transparency is only a hint; it never drops a figure on its own.
+    vlm_heuristic_transparency_ratio: float = Field(default=0.995, validation_alias=EnvVar.VLM_HEURISTIC_TRANSPARENCY_RATIO)
+    vlm_heuristic_min_confidence: float = Field(default=0.9, validation_alias=EnvVar.VLM_HEURISTIC_MIN_CONFIDENCE)
     workers: int = Field(default=1, validation_alias=EnvVar.WORKERS)
     no_cache: bool = Field(default=False, validation_alias=EnvVar.NO_CACHE)
     # Re-parse every source instead of reusing the cached parse: sources are

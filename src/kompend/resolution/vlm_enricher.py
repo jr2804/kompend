@@ -25,6 +25,13 @@ Two rules shape this module:
   (``vlm_relevance_skipped``), distinct from the VLM's own SKIP. A failed
   classification is recorded in a separate ``vlm:relevance`` log and falls
   back to captioning — never to a skip.
+- **Cheap evidence first.** When the heuristic filter is enabled, a bounded
+  structural/pixel pass runs before the text gate: a thin line-like canvas,
+  a near-uniform fill, or a near-blank frame is dropped with a specific
+  reason in its ``image_caption_status``. Transparency and weak signals stay
+  ``UNSURE`` and continue to the gate and the VLM. The pass never decodes
+  more than the configured analysis budget, and a failed analysis is
+  ``UNSURE`` — it can never suppress a figure.
 """
 
 from __future__ import annotations
@@ -44,6 +51,7 @@ from kompend.llm.decision import FigureRelevanceVerdict
 from kompend.logging import get_logger
 from kompend.preprocessing.images import MAX_RASTER_PIXELS, VectorRasterError, is_raster_image, rasterise_image
 from kompend.resolution.base import BaseResolver
+from kompend.resolution.image_heuristics import HeuristicConfig, HeuristicVerdict, ImageRelevance, assess_image
 
 #: The entity type a real caption carries. The compiler publishes an
 #: entity of this type as the caption of the figure.
@@ -88,6 +96,7 @@ class VLMEnricher(BaseResolver):
         failures: UnitFailureLog | None = None,
         relevance_agent: FigureRelevanceAgent | None = None,
         relevance_failures: UnitFailureLog | None = None,
+        heuristics: HeuristicConfig | None = None,
     ) -> None:
         self._agent = agent
         self._min_bytes = min_image_bytes
@@ -95,6 +104,7 @@ class VLMEnricher(BaseResolver):
         self._failures = failures if failures is not None else UnitFailureLog(stage="vlm")
         self._relevance_agent = relevance_agent
         self._relevance_failures = relevance_failures if relevance_failures is not None else UnitFailureLog(stage="vlm:relevance")
+        self._heuristics = heuristics
 
     @property
     def failures(self) -> UnitFailureLog:
@@ -181,11 +191,15 @@ class VLMEnricher(BaseResolver):
             return resolved
 
         skip, reason = self._should_skip(caption_source)
+        heuristic = None if skip else self._heuristic_verdict(caption_source)
         skip_name: str | None = None
         skip_context = ""
         if skip:
             logger.debug("VLM pre-filter skipping %s: %s", resolved.chunk.id, reason)
             skip_name, skip_context = "vlm_filtered", f"Image filtered: {reason}"
+        elif heuristic is not None:
+            logger.debug("Image heuristics skipping %s: %s", resolved.chunk.id, heuristic.reason)
+            skip_name, skip_context = "vlm_filtered", f"Image filtered: {heuristic.reason}"
         elif self._relevance_agent is not None and not self._is_worth_captioning(resolved.chunk.id, _render_context(resolved.chunk)):
             logger.debug("Relevance gate skipping %s: judged decorative", resolved.chunk.id)
             skip_name, skip_context = "vlm_relevance_skipped", "Figure judged decorative — caption deliberately skipped"
@@ -198,6 +212,9 @@ class VLMEnricher(BaseResolver):
                 }
             )
             resolved.metadata[skip_name] = True
+            if heuristic is not None:
+                resolved.metadata["vlm_heuristic"] = heuristic.decision.value
+                resolved.metadata["vlm_heuristic_reason"] = heuristic.reason
             return resolved
 
         try:
@@ -284,6 +301,20 @@ class VLMEnricher(BaseResolver):
         if w < self._min_dim or h < self._min_dim:
             return True, f"too small ({w}×{h} < {self._min_dim}px)"
         return False, ""
+
+    def _heuristic_verdict(self, image_file: str | Path) -> HeuristicVerdict | None:
+        """A confident structural/pixel drop, or ``None`` to fall through.
+
+        Only a verdict at or above the configured confidence drops the
+        figure. ``UNSURE`` and sub-threshold drops are indistinguishable
+        from no verdict here, so they continue to the text gate and the VLM.
+        """
+        if self._heuristics is None or not self._heuristics.enabled:
+            return None
+        verdict = assess_image(image_file, self._heuristics)
+        if verdict.decision is ImageRelevance.DROP and verdict.confidence >= self._heuristics.min_confidence:
+            return verdict
+        return None
 
     def _generate_caption(self, image_ref: str | Path, context: str = "") -> str:
         """Run the VLM on *image_ref* and return a text caption.
