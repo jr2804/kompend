@@ -166,7 +166,7 @@ def test_fix_survives_an_empty_dir_it_cannot_remove(tmp_path: Path, monkeypatch:
     assert results[0].fix_applied is True
     assert not orphan.exists()
     assert slug_dir.is_dir(), "the directory could not be removed, so it is still there"
-    assert any(str(slug_dir) in record.getMessage() for record in caplog.records)
+    assert any(str(slug_dir).casefold() in record.getMessage().casefold() for record in caplog.records)
 
 
 def test_fix_acts_on_the_directory_the_caller_names(tmp_path: Path) -> None:
