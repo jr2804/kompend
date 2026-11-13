@@ -1,12 +1,20 @@
 """kompend chunking tier."""
 
-from kompend.chunking.extractors import extract_structured
-from kompend.chunking.hierarchical import HierarchicalChunker
-from kompend.chunking.summarizer import NodeSummarizer, SummarizerSessionPolicy
+from __future__ import annotations
 
-__all__ = [
-    "HierarchicalChunker",
-    "NodeSummarizer",
-    "SummarizerSessionPolicy",
-    "extract_structured",
-]
+import lazy_loader as lazy
+
+__getattr__, __dir__, __all__ = lazy.attach(
+    __name__,
+    submod_attrs={
+        "extractors": ["extract_structured"],
+        "hierarchical": ["HierarchicalChunker"],
+        "outline": [
+            "OutlineNode",
+            "build_outline",
+            "estimate_tokens",
+            "outline_to_prompt",
+        ],
+        "summarizer": ["NodeSummarizer", "SummarizerSessionPolicy"],
+    },
+)
