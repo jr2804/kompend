@@ -33,37 +33,41 @@ keywords = [
     "knowledge-graph",
 ]
 dependencies = [
-    "cyclopts>=5.3.2",
+    "cyclopts>=5.4.2",
     "rich>=15.0.0",
     "jinja2>=3.1.6",
-    "fastapi>=0.161.1",
+    "fastapi>=0.162.5",
     "uvicorn>=0.54.0",
     "chonkie>=1.7.0",
+    # chonkie 1.7.0's tokenizer wrapper passes `add_special_tokens` to
+    # tokie's `encode()`; tokie 0.2.0 (2026-11-12) removed the kwarg, so
+    # every split dies with a TypeError. Unpin when chonkie adapts.
+    "tokie>=0.0.10,<0.2",
     "crawl4ai[all]>=0.9.5",
     "sqlite-vec>=0.1.9",
     "sqlite-vec-client>=2.4.1",
-    "rumdl>=0.3.0",
-    "fastmcp-slim[server]>=4.1.3",
-    "pydantic>=2.14.1",
+    "rumdl>=0.3.4",
+    "fastmcp-slim[server]>=4.1.8",
+    "pydantic>=2.14.3",
     "wenmode>=0.15.3",
-    "pydantic-ai-slim[openai,google,anthropic,groq,mistral,cohere,xai,openrouter,zai,typesafe,huggingface,voyageai,web-fetch,duckduckgo,cli,mcp,mcp-tasks]>=2.60.0",
+    "pydantic-ai-slim[openai,google,anthropic,groq,mistral,cohere,xai,openrouter,zai,typesafe,huggingface,voyageai,web-fetch,duckduckgo,cli,mcp,mcp-tasks]>=2.68.0",
     "pydantic-ai-rlm>=0.1.2",
     "python-slugify[unidecode]>=9.1.3",
     "tomli-w>=1.2.0",
     "pyyaml>=6.0.3",
     "binaryornot>=0.6.0",
     "datasketch>=2.0.0",
-    "mail-parser>=4.8.0",
+    "mail-parser>=4.10.0",
     "toon-format>=1.2.0",
     "ison-py>=1.2.0",
-    "pydantic-settings>=2.16.1",
+    "pydantic-settings>=2.16.3",
     "py7zr>=1.1.4",
     "unrar2-cffi>=0.5.0",
-    "json-repair[schema]>=0.64.2",
+    "json-repair[schema]>=0.64.9",
     # latest 9.2.x is blocked by google-genai's tenacity<9.2.0 (upstream pin)
     "tenacity>=9.1.4",
-    "logfire[system-metrics]>=5.2.0",
-    "pydantic-ai-harness[acp]>=0.60.0",
+    "logfire[system-metrics]>=5.6.0",
+    "pydantic-ai-harness[acp]>=0.68.0",
     "ollama>=0.6.3",
     "aenum>=3.1.17",
     "lazy-loader>=0.6",
@@ -76,11 +80,11 @@ dependencies = [
     # pypdf (via parsecraft's parse tier) probes fontTools to fully decode
     # embedded CFF Type1 subset fonts; without it, LaTeX-style math/symbol
     # glyphs map to garbage on every parse of ITU/IEEE-style PDFs.
-    "fonttools>=4.5",
-    "parsecraft[docling,web]>=2026.11.6",
+    "fonttools>=4.68.0",
+    "parsecraft[docling,web]>=2026.11.7",
     "llmdb>=1.0.0",
-    "resvg-py>=0.5",
-    "sqlalchemy>=2.0,<2.2",
+    "resvg-py>=0.5.0",
+    "sqlalchemy>=2.1.8,<2.2",
 ]
 
 [project.scripts]
@@ -92,33 +96,33 @@ kompend = "kompend.cli.launch:main"
 rerank = ["flashrank>=0.2.10"]
 
 # Only heavy ML OCR models and licence-gated backends (pymupdf, mineru) stay opt-in.
-ocr = ["parsecraft[ocr]>=2026.11.6"]
+ocr = ["parsecraft[ocr]>=2026.11.7"]
 # parsecraft runs MinerU natively; the extra pulls model weights, not the
 # `mineru` package, so it resolves beside the model stack.
-mineru = ["parsecraft[mineru]>=2026.11.6"]
-pymupdf = ["parsecraft[pymupdf]>=2026.11.6"]
+mineru = ["parsecraft[mineru]>=2026.11.7"]
+pymupdf = ["parsecraft[pymupdf]>=2026.11.7"]
 # docling is already a base dependency; pdf-full adds the licensed pymupdf
 # backend and stays free of mineru (see the note above).
 pdf-full = [
-    "parsecraft[pymupdf]>=2026.11.6",
-    "parsecraft[docling]>=2026.11.6",
+    "parsecraft[pymupdf]>=2026.11.7",
+    "parsecraft[docling]>=2026.11.7",
 ]
 
 # marker-pdf is bring-your-own: uv add marker-pdf
 otel = [
-    "opentelemetry-sdk>=1.45.1",
-    "opentelemetry-exporter-otlp>=1.45.1",
+    "opentelemetry-sdk>=1.45.2",
+    "opentelemetry-exporter-otlp>=1.45.2",
 ]
 
 
 [dependency-groups]
 
 dev = [
-    "logfire[system-metrics]>=5.2.0",
-    "pydantic-ai-slim[logfire]>=2.60.0",
-    "mkdocs-material>=9.7.7",
-    "pytest>=9.1.1",
-    "pytest-asyncio>=1.4.0",
+    "logfire[system-metrics]>=5.6.0",
+    "pydantic-ai-slim[logfire]>=2.68.0",
+    "mkdocs-material>=9.8.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
     "pytest-cov>=7.1.0",
     "uv-dynamic-versioning>=0.14.1",
     "pytest-timeout>=2.4.0",
