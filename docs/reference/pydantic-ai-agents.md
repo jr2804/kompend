@@ -126,8 +126,7 @@ its `deps_type`.
 
 | Spec | Output | Deps |
 |------|--------|------|
-| `query` | `str` | `QueryDeps` |
-| `agentic_query` | `str` | `QueryAgentDeps` |
+| `query` | `str` | `QueryAgentDeps` |
 | `query_expansion` | `QueryExpansionOutput` | `PipelineAgentDeps` |
 | `crag_grade` | `CragGradeOutput` | `PipelineAgentDeps` |
 | `hyde` | `str` | `PipelineAgentDeps` |

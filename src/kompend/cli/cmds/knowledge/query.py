@@ -35,10 +35,8 @@ from kompend.cli.query.search import (
     handle_adaptive_search,
     handle_enhanced_search,
     open_vector_store,
-    should_use_agentic,
 )
 from kompend.cli.query.synthesize import (
-    run_agentic_query_output,
     synthesize_and_output,
 )
 from kompend.cli.settings import (
@@ -126,25 +124,6 @@ def query_cmd(  # noqa: PLR0917 — one parameter per CLI option
         )
         raise SystemExit(1)
 
-    if should_use_agentic(cfg, raw=raw, model=model):
-        try:
-            run_agentic_query_output(
-                query,
-                wiki,
-                vector_store,
-                format,
-                cfg,
-                cw,
-                remember,
-                state_dir,
-                tag_groups=tag_groups,
-                attr_filters=attr_groups,
-            )
-        finally:
-            if vector_store is not None:
-                vector_store.close()
-        return
-
     try:
         results, raw, has_enhanced = _execute_search(
             wiki=wiki,
@@ -160,22 +139,29 @@ def query_cmd(  # noqa: PLR0917 — one parameter per CLI option
             cfg=cfg,
             model=model,
         )
+        log_stage(vp, action="Query", detail=f'"{query}" \u2192 {len(results)} result(s)')
+
+        if not results:
+            get_console().print("No relevant content found.")
+            raise SystemExit(0)
+
+        if raw or model is None:
+            print_raw_results(results, format)
+            return
+
+        # The store stays open through synthesis: the query session's
+        # tools search it on follow-up turns. One retriever serves both
+        # the upfront search and the session's tools.
+        tools_retriever = (
+            HybridRetriever(wiki, vector_store=vector_store, display=cfg.kompend.display)
+            if vector_store is not None
+            else KeywordRetriever(wiki, display=cfg.kompend.display)
+        )
+        enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model) if has_enhanced else None
+        synthesize_and_output(query, results, format, enhanced, tools_retriever, wiki, model, cw, remember, state_dir, cfg)
     finally:
         if vector_store is not None:
             vector_store.close()
-
-    log_stage(vp, action="Query", detail=f'"{query}" \u2192 {len(results)} result(s)')
-
-    if not results:
-        get_console().print("No relevant content found.")
-        raise SystemExit(0)
-
-    if raw or model is None:
-        print_raw_results(results, format)
-        return
-
-    enhanced = build_enhanced_retriever(wiki, vector_store, state_dir, cfg, model) if has_enhanced else None
-    synthesize_and_output(query, results, format, has_enhanced, enhanced, wiki, model, cw, remember, state_dir, cfg)
 
 
 def _execute_search(

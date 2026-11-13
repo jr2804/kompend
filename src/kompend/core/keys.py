@@ -128,9 +128,6 @@ SEARCH_RERANKER_TOP_K: Final[str] = "search.reranker.top_k"
 SEARCH_HYDE_ENABLED: Final[str] = "search.hyde.enabled"
 SEARCH_CONTEXTUAL_ENABLED: Final[str] = "search.contextual.enabled"
 SEARCH_CONTEXTUAL_MODEL: Final[str] = "search.contextual.model"
-SEARCH_AGENTIC_ENABLED: Final[str] = "search.agentic.enabled"
-SEARCH_AGENTIC_MODEL: Final[str] = "search.agentic.model"
-SEARCH_AGENTIC_MAX_SUB_QUESTIONS: Final[str] = "search.agentic.max_sub_questions"
 SEARCH_SYNTHESIS_VERBOSITY: Final[str] = "search.synthesis.verbosity"
 
 # ── display section ──

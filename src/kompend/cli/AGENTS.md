@@ -99,8 +99,8 @@ use; then the boundary is clean.
 | `workflow/pipeline.py` | Pipeline orchestration: progress callback, input resolution |
 | `workflow/post_compile.py` | What runs after a compile: review queue, provenance, lint, vector index, overview |
 | `workflow/distill.py` | Distill wiring shared by `kompend distill` and `kompend compile --distill` (pending-note count/notice, agent selection, result lines) |
-| `query/search.py` | Retrieval for `kompend query`: vector store, keyword/semantic/adaptive search, agentic choice |
-| `query/synthesize.py` | Answer synthesis, agentic output, query memory |
+| `query/search.py` | Retrieval for `kompend query`: vector store, keyword/semantic/adaptive search |
+| `query/synthesize.py` | Unified query-session synthesis and query memory |
 | `query/render.py` | Raw and structured rendering, wiki links, figure lines |
 | `args/` | Argument type definitions organized by domain (see `args/AGENTS.md`) |
 | `cmds/` | Command implementations organized by domain (see `cmds/AGENTS.md`) |

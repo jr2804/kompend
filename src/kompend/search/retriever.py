@@ -24,7 +24,7 @@ from kompend.rag.vector_store import VectorStoreLike
 from kompend.search.retrieval.assemble import extract_snippet, node_figures, result_from_hit
 from kompend.search.retrieval.rank import TOKEN_SPLIT_RE, graph_expansion, keyword_search, tokenize
 from kompend.search.retrieval.results import Citation, SearchResult, SynthesisResult
-from kompend.search.retrieval.synthesis import run_agentic_query, synthesize_results
+from kompend.search.retrieval.synthesis import synthesize_results
 from kompend.search.retrieval.vector import vector_search
 
 __all__ = [
@@ -36,7 +36,6 @@ __all__ = [
     "SynthesisResult",
     "extract_snippet",
     "node_figures",
-    "run_agentic_query",
     "synthesize_results",
     "tokenize",
 ]

@@ -30,7 +30,6 @@ __getattr__, __dir__, __all__ = lazy.attach(
         "decision_probe": ["DecisionProbeAgent", "DecisionProbeDeps"],
         "deps": [
             "MemoryConsolidationDeps",
-            "QueryDeps",
             "WicerDiagnoseDeps",
             "WicerEvaluateDeps",
             "WicerProbeDeps",

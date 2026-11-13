@@ -23,7 +23,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
         "assemble": ["extract_snippet", "node_attributes", "node_figures", "node_tags", "result_from_hit"],
         "rank": ["TOKEN_SPLIT_RE", "graph_expansion", "keyword_search", "matches_filters", "tokenize"],
         "results": ["Citation", "SearchResult", "SynthesisResult", "hit_float", "hit_opt_str", "hit_str"],
-        "synthesis": ["run_agentic_query", "synthesize_results"],
+        "synthesis": ["synthesize_results"],
         "vector": ["vector_search"],
     },
 )

@@ -77,7 +77,6 @@ pipeline shapes, not quality dials; see
 
 | Phase | Tasks | Session shape |
 |---|---|---|
-|---|---|---|
 | Capture & organize | `capture`, `categorize` | — |
 | Chunking | `context_chunk` | `agentic_context_chunk` |
 | Extraction & references | `extraction`, `extraction_reduce`, `reference_extraction`, `reference_resolver` | — |
@@ -85,7 +84,7 @@ pipeline shapes, not quality dials; see
 | Refinement (WiCER) | `wicer_probe`, `wicer_evaluate`, `wicer_diagnose` | — |
 | Verification & repair | `verification`, `remediation` | `agentic_verification`, `agentic_remediation` |
 | Summarise & distil | `summarizer`, `distill`, `memory_consolidation` | `agentic_summarizer`, `agentic_distill` |
-| Query & retrieval | `query`, `query_expansion`, `crag_grade`, `hyde` | `agentic_query` |
+| Query & retrieval | `query` (unified: session with tools), `query_expansion`, `crag_grade`, `hyde` | - |
 | Decision sidecar | `decision`, `adaptation`, `query_intent`, `figure_relevance`, `decision_probe` | — |
 | Diagnostics & vision | `doctor`, `lint_rule`, `vlm` | — |
 
@@ -124,17 +123,19 @@ flowchart LR
 
 ### Why both shapes exist
 
-The session variant is not an upgrade of the single request — it fetches its
-own context. Plain query is retrieve-then-synthesize: the retrieval stack
-assembles the context, then one request answers from it; the agentic query
-(opt-in via `search.agentic.enabled`) decomposes the question and drives
-`search_wiki`/`read_page` tools itself, trading many requests and tool
-round-trips for depth on questions retrieval alone cannot answer. The
-single-request shape is the capability floor every model can clear — kompend
-targets small local models, which often cannot drive a tool loop — and it
-stays an order of magnitude cheaper. The same trade runs through
-summarisation, distillation, verification, remediation and writing:
-map-over-nodes versus a budgeted session walk.
+The two shapes trade upfront context against depth: the single request is
+retrieve-then-synthesize — the retrieval stack assembles the context, then
+one request answers from it — while the session fetches its own context
+through tools, trading more requests for questions retrieval alone cannot
+answer.
+
+Query no longer offers the choice: it is the first task consolidated onto
+one session shape. The retrieval stack still assembles the first-turn
+context, the wiki tools stay registered, and the model decides whether one
+request is enough or it should investigate with `search_wiki`/`read_page` —
+a zero-tool session is one request. The remaining pairs (chunking, write,
+verification, remediation, summariser, distiller) follow the same
+consolidation plan.
 
 One more detail worth knowing when reading the inventory:
 

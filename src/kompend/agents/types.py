@@ -273,16 +273,26 @@ class DistillAgentDeps:
 
 @dataclass
 class QueryAgentDeps:
-    """Runtime context for the agentic query agent.
+    """Runtime context for the query agent.
 
-    The agent iterates over sub-questions and pages to synthesize an answer.
+    The agent answers from the pre-retrieved ``context`` handed to it in
+    the first turn; when the context is insufficient it may investigate
+    further via its tools (``search_wiki`` / ``read_page`` / …), which
+    operate on ``retriever``. A zero-tool session is one request.
 
     Attributes:
         question: The original question to answer.
+        retriever: Raw wiki retrieval surface the tools call. ``None``
+            (no store / store-less caller) means no tools are registered
+            and the agent answers from the context alone.
+        context: Pre-formatted context block (one entry per search
+            result, with title, source, and snippet), rendered into the
+            system prompt.
+        verbosity: Synthesis verbosity (``brief``, ``standard``,
+            ``comprehensive``). Controls answer length.
         sub_questions: List of pre-supplied sub-questions (usually empty —
             the system prompt has the agent decompose the question itself;
             ``results`` is keyed by whatever index ``add_finding`` uses).
-        retriever: Raw wiki retrieval surface the tools call.
         max_sub_questions: Upper bound declared to the model in the prompt.
         tag_groups: Tag filters as an OR-of-ANDs (DNF); empty means no tag
             filter. Pushed down through the retriever by ``search_wiki``.
@@ -290,11 +300,14 @@ class QueryAgentDeps:
             ``None`` = key-presence); all must hold. Pushed down likewise.
         results: Collected answer fragments keyed by sub-question index.
         source_id: Identifier for tracking.
+        current_sub_question: The sub-question the agent is currently on.
     """
 
     question: str
-    sub_questions: list[str]
-    retriever: QuerySearchProtocol
+    retriever: QuerySearchProtocol | None = None
+    context: str = ""
+    verbosity: str = "standard"
+    sub_questions: list[str] = field(default_factory=list)
     max_sub_questions: int = 5
     tag_groups: list[list[str]] = field(default_factory=list)
     attr_filters: list[tuple[str, str | None]] = field(default_factory=list)

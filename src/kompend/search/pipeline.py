@@ -18,6 +18,7 @@ from pathlib import Path
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.failure import record_unit_failure
 from kompend.agents.search import CragGradeAgent, HydeAgent, QueryExpansionAgent
+from kompend.agents.types import QuerySearchProtocol
 from kompend.core.config import ReasoningEffort, RlmConfig
 from kompend.core.config._configs import DisplayConfig, LLMConfig, RerankerBackend
 from kompend.core.models import CompiledWiki
@@ -165,6 +166,8 @@ class EnhancedRetriever:
         skills: dict[str, str] | None = None,
         reasoning_effort: ReasoningEffort | None = None,
         rlm: RlmConfig | None = None,
+        retriever: QuerySearchProtocol | None = None,
+        context_window: int | None = None,
     ) -> SynthesisResult:
         """Synthesize an answer from search results."""
         return synthesize_results(
@@ -175,6 +178,8 @@ class EnhancedRetriever:
             skills=skills,
             reasoning_effort=reasoning_effort,
             rlm=rlm,
+            retriever=retriever,
+            context_window=context_window,
             llm=self._llm,
         )
 

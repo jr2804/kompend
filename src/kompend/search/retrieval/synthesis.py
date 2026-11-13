@@ -1,22 +1,19 @@
 """Synthesis: format retrieved pages into context and let an agent answer.
 
-Two entry points with different shapes, kept separate on purpose:
-:func:`synthesize_results` pre-retrieves and formats results for a
-single-shot :class:`QueryAgent`, while :func:`run_agentic_query` hands the
-agent the raw retrieval surface and lets it search and read pages itself.
+One entry point: :func:`synthesize_results` pre-retrieves and formats the
+results as the first-turn context of the unified query session. Passing a
+``retriever`` registers the wiki tools, so the agent can search and read
+pages itself when the provided context is insufficient.
 """
 
 from __future__ import annotations
 
 import re
 
-from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT
-from kompend.agents.deps import QueryDeps
 from kompend.agents.failure import record_unit_failure
-from kompend.agents.query import QueryAgent
-from kompend.agents.query_agentic import make_agentic_query_agent
+from kompend.agents.query import QueryAgent, make_query_agent
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
-from kompend.core.config import DEFAULTS, ReasoningEffort, RlmConfig
+from kompend.core.config import ReasoningEffort, RlmConfig
 from kompend.core.config._configs import LLMConfig
 from kompend.core.vocab import Verbosity
 from kompend.search.retrieval.results import Citation, SearchResult, SynthesisResult
@@ -34,15 +31,18 @@ def synthesize_results(
     reasoning_effort: ReasoningEffort | None = None,
     rlm: RlmConfig | None = None,
     query_agent: QueryAgent | None = None,
+    retriever: QuerySearchProtocol | None = None,
+    context_window: int | None = None,
     llm: LLMConfig | None = None,
 ) -> SynthesisResult:
-    """Format search results into context and call the LLM for an answer.
+    """Format search results into context and call the query session.
 
-    This is a standalone function (no retriever needed) — it takes already-
-    retrieved ``SearchResult`` objects, formats them as numbered context
-    lines, and passes them to :class:`QueryAgent`. The ``rlm`` kwarg enables
-    RLM code-exploration over the synthesized context
-    (``compile.llm.rlm`` config).
+    Takes already-retrieved ``SearchResult`` objects, formats them as
+    numbered context lines, and passes them to :class:`QueryAgent` as the
+    first-turn context. With a ``retriever``, the wiki tools are
+    registered and the model may search and read pages itself when the
+    context is insufficient. The ``rlm`` kwarg enables RLM code-
+    exploration over the synthesized context (``compile.llm.rlm`` config).
     """
     if not model:
         citations: list[Citation] = []
@@ -80,15 +80,16 @@ def synthesize_results(
         if query_agent is not None:
             agent = query_agent
         else:
-            agent = QueryAgent(
-                model_string=model,
+            agent = make_query_agent(
+                model,
+                retriever=retriever,
                 skills=skills or {},
                 reasoning_effort=reasoning_effort,
                 rlm=rlm,
-                rlm_context_field="context",
+                context_window=context_window,
                 llm=llm,
             )
-        deps = QueryDeps(
+        deps = QueryAgentDeps(
             question=query,
             context=context_text,
             source_id="query",
@@ -116,45 +117,3 @@ def synthesize_results(
         )
 
     return SynthesisResult(answer=answer, citations=citations_out)
-
-
-def run_agentic_query(
-    question: str,
-    *,
-    retriever: QuerySearchProtocol,
-    model: str,
-    max_sub_questions: int = int(DEFAULTS["search"]["agentic"]["max_sub_questions"]),
-    timeout: float = UNSET_TIMEOUT,
-    retries: int = UNSET_RETRIES,
-    context_window: int | None = None,
-    rlm: RlmConfig | None = None,
-    tag_groups: list[list[str]] | None = None,
-    attr_filters: list[tuple[str, str | None]] | None = None,
-    llm: LLMConfig | None = None,
-) -> str:
-    """Answer *question* with the agentic query agent against *retriever*.
-
-    Unlike :func:`synthesize_results` — which pre-retrieves and formats
-    results for a single-shot :class:`QueryAgent` — this hands the agent the
-    question plus the raw retrieval surface and lets it search/read pages via
-    tools. Deliberately separate: ``synthesize_results`` builds
-    :class:`QueryDeps`, which has no ``retriever``, so an agentic agent run
-    there would crash the query tools.
-    """
-    agent = make_agentic_query_agent(
-        model,
-        timeout=timeout,
-        retries=retries,
-        context_window=context_window,
-        rlm=rlm,
-        llm=llm,
-    )
-    deps = QueryAgentDeps(
-        question=question,
-        sub_questions=[],
-        retriever=retriever,
-        max_sub_questions=max_sub_questions,
-        tag_groups=tag_groups or [],
-        attr_filters=attr_filters or [],
-    )
-    return agent.run(deps)

@@ -14,7 +14,8 @@ from kompend.logging import get_logger
 from kompend.mcp.tools._helpers import ToolStatus
 from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.search.filters import matches_attr_filter
-from kompend.search.retriever import HybridRetriever, KeywordRetriever, run_agentic_query
+from kompend.search.retrieval.synthesis import synthesize_results
+from kompend.search.retriever import HybridRetriever, KeywordRetriever
 
 logger = get_logger(__name__)
 
@@ -61,18 +62,6 @@ def query_wiki(
             else KeywordRetriever(wiki, display=cfg.kompend.display)
         )
         model = cfg.kompend.compile.llm.default_model or ""
-        agentic = cfg.kompend.search.agentic
-        if agentic.enabled and not raw and model and search_mode != SearchMode.RAW:
-            answer = run_agentic_query(
-                query,
-                retriever=retriever,
-                model=agentic.model or model,
-                max_sub_questions=agentic.max_sub_questions,
-                rlm=RlmConfig.model_validate(cfg.kompend.compile.llm.rlm or {}),
-                attr_filters=_parse_attr_filters(attributes) if attributes else [],
-                llm=cfg.kompend.compile.llm,
-            )
-            return {"status": ToolStatus.OK, "results": [], "raw": False, "synthesis": {"answer": answer, "citations": []}}
         expand_graph = search_mode == SearchMode.GRAPH
         mode = SearchMode.HYBRID if search_mode == SearchMode.GRAPH else search_mode
 
@@ -85,65 +74,63 @@ def query_wiki(
             results = retriever.search_hybrid(query, sources_dir, top_k=top_k, expand_graph=expand_graph)
         else:
             results = retriever.search_wiki(query, top_k=top_k)
+
+        # The store stays open through synthesis: the query session's tools
+        # search it on follow-up turns. One retriever serves both the
+        # upfront search and the session's tools.
+        if attributes:
+            attr_filters = _parse_attr_filters(attributes)
+            results = [r for r in results if matches_attr_filter(r.attributes, attr_filters)]
+
+        result_dicts = [dataclasses.asdict(r) for r in results] if results else []
+        if not results:
+            return {"status": ToolStatus.OK, "results": result_dicts, "synthesis": None, "raw": True}
+
+        # No model to synthesize an answer — only vector-store results are
+        # meaningful enough to surface raw. Keyword-only results without
+        # synthesis don't produce a useful answer.
+        if not model and not raw:
+            return {
+                "status": ToolStatus.ERROR,
+                "message": NO_MODEL_CONFIGURED_MESSAGE + " Query requires a model to synthesize an answer."
+                " Use raw=True for retrieval-only output, or configure an embedding model"
+                " (compile.embedding.model) for raw semantic search.",
+            }
+
+        if model and not raw:
+            try:
+                synthesis = synthesize_results(
+                    query,
+                    results,
+                    model=model,
+                    retriever=retriever,
+                    reasoning_effort=cfg.kompend.compile.llm.reasoning_effort,
+                    rlm=RlmConfig.model_validate(cfg.kompend.compile.llm.rlm or {}),
+                    llm=cfg.kompend.compile.llm,
+                )
+                return {
+                    "status": ToolStatus.OK,
+                    "results": result_dicts,
+                    "raw": False,
+                    "synthesis": {
+                        "answer": synthesis.answer,
+                        "citations": [
+                            {
+                                "article": c.get("article", ""),
+                                "source": c.get("source", "wiki"),
+                                "figures": c.get("figures", []),
+                            }
+                            for c in synthesis.citations
+                        ],
+                    },
+                }
+            except Exception:
+                logger.warning("LLM synthesis failed for query", exc_info=True)
+
+        return {"status": ToolStatus.OK, "results": result_dicts, "synthesis": None, "raw": True}
     finally:
         if vector_store is not None:
             vector_store.close()
-
-    if attributes:
-        attr_filters = _parse_attr_filters(attributes)
-        results = [r for r in results if matches_attr_filter(r.attributes, attr_filters)]
-
-    result_dicts = [dataclasses.asdict(r) for r in results] if results else []
-    if not results:
-        return {"status": ToolStatus.OK, "results": result_dicts, "synthesis": None, "raw": True}
-
-    try:
-        model = cfg.kompend.compile.llm.default_model or ""
-    except Exception:
-        model = ""
-
-    # No model to synthesize an answer — only vector-store results are meaningful
-    # enough to surface raw. Keyword-only results without synthesis don't produce
-    # a useful answer.
-    if not model and not raw:
-        return {
-            "status": ToolStatus.ERROR,
-            "message": NO_MODEL_CONFIGURED_MESSAGE + " Query requires a model to synthesize an answer."
-            " Use --raw for retrieval-only output, or configure an embedding model"
-            " (compile.embedding.model) for raw semantic search.",
-        }
-
-    if model and not raw:
-        try:
-            synthesizer = HybridRetriever(wiki, display=cfg.kompend.display)
-            synthesis = synthesizer.synthesize(
-                query,
-                results,
-                model=model,
-                reasoning_effort=cfg.kompend.compile.llm.reasoning_effort,
-                rlm=RlmConfig.model_validate(cfg.kompend.compile.llm.rlm or {}),
-                llm=cfg.kompend.compile.llm,
-            )
-            return {
-                "status": ToolStatus.OK,
-                "results": result_dicts,
-                "raw": False,
-                "synthesis": {
-                    "answer": synthesis.answer,
-                    "citations": [
-                        {
-                            "article": c.get("article", ""),
-                            "source": c.get("source", "wiki"),
-                            "figures": c.get("figures", []),
-                        }
-                        for c in synthesis.citations
-                    ],
-                },
-            }
-        except Exception:
-            logger.warning("LLM synthesis failed for query", exc_info=True)
-
-    return {"status": ToolStatus.OK, "results": result_dicts, "synthesis": None, "raw": True}
 
 
 def wiki_status(

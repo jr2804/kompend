@@ -1,28 +1,23 @@
-"""Agentic query flow — plumbing, real tool content, filters, gating (no LLM).
+"""Query session tools — plumbing, real tool content, filters (no LLM).
 
-Covers the opt-in ``search.agentic`` path end-to-end without any LLM call:
-the flow builds deps with the raw retriever, the tools reach real content
-through it and thread tag/attribute filters, and the non-agentic default is
-untouched.
+Covers the unified query session end-to-end without any LLM call: the deps
+carry the raw retriever, the tools reach real content through it and thread
+tag/attribute filters down to the retrieval surface.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from types import SimpleNamespace
 from typing import Any, cast
 
-import pytest
 from pydantic_ai import RunContext
 
 from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
-from kompend.cli.query.search import should_use_agentic
 from kompend.compilation.query_tools import add_finding, get_figures, get_tables, read_page, search_wiki
-from kompend.core.config import ResolvedConfig
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.search.filters import matches_attr_filter, matches_tag_filter
-from kompend.search.retriever import KeywordRetriever, SearchResult, run_agentic_query
+from kompend.search.retriever import KeywordRetriever, SearchResult
 
 
 @dataclass
@@ -105,37 +100,6 @@ async def test_search_wiki_sends_no_filters_when_deps_empty() -> None:
     assert call["attribute_keys"] is None
 
 
-def test_run_agentic_query_builds_deps_and_returns_answer(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake = _fake()
-    seen: dict[str, object] = {}
-
-    class _Agent:
-        def run(self, deps: QueryAgentDeps, *, message_history: object = None) -> str:
-            seen["deps"] = deps
-            assert deps.question == "What is P.863?"
-            assert deps.retriever is fake
-            assert deps.max_sub_questions == 7
-            assert deps.tag_groups == [["audio"]]
-            assert deps.attr_filters == [("lang", "en")]
-            return "SYNTHESIZED ANSWER"
-
-    def _factory(model: str, **kwargs: object) -> _Agent:
-        seen["model"] = model
-        return _Agent()
-
-    monkeypatch.setattr("kompend.search.retrieval.synthesis.make_agentic_query_agent", _factory)
-    answer = run_agentic_query(
-        "What is P.863?",
-        retriever=fake,
-        model="ollama/x",
-        max_sub_questions=7,
-        tag_groups=[["audio"]],
-        attr_filters=[("lang", "en")],
-    )
-    assert answer == "SYNTHESIZED ANSWER"
-    assert seen["model"] == "ollama/x"
-
-
 def test_keyword_retriever_applies_filters() -> None:
     nodes = [
         WikiNode(id="a", title="Audio paper", content="audio codec", node_type=NodeType.CONCEPT, metadata={"tags": ["audio", "paper"]}),
@@ -154,23 +118,6 @@ def test_retriever_read_page_returns_node_content() -> None:
     retriever = KeywordRetriever(CompiledWiki(nodes=[node], edges=[], toc=[]))
     assert retriever.read_page("p1") == "BODY"
     assert retriever.read_page("missing") is None
-
-
-def test_agentic_disabled_by_default() -> None:
-    assert should_use_agentic(_cfg(False), raw=False, model="m") is False
-
-
-def test_agentic_gating_allows_filtered_queries() -> None:
-    assert should_use_agentic(_cfg(True), raw=False, model="m") is True
-    assert should_use_agentic(_cfg(True), raw=True, model="m") is False
-    assert should_use_agentic(_cfg(True), raw=False, model=None) is False
-
-
-def _cfg(enabled: bool) -> ResolvedConfig:
-    return cast(
-        ResolvedConfig,
-        SimpleNamespace(kompend=SimpleNamespace(search=SimpleNamespace(agentic=SimpleNamespace(enabled=enabled)))),
-    )
 
 
 def test_shared_matchers_unchanged() -> None:

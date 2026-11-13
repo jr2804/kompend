@@ -1,7 +1,7 @@
 """How the query command finds candidates.
 
-Retrieval helpers: opening the vector store, running keyword/semantic/adaptive
-search, and choosing between the agentic and the classic path.
+Retrieval helpers: opening the vector store and running
+keyword/semantic/adaptive search.
 """
 
 from __future__ import annotations
@@ -168,17 +168,6 @@ def handle_enhanced_search(  # noqa: PLR0917
         return results
 
     return None
-
-
-def should_use_agentic(cfg: ResolvedConfig, *, raw: bool, model: str | None) -> bool:
-    """Whether this query should take the opt-in agentic path.
-
-    Disabled by default. The agentic tools honour tag/attribute filters
-    (pushed down through the retriever), so filters no longer disqualify the
-    path.
-    """
-    agentic = cfg.kompend.search.agentic
-    return bool(agentic.enabled and not raw and model)
 
 
 def build_enhanced_retriever(

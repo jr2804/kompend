@@ -26,8 +26,8 @@ import os
 import sys
 import urllib.request
 
-from kompend.agents.deps import QueryDeps
 from kompend.agents.query import QueryAgent
+from kompend.agents.types import QueryAgentDeps
 from kompend.core.config._configs import RlmConfig
 
 MODEL = os.environ.get("KOMP_TEST_RLM_MODEL", "hf.co/unsloth/Qwen3.5-2B-MTP-GGUF:UD-Q8_K_XL")
@@ -94,7 +94,7 @@ def _rendered_prompt(rlm: RlmConfig | None) -> str:
         rlm=rlm,
         rlm_context_field="context",
     )
-    return agent.render_system_prompt(QueryDeps(question="q", context="<corpus>", source_id="render"))
+    return agent.render_system_prompt(QueryAgentDeps(question="q", context="<corpus>", source_id="render"))
 
 
 def _ollama_ok() -> bool:
@@ -126,7 +126,7 @@ def run_query(question: str, context: str, rlm: RlmConfig | None) -> str:
         rlm=rlm,
         rlm_context_field="context",
     )
-    result, _ = agent.run_with_messages(QueryDeps(question=question, context=context, source_id="rlm-verify"))
+    result, _ = agent.run_with_messages(QueryAgentDeps(question=question, context=context, source_id="rlm-verify"))
     return result
 
 

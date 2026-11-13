@@ -40,7 +40,6 @@ class AgentName(StrEnum):
     LINT_RULE = "lint_rule"
     MEMORY_CONSOLIDATION = "memory_consolidation"
     QUERY = "query"
-    AGENTIC_QUERY = "agentic_query"
     REFERENCE_EXTRACTION = "reference_extraction"
     REFERENCE_RESOLVER = "reference_resolver"
     REMEDIATION = "remediation"
@@ -82,7 +81,6 @@ _MODULES: dict[AgentName, str] = {
     AgentName.LINT_RULE: "kompend.agents.lint",
     AgentName.MEMORY_CONSOLIDATION: "kompend.agents.memory_consolidation",
     AgentName.QUERY: "kompend.agents.query",
-    AgentName.AGENTIC_QUERY: "kompend.agents.query_agentic",
     AgentName.REFERENCE_EXTRACTION: "kompend.agents.reference_extraction",
     AgentName.REFERENCE_RESOLVER: "kompend.agents.reference_resolver",
     AgentName.REMEDIATION: "kompend.agents.remediate",

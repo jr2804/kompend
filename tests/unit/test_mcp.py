@@ -16,7 +16,6 @@ from kompend.mcp.server import server as mcp_server
 from kompend.mcp.tools.config import config_check
 from kompend.mcp.tools.query import query_wiki
 from kompend.search.retrieval.results import SynthesisResult
-from kompend.search.retriever import HybridRetriever
 
 # ---------------------------------------------------------------------------
 # CLI ↔ MCP parity
@@ -229,11 +228,11 @@ def test_query_wiki_forwards_synthesis_settings(tmp_path: Path, monkeypatch: pyt
     )
     captured: dict[str, object] = {}
 
-    def _capture(self: HybridRetriever, query: str, results: list[object], **kwargs: object) -> SynthesisResult:
+    def _capture(query: str, results: list[object], **kwargs: object) -> SynthesisResult:
         captured.update(kwargs)
         return SynthesisResult(answer="pinned", citations=[])
 
-    monkeypatch.setattr(HybridRetriever, "synthesize", _capture)
+    monkeypatch.setattr("kompend.mcp.tools.query.synthesize_results", _capture)
 
     result = query_wiki("transformers attention", wiki_dir=str(vault))
 

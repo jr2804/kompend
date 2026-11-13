@@ -18,7 +18,6 @@ from pydantic_ai.models.function import FunctionModel
 from pydantic_ai.settings import ModelSettings
 
 from kompend.agents.base import KompendAgentBase
-from kompend.agents.deps import PipelineAgentDeps, QueryDeps
 from kompend.agents.extraction import ExtractionAgent
 from kompend.agents.kompend_model import KompendModel
 from kompend.agents.query import QueryAgent
@@ -31,6 +30,7 @@ from kompend.agents.rlm import (
     build_rlm_instructions,
     cleanup_rlm_repls,
 )
+from kompend.agents.types import PipelineAgentDeps, QueryAgentDeps
 from kompend.core.config import RlmConfig
 from kompend.llm.usage import UsageTracker
 
@@ -376,7 +376,7 @@ class TestPromptPlaceholder:
         with a placeholder so the model explores via code instead.
         """
         big = "BIG CONTENT " * 50
-        deps = QueryDeps(question="q", context=big, source_id="s")
+        deps = QueryAgentDeps(question="q", context=big, source_id="s")
         # Disabled: context inlined.
         plain = QueryAgent(model_string="ollama/x")
         assert big in plain.render_system_prompt(deps)

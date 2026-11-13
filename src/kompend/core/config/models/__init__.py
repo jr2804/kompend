@@ -66,7 +66,6 @@ from kompend.core.config.models.root import (
 )
 from kompend.core.config.models.search import (
     QueryConfig,
-    SearchAgenticConfig,
     SearchConfig,
     SearchContextualConfig,
     SearchCragConfig,
@@ -121,7 +120,6 @@ __all__ = [
     "ReasoningEffort",
     "RerankerBackend",
     "RlmConfig",
-    "SearchAgenticConfig",
     "SearchConfig",
     "SearchContextualConfig",
     "SearchCragConfig",

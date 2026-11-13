@@ -11,16 +11,16 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from kompend.agents.deps import QueryDeps
 from kompend.agents.query import QueryAgent
+from kompend.agents.types import QueryAgentDeps
 
 
 class TestQueryAgentConstruction:
     def test_class_metadata(self) -> None:
         agent = QueryAgent(model_string="test")
-        assert QueryAgent.system_template_name == "synthesize_system.md.j2"
+        assert QueryAgent.system_template_name == "query_session_system.md.j2"
         assert agent.result_type is str
-        assert agent.deps_type is QueryDeps
+        assert agent.deps_type is QueryAgentDeps
 
     def test_constructs_with_model_string(self) -> None:
         agent = QueryAgent(model_string="ollama/gpt-oss:20b")
@@ -30,7 +30,7 @@ class TestQueryAgentConstruction:
 class TestQueryAgentRun:
     def test_run_returns_string(self) -> None:
         agent, _ = self._make_agent_and_mock()
-        deps = QueryDeps(
+        deps = QueryAgentDeps(
             question="What is VAD?",
             context="[1] Voice Activity Detection\n    ...",
             source_id="query-1",
@@ -41,7 +41,7 @@ class TestQueryAgentRun:
 
     def test_run_passes_question_as_user_prompt(self) -> None:
         agent, mock_sync = self._make_agent_and_mock()
-        deps = QueryDeps(
+        deps = QueryAgentDeps(
             question="PAYLOAD-QUESTION-XYZ",
             context="[1] Some context",
             source_id="query-1",
@@ -57,7 +57,7 @@ class TestQueryAgentRun:
         agent = QueryAgent(model_string="ollama/gpt-oss:20b")
         agent._agent = MagicMock()
         agent._agent.run_sync = MagicMock(side_effect=RuntimeError("boom"))
-        deps = QueryDeps(
+        deps = QueryAgentDeps(
             question="q",
             context="c",
             source_id="query-1",
@@ -79,18 +79,18 @@ class TestQueryAgentRun:
 
 class TestQueryDeps:
     def test_defaults(self) -> None:
-        deps = QueryDeps(question="q", context="c", source_id="s")
+        deps = QueryAgentDeps(question="q", context="c", source_id="s")
         assert deps.verbosity == "standard"
         assert not hasattr(deps, "timeout")
 
     def test_custom_verbosity(self) -> None:
-        deps = QueryDeps(question="q", context="c", source_id="s", verbosity="brief")
+        deps = QueryAgentDeps(question="q", context="c", source_id="s", verbosity="brief")
         assert deps.verbosity == "brief"
 
 
 class TestQueryAgentRenderUserPrompt:
     def test_user_prompt_is_raw_question(self) -> None:
         agent = QueryAgent(model_string="ollama/gpt-oss:20b")
-        deps = QueryDeps(question="What is noise reduction?", context="ctx", source_id="q1")
+        deps = QueryAgentDeps(question="What is noise reduction?", context="ctx", source_id="q1")
         prompt = agent.render_user_prompt(deps)
         assert prompt == "What is noise reduction?"

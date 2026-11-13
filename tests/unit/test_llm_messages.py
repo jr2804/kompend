@@ -78,7 +78,7 @@ class TestTheMcpSurface:
 
         assert result["status"] == "error", result
         assert str(result["message"]).startswith(NO_MODEL_CONFIGURED_MESSAGE)
-        assert "--raw" in str(result["message"])
+        assert "raw=True" in str(result["message"])
 
 
 def test_the_sentence_names_the_key_and_the_command() -> None:

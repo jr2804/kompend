@@ -271,8 +271,6 @@ Three opt-in passes sit on top of the default pipeline:
   retrieval, so non-knowledge messages do not consume a search.
 - **Adaptive retrieval** (`--adaptive`) walks the chunk tree with zoom-in,
   zoom-out and targeted modes instead of returning a flat top-K.
-- **Agentic synthesis** (`[search.agentic] enabled = true`) replaces the
-  one-shot synthesis with a multi-turn tool loop for broad questions.
 
 Optional extras:
 

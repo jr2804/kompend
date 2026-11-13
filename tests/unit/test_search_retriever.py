@@ -15,7 +15,6 @@ from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
 from kompend.core.vocab import Verbosity
 from kompend.llm.context_window import ContextSource, ContextWindow
-from kompend.search.retrieval.synthesis import run_agentic_query
 from kompend.search.retriever import HybridRetriever, KeywordRetriever, SearchResult, extract_snippet, synthesize_results
 
 
@@ -254,7 +253,7 @@ class TestSynthesizeVerbosity:
         fake = _FakeLLMClient()
         mock_agent = MagicMock()
         mock_agent.run = MagicMock(return_value=f"answer ({verbosity})")
-        with patch("kompend.search.retrieval.synthesis.QueryAgent", return_value=mock_agent):
+        with patch("kompend.search.retrieval.synthesis.make_query_agent", return_value=mock_agent):
             result = synthesize_results("q", [], model=fake.default_model, verbosity=verbosity)
         return result, mock_agent
 
@@ -302,7 +301,3 @@ class TestSynthesisDefaults:
     def test_retriever_synthesize_verbosity_default_is_the_enum_member(self) -> None:
         default = inspect.signature(HybridRetriever.synthesize).parameters["verbosity"].default
         assert default is Verbosity.STANDARD
-
-    def test_max_sub_questions_default_is_the_config_default(self) -> None:
-        default = inspect.signature(run_agentic_query).parameters["max_sub_questions"].default
-        assert default == DEFAULTS["search"]["agentic"]["max_sub_questions"]

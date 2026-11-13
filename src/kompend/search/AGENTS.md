@@ -43,7 +43,7 @@ selection, query classification, budget management, and tag filtering.
   evaluates them as SQL (``EXISTS`` subqueries over the tag/attribute side
   tables); ``KeywordRetriever`` applies the same predicates in Python
   (store-less path). The two must agree — ``filters.py`` holds the canonical
-  semantics and a test pins the store to it. The agentic query tools thread
+  semantics and a test pins the store to it. The query session tools thread
   the caller's filters through ``QueryAgentDeps`` into ``retriever.search``.
 - ``HybridRetriever.synthesize`` forwards **every** synthesis knob
   (``verbosity``, ``skills``, ``reasoning_effort``, ``rlm``, ``llm``). A knob

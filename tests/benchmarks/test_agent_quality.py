@@ -31,7 +31,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from kompend.agents.deps import PipelineAgentDeps, QueryDeps, ToolGenerationDeps
+from kompend.agents.types import PipelineAgentDeps, QueryAgentDeps, ToolGenerationDeps
 from kompend.compilation.schema import ExtractionOutput
 
 # Agents to benchmark — each is a KompendAgentBase subclass
@@ -64,7 +64,7 @@ class TestTemplateRenderBenchmark:
     def test_render_latency(self, label: str, module_name: str, cls_name: str, _dir: str, is_query: bool) -> None:
         agent_cls = _import_agent(module_name, cls_name)
         agent, _ = _benchmark_construction(agent_cls)
-        deps = QueryDeps(question="test", context="ctx", source_id="test") if is_query else PipelineAgentDeps(text="test chunk", source_id="test")
+        deps = QueryAgentDeps(question="test", context="ctx", source_id="test") if is_query else PipelineAgentDeps(text="test chunk", source_id="test")
         elapsed = _benchmark_template_render(agent, deps)
         print(f"\n  [{label}] system-prompt render: {elapsed * 1000:.1f} ms")
         # Sanity: template render should be under 500 ms
@@ -95,7 +95,7 @@ class TestFullRunBenchmark:
             # AgenticGenerationAgent returns GenerationOutput but we mock run_sync
             result_obj = MagicMock()
         elif label == "query":
-            deps = QueryDeps(
+            deps = QueryAgentDeps(
                 question="test question",
                 context="test context",
                 source_id="test",
@@ -123,7 +123,6 @@ def _benchmark_construction(agent_cls: type, model_string: str = "ollama/qwen3")
     agent = agent_cls(
         model_string=model_string,
         timeout=30.0,
-        max_tokens=2048,
         retries=1,
         reasoning_effort="none",
     )
@@ -144,7 +143,6 @@ def _benchmark_full_run(agent_cls: type, result_obj: Any, deps: Any) -> float:
     agent = agent_cls(
         model_string="ollama/qwen3",
         timeout=30.0,
-        max_tokens=2048,
         retries=1,
         reasoning_effort="none",
     )

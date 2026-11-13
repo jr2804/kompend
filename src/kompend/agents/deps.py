@@ -11,7 +11,9 @@ The shared pipeline deps (:class:`PipelineAgentDeps`,
 ``kompend.agents.types`` (a leaf module that breaks the agents ↔
 compilation import cycle) and are re-exported here for backward
 compatibility. This module keeps the agent-specific deps
-(``DistillDeps``, ``QueryDeps``, WiCER, ``CategorizeDeps``).
+(``DistillDeps``, WiCER, ``CategorizeDeps``); session payloads such as
+:class:`QueryAgentDeps <kompend.agents.types.QueryAgentDeps>` live in
+``kompend.agents.types`` directly.
 """
 
 from __future__ import annotations
@@ -25,7 +27,6 @@ __all__ = [
     "DistillDeps",
     "MemoryConsolidationDeps",
     "PipelineAgentDeps",
-    "QueryDeps",
     "RemediationDeps",
     "ToolGenerationDeps",
     "WicerDiagnoseDeps",
@@ -77,30 +78,6 @@ class DistillDeps(PipelineAgentDeps):
 
     notes: list[dict] = field(default_factory=list)
     group_tag: str = ""
-
-
-@dataclass
-class QueryDeps:
-    """Runtime context for the query/synthesis stage.
-
-    The query agent answers a user question based on retrieved context
-    chunks. The system prompt template ``query/synthesize_system.md.j2``
-    expects ``context`` and ``verbosity`` variables; the user prompt is
-    the raw question string.
-
-    Attributes:
-        question: The user's free-text question.
-        context: Pre-formatted context block (one entry per search
-            result, with title, source, and snippet).
-        source_id: Log/provenance label for the query.
-        verbosity: Synthesis verbosity (``brief``, ``standard``,
-            ``comprehensive``). Controls answer length.
-    """
-
-    question: str
-    context: str
-    source_id: str
-    verbosity: str = "standard"
 
 
 @dataclass

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from pydantic_ai import RunContext, Tool
 
-from kompend.agents.types import QueryAgentDeps
+from kompend.agents.types import QueryAgentDeps, QuerySearchProtocol
 from kompend.core.text.page_media import find_page_figures, find_page_tables
 from kompend.llm.format import LlmDataFormat, encode_for_llm
 from kompend.types import JSONDict, JSONList
@@ -42,7 +42,7 @@ async def search_wiki(ctx: RunContext[QueryAgentDeps], question: str, top_k: int
     value_pairs = [f"{key}={value}" for key, value in ctx.deps.attr_filters if value is not None]
     key_only = [key for key, value in ctx.deps.attr_filters if value is None]
     hits = list(
-        ctx.deps.retriever.search(
+        _surface(ctx).search(
             question,
             top_k,
             tags_dnf=tags_dnf,
@@ -71,7 +71,7 @@ async def get_figures(ctx: RunContext[QueryAgentDeps], slug: str) -> str:
     says what the figure shows, and the path is where the image lives in the
     wiki.
     """
-    body = ctx.deps.retriever.read_page(slug)
+    body = _surface(ctx).read_page(slug)
     if body is None:
         return f"Page not found: {slug}"
     figures = find_page_figures(body)
@@ -87,7 +87,7 @@ async def get_tables(ctx: RunContext[QueryAgentDeps], slug: str) -> str:
     Use it when a question is about numbers, parameters or comparisons that a
     page keeps in a table.
     """
-    body = ctx.deps.retriever.read_page(slug)
+    body = _surface(ctx).read_page(slug)
     if body is None:
         return f"Page not found: {slug}"
     tables = find_page_tables(body)
@@ -99,10 +99,18 @@ async def get_tables(ctx: RunContext[QueryAgentDeps], slug: str) -> str:
 
 async def read_page(ctx: RunContext[QueryAgentDeps], slug: str) -> str:
     """Read a full wiki page by its slug."""
-    body = ctx.deps.retriever.read_page(slug)
+    body = _surface(ctx).read_page(slug)
     if body is None:
         return f"Page not found: {slug}"
     return body
+
+
+def _surface(ctx: RunContext[QueryAgentDeps]) -> QuerySearchProtocol:
+    """The retrieval surface; the tools are only registered when deps carry one."""
+    surface = ctx.deps.retriever
+    if surface is None:
+        raise TypeError("query tools need deps.retriever - the factory registers them only with a surface")
+    return surface
 
 
 async def add_finding(ctx: RunContext[QueryAgentDeps], sub_question_index: int, finding: str) -> str:

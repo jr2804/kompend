@@ -23,7 +23,7 @@ from pydantic_ai_harness.memory import MemoryStore
 from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent, make_agentic_context_chunk_agent
 from kompend.agents.distill_agentic import make_agentic_distill_agent
 from kompend.agents.generation import make_agentic_generation_agent
-from kompend.agents.query_agentic import make_agentic_query_agent
+from kompend.agents.query import make_query_agent
 from kompend.agents.remediate import make_agentic_remediation_agent
 from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
 from kompend.agents.types import (
@@ -332,14 +332,18 @@ class TestAgenticContextChunkAgentWiring:
         assert agent.extra_capabilities
 
 
-class TestAgenticQueryAgentWiring:
-    def test_factory_registers_prompt_declared_tools(self) -> None:
-        agent = make_agentic_query_agent(model_string="ollama/gpt-oss:20b")
+class TestQueryAgentWiring:
+    def test_factory_registers_session_tools_with_a_surface(self) -> None:
+        agent = make_query_agent(model_string="ollama/gpt-oss:20b", retriever=_FakeRetriever(pages={}))
         built = agent._build_agent()
         assert sorted(built._function_toolset.tools.keys()) == ["add_finding", "get_figures", "get_tables", "read_page", "search_wiki"]
 
+    def test_factory_registers_no_tools_without_a_surface(self) -> None:
+        agent = make_query_agent(model_string="ollama/gpt-oss:20b")
+        assert agent.tools == []
+
     def test_factory_injects_harness_capabilities(self) -> None:
-        agent = make_agentic_query_agent(model_string="ollama/gpt-oss:20b", context_window=8192)
+        agent = make_query_agent(model_string="ollama/gpt-oss:20b", context_window=8192)
         assert agent.extra_capabilities
 
 

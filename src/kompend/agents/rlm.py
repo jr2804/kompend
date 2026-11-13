@@ -5,7 +5,7 @@ Wraps the REPL toolset from ``pydantic-ai-rlm`` (vstorm-co) as a pydantic-ai
 programmatically instead of packing everything into the prompt.
 
 The package's own ``create_rlm_toolset`` is typed for ``RLMDependencies``;
-kompend agents use their own deps dataclasses (``QueryDeps``, ``ToolGenerationDeps``,
+kompend agents use their own deps dataclasses (``QueryAgentDeps``, ``ToolGenerationDeps``,
 …). This module owns the thin tool glue: it reads the context from a
 configurable deps attribute and reuses the package's
 :class:`~pydantic_ai_rlm.repl.REPLEnvironment` for the sandbox, context
@@ -140,7 +140,7 @@ class RLMCapability(AbstractCapability[Any]):
 
         Args:
             context_field: Name of the deps attribute holding the document
-                context (e.g. ``"context"`` for QueryDeps, ``"content"`` for
+                context (e.g. ``"context"`` for QueryAgentDeps, ``"content"`` for
                 ToolGenerationDeps, ``"text"`` for PipelineAgentDeps).
             code_timeout: Per-execution timeout in seconds.
             sub_model: Model for ``llm_query()`` inside the REPL. ``None``

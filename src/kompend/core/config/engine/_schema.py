@@ -75,6 +75,9 @@ REMOVED_KEYS: dict[str, list[str]] = {  # nocheck: str-registry — frozen list 
         "wicer_probe_output_max",
         "wicer_eval_output_max",
     ],
+    # [search.agentic] opted into the split agentic query path; the query
+    # session is unified, so the gate and its knobs are gone.
+    "search.agentic": ["enabled", "model", "max_sub_questions"],
     "search.synthesis": ["tokens"],
     "compile.llm": ["role_models", "fallback_max_retries"],
     # `compile.mode` selected a pipeline mode, but the tier flags

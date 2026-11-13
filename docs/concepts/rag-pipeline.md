@@ -112,13 +112,14 @@ After retrieval, the LLM grades each candidate chunk for relevance to the query.
 
 Always active when an LLM is configured. Synthesizes the final answer from the filtered, ranked candidates.
 
-The opt-in **agentic path** (`[search.agentic] enabled = true`) replaces the
-one-shot synthesis with a multi-turn tool loop: the agent can read pages,
-search the wiki, and split a broad question into sub-questions
-(`max_sub_questions`). It is disabled by default, never applies to
-`--search-mode raw`, and still honours tag and attribute filters. Use it for
-questions that need several lookups; the one-shot path is faster and cheaper
-for single-fact queries.
+Synthesis runs as one unified query session: the retrieved candidates are
+the first-turn context, and the wiki tools (`search_wiki`, `read_page`,
+figure/table lookups) stay available to the model. For a single-fact query
+the session answers in one request from the assembled context; for a broad
+question the model may investigate - split the question, read pages,
+search again - before answering. `--search-mode raw` skips synthesis
+entirely, and tag/attribute filters are honoured both in the upfront search
+and in every tool call.
 
 ## Configuration Reference
 
@@ -164,6 +165,3 @@ agentic.max_sub_questions = 5
 | `KOMP_SEARCH_HYDE_ENABLED` | `search.hyde.enabled` | Enable HyDE |
 | `KOMP_SEARCH_CONTEXTUAL_ENABLED` | `search.contextual.enabled` | Enable contextual retrieval |
 | `KOMP_SEARCH_CONTEXTUAL_MODEL` | `search.contextual.model` | LLM model for context generation |
-| `KOMP_SEARCH_AGENTIC_ENABLED` | `search.agentic.enabled` | Enable the agentic query path |
-| `KOMP_SEARCH_AGENTIC_MODEL` | `search.agentic.model` | Model for the agentic query loop |
-| `KOMP_SEARCH_AGENTIC_MAX_SUB_QUESTIONS` | `search.agentic.max_sub_questions` | Sub-question cap for a broad query |

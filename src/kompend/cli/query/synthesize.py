@@ -1,13 +1,14 @@
 """How the query command turns hits into an answer.
 
-Running the agentic pipeline, synthesizing results, and recording query
-memory.
+Synthesizing results through the unified query session, and recording
+query memory.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
 
+from kompend.agents.types import QuerySearchProtocol
 from kompend.cli.query.render import (
     encode_structured,
     figure_line,
@@ -23,85 +24,23 @@ from kompend.core.models import CompiledWiki
 from kompend.core.paths import DEFAULT_OUTPUT_DIR_NAME
 from kompend.core.trust.actor import resolve_actor
 from kompend.llm.context_window import ContextWindow
-from kompend.llm.messages import NO_MODEL_CONFIGURED_MESSAGE
 from kompend.logging import get_console, get_err_console, get_logger
 from kompend.memory import MemoryStore
-from kompend.rag.sqlite_vec_store import SqliteVecWikiStore
 from kompend.search.pipeline import EnhancedRetriever
 from kompend.search.retriever import (
-    HybridRetriever,
-    KeywordRetriever,
     SearchResult,
-    SynthesisResult,
-    run_agentic_query,
     synthesize_results,
 )
 
 logger = get_logger(__name__)
 
 
-def run_agentic_query_output(
-    query: str,
-    wiki: CompiledWiki,
-    vector_store: SqliteVecWikiStore | None,
-    format: LlmDataFormat,
-    cfg: ResolvedConfig,
-    cw: ContextWindow | None,
-    remember: bool,
-    state_dir: Path,
-    tag_groups: list[list[str]] | None = None,
-    attr_filters: list[tuple[str, str | None]] | None = None,
-) -> None:
-    """Run the agentic query agent and print its answer.
-
-    Does NOT close *vector_store* — the caller owns its lifetime (the store
-    must stay open while the agent's tools search).
-    """
-    model = cfg.kompend.search.agentic.model or cfg.kompend.compile.llm.default_model
-    if not model:
-        get_err_console().print(NO_MODEL_CONFIGURED_MESSAGE + " Agentic query needs a model to answer.")
-        raise SystemExit(1)
-    retriever = (
-        HybridRetriever(wiki, vector_store=vector_store, display=cfg.kompend.display)
-        if vector_store is not None
-        else KeywordRetriever(wiki, display=cfg.kompend.display)
-    )
-    try:
-        answer = run_agentic_query(
-            query,
-            retriever=retriever,
-            model=model,
-            max_sub_questions=cfg.kompend.search.agentic.max_sub_questions,
-            context_window=cw.max_input if cw is not None else None,
-            tag_groups=tag_groups or [],
-            attr_filters=attr_filters or [],
-            llm=cfg.kompend.compile.llm,
-        )
-    except Exception as exc:
-        get_err_console().print(f"Agentic query failed: {exc}")
-        raise SystemExit(1)
-    synthesis = SynthesisResult(answer=answer, citations=[])
-    if format == LlmDataFormat.MARKDOWN:
-        get_console().print(synthesis.answer)
-    else:
-        get_console().print(encode_structured(structured_answer(synthesis, wiki), format))
-    if remember:
-        save_query_memory(
-            state_dir,
-            query,
-            synthesis.answer,
-            cfg.kompend.compile.embedding.model,
-            memory_by=resolve_actor(cfg),
-            display=cfg.kompend.display,
-        )
-
-
 def synthesize_and_output(  # noqa: PLR0917
     query: str,
     results: list[SearchResult],
     format: LlmDataFormat,
-    has_enhanced: bool,
     enhanced: EnhancedRetriever | None,
+    retriever: QuerySearchProtocol | None,
     wiki: CompiledWiki,
     model: str,
     cw: ContextWindow | None,
@@ -109,7 +48,12 @@ def synthesize_and_output(  # noqa: PLR0917
     state_dir: Path,
     cfg: ResolvedConfig,
 ) -> None:
-    """Synthesize results and output the answer."""
+    """Synthesize results and output the answer.
+
+    *retriever* is the raw search surface the query session's tools use
+    for follow-up investigation; the caller keeps its backing store open
+    for the duration of the call.
+    """
     results = [r for r in results if not is_captured_source(r.source_file)]
     if not results:
         get_console().print("No relevant content found.")
@@ -120,13 +64,16 @@ def synthesize_and_output(  # noqa: PLR0917
     try:
         reasoning_effort: str | None = cfg.kompend.compile.llm.reasoning_effort
         rlm_cfg = RlmConfig.model_validate(cfg.kompend.compile.llm.rlm or {})
-        if has_enhanced and enhanced is not None:
+        cw_max = cw.max_input if cw is not None else None
+        if enhanced is not None:
             synthesis = enhanced.synthesize(
                 query,
                 results,
                 verbosity=verbosity,
                 reasoning_effort=reasoning_effort,
                 rlm=rlm_cfg,
+                retriever=retriever,
+                context_window=cw_max,
             )
         else:
             synthesis = synthesize_results(
@@ -135,6 +82,8 @@ def synthesize_and_output(  # noqa: PLR0917
                 model=model,
                 verbosity=verbosity,
                 rlm=rlm_cfg,
+                retriever=retriever,
+                context_window=cw_max,
                 llm=cfg.kompend.compile.llm,
             )
     except Exception as exc:
