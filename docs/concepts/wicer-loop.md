@@ -20,10 +20,10 @@ WiCER follows a Counterexample-Guided Abstraction Refinement (CEGAR) pattern:
 
 ``` mermaid
 stateDiagram-v2
-    classDef init fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef decision fill:#fce4ec,stroke:#c62828,stroke-width:2px
-    classDef success fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef init fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
+    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef decision fill:#fce4ec,stroke:#c62828,stroke-width:2px,color:#1B1B1B
+    classDef success fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#1B1B1B
 
     [*] --> BlindCompile: Raw chunks
     BlindCompile --> Evaluate: Compiled wiki W₀

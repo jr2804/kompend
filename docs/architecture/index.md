@@ -8,10 +8,10 @@ kompend decouples **parsing** from **compilation** and adds layers that existing
 
 ```mermaid
 flowchart TD
-    classDef source fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
-    classDef storage fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    classDef source fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
+    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#1B1B1B
+    classDef storage fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#1B1B1B
 
     SRC[Raw Sources<br/>PDF / DOCX / PPTX / EPUB / MD / TXT / URLs]
     T1[Tier 1<br/>Pre-Processing<br/>parsecraft / downloaders]

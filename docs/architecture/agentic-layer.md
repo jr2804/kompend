@@ -21,10 +21,10 @@ is the *how*:
 
 ```mermaid
 flowchart TD
-    classDef stage fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef agent fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef mach fill:#fff9c4,stroke:#f57f17,stroke-width:2px
-    classDef model fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    classDef stage fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
+    classDef agent fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef mach fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#1B1B1B
+    classDef model fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#1B1B1B
 
     STAGE["Pipeline stage<br/>compile · query · lint · distill · doctor"]
     SPEC["AgentSpec registry<br/>38 specs · typed result + deps · template"]
@@ -68,11 +68,15 @@ distillation read and write.
 
 ## The task inventory
 
-The 38 registered specs map onto the pipeline phases. Single-shot tasks have
-a plain spec; tasks that need tools, memory or resumability have an
-**agentic twin** that runs as a harness session instead of one request.
+The 38 registered specs map onto the pipeline phases. Most tasks exist in
+two **execution shapes**: a *single-request* spec — one call, the context
+assembled up front — and a *session* spec (the agentic variant) that runs as
+a harness loop with tools, memory and step persistence. They are different
+pipeline shapes, not quality dials; see
+[Why both shapes exist](#why-both-shapes-exist).
 
-| Phase | Tasks | Agentic twins |
+| Phase | Tasks | Session shape |
+|---|---|---|
 |---|---|---|
 | Capture & organize | `capture`, `categorize` | — |
 | Chunking | `context_chunk` | `agentic_context_chunk` |
@@ -87,10 +91,10 @@ a plain spec; tasks that need tools, memory or resumability have an
 
 ```mermaid
 flowchart LR
-    classDef ing fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef comp fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef refine fill:#fff9c4,stroke:#f57f17,stroke-width:2px
-    classDef serve fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
+    classDef ing fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
+    classDef comp fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef refine fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#1B1B1B
+    classDef serve fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#1B1B1B
 
     subgraph INGEST["Capture & chunking"]
         C1["capture · categorize<br/>context_chunk"]
@@ -118,7 +122,21 @@ flowchart LR
     class SERVE serve
 ```
 
-Two details worth knowing when reading the inventory:
+### Why both shapes exist
+
+The session variant is not an upgrade of the single request — it fetches its
+own context. Plain query is retrieve-then-synthesize: the retrieval stack
+assembles the context, then one request answers from it; the agentic query
+(opt-in via `search.agentic.enabled`) decomposes the question and drives
+`search_wiki`/`read_page` tools itself, trading many requests and tool
+round-trips for depth on questions retrieval alone cannot answer. The
+single-request shape is the capability floor every model can clear — kompend
+targets small local models, which often cannot drive a tool loop — and it
+stays an order of magnitude cheaper. The same trade runs through
+summarisation, distillation, verification, remediation and writing:
+map-over-nodes versus a budgeted session walk.
+
+One more detail worth knowing when reading the inventory:
 
 - **The extraction strategies below do not need their own specs** — `agentic`
   extraction is a *flow* (`src/kompend/compilation/flows/agentic.py`) that
@@ -143,9 +161,9 @@ its content budget from the plan:
 
 ```mermaid
 flowchart LR
-    classDef fixed fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef reserve fill:#fff9c4,stroke:#f57f17,stroke-width:2px
-    classDef budget fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef fixed fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef reserve fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#1B1B1B
+    classDef budget fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
 
     W["context window"] --> SYS["system prompt"] & RES["reserved payloads"] & HIST["message history"] & ANS["answer reserve<br/>clamp(window ÷ 4, 512, 8 192)"] & SAFE["safety margin"]
     SYS & RES & HIST & ANS & SAFE --> CONTENT["content budget<br/>the only part a stage fills"]
@@ -190,9 +208,9 @@ the machinery looks like this:
 
 ```mermaid
 flowchart TD
-    classDef gate fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px
-    classDef tier fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef safe fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
+    classDef gate fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#1B1B1B
+    classDef tier fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef safe fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
 
     TRIG["history crosses the trigger<br/>default 90% · aggressive 70% · sliding 80%"] --> GROW{"grew by<br/>min_growth_tokens<br/>since the last pass?"}
     GROW -- "no" --> SKIP["skip this request<br/>baseline kept · small growth accumulates"]
@@ -249,9 +267,9 @@ default.
 
 ```mermaid
 flowchart TD
-    classDef shared fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef strat fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef rescue fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef shared fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
+    classDef strat fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef rescue fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#1B1B1B
 
     RUN["run_extraction<br/>chunks grouped by source · per-source budgets"] --> DIS{"extraction_strategy"}
 

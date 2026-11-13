@@ -14,9 +14,9 @@ testable, and has a clear `Base` interface.
 
 ``` mermaid
 flowchart LR
-    classDef source fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef source fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
+    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#1B1B1B
 
     PDF[PDF / DOCX / PPTX / XLSX / EPUB] --> Parser[ParsecraftParser<br>per-page routing]
     TXT[Text / Markdown / HTML] --> Parser
@@ -79,9 +79,9 @@ flowchart LR
 
 ``` mermaid
 flowchart LR
-    classDef input fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef input fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
+    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#1B1B1B
 
     Trees[list[ChunkTree]] --> Registry[EntityRegistry<br>scan_tree]
     Trees --> VLM[VLMEnricher<br>per-leaf]
@@ -116,10 +116,10 @@ relations are inferred during compilation from shared entities.
 
 ``` mermaid
 flowchart LR
-    classDef input fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
-    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px
-    classDef decision fill:#fce4ec,stroke:#c62828,stroke-width:2px
-    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px
+    classDef input fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px,color:#1B1B1B
+    classDef process fill:#e3f2fd,stroke:#1565c0,stroke-width:2px,color:#1B1B1B
+    classDef decision fill:#fce4ec,stroke:#c62828,stroke-width:2px,color:#1B1B1B
+    classDef output fill:#fff9c4,stroke:#f57f17,stroke-width:2px,color:#1B1B1B
 
     RC[list[ResolvedChunk]] --> Compile[Blind Compilation]
     Compile --> Evaluate[Probe Q&A]
