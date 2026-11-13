@@ -2,8 +2,35 @@
 
 from __future__ import annotations
 
-from kompend.cli.runtime.progress import PipelineProgress, _should_show_progress
+import io
+import sys
+from collections.abc import Iterator
+
+import pytest
+
+from kompend.cli.runtime.progress import PipelineProgress, _make_progress_console, _should_show_progress
 from kompend.cli.workflow.pipeline import make_progress_callback
+from kompend.logging import get_err_console
+
+
+class _Tty(io.StringIO):
+    """StringIO that reports itself as a terminal."""
+
+    def isatty(self) -> bool:
+        return True
+
+
+@pytest.fixture
+def _fresh_err_console_cache() -> Iterator[None]:
+    """Clear the cached err console around tests that build consoles.
+
+    :func:`get_err_console` is ``functools.cache``d and binds ``sys.stderr``
+    at construction; tests that fake the streams must not leak a fake-bound
+    (or stale real-bound) console into other tests.
+    """
+    get_err_console.cache_clear()
+    yield
+    get_err_console.cache_clear()
 
 
 class TestShowProgress:
@@ -16,6 +43,52 @@ class TestShowProgress:
     def test_auto_non_tty(self) -> None:
         # In tests, stdout is not a TTY
         assert _should_show_progress(force=None) is False
+
+    @pytest.mark.usefixtures("_fresh_err_console_cache")
+    def test_auto_either_stream_tty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The bar keys on the console's own stream, with a TTY stdout as backup.
+
+        Windows/PowerShell case: stdout is a TTY but stderr is not reported
+        as one, yet the console is visible — that host is interactive.
+        """
+        monkeypatch.setattr(sys, "stdout", _Tty())
+        assert _should_show_progress(force=None) is True
+
+        monkeypatch.setattr(sys, "stderr", _Tty())
+        assert _should_show_progress(force=None) is True
+
+
+class TestMakeProgressConsole:
+    @pytest.mark.usefixtures("_fresh_err_console_cache")
+    def test_stdout_tty_stderr_not_forces_terminal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Regression (knox-hoga): stdout TTY + stderr not a TTY in auto mode.
+
+        The forced console makes Rich's live refresh thread run, so the
+        elapsed timer and phase label keep moving instead of freezing the
+        first frame — a frozen bar is indistinguishable from a hang.
+        """
+        monkeypatch.setattr(sys, "stdout", _Tty())
+        # stderr stays the pytest-captured (non-TTY) stream.
+        assert sys.stderr.isatty() is False
+
+        pp = PipelineProgress.create(total_files=2, force_progress=None)
+        assert pp.enabled is True
+        assert pp._file_tracker is not None
+        assert pp._file_tracker.console.is_terminal is True
+
+    @pytest.mark.usefixtures("_fresh_err_console_cache")
+    def test_stderr_tty_reuses_cached_console(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Genuinely TTY stderr keeps the shared console (RichHandler interleaving unchanged)."""
+        monkeypatch.setattr(sys, "stderr", _Tty())
+
+        assert _make_progress_console(force=False) is get_err_console()
+
+    @pytest.mark.usefixtures("_fresh_err_console_cache")
+    def test_stderr_redirected_no_bar(self) -> None:
+        """Piped/CI output (neither stream a TTY) stays bar-free."""
+        assert _should_show_progress(force=None) is False
+        pp = PipelineProgress.create(total_files=2, force_progress=None)
+        assert pp.enabled is False
 
 
 class TestPipelineProgress:

@@ -4,7 +4,7 @@ Provides a single overall bar that is reset per pipeline phase (parse →
 resolve → compile → output).  No per-file sub-tasks are created, keeping
 the display clean and avoiding accumulation of stale tasks.
 
-Auto-suppresses in non-TTY mode and respects ``--quiet`` / ``--no-progress``.
+Auto-suppresses when neither stdout nor stderr is a TTY and respects ``--quiet`` / ``--no-progress``.
 """
 
 from __future__ import annotations
@@ -267,31 +267,40 @@ def _should_show_progress(force: bool | None = None) -> bool:
 
     Returns True if:
     - ``force`` is True
-    - ``force`` is None and stdout is a TTY
+    - ``force`` is None and either stderr or stdout is a TTY
+
+    The bar is rendered by the *stderr* console (see
+    :func:`_make_progress_console`), but ``sys.stderr.isatty()`` is
+    unreliable on some Windows/PowerShell hosts — it reports "not a
+    terminal" while the console is plainly visible. A TTY stdout means an
+    operator is watching, so that counts as interactive too; only when
+    *neither* stream is a TTY (piped output, CI) is the bar suppressed.
     """
     if force is True:
         return True
     if force is False:
         return False
-    return sys.stdout.isatty()
+    return sys.stderr.isatty() or sys.stdout.isatty()
 
 
 def _make_progress_console(force: bool) -> Console:
     """Build the stderr console that owns the progress bar.
 
-    When *force* is set (``--progress`` passed explicitly) the console is
-    forced into terminal mode so Rich's live refresh thread runs. Without
-    this, environments where ``sys.stderr.isatty()`` is unreliable (some
-    Windows/PowerShell hosts) get a single static render that never updates.
+    When *force* is set (``--progress`` passed explicitly) — or when stderr
+    itself is not a TTY while auto-detection still said interactive (stdout
+    is a TTY: the Windows/PowerShell case) — the console is forced into
+    terminal mode so Rich's live refresh thread runs. Without this, Rich
+    renders the bar once and never updates: the bar freezes mid-phase
+    while events keep firing underneath.
 
-    When *force* is unset (auto/TTY mode) the shared cached err console is
-    reused so log output via RichHandler stays Live-aware (prints above the
-    bar) instead of clobbering it.
+    When stderr genuinely is a TTY the shared cached err console is reused
+    so log output via RichHandler stays Live-aware (prints above the bar)
+    instead of clobbering it.
     """
-    if not force:
-        return get_err_console()
-    return Console(
-        stderr=True,
-        force_terminal=True,
-        no_color=not sys.stderr.isatty(),
-    )
+    if force or not sys.stderr.isatty():
+        return Console(
+            stderr=True,
+            force_terminal=True,
+            no_color=not sys.stderr.isatty(),
+        )
+    return get_err_console()

@@ -175,11 +175,10 @@ opt out via `require_vault=False`.
 
 ### Progress bars
 
-**Recurring trap:** a bar looks "stuck" and a plumbing change does not help — the
-cause was a slow/hung backend operation. Diagnose: **confirm the total** (a 0 is
-a real bug), **confirm the elapsed timer advances** (climbing = the loop is
-blocked; frozen = the UI thread died), then conclude the *work* is slow. The fix
-lives in `src/kompend/llm/`, the resolver, or the model config, never in the bar.
+**Recurring trap:** a bar that looks "stuck" is usually slow/hung backend work,
+not plumbing; diagnose the total and the elapsed timer, then fix the work.
+**Visibility contract:** auto mode enables the bar when either stream is a TTY
+and forces a terminal console when stderr is not (Windows/PowerShell).
 
 **Stream contract:** the `Progress` bar uses `redirect_stdout=False`,
 `redirect_stderr=False` — rich's `Live` swaps the std streams for proxies by
