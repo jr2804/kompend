@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import pytest
 
 from kompend.core.config._configs import LlmDataFormat
@@ -17,15 +19,28 @@ class _FakeRun:
 
 
 class _FakeAgent:
-    """Agent stand-in that replays the outputs the test queued."""
+    """Agent stand-in that replays the outputs the test queued.
+
+    A queued callable is invoked instead of being returned — the tool-use
+    probe uses that to pretend the model made the call.
+    """
 
     queued: list[object] = []
 
     def __init__(self, *_args: object, **_kwargs: object) -> None:
-        pass
+        self._tools: list[Callable[[object], str]] = []
+
+    def tool_plain(self, fn: Callable[[object], str], *, name: str = "", description: str = "") -> Callable[[object], str]:
+        self._tools.append(fn)
+        return fn
 
     def run_sync(self, _prompt: str, **_kwargs: object) -> _FakeRun:
-        return _FakeRun(_FakeAgent.queued.pop(0) if _FakeAgent.queued else "")
+        nxt = _FakeAgent.queued.pop(0) if _FakeAgent.queued else ""
+        if callable(nxt):
+            for tool in self._tools:
+                tool(None)
+            return _FakeRun("")
+        return _FakeRun(nxt)
 
 
 class TestStructuredOutputProbes:
@@ -65,6 +80,22 @@ class TestStructuredOutputProbes:
 
         assert not probe.ok
         assert "json" in probe.detail.lower()
+
+    def test_tool_use_probe_passes_when_a_tool_is_called(self, queued: list[object]) -> None:
+        queued.append(lambda: None)  # the fake runs registered tools on a callable
+
+        probe = _capabilities.probe_tool_use(_MODEL, timeout=5.0, retries=1)
+
+        assert probe.ok
+        assert probe.name == "tool-use"
+
+    def test_tool_use_probe_fails_without_a_call(self, queued: list[object]) -> None:
+        queued.append("plain answer, no tool")
+
+        probe = _capabilities.probe_tool_use(_MODEL, timeout=5.0, retries=1)
+
+        assert not probe.ok
+        assert "without calling" in probe.detail
 
 
 class TestCompactFormatProbe:

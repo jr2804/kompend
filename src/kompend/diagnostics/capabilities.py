@@ -13,7 +13,7 @@ from time import monotonic
 from typing import Final
 
 from pydantic import BaseModel
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 from pydantic_ai.output import NativeOutput, OutputSpec, PromptedOutput
 from pydantic_ai.settings import ModelSettings
 
@@ -162,6 +162,38 @@ def probe_compact_format(
         True,
         f"{fmt.value} output decodes ({len(text)} chars vs {json_len} chars of JSON, {elapsed:.1f}s)",
     )
+
+
+def probe_tool_use(model: str, *, timeout: float, retries: int) -> CapabilityProbe:
+    """Can the model call a tool at all?
+
+    One trivial tool, one instruction, one verdict: the probe passes when the
+    model made the call. Every kompend session agent (query, write,
+    remediation, verification, summariser, distiller, context chunking) needs
+    this — a model without it can only run single-request tasks.
+    """
+    name = "tool-use"
+    calls: list[str] = []
+
+    def _ping(ctx: RunContext[None]) -> str:
+        calls.append("ping")
+        return "pong"
+
+    try:
+        agent: Agent[None, str] = Agent(
+            build_model(model),
+            output_type=str,
+            retries=retries,
+            model_settings=ModelSettings(timeout=timeout),
+            name=f"doctor-{name}",
+        )
+        agent.tool_plain(_ping)
+        _output, elapsed = _timed(agent, "Call the ping tool once, then repeat exactly what it returned.")
+    except Exception as exc:
+        return CapabilityProbe(name, False, f"tool call failed: {_short(exc)}")
+    if calls:
+        return CapabilityProbe(name, True, f"model called a tool ({elapsed:.1f}s)")
+    return CapabilityProbe(name, False, "model answered without calling the tool")
 
 
 def _agent[OutputT](

@@ -19,6 +19,7 @@ from kompend.diagnostics.capabilities import (
     probe_native_structured_output,
     probe_prompted_structured_output,
     probe_raw_json,
+    probe_tool_use,
 )
 from kompend.diagnostics.providers import OLLAMA_PROVIDER_ID, ollama_show_lookup
 from kompend.llm import model_slug, provider_id_of
@@ -163,8 +164,10 @@ def check_model_capabilities(
     The first probe — native tool output — is the capability every typed
     kompend agent depends on. The extra probes tell the user what else the
     model manages: a model that fails natively but answers a schema in the
-    prompt is still usable, and a model that can emit the configured compact
-    format saves context on every structured payload.
+    prompt is still usable, a model that can emit the configured compact
+    format saves context on every structured payload, and the tool-use
+    probe answers whether the session agents (query, write, remediation,
+    verification, summariser, distiller, chunk enrichment) can run at all.
     """
     name = f"structured-output-{label}"
     if not model:
@@ -172,6 +175,7 @@ def check_model_capabilities(
     budget = 1 if retries is None else retries
     probes = [probe_native_structured_output(model, timeout=timeout, retries=budget)]
     if full:
+        probes.append(probe_tool_use(model, timeout=timeout, retries=budget))
         probes.append(probe_prompted_structured_output(model, timeout=timeout, retries=budget))
         probes.append(probe_raw_json(model, timeout=timeout, retries=budget))
         if data_format in (LlmDataFormat.TOON, LlmDataFormat.ISON):

@@ -1,9 +1,0 @@
----
-variables: []
-role: chunking.summarizer-agentic
-response_format: text
----
-
-Summarize every internal node of the chunk tree. Call next_node() to fetch each
-node awaiting a summary, then record it with summarize_node(node_id, summary).
-Continue until next_node() reports no work left.
