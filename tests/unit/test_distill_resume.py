@@ -14,10 +14,10 @@ from pathlib import Path
 import pytest
 from pydantic_ai.exceptions import UsageLimitExceeded
 
-from kompend.agents.distill_agentic import make_agentic_distill_agent
+from kompend.agents.distill import make_distill_agent
 from kompend.agents.types import DistillAgentDeps, DistillPage
 from kompend.capture import distill as distill_mod
-from kompend.capture.distill import CapturedNote, _distill_agentic
+from kompend.capture.distill import CapturedNote, _distill_groups
 from kompend.core.utils.exceptions import LLMOutputError
 
 TIMESTAMP = "20261019T120000Z"
@@ -25,7 +25,7 @@ TIMESTAMP = "20261019T120000Z"
 
 class TestDistillSessionResume:
     def test_resumes_for_the_groups_without_a_page(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         seen: list[list[str]] = []
 
         def _run(deps: DistillAgentDeps) -> str:
@@ -40,7 +40,7 @@ class TestDistillSessionResume:
 
         monkeypatch.setattr(agent, "run", _run)
 
-        written = _distill_agentic(_groups("alpha", "beta"), [], agent, TIMESTAMP, tmp_path)
+        written = _distill_groups(_groups("alpha", "beta"), [], agent, TIMESTAMP, tmp_path)
 
         assert len(seen) == 2
         assert seen[0] == ["alpha", "beta"]
@@ -48,7 +48,7 @@ class TestDistillSessionResume:
         assert len(written) == 2
 
     def test_stops_when_a_session_saves_nothing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         seen: list[list[str]] = []
 
         def _run(deps: DistillAgentDeps) -> str:
@@ -57,14 +57,14 @@ class TestDistillSessionResume:
 
         monkeypatch.setattr(agent, "run", _run)
 
-        written = _distill_agentic(_groups("alpha", "beta"), [], agent, TIMESTAMP, tmp_path)
+        written = _distill_groups(_groups("alpha", "beta"), [], agent, TIMESTAMP, tmp_path)
 
         assert len(seen) == 1, "a round that saves nothing must not be re-run"
         assert len(written) == 2  # both groups still get a deterministic page
 
     def test_a_failed_round_keeps_saved_pages_and_raises(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """A session that raised is not a session that saved nothing."""
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
 
         def _run(deps: DistillAgentDeps) -> str:
             deps.pages["alpha"] = DistillPage(title="Alpha", content="LLM WROTE THIS", tags=["alpha"])
@@ -73,14 +73,14 @@ class TestDistillSessionResume:
         monkeypatch.setattr(agent, "run", _run)
 
         with pytest.raises(LLMOutputError):
-            _distill_agentic(_groups("alpha", "beta"), [], agent, TIMESTAMP, tmp_path)
+            _distill_groups(_groups("alpha", "beta"), [], agent, TIMESTAMP, tmp_path)
 
         bodies = [p.read_text(encoding="utf-8") for p in tmp_path.glob("*.md")]
         assert sum("LLM WROTE THIS" in body for body in bodies) == 1, "the page the round did save must survive"
         assert len(bodies) == 1, "the group the failed round never reached must not get a deterministic page"
 
     def test_a_non_llm_failure_propagates_without_writing(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
 
         def _run(deps: DistillAgentDeps) -> str:
             raise RuntimeError("bug, not an LLM failure")
@@ -88,12 +88,12 @@ class TestDistillSessionResume:
         monkeypatch.setattr(agent, "run", _run)
 
         with pytest.raises(RuntimeError):
-            _distill_agentic(_groups("alpha"), [], agent, TIMESTAMP, tmp_path)
+            _distill_groups(_groups("alpha"), [], agent, TIMESTAMP, tmp_path)
         assert list(tmp_path.glob("*.md")) == []
 
     def test_pages_saved_outside_the_payload_do_not_count(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """A tag the session was never asked about is not progress."""
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         seen: list[list[str]] = []
 
         def _run(deps: DistillAgentDeps) -> str:
@@ -103,12 +103,12 @@ class TestDistillSessionResume:
 
         monkeypatch.setattr(agent, "run", _run)
 
-        _distill_agentic(_groups("alpha"), [], agent, TIMESTAMP, tmp_path)
+        _distill_groups(_groups("alpha"), [], agent, TIMESTAMP, tmp_path)
 
         assert len(seen) == 1
 
     def test_kept_pages_survive_into_the_written_files(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         calls = {"n": 0}
 
         def _run(deps: DistillAgentDeps) -> str:
@@ -120,13 +120,13 @@ class TestDistillSessionResume:
 
         monkeypatch.setattr(agent, "run", _run)
 
-        written = _distill_agentic(_groups("alpha", "beta"), [], agent, TIMESTAMP, tmp_path)
+        written = _distill_groups(_groups("alpha", "beta"), [], agent, TIMESTAMP, tmp_path)
 
         bodies = [p.read_text(encoding="utf-8") for p in written]
         assert sum("LLM WROTE THIS" in body for body in bodies) == 1
 
     def test_group_order_is_preserved_across_rounds(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         seen: list[list[str]] = []
 
         def _run(deps: DistillAgentDeps) -> str:
@@ -137,7 +137,7 @@ class TestDistillSessionResume:
 
         monkeypatch.setattr(agent, "run", _run)
 
-        _distill_agentic(_groups("a", "b", "c"), [], agent, TIMESTAMP, tmp_path)
+        _distill_groups(_groups("a", "b", "c"), [], agent, TIMESTAMP, tmp_path)
 
         assert seen == [["a", "b", "c"], ["b", "c"], ["c"]]
 
@@ -152,14 +152,14 @@ def _note(tag: str) -> CapturedNote:
 
 def test_no_pending_groups_skips_the_session(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """An empty corpus must not spin up a session."""
-    agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+    agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
 
     def _run(deps: DistillAgentDeps) -> str:  # pragma: no cover - must never run
         raise AssertionError("no session expected")
 
     monkeypatch.setattr(agent, "run", _run)
 
-    assert _distill_agentic({}, [], agent, TIMESTAMP, tmp_path) == []
+    assert _distill_groups({}, [], agent, TIMESTAMP, tmp_path) == []
 
 
 def test_fallback_helper_is_no_longer_referenced() -> None:

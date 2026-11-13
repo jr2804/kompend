@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
+from kompend.agents.remediate import RemediationAgent
 from kompend.core.models import CompiledWiki
 from kompend.lint._remediation_gaps import remediate_coverage_gaps
 from kompend.lint.base import LintReport, LintResult, RemediationAction, RemediationStatus
@@ -33,7 +33,7 @@ def remediate(
     *,
     base_dir: Path,
     output_dir: Path | None = None,
-    agent: RemediationAgent | AgenticRemediationAgent | None = None,
+    agent: RemediationAgent | None = None,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
     """Generate concept pages for coverage-gap findings in *report*.
@@ -47,10 +47,9 @@ def remediate(
         output_dir: Wiki output directory. Generated concept pages are
             written here as ``.md`` files so they are visible to the user and
             survive a re-organize. When ``None``, pages only update the cache.
-        agent: Agent used for content generation. Accepts either the legacy
-            :class:`RemediationAgent` (single-shot, one LLM call per concept)
-            or :class:`AgenticRemediationAgent` (single multi-turn session over
-            all gaps). When ``None``, nothing is generated.
+        agent: Agent used for content generation — a single multi-turn
+            session over all gaps (:class:`RemediationAgent`). When ``None``,
+            nothing is generated.
         dry_run: If ``True``, report what would be done without modifying.
 
     Returns a list of :class:`RemediationAction`.

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from kompend.agents.remediate import make_agentic_remediation_agent
+from kompend.agents.remediate import make_remediation_agent
 from kompend.cli.args import JsonOutput, LintDryRun
 from kompend.cli.settings import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.core.cache.wiki import write_wiki_cache
@@ -61,7 +61,7 @@ def lint_remediate(
 
     default_model = cfg.kompend.compile.llm.default_model
     agent = (
-        make_agentic_remediation_agent(
+        make_remediation_agent(
             model_string=default_model,
             timeout=float(cfg.kompend.compile.llm.timeout),
             llm=cfg.kompend.compile.llm,

@@ -1,38 +1,91 @@
-"""ContextChunkAgent — PydanticAI agent for contextual chunk enrichment."""
+"""ContextChunkAgent — one session that situates every chunk of a document."""
 
 from __future__ import annotations
 
 from typing import Any, ClassVar, Final
 
-from kompend.agents.base import AgentSpec, KompendAgentBase
-from kompend.agents.types import PipelineAgentDeps
+from pydantic_ai import UsageLimits
+
+from kompend.agents.agentic_harness import AgenticHarness
+from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
+from kompend.agents.types import ContextChunkDeps
+from kompend.compilation.context_chunk_tools import CONTEXT_CHUNK_TEXT_PREVIEW_CHARS, build_context_chunk_tools
+from kompend.core.config._configs import LLMConfig, RlmConfig
 
 
-def _pre_rendered_prompt(agent: Any, deps: PipelineAgentDeps) -> str:
-    """The caller supplies the finished prompt; send it as-is."""
-    return deps.text
+def _context_chunk_user_prompt(agent: Any, deps: ContextChunkDeps) -> str:
+    """Return a task description with the chunk to situate."""
+    chunk = deps.current_chunk
+    if not chunk:
+        return "No chunk to situate."
+    heading = " > ".join(chunk["heading_chain"]) or "document root"
+    return (
+        f"Generate situating context for this chunk:\n"
+        f"Document: {deps.doc_title}\n"
+        f"Summary: {deps.doc_summary}\n"
+        f"Heading: {heading}\n"
+        f"Text: {chunk['text'][:CONTEXT_CHUNK_TEXT_PREVIEW_CHARS]}"
+    )
 
 
 SPEC: Final[AgentSpec] = AgentSpec(
     name="context_chunk",
     result_type=str,
-    deps_type=PipelineAgentDeps,
-    template_name="",
-    system_template_name="",
+    deps_type=ContextChunkDeps,
+    template_name="contextual_session_prompt.md.j2",
+    system_template_name="contextual_session_system.md.j2",
     template_prefix="chunking/",
-    temperature=0.0,
-    user_prompt=_pre_rendered_prompt,
+    supports_delta_retry=True,
+    user_prompt=_context_chunk_user_prompt,
 )
 
 
-class ContextChunkAgent(KompendAgentBase[str, PipelineAgentDeps]):
-    """PydanticAI agent for generating situating context for a chunk."""
+class ContextChunkAgent(KompendAgentBase[str, ContextChunkDeps]):
+    """Contextual-retrieval enrichment agent.
 
-    # The caller renders the prompt: ``chunking.contextual`` fills
-    # ``chunking/contextual_context.md.j2`` with the document title, summary,
-    # heading path and chunk preview, then passes the finished text as
-    # ``PipelineAgentDeps.text``. So this agent renders no template of its own -
-    # naming one here made the base render it with no variables at all, which
-    # raised on every call and was swallowed by the caller's ``debug`` log,
-    # leaving enrichment permanently on its structural fallback.
+    Iterates over the chunk nodes of a document in one session,
+    generating a context paragraph for each that situates it within the
+    document. Context strings are collected in ``deps.results`` keyed by
+    chunk id.
+    """
+
     spec: ClassVar[AgentSpec | None] = SPEC
+
+    #: Requests one chunk costs: ``next_chunk()`` and ``situate_chunk()``.
+    requests_per_chunk: ClassVar[int] = 2
+
+    def _usage_limits_for(self, deps: ContextChunkDeps) -> UsageLimits | None:
+        """Budget the one session that situates every chunk of a document."""
+        return self._session_limits(units=len(deps.chunks), per_unit=self.requests_per_chunk)
+
+
+def make_context_chunk_agent(
+    model_string: str,
+    *,
+    timeout: float = UNSET_TIMEOUT,
+    skills: dict[str, str] | None = None,
+    retries: int = UNSET_RETRIES,
+    output_retries: int | None = None,
+    context_window: int | None = None,
+    rlm: RlmConfig | None = None,
+    llm: LLMConfig | None = None,
+) -> ContextChunkAgent:
+    """Build a :class:`ContextChunkAgent` with tools + harness capabilities.
+
+    Registers the ``next_chunk()`` / ``situate_chunk()`` tools the system
+    prompt instructs the model to call, and injects the standard session
+    capabilities via :class:`AgenticHarness`.
+    """
+    agent_retries = resolve_retry_budget(llm, retries=retries, output_retries=output_retries)
+    harness = AgenticHarness(context_window=context_window)
+    return ContextChunkAgent(
+        model_string=model_string,
+        timeout=timeout,
+        skills=skills or {},
+        retries=agent_retries,
+        context_window=context_window,
+        rlm=rlm,
+        llm=llm,
+        tools=build_context_chunk_tools(),
+        extra_capabilities=harness.build_capabilities(),
+    )

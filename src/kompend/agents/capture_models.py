@@ -26,11 +26,3 @@ class CaptureOutput(BaseModel):
     items: list[CapturedItem] = []
     refused: bool = False
     refusal_reason: str = ""
-
-
-class DistillOutput(BaseModel):
-    """A synthesized wiki page from grouped notes."""
-
-    title: str = ""
-    content: str = ""
-    tags: list[str] = []

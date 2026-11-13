@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from kompend import __version__ as _KOMP_VERSION
-from kompend.agents.verification import AgenticVerificationAgent, VerificationAgent, make_agentic_verification_agent
+from kompend.agents.verification import VerificationAgent, make_verification_agent
 from kompend.agents.wiki_index import make_agentic_overview_agent
 from kompend.cli.runtime.progress import PipelineProgress
 from kompend.compilation.two_phase import tokens_to_chars
@@ -92,14 +92,12 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
             verify_claims(
                 opts.wiki,
                 base_dir,
-                agent=make_agentic_verification_agent(
+                agent=make_verification_agent(
                     model_string=model,
                     timeout=opts.pipeline_config.llm.timeout,
                     llm=opts.pipeline_config.llm,
                     memory_dir=opts.pipeline_config.paths.agent_memory_dir,
                 ),
-                verify_budget=_input_char_budget(opts.pipeline_config),
-                min_ngram=opts.pipeline_config.budget.verify_min_ngram,
             )
 
     generated = write_index(
@@ -184,9 +182,7 @@ def verify_claims(
     wiki: CompiledWiki,
     base_dir: Path,
     *,
-    agent: VerificationAgent | AgenticVerificationAgent,
-    verify_budget: int = 3000,
-    min_ngram: int = 3,
+    agent: VerificationAgent,
 ) -> None:
     """Run grounding verification over wiki claims.
 
@@ -194,7 +190,7 @@ def verify_claims(
     (§5.2) on ``wiki.metadata`` so output writers can surface it. The actor
     follows the §7 convention (``<producer>/<version>``).
     """
-    result = verify_wiki(wiki, base_dir, agent=agent, verify_budget=verify_budget, min_ngram=min_ngram)
+    result = verify_wiki(wiki, base_dir, agent=agent)
     get_console().print(f"Verified {result.verified}/{result.total} claims (avg confidence {result.average_confidence:.2f})")
 
     # Stamp the OKF v0.2 ``verified`` trust event (§5.2).

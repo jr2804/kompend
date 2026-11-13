@@ -11,20 +11,19 @@ The shared pipeline deps (:class:`PipelineAgentDeps`,
 ``kompend.agents.types`` (a leaf module that breaks the agents ↔
 compilation import cycle) and are re-exported here for backward
 compatibility. This module keeps the agent-specific deps
-(``DistillDeps``, WiCER, ``CategorizeDeps``); session payloads such as
+(WiCER, ``CategorizeDeps``); session payloads such as
 :class:`QueryAgentDeps <kompend.agents.types.QueryAgentDeps>` live in
 ``kompend.agents.types`` directly.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from kompend.agents.types import PipelineAgentDeps, RemediationDeps, ToolGenerationDeps
 
 __all__ = [
     "CategorizeDeps",
-    "DistillDeps",
     "MemoryConsolidationDeps",
     "PipelineAgentDeps",
     "RemediationDeps",
@@ -60,24 +59,6 @@ class MemoryConsolidationDeps:
     delta: str = ""
     target_tokens: int = 0
     source_id: str = ""
-
-
-@dataclass
-class DistillDeps(PipelineAgentDeps):
-    """Runtime context for the distill (capture-synthesis) agent.
-
-    The prompt template ``distill.md.j2`` expects the ``notes`` and
-    ``group_tag`` variables, so they live on the deps so the base class
-    can render the user prompt. Inherits ``text`` as the synthesis
-    instruction and ``source_id``/``timeout`` from :class:`PipelineAgentDeps`.
-
-    Attributes:
-        notes: Captured notes sharing ``group_tag``, each with title/content/source.
-        group_tag: The tag shared by the notes being merged.
-    """
-
-    notes: list[dict] = field(default_factory=list)
-    group_tag: str = ""
 
 
 @dataclass

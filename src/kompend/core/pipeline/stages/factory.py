@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-from kompend.agents.context_chunk_agentic import (
-    AgenticContextChunkAgent,
-    make_agentic_context_chunk_agent,
-)
-from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
+from kompend.agents.context_chunk import ContextChunkAgent, make_context_chunk_agent
+from kompend.agents.summarizer import SummarizerAgent, make_summarizer_agent
 from kompend.chunking.contextual import ContextualEnricher
 from kompend.chunking.hierarchical import HierarchicalChunker
 from kompend.chunking.summarizer import (
@@ -86,8 +83,8 @@ def build_pipeline(
 
     resolver: BaseResolver | None = None
     base_compiler: BaseCompiler | None = None
-    summarizer_agent: AgenticSummarizerAgent | None = None
-    enricher_agent: AgenticContextChunkAgent | None = None
+    summarizer_agent: SummarizerAgent | None = None
+    enricher_agent: ContextChunkAgent | None = None
     chunker_context_window = None
     if needs_llm:
         model = config.llm.default_model
@@ -100,7 +97,7 @@ def build_pipeline(
             llm_config=config.llm,
         )
         chunker_context_window = cw
-        summarizer_agent = make_agentic_summarizer_agent(
+        summarizer_agent = make_summarizer_agent(
             model_string=model,
             timeout=config.llm.timeout,
             skills=config.skills,
@@ -111,7 +108,7 @@ def build_pipeline(
             memory_dir=config.paths.agent_memory_dir,
         )
         if config.search.contextual.enabled:
-            enricher_agent = make_agentic_context_chunk_agent(
+            enricher_agent = make_context_chunk_agent(
                 model_string=model,
                 timeout=config.llm.timeout,
                 skills=config.skills,

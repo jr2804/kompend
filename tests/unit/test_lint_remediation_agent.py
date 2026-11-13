@@ -4,18 +4,16 @@ from __future__ import annotations
 
 import types
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
-from kompend.agents.remediate import RemediationAgent
 from kompend.core.models import CompiledWiki
-from kompend.core.utils.exceptions import LLMOutputError
-from kompend.lint import _remediation_gaps, flow
+from kompend.lint import flow
 
 
 class TestRemediationAgent:
-    def test_uses_the_agentic_remediation_agent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_uses_the_remediation_session_agent(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         built: dict[str, Any] = {}
         passed: dict[str, Any] = {}
 
@@ -27,7 +25,7 @@ class TestRemediationAgent:
             passed.update(kwargs)
             return []
 
-        monkeypatch.setattr(flow, "make_agentic_remediation_agent", _factory)
+        monkeypatch.setattr(flow, "make_remediation_agent", _factory)
         monkeypatch.setattr(flow, "remediate", _remediate)
 
         flow._remediate_phase(CompiledWiki(nodes=[], edges=[], toc=[]), _vault(tmp_path), _config(), [], True)  # type: ignore[arg-type]
@@ -41,22 +39,11 @@ class TestRemediationAgent:
         def _factory(**_kwargs: Any) -> object:
             raise AssertionError("no agent should be built without a model")
 
-        monkeypatch.setattr(flow, "make_agentic_remediation_agent", _factory)
+        monkeypatch.setattr(flow, "make_remediation_agent", _factory)
 
         actions = flow._remediate_phase(CompiledWiki(nodes=[], edges=[], toc=[]), _vault(tmp_path), _config(None), [], True)  # type: ignore[arg-type]
 
         assert actions == []
-
-
-class TestFailedPageGeneration:
-    def test_a_failed_page_is_skipped_not_raised(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        class _Failing:
-            def run(self, _deps: object) -> str:
-                raise LLMOutputError("Exceeded maximum output retries (2)")
-
-        content = _remediation_gaps._generate_concept_page(cast(RemediationAgent, _Failing()), {"name": "ABLE model"})
-
-        assert content is None
 
 
 def _vault(tmp_path: Path) -> Any:

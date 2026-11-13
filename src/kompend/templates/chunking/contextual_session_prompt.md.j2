@@ -1,0 +1,10 @@
+---
+variables: []
+role: chunking.contextual
+response_format: text
+---
+
+Generate situating context for every chunk that needs it. Call next_chunk() to
+fetch the next chunk, then record the paragraph with
+situate_chunk(chunk_id, content). Continue until next_chunk() reports no work
+left.

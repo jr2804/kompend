@@ -1,8 +1,11 @@
-"""Claim/citation verification — LLM-as-judge with substring fallback.
+"""Claim verification — one LLM session over every claim in the wiki.
 
-Opt-in and costly. The substring fallback makes the pipeline useful offline.
-Replaced the old segmented-excerpt loop with a single-pass approach:
-if the excerpt is too long, skip the LLM call and go straight to substring.
+Opt-in and costly. Claims are split per sentence, their citations' sources
+are loaded, and :class:`~kompend.agents.verification.VerificationAgent`
+works through them all in one multi-turn session (get_claim() →
+search_sources()/read_page() → mark_*()); claims left without a verdict
+come out as ``unverified``. There is no substring fallback — an LLM-less
+run records the gap instead of guessing it.
 
 The report row goes through SQLAlchemy Core against the shared
 ``verification`` table, so the table and its columns are named once.
@@ -17,27 +20,18 @@ from pathlib import Path
 
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 
-from kompend.agents.deps import PipelineAgentDeps
-from kompend.agents.types import VerificationClaim, VerificationDeps, VerificationPage, VerificationSource
-from kompend.agents.verification import AgenticVerificationAgent, VerificationAgent
+from kompend.agents.types import VerificationClaim, VerificationDeps, VerificationPage, VerificationSource, VerificationVerdict
+from kompend.agents.verification import VerificationAgent
 from kompend.core.config._core import DEFAULTS
-from kompend.core.models import Citation, CompiledWiki, WikiNode, extract_citations
+from kompend.core.models import Citation, CompiledWiki, extract_citations
 from kompend.core.store import core_connection, open_store, vault_db_path
 from kompend.core.store.tables import verification
-from kompend.core.templates import get_template_loader
 from kompend.core.utils.time import iso_local
 from kompend.logging import get_logger
 
 _SENTENCE_RE = re.compile(r"[^.!?\n]+[.!?]?")
 
-#: Cited source excerpt passed to the verification agent per citation. The
-#: agent judges a claim against this excerpt, so it is a context budget rather
-#: than a display crop — raise it if verdicts start missing support that the
-#: source does contain.
-
 logger = get_logger(__name__)
-
-_loader = get_template_loader()
 
 
 @dataclass
@@ -66,20 +60,14 @@ def verify_wiki(
     wiki: CompiledWiki,
     base_dir: Path,
     *,
-    agent: VerificationAgent | AgenticVerificationAgent,
-    verify_budget: int = 3000,
-    min_ngram: int = 3,
+    agent: VerificationAgent,
 ) -> VerificationResult:
     sources_dir = base_dir / DEFAULTS["paths"]["sources_dir"]
     if not sources_dir.exists():
         sources_dir = base_dir
 
     result = VerificationResult()
-    if isinstance(agent, AgenticVerificationAgent):
-        result.claims.extend(_verify_wiki_agentic(wiki, sources_dir, agent))
-    else:
-        for node in wiki.nodes:
-            result.claims.extend(verify_node(node, sources_dir, agent=agent, verify_budget=verify_budget, min_ngram=min_ngram))
+    result.claims.extend(_verify_wiki_session(wiki, sources_dir, agent))
 
     result.total = len(result.claims)
     result.verified = sum(1 for c in result.claims if c.verdict == "supported")
@@ -110,7 +98,7 @@ def _persist_verification(base_dir: Path, result: VerificationResult) -> None:
         )
 
 
-def _verify_wiki_agentic(wiki: CompiledWiki, sources_dir: Path, agent: AgenticVerificationAgent) -> list[ClaimVerification]:
+def _verify_wiki_session(wiki: CompiledWiki, sources_dir: Path, agent: VerificationAgent) -> list[ClaimVerification]:
     """Run a single agentic verification session over all claims.
 
     Builds claim/source/page lists from the wiki, runs the agent once,
@@ -139,7 +127,7 @@ def _verify_wiki_agentic(wiki: CompiledWiki, sources_dir: Path, agent: AgenticVe
 
     deps = VerificationDeps(claims=claims, sources=sources, pages=pages)
     agent.run(deps)
-    verdicts = {v.claim_id: v for v in deps.results}
+    verdicts: dict[int, VerificationVerdict] = {v.claim_id: v for v in deps.results}
 
     results: list[ClaimVerification] = []
     for cid in range(claim_id):
@@ -150,60 +138,6 @@ def _verify_wiki_agentic(wiki: CompiledWiki, sources_dir: Path, agent: AgenticVe
         else:
             confidence = 0.9 if verdict.verdict == "supported" else 0.5 if verdict.verdict == "contradicted" else 0.1
             results.append(ClaimVerification(node_id, "", citation, verdict.verdict, confidence, verdict.evidence))
-    return results
-
-
-def verify_node(
-    node: WikiNode,
-    sources_dir: Path,
-    *,
-    agent: VerificationAgent,
-    verify_budget: int = 3000,
-    min_ngram: int = 3,
-) -> list[ClaimVerification]:
-    results: list[ClaimVerification] = []
-    for claim in _split_claims(node.content):
-        citations = extract_citations(node.content)
-        citation = citations[0] if citations else None
-        if citation is None:
-            results.append(ClaimVerification(node.id, claim, None, "unsupported", 0.1, "no citation"))
-            continue
-
-        excerpt = _load_excerpt(citation.source, sources_dir)
-        if not excerpt:
-            results.append(ClaimVerification(node.id, claim, citation, "unsupported", 0.0, "source not found"))
-            continue
-
-        if len(excerpt) > verify_budget:
-            results.append(ClaimVerification(node.id, claim, citation, "unverified", 0.0, f"excerpt too long ({len(excerpt)} > {verify_budget})"))
-            continue
-
-        verify_system = _loader.get_body("verification/verify_system.md.j2")
-        prompt = _loader.render(
-            "verification/verify_claim.md.j2",
-            claim=claim,
-            source=citation.source,
-            start=citation.start,
-            end=citation.end,
-            excerpt=excerpt,
-        )
-        messages: list[dict[str, str]] = []
-        if verify_system:
-            messages.append({"role": "system", "content": verify_system})
-        messages.append({"role": "user", "content": prompt})
-        deps = PipelineAgentDeps(text=prompt, source_id=node.id)
-        try:
-            data = agent.run(deps)
-        except Exception:
-            data = None
-        if data:
-            results.append(
-                ClaimVerification(
-                    node.id, claim, citation, str(data.get("verdict", "unsupported")), float(data.get("confidence", 0.0)), str(data.get("reason", ""))
-                )
-            )
-        else:
-            results.append(ClaimVerification(node.id, claim, citation, "unverified", 0.0, "LLM verification unavailable"))
     return results
 
 

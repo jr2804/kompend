@@ -9,7 +9,7 @@ the model is told it has tools and has none.
 
 from __future__ import annotations
 
-from kompend.agents.distill_agentic import make_agentic_distill_agent
+from kompend.agents.distill import make_distill_agent
 from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote
 
 # NOTE: system-prompt-tools == registered-tools is guarded centrally for every
@@ -19,7 +19,7 @@ from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote
 
 class TestAgenticDistillAgentTools:
     def test_factory_registers_prompt_declared_tools(self) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         built = agent._build_agent()
         assert sorted(built._function_toolset.tools.keys()) == ["get_group", "save_page"]
 
@@ -33,7 +33,7 @@ class TestAgenticDistillAgentPrompt:
         distill render raised at run start and kompend silently fell back to
         deterministic per-group merging.
         """
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         deps = DistillAgentDeps(
             groups=[DistillGroup(tag="dll", notes=[DistillNote(title="T", content="b", source="n.md")])],
             source_id="distill-all",

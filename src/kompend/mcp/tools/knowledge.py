@@ -7,8 +7,7 @@ from typing import Any
 from binaryornot.check import is_binary
 
 from kompend.agents.capture import CaptureAgent
-from kompend.agents.distill import DistillAgent
-from kompend.agents.distill_agentic import make_agentic_distill_agent
+from kompend.agents.distill import make_distill_agent
 from kompend.capture.capture import capture
 from kompend.capture.consolidate import consolidate
 from kompend.capture.distill import distill
@@ -217,7 +216,7 @@ def wiki_distill(
         try:
             model = cfg.kompend.compile.llm.default_model
             distill_agent = (
-                make_agentic_distill_agent(
+                make_distill_agent(
                     model,
                     timeout=float(cfg.kompend.compile.llm.timeout),
                     llm=cfg.kompend.compile.llm,
@@ -226,19 +225,8 @@ def wiki_distill(
                 if model
                 else None
             )
-        except Exception:
-            try:
-                distill_agent = (
-                    DistillAgent(
-                        model,
-                        timeout=float(cfg.kompend.compile.llm.timeout),
-                        llm=cfg.kompend.compile.llm,
-                    )
-                    if model
-                    else None
-                )
-            except Exception:
-                distill_agent = None
+        except Exception as exc:
+            return {"status": ToolStatus.ERROR, "message": str(exc)}
 
         paths = distill(sources_dir, distill_agent=distill_agent)
         return {

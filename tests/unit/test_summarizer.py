@@ -10,8 +10,7 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic_ai.exceptions import UsageLimitExceeded
 
-from kompend.agents.summarizer import SummarizerAgent
-from kompend.agents.summarizer_agentic import make_agentic_summarizer_agent
+from kompend.agents.summarizer import SummarizerAgent, make_summarizer_agent
 from kompend.agents.types import SummarizerDeps
 from kompend.chunking.summarizer import (
     NodeSummarizer,
@@ -38,8 +37,10 @@ class _StubAgent:
         self.summary = summary
         self.calls: list = []
 
-    def run(self, deps: object) -> str:
+    def run(self, deps: SummarizerDeps) -> str:
         self.calls.append(deps)
+        for entry in deps.nodes:
+            deps.results[entry["id"]] = self.summary
         return self.summary
 
 
@@ -71,22 +72,22 @@ class TestSummarizerRequiresAnAgent:
         with pytest.raises(ValueError, match="requires an agent"):
             NodeSummarizer(agent=None, content_policy=_policy())
 
-    def test_llm_failure_propagates(self, sample_tree: ChunkTree) -> None:
+    def test_llm_failure_is_contained(self, sample_tree: ChunkTree, caplog: pytest.LogCaptureFixture) -> None:
+        """A failed session strands only its own batch — it never raises."""
         failing = MagicMock()
         failing.model_string = "test-model"
         failing.run.side_effect = RuntimeError("model exploded")
 
         summarizer = NodeSummarizer(agent=failing, content_policy=_policy())
+        tree = summarizer.summarize(sample_tree)
 
-        with pytest.raises(RuntimeError, match="model exploded"):
-            summarizer.summarize(sample_tree)
+        assert tree.nodes["doc_h1"].summary == ""
+        assert any("model exploded" in record.message for record in caplog.records)
 
 
 class TestSummarizerLLM:
     def test_llm_called_for_internal_nodes(self, sample_tree: ChunkTree) -> None:
-        mock_llm = MagicMock()
-        mock_llm.model_string = "test-model"
-        mock_llm.run.return_value = "LLM summary."
+        mock_llm = _session_llm("LLM summary.")
 
         summarizer = NodeSummarizer(agent=mock_llm, content_policy=_policy())
         summarizer.summarize(sample_tree)
@@ -95,42 +96,24 @@ class TestSummarizerLLM:
         assert section1.summary == "LLM summary."
         assert mock_llm.run.called
 
-    def test_llm_template_rendered(self, sample_tree: ChunkTree) -> None:
-        mock_llm = MagicMock()
-        mock_llm.model_string = "test-model"
-        mock_llm.run.return_value = "Summary."
+    def test_payload_carries_the_node_content(self, sample_tree: ChunkTree) -> None:
+        mock_llm = _session_llm("Summary.")
 
         summarizer = NodeSummarizer(agent=mock_llm, content_policy=_policy())
         summarizer.summarize(sample_tree)
 
-        call_args = mock_llm.run.call_args
-        deps = call_args[0][0]
-        prompt = deps.text
-        assert "SNR" in prompt or "threshold" in prompt.lower()
+        payload_texts = [entry["content"] for call in mock_llm.run.call_args_list for entry in call[0][0].nodes]
+        assert any("SNR" in text or "threshold" in text.lower() for text in payload_texts)
 
     def test_returns_same_tree_object(self, sample_tree: ChunkTree) -> None:
         summarizer = NodeSummarizer(agent=_agent(), content_policy=_policy())
         result = summarizer.summarize(sample_tree)
         assert result is sample_tree
 
-    def test_target_length_reaches_the_prompt(self, sample_tree: ChunkTree) -> None:
-        mock_llm = MagicMock()
-        mock_llm.model_string = "test-model"
-        mock_llm.run.return_value = "Summary."
-
-        policy = replace(_policy(), target_chars=321)
-        summarizer = NodeSummarizer(agent=mock_llm, content_policy=policy)
-        summarizer.summarize(sample_tree)
-
-        prompt = mock_llm.run.call_args[0][0].text
-        assert "321 characters" in prompt
-
 
 class TestSummarizerCache:
     def test_cache_hit_skips_llm(self, sample_tree: ChunkTree) -> None:
-        mock_llm = MagicMock()
-        mock_llm.model_string = "test-model"
-        mock_llm.run.return_value = "Fresh summary."
+        mock_llm = _session_llm("Fresh summary.")
 
         mock_cache = MagicMock()
         mock_cache.get.return_value = "Cached summary."
@@ -141,9 +124,7 @@ class TestSummarizerCache:
         mock_llm.run.assert_not_called()
 
     def test_cache_miss_calls_llm(self, sample_tree: ChunkTree) -> None:
-        mock_llm = MagicMock()
-        mock_llm.model_string = "test-model"
-        mock_llm.run.return_value = "Fresh summary."
+        mock_llm = _session_llm("Fresh summary.")
 
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
@@ -155,9 +136,10 @@ class TestSummarizerCache:
         assert mock_cache.set.called
 
     def test_cache_includes_model_in_deps(self, sample_tree: ChunkTree) -> None:
-        mock_llm = MagicMock()
-        mock_llm.model_string = "my-model"
-        mock_llm.run.return_value = "Summary."
+        mock = MagicMock()
+        mock.model_string = "my-model"
+        mock_llm = mock
+        mock.run.side_effect = lambda deps: deps.results.update({entry["id"]: "Summary." for entry in deps.nodes})
 
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
@@ -171,9 +153,10 @@ class TestSummarizerCache:
 
     def test_cache_deps_skip_model_when_ignoring(self, sample_tree: ChunkTree) -> None:
         """knox-wflz: ``cache_ignore_model`` reuses summaries across a model switch."""
-        mock_llm = MagicMock()
-        mock_llm.model_string = "my-model"
-        mock_llm.run.return_value = "Summary."
+        mock = MagicMock()
+        mock.model_string = "my-model"
+        mock_llm = mock
+        mock.run.side_effect = lambda deps: deps.results.update({entry["id"]: "Summary." for entry in deps.nodes})
 
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
@@ -189,9 +172,10 @@ class TestSummarizerCache:
 
     def test_cache_deps_exclude_the_agent_notebook(self, sample_tree: ChunkTree) -> None:
         """The agent notebook is not a cache input: the agent writes it mid-run."""
-        mock_llm = MagicMock()
-        mock_llm.model_string = "my-model"
-        mock_llm.run.return_value = "Summary."
+        mock = MagicMock()
+        mock.model_string = "my-model"
+        mock_llm = mock
+        mock.run.side_effect = lambda deps: deps.results.update({entry["id"]: "Summary." for entry in deps.nodes})
 
         mock_cache = MagicMock()
         mock_cache.get.return_value = None
@@ -252,7 +236,7 @@ class TestSummarizerAgenticResume:
         agentic_tree: ChunkTree,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         rounds: list[list[str]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -279,7 +263,7 @@ class TestSummarizerAgenticResume:
         agentic_tree: ChunkTree,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         rounds: list[list[str]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -299,7 +283,7 @@ class TestSummarizerAgenticResume:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """A model that mangles ids must not freeze the payload and re-run forever."""
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         rounds: list[list[str]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -318,7 +302,7 @@ class TestSummarizerAgenticResume:
         agentic_tree: ChunkTree,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         rounds: list[list[str]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -346,7 +330,7 @@ class TestSummarizerAgenticBatching:
         agentic_tree: ChunkTree,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         rounds: list[list[str]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -367,7 +351,7 @@ class TestSummarizerAgenticBatching:
         agentic_tree: ChunkTree,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         rounds: list[list[str]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -392,7 +376,7 @@ class TestSummarizerAgenticBatching:
         agentic_tree: ChunkTree,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         rounds: list[list[str]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -414,22 +398,8 @@ class TestSummarizerAgenticBatching:
 class TestSummarizerWindowing:
     """Content longer than the per-call budget is split — never truncated."""
 
-    def test_long_content_is_summarized_window_by_window(self) -> None:
-        mock_llm = MagicMock()
-        mock_llm.model_string = "test-model"
-        mock_llm.run.side_effect = lambda deps: f"summary of {len(deps.text)} chars"
-
-        summarizer = NodeSummarizer(agent=mock_llm, content_policy=_policy(max_content_chars=100))
-        tree = summarizer.summarize(_long_tree())
-
-        prompts = [call[0][0].text for call in mock_llm.run.call_args_list]
-        assert len(prompts) > 1
-        # The tail of the content reaches the model — nothing is dropped.
-        assert any("TAIL-MARKER" in prompt for prompt in prompts)
-        assert tree.nodes["s"].summary != ""
-
     def test_agentic_payload_carries_every_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        agent = make_agentic_summarizer_agent("test-model")
+        agent = make_summarizer_agent("test-model")
         seen: list[list[tuple[str, str]]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -449,7 +419,7 @@ class TestSummarizerWindowing:
 
     def test_agentic_payload_is_bounded_by_the_session_payload_size(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A payload never exceeds its character budget; the rest is asked later."""
-        agent = make_agentic_summarizer_agent("test-model")
+        agent = make_summarizer_agent("test-model")
         seen: list[list[str]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -469,7 +439,7 @@ class TestSummarizerWindowing:
         assert tree.nodes["s"].summary != ""
 
     def test_agentic_window_size_comes_from_the_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        agent = make_agentic_summarizer_agent("test-model")
+        agent = make_summarizer_agent("test-model")
         seen: list[list[str]] = []
 
         def _run(deps: SummarizerDeps) -> None:
@@ -491,19 +461,24 @@ class TestSummarizerWindowing:
         assert len(small_window_entries) > len(large_window_entries)
 
 
+def _session_llm(summary: str = "Summary.") -> MagicMock:
+    """A MagicMock agent obeying the session contract: records into deps.results."""
+    mock = MagicMock()
+    mock.model_string = "test-model"
+    mock.run.side_effect = lambda deps: deps.results.update({entry["id"]: summary for entry in deps.nodes})
+    return mock
+
+
 def _agent(summary: str = "Summary.") -> SummarizerAgent:
     return cast(SummarizerAgent, _StubAgent(summary))
 
 
 def _policy(
-    max_content_chars: int | None = None,
     window_chars: int | None = None,
     skip_single_child: bool | None = None,
 ) -> SummarizerContentPolicy:
     """Content policy from the config defaults, with optional overrides."""
     policy = SummarizerContentPolicy.from_config(BudgetConfig())
-    if max_content_chars is not None:
-        policy = replace(policy, max_content_chars=max_content_chars)
     if window_chars is not None:
         policy = replace(policy, window_chars=window_chars)
     if skip_single_child is not None:

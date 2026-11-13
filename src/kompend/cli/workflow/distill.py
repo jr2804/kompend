@@ -1,9 +1,9 @@
 """Distill pre-step helpers.
 
 ``kompend distill`` and ``kompend compile --distill`` must run the same flow:
-build the agent (agentic when available, per-group otherwise) with the same
-timeout/retry wiring, distill the note corpus, and report what was written.
-The construction lives here so the two commands cannot drift apart.
+build the agent with the same timeout/retry wiring, distill the note corpus,
+and report what was written. The construction lives here so the two commands
+cannot drift apart.
 
 Message text is returned as plain lines rather than printed, so each command
 routes it to the correct console (stdout, or stderr under ``--json-progress``).
@@ -13,8 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.agents.distill import DistillAgent
-from kompend.agents.distill_agentic import AgenticDistillAgent, make_agentic_distill_agent
+from kompend.agents.distill import DistillAgent, make_distill_agent
 from kompend.capture.distill import distill
 from kompend.core.config import ResolvedConfig
 from kompend.core.paths import CAPTURED_SUBDIR, DISTILLED_SUBDIR, LEARNED_SUBDIR
@@ -54,36 +53,26 @@ def build_distill_agent(
     cfg: ResolvedConfig,
     *,
     memory_dir: Path | None = None,
-) -> DistillAgent | AgenticDistillAgent | None:
+) -> DistillAgent | None:
     """Build the distill agent from config.
 
-    Prefers the agentic (one session, tool-driven) agent and falls back to the
-    per-group ``DistillAgent``; returns ``None`` when no model is configured or
-    neither agent can be constructed, which distills deterministically.
+    Returns ``None`` when no model is configured, which distills
+    deterministically. A construction failure raises — it is a broken
+    install, not a reason to silently skip synthesis.
 
-    ``memory_dir`` is the vault's agent-memory directory; the agentic agent
+    ``memory_dir`` is the vault's agent-memory directory; the agent
     keeps its notebook there when ``compile.llm.memory_store`` is ``vault``.
     """
     model = cfg.kompend.compile.llm.default_model
     if not model:
         return None
-    try:
-        return make_agentic_distill_agent(
-            model,
-            timeout=float(cfg.kompend.compile.llm.timeout),
-            requests_per_group=cfg.kompend.compile.budget.distill_requests_per_group,
-            llm=cfg.kompend.compile.llm,
-            memory_dir=memory_dir,
-        )
-    except Exception:
-        try:
-            return DistillAgent(
-                model,
-                timeout=float(cfg.kompend.compile.llm.timeout),
-                llm=cfg.kompend.compile.llm,
-            )
-        except Exception:
-            return None
+    return make_distill_agent(
+        model,
+        timeout=float(cfg.kompend.compile.llm.timeout),
+        requests_per_group=cfg.kompend.compile.budget.distill_requests_per_group,
+        llm=cfg.kompend.compile.llm,
+        memory_dir=memory_dir,
+    )
 
 
 def distill_result_lines(paths: list[Path], sources_dir: Path) -> list[str]:

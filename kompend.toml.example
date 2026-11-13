@@ -336,7 +336,6 @@ respect_gitignore = true
 
 [compile.budget]
 # Structural controls (not token budgets)
-verify_min_ngram = 3           # minimum n-gram for substring verification
 # WiCER refinement rounds: 0 = run until the loop converges (no probes, no
 # new facts, all probes pass) or the wall-clock budget below is spent.
 # A positive value is an explicit user-set limit.
@@ -361,15 +360,11 @@ chunk_size_min = 2048          # floor: prevents useless tiny chunks
 chunk_size_max = 131072        # ceiling: safety rail for models claiming 1M+ context
 
 # Node summarization (hierarchical chunk tree internal nodes)
-# Longer content is split into several calls (slower, but no content is
-# lost) — it is never truncated.
-summary_max_content_chars = 8000
-# Characters per payload window of the agentic summarizer. One window costs
+# Characters per payload window of the summarizer. One window costs
 # one summarize call, so a bigger window means fewer calls (faster) — it never
 # drops content. Raise it for small-context models only carefully: the whole
 # window is sent to the model.
 summary_window_chars = 2000
-summary_target_chars = 600
 summary_skip_single_child = true
 # Max chunks before switching from two_level to multi_resolution strategy
 summary_chunk_threshold = 10

@@ -20,14 +20,9 @@ in full (`.agents/CODE.md`, "LLM calls").
 
 from __future__ import annotations
 
-from typing import cast
-
 from kompend.agents.context_chunk import ContextChunkAgent
-from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent
-from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import ContextChunk, ContextChunkDeps
 from kompend.core.models import ChunkNode, ChunkTree, ElementType, ParsedDocument
-from kompend.core.templates import TemplateLoader, get_template_loader
 from kompend.logging import get_logger
 
 logger = get_logger(__name__)
@@ -44,10 +39,9 @@ class ContextualEnricher:
 
     def __init__(
         self,
-        agent: ContextChunkAgent | AgenticContextChunkAgent | None = None,
+        agent: ContextChunkAgent | None = None,
     ) -> None:
         self._agent = agent
-        self._template_loader: TemplateLoader = get_template_loader()
 
     def enrich_tree(
         self,
@@ -65,6 +59,7 @@ class ContextualEnricher:
         if self._agent is None:
             logger.debug("Contextual enricher: no agent, skipping")
             return tree
+        agent: ContextChunkAgent = self._agent
 
         leaves = self._collect_leaves(tree)
         if not leaves:
@@ -73,30 +68,17 @@ class ContextualEnricher:
         doc_title = doc.title or doc.source_file.stem
         doc_summary = self._summarize_document(doc)
 
-        if isinstance(self._agent, AgenticContextChunkAgent):
-            return self._enrich_tree_agentic(tree, leaves, doc_title, doc_summary)
+        return ContextualEnricher._enrich_tree(tree, leaves, doc_title, doc_summary, agent)
 
-        for leaf in leaves:
-            context = self._build_context(leaf, doc_title, doc_summary)
-            leaf.contextual_context = context
-
-        logger.debug(
-            "Contextual enricher: enriched %d leaves for %s",
-            len(leaves),
-            doc_title,
-        )
-        return tree
-
-    def _enrich_tree_agentic(
-        self,
+    @staticmethod
+    def _enrich_tree(
         tree: ChunkTree,
         leaves: list[ChunkNode],
         doc_title: str,
         doc_summary: str,
+        agent: ContextChunkAgent,
     ) -> ChunkTree:
         """Enrich all leaves in a single agentic session."""
-        if not isinstance(self._agent, AgenticContextChunkAgent):
-            raise TypeError("AgenticContextChunkAgent expected")
         chunks: list[ContextChunk] = []
         for leaf in leaves:
             headings = [h for h in (leaf.heading_chain or []) if h]
@@ -109,7 +91,7 @@ class ContextualEnricher:
             chunks.append(ContextChunk(id=id(leaf), heading_chain=headings, text=text))
 
         deps = ContextChunkDeps(doc_title=doc_title, doc_summary=doc_summary, chunks=chunks, source_id=doc_title)
-        self._agent.run(deps)
+        agent.run(deps)
 
         for leaf in leaves:
             context = deps.results.get(id(leaf))
@@ -122,43 +104,6 @@ class ContextualEnricher:
             doc_title,
         )
         return tree
-
-    def _build_context(
-        self,
-        node: ChunkNode,
-        doc_title: str,
-        doc_summary: str,
-    ) -> str:
-        """Build situating context for a single chunk node.
-
-        Uses the heading path and document metadata to describe where
-        this chunk fits in the document. A model failure raises — there
-        is no structural stand-in (`.agents/CODE.md`, "LLM calls").
-        """
-        heading_chain = " > ".join(h for h in (node.heading_chain or []) if h) or "document root"
-
-        if node.chunk:
-            chunk_text = node.chunk.text
-        elif node.structured:
-            chunk_text = str(node.structured)
-        else:
-            chunk_text = ""
-
-        rendered = self._template_loader.render(
-            "chunking/contextual_context.md.j2",
-            doc_title=doc_title,
-            doc_summary=doc_summary,
-            heading_chain=heading_chain,
-            content_preview=chunk_text,
-        )
-        deps = PipelineAgentDeps(text=rendered, source_id=heading_chain)
-        if self._agent is None:
-            raise RuntimeError("ContextChunkAgent not initialized")
-        agent = cast("ContextChunkAgent", self._agent)
-        context = agent.run(deps).strip()
-        if not context:
-            raise ValueError(f"Contextual enrichment for '{heading_chain}' returned an empty response")
-        return context
 
     @staticmethod
     def _summarize_document(doc: ParsedDocument) -> str:

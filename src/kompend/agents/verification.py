@@ -1,49 +1,37 @@
-"""VerificationAgent — PydanticAI agents for claim/citation verification."""
+"""VerificationAgent — one session over every claim in the compiled wiki.
+
+The agent fetches claims via ``get_claim()``, searches the sources via
+``search_sources()`` / ``read_page()``, and records verdicts via
+``mark_verified()`` / ``mark_contradicted()`` / ``mark_unverifiable()``.
+``kompend.verification`` maps the collected verdicts back to report rows.
+"""
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, ClassVar, Final
+from typing import ClassVar, Final
 
 from pydantic_ai import UsageLimits
 
 from kompend.agents.agentic_harness import AgenticHarness
 from kompend.agents.base import UNSET_RETRIES, UNSET_TIMEOUT, AgentSpec, KompendAgentBase, resolve_retry_budget
-from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.types import VerificationDeps
 from kompend.agents.vault_memory import build_notebook_store
 from kompend.compilation.verification_tools import build_verification_tools
 from kompend.core.config._configs import LLMConfig, RlmConfig
 
-SPEC_VERIFICATION: Final[AgentSpec] = AgentSpec(
+SPEC: Final[AgentSpec] = AgentSpec(
     name="verification",
-    result_type=dict[str, Any],
-    deps_type=PipelineAgentDeps,
-    template_name="verify_claim.md.j2",
-    system_template_name="verify_system.md.j2",
+    result_type=str,
+    deps_type=VerificationDeps,
+    template_name="verify_session_prompt.md.j2",
+    system_template_name="verify_session_system.md.j2",
     template_prefix="verification/",
 )
 
 
-SPEC_AGENTIC_VERIFICATION: Final[AgentSpec] = AgentSpec(
-    name="agentic_verification",
-    result_type=str,
-    deps_type=VerificationDeps,
-    template_name="verify_agentic_prompt.md.j2",
-    system_template_name="verify_agentic_system.md.j2",
-    template_prefix="lint/",
-    supports_delta_retry=True,
-)
-
-
-class VerificationAgent(KompendAgentBase[dict[str, Any], PipelineAgentDeps]):
-    """PydanticAI agent for verifying claims against source excerpts."""
-
-    spec: ClassVar[AgentSpec | None] = SPEC_VERIFICATION
-
-
-class AgenticVerificationAgent(KompendAgentBase[str, VerificationDeps]):
-    """Agentic claim-verification agent.
+class VerificationAgent(KompendAgentBase[str, VerificationDeps]):
+    """Claim-verification agent.
 
     Discovers claims via ``get_claim()``, searches sources via
     ``search_sources()`` / ``read_page()``, and records verdicts via
@@ -52,7 +40,7 @@ class AgenticVerificationAgent(KompendAgentBase[str, VerificationDeps]):
     LLM call per claim.
     """
 
-    spec: ClassVar[AgentSpec | None] = SPEC_AGENTIC_VERIFICATION
+    spec: ClassVar[AgentSpec | None] = SPEC
 
     #: Requests one claim costs: ``get_claim()``, an optional source read, and
     #: the ``mark_*()`` verdict.
@@ -67,7 +55,7 @@ class AgenticVerificationAgent(KompendAgentBase[str, VerificationDeps]):
         return self._session_limits(units=len(deps.claims), per_unit=self.requests_per_claim)
 
 
-def make_agentic_verification_agent(
+def make_verification_agent(
     *,
     model_string: str,
     timeout: float = UNSET_TIMEOUT,
@@ -78,8 +66,8 @@ def make_agentic_verification_agent(
     rlm: RlmConfig | None = None,
     llm: LLMConfig | None = None,
     memory_dir: Path | None = None,
-) -> AgenticVerificationAgent:
-    """Factory for :class:`AgenticVerificationAgent`.
+) -> VerificationAgent:
+    """Factory for :class:`VerificationAgent`.
 
     Uses :class:`AgenticHarness` for Memory + SlidingWindowCompaction +
     ClampOversizedMessages. Retry budgets are split: ``retries`` governs
@@ -96,7 +84,7 @@ def make_agentic_verification_agent(
         memory=bool(llm and llm.agent_memory),
         memory_store=build_notebook_store(llm, memory_dir),
     )
-    return AgenticVerificationAgent(
+    return VerificationAgent(
         model_string=model_string,
         timeout=timeout,
         skills=skills or {},

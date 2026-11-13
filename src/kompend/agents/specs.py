@@ -27,14 +27,12 @@ class AgentName(StrEnum):
     CAPTURE = "capture"
     CATEGORIZE = "categorize"
     CONTEXT_CHUNK = "context_chunk"
-    AGENTIC_CONTEXT_CHUNK = "agentic_context_chunk"
     DECISION = "decision"
     ADAPTATION = "adaptation"
     QUERY_INTENT = "query_intent"
     FIGURE_RELEVANCE = "figure_relevance"
     DECISION_PROBE = "decision_probe"
     DISTILL = "distill"
-    AGENTIC_DISTILL = "agentic_distill"
     DOCTOR = "doctor"
     AGENTIC_GENERATION = "agentic_generation"
     LINT_RULE = "lint_rule"
@@ -43,14 +41,11 @@ class AgentName(StrEnum):
     REFERENCE_EXTRACTION = "reference_extraction"
     REFERENCE_RESOLVER = "reference_resolver"
     REMEDIATION = "remediation"
-    AGENTIC_REMEDIATION = "agentic_remediation"
     QUERY_EXPANSION = "query_expansion"
     CRAG_GRADE = "crag_grade"
     HYDE = "hyde"
     SUMMARIZER = "summarizer"
-    AGENTIC_SUMMARIZER = "agentic_summarizer"
     VERIFICATION = "verification"
-    AGENTIC_VERIFICATION = "agentic_verification"
     VLM = "vlm"
     WICER_PROBE = "wicer_probe"
     WICER_EVALUATE = "wicer_evaluate"
@@ -58,7 +53,6 @@ class AgentName(StrEnum):
     WIKI_INDEX = "wiki_index"
     AGENTIC_OVERVIEW = "agentic_overview"
     WRITE = "write"
-    AGENTIC_WRITE = "agentic_write"
 
 
 #: spec name -> module that declares ``SPEC``.
@@ -68,14 +62,12 @@ _MODULES: dict[AgentName, str] = {
     AgentName.CAPTURE: "kompend.agents.capture",
     AgentName.CATEGORIZE: "kompend.agents.categorize",
     AgentName.CONTEXT_CHUNK: "kompend.agents.context_chunk",
-    AgentName.AGENTIC_CONTEXT_CHUNK: "kompend.agents.context_chunk_agentic",
     AgentName.DECISION: "kompend.agents.decision",
     AgentName.ADAPTATION: "kompend.agents.decision",
     AgentName.QUERY_INTENT: "kompend.agents.decision",
     AgentName.FIGURE_RELEVANCE: "kompend.agents.decision",
     AgentName.DECISION_PROBE: "kompend.agents.decision_probe",
     AgentName.DISTILL: "kompend.agents.distill",
-    AgentName.AGENTIC_DISTILL: "kompend.agents.distill_agentic",
     AgentName.DOCTOR: "kompend.agents.doctor",
     AgentName.AGENTIC_GENERATION: "kompend.agents.generation",
     AgentName.LINT_RULE: "kompend.agents.lint",
@@ -84,14 +76,11 @@ _MODULES: dict[AgentName, str] = {
     AgentName.REFERENCE_EXTRACTION: "kompend.agents.reference_extraction",
     AgentName.REFERENCE_RESOLVER: "kompend.agents.reference_resolver",
     AgentName.REMEDIATION: "kompend.agents.remediate",
-    AgentName.AGENTIC_REMEDIATION: "kompend.agents.remediate",
     AgentName.QUERY_EXPANSION: "kompend.agents.search",
     AgentName.CRAG_GRADE: "kompend.agents.search",
     AgentName.HYDE: "kompend.agents.search",
     AgentName.SUMMARIZER: "kompend.agents.summarizer",
-    AgentName.AGENTIC_SUMMARIZER: "kompend.agents.summarizer_agentic",
     AgentName.VERIFICATION: "kompend.agents.verification",
-    AgentName.AGENTIC_VERIFICATION: "kompend.agents.verification",
     AgentName.VLM: "kompend.agents.vlm",
     AgentName.WICER_PROBE: "kompend.agents.wicer",
     AgentName.WICER_EVALUATE: "kompend.agents.wicer",
@@ -99,7 +88,6 @@ _MODULES: dict[AgentName, str] = {
     AgentName.WIKI_INDEX: "kompend.agents.wiki_index",
     AgentName.AGENTIC_OVERVIEW: "kompend.agents.wiki_index",
     AgentName.WRITE: "kompend.agents.write",
-    AgentName.AGENTIC_WRITE: "kompend.agents.write",
 }
 
 _CACHE: dict[str, AgentSpec] = {}

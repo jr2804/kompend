@@ -17,7 +17,7 @@ import yaml
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 
 from kompend.agents.lint import LintRuleAgent
-from kompend.agents.remediate import make_agentic_remediation_agent
+from kompend.agents.remediate import make_remediation_agent
 from kompend.cli.runtime.progress import EtaColumn, PercentageColumn, _should_show_progress
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config._configs import LintConfig, LintOutput
@@ -288,7 +288,7 @@ def _remediate_phase(
 ) -> list[Any]:
     """Step: generate pages for source-covered missing topics; return actions.
 
-    Page generation needs a :class:`~kompend.agents.remediate.AgenticRemediationAgent`
+    Page generation needs a :class:`~kompend.agents.remediate.RemediationAgent`
     (a free-text page writer). The lint-rule agent cannot stand in for it: its
     output type is ``BaseModel | str``, so a whole Markdown page fails
     validation and, before this was fixed, took the entire ``lint all`` run
@@ -298,7 +298,7 @@ def _remediate_phase(
     if not model:
         logger.info("Lint remediation skipped - no lint.model or compile.llm.default_model configured")
         return []
-    agent = make_agentic_remediation_agent(
+    agent = make_remediation_agent(
         model_string=model,
         timeout=float(cfg.kompend.lint.llm_timeout),
         llm=cfg.kompend.compile.llm,

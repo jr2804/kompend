@@ -16,7 +16,6 @@ from kompend.agents.types import WriteDeps
 from kompend.cli.cmds.knowledge import capture as capture_cmd
 from kompend.compilation.write_tools import read_source
 from kompend.core.text.windows import split_text_windows
-from kompend.mcp.tools import pipeline as mcp_pipeline
 
 
 class _Ctx:
@@ -97,7 +96,7 @@ class TestWritePageSourcesAreNotCropped:
                 seen["deps"] = deps
                 return "written"
 
-        monkeypatch.setattr(capture_cmd, "make_agentic_write_agent", lambda **kwargs: _Agent())
+        monkeypatch.setattr(capture_cmd, "make_write_agent", lambda **kwargs: _Agent())
 
         body = capture_cmd._synthesize_write_page(
             page_title="T",
@@ -112,14 +111,6 @@ class TestWritePageSourcesAreNotCropped:
         deps = cast(WriteDeps, seen["deps"])
         assert deps.source_texts == [("doc", text)]
         assert deps.source_char_max == 4000
-
-    def test_mcp_write_page_covers_every_source_character(self) -> None:
-        text = "u" * 20_000
-        blocks = mcp_pipeline._source_blocks([("doc", text)], 4000)
-
-        assert len(blocks) == 5
-        recovered = "".join(block.split("\n\n", 1)[1] for block in blocks)
-        assert recovered == text
 
 
 def _ctx(deps: WriteDeps) -> RunContext[WriteDeps]:

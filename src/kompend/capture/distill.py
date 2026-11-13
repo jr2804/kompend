@@ -15,9 +15,7 @@ from typing import TypedDict
 import yaml
 from pydantic_ai.exceptions import UsageLimitExceeded
 
-from kompend.agents.deps import DistillDeps
 from kompend.agents.distill import DistillAgent
-from kompend.agents.distill_agentic import AgenticDistillAgent
 from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote, DistillPage
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug, make_title
@@ -55,7 +53,7 @@ class DistilledPage(TypedDict):
 def distill(
     sources_dir: Path,
     *,
-    distill_agent: DistillAgent | AgenticDistillAgent | None = None,
+    distill_agent: DistillAgent | None = None,
     archive: bool = True,
 ) -> list[Path]:
     """Distill all captured notes into synthesized wiki pages.
@@ -85,17 +83,7 @@ def distill(
     timestamp = display_local(TIMESTAMP_FORMAT)
     written: list[Path] = []
 
-    if distill_agent is not None and isinstance(distill_agent, AgenticDistillAgent):
-        written = _distill_agentic(groups, notes, distill_agent, timestamp, output_dir)
-    else:
-        for tag, group_notes in groups.items():
-            page = _synthesize_with_agent(tag, group_notes, distill_agent) if distill_agent is not None else _synthesize_fallback(tag, group_notes)
-            slug = make_slug(page["title"])
-            source_files = [n.source_file.name if n.source_file else "" for n in group_notes]
-            filepath = _distilled_path(output_dir, slug, timestamp, used=set(written))
-            _write_page(filepath, page, source_files, timestamp)
-            logger.info("Distilled %d notes -> %s", len(group_notes), filepath)
-            written.append(filepath)
+    written = _distill_groups(groups, notes, distill_agent, timestamp, output_dir)
 
     if archive and written:
         _archive_notes(notes, sources_dir)
@@ -177,14 +165,17 @@ def _group_by_tag(notes: list[CapturedNote]) -> dict[str, list[CapturedNote]]:
     return groups
 
 
-def _distill_agentic(
+def _distill_groups(
     groups: dict[str, list[CapturedNote]],
     notes: list[CapturedNote],
-    distill_agent: AgenticDistillAgent,
+    distill_agent: DistillAgent | None,
     timestamp: str,
     output_dir: Path,
 ) -> list[Path]:
     """Distill all groups, resuming a session that ran out of budget.
+
+    ``distill_agent`` may be ``None`` (no model configured): every group then
+    merges deterministically.
 
     A session covers every group that still has no page. When it exhausts its
     request budget, the pages it did save are kept and a fresh session is
@@ -200,6 +191,9 @@ def _distill_agentic(
     left without a page, and the exception propagates. A failed session must
     not read as a session that saved nothing.
     """
+    if distill_agent is None:
+        return _write_group_pages(groups, {}, timestamp, output_dir, merge_missing=True)
+
     groups_data: list[DistillGroup] = [
         DistillGroup(
             tag=tag,
@@ -218,13 +212,13 @@ def _distill_agentic(
             distill_agent.run(deps)
         except (LLMOutputError, UsageLimitExceeded) as exc:
             if _is_budget_exhaustion(exc):
-                logger.info("AgenticDistillAgent session %d exhausted its request budget; resuming with the remaining group(s)", sessions)
+                logger.info("DistillAgent session %d exhausted its request budget; resuming with the remaining group(s)", sessions)
             else:
                 pages.update({entry["tag"]: deps.pages[entry["tag"]] for entry in pending if entry["tag"] in deps.pages})
                 kept = _write_group_pages(groups, pages, timestamp, output_dir, merge_missing=False)
                 remaining = [entry["tag"] for entry in pending if entry["tag"] not in pages]
                 logger.error(
-                    "AgenticDistillAgent session %d failed after keeping %d page(s); %d group(s) left without a page: %s — rerun distill to retry them",
+                    "DistillAgent session %d failed after keeping %d page(s); %d group(s) left without a page: %s — rerun distill to retry them",
                     sessions,
                     len(kept),
                     len(remaining),
@@ -234,7 +228,7 @@ def _distill_agentic(
         recorded = {entry["tag"] for entry in pending if entry["tag"] in deps.pages}
         if not recorded:
             logger.warning(
-                "AgenticDistillAgent saved no pages for %d group(s) after %d session(s) — merging %s deterministically",
+                "DistillAgent saved no pages for %d group(s) after %d session(s) — merging %s deterministically",
                 len(pending),
                 sessions,
                 ", ".join(entry["tag"] for entry in pending),
@@ -329,41 +323,6 @@ def _distilled_path(output_dir: Path, slug: str, timestamp: str, used: set[Path]
 
 
 # ── Synthesis ───────────────────────────────────────────────────────────
-
-
-def _synthesize_with_agent(
-    tag: str,
-    notes: list[CapturedNote],
-    distill_agent: DistillAgent,
-) -> DistilledPage:
-    """Use the DistillAgent to synthesize a group of notes into a single page."""
-    notes_data = [
-        {
-            "title": n.title,
-            "content": n.content,
-            "source": n.source_file.name if n.source_file else "unknown",
-        }
-        for n in notes
-    ]
-    user_prompt = f"Synthesize the {len(notes)} notes tagged '{tag}' into one wiki page."
-    deps = DistillDeps(
-        notes=notes_data,
-        group_tag=tag,
-        text=user_prompt,
-        source_id=f"distill-{tag}",
-    )
-
-    try:
-        result = distill_agent.run(deps)
-    except LLMOutputError:
-        logger.error("DistillAgent failed for tag %r (%d note(s)) — no page was written for it", tag, len(notes))
-        raise
-
-    return {
-        "title": result.title or tag.replace("-", " ").replace("_", " ").title(),
-        "content": result.content or "",
-        "tags": result.tags or [tag],  # nocheck: frontmatter dict, not wiki metadata
-    }
 
 
 def _synthesize_fallback(tag: str, notes: list[CapturedNote]) -> DistilledPage:

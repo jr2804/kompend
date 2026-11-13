@@ -66,7 +66,7 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
   ``.kompend/lint-log/<stamp>.md``. Never print `report_to_text` from a
   pipeline path: it is for `--verbose-lint` and `kompend lint show`.
 - **Remediation writes pages, rules write JSON.** The remediation step uses
-  `AgenticRemediationAgent` (free-text page writer); the lint-rule agent's
+  `RemediationAgent` (free-text page writer); the lint-rule agent's
   `BaseModel | str` output cannot produce a page and fails validation. A single
   failed page is a skipped action, never an exception that ends `lint all`.
 - **One definition per question.** Which rules count as the deterministic

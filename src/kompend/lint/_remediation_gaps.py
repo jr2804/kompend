@@ -8,16 +8,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.agents.deps import PipelineAgentDeps
-from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
+from kompend.agents.remediate import RemediationAgent
 from kompend.agents.types import RemediationDeps
 from kompend.compilation.two_phase import Extraction, ExtractionSet
 from kompend.core.models import CompiledWiki, WikiNode
 from kompend.core.models.enums import NodeType
-from kompend.core.templates import get_template_loader
 from kompend.core.text.matching import best_match
 from kompend.core.text.slug import slugify
-from kompend.core.utils.exceptions import LLMOutputError
 from kompend.lint.base import LintResult, RemediationAction, RemediationStatus
 from kompend.lint.details import LintField
 from kompend.lint.gap_broker import GapBroker, GapConcept, gap_concept
@@ -37,15 +34,14 @@ def remediate_coverage_gaps(
     results: list[LintResult],
     *,
     base_dir: Path,
-    agent: RemediationAgent | AgenticRemediationAgent,
+    agent: RemediationAgent,
     output_dir: Path | None = None,
     dry_run: bool = False,
 ) -> list[RemediationAction]:
     """Generate concept pages for coverage gaps using cached extractions.
 
-    When *agent* is an :class:`AgenticRemediationAgent`, the agent runs
-    once over all matched gaps via a :class:`GapBroker` — collapsing N
-    per-gap calls into a single multi-turn session.
+    The agent runs once over all matched gaps via a :class:`GapBroker` —
+    collapsing N per-gap calls into a single multi-turn session.
     """
     gap_names: list[str] = []
     for r in results:
@@ -105,83 +101,25 @@ def remediate_coverage_gaps(
     if not matched_buckets:
         return actions
 
-    # --- Agentic path: single agent session over all matched gaps ----
-    if isinstance(agent, AgenticRemediationAgent):
-        broker = GapBroker(matched_buckets)
-        deps = RemediationDeps(gaps=broker, dry_run=dry_run)
-        try:
-            agent.run(deps)
-        except Exception as exc:
-            logger.warning("Agentic remediation failed: %s", exc)
+    # --- Single agent session over all matched gaps -------------------
+    broker = GapBroker(matched_buckets)
+    deps = RemediationDeps(gaps=broker, dry_run=dry_run)
+    try:
+        agent.run(deps)
+    except Exception as exc:
+        logger.warning("Remediation session failed: %s", exc)
 
-        for page_result in deps.pages:
-            concept_name = page_result.name
-            page_id = slugify(concept_name)
-            new_node = WikiNode(
-                id=page_id,
-                title=concept_name,
-                content=page_result.content,
-                node_type=NodeType.CONCEPT,
-                metadata={"source": "lint-remediation"},
-            )
-            # In-place replace ghost nodes, otherwise append.
-            if page_id in node_index:
-                wiki.nodes[node_index[page_id]] = new_node
-            else:
-                node_index[page_id] = len(wiki.nodes)
-                wiki.nodes.append(new_node)
-            existing_ids.add(page_id)
-            existing_titles.add(concept_name.lower().strip())
-            actions.append(
-                RemediationAction(
-                    category="Coverage gap",
-                    description=f"Generated concept page for '{concept_name}'",
-                    status=RemediationStatus.APPLIED,
-                    details={LintField.CONCEPT: concept_name, LintField.ID: page_id},
-                )
-            )
-
-        for gap_name, reason in broker.unfixable.items():
-            actions.append(
-                RemediationAction(
-                    category="Coverage gap (unfixable)",
-                    description=f"Cannot generate page for '{gap_name}': {reason}",
-                    status=RemediationStatus.SKIPPED,
-                    details={LintField.CONCEPT: gap_name, LintField.REASON: reason},
-                )
-            )
-
-        if output_dir is not None and deps.pages:
-            MarkdownWriter(vault_mode=True).write(wiki, output_dir)
-
-        return actions
-
-    # --- Legacy single-shot path: one LLM call per gap ----------------
-    for matched in matched_buckets:
-        concept_name = matched.get("name", "")
-        content = _generate_concept_page(agent, matched)
-        if content is None:
-            actions.append(
-                RemediationAction(
-                    category="Coverage gap (LLM failed)",
-                    description=f"Failed to generate page for '{concept_name}'",
-                    status=RemediationStatus.SKIPPED,
-                    details={LintField.CONCEPT: concept_name},
-                )
-            )
-            continue
-
+    for page_result in deps.pages:
+        concept_name = page_result.name
         page_id = slugify(concept_name)
         new_node = WikiNode(
             id=page_id,
             title=concept_name,
-            content=content,
+            content=page_result.content,
             node_type=NodeType.CONCEPT,
-            metadata={
-                "source": "lint-remediation",
-                "generated_from": matched.get("sources", []),
-            },
+            metadata={"source": "lint-remediation"},
         )
+        # In-place replace ghost nodes, otherwise append.
         if page_id in node_index:
             wiki.nodes[node_index[page_id]] = new_node
         else:
@@ -192,13 +130,23 @@ def remediate_coverage_gaps(
         actions.append(
             RemediationAction(
                 category="Coverage gap",
-                description=f"Generated concept page '{concept_name}' from {len(matched.get('sources', []))} source(s)",
+                description=f"Generated concept page for '{concept_name}'",
                 status=RemediationStatus.APPLIED,
-                details={LintField.SOURCES: matched.get("sources", []), LintField.CONCEPT: gap, LintField.MATCHED_CONCEPT: concept_name},
+                details={LintField.CONCEPT: concept_name, LintField.ID: page_id},
             )
         )
 
-    if output_dir is not None:
+    for gap_name, reason in broker.unfixable.items():
+        actions.append(
+            RemediationAction(
+                category="Coverage gap (unfixable)",
+                description=f"Cannot generate page for '{gap_name}': {reason}",
+                status=RemediationStatus.SKIPPED,
+                details={LintField.CONCEPT: gap_name, LintField.REASON: reason},
+            )
+        )
+
+    if output_dir is not None and deps.pages:
         MarkdownWriter(vault_mode=True).write(wiki, output_dir)
 
     return actions
@@ -243,27 +191,6 @@ def _build_concept_lookup(
         bucket["summaries"] = bucket_summaries
 
     return concept_lookup
-
-
-def _generate_concept_page(agent: RemediationAgent, concept_data: GapConcept) -> str | None:
-    """Use the remediation agent to generate a wiki page for a concept."""
-    loader = get_template_loader()
-    prompt = loader.render(
-        "lint/remediate_concept.md.j2",
-        concept_name=concept_data.get("name", ""),
-        definitions=concept_data.get("definitions", []),
-        sources=concept_data.get("sources", []),
-        source_summaries=concept_data.get("summaries", []),
-    )
-    deps = PipelineAgentDeps(text=prompt, source_id="lint-remediate")
-    try:
-        result = agent.run(deps)
-    except LLMOutputError as exc:
-        # One unresolvable concept must not abort the whole remediation pass:
-        # the caller records a SKIPPED action and moves on to the next gap.
-        logger.warning("Remediation failed for '%s': %s", concept_data.get("name", ""), exc)
-        return None
-    return result if result else None
 
 
 def _fuzzy_match_concept(

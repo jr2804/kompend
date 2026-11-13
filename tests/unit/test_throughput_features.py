@@ -20,7 +20,7 @@ from pydantic_ai_harness.step_persistence import ContinuableSnapshot, RunRecord,
 
 import kompend.compilation.flows.generation.flow as gen_module
 from kompend.agents.types import ToolGenerationDeps, VerificationDeps, VerificationVerdict
-from kompend.agents.verification import AgenticVerificationAgent
+from kompend.agents.verification import VerificationAgent
 from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.compilation.flows.generation import (
     _agentic_budget,
@@ -82,7 +82,6 @@ from kompend.trust import (
     mark_wiki_private,
 )
 from kompend.verification import (
-    verify_node,
     verify_wiki,
 )
 from tests.conftest import make_tmp_vault
@@ -1761,46 +1760,7 @@ class TestLifecycleStore:
 
 
 class TestVerificationUnavailable:
-    """verify_node / verify_wiki behaviour when LLM is unavailable."""
-
-    def test_claim_without_citation_unsupported(self, tmp_path: Path) -> None:
-        node = WikiNode(
-            id="n1",
-            title="T",
-            content="This claim has no citation.",
-            node_type=NodeType.SECTION,
-        )
-        result = verify_node(node, tmp_path, agent=self._fake_client())
-        assert result[0].verdict == "unsupported"
-        assert result[0].confidence < 0.5
-
-    def test_claim_with_missing_source_unsupported(self, tmp_path: Path) -> None:
-        node = WikiNode(
-            id="n1",
-            title="T",
-            content="A claim with a missing source citation. ^[missing.pdf:1-3]",
-            node_type=NodeType.SECTION,
-        )
-        result = verify_node(node, tmp_path, agent=self._fake_client())
-        assert result[0].verdict == "unsupported"
-
-    def test_llm_unavailable_marks_unverified(self, tmp_path: Path) -> None:
-        """When LLM returns None, claim is 'unverified' — no substring matching."""
-        sources = tmp_path / "sources"
-        sources.mkdir()
-        (sources / "a.pdf").write_text(
-            "The transformer uses self attention to model sequences.",
-            encoding="utf-8",
-        )
-        node = WikiNode(
-            id="n1",
-            title="T",
-            content="The transformer uses self attention to model sequences. ^[a.pdf:1-2]",
-            node_type=NodeType.SECTION,
-        )
-        result = verify_node(node, sources, agent=self._fake_client())
-        assert result[0].verdict == "unverified"
-        assert result[0].confidence == 0.0
+    """verify_wiki behaviour when the session records no verdicts."""
 
     def test_verify_wiki_writes_report(self, tmp_path: Path) -> None:
         wiki = _wiki(
@@ -1817,15 +1777,15 @@ class TestVerificationUnavailable:
 
     @staticmethod
     def _fake_client() -> Mock:
-        """Agent whose run returns None (forces fallback)."""
+        """Agent whose run records no verdicts — every claim stays unverified."""
         c = Mock()
         c.run.return_value = None
         c.timeout = 120
         return c
 
 
-class TestAgenticVerification:
-    """Agentic verification: one multi-turn session over all claims."""
+class TestVerificationSession:
+    """One multi-turn session over all claims."""
 
     def test_single_session_all_claims(self, tmp_path: Path) -> None:
         wiki = _wiki(
@@ -1836,22 +1796,22 @@ class TestAgenticVerification:
         )
         # _split_claims produces 5 claims per node (4 from repeated citation pattern)
         verdicts = {0: "supported", 5: "contradicted"}
-        agent = self._fake_agentic_client(verdicts)
+        agent = self._fake_session_client(verdicts)
         result = verify_wiki(wiki, tmp_path, agent=agent)
         assert agent.run.call_count == 1
         assert result.total == 10
 
-    def test_agentic_failure_propagates(self, tmp_path: Path) -> None:
+    def test_session_failure_propagates(self, tmp_path: Path) -> None:
         """A failed verification call is an error, not a silent "unverified" verdict."""
         wiki = _wiki(nodes=[WikiNode(id="n1", title="A", content="Some claim text. ^[a.pdf:1-2]" * 5, node_type=NodeType.SECTION)])
-        agent = MagicMock(spec=AgenticVerificationAgent)
+        agent = MagicMock(spec=VerificationAgent)
         agent.run.side_effect = RuntimeError("LLM failed")
 
         with pytest.raises(RuntimeError, match="LLM failed"):
             verify_wiki(wiki, tmp_path, agent=agent)
 
-    def _fake_agentic_client(self, verdicts: dict[int, str]) -> MagicMock:
-        agent = MagicMock(spec=AgenticVerificationAgent)
+    def _fake_session_client(self, verdicts: dict[int, str]) -> MagicMock:
+        agent = MagicMock(spec=VerificationAgent)
 
         def _run(deps: VerificationDeps) -> None:
             for cid, v in verdicts.items():

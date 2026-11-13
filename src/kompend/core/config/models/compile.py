@@ -24,7 +24,6 @@ class BudgetConfig(_KompendBaseModel):
       ``kompend.llm.context_window``).
     """
 
-    verify_min_ngram: int = 3
     #: Maximum refinement rounds of the WiCER loop. ``0`` means "until the
     #: loop converges" — the loop stops on its own when it finds no new
     #: facts, when all probes pass, or when the wall-clock budget
@@ -52,14 +51,10 @@ class BudgetConfig(_KompendBaseModel):
     max_concept_pages: int = Field(default=50, validation_alias=EnvVar.BUDGET_MAX_CONCEPT_PAGES)
     chunk_size_min: int = Field(default=2048, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MIN)
     chunk_size_max: int = Field(default=131072, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MAX)
-    #: Characters per summary call. Longer content is split into several
-    #: calls (slower, but no content is lost) — it is never truncated.
-    summary_max_content_chars: int = 8000
-    #: Characters per payload window of the agentic summarizer. One window
+    #: Characters per payload window of the summarizer. One window
     #: costs one summarize call, so a bigger window means fewer calls (faster)
     #: — it never drops content.
     summary_window_chars: int = Field(default=2000, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_WINDOW_CHARS)
-    summary_target_chars: int = 600
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
     summary_requests_per_node: int = Field(default=2, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_REQUESTS_PER_NODE)

@@ -40,10 +40,10 @@ each model's auto-detected context window. Atomic elements are never split.
   budget or records nothing for its own payload defers only its batch: the rest
   of the tree continues, stalled batches are retried per the policy, and
   summaries written for ids outside the payload never count as progress.
-- Node content is **windowed, never truncated**: content longer than
-  ``budget.summary_max_content_chars`` (or the agentic payload window
-  ``budget.summary_window_chars``) is summarised in several calls, one per window.
-  The per-node summary is the join of its window summaries; window ids carry
+- Node content is **windowed, never truncated**: content longer than the
+  payload window ``budget.summary_window_chars`` is summarised in several
+  windows inside one session. The per-node summary is the join of its window
+  summaries; window ids carry
   a ``#wN`` suffix, a single-window node keeps its plain id.
 - An agentic payload carries at most ``SummarizerSessionPolicy.payload_chars``
   characters of node content (from ``ContextWindow.input_budget``). Windows that

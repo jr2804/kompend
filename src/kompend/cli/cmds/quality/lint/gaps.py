@@ -6,7 +6,7 @@ import json
 import re
 from typing import TypedDict
 
-from kompend.agents.remediate import make_agentic_remediation_agent
+from kompend.agents.remediate import make_remediation_agent
 from kompend.cli.args import JsonOutput, LintGapsFix, LintSemantic
 from kompend.cli.settings import build_cli_overrides, config_file_from_ctx, vault_paths_from_ctx
 from kompend.core.cache.wiki import write_wiki_cache
@@ -151,7 +151,7 @@ def _run_remediation_for_gaps(vp: VaultPaths, cfg: ResolvedConfig, report: LintR
     if not default_model:
         get_err_console().print("--fix: no compile.llm.default_model configured — cannot generate pages.")
         return
-    agent = make_agentic_remediation_agent(
+    agent = make_remediation_agent(
         model_string=default_model,
         timeout=float(cfg.kompend.compile.llm.timeout),
         llm=cfg.kompend.compile.llm,

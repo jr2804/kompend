@@ -10,8 +10,7 @@ import pytest
 import yaml
 
 from kompend.agents.capture_models import CaptureOutput
-from kompend.agents.deps import DistillDeps
-from kompend.agents.distill import DistillAgent
+from kompend.agents.types import DistillAgentDeps
 from kompend.capture.capture import (
     _merge_tags,
     capture,
@@ -27,6 +26,7 @@ from kompend.capture.distill import (
 from kompend.capture.kinds import CaptureKind
 from kompend.capture.learn import learn
 from kompend.cli.cmds.knowledge.capture import _build_references_section
+from kompend.core.config._configs import LlmDataFormat
 from kompend.core.models.enums import NodeType
 from kompend.core.pipeline.ingest import extract_text_from_cached
 from kompend.core.pipeline.parse_cache import write_document
@@ -121,11 +121,16 @@ class TestDistill:
         )
 
         mock_agent = MagicMock()
-        mock_agent.run.return_value = MagicMock(
-            title="Synthesized ML Page",
-            content="## Overview\n\nIntegrated content.",
-            tags=["ml", "synthesized"],
-        )
+        mock_agent.data_format = LlmDataFormat.JSON
+
+        def _session(deps: DistillAgentDeps) -> None:
+            deps.pages["ml"] = {
+                "title": "Synthesized ML Page",
+                "content": "## Overview\n\nIntegrated content.",
+                "tags": ["ml", "synthesized"],
+            }
+
+        mock_agent.run.side_effect = _session
         mock_agent.timeout = 120
 
         paths = distill(sources_dir, distill_agent=mock_agent)
@@ -182,23 +187,6 @@ class TestDistill:
 
         paths = distill(sources_dir)
         assert len(paths) == 2
-
-    def test_agent_renders_template_with_distill_deps(self) -> None:
-        """Regression: DistillAgent.run() raised ValueError because the
-        template requires ``notes``/``group_tag`` vars that weren't on deps.
-        """
-        agent = DistillAgent("test-model")
-        deps = DistillDeps(
-            notes=[{"title": "T", "content": "body", "source": "x.md"}],
-            group_tag="ml",
-            text="go",
-            source_id="repro",
-        )
-        up = agent.render_user_prompt(deps)
-        assert "body" in up
-        assert "ml" in up
-        sp = agent.render_system_prompt(deps)
-        assert sp == ""
 
 
 class TestCapture:

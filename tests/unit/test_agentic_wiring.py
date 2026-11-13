@@ -20,12 +20,12 @@ import pytest
 from pydantic_ai import RunContext, UsageLimits
 from pydantic_ai_harness.memory import MemoryStore
 
-from kompend.agents.context_chunk_agentic import AgenticContextChunkAgent, make_agentic_context_chunk_agent
-from kompend.agents.distill_agentic import make_agentic_distill_agent
+from kompend.agents.context_chunk import ContextChunkAgent, make_context_chunk_agent
+from kompend.agents.distill import make_distill_agent
 from kompend.agents.generation import make_agentic_generation_agent
 from kompend.agents.query import make_query_agent
-from kompend.agents.remediate import make_agentic_remediation_agent
-from kompend.agents.summarizer_agentic import AgenticSummarizerAgent, make_agentic_summarizer_agent
+from kompend.agents.remediate import make_remediation_agent
+from kompend.agents.summarizer import SummarizerAgent, make_summarizer_agent
 from kompend.agents.types import (
     ContextChunk,
     ContextChunkDeps,
@@ -40,7 +40,7 @@ from kompend.agents.types import (
     VerificationDeps,
 )
 from kompend.agents.vault_memory import DirectoryMemoryStore
-from kompend.agents.verification import make_agentic_verification_agent
+from kompend.agents.verification import make_verification_agent
 from kompend.chunking.contextual import ContextualEnricher
 from kompend.compilation.concept_broker import ConceptBroker
 from kompend.compilation.context_chunk_tools import next_chunk
@@ -105,17 +105,17 @@ class _MemoryCapability(Protocol):
     agent_name: str
 
 
-class TestAgenticSummarizerAgentWiring:
+class TestSummarizerAgentWiring:
     def test_factory_registers_prompt_declared_tools(self) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         built = agent._build_agent()
         assert sorted(built._function_toolset.tools.keys()) == ["next_node", "summarize_node"]
 
     def test_factory_injects_harness_capabilities(self) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b", context_window=8192)
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b", context_window=8192)
         assert agent.extra_capabilities
 
-    def test_build_pipeline_wires_agentic_summarizer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_build_pipeline_wires_the_summarizer_session(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """Regression: NodeSummarizer was built without `agent=`, so every
         summary silently fell back to the extractive path (0iv2.6).
         """
@@ -132,7 +132,7 @@ class TestAgenticSummarizerAgentWiring:
         )
         pipeline = build_pipeline(config)
         assert pipeline.summarizer is not None
-        assert isinstance(pipeline.summarizer._agent, AgenticSummarizerAgent)  # noqa: SLF001
+        assert isinstance(pipeline.summarizer._agent, SummarizerAgent)  # noqa: SLF001
 
     def test_build_pipeline_passes_summary_requests_per_node(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
@@ -149,7 +149,7 @@ class TestAgenticSummarizerAgentWiring:
         )
         pipeline = build_pipeline(config)
         assert pipeline.summarizer is not None
-        assert isinstance(pipeline.summarizer._agent, AgenticSummarizerAgent)  # noqa: SLF001
+        assert isinstance(pipeline.summarizer._agent, SummarizerAgent)  # noqa: SLF001
         assert pipeline.summarizer._agent.requests_per_node == 5  # noqa: SLF001
 
     def test_vault_store_gates_the_notebook(self, monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
@@ -173,7 +173,7 @@ class TestAgenticSummarizerAgentWiring:
         session_pipeline = build_pipeline(session)
         assert session_pipeline.summarizer is not None
         session_agent = session_pipeline.summarizer._agent  # noqa: SLF001
-        assert isinstance(session_agent, AgenticSummarizerAgent)
+        assert isinstance(session_agent, SummarizerAgent)
         session_memory = cast(_MemoryCapability, next(cap for cap in session_agent.extra_capabilities if cap.__class__.__name__ == "Memory"))
         assert not isinstance(session_memory.store, DirectoryMemoryStore)
 
@@ -187,14 +187,14 @@ class TestAgenticSummarizerAgentWiring:
         vault_pipeline = build_pipeline(vault)
         assert vault_pipeline.summarizer is not None
         agent = vault_pipeline.summarizer._agent
-        assert isinstance(agent, AgenticSummarizerAgent)
+        assert isinstance(agent, SummarizerAgent)
         memory = cast(_MemoryCapability, next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory"))
         assert isinstance(memory.store, DirectoryMemoryStore)
         assert memory.store.directory == vault.paths.agent_memory_dir
         assert memory.agent_name == "summarizer"
 
 
-class TestAgenticSummarizerUsageLimits:
+class TestSummarizerAgentUsageLimits:
     """Regression: pydantic-ai's implicit default caps a run at 50 requests.
     A tree session spends ~2 requests per eligible node (next_node +
     summarize_node) plus a fixed closing cost, so trees with >24 nodes died
@@ -209,7 +209,7 @@ class TestAgenticSummarizerUsageLimits:
     _DEFAULT_RETRY_ALLOWANCE = 4
 
     def test_request_limit_scales_with_node_count(self) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         nodes = [SummaryNode(id=str(i), heading_chain="", content="x") for i in range(40)]
         deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
@@ -217,7 +217,7 @@ class TestAgenticSummarizerUsageLimits:
         assert limits.request_limit == math.ceil((40 * 2 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 95
 
     def test_headroom_params_are_overridable(self) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         nodes = [SummaryNode(id=str(i), heading_chain="", content="x") for i in range(40)]
         deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps, requests_per_node=1, headroom_frac=1.0)  # noqa: SLF001
@@ -231,7 +231,7 @@ class TestAgenticSummarizerUsageLimits:
         call; the 2-request/node default starves them mid-batch (p863:
         request_limit of 47 hit four times in a row on one 20-node window).
         """
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b", requests_per_node=4)
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b", requests_per_node=4)
         nodes = [SummaryNode(id=str(i), heading_chain="", content="x") for i in range(10)]
         deps = SummarizerDeps(nodes=nodes, source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
@@ -240,21 +240,21 @@ class TestAgenticSummarizerUsageLimits:
 
     def test_single_node_session_covers_its_own_closing_turn(self) -> None:
         """A one-node payload needs next_node + summarize_node + the closing turn."""
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         deps = SummarizerDeps(nodes=[SummaryNode(id="a", heading_chain="", content="x")], source_id="root")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == math.ceil((1 * 2 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 9
 
     def test_session_overhead_is_overridable(self) -> None:
-        agent = make_agentic_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         deps = SummarizerDeps(nodes=[SummaryNode(id="a", heading_chain="", content="x")], source_id="root")
         limits = agent._usage_limits_for(deps, headroom_frac=1.0, session_overhead=0)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == 2 + self._DEFAULT_RETRY_ALLOWANCE  # 6
 
 
-class TestAgenticDistillUsageLimits:
+class TestDistillAgentUsageLimits:
     """Regression: pydantic-ai's implicit default caps a run at 50 requests.
 
     A multi-group distill session spends ~3 requests per group
@@ -270,7 +270,7 @@ class TestAgenticDistillUsageLimits:
     _DEFAULT_RETRY_ALLOWANCE = 4
 
     def test_request_limit_scales_with_group_count(self) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         groups = [DistillGroup(tag=f"t{i}", notes=[]) for i in range(32)]
         deps = DistillAgentDeps(groups=groups, source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
@@ -278,7 +278,7 @@ class TestAgenticDistillUsageLimits:
         assert limits.request_limit == math.ceil((32 * 3 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 112
 
     def test_headroom_params_are_overridable(self) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         groups = [DistillGroup(tag=f"t{i}", notes=[]) for i in range(10)]
         deps = DistillAgentDeps(groups=groups, source_id="distill-all")
         limits = agent._usage_limits_for(deps, requests_per_group=2, headroom_frac=1.0)  # noqa: SLF001
@@ -286,14 +286,14 @@ class TestAgenticDistillUsageLimits:
         assert limits.request_limit == 10 * 2 + 2 + self._DEFAULT_RETRY_ALLOWANCE  # 26
 
     def test_single_group_session_covers_its_own_closing_turn(self) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == math.ceil((1 * 3 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 10
 
     def test_session_overhead_is_overridable(self) -> None:
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b")
         deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
         limits = agent._usage_limits_for(deps, headroom_frac=1.0, session_overhead=0)  # noqa: SLF001
         assert limits is not None
@@ -306,7 +306,7 @@ class TestAgenticDistillUsageLimits:
         aborted with "request_limit of 6" after its first rejected output.
         """
         llm = LLMConfig(default_model="ollama/gpt-oss:20b", vlm_model="vlm", tool_retries=3, agentic_output_retries=4)
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b", llm=llm)
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b", llm=llm)
         deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
@@ -314,21 +314,21 @@ class TestAgenticDistillUsageLimits:
 
     def test_configured_requests_per_group_raises_the_budget(self) -> None:
         """``budget.distill_requests_per_group`` reaches the derived limit."""
-        agent = make_agentic_distill_agent(model_string="ollama/gpt-oss:20b", requests_per_group=5)
+        agent = make_distill_agent(model_string="ollama/gpt-oss:20b", requests_per_group=5)
         deps = DistillAgentDeps(groups=[DistillGroup(tag="dll", notes=[])], source_id="distill-all")
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == math.ceil((1 * 5 + 2 + self._DEFAULT_RETRY_ALLOWANCE) * 1.1)  # 13
 
 
-class TestAgenticContextChunkAgentWiring:
+class TestContextChunkAgentWiring:
     def test_factory_registers_prompt_declared_tools(self) -> None:
-        agent = make_agentic_context_chunk_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_context_chunk_agent(model_string="ollama/gpt-oss:20b")
         built = agent._build_agent()
         assert sorted(built._function_toolset.tools.keys()) == ["next_chunk", "situate_chunk"]
 
     def test_factory_injects_harness_capabilities(self) -> None:
-        agent = make_agentic_context_chunk_agent(model_string="ollama/gpt-oss:20b", context_window=8192)
+        agent = make_context_chunk_agent(model_string="ollama/gpt-oss:20b", context_window=8192)
         assert agent.extra_capabilities
 
 
@@ -367,7 +367,7 @@ class TestQueryToolsReturnRealContent:
 
 class TestContextualEnricherAgenticPath:
     def test_agentic_agent_drives_enrich_tree(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        agent = make_agentic_context_chunk_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_context_chunk_agent(model_string="ollama/gpt-oss:20b")
         seen: dict[str, bool] = {}
 
         def fake_run(deps: ContextChunkDeps, **_: object) -> str:
@@ -397,7 +397,7 @@ class TestContextChunkHeadingContract:
     """
 
     def test_payload_carries_the_heading_path_as_a_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        agent = make_agentic_context_chunk_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_context_chunk_agent(model_string="ollama/gpt-oss:20b")
         captured: list[ContextChunk] = []
 
         def fake_run(deps: ContextChunkDeps, **_: object) -> str:
@@ -435,14 +435,14 @@ class TestOtherAgenticSessionLimits:
     _RETRIES = 4
 
     def test_verification_budget_scales_with_claims(self) -> None:
-        agent = make_agentic_verification_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_verification_agent(model_string="ollama/gpt-oss:20b")
         claims = [VerificationClaim(id=i, text=f"claim {i}") for i in range(20)]
         limits = agent._usage_limits_for(VerificationDeps(claims=claims))  # noqa: SLF001
         assert limits is not None
         assert limits.request_limit == math.ceil((20 * 3 + 2 + self._RETRIES) * 1.1)  # 73
 
     def test_context_chunk_budget_scales_with_chunks(self) -> None:
-        agent = make_agentic_context_chunk_agent("ollama/gpt-oss:20b")
+        agent = make_context_chunk_agent("ollama/gpt-oss:20b")
         chunks = [ContextChunk(id=i, heading_chain=[], text="t") for i in range(10)]
         deps = ContextChunkDeps(doc_title="Doc", doc_summary="Summary", chunks=chunks)
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
@@ -450,7 +450,7 @@ class TestOtherAgenticSessionLimits:
         assert limits.request_limit == math.ceil((10 * 2 + 2 + self._RETRIES) * 1.1)  # 29
 
     def test_remediation_budget_follows_the_remaining_queue(self) -> None:
-        agent = make_agentic_remediation_agent(model_string="ollama/gpt-oss:20b")
+        agent = make_remediation_agent(model_string="ollama/gpt-oss:20b")
         broker = GapBroker([{"name": f"gap-{i}"} for i in range(4)])
         deps = RemediationDeps(gaps=broker)
         limits = agent._usage_limits_for(deps)  # noqa: SLF001
@@ -475,7 +475,7 @@ class TestOtherAgenticSessionLimits:
         assert agent._usage_limits_for(ToolGenerationDeps(source_id="seg_0")) is None  # noqa: SLF001
 
     def test_rlm_presets_win_over_the_derived_budget(self) -> None:
-        agent = make_agentic_context_chunk_agent("ollama/gpt-oss:20b")
+        agent = make_context_chunk_agent("ollama/gpt-oss:20b")
         preset = UsageLimits(request_limit=99)
         agent._rlm_usage_limits = preset  # noqa: SLF001 - the base installs this preset when RLM is on
         deps = ContextChunkDeps(doc_title="Doc", doc_summary="S", chunks=[])
@@ -516,7 +516,7 @@ def test_build_pipeline_enricher_wired_when_enabled(monkeypatch: pytest.MonkeyPa
     )
     pipeline = build_pipeline(config)
     assert pipeline.enricher is not None
-    assert isinstance(pipeline.enricher._agent, AgenticContextChunkAgent)  # noqa: SLF001
+    assert isinstance(pipeline.enricher._agent, ContextChunkAgent)  # noqa: SLF001
 
 
 def _ctx(deps: QueryAgentDeps) -> RunContext[QueryAgentDeps]:

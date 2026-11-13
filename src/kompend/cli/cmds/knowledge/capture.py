@@ -7,7 +7,7 @@ from typing import Any
 
 from kompend.agents.capture import CaptureAgent
 from kompend.agents.types import WriteDeps
-from kompend.agents.write import make_agentic_write_agent
+from kompend.agents.write import make_write_agent
 from kompend.capture.capture import capture
 from kompend.capture.consolidate import consolidate
 from kompend.capture.learn import learn
@@ -331,7 +331,7 @@ def _synthesize_write_page(
     if not model:
         raise RuntimeError(NO_MODEL_CONFIGURED_MESSAGE)
 
-    agent = make_agentic_write_agent(
+    agent = make_write_agent(
         model_string=model,
         timeout=timeout,
         llm=llm,

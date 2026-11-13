@@ -12,27 +12,25 @@ Key design decisions:
   data is the source of truth.
 - Internal nodes with a single child are optionally skipped
   (``skip_single_child``) — a single-child wrapper adds no information.
-- LLM calls go through the Jinja2 template ``chunking/node_summary.md.j2``.
+- One :class:`SummarizerAgent` session covers the eligible nodes; the
+  payload is pre-windowed and cached windows are already applied.
 - Summaries are cached by content hash + model name so unchanged subtrees
   are not re-summarised across runs. ``cache_ignore_model`` drops the model
   from the key (``compile.cache_ignore_model``): after a model switch the
   previous model's summaries are reused instead of re-derived.
-- Agentic sessions are bounded per batch (``SummarizerSessionPolicy``), so a
-  session that exhausts its request budget or ends without recording anything
-  only loses its own batch; the remaining batches still run.
+- Sessions are bounded per batch (``SummarizerSessionPolicy``), so a session
+  that exhausts its request budget or ends without recording anything only
+  loses its own batch; the remaining batches still run.
 """
 
 from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
-from typing import cast
 
 from pydantic_ai.exceptions import UsageLimitExceeded
 
-from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.summarizer import SummarizerAgent
-from kompend.agents.summarizer_agentic import AgenticSummarizerAgent
 from kompend.agents.types import SummarizerDeps, SummaryNode
 from kompend.core.cache.store import CacheStore
 from kompend.core.config._configs import BudgetConfig
@@ -42,7 +40,6 @@ from kompend.core.templates import get_template_loader
 from kompend.core.text.windows import split_text_windows
 from kompend.logging import get_logger
 
-_TEMPLATE = "chunking/node_summary.md.j2"
 _CACHE_LAYER = "summary"
 
 
@@ -81,29 +78,21 @@ class SummarizerContentPolicy:
     config schema stays the single source of truth for the numbers.
 
     Attributes:
-        max_content_chars: Characters of child content per summary call in the
-            plain (non-agentic) path. Longer content is split into several
-            calls — it is never truncated.
-        window_chars: Characters per payload window in the agentic path. One
-            window costs one summarize call, so a bigger window means fewer
-            calls (faster) — it never drops content.
-        target_chars: Target length of the produced summary, in characters.
+        window_chars: Characters per payload window. One window costs one
+            summarize call, so a bigger window means fewer calls (faster)
+            — it never drops content.
         skip_single_child: When ``True``, an internal node with exactly one
             child is skipped — the child's content already represents it.
     """
 
-    max_content_chars: int
     window_chars: int
-    target_chars: int
     skip_single_child: bool
 
     @classmethod
     def from_config(cls, budget: BudgetConfig) -> SummarizerContentPolicy:
         """Build the policy from the ``compile.budget`` config section."""
         return cls(
-            max_content_chars=budget.summary_max_content_chars,
             window_chars=budget.summary_window_chars,
-            target_chars=budget.summary_target_chars,
             skip_single_child=budget.summary_skip_single_child,
         )
 
@@ -168,7 +157,7 @@ class NodeSummarizer:
 
     def __init__(
         self,
-        agent: SummarizerAgent | AgenticSummarizerAgent | None,
+        agent: SummarizerAgent | None,
         cache_store: CacheStore | None = None,
         *,
         content_policy: SummarizerContentPolicy,
@@ -194,13 +183,7 @@ class NodeSummarizer:
         if tree.strategy == ChunkStrategy.SINGLE_PASS:
             return tree
 
-        if isinstance(self._agent, AgenticSummarizerAgent):
-            return self._summarize_agentic(tree)
-
-        for node in self._eligible_nodes(tree):
-            node.summary = self._summarize_node(tree, node)
-
-        return tree
+        return self._summarize_tree(tree)
 
     def _eligible_nodes(self, tree: ChunkTree) -> list[ChunkNode]:
         """Internal nodes awaiting a summary, bottom-up.
@@ -222,21 +205,19 @@ class NodeSummarizer:
             eligible.append(node)
         return eligible
 
-    def _summarize_agentic(self, tree: ChunkTree) -> ChunkTree:
-        """Summarize all eligible internal nodes in agentic session(s).
+    def _summarize_tree(self, tree: ChunkTree) -> ChunkTree:
+        """Summarize all eligible internal nodes in bounded session(s).
 
-        Nodes are asked in bounded batches (``session_policy.batch_size``), so a
+        Nodes are asked in batches (``session_policy.batch_size``), so a
         session that ends without calling ``summarize_node()`` — a small model
         answering in prose instead of using its tools — strands only its own
         batch. A stalled batch is retried up to
         ``session_policy.stall_retries`` times; the rest of the tree keeps
         going either way. Each session gets its own payload and request budget
-        (see ``AgenticSummarizerAgent._usage_limits_for``), and only ids in that
+        (see ``SummarizerAgent._usage_limits_for``), and only ids in that
         session's payload count as progress, so a model that invents or mangles
         ids cannot spin the loop.
         """
-        if not isinstance(self._agent, AgenticSummarizerAgent):
-            raise TypeError("AgenticSummarizerAgent expected")
         agent = self._agent
         eligible = self._eligible_nodes(tree)
         if not eligible:
@@ -389,50 +370,6 @@ class NodeSummarizer:
                     self._cache_store(content, heading_chain, summary)
             node.summary = self._merge_window_summaries(done, state.ids_for(node.id))
         return progressed
-
-    def _summarize_node(self, tree: ChunkTree, node: ChunkNode) -> str:
-        """Build the content of ``node`` from its children and summarise it."""
-        parts: list[str] = []
-        for child_id in node.children_ids:
-            child = tree.nodes.get(child_id)
-            if child is None:
-                continue
-            text = self._child_content(tree, child)
-            if text:
-                parts.append(text)
-
-        if not parts:
-            return ""
-
-        content = "\n\n".join(parts)
-        heading_chain = " / ".join(node.heading_chain) if node.heading_chain else ""
-
-        windows = split_text_windows(content, self._policy.max_content_chars)
-        if not windows:
-            return ""
-
-        summaries: list[str] = []
-        for window in windows:
-            cached = self._cache_lookup(window, heading_chain)
-            if cached is not None:
-                summaries.append(cached)
-                continue
-            summary = self._llm_summarize(window, heading_chain)
-            self._cache_store(window, heading_chain, summary)
-            summaries.append(summary)
-        return "\n\n".join(part for part in summaries if part)
-
-    def _llm_summarize(self, content: str, heading_chain: str) -> str:
-        """Call LLM via the node-summary template."""
-        prompt = self._loader.render(
-            _TEMPLATE,
-            content=content,
-            heading_chain=heading_chain,
-            target_chars=self._policy.target_chars,
-        )
-        deps = PipelineAgentDeps(text=prompt, source_id=heading_chain)
-        result = cast("SummarizerAgent", self._agent).run(deps)
-        return result.strip()
 
     def _cache_lookup(self, content: str, heading_chain: str) -> str | None:
         if self._cache is None:

@@ -10,8 +10,8 @@ from pathlib import Path
 from typing import Any
 
 from kompend.agents.categorize import CategorizeAgent
-from kompend.agents.deps import PipelineAgentDeps
-from kompend.agents.write import WriteAgent
+from kompend.agents.types import WriteDeps
+from kompend.agents.write import make_write_agent
 from kompend.cli.settings import build_cli_overrides
 from kompend.cli.sources.resolve import resolve_files
 from kompend.cli.workflow.pipeline import resolve_compile_inputs
@@ -29,9 +29,7 @@ from kompend.core.models.enums import NodeType, OkfField
 from kompend.core.models.metadata import meta_str_list
 from kompend.core.paths import vault_paths
 from kompend.core.pipeline.ingest import ingest_documents
-from kompend.core.templates import get_template_loader
 from kompend.core.text.slug import slugify
-from kompend.core.text.windows import split_text_windows
 from kompend.core.trust.actor import resolve_actor
 from kompend.core.utils.time import iso_local
 from kompend.llm.format import strip_reasoning
@@ -335,55 +333,31 @@ def _synthesize_write_page(
 ) -> str:
     """Synthesize the sources into the body of a write page.
 
-    A source longer than ``source_char_max`` characters is synthesized in
-    several calls — the budget sizes one call, it never shortens the
-    source. The per-call results are joined; a failing call keeps the
-    results of the calls that succeeded before it.
+    One session: the sources travel in the deps and the agent pulls them
+    through the ``read_source`` tools, paging through windows so nothing
+    is dropped — ``source_char_max`` sizes a window, it never shortens a
+    source. References stay caller-side.
     """
     references_section = _build_references_section(source_texts, related_titles)
 
     if not model:
         raise RuntimeError(NO_MODEL_CONFIGURED_MESSAGE)
 
-    agent = WriteAgent(
-        model,
-        timeout=timeout,
-        llm=llm,
+    agent = make_write_agent(model, timeout=timeout, llm=llm)
+    deps = WriteDeps(
+        page_title=page_title,
+        source_texts=source_texts,
+        related_titles=related_titles,
+        source_id="write",
+        source_char_max=source_char_max,
     )
-    loader = get_template_loader()
-    pages: list[str] = []
-    for block in _source_blocks(source_texts, source_char_max):
-        prompt = loader.render(
-            "capture/write_prompt.md.j2",
-            page_title=page_title,
-            source_block=block,
-        )
-        deps = PipelineAgentDeps(text=prompt, source_id="write")
-        try:
-            content = strip_reasoning(agent.run(deps))
-        except Exception as exc:
-            if not pages:
-                raise RuntimeError(f"LLM synthesis failed for write page: {exc}") from exc
-            logger.warning("Write-page synthesis stopped after %d block(s): %s", len(pages), exc)
-            break
-        if content.strip():
-            pages.append(content.strip())
-    if not pages:
+    try:
+        content = strip_reasoning(agent.run(deps))
+    except Exception as exc:
+        raise RuntimeError(f"LLM synthesis failed for write page: {exc}") from exc
+    if not content.strip():
         raise RuntimeError("LLM returned empty content for write page")
-    return "\n\n".join(pages) + "\n\n" + references_section
-
-
-def _source_blocks(source_texts: list[tuple[str, str]], source_char_max: int) -> list[str]:
-    """Return one prompt block per source window.
-
-    The sources are never shortened — a long source contributes several
-    blocks, each holding the next window of its text.
-    """
-    blocks: list[str] = []
-    for stem, text in source_texts:
-        for window in split_text_windows(text, source_char_max):
-            blocks.append(f"### {stem}\n\n{window}")
-    return blocks
+    return content + "\n\n" + references_section
 
 
 def _build_references_section(source_texts: list[tuple[str, str]], related_titles: list[str]) -> str:

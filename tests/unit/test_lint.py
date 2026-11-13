@@ -13,7 +13,7 @@ import pytest
 from pydantic import ValidationError
 
 from kompend.agents.lint import LintRuleAgent
-from kompend.agents.remediate import AgenticRemediationAgent, RemediationAgent
+from kompend.agents.remediate import RemediationAgent
 from kompend.agents.types import RemediationDeps, RemediationPageResult
 from kompend.compilation.schema import Concept, Entity
 from kompend.compilation.two_phase import Extraction
@@ -1216,8 +1216,8 @@ class TestCoverageGapRemediation:
         client = _mock_remediate_llm()
         wiki = _make_wiki()
         remediate(wiki, LintReport(results=[_gap_result("Active Noise Control")]), base_dir=tmp_path, agent=client)
-        prompt = client.run.call_args[0][0].text
-        assert unique_summary in prompt
+        payload = "\n".join(client.fetched_payloads)
+        assert unique_summary in payload
 
     def test_only_relevant_source_summary_included(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """Summary from a source not mentioning the concept is excluded."""
@@ -1239,9 +1239,9 @@ class TestCoverageGapRemediation:
         client = _mock_remediate_llm()
         wiki = _make_wiki()
         remediate(wiki, LintReport(results=[_gap_result("ANC")]), base_dir=tmp_path, agent=client)
-        prompt = client.run.call_args[0][0].text
-        assert "RELEVANT_SUMMARY_MARKER" in prompt
-        assert "UNRELATED_SUMMARY_MARKER" not in prompt
+        payload = "\n".join(client.fetched_payloads)
+        assert "RELEVANT_SUMMARY_MARKER" in payload
+        assert "UNRELATED_SUMMARY_MARKER" not in payload
 
     def test_generated_page_appears_once(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
         """A generated concept is not reported twice."""
@@ -1339,7 +1339,7 @@ class TestAgenticRemediation:
                 )
             },
         )
-        agent = _mock_agentic_remediation(
+        agent = _mock_remediation(
             pages=[
                 ("Active Noise Control", "# ANC\n..."),
                 ("POLQA", "# POLQA\n..."),
@@ -1374,7 +1374,7 @@ class TestAgenticRemediation:
             "load_all_extractions",
             lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="Active Noise Control", definition="ANC")])},
         )
-        agent = MagicMock(spec=AgenticRemediationAgent)
+        agent = MagicMock(spec=RemediationAgent)
 
         def _run(deps: RemediationDeps) -> None:
             deps.gaps.mark_unfixable("Active Noise Control", "no usable source material")
@@ -1399,7 +1399,7 @@ class TestAgenticRemediation:
             "load_all_extractions",
             lambda b, s: {"doc1": Extraction(source="doc1", concepts=[Concept(name="POLQA", definition="Speech quality")])},
         )
-        agent = MagicMock(spec=AgenticRemediationAgent)
+        agent = MagicMock(spec=RemediationAgent)
         agent.run.side_effect = RuntimeError("boom")
         actions = remediate(
             _make_wiki([]),
@@ -1627,9 +1627,9 @@ class TestLintCallFailure:
             rule._call_agent("lint/coverage-gap-dedup.md.j2", result_type=CoverageGapOutput, gaps_data="[]")
 
 
-def _mock_agentic_remediation(pages: list[tuple[str, str]] | None = None) -> MagicMock:
-    """Mock AgenticRemediationAgent whose ``run`` populates ``deps.pages``."""
-    agent = MagicMock(spec=AgenticRemediationAgent)
+def _mock_remediation(pages: list[tuple[str, str]] | None = None) -> MagicMock:
+    """Mock RemediationAgent whose ``run`` populates ``deps.pages``."""
+    agent = MagicMock(spec=RemediationAgent)
     pages = pages or []
 
     def _run(deps: RemediationDeps) -> None:
@@ -1692,8 +1692,22 @@ def _mock_llm_client(json_data: Any) -> MagicMock:
 
 
 def _mock_remediate_llm(content: str = "Generated concept page.") -> MagicMock:
+    """Session-contract mock: fetch()es the queue like the ``fetch_gaps`` tool,
+    submits one page per gap. Fetched batches are JSON-encoded and kept on
+    ``client.fetched_payloads`` so tests can assert on the material the model
+    would have seen.
+    """
     client = MagicMock(spec=RemediationAgent)
-    client.run.return_value = content
+    client.fetched_payloads = []
+
+    def _run(deps: RemediationDeps) -> None:
+        batch = deps.gaps.fetch("remediate", limit=20)
+        if batch:
+            client.fetched_payloads.append(json.dumps(batch))
+        for concept in batch:
+            deps.pages.append(RemediationPageResult(name=concept["name"], content=content))
+
+    client.run.side_effect = _run
     return client
 
 

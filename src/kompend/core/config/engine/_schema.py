@@ -62,6 +62,13 @@ ENV_MAP: dict[str, str] = _build_env_map()
 REMOVED_KEYS: dict[str, list[str]] = {  # nocheck: str-registry — frozen list of historic config keys, gone from the schema
     "compile.budget": [
         "concepts_per_batch",
+        # The plain per-call summary path is gone: one session covers a
+        # tree, so only the payload window shapes the calls.
+        "summary_max_content_chars",
+        "summary_target_chars",
+        # Verification is one session over every claim: there is no excerpt
+        # budget and no substring fallback left to tune.
+        "verify_min_ngram",
         # Output ceilings. `max_tokens` is no longer sent to a model: an
         # answer is bounded by the context window minus its prompt, so the
         # planners derive the room they leave free from the window itself.

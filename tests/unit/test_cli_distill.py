@@ -64,34 +64,23 @@ def test_build_distill_agent_without_model_returns_none() -> None:
     assert build_distill_agent(_cfg(None)) is None
 
 
-def test_build_distill_agent_prefers_agentic(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_distill_agent_from_config(monkeypatch: pytest.MonkeyPatch) -> None:
     sentinel = _SentinelAgent()
-    monkeypatch.setattr("kompend.cli.workflow.distill.make_agentic_distill_agent", lambda *a, **k: sentinel)
+    monkeypatch.setattr("kompend.cli.workflow.distill.make_distill_agent", lambda *a, **k: sentinel)
     monkeypatch.setattr("kompend.cli.workflow.distill.DistillAgent", lambda *a, **k: pytest.fail("fallback used"))
 
     assert build_distill_agent(_cfg("ollama/test-model")) is sentinel
 
 
-def test_build_distill_agent_falls_back_when_agentic_fails(monkeypatch: pytest.MonkeyPatch) -> None:
-    sentinel = _SentinelAgent()
+def test_build_distill_agent_raises_when_construction_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A construction failure is a broken install — it must not be swallowed."""
+    monkeypatch.setattr(
+        "kompend.cli.workflow.distill.make_distill_agent",
+        lambda *a, **k: (_ for _ in ()).throw(ValueError("unavailable")),
+    )
 
-    def _boom(*args: object, **kwargs: object) -> object:
-        raise ValueError("no agentic support")
-
-    monkeypatch.setattr("kompend.cli.workflow.distill.make_agentic_distill_agent", _boom)
-    monkeypatch.setattr("kompend.cli.workflow.distill.DistillAgent", lambda *a, **k: sentinel)
-
-    assert build_distill_agent(_cfg("ollama/test-model")) is sentinel
-
-
-def test_build_distill_agent_returns_none_when_both_fail(monkeypatch: pytest.MonkeyPatch) -> None:
-    def _boom(*args: object, **kwargs: object) -> object:
-        raise ValueError("unavailable")
-
-    monkeypatch.setattr("kompend.cli.workflow.distill.make_agentic_distill_agent", _boom)
-    monkeypatch.setattr("kompend.cli.workflow.distill.DistillAgent", _boom)
-
-    assert build_distill_agent(_cfg("ollama/test-model")) is None
+    with pytest.raises(ValueError, match="unavailable"):
+        build_distill_agent(_cfg("ollama/test-model"))
 
 
 def test_run_distill_archives_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -133,7 +122,7 @@ def test_build_distill_agent_passes_the_group_budget(monkeypatch: pytest.MonkeyP
         seen.update(kwargs)
         return _SentinelAgent()
 
-    monkeypatch.setattr("kompend.cli.workflow.distill.make_agentic_distill_agent", _fake)
+    monkeypatch.setattr("kompend.cli.workflow.distill.make_distill_agent", _fake)
     cfg = _cfg("ollama/test-model")
     cfg.kompend.compile.budget.distill_requests_per_group = 7  # type: ignore[union-attr]
 

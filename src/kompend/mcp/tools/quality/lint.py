@@ -15,7 +15,7 @@ from pathlib import Path
 
 from pydantic import JsonValue
 
-from kompend.agents.remediate import make_agentic_remediation_agent
+from kompend.agents.remediate import make_remediation_agent
 from kompend.cli.settings import build_cli_overrides
 from kompend.core.cache.wiki import write_wiki_cache
 from kompend.core.config import resolve_config
@@ -271,7 +271,7 @@ def lint_remediate(
 
     default_model = cfg.kompend.compile.llm.default_model
     agent = (
-        make_agentic_remediation_agent(
+        make_remediation_agent(
             model_string=default_model,
             timeout=float(cfg.kompend.compile.llm.timeout),
             llm=cfg.kompend.compile.llm,

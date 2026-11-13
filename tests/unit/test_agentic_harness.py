@@ -10,11 +10,11 @@ from pydantic_ai_harness.memory import InMemoryStore, MemoryStore
 
 import kompend.agents.base.agent as base_module
 from kompend.agents.agentic_harness import AgenticHarness
-from kompend.agents.distill_agentic import make_agentic_distill_agent
-from kompend.agents.remediate import make_agentic_remediation_agent
-from kompend.agents.summarizer_agentic import make_agentic_summarizer_agent
+from kompend.agents.distill import make_distill_agent
+from kompend.agents.remediate import make_remediation_agent
+from kompend.agents.summarizer import make_summarizer_agent
 from kompend.agents.vault_memory import DirectoryMemoryStore
-from kompend.agents.verification import make_agentic_verification_agent
+from kompend.agents.verification import make_verification_agent
 from kompend.core.config._configs import LLMConfig, LlmMemoryStore
 from kompend.llm.usage import UsageTracker
 
@@ -49,7 +49,7 @@ class TestAgenticHarnessCapabilities:
 
 class TestSummarizerAgentHasNoMemory:
     def test_summarizer_agent_has_no_memory_capability(self) -> None:
-        agent = make_agentic_summarizer_agent(
+        agent = make_summarizer_agent(
             "ollama/noop",
             context_window=8192,
         )
@@ -65,11 +65,11 @@ class TestAgentMemoryConfig:
     """
 
     def test_config_default_offers_the_notebook(self) -> None:
-        agent = make_agentic_summarizer_agent("ollama/noop", context_window=8192, llm=LLMConfig())
+        agent = make_summarizer_agent("ollama/noop", context_window=8192, llm=LLMConfig())
         assert any(cap.__class__.__name__ == "Memory" for cap in agent.extra_capabilities)
 
     def test_config_off_keeps_the_notebook_off(self) -> None:
-        agent = make_agentic_summarizer_agent(
+        agent = make_summarizer_agent(
             "ollama/noop",
             context_window=8192,
             llm=LLMConfig(agent_memory=False),
@@ -95,7 +95,7 @@ class TestContextUsageWindow:
                 super().__init__(**kwargs)
 
         monkeypatch.setattr(base_module, "ReportContextUsage", _RecorderReportContextUsage)
-        agent = make_agentic_summarizer_agent("ollama/noop", context_window=32768, llm=LLMConfig())
+        agent = make_summarizer_agent("ollama/noop", context_window=32768, llm=LLMConfig())
         agent.usage_tracker = UsageTracker()
 
         agent._build_agent()  # noqa: SLF001
@@ -123,7 +123,7 @@ class TestVaultMemoryStore:
         assert memory.store is store
 
     def test_vault_store_only_with_vault_config(self, tmp_path: Any) -> None:
-        agent = make_agentic_summarizer_agent(
+        agent = make_summarizer_agent(
             "ollama/noop",
             context_window=8192,
             llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.SESSION),
@@ -133,7 +133,7 @@ class TestVaultMemoryStore:
         assert isinstance(memory.store, InMemoryStore)
 
     def test_vault_config_builds_the_vault_store(self, tmp_path: Any) -> None:
-        agent = make_agentic_summarizer_agent(
+        agent = make_summarizer_agent(
             "ollama/noop",
             context_window=8192,
             llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.VAULT),
@@ -144,7 +144,7 @@ class TestVaultMemoryStore:
         assert memory.store.directory == tmp_path
 
     def test_store_requires_memory_enabled(self, tmp_path: Any) -> None:
-        agent = make_agentic_summarizer_agent(
+        agent = make_summarizer_agent(
             "ollama/noop",
             context_window=8192,
             llm=LLMConfig(agent_memory=False, memory_store=LlmMemoryStore.VAULT),
@@ -161,7 +161,7 @@ class TestNotebookStagesShareTheVault:
     """
 
     def test_verification_uses_the_vault_store(self, tmp_path: Any) -> None:
-        agent = make_agentic_verification_agent(
+        agent = make_verification_agent(
             model_string="ollama/noop",
             context_window=8192,
             llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.VAULT),
@@ -173,7 +173,7 @@ class TestNotebookStagesShareTheVault:
         assert memory.agent_name == "verification"
 
     def test_remediation_uses_the_vault_store(self, tmp_path: Any) -> None:
-        agent = make_agentic_remediation_agent(
+        agent = make_remediation_agent(
             model_string="ollama/noop",
             context_window=8192,
             llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.VAULT),
@@ -184,7 +184,7 @@ class TestNotebookStagesShareTheVault:
         assert memory.agent_name == "remediation"
 
     def test_distillation_uses_the_vault_store(self, tmp_path: Any) -> None:
-        agent = make_agentic_distill_agent(
+        agent = make_distill_agent(
             "ollama/noop",
             context_window=8192,
             llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.VAULT),
@@ -195,7 +195,7 @@ class TestNotebookStagesShareTheVault:
         assert memory.agent_name == "distill"
 
     def test_session_store_leaves_the_notebook_in_process(self, tmp_path: Any) -> None:
-        agent = make_agentic_verification_agent(
+        agent = make_verification_agent(
             model_string="ollama/noop",
             context_window=8192,
             llm=LLMConfig(agent_memory=True, memory_store=LlmMemoryStore.SESSION),
