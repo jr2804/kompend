@@ -103,10 +103,8 @@ its `deps_type`.
 | `reference_extraction` | `ReferenceExtractionOutput` | `PipelineAgentDeps` |
 | `reference_resolver` | `ReferenceResolutionOutput` | `PipelineAgentDeps` |
 | `memory_consolidation` | `str` | `MemoryConsolidationDeps` |
-| `remediation` | `str` | `PipelineAgentDeps` |
-| `agentic_remediation` | `str` | `RemediationDeps` |
-| `verification` | `dict[str, Any]` | `PipelineAgentDeps` |
-| `agentic_verification` | `str` | `VerificationDeps` |
+| `remediation` | `str` | `RemediationDeps` |
+| `verification` | `str` | `VerificationDeps` |
 | `wicer_probe` | `WicerProbeOutput` | `WicerProbeDeps` |
 | `wicer_evaluate` | `WicerEvaluateOutput` | `WicerEvaluateDeps` |
 | `wicer_diagnose` | `WicerDiagnoseOutput` | `WicerDiagnoseDeps` |
@@ -116,10 +114,8 @@ its `deps_type`.
 | Spec | Output | Deps |
 |------|--------|------|
 | `capture` | `CaptureOutput` | `PipelineAgentDeps` |
-| `distill` | `DistillOutput` | `DistillDeps` |
-| `agentic_distill` | `str` | `DistillAgentDeps` |
-| `write` | `str` | `PipelineAgentDeps` |
-| `agentic_write` | `str` | `WriteDeps` |
+| `distill` | `str` | `DistillAgentDeps` |
+| `write` | `str` | `WriteDeps` |
 | `categorize` | `CategoryTree` | `CategorizeDeps` |
 
 ### Search and query
@@ -148,10 +144,8 @@ its `deps_type`.
 
 | Spec | Output | Deps |
 |------|--------|------|
-| `context_chunk` | `str` | `PipelineAgentDeps` |
-| `agentic_context_chunk` | `str` | `ContextChunkDeps` |
-| `summarizer` | `str` | `PipelineAgentDeps` |
-| `agentic_summarizer` | `str` | `SummarizerDeps` |
+| `context_chunk` | `str` | `ContextChunkDeps` |
+| `summarizer` | `str` | `SummarizerDeps` |
 
 ### Output, diagnostics and vision
 
@@ -236,8 +230,8 @@ context.
 Agentic agents run a multi-turn loop over pydantic-ai tools. Two mechanisms:
 
 - **Tools** — plain Python functions passed as `tools=` when the agent is
-  built (`AgenticRemediationAgent` → `fetch_gaps`, `save_page`,
-  `mark_unfixable`; `AgenticVerificationAgent` → `get_claim`,
+  built (`RemediationAgent` → `fetch_gaps`, `save_page`,
+  `mark_unfixable`; `VerificationAgent` → `get_claim`,
   `search_sources`, `read_page`, `mark_verified`, …). The tool list lives in
   the matching `*_tools.py` module and must match the system prompt.
 - **Capabilities** — shared cross-cutting behaviour supplied by

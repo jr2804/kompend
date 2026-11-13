@@ -801,9 +801,9 @@ operation routes through the agentic factory. For the operations it covers,
 the agentic variant is the default for the affected CLI commands and MCP
 tools, for example:
 
-- `kompend distill` → `AgenticDistillAgent` (one session over all tag groups)
-- `kompend write` → `AgenticWriteAgent` (loads sources on demand)
-- `kompend lint verify` → `AgenticVerificationAgent` (one session over claims)
+- `kompend distill` → `DistillAgent` (one session over all tag groups)
+- `kompend write` → `WriteAgent` (one session; loads sources on demand)
+- `kompend lint verify` → `VerificationAgent` (one session over claims)
 
 Not every operation is agentic: a set is **single-shot by design** (reference
 extraction/resolution, capture, categorization, lint rules, WiCER

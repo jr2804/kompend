@@ -27,7 +27,7 @@ flowchart TD
     classDef model fill:#f3e5f5,stroke:#6a1b9a,stroke-width:2px,color:#1B1B1B
 
     STAGE["Pipeline stage<br/>compile · query · lint · distill · doctor"]
-    SPEC["AgentSpec registry<br/>38 specs · typed result + deps · template"]
+    SPEC["AgentSpec registry<br/>32 specs · typed result + deps · template"]
     BASE["KompendAgentBase<br/>window planning · transient retry · failure classes<br/>compact input formats · output ceiling"]
     CAP["Harness capabilities<br/>compaction · step persistence · memory<br/>RLM · conversation search · system reminders"]
     KM["KompendModel<br/>json_repair · usage tracking · reasoning merge"]
@@ -78,12 +78,12 @@ pipeline shapes, not quality dials; see
 | Phase | Tasks | Session shape |
 |---|---|---|
 | Capture & organize | `capture`, `categorize` | — |
-| Chunking | `context_chunk` | `agentic_context_chunk` |
+| Chunking | `context_chunk` (unified: session with tools) | - |
 | Extraction & references | `extraction`, `extraction_reduce`, `reference_extraction`, `reference_resolver` | — |
-| Generation & output | `agentic_generation`, `write`, `wiki_index`, `agentic_overview` | `write` → `agentic_write` |
+| Generation & output | `agentic_generation`, `write` (unified: session with tools), `wiki_index`, `agentic_overview` | - |
 | Refinement (WiCER) | `wicer_probe`, `wicer_evaluate`, `wicer_diagnose` | — |
-| Verification & repair | `verification`, `remediation` | `agentic_verification`, `agentic_remediation` |
-| Summarise & distil | `summarizer`, `distill`, `memory_consolidation` | `agentic_summarizer`, `agentic_distill` |
+| Verification & repair | `remediation` (unified: session with tools), `verification` (unified: session with tools) | - |
+| Summarise & distil | `summarizer`, `distill`, `memory_consolidation` (unified: sessions with tools) | - |
 | Query & retrieval | `query` (unified: session with tools), `query_expansion`, `crag_grade`, `hyde` | - |
 | Decision sidecar | `decision`, `adaptation`, `query_intent`, `figure_relevance`, `decision_probe` | — |
 | Diagnostics & vision | `doctor`, `lint_rule`, `vlm` | — |
@@ -129,13 +129,12 @@ one request answers from it — while the session fetches its own context
 through tools, trading more requests for questions retrieval alone cannot
 answer.
 
-Query no longer offers the choice: it is the first task consolidated onto
-one session shape. The retrieval stack still assembles the first-turn
-context, the wiki tools stay registered, and the model decides whether one
-request is enough or it should investigate with `search_wiki`/`read_page` —
-a zero-tool session is one request. The remaining pairs (chunking, write,
-verification, remediation, summariser, distiller) follow the same
-consolidation plan.
+Query, write, remediation, summariser, distiller and context chunking no
+longer offer the choice: each is consolidated onto one session shape.
+Query still assembles the first-turn context from the retrieval stack,
+write and remediation travel their payloads in the deps, and the model
+decides whether one request is enough or it should investigate with the
+task's tools — a zero-tool session is one request.
 
 One more detail worth knowing when reading the inventory:
 

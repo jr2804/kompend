@@ -328,7 +328,6 @@ Beyond token budgets, `BudgetConfig` provides content-quality controls:
 | `min_concept_sources` | `2` | `KOMP_BUDGET_MIN_CONCEPT_SOURCES` | Min distinct sources for a cross-cutting concept page |
 | `max_concept_pages` | `50` | `KOMP_BUDGET_MAX_CONCEPT_PAGES` | Warning threshold for generated concept pages (all candidates are compiled) |
 | `concepts_per_batch` | `8` | `KOMP_BUDGET_CONCEPTS_PER_BATCH` | Concepts extracted per LLM batch |
-| `verify_min_ngram` | `3` | — (config only) | Min n-gram overlap for verification |
 | `wicer_max_iterations` | `0` | `KOMP_BUDGET_WICER_MAX_ITERATIONS` | Refinement rounds — `0` runs until the loop converges |
 | `wicer_max_seconds` | `1800` | `KOMP_BUDGET_WICER_MAX_SECONDS` | Wall-clock budget of the refinement loop (`0` disables it) |
 
