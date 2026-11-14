@@ -20,6 +20,14 @@ from kompend.core.models.trees import ChunkNode, ChunkTree
 from kompend.core.text.density import conservative_tokens
 
 
+#: Content kind of a child that carries a chunk.
+KIND_CHUNK: Final[str] = "chunk"
+#: Content kind of a child that carries structured data.
+KIND_STRUCTURED: Final[str] = "structured"
+#: Content kind of a child that carries neither (an inner node).
+KIND_INTERNAL: Final[str] = "internal"
+
+
 @dataclass(frozen=True)
 class OutlineNode:
     """Size and shape facts for one chunk-tree node.
@@ -55,12 +63,45 @@ class OutlineNode:
     preview: str
 
 
-#: Content kind of a child that carries a chunk.
-KIND_CHUNK: Final[str] = "chunk"
-#: Content kind of a child that carries structured data.
-KIND_STRUCTURED: Final[str] = "structured"
-#: Content kind of a child that carries neither (an inner node).
-KIND_INTERNAL: Final[str] = "internal"
+def build_outline(tree: ChunkTree, *, preview_chars: int = 200) -> list[OutlineNode]:
+    """Build the structural outline of *tree* in one bottom-up pass.
+
+    Walks the tree once (``O(nodes)``), accumulates subtree sizes from the
+    leaves up, and returns one entry per node in document order. No cache,
+    no I/O, no model.
+
+    Args:
+        tree: The chunk tree to outline.
+        preview_chars: Characters of own payload kept in each preview.
+
+    Returns:
+        One :class:`OutlineNode` per node, in ``tree.walk()`` order.
+    """
+    ordered = list(tree.walk())
+    subtree_chars: dict[str, int] = {}
+    entries: dict[str, OutlineNode] = {}
+    for node in reversed(ordered):
+        payload = _own_content(node)
+        children = [tree.nodes[child_id] for child_id in node.children_ids if child_id in tree.nodes]
+        kinds: list[str] = []
+        for child in children:
+            kind = _child_kind(child)
+            if kind not in kinds:
+                kinds.append(kind)
+        total = len(payload) + sum(subtree_chars[child.id] for child in children)
+        subtree_chars[node.id] = total
+        entries[node.id] = OutlineNode(
+            node_id=node.id,
+            heading_chain=node.heading_chain,
+            depth=node.depth,
+            child_count=len(children),
+            payload_chars=len(payload),
+            subtree_chars=total,
+            token_estimate=estimate_tokens(payload),
+            kinds=tuple(kinds),
+            preview=_preview(payload, preview_chars),
+        )
+    return [entries[node.id] for node in ordered]
 
 
 def estimate_tokens(text: str) -> int:
@@ -109,52 +150,6 @@ def _preview(payload: str, preview_chars: int) -> str:
     return " ".join(payload.split())[:preview_chars]
 
 
-def build_outline(tree: ChunkTree, *, preview_chars: int = 200) -> list[OutlineNode]:
-    """Build the structural outline of *tree* in one bottom-up pass.
-
-    Walks the tree once (``O(nodes)``), accumulates subtree sizes from the
-    leaves up, and returns one entry per node in document order. No cache,
-    no I/O, no model.
-
-    Args:
-        tree: The chunk tree to outline.
-        preview_chars: Characters of own payload kept in each preview.
-
-    Returns:
-        One :class:`OutlineNode` per node, in ``tree.walk()`` order.
-    """
-    ordered = list(tree.walk())
-    subtree_chars: dict[str, int] = {}
-    entries: dict[str, OutlineNode] = {}
-    for node in reversed(ordered):
-        payload = _own_content(node)
-        children = [tree.nodes[child_id] for child_id in node.children_ids if child_id in tree.nodes]
-        kinds: list[str] = []
-        for child in children:
-            kind = _child_kind(child)
-            if kind not in kinds:
-                kinds.append(kind)
-        total = len(payload) + sum(subtree_chars[child.id] for child in children)
-        subtree_chars[node.id] = total
-        entries[node.id] = OutlineNode(
-            node_id=node.id,
-            heading_chain=node.heading_chain,
-            depth=node.depth,
-            child_count=len(children),
-            payload_chars=len(payload),
-            subtree_chars=total,
-            token_estimate=estimate_tokens(payload),
-            kinds=tuple(kinds),
-            preview=_preview(payload, preview_chars),
-        )
-    return [entries[node.id] for node in ordered]
-
-
-def _cell(value: str) -> str:
-    """Collapse a metadata cell to one line for the prompt rendering."""
-    return " ".join(value.split())
-
-
 def outline_to_prompt(entries: Sequence[OutlineNode]) -> str:
     """Render outline entries as a compact indented listing.
 
@@ -174,3 +169,8 @@ def outline_to_prompt(entries: Sequence[OutlineNode]) -> str:
         kinds = "+".join(entry.kinds) if entry.kinds else "-"
         lines.append(f"{indent}{_cell(entry.node_id)} | {entry.depth} | {heading} | {entry.child_count} | {entry.subtree_chars} | {kinds} | {entry.preview}")
     return "\n".join(lines)
+
+
+def _cell(value: str) -> str:
+    """Collapse a metadata cell to one line for the prompt rendering."""
+    return " ".join(value.split())

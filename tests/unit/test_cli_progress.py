@@ -20,19 +20,6 @@ class _Tty(io.StringIO):
         return True
 
 
-@pytest.fixture
-def _fresh_err_console_cache() -> Iterator[None]:
-    """Clear the cached err console around tests that build consoles.
-
-    :func:`get_err_console` is ``functools.cache``d and binds ``sys.stderr``
-    at construction; tests that fake the streams must not leak a fake-bound
-    (or stale real-bound) console into other tests.
-    """
-    get_err_console.cache_clear()
-    yield
-    get_err_console.cache_clear()
-
-
 class TestShowProgress:
     def test_force_true(self) -> None:
         assert _should_show_progress(force=True) is True
@@ -169,3 +156,16 @@ class TestMakeProgressCallbackSummary:
             ("reset", 0, "Summarizing sections (0 source(s) to summarize)…"),
             ("message", None, "No sources to summarize"),
         ]
+
+
+@pytest.fixture
+def _fresh_err_console_cache() -> Iterator[None]:
+    """Clear the cached err console around tests that build consoles.
+
+    :func:`get_err_console` is ``functools.cache``d and binds ``sys.stderr``
+    at construction; tests that fake the streams must not leak a fake-bound
+    (or stale real-bound) console into other tests.
+    """
+    get_err_console.cache_clear()
+    yield
+    get_err_console.cache_clear()

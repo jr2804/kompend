@@ -16,34 +16,6 @@ from kompend.core.models.structured import StructuredTable
 from kompend.core.text.density import conservative_tokens
 
 
-def _make_chunk(cid: str, text: str) -> Chunk:
-    """Build a Chunk with required fields."""
-    return Chunk(
-        id=cid,
-        text=text,
-        element_types=[ElementType.TEXT],
-        source_elements=[],
-        source_file=Path("doc.md"),
-        token_count=max(1, len(text) // 4),
-    )
-
-
-def _make_tree(nodes: list[ChunkNode], root_id: str) -> ChunkTree:
-    """Build a ChunkTree from nodes keyed by id."""
-    return ChunkTree(
-        root_id=root_id,
-        nodes={node.id: node for node in nodes},
-        source_file=Path("doc.md"),
-        strategy=ChunkStrategy.TWO_LEVEL,
-    )
-
-
-def _leaf_only_tree() -> ChunkTree:
-    """A root that is itself the only leaf."""
-    root = ChunkNode(id="r", depth=0, chunk=_make_chunk("r", "hello world"))
-    return _make_tree([root], "r")
-
-
 def test_leaf_only_tree() -> None:
     """One leaf: payload, subtree, kinds, and preview follow from the chunk."""
     entries = build_outline(_leaf_only_tree())
@@ -58,6 +30,12 @@ def test_leaf_only_tree() -> None:
     assert entry.token_estimate == conservative_tokens("hello world")
     assert entry.kinds == ()
     assert entry.preview == "hello world"
+
+
+def _leaf_only_tree() -> ChunkTree:
+    """A root that is itself the only leaf."""
+    root = ChunkNode(id="r", depth=0, chunk=_make_chunk("r", "hello world"))
+    return _make_tree([root], "r")
 
 
 def test_single_child_chain() -> None:
@@ -272,3 +250,25 @@ def test_scale_guard() -> None:
 
     assert len(entries) == 26001
     assert elapsed < 1.0
+
+
+def _make_chunk(cid: str, text: str) -> Chunk:
+    """Build a Chunk with required fields."""
+    return Chunk(
+        id=cid,
+        text=text,
+        element_types=[ElementType.TEXT],
+        source_elements=[],
+        source_file=Path("doc.md"),
+        token_count=max(1, len(text) // 4),
+    )
+
+
+def _make_tree(nodes: list[ChunkNode], root_id: str) -> ChunkTree:
+    """Build a ChunkTree from nodes keyed by id."""
+    return ChunkTree(
+        root_id=root_id,
+        nodes={node.id: node for node in nodes},
+        source_file=Path("doc.md"),
+        strategy=ChunkStrategy.TWO_LEVEL,
+    )
