@@ -12,7 +12,7 @@ dataclasses, `Path`, `StrEnum`, `bytes`, and `tuple` via custom JSON codecs.
 
 | Module | Contents |
 |--------|----------|
-| `store.py` | `CacheStore`, `make_cache_key`, `_encode_json`, `_decode_json` |
+| `store.py` | `CacheStore`, `make_cache_key`, `_encode_json`, `_decode_json`; plan keys: `SUMMARIZER_PLAN_LAYER`, `summarizer_tree_hash`, `summarizer_task_hash`, `summarizer_policy_key`, `summarizer_plan_deps` |
 
 ## Rules
 

@@ -18,6 +18,7 @@ from kompend.core.reporting.ledger import (
     StageLedger,
     cache_hit_rate,
     failure_histogram,
+    format_traversal_detail,
     slowest_items,
     stage_ledger,
 )
@@ -252,3 +253,46 @@ def _rows(db: Path, run_id: str) -> list[RowMapping]:
     with open_store(db) as conn, core_connection(conn) as core:
         statement = select(stages).where(stages.c.run_id == run_id).order_by(stages.c.id)
         return list(core.execute(statement).mappings().all())
+
+
+def test_traversal_plan_run_writes_one_summarize_row(tmp_path: Path) -> None:
+    """knox-u84v.3: a plan run writes exactly one summarize row with counters."""
+    db = _db(tmp_path)
+    with stage_ledger(db) as ledger:
+        ledger.record_traversal_plan(
+            "notes/report.md",
+            outcome=StageOutcome.OK,
+            planned=12,
+            skipped=3,
+            expanded=9,
+            windows=4,
+            run_id="plan1",
+        )
+    rows = _rows(db, "plan1")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["source"] == "notes/report.md"
+    assert row["stage"] == "summarize"
+    assert row["outcome"] == "ok"
+    assert row["reason_code"] == ReasonCode.TRAVERSAL.value
+    assert row["detail"] == "planned=12 skipped=3 expanded=9 windows=4"
+    assert format_traversal_detail(planned=12, skipped=3, expanded=9, windows=4) == row["detail"]
+
+
+def test_traversal_plan_partial_outcome(tmp_path: Path) -> None:
+    """A partially-covered tree records PARTIAL, same shape, same row count."""
+    db = _db(tmp_path)
+    with stage_ledger(db) as ledger:
+        ledger.record_traversal_plan(
+            "notes/report.md",
+            outcome=StageOutcome.PARTIAL,
+            planned=12,
+            skipped=3,
+            expanded=9,
+            windows=4,
+            run_id="plan2",
+        )
+    rows = _rows(db, "plan2")
+    assert len(rows) == 1
+    assert rows[0]["outcome"] == "partial"
+    assert rows[0]["reason_code"] == ReasonCode.TRAVERSAL.value

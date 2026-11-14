@@ -12,7 +12,7 @@ import pytest
 from pydantic import ValidationError
 
 from kompend.core.config import RlmConfig
-from kompend.core.config._configs import ExtractionConfig, KompendConfig, LLMConfig
+from kompend.core.config._configs import BudgetConfig, ExtractionConfig, KompendConfig, LLMConfig
 from kompend.core.config._core import (
     coerce_config_value,
     deep_merge,
@@ -33,6 +33,7 @@ from kompend.core.config._core import (
 from kompend.core.config.engine._check import check_config_file
 from kompend.core.config.engine._dedupe import strip_duplicate_keys
 from kompend.core.config.generate import enum_choices, extract_toml_keys, generate_scaffold_config, get_default_keys
+from kompend.core.config.models.root import DEFAULTS
 from kompend.core.env import EnvVar
 from kompend.core.keys import PATHS_WIKI_DIR
 from kompend.core.paths import KOMP_DIR
@@ -1299,3 +1300,75 @@ class TestRlmConfig:
     def test_unknown_group_key_rejected(self) -> None:
         with pytest.raises(ValidationError):
             RlmConfig.model_validate({"enabled": True})
+
+
+class TestSummaryTraversal:
+    """knox-u84v.3: traversal-planning knobs under ``compile.budget``."""
+
+    def test_defaults(self) -> None:
+        budget = KompendConfig().compile.budget
+
+        assert budget.summary_traversal == "off"
+        assert budget.summary_traversal_max_nodes == 200
+        assert budget.summary_traversal_max_windows == 2000
+        assert budget.summary_traversal_min_nodes == 50
+        assert budget.summary_traversal_model is None
+
+    def test_defaults_in_defaults_dump(self) -> None:
+        assert DEFAULTS["compile"]["budget"]["summary_traversal"] == "off"
+        assert DEFAULTS["compile"]["budget"]["summary_traversal_max_nodes"] == 200
+        assert DEFAULTS["compile"]["budget"]["summary_traversal_max_windows"] == 2000
+        assert DEFAULTS["compile"]["budget"]["summary_traversal_min_nodes"] == 50
+        assert DEFAULTS["compile"]["budget"]["summary_traversal_model"] is None
+
+    def test_example_covers_the_new_keys(self) -> None:
+        text = (_PROJECT_ROOT / "kompend.toml.example").read_text(encoding="utf-8")
+        example_keys = extract_toml_keys(text)
+
+        assert "compile.budget.summary_traversal" in example_keys
+        assert "compile.budget.summary_traversal_max_nodes" in example_keys
+        assert "compile.budget.summary_traversal_max_windows" in example_keys
+        assert "compile.budget.summary_traversal_min_nodes" in example_keys
+        assert "compile.budget.summary_traversal_model" in example_keys
+
+    def test_mode_env(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("KOMP_BUDGET_SUMMARY_TRAVERSAL", "auto")
+        result = read_env_vars()
+
+        assert result["compile"]["budget"]["summary_traversal"] == "auto"
+
+    def test_max_nodes_env(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("KOMP_BUDGET_SUMMARY_TRAVERSAL_MAX_NODES", "40")
+        result = read_env_vars()
+
+        assert result["compile"]["budget"]["summary_traversal_max_nodes"] == 40
+
+    def test_max_windows_env(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("KOMP_BUDGET_SUMMARY_TRAVERSAL_MAX_WINDOWS", "60")
+        result = read_env_vars()
+
+        assert result["compile"]["budget"]["summary_traversal_max_windows"] == 60
+
+    def test_min_nodes_env(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("KOMP_BUDGET_SUMMARY_TRAVERSAL_MIN_NODES", "10")
+        result = read_env_vars()
+
+        assert result["compile"]["budget"]["summary_traversal_min_nodes"] == 10
+
+    def test_model_env(self, monkeypatch: Any) -> None:
+        monkeypatch.setenv("KOMP_BUDGET_SUMMARY_TRAVERSAL_MODEL", "openai/gpt-4o")
+        result = read_env_vars()
+
+        assert result["compile"]["budget"]["summary_traversal_model"] == "openai/gpt-4o"
+
+    def test_mode_rejects_unknown_values(self) -> None:
+        with pytest.raises(ValidationError):
+            BudgetConfig.model_validate({"summary_traversal": "sometimes"})
+
+    def test_budgets_reject_zero(self) -> None:
+        with pytest.raises(ValidationError):
+            BudgetConfig.model_validate({"summary_traversal_max_nodes": 0})
+        with pytest.raises(ValidationError):
+            BudgetConfig.model_validate({"summary_traversal_max_windows": 0})
+        with pytest.raises(ValidationError):
+            BudgetConfig.model_validate({"summary_traversal_min_nodes": 0})

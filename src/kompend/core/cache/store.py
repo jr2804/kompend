@@ -21,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 from base64 import b64decode, b64encode
+from collections.abc import Sequence
 from dataclasses import fields, is_dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -392,3 +393,64 @@ def make_cache_key(deps: dict[str, str]) -> str:
     """
     blob = json.dumps(deps, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(blob).hexdigest()[:16]
+
+
+#: Cache layer for summarizer traversal plans: one entry per planned tree,
+#: keyed by :func:`summarizer_plan_deps`. The payload is the full plan JSON;
+#: the ledger row carries only the counters (see
+#: :func:`kompend.core.reporting.ledger.format_traversal_detail`).
+SUMMARIZER_PLAN_LAYER: Final[str] = "summarizer_plan"
+
+
+def summarizer_tree_hash(root_id: str, nodes: Sequence[tuple[str, Sequence[str]]]) -> str:
+    """Hash the identity of a chunk tree for plan caching.
+
+    Covers the root id plus every node's id and heading chain, in document
+    order — a recompile that renames or restructures the tree misses, while
+    a summary-only change hits. Returns 16 hex chars like
+    :func:`make_cache_key`.
+    """
+    parts = [root_id]
+    for node_id, heading_chain in nodes:
+        parts.append(node_id)
+        parts.extend(heading_chain)
+    return hashlib.sha256("\x00".join(parts).encode()).hexdigest()[:16]
+
+
+def summarizer_task_hash(task: str, frontmatter: str) -> str:
+    """Hash what the plan is for: the task statement plus document frontmatter.
+
+    A plan from another task statement must never match, so the task is a
+    first-class cache input — not a prompt decoration. Returns 16 hex chars.
+    """
+    return hashlib.sha256(f"{task}\x00{frontmatter}".encode()).hexdigest()[:16]
+
+
+def summarizer_policy_key(mode: str, *, max_nodes: int, max_windows: int) -> str:
+    """Policy component of the plan deps: the traversal mode and budgets.
+
+    A budget change can change the answers, so it changes the key; the
+    ``min_nodes`` gate only decides whether planning runs at all, so it is
+    not part of the key.
+    """
+    return f"{mode}/{max_nodes}/{max_windows}"
+
+
+def summarizer_plan_deps(
+    *,
+    tree_hash: str,
+    task_hash: str,
+    model: str,
+    policy: str,
+    include_model: bool = True,
+) -> dict[str, str]:
+    """Dependency dict for one ``summarizer_plan`` cache entry.
+
+    ``include_model`` is the plan-layer spelling of
+    ``compile.cache_ignore_model``: drop the model after a switch so plans
+    made by the previous model are reused.
+    """
+    deps = {"tree_hash": tree_hash, "task_hash": task_hash, "policy": policy}
+    if include_model:
+        deps["model"] = model  # nocheck: summarizer cache deps, not wiki metadata
+    return deps

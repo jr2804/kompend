@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, model_validator
 
@@ -79,6 +79,21 @@ class BudgetConfig(_KompendBaseModel):
     segment_shrink_attempts: int = Field(default=2, ge=0, validation_alias=EnvVar.BUDGET_SEGMENT_SHRINK_ATTEMPTS)
     summary_session_batch_size: int = Field(default=20, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_BATCH_SIZE)
     summary_session_stall_retries: int = Field(default=1, ge=0, validation_alias=EnvVar.BUDGET_SUMMARY_SESSION_STALL_RETRIES)
+    #: Traversal planning for the chunk-tree summarizer. ``"off"``
+    #: summarizes the whole tree; ``"auto"`` plans one level at a time with
+    #: the decision model, skipping branches the task does not need.
+    summary_traversal: Literal["off", "auto"] = Field(default="off", validation_alias=EnvVar.BUDGET_SUMMARY_TRAVERSAL)
+    #: Most children one planned level may expand. The plan is a contract:
+    #: a window that spends past the remaining budget is sent back.
+    summary_traversal_max_nodes: int = Field(default=200, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_TRAVERSAL_MAX_NODES)
+    #: Most summarizer windows one planned tree may spend.
+    summary_traversal_max_windows: int = Field(default=2000, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_TRAVERSAL_MAX_WINDOWS)
+    #: Trees below this many nodes skip planning — the planner is pure
+    #: overhead on a tree that summarizes in one pass anyway.
+    summary_traversal_min_nodes: int = Field(default=50, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_TRAVERSAL_MIN_NODES)
+    #: Decision model override for traversal planning; falls back to
+    #: ``decision.model`` when unset.
+    summary_traversal_model: str | None = Field(default=None, validation_alias=EnvVar.BUDGET_SUMMARY_TRAVERSAL_MODEL)
     #: Characters served per ``read_source()`` call in the write-page
     #: synthesis. A longer source is read in several windows (the agent
     #: pages through it) — it is never shortened.

@@ -13,6 +13,8 @@ Each row carries:
   (``ok | cached | skipped | failed | timeout | degraded``);
 * ``reason_code`` — a :class:`~kompend.core.types.ReasonCode` value when the
   outcome was not ``ok``/``cached`` (the same value the log ``extra=`` carries);
+  traversal-plan rows always carry ``TRAVERSAL`` — the plan is the product,
+  not a failure;
 * ``duration_ms`` — wall-clock cost of the attempt, when measurable;
 * ``detail`` — a capped excerpt (exception text, dedup verdict, …);
 * the attempt's facts — ``parser`` (backend identity), ``backend`` (class
@@ -177,6 +179,31 @@ class StageLedger:
         except sqlite3.Error as exc:  # never let the observer break the run
             logger.debug("stage ledger write failed: %s", exc)
 
+    def record_traversal_plan(
+        self,
+        source: str,
+        *,
+        outcome: StageOutcome,
+        planned: int,
+        skipped: int,
+        expanded: int,
+        windows: int,
+        run_id: str | None = None,
+    ) -> None:
+        """Record one traversal-plan row: one row per tree, stage ``"summarize"``.
+
+        The full plan JSON belongs to the ``summarizer_plan`` cache layer;
+        the row carries only the counters via :func:`format_traversal_detail`.
+        """
+        self.record(
+            source,
+            "summarize",
+            outcome=outcome,
+            reason_code=ReasonCode.TRAVERSAL,
+            detail=format_traversal_detail(planned=planned, skipped=skipped, expanded=expanded, windows=windows),
+            run_id=run_id,
+        )
+
     def record_parse_quality(self, quality: ParseQuality) -> None:
         """Persist *quality* as the source's current parse verdict.
 
@@ -246,6 +273,16 @@ class StageLedger:
         with self._lock:
             if self._conn is not None:
                 _prune(self._conn)
+
+
+def format_traversal_detail(*, planned: int, skipped: int, expanded: int, windows: int) -> str:
+    """Counter line for a traversal-plan ledger row.
+
+    The fixed ``planned/skipped/expanded/windows`` shape keeps the row
+    greppable; the full plan JSON lives in the ``summarizer_plan`` cache
+    layer, never in the excerpted detail.
+    """
+    return f"planned={planned} skipped={skipped} expanded={expanded} windows={windows}"
 
 
 def _excerpt(text: str) -> str:

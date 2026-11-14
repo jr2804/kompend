@@ -15,7 +15,7 @@ stores into human-readable markdown — no LLM calls.
 | `log.py` | `build_log_report` - the engine behind `kompend log` |
 | `handle.py` | `RunHandle` - the run identity the CLI holds between start and end; the `_CURRENT_RUN_ID` ContextVar + `set_current_run_id`/`current_run_id` |
 | `runlog.py` | `log_run_start`, `log_run_end` - append-only audit trail in the `runs` table; attaches/detaches the flight recorder (see Rules) |
-| `ledger.py` | `StageLedger`, `stage_ledger` - per-item stage ledger in the `stages` table; documented queries (`slowest_items`, `failure_histogram`, `cache_hit_rate`, `matching_sources`, `source_runs`, `source_attempts`) |
+| `ledger.py` | `StageLedger`, `stage_ledger` - per-item stage ledger in the `stages` table; documented queries (`slowest_items`, `failure_histogram`, `cache_hit_rate`, `matching_sources`, `source_runs`, `source_attempts`); traversal rows via `record_traversal_plan` + `format_traversal_detail` |
 | `parse_quality.py` | `ParseQuality`, `measure_parse_quality`, `read_parse_quality` - per-document parse verdict (replacement ratio, empty blocks, coverage, chars per page) persisted one row per source; `read_parse_quality` is read-only and returns `[]` for a missing store or table |
 | `explain.py` | `build_explain_report`, `render_explain`, `resolve_source` - the engine behind `kompend explain` (one file's ledger rows, stage totals, degradations); raises `AmbiguousSourceError` on fragment collisions |
 | `last_run.py` | `build_last_run_report`, `render_last_run` - the doctor's last-run section: degradation counts against their calls, slowest items overall and per stage, failure histogram, and the run-log path; read-only and empty-safe |
@@ -37,7 +37,11 @@ stores into human-readable markdown — no LLM calls.
   swallowed (`sqlite3.Error` → debug log); each row commits on its own so a
   crash keeps what was written; pruning reuses the runlog soft-cap pattern
   (`_SOFT_CAP_ROWS`/`_KEEP_ROWS`). Callers pass `StageLedger` down or open it
-  with `stage_ledger(db_path)`; `record()` never raises.
+  with `stage_ledger(db_path)`; `record()` never raises. Traversal plans are
+  the exception to one-row-per-attempt: `record_traversal_plan` writes one
+  row per tree (`stage="summarize"`, `reason_code=TRAVERSAL`) with only the
+  counters in the detail — the full plan JSON belongs to the
+  `summarizer_plan` cache layer.
 - `parse_quality` is the one table that outlives ledger pruning: one row per
   source (latest parse wins), written by `record_parse_quality` at the parse
   call sites. It stores a **suspicion**, never a gate — no parse is rejected

@@ -406,6 +406,20 @@ concepts_per_segment = 12
 segment_shrink_attempts = 2
 summary_session_batch_size = 20
 summary_session_stall_retries = 1
+# Traversal planning for the chunk-tree summarizer: "off" summarizes the
+# whole tree; "auto" plans one level at a time with the decision model,
+# skipping branches the task does not need.
+summary_traversal = "off"  # off, auto
+# Most children one planned level may expand; most summarizer windows one
+# planned tree may spend. A plan that spends past the remaining budget is
+# sent back. Trees below summary_traversal_min_nodes skip planning — the
+# planner is pure overhead on a tree that summarizes in one pass anyway.
+summary_traversal_max_nodes = 200
+summary_traversal_max_windows = 2000
+summary_traversal_min_nodes = 50
+# Decision model override for traversal planning; falls back to
+# decision.model when unset.
+# summary_traversal_model = "${KOMP_BUDGET_SUMMARY_TRAVERSAL_MODEL}"
 
 # Capture / write-page synthesis: characters served per source window.
 # A longer source is read in several windows — it is never shortened.

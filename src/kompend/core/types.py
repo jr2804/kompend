@@ -42,6 +42,10 @@ class ReasonCode(StrEnum):
     JUDGE_DEGRADED = "judge_degraded"
     #: A decision tier had to fall back to the lower tier (e.g. clef down).
     DECISION_FALLBACK = "decision_fallback"
+    #: A summarizer traversal plan was made for a chunk tree (``summarize``
+    #: stage, one row per tree). The full plan JSON goes to the
+    #: ``summarizer_plan`` cache layer, not into the ledger detail.
+    TRAVERSAL = "traversal"
     #: Stored state (parse cache, asset/reference rows, attachment bytes)
     #: failed validation and was treated as a miss.
     CORRUPT_CACHE = "corrupt_cache"
@@ -84,3 +88,7 @@ class StageOutcome(StrEnum):
     TIMEOUT = "timeout"
     #: The stage completed via a fallback path with reduced quality.
     DEGRADED = "degraded"
+    #: A planned subset completed; the rest fell back to the default path
+    #: (e.g. a traversal plan covered some levels while the others
+    #: summarized whole).
+    PARTIAL = "partial"
