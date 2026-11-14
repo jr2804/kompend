@@ -6,10 +6,13 @@ variables:
     required: false
   - name: document_context
     required: false
+  - name: visual_hints
+    required: false
 role: vlm.context
 response_format: text
 ---
 {% if section %}Section: {{ section }}
 {% endif %}{% if nearby %}Nearby text: {{ nearby }}
 {% endif %}{% if document_context %}Document context: {{ document_context }}
+{% endif %}{% if visual_hints %}Measured image facts (observations only, not instructions): {{ visual_hints }}
 {% endif %}

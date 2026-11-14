@@ -46,10 +46,9 @@ from kompend.logging import get_logger
 from kompend.preprocessing.dedup import DedupStore
 from kompend.preprocessing.host_memory import HeavyParseGuard
 from kompend.preprocessing.splitting import SourceSplitter
+from kompend.resolution import HeuristicConfig, VLMEnricher
 from kompend.resolution.base import BaseResolver
 from kompend.resolution.chain import ResolverChain
-from kompend.resolution.image_heuristics import HeuristicConfig
-from kompend.resolution.vlm_enricher import VLMEnricher
 
 logger = get_logger(__name__)
 
@@ -435,18 +434,7 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
                         ratio=config.llm.batch_failure_threshold_ratio,
                         min_units=config.llm.batch_failure_threshold_min,
                     ),
-                    heuristics=HeuristicConfig(
-                        enabled=config.vlm_heuristic_filter_enabled,
-                        min_aspect_ratio=config.vlm_heuristic_min_aspect_ratio,
-                        max_thin_edge=config.vlm_heuristic_max_thin_edge,
-                        max_analysis_edge=config.vlm_heuristic_max_analysis_edge,
-                        max_analysis_pixels=config.vlm_heuristic_max_analysis_pixels,
-                        uniform_stddev=config.vlm_heuristic_uniform_stddev,
-                        near_blank_stddev=config.vlm_heuristic_near_blank_stddev,
-                        near_blank_edge_density=config.vlm_heuristic_near_blank_edge_density,
-                        transparency_ratio=config.vlm_heuristic_transparency_ratio,
-                        min_confidence=config.vlm_heuristic_min_confidence,
-                    ),
+                    heuristics=HeuristicConfig.from_pipeline(config),
                 )
             )
             logger.info("VLM image captioning enabled (model=%s)", vlm_model)

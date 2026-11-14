@@ -191,7 +191,7 @@ class VLMEnricher(BaseResolver):
             return resolved
 
         skip, reason = self._should_skip(caption_source)
-        heuristic = None if skip else self._heuristic_verdict(caption_source)
+        heuristic = None if skip else self._heuristic_verdict(resolved.chunk, caption_source)
         skip_name: str | None = None
         skip_context = ""
         if skip:
@@ -302,8 +302,13 @@ class VLMEnricher(BaseResolver):
             return True, f"too small ({w}×{h} < {self._min_dim}px)"
         return False, ""
 
-    def _heuristic_verdict(self, image_file: str | Path) -> HeuristicVerdict | None:
+    def _heuristic_verdict(self, chunk: Chunk, image_file: str | Path) -> HeuristicVerdict | None:
         """A confident structural/pixel drop, or ``None`` to fall through.
+
+        The resolve stage already measured every raster figure to write the
+        prompt hints; when that measurement produced a confident drop, it
+        travels in the figure context and is reused here. A direct
+        :meth:`enrich` call (no resolve stage) measures on demand.
 
         Only a verdict at or above the configured confidence drops the
         figure. ``UNSURE`` and sub-threshold drops are indistinguishable
@@ -311,6 +316,9 @@ class VLMEnricher(BaseResolver):
         """
         if self._heuristics is None or not self._heuristics.enabled:
             return None
+        precomputed = _precomputed_verdict(chunk)
+        if precomputed is not None and precomputed.confidence >= self._heuristics.min_confidence:
+            return precomputed
         verdict = assess_image(image_file, self._heuristics)
         if verdict.decision is ImageRelevance.DROP and verdict.confidence >= self._heuristics.min_confidence:
             return verdict
@@ -330,6 +338,25 @@ class VLMEnricher(BaseResolver):
         return self._agent.run(deps)
 
 
+def _precomputed_verdict(chunk: Chunk) -> HeuristicVerdict | None:
+    """The drop the resolve stage measured into the figure context, if any."""
+    raw = chunk.metadata.get(MetadataField.VLM_CONTEXT)
+    if not isinstance(raw, dict):
+        return None
+    if raw.get("heuristic_decision") != ImageRelevance.DROP.value:
+        return None
+    try:
+        confidence = float(str(raw.get("heuristic_confidence") or "0"))
+    except ValueError:
+        return None
+    return HeuristicVerdict(
+        ImageRelevance.DROP,
+        str(raw.get("heuristic_reason") or "pre-filter drop"),
+        confidence,
+        str(raw.get("heuristic_stage") or "pixels"),
+    )
+
+
 def _render_context(chunk: Chunk) -> str:
     """Render what surrounds the figure for the caption prompt.
 
@@ -341,11 +368,13 @@ def _render_context(chunk: Chunk) -> str:
     section = str(parts.get("section") or chunk.heading_context or "")
     nearby = str(parts.get("nearby") or "")
     document_context = str(parts.get("document_context") or "")
+    visual_hints = str(parts.get("visual_hints") or "")
     return get_template_loader().render(
         _CONTEXT_TEMPLATE,
         section=section,
         nearby=nearby,
         document_context=document_context,
+        visual_hints=visual_hints,
     )
 
 

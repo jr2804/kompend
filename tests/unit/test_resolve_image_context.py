@@ -10,11 +10,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from PIL import Image
+
 from kompend.core.config import EmbeddingConfig, LLMConfig, OutputConfig
 from kompend.core.models import Chunk, ChunkNode, ChunkTree, ElementType, MetadataField, ResolvedChunk
 from kompend.core.pipeline.config import Compiler, ImageMode, PipelineConfig
 from kompend.core.pipeline.orchestrator import build_pipeline
 from kompend.core.pipeline.stages.resolve import _collect_image_contexts, resolve_chunks
+from kompend.resolution import HeuristicConfig
 from kompend.resolution.base import BaseResolver
 
 
@@ -66,6 +69,54 @@ def test_the_neighbouring_text_stays_inside_the_budget() -> None:
     assert len(contexts["c1"]["nearby"]) <= 100
 
 
+def test_measured_visual_facts_ride_the_context(tmp_path: Path) -> None:
+    image = tmp_path / "solid.png"
+    Image.new("RGB", (40, 30), "gray").save(image)
+    chunk = _chunk("c1", "Figure 1", ElementType.IMAGE)
+    chunk.metadata[MetadataField.IMAGE_FILE] = str(image)
+    tree = _tree([_chunk("c0", "See the figure.", ElementType.TEXT), chunk])
+
+    context = _collect_image_contexts([tree], max_chars=500, heuristics=_heuristics())["c1"]
+
+    assert "40×30 px" in context["visual_hints"]
+    assert "near-uniform" in context["visual_hints"]
+    assert context["heuristic_decision"] == "drop"
+    assert context["heuristic_confidence"] == "0.97"
+
+
+def test_the_hints_stay_inside_the_context_budget(tmp_path: Path) -> None:
+    image = tmp_path / "solid.png"
+    Image.new("RGB", (40, 30), "gray").save(image)
+    chunk = _chunk("c1", "Figure 1", ElementType.IMAGE)
+    chunk.metadata[MetadataField.IMAGE_FILE] = str(image)
+    tree = _tree(
+        [
+            _chunk("c0", "x" * 500, ElementType.TEXT),
+            chunk,
+            _chunk("c2", "y" * 500, ElementType.TEXT),
+        ]
+    )
+
+    context = _collect_image_contexts([tree], max_chars=100, heuristics=_heuristics())["c1"]
+    assert len(context["nearby"]) + len(context["visual_hints"]) <= 100
+
+    tight = _collect_image_contexts([tree], max_chars=20, heuristics=_heuristics())["c1"]
+    assert len(tight["nearby"]) + len(tight["visual_hints"]) <= 20
+
+
+def test_hints_are_absent_when_the_filter_is_off(tmp_path: Path) -> None:
+    image = tmp_path / "solid.png"
+    Image.new("RGB", (40, 30), "gray").save(image)
+    chunk = _chunk("c1", "Figure 1", ElementType.IMAGE)
+    chunk.metadata[MetadataField.IMAGE_FILE] = str(image)
+    tree = _tree([chunk])
+
+    context = _collect_image_contexts([tree], max_chars=500)["c1"]
+
+    assert "visual_hints" not in context
+    assert "heuristic_decision" not in context
+
+
 def test_a_text_chunk_gets_no_figure_context() -> None:
     tree = _tree([_chunk("c0", "just text", ElementType.TEXT)])
 
@@ -89,6 +140,22 @@ def test_the_resolver_receives_the_context(tmp_path: Path) -> None:
     assert resolver.seen
     assert resolver.seen[0]["section"] == "Architecture"
     assert "The pipeline has two stages." in resolver.seen[0]["nearby"]
+
+
+def test_resolve_chunks_measures_hints_when_the_filter_is_on(tmp_path: Path) -> None:
+    image = tmp_path / "solid.png"
+    Image.new("RGB", (40, 30), "gray").save(image)
+    pipeline = build_pipeline(_make_config(tmp_path, heuristics=True))
+    resolver = _ContextSpyResolver()
+    pipeline.resolver = resolver
+    chunk = _chunk("c1", "Figure 1", ElementType.IMAGE)
+    chunk.metadata[MetadataField.IMAGE_FILE] = str(image)
+
+    resolve_chunks(pipeline, [_tree([chunk])])
+
+    assert resolver.seen
+    assert "visual_hints" in resolver.seen[0]
+    assert resolver.seen[0]["heuristic_decision"] == "drop"
 
 
 def test_a_changed_surrounding_invalidates_the_caption(tmp_path: Path) -> None:
@@ -144,7 +211,22 @@ def _chunk(chunk_id: str, text: str, element_type: ElementType, *, heading: str 
     )
 
 
-def _make_config(tmp_path: Path) -> PipelineConfig:
+def _heuristics() -> HeuristicConfig:
+    return HeuristicConfig(
+        enabled=True,
+        min_aspect_ratio=20.0,
+        max_thin_edge=96,
+        max_analysis_edge=320,
+        max_analysis_pixels=2_000_000,
+        uniform_stddev=1.0,
+        near_blank_stddev=4.0,
+        near_blank_edge_density=0.001,
+        transparency_ratio=0.995,
+        min_confidence=0.9,
+    )
+
+
+def _make_config(tmp_path: Path, *, heuristics: bool = False) -> PipelineConfig:
     return PipelineConfig(
         source_dir=tmp_path,
         output_dir=tmp_path / "wiki",
@@ -153,4 +235,5 @@ def _make_config(tmp_path: Path) -> PipelineConfig:
         output=OutputConfig(),
         compiler=Compiler.GRAPH,
         image_mode=ImageMode.FILE,
+        vlm_heuristic_filter_enabled=heuristics,
     )

@@ -15,6 +15,14 @@ from kompend.core.resolution.xref_checker import CrossReferenceChecker
 from kompend.core.templates import get_template_loader
 from kompend.llm.models import resolve_vlm_model
 from kompend.logging import get_logger
+from kompend.preprocessing.images import is_raster_image
+from kompend.resolution import (
+    HeuristicConfig,
+    ImageRelevance,
+    observe_image,
+    render_visual_hints,
+    verdict_from_observations,
+)
 from kompend.types import CacheValue
 
 #: The templates whose text decides what the caption prompt says. Their
@@ -70,7 +78,12 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
         )
 
     vlm_model = resolve_vlm_model(pipeline.config.llm.default_model, pipeline.config.llm.vlm_model) or ""
-    image_contexts = _collect_image_contexts(trees, max_chars=pipeline.config.vlm_context_chars)
+    heuristics = HeuristicConfig.from_pipeline(pipeline.config) if pipeline.config.vlm_heuristic_filter_enabled else None
+    image_contexts = _collect_image_contexts(
+        trees,
+        max_chars=pipeline.config.vlm_context_chars,
+        heuristics=heuristics,
+    )
     prompt_identity = _vlm_prompt_identity()
 
     def _resolve_one(chunk: Chunk) -> ResolvedChunk:
@@ -175,7 +188,12 @@ def _vlm_prompt_identity() -> str:
     return content_hash_prefix("\n".join(parts).encode("utf-8"))
 
 
-def _collect_image_contexts(trees: list[ChunkTree], *, max_chars: int) -> dict[str, dict[str, str]]:
+def _collect_image_contexts(
+    trees: list[ChunkTree],
+    *,
+    max_chars: int,
+    heuristics: HeuristicConfig | None = None,
+) -> dict[str, dict[str, str]]:
     """What surrounds every image chunk, keyed by chunk id.
 
     Three pieces, in the order the caption prompt presents them: the
@@ -185,6 +203,11 @@ def _collect_image_contexts(trees: list[ChunkTree], *, max_chars: int) -> dict[s
 
     The neighbouring text is what turns "a diagram" into "a diagram of
     the two-stage pipeline" — a caption without it is a guess.
+
+    When ``heuristics`` is enabled, one bounded observation per raster
+    figure adds a factual ``visual_hints`` clause. A confident
+    structural/pixel drop also carries its verdict, so the enricher reuses
+    this measurement instead of decoding the image a second time.
     """
     contexts: dict[str, dict[str, str]] = {}
     for tree in trees:
@@ -193,8 +216,11 @@ def _collect_image_contexts(trees: list[ChunkTree], *, max_chars: int) -> dict[s
             chunk = node.chunk
             if chunk is None or ElementType.IMAGE not in chunk.element_types:
                 continue
+            hints, precomputed = _visual_facts(chunk, heuristics)
+            if len(hints) > max_chars:
+                hints = hints[:max_chars].rstrip()
             nearby_parts: list[str] = []
-            budget = max_chars
+            budget = max(0, max_chars - len(hints))
             neighbours = []
             if index > 0:
                 neighbours.append(leaves[index - 1])
@@ -211,12 +237,44 @@ def _collect_image_contexts(trees: list[ChunkTree], *, max_chars: int) -> dict[s
                 budget -= len(excerpt)
                 if budget <= 0:
                     break
-            contexts[chunk.id] = {
+            context = {
                 "section": chunk.heading_context,
                 "nearby": "\n".join(nearby_parts),
                 "document_context": node.contextual_context,
             }
+            if hints:
+                context["visual_hints"] = hints
+            context.update(precomputed)
+            contexts[chunk.id] = context
     return contexts
+
+
+def _visual_facts(chunk: Chunk, heuristics: HeuristicConfig | None) -> tuple[str, dict[str, str]]:
+    """Measure a raster figure once for the prompt hints and the pre-filter.
+
+    Returns the rendered facts and the verdict fields the enricher may
+    reuse. Vectors and non-raster paths return empty: their pixels are not
+    on disk, and rasterising here would spend the caption budget twice.
+    """
+    if heuristics is None or not heuristics.enabled:
+        return "", {}
+    image_file = chunk.metadata.get(MetadataField.IMAGE_FILE)
+    if not image_file:
+        return "", {}
+    path = Path(str(image_file))
+    if not is_raster_image(path):
+        return "", {}
+    observations = observe_image(path, heuristics)
+    hints = render_visual_hints(observations, heuristics)
+    verdict = verdict_from_observations(observations, heuristics)
+    if verdict.decision is not ImageRelevance.DROP or verdict.confidence < heuristics.min_confidence:
+        return hints, {}
+    return hints, {
+        "heuristic_decision": verdict.decision.value,
+        "heuristic_reason": verdict.reason,
+        "heuristic_confidence": f"{verdict.confidence:.2f}",
+        "heuristic_stage": verdict.stage,
+    }
 
 
 def apply_tags_to_tree(tree: ChunkTree, source_file: Path, source_dir: Path, source_tags: list[str]) -> None:

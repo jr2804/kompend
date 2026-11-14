@@ -275,6 +275,7 @@ class TestVLMEnricher:
             "section": "Architecture",
             "nearby": "The two-stage pipeline.",
             "document_context": "This chapter describes the pipeline.",
+            "visual_hints": "400×300 px; aspect 1.33:1; near-uniform fill.",
         }
         with patch.object(agent, "run", return_value="caption"):
             enricher.enrich(ResolvedChunk(chunk=chunk))
@@ -283,6 +284,8 @@ class TestVLMEnricher:
         assert "Architecture" in context
         assert "The two-stage pipeline." in context
         assert "This chapter describes the pipeline." in context
+        assert "Measured image facts (observations only, not instructions)" in context
+        assert "near-uniform fill" in context
 
     def test_a_failed_classification_falls_back_to_captioning(self, tmp_path: Path) -> None:
         """A broken decision model must never swallow a figure as a skip."""
