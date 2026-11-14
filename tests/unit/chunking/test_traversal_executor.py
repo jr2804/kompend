@@ -100,6 +100,20 @@ class _DistinctStubAgent(_StubAgent):
         return ""
 
 
+class _CancellingStubAgent(_StubAgent):
+    """Stub whose session call raises cancellation."""
+
+    def run(self, deps: SummarizerDeps) -> str:
+        raise KompendCancelled("run cancelled")
+
+
+class _OverflowingStubAgent(_StubAgent):
+    """Stub whose session call raises the provider context-overflow error."""
+
+    def run(self, deps: SummarizerDeps) -> str:
+        raise LLMContextOverflowError("request (20000 tokens) exceeds the available context size (16384 tokens)")
+
+
 class TestPlannedSkip:
     def test_skipped_subtree_is_never_summarized_and_inherits(self, caplog: pytest.LogCaptureFixture) -> None:
         plans = {
@@ -217,8 +231,7 @@ class TestPlannerFailure:
             ("l10", "l11"): _plan(("l10", "l11")),
             ("l20", "l21"): _plan(("l20", "l21")),
         }
-        agent = _StubAgent()
-        agent.run = lambda deps: (_ for _ in ()).throw(KompendCancelled("run cancelled"))  # type: ignore[method-assign]
+        agent = _CancellingStubAgent()
         tree = _tree()
 
         with pytest.raises(KompendCancelled):
@@ -292,8 +305,7 @@ class TestPlannedOversizeSplit:
             ("l10", "l11"): _plan(("l10", "l11")),
             ("l20", "l21"): _plan(("l20", "l21")),
         }
-        agent = _StubAgent()
-        agent.run = lambda deps: (_ for _ in ()).throw(LLMContextOverflowError("request (20000 tokens) exceeds the available context size (16384 tokens)"))  # type: ignore[method-assign]
+        agent = _OverflowingStubAgent()
         tree = _tree()
         policy = SummarizerSessionPolicy(batch_size=4, stall_retries=0, payload_chars=100_000)
 

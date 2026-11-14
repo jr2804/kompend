@@ -80,7 +80,7 @@ jobs:
         # `--with`. Pinning it keeps CI's verdict reproducible; bump the pin
         # and the mise tool together. The project venv is on VIRTUAL_ENV, so
         # ty resolves third-party imports against the synced environment.
-        run: uv run --with ty==0.0.97 ty check src/ tests/ scripts/
+        run: uv run --with ty==0.0.99 ty check src/ tests/ scripts/
 
       - name: Unit suite
         # The documented T2 command (tests/AGENTS.md): the retry backoff is
