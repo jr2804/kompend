@@ -1,0 +1,28 @@
+---
+variables: []
+role: decision.traversal-plan
+response_format: text
+temperature: 0.0
+---
+Decide how the summarizer should treat each child of one chunk-tree level.
+Exactly one question is asked per child, in document order, and each
+question names the child, its heading, and its size.
+
+Answer each question with exactly one of these six options:
+
+- expand: the child holds distinct dense content the task needs — it is
+  summarized in full.
+- summarize: the child's branch is homogeneous — one summary of the branch
+  suffices, the summarizer decides the details.
+- skip_boilerplate: boilerplate — navigation, headers, footers, legal or
+  template filler with no task content.
+- skip_appendix: appendix or reference material — cited, not read.
+- skip_repeated: repeated material — the same content appears under another
+  child that is expanded or summarized.
+- skip_other: anything else never summarized.
+
+The skip variants carry the reason, so no second question and no free text
+is ever asked for. Be conservative: an ambiguous child is expanded or
+summarized, never skipped — a skipped branch is invisible to the summary.
+When the node budget for expansions is tight, prefer summarize over expand
+for branches the task needs only in passing.

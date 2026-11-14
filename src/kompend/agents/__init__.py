@@ -49,6 +49,7 @@ __getattr__, __dir__, __all__ = lazy.attach(
         "memory_consolidation": ["MemoryConsolidationAgent"],
         "query": ["QueryAgent"],
         "specs": ["AgentName", "get_spec"],
+        "traversal": ["TraversalAgent", "TraversalDeps"],
         "types": ["PipelineAgentDeps", "ToolGenerationDeps"],
         "wicer": [
             "WicerDiagnoseAgent",

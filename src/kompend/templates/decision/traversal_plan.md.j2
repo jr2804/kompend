@@ -1,0 +1,42 @@
+---
+variables:
+  - name: title
+    required: true
+  - name: purpose
+    required: true
+  - name: task
+    required: true
+  - name: outline
+    required: true
+  - name: depth
+    required: true
+  - name: budget_nodes
+    required: true
+  - name: budget_windows
+    required: true
+  - name: budget_chars
+    required: true
+role: decision.traversal-plan
+response_format: text
+temperature: 0.0
+---
+Decide how to treat each child of one chunk-tree level. The wiki below must
+answer this task:
+
+{{ task }}
+
+Document: {{ title }}
+Purpose: {{ purpose }}
+
+Level {{ depth }} of the tree. One question is asked per child, in order —
+answer the question the field description asks for that child.
+
+Budget: expand at most {{ budget_nodes }} children of this level, in at most
+{{ budget_windows }} summarizer windows and {{ budget_chars }} characters.
+A plan that expands more children than the node budget allows is sent back,
+so spend expansions where the task needs them.
+
+| node_id | depth | heading | children | chars | kinds | preview |
+| ------- | ----- | ------- | -------- | ----- | ----- | ------- |
+{% for child in outline %}| {{ child.node_id }} | {{ child.depth }} | {{ child.heading_chain | join(" / ") }} | {{ child.child_count }} | {{ child.subtree_chars }} | {{ child.kinds | join("+") if child.kinds else "-" }} | {{ child.preview }} |
+{% endfor %}

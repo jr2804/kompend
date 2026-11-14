@@ -98,8 +98,7 @@ The base class provides:
   and model). When RLM is enabled the `rlm_context_field` deps value is
   replaced in rendered prompts by `RLM_CONTEXT_PLACEHOLDER` (the deps keep the
   full value for the REPL). Disabled by default (`rlm=False`).
-- **Skill injection** — `compile.skills` entries are appended to the system
-  prompt under `## Skill: <name>` headings
+- **Skill injection** — `compile.skills` entries append to the system prompt under `## Skill: <name>`
 - **Output validation + retry** — PydanticAI validates against
   `result_type`; `ModelRetry` triggers a retry with feedback
 - **Usage tracking** — token usage recorded per call
@@ -114,8 +113,8 @@ The base class provides:
 - **Reasoning effort** — config string mapped to provider thinking controls
   (e.g. `think=False` for Ollama)
 - **VLM captioning** — `VlmAgent` sends a LIST user prompt: the rendered
-  template plus the image bytes as `BinaryContent`. Its deps carry the
-  image path and the figure's surroundings, never a ready-made prompt.
+  template plus the image bytes as `BinaryContent`; its deps carry the image
+  path and surroundings, never a ready-made prompt.
 
 ### Construction contract
 
@@ -222,6 +221,7 @@ History compression lives on the Agent layer (`build_fallback_compaction`,
 | `VerificationDeps`  | VerificationAgent session (claims, sources, pages, collected verdicts) |
 | `WriteDeps`         | WriteAgent session (`source_texts`, served in `source_char_max` windows)               |
 | `VlmDeps`          | VlmAgent (`image_file`, the figure's `context`)                                        |
+| `TraversalDeps`    | TraversalAgent (one chunk-tree level: title/purpose/task, `outline`, depth, budgets) |
 
 Agentic-session payloads are `TypedDict`s in `types.py`; `DistillPage` is
 `total=False` because it mirrors untrusted model output.

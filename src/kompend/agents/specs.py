@@ -45,6 +45,7 @@ class AgentName(StrEnum):
     CRAG_GRADE = "crag_grade"
     HYDE = "hyde"
     SUMMARIZER = "summarizer"
+    SUMMARIZER_TRAVERSAL = "summarizer_traversal"
     VERIFICATION = "verification"
     VLM = "vlm"
     WICER_PROBE = "wicer_probe"
@@ -80,6 +81,7 @@ _MODULES: dict[AgentName, str] = {
     AgentName.CRAG_GRADE: "kompend.agents.search",
     AgentName.HYDE: "kompend.agents.search",
     AgentName.SUMMARIZER: "kompend.agents.summarizer",
+    AgentName.SUMMARIZER_TRAVERSAL: "kompend.agents.traversal",
     AgentName.VERIFICATION: "kompend.agents.verification",
     AgentName.VLM: "kompend.agents.vlm",
     AgentName.WICER_PROBE: "kompend.agents.wicer",
