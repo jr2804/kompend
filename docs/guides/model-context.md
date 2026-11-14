@@ -331,6 +331,24 @@ Beyond token budgets, `BudgetConfig` provides content-quality controls:
 | `wicer_max_iterations` | `0` | `KOMP_BUDGET_WICER_MAX_ITERATIONS` | Refinement rounds — `0` runs until the loop converges |
 | `wicer_max_seconds` | `1800` | `KOMP_BUDGET_WICER_MAX_SECONDS` | Wall-clock budget of the refinement loop (`0` disables it) |
 
+### Traversal planning
+
+Big trees are mostly scaffolding around the branches the task needs. The
+traversal planner (`summarizer_traversal` and friends — defaults live in
+`kompend.toml.example`, not here) asks the decision model per tree level
+which branches to expand, summarize with a focus, or skip, and the
+summarizer then works the planned set only. See
+[Summarization Traversal](../architecture/summarization-traversal.md) for
+the passes, the cost model, and the invariants.
+
+Set `summary_traversal = "auto"` when a vault holds long documents whose
+summaries serve one task: the planner prunes task-irrelevant subtrees
+before the worker calls run, and the plan is cached per task statement so
+recompiles reuse it. Keep `"off"` (the default) when summaries must serve
+unknown future questions — a task-conditioned summary spends less but sees
+less. Switching the mode never invalidates the off-path summary cache, and
+turning it back off restores today's path byte-for-byte.
+
 ## No Silent Exclusions
 
 A budget never decides what gets compiled. It only decides how many calls a

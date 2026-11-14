@@ -105,6 +105,7 @@ nav:
     - Cache & State: architecture/cache.md
     - Decision Log: architecture/decisions.md
     - Chunk Tree: architecture/chunk-tree.md
+    - Summarization Traversal: architecture/summarization-traversal.md
   - Concepts:
     - Basic Principles: concepts/basic-principles.md
     - Pipeline Tiers: concepts/pipeline-tiers.md

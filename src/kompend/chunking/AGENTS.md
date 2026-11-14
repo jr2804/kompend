@@ -19,7 +19,7 @@ each model's auto-detected context window. Atomic elements are never split.
 | ``hierarchical.py`` | ``ChunkTreeBuilder`` — hierarchical chunking from ``ParsedDocument`` |
 | ``errors.py`` | ``ChunkingError`` — the splitter could not split a section |
 | ``extractors.py`` | ``ContentExtractors`` — per-element-type extraction helpers |
-| ``summarizer.py`` | ``NodeSummarizer`` — bottom-up node summaries via ``SummarizerAgent`` or the agentic summarizer session; ``SummarizerSessionPolicy`` (batch size, stall retries), ``SummarizerContentPolicy`` (content chars, window chars, target chars, skip-single-child) |
+| ``summarizer.py`` | ``NodeSummarizer`` — bottom-up node summaries via ``SummarizerAgent`` or the agentic summarizer session; ``SummarizerSessionPolicy`` (batch size, stall retries), ``SummarizerContentPolicy`` (content chars, window chars, target chars, skip-single-child); optional planning stage (``TraversalMode.AUTO`` + ``TraversalPlanner``: plan top-down per level, summarize the planned set, SKIP branches inherit the nearest ancestor summary) |
 | ``contextual.py`` | ``ContextualEnricher`` — prepend situating context to chunks before embedding |
 | ``outline.py`` | ``OutlineNode`` / ``build_outline`` — LLM-free structural outline (sizes, kinds, preview) for decision-model traversal planning; ``outline_to_prompt`` renders it with exact ``len`` accounting |
 

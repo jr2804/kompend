@@ -135,10 +135,18 @@ its `deps_type`.
 | `decision` | `ErrorDecision` | `DecisionDeps` |
 | `adaptation` | `ErrorDecision` | `DecisionDeps` |
 | `figure_relevance` | `FigureRelevanceDecision` | `FigureRelevanceDeps` |
+| `summarizer_traversal` | `TraversalPlan` | `TraversalDeps` |
 
-`query_intent` is listed with the search specs above; all four run only when
+`query_intent` is listed with the search specs above; all five run only when
 `[decision] enabled = true`. See
 [Decision model](../guides/llm-config.md#decision-model-optional-sidecar).
+`summarizer_traversal` plans one chunk-tree level per call (title, purpose,
+task, outline entries, depth, and node/window/char budgets in; one
+`EXPAND`/`SUMMARIZE`/`SKIP_*` verdict per child out, assembled into the
+`TraversalPlan` in code). Templates live under `decision/`
+(`traversal_plan.md.j2`, `traversal_plan_system.md.j2`); wide levels are
+asked in windows of 64 children. See
+[Summarization Traversal](../architecture/summarization-traversal.md).
 
 ### Chunking
 

@@ -155,6 +155,13 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 **Decision:** Auto-detect the context window — provider override, then Ollama's own report, then the models.dev catalog — instead of a hand-set value. Hold back a safety margin for system prompts (8% of the window, minimum 512 tokens).
 **Consequences:** Depends on the provider or catalog reporting the model. An unknown model falls back to the configured `fallback_max_input`/`fallback_max_output` (32K/4K by default); with neither set, discovery raises instead of guessing.
 
+### Decision: Summaries may be task-conditioned
+
+**Date:** Nov 14, 2026
+**Context:** Whole-tree summarization spends worker calls on branches no downstream task reads — boilerplate, appendices, and repeated matter dominate big trees (942 summary-eligible nodes in the 26,886-node reference document). A plan that names the task can skip those branches, but a summary written for one task may omit what another task needs.
+**Decision:** The summarizer accepts an optional per-level traversal plan conditioned on the task statement; the plan cache keys on the task (a plan from another task never matches) and the switch defaults to off with a byte-identical off path.
+**Consequences:** `summary_traversal = "auto"` spends less on task-focused vaults; vaults serving unknown future questions stay on `"off"`. See [Summarization Traversal](summarization-traversal.md).
+
 ## Resolution
 
 ### Decision: One-shot default, multi-turn opt-in
