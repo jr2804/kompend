@@ -53,6 +53,10 @@ class ReasonCode(StrEnum):
     #: The concept-embedding merge fell back to string similarity; the
     #: warning is log-only (no ledger row).
     EMBEDDING_MERGE_DISABLED = "embedding_merge_disabled"
+    #: A session payload exceeded the provider's effective token limit
+    #: (input window or output ceiling); the caller split the batch and
+    #: retried instead of re-asking byte-identical work.
+    PAYLOAD_TOO_LARGE = "payload_too_large"
 
 
 class StageOutcome(StrEnum):

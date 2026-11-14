@@ -28,8 +28,9 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.exceptions import OutputTokenLimitExceeded, UsageLimitExceeded
 
+from kompend.agents.failure import AgentFailureKind, classify_agent_failure
 from kompend.agents.summarizer import SummarizerAgent
 from kompend.agents.types import SummarizerDeps, SummaryNode
 from kompend.core.cache.store import CacheStore
@@ -38,12 +39,37 @@ from kompend.core.models import ChunkNode, ChunkStrategy, ChunkTree
 from kompend.core.models.structured import structured_to_text
 from kompend.core.templates import get_template_loader
 from kompend.core.text.windows import split_text_windows
+from kompend.core.types import ReasonCode
+from kompend.llm.overflow import stated_context_size
+from kompend.llm.request_budget import tokens_to_chars
 from kompend.logging import get_logger
 
 _CACHE_LAYER = "summary"
 
 
 logger = get_logger(__name__)
+
+
+def _is_oversize_payload(exc: BaseException) -> bool:
+    """True when *exc* means the session payload exceeded a provider limit.
+
+    Covers both sides of the budget: a named input-window overflow
+    (:data:`AgentFailureKind.CONTEXT_OVERFLOW`) and pydantic-ai's
+    :class:`OutputTokenLimitExceeded` (``finish_reason == 'length'`` — the
+    provider's default output ceiling, raised with no usable output). Both
+    are deterministic for a byte-identical payload, so the caller splits
+    the batch instead of spending a stall retry on the same request.
+    """
+    if classify_agent_failure(exc) is AgentFailureKind.CONTEXT_OVERFLOW:
+        return True
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, OutputTokenLimitExceeded):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 @dataclass(frozen=True)
@@ -126,6 +152,23 @@ class _WindowState:
             return False
         done = self.summaries.get(node_id, {})
         return all(entry_id in done and done[entry_id].strip() for entry_id in ids)
+
+
+@dataclass
+class _SplitState:
+    """Mutable oversize-split budgets for one ``_summarize_tree`` run.
+
+    A provider refusal (input window or output ceiling) is deterministic for
+    a byte-identical payload, so the run halves the batch node limit and the
+    payload character budget instead of spending a stall retry. ``learned``
+    carries a provider-stated window converted to characters; it only ever
+    lowers the budget and is announced once.
+    """
+
+    batch_limit: int | None
+    payload_budget: int
+    learned_chars: int | None = None
+    learned_announced: bool = False
 
 
 class NodeSummarizer:
@@ -231,13 +274,20 @@ class NodeSummarizer:
         stall_retries = self._session_policy.stall_retries if self._session_policy else 0
         sessions = 0
         last_session_recorded = True
+        # Oversize split state: halving the batch and the payload budget is the
+        # remedy for a payload the provider refuses (input window or output
+        # ceiling) — a byte-identical re-ask would burn another full session.
+        split = _SplitState(batch_limit=batch_size, payload_budget=self._payload_chars)
 
         while pending:
             queue = [tree.nodes[node_id] for node_id in order if node_id in pending]
-            limit = batch_size or len(queue)
+            limit = split.batch_limit or len(queue)
             for start in range(0, len(queue), limit):
                 window = queue[start : start + limit]
-                payload = self._agentic_payload(tree, window, state)
+                budget = split.payload_budget
+                if split.learned_chars is not None and (not budget or split.learned_chars < budget):
+                    budget = split.learned_chars
+                payload = self._agentic_payload(tree, window, state, payload_chars=budget)
                 payload_ids = {entry["id"] for entry in payload}
                 payload_node_ids = {self._base_node_id(entry_id) for entry_id in payload_ids}
                 # Cache hits were applied by ``_agentic_payload`` — no session needed.
@@ -247,6 +297,7 @@ class NodeSummarizer:
 
                 sessions += 1
                 deps = SummarizerDeps(nodes=payload, source_id=tree.root_id)
+                oversize: BaseException | None = None
                 try:
                     agent.run(deps)
                 except UsageLimitExceeded as exc:
@@ -255,7 +306,13 @@ class NodeSummarizer:
                         exc,
                     )
                 except Exception as exc:
-                    logger.warning("Agentic summarizer failed: %s", exc)
+                    if _is_oversize_payload(exc):
+                        oversize = exc
+                    else:
+                        logger.warning("Agentic summarizer failed: %s", exc)
+                if oversize is not None:
+                    self._handle_oversize(window, payload, oversize, limit, split, pending)
+                    break
                 progressed = self._apply_agentic_results(window, payload, deps.results, state)
 
                 completed = {node_id for node_id in payload_node_ids if state.is_complete(node_id)}
@@ -291,11 +348,70 @@ class NodeSummarizer:
 
         return tree
 
+    def _handle_oversize(
+        self,
+        window: list[ChunkNode],
+        payload: list[SummaryNode],
+        exc: BaseException,
+        limit: int,
+        split: _SplitState,
+        pending: set[str],
+    ) -> None:
+        """Split the batch after a provider refusal instead of re-asking it.
+
+        Halves the batch node limit and the payload character budget (floored
+        at one window), learning a tighter budget when the provider stated
+        its window. A single node that still does not fit at the floor is
+        named and dropped from ``pending`` — the tail warning then counts it
+        as unsummarized. No stall retry is spent: the failure is deterministic
+        for a byte-identical payload.
+        """
+        node_ids = sorted(node.id for node in window)
+        stated = stated_context_size(exc)
+        if stated is not None:
+            clamped = tokens_to_chars(stated)
+            if split.learned_chars is None or clamped < split.learned_chars:
+                split.learned_chars = clamped
+                if not split.learned_announced:
+                    split.learned_announced = True
+                    logger.warning(
+                        "Provider stated a %d-token window — clamping summarizer session payload to ~%d chars",
+                        stated,
+                        clamped,
+                        extra={"reason_code": ReasonCode.PAYLOAD_TOO_LARGE},
+                    )
+        floor_chars = max(1, self._policy.window_chars)
+        attempt_chars = sum(len(entry["content"]) for entry in payload)
+        basis = min(split.payload_budget, attempt_chars) if split.payload_budget else attempt_chars
+        new_limit = max(1, limit // 2)
+        new_budget = max(floor_chars, basis // 2)
+        if split.learned_chars is not None:
+            new_budget = min(new_budget, split.learned_chars)
+        if new_limit == limit and new_budget >= basis:
+            logger.warning(
+                "Agentic summarizer payload for %s exceeds the provider limit even at the split floor (batch 1, ~%d chars) — leaving unsummarized",
+                node_ids,
+                floor_chars,
+                extra={"reason_code": ReasonCode.PAYLOAD_TOO_LARGE},
+            )
+            pending.difference_update(node_ids)
+            return
+        split.batch_limit = new_limit
+        split.payload_budget = new_budget
+        logger.warning(
+            "Agentic summarizer payload for %s exceeds the provider limit — splitting without a stall retry (batch limit %d, payload budget ~%d chars)",
+            node_ids,
+            new_limit,
+            new_budget,
+            extra={"reason_code": ReasonCode.PAYLOAD_TOO_LARGE},
+        )
+
     def _agentic_payload(
         self,
         tree: ChunkTree,
         nodes: list[ChunkNode],
         state: _WindowState,
+        payload_chars: int | None = None,
     ) -> list[SummaryNode]:
         """Build the per-node session payload for ``nodes``.
 
@@ -306,8 +422,11 @@ class NodeSummarizer:
         characters. Every window is asked for separately (the payload id
         carries the window index), so the model sees the whole node instead
         of a truncated head; the per-node summary is the join of its window
-        summaries.
+        summaries. ``payload_chars`` caps the packed payload; it defaults to
+        the session policy budget, and the oversize split passes a smaller
+        budget so the next session asks for less.
         """
+        budget = self._payload_chars if payload_chars is None else payload_chars
         payload: list[SummaryNode] = []
         chars_used = 0
         for node in nodes:
@@ -332,7 +451,7 @@ class NodeSummarizer:
                 if cached is not None:
                     done[entry_id] = cached
                     continue
-                if self._payload_chars and payload and chars_used + len(window) > self._payload_chars:
+                if budget and payload and chars_used + len(window) > budget:
                     # The payload is full: this window is asked in the next
                     # session (the node stays pending, so nothing is lost).
                     break

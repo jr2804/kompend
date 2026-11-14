@@ -8,7 +8,7 @@ from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
-from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.exceptions import OutputTokenLimitExceeded, UsageLimitExceeded
 
 from kompend.agents.summarizer import SummarizerAgent, make_summarizer_agent
 from kompend.agents.types import SummarizerDeps
@@ -26,6 +26,7 @@ from kompend.core.models import (
     ElementType,
     StructuredTable,
 )
+from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError
 
 
 class _StubAgent:
@@ -393,6 +394,101 @@ class TestSummarizerAgenticBatching:
         assert [len(round) for round in rounds] == [2, 2, 2]
         for node_id in ("s0", "s1", "s2", "r"):
             assert tree.nodes[node_id].summary == f"summary {node_id}"
+
+
+class TestSummarizerOversizeSplit:
+    """A payload the provider refuses is split, never re-asked byte-identical.
+
+    Covers both sides of the budget: pydantic-ai's ``OutputTokenLimitExceeded``
+    (the provider's default output ceiling, ``finish_reason == 'length'``)
+    and a named input-window overflow. Either way the batch halves and the
+    payload budget shrinks with no stall retry spent; a batch that still does
+    not fit at the split floor is named and left unsummarized.
+    """
+
+    def test_output_limit_splits_and_recovers(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+        calls = 0
+
+        def _run(deps: SummarizerDeps) -> None:
+            nonlocal calls
+            rounds.append([entry["id"] for entry in deps.nodes])
+            calls += 1
+            if calls == 1:
+                raise LLMOutputError("session failed") from OutputTokenLimitExceeded(
+                    "Model token limit (provider default) exceeded before any response was generated. "
+                    "Increase the `max_tokens` model setting, or simplify the prompt to result in a shorter "
+                    "response that will fit within the limit."
+                )
+            for node_id in rounds[-1]:
+                deps.results[node_id] = f"summary {node_id}"
+
+        monkeypatch.setattr(agent, "run", _run)
+        policy = SummarizerSessionPolicy(batch_size=4, stall_retries=0, payload_chars=100_000)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
+
+        assert [len(round) for round in rounds] == [4, 2, 2]
+        for node_id in ("s0", "s1", "s2", "r"):
+            assert tree.nodes[node_id].summary == f"summary {node_id}"
+        assert "splitting without a stall retry" in caplog.text
+
+    def test_input_overflow_learns_the_stated_window(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+        calls = 0
+
+        def _run(deps: SummarizerDeps) -> None:
+            nonlocal calls
+            rounds.append([entry["id"] for entry in deps.nodes])
+            calls += 1
+            if calls == 1:
+                raise LLMContextOverflowError("request (20000 tokens) exceeds the available context size (16384 tokens)")
+            for node_id in rounds[-1]:
+                deps.results[node_id] = f"summary {node_id}"
+
+        monkeypatch.setattr(agent, "run", _run)
+        policy = SummarizerSessionPolicy(batch_size=4, stall_retries=0, payload_chars=100_000)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
+
+        assert [len(round) for round in rounds] == [4, 2, 2]
+        for node_id in ("s0", "s1", "s2", "r"):
+            assert tree.nodes[node_id].summary == f"summary {node_id}"
+        assert "clamping summarizer session payload" in caplog.text
+
+    def test_persistent_overflow_abandons_at_the_floor(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            rounds.append([entry["id"] for entry in deps.nodes])
+            raise LLMContextOverflowError("request (9000 tokens) exceeds the available context size (8192 tokens)")
+
+        monkeypatch.setattr(agent, "run", _run)
+        policy = SummarizerSessionPolicy(batch_size=4, stall_retries=0, payload_chars=100_000)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
+
+        # Terminates instead of halving forever: every node named at the floor.
+        assert len(rounds) < 40
+        for node_id in ("s0", "s1", "s2", "r"):
+            assert not tree.nodes[node_id].summary
+        assert "split floor" in caplog.text
+        assert "leaving unsummarized" in caplog.text
 
 
 class TestSummarizerWindowing:
