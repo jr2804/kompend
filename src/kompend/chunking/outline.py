@@ -19,7 +19,6 @@ from kompend.core.models.structured import structured_to_text
 from kompend.core.models.trees import ChunkNode, ChunkTree
 from kompend.core.text.density import conservative_tokens
 
-
 #: Content kind of a child that carries a chunk.
 KIND_CHUNK: Final[str] = "chunk"
 #: Content kind of a child that carries structured data.

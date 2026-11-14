@@ -24,19 +24,6 @@ from kompend.core.cache.store import (
 )
 
 
-def _plan_key(*, task: str = "Summarize the API", model: str = "m", include_model: bool = True) -> str:
-    tree_hash = summarizer_tree_hash("root", [("a", ["Doc", "A"]), ("b", ["Doc", "B"])])
-    task_hash = summarizer_task_hash(task, "title: API")
-    deps = summarizer_plan_deps(
-        tree_hash=tree_hash,
-        task_hash=task_hash,
-        model=model,
-        policy=summarizer_policy_key("auto", max_nodes=200, max_windows=2000),
-        include_model=include_model,
-    )
-    return make_cache_key(deps)
-
-
 class TestSummarizerPlanLayer:
     def test_layer_name(self) -> None:
         assert SUMMARIZER_PLAN_LAYER == "summarizer_plan"
@@ -77,12 +64,6 @@ class TestSummarizerPlanLayer:
 class TestOffPathSummaryDepsGolden:
     """The traversal work must not move the off-path summary deps."""
 
-    @staticmethod
-    def _deps(content: str, heading: str, model: str, ignore_model: bool) -> dict[str, str]:
-        agent = SimpleNamespace(model_string=model)
-        summarizer = cast("Any", SimpleNamespace(_agent=agent, _cache_ignore_model=ignore_model))
-        return NodeSummarizer._cache_deps(summarizer, content, heading)
-
     def test_off_path_deps_are_byte_identical(self) -> None:
         deps = self._deps("Hello world", "Doc / Section", "my-model", False)
 
@@ -99,3 +80,22 @@ class TestOffPathSummaryDepsGolden:
             "content_hash": "64ec88ca00b268e5",
             "heading_chain": "70d77323113d8158",
         }
+
+    @staticmethod
+    def _deps(content: str, heading: str, model: str, ignore_model: bool) -> dict[str, str]:
+        agent = SimpleNamespace(model_string=model)
+        summarizer = cast("Any", SimpleNamespace(_agent=agent, _cache_ignore_model=ignore_model))
+        return NodeSummarizer._cache_deps(summarizer, content, heading)
+
+
+def _plan_key(*, task: str = "Summarize the API", model: str = "m", include_model: bool = True) -> str:
+    tree_hash = summarizer_tree_hash("root", [("a", ["Doc", "A"]), ("b", ["Doc", "B"])])
+    task_hash = summarizer_task_hash(task, "title: API")
+    deps = summarizer_plan_deps(
+        tree_hash=tree_hash,
+        task_hash=task_hash,
+        model=model,
+        policy=summarizer_policy_key("auto", max_nodes=200, max_windows=2000),
+        include_model=include_model,
+    )
+    return make_cache_key(deps)

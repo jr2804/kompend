@@ -94,6 +94,13 @@ _CACHE_ENUMS: dict[str, type[StrEnum]] = {
 #: Cache layer whose payloads are keyed only by ``cache_key`` (no layer column).
 _CHUNK_LAYER: Final[str] = "chunk"
 
+
+#: Cache layer for summarizer traversal plans: one entry per planned tree,
+#: keyed by :func:`summarizer_plan_deps`. The payload is the full plan JSON;
+#: the ledger row carries only the counters (see
+#: :func:`kompend.core.reporting.ledger.format_traversal_detail`).
+SUMMARIZER_PLAN_LAYER: Final[str] = "summarizer_plan"
+
 logger = get_logger(__name__)
 
 
@@ -393,13 +400,6 @@ def make_cache_key(deps: dict[str, str]) -> str:
     """
     blob = json.dumps(deps, sort_keys=True, separators=(",", ":")).encode()
     return hashlib.sha256(blob).hexdigest()[:16]
-
-
-#: Cache layer for summarizer traversal plans: one entry per planned tree,
-#: keyed by :func:`summarizer_plan_deps`. The payload is the full plan JSON;
-#: the ledger row carries only the counters (see
-#: :func:`kompend.core.reporting.ledger.format_traversal_detail`).
-SUMMARIZER_PLAN_LAYER: Final[str] = "summarizer_plan"
 
 
 def summarizer_tree_hash(root_id: str, nodes: Sequence[tuple[str, Sequence[str]]]) -> str:

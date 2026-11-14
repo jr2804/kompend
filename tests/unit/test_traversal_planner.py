@@ -41,19 +41,40 @@ from kompend.core.config._configs import DecisionConfig
 from kompend.core.templates import get_template_loader
 
 
-def _node(node_id: str, *, heading: tuple[str, ...] = ("Doc", "Section"), subtree_chars: int = 100, preview: str = "preview text") -> OutlineNode:
-    """One outline entry with fixed shape facts."""
-    return OutlineNode(
-        node_id=node_id,
-        heading_chain=heading,
-        depth=1,
-        child_count=0,
-        payload_chars=subtree_chars,
-        subtree_chars=subtree_chars,
-        token_estimate=40,
-        kinds=("chunk",),
-        preview=preview,
-    )
+class _StubCtx:
+    """Minimal ``RunContext`` stand-in carrying window deps."""
+
+    def __init__(self, *, budget_nodes: int) -> None:
+        self.deps = TraversalDeps(
+            title="Doc",
+            purpose="Purpose.",
+            task="Answer the task.",
+            outline=[],
+            depth=1,
+            budget_nodes=budget_nodes,
+            budget_windows=2,
+            budget_chars=1000,
+        )
+
+
+class _StubAgent:
+    """Fake traversal agent answering each window from a fixed mapping."""
+
+    def __init__(self, windows: dict[int, dict[str, str]], *, fail: bool = False) -> None:
+        self._windows = windows
+        self._fail = fail
+        self.seen_budgets: list[int] = []
+        self.result_type: Any = None
+        self.timeout = 10.0
+
+    def run(self, deps: TraversalDeps) -> BaseModel:
+        if self._fail:
+            msg = "endpoint down"
+            raise RuntimeError(msg)
+        self.seen_budgets.append(deps.budget_nodes)
+        first = int(deps.outline[0].node_id[1:])
+        model = traversal_verdict_model(deps.outline, first_index=first)
+        return model.model_validate(self._windows[first])
 
 
 def _deps(children: list[OutlineNode], *, budget_nodes: int = 2) -> TraversalDeps:
@@ -284,6 +305,21 @@ def test_decide_loop_merges_windows_and_falls_back_on_failure(monkeypatch: pytes
     assert decide_traversal_plan(DecisionConfig(enabled=True, model="typesafe/test-model"), **_plan_kwargs(children[:2])) is None
 
 
+def _node(node_id: str, *, heading: tuple[str, ...] = ("Doc", "Section"), subtree_chars: int = 100, preview: str = "preview text") -> OutlineNode:
+    """One outline entry with fixed shape facts."""
+    return OutlineNode(
+        node_id=node_id,
+        heading_chain=heading,
+        depth=1,
+        child_count=0,
+        payload_chars=subtree_chars,
+        subtree_chars=subtree_chars,
+        token_estimate=40,
+        kinds=("chunk",),
+        preview=preview,
+    )
+
+
 def _plan_kwargs(children: list[OutlineNode], *, budget_nodes: int = 2) -> dict[str, Any]:
     """Shared keyword args for :func:`decide_traversal_plan`."""
     return {
@@ -310,39 +346,3 @@ def _template_kwargs(children: list[OutlineNode]) -> dict[str, Any]:
         "budget_windows": 2,
         "budget_chars": 1000,
     }
-
-
-class _StubCtx:
-    """Minimal ``RunContext`` stand-in carrying window deps."""
-
-    def __init__(self, *, budget_nodes: int) -> None:
-        self.deps = TraversalDeps(
-            title="Doc",
-            purpose="Purpose.",
-            task="Answer the task.",
-            outline=[],
-            depth=1,
-            budget_nodes=budget_nodes,
-            budget_windows=2,
-            budget_chars=1000,
-        )
-
-
-class _StubAgent:
-    """Fake traversal agent answering each window from a fixed mapping."""
-
-    def __init__(self, windows: dict[int, dict[str, str]], *, fail: bool = False) -> None:
-        self._windows = windows
-        self._fail = fail
-        self.seen_budgets: list[int] = []
-        self.result_type: Any = None
-        self.timeout = 10.0
-
-    def run(self, deps: TraversalDeps) -> BaseModel:
-        if self._fail:
-            msg = "endpoint down"
-            raise RuntimeError(msg)
-        self.seen_budgets.append(deps.budget_nodes)
-        first = int(deps.outline[0].node_id[1:])
-        model = traversal_verdict_model(deps.outline, first_index=first)
-        return model.model_validate(self._windows[first])

@@ -62,25 +62,6 @@ class HeuristicVerdict:
     stage: str
 
 
-class HeuristicConfigSource(Protocol):
-    """The compile config fields the pre-filter reads.
-
-    A protocol, not an import of ``PipelineConfig``: the resolution tier
-    should not depend on the pipeline tier's concrete config class.
-    """
-
-    vlm_heuristic_filter_enabled: bool
-    vlm_heuristic_min_aspect_ratio: float
-    vlm_heuristic_max_thin_edge: int
-    vlm_heuristic_max_analysis_edge: int
-    vlm_heuristic_max_analysis_pixels: int
-    vlm_heuristic_uniform_stddev: float
-    vlm_heuristic_near_blank_stddev: float
-    vlm_heuristic_near_blank_edge_density: float
-    vlm_heuristic_transparency_ratio: float
-    vlm_heuristic_min_confidence: float
-
-
 @dataclass(frozen=True, slots=True)
 class HeuristicConfig:
     """Thresholds for the pre-filter, supplied by the compile config.
@@ -138,6 +119,25 @@ class ImageObservations:
     edge_density: float | None = None
     transparency_ratio: float | None = None
     note: str = ""
+
+
+class HeuristicConfigSource(Protocol):
+    """The compile config fields the pre-filter reads.
+
+    A protocol, not an import of ``PipelineConfig``: the resolution tier
+    should not depend on the pipeline tier's concrete config class.
+    """
+
+    vlm_heuristic_filter_enabled: bool
+    vlm_heuristic_min_aspect_ratio: float
+    vlm_heuristic_max_thin_edge: int
+    vlm_heuristic_max_analysis_edge: int
+    vlm_heuristic_max_analysis_pixels: int
+    vlm_heuristic_uniform_stddev: float
+    vlm_heuristic_near_blank_stddev: float
+    vlm_heuristic_near_blank_edge_density: float
+    vlm_heuristic_transparency_ratio: float
+    vlm_heuristic_min_confidence: float
 
 
 def assess_image(path: str | Path, config: HeuristicConfig) -> HeuristicVerdict:

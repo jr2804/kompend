@@ -58,26 +58,17 @@ _CACHE_LAYER = "summary"
 logger = get_logger(__name__)
 
 
-def _is_oversize_payload(exc: BaseException) -> bool:
-    """True when *exc* means the session payload exceeded a provider limit.
+class PlanMode(StrEnum):
+    """What the executor does with one planned node.
 
-    Covers both sides of the budget: a named input-window overflow
-    (:data:`AgentFailureKind.CONTEXT_OVERFLOW`) and pydantic-ai's
-    :class:`OutputTokenLimitExceeded` (``finish_reason == 'length'`` — the
-    provider's default output ceiling, raised with no usable output). Both
-    are deterministic for a byte-identical payload, so the caller splits
-    the batch instead of spending a stall retry on the same request.
+    Mirrors the planner vocabulary (``kompend.agents.traversal.PlanMode``)
+    without importing it: chunking speaks this vocabulary, an adapter in
+    the pipeline layer converts the planner's pydantic plan.
     """
-    if classify_agent_failure(exc) is AgentFailureKind.CONTEXT_OVERFLOW:
-        return True
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        if isinstance(current, OutputTokenLimitExceeded):
-            return True
-        current = current.__cause__ or current.__context__
-    return False
+
+    EXPAND = "expand"
+    SUMMARIZE = "summarize"
+    SKIP = "skip"
 
 
 class TraversalMode(StrEnum):
@@ -90,19 +81,6 @@ class TraversalMode(StrEnum):
 
     OFF = "off"
     AUTO = "auto"
-
-
-class PlanMode(StrEnum):
-    """What the executor does with one planned node.
-
-    Mirrors the planner vocabulary (``kompend.agents.traversal.PlanMode``)
-    without importing it: chunking speaks this vocabulary, an adapter in
-    the pipeline layer converts the planner's pydantic plan.
-    """
-
-    EXPAND = "expand"
-    SUMMARIZE = "summarize"
-    SKIP = "skip"
 
 
 @dataclass(frozen=True)
@@ -139,24 +117,6 @@ class PlanContext:
 
     tree_hash: str
     title: str
-
-
-class TraversalPlanner(Protocol):
-    """The executor-facing planner surface.
-
-    ``plan_level`` receives the level's outline entries (one per child,
-    in tree order), the level's depth, and the tree's :class:`PlanContext`;
-    it returns the per-child decision or ``None`` when it cannot plan (the
-    executor then treats the whole tree as unplanned and falls back).
-    Title, purpose, task and budgets are the adapter's concern, not the
-    executor's.
-    """
-
-    def plan_level(self, *, outline: Sequence[OutlineNode], depth: int, context: PlanContext) -> LevelPlan | None: ...
-
-
-class _PlannerUnavailable(Exception):
-    """Raised internally when the planner declines a level."""
 
 
 @dataclass(frozen=True)
@@ -289,6 +249,24 @@ class _SplitState:
     payload_budget: int
     learned_chars: int | None = None
     learned_announced: bool = False
+
+
+class TraversalPlanner(Protocol):
+    """The executor-facing planner surface.
+
+    ``plan_level`` receives the level's outline entries (one per child,
+    in tree order), the level's depth, and the tree's :class:`PlanContext`;
+    it returns the per-child decision or ``None`` when it cannot plan (the
+    executor then treats the whole tree as unplanned and falls back).
+    Title, purpose, task and budgets are the adapter's concern, not the
+    executor's.
+    """
+
+    def plan_level(self, *, outline: Sequence[OutlineNode], depth: int, context: PlanContext) -> LevelPlan | None: ...
+
+
+class _PlannerUnavailable(Exception):
+    """Raised internally when the planner declines a level."""
 
 
 class NodeSummarizer:
@@ -539,31 +517,6 @@ class NodeSummarizer:
                 )
         except sqlite3.Error:
             logger.debug("Traversal ledger row for %s not recorded", tree.root_id, exc_info=True)
-
-    @staticmethod
-    def _inherit_skipped(tree: ChunkTree, eligible: list[ChunkNode], work_ids: set[str]) -> list[ChunkNode]:
-        """Give every skipped node the nearest summarized ancestor's summary.
-
-        Returns the nodes left without any ancestor summary — they are
-        summarized normally instead of staying empty.
-        """
-        holes: list[ChunkNode] = []
-        for node in eligible:
-            if node.id in work_ids:
-                continue
-            inherited = ""
-            current = node.parent_id
-            while current is not None and not inherited:
-                parent = tree.nodes.get(current)
-                if parent is None:
-                    break
-                inherited = parent.summary.strip()
-                current = parent.parent_id
-            if inherited:
-                node.summary = inherited
-            else:
-                holes.append(node)
-        return holes
 
     def _run_sessions(
         self,
@@ -856,6 +809,52 @@ class NodeSummarizer:
             deps["model"] = model  # nocheck: summarizer cache deps, not wiki metadata
         return deps
 
+    def _planned_child_content(self, tree: ChunkTree, child: ChunkNode, plan_view: _PlanView) -> str:
+        """Planned-path counterpart of ``_child_content``.
+
+        A SKIP-decided child contributes nothing to its parent's payload —
+        that is what the skip means. A child with no decision (a transitive
+        skip under a SUMMARIZE branch) has its undecided subtree inlined leaf
+        by leaf instead, so summarizing the branch never silently loses the
+        skipped-under-it content. Worked children stop at their summary, as
+        on the unplanned path.
+        """
+        if child.id in plan_view.skip_ids:
+            return ""
+        if child.summary:
+            return child.summary
+        if child.chunk is not None:
+            return child.chunk.text
+        if child.structured is not None:
+            return structured_to_text(child.structured)
+        parts = [self._planned_child_content(tree, tree.nodes[cid], plan_view) for cid in child.children_ids if cid in tree.nodes]
+        return "\n\n".join(part for part in parts if part)
+
+    @staticmethod
+    def _inherit_skipped(tree: ChunkTree, eligible: list[ChunkNode], work_ids: set[str]) -> list[ChunkNode]:
+        """Give every skipped node the nearest summarized ancestor's summary.
+
+        Returns the nodes left without any ancestor summary — they are
+        summarized normally instead of staying empty.
+        """
+        holes: list[ChunkNode] = []
+        for node in eligible:
+            if node.id in work_ids:
+                continue
+            inherited = ""
+            current = node.parent_id
+            while current is not None and not inherited:
+                parent = tree.nodes.get(current)
+                if parent is None:
+                    break
+                inherited = parent.summary.strip()
+                current = parent.parent_id
+            if inherited:
+                node.summary = inherited
+            else:
+                holes.append(node)
+        return holes
+
     @staticmethod
     def _entry_ids(node_id: str, window_count: int) -> list[str]:
         """Payload ids for a node's windows.
@@ -889,26 +888,27 @@ class NodeSummarizer:
             return structured_to_text(child.structured)
         return ""
 
-    def _planned_child_content(self, tree: ChunkTree, child: ChunkNode, plan_view: _PlanView) -> str:
-        """Planned-path counterpart of ``_child_content``.
 
-        A SKIP-decided child contributes nothing to its parent's payload —
-        that is what the skip means. A child with no decision (a transitive
-        skip under a SUMMARIZE branch) has its undecided subtree inlined leaf
-        by leaf instead, so summarizing the branch never silently loses the
-        skipped-under-it content. Worked children stop at their summary, as
-        on the unplanned path.
-        """
-        if child.id in plan_view.skip_ids:
-            return ""
-        if child.summary:
-            return child.summary
-        if child.chunk is not None:
-            return child.chunk.text
-        if child.structured is not None:
-            return structured_to_text(child.structured)
-        parts = [self._planned_child_content(tree, tree.nodes[cid], plan_view) for cid in child.children_ids if cid in tree.nodes]
-        return "\n\n".join(part for part in parts if part)
+def _is_oversize_payload(exc: BaseException) -> bool:
+    """True when *exc* means the session payload exceeded a provider limit.
+
+    Covers both sides of the budget: a named input-window overflow
+    (:data:`AgentFailureKind.CONTEXT_OVERFLOW`) and pydantic-ai's
+    :class:`OutputTokenLimitExceeded` (``finish_reason == 'length'`` — the
+    provider's default output ceiling, raised with no usable output). Both
+    are deterministic for a byte-identical payload, so the caller splits
+    the batch instead of spending a stall retry on the same request.
+    """
+    if classify_agent_failure(exc) is AgentFailureKind.CONTEXT_OVERFLOW:
+        return True
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, OutputTokenLimitExceeded):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 #: ``structured_to_text`` lives in ``kompend.core.models.structured`` — importing

@@ -31,45 +31,6 @@ from kompend.core.pipeline.stages import factory
 from kompend.core.pipeline.stages.factory import _TraversalPlannerAdapter
 
 
-def _node(node_id: str, *, heading: tuple[str, ...] = ("Doc", "Section"), chars: int = 200) -> OutlineNode:
-    return OutlineNode(
-        node_id=node_id,
-        heading_chain=heading,
-        depth=1,
-        child_count=0,
-        payload_chars=chars,
-        subtree_chars=chars,
-        token_estimate=chars // 4,
-        kinds=("chunk",),
-        preview="preview text",
-    )
-
-
-def _plan_entry(node_id: str, *, mode: AgentPlanMode = AgentPlanMode.EXPAND, focus: str | None = None) -> AgentPlanEntry:
-    return AgentPlanEntry(node_id=node_id, mode=mode, focus=focus, reason=None)
-
-
-def _adapter(cache: CacheStore | None, task: str = "Standing task.") -> _TraversalPlannerAdapter:
-    return _TraversalPlannerAdapter(
-        decision=DecisionConfig(),
-        model="test/decision-model",
-        budget_nodes=200,
-        budget_windows=2000,
-        budget_chars=10_000,
-        cache_store=cache,
-        include_model=True,
-        task=task,
-    )
-
-
-def _stub_decide(entries: tuple[AgentPlanEntry, ...], calls: list[dict[str, Any]]) -> Any:
-    def fake(config: object, **kwargs: Any) -> TraversalPlan | None:
-        calls.append(kwargs)
-        return TraversalPlan(entries=list(entries))
-
-    return fake
-
-
 def test_plan_level_converts_and_caches(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[dict[str, Any]] = []
     monkeypatch.setattr(factory, "decide_traversal_plan", _stub_decide((_plan_entry("s0", mode=AgentPlanMode.SUMMARIZE, focus="noise floors"),), calls))
@@ -87,16 +48,6 @@ def test_plan_level_converts_and_caches(tmp_path: Path, monkeypatch: pytest.Monk
     assert calls[0]["outline"] == [_node("s0")]
     # The plan landed in the cache layer under the adapter's exact deps.
     assert cache.has(SUMMARIZER_PLAN_LAYER, _deps_for("a" * 16))
-
-
-def _deps_for(tree_hash: str) -> dict[str, str]:
-    return summarizer_plan_deps(
-        tree_hash=tree_hash,
-        task_hash=summarizer_task_hash("Standing task.", ""),
-        model="test/decision-model",
-        policy=summarizer_policy_key("auto", max_nodes=200, max_windows=2000),
-        include_model=True,
-    )
 
 
 def test_second_call_with_the_same_tree_hits_the_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -143,6 +94,55 @@ def test_degraded_cache_entries_are_skipped(tmp_path: Path, monkeypatch: pytest.
     assert level is not None
     assert [entry.node_id for entry in level.entries] == ["s0"]
     assert calls == []
+
+
+def _node(node_id: str, *, heading: tuple[str, ...] = ("Doc", "Section"), chars: int = 200) -> OutlineNode:
+    return OutlineNode(
+        node_id=node_id,
+        heading_chain=heading,
+        depth=1,
+        child_count=0,
+        payload_chars=chars,
+        subtree_chars=chars,
+        token_estimate=chars // 4,
+        kinds=("chunk",),
+        preview="preview text",
+    )
+
+
+def _plan_entry(node_id: str, *, mode: AgentPlanMode = AgentPlanMode.EXPAND, focus: str | None = None) -> AgentPlanEntry:
+    return AgentPlanEntry(node_id=node_id, mode=mode, focus=focus, reason=None)
+
+
+def _adapter(cache: CacheStore | None, task: str = "Standing task.") -> _TraversalPlannerAdapter:
+    return _TraversalPlannerAdapter(
+        decision=DecisionConfig(),
+        model="test/decision-model",
+        budget_nodes=200,
+        budget_windows=2000,
+        budget_chars=10_000,
+        cache_store=cache,
+        include_model=True,
+        task=task,
+    )
+
+
+def _stub_decide(entries: tuple[AgentPlanEntry, ...], calls: list[dict[str, Any]]) -> Any:
+    def fake(config: object, **kwargs: Any) -> TraversalPlan | None:
+        calls.append(kwargs)
+        return TraversalPlan(entries=list(entries))
+
+    return fake
+
+
+def _deps_for(tree_hash: str) -> dict[str, str]:
+    return summarizer_plan_deps(
+        tree_hash=tree_hash,
+        task_hash=summarizer_task_hash("Standing task.", ""),
+        model="test/decision-model",
+        policy=summarizer_policy_key("auto", max_nodes=200, max_windows=2000),
+        include_model=True,
+    )
 
 
 def test_task_text_comes_from_the_template_resource() -> None:

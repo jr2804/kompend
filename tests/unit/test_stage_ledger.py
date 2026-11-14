@@ -244,17 +244,6 @@ def test_the_ledger_carries_no_ruff_waiver() -> None:
     assert "noqa: S608" not in source
 
 
-def _db(tmp_path: Path) -> Path:
-    return tmp_path / ".kompend" / "kompend.db"
-
-
-def _rows(db: Path, run_id: str) -> list[RowMapping]:
-    """Every ledger row of *run_id*, oldest first, as materialised mappings."""
-    with open_store(db) as conn, core_connection(conn) as core:
-        statement = select(stages).where(stages.c.run_id == run_id).order_by(stages.c.id)
-        return list(core.execute(statement).mappings().all())
-
-
 def test_traversal_plan_run_writes_one_summarize_row(tmp_path: Path) -> None:
     """knox-u84v.3: a plan run writes exactly one summarize row with counters."""
     db = _db(tmp_path)
@@ -296,3 +285,14 @@ def test_traversal_plan_partial_outcome(tmp_path: Path) -> None:
     assert len(rows) == 1
     assert rows[0]["outcome"] == "partial"
     assert rows[0]["reason_code"] == ReasonCode.TRAVERSAL.value
+
+
+def _db(tmp_path: Path) -> Path:
+    return tmp_path / ".kompend" / "kompend.db"
+
+
+def _rows(db: Path, run_id: str) -> list[RowMapping]:
+    """Every ledger row of *run_id*, oldest first, as materialised mappings."""
+    with open_store(db) as conn, core_connection(conn) as core:
+        statement = select(stages).where(stages.c.run_id == run_id).order_by(stages.c.id)
+        return list(core.execute(statement).mappings().all())

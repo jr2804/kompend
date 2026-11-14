@@ -49,71 +49,9 @@ from kompend.preprocessing.splitting._build import build_splitter
 from kompend.resolution.base import BaseResolver
 from kompend.types import JSONDict
 
-logger = get_logger(__name__)
-
 _TASK_TEMPLATE = "chunking/summarizer_traversal_task.md"
 
-
-def _cache_payload(level: LevelPlan) -> JSONDict:
-    """Plan entries as a JSON-safe dict for the ``summarizer_plan`` layer.
-
-    Modes are stored as their plain string values — the cache never holds
-    enums, so reading it needs no enum registry.
-    """
-    return {
-        "entries": [
-            {
-                "node_id": entry.node_id,
-                "mode": entry.mode.value,
-                "focus": entry.focus,
-                "reason": entry.reason,
-            }
-            for entry in level.entries
-        ]
-    }
-
-
-def _level_plan_from_cache(payload: JSONDict) -> LevelPlan:
-    """Rebuild a level plan from its cached JSON shape.
-
-    Entries that lost their shape (hand-edited cache, older schema) are
-    skipped — a degraded plan degrades to EXPAND in the executor, never to
-    a dropped subtree.
-    """
-    raw_entries = payload.get("entries", [])
-    entries: list[PlanEntry] = []
-    for raw in raw_entries if isinstance(raw_entries, list) else []:
-        if not isinstance(raw, dict):
-            continue
-        node_id = raw.get("node_id")
-        mode = raw.get("mode")
-        focus = raw.get("focus")
-        reason = raw.get("reason")
-        if not isinstance(node_id, str) or not isinstance(mode, str):
-            continue
-        entries.append(
-            PlanEntry(
-                node_id=node_id,
-                mode=PlanMode(mode),
-                focus=focus if isinstance(focus, str) else None,
-                reason=reason if isinstance(reason, str) else None,
-            )
-        )
-    return LevelPlan(entries=tuple(entries))
-
-
-def _level_plan_from_traversal(plan: TraversalPlan) -> LevelPlan:
-    """Convert the planner's pydantic plan to the executor's dataclass plan."""
-    entries = tuple(
-        PlanEntry(
-            node_id=entry.node_id,
-            mode=PlanMode(entry.mode.value),
-            focus=entry.focus,
-            reason=entry.reason,
-        )
-        for entry in plan.entries
-    )
-    return LevelPlan(entries=entries)
+logger = get_logger(__name__)
 
 
 class _TraversalPlannerAdapter:
@@ -179,6 +117,68 @@ class _TraversalPlannerAdapter:
         if self._cache is not None:
             self._cache.set(SUMMARIZER_PLAN_LAYER, deps, _cache_payload(level))
         return level
+
+
+def _cache_payload(level: LevelPlan) -> JSONDict:
+    """Plan entries as a JSON-safe dict for the ``summarizer_plan`` layer.
+
+    Modes are stored as their plain string values — the cache never holds
+    enums, so reading it needs no enum registry.
+    """
+    return {
+        "entries": [
+            {
+                "node_id": entry.node_id,
+                "mode": entry.mode.value,
+                "focus": entry.focus,
+                "reason": entry.reason,
+            }
+            for entry in level.entries
+        ]
+    }
+
+
+def _level_plan_from_cache(payload: JSONDict) -> LevelPlan:
+    """Rebuild a level plan from its cached JSON shape.
+
+    Entries that lost their shape (hand-edited cache, older schema) are
+    skipped — a degraded plan degrades to EXPAND in the executor, never to
+    a dropped subtree.
+    """
+    raw_entries = payload.get("entries", [])
+    entries: list[PlanEntry] = []
+    for raw in raw_entries if isinstance(raw_entries, list) else []:
+        if not isinstance(raw, dict):
+            continue
+        node_id = raw.get("node_id")
+        mode = raw.get("mode")
+        focus = raw.get("focus")
+        reason = raw.get("reason")
+        if not isinstance(node_id, str) or not isinstance(mode, str):
+            continue
+        entries.append(
+            PlanEntry(
+                node_id=node_id,
+                mode=PlanMode(mode),
+                focus=focus if isinstance(focus, str) else None,
+                reason=reason if isinstance(reason, str) else None,
+            )
+        )
+    return LevelPlan(entries=tuple(entries))
+
+
+def _level_plan_from_traversal(plan: TraversalPlan) -> LevelPlan:
+    """Convert the planner's pydantic plan to the executor's dataclass plan."""
+    entries = tuple(
+        PlanEntry(
+            node_id=entry.node_id,
+            mode=PlanMode(entry.mode.value),
+            focus=entry.focus,
+            reason=entry.reason,
+        )
+        for entry in plan.entries
+    )
+    return LevelPlan(entries=entries)
 
 
 def build_pipeline(

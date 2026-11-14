@@ -58,10 +58,6 @@ class _StubAgent:
         return self.summary
 
 
-def _agent(summary: str = "Summary.") -> SummarizerAgent:
-    return cast("SummarizerAgent", _StubAgent(summary))
-
-
 class _StubPlanner:
     """Return fixed LevelPlans keyed by the level's child-id tuple."""
 
@@ -78,22 +74,6 @@ class _StubPlanner:
         return self._plans.get(key)
 
 
-def _plan(ids: tuple[str, ...], *, mode: PlanMode = PlanMode.EXPAND, focus: dict[str, str] | None = None, skip: dict[str, str] | None = None) -> LevelPlan:
-    focus = focus or {}
-    skip = skip or {}
-    return LevelPlan(
-        entries=tuple(
-            PlanEntry(
-                node_id=node_id,
-                mode=PlanMode.SKIP if node_id in skip else PlanMode.SUMMARIZE if node_id in focus else mode,
-                focus=focus.get(node_id),
-                reason=skip.get(node_id),
-            )
-            for node_id in ids
-        )
-    )
-
-
 class _FakeCache:
     """Dict-backed cache matching the CacheStore get/set surface."""
 
@@ -105,96 +85,6 @@ class _FakeCache:
 
     def set(self, layer: str, deps: dict[str, str], value: str) -> None:
         self._store[json.dumps(deps, sort_keys=True)] = value
-
-
-def _chunk(cid: str, text: str, source: str = "doc.md") -> Chunk:
-    return Chunk(
-        id=cid,
-        text=text,
-        element_types=[ElementType.TEXT],
-        source_elements=[],
-        source_file=Path(source),
-        token_count=max(1, len(text) // 4),
-    )
-
-
-def _tree() -> ChunkTree:
-    """Root → 3 sections × 2 leaves: 4 eligible internal nodes."""
-    root = ChunkNode(id="r", depth=0)
-    nodes: dict[str, ChunkNode] = {"r": root}
-    for index in range(3):
-        section_id = f"s{index}"
-        section = ChunkNode(id=section_id, parent_id="r", depth=1, heading_chain=(f"Section {index}",))
-        for leaf in range(2):
-            leaf_id = f"l{index}{leaf}"
-            nodes[leaf_id] = ChunkNode(
-                id=leaf_id,
-                parent_id=section_id,
-                depth=2,
-                heading_chain=(f"Section {index}",),
-                chunk=_chunk(leaf_id, f"body {leaf_id}"),
-                token_count=4,
-            )
-            section.children_ids.append(leaf_id)
-        nodes[section_id] = section
-        root.children_ids.append(section_id)
-    return ChunkTree(root_id="r", nodes=nodes, source_file=Path("doc.md"), strategy=ChunkStrategy.TWO_LEVEL)
-
-
-def _deep_tree() -> ChunkTree:
-    """Root → mid → (branch → 2 leaves, leaf): 3 eligible internal nodes.
-
-    The SUMMARIZE-decided ``m`` carries an undecided internal child ``b``,
-    so its payload must inline ``b``'s leaf content.
-    """
-    root = ChunkNode(id="r", depth=0)
-    mid = ChunkNode(id="m", parent_id="r", depth=1, heading_chain=("Mid",))
-    branch = ChunkNode(id="b", parent_id="m", depth=2, heading_chain=("Mid", "Branch"))
-    leaf_b1 = ChunkNode(id="b1", parent_id="b", depth=3, heading_chain=("Mid", "Branch"), chunk=_chunk("b1", "grandchild one"), token_count=4)
-    leaf_b2 = ChunkNode(id="b2", parent_id="b", depth=3, heading_chain=("Mid", "Branch"), chunk=_chunk("b2", "grandchild two"), token_count=4)
-    leaf_c = ChunkNode(id="c", parent_id="m", depth=2, heading_chain=("Mid",), chunk=_chunk("c", "direct leaf"), token_count=4)
-    branch.children_ids = ["b1", "b2"]
-    mid.children_ids = ["b", "c"]
-    root.children_ids = ["m"]
-    nodes = {"r": root, "m": mid, "b": branch, "b1": leaf_b1, "b2": leaf_b2, "c": leaf_c}
-    return ChunkTree(root_id="r", nodes=nodes, source_file=Path("doc.md"), strategy=ChunkStrategy.TWO_LEVEL)
-
-
-def _auto_policy() -> SummarizerContentPolicy:
-    # traversal_min_nodes=0: the fixtures hold 4–6 eligible nodes, far below
-    # the configured gate (50) — the gate itself is covered by its own test.
-    return replace(SummarizerContentPolicy.from_config(BudgetConfig()), traversal=TraversalMode.AUTO, traversal_min_nodes=0)
-
-
-def _summarizer(
-    agent: Any,
-    planner: Any = None,
-    *,
-    auto: bool = True,
-    cache: Any = None,
-    session_policy: SummarizerSessionPolicy | None = None,
-    ledger_db_path: Path | None = None,
-    policy: SummarizerContentPolicy | None = None,
-) -> NodeSummarizer:
-    """Build a NodeSummarizer around a test double.
-
-    ``agent``/``planner``/``cache`` are test doubles duck-typed by the
-    executor; the real types are ``SummarizerAgent``, ``TraversalPlanner``
-    and ``CacheStore``.
-    """
-    content = policy or (_auto_policy() if auto else SummarizerContentPolicy.from_config(BudgetConfig()))
-    return NodeSummarizer(
-        cast("SummarizerAgent", agent),
-        cache_store=cast("CacheStore | None", cache),
-        content_policy=content,
-        session_policy=session_policy,
-        planner=cast("TraversalPlanner | None", planner),
-        ledger_db_path=ledger_db_path,
-    )
-
-
-def _payload_ids(agent: _StubAgent) -> set[str]:
-    return {entry["id"] for deps in agent.calls for entry in deps.nodes}
 
 
 # ── tests ────────────────────────────────────────────────────────────────
@@ -464,14 +354,6 @@ class TestPlanContextPassing:
         assert all(len(context.tree_hash) == 16 for context in contexts)
 
 
-def _ledger_rows(db: Path) -> list[tuple[str, str, str, str, str]]:
-    conn = sqlite3.connect(db)
-    try:
-        return list(conn.execute("SELECT source, stage, outcome, reason_code, detail FROM stages ORDER BY id"))
-    finally:
-        conn.close()
-
-
 class TestPlannedLedgerRow:
     def test_planned_run_records_one_traversal_row(self, tmp_path: Path) -> None:
         plans = {
@@ -520,3 +402,121 @@ class TestPlannedLedgerRow:
         _summarizer(_StubAgent(), _StubPlanner(plans)).summarize(_tree())
 
         assert not vault_db_path(tmp_path).exists()
+
+
+def _agent(summary: str = "Summary.") -> SummarizerAgent:
+    return cast("SummarizerAgent", _StubAgent(summary))
+
+
+def _plan(ids: tuple[str, ...], *, mode: PlanMode = PlanMode.EXPAND, focus: dict[str, str] | None = None, skip: dict[str, str] | None = None) -> LevelPlan:
+    focus = focus or {}
+    skip = skip or {}
+    return LevelPlan(
+        entries=tuple(
+            PlanEntry(
+                node_id=node_id,
+                mode=PlanMode.SKIP if node_id in skip else PlanMode.SUMMARIZE if node_id in focus else mode,
+                focus=focus.get(node_id),
+                reason=skip.get(node_id),
+            )
+            for node_id in ids
+        )
+    )
+
+
+def _tree() -> ChunkTree:
+    """Root → 3 sections × 2 leaves: 4 eligible internal nodes."""
+    root = ChunkNode(id="r", depth=0)
+    nodes: dict[str, ChunkNode] = {"r": root}
+    for index in range(3):
+        section_id = f"s{index}"
+        section = ChunkNode(id=section_id, parent_id="r", depth=1, heading_chain=(f"Section {index}",))
+        for leaf in range(2):
+            leaf_id = f"l{index}{leaf}"
+            nodes[leaf_id] = ChunkNode(
+                id=leaf_id,
+                parent_id=section_id,
+                depth=2,
+                heading_chain=(f"Section {index}",),
+                chunk=_chunk(leaf_id, f"body {leaf_id}"),
+                token_count=4,
+            )
+            section.children_ids.append(leaf_id)
+        nodes[section_id] = section
+        root.children_ids.append(section_id)
+    return ChunkTree(root_id="r", nodes=nodes, source_file=Path("doc.md"), strategy=ChunkStrategy.TWO_LEVEL)
+
+
+def _deep_tree() -> ChunkTree:
+    """Root → mid → (branch → 2 leaves, leaf): 3 eligible internal nodes.
+
+    The SUMMARIZE-decided ``m`` carries an undecided internal child ``b``,
+    so its payload must inline ``b``'s leaf content.
+    """
+    root = ChunkNode(id="r", depth=0)
+    mid = ChunkNode(id="m", parent_id="r", depth=1, heading_chain=("Mid",))
+    branch = ChunkNode(id="b", parent_id="m", depth=2, heading_chain=("Mid", "Branch"))
+    leaf_b1 = ChunkNode(id="b1", parent_id="b", depth=3, heading_chain=("Mid", "Branch"), chunk=_chunk("b1", "grandchild one"), token_count=4)
+    leaf_b2 = ChunkNode(id="b2", parent_id="b", depth=3, heading_chain=("Mid", "Branch"), chunk=_chunk("b2", "grandchild two"), token_count=4)
+    leaf_c = ChunkNode(id="c", parent_id="m", depth=2, heading_chain=("Mid",), chunk=_chunk("c", "direct leaf"), token_count=4)
+    branch.children_ids = ["b1", "b2"]
+    mid.children_ids = ["b", "c"]
+    root.children_ids = ["m"]
+    nodes = {"r": root, "m": mid, "b": branch, "b1": leaf_b1, "b2": leaf_b2, "c": leaf_c}
+    return ChunkTree(root_id="r", nodes=nodes, source_file=Path("doc.md"), strategy=ChunkStrategy.TWO_LEVEL)
+
+
+def _chunk(cid: str, text: str, source: str = "doc.md") -> Chunk:
+    return Chunk(
+        id=cid,
+        text=text,
+        element_types=[ElementType.TEXT],
+        source_elements=[],
+        source_file=Path(source),
+        token_count=max(1, len(text) // 4),
+    )
+
+
+def _summarizer(
+    agent: Any,
+    planner: Any = None,
+    *,
+    auto: bool = True,
+    cache: Any = None,
+    session_policy: SummarizerSessionPolicy | None = None,
+    ledger_db_path: Path | None = None,
+    policy: SummarizerContentPolicy | None = None,
+) -> NodeSummarizer:
+    """Build a NodeSummarizer around a test double.
+
+    ``agent``/``planner``/``cache`` are test doubles duck-typed by the
+    executor; the real types are ``SummarizerAgent``, ``TraversalPlanner``
+    and ``CacheStore``.
+    """
+    content = policy or (_auto_policy() if auto else SummarizerContentPolicy.from_config(BudgetConfig()))
+    return NodeSummarizer(
+        cast("SummarizerAgent", agent),
+        cache_store=cast("CacheStore | None", cache),
+        content_policy=content,
+        session_policy=session_policy,
+        planner=cast("TraversalPlanner | None", planner),
+        ledger_db_path=ledger_db_path,
+    )
+
+
+def _auto_policy() -> SummarizerContentPolicy:
+    # traversal_min_nodes=0: the fixtures hold 4–6 eligible nodes, far below
+    # the configured gate (50) — the gate itself is covered by its own test.
+    return replace(SummarizerContentPolicy.from_config(BudgetConfig()), traversal=TraversalMode.AUTO, traversal_min_nodes=0)
+
+
+def _payload_ids(agent: _StubAgent) -> set[str]:
+    return {entry["id"] for deps in agent.calls for entry in deps.nodes}
+
+
+def _ledger_rows(db: Path) -> list[tuple[str, str, str, str, str]]:
+    conn = sqlite3.connect(db)
+    try:
+        return list(conn.execute("SELECT source, stage, outcome, reason_code, detail FROM stages ORDER BY id"))
+    finally:
+        conn.close()

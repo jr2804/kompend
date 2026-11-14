@@ -76,6 +76,20 @@ _MAX_VECTOR_BYTES: Final[int] = 4 * MAX_RASTER_PIXELS
 logger = get_logger(__name__)
 
 
+@dataclass(frozen=True, slots=True)
+class CaptionOutcome:
+    """What the enricher did to one figure, shaped for a stage-ledger row.
+
+    ``outcome`` is the row's ``StageOutcome``; ``reason_code`` explains a
+    non-``ok`` outcome in the shared :class:`ReasonCode` vocabulary;
+    ``detail`` carries the enricher's own reason string.
+    """
+
+    outcome: StageOutcome
+    reason_code: ReasonCode | None
+    detail: str
+
+
 class VLMEnricher(BaseResolver):
     """Enrich IMAGE chunks by producing textual captions via a VLM.
 
@@ -338,20 +352,6 @@ class VLMEnricher(BaseResolver):
             raise LLMOutputError(msg)
         deps = VlmDeps(image_file=str(image_ref), context=context)
         return self._agent.run(deps)
-
-
-@dataclass(frozen=True, slots=True)
-class CaptionOutcome:
-    """What the enricher did to one figure, shaped for a stage-ledger row.
-
-    ``outcome`` is the row's ``StageOutcome``; ``reason_code`` explains a
-    non-``ok`` outcome in the shared :class:`ReasonCode` vocabulary;
-    ``detail`` carries the enricher's own reason string.
-    """
-
-    outcome: StageOutcome
-    reason_code: ReasonCode | None
-    detail: str
 
 
 def caption_outcome(resolved: ResolvedChunk) -> CaptionOutcome | None:

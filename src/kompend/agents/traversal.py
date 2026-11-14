@@ -39,8 +39,6 @@ from kompend.llm.decision import decision_model_string
 from kompend.llm.models import build_decision_model
 from kompend.logging import get_logger
 
-logger = get_logger(__name__)
-
 #: Most questions the decision endpoint answers in one request. The cap is the
 #: endpoint's ("questions must contain 1–64 fields"), mirrored here rather than
 #: imported: ``kompend.preprocessing.splitting`` already depends on the agent
@@ -53,6 +51,8 @@ MAX_TRAVERSAL_QUESTIONS: Final[int] = 64
 #: ``DecisionConfig.timeout`` default).
 _DEFAULT_TIMEOUT: Final[float] = 10.0
 
+logger = get_logger(__name__)
+
 
 class PlanMode(StrEnum):
     """What the summarizer should do with a child node."""
@@ -60,6 +60,21 @@ class PlanMode(StrEnum):
     EXPAND = "expand"
     SUMMARIZE = "summarize"
     SKIP = "skip"
+
+
+class SkipReason(StrEnum):
+    """Skip vocabulary: one variant per skippable branch kind.
+
+    The member value is the verdict option the model answers; the registry
+    below carries the fixed reason label the plan reports. The verdict
+    ``Literal`` is built from these members, so the grammar and the mapping
+    cannot drift apart.
+    """
+
+    BOILERPLATE = "skip_boilerplate"
+    APPENDIX = "skip_appendix"
+    REPEATED = "skip_repeated"
+    OTHER = "skip_other"
 
 
 class PlanEntry(BaseModel):
@@ -82,21 +97,6 @@ class TraversalPlan(BaseModel):
 
     entries: list[PlanEntry]
     notes: str | None = None
-
-
-class SkipReason(StrEnum):
-    """Skip vocabulary: one variant per skippable branch kind.
-
-    The member value is the verdict option the model answers; the registry
-    below carries the fixed reason label the plan reports. The verdict
-    ``Literal`` is built from these members, so the grammar and the mapping
-    cannot drift apart.
-    """
-
-    BOILERPLATE = "skip_boilerplate"
-    APPENDIX = "skip_appendix"
-    REPEATED = "skip_repeated"
-    OTHER = "skip_other"
 
 
 #: One question per child: expand, summarize, or skip with the reason baked
@@ -146,18 +146,6 @@ class TraversalDeps:
     budget_chars: int = 0
     source_id: str = "traversal"
     timeout: float = _DEFAULT_TIMEOUT
-
-
-def traversal_field_name(index: int) -> str:
-    """Field name of the *index*-th child (0-based, global to the level).
-
-    Positional on purpose, like the split judge's ``boundary_{index:03d}``:
-    the child each answer belongs to is decided by :func:`plan_from_verdict`
-    from the ordered outline, so an answer cannot be attached to the wrong
-    child through an echoed node id. Global so every window's answers land in
-    one mapping.
-    """
-    return f"child_{index}_mode"
 
 
 def traversal_windows(child_count: int, *, max_questions: int = MAX_TRAVERSAL_QUESTIONS) -> tuple[tuple[int, int], ...]:
@@ -254,6 +242,18 @@ def plan_from_verdict(answers: Mapping[str, str], *, children: Sequence[OutlineN
     return TraversalPlan(entries=entries)
 
 
+def traversal_field_name(index: int) -> str:
+    """Field name of the *index*-th child (0-based, global to the level).
+
+    Positional on purpose, like the split judge's ``boundary_{index:03d}``:
+    the child each answer belongs to is decided by :func:`plan_from_verdict`
+    from the ordered outline, so an answer cannot be attached to the wrong
+    child through an echoed node id. Global so every window's answers land in
+    one mapping.
+    """
+    return f"child_{index}_mode"
+
+
 def _traversal_validate_output(ctx: RunContext[TraversalDeps], output: BaseModel) -> BaseModel:
     """Enforce the expansion budget: too many EXPANDs ask for a tighter plan.
 
@@ -297,31 +297,6 @@ class TraversalAgent(KompendAgentBase[TraversalPlan, TraversalDeps]):
 
     spec: ClassVar[AgentSpec | None] = SPEC_TRAVERSAL
     temperature: float | None = 0.0
-
-
-def make_traversal_agent(
-    config: DecisionConfig | None,
-    *,
-    model: str | None = None,
-    timeout: float | None = None,
-) -> TraversalAgent | None:
-    """Build a :class:`TraversalAgent` from the decision config.
-
-    Args:
-        config: The ``[decision]`` block — model and timeout source.
-        model: Optional per-feature override for the model string.
-        timeout: Optional per-feature override for the per-call timeout.
-
-    Returns:
-        The agent, or ``None`` when no decision model is configured (disabled
-        block or no model) — the caller then falls back to the full tree.
-    """
-    model_string = model if model is not None else decision_model_string(config)
-    if model_string is None:
-        return None
-    if timeout is None:
-        timeout = config.timeout if config is not None else _DEFAULT_TIMEOUT
-    return TraversalAgent(model_string=model_string, timeout=timeout, retries=1)
 
 
 def decide_traversal_plan(
@@ -394,3 +369,28 @@ def decide_traversal_plan(
     except ValueError as exc:  # ponytail: a merged plan that covers wrong is no plan
         logger.warning("Traversal verdict did not cover the level (%s) — falling back to the full tree", exc)
         return None
+
+
+def make_traversal_agent(
+    config: DecisionConfig | None,
+    *,
+    model: str | None = None,
+    timeout: float | None = None,
+) -> TraversalAgent | None:
+    """Build a :class:`TraversalAgent` from the decision config.
+
+    Args:
+        config: The ``[decision]`` block — model and timeout source.
+        model: Optional per-feature override for the model string.
+        timeout: Optional per-feature override for the per-call timeout.
+
+    Returns:
+        The agent, or ``None`` when no decision model is configured (disabled
+        block or no model) — the caller then falls back to the full tree.
+    """
+    model_string = model if model is not None else decision_model_string(config)
+    if model_string is None:
+        return None
+    if timeout is None:
+        timeout = config.timeout if config is not None else _DEFAULT_TIMEOUT
+    return TraversalAgent(model_string=model_string, timeout=timeout, retries=1)
