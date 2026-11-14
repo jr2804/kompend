@@ -36,7 +36,14 @@ async def next_node(ctx: RunContext[SummarizerDeps]) -> str:
     # payload entry), so the content is handed over in full — never
     # truncated here.
     content = node.get("content", "")
-    return f"node_id: {node['id']}\nheading: {heading}\ncontent: {content}"
+    parts = [f"node_id: {node['id']}", f"heading: {heading}"]
+    focus = node.get("focus", "")
+    if focus:
+        # Planned traversal: the plan scopes this summary to a branch. An
+        # anchoring instruction, never content — not part of the text.
+        parts.append(f"focus: {focus}")
+    parts.append(f"content: {content}")
+    return "\n".join(parts)
 
 
 async def summarize_node(ctx: RunContext[SummarizerDeps], node_id: str, summary: str) -> str:

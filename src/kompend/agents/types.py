@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Any, Protocol, TypedDict
+from typing import Any, NotRequired, Protocol, TypedDict
 
 from kompend.core.config._configs import LlmDataFormat
 from kompend.core.models import ImageRef
@@ -355,6 +355,7 @@ class SummaryNode(TypedDict):
     id: str
     heading_chain: str
     content: str
+    focus: NotRequired[str]
 
 
 class DistillNote(TypedDict):
