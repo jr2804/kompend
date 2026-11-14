@@ -174,6 +174,7 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
                 duration_ms=(perf_counter() - started) * 1000.0,
                 attempt=i + 1,
             )
+            resolved.append(result)
             pipeline.emit("resolve", i + 1, len(image_chunks), ProgressDetail.CAPTIONING)
     _check_resolver_failures(pipeline.resolver)
     return resolved
