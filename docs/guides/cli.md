@@ -782,6 +782,26 @@ All environment variables use the `KOMP_` prefix and map to dotted config keys.
 | `KOMP_BLAS_THREADS` | — | Cap for the numeric thread pools (default `min(8, cores)`) |
 | `KOMP_LLM_DEFAULT_MODEL` | `compile.llm.default_model` | Default LLM model |
 | `KOMP_VLM_MODEL` | `compile.llm.vlm_model` | Vision model for image captioning |
+| `KOMP_VLM_HEURISTIC_FILTER_ENABLED` | `compile.vlm_heuristic_filter_enabled` | Enable the structural/pixel figure pre-filter (default false) |
+| `KOMP_VLM_HEURISTIC_MIN_ASPECT_RATIO` | `compile.vlm_heuristic_min_aspect_ratio` | Aspect ratio above which a thin figure counts as line-like (default 20.0) |
+| `KOMP_VLM_HEURISTIC_MAX_THIN_EDGE` | `compile.vlm_heuristic_max_thin_edge` | Short-edge pixel cap for the line-like verdict (default 96) |
+| `KOMP_VLM_HEURISTIC_MAX_ANALYSIS_EDGE` | `compile.vlm_heuristic_max_analysis_edge` | Long-edge cap of the downscaled sample (default 320) |
+| `KOMP_VLM_HEURISTIC_MAX_ANALYSIS_PIXELS` | `compile.vlm_heuristic_max_analysis_pixels` | Pixel area above which pixel analysis is skipped (default 2000000) |
+| `KOMP_VLM_HEURISTIC_UNIFORM_STDDEV` | `compile.vlm_heuristic_uniform_stddev` | Grayscale stddev at or below which a figure is a near-uniform fill (default 1.0) |
+| `KOMP_VLM_HEURISTIC_NEAR_BLANK_STDDEV` | `compile.vlm_heuristic_near_blank_stddev` | Stddev half of the near-blank verdict (default 4.0) |
+| `KOMP_VLM_HEURISTIC_NEAR_BLANK_EDGE_DENSITY` | `compile.vlm_heuristic_near_blank_edge_density` | Edge-density half of the near-blank verdict (default 0.001) |
+| `KOMP_VLM_HEURISTIC_TRANSPARENCY_RATIO` | `compile.vlm_heuristic_transparency_ratio` | Alpha ratio treated as transparency-dominant — a hint, never a drop (default 0.995) |
+| `KOMP_VLM_HEURISTIC_MIN_CONFIDENCE` | `compile.vlm_heuristic_min_confidence` | Minimum verdict confidence for a pre-filter drop (default 0.9) |
+| `KOMP_VLM_HEURISTIC_FILTER_ENABLED` | `compile.vlm_heuristic_filter_enabled` | Enable the structural/pixel figure pre-filter (default false) |
+| `KOMP_VLM_HEURISTIC_MIN_ASPECT_RATIO` | `compile.vlm_heuristic_min_aspect_ratio` | Aspect ratio above which a thin figure counts as line-like (default 20.0) |
+| `KOMP_VLM_HEURISTIC_MAX_THIN_EDGE` | `compile.vlm_heuristic_max_thin_edge` | Short-edge pixel cap for the line-like verdict (default 96) |
+| `KOMP_VLM_HEURISTIC_MAX_ANALYSIS_EDGE` | `compile.vlm_heuristic_max_analysis_edge` | Long-edge cap of the downscaled analysis sample (default 320) |
+| `KOMP_VLM_HEURISTIC_MAX_ANALYSIS_PIXELS` | `compile.vlm_heuristic_max_analysis_pixels` | Pixel area above which analysis is skipped (default 2000000) |
+| `KOMP_VLM_HEURISTIC_UNIFORM_STDDEV` | `compile.vlm_heuristic_uniform_stddev` | Grayscale stddev at or below which a figure counts as a near-uniform fill (default 1.0) |
+| `KOMP_VLM_HEURISTIC_NEAR_BLANK_STDDEV` | `compile.vlm_heuristic_near_blank_stddev` | Stddev half of the near-blank verdict (default 4.0) |
+| `KOMP_VLM_HEURISTIC_NEAR_BLANK_EDGE_DENSITY` | `compile.vlm_heuristic_near_blank_edge_density` | Edge-density half of the near-blank verdict (default 0.001) |
+| `KOMP_VLM_HEURISTIC_TRANSPARENCY_RATIO` | `compile.vlm_heuristic_transparency_ratio` | Alpha ratio treated as transparency-dominant — a hint, never a drop (default 0.995) |
+| `KOMP_VLM_HEURISTIC_MIN_CONFIDENCE` | `compile.vlm_heuristic_min_confidence` | Minimum verdict confidence for a pre-filter drop (default 0.9) |
 | `KOMP_NOTES_FILE` | `notes.file` | User notes filename |
 | `KOMP_RESOLVE_RELATIONS` | `compile.resolve_relations` | Enable typed relation extraction |
 | `KOMP_RELATION_CONFIDENCE_THRESHOLD` | `compile.relation_confidence_threshold` | Minimum confidence for relations |

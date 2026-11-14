@@ -108,6 +108,45 @@ The old `LLMResolver` (per-leaf typed relation extraction) has been removed.
 Entity extraction is now programmatic via `EntityRegistry`; cross-document
 relations are inferred during compilation from shared entities.
 
+### Layered figure gates
+
+A figure is captioned only after every cheaper gate passes, in order — the
+first gate that decides pays nothing further:
+
+1. **Floors** (`VLMEnricher`, always on): byte size and minimum pixel
+   dimension (`compile.vlm_min_image_bytes`, `compile.vlm_min_image_dimension`)
+   drop tiny logos and spacers. Status: `vlm_filtered`.
+2. **Structural/pixel pre-filter** (`resolution/image_heuristics.py`, opt-in
+   via `compile.vlm_heuristic_filter_enabled`, default **off**): one bounded
+   measurement per figure — header-only when possible, otherwise a downscaled
+   sample capped by `vlm_heuristic_max_analysis_edge` /
+   `vlm_heuristic_max_analysis_pixels` — classifies line-like shapes (extreme
+   aspect ratio with a thin short edge), near-uniform fills and near-blank
+   frames. Verdicts are conservative: `UNSURE` and sub-threshold drops fall
+   through; a transparency-dominant canvas is a hint, never a drop. The
+   measured facts also ride the figure context as a factual `visual_hints`
+   clause. Status: `vlm_filtered` (reason names the signature).
+3. **Text relevance gate** (opt-in decision model, `compile.decision`): a
+   text-only classifier judges the figure's surroundings and the measured
+   facts; a failed classification falls back to captioning, never a skip.
+   Status: `vlm_relevance_skipped`.
+4. **VLM self-skip**: the caption prompt's `SKIP` contract — the model's own
+   answer. Status: `vlm_skipped`.
+
+Every verdict lands in the stage ledger as a `resolve` row with a reason code
+(`vlm_filtered`, `vlm_relevance_skipped`, `vlm_skipped`, or `ok` for a
+caption), so `kompend explain` and the doctor's failure histogram show why a
+figure has no caption without log archaeology.
+
+Tuning guidance: enable the pre-filter
+(`KOMP_VLM_HEURISTIC_FILTER_ENABLED=true`) on corpora with many decorative
+figures, then spot-check `kompend explain` for `vlm_filtered` rows naming real
+diagrams. If genuine line art is dropped, loosen
+`vlm_heuristic_near_blank_stddev` first, then `vlm_heuristic_uniform_stddev`;
+raising `vlm_heuristic_min_confidence` (default `0.9`) makes drops rarer,
+never more aggressive. The defaults are deliberately conservative — ambiguous
+figures are captioned, not dropped.
+
 ## Tier 4: Compilation
 
 **Input:** `list[ResolvedChunk]`  

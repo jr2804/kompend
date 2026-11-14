@@ -37,7 +37,7 @@ persistence, and standalone ingestion.
 | `failure_bundle.py`           | `write_failure_bundle` — a failed/stalled parse's self-contained repro bundle under `VaultPaths.failure_bundles_dir` (`.kompend/tmp/failures/<sha16>/`): `meta.json`, `traceback.txt`, the parser's bytes, the run log, `repro.sh` |
 | `attachments.py`, `assets.py` | Attachment ingestion (`ingest_attachment`), asset store — item-path modules |
 | `export.py`                   | Tier-1 cache → markdown export (`export_source`, `render_document_markdown`); text elements pass through `core.text.pipes.escape_prose_pipes` (generation contract) |
-| (ledger wiring)               | `stages/parse.py`, `stages/parse_sources.py`, `ingest.py`, `attachments.py` record every parse/chunk/enrich/attachment/dedup attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()`. The success path also records `measure_parse_quality(...)` so `kompend status` can flag a suspicious parse |
+| (ledger wiring)               | `stages/parse.py`, `stages/parse_sources.py`, `ingest.py`, `attachments.py`, `stages/resolve.py` record every parse/chunk/enrich/attachment/dedup/caption attempt into the `StageLedger` (`core.reporting.ledger`); run correlation rides `current_run_id()`. The resolve stage's `_record_caption_row` writes one `resolve` row per figure, classified by `caption_outcome` (`resolution.vlm_enricher`) so `kompend explain` and the doctor histogram distinguish `vlm_filtered` / `vlm_relevance_skipped` / `vlm_skipped` / enriched. The success path also records `measure_parse_quality(...)` so `kompend status` can flag a suspicious parse |
 
 ## Rules
 

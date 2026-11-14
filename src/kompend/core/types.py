@@ -54,6 +54,15 @@ class ReasonCode(StrEnum):
     NO_PARSER = "no_parser"
     #: The parser/VLM ran but produced nothing usable.
     EMPTY_EXTRACTION = "empty_extraction"
+    #: The figure pre-filter dropped the item before the VLM ran (byte or
+    #: dimension floor, or the structural/pixel heuristic); the ``detail``
+    #: carries the specific reason.
+    VLM_FILTERED = "vlm_filtered"
+    #: The text-only relevance gate judged the figure decorative; the
+    #: caption was deliberately skipped.
+    VLM_RELEVANCE_SKIPPED = "vlm_relevance_skipped"
+    #: The vision model itself answered SKIP for the figure.
+    VLM_SKIPPED = "vlm_skipped"
     #: The concept-embedding merge fell back to string similarity; the
     #: warning is log-only (no ledger row).
     EMBEDDING_MERGE_DISABLED = "embedding_merge_disabled"

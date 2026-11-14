@@ -144,20 +144,30 @@ def test_every_member_has_a_stable_value() -> None:
         "BACKEND_UNAVAILABLE",
         "JUDGE_DEGRADED",
         "DECISION_FALLBACK",
+        "TRAVERSAL",
         "CORRUPT_CACHE",
         "NO_PARSER",
         "EMPTY_EXTRACTION",
+        "VLM_FILTERED",
+        "VLM_RELEVANCE_SKIPPED",
+        "VLM_SKIPPED",
         "EMBEDDING_MERGE_DISABLED",
+        "PAYLOAD_TOO_LARGE",
     }
     assert ReasonCode.MISLABELLED_BINARY == "mislabelled_binary"
     assert ReasonCode.TIMEOUT == "timeout"
     assert ReasonCode.BACKEND_UNAVAILABLE == "backend_unavailable"
     assert ReasonCode.JUDGE_DEGRADED == "judge_degraded"
     assert ReasonCode.DECISION_FALLBACK == "decision_fallback"
+    assert ReasonCode.TRAVERSAL == "traversal"
     assert ReasonCode.CORRUPT_CACHE == "corrupt_cache"
     assert ReasonCode.NO_PARSER == "no_parser"
     assert ReasonCode.EMPTY_EXTRACTION == "empty_extraction"
+    assert ReasonCode.VLM_FILTERED == "vlm_filtered"
+    assert ReasonCode.VLM_RELEVANCE_SKIPPED == "vlm_relevance_skipped"
+    assert ReasonCode.VLM_SKIPPED == "vlm_skipped"
     assert ReasonCode.EMBEDDING_MERGE_DISABLED == "embedding_merge_disabled"
+    assert ReasonCode.PAYLOAD_TOO_LARGE == "payload_too_large"
 
 
 def test_ingest_parse_failure_carries_the_classified_code(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:

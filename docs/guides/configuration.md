@@ -189,7 +189,7 @@ The main configuration sections:
 | Section | Purpose |
 |---------|---------|
 | `[paths]` | Wiki directory, source/output/cache/state paths; `recursive` controls whether `sources/` subdirectories are scanned (`--recursive/--no-recursive`) |
-| `[compile]` | Compile settings: format, chunk size, image mode, workers |
+| `[compile]` | Compile settings: format, chunk size, image mode, workers, figure-caption gates (byte/dimension floors; opt-in structural/pixel pre-filter, `vlm_heuristic_*` thresholds, default off) |
 | `[compile.budget]` | Token budget settings — budgets shape the work, they never exclude it (see [Model Context Adaptation](model-context.md) for full reference) |
 | `[compile.llm]` | LLM model, provider, fallback chain, role models |
 | `[compile.embedding]` | Embedding model for the vector index (`<provider>:<model>`, e.g. `ollama:granite-embedding:278m`; empty disables) |

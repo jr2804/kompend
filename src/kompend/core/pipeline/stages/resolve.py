@@ -4,21 +4,26 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from time import perf_counter
 from typing import cast
 
 from kompend.core.models import Chunk, ChunkTree, ElementType, MetadataField, ResolvedChunk
 from kompend.core.pipeline.events import ProgressDetail
 from kompend.core.pipeline.parse_cache import content_hash_prefix
 from kompend.core.pipeline.runtime import PipelineRuntime
+from kompend.core.reporting.ledger import StageLedger, stage_ledger
 from kompend.core.resolution.entity_registry import EntityRegistry
 from kompend.core.resolution.xref_checker import CrossReferenceChecker
+from kompend.core.store import vault_db_path
 from kompend.core.templates import get_template_loader
+from kompend.core.types import StageOutcome
 from kompend.llm.models import resolve_vlm_model
 from kompend.logging import get_logger
 from kompend.preprocessing.images import is_raster_image
 from kompend.resolution import (
     HeuristicConfig,
     ImageRelevance,
+    caption_outcome,
     observe_image,
     render_visual_hints,
     verdict_from_observations,
@@ -86,7 +91,7 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
     )
     prompt_identity = _vlm_prompt_identity()
 
-    def _resolve_one(chunk: Chunk) -> ResolvedChunk:
+    def _resolve_one(chunk: Chunk) -> tuple[ResolvedChunk, bool]:
         # ``content`` couples the row to the chunk's text. Ids are positional
         # (``<stem>_tN``): a chunk-size change keeps the same ids while the
         # text moves, and an id-only key would replay stale resolutions.
@@ -123,7 +128,7 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
                 relations=relations,
                 resolved_references=resolved_references,
                 metadata=metadata,
-            )
+            ), True
         if pipeline.resolver is None:
             raise RuntimeError("Resolver not initialized")
         result = pipeline.resolver.resolve(chunk)
@@ -144,11 +149,12 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
                 },
             ),
         )
-        return result
+        return result, False
 
     done = 0
     for i, chunk in enumerate(non_image):
-        resolved.append(_resolve_one(chunk))
+        result, _ = _resolve_one(chunk)
+        resolved.append(result)
         done = i + 1
         pipeline.emit("resolve", done, total, "")
     if image_chunks:
@@ -156,11 +162,71 @@ def resolve_chunks(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> list[Re
         # "Captioning images" — makes the (slow) VLM run visible instead
         # of looking like a stalled resolve progress bar.
         pipeline.emit("resolve", 0, len(image_chunks), ProgressDetail.VLM)
-    for i, chunk in enumerate(image_chunks):
-        resolved.append(_resolve_one(chunk))
-        pipeline.emit("resolve", i + 1, len(image_chunks), ProgressDetail.CAPTIONING)
+    with stage_ledger(vault_db_path(pipeline.cache_directory())) as ledger:
+        for i, chunk in enumerate(image_chunks):
+            started = perf_counter()
+            result, cached = _resolve_one(chunk)
+            _record_caption_row(
+                ledger,
+                chunk,
+                result,
+                cached=cached,
+                duration_ms=(perf_counter() - started) * 1000.0,
+                attempt=i + 1,
+            )
+            pipeline.emit("resolve", i + 1, len(image_chunks), ProgressDetail.CAPTIONING)
     _check_resolver_failures(pipeline.resolver)
     return resolved
+
+
+def _record_caption_row(
+    ledger: StageLedger,
+    chunk: Chunk,
+    result: ResolvedChunk,
+    *,
+    cached: bool,
+    duration_ms: float,
+    attempt: int,
+) -> None:
+    """One ledger row per figure: why it has — or has not — a caption.
+
+    The row is the audit trail ``kompend explain`` and the doctor's
+    failure histogram read: a dropped figure says which gate dropped it
+    (``vlm_filtered`` from the cheap pre-filter, ``vlm_relevance_skipped``
+    from the text gate, ``vlm_skipped`` from the model itself) and the
+    gate's own reason string. Enriched figures record ``ok``; a figure
+    with no image path is ``degraded`` (``no_parser``).
+
+    ``attempt`` is the figure's ordinal within the source — one row per
+    (run, source, stage, attempt), so figures of one source cannot
+    collide. A cached figure records ``cached`` with the carried
+    outcome's detail: the drop decision itself was made, and recorded,
+    in the run that filled the cache. Never raises: the ledger is an
+    observer.
+    """
+    outcome = caption_outcome(result)
+    if outcome is None:
+        return
+    source = chunk.source_file.as_posix() if chunk.source_file else chunk.id
+    if cached:
+        ledger.record(
+            source,
+            "resolve",
+            outcome=StageOutcome.CACHED,
+            attempt=attempt,
+            duration_ms=duration_ms,
+            detail=outcome.detail or None,
+        )
+        return
+    ledger.record(
+        source,
+        "resolve",
+        outcome=outcome.outcome,
+        attempt=attempt,
+        duration_ms=duration_ms,
+        reason_code=outcome.reason_code,
+        detail=outcome.detail or None,
+    )
 
 
 def _check_resolver_failures(resolver: object) -> None:

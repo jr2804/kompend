@@ -36,6 +36,7 @@ Two rules shape this module:
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
@@ -46,6 +47,7 @@ from kompend.agents.failure import UnitFailureLog
 from kompend.agents.vlm import VlmAgent, VlmDeps
 from kompend.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
 from kompend.core.templates import get_template_loader
+from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.decision import FigureRelevanceVerdict
 from kompend.logging import get_logger
@@ -336,6 +338,50 @@ class VLMEnricher(BaseResolver):
             raise LLMOutputError(msg)
         deps = VlmDeps(image_file=str(image_ref), context=context)
         return self._agent.run(deps)
+
+
+@dataclass(frozen=True, slots=True)
+class CaptionOutcome:
+    """What the enricher did to one figure, shaped for a stage-ledger row.
+
+    ``outcome`` is the row's ``StageOutcome``; ``reason_code`` explains a
+    non-``ok`` outcome in the shared :class:`ReasonCode` vocabulary;
+    ``detail`` carries the enricher's own reason string.
+    """
+
+    outcome: StageOutcome
+    reason_code: ReasonCode | None
+    detail: str
+
+
+def caption_outcome(resolved: ResolvedChunk) -> CaptionOutcome | None:
+    """Classify what the enricher did to one image chunk.
+
+    ``None`` when the enricher did not act on the chunk (a text chunk
+    passing through the chain). The classification reads the same metadata
+    flags and status entities :meth:`VLMEnricher.enrich` writes, so a
+    cached resolution classifies identically to a fresh one — the resolve
+    stage can therefore record one honest ledger row per figure either way.
+    """
+    metadata = resolved.metadata
+    status = next((e for e in resolved.entities if e.get("type") == STATUS_ENTITY_TYPE), None)
+    context = str(status.get("context") or "") if status else ""
+    if metadata.get("vlm_enriched"):
+        return CaptionOutcome(StageOutcome.OK, None, "")
+    if metadata.get("vlm_heuristic"):
+        reason = str(metadata.get("vlm_heuristic_reason") or context)
+        return CaptionOutcome(StageOutcome.SKIPPED, ReasonCode.VLM_FILTERED, reason)
+    if metadata.get("vlm_filtered"):
+        return CaptionOutcome(StageOutcome.SKIPPED, ReasonCode.VLM_FILTERED, context)
+    if metadata.get("vlm_relevance_skipped"):
+        return CaptionOutcome(StageOutcome.SKIPPED, ReasonCode.VLM_RELEVANCE_SKIPPED, context)
+    if metadata.get("vlm_skipped"):
+        return CaptionOutcome(StageOutcome.SKIPPED, ReasonCode.VLM_SKIPPED, context)
+    if status is not None and status.get("name") == "vlm_placeholder":
+        return CaptionOutcome(StageOutcome.DEGRADED, ReasonCode.NO_PARSER, context)
+    if status is not None and status.get("name") == "vlm_error":
+        return CaptionOutcome(StageOutcome.FAILED, ReasonCode.BACKEND_UNAVAILABLE, context)
+    return None
 
 
 def _precomputed_verdict(chunk: Chunk) -> HeuristicVerdict | None:
