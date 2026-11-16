@@ -22,7 +22,7 @@ from kompend.chunking.hierarchical import HierarchicalChunker
 from kompend.chunking.summarizer import NodeSummarizer
 from kompend.compilation.base import BaseCompiler
 from kompend.core.cache.store import CacheStore
-from kompend.core.models import ChunkTree
+from kompend.core.models import ChunkTree, WikiNode
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.pipeline.state import TierState, TierStateStore
 from kompend.core.resolution.xref_checker import CrossReferenceResult
@@ -65,6 +65,7 @@ class PipelineRuntime(Protocol):
     cache_store: CacheStore
     last_chunk_count: int
     xref_result: CrossReferenceResult | None
+    attachment_stubs: list[WikiNode]
 
     @property
     def state(self) -> TierState: ...

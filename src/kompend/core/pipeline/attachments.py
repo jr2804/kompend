@@ -20,9 +20,11 @@ from binaryornot.check import is_binary
 
 from kompend.agents.vlm import VlmAgent, VlmDeps
 from kompend.core.config.rumdl import resolve_rumdl_config
-from kompend.core.models import DocumentElement, ElementType, ParsedDocument
+from kompend.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument
 from kompend.core.models.attachments import IMAGE_EXTENSIONS, Attachment, AttachmentManifest
-from kompend.core.paths import VaultPaths
+from kompend.core.models.enums import MetadataField
+from kompend.core.models.metadata import meta_str_list
+from kompend.core.paths import ATTACHMENTS_DIR_NAME, VaultPaths, safe_stem
 from kompend.core.pipeline.ingest import restore_source_path
 from kompend.core.pipeline.reasons import reason_code_for
 from kompend.core.reporting.ledger import StageLedger
@@ -34,6 +36,40 @@ from kompend.logging import get_logger
 from kompend.preprocessing.parsers.base import DocumentParser
 
 logger = get_logger(__name__)
+
+
+def stamp_attachment_mentions(base_dir: Path, wiki: CompiledWiki) -> int:
+    """Stamp an ``attachments`` mention onto nodes derived from a source with attachments.
+
+    Every mode gets this: ``off`` stores the file and mentions it,
+    ``index-only`` and ``full-ingest`` mention it on top of their deeper
+    processing. A node's provenance stems name its sources; a stem with
+    manifest entries collects their vault-relative paths, so the OKF
+    frontmatter (``attachments`` extension key) can tell the reader which
+    supplementary files exist without opening ``attachments/``.
+
+    Returns the number of nodes stamped.
+    """
+    manifest = AttachmentManifest(VaultPaths(base_dir).attachments_manifest_file)
+    entries = manifest.read_all()
+    if not entries:
+        return 0
+
+    by_source: dict[str, list[str]] = {}
+    for att in entries.values():
+        by_source.setdefault(att.source, []).append(f"{ATTACHMENTS_DIR_NAME}/{att.path}")
+
+    stamped = 0
+    for node in wiki.nodes:
+        provenance = meta_str_list(node.metadata.get(MetadataField.PROVENANCE))
+        stems = {safe_stem(p) for p in provenance if p}
+        hits = sorted({path for stem in stems for path in by_source.get(stem, [])})
+        if hits:
+            node.metadata[MetadataField.ATTACHMENTS] = hits
+            stamped += 1
+    if stamped:
+        logger.info("Mentioned attachments on %d page(s)", stamped)
+    return stamped
 
 
 def iter_ingestible_attachments(vp: VaultPaths) -> list[Attachment]:

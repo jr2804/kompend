@@ -7,11 +7,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from kompend.core.models import DocumentElement, ElementType, ParsedDocument
+from kompend.core.config import AttachmentMode
+from kompend.core.models import CompiledWiki, DocumentElement, ElementType, MetadataField, NodeType, ParsedDocument, WikiNode
 from kompend.core.models.attachments import Attachment, AttachmentManifest
 from kompend.core.paths import CACHE_DIR, VaultPaths
-from kompend.core.pipeline.attachments import ingest_attachment, iter_ingestible_attachments
-from kompend.core.pipeline.stages.parse import _process_attachments
+from kompend.core.pipeline.attachments import ingest_attachment, iter_ingestible_attachments, stamp_attachment_mentions
+from kompend.core.pipeline.stages.parse import _attachment_stub_nodes, _process_attachments
 from kompend.core.reporting.ledger import StageLedger
 from kompend.core.store import vault_db_path
 
@@ -107,9 +108,7 @@ def test_ingest_image_attachment_with_vlm(vault: VaultPaths) -> None:
 
 
 def test_process_attachments_gate_off_skips_all(vault: VaultPaths) -> None:
-    """attachments.ingest_adopted=false is a global gate: nothing is ingested
-    even when manifest entries are marked ingestible.
-    """
+    """attachments.mode=off: nothing is ingested even when entries are ingestible."""
     manifest = AttachmentManifest(vault.attachments_manifest_file)
     manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True))
     (vault.attachments_dir / "r").mkdir(parents=True)
@@ -117,14 +116,85 @@ def test_process_attachments_gate_off_skips_all(vault: VaultPaths) -> None:
 
     pipeline = MagicMock()
     pipeline.base_directory = str(vault.base_dir)
-    pipeline.config.attachments_ingest_adopted = False
+    pipeline.config.attachments_mode = AttachmentMode.OFF
 
     assert _process_attachments(pipeline, StageLedger.open(vault_db_path(vault.base_dir / CACHE_DIR))) == []
     pipeline.parser.parse.assert_not_called()
 
 
+def test_attachment_stub_nodes_in_index_only_mode(vault: VaultPaths) -> None:
+    """index-only: an ingestible text attachment becomes one stub page, not a tree."""
+    manifest = AttachmentManifest(vault.attachments_manifest_file)
+    manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True))
+    (vault.attachments_dir / "r").mkdir(parents=True)
+    (vault.attachments_dir / "r" / "a.txt").write_text("annex content")
+
+    pipeline = MagicMock()
+    pipeline.base_directory = str(vault.base_dir)
+    pipeline.config.attachments_mode = AttachmentMode.INDEX_ONLY
+    pipeline.config.llm.default_model = None
+    pipeline.config.llm.vlm_model = None
+    pipeline.config.llm.timeout = 120.0
+    pipeline.parser = MagicMock()
+    pipeline.parser.parse.return_value = ParsedDocument(
+        source_file=vault.attachments_dir / "r" / "a.txt",
+        elements=[DocumentElement(type=ElementType.TEXT, content="annex content")],
+        title="a.txt",
+    )
+
+    stubs = _attachment_stub_nodes(pipeline, StageLedger.open(vault_db_path(vault.base_dir / CACHE_DIR)))
+
+    assert len(stubs) == 1
+    stub = stubs[0]
+    assert isinstance(stub, WikiNode)
+    assert stub.node_type is NodeType.PAGE
+    assert stub.title == "a.txt"
+    assert "annex content" in stub.content
+    assert stub.metadata["source_asset"] is True
+    assert stub.metadata[MetadataField.ASSET_STUB] is True
+    assert stub.metadata["parent_source"] == "r"
+    assert stub.metadata["asset_file"] == "r/a.txt"
+
+
+def test_attachment_stub_nodes_skip_binaries(vault: VaultPaths) -> None:
+    """Binary attachments have no honest text form — no stub, no error."""
+    manifest = AttachmentManifest(vault.attachments_manifest_file)
+    manifest.append(Attachment(path="r/binary.bin", source="r", ingestible=True))
+    (vault.attachments_dir / "r").mkdir(parents=True)
+    (vault.attachments_dir / "r" / "binary.bin").write_bytes(b"\x00\x01\x02")
+
+    pipeline = MagicMock()
+    pipeline.base_directory = str(vault.base_dir)
+    pipeline.config.attachments_mode = AttachmentMode.INDEX_ONLY
+    pipeline.config.llm.default_model = None
+    pipeline.config.llm.vlm_model = None
+    pipeline.config.llm.timeout = 120.0
+    pipeline.parser = MagicMock()
+
+    stubs = _attachment_stub_nodes(pipeline, StageLedger.open(vault_db_path(vault.base_dir / CACHE_DIR)))
+
+    assert stubs == []
+
+
+def test_stamp_attachment_mentions_by_provenance_stem(vault: VaultPaths) -> None:
+    """Nodes whose provenance names a source with attachments get the mention."""
+    manifest = AttachmentManifest(vault.attachments_manifest_file)
+    manifest.append(Attachment(path="r/a.txt", source="r", ingestible=False))
+    manifest.append(Attachment(path="r/pic.png", source="r", ingestible=False))
+
+    attached = WikiNode(id="p1", title="Report", content="body", node_type=NodeType.PAGE, metadata={"provenance": ["sources/r.pdf"]})
+    other = WikiNode(id="p2", title="Other", content="body", node_type=NodeType.PAGE, metadata={"provenance": ["sources/other.pdf"]})
+
+    wiki = CompiledWiki(nodes=[attached, other], edges=[], toc=[])
+    stamped = stamp_attachment_mentions(vault.base_dir, wiki)
+
+    assert stamped == 1
+    assert attached.metadata["attachments"] == ["attachments/r/a.txt", "attachments/r/pic.png"]
+    assert "attachments" not in other.metadata
+
+
 def test_process_attachments_gate_on_uses_manifest(vault: VaultPaths) -> None:
-    """With the gate on, only manifest-ingestible attachments are processed."""
+    """In full-ingest mode, only manifest-ingestible attachments are processed."""
     manifest = AttachmentManifest(vault.attachments_manifest_file)
     manifest.append(Attachment(path="r/a.txt", source="r", ingestible=True))
     (vault.attachments_dir / "r").mkdir(parents=True)
@@ -132,7 +202,7 @@ def test_process_attachments_gate_on_uses_manifest(vault: VaultPaths) -> None:
 
     pipeline = MagicMock()
     pipeline.base_directory = str(vault.base_dir)
-    pipeline.config.attachments_ingest_adopted = True
+    pipeline.config.attachments_mode = AttachmentMode.FULL_INGEST
     pipeline.config.llm.default_model = None
     pipeline.config.llm.vlm_model = None
     pipeline.config.llm.timeout = 120.0

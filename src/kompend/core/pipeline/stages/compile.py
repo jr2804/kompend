@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from kompend.core.models import (
     ChunkNode,
     ChunkTree,
@@ -15,6 +17,7 @@ from kompend.core.models.wiki import (
     load_wiki_snapshot,
     write_wiki_snapshot_payload,
 )
+from kompend.core.pipeline.attachments import stamp_attachment_mentions
 from kompend.core.pipeline.runtime import PipelineRuntime
 from kompend.core.pipeline.stages.parse import parse_and_chunk
 from kompend.core.pipeline.stages.resolve import resolve_chunks
@@ -32,6 +35,12 @@ def run_compile_tier(pipeline: PipelineRuntime) -> CompiledWiki | None:
         return None
     wiki = pipeline.compiler.compile(resolved, trees=trees)
     build_wiki_hierarchy(wiki, trees)
+    # Index-only attachments: raw stub pages parsed at Tier 1, appended before
+    # the privacy filter so they round-trip the snapshot like any other node.
+    if pipeline.attachment_stubs:
+        wiki.nodes.extend(pipeline.attachment_stubs)
+        pipeline.attachment_stubs = []
+    stamp_attachment_mentions(Path(pipeline.base_directory), wiki)
     if pipeline.config.privacy_filter:
         wiki, _ = filter_wiki(wiki)
     save_compiled_wiki(pipeline, wiki)

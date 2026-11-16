@@ -24,6 +24,7 @@ from kompend.core.models import (
     MetadataField,
     ResolvedChunk,
     WikiField,
+    WikiNode,
 )
 from kompend.core.paths import VaultPaths, rel_to_vault
 from kompend.core.pipeline.config import PipelineConfig, Tier
@@ -112,6 +113,7 @@ class WikiPipeline:
         self._tier_timings: dict[str, float] = {}
         self.last_chunk_count: int = 0
         self.xref_result: CrossReferenceResult | None = None
+        self.attachment_stubs: list[WikiNode] = []
 
     @property
     def state(self) -> TierState:

@@ -295,7 +295,8 @@ def wiki_list_attachments(
     vp = vault_paths(wiki_dir)
     manifest = AttachmentManifest(vp.attachments_manifest_file)
     if not manifest.exists():
-        return {"status": ToolStatus.OK, "attachments": [], "count": 0}
+        # MCP wire shape, not the metadata field
+        return {"status": ToolStatus.OK, "attachments": [], "count": 0}  # nocheck: MCP wire shape  # nocheck: MCP wire shape
 
     entries = manifest.read_all().values()
     if source:
@@ -304,7 +305,8 @@ def wiki_list_attachments(
     return {
         "status": ToolStatus.OK,
         "count": len(entries),
-        "attachments": [
+        # MCP wire shape, not the metadata field
+        "attachments": [  # nocheck: MCP wire shape
             {
                 "source": a.source,
                 "path": a.path,

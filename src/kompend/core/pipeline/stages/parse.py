@@ -18,10 +18,15 @@ from kompend.agents.decision import FigureRelevanceAgent
 from kompend.agents.failure import UnitFailureLog
 from kompend.agents.vlm import VlmAgent
 from kompend.chunking.errors import ChunkingError
+from kompend.core.config import AttachmentMode
 from kompend.core.models import (
     ChunkTree,
+    MetadataField,
+    NodeType,
+    WikiNode,
 )
 from kompend.core.models.attachments import AttachmentManifest, adopt_orphan_attachments
+from kompend.core.models.elements import element_text
 from kompend.core.paths import VaultPaths
 from kompend.core.pipeline.attachments import (
     ingest_attachment,
@@ -37,6 +42,7 @@ from kompend.core.pipeline.stall_watch import DEFAULT_STALL_WARN_S, StallWatchdo
 from kompend.core.reporting.ledger import StageLedger, stage_ledger
 from kompend.core.reporting.parse_quality import measure_parse_quality
 from kompend.core.store import vault_db_path
+from kompend.core.text.slug import slugify
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.verbosity import is_verbose
 from kompend.llm.decision import decision_model_string
@@ -216,9 +222,13 @@ def parse_and_chunk(
         pipeline.emit("parse", len(source_files), len(source_files), ProgressDetail.DONE)
 
         # ── Process ingestible attachments ──────────────────────────────
-        att_trees = _process_attachments(pipeline, ledger)
-        if att_trees:
-            trees.extend(att_trees)
+        mode = pipeline.config.attachments_mode
+        if mode is AttachmentMode.FULL_INGEST:
+            att_trees = _process_attachments(pipeline, ledger)
+            if att_trees:
+                trees.extend(att_trees)
+        elif mode is AttachmentMode.INDEX_ONLY:
+            pipeline.attachment_stubs = _attachment_stub_nodes(pipeline, ledger)
 
     if pipeline.summarizer is not None:
         # Summarization runs one LLM session per tree and can take hours for
@@ -272,8 +282,99 @@ def _load_dedup_state(pipeline: PipelineRuntime) -> tuple[set[str], dict[str, di
     return dedup_skip, dedup_similar
 
 
+def _attachment_stub_nodes(pipeline: PipelineRuntime, ledger: StageLedger) -> list[WikiNode]:
+    """Index-only attachments: parse and caption, but never compile.
+
+    Each ingestible attachment becomes one raw stub page — title, the
+    parsed text (or the VLM caption for an image), and the same
+    ``source_asset`` metadata the full path stamps. No chunker, no
+    summarizer, no resolver: the stub travels straight to the compile
+    tier, which appends it to the wiki so the existing embed gate and
+    staleness rules treat it like any other node.
+    """
+    vp = VaultPaths(pipeline.base_directory)
+    manifest = AttachmentManifest(vp.attachments_manifest_file)
+    if not manifest.exists():
+        return []
+
+    mode = pipeline.config.attachments_mode
+    if mode is not AttachmentMode.INDEX_ONLY:
+        return []
+
+    ingestible = iter_ingestible_attachments(vp)
+    if not ingestible:
+        return []
+
+    parser = pipeline.parser
+    if parser is None:
+        logger.warning("No parser available — skipping attachment indexing", extra={"reason_code": ReasonCode.NO_PARSER})
+        return []
+    vlm_captioner = None
+    vlm_model = resolve_vlm_model(pipeline.config.llm.default_model, pipeline.config.llm.vlm_model)
+    if vlm_model:
+        try:
+            vlm_captioner = VlmAgent(
+                vlm_model,
+                timeout=pipeline.config.llm.timeout,
+                llm=pipeline.config.llm,
+            )
+        except Exception as exc:
+            logger.debug("VLM captioner not available for attachments: %s", exc, exc_info=is_verbose())
+
+    stubs: list[WikiNode] = []
+    pipeline.emit("parse", 0, len(ingestible), ProgressDetail.STARTING)
+    for idx, att in enumerate(ingestible):
+        pipeline.emit("parse", idx + 1, len(ingestible), f"asset: {att.filename}")
+
+        try:
+            doc = ingest_attachment(vp, att, parser, vlm_captioner=vlm_captioner, vlm_model=vlm_model, ledger=ledger)
+            if doc is None:
+                continue
+
+            ledger.record_parse_quality(measure_parse_quality(doc, source=att.path))
+
+            content = "\n\n".join(element_text(el.content) for el in doc.elements if element_text(el.content))
+            if not content.strip():
+                logger.debug("Attachment %s parsed to no text — storing stub without content", att.filename)
+            stubs.append(
+                WikiNode(
+                    id=slugify(f"asset-{att.path}"),
+                    title=att.filename,
+                    content=content,
+                    node_type=NodeType.PAGE,
+                    metadata={
+                        "source_asset": True,
+                        "parent_source": att.source,
+                        "asset_file": att.path,
+                        MetadataField.ASSET_STUB: True,
+                    },
+                )
+            )
+            ledger.record(
+                att.path,
+                "attachment",
+                outcome=StageOutcome.OK,
+            )
+            logger.info("Indexed attachment (index-only): %s", att.filename)
+
+        except Exception as exc:
+            logger.debug("Failed to process attachment %s: %s", att.filename, exc, exc_info=is_verbose())
+            ledger.record(
+                att.path,
+                "attachment",
+                outcome=StageOutcome.FAILED,
+                reason_code=reason_code_for(exc),
+                detail=str(exc),
+            )
+
+    if stubs:
+        logger.info("Indexed %d attachment(s) as stub pages (attachments.mode=index-only)", len(stubs))
+
+    return stubs
+
+
 def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list[ChunkTree]:
-    """Process ingestible attachments and return their ChunkTrees.
+    """Process ingestible attachments and return their ChunkTrees (full-ingest mode).
 
     Attachments are parsed via the same parser as sources.
     Image attachments (PNG/JPG) are captioned via VLM if configured.
@@ -285,11 +386,9 @@ def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list
     if not manifest.exists():
         return []
 
-    # Global gate: ``attachments.ingest_adopted`` ANDs with the per-attachment
-    # manifest flag. When the gate is off, nothing is ingested regardless of
-    # how many attachments were explicitly marked ingestible.
-    if not pipeline.config.attachments_ingest_adopted:
-        logger.info("Attachment ingestion disabled (attachments.ingest_adopted=false) — skipping %d manifest entry(s)", len(manifest.read_all()))
+    mode = pipeline.config.attachments_mode
+    if mode is not AttachmentMode.FULL_INGEST:
+        logger.info("Attachment compilation disabled (attachments.mode=%s) — skipping %d manifest entry(s)", mode.value, len(manifest.read_all()))
         return []
 
     ingestible = iter_ingestible_attachments(vp)
