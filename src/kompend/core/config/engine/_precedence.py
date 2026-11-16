@@ -304,14 +304,20 @@ def _upgrade_attachment_mode(result: dict[str, Any], provenance: dict[str, Confi
     """Upgrade pre-mode vaults: ``ingest_adopted = true`` meant full ingestion.
 
     ``attachments.mode`` defaulted to ``index-only`` when it was introduced, so a
-    vault whose config predates the key but already set ``ingest_adopted = true``
-    would silently drop from full ingestion to index-only. When the user never
-    named ``mode`` (its provenance is still the default) and the adoption flag is
-    set, the mode is upgraded to ``full-ingest`` and the provenance records the
-    upgrade. A config that names ``mode`` is left untouched.
+    vault whose config predates the key but explicitly set ``ingest_adopted =
+    true`` would silently drop from full ingestion to index-only. When the user
+    never named ``mode`` (its provenance is still the default) and *explicitly*
+    configured the adoption flag to true, the mode is upgraded to
+    ``full-ingest`` and the provenance records the upgrade. A config that names
+    ``mode`` is left untouched, and so is one that never mentions
+    ``ingest_adopted`` - its current default must not masquerade as legacy
+    intent.
     """
     mode_source = provenance.get("attachments.mode", ConfigSource("default"))
     if mode_source.path != "default":  # nocheck: enum-literal - ConfigSource token
+        return
+    adopted_source = provenance.get("attachments.ingest_adopted", ConfigSource("default"))
+    if adopted_source.path == "default":  # nocheck: enum-literal - ConfigSource token
         return
     if not get_dot(result, "attachments.ingest_adopted"):
         return

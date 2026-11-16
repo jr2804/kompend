@@ -38,9 +38,9 @@ def test_index_rebuilds_vector_index(tmp_path: Path, monkeypatch: pytest.MonkeyP
     mock_load.assert_called_once()
     mock_build.assert_called_once()
     # embed_attachments comes from the canonical key (attachments.embed),
-    # which defaults to False
+    # which defaults to True
     call_kwargs = mock_build.call_args.kwargs
-    assert call_kwargs["embed_attachments"] is False
+    assert call_kwargs["embed_attachments"] is True
     assert call_kwargs["embed_model"] == "test-embed"
     # wiki metadata records the embedding model for query to open the store
     mock_write.assert_called_once()

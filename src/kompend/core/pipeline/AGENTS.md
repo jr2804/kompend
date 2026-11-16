@@ -92,8 +92,10 @@ persistence, and standalone ingestion.
 - **Attachments travel as far as `attachments.mode` says.** `off` registers and
   mentions only; `index-only` (default) parses into raw stub wiki nodes that
   reach the vector index but no LLM tier; `full-ingest` compiles them like any
-  source. Explicit per-attachment marks are honored in every mode — the mode is
-  a depth switch, not a veto. The parse tier builds stubs
+  source. Explicit per-attachment marks are honored wherever the tier runs
+  (indexed as stubs in `index-only`, compiled in `full-ingest`); `off` vetoes
+  content processing entirely while adoption and the frontmatter mention
+  continue. The parse tier builds stubs
   (`_attachment_stub_nodes`); the compile tier appends them before the privacy
   filter and stamps `attachments:` mentions by provenance stem
   (`stamp_attachment_mentions`). Stubs are quarantined at render time: the

@@ -96,7 +96,7 @@ def test_verify_agrees_with_orphan_rule(tmp_path: Path) -> None:
 
 
 def test_adopt_registers_unregistered_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Default config: adopted files are registered but not ingestible."""
+    """Default config: adoption marks text files ingestible (ingest_adopted=true)."""
     base = _vault(tmp_path)
     _add_source(base)
     f = base / "attachments" / "report" / "new.txt"
@@ -110,7 +110,7 @@ def test_adopt_registers_unregistered_files(tmp_path: Path, monkeypatch: pytest.
 
     row = _manifest(base).read_all()["report/new.txt"]
     assert row.source == "report"
-    assert row.ingestible is False
+    assert row.ingestible is True
 
     again = _cli_runner.invoke(app, ["attachments", "adopt"])
     assert again.exit_code == 0, again.output

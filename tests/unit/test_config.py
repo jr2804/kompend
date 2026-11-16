@@ -376,8 +376,8 @@ class TestResolveConfig:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
         assert cfg.get("attachments.mode") == "index-only"
-        assert cfg.get("attachments.ingest_adopted") is False
-        assert cfg.get("attachments.embed") is False
+        assert cfg.get("attachments.ingest_adopted") is True
+        assert cfg.get("attachments.embed") is True
 
     def test_attachments_ingest_adopted_upgrades_to_full_ingest(self, tmp_path: Any, monkeypatch: Any) -> None:
         """Vaults predating mode: ingest_adopted=true meant full ingestion."""

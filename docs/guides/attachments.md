@@ -34,11 +34,15 @@ not embedded.
 `attachments.mode` decides how far an attachment travels through the pipeline.
 It has three levels:
 
-| Mode | Stored | Mentioned in frontmatter | Parsed + indexed | Compiled |
-|------|--------|--------------------------|------------------|----------|
-| `off` | yes | yes | no | no |
-| `index-only` **(default)** | yes | yes | yes | no |
-| `full-ingest` | yes | yes | yes | yes |
+| Mode | Stored | Orphans auto-adopted | Mentioned in frontmatter | Parsed + indexed | Vector index | Compiled |
+|------|--------|----------------------|--------------------------|------------------|--------------|----------|
+| `off` | yes | yes | yes | no | no | no |
+| `index-only` **(default)** | yes | yes | yes | yes | yes¹ | no |
+| `full-ingest` | yes | yes | yes | yes | yes¹ | yes |
+
+¹ needs a configured embedder plus `attachments.embed = true` (the default).
+Adoption and the frontmatter mention are mode-independent — `mode` governs only
+the content pipeline.
 
 - **`off`** — the file is registered in the manifest and linked from its
   source's frontmatter (`attachments:` list). No parsing, no indexing.
@@ -51,11 +55,14 @@ It has three levels:
   the wiki reads clean while search still finds them.
 - **`full-ingest`** — attachments are ingested *and* compiled like sources.
 
-The mode governs the pipeline depth only. Explicitly marked attachments
-(`kompend attachments ingest`) are honored in every mode; the mode is the
-kill-switch for the whole tier. A vault whose config predates `mode` and sets
-`ingest_adopted = true` keeps its old behavior — the resolver upgrades it to
-`full-ingest` (explicitly naming `mode` always wins).
+The mode governs the content pipeline only: adoption and the frontmatter
+mention happen in every mode. Explicitly marked attachments
+(`kompend attachments ingest`) are honored wherever the tier runs — indexed as
+stubs in `index-only`, compiled as sources in `full-ingest`; `off` is the
+kill-switch for the whole tier (no content processing at all). A vault whose
+config predates `mode` and sets `ingest_adopted = true` keeps its old behavior
+— the resolver upgrades it to `full-ingest` (explicitly naming `mode` always
+wins).
 
 ## Registering attachments
 
@@ -111,9 +118,9 @@ compile, unlike the `orphan-attachments` lint rule (which needs a compiled wiki)
 At compile start, kompend scans `attachments/<slug>/` for files that have no
 manifest entry and registers them automatically:
 
-- `ingestible` depends on `attachments.ingest_adopted` (default `false`):
+- `ingestible` depends on `attachments.ingest_adopted` (default `true`):
   text and image extensions become ingestible, binaries are registered
-  only. With `false` (the default), adoption only registers the file.
+  only. With `false`, adoption only registers the file.
 - `embed` inherits the global `attachments.embed` setting.
 - Tombstoned paths (explicit `attachments remove`) are never re-adopted.
 - Subdirectories whose slug matches no source in `sources/` are skipped —
@@ -129,8 +136,8 @@ before a compile with `kompend attachments verify`.
 ```toml
 [attachments]
 mode = "index-only"     # off / index-only (default) / full-ingest
-ingest_adopted = true   # adopted text/image files are marked ingestible
-embed = false           # include attachment content in the vector index
+ingest_adopted = true   # adopted text/image files are marked ingestible (default)
+embed = true            # include attachment content in the vector index (default)
 ```
 
 `search.embed_attachments` is gone from the schema — it was renamed to
@@ -171,7 +178,7 @@ precedence.
 
 ```toml
 [attachments]
-embed = true   # default: false
+embed = true   # the default
 ```
 
 When `attachments.embed = false`, attachment pages are still written into the wiki

@@ -892,13 +892,15 @@ enable = false                    # on/off switch
 #                 regular sources
 # A vault that set ingest_adopted = true before mode existed upgrades to
 # full-ingest automatically; set mode explicitly to opt out.
-# ingest_adopted marks auto-adopted files ingestible; files marked with
-# `kompend attachments ingest` are processed in every mode.
+# ingest_adopted marks auto-adopted files ingestible; adoption and the
+# filename mention happen in every mode. Files marked with
+# `kompend attachments ingest` are indexed in index-only mode and compiled
+# in full-ingest mode; off disables content processing entirely.
 
 [attachments]
 # mode = "index-only"
-# ingest_adopted = false
-# embed = false
+# ingest_adopted = true
+# embed = true
 
 [search]
 
@@ -950,8 +952,9 @@ enable = false                    # on/off switch
 # synthesis.verbosity = "standard"  # brief, comprehensive
 
 # Whether ingestible attachments (text/image captions) are included in
-# the vector index. When false, attachment content is parsed and compiled
-# but not embedded. Per-attachment overrides via `kompend attachments add --embed/--no-embed`.
+# the vector index. When false, attachment content is still parsed and
+# indexed lexically, just not embedded; compilation is never affected by
+# this key. Per-attachment overrides via `kompend attachments add --embed/--no-embed`.
 
 # ── Query settings ───────────────────────────────────────────────────────
 # Default output format for `kompend query`. Override per-run with --format.

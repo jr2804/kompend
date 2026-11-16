@@ -25,7 +25,7 @@ class AttachmentsConfig(_KompendBaseModel):
         ),
     )
     ingest_adopted: bool = Field(
-        default=False,
+        default=True,
         validation_alias=EnvVar.ATTACHMENTS_INGEST_ADOPTED,
         description=(
             "Whether auto-adopted attachments (files under "
@@ -37,7 +37,7 @@ class AttachmentsConfig(_KompendBaseModel):
         ),
     )
     embed: bool = Field(
-        default=False,
+        default=True,
         validation_alias=EnvVar.ATTACHMENTS_EMBED,
         description="Whether ingestible attachments (text/image captions) are included in the vector index. Replaces the deprecated search.embed_attachments.",
     )
