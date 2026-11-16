@@ -189,6 +189,12 @@ class OkfPageMixin:
         frontmatter[OkfField.KIND] = node.metadata.get(MetadataField.FRONTMATTER, {}).get(OkfField.KIND, node.node_type.value)
         if source_files:
             frontmatter[OkfField.SOURCE_FILES] = source_files
+        # kompend extension (OKF §4.1): attachments registered for this node's
+        # sources (vault-relative paths). Every mode stamps the mention, so a
+        # reader sees the supplementary files without opening attachments/.
+        attachments = meta_str_list(node.metadata.get(MetadataField.ATTACHMENTS))
+        if attachments:
+            frontmatter[OkfField.ATTACHMENTS] = attachments
         # kompend extension (OKF §4.1): the model that generated this page.
         # Survives cache hits, so a mixed-model wiki stays attributable per
         # page; absent for pages that are not LLM-generated (graph compiler).

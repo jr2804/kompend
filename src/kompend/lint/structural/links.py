@@ -126,7 +126,8 @@ class BrokenWikilinksRule(BaseLintRule):
                 if alias_of and target_node is not None:
                     # Rewrite to the resolved page link (same path the
                     # renderer's convert_wikilinks produces).
-                    folder = KIND_FOLDERS.get(target_node.node_type.value, "concepts")
+                    # Asset stubs quarantine into assets/, not their kind folder.
+                    folder = "assets" if target_node.metadata.get(MetadataField.ASSET_STUB) else KIND_FOLDERS.get(target_node.node_type.value, "concepts")
                     replacement = f"[{alias_text.strip()}]({folder}/{alias_of}.md)"
                 else:
                     # Genuinely missing target — keep the text, drop the brackets.
@@ -233,7 +234,7 @@ def _node_lookup_index(wiki: CompiledWiki) -> dict[str, str]:
         # entity_subtype here without inspecting metadata, so we register
         # both forms (``entities/<id>`` for unknown-type lookup and let
         # nearest_alias pick the closer one).
-        folder = KIND_FOLDERS.get(n.node_type.value, "concepts")
+        folder = "assets" if n.metadata.get(MetadataField.ASSET_STUB) else KIND_FOLDERS.get(n.node_type.value, "concepts")
         alias_index.setdefault(f"{folder}/{n.id}", n.id)
     return alias_index
 

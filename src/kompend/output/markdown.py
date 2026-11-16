@@ -75,6 +75,7 @@ from kompend.output.page import (
     rewrite_citations_to_footnotes,
     trust_events,
 )
+from kompend.output.page_paths import ASSET_FOLDER, is_asset_stub
 from kompend.output.pages.log import append_log_entry
 from kompend.output.renderer import DocumentRenderer
 from kompend.output.vault import OKF_VERSION, VaultWriter
@@ -169,7 +170,7 @@ class MarkdownWriter(VaultWriter):
             body = node.content or ""
             images = node.metadata.get(MetadataField.IMAGES, [])
             if images:
-                folder = self._folder_for_kind(node.node_type, str(node.metadata.get(MetadataField.ENTITY_TYPE) or ""))
+                folder = ASSET_FOLDER if is_asset_stub(node) else self._folder_for_kind(node.node_type, str(node.metadata.get(MetadataField.ENTITY_TYPE) or ""))
                 images = self.portablize_images(
                     images,
                     meta_str_list(node.metadata.get(MetadataField.PROVENANCE)),
@@ -187,6 +188,7 @@ class MarkdownWriter(VaultWriter):
                     page_slug=node.id,
                     node_type=node.node_type,
                     entity_subtype=(str(node.metadata.get(MetadataField.ENTITY_TYPE, "")) if node.node_type is NodeType.ENTITY else ""),
+                    asset_page=is_asset_stub(node),
                 ),
             )
 
@@ -208,7 +210,7 @@ class MarkdownWriter(VaultWriter):
 
         # Link paths must be relative to THIS page's directory (a page inside
         # concepts/ links to ``x.md``, not ``concepts/x.md``).
-        folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
+        folder = self._folder_for_doc(doc)
         page_targets = {k: relativize(v, folder) for k, v in slug_targets.items()} if folder else slug_targets
 
         # Convert wikilinks to portable relative markdown links, then rewrite
@@ -273,6 +275,8 @@ class MarkdownWriter(VaultWriter):
         """
         by_type: dict[str, list[Document]] = {}
         for doc in docs:
+            if doc.asset_page:
+                continue  # asset stubs stay out of the catalog
             okf_type = doc.frontmatter.get("type", "Concept")
             by_type.setdefault(okf_type, []).append(doc)
 
@@ -285,7 +289,7 @@ class MarkdownWriter(VaultWriter):
             b.heading(2, type_name)
             entries: list[str | Node] = []
             for doc in sorted(group, key=lambda d: d.title):
-                folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
+                folder = self._folder_for_doc(doc)
                 relative = f"{folder}/{doc.page_slug}.md" if folder else f"{doc.page_slug}.md"
                 description = doc.frontmatter.get("description", "")  # nocheck: OKF frontmatter read
                 if description:

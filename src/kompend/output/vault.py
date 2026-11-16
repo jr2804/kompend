@@ -48,7 +48,7 @@ from kompend.output.base import BaseOutputWriter
 from kompend.output.frontmatter import OKF_VERSION
 from kompend.output.models import Document
 from kompend.output.page import OkfPageMixin
-from kompend.output.page_paths import PageLayoutMixin, bundle_path, page_stem
+from kompend.output.page_paths import ASSET_FOLDER, PageLayoutMixin, bundle_path, page_stem
 from kompend.output.reference_links import rewrite_source_references
 from kompend.output.surfaces import GeneratedSurfaceMixin
 
@@ -189,7 +189,7 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
         for stale in output_dir.glob("*.md"):
             if stale.name != LOG_FILE:
                 stale.unlink()
-        for folder in set(self._KIND_FOLDERS.values()):
+        for folder in {*self._KIND_FOLDERS.values(), ASSET_FOLDER}:
             sub = output_dir / folder
             if not sub.is_dir():
                 continue
@@ -211,12 +211,13 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
         # Paths are relative (no leading slash) so links stay portable.
         slug_targets: dict[str, str] = {}
         for doc in docs:
-            folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
+            folder = self._folder_for_doc(doc)
             path = bundle_path(folder, doc.page_slug)
             slug_targets[doc.page_slug] = path
             slug_targets[doc.title] = path
 
-        node_map = {doc.page_slug: doc.title for doc in docs if doc.page_slug}
+        # Asset stubs are link-islands: nothing relates to them, they relate to nothing.
+        node_map = {doc.page_slug: doc.title for doc in docs if doc.page_slug and not doc.asset_page}
 
         related_edges = self._build_related_edges(wiki.edges, node_map)
 
@@ -226,7 +227,7 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
             ref_store = ReferenceStore(self._references_file)
 
         for doc in docs:
-            folder = self._folder_for_kind(doc.node_type, doc.entity_subtype)
+            folder = self._folder_for_doc(doc)
             target_dir = output_dir / folder if folder else output_dir
             target_dir.mkdir(parents=True, exist_ok=True)
             filename = f"{page_stem(doc.page_slug)}.md"
@@ -244,7 +245,8 @@ class VaultWriter(OkfPageMixin, PageLayoutMixin, GeneratedSurfaceMixin, BaseOutp
                             body = rewritten
                             break
 
-            rendered = self._render_document(doc, body, related_edges.get(doc.page_slug, []), wiki, slug_targets)
+            related = [] if doc.asset_page else related_edges.get(doc.page_slug, [])
+            rendered = self._render_document(doc, body, related, wiki, slug_targets)
             (target_dir / filename).write_text(rendered, encoding="utf-8")
 
         # References page is always generated — an empty bibliography is

@@ -314,6 +314,30 @@ class TestFrontmatterEmission:
         assert "paper_a" in content
         assert "paper_b" in content
 
+    def test_asset_stub_pages_quarantine_into_assets(self, temp_output: Path) -> None:
+        """Option A: index-only attachment stubs render into assets/, off the catalog."""
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(id="c1", title="Concept A", content="Body.", node_type=NodeType.CONCEPT),
+                WikiNode(
+                    id="asset-r-a-txt",
+                    title="a.txt",
+                    content="annex.",
+                    node_type=NodeType.PAGE,
+                    metadata={MetadataField.ASSET_STUB: True},
+                ),
+            ],
+            edges=[],
+            toc=[],
+        )
+        MarkdownWriter(vault_mode=True).write(wiki, temp_output)
+
+        assert (temp_output / "assets" / "asset-r-a-txt.md").exists()
+        assert not (temp_output / "asset-r-a-txt.md").exists()
+        index = (temp_output / "index.md").read_text(encoding="utf-8")
+        assert "asset-r-a-txt" not in index
+        assert "Concept A" in index
+
     def test_vault_page_carries_generating_model(self, temp_output: Path) -> None:
         """knox-wflz: a page's frontmatter names the model that generated it.
 
@@ -341,6 +365,31 @@ class TestFrontmatterEmission:
         # Pages that are not LLM-generated carry no model claim.
         plain = (temp_output / "concepts" / "c2.md").read_text(encoding="utf-8")
         assert f"{OkfField.GENERATED_BY_MODEL}:" not in plain
+
+    def test_vault_page_lists_attachments_from_metadata(self, temp_output: Path) -> None:
+        """Attachment mentions stamp an attachments: frontmatter key on the page."""
+        wiki = CompiledWiki(
+            nodes=[
+                WikiNode(
+                    id="c1",
+                    title="Concept",
+                    content="Body.",
+                    node_type=NodeType.CONCEPT,
+                    metadata={"attachments": ["attachments/paper_a/figure.png"]},
+                ),
+                WikiNode(id="c2", title="Plain", content="Body.", node_type=NodeType.CONCEPT),
+            ],
+            edges=[],
+            toc=[],
+        )
+        MarkdownWriter(vault_mode=True).write(wiki, temp_output)
+
+        tagged = (temp_output / "concepts" / "c1.md").read_text(encoding="utf-8")
+        assert "attachments:" in tagged
+        assert "- attachments/paper_a/figure.png" in tagged
+        # Pages without attachment mentions carry no key.
+        plain = (temp_output / "concepts" / "c2.md").read_text(encoding="utf-8")
+        assert f"{OkfField.ATTACHMENTS}:" not in plain
 
     def test_index_has_okf_frontmatter(self, sample_wiki: CompiledWiki, temp_output: Path) -> None:
         """index.md has OKF §12 frontmatter (okf_version, no title field)."""

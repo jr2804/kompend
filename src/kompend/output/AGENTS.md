@@ -22,7 +22,7 @@ builds the wiki index page and serves wiki page previews.
 | ``markdown.py`` | ``MarkdownWriter`` — the single markdown writer (OKF v0.2-compliant bundle, portable relative links, §5.1 footnote attribution) |
 | ``vault.py`` | ``VaultWriter`` — the vault-wide algorithm: stale-clearing, related-edge resolution, per-page write loop, index/log orchestration, copy-on-embed image portability (destination directory from the image's own source, or its ``attachment_owner`` for a split child's figure) |
 | ``page.py`` | ``OkfPageMixin`` (canonical OKF v0.2 frontmatter, description cap, node quality) + body conversion (wikilinks, inline citations → footnotes, source/asset footnote definitions, provenance → ``sources``) |
-| ``page_paths.py`` | Page layout vocabulary: ``PageLayoutMixin`` (``_KIND_FOLDERS`` / ``_folder_for_kind``), ``bundle_path``, ``page_stem`` |
+| ``page_paths.py`` | Page layout vocabulary: ``PageLayoutMixin`` (``_KIND_FOLDERS`` / ``_folder_for_kind`` / ``_folder_for_doc``), ``is_asset_stub`` (attachment stubs quarantine into ``assets/``), ``bundle_path``, ``page_stem`` |
 | ``surfaces.py`` | ``GeneratedSurfaceMixin`` — per-source summary pages (``summaries/``), ``references.md``, ``quality.md`` |
 | ``json_writer.py`` | ``JsonWriter`` — JSON output |
 | ``csl_bibtex.py`` | ``CSL_TO_BIBTEX_TYPE`` / ``DEFAULT_BIBTEX_ENTRY`` — the CSL type → BibTeX entry-type table, read-only data from a foreign specification (not a kompend vocabulary; do not turn it into an enum) |
@@ -60,7 +60,10 @@ User-facing guide: `docs/concepts/open-knowledge-format.md`.
    convention `kompend/<version>`) supersedes the v0.1 `timestamp`. `verified` is
    emitted only when a verification pass ran; `status` defaults to `stable`.
 3. **Provenance fields are distinct** - `tags` is topic tags only (no filename
-   overload), `source_files` is the kompend extension (provenance stems), `model`
+   overload), `source_files` is the kompend extension (provenance stems),
+   `attachments` is the kompend extension listing vault-relative attachment
+   paths mentioned by the page (`MetadataField.ATTACHMENTS` →
+   `OkfField.ATTACHMENTS`; stamped by `stamp_attachment_mentions`), `model`
    is the kompend extension naming the model that generated the page
    (`OkfField.GENERATED_BY_MODEL`, absent for non-LLM pages), `sources`
    is OKF §5.1 structured objects `{id, resource, title, author}` from the

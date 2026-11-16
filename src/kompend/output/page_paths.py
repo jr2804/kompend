@@ -19,12 +19,24 @@ from __future__ import annotations
 from typing import ClassVar, Final
 
 from kompend.core.models import KIND_FOLDERS
-from kompend.core.models.enums import NodeType
+from kompend.core.models.enums import MetadataField, NodeType
+from kompend.core.models.wiki import WikiNode
+from kompend.output.models import Document
 
-__all__ = ["UNSLUGGED_PAGE", "PageLayoutMixin", "bundle_path", "page_stem"]
+__all__ = [
+    "ASSET_FOLDER",
+    "UNSLUGGED_PAGE",
+    "PageLayoutMixin",
+    "bundle_path",
+    "is_asset_stub",
+    "page_stem",
+]
 
 #: Filename stem used when a node carries no page slug.
 UNSLUGGED_PAGE: Final[str] = "untitled"
+
+#: Subfolder where index-only attachment stub pages are quarantined.
+ASSET_FOLDER: Final[str] = "assets"
 
 
 class PageLayoutMixin:
@@ -48,6 +60,22 @@ class PageLayoutMixin:
         if folder and sub:
             return f"{folder}/{sub}"
         return folder
+
+    @classmethod
+    def _folder_for_doc(cls, doc: Document) -> str:
+        """Return the subfolder for a rendered document.
+
+        Index-only attachment stubs quarantine into ``assets/`` so they stay
+        reachable (search, direct links) without polluting the wiki catalog.
+        """
+        if doc.asset_page:
+            return ASSET_FOLDER
+        return cls._folder_for_kind(doc.node_type, doc.entity_subtype)
+
+
+def is_asset_stub(node: WikiNode) -> bool:
+    """Whether *node* is an index-only attachment stub (assets/ quarantine)."""
+    return bool(node.metadata.get(MetadataField.ASSET_STUB))
 
 
 def bundle_path(folder: str, slug: str) -> str:

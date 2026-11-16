@@ -52,6 +52,10 @@ class Document:
     """Entity sub-type (person/organization/standard/...) for entity pages.
     Routes entity pages into ``entities/<subtype>/`` subfolders."""
 
+    asset_page: bool = False
+    """Index-only attachment stub — quarantined into ``assets/`` and kept off
+    the index catalog (search still finds it)."""
+
 
 class TrustEvent(TypedDict):
     """OKF v0.2 §5.2 trust event (``verified`` frontmatter entry)."""

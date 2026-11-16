@@ -21,7 +21,7 @@ from kompend.core.paths import (
 )
 from kompend.core.utils.time import display_local
 from kompend.output.page import OkfPageMixin
-from kompend.output.page_paths import PageLayoutMixin
+from kompend.output.page_paths import PageLayoutMixin, is_asset_stub
 
 EXPORTED_HEADING: Final[str] = "Exported sources"
 INDEX_HEADING: Final[str] = "Wiki Index"
@@ -148,6 +148,8 @@ def _full_catalog(
     desc_limit = description_max_chars if description_max_chars is not None else DisplayConfig().description_max_chars
     toc_items: list[Paragraph] = []
     for node in wiki.nodes:
+        if is_asset_stub(node):
+            continue  # quarantined into assets/, off the catalog
         slug = node.id
         folder = PageLayoutMixin._folder_for_kind(
             node.node_type,

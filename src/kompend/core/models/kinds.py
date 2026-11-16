@@ -25,6 +25,8 @@ class KindFolder(StrEnum):
 
     CONCEPTS = "concepts"
     ENTITIES = "entities"
+    ASSETS = "assets"
+    """Quarantine folder for index-only attachment stub pages."""
 
 
 #: Canonical page-kind → output-subfolder mapping, keyed by
