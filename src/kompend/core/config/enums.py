@@ -13,6 +13,26 @@ from enum import StrEnum
 from functools import cache
 
 
+class AttachmentMode(StrEnum):
+    """How far attachments travel through the pipeline.
+
+    - ``off``: register and store only; the source pages mention them in
+      their frontmatter, nothing is parsed or indexed.
+    - ``index-only``: parsecraft-supported attachments are converted,
+      ingested and indexed (vector + lexical when an embedder is
+      configured); images are VLM-captioned and the caption text is
+      indexed. None of them enter compilation — no summarizer, resolver
+      or compiler tier sees them (default).
+    - ``full-ingest``: attachments flow through the whole pipeline like
+      regular sources (the pre-``mode`` behavior, also the upgrade target
+      for vaults that set ``ingest_adopted = true`` without a ``mode``).
+    """
+
+    OFF = "off"
+    INDEX_ONLY = "index-only"
+    FULL_INGEST = "full-ingest"
+
+
 class Compiler(StrEnum):
     """Compiler backend selection.
 

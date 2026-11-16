@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from kompend.core.config import (
+    AttachmentMode,
     BudgetConfig,
     Compiler,
     DisplayConfig,
@@ -121,7 +122,8 @@ class PipelineConfig:
     source_tags: list[str] = field(default_factory=list)  # CLI-provided source tags
     search: SearchConfig = field(default_factory=SearchConfig)  # search config (contextual enrichment gate lives here)
     splitting: SplittingConfig = field(default_factory=SplittingConfig)  # multi-document packet splitting (opt-in; disabled → no splitter built)
-    attachments_ingest_adopted: bool = False  # attachments.ingest_adopted: global gate — manifest flag AND this gate decides ingestion
+    attachments_ingest_adopted: bool = False  # attachments.ingest_adopted: whether auto-adopted files become ingestible
+    attachments_mode: AttachmentMode = AttachmentMode.INDEX_ONLY  # attachments.mode: how far attachments travel (off / index-only / full-ingest)
     providers: dict[str, dict] = field(default_factory=dict)  # user-defined providers from [providers] section
 
     def resolved_base_dir(self) -> Path:
@@ -250,6 +252,7 @@ class PipelineConfig:
             extraction_categories=dict(kompend.compile.extraction.categories),
             source_tags=list(kompend.compile.source_tags),
             attachments_ingest_adopted=bool(kompend.attachments.ingest_adopted),
+            attachments_mode=AttachmentMode(kompend.attachments.mode),
             providers=providers,
         )
         # Assigned after construction because ``paths`` needs a bound instance;

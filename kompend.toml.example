@@ -882,14 +882,22 @@ enable = false                    # on/off switch
 # Each is an optional plug-in step — enable only what you need.
 
 # ── Attachment settings ──────────────────────────────────────────────
-# Auto-adoption: files dropped into attachments/<slug>/ without a manifest
-# entry are registered at compile start. With ingest_adopted = true (default)
-# text/image files also become ingestible (parsed at compile); false =
-# register only. embed includes attachment content in the vector index
-# (replaces the deprecated search.embed_attachments).
+# mode decides how far attachments travel through the pipeline:
+#   off         — register and store only; source pages mention them in
+#                 their frontmatter, nothing is parsed or indexed
+#   index-only  — supported attachments are converted, ingested and
+#                 indexed (vector + lexical when an embedder is on);
+#                 they never enter compilation (default)
+#   full-ingest — attachments flow through the whole pipeline like
+#                 regular sources
+# A vault that set ingest_adopted = true before mode existed upgrades to
+# full-ingest automatically; set mode explicitly to opt out.
+# ingest_adopted marks auto-adopted files ingestible; files marked with
+# `kompend attachments ingest` are processed in every mode.
 
 [attachments]
-# ingest_adopted = true
+# mode = "index-only"
+# ingest_adopted = false
 # embed = false
 
 [search]

@@ -7,6 +7,7 @@ The public surface is re-exported here; import from
 from __future__ import annotations
 
 from kompend.core.config.enums import (
+    AttachmentMode,
     Compiler,
     ContextManagerPreset,
     ExtractionStrategy,
@@ -81,6 +82,7 @@ __all__ = [
     "DEFAULTS",
     "DEFAULT_MATCHERS",
     "FLAVOR_ALIASES",
+    "AttachmentMode",
     "AttachmentsConfig",
     "BudgetConfig",
     "CompactionConfig",

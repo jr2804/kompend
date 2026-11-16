@@ -166,6 +166,7 @@ def resolve_config(
 
     _resolve_paths(result, provenance)
     _resolve_deprecated_aliases(result, provenance)
+    _upgrade_attachment_mode(result, provenance)
 
     set_user_providers(result.get("providers", {}))
 
@@ -297,6 +298,28 @@ def _resolve_deprecated_aliases(result: dict[str, Any], provenance: dict[str, Co
                 new_key,
             )
         del_dot(result, old_key)
+
+
+def _upgrade_attachment_mode(result: dict[str, Any], provenance: dict[str, ConfigSource]) -> None:
+    """Upgrade pre-mode vaults: ``ingest_adopted = true`` meant full ingestion.
+
+    ``attachments.mode`` defaulted to ``index-only`` when it was introduced, so a
+    vault whose config predates the key but already set ``ingest_adopted = true``
+    would silently drop from full ingestion to index-only. When the user never
+    named ``mode`` (its provenance is still the default) and the adoption flag is
+    set, the mode is upgraded to ``full-ingest`` and the provenance records the
+    upgrade. A config that names ``mode`` is left untouched.
+    """
+    mode_source = provenance.get("attachments.mode", ConfigSource("default"))
+    if mode_source.path != "default":  # nocheck: enum-literal - ConfigSource token
+        return
+    if not get_dot(result, "attachments.ingest_adopted"):
+        return
+    set_dot(result, "attachments.mode", "full-ingest")
+    provenance["attachments.mode"] = ConfigSource(
+        provenance.get("attachments.ingest_adopted", ConfigSource("project")).path,
+        "upgraded from attachments.ingest_adopted",
+    )
 
 
 def _resolve_paths(

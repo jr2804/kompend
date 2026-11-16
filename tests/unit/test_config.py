@@ -375,8 +375,23 @@ class TestResolveConfig:
     def test_attachments_config_defaults(self, tmp_path: Any, monkeypatch: Any) -> None:
         monkeypatch.chdir(tmp_path)
         cfg = resolve_config()
+        assert cfg.get("attachments.mode") == "index-only"
         assert cfg.get("attachments.ingest_adopted") is False
         assert cfg.get("attachments.embed") is False
+
+    def test_attachments_ingest_adopted_upgrades_to_full_ingest(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """Vaults predating mode: ingest_adopted=true meant full ingestion."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "kompend.toml").write_text("[attachments]\ningest_adopted = true\n")
+        cfg = resolve_config()
+        assert cfg.get("attachments.mode") == "full-ingest"
+
+    def test_attachments_explicit_mode_wins(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """A config that names mode keeps it even with ingest_adopted = true."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "kompend.toml").write_text('[attachments]\ningest_adopted = true\nmode = "index-only"\n')
+        cfg = resolve_config()
+        assert cfg.get("attachments.mode") == "index-only"
 
     def test_tool_retries_has_its_own_budget(self, tmp_path: Any, monkeypatch: Any) -> None:
         """compile.llm.tool_retries is separate from the output-validation budget."""

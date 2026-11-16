@@ -39,6 +39,8 @@ from kompend.core.config.generate import generate_scaffold_config
 from kompend.core.config.models import (
     DEFAULT_MATCHERS,
     FLAVOR_ALIASES,
+    AttachmentMode,
+    AttachmentsConfig,
     BudgetConfig,
     CompactionConfig,
     Compiler,
@@ -76,6 +78,8 @@ __all__ = [
     "STATUS_MODIFIED",
     "STATUS_OK",
     "STATUS_REMOVED",
+    "AttachmentMode",
+    "AttachmentsConfig",
     "BudgetConfig",
     "CompactionConfig",
     "Compiler",
