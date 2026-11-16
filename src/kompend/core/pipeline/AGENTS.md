@@ -89,6 +89,19 @@ persistence, and standalone ingestion.
   records a `split` ledger row naming the boundary — silent splitting is
   forbidden. With no splitter injected the flow is byte-identical to the
   unsplit path: no extra cache lookups, no ledger row.
+- **Attachments travel as far as `attachments.mode` says.** `off` registers and
+  mentions only; `index-only` (default) parses into raw stub wiki nodes that
+  reach the vector index but no LLM tier; `full-ingest` compiles them like any
+  source. Explicit per-attachment marks are honored in every mode — the mode is
+  a depth switch, not a veto. The parse tier builds stubs
+  (`_attachment_stub_nodes`); the compile tier appends them before the privacy
+  filter and stamps `attachments:` mentions by provenance stem
+  (`stamp_attachment_mentions`). Stubs are quarantined at render time: the
+  output layer routes them into `assets/`, keeps them off every index
+  catalog, and strips their related edges (`page_paths.is_asset_stub`). A
+  vault predating `mode` that set
+  `ingest_adopted = true` resolves to `full-ingest` (engine upgrade rule,
+  `_precedence._upgrade_attachment_mode`).
 - Parse quality is a persisted verdict, not a gate. The parse success paths
   (`ingest_documents`, the `_parse_source` and parse-cache-hit branches of
   `stages/parse_sources.py`, and attachments) record `measure_parse_quality`

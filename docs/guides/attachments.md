@@ -1,9 +1,9 @@
 # Attachments
 
-Attachments are supplementary files that belong to a source but are **not** ingested
-by default — photographs, binaries, source code, spreadsheets, or anything else
-the pipeline shouldn't parse unprompted. Each attachment maintains an explicit
-relationship to its parent source.
+Attachments are supplementary files that belong to a source - photographs, binaries, source code, spreadsheets, or anything else
+that is not a parseable document in its own right. Each attachment maintains an explicit
+relationship to its parent source, and `attachments.mode` decides how far it travels
+through the pipeline (see [Processing modes](#processing-modes)).
 
 ## How it works
 
@@ -28,6 +28,34 @@ Extracted figures share this layout: a page's images are copied to the slug of
 may name a venue or product that is not a source at all). One directory per
 source holds each figure once; images a page cannot attribute to a source are
 not embedded.
+
+## Processing modes
+
+`attachments.mode` decides how far an attachment travels through the pipeline.
+It has three levels:
+
+| Mode | Stored | Mentioned in frontmatter | Parsed + indexed | Compiled |
+|------|--------|--------------------------|------------------|----------|
+| `off` | yes | yes | no | no |
+| `index-only` **(default)** | yes | yes | yes | no |
+| `full-ingest` | yes | yes | yes | yes |
+
+- **`off`** — the file is registered in the manifest and linked from its
+  source's frontmatter (`attachments:` list). No parsing, no indexing.
+- **`index-only`** — supported attachments (text via the standard parser,
+  images via the VLM captioner) are parsed and become raw wiki stub pages that
+  the vector index can embed when `attachments.embed = true`. They never enter
+  compilation: no summarization tiers, no concept pages. Indexing is node-level,
+  so chunking would add nothing. Stubs render into the vault's `assets/`
+  folder, stay out of the index catalog, and carry no related-page links -
+  the wiki reads clean while search still finds them.
+- **`full-ingest`** — attachments are ingested *and* compiled like sources.
+
+The mode governs the pipeline depth only. Explicitly marked attachments
+(`kompend attachments ingest`) are honored in every mode; the mode is the
+kill-switch for the whole tier. A vault whose config predates `mode` and sets
+`ingest_adopted = true` keeps its old behavior — the resolver upgrades it to
+`full-ingest` (explicitly naming `mode` always wins).
 
 ## Registering attachments
 
@@ -100,7 +128,8 @@ before a compile with `kompend attachments verify`.
 
 ```toml
 [attachments]
-ingest_adopted = true   # adopted text/image files are parsed at compile
+mode = "index-only"     # off / index-only (default) / full-ingest
+ingest_adopted = true   # adopted text/image files are marked ingestible
 embed = false           # include attachment content in the vector index
 ```
 
@@ -120,15 +149,19 @@ deprecated, not as an unknown key); new configs use `[attachments] embed`.
 
 ## Compile behavior
 
-When `--ingest` is set on an attachment:
+What happens to an ingestible attachment depends on `attachments.mode`
+(see [Processing modes](#processing-modes)):
 
 1. **Parse tier**: text attachments are parsed through the standard parser;
    image attachments are captioned via VLM (if `compile.llm.vlm_model` is set,
-   otherwise skipped with a warning).
-2. **Chunk/compile**: attachment content becomes wiki nodes tagged with
-   `source_asset: true` and `parent_source: <slug>` metadata.
+   otherwise skipped with a warning). In `index-only` mode the result becomes a
+   raw stub page; in `full-ingest` mode it is chunked and enters compilation.
+2. **Chunk/compile** (full-ingest only): attachment content becomes wiki nodes
+   tagged with `source_asset: true` and `parent_source: <slug>` metadata.
+   Stub pages carry the same metadata without chunking.
 3. **Output**: attachments are not duplicated into the compiled wiki — they stay
-   in the vault at `attachments/<slug>/<filename>`.
+   in the vault at `attachments/<slug>/<filename>`; pages mention them via the
+   `attachments:` frontmatter key.
 
 ## Embedding (search/RAG)
 
@@ -141,7 +174,7 @@ precedence.
 embed = true   # default: false
 ```
 
-When `embed_attachments = false`, attachment nodes are still compiled into the wiki
+When `attachments.embed = false`, attachment pages are still written into the wiki
 but excluded from the vector index.
 
 ## MCP tools
