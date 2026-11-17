@@ -12,14 +12,17 @@ from __future__ import annotations
 import pytest
 from pydantic import BaseModel, ValidationError
 from pydantic_ai import Agent
+from pydantic_ai.agent.abstract import AgentRetries
 from pydantic_ai.exceptions import (
     ModelAPIError,
     ModelRetry,
     UnexpectedModelBehavior,
+    UsageLimitExceeded,
 )
 from pydantic_ai.messages import ModelResponse, TextPart
 from pydantic_ai.models.function import FunctionModel
 
+from kompend.agents.base import retries as _retries
 from kompend.agents.failure import (
     AgentFailureKind,
     EmptyAnswerError,
@@ -118,6 +121,25 @@ class TestClassifyAgentFailure:
             wrapped = exc
 
         assert classify_agent_failure(wrapped) is AgentFailureKind.EMPTY_ANSWER
+
+    def test_a_spent_request_budget_is_its_own_kind(self) -> None:
+        # A session that used every request it was given neither refused the
+        # payload nor produced a bad answer: the remedy is a smaller session,
+        # so it must not be mistaken for a model defect.
+        try:
+            try:
+                raise UsageLimitExceeded("The next request would exceed the request_limit of 71.")
+            except UsageLimitExceeded as exc:
+                raise LLMOutputError("Agent failed for model 'x': ...") from exc
+        except LLMOutputError as exc:
+            wrapped = exc
+
+        assert classify_agent_failure(wrapped) is AgentFailureKind.REQUEST_BUDGET
+
+    def test_a_spent_budget_is_not_retry_pointless(self) -> None:
+        # The session is worth repeating - as a smaller one. That is a split,
+        # not the same payload a second time.
+        assert not is_retry_pointless(AgentFailureKind.REQUEST_BUDGET)
 
     def test_an_unrelated_failure_is_other(self) -> None:
         assert classify_agent_failure(RuntimeError("boom")) is AgentFailureKind.OTHER
@@ -257,3 +279,72 @@ class TestFunctionModelChain:
         exc = ModelRetry("Please return text or include your response in a tool call.")
 
         assert classify_agent_failure(exc) is AgentFailureKind.EMPTY_ANSWER
+
+
+class TestBoundaryLogging:
+    """A spent budget is a resume, not a failure - and it is logged once.
+
+    The user saw two warnings for one event:
+
+        WARNING ...retries Agent 'SummarizerAgent' failed on 'x_root': The next
+        request would exceed the request_limit of 71 ...
+        WARNING ...summarizer Agentic summarizer failed: Agent failed for
+        model '...': The next request would exceed the request_limit of 71 ...
+
+    The first claimed a failure where the session had simply used its turns;
+    the resume contract worked exactly as designed. The boundary now says so
+    at INFO and leaves the one WARNING to the stage that takes the remedy.
+    """
+
+    class _Host:
+        """The slice of ``RetryHost`` ``failure()`` reads."""
+
+        model_string: str = "test/model"
+        llm = None
+        retries: int | AgentRetries = 0
+        usage_tracker = None
+        _agent = None
+        _prompt_cache: bool = False
+        _last_debug_file = None
+        _rlm_usage_limits = None
+
+        def _build_agent(self) -> None:
+            """Never reached: ``failure()`` only logs and maps."""
+
+        def _transient_retries(self) -> int:
+            return 0
+
+        def _transient_backoff(self) -> float:
+            return 0.0
+
+        def _usage_limits_for(self, deps: object) -> None:
+            """Never reached: ``failure()`` reads no limits."""
+            return None
+
+    class _Deps:
+        source_id = "26253-j30_root"
+
+    def test_a_spent_budget_is_not_logged_as_a_failure(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("INFO"):
+            exc = self._budget_error()
+            _retries.failure(self._Host(), exc, self._Deps())
+
+        assert "failed on" not in caplog.text
+        assert "spent its request budget on '26253-j30_root'" in caplog.text
+
+    def test_a_real_failure_is_still_logged_as_one(self, caplog: pytest.LogCaptureFixture) -> None:
+        with caplog.at_level("INFO"):
+            _retries.failure(self._Host(), LLMTransientError("timed out"), self._Deps())
+
+        assert "failed on '26253-j30_root'" in caplog.text
+        assert "spent its request budget" not in caplog.text
+
+    def _budget_error(self) -> LLMOutputError:
+        """The exact chain the boundary produces: LLMOutputError <- UsageLimitExceeded."""
+        try:
+            try:
+                raise UsageLimitExceeded("The next request would exceed the request_limit of 71.")
+            except UsageLimitExceeded as exc:
+                raise LLMOutputError("Agent failed for model 'test/model': ...") from exc
+        except LLMOutputError as exc:
+            return exc

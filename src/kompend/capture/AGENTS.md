@@ -41,8 +41,10 @@ patterns across captures.
   writes the pages the failed round had already
   recorded, names the groups left without one, and re-raises. Any other
   exception is a bug and escapes. Budget exhaustion is the one resumable case:
-  it takes the resume path above, distinguished down the cause chain by
-  `_is_budget_exhaustion`.
+  it takes the resume path above, recognised as
+  `classify_agent_failure(exc) is AgentFailureKind.REQUEST_BUDGET` down the
+  cause chain - the same classifier every other stage uses, never a local
+  copy.
 - Capture agents (``CaptureAgent``, ``DistillAgent``) live in
   ``kompend.agents.capture`` — this package contains orchestration and
   non-agent logic only.

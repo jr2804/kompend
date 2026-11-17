@@ -34,7 +34,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol
 
-from pydantic_ai.exceptions import OutputTokenLimitExceeded, UsageLimitExceeded
+from pydantic_ai.exceptions import OutputTokenLimitExceeded
 
 from kompend.agents.failure import AgentFailureKind, classify_agent_failure
 from kompend.agents.summarizer import SummarizerAgent
@@ -580,32 +580,29 @@ class NodeSummarizer:
                 stats.chars += sum(len(entry["content"]) for entry in payload)
                 deps = SummarizerDeps(nodes=payload, source_id=tree.root_id)
                 oversize: BaseException | None = None
+                budget_spent: BaseException | None = None
                 try:
                     agent.run(deps)
-                except UsageLimitExceeded as exc:
-                    # A session that burns its whole request budget without
-                    # recording a summary is deterministically doomed on the
-                    # same payload: the conversation it grew is the cost of
-                    # the next attempt too. Shrink it like an oversize
-                    # payload instead of spending a stall strike on a repeat.
-                    logger.warning(
-                        "Agentic summarizer hit its request budget (%s) — splitting the batch",
-                        exc,
-                    )
-                    if not deps.results:
-                        oversize = exc
-                    else:
-                        logger.info(
-                            "Agentic summarizer recorded %d summary(ies) before its budget ran out — keeping them",
-                            len(deps.results),
-                        )
                 except Exception as exc:
-                    if _is_oversize_payload(exc):
+                    kind = classify_agent_failure(exc)
+                    if kind is AgentFailureKind.REQUEST_BUDGET:
+                        # Nothing was refused and the model is not at fault:
+                        # the session needed more turns than its budget let it
+                        # take. The base already logged the event once, so this
+                        # path adds no second line. Summaries the session did
+                        # record are applied below; only a session that
+                        # recorded nothing needs the remedy.
+                        if not deps.results:
+                            budget_spent = exc
+                    elif _is_oversize_payload(exc):
                         oversize = exc
                     else:
                         logger.warning("Agentic summarizer failed: %s", exc)
                 if oversize is not None:
                     self._handle_oversize(window, payload, oversize, limit, split, pending)
+                    break
+                if budget_spent is not None:
+                    self._handle_budget_exhaustion(window, payload, budget_spent, limit, split, pending)
                     break
                 progressed = self._apply_agentic_results(window, payload, deps.results, state)
 
@@ -659,38 +656,119 @@ class NodeSummarizer:
         as unsummarized. No stall retry is spent: the failure is deterministic
         for a byte-identical payload.
         """
+        self._halve_session(
+            window,
+            payload,
+            exc,
+            limit,
+            split,
+            pending,
+            reason=AgentFailureKind.CONTEXT_OVERFLOW,
+        )
+
+    def _handle_budget_exhaustion(
+        self,
+        window: list[ChunkNode],
+        payload: list[SummaryNode],
+        exc: BaseException,
+        limit: int,
+        split: _SplitState,
+        pending: set[str],
+    ) -> None:
+        """Split the batch after a session spent its request budget.
+
+        Nothing was refused: the session ran out of turns. The budget formula
+        (`units x per_unit + overhead + retries`) is per session, so halving
+        the batch gives each half a fresh budget and pays the fixed overhead
+        once per half instead of once for the whole batch. The payload budget
+        stays: the material is not the problem, the session length is.
+        """
+        self._halve_session(
+            window,
+            payload,
+            exc,
+            limit,
+            split,
+            pending,
+            reason=AgentFailureKind.REQUEST_BUDGET,
+        )
+
+    def _halve_session(
+        self,
+        window: list[ChunkNode],
+        payload: list[SummaryNode],
+        exc: BaseException,
+        limit: int,
+        split: _SplitState,
+        pending: set[str],
+        *,
+        reason: AgentFailureKind,
+    ) -> None:
+        """Shrink the next session after a deterministic failure.
+
+        One remedy, two causes - hence the ``reason``:
+
+        - ``CONTEXT_OVERFLOW``: the provider refused the payload size, so both
+          the node count and the character budget halve, and a stated window
+          is learned;
+        - ``REQUEST_BUDGET``: the session ran out of turns, so only the node
+          count halves (a shorter session, the same content).
+
+        At the floor a session cannot shrink further and the nodes are left
+        unsummarized, which the tail warning counts.
+        """
         node_ids = sorted(node.id for node in window)
-        stated = stated_context_size(exc)
-        if stated is not None:
-            clamped = tokens_to_chars(stated)
-            if split.learned_chars is None or clamped < split.learned_chars:
-                split.learned_chars = clamped
-                if not split.learned_announced:
-                    split.learned_announced = True
-                    logger.warning(
-                        "Provider stated a %d-token window — clamping summarizer session payload to ~%d chars",
-                        stated,
-                        clamped,
-                        extra={"reason_code": ReasonCode.PAYLOAD_TOO_LARGE},
-                    )
+        exhausted = reason is AgentFailureKind.REQUEST_BUDGET
+        if not exhausted:
+            stated = stated_context_size(exc)
+            if stated is not None:
+                clamped = tokens_to_chars(stated)
+                if split.learned_chars is None or clamped < split.learned_chars:
+                    split.learned_chars = clamped
+                    if not split.learned_announced:
+                        split.learned_announced = True
+                        logger.warning(
+                            "Provider stated a %d-token window — clamping summarizer session payload to ~%d chars",
+                            stated,
+                            clamped,
+                            extra={"reason_code": ReasonCode.PAYLOAD_TOO_LARGE},
+                        )
         floor_chars = max(1, self._policy.window_chars)
         attempt_chars = sum(len(entry["content"]) for entry in payload)
         basis = min(split.payload_budget, attempt_chars) if split.payload_budget else attempt_chars
         new_limit = max(1, limit // 2)
-        new_budget = max(floor_chars, basis // 2)
+        new_budget = split.payload_budget if exhausted else max(floor_chars, basis // 2)
         if split.learned_chars is not None:
             new_budget = min(new_budget, split.learned_chars)
-        if new_limit == limit and new_budget >= basis:
-            logger.warning(
-                "Agentic summarizer payload for %s exceeds the provider limit even at the split floor (batch 1, ~%d chars) — leaving unsummarized",
-                node_ids,
-                floor_chars,
-                extra={"reason_code": ReasonCode.PAYLOAD_TOO_LARGE},
-            )
+        if new_limit == limit and (exhausted or new_budget >= basis):
+            if exhausted:
+                logger.warning(
+                    "Agentic summarizer session for %s spent its request budget even as a single-node session - "
+                    "raise compile.budget.summary_requests_per_node (currently %d) or the node stays unsummarized",
+                    node_ids,
+                    self._agent.requests_per_node,
+                    extra={"reason_code": ReasonCode.SESSION_BUDGET},
+                )
+            else:
+                logger.warning(
+                    "Agentic summarizer payload for %s exceeds the provider limit even at the split floor (batch 1, ~%d chars) — leaving unsummarized",
+                    node_ids,
+                    floor_chars,
+                    extra={"reason_code": ReasonCode.PAYLOAD_TOO_LARGE},
+                )
             pending.difference_update(node_ids)
             return
         split.batch_limit = new_limit
         split.payload_budget = new_budget
+        if exhausted:
+            logger.warning(
+                "Agentic summarizer session for %s spent its request budget — splitting without a stall retry (batch limit %d, budget ~%d request(s) per node)",
+                node_ids,
+                new_limit,
+                self._agent.requests_per_node,
+                extra={"reason_code": ReasonCode.SESSION_BUDGET},
+            )
+            return
         logger.warning(
             "Agentic summarizer payload for %s exceeds the provider limit — splitting without a stall retry (batch limit %d, payload budget ~%d chars)",
             node_ids,

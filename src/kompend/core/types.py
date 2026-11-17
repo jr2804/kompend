@@ -70,6 +70,11 @@ class ReasonCode(StrEnum):
     #: (input window or output ceiling); the caller split the batch and
     #: retried instead of re-asking byte-identical work.
     PAYLOAD_TOO_LARGE = "payload_too_large"
+    #: An agentic session spent its whole request budget without finishing
+    #: the units it was given. Nothing was refused and the model is not at
+    #: fault; the caller split the batch so each half gets a fresh budget,
+    #: rather than re-asking the payload that just exhausted the last one.
+    SESSION_BUDGET = "session_budget"
 
 
 class StageOutcome(StrEnum):

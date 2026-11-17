@@ -153,6 +153,7 @@ def test_every_member_has_a_stable_value() -> None:
         "VLM_SKIPPED",
         "EMBEDDING_MERGE_DISABLED",
         "PAYLOAD_TOO_LARGE",
+        "SESSION_BUDGET",
     }
     assert ReasonCode.MISLABELLED_BINARY == "mislabelled_binary"
     assert ReasonCode.TIMEOUT == "timeout"
@@ -167,6 +168,7 @@ def test_every_member_has_a_stable_value() -> None:
     assert ReasonCode.VLM_RELEVANCE_SKIPPED == "vlm_relevance_skipped"
     assert ReasonCode.VLM_SKIPPED == "vlm_skipped"
     assert ReasonCode.EMBEDDING_MERGE_DISABLED == "embedding_merge_disabled"
+    assert ReasonCode.SESSION_BUDGET == "session_budget"
     assert ReasonCode.PAYLOAD_TOO_LARGE == "payload_too_large"
 
 

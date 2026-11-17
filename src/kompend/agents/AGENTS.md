@@ -148,21 +148,21 @@ other axes.
 ### Failure vocabulary (`failure.py`)
 
 `classify_agent_failure(exc)` maps any raised error onto an `AgentFailureKind`
-(`empty_answer`, `schema_mismatch`, `context_overflow`, `transient`, `other`);
-`is_retry_pointless(kind)` says when re-sending cannot help. What escapes
-`run()`/`run_with_messages()` is always an `LLMOutputError` (or
+(`empty_answer`, `schema_mismatch`, `context_overflow`, `request_budget`,
+`transient`, `other`), walking the whole `__cause__` chain because the boundary
+wraps every failure as `LLMOutputError`. `request_budget` means the session spent
+its own turns: the remedy is a smaller session, never a re-ask, so `failure()`
+logs it at `INFO`. `is_retry_pointless(kind)` says when a repeat cannot help.
+What escapes `run()`/`run_with_messages()` is always an `LLMOutputError` (or
 `LLMTransientError`/`LLMContextOverflowError`) with `__cause__` set — callers
-catch that type, not `Exception`. The two broad catches in `base/agent.py` and
-the one in `base/retries.py` are THE mapping boundary, re-raising typed, and
-the only ones allowed in `base/**`. An empty answer never spends the output
-budget: `KompendModel` resamples a blank structured-output response once, then
-raises `EmptyAnswerError` (every mode except `text`) — retry feedback cannot
-fix a blank answer. Stages call
+catch that type, not `Exception`. The broad catches in `base/agent.py` and
+`base/retries.py` are THE mapping boundary, re-raising typed. An empty answer
+never spends the output budget: `KompendModel` resamples a blank response once,
+then raises `EmptyAnswerError` (every mode except `text`). Stages call
 `record_unit_failure(...)` per failed unit (one log line naming unit, kind and
-request count) and `UnitFailureLog.check()` raises once more than
-`compile.llm.batch_failure_threshold_ratio` of the units failed. A stage never
-swallows a failure into a smaller result set: record it and go on, or stop with
-the kinds in the message.
+count) and `UnitFailureLog.check()` raises once more than
+`compile.llm.batch_failure_threshold_ratio` of the units failed; a stage never
+swallows a failure into a smaller result set.
 
 `resolve_retry_budget(llm, retries=…, output_retries=…)` derives the
 tool/output retry split from the same config — the agentic factories use it so

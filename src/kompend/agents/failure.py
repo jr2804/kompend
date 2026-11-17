@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Final
 
-from pydantic_ai.exceptions import ModelRetry, ToolRetryError, UnexpectedModelBehavior
+from pydantic_ai.exceptions import ModelRetry, ToolRetryError, UnexpectedModelBehavior, UsageLimitExceeded
 
 from kompend.core.utils.exceptions import LLMOutputError, LLMTransientError
 from kompend.llm.errors import is_transient_error
@@ -78,6 +78,12 @@ class AgentFailureKind(StrEnum):
     #: The request did not fit the window. The caller re-plans with a smaller
     #: effective window; repeating it unchanged cannot succeed.
     CONTEXT_OVERFLOW = "context_overflow"
+    #: The session spent its own request budget without finishing. Nothing was
+    #: refused and the model is not at fault: the remedy is a smaller session
+    #: (fewer units, hence a fresh budget for each), never a re-ask of the
+    #: byte-identical payload - that grows the same conversation and lands on
+    #: the same limit.
+    REQUEST_BUDGET = "request_budget"
     #: Transport failure — timeout, dropped connection, 429/5xx. The only kind
     #: worth repeating verbatim.
     TRANSIENT = "transient"
@@ -185,6 +191,14 @@ def classify_agent_failure(exc: BaseException) -> AgentFailureKind:
     chain = list(_failure_cause_chain(exc))
     if any(isinstance(link, EmptyAnswerError) for link in chain):
         return AgentFailureKind.EMPTY_ANSWER
+    if any(isinstance(link, UsageLimitExceeded) for link in chain):
+        # Checked on the whole chain, not the head: the agent boundary wraps
+        # every failure as ``LLMOutputError`` with the model name, so by the
+        # time a stage catches it the only surviving link to
+        # ``UsageLimitExceeded`` is ``__cause__``. Matching the head let a
+        # spent session budget be classified as ``other``, where the caller
+        # retried the byte-identical payload it had just failed on.
+        return AgentFailureKind.REQUEST_BUDGET
     if any(_names_context_overflow(link) for link in chain):
         return AgentFailureKind.CONTEXT_OVERFLOW
     errors = _validation_errors(chain)

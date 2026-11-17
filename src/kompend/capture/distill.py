@@ -13,9 +13,9 @@ from pathlib import Path
 from typing import TypedDict
 
 import yaml
-from pydantic_ai.exceptions import UsageLimitExceeded
 
 from kompend.agents.distill import DistillAgent
+from kompend.agents.failure import AgentFailureKind, classify_agent_failure
 from kompend.agents.types import DistillAgentDeps, DistillGroup, DistillNote, DistillPage
 from kompend.capture import TIMESTAMP_FORMAT
 from kompend.capture._utils import format_sources_markdown, make_slug, make_title
@@ -210,8 +210,8 @@ def _distill_groups(
         sessions += 1
         try:
             distill_agent.run(deps)
-        except (LLMOutputError, UsageLimitExceeded) as exc:
-            if _is_budget_exhaustion(exc):
+        except LLMOutputError as exc:
+            if classify_agent_failure(exc) is AgentFailureKind.REQUEST_BUDGET:
                 logger.info("DistillAgent session %d exhausted its request budget; resuming with the remaining group(s)", sessions)
             else:
                 pages.update({entry["tag"]: deps.pages[entry["tag"]] for entry in pending if entry["tag"] in deps.pages})
@@ -238,26 +238,6 @@ def _distill_groups(
         pending = [entry for entry in pending if entry["tag"] not in recorded]
 
     return _write_group_pages(groups, pages, timestamp, output_dir)
-
-
-def _is_budget_exhaustion(exc: BaseException) -> bool:
-    """Whether *exc* is the agent's request budget running out rather than a failure.
-
-    The agent boundary re-wraps every failure as
-    :class:`~kompend.core.utils.exceptions.LLMOutputError`, so the original
-    :class:`~pydantic_ai.exceptions.UsageLimitExceeded` is one link down the
-    cause chain. Budget exhaustion is the resume contract working as designed:
-    the pages the round saved are kept and the remaining groups get a fresh
-    session, so it must not be reported as a failure.
-    """
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    while current is not None and id(current) not in seen:
-        if isinstance(current, UsageLimitExceeded):
-            return True
-        seen.add(id(current))
-        current = current.__cause__ or current.__context__
-    return False
 
 
 def _write_group_pages(

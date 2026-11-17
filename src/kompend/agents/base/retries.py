@@ -26,7 +26,7 @@ from pydantic_ai.messages import ModelMessage
 
 from kompend.agents.base.deps import DepsT
 from kompend.agents.base.protocols import RetryHost
-from kompend.agents.failure import EmptyAnswerError
+from kompend.agents.failure import AgentFailureKind, EmptyAnswerError, classify_agent_failure
 from kompend.core.utils.exceptions import (
     LLMContextOverflowError,
     LLMOutputError,
@@ -49,17 +49,33 @@ def failure(agent: RetryHost, exc: Exception, deps: DepsT) -> LLMOutputError:
     Both entry points (``run`` and ``run_with_messages``) fail the same
     way, so the log line and the mapping live here instead of in two
     identical ``except`` blocks that could drift apart.
+
+    A spent session budget is not a failure: nothing was refused and the
+    model is not at fault, so it is logged at ``INFO`` and the stage that
+    takes the remedy (a smaller session) logs the one line the operator
+    sees. Reporting it as ``WARNING ... failed`` here put two warnings on
+    the console for a single event, and the first one claimed a failure
+    where the resume contract had worked as designed.
     """
     debug_hint = f" (debug: {agent._last_debug_file})" if agent._last_debug_file else ""
     ctx_info = _context_usage_str(agent.usage_tracker)
-    logger.warning(
-        "Agent '%s' failed on '%s': %s%s%s",
-        type(agent).__name__,
-        deps.source_id,
-        exc,
-        debug_hint,
-        ctx_info,
-    )
+    if classify_agent_failure(exc) is AgentFailureKind.REQUEST_BUDGET:
+        logger.info(
+            "Agent '%s' spent its request budget on '%s': %s%s",
+            type(agent).__name__,
+            deps.source_id,
+            exc,
+            ctx_info,
+        )
+    else:
+        logger.warning(
+            "Agent '%s' failed on '%s': %s%s%s",
+            type(agent).__name__,
+            deps.source_id,
+            exc,
+            debug_hint,
+            ctx_info,
+        )
     return _map_agent_error(exc, model_string=agent.model_string, debug_hint=debug_hint)
 
 

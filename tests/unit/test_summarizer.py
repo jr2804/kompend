@@ -236,7 +236,18 @@ class TestSummarizerAgenticResume:
         self,
         agentic_tree: ChunkTree,
         monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
+        """The agent boundary re-wraps the budget error, so the stage must see it.
+
+        ``KompendAgentBase.run`` raises ``LLMOutputError`` with the original
+        ``UsageLimitExceeded`` one link down the cause chain - that wrap is the
+        production shape, and raising the bare exception here is what let a
+        dead ``except UsageLimitExceeded`` branch pass review.
+
+        A session that recorded something is a designed resume, not a failure:
+        the remaining nodes are simply asked again in a fresh session.
+        """
         agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         rounds: list[list[str]] = []
 
@@ -245,7 +256,7 @@ class TestSummarizerAgenticResume:
             rounds.append(ids)
             if len(rounds) == 1:
                 deps.results[ids[0]] = f"summary {ids[0]}"
-                raise UsageLimitExceeded("The next request would exceed the request_limit of 3.")
+                raise LLMOutputError("Agent failed for model 'test-model'") from UsageLimitExceeded("The next request would exceed the request_limit of 3.")
             for node_id in ids:
                 deps.results[node_id] = f"summary {node_id}"
 
@@ -258,13 +269,16 @@ class TestSummarizerAgenticResume:
         assert set(rounds[1]) == set(rounds[0]) - {rounds[0][0]}
         for node_id in rounds[0]:
             assert tree.nodes[node_id].summary == f"summary {node_id}"
+        # The recorded summary is kept, so there is nothing to split and no
+        # line claiming a failure.
+        assert "failed" not in caplog.text.lower()
 
     def test_stops_when_a_round_records_nothing(
         self,
         agentic_tree: ChunkTree,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """A session that records nothing shrinks the payload, never repeats it.
+        """A session that records nothing shrinks the batch, never repeats it.
 
         Re-asking a byte-identical payload spends the same request budget the
         same way, so the loop halves the batch instead. It must terminate:
@@ -276,7 +290,7 @@ class TestSummarizerAgenticResume:
 
         def _run(deps: SummarizerDeps) -> None:
             rounds.append([entry["id"] for entry in deps.nodes])
-            raise UsageLimitExceeded("The next request would exceed the request_limit of 3.")
+            raise LLMOutputError("Agent failed for model 'test-model'") from UsageLimitExceeded("The next request would exceed the request_limit of 3.")
 
         monkeypatch.setattr(agent, "run", _run)
         tree = NodeSummarizer(agent=agent, content_policy=_policy()).summarize(agentic_tree)

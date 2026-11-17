@@ -33,7 +33,9 @@ class TestDistillSessionResume:
             seen.append(tags)
             if len(seen) == 1:
                 deps.pages["alpha"] = DistillPage(title="Alpha", content="synthesised alpha", tags=["alpha"])
-                raise UsageLimitExceeded("The next request would exceed the request_limit of 12.")
+                raise LLMOutputError("Agent failed for model 'test-model': ...") from UsageLimitExceeded(
+                    "The next request would exceed the request_limit of 12."
+                )
             for tag in tags:
                 deps.pages[tag] = DistillPage(title=tag.capitalize(), content=f"synthesised {tag}", tags=[tag])
             return ""
@@ -115,7 +117,9 @@ class TestDistillSessionResume:
             calls["n"] += 1
             if calls["n"] == 1:
                 deps.pages["alpha"] = DistillPage(title="Alpha", content="LLM WROTE THIS", tags=["alpha"])
-                raise UsageLimitExceeded("The next request would exceed the request_limit of 12.")
+                raise LLMOutputError("Agent failed for model 'test-model': ...") from UsageLimitExceeded(
+                    "The next request would exceed the request_limit of 12."
+                )
             return ""
 
         monkeypatch.setattr(agent, "run", _run)
