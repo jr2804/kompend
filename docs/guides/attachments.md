@@ -163,6 +163,11 @@ What happens to an ingestible attachment depends on `attachments.mode`
    image attachments are captioned via VLM (if `compile.llm.vlm_model` is set,
    otherwise skipped with a warning). In `index-only` mode the result becomes a
    raw stub page; in `full-ingest` mode it is chunked and enters compilation.
+   When the decision sidecar is enabled, the figure gate answers
+   `informative`, `marginal` or `decorative` for every image first: a
+   `decorative` figure is skipped, a `marginal` one is captioned into its
+   parent's prose but gets no stub page of its own (see
+   [the figure gate](../guides/llm-config.md#decision-model-optional-sidecar)).
 2. **Chunk/compile** (full-ingest only): attachment content becomes wiki nodes
    tagged with `source_asset: true` and `parent_source: <slug>` metadata.
    Stub pages carry the same metadata without chunking.

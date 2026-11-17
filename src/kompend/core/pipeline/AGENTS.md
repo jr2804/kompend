@@ -15,10 +15,10 @@ persistence, and standalone ingestion.
 | ----------------------------- | -------- |
 | `stages/pipeline.py`          | `WikiPipeline` — 5-tier orchestrator, `ProgressCallback` |
 | `stages/factory.py`           | `build_pipeline` — pipeline factory |
-| `stages/parse.py`             | Tier 1 dispatch: `parse_and_chunk`, worker pool, dedup gate, attachments, `build_resolver_chain` (VLM captioning plus the optional decision-model relevance gate); heavy parses are serialized by one `HeavyParseGuard` (`preprocessing/host_memory.py`) — the memory headroom half is checked in the parser, which holds the routing plan |
+| `stages/parse.py`             | Tier 1 dispatch: `parse_and_chunk`, worker pool, dedup gate, attachments, `build_resolver_chain` (VLM captioning plus the optional decision-model relevance gate) and `build_figure_gate` -- the one factory every figure path uses, so resolver chunks and standalone attachments ask the same model the same question; heavy parses are serialized by one `HeavyParseGuard` (`preprocessing/host_memory.py`) — the memory headroom half is checked in the parser, which holds the routing plan |
 | `stages/parse_sources.py`     | One source through Tier 1: `_process_single_source` (returns `list[ChunkTree]` — one tree per document), `_parse_source`, page-range splitting seam (`preprocessing.splitting`), privacy filter, dedup warning. A `ChunkingError` fails that one document (`chunk` row `failed`, repro bundle) and the run continues |
 | `stages/parse_store.py`       | Stage-side parse-cache adapter: `_load_cache`, `_save_cache`, `_try_load_parsed_cache`, `_try_load_chunk_cache`, `_chunk_cache_deps`, `parse_identity` |
-| `stages/index.py`             | Tier 0 source indexing |
+| `stages/index.py`             | Tier 0 source indexing, including `iter_sources` - the single discovery point: supported suffixes, `_archive`/`.kompend` guards, `[ignore] patterns`, and the source dir's `.gitignore` |
 | `stages/resolve.py`           | Tier 3 resolution orchestration |
 | `stages/compile.py`           | Tier 4 compilation + Tier 5 output orchestration |
 | `config.py`                   | re-exports `Tier`, `Compiler`, `TierInfo` from `core.config`; `PipelineConfig` (the parse memory budget travels in `ParserOptions`, not here) |

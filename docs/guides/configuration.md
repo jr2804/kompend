@@ -202,7 +202,7 @@ The main configuration sections:
 | `[query]` | Query defaults (scope and result limits) |
 | `[search]` | RAG query pipeline: expansion, HyDE, reranker, CRAG, contextual and agentic retrieval (see [RAG Pipeline](../concepts/rag-pipeline.md)) |
 | `[trust]` | Privacy filter and local user tracking |
-| `[ignore]` | Source ignore patterns |
+| `[ignore]` | Source ignore patterns - applied in `iter_sources`, so they exclude files from every compile, bare scan or file list; `paths.recursive` and `compile.respect_gitignore` shape the same scan |
 | `[organize]` | `kompend organize` tree defaults (depth, sub-category and collapse rules) |
 | `[attachments]` | Attachment adoption, ingestion and vector-index gates |
 | `[dedup]` | Opt-in near-duplicate detection (matchers and thresholds; see [Duplicate Detection](dedup.md)) |

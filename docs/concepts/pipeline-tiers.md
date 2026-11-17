@@ -128,8 +128,12 @@ first gate that decides pays nothing further:
    clause. Status: `vlm_filtered` (reason names the signature).
 3. **Text relevance gate** (opt-in decision model, `compile.decision`): a
    text-only classifier judges the figure's surroundings and the measured
-   facts; a failed classification falls back to captioning, never a skip.
-   Status: `vlm_relevance_skipped`.
+   facts and answers `informative`, `marginal` or `decorative`; only
+   `decorative` skips the caption (status `vlm_relevance_skipped`), while the
+   `marginal` half of the verdict travels on the chunk
+   (`MetadataField.FIGURE_VERDICT`) so the index-only attachment path does not
+   promote a merely illustrative figure to a page of its own. A failed
+   classification falls back to captioning, never a skip.
 4. **VLM self-skip**: the caption prompt's `SKIP` contract — the model's own
    answer. Status: `vlm_skipped`.
 

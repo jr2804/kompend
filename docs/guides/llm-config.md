@@ -521,10 +521,24 @@ pipeline behaves exactly as it does without it.
 The figure gate is the third consumer: before a figure is captioned, the
 decision model judges from the surrounding text alone - section, neighbouring
 prose, and the figure's contextual summary; the image itself is never sent -
-whether the figure is worth the caption. A `decorative` verdict skips the VLM
-call and is recorded under its own status (`vlm_relevance_skipped`), distinct
-from the VLM's own SKIP answer; a failed classification is recorded as a
-failed unit at stage `vlm:relevance` and the figure is captioned anyway.
+what the figure is worth. It answers one of three verdicts:
+
+| Verdict | Captioned | Own corpus entry | Used for |
+|---|---|---|---|
+| `informative` | yes | yes | diagrams, charts, screenshots, scans the text depends on |
+| `marginal` | yes | no | repeated, generic or merely illustrative images: kept in the parent prose, never a page |
+| `decorative` | no | no | logos, rules, icons, blank frames |
+
+A `decorative` verdict skips the VLM call and is recorded under its own status
+(`vlm_relevance_skipped`), distinct from the VLM's own SKIP answer. A
+`marginal` figure is still captioned - the prose may need it - but a standalone
+figure arriving as an attachment gets no stub page of its own; the gate has
+already answered the corpus question, so it is not asked twice. In
+`full-ingest` mode the same verdicts apply, except that an attachment the gate
+calls `decorative` is skipped before captioning. A failed classification is
+recorded as a failed unit at stage `vlm:relevance` and the figure is treated as
+`informative` - the conservative direction: a page is kept rather than
+silently dropped.
 
 ### Prompt caching
 
