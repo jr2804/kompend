@@ -468,8 +468,17 @@ class WikiPipeline:
         return self.config.paths.compile_state_file
 
     def _record_tier_state(self, tier: int) -> None:
-        """Update current_tier for every known source file."""
+        """Update current_tier for every known source file, and drop vanished ones.
+
+        The state store is keyed by ``<stem>-<hash8>`` and only ever gained
+        entries, so a source that left ``sources/`` (deleted, moved out, or
+        newly excluded by ``[ignore] patterns``) kept its row forever - tier
+        totals and ``kompend status`` then counted files no run would ever
+        process again. Every save is now a full projection of the discovery
+        set: entries for files this run did not see are gone.
+        """
         state = self.state
+        seen: set[str] = set()
         for source_file in self.iter_sources():
             stem = source_file.stem
             try:
@@ -477,5 +486,11 @@ class WikiPipeline:
             except OSError as exc:
                 logger.warning("Could not read %s for tier-state hashing — skipping: %s", source_file, exc, exc_info=is_verbose())
                 continue
-            self.state_store.record(state, stem, Path(self.rel_file(source_file)), content_hash, tier=tier)
+            entry = self.state_store.record(state, stem, Path(self.rel_file(source_file)), content_hash, tier=tier)
+            seen.add(entry.key)
+        stale = set(state.entries) - seen
+        for key in stale:
+            del state.entries[key]
+        if stale:
+            logger.info("Dropped %d tier-state entr(ies) for sources that are no longer discovered", len(stale))
         self.state_store.save(state)

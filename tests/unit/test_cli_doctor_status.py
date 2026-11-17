@@ -165,6 +165,25 @@ class TestCollectStats:
         assert stats["sources"]["count"] == 1
         assert stats["sources"]["total_size_bytes"] > 0
 
+    def test_ignored_files_are_not_counted(self, tmp_path: Path) -> None:
+        """`[ignore] patterns` exclude a source here exactly as they exclude it.
+
+        A vault whose status says "897 sources" while Tier 0 discovers five is
+        a lie the operator acts on.
+        """
+        vault = tmp_path / "vault"
+        (vault / ".kompend").mkdir(parents=True)
+        (vault / ".kompend" / "config.toml").write_text('[ignore]\npatterns = ["code-tree/**"]\n', encoding="utf-8")
+        sources = vault / "sources"
+        (sources / "code-tree").mkdir(parents=True)
+        (sources / "paper.pdf").write_text("prose")
+        (sources / "code-tree" / "a.c").write_text("int a;")
+        (sources / "code-tree" / "b.h").write_text("int b;")
+
+        stats = collect_stats(sources_dir=sources, ignore_patterns=["code-tree/**"])
+
+        assert stats["sources"]["count"] == 1
+
     def test_with_output_files(self, tmp_path: Path) -> None:
         """Article count from wiki.md."""
         wiki = tmp_path / "wiki.md"

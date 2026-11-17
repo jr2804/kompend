@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 import sqlite3
 import sys
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from typing import Final
 
+from kompend.core.ignore import load_gitignore, matches_any
 from kompend.core.models import KIND_FOLDERS
 from kompend.core.paths import (
     COMPILE_STATE_FILE,
@@ -37,6 +39,9 @@ def collect_stats(
     output_dir: Path | None = None,
     state_dir: Path | None = None,
     config_file: Path | None = None,
+    *,
+    ignore_patterns: Sequence[str] | None = None,
+    respect_gitignore: bool = False,
 ) -> dict:
     """Collect wiki statistics. Gracefully handles missing dirs."""
     stats: dict = {
@@ -51,11 +56,17 @@ def collect_stats(
         "parse_quality": {"documents": 0, "suspicious": 0, "flagged": []},
     }
 
-    # Source stats
+    # Source stats — same discovery rule as Tier 0, so `[ignore] patterns`
+    # exclude a file here exactly as they exclude it from compilation.
     if sources_dir and sources_dir.exists():
         source_files: list[Path] = []
         for ext in supported_extensions():
             source_files.extend(sources_dir.rglob(f"*{ext}"))
+        patterns = list(ignore_patterns or [])
+        if respect_gitignore:
+            patterns.extend(load_gitignore(sources_dir))
+        if patterns:
+            source_files = [f for f in source_files if not matches_any(f, patterns, base_dir=sources_dir)]
         stats["sources"]["count"] = len(source_files)
         stats["sources"]["total_size_bytes"] = sum(f.stat().st_size for f in source_files if f.is_file())
 

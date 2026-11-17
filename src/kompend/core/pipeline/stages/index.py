@@ -4,33 +4,53 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from kompend.core.ignore import is_special_excluded
+from kompend.core.ignore import is_special_excluded, load_gitignore, matches_any
 from kompend.core.pipeline.config import Tier
 from kompend.core.pipeline.runtime import PipelineRuntime
+from kompend.logging import get_logger
 from kompend.preprocessing.parsers.extensions import supported_extensions
+
+logger = get_logger(__name__)
 
 
 def iter_sources(pipeline: PipelineRuntime) -> list[Path]:
     """Yield source files to process.
 
-    Always scans ``config.source_dir`` for supported file types — recursively
+    Always scans ``config.source_dir`` for supported file types - recursively
     unless ``config.recursive`` is false (flat vault: only files directly in
     ``source_dir``).
     The ``config.input_files`` list is only used by the ingest
-    command to copy files into the source directory — it does
+    command to copy files into the source directory - it does
     *not* scope which files the pipeline processes.
 
-    Excludes the URL list file — it is processed via
+    ``config.ignore_patterns`` (``[ignore] patterns``) is applied here: a file
+    matching one of them is never a source, whether the run was started with
+    explicit file arguments or with a bare vault scan. ``config.respect_gitignore``
+    adds the source dir's ``.gitignore`` patterns on top.
+
+    Excludes the URL list file - it is processed via
     ``--url-file``, not a document to parse.
     """
     extensions = supported_extensions()
+    base_dir = pipeline.config.source_dir
+    patterns = list(pipeline.config.ignore_patterns or [])
+    if pipeline.config.respect_gitignore:
+        patterns.extend(load_gitignore(base_dir))
+
     sources = []
+    skipped = 0
     pattern = "**/*" if pipeline.config.recursive else "*"
-    for f in pipeline.config.source_dir.glob(pattern):
+    for f in base_dir.glob(pattern):
         if is_special_excluded(f):
             continue
-        if f.suffix.lower() in extensions:
-            sources.append(f)
+        if f.suffix.lower() not in extensions:
+            continue
+        if patterns and matches_any(f, patterns, base_dir=base_dir):
+            skipped += 1
+            continue
+        sources.append(f)
+    if skipped:
+        logger.info("Skipped %d file(s) matching ignore patterns", skipped)
     return sources
 
 

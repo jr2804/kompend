@@ -136,6 +136,42 @@ def test_iter_sources_skips_unsupported_extensions(tmp_path: Path) -> None:
     assert sources == {"doc1.pdf", "doc2.md", "notes.html", "data.csv", "script.py"}
 
 
+def test_iter_sources_applies_ignore_patterns(tmp_path: Path) -> None:
+    """``[ignore] patterns`` exclude files from a bare vault scan.
+
+    Regression: ``iter_sources`` only applied the state/archive guards, so a
+    vault whose ``[ignore]`` listed a directory still compiled every file in
+    it - the CLI resolver filtered explicit arguments, but compile never asks
+    for arguments when the vault is scanned wholesale.
+    """
+    ref_tree = tmp_path / "ivas-ref"
+    (ref_tree / "lib_rend").mkdir(parents=True)
+    (ref_tree / "lib_rend" / "renderer.c").write_text("int main(void) { return 0; }", encoding="utf-8")
+    (ref_tree / "lib_rend" / "renderer.h").write_text("int main(void);", encoding="utf-8")
+    _populate_source_dir(tmp_path, "paper.md")
+    config = _make_config(tmp_path, vlm_model="")
+    config.ignore_patterns = ["ivas-ref/**", "*.h"]
+    pipeline = build_pipeline(config)
+
+    names = {s.name for s in pipeline.iter_sources()}
+
+    assert names == {"paper.md"}
+
+
+def test_iter_sources_honours_gitignore_of_the_source_dir(tmp_path: Path) -> None:
+    """``respect_gitignore`` extends discovery with the source dir's .gitignore."""
+    (tmp_path / "generated").mkdir()
+    (tmp_path / "generated" / "dump.md").write_text("generated", encoding="utf-8")
+    (tmp_path / ".gitignore").write_text("generated/\n", encoding="utf-8")
+    _populate_source_dir(tmp_path, "paper.md")
+    config = _make_config(tmp_path, vlm_model="")
+    pipeline = build_pipeline(config)
+
+    names = {s.name for s in pipeline.iter_sources()}
+
+    assert names == {"paper.md"}
+
+
 def test_iter_sources_skips_archive_subdir(tmp_path: Path) -> None:
     """Consolidate/distill archives are retired notes, not sources.
 

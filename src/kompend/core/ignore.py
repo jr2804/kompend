@@ -105,6 +105,12 @@ def matches_any(subject: Path, patterns: list[str], base_dir: Path | None = None
 
     for pattern in patterns:
         p = pattern.replace("\\", "/")
+        if p.endswith("/"):
+            # A directory pattern (gitignore-style ``generated/``) covers
+            # everything underneath it.
+            if (rel_str + "/").startswith(p):
+                return True
+            continue
         if _glob_match(rel_str, p) or _glob_match(name, p):
             return True
         # ``**/`` prefix matches anywhere in the path tree.

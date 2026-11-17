@@ -139,13 +139,15 @@ def wiki_status(
     """Show per-wiki statistics."""
     try:
         vp = vault_paths(wiki_dir)
-        resolve_config(base_dir=vp.base_dir)
+        cfg = resolve_config(base_dir=vp.base_dir)
         sources_dir = vp.sources_dir
         output_dir = vp.output_dir
         stats = collect_stats(
             sources_dir=sources_dir if sources_dir.exists() else None,
             output_dir=output_dir if output_dir.exists() else None,
             config_file=vp.config_file if vp.config_file.exists() else None,
+            ignore_patterns=list(cfg.kompend.ignore.patterns),
+            respect_gitignore=cfg.kompend.compile.respect_gitignore,
         )
         return {"status": ToolStatus.OK, "stats": stats}
     except Exception as exc:
