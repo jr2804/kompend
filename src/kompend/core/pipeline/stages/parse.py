@@ -45,7 +45,7 @@ from kompend.core.store import vault_db_path
 from kompend.core.text.slug import slugify
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.verbosity import is_verbose
-from kompend.llm.decision import decision_model_string
+from kompend.llm.decision import FigureRelevanceVerdict, decision_model_string
 from kompend.llm.models import resolve_vlm_model
 from kompend.llm.user_providers import effective_workers
 from kompend.logging import get_logger
@@ -320,6 +320,7 @@ def _attachment_stub_nodes(pipeline: PipelineRuntime, ledger: StageLedger) -> li
             )
         except Exception as exc:
             logger.debug("VLM captioner not available for attachments: %s", exc, exc_info=is_verbose())
+    figure_gate = build_figure_gate(pipeline.config)
 
     stubs: list[WikiNode] = []
     pipeline.emit("parse", 0, len(ingestible), ProgressDetail.STARTING)
@@ -327,11 +328,35 @@ def _attachment_stub_nodes(pipeline: PipelineRuntime, ledger: StageLedger) -> li
         pipeline.emit("parse", idx + 1, len(ingestible), f"asset: {att.filename}")
 
         try:
-            doc = ingest_attachment(vp, att, parser, vlm_captioner=vlm_captioner, vlm_model=vlm_model, ledger=ledger)
+            doc = ingest_attachment(
+                vp,
+                att,
+                parser,
+                vlm_captioner=vlm_captioner,
+                vlm_model=vlm_model,
+                figure_gate=figure_gate,
+                ledger=ledger,
+            )
             if doc is None:
                 continue
 
             ledger.record_parse_quality(measure_parse_quality(doc, source=att.path))
+
+            # A figure the relevance gate called ``marginal`` is captioned and
+            # kept in its parent's prose but does not deserve an entry of its
+            # own: the gate already answered the "worth a corpus page" question,
+            # so do not spend a page asking it again.
+            verdict = doc.metadata.get(MetadataField.FIGURE_VERDICT) if doc.metadata else None
+            if verdict == FigureRelevanceVerdict.MARGINAL.value:
+                ledger.record(
+                    att.path,
+                    "attachment",
+                    outcome=StageOutcome.SKIPPED,
+                    reason_code=ReasonCode.VLM_RELEVANCE_SKIPPED,
+                    detail="Figure judged marginal: captioned in its parent, no page of its own",
+                )
+                logger.info("Skipped marginal figure stub (index-only): %s", att.filename)
+                continue
 
             content = "\n\n".join(element_text(el.content) for el in doc.elements if element_text(el.content))
             if not content.strip():
@@ -410,6 +435,7 @@ def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list
             )
         except Exception as exc:
             logger.debug("VLM captioner not available for attachments: %s", exc, exc_info=is_verbose())
+    figure_gate = build_figure_gate(pipeline.config)
 
     trees: list[ChunkTree] = []
     pipeline.emit("parse", 0, len(ingestible), ProgressDetail.STARTING)
@@ -417,7 +443,15 @@ def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list
         pipeline.emit("parse", idx + 1, len(ingestible), f"asset: {att.filename}")
 
         try:
-            doc = ingest_attachment(vp, att, parser, vlm_captioner=vlm_captioner, vlm_model=vlm_model, ledger=ledger)
+            doc = ingest_attachment(
+                vp,
+                att,
+                parser,
+                vlm_captioner=vlm_captioner,
+                vlm_model=vlm_model,
+                figure_gate=figure_gate,
+                ledger=ledger,
+            )
             if doc is None:
                 continue
 
@@ -508,15 +542,7 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
                 timeout=config.llm.timeout,
                 llm=config.llm,
             )
-            relevance_agent: FigureRelevanceAgent | None = None
-            relevance_model = decision_model_string(config.decision)
-            if relevance_model is not None:
-                relevance_agent = FigureRelevanceAgent(
-                    relevance_model,
-                    timeout=config.decision.timeout,
-                    retries=0,
-                )
-                logger.info("VLM relevance gate enabled (model=%s)", relevance_model)
+            relevance_agent = build_figure_gate(config)
             resolvers.append(
                 VLMEnricher(
                     agent=vlm_agent,
@@ -544,3 +570,27 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
         logger.info("No resolvers configured — chunks will pass through without resolution")
 
     return ResolverChain(resolvers)
+
+
+def build_figure_gate(config: PipelineConfig) -> FigureRelevanceAgent | None:
+    """The shared relevance gate: one construction for every figure path.
+
+    Resolver chunks and standalone attachments ask the same question ("is this
+    figure worth a caption, and worth a corpus entry of its own?"), so they must
+    ask the same model the same way. ``None`` when the decision sidecar is off:
+    no gate means every figure is treated as informative.
+    """
+    relevance_model = decision_model_string(config.decision)
+    if relevance_model is None:
+        return None
+    try:
+        agent = FigureRelevanceAgent(
+            relevance_model,
+            timeout=config.decision.timeout,
+            retries=0,
+        )
+    except Exception as exc:
+        logger.debug("Figure relevance gate not available: %s", exc, exc_info=is_verbose())
+        return None
+    logger.info("VLM relevance gate enabled (model=%s)", relevance_model)
+    return agent

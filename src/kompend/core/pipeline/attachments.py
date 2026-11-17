@@ -18,10 +18,12 @@ from pathlib import Path
 
 from binaryornot.check import is_binary
 
+from kompend.agents.decision import FigureRelevanceAgent, FigureRelevanceDeps
 from kompend.agents.vlm import VlmAgent, VlmDeps
 from kompend.core.config.rumdl import resolve_rumdl_config
 from kompend.core.models import CompiledWiki, DocumentElement, ElementType, ParsedDocument
 from kompend.core.models.attachments import IMAGE_EXTENSIONS, Attachment, AttachmentManifest
+from kompend.core.models.elements import element_text
 from kompend.core.models.enums import MetadataField
 from kompend.core.models.metadata import meta_str_list
 from kompend.core.paths import ATTACHMENTS_DIR_NAME, VaultPaths, safe_stem
@@ -103,6 +105,7 @@ def ingest_attachment(
     *,
     vlm_captioner: VlmAgent | None = None,
     vlm_model: str | None = None,
+    figure_gate: FigureRelevanceAgent | None = None,
     ledger: StageLedger | None = None,
 ) -> ParsedDocument | None:
     """Ingest a single attachment through the parser pipeline.
@@ -120,6 +123,11 @@ def ingest_attachment(
         vlm_captioner: Optional VLM captioner for image files.
         vlm_model: The VLM model name, recorded as ``judge_model`` on
             ledger rows for image captions.
+        figure_gate: Optional relevance gate for image attachments. An
+            attachment has no surrounding prose, so the verdict is taken on
+            the caption alone — the one piece of text evidence a standalone
+            figure has. The verdict is stamped on the document
+            (``MetadataField.FIGURE_VERDICT``) for the stub builder.
         ledger: Optional per-item ledger; the attempt's outcome is recorded
             as stage ``attachment`` (recording never raises).
 
@@ -159,7 +167,10 @@ def ingest_attachment(
                     size_bytes=_size_of(att_file),
                 )
             return None
-        return _caption_image(att_file, att, vlm_captioner, vlm_model=vlm_model, ledger=ledger, size_bytes=_size_of(att_file))
+        doc = _caption_image(att_file, att, vlm_captioner, vlm_model=vlm_model, ledger=ledger, size_bytes=_size_of(att_file))
+        if doc is not None and figure_gate is not None:
+            _stamp_figure_verdict(doc, figure_gate)
+        return doc
 
     # Non-image attachments: any non-binary file is text. The configured backend
     # is what decides which text extensions it claims — parsecraft's native-text
@@ -179,6 +190,23 @@ def ingest_attachment(
             )
         return None
     return _parse_text(att_file, att, parser, vp.cache_dir, ledger=ledger, size_bytes=_size_of(att_file))
+
+
+def _stamp_figure_verdict(doc: ParsedDocument, gate: FigureRelevanceAgent) -> None:
+    """Ask the gate what the captioned figure is worth; stamp the verdict.
+
+    A standalone attachment has no surrounding prose, so its caption is the
+    whole of the evidence. A failed classification stamps nothing — the
+    document then reads as informative downstream, which is the conservative
+    direction (a page is kept rather than silently dropped).
+    """
+    caption = next((element_text(el.content) for el in doc.elements if element_text(el.content)), "")
+    try:
+        verdict = gate.run(FigureRelevanceDeps(context=caption)).verdict
+    except Exception as exc:
+        logger.debug("Relevance classification failed for %s: %s", doc.title, exc, exc_info=is_verbose())
+        return
+    doc.metadata[MetadataField.FIGURE_VERDICT] = verdict.value
 
 
 def _size_of(path: Path) -> int | None:

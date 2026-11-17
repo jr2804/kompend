@@ -28,10 +28,20 @@ class ErrorAction(StrEnum):
 
 
 class FigureRelevanceVerdict(StrEnum):
-    """Whether a figure carries information worth a VLM caption."""
+    """What a figure is worth to the corpus.
+
+    Three answers, one question: the gate asks whether the figure carries
+    information a reader needs. ``INFORMATIVE`` — worth a caption and worth
+    keeping. ``DECORATIVE`` — a logo, rule, icon or blank frame: not worth a
+    caption, and not worth a corpus page of its own. ``MARGINAL`` — a figure
+    that carries *some* information but not enough to justify its own corpus
+    entry (a repeated illustration, a decorative-but-labelled graphic): it is
+    kept and captioned, but never promoted to a stub page of its own.
+    """
 
     INFORMATIVE = "informative"
     DECORATIVE = "decorative"
+    MARGINAL = "marginal"
 
 
 class QueryIntentVerdict(StrEnum):
@@ -66,14 +76,15 @@ class QueryIntentDecision(BaseModel):
 
 
 class FigureRelevanceDecision(BaseModel):
-    """A decision model's verdict on whether a figure deserves a caption.
+    """A decision model's verdict on what a figure is worth.
 
     Choices and bools only, never free-form text: the caption is the VLM's
-    job, the decision is the classifier's. A ``decorative`` verdict skips
-    the caption call; it is never published as a caption.
+    job, the decision is the classifier's. ``decorative`` skips the caption
+    call and the corpus entry; ``marginal`` keeps the caption but refuses the
+    entry. Neither is ever published as a caption.
     """
 
-    verdict: FigureRelevanceVerdict = Field(description="Whether the figure is worth captioning.")
+    verdict: FigureRelevanceVerdict = Field(description="What the figure is worth to the corpus: informative, marginal or decorative.")
 
 
 class CandidateVerdict(BaseModel):

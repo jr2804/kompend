@@ -257,6 +257,51 @@ class TestVLMEnricher:
         assert resolved.metadata.get("vlm_enriched") is True
         assert not resolved.metadata.get("vlm_relevance_skipped")
 
+    def test_a_marginal_verdict_keeps_the_caption_but_records_no_corpus_entry(self, tmp_path: Path) -> None:
+        """``marginal`` is the third answer: caption yes, own page no.
+
+        The distinction has to survive on the chunk, because the index-only
+        stub builder reads it: a figure that is captioned but not worth its
+        own entry must still carry that half of the verdict.
+        """
+        png_file = tmp_path / "stock_photo.jpg"
+        png_file.write_bytes(b"JPEG mock data")
+        agent = _make_agent()
+        relevance = MagicMock()
+        relevance.run.return_value = SimpleNamespace(verdict=FigureRelevanceVerdict.MARGINAL)
+        enricher = VLMEnricher(
+            agent=agent,
+            min_image_bytes=0,
+            min_image_dimension=0,
+            relevance_agent=relevance,
+        )
+        with patch.object(agent, "run", return_value="A generic photo of an office"):
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
+
+        descs = [e for e in resolved.entities if e.get("type") == "image_description"]
+        assert [desc["context"] for desc in descs] == ["A generic photo of an office"]
+        assert resolved.metadata.get("vlm_enriched") is True
+        assert not resolved.metadata.get("vlm_relevance_skipped")
+        assert resolved.metadata.get(MetadataField.FIGURE_VERDICT) == FigureRelevanceVerdict.MARGINAL.value
+
+    def test_an_informative_verdict_is_marked_corpus_worthy(self, tmp_path: Path) -> None:
+        """``informative`` records the half of the verdict the stub path needs."""
+        png_file = tmp_path / "diagram2.png"
+        png_file.write_bytes(b"PNG mock data")
+        agent = _make_agent()
+        relevance = MagicMock()
+        relevance.run.return_value = SimpleNamespace(verdict=FigureRelevanceVerdict.INFORMATIVE)
+        enricher = VLMEnricher(
+            agent=agent,
+            min_image_bytes=0,
+            min_image_dimension=0,
+            relevance_agent=relevance,
+        )
+        with patch.object(agent, "run", return_value="A pipeline diagram"):
+            resolved = enricher.enrich(ResolvedChunk(chunk=_image_chunk(image_file=str(png_file))))
+
+        assert resolved.metadata.get(MetadataField.FIGURE_VERDICT) == FigureRelevanceVerdict.INFORMATIVE.value
+
     def test_the_relevance_gate_sees_the_caption_context(self, tmp_path: Path) -> None:
         """The verdict is judged on the same surroundings the caption gets."""
         png_file = tmp_path / "figure.png"

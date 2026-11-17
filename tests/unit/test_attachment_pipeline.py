@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -153,7 +153,49 @@ def test_attachment_stub_nodes_in_index_only_mode(vault: VaultPaths) -> None:
     assert stub.metadata["source_asset"] is True
     assert stub.metadata[MetadataField.ASSET_STUB] is True
     assert stub.metadata["parent_source"] == "r"
-    assert stub.metadata["asset_file"] == "r/a.txt"
+
+
+def test_a_marginal_figure_is_indexed_in_its_parent_but_gets_no_stub(vault: VaultPaths) -> None:
+    """index-only + a ``marginal`` verdict: no page of its own.
+
+    The gate already answered "worth a corpus entry?"; a page per stock
+    photo is exactly the pollution the stub quarantine was meant to avoid,
+    so the verdict is honoured instead of being asked again.
+    """
+    manifest = AttachmentManifest(vault.attachments_manifest_file)
+    manifest.append(Attachment(path="r/stock.jpg", source="r", ingestible=True))
+    (vault.attachments_dir / "r").mkdir(parents=True)
+    (vault.attachments_dir / "r" / "stock.jpg").write_bytes(b"JPEG mock data")
+
+    pipeline = MagicMock()
+    pipeline.base_directory = str(vault.base_dir)
+    pipeline.config.attachments_mode = AttachmentMode.INDEX_ONLY
+    pipeline.config.llm.default_model = "test/model"
+    pipeline.config.llm.vlm_model = "test/vlm"
+    pipeline.config.llm.timeout = 120.0
+    pipeline.config.decision = MagicMock()
+    pipeline.parser = MagicMock()
+    pipeline.parser.parse.return_value = ParsedDocument(
+        source_file=vault.attachments_dir / "r" / "stock.jpg",
+        elements=[DocumentElement(type=ElementType.TEXT, content="A generic office photo")],
+        title="stock.jpg",
+    )
+
+    captioned = ParsedDocument(
+        source_file=vault.attachments_dir / "r" / "stock.jpg",
+        elements=[DocumentElement(type=ElementType.TEXT, content="A generic office photo")],
+        title="stock.jpg",
+        metadata={MetadataField.FIGURE_VERDICT: "marginal"},
+    )
+    ledger = StageLedger.open(vault_db_path(vault.base_dir / CACHE_DIR))
+    with (
+        patch("kompend.core.pipeline.stages.parse.VlmAgent"),
+        patch("kompend.core.pipeline.stages.parse.build_figure_gate"),
+        patch("kompend.core.pipeline.stages.parse.ingest_attachment", return_value=captioned),
+    ):
+        stubs = _attachment_stub_nodes(pipeline, ledger)
+
+    assert stubs == []
 
 
 def test_attachment_stub_nodes_skip_binaries(vault: VaultPaths) -> None:

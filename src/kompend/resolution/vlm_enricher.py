@@ -49,6 +49,7 @@ from kompend.core.models import Chunk, ElementType, MetadataField, ResolvedChunk
 from kompend.core.templates import get_template_loader
 from kompend.core.types import ReasonCode, StageOutcome
 from kompend.core.utils.exceptions import LLMOutputError
+from kompend.core.utils.tokens import estimate_tokens
 from kompend.llm.decision import FigureRelevanceVerdict
 from kompend.logging import get_logger
 from kompend.preprocessing.images import MAX_RASTER_PIXELS, VectorRasterError, is_raster_image, rasterise_image
@@ -216,9 +217,14 @@ class VLMEnricher(BaseResolver):
         elif heuristic is not None:
             logger.debug("Image heuristics skipping %s: %s", resolved.chunk.id, heuristic.reason)
             skip_name, skip_context = "vlm_filtered", f"Image filtered: {heuristic.reason}"
-        elif self._relevance_agent is not None and not self._is_worth_captioning(resolved.chunk.id, _render_context(resolved.chunk)):
-            logger.debug("Relevance gate skipping %s: judged decorative", resolved.chunk.id)
-            skip_name, skip_context = "vlm_relevance_skipped", "Figure judged decorative — caption deliberately skipped"
+        elif self._relevance_agent is not None:
+            # Ask once: the answer decides both whether to caption and whether
+            # the figure is worth a corpus entry of its own.
+            verdict = self._relevance_verdict(resolved.chunk.id, _render_context(resolved.chunk))
+            _record_figure_verdict(resolved, verdict)
+            if verdict is FigureRelevanceVerdict.DECORATIVE:
+                logger.debug("Relevance gate skipping %s: judged decorative", resolved.chunk.id)
+                skip_name, skip_context = "vlm_relevance_skipped", "Figure judged decorative — caption deliberately skipped"
         if skip_name is not None:
             resolved.entities.append(
                 {
@@ -264,6 +270,13 @@ class VLMEnricher(BaseResolver):
             }
         )
         resolved.metadata["vlm_enriched"] = True
+        # The caption replaces the figure at its own position in the document:
+        # a picture has no text, so compilation would otherwise see a chunk
+        # whose whole text is "[binary data: N bytes]" and drop it. Writing the
+        # caption into the chunk text is what lets the claim it describes be
+        # extracted from the place the figure stood (AGENTS.md: figures travel
+        # as prose).
+        _absorb_caption_into_chunk_text(resolved.chunk, caption)
         return resolved
 
     def _record(self, resolved: ResolvedChunk, exc: BaseException) -> None:
@@ -277,20 +290,28 @@ class VLMEnricher(BaseResolver):
         image itself is never sent, so the decision sidecar's text-only
         transport applies unchanged.
 
+        Only a ``decorative`` verdict skips. ``marginal`` is captioned: the
+        figure carries something a reader may need, so the caption is not
+        lost; the verdict's "not corpus-worthy" half is recorded instead, and
+        the index-only stub path reads it.
+
         A failed classification is recorded in the ``vlm:relevance`` log and
         reads as ``True`` — the figure is captioned as if the gate were not
         there. A failed classification must never skip a figure.
         """
+        return self._relevance_verdict(unit, context) is not FigureRelevanceVerdict.DECORATIVE
+
+    def _relevance_verdict(self, unit: str, context: str) -> FigureRelevanceVerdict:
+        """The gate's verdict; ``informative`` when no gate or the call failed."""
         agent = self._relevance_agent
         if agent is None:
-            return True
+            return FigureRelevanceVerdict.INFORMATIVE
         try:
-            verdict = agent.run(FigureRelevanceDeps(context=context)).verdict
+            return agent.run(FigureRelevanceDeps(context=context)).verdict
         except Exception as exc:
             self._relevance_failures.record(unit=unit, exc=exc)
             logger.debug("Relevance classification failed for %s (%s) — falling back to captioning", unit, exc)
-            return True
-        return verdict is FigureRelevanceVerdict.INFORMATIVE
+            return FigureRelevanceVerdict.INFORMATIVE
 
     def _should_skip(self, image_file: str | Path) -> tuple[bool, str]:
         """Cheap pre-filter: return (skip, reason) without calling the VLM.
@@ -352,6 +373,43 @@ class VLMEnricher(BaseResolver):
             raise LLMOutputError(msg)
         deps = VlmDeps(image_file=str(image_ref), context=context)
         return self._agent.run(deps)
+
+
+def _record_figure_verdict(resolved: ResolvedChunk, verdict: FigureRelevanceVerdict) -> None:
+    """Record the gate's verdict on the chunk, for the stub path to read.
+
+    A separate flag, not the caption status: ``marginal`` is captioned and
+    therefore ``vlm_enriched``, yet it is explicitly *not* worth a corpus
+    entry of its own. The index-only stub builder drops a figure whose
+    verdict is ``marginal`` instead of promoting it to a page; an
+    ``informative`` figure earns its stub.
+    """
+    resolved.metadata[MetadataField.FIGURE_VERDICT] = verdict.value
+
+
+def _absorb_caption_into_chunk_text(chunk: Chunk, caption: str) -> None:
+    """Put a figure's caption where the figure stood in the document.
+
+    A figure chunk's text is the flattening of image bytes
+    (``"[binary data: N bytes]"``) — nothing a compiler can extract a claim
+    from. The caption is what the figure says, so it replaces that placeholder
+    rather than being attached elsewhere: the claim then comes from the same
+    position under the same heading, which is what keeps the surrounding
+    section's argument intact.
+
+    A caption the parser already provided (metadata ``description``) never
+    reaches this function — that branch returns early — so the text is not
+    overwritten twice. Existing non-placeholder text is left untouched: a
+    parser that extracted a figure's own text (a diagram's labels, say) said
+    something the VLM must not silently replace.
+    """
+    if not caption.strip():
+        return
+    current = chunk.text.strip()
+    if current and not current.startswith("[binary data:"):
+        return
+    chunk.text = caption.strip()
+    chunk.token_count = estimate_tokens(chunk.text)
 
 
 def caption_outcome(resolved: ResolvedChunk) -> CaptionOutcome | None:

@@ -245,6 +245,11 @@ class MetadataField(StrEnum):
     """Vault-relative paths of attachments registered for this node's sources."""
     ASSET_STUB = "asset_stub"
     """Index-only attachment stub page (rendered into assets/, off the catalog)."""
+    FIGURE_VERDICT = "figure_verdict"
+    """The relevance gate's verdict on a figure chunk: ``informative``,
+    ``marginal`` or ``decorative``. Read by the index-only stub builder - only
+    an ``informative`` figure earns a page of its own; a ``marginal`` one is
+    captioned and kept in its parent's prose, never promoted."""
     PARSECRAFT_KIND = "parsecraft_kind"
     """IR chunk kind the element was mapped from (parsecraft parser)."""
     CONFIDENCE = "confidence"
