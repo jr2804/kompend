@@ -28,9 +28,9 @@ class _FakeAgent:
     queued: list[object] = []
 
     def __init__(self, *_args: object, **_kwargs: object) -> None:
-        self._tools: list[Callable[[object], str]] = []
+        self._tools: list[Callable[[], str]] = []
 
-    def tool_plain(self, fn: Callable[[object], str], *, name: str = "", description: str = "") -> Callable[[object], str]:
+    def tool_plain(self, fn: Callable[[], str], *, name: str = "", description: str = "") -> Callable[[], str]:
         self._tools.append(fn)
         return fn
 
@@ -38,7 +38,7 @@ class _FakeAgent:
         nxt = _FakeAgent.queued.pop(0) if _FakeAgent.queued else ""
         if callable(nxt):
             for tool in self._tools:
-                tool(None)
+                tool()
             return _FakeRun("")
         return _FakeRun(nxt)
 

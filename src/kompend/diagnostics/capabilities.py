@@ -13,7 +13,7 @@ from time import monotonic
 from typing import Final
 
 from pydantic import BaseModel
-from pydantic_ai import Agent, RunContext
+from pydantic_ai import Agent
 from pydantic_ai.output import NativeOutput, OutputSpec, PromptedOutput
 from pydantic_ai.settings import ModelSettings
 
@@ -175,7 +175,12 @@ def probe_tool_use(model: str, *, timeout: float, retries: int) -> CapabilityPro
     name = "tool-use"
     calls: list[str] = []
 
-    def _ping(ctx: RunContext[None]) -> str:
+    def _ping() -> str:
+        # No ``RunContext`` parameter on purpose: ``tool_plain`` registers a
+        # context-free tool, and annotating the context here makes pydantic-ai
+        # refuse the schema ("RunContext annotations can only be used with
+        # tools that take context") - which failed for every model, not the
+        # one under test.
         calls.append("ping")
         return "pong"
 
@@ -241,7 +246,13 @@ def measure_compact_formats() -> CapabilityProbe:
 
 
 def _short(exc: BaseException) -> str:
-    """One-line rendering of an exception for a probe result."""
-    text = str(exc).strip().splitlines()
-    head = text[0] if text else exc.__class__.__name__
-    return head[:_MAX_DETAIL_CHARS]
+    """One-line rendering of an exception for a probe result.
+
+    Every non-empty line is kept, joined by ``" / "``: a pydantic-ai error
+    reads ``Error generating schema for _ping:`` on its first line and puts
+    the actual reason on the second, so keeping only the head would print a
+    colon and nothing else.
+    """
+    lines = [line.strip() for line in str(exc).strip().splitlines() if line.strip()]
+    rendered = " / ".join(lines) if lines else exc.__class__.__name__
+    return rendered[:_MAX_DETAIL_CHARS]
