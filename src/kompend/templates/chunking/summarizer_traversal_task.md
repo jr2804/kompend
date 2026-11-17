@@ -1,3 +1,5 @@
+# Summarizer Traversal Task
+
 The wiki built from this document must let a reader answer questions about
 the document's substance without going back to the source. A section earns
 its summary when it carries facts, claims, measurements, definitions, or
