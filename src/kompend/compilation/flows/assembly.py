@@ -12,7 +12,7 @@ from typing import Any
 from kompend.compilation.asset_registry import AssetIdMap
 from kompend.compilation.asset_summarizer import summarize_asset
 from kompend.compilation.two_phase import ExtractionSet
-from kompend.core.models import ChunkTree, GraphEdge, ResolvedChunk, WikiNode
+from kompend.core.models import ChunkTree, GraphEdge, ResolvedChunk, StructuredFigure, WikiNode
 from kompend.core.models.enums import EdgeType, MetadataField
 from kompend.core.models.structured import StructuredEquation, structured_to_text
 from kompend.core.text.matching import cosine, similarity
@@ -347,12 +347,32 @@ def build_tree_texts(
         heading_prefix = ""
         if node.heading_chain:
             heading_prefix = f"{'#' * min(node.depth + 1, 6)} {' / '.join(node.heading_chain)}\n\n"
-        if node.chunk is not None:
-            # Leaf prose node — full text.
-            texts.append(f"{heading_prefix}{node.chunk.text}")
-        elif node.structured is not None:
-            # Leaf structured node — equation always inlined; table/figure
-            # depends on asset_mode.
+        if node.structured is not None:
+            # A structured leaf is checked before its flattened chunk: an image
+            # chunk's text is only ``"[binary data: N bytes]"``, a placeholder
+            # no compiler can extract a claim from. What the figure says is its
+            # caption, and that is what belongs where the figure stood.
+            if isinstance(node.structured, StructuredFigure):
+                # Prefer the chunk text: the resolve stage replaces a figure's
+                # byte placeholder with what the VLM saw, and that description
+                # is richer than the document's own label. The structured
+                # fields stay as the fallback for parser-captioned figures
+                # when no VLM ran.
+                caption = ""
+                if node.chunk is not None:
+                    chunk_text = node.chunk.text.strip()
+                    if chunk_text and not chunk_text.startswith("[binary data:"):
+                        caption = chunk_text
+                if not caption:
+                    caption = node.structured.caption or node.structured.description or node.structured.alt_text
+                if caption:
+                    texts.append(f"{heading_prefix}{caption}")
+                # A figure with no annotation contributes nothing to prose -
+                # the page still embeds it, but an extraction prompt gains
+                # nothing from a byte count.
+                continue
+            # Leaf structured node — equation always inlined; table depends on
+            # asset_mode.
             if (
                 asset_mode == "ref"
                 and asset_id_map is not None
@@ -367,6 +387,9 @@ def build_tree_texts(
                 texts.append(f"{heading_prefix}¶ {asset_id} (summary: {summary})")
             else:
                 texts.append(f"{heading_prefix}{structured_to_text(node.structured)}")
+        elif node.chunk is not None:
+            # Leaf prose node — full text.
+            texts.append(f"{heading_prefix}{node.chunk.text}")
         elif node.summary:
             # Internal node — summary only.
             texts.append(f"{heading_prefix}[summary: {node.summary}]")
