@@ -25,7 +25,7 @@ never raises.
 | `providers.py` | Model catalogue, `[providers.<name>]` endpoints, Ollama offload + tag identity (`ollama_show_lookup`), `nvidia-smi` |
 | `models.py` | Connectivity pings, structured-output probes, context window discovery, window fit, server window, output ceiling |
 | `decision.py` | The two decision-model checks: the offline result-type grammar (`decision-schema`) and the live SystemOne ping (`connectivity-decision`) |
-| `capabilities.py` | The structured-output probes themselves (`probe_*`, `measure_compact_formats`) |
+| `capabilities.py` | The capability probes themselves (`probe_*`, `measure_compact_formats`): structured output, tool use, and `probe_vision` - the one that sends a real image part, because the connectivity ping is text only and can pass while every figure fails |
 | `runner.py` | `run_doctor` — which checks run, in which order |
 
 ## Local Contracts

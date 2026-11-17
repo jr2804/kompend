@@ -43,6 +43,13 @@ class _FakeAgent:
         return _FakeRun(nxt)
 
 
+class _RaisingAgent(_FakeAgent):
+    """Agent stand-in whose run always raises - the endpoint refusal path."""
+
+    def run_sync(self, _prompt: object, **_kwargs: object) -> _FakeRun:
+        raise RuntimeError("status_code: 400, body: {'message': 'invalid image input'}")
+
+
 class TestStructuredOutputProbes:
     def test_native_probe_accepts_a_valid_answer(self, queued: list[object]) -> None:
         queued.append(_capabilities._ProbeAnswer(ok=True, message="hello"))
@@ -96,6 +103,39 @@ class TestStructuredOutputProbes:
 
         assert not probe.ok
         assert "without calling" in probe.detail
+
+
+class TestVisionProbe:
+    """The probe that proves an image crosses the wire.
+
+    The connectivity ping is text only, so it can say "vlm OK" while every
+    figure fails on a container the endpoint will not decode.
+    """
+
+    def test_vision_probe_passes_when_the_model_answers(self, queued: list[object]) -> None:
+        queued.append("OK")
+
+        probe = _capabilities.probe_vision(_MODEL, timeout=5.0, retries=1)
+
+        assert probe.ok
+        assert probe.name == "vision"
+        assert "accepted" in probe.detail
+
+    def test_vision_probe_fails_with_an_empty_answer(self, queued: list[object]) -> None:
+        queued.append("")
+
+        probe = _capabilities.probe_vision(_MODEL, timeout=5.0, retries=1)
+
+        assert not probe.ok
+        assert "empty" in probe.detail
+
+    def test_vision_probe_reports_an_endpoint_refusal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(_capabilities, "Agent", _RaisingAgent)
+
+        probe = _capabilities.probe_vision(_MODEL, timeout=5.0, retries=1)
+
+        assert not probe.ok
+        assert "invalid image input" in probe.detail
 
 
 class TestCompactFormatProbe:

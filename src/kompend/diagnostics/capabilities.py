@@ -7,23 +7,31 @@ the doctor prints — never exceptions that abort the run.
 
 from __future__ import annotations
 
+import io
 import json
 from dataclasses import dataclass
 from time import monotonic
 from typing import Final
 
+from PIL import Image, ImageDraw
 from pydantic import BaseModel
 from pydantic_ai import Agent
+from pydantic_ai.messages import BinaryContent
 from pydantic_ai.output import NativeOutput, OutputSpec, PromptedOutput
 from pydantic_ai.settings import ModelSettings
 
 from kompend.core.config._configs import LlmDataFormat
 from kompend.llm.format import decode_from_llm, encode_for_llm, format_note
 from kompend.llm.models import build_model
+from kompend.preprocessing.images import ImageMediaType
 from kompend.types import JSONList
 
 #: Longest exception line a probe result carries into the doctor output.
 _MAX_DETAIL_CHARS: Final[int] = 160
+
+#: Edge length of the probe image. A vision encoder refuses degenerate sizes
+#: (a 1x1 PNG is answered with HTTP 400), so this is small but real.
+_PROBE_IMAGE_SIDE: Final[int] = 64
 
 #: The records every compact-format probe asks the model to reproduce.
 #: Uniform, short fields — the shape compact formats are built for.
@@ -162,6 +170,53 @@ def probe_compact_format(
         True,
         f"{fmt.value} output decodes ({len(text)} chars vs {json_len} chars of JSON, {elapsed:.1f}s)",
     )
+
+
+def probe_vision(model: str, *, timeout: float, retries: int) -> CapabilityProbe:
+    """Can the model take an image at all?
+
+    The connectivity ping is text only, so it can pass while every figure
+    fails: Ollama's ``/v1/chat/completions`` answers HTTP 400 "invalid image
+    input" for a container it will not decode. This probe sends one real
+    image part through the same path the captioner uses and asks for anything
+    back - the question is acceptance, not caption quality.
+    """
+    name = "vision"
+    try:
+        agent: Agent[None, str] = Agent(
+            build_model(model),
+            output_type=str,
+            retries=retries,
+            model_settings=ModelSettings(timeout=timeout),
+            name=f"doctor-{name}",
+        )
+        prompt: list[str | BinaryContent] = [
+            "Reply with the single word OK.",
+            BinaryContent(_probe_image_png(), media_type=ImageMediaType.PNG.value),
+        ]
+        start = monotonic()
+        result = agent.run_sync(prompt)
+        elapsed = monotonic() - start
+    except Exception as exc:
+        return CapabilityProbe(name, False, f"image input failed: {_short(exc)}")
+    if (result.output or "").strip():
+        return CapabilityProbe(name, True, f"image input accepted ({elapsed:.1f}s)")
+    return CapabilityProbe(name, False, f"image input accepted but the answer was empty ({elapsed:.1f}s)")
+
+
+def _probe_image_png() -> bytes:
+    """A small, non-degenerate PNG for the vision probe.
+
+    Built rather than embedded so the bytes stay readable: 64x64 white with a
+    black diagonal. Size matters more than content — Ollama answers a 1x1 PNG
+    with HTTP 400 "Failed to load image or audio file", which would make the
+    probe a false negative on a perfectly working vision endpoint.
+    """
+    image = Image.new("RGB", (_PROBE_IMAGE_SIDE, _PROBE_IMAGE_SIDE), (255, 255, 255))
+    ImageDraw.Draw(image).line([(0, 0), (_PROBE_IMAGE_SIDE - 1, _PROBE_IMAGE_SIDE - 1)], fill=(0, 0, 0), width=2)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 def probe_tool_use(model: str, *, timeout: float, retries: int) -> CapabilityProbe:

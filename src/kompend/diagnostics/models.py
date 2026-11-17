@@ -13,6 +13,7 @@ from typing import Final
 
 from kompend.agents.doctor import DoctorAgent, DoctorDeps
 from kompend.core.config import LLMConfig, LlmDataFormat
+from kompend.core.pipeline.events import ProgressDetail
 from kompend.diagnostics.base import CheckResult
 from kompend.diagnostics.capabilities import (
     probe_compact_format,
@@ -20,6 +21,7 @@ from kompend.diagnostics.capabilities import (
     probe_prompted_structured_output,
     probe_raw_json,
     probe_tool_use,
+    probe_vision,
 )
 from kompend.diagnostics.providers import OLLAMA_PROVIDER_ID, ollama_show_lookup
 from kompend.llm import model_slug, provider_id_of
@@ -180,6 +182,10 @@ def check_model_capabilities(
         probes.append(probe_raw_json(model, timeout=timeout, retries=budget))
         if data_format in (LlmDataFormat.TOON, LlmDataFormat.ISON):
             probes.append(probe_compact_format(model, data_format, timeout=timeout, retries=budget))
+    if label == ProgressDetail.VLM:
+        # The connectivity ping is text only; this is the probe that proves
+        # an image crosses the wire, which is what captioning needs.
+        probes.append(probe_vision(model, timeout=timeout, retries=budget))
     results: list[CheckResult] = []
     for probe in probes:
         check_name = name if probe.name == "structured-output" else f"{probe.name}-{label}"
