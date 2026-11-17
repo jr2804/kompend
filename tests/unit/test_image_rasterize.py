@@ -19,6 +19,7 @@ from kompend.preprocessing.images import (
     is_raster_image,
     rasterise_bytes,
     rasterise_image,
+    to_wire_image,
 )
 
 _SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}"><rect width="{width}" height="{height}" fill="#336699"/></svg>'
@@ -153,6 +154,70 @@ class TestRasteriseBytes:
 
     def test_a_missing_figure_is_none(self, tmp_path: Path) -> None:
         assert rasterise_bytes(tmp_path / "gone.png") is None
+
+
+class TestToWireImage:
+    """The container that crosses the wire, not the one on disk.
+
+    Ollama's ``/v1/chat/completions`` answers HTTP 400 "invalid image input"
+    for a single-frame GIF it will not decode, and ``.bmp``/``.tiff`` are not
+    in pydantic-ai's accepted set at all. The figure is fine; the container is
+    not - so it is converted at the boundary and the vault keeps the original.
+    """
+
+    def test_png_passes_through_untouched(self, tmp_path: Path) -> None:
+        source = tmp_path / "figure.png"
+        Image.new("RGB", (8, 8), "white").save(source, format="PNG")
+        original = source.read_bytes()
+
+        data, media_type = to_wire_image(source)
+
+        assert data == original
+        assert media_type == "image/png"
+
+    def test_jpeg_keeps_its_own_media_type(self, tmp_path: Path) -> None:
+        source = tmp_path / "figure.jpg"
+        Image.new("RGB", (8, 8), "white").save(source, format="JPEG")
+
+        data, media_type = to_wire_image(source)
+
+        assert media_type == "image/jpeg"
+        assert data[:2] == b"\xff\xd8"
+
+    def test_gif_is_reencoded_to_png(self, tmp_path: Path) -> None:
+        source = tmp_path / "figure.gif"
+        Image.new("P", (8, 8)).save(source, format="GIF")
+
+        data, media_type = to_wire_image(source)
+
+        assert media_type == "image/png"
+        assert data[:8] == b"\x89PNG\r\n\x1a\n"
+        assert source.suffix == ".gif"  # the vault file is untouched
+
+    def test_bmp_is_reencoded_to_png(self, tmp_path: Path) -> None:
+        source = tmp_path / "figure.bmp"
+        Image.new("RGB", (8, 8), "white").save(source, format="BMP")
+
+        data, media_type = to_wire_image(source)
+
+        assert media_type == "image/png"
+        assert data[:8] == b"\x89PNG\r\n\x1a\n"
+
+    def test_vector_figure_is_rasterised(self, tmp_path: Path) -> None:
+        source = tmp_path / "figure.svg"
+        source.write_text(_SVG.format(width=16, height=16), encoding="utf-8")
+
+        data, media_type = to_wire_image(source)
+
+        assert media_type == "image/png"
+        assert data[:8] == b"\x89PNG\r\n\x1a\n"
+
+    def test_unreadable_file_raises(self, tmp_path: Path) -> None:
+        source = tmp_path / "broken.gif"
+        source.write_bytes(b"not an image at all")
+
+        with pytest.raises(VectorRasterError):
+            to_wire_image(source)
 
 
 def _svg(path: Path, width: int = 200, height: int = 120) -> Path:

@@ -249,6 +249,72 @@ def rasterise_bytes(image_file: str | Path) -> bytes | None:
         return None
 
 
+#: Containers a vision endpoint accepts as-is. Everything else is re-encoded
+#: before it crosses the wire: ``image/gif`` is refused by Ollama's
+#: ``/v1/chat/completions`` with HTTP 400 "invalid image input" even for a
+#: single-frame 512x512 figure, and ``.bmp``/``.tiff`` are not in pydantic-ai's
+#: ``ImageMediaType`` set at all. The picture is fine; the container is not.
+_WIRE_FORMATS: Final[tuple[tuple[ImageMediaType, tuple[str, ...]], ...]] = (
+    (ImageMediaType.PNG, (".png",)),
+    (ImageMediaType.JPEG, (".jpg", ".jpeg")),
+    (ImageMediaType.WEBP, (".webp",)),
+)
+
+#: Suffixes a vision endpoint accepts unchanged.
+WIRE_IMAGE_SUFFIXES: Final[frozenset[str]] = frozenset(suffix for _media_type, suffixes in _WIRE_FORMATS for suffix in suffixes)
+
+
+def to_wire_image(image_file: str | Path) -> tuple[bytes, str]:
+    """Bytes and media type a vision endpoint will accept for *image_file*.
+
+    Passes an already-accepted container through untouched (no re-encoding
+    cost, no quality loss). Anything else — ``.gif``, ``.bmp``, ``.tiff``, and
+    vector figures, which have no pixels of their own — is converted to PNG
+    first. The vault keeps its original file: this is a transport detail, not
+    a change to the artifact.
+
+    Raises:
+        VectorRasterError: the figure could not be turned into pixels. The
+            caller records a failed unit; a caption is never invented.
+    """
+    source = Path(image_file)
+    accepted = _wire_media_type(source.suffix)
+    if accepted is not None:
+        return source.read_bytes(), accepted
+    if source.suffix.lower() in _VECTOR_SUFFIXES:
+        return rasterise_image(source).read_bytes(), ImageMediaType.PNG.value
+    return _reencode_png(source), ImageMediaType.PNG.value
+
+
+def _wire_media_type(suffix: str) -> str | None:
+    """The media type a vision endpoint accepts for *suffix*, or ``None``."""
+    lowered = suffix.lower()
+    for media_type, suffixes in _WIRE_FORMATS:
+        if lowered in suffixes:
+            return media_type.value
+    return None
+
+
+def _reencode_png(source: Path) -> bytes:
+    """Re-encode a raster container the endpoint refuses into PNG bytes."""
+    try:
+        with Image.open(source) as image:
+            converted = image.convert("RGB")
+            over_budget = converted.width * converted.height > MAX_RASTER_PIXELS
+            if over_budget:
+                converted.thumbnail((MAX_RASTER_LONG_EDGE, MAX_RASTER_LONG_EDGE))
+    except Image.DecompressionBombError as exc:
+        msg = f"{source.name} declares more pixels than PIL will decode: {exc}"
+        raise VectorRasterError(msg) from exc
+    except (OSError, ValueError) as exc:
+        msg = f"could not read {source.name} as an image: {exc}"
+        raise VectorRasterError(msg) from exc
+    buffer = io.BytesIO()
+    converted.save(buffer, format="PNG")
+    logger.debug("Re-encoded %s to PNG for the vision endpoint (%d -> %d bytes)", source.name, source.stat().st_size, buffer.tell())
+    return buffer.getvalue()
+
+
 def rasterise_image(image_file: str | Path) -> Path:
     """A raster copy of *image_file* that a vision model or embedder can read.
 

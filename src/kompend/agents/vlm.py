@@ -12,7 +12,6 @@ root cause of VLM timeouts and reasoning-polluted captions.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import StrEnum
 from pathlib import Path
 from typing import Any, ClassVar, Final
 
@@ -24,36 +23,7 @@ from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.debug import save_debug_prompt
 from kompend.llm.format import strip_reasoning
 from kompend.logging import get_logger
-
-
-#: Image extensions the VLM agent recognises. Keys are a :class:`StrEnum` so
-#: the table is keyed by typed members; lookups still match bare suffix
-#: strings because ``StrEnum`` is-a ``str``. Excludes ``.svg`` because
-#: pydantic-ai's :class:`ImageMediaType` only accepts the raster MIME set
-#: (jpeg/png/gif/webp) — ``.bmp`` is intentionally kept here even though
-#: pydantic-ai rejects it: the lookup falls through to ``_DEFAULT_MEDIA_TYPE``
-#: (``image/png``) before pydantic-ai ever sees the value.
-class _ImageExt(StrEnum):
-    PNG = ".png"
-    JPG = ".jpg"
-    JPEG = ".jpeg"
-    GIF = ".gif"
-    WEBP = ".webp"
-    BMP = ".bmp"
-
-
-_MIME_BY_EXT: dict[_ImageExt, str] = {
-    _ImageExt.PNG: "image/png",
-    _ImageExt.JPG: "image/jpeg",
-    _ImageExt.JPEG: "image/jpeg",
-    _ImageExt.GIF: "image/gif",
-    _ImageExt.WEBP: "image/webp",
-    _ImageExt.BMP: "image/bmp",
-}
-
-# pydantic-ai requires a concrete ImageMediaType; this fallback covers the
-# rare case of an unrecognised extension.
-_DEFAULT_MEDIA_TYPE = "image/png"
+from kompend.preprocessing.images import to_wire_image
 
 logger = get_logger(__name__)
 
@@ -124,8 +94,12 @@ class VlmAgent(KompendAgentBase[str, VlmDeps]):
             msg = f"Image not found: {image_file}"
             raise FileNotFoundError(msg)
 
-        media_type = _MIME_BY_EXT.get(image_file.suffix.lower(), _DEFAULT_MEDIA_TYPE)
-        image_bytes = image_file.read_bytes()
+        # The transport container is not the figure's business: a vision
+        # endpoint may accept PNG/JPEG/WEBP and refuse GIF/BMP/TIFF (Ollama's
+        # /v1/chat/completions answers HTTP 400 "invalid image input" for a
+        # single-frame GIF), so anything outside the wire set is converted
+        # here instead of failing at the model. The vault keeps the original.
+        image_bytes, media_type = to_wire_image(image_file)
 
         # The prompt lives in a template (``templates/vlm/caption.md.j2``),
         # so the instruction and the surrounding context are one resource.
