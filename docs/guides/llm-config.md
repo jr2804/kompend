@@ -449,6 +449,14 @@ raw JSON, and the configured compact format, and prints the input-side size
 saving per format (`input-format-size`). A model that fails the
 `structured-output-toon` probe should keep `data_format = "json"`.
 
+For the VLM it also runs `vision` - one real image part through the captioning
+path. The connectivity line alone cannot answer this: it is a text ping, so it
+can report `vlm OK` while every figure fails on a container the endpoint will
+not decode. A failing `vision` probe names the endpoint's refusal, and the
+run will fail the same way; captioning does not depend on the figure's
+container being one the endpoint accepts, because the VLM agent converts
+anything outside PNG/JPEG/WEBP to PNG on the way out.
+
 ### Agent notebook (memory)
 
 ```toml
