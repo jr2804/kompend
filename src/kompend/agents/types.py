@@ -248,6 +248,11 @@ class SummarizerDeps:
     results: dict[str, str] = field(default_factory=dict)
     source_id: str = "summarizer"
     current_node: SummaryNode | None = None
+    #: Node ids whose content window this conversation already carried.
+    #: ``next_node`` hands each window over once; a repeat answers with a
+    #: pointer, so a model that peeks through a batch cannot grow the
+    #: conversation by a window per request.
+    delivered: set[str] = field(default_factory=set)
 
 
 @dataclass

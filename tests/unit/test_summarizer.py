@@ -264,6 +264,13 @@ class TestSummarizerAgenticResume:
         agentic_tree: ChunkTree,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        """A session that records nothing shrinks the payload, never repeats it.
+
+        Re-asking a byte-identical payload spends the same request budget the
+        same way, so the loop halves the batch instead. It must terminate:
+        at the split floor the nodes are left unsummarized rather than
+        spinning.
+        """
         agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
         rounds: list[list[str]] = []
 
@@ -274,7 +281,10 @@ class TestSummarizerAgenticResume:
         monkeypatch.setattr(agent, "run", _run)
         tree = NodeSummarizer(agent=agent, content_policy=_policy()).summarize(agentic_tree)
 
-        assert len(rounds) == 1
+        # No round repeats an earlier payload: every retry is strictly smaller.
+        for earlier, later in zip(rounds, rounds[1:], strict=False):
+            assert len(later) < len(earlier) or not set(later) <= set(earlier)
+        assert len(set(map(tuple, rounds))) == len(rounds)
         for node_id in rounds[0]:
             assert not tree.nodes[node_id].summary
 

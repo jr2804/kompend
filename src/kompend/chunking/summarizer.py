@@ -583,10 +583,22 @@ class NodeSummarizer:
                 try:
                     agent.run(deps)
                 except UsageLimitExceeded as exc:
+                    # A session that burns its whole request budget without
+                    # recording a summary is deterministically doomed on the
+                    # same payload: the conversation it grew is the cost of
+                    # the next attempt too. Shrink it like an oversize
+                    # payload instead of spending a stall strike on a repeat.
                     logger.warning(
-                        "Agentic summarizer hit its request budget (%s) — resuming for the remaining node(s)",
+                        "Agentic summarizer hit its request budget (%s) — splitting the batch",
                         exc,
                     )
+                    if not deps.results:
+                        oversize = exc
+                    else:
+                        logger.info(
+                            "Agentic summarizer recorded %d summary(ies) before its budget ran out — keeping them",
+                            len(deps.results),
+                        )
                 except Exception as exc:
                     if _is_oversize_payload(exc):
                         oversize = exc

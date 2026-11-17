@@ -24,7 +24,15 @@ def build_summarizer_tools() -> list[Any]:
 
 
 async def next_node(ctx: RunContext[SummarizerDeps]) -> str:
-    """Return the next node that still needs a summary."""
+    """Return the next node that still needs a summary.
+
+    The content travels once per node, per session. A second call for a node
+    whose window this conversation already carried gets its id and heading
+    back with a pointer instead of the text: re-sending an 8000-character
+    window on every peek grows the history by a window per request, and a
+    model that peeks through a batch before answering spends the session's
+    whole request budget without recording a single summary.
+    """
     processed = set(ctx.deps.results.keys())
     pending = [n for n in ctx.deps.nodes if n["id"] not in processed]
     if not pending:
@@ -32,17 +40,23 @@ async def next_node(ctx: RunContext[SummarizerDeps]) -> str:
     node = pending[0]
     ctx.deps.current_node = node
     heading = node.get("heading_chain", "") or "document root"
-    # The payload is pre-windowed by ``NodeSummarizer`` (one window per
-    # payload entry), so the content is handed over in full — never
-    # truncated here.
-    content = node.get("content", "")
     parts = [f"node_id: {node['id']}", f"heading: {heading}"]
     focus = node.get("focus", "")
     if focus:
         # Planned traversal: the plan scopes this summary to a branch. An
         # anchoring instruction, never content — not part of the text.
         parts.append(f"focus: {focus}")
-    parts.append(f"content: {content}")
+    if node["id"] in ctx.deps.delivered:
+        parts.append(
+            "content: already provided earlier in this conversation - summarize that text now with "
+            f"summarize_node(node_id={node['id']!r}, summary=...). Do not call next_node() for this node again."
+        )
+    else:
+        # The payload is pre-windowed by ``NodeSummarizer`` (one window per
+        # payload entry), so the content is handed over in full — never
+        # truncated here.
+        parts.append(f"content: {node.get('content', '')}")
+        ctx.deps.delivered.add(node["id"])
     return "\n".join(parts)
 
 
