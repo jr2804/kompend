@@ -68,6 +68,19 @@ def _isolate_cwd(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def _isolate_global_config(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Never read the developer's real ``~/.config/kompend/config.toml``.
+
+    The CLI layers a global config under every explicit path, so a stale key
+    there (a pre-rename ``compile.llm.timeout``, say) leaks a migration warning
+    into a command's output and fails assertions that have nothing to do with
+    configuration. ``find_global_config`` honours ``XDG_CONFIG_HOME``, so
+    pointing it at an empty directory makes every test hermetic.
+    """
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("xdg-config")))
+
+
+@pytest.fixture(autouse=True)
 def _isolate_env(monkeypatch: pytest.MonkeyPatch) -> None:
     """Strip ambient ``KOMP_*`` variables before every test.
 
