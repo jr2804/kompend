@@ -155,10 +155,10 @@ def test_batch_stops_when_more_than_the_ratio_of_windows_fail(
     flow_env: Callable[[FakeAgent], FakeStore],
 ) -> None:
     """A batch that is mostly failures ends loudly instead of returning a partial result."""
-    agent = FakeAgent(fail_on=set(range(1, 100)))
+    agent = FakeAgent(fail_on=set(range(1, 1_000)))
     store = flow_env(agent)
     text = "\n".join(f"Reference entry number {i} with some detail." for i in range(120))
-    compiler = _compiler(max_input=1_500, failure_ratio=0.5, failure_min=2)
+    compiler = _compiler(max_input=8_192, failure_ratio=0.5, failure_min=2)
 
     with pytest.raises(LLMOutputError, match="references.extraction"):
         run_reference_extraction(compiler, _chunks(text), store)

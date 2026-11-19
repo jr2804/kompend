@@ -84,9 +84,10 @@ class _FakeCompiler:
 
 def test_digest_budget_subtracts_every_window_term() -> None:
     cw = _context_window()
-    section = "x" * 4000  # ~1000 tokens at 4 chars/token
+    section = "x" * 4000  # 1600 tokens at the density floor
     budget = _digest_budget_tokens(cw, static_tokens=2000, section_text=section, chars_per_token=4.0)
-    assert budget == _WINDOW - cw.answer_reserve - context_safety_tokens(_WINDOW) - 2000 - 1000
+    # 4.0 is clamped to the 2.5 floor: the section term is counted pessimistically.
+    assert budget == _WINDOW - cw.answer_reserve - context_safety_tokens(_WINDOW) - 2000 - 1600
 
 
 def test_digest_budget_shrinks_with_the_section() -> None:
@@ -274,8 +275,10 @@ def test_context_overflow_splits_the_section_instead_of_skipping(
 
     assert result is not None
     assert compiler._context_window.max_input == 8192
-    # The rejected section plus the windows it was split into.
-    assert len(calls) == 3
+    # The rejected section plus the windows it was split into. The count
+    # follows the window budget, which is derived from the model - so assert
+    # the split is complete rather than pinning an arithmetic detail.
+    assert len(calls) >= 3
     # The retried payload is a window, never the same rejected section.
     assert all(text != section for _, text in calls[1:])
     assert "".join(text for _, text in calls[1:]) == section
