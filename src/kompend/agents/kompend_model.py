@@ -26,6 +26,7 @@ Failover is handled by wrapping multiple :class:`KompendModel` instances in
 
 from __future__ import annotations
 
+from time import monotonic
 from typing import Any, Final, cast
 
 from pydantic import BaseModel
@@ -145,7 +146,9 @@ class KompendModel(Model):
         # which summarises when the conversation nears the context budget. Do
         # not drop ``ModelResponse`` messages here: that loses the model's own
         # output and defeats pydantic-ai's retry feedback loop.
+        started = monotonic()
         response = await self._delegate.request(messages, merged_settings, model_request_parameters)
+        elapsed_s = monotonic() - started
         empty_resamples = _EMPTY_ANSWER_RESAMPLES
         while empty_resamples and _is_empty_answer(response, model_request_parameters):
             empty_resamples -= 1
@@ -154,7 +157,9 @@ class KompendModel(Model):
                 self.model_name,
                 empty_resamples,
             )
+            started = monotonic()
             response = await self._delegate.request(messages, merged_settings, model_request_parameters)
+            elapsed_s = monotonic() - started
         _fail_on_empty_answer(response, model_request_parameters)
 
         pipeline = default_pipeline(
@@ -163,6 +168,7 @@ class KompendModel(Model):
             model_name=self.model_name,
             usage_tracker=self._usage_tracker,
             messages=messages,
+            elapsed_s=elapsed_s,
         )
         pipeline(response)
         return response

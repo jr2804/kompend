@@ -94,7 +94,7 @@ def post_compile_actions(opts: PostCompileOptions) -> None:
                 base_dir,
                 agent=make_verification_agent(
                     model_string=model,
-                    timeout=opts.pipeline_config.llm.timeout,
+                    timeout=opts.pipeline_config.llm.request_ceiling_s,
                     llm=opts.pipeline_config.llm,
                     memory_dir=opts.pipeline_config.paths.agent_memory_dir,
                 ),
@@ -350,7 +350,7 @@ def run_overview_synthesis(
             base_dir,
             agent=make_agentic_overview_agent(
                 model_string=pipeline_config.llm.default_model or "",
-                timeout=pipeline_config.llm.timeout,
+                timeout=pipeline_config.llm.request_ceiling_s,
                 llm=pipeline_config.llm,
             ),
             overview_budget=_input_char_budget(pipeline_config),

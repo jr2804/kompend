@@ -46,7 +46,7 @@ Remediation uses ``RemediationAgent`` to auto-fix findings.
 ## Rules
 
 - **An LLM rule call is long-context and slow.** `lint.llm_timeout` (default
-  300 s) governs it, separately from `compile.llm.timeout`. The retry policy is
+  300 s) governs it, separately from `compile.llm.request_ceiling_s`. The retry policy is
   not lint's own: `LlmLintRule._call_agent` makes one attempt and the agent base
   retries a transient failure (`compile.llm.transient_retries`). A failed call
   raises — it never returns `None`.

@@ -81,7 +81,7 @@ def capture_cmd(
         try:
             capture_agent = CaptureAgent(
                 default_model,
-                timeout=float(cfg.kompend.compile.llm.timeout),
+                timeout=float(cfg.kompend.compile.llm.request_ceiling_s),
                 llm=cfg.kompend.compile.llm,
             )
         except Exception:
@@ -268,7 +268,7 @@ def write_cmd(
             source_texts=source_texts,
             related_titles=related_titles,
             model=llm_model,
-            timeout=float(cfg.kompend.compile.llm.timeout),
+            timeout=float(cfg.kompend.compile.llm.request_ceiling_s),
             source_char_max=cfg.kompend.compile.budget.capture_source_char_max,
             llm=cfg.kompend.compile.llm,
         )

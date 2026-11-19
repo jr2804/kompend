@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import math
 import time
-from typing import Any
+from typing import Any, Protocol
 
 from pydantic_ai import UsageLimits
 from pydantic_ai.messages import ModelMessage
@@ -34,6 +34,7 @@ from kompend.core.utils.exceptions import (
 )
 from kompend.llm.errors import is_transient_error
 from kompend.llm.overflow import is_context_overflow, stated_context_size
+from kompend.llm.throughput import MIN_TIMEOUT_S, timeout_for
 from kompend.llm.usage import UsageTracker
 
 #: Transient retries when no config is handed over (``compile.llm`` unset).
@@ -41,6 +42,20 @@ _DEFAULT_TRANSIENT_RETRIES: int = 2
 _DEFAULT_TRANSIENT_BACKOFF_SECONDS: float = 5.0
 
 logger = logging.getLogger(__name__)
+
+
+class _DeadlineHost(Protocol):
+    """The slice of :class:`RetryHost` the wall clock needs.
+
+    ``session_limits`` reads retry policy; the clock reads only what prices a
+    turn, so typing it this narrow keeps a test stub from having to fake the
+    whole host.
+    """
+
+    timeout: float
+    model_string: str
+    usage_tracker: UsageTracker | None
+    _rlm_usage_limits: UsageLimits | None
 
 
 def failure(agent: RetryHost, exc: Exception, deps: DepsT) -> LLMOutputError:
@@ -234,6 +249,51 @@ def session_limits(
         return agent._rlm_usage_limits
     planned = max(units, 0) * per_unit + session_overhead + retry_requests(agent)
     return UsageLimits(request_limit=math.ceil(planned * headroom_frac))
+
+
+def session_deadline_s(
+    agent: _DeadlineHost,
+    *,
+    units: int,
+    per_unit: int,
+    headroom_frac: float = 1.1,
+    session_overhead: int = 2,
+) -> float | None:
+    """Wall clock for the same session plan :func:`session_limits` counts.
+
+    The request budget says how many turns a session may take; this says how
+    long they may last. Both come from ``units`` x ``per_unit``, so a session
+    that covers one small document is not given the same clock as one covering
+    a hundred. Each turn is priced by the fit in :mod:`kompend.llm.throughput`
+    once there are enough samples - a model that answers a request in 20 s gets
+    20 s per turn, not the 120 s ceiling the request allows.
+
+    Returns ``None`` for an unbounded session (RLM presets carry their own
+    bounds) or when there is nothing to plan.
+    """
+    if agent._rlm_usage_limits is not None:
+        return None
+    planned = max(units, 0) * per_unit + session_overhead
+    if planned <= 0:
+        return None
+    return math.ceil(planned * headroom_frac) * _turn_seconds(agent)
+
+
+def _turn_seconds(agent: _DeadlineHost) -> float:
+    """How long one turn should take, priced by the measured throughput."""
+    ceiling = max(agent.timeout, MIN_TIMEOUT_S)
+    tracker = agent.usage_tracker
+    if tracker is None:
+        return ceiling
+    throughput = tracker.throughput(agent.model_string)
+    if throughput is None:
+        return ceiling
+    return timeout_for(
+        throughput,
+        tracker.average_prompt_tokens(agent.model_string),
+        tracker.average_completion_tokens(agent.model_string),
+        ceiling_s=ceiling,
+    )
 
 
 def retry_requests(agent: RetryHost) -> int:

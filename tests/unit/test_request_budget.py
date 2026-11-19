@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from kompend.compilation.two_phase import context_safety_tokens as reexported_safety_tokens
+from kompend.core.text.density import CONSERVATIVE_CHARS_PER_TOKEN
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow
 from kompend.llm.request_budget import (
@@ -46,9 +47,21 @@ def test_safety_margin_is_shared_by_every_stage() -> None:
 # -- chars/token conversion --------------------------------------------------
 
 
-def test_conversion_round_trips_at_the_configured_ratio() -> None:
-    assert tokens_to_chars(100, chars_per_token=4.0) == 400
-    assert chars_to_tokens(400, chars_per_token=4.0) == 100
+def test_an_optimistic_ratio_cannot_size_a_request() -> None:
+    """A configured density above the floor is a guess, and a costly one.
+
+    Planning at the corpus median is how a payload sized for a 64 k window
+    arrived as ~78 k tokens and overflowed; the guard uses the floor, so a
+    larger configured value can only be ignored, never trusted.
+    """
+    assert tokens_to_chars(100, chars_per_token=4.0) == int(100 * CONSERVATIVE_CHARS_PER_TOKEN)
+    assert chars_to_tokens(400, chars_per_token=4.0) == int(400 / CONSERVATIVE_CHARS_PER_TOKEN)
+
+
+def test_a_pessimistic_ratio_is_honoured() -> None:
+    """Making the estimate denser than the floor is always allowed."""
+    assert tokens_to_chars(100, chars_per_token=2.0) == 200
+    assert chars_to_tokens(400, chars_per_token=2.0) == 200
 
 
 def test_conversion_defaults_to_the_shared_ratio() -> None:
@@ -121,9 +134,17 @@ def test_require_is_silent_when_the_content_fits() -> None:
     budget.require(budget.content_tokens, stage="Extraction batch")
 
 
-def test_content_chars_uses_the_configured_ratio() -> None:
+def test_content_chars_never_exceeds_the_floor_density() -> None:
+    """A stage asking for a roomier ratio gets the floor instead.
+
+    `content_chars` is where a request is actually sized, so this is the one
+    place an optimistic density used to leak through: the summarizer sized a
+    "64 k window" payload at 3.85 chars/token, the provider received ~78 k
+    tokens, and the context compactor could not shrink a single pinned part.
+    """
     budget = RequestBudget(window=_window(), reserved={"system": 0})
-    assert budget.content_chars(4.0) == budget.content_tokens * 4
+    assert budget.content_chars(4.0) == int(budget.content_tokens * CONSERVATIVE_CHARS_PER_TOKEN)
+    assert budget.content_chars(2.0) == budget.content_tokens * 2
 
 
 def test_explicit_answer_and_safety_override_the_window_defaults() -> None:

@@ -52,6 +52,7 @@ from kompend.agents.base.context import (
     resolve_context_capability,
     resolve_rlm_capability,
 )
+from kompend.agents.base.deadline import MIN_TURN_TIMEOUT_S, DeadlineState, RequestDeadline
 from kompend.agents.base.delta_retry import (
     make_delta_retry_hook,
 )
@@ -75,6 +76,7 @@ from kompend.agents.base.retries import (
     failure,
     invoke_agent,
     retry_requests,
+    session_deadline_s,
     session_limits,
     transient_backoff,
     transient_retries,
@@ -99,6 +101,7 @@ from kompend.core.utils.exceptions import (
     LLMOutputError,
 )
 from kompend.llm.models import requires_output_ceiling
+from kompend.llm.throughput import timeout_for
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 from kompend.types import JSONValue
@@ -106,6 +109,10 @@ from kompend.types import JSONValue
 #: Per-stage timeout floor. Agents in kompend are synchronous single-turn;
 #: PydanticAI's run_sync is fast but provider-side latency can spike.
 _DEFAULT_TIMEOUT_SECONDS: float = 120.0
+
+#: Answer tokens assumed before a completion average exists: room for a real
+#: answer without pretending the model is verbose.
+_DEFAULT_ANSWER_TOKENS: int = 512
 
 #: Sliding-window defaults live in :mod:`kompend.agents.context_manager` so
 #: the ``sliding`` preset and the summarizer's fallback cannot drift apart.
@@ -156,6 +163,9 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
     delta_retry_enabled: bool | None = None
     tools: list[Tool[DepsT]] = field(default_factory=list)
     extra_capabilities: Sequence[AbstractCapability[DepsT]] = field(default_factory=list)
+    #: Wall clock for the current session. Armed by :meth:`_session_limits`,
+    #: read per request by :class:`RequestDeadline`; never part of config.
+    _deadline: DeadlineState = field(default_factory=DeadlineState, init=False, repr=False)
     temperature: float | None = None
     #: RLM configuration from the ``compile.llm.rlm`` group
     #: (:class:`~kompend.core.config._configs.RlmConfig`); ``None`` disables.
@@ -442,7 +452,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         llm = self.llm
         if llm is not None:
             if self.timeout == UNSET_TIMEOUT:
-                self.timeout = llm.timeout
+                self.timeout = llm.request_ceiling_s
             if self.retries == UNSET_RETRIES:
                 if llm.output_retries_enabled:
                     # Tool failures and schema-validation failures are
@@ -483,14 +493,57 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
         headroom_frac: float = 1.1,
         session_overhead: int = 2,
     ) -> UsageLimits | None:
-        """Delegate to :func:`kompend.agents.base.retries.session_limits`."""
-        return session_limits(
+        """Delegate to :func:`kompend.agents.base.retries.session_limits`.
+
+        Arms the run's wall-clock deadline on the way out. The request count and
+        the deadline are two views of the same plan: ``units x per_unit`` turns
+        can legitimately take a long time, so bounding only the count lets a
+        session run for hours, and bounding only the clock kills a session that
+        is merely slow. Both are derived from the same ``units``.
+        """
+        limits = session_limits(
             self,
             units=units,
             per_unit=per_unit,
             headroom_frac=headroom_frac,
             session_overhead=session_overhead,
         )
+        self._deadline.arm(
+            session_deadline_s(
+                self,
+                units=units,
+                per_unit=per_unit,
+                headroom_frac=headroom_frac,
+                session_overhead=session_overhead,
+            )
+        )
+        return limits
+
+    def _timeout_for_messages(self, messages: Sequence[ModelMessage]) -> float | None:
+        """How long this request may take, from the fit and the session clock.
+
+        The configured ceiling is an upper bound, not a plan: a model measured
+        at ~1.4 tokens/s needs hours for a 49k-token prompt, and waiting the
+        full ceiling per turn is how a 15-hour run answers nothing. Once there
+        are enough samples, :func:`kompend.llm.throughput.timeout_for` prices
+        the actual prompt, and the request is cut off when it would not finish
+        inside the session's remaining time.
+        """
+        ceiling = self.timeout
+        tracker = self.usage_tracker
+        if tracker is not None:
+            throughput = tracker.throughput(self.model_string)
+            if throughput is not None:
+                ceiling = timeout_for(
+                    throughput,
+                    self._estimate_prompt_tokens(messages) or 0,
+                    tracker.average_completion_tokens(self.model_string) or _DEFAULT_ANSWER_TOKENS,
+                    ceiling_s=self.timeout,
+                )
+        remaining = self._deadline.remaining()
+        if remaining is None:
+            return ceiling
+        return max(MIN_TURN_TIMEOUT_S, min(ceiling, remaining))
 
     def _retry_requests(self) -> int:
         """Delegate to :func:`kompend.agents.base.retries.retry_requests`."""
@@ -592,6 +645,10 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
                 request_limit=rlm_capability.max_tool_calls * 2 + 5,
             )
         capabilities.extend(self.extra_capabilities)
+        # Every request's timeout is measured against what this model can
+        # finish: the ceiling is the bound, the fit is the plan. Attached
+        # unconditionally because the callable falls back to the ceiling.
+        capabilities.append(RequestDeadline(self._timeout_for_messages))
         agent = cast(
             "Agent[DepsT, ResultT]",
             Agent(

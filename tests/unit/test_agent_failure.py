@@ -300,6 +300,7 @@ class TestBoundaryLogging:
         """The slice of ``RetryHost`` ``failure()`` reads."""
 
         model_string: str = "test/model"
+        timeout: float = 120.0
         llm = None
         retries: int | AgentRetries = 0
         usage_tracker = None

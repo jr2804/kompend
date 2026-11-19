@@ -135,7 +135,7 @@ def _cfg(default_model: str | None) -> ResolvedConfig:
     """Duck-typed ResolvedConfig carrying only the fields the helpers read."""
     llm = SimpleNamespace(
         default_model=default_model,
-        timeout=120.0,
+        request_ceiling_s=120.0,
         output_retries=3,
         output_retries_enabled=True,
     )

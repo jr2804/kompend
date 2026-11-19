@@ -160,7 +160,7 @@ def wiki_capture(
             capture_agent = (
                 CaptureAgent(
                     model,
-                    timeout=float(cfg.kompend.compile.llm.timeout),
+                    timeout=float(cfg.kompend.compile.llm.request_ceiling_s),
                     llm=cfg.kompend.compile.llm,
                 )
                 if model
@@ -218,7 +218,7 @@ def wiki_distill(
             distill_agent = (
                 make_distill_agent(
                     model,
-                    timeout=float(cfg.kompend.compile.llm.timeout),
+                    timeout=float(cfg.kompend.compile.llm.request_ceiling_s),
                     llm=cfg.kompend.compile.llm,
                     memory_dir=vp.agent_memory_dir,
                 )

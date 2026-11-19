@@ -34,6 +34,7 @@ from dataclasses import dataclass, field, replace
 from kompend.core.text.density import CONSERVATIVE_CHARS_PER_TOKEN
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow
+from kompend.llm.throughput import SAFETY_FACTOR, Throughput
 
 #: Fraction of a model's context window held back as headroom beyond the
 #: measured per-request overhead.  Two reasons: a server's *effective* usable
@@ -243,22 +244,72 @@ def context_safety_tokens(max_input: int) -> int:
     return max(CONTEXT_SAFETY_TOKENS, int(round(CONTEXT_SAFETY_FRACTION * max_input)))
 
 
-def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int:
-    """Convert token count to approximate character count.
-
-    Args:
-        tokens: Token count to convert.
-        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
-    """
-    return int(tokens * (chars_per_token if chars_per_token is not None else DEFAULT_CHARS_PER_TOKEN))
-
-
 def chars_to_tokens(chars: int, *, chars_per_token: float | None = None) -> int:
-    """Convert character count to approximate token count.
+    """Convert character count to the tokens it will occupy.
 
     Args:
         chars: Character count to convert.
-        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``).
+        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``),
+            capped at :func:`sizing_density`.
     """
-    cpt = chars_per_token if chars_per_token is not None else DEFAULT_CHARS_PER_TOKEN
-    return max(1, int(chars / cpt))
+    return max(1, int(chars / sizing_density(chars_per_token)))
+
+
+def time_bounded_chars(
+    throughput: Throughput | None,
+    *,
+    ceiling_s: float,
+    completion_tokens: int,
+    chars_per_token: float | None = None,
+) -> int | None:
+    """Characters that also fit the wall clock, or ``None`` when unbounded.
+
+    The window says how much a request *may* carry; it says nothing about how
+    much this model can *answer* before the ceiling. Both bounds apply, and this
+    is the time half: the prompt may only be as large as
+    ``ceiling / SAFETY_FACTOR`` allows once the answer's decode time is paid.
+
+    ``None`` means "no time bound available yet" (no fit - the first calls are
+    how the fit is learned) or "even the answer alone does not fit", in which
+    case shrinking the prompt cannot help and the caller must not pretend it
+    has a budget: it keeps its window bound, the request runs, and the honest
+    timeout/shrink path decides.
+    """
+    if throughput is None or ceiling_s <= 0.0:
+        return None
+    tokens = throughput.prompt_tokens_within(ceiling_s / SAFETY_FACTOR, completion_tokens)
+    if tokens <= 0:
+        return None
+    return tokens_to_chars(tokens, chars_per_token=chars_per_token)
+
+
+def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int:
+    """Convert token count to the character count that fits *tokens*.
+
+    Args:
+        tokens: Token count to convert.
+        chars_per_token: Optional override (e.g. from ``compile.llm.default_chars_per_token``),
+            capped at :func:`sizing_density`.
+    """
+    return int(tokens * sizing_density(chars_per_token))
+
+
+def sizing_density(chars_per_token: float | None = None) -> float:
+    """Characters per token to *size* a request with, never an optimistic guess.
+
+    A configured density above kompend's measured floor
+    (:data:`~kompend.core.text.density.CONSERVATIVE_CHARS_PER_TOKEN`) is a
+    planning guess: the corpus median, which half the text exceeds. Sizing with
+    it is how a payload planned for a 64 k window arrives as 78 k tokens,
+    overflows, and drags the compaction loop behind it. The floor is the only
+    value that keeps a planned request inside the window for every density the
+    corpus shows, so a configured value can only make sizing *more*
+    pessimistic, never less.
+
+    A model whose text really is sparser than the floor gets smaller batches
+    than it could take — the cheap failure, because it costs calls, not
+    correctness.
+    """
+    if chars_per_token is None:
+        return DEFAULT_CHARS_PER_TOKEN
+    return min(chars_per_token, CONSERVATIVE_CHARS_PER_TOKEN)

@@ -100,12 +100,12 @@ def run_doctor(
     results.append(check_decision_schema())
     results.append(check_decision_connectivity(decision))
 
-    results.append(ping_model(default_model, "llm", verbose=verbose, timeout=llm.timeout, retries=llm.output_retries))
+    results.append(ping_model(default_model, "llm", verbose=verbose, timeout=llm.request_ceiling_s, retries=llm.output_retries))
     results.extend(
         check_model_capabilities(
             default_model,
             "llm",
-            timeout=llm.timeout,
+            timeout=llm.request_ceiling_s,
             retries=llm.output_retries,
             data_format=llm.data_format,
         )
@@ -119,7 +119,7 @@ def run_doctor(
 
     vlm_effective = resolve_vlm_model(default_model, vlm_model)
     if vlm_model:
-        results.append(ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm.timeout, retries=llm.output_retries))
+        results.append(ping_model(vlm_model, "vlm", verbose=verbose, timeout=llm.request_ceiling_s, retries=llm.output_retries))
     elif vlm_effective:
         # No explicit VLM, but the default model is vision-capable and is used
         # as the captioning model. An informational note, not a warning: a
@@ -133,8 +133,8 @@ def run_doctor(
             )
         )
     else:
-        results.append(ping_model(None, "vlm", verbose=verbose, timeout=llm.timeout, retries=llm.output_retries))
-    results.extend(check_model_capabilities(vlm_model, "vlm", timeout=llm.timeout, retries=llm.output_retries, full=False))
+        results.append(ping_model(None, "vlm", verbose=verbose, timeout=llm.request_ceiling_s, retries=llm.output_retries))
+    results.extend(check_model_capabilities(vlm_model, "vlm", timeout=llm.request_ceiling_s, retries=llm.output_retries, full=False))
     results.append(check_context_window(vlm_model, "vlm", llm.context_window, llm))
 
     referenced_providers = {provider for model in (default_model, vlm_model, embed_model) if model and (provider := provider_id_of(model)) is not None}

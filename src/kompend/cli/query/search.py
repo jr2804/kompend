@@ -180,9 +180,9 @@ def build_enhanced_retriever(
     """Build an EnhancedRetriever from resolved config."""
     _llm = cfg.kompend.compile.llm
     _budget = cfg.kompend.compile.budget
-    expansion_agent = QueryExpansionAgent(model, timeout=_llm.timeout, llm=_llm) if model else None
-    crag_agent = CragGradeAgent(model, timeout=_llm.timeout, llm=_llm) if model else None
-    hyde_agent = HydeAgent(model, timeout=_llm.timeout, llm=_llm) if model else None
+    expansion_agent = QueryExpansionAgent(model, timeout=_llm.request_ceiling_s, llm=_llm) if model else None
+    crag_agent = CragGradeAgent(model, timeout=_llm.request_ceiling_s, llm=_llm) if model else None
+    hyde_agent = HydeAgent(model, timeout=_llm.request_ceiling_s, llm=_llm) if model else None
     return EnhancedRetriever(
         wiki,
         vector_store=vector_store,

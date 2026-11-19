@@ -47,7 +47,7 @@ def organize_cmd(
 
     config = resolve_organize_config(overrides or None)
 
-    timeout = cfg.kompend.compile.llm.timeout
+    timeout = cfg.kompend.compile.llm.request_ceiling_s
     default_model = cfg.kompend.compile.llm.default_model
     if not default_model:
         get_err_console().print(NO_MODEL_CONFIGURED_MESSAGE)

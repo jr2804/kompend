@@ -186,8 +186,9 @@ class TestHistoryCompaction:
             ModelRequest(parts=[UserPromptPart(content="hello world!")]),  # 12 chars → 3 tokens
             ModelResponse(parts=[TextPart(content="reply here")]),  # 10 chars → 2 tokens
         ]
-        # 22 chars / 4 = 5 tokens
-        assert _estimate_history_tokens(history, chars_per_token=4.0) == 5
+        # 22 chars counted at the density floor (2.5): 8 tokens, never 5.
+        # A request must not be sized by a ratio the guard would not accept.
+        assert _estimate_history_tokens(history, chars_per_token=4.0) == 8
 
     def test_compact_drops_oldest_pair_until_under_budget(self) -> None:
 
@@ -724,6 +725,51 @@ class TestReplanAfterOverflow:
         for i in range(4):
             assert sum(result.summary.count(f"text-{i}") for result in results if result is not None) == 1
         assert compiler._context_window.max_input == 8192
+
+
+class TestAdaptiveBatchSize:
+    """A request the model cannot answer inside the timeout is a size signal.
+
+    The 15-hour pyvas run sent ~49 k-token batches to a 3.7B model with a
+    120 s timeout: every batch timed out, the size never changed, and 18 of 35
+    batches were recorded as failures before extraction aborted. The remedy is
+    the same as an overflow - send less - so the cap halves and the texts are
+    re-split, never dropped.
+    """
+
+    def test_a_timed_out_batch_halves_the_cap_and_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        compiler = _make_big_window_compiler()
+        compiler._timeout = 120.0
+        texts: list[str] = ["a" * 40_000, "b" * 40_000]
+        batches = units_module.batch_texts(texts, units_module._extract_char_budget(compiler))
+        before = units_module._extract_char_budget(compiler)
+        sizes: list[int] = []
+
+        class _StubAgent:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def run_with_messages(self, deps: object, message_history: object = None) -> tuple[ExtractionOutput, list[object]]:
+                text = str(getattr(deps, "text", ""))
+                sizes.append(len(text))
+                if len(text) > 50_000:
+                    raise LLMTransientError("Request timed out.")
+                return ExtractionOutput(summary=text, entities=[], concepts=[], tags=[]), []
+
+        monkeypatch.setattr(units_module, "ExtractionAgent", _StubAgent)
+
+        results, stopped = units_module.extract_incremental(compiler, "doc.md", batches, "sys", texts=texts)
+
+        assert stopped is False
+        assert compiler._extract_char_cap is not None
+        assert compiler._extract_char_cap < before
+        # The retry succeeded, so nothing may be counted against the
+        # batch-failure ratio: a size correction is not a broken batch.
+        assert compiler._batch_tracker.failed == 0
+        # Nothing was dropped by the re-split: every character is extracted.
+        assert sum(len(result.summary) for result in results if result is not None) == 80_000
+        assert sizes[0] >= 80_000  # the attempt that taught the size
+        assert all(size <= compiler._extract_char_cap for size in sizes[1:])
 
 
 class TestExtractionFailurePolicy:

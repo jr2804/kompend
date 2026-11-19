@@ -204,10 +204,11 @@ class UsageRecorder:
     canonical ``UsageTracker`` interface.
     """
 
-    def __init__(self, tracker: UsageTracker | None, model_name: str) -> None:
-        """Initialize with usage tracker and model identifier."""
+    def __init__(self, tracker: UsageTracker | None, model_name: str, elapsed_s: float = 0.0) -> None:
+        """Initialize with usage tracker, model identifier and the request's wall clock."""
         self._tracker = tracker
         self._model_name = model_name
+        self._elapsed_s = elapsed_s
 
     def __call__(self, response: ModelResponse) -> None:
         """Record usage data from response if available."""
@@ -220,6 +221,7 @@ class UsageRecorder:
             prompt_tokens=getattr(usage, "input_tokens", 0) or 0,
             completion_tokens=getattr(usage, "output_tokens", 0) or 0,
             model=self._model_name,
+            elapsed_s=self._elapsed_s,
         )
 
 
@@ -404,6 +406,7 @@ def default_pipeline(
     model_name: str,
     usage_tracker: UsageTracker | None,
     messages: list[ModelMessage],
+    elapsed_s: float = 0.0,
 ) -> ResponsePipeline:
     """Create the default post-processing pipeline used by KompendModel.
 
@@ -426,6 +429,7 @@ def default_pipeline(
         thinking_part_repair__schema_resolver=schema_resolver,
         usage_recorder__tracker=usage_tracker,
         usage_recorder__model_name=model_name,
+        usage_recorder__elapsed_s=elapsed_s,
         debug_saver__agent=agent,
         debug_saver__model_name=model_name,
         debug_saver__messages=messages,

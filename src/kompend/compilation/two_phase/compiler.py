@@ -47,6 +47,7 @@ from kompend.core.pipeline.assets import AssetStore
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.pipeline.references import ReferenceStore
 from kompend.core.templates import get_template_loader
+from kompend.core.text.density import conservative_tokens
 from kompend.core.text.matching import cosine as cosine_similarity
 from kompend.llm.context_window import ContextWindow, discover_context_window
 from kompend.llm.request_budget import EffectiveWindow
@@ -83,7 +84,7 @@ class TwoPhaseCompiler(BaseCompiler):
         self._base = base or GraphCompiler(model=self._model)
         self._budget = config.budget
         self._config = config
-        self._timeout = config.llm.timeout
+        self._timeout = config.llm.request_ceiling_s
         self._cache_store = CacheStore(config.paths.cache_dir)
         self._llm_stats: list[tuple[int, int]] = []
         self._usage_tracker = UsageTracker(throughput_window_tokens=config.llm.throughput_window_tokens)
@@ -109,8 +110,15 @@ class TwoPhaseCompiler(BaseCompiler):
 
         extraction_system = _loader.get_body("compilation/extraction_system.md.j2")
         generation_system = _loader.get_body("compilation/generation_system.md.j2")
-        self._extract_system_tokens = max(1, len(extraction_system) // 4)
-        self._gen_system_tokens = max(1, len(generation_system) // 4)
+        # Counted at the density floor, not at an assumed 4 chars/token: the
+        # system prompt is subtracted from the window, so an optimistic count
+        # hands the content budget tokens the prompt itself needs.
+        self._extract_system_tokens = conservative_tokens(extraction_system)
+        self._gen_system_tokens = conservative_tokens(generation_system)
+        #: Per-batch extraction content cap in characters. ``None`` means the
+        #: window budget applies; the extraction flow lowers it when a request
+        #: proves bigger than the model can answer inside ``compile.llm.request_ceiling_s``.
+        self._extract_char_cap: int | None = None
 
         logger.info(
             "TwoPhase: context_window=%d in, %d out (source=%s)",

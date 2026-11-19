@@ -225,7 +225,7 @@ def wiki_write(
             source_texts=source_texts,
             related_titles=related_titles,
             model=llm_model,
-            timeout=float(cfg.kompend.compile.llm.timeout),
+            timeout=float(cfg.kompend.compile.llm.request_ceiling_s),
             source_char_max=cfg.kompend.compile.budget.capture_source_char_max,
             llm=cfg.kompend.compile.llm,
         )
@@ -267,7 +267,7 @@ def wiki_organize(
 
     config = resolve_organize_config(overrides or None)
 
-    timeout = cfg.kompend.compile.llm.timeout
+    timeout = cfg.kompend.compile.llm.request_ceiling_s
     default_model = cfg.kompend.compile.llm.default_model
     if not default_model:
         return {"status": ToolStatus.ERROR, "message": NO_MODEL_CONFIGURED_MESSAGE}

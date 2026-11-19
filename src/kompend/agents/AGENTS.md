@@ -118,32 +118,32 @@ The base class provides:
 
 ### Construction contract
 
-Agents take their limits from the config, not from the call site: a
-construction site hands over the `llm` group (`compile.llm` — timeout, retries,
-reasoning effort, context manager, context window, fallback chain, delta-retry
-switch, data format) and gets every limit it did not spell out.
+Agents take their limits from the config, not the call site: a construction site
+hands over the `compile.llm` group (ceiling, retries, reasoning effort, context
+manager, window, fallback chain, delta-retry, data format) and inherits the rest.
 
 `_apply_config_defaults()` (in `base/agent.py`) fills every gap from its
 `compile.llm` twin (the tool/output retry split collapses to 0 when
 `output_retries_enabled` is false); an explicitly passed value always wins.
 
-There is no `max_tokens` and no `budget` kwarg: an answer is bounded by the
-model's context window minus its prompt (`llm/AGENTS.md`). The exception is
-protocol-driven: Anthropic rejects an unset `max_tokens`, so there the agent
-passes a callable `model_settings` computing window - prompt - margin per
-request, clamped by the catalog output limit; every other protocol sends
-nothing.
+There is no `max_tokens`/`budget` kwarg: an answer is bounded by the window
+minus its prompt (`llm/AGENTS.md`). Anthropic is the protocol exception - it
+rejects an unset `max_tokens`, so there the agent passes a callable
+`model_settings` computing window - prompt - margin; others send nothing.
 
-`agent.data_format` is the resolved `llm.data_format` (`llm/AGENTS.md`):
-prompt-building code reads it off the agent rather than taking a parameter, so
-the format cannot drift from the config the agent already carries
-(`CategorizeAgent` → `_build_files_payload`).
+`agent.data_format` is the resolved `llm.data_format` (`llm/AGENTS.md`), read off
+the agent rather than passed, so it cannot drift from the config the agent
+carries (`CategorizeAgent` → `_build_files_payload`).
 
-A **transient** failure (timeout, dropped connection, 429/5xx) is retried in
-the base's `_invoke` — `compile.llm.transient_retries` times with
-`transient_backoff` doubling. That is the only whole-request retry: stages must
-not add backoff loops. Tool, output-schema and session-progress retries are
-other axes.
+A **transient** failure (timeout, dropped connection, 429/5xx) is retried in the
+base's `_invoke` - `compile.llm.transient_retries` times, `transient_backoff`
+doubling. That is the only whole-request retry: stages must not add backoff
+loops. Tool, output-schema and session-progress retries are other axes.
+
+**A session is bounded by a clock, not only by turns.** `_session_limits` arms
+`DeadlineState` from the same plan, priced by measured throughput, and
+`RequestDeadline` replaces each request's timeout with `min(ceiling, fit,
+remaining)` - so a slow model stops at the estimate, not the full ceiling.
 
 ### Failure vocabulary (`failure.py`)
 

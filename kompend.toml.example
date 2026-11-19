@@ -376,11 +376,11 @@ chunk_size_min = 2048          # floor: prevents useless tiny chunks
 chunk_size_max = 131072        # ceiling: safety rail for models claiming 1M+ context
 
 # Node summarization (hierarchical chunk tree internal nodes)
-# Characters per payload window of the summarizer. One window costs
-# one summarize call, so a bigger window means fewer calls (faster) — it never
-# drops content. Raise it for small-context models only carefully: the whole
-# window is sent to the model.
-summary_window_chars = 2000
+# Characters per payload window. 0 (default) derives a window-sized payload
+# from the configured model's input budget; set a positive override only when
+# a model handles long summarizer prompts poorly. Each window costs one call;
+# content is never dropped.
+summary_window_chars = 0
 summary_skip_single_child = true
 # Max chunks before switching from two_level to multi_resolution strategy
 summary_chunk_threshold = 10
@@ -508,8 +508,11 @@ agent_memory = true
 #   session: in-process only - fresh per stage run.
 memory_store = "vault"
 
-# LLM call timeout (seconds)
-timeout = 120.0
+# Upper bound for one model request (seconds). The engine prices each request
+# from measured throughput and hands it a tighter timeout when the estimate is
+# smaller; this is the ceiling, not the expected duration. `timeout` is still
+# accepted as an alias.
+request_ceiling_s = 120.0
 
 # PydanticAI output retries (retries when LLM output fails schema validation)
 output_retries = 2
@@ -566,10 +569,11 @@ throughput_window_tokens = 1000
 
 # Chars-per-token heuristic for budget estimation. Also overridable via the
 # KOMP_CHARS_PER_TOKEN environment variable. The default (2.5) is the
-# pessimistic density bound measured across a corpus: the planner and the
-# request-fit guard both size with it, so a planned request cannot arrive
-# over the context window. Raising it makes larger requests and risks a
-# provider context overflow.
+# pessimistic density bound measured across a corpus: the planner, the
+# request-fit guard and the compaction estimator all size with it, so a planned
+# request cannot arrive over the context window. A value above 2.5 is clamped
+# to it - an optimistic guess cannot enlarge a request - while a lower value is
+# honoured and makes every request smaller.
 # default_chars_per_token = 2.5
 
 # Minimum input tokens per generation segment. Prevents absurdly tiny segments

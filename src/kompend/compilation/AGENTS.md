@@ -115,6 +115,15 @@ merging and an optional iterative WiCER refinement loop.
   source's _texts_ for the rest — a text that exceeds the new budget is split
   into windows, so a joined batch never has to be re-sent whole and no text
   is extracted twice.
+- **A request the model cannot answer inside its timeout lowers the batch.**
+  A `TRANSIENT` (timeout) or `EMPTY_ANSWER` failure at a size the window
+  allows is a size signal, not a broken batch: `_shrink_extract_budget` halves
+  `_extract_char_cap`, and the remaining texts are re-split and retried - no
+  text is dropped and nothing is counted as failed until the cap reaches
+  `chunk_size_min`. The cap is relearned per source, so one transient timeout
+  cannot halve every later request in the run. Without this, a 3.7B model at
+  ~1.4 tokens/s was sent 49k-token batches against a 120 s timeout and failed
+  18 of 35 batches at the same size (run 04cf73fc, 2026-11-18).
 - **The progress bar reports the units the flow works in** — the sections of
   a document (agentic extraction), its batches (the other strategies), the
   concepts of a generation segment. `ProgressFn` (`two_phase/state.py`) is

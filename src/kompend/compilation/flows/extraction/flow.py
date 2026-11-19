@@ -228,10 +228,10 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
         )
         if compiler._batch_tracker.should_stop():
             logger.error(
-                "TwoPhase: stopping extraction early — %d/%d batches failed (model '%s' is not suitable for structured JSON output)",
+                "TwoPhase: stopping extraction early - %d/%d batches failed; the per-batch lines name each cause "
+                "(a model that cannot fill the schema, a request it cannot answer inside its timeout, or a provider error)",
                 compiler._batch_tracker.failed,
                 compiler._batch_tracker.total,
-                compiler._model,
             )
             break
     return extractions

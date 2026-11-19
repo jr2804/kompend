@@ -134,7 +134,7 @@ def test_attachment_stub_nodes_in_index_only_mode(vault: VaultPaths) -> None:
     pipeline.config.attachments_mode = AttachmentMode.INDEX_ONLY
     pipeline.config.llm.default_model = None
     pipeline.config.llm.vlm_model = None
-    pipeline.config.llm.timeout = 120.0
+    pipeline.config.llm.request_ceiling_s = 120.0
     pipeline.parser = MagicMock()
     pipeline.parser.parse.return_value = ParsedDocument(
         source_file=vault.attachments_dir / "r" / "a.txt",
@@ -172,7 +172,7 @@ def test_a_marginal_figure_is_indexed_in_its_parent_but_gets_no_stub(vault: Vaul
     pipeline.config.attachments_mode = AttachmentMode.INDEX_ONLY
     pipeline.config.llm.default_model = "test/model"
     pipeline.config.llm.vlm_model = "test/vlm"
-    pipeline.config.llm.timeout = 120.0
+    pipeline.config.llm.request_ceiling_s = 120.0
     pipeline.config.decision = MagicMock()
     pipeline.parser = MagicMock()
     pipeline.parser.parse.return_value = ParsedDocument(
@@ -210,7 +210,7 @@ def test_attachment_stub_nodes_skip_binaries(vault: VaultPaths) -> None:
     pipeline.config.attachments_mode = AttachmentMode.INDEX_ONLY
     pipeline.config.llm.default_model = None
     pipeline.config.llm.vlm_model = None
-    pipeline.config.llm.timeout = 120.0
+    pipeline.config.llm.request_ceiling_s = 120.0
     pipeline.parser = MagicMock()
 
     stubs = _attachment_stub_nodes(pipeline, StageLedger.open(vault_db_path(vault.base_dir / CACHE_DIR)))
@@ -247,7 +247,7 @@ def test_process_attachments_gate_on_uses_manifest(vault: VaultPaths) -> None:
     pipeline.config.attachments_mode = AttachmentMode.FULL_INGEST
     pipeline.config.llm.default_model = None
     pipeline.config.llm.vlm_model = None
-    pipeline.config.llm.timeout = 120.0
+    pipeline.config.llm.request_ceiling_s = 120.0
     pipeline.parser = MagicMock()
     pipeline.chunker = None
 

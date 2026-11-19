@@ -12,8 +12,8 @@ from kompend.core.utils.dicts import resolve_dotted
 
 
 def test_plain_path_matches_get_dot() -> None:
-    data = {"compile": {"llm": {"timeout": 120}}}
-    assert resolve_dotted(data, "compile.llm.timeout") == (True, 120)
+    data = {"compile": {"llm": {"request_ceiling_s": 120}}}
+    assert resolve_dotted(data, "compile.llm.request_ceiling_s") == (True, 120)
 
 
 def test_key_containing_dots_resolves() -> None:

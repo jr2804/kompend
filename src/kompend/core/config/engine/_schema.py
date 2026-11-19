@@ -153,9 +153,12 @@ REMOVED_KEYS: dict[str, list[str]] = {  # nocheck: str-registry — frozen list 
 # A key here may still be a schema field (kept for a release) or already gone
 # from the schema.  Either way it is *migrated*, not ignored — which is what
 # separates it from REMOVED_KEYS.
-DEPRECATED_ALIASES: dict[str, str] = {  # nocheck: str-registry — historic rename map; keys exist only in old vault files
+DEPRECATED_ALIASES: dict[str, str] = {  # nocheck: str-registry - historic rename map; keys exist only in old vault files
     "search.embed_attachments": "attachments.embed",
     "compile.llm.context_window_cap": "compile.llm.context_window",
+    # `timeout` said what the number looked like, not what it bounds: it is the
+    # ceiling for one request, and the request itself gets a tighter estimate.
+    "compile.llm.timeout": "compile.llm.request_ceiling_s",
 }
 
 

@@ -14,7 +14,14 @@ from pydantic_ai.messages import ModelMessage
 from kompend.agents.deps import PipelineAgentDeps
 from kompend.agents.extraction import ExtractionAgent
 from kompend.agents.extraction_reduce import ExtractionReduceAgent
-from kompend.agents.failure import UnitFailure, UnitFailureLog, is_retry_pointless, record_unit_failure
+from kompend.agents.failure import (
+    AgentFailureKind,
+    UnitFailure,
+    UnitFailureLog,
+    classify_agent_failure,
+    is_retry_pointless,
+    record_unit_failure,
+)
 from kompend.compilation.flows.extraction.prompt import (
     _compact_history_inplace,
     _synthetic_history_response,
@@ -32,8 +39,17 @@ from kompend.core.models.enums import CacheDeps
 from kompend.core.text.windows import split_text_windows
 from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError
 from kompend.llm.format import encode_payload
-from kompend.llm.request_budget import RequestBudget
+from kompend.llm.request_budget import RequestBudget, time_bounded_chars
 from kompend.logging import get_logger
+
+#: Failure kinds that say "this request was too much to answer", not "this
+#: model cannot do the task". Both are cured by sending less per request.
+_SIZE_REMEDIES: frozenset[AgentFailureKind] = frozenset({AgentFailureKind.TRANSIENT, AgentFailureKind.EMPTY_ANSWER})
+
+
+#: Answer tokens assumed before the cost model has measured a call. Small on
+#: purpose: it is a placeholder for "leave room for an answer", not a target.
+_DEFAULT_ANSWER_TOKENS: int = 512
 
 logger = get_logger(__name__)
 
@@ -163,6 +179,9 @@ def extract_incremental(
     """
     compaction_threshold = compiler._context_window.history_budget
     chars_per_token = compiler._config.llm.default_chars_per_token
+    # A size correction is evidence about one source, relearned per document:
+    # a single transient timeout must not halve every later request in the run.
+    compiler._extract_char_cap = None
     results: list[Extraction | None] = []
     history: list[ModelMessage] = []
     agent: ExtractionAgent | None = None
@@ -174,6 +193,9 @@ def extract_incremental(
         # keep the batches the caller already packed.
         groups = _text_groups(pending, _extract_char_budget(compiler)) if texts is not None else [[batch] for batch in pending]
         extracted = 0
+        #: Texts still to extract after the batch cap was halved. ``None``
+        #: means this pass finished normally.
+        replan: list[str] | None = None
         try:
             for group in groups:
                 combined = "\n\n".join(group)
@@ -239,6 +261,14 @@ def extract_incremental(
                     # the error carries the limit the provider named.
                     raise
                 except Exception as exc:  # classified into the failure vocabulary below
+                    # A timeout or an empty answer at this size says the request
+                    # carried more than the model could answer in time. Halve
+                    # the batch and retry the texts this batch and the later
+                    # ones carried - nothing is dropped and nothing is
+                    # recorded as failed until the cap reaches the floor.
+                    if classify_agent_failure(exc) in _SIZE_REMEDIES and _shrink_extract_budget(compiler) is not None:
+                        replan = pending[extracted:] if texts is not None else [combined, *(g[0] for g in groups[extracted + 1 :])]
+                        break
                     record_unit_failure(stage="extraction:incremental", unit=f"{source}:{batch_idx}", exc=exc)
                     compiler._batch_tracker.record(failed=True)
                     results.append(None)
@@ -253,6 +283,11 @@ def extract_incremental(
             # Keep every completed batch and the history it built; re-plan
             # only what this batch and the later ones cover.
             pending = _replan_after_overflow(compiler, source, pending[extracted:], exc)
+            continue
+        if replan is not None:
+            # The cap was halved: re-split what is left so a single text that
+            # is still bigger than the new cap is windowed instead of re-sent.
+            pending = _fit_texts(replan, _extract_char_budget(compiler))
             continue
         pending = []
     return results, False
@@ -336,6 +371,33 @@ def _text_groups(texts: list[str], char_budget: int) -> list[list[str]]:
     return groups
 
 
+def _shrink_extract_budget(compiler: TwoPhaseRuntime) -> int | None:
+    """Halve the extraction batch cap after a request the model could not answer.
+
+    A timeout is the only measurement that says how much this model can answer
+    inside ``compile.llm.request_ceiling_s``: the request carried more content than it
+    could turn into output in time. Halving is the response, and the cap is
+    kept for the rest of the run so the next batches start at a size that
+    works instead of re-measuring the same failure.
+
+    Returns the new cap in characters, or ``None`` when the cap is already at
+    the chunk floor (the request is as small as a unit of work can be, so the
+    failure is real and the caller records it).
+    """
+    floor = max(1, compiler._budget.chunk_size_min)
+    current = _extract_char_budget(compiler)
+    if current <= floor:
+        return None
+    new_cap = max(floor, current // 2)
+    compiler._extract_char_cap = new_cap
+    logger.info(
+        "TwoPhase: halving the extraction batch to %d chars - the last request exceeded what the model answers in %.0fs",
+        new_cap,
+        compiler._timeout,
+    )
+    return new_cap
+
+
 def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
     """Character budget for one extraction batch.
 
@@ -351,13 +413,36 @@ def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
     (``request (65762 tokens) exceeds the available context size (65536)``).
     Content is never cropped: a smaller budget splits the source across more
     batches.
+
+    The window budget is only the *starting* size. A batch that the model
+    cannot answer inside ``compile.llm.request_ceiling_s`` is a size signal too, so
+    :func:`_shrink_extract_budget` lowers this cap for the rest of the run.
     """
     budget = RequestBudget(
         window=compiler._context_window,
         reserved={"system": compiler._extract_system_tokens},
     )
     logger.info("TwoPhase: extract budget (%s)", budget.report())
-    return budget.content_chars(compiler._config.llm.default_chars_per_token)
+    window_chars = budget.content_chars(compiler._config.llm.default_chars_per_token)
+    # The window says how much *may* travel; the fit says how much this model
+    # can answer before the ceiling. Both bound the batch, and the time bound is
+    # the one that was missing when every 49k-token batch timed out at 120 s.
+    time_chars = time_bounded_chars(
+        compiler._usage_tracker.throughput(compiler._model),
+        ceiling_s=compiler._timeout,
+        completion_tokens=_expected_answer_tokens(compiler),
+        chars_per_token=compiler._config.llm.default_chars_per_token,
+    )
+    if time_chars is not None:
+        window_chars = min(window_chars, time_chars)
+    cap = compiler._extract_char_cap
+    return window_chars if cap is None else min(window_chars, cap)
+
+
+def _expected_answer_tokens(compiler: TwoPhaseRuntime) -> int:
+    """Typical answer size for this model, or a conservative placeholder."""
+    measured = compiler._usage_tracker.average_completion_tokens(compiler._model)
+    return measured or _DEFAULT_ANSWER_TOKENS
 
 
 def _extract_cache_deps(compiler: TwoPhaseRuntime, text: str) -> dict[str, str]:

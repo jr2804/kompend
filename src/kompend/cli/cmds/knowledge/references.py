@@ -145,7 +145,7 @@ def references_fetch(*, source: ReferencesFetchSource = None, dry_run: Reference
         get_err_console().print(NO_MODEL_CONFIGURED_MESSAGE)
         raise SystemExit(1)
 
-    timeout = float(cfg.kompend.compile.llm.timeout)
+    timeout = float(cfg.kompend.compile.llm.request_ceiling_s)
     try:
         agent = ReferenceResolverAgent(
             model_string=model,

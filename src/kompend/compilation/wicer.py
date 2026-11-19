@@ -399,7 +399,7 @@ class WiCERCompiler(BaseCompiler):
             agent = WicerProbeAgent(
                 model_string=self._config.llm.default_model or "",
                 skills=self._config.skills,
-                timeout=self._config.llm.timeout,
+                timeout=self._config.llm.request_ceiling_s,
                 reasoning_effort=self._config.llm.reasoning_effort,
                 # The probe loop keeps earlier probes in context, so the
                 # "aggressive" preset (compress at 70%, keep 5 messages) is
@@ -442,7 +442,7 @@ class WiCERCompiler(BaseCompiler):
                 agent = WicerEvaluateAgent(
                     model_string=self._config.llm.default_model or "",
                     skills=self._config.skills,
-                    timeout=self._config.llm.timeout,
+                    timeout=self._config.llm.request_ceiling_s,
                     reasoning_effort=self._config.llm.reasoning_effort,
                     context_manager=self._config.llm.context_manager,
                     context_window=self._context_window.max_input if self._context_window else None,
@@ -483,7 +483,7 @@ class WiCERCompiler(BaseCompiler):
             agent = WicerDiagnoseAgent(
                 model_string=self._config.llm.default_model or "",
                 skills=self._config.skills,
-                timeout=self._config.llm.timeout,
+                timeout=self._config.llm.request_ceiling_s,
                 reasoning_effort=self._config.llm.reasoning_effort,
                 context_manager=self._config.llm.context_manager,
                 context_window=self._context_window.max_input if self._context_window else None,

@@ -227,7 +227,7 @@ class TestConfigDrivenDefaults:
 
     def test_limits_come_from_the_config(self) -> None:
         llm = LLMConfig(
-            timeout=45.0,
+            request_ceiling_s=45.0,
             tool_retries=4,
             output_retries=5,
             output_retries_enabled=True,
@@ -255,7 +255,7 @@ class TestConfigDrivenDefaults:
         assert self._agent().data_format == LlmDataFormat.JSON
 
     def test_explicit_values_win_over_the_config(self) -> None:
-        llm = LLMConfig(timeout=45.0, output_retries=5)
+        llm = LLMConfig(request_ceiling_s=45.0, output_retries=5)
         agent = self._agent(
             llm=llm,
             timeout=7.0,

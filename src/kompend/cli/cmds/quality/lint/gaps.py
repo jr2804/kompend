@@ -153,7 +153,7 @@ def _run_remediation_for_gaps(vp: VaultPaths, cfg: ResolvedConfig, report: LintR
         return
     agent = make_remediation_agent(
         model_string=default_model,
-        timeout=float(cfg.kompend.compile.llm.timeout),
+        timeout=float(cfg.kompend.compile.llm.request_ceiling_s),
         llm=cfg.kompend.compile.llm,
         memory_dir=vp.agent_memory_dir,
     )

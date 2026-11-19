@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated, Final
 
-from pydantic import BeforeValidator, Field
+from pydantic import AliasChoices, BeforeValidator, Field
 
 from kompend.core.config.enums import ContextManagerPreset, ExtractionStrategy, LlmApiType, LlmMemoryStore, ReasoningEffort
 from kompend.core.config.models._base import _KompendBaseModel
@@ -57,7 +57,16 @@ class LLMConfig(_KompendBaseModel):
     default_model: str | None = Field(default=None, validation_alias=EnvVar.LLM_DEFAULT_MODEL)
     vlm_model: str | None = Field(default=None, validation_alias=EnvVar.VLM_MODEL)
     fallback_chain: list[str] = Field(default_factory=list, validation_alias=EnvVar.LLM_FALLBACK_CHAIN)
-    timeout: float = Field(default=120.0, validation_alias=EnvVar.LLM_TIMEOUT)
+    request_ceiling_s: float = Field(
+        default=120.0,
+        validation_alias=AliasChoices("request_ceiling_s", "timeout", EnvVar.LLM_TIMEOUT),
+        description=(
+            "Upper bound for one model request, in seconds. The engine prices each request from the "
+            "measured throughput and hands it a tighter timeout when the estimate is smaller, so this is "
+            "the cap on a request, not its expected duration. One session is bounded separately, by a "
+            "deadline derived from the units it has to cover."
+        ),
+    )
     fallback_max_input: int = Field(default=32768, validation_alias=EnvVar.LLM_FALLBACK_MAX_INPUT)
     fallback_max_output: int = Field(default=4096, validation_alias=EnvVar.LLM_FALLBACK_MAX_OUTPUT)
     context_window: int | None = Field(
@@ -163,8 +172,9 @@ class LLMConfig(_KompendBaseModel):
         description=(
             "How many characters one token occupies in this vault's content. The default "
             f"({CONSERVATIVE_CHARS_PER_TOKEN}) is the pessimistic bound measured across the corpus, and the "
-            "planner and the request-fit guard both size with it, so a planned request cannot arrive over the "
-            "window. Raising it makes larger requests and risks a provider context overflow."
+            "planner, the request-fit guard and the compaction estimator all size with it, so a planned request "
+            "cannot arrive over the window. A larger value is clamped to the bound - an optimistic guess cannot "
+            "enlarge a request - while a smaller value is honoured and shrinks every request."
         ),
     )
 

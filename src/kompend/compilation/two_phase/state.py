@@ -228,6 +228,7 @@ class TwoPhaseRuntime(Protocol):
     _active_gen_deps: dict[str, str]
     _extract_system_tokens: int
     _gen_system_tokens: int
+    _extract_char_cap: int | None
     _llm_stats: list[tuple[int, int]]
     _usage_tracker: UsageTracker
 

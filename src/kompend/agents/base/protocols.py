@@ -89,6 +89,8 @@ class RetryHost(Protocol):
     llm: LLMConfig | None
     retries: int | AgentRetries
     usage_tracker: UsageTracker | None
+    #: Ceiling for one model request, in seconds.
+    timeout: float
     #: The built pydantic-ai agent; ``None`` until the first run.
     _agent: Any
     #: Whether this agent still asks the provider for prompt caching.

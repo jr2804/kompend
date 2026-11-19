@@ -245,7 +245,7 @@ class TestShrinkLoop:
             base_dir=vault,
             source_dir=vault / "sources",
             output_dir=vault / "wiki",
-            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm", timeout=120.0),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm", request_ceiling_s=120.0),
             embedding=EmbeddingConfig(model="hash"),
         )
         return TwoPhaseCompiler(config=config)
@@ -386,7 +386,7 @@ class TestLoop2Shrink:
             base_dir=vault,
             source_dir=vault / "sources",
             output_dir=vault / "wiki",
-            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm", timeout=120.0),
+            llm=LLMConfig(default_model="test/model", vlm_model="test/vlm", request_ceiling_s=120.0),
             embedding=EmbeddingConfig(model="hash"),
         )
         return TwoPhaseCompiler(config=config)

@@ -38,12 +38,9 @@ Resolution order:
 | `anthropic/` | `AnthropicModel` | pydantic-ai `infer_model` |
 | `google/` | `GoogleModel` | pydantic-ai `infer_model` |
 
-`_split(model_string)` applies the `kompend.llm.model_id` rule (first `/` or `:` — whichever comes first
-— into `(provider, model_name)`, remainder verbatim). Provider ID aliases (`opencode-zen` → `opencode`)
-live in `_PROVIDER_ALIASES`, the module's only hardcoded mapping.
-`resolve_model_limits(model_id)` looks up `(max_input, max_output)` limits in the catalogue
-(`catalog.model(...)`); raises `KeyError` when the model is unlisted, `LookupError` when it
-carries no limit data — `discover_context_window` handles the miss.
+`_split(model_string)` applies the `kompend.llm.model_id` rule (first `/` or `:` wins). Provider
+aliases live in `_PROVIDER_ALIASES`, the module's only hardcoded mapping. `resolve_model_limits`
+raises `KeyError` for an unlisted model and `LookupError` without limit data; discovery handles both.
 
 ## Model string parsing — `kompend.llm.model_id`
 
@@ -85,13 +82,11 @@ prompt minus a 5% margin, clamped by the model's own catalog output limit.
 fallback chains); OpenAI-compatible endpoints and Ollama get no ceiling at all.
 `kompend doctor` prints which rule applies in its `output-ceiling` check.
 
-**Catalog freshness.** `llmdb` downloads the models.dev payload instead of
-shipping it, so kompend caches it at `~/.cache/kompend/models.json` (see
-`kompend.llm.catalog`). Reads never touch the network; `kompend doctor`
-refreshes a cache older than `catalog.CACHE_TTL_HOURS` (168 h), so a brand-new
-model shows up after a doctor run. A model missing from the payload makes
-kompend send the computed ceiling without a clamp and take the window from
-`[providers.<name>]` config.
+**Catalog freshness.** The models.dev payload is downloaded, not shipped, and
+cached at `~/.cache/kompend/models.json`; reads never touch the network and
+`kompend doctor` refreshes a cache older than `catalog.CACHE_TTL_HOURS`
+(168 h). A model missing from the payload makes kompend send the computed
+ceiling without a clamp and take the window from `[providers.<name>]`.
 
 ## Request-fit planner — `kompend.llm.request_budget`
 
@@ -125,13 +120,18 @@ Contracts:
 - `context_safety_tokens` is defined **once** here (8% of the window, floor
   512 tokens); `kompend.compilation.two_phase` re-exports it for the root path.
 - `chars_to_tokens` / `tokens_to_chars` are the single chars-per-token
-  conversion; pass the configured `compile.llm.default_chars_per_token`, whose
-  default is the shared bound in `core.text.density` — planner and guard count
-  in one unit (see `core/AGENTS.md`).
+  conversion; pass `compile.llm.default_chars_per_token` (default = the shared
+  bound in `core.text.density`). `sizing_density` clamps a larger value to it:
+  3.85 is how a "64k" payload arrived as ~78k tokens.
 
-Stages that size a request must use this planner rather than their own
-arithmetic: extraction batching, agentic generation segments, reference
-extraction, the agentic section digest, WiCER probes.
+Stages that size a request must use this planner, not their own arithmetic:
+extraction batching, agentic generation segments, reference extraction, the
+agentic section digest, WiCER probes.
+
+**Time is the second bound** (`kompend.llm.throughput`). `fit()` solves prefill
+and decode rates from recorded calls, `timeout_for()` prices one request and
+clamps it to `compile.llm.request_ceiling_s`, and `time_bounded_chars()` turns
+that into a payload size; below `MIN_SAMPLES` the ceiling stands.
 
 ## Provider overflow — `kompend.llm.overflow`
 
@@ -247,4 +247,4 @@ decompresses natively; nothing else is assumed to.
 
 ## Verification
 
-- `uv run pytest tests/unit/test_llm_models.py tests/unit/test_llm_context_window.py tests/unit/test_request_budget.py tests/unit/test_llm_overflow.py tests/unit/test_doctor_decision.py tests/unit/test_llm_messages.py -q` — model construction, window discovery, request-fit planner, provider overflow, the decision result-type registry against the real grammar, the missing-model sentence
+- `uv run pytest tests/unit/test_llm_models.py tests/unit/test_llm_context_window.py tests/unit/test_request_budget.py tests/unit/test_throughput.py tests/unit/test_llm_overflow.py tests/unit/test_doctor_decision.py tests/unit/test_llm_messages.py -q` — model construction, window discovery, request-fit planner, provider overflow, the decision result-type registry against the real grammar, the missing-model sentence

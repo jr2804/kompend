@@ -15,7 +15,7 @@ from kompend.core.config.models.llm import LLMConfig
 from kompend.core.text.density import CONSERVATIVE_CHARS_PER_TOKEN, conservative_tokens
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow
-from kompend.llm.request_budget import DEFAULT_CHARS_PER_TOKEN, RequestBudget, chars_to_tokens
+from kompend.llm.request_budget import DEFAULT_CHARS_PER_TOKEN, RequestBudget, chars_to_tokens, sizing_density
 
 
 def test_the_default_ratio_is_the_pessimistic_density_bound() -> None:
@@ -32,21 +32,24 @@ def test_the_planner_and_the_compaction_estimator_count_in_the_same_unit() -> No
     assert counted - planned <= 1
 
 
-def test_a_dense_segment_is_refused_before_the_provider_sees_it() -> None:
-    """The regression: the guard counted in a different unit than the planner.
+def test_a_dense_segment_can_no_longer_slip_past_the_guard() -> None:
+    """The regression, closed by construction rather than by a second unit.
 
-    The old planner filled the content budget at 3.85 chars per token. The
-    guard counted the same segment at 2.5, so it was over the window — and
-    the guard's refusal came too late to save the run.
+    The old planner filled the content budget at 3.85 chars per token while
+    the guard counted the same segment at 2.5, so a request the planner called
+    exact-fit was over the window - and the refusal arrived too late to save
+    the run. Sizing now always counts at the floor, so planner and guard cannot
+    disagree, and the segment the optimistic plan would have sent is refused
+    before the provider sees it.
     """
     budget = RequestBudget(window=_window())
     chars = int(budget.content_tokens * 3.85)
-    optimistic = chars_to_tokens(chars, chars_per_token=3.85)
-    pessimistic = chars_to_tokens(chars, chars_per_token=CONSERVATIVE_CHARS_PER_TOKEN)
-    assert optimistic <= budget.content_tokens
-    assert pessimistic > budget.content_tokens
+    planned = chars_to_tokens(chars, chars_per_token=3.85)
+    counted = chars_to_tokens(chars, chars_per_token=CONSERVATIVE_CHARS_PER_TOKEN)
+    assert planned == counted
+    assert planned > budget.content_tokens
     with pytest.raises(LLMOutputError):
-        budget.require(pessimistic, stage="Agentic generation")
+        budget.require(counted, stage="Agentic generation")
 
 
 def _window(max_input: int = 131_072) -> ContextWindow:
@@ -54,10 +57,17 @@ def _window(max_input: int = 131_072) -> ContextWindow:
     return ContextWindow(max_input=max_input, max_output=8_192, source=ContextSource.MODELS_DEV)
 
 
-def test_a_configured_ratio_moves_the_planner_and_the_guard_together() -> None:
-    config = LLMConfig(default_chars_per_token=3.0)
-    assert config.default_chars_per_token == 3.0
-    assert chars_to_tokens(3_000, chars_per_token=config.default_chars_per_token) == 1_000
+def test_a_configured_ratio_below_the_floor_moves_the_planner_and_the_guard_together() -> None:
+    """Going denser than the floor is honoured: the estimate stays conservative."""
+    config = LLMConfig(default_chars_per_token=2.0)
+    assert config.default_chars_per_token == 2.0
+    assert chars_to_tokens(2_000, chars_per_token=config.default_chars_per_token) == 1_000
+
+
+def test_a_configured_ratio_above_the_floor_is_clamped() -> None:
+    """An optimistic ratio cannot size a request - the floor wins."""
+    assert chars_to_tokens(3_000, chars_per_token=3.0) == 1_200
+    assert sizing_density(3.85) == CONSERVATIVE_CHARS_PER_TOKEN
 
 
 def test_the_compaction_estimator_counts_at_the_shared_ratio() -> None:

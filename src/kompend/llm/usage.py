@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel
 
+from kompend.llm.throughput import CallSample, Throughput, fit
+
 
 @dataclass
 class UsageTracker:
@@ -28,7 +30,8 @@ class UsageTracker:
     Also keeps a timestamped event log of completion tokens (stamped at
     response-completion time) so throughput can be reported as an
     overall average and as a rolling average across the last N output
-    tokens (:attr:`throughput_window_tokens`).
+    tokens (:attr:`throughput_window_tokens`), and the per-call samples the
+    two-term cost model is fitted from (:meth:`throughput`).
     """
 
     prompt_tokens: int = 0
@@ -41,15 +44,34 @@ class UsageTracker:
     context_budget: int = 0
     #: Rolling-window size for :meth:`recent_rate`, in output tokens.
     throughput_window_tokens: int = 1000
+    #: Per-call samples retained for the cost fit; older ones are dropped.
+    sample_window: int = 200
 
     #: (monotonic timestamp, completion tokens) per finished call, oldest first.
     _events: deque[tuple[float, int]] = field(default_factory=deque, repr=False)
+    #: (model, prompt, completion, elapsed) per finished call, oldest first.
+    _samples: deque[tuple[str, CallSample]] = field(default_factory=deque, repr=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
     _clock: Callable[[], float] = field(default=time.monotonic, repr=False)
     """Monotonic clock used to stamp completion events; injectable for tests."""
 
-    def record(self, *, prompt_tokens: int, completion_tokens: int, model: str, ttft_s: float = 0.0) -> None:
-        """Record one successful completion. Thread-safe."""
+    def record(
+        self,
+        *,
+        prompt_tokens: int,
+        completion_tokens: int,
+        model: str,
+        ttft_s: float = 0.0,
+        elapsed_s: float = 0.0,
+    ) -> None:
+        """Record one successful completion. Thread-safe.
+
+        *elapsed_s* is the wall clock the provider spent on the request. It is
+        what makes the cost model measurable: without it the only surviving
+        number is the aggregate token count, and "how long will this payload
+        take" can only be guessed from a global rate that mixes a 200-token
+        call with a 49,000-token one.
+        """
         with self._lock:
             self.prompt_tokens += prompt_tokens
             self.completion_tokens += completion_tokens
@@ -61,6 +83,10 @@ class UsageTracker:
             entry["calls"] += 1
             if completion_tokens > 0:
                 self._events.append((self._clock(), completion_tokens))
+            if elapsed_s > 0.0:
+                self._samples.append((model, CallSample(prompt_tokens, completion_tokens, elapsed_s)))
+                while len(self._samples) > self.sample_window:
+                    self._samples.popleft()
 
     def record_context_usage(self, current: int, max_tokens: int) -> None:
         """Record the latest context-window utilization.
@@ -113,6 +139,40 @@ class UsageTracker:
         span_start = events[start_idx - 1][0] if start_idx > 0 else events[0][0]
         span = events[-1][0] - span_start
         return tokens_per_second(accumulated, span)
+
+    def samples_for(self, model: str | None = None) -> list[CallSample]:
+        """Recorded call samples, newest last, optionally for one model."""
+        with self._lock:
+            return [sample for owner, sample in self._samples if model is None or owner == model]
+
+    def throughput(self, model: str | None = None) -> Throughput | None:
+        """Fitted prefill/decode rates, or ``None`` before enough samples exist.
+
+        Pass a model string to fit only that model's calls: two models in one
+        pipeline (a fast generator and a slow summariser) have nothing to say
+        about each other's cost.
+        """
+        return fit(self.samples_for(model))
+
+    def average_prompt_tokens(self, model: str | None = None) -> int:
+        """Mean prompt size per call - the shape a session's turns start from."""
+        with self._lock:
+            if model is None:
+                return self.prompt_tokens // self.call_count if self.call_count else 0
+            counts = self.per_model.get(model)
+            if not counts or not counts["calls"]:
+                return 0
+            return counts["prompt"] // counts["calls"]
+
+    def average_completion_tokens(self, model: str | None = None) -> int:
+        """Mean answer size per call - what a request must leave time for."""
+        with self._lock:
+            if model is None:
+                return self.completion_tokens // self.call_count if self.call_count else 0
+            counts = self.per_model.get(model)
+            if not counts or not counts["calls"]:
+                return 0
+            return counts["completion"] // counts["calls"]
 
     def to_snapshot(self) -> UsageSnapshot:
         """Serialize to a validated snapshot for ``wiki.metadata`` / lint history."""

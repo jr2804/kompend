@@ -115,7 +115,7 @@ def references_fetch(
     if not model:
         return {"status": ToolStatus.ERROR, "message": NO_MODEL_CONFIGURED_MESSAGE}
 
-    timeout = float(cfg.kompend.compile.llm.timeout)
+    timeout = float(cfg.kompend.compile.llm.request_ceiling_s)
     try:
         agent = ReferenceResolverAgent(
             model_string=model,

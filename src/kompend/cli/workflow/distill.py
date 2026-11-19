@@ -68,7 +68,7 @@ def build_distill_agent(
         return None
     return make_distill_agent(
         model,
-        timeout=float(cfg.kompend.compile.llm.timeout),
+        timeout=float(cfg.kompend.compile.llm.request_ceiling_s),
         requests_per_group=cfg.kompend.compile.budget.distill_requests_per_group,
         llm=cfg.kompend.compile.llm,
         memory_dir=memory_dir,

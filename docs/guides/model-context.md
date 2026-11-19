@@ -119,13 +119,16 @@ Two reasons it is not simply "whatever the measured overhead leaves free":
 
 1. A server's **effective** usable context is smaller than the nominal window
    (KV-cache slotting, prompt-cache rollover).
-2. ``default_chars_per_token`` (2.5) is a heuristic — it **undercounts**
+2. ``default_chars_per_token`` (2.5) is a heuristic - it **undercounts**
    token-dense content (formulas, tables, identifiers), so a nominally
    exact-fit request can still overflow. Observed on a formula-heavy standard:
    `request (65762 tokens) exceeds the available context size (65536 tokens)`.
    The value is the pessimistic density bound measured across a corpus, and
-   the planner and the request-fit guard both size with it, so a planned
-   request cannot arrive over the window.
+   the planner, the request-fit guard and the compaction estimator all size
+   with it, so a planned request cannot arrive over the window. A configured
+   value above 2.5 is clamped to it (`sizing_density`), so configuration can
+   widen the margin but never undo the guarantee; a lower value is honoured
+   and widens the margin at the cost of more requests.
 
 The margin never crops content — the content budget shrinks, so the work
 splits across more batches or segments.
@@ -314,9 +317,14 @@ Consequences worth knowing:
 - Nothing truncates an answer except the window itself. If a reply is cut off,
   the prompt was too big for the model - shrink the input (smaller
   `chunk_size_max`, fewer nodes per summarizer session), not the output.
-- Two things still bound a run instead of a response: the per-request timeout
-  (`compile.llm.timeout`) and the multi-turn request budgets of agentic
-  sessions (`budget.summary_requests_per_node`, WiCER's wall clock).
+- A run is bounded by three things, and the only knob among them is a
+  ceiling. `compile.llm.request_ceiling_s` is the *maximum* one request may
+  take; the timeout actually handed to a request is estimated from the
+  measured prefill/decode rates, so it shrinks as the prompt grows and a
+  model that cannot finish stops at the estimate instead of the ceiling. A
+  session gets a wall-clock deadline derived from the number of units it has
+  to cover, and the multi-turn request budgets of agentic sessions
+  (`budget.summary_requests_per_node`, WiCER's wall clock) still apply.
 
 ## Structural Controls
 
@@ -355,9 +363,11 @@ A budget never decides what gets compiled. It only decides how many calls a
 piece of work needs:
 
 - **Content is windowed, never truncated.** Node summaries split long
-  content into several calls (`summary_max_content_chars`), the agentic
-  summarizer splits its payload into windows of `summary_window_chars`
-  (one summarize call per window), reference sections are split per source
+  content into several calls (`summary_max_content_chars`). The agentic
+  summarizer derives `summary_window_chars = 0` from the active model's
+  input budget, so one window fills one safe request; a positive value remains
+  an explicit per-vault override. Each summarize window costs one call,
+  reference sections are split per source
   window, and the write-page synthesis reads a source in windows of
   `capture_source_char_max` (the agent pages through it with the offset the
   reply names) — the tail always reaches the model, the cost is extra LLM

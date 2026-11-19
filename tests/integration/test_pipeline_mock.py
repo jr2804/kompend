@@ -56,7 +56,7 @@ def test_graph_compiler_produces_wiki(
 ) -> None:
     """Graph backend compiles chunks into a wiki; vault writer serializes it."""
     config = _make_config(tmp_path)
-    config.llm.timeout = 30
+    config.llm.request_ceiling_s = 30
 
     compiler = GraphCompiler(LLM_MODEL)
     wiki: CompiledWiki = compiler.compile(raw_chunks)
@@ -76,7 +76,7 @@ def test_wicer_compiler_produces_wiki(
 ) -> None:
     """WiCER backend (wicer) also produces a wiki under the mock surface."""
     config = _make_config(tmp_path)
-    config.llm.timeout = 30
+    config.llm.request_ceiling_s = 30
 
     base = GraphCompiler(LLM_MODEL)
     compiler = WiCERCompiler(config=config, base_compiler=base)
