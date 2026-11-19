@@ -8,17 +8,24 @@ arguments validated directly), so there is no JSON text to repair.
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from pydantic_ai.messages import ModelRequest, ModelResponse, TextPart, UserPromptPart
-from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai import RunContext
+from pydantic_ai.messages import ModelMessage, ModelRequest, ModelResponse, TextPart, UserPromptPart
+from pydantic_ai.models import ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.test import TestModel
 from pydantic_ai.settings import ModelSettings
 
+from kompend.agents.base import KompendAgentBase
 from kompend.agents.failure import EmptyAnswerError
 from kompend.agents.kompend_model import KompendModel
+from kompend.core.config import LLMConfig, ReasoningEffort
 from kompend.core.env import EnvVar
 from kompend.llm.usage import UsageTracker
 
@@ -176,6 +183,94 @@ class TestEmptyAnswerResample:
         await wrapper.request(_msgs(), None, ModelRequestParameters(output_mode="text"))
 
         assert delegate.request.await_count == 1
+
+
+class _SettingsSpy(TestModel):
+    """A TestModel that remembers the settings its caller forwarded."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.seen_settings: ModelSettings | None = None
+
+    @asynccontextmanager
+    async def request_stream(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+        run_context: RunContext[Any] | None = None,
+    ) -> AsyncGenerator[StreamedResponse]:
+        self.seen_settings = model_settings
+        async with super().request_stream(messages, model_settings, model_request_parameters, run_context) as streamed:
+            yield streamed
+
+
+class TestRequestStream:
+    """pydantic-ai routes every run whose agent listens to events through
+    ``request_stream`` — and the usage gauge is such a listener, so this
+    method is what keeps tracked agents alive on harness 0.70 (run
+    5861db13: 526 reference units failed with ``does not support streamed
+    requests``).
+    """
+
+    @pytest.mark.asyncio
+    async def test_a_streamed_request_records_usage_and_elapsed(self) -> None:
+        tracker = UsageTracker()
+        delegate = TestModel()
+        delegate.custom_output_text = "hi"
+        wrapper = KompendModel(delegate, usage_tracker=tracker)
+
+        async with wrapper.request_stream(_msgs(), None, ModelRequestParameters(output_mode="text")) as streamed:
+            async for _event in streamed:
+                pass
+
+        assert tracker.call_count == 1
+        samples = tracker.samples_for()
+        assert samples, "a streamed request must leave a throughput sample"
+        assert samples[-1].elapsed_s > 0
+
+    @pytest.mark.asyncio
+    async def test_a_streamed_request_forwards_the_merged_reasoning(self) -> None:
+        delegate = _SettingsSpy()
+        wrapper = KompendModel(delegate, reasoning_effort=ReasoningEffort.NONE)
+
+        async with wrapper.request_stream(_msgs(), None, ModelRequestParameters(output_mode="text")) as streamed:
+            async for _event in streamed:
+                pass
+
+        assert delegate.seen_settings == {"thinking": False, "openai_reasoning_effort": "none"}
+
+    def test_an_event_listening_agent_runs_to_completion(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The gauge capability forces the streamed path; the run must survive it.
+
+        Regression for run 5861db13: an agent with a usage tracker gets the
+        ``UsageGauge`` capability (its ``@on_event`` listener makes
+        pydantic-ai stream every request), and a tracked reference-extraction
+        agent failed all 526 units with ``does not support streamed
+        requests``. The delegate here supports ONLY streaming, so a run that
+        falls back to the plain path fails loudly instead of silently.
+        """
+        tracker = UsageTracker()
+
+        class _StreamOnly(TestModel):
+            async def request(self, messages, model_settings=None, model_request_parameters=None):  # noqa: ANN001, PLR6301
+                raise AssertionError("the gauge must route this run through request_stream")
+
+        wrapper = KompendModel(_StreamOnly(), usage_tracker=tracker)
+
+        class _A(KompendAgentBase[Any, Any]):
+            pass
+
+        monkeypatch.setattr(_A, "model_builder", staticmethod(lambda _model_string: wrapper))
+        # ``context_manager="default"`` is what attaches the compaction
+        # capability the gauge requires (the gauge attaches only alongside it).
+        agent = _A(model_string="ollama/noop", usage_tracker=tracker, llm=LLMConfig(context_manager="default"))
+        deps = cast("Any", SimpleNamespace(source_id="src"))
+
+        result = agent.run(deps, user_prompt="ping")
+
+        assert isinstance(result, str)
+        assert tracker.call_count == 1
 
 
 def _msgs() -> list[ModelRequest | ModelResponse]:

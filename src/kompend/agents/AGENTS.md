@@ -202,6 +202,12 @@ Thin delegate around any native pydantic-ai `Model`. Adds `_merge_reasoning()`
 response burn four output retries), `_save_debug()` (LLM debug log), and
 `_repair_tool_call_args()`/`_repair_text_part()` (`json_repair` before the
 strict validator, for malformed JSON from small local models).
+`request_stream()` mirrors the delegate's stream (pydantic-ai 2.70 routes any
+run whose agent has an `@on_event` listener — the usage gauge — through it):
+reasoning is merged, usage/elapsed land in the tracker from the assembled
+response, but response *repairs* cannot reach the graph's own assembly on that
+path — salvage there belongs in `after_model_request` if ever needed
+(`FallbackModel` documents the same limitation).
 History compression lives on the Agent layer (`build_fallback_compaction`,
 `build_sliding_compaction`); the doctrine lives in `templates/compaction/`.
 

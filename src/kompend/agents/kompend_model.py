@@ -26,17 +26,20 @@ Failover is handled by wrapping multiple :class:`KompendModel` instances in
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
 from time import monotonic
 from typing import Any, Final, cast
 
 from pydantic import BaseModel
+from pydantic_ai import RunContext
 from pydantic_ai.messages import (
     ModelMessage,
     ModelResponse,
     TextPart,
     ToolCallPart,
 )
-from pydantic_ai.models import Model, ModelRequestParameters
+from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 from pydantic_ai.settings import ModelSettings, ThinkingLevel
 
 from kompend.agents.failure import EmptyAnswerError
@@ -172,6 +175,57 @@ class KompendModel(Model):
         )
         pipeline(response)
         return response
+
+    @asynccontextmanager
+    async def request_stream(
+        self,
+        messages: list[ModelMessage],
+        model_settings: ModelSettings | None,
+        model_request_parameters: ModelRequestParameters,
+        run_context: RunContext[Any] | None = None,
+    ) -> AsyncGenerator[StreamedResponse]:
+        """Stream the delegate's answer, recording usage and wall clock like :meth:`request`.
+
+        pydantic-ai routes any run whose agent listens to events through this
+        method (``_ensure_model_supports_streaming``), and the usage gauge is
+        exactly such a listener — so before this method existed, every
+        usage-tracked agent failed with ``KompendModel does not support
+        streamed requests`` (pyvas run 5861db13: 526 reference-extraction
+        failures).
+
+        Accepted gap, the same one pydantic-ai's ``FallbackModel`` documents
+        for streamed responses: the agent graph assembles the final response
+        itself from the events it consumed, so the pipeline below acts on a
+        local assembly — the JSON salvage and empty-answer resample of
+        :meth:`request` cannot reach the graph's copy. Structured-output
+        validation happens in pydantic-ai's own output-retry loop instead; if
+        small-model salvage proves necessary on this path, an
+        ``after_model_request`` capability hook (which receives the response
+        the graph will use) is the durable place for it.
+        """
+        merged_settings = self._merge_reasoning(model_settings)
+        started = monotonic()
+        async with self._delegate.request_stream(messages, merged_settings, model_request_parameters, run_context) as streamed:
+            try:
+                yield streamed
+            finally:
+                # Runs after the consumer is done (or bailed out). The graph
+                # builds its own response from the events, so this local one
+                # contributes exactly what this wrapper still owns: the
+                # tracker's throughput sample and the debug dump. A stream
+                # that ended without the provider reporting usage must not
+                # plant a 0-token sample in the measured throughput —
+                # ``tracker=None`` makes the recorder a no-op.
+                response = streamed.get()
+                pipeline = default_pipeline(
+                    schema_resolver=self._schema_resolver,
+                    agent=self._agent,
+                    model_name=self.model_name,
+                    usage_tracker=self._usage_tracker if streamed.usage.has_values() else None,
+                    messages=messages,
+                    elapsed_s=monotonic() - started,
+                )
+                pipeline(response)
 
     def _merge_reasoning(self, model_settings: ModelSettings | None) -> ModelSettings | None:
         """Map the configured ``reasoning_effort`` to the unified ``thinking`` setting.
