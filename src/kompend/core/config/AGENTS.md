@@ -114,6 +114,7 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
 
 1. **Add the field to the owning section model** in `models/` — every key must
    have a default. `DEFAULTS` in `models/root.py` derives from `KompendConfig`.
+
 2. **Add the env alias** — `validation_alias=EnvVar.<NAME>` on the field in
    `_configs.py` (auto-derived into `ENV_MAP`), or add the name to the
    `EnvVar` enum in `../env.py` if it is a CLI-only override. Example:
@@ -126,22 +127,27 @@ values are config-only — override per-run with `--set key=val` (see CLI DOX).
    config-only (set via `kompend config set` or `--set`). Only input-set,
    pipeline-control, model-swap, and bool-toggle flags belong on the CLI —
    see `cli/args/AGENTS.md`.
+
 4. **Update `kompend.toml.example`** — add the new key with a comment explaining
    valid values. Keep the same section structure as `DEFAULTS`.
    The sync test (`TestKompendDotExampleSync`) will fail if a key in `DEFAULTS`
    is missing from `kompend.toml.example`.
+
 5. **Declare enum-like value domains as a `StrEnum` field** — a key whose
    values form a closed set is typed by the enum, and `enum_choices()` in
    `generate.py` derives the scaffold's trailing value comments from it
    (unions and `list[...]` included). `_STR_ENUM_CHOICES` stays empty; adding
    an entry there means the field should have been enum-typed. The domain must
    match `kompend.toml.example`.
+
 6. **Wire into the consumer** (e.g. `PipelineConfig`, `LintRunner`) via
    `cfg.get("dotted.key", fallback)` — or, for a group of related keys, hand
    the config group to the consumer (`display=cfg.kompend.display`) instead of
    copying single values around.
+
 7. **Write tests** — at minimum: default value, project config override, env var
    override, CLI override, full precedence chain.
+
 8. **A budget key shapes the work, it never excludes it** — a threshold warns,
    a window size splits a request (see the budget rule in `.agents/CODE.md`
    and `compilation/AGENTS.md`). There is no output-ceiling key: an answer is

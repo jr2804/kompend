@@ -104,11 +104,15 @@ Phases 2/3/6 below target the merged `MarkdownWriter` (not `okf_writer.py`).
    ```
 
    MD066 stays **enabled** — fixed properly in Phase 3 (footnotes get referenced). MD005 needs no config: `rumdl fmt`/`check --fix` auto-fix it (Phase 2 + existing `lint run --fix`).
+
 2. **`src/knox/core/paths.py`**: add `RUMDL_CONFIG_FILE: Final[str] = f"{KNOX_DIR}/rumdl.toml"` (path constants live here per FILES.md).
+
 3. **`_configs.py:237`**: `rumdl_config` default `None` → keep `None` (semantics: "use vault default"). New resolver `resolve_rumdl_config(base_dir, configured)` in `src/knox/lint/structural.py` (or `core/config/`):
    - `configured` set → resolve as-is (back-compat; `lint.py:136` passes `cfg.get(COMPILE_OUTPUT_RUMDL_CONFIG) or None`).
    - unset → `base_dir / RUMDL_CONFIG_FILE`; if missing, materialize by copying the shipped `rumdl.toml` (via `importlib.resources`, same pattern as `packs/base.py:152`) and log "wrote .knox/rumdl.toml (edit to override)".
+
 4. **Use sites**: `_factory.py:127` (writer construction) and `lint.py:136` (lint runner) both switch to the resolver. Renderer/fmt and RumdlRule then pass the resolved path via existing `--config` plumbing.
+
 5. `knox.toml.example:450-452`: update comment — default is now `.knox/rumdl.toml`, auto-materialized on first use.
 
 ## Phase 2 — `rumdl fmt` wired into compile (all generated pages)

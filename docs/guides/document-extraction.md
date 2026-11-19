@@ -509,8 +509,10 @@ other routing lever.
   `parable-tinyjev:latest`): the SDK reads the suffix as a variant token and
   refuses it. The SDK is base-install with parsecraft (≥ 2026.10.5), so no
   extra is needed.
+
 - **`zen`** (`OPENCODE_API_KEY`) and **`typesafe-ai`** (`TYPESAFE_API_KEY`) are
   the cloud choices; the credential is read from the environment only.
+
 - **`[routing] preference`** is the tiebreak axis *inside* a backend family,
   after the hard constraints (format, GPU/VRAM budget, installed extras) have
   admitted the candidates. `speed` and `balanced` coincide by design — both
@@ -519,6 +521,7 @@ other routing lever.
   axis applies with or without a provider judge: parsecraft's own
   `resolve_judge(None, preference=…)` constructs the deterministic judge with
   it, and it is read from the same config either way.
+
 - **`[routing.backend_options.mineru] effort`** picks the MinerU sub-backend's
   conversion effort (`flash` | `medium` | `high` | `xhigh`, default `flash`).
   `flash` is the weight-free CPU path for text PDFs; `high` and `xhigh` engage
@@ -526,6 +529,7 @@ other routing lever.
   omits, at the cost of loading the VLM checkpoint. It is part of the
   parse-cache fingerprint (a change re-parses) and reaches the backend as a
   per-backend constructor option.
+
 - **`[routing] allow_ocr`** decides whether parsecraft may route a page to an
   OCR sub-backend. Unset, kompend supplies the probe's answer: OCR is permitted
   when an `ocr-*` extra is installed **or** the host has a usable OCR engine.
@@ -533,6 +537,7 @@ other routing lever.
   or faint page otherwise pays a full GPU VLM pass — or `true` to permit it
   regardless of the probe. The value is part of the parse-cache fingerprint
   whenever it is written.
+
 - **`[routing] preferred_backend`** ranks one backend first where it is
   eligible — a preference, never a guarantee: a page the named backend cannot
   serve still falls back. **`[routing] only_backend`** is the hard pin: pages
@@ -546,11 +551,13 @@ other routing lever.
   where the weights are not cached — which can be tens of seconds per page.
   That is warmup, not steady state; subsequent documents run at the backend's
   normal per-page cost. Judge the setting by the second run, not the first.
+
 - **`[routing] engines`** restricts the external engines parsecraft may use,
   overriding the probed set. Unset (the default) keeps the probe's answer.
   Names are parsecraft's own engine ids — this is open capability data, not a
   closed value domain, so it is a list of strings rather than an enum, and an
   unknown name fails at load. Part of the parse-cache fingerprint.
+
 - **`[routing.backend_options.liteparse] extract_vector_graphics`** asks the
   liteparse backend to recover table structure from a page's vector graphics.
   With it on, parsecraft populates `StructuredChunk.rows` and a table arrives

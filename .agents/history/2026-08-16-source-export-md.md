@@ -68,12 +68,14 @@ works on `StructuredTable` records, not on raw cache tables — not reusable).
   to `base_dir` (same as `source_file` already is, `ingest.py:207`); export
   resolves them against `base_dir` and copies, so the rendered `.md` only ever
   contains relative references. Output must be movable/archivable as a unit.
+
 - **New module** `src/knox/core/pipeline/export.py` — pure functions, no CLI
   deps: `render_document_markdown(data, *, assets_dir, inline, annotations,
   summary) -> str`, `export_source(cache_file, out_path, *, assets_dir,
   inline, annotations, summary, base_dir) -> Path`,
   `load_cache_entry(source_id, cache_dir) -> dict`. Sibling to `ingest.py`
   (same cache, same pipeline layer).
+
 - **Element → markdown** (one switch over `ElementType`):
 
   | Element | Output |
@@ -90,6 +92,7 @@ works on `StructuredTable` records, not on raw cache tables — not reusable).
   Preserve document-level `title`/`author`/`language`/`page_count` as
   frontmatter? **No** — YAGNI; title goes in as `# title` if present, rest
   skipped. Add when requested.
+
 - **Extracted data (annotations + summary) is exported by default, mode
   configurable**: per-item `export.annotations` and `export.summary` in
   `knox.toml`, values `off | inline | asset`, default `inline` ("put in any
@@ -115,22 +118,27 @@ works on `StructuredTable` records, not on raw cache tables — not reusable).
     cheap — recompute from the parse cache. The LLM extraction summary is
     per-node in a layered content-hash cache, not a document-level value;
     not wired for v1. Add when a consumer asks.
+
 - **Assets**: clean boolean flag `--inline` / `--no-inline`, default
   `--no-inline`. Inline embeds images as data URIs; no-inline copies them to
   `<out-stem>_assets/` next to the output file and references them by relative
   path. Images already on disk are copied; data URIs are decoded to files. One
   flat dir, no per-source nesting. (No `--assets-dir` override — YAGNI, add
   when asked.)
+
 - **Attachments**: always external, never inlined. Read
   `attachments/<source-stem>/` (+ manifest for names/descriptions); list as a
   markdown table at the end of the file: name, description, relative link.
+
 - **Source id**: the `source_file` string printed by `knox sources list`.
   Resolution: glob `parse_cache_glob(stem)` in `cache_dir`; when multiple
   entries match (same-stem files), pick the one whose
   `MetadataField.SOURCE_FILE` equals the id, else error with candidates.
   Also accept a bare stem.
+
 - **CLI**: `export` subcommand on the `sources` group — args: `source_id`,
   `output` (`.md`), `--inline/--no-inline` (default `--no-inline`), `--config`.
+
 - **MCP/API**: out of scope for this plan; CLI covers the use case. Add an MCP
   tool only when a consumer asks.
 
@@ -139,10 +147,12 @@ works on `StructuredTable` records, not on raw cache tables — not reusable).
 1. **Cache path portability** — `docling_parser.py:234`: store image paths
    relative to `base_dir` instead of `str(out_file.resolve())`. Keeps the
    cache portable and matches how `source_file` is already relativized.
+
 2. **Config keys** — `export.annotations` / `export.summary`
    (`core/config/keys.py` + `_configs.py` + `DEFAULTS` in `generate.py`,
    following the existing pattern); values `off|inline|asset`, default
    `inline`.
+
 3. **Renderer** — `core/pipeline/export.py`: `render_document_markdown` +
 
    element switch + table/image handling; `export_source` (copies assets,
@@ -150,10 +160,12 @@ works on `StructuredTable` records, not on raw cache tables — not reusable).
    `asset_id_for` + `AssetStore`) and summary recompute; inline sections and
    `extracted.json` writer. Resolves image paths against `base_dir`; never
    emits an absolute path.
+
 4. **CLI** — `export` command in `cli/cmds/pipeline/sources.py` +
 
    `load_cache_entry` id resolution (reuse `_load_all_cache_entries`-style
    loading, or glob single entry).
+
 5. **Tests** — `tests/unit/test_export.py` (new module → new test file):
    - round-trip: build a `ParsedDocument` with one element of every type
    (incl. a table and an image data URI), serialize, render, assert the
@@ -170,6 +182,7 @@ works on `StructuredTable` records, not on raw cache tables — not reusable).
    - `asset` mode for both: `extracted.json` written, correct shape,
    no summary/annotations sections in the `.md`;
    - `off` mode: no sections, no JSON.
+
 6. **Docs + DOX pass** — `docs/` page for the command (after closeout rules
    in root AGENTS.md); update `cli/cmds/pipeline/sources.py` docstring
    sub-command list.
