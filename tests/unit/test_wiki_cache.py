@@ -34,17 +34,33 @@ class TestWriteWikiCache:
         write_wiki_cache(wiki, tmp_path)
         assert (tmp_path / KOMP_DIR).exists()
 
-    def test_overwrites_existing(self, tmp_path: Any) -> None:
+    def test_keeps_the_previous_graph_over_an_empty_write(self, tmp_path: Any, caplog: pytest.LogCaptureFixture) -> None:
+        """A degraded compile must not erase the last good cached graph.
+
+        An extraction that failed on every batch produces a wiki with no
+        pages; overwriting the ``last`` snapshot with it would leave lint and
+        gap analysis reading an empty graph while the pages still sit in the
+        output directory (run 5861db13 linted 1189 checks "over 0 page(s)").
+        """
         wiki1 = _make_wiki()
         write_wiki_cache(wiki1, tmp_path)
 
-        wiki2 = CompiledWiki(nodes=[], edges=[], toc=[], quality_score=0.5)
-        write_wiki_cache(wiki2, tmp_path)
+        write_wiki_cache(CompiledWiki(nodes=[], edges=[], toc=[], quality_score=0.0), tmp_path)
+
+        loaded = load_cached_wiki(tmp_path)
+        assert loaded is not None
+        assert len(loaded.nodes) == 1
+        assert loaded.quality_score == 0.85
+        assert "keeping the previous wiki cache" in caplog.text
+
+    def test_writes_an_empty_graph_when_there_is_no_previous(self, tmp_path: Any, caplog: pytest.LogCaptureFixture) -> None:
+        """A genuinely empty vault caches an empty graph — nothing to protect."""
+        write_wiki_cache(CompiledWiki(nodes=[], edges=[], toc=[], quality_score=0.0), tmp_path)
 
         loaded = load_cached_wiki(tmp_path)
         assert loaded is not None
         assert len(loaded.nodes) == 0
-        assert loaded.quality_score == 0.5
+        assert "keeping the previous wiki cache" not in caplog.text
 
 
 class TestLoadCachedWiki:

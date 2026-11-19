@@ -75,6 +75,11 @@ class ReasonCode(StrEnum):
     #: fault; the caller split the batch so each half gets a fresh budget,
     #: rather than re-asking the payload that just exhausted the last one.
     SESSION_BUDGET = "session_budget"
+    #: A compile run produced no wiki pages (e.g. the extraction tier failed
+    #: on every batch). The previous wiki cache snapshot was kept instead of
+    #: being overwritten with an empty graph, so lint and gap analysis keep
+    #: working over the pages still on disk.
+    EMPTY_WIKI = "empty_wiki"
 
 
 class StageOutcome(StrEnum):

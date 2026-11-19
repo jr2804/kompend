@@ -154,6 +154,7 @@ def test_every_member_has_a_stable_value() -> None:
         "EMBEDDING_MERGE_DISABLED",
         "PAYLOAD_TOO_LARGE",
         "SESSION_BUDGET",
+        "EMPTY_WIKI",
     }
     assert ReasonCode.MISLABELLED_BINARY == "mislabelled_binary"
     assert ReasonCode.TIMEOUT == "timeout"
