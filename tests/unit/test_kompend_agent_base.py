@@ -9,7 +9,7 @@ import pytest
 from pydantic_ai import Agent
 from pydantic_ai_harness.compaction import (
     CompactOnRequest,
-    ContextUsage,
+    ContextUsageMeasuredEvent,
     FallbackCompaction,
     SlidingWindowCompaction,
     SummarizingCompaction,
@@ -197,7 +197,7 @@ class TestCompactionCapability:
     def test_usage_update_feeds_tracker(self) -> None:
         tracker = UsageTracker()
         agent = self._agent(usage_tracker=tracker)
-        agent._on_usage_update(ContextUsage(used_tokens=4096, window_tokens=8192, resolved=True))  # noqa: SLF001
+        agent._on_usage_update(ContextUsageMeasuredEvent(used_tokens=4096, window_tokens=8192, resolved=True, fraction=0.5))  # noqa: SLF001
         assert tracker.context_tokens == 4096
         assert tracker.context_budget == 8192
         assert tracker.to_snapshot().context_tokens == 4096
@@ -205,7 +205,7 @@ class TestCompactionCapability:
     def test_usage_update_noop_without_tracker(self) -> None:
         agent = self._agent()  # no usage_tracker
         # must not raise when no tracker is attached
-        agent._on_usage_update(ContextUsage(used_tokens=4096, window_tokens=8192, resolved=True))  # noqa: SLF001
+        agent._on_usage_update(ContextUsageMeasuredEvent(used_tokens=4096, window_tokens=8192, resolved=True, fraction=0.5))  # noqa: SLF001
         assert agent.usage is None
 
     @staticmethod

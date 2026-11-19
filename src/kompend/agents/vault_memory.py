@@ -1,6 +1,6 @@
 """A :class:`MemoryStore` rooted at a plain host directory.
 
-The harness ships :class:`pydantic_ai_harness.memory.FileStore` for the same
+The harness ships :class:`pydantic_ai_harness.memory.FileMemoryStore` for the same
 job, but its storage root is a path inside the agent run's sandbox workspace;
 the on-machine escape hatch (`workspace=LocalWorkspaceBackend(...)`) is
 POSIX-only and raises ``NotImplementedError`` on Windows. Kompend vaults run

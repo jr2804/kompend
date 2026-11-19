@@ -5,11 +5,15 @@ from __future__ import annotations
 from typing import Any, Protocol, cast
 
 import pytest
-from pydantic_ai_harness.compaction import ReportContextUsage
-from pydantic_ai_harness.memory import InMemoryStore, MemoryStore
+from pydantic_ai import RunContext
+from pydantic_ai.models.test import TestModel
+from pydantic_ai.usage import RunUsage
+from pydantic_ai_harness.compaction import ContextUsageMeasuredEvent, ReportContextUsage
+from pydantic_ai_harness.memory import InMemoryMemoryStore, MemoryStore
 
 import kompend.agents.base.agent as base_module
 from kompend.agents.agentic_harness import AgenticHarness
+from kompend.agents.base.context import UsageGauge
 from kompend.agents.distill import make_distill_agent
 from kompend.agents.remediate import make_remediation_agent
 from kompend.agents.summarizer import make_summarizer_agent
@@ -102,6 +106,23 @@ class TestContextUsageWindow:
 
         assert captured["context_window"] == 32768
 
+    async def test_the_gauge_records_the_harness_measurement(self) -> None:
+        """The event subscription replaces the deprecated ``on_usage`` callback.
+
+        ``ReportContextUsage`` emits one ``ContextUsageMeasuredEvent`` per
+        request; a break in the subscription would leave the run summary
+        reporting no context usage at all, silently.
+        """
+        recorded: list[ContextUsageMeasuredEvent] = []
+        gauge = UsageGauge(recorded.append)
+        event = ContextUsageMeasuredEvent(used_tokens=4096, window_tokens=8192, resolved=True, fraction=0.5)
+
+        ctx: RunContext[None] = RunContext(deps=None, model=TestModel(), usage=RunUsage())
+
+        await gauge.on_event(ctx, event=event)
+
+        assert recorded == [event]
+
 
 class TestVaultMemoryStore:
     """``compile.llm.memory_store = "vault"`` backs the notebook with the
@@ -114,7 +135,7 @@ class TestVaultMemoryStore:
     def test_session_store_is_the_default(self) -> None:
         capabilities = AgenticHarness(context_window=8192, memory=True).build_capabilities()
         memory = cast(_MemoryCapability, next(cap for cap in capabilities if cap.__class__.__name__ == "Memory"))
-        assert isinstance(memory.store, InMemoryStore)
+        assert isinstance(memory.store, InMemoryMemoryStore)
 
     def test_memory_store_is_passed_through(self, tmp_path: Any) -> None:
         store = DirectoryMemoryStore(tmp_path)
@@ -130,7 +151,7 @@ class TestVaultMemoryStore:
             memory_dir=tmp_path,
         )
         memory = cast(_MemoryCapability, next(cap for cap in agent.extra_capabilities if cap.__class__.__name__ == "Memory"))
-        assert isinstance(memory.store, InMemoryStore)
+        assert isinstance(memory.store, InMemoryMemoryStore)
 
     def test_vault_config_builds_the_vault_store(self, tmp_path: Any) -> None:
         agent = make_summarizer_agent(
@@ -202,7 +223,7 @@ class TestNotebookStagesShareTheVault:
             memory_dir=tmp_path,
         )
         memory = self._memory_capability(agent)
-        assert isinstance(memory.store, InMemoryStore)
+        assert isinstance(memory.store, InMemoryMemoryStore)
 
     @staticmethod
     def _memory_capability(agent: Any) -> Any:

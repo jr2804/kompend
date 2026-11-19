@@ -2,7 +2,7 @@
 
 Agentic agents in kompend share these harness capabilities:
 
-- **Memory** - ``InMemoryStore`` by default: fresh per run (no cross-session
+- **Memory** - ``InMemoryMemoryStore`` by default: fresh per run (no cross-session
   persistence).  Lets the agent write/read a notebook across turns for
   long-running tasks.  **Opt-in per agent** (``memory=True``): the notebook is
   only useful when the agent's prompt tells the model to keep notes.  Offering
@@ -50,7 +50,7 @@ from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai_harness.compaction import ClampOversizedMessages, SlidingWindowCompaction
 from pydantic_ai_harness.compaction._context_window import DEFAULT_CONTEXT_WINDOW
 from pydantic_ai_harness.conversation_search import ConversationSearch, SnapshotHistorySource, SnapshotStore
-from pydantic_ai_harness.memory import InMemoryStore, Memory, MemoryStore
+from pydantic_ai_harness.memory import InMemoryMemoryStore, Memory, MemoryStore
 from pydantic_ai_harness.step_persistence import StepPersistence, StepStore
 from pydantic_ai_harness.system_reminders import Reminder, SystemReminders
 
@@ -76,7 +76,7 @@ class AgenticHarness:
     memory_agent_name: str = "agentic"
     memory: bool = False
     #: Backend for the Memory capability. ``None`` (default) uses
-    #: :class:`InMemoryStore` - fresh per stage run. A persistent notebook
+    #: :class:`InMemoryMemoryStore` - fresh per stage run. A persistent notebook
     #: passes a :class:`~kompend.agents.vault_memory.DirectoryMemoryStore`
     #: rooted at the vault's agent-memory directory.
     memory_store: MemoryStore | None = None
@@ -108,7 +108,7 @@ class AgenticHarness:
         _ctx = self.context_window or DEFAULT_CONTEXT_WINDOW
         caps: list[AbstractCapability] = []
         if self.memory:
-            caps.append(Memory(store=self.memory_store if self.memory_store is not None else InMemoryStore(), agent_name=self.memory_agent_name))
+            caps.append(Memory(store=self.memory_store if self.memory_store is not None else InMemoryMemoryStore(), agent_name=self.memory_agent_name))
         if self.compaction:
             caps.append(SlidingWindowCompaction(max_fraction=0.6, context_window=self.context_window))
         if self.clamp:

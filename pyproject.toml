@@ -33,31 +33,31 @@ keywords = [
     "knowledge-graph",
 ]
 dependencies = [
-    "cyclopts>=5.4.2",
+    "cyclopts>=5.5.2",
     "rich>=15.0.0",
     "jinja2>=3.1.6",
-    "fastapi>=0.162.5",
+    "fastapi>=0.165.0",
     "uvicorn>=0.54.0",
     "chonkie>=1.7.0",
     # chonkie 1.7.0's tokenizer wrapper passes `add_special_tokens` to
     # tokie's `encode()`; tokie 0.2.0 (2026-11-12) removed the kwarg, so
     # every split dies with a TypeError. Unpin when chonkie adapts.
-    "tokie>=0.0.10,<0.2",
+    "tokie>=0.1.4,<0.2",
     "crawl4ai[all]>=0.9.5",
     "sqlite-vec>=0.1.9",
     "sqlite-vec-client>=2.4.1",
-    "rumdl>=0.3.4",
-    "fastmcp-slim[server]>=4.1.8",
+    "rumdl>=0.3.5",
+    "fastmcp-slim[server]>=4.2.2",
     "pydantic>=2.14.3",
     "wenmode>=0.15.3",
-    "pydantic-ai-slim[openai,google,anthropic,groq,mistral,cohere,xai,openrouter,zai,typesafe,huggingface,voyageai,web-fetch,duckduckgo,cli,mcp,mcp-tasks]>=2.68.0",
+    "pydantic-ai-slim[openai,google,anthropic,groq,mistral,cohere,xai,openrouter,zai,typesafe,huggingface,voyageai,web-fetch,duckduckgo,cli,mcp,mcp-tasks]>=2.70.0",
     "pydantic-ai-rlm>=0.1.2",
-    "python-slugify[unidecode]>=9.1.3",
+    "python-slugify[unidecode]>=9.2.0",
     "tomli-w>=1.2.0",
     "pyyaml>=6.0.3",
     "binaryornot>=0.6.0",
     "datasketch>=2.0.0",
-    "mail-parser>=4.10.0",
+    "mail-parser>=4.11.0",
     "toon-format>=1.2.0",
     "ison-py>=1.2.0",
     "pydantic-settings>=2.16.3",
@@ -67,7 +67,7 @@ dependencies = [
     # latest 9.2.x is blocked by google-genai's tenacity<9.2.0 (upstream pin)
     "tenacity>=9.1.4",
     "logfire[system-metrics]>=5.6.0",
-    "pydantic-ai-harness[acp]>=0.68.0",
+    "pydantic-ai-harness[acp]>=0.70.0",
     "ollama>=0.6.3",
     "aenum>=3.1.17",
     "lazy-loader>=0.6",
@@ -84,7 +84,7 @@ dependencies = [
     "parsecraft[docling,web]>=2026.11.7",
     "llmdb>=1.0.0",
     "resvg-py>=0.5.0",
-    "sqlalchemy>=2.1.8,<2.2",
+    "sqlalchemy>=2.1.9,<2.2",
 ]
 
 [project.scripts]
@@ -119,7 +119,7 @@ otel = [
 
 dev = [
     "logfire[system-metrics]>=5.6.0",
-    "pydantic-ai-slim[logfire]>=2.68.0",
+    "pydantic-ai-slim[logfire]>=2.70.0",
     "mkdocs-material>=9.8.1",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",

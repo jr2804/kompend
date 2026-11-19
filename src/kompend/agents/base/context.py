@@ -15,11 +15,18 @@ so naming the class at runtime would close the cycle.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Final, cast
 
-from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai import RunContext
+from pydantic_ai.capabilities import AbstractCapability, on_event
 from pydantic_ai.models import Model
-from pydantic_ai_harness.compaction import CompactionStrategy, CompactOnRequest, ContextUsage
+from pydantic_ai_harness.compaction import (
+    CompactionStrategy,
+    CompactOnRequest,
+    ContextUsageMeasuredEvent,
+)
 
 from kompend.agents.base.deps import DepsT
 from kompend.agents.base.protocols import ContextHost
@@ -50,6 +57,27 @@ _CONTEXT_PRESETS: Final[dict[ContextManagerPreset, tuple[float, int]]] = {
     ContextManagerPreset.AGGRESSIVE: (0.7, 5),
     ContextManagerPreset.SLIDING: (_SLIDING_COMPRESS_THRESHOLD, _SLIDING_KEEP_MESSAGES),
 }
+
+
+@dataclass
+class UsageGauge(AbstractCapability[DepsT]):
+    """Feed the context-usage gauge from the harness's measurement event.
+
+    ``ReportContextUsage(on_usage=…)`` was the old route and is deprecated in
+    harness 0.70: the capability now emits
+    :class:`ContextUsageMeasuredEvent` before every model request, and an
+    application subscribes to it. Subscribing here keeps the gauge next to the
+    compaction capability that decides when to act, and it reads the same
+    (possibly capped) window the compactor triggers on - the model's raw window
+    would understate how full the context really is.
+    """
+
+    record: Callable[[ContextUsageMeasuredEvent], None]
+
+    @on_event(ContextUsageMeasuredEvent)
+    async def _on_measured(self, ctx: RunContext[DepsT], event: ContextUsageMeasuredEvent) -> None:
+        del ctx
+        self.record(event)
 
 
 def resolve_context_capability(
@@ -162,7 +190,7 @@ def resolve_rlm_capability(
     )
 
 
-def on_usage_update(agent: ContextHost, usage: ContextUsage) -> None:
+def on_usage_update(agent: ContextHost, usage: ContextUsageMeasuredEvent) -> None:
     """Token-usage snapshot from the compaction capability → UsageTracker."""
     if agent.usage_tracker is not None:
         agent.usage_tracker.record_context_usage(usage.used_tokens, usage.window_tokens)

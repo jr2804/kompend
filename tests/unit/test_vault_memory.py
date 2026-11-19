@@ -2,7 +2,7 @@
 
 ``DirectoryMemoryStore`` implements the harness ``MemoryStore`` protocol over
 plain files so the notebook survives the process (Windows-first — the
-harness ``FileStore`` sandbox workspace has no Windows backend). The
+harness ``FileMemoryStore`` sandbox workspace has no Windows backend). The
 contract below mirrors the harness stores: content-fingerprint versions for
 compare-and-set, idempotent operation receipts, bounded reads, sorted path
 listings, and escape-proof path validation.

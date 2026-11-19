@@ -17,7 +17,7 @@ from pydantic_ai import Agent
 from pydantic_ai.capabilities import Caching, SelectModel
 from pydantic_ai.models import Model, ModelSelectionContext
 from pydantic_ai.models.test import TestModel
-from pydantic_ai_harness.experimental.acp import AcpSession
+from pydantic_ai_harness.experimental.acp import ACPSession
 
 from kompend.acp import harness_adapter, model_selection
 from kompend.acp.endpoint_model import EndpointOverrideSelector
@@ -172,8 +172,8 @@ def _context() -> ModelSelectionContext[None]:
     return cast(ModelSelectionContext[None], SimpleNamespace())
 
 
-def _session(tmp_path: Path) -> AcpSession:
-    return cast(AcpSession, SimpleNamespace(cwd=tmp_path))
+def _session(tmp_path: Path) -> ACPSession:
+    return cast(ACPSession, SimpleNamespace(cwd=tmp_path))
 
 
 def _patch_config(monkeypatch: pytest.MonkeyPatch, *, default_model: Any) -> None:

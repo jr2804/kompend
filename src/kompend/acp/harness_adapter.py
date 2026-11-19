@@ -14,7 +14,7 @@ from pathlib import Path
 
 from pydantic_ai import Agent
 from pydantic_ai.capabilities import AbstractCapability, Caching, SelectModel
-from pydantic_ai_harness.experimental.acp import AcpSession, AcpSessionConfig
+from pydantic_ai_harness.experimental.acp import ACPSession, ACPSessionConfig
 
 from kompend.acp.definitions import AgentTask
 from kompend.acp.endpoint_model import EndpointOverrideSelector
@@ -50,19 +50,19 @@ def build_kompend_agent() -> Agent[None, str]:
     )
 
 
-def kompend_session_config(session: AcpSession) -> AcpSessionConfig[None]:
+def kompend_session_config(session: ACPSession) -> ACPSessionConfig[None]:
     """Per-session factory for ``run_acp_stdio_sync(session_config=...)``.
 
     Resolves the active agent definition for the session's workspace and
-    returns an ``AcpSessionConfig`` with the appropriate toolset and
+    returns an ``ACPSessionConfig`` with the appropriate toolset and
     instructions.
 
     Args:
-        session: The :class:`AcpSession` from the harness (has ``cwd``,
+        session: The :class:`ACPSession` from the harness (has ``cwd``,
             ``mcp_servers``, ``client_capabilities``).
 
     Returns:
-        An ``AcpSessionConfig`` with deps=None, the resolved toolset, the
+        An ``ACPSessionConfig`` with deps=None, the resolved toolset, the
         session-bound model selector, and, unless ``compile.llm.prompt_cache``
         is off, pydantic-ai's ``Caching`` capability.
     """
@@ -90,7 +90,7 @@ def kompend_session_config(session: AcpSession) -> AcpSessionConfig[None]:
     if cache_enabled:
         capabilities.insert(0, Caching())
 
-    return AcpSessionConfig(
+    return ACPSessionConfig(
         deps=None,
         toolsets=[toolset],
         capabilities=capabilities,

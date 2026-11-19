@@ -44,9 +44,10 @@ from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import Model
 from pydantic_ai.output import OutputSpec
 from pydantic_ai.settings import ModelSettings
-from pydantic_ai_harness.compaction import ContextUsage, ReportContextUsage
+from pydantic_ai_harness.compaction import ContextUsageMeasuredEvent, ReportContextUsage
 
 from kompend.agents.base.context import (
+    UsageGauge,
     on_usage_update,
     resolve_compact_on_request,
     resolve_context_capability,
@@ -621,17 +622,13 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
             if on_request is not None:
                 capabilities.append(on_request)
             if self.usage_tracker is not None:
-                # The harness reports token usage through an event; keep feeding
-                # the tracker so context usage stays visible in the run summary.
                 # The gauge measures against the same (possibly capped) window
                 # the compaction capability triggers on - reporting the model's
                 # raw window would understate how full the context really is.
-                capabilities.append(
-                    ReportContextUsage(
-                        on_usage=self._on_usage_update,
-                        context_window=self.context_window,
-                    )
-                )
+                # ``ReportContextUsage`` emits a measurement per request;
+                # ``UsageGauge`` subscribes to it and feeds the tracker.
+                capabilities.append(ReportContextUsage(context_window=self.context_window))
+                capabilities.append(UsageGauge(self._on_usage_update))
         if self.delta_retry_enabled and type(self).supports_delta_retry:
             capabilities.append(self._make_delta_retry_hook())
         rlm_capability = self._resolve_rlm_capability(top_model)
@@ -710,7 +707,7 @@ class KompendAgentBase[ResultT, DepsT: AgentDeps](ABC):
 
     # ── compaction callbacks ─────────────────────────────
 
-    def _on_usage_update(self, usage: ContextUsage) -> None:
+    def _on_usage_update(self, usage: ContextUsageMeasuredEvent) -> None:
         """Delegate to :func:`kompend.agents.base.context.on_usage_update`."""
         on_usage_update(self, usage)
 
