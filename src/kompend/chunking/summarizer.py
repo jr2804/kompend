@@ -28,10 +28,11 @@ from __future__ import annotations
 import hashlib
 import sqlite3
 from collections import deque
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from time import monotonic
 from typing import Protocol
 
 from pydantic_ai.exceptions import OutputTokenLimitExceeded
@@ -176,7 +177,10 @@ class SummarizerContentPolicy:
     Attributes:
         window_chars: Characters per payload window. One window costs one
             summarize call, so a bigger window means fewer calls (faster)
-            — it never drops content.
+            — it never drops content. :meth:`from_config` derives it from the
+            model's context window unless the config pins a smaller value, so
+            a call carries what the window holds instead of a hand-set
+            fraction of it.
         skip_single_child: When ``True``, an internal node with exactly one
             child is skipped — the child's content already represents it.
         traversal: ``OFF`` summarizes every eligible node; ``AUTO`` consults
@@ -193,10 +197,36 @@ class SummarizerContentPolicy:
     traversal_min_nodes: int = 1
 
     @classmethod
-    def from_config(cls, budget: BudgetConfig) -> SummarizerContentPolicy:
-        """Build the policy from the ``compile.budget`` config section."""
+    def from_config(cls, budget: BudgetConfig, *, payload_chars: int) -> SummarizerContentPolicy:
+        """Build the policy from ``compile.budget``, sizing the window to the model.
+
+        ``payload_chars`` is the window-derived character budget one session
+        payload may carry (see ``factory.py``). ``summary_window_chars = 0``
+        means "derive it", and the window then equals that budget — one window
+        fills the request the model can actually take. Pinning a smaller
+        number keeps the old behaviour for a model that answers long prompts
+        badly: more windows, more calls, the same content.
+
+        Deriving it here rather than at the call sites is what stops a vault
+        from silently paying ~10x the calls because a default of 2000 was
+        never revisited for a 64k-window model.
+
+        A configured window larger than the payload budget is clamped to it:
+        one window that does not fit the request is not a tuning choice, it is
+        an impossible request (the pyvas run sent ~78k tokens into a 64k
+        window and the compactor could not shrink a single pinned part).
+        """
+        requested = budget.summary_window_chars
+        window = min(requested, payload_chars) if requested else payload_chars
+        if requested and requested > payload_chars:
+            logger.warning(
+                "summary_window_chars=%d exceeds the model's %d-character input budget - using %d; one window has to fit one request",
+                requested,
+                payload_chars,
+                window,
+            )
         return cls(
-            window_chars=budget.summary_window_chars,
+            window_chars=window,
             skip_single_child=budget.summary_skip_single_child,
             traversal=TraversalMode(budget.summary_traversal),
             traversal_min_nodes=budget.summary_traversal_min_nodes,
@@ -328,6 +358,19 @@ class NodeSummarizer:
         self._planner = planner
         self._ledger_db_path = ledger_db_path
         self._loader = get_template_loader()
+        self.on_progress: Callable[[int, int, str], None] | None = None
+
+    def progress_units(self, tree: ChunkTree) -> int:
+        """Number of work units the progress bar may expect for *tree*.
+
+        Nodes are the stable unit: unlike LLM windows, their count is known
+        before cache lookup or traversal planning. A large tree therefore
+        contributes proportionally more than a tiny tree, rather than every
+        document advancing the bar by one.
+        """
+        if tree.strategy == ChunkStrategy.SINGLE_PASS:
+            return 0
+        return len(self._eligible_nodes(tree))
 
     def summarize(self, tree: ChunkTree) -> ChunkTree:
         """Summarise all eligible internal nodes in ``tree`` (in-place).
@@ -339,6 +382,15 @@ class NodeSummarizer:
             return tree
 
         return self._summarize_tree(tree)
+
+    def _report_progress(self, current: int, total: int, label: str, *, started: float, sessions: int) -> None:
+        """Publish node progress plus measured session throughput."""
+        if self.on_progress is None:
+            return
+        elapsed_minutes = (monotonic() - started) / 60
+        rate = sessions / elapsed_minutes if elapsed_minutes > 0 else 0.0
+        rate_text = f" · {rate:.1f} sessions/min" if rate else ""
+        self.on_progress(current, total, f"{label} · {current}/{total} nodes{rate_text}")
 
     def _eligible_nodes(self, tree: ChunkTree) -> list[ChunkNode]:
         """Internal nodes awaiting a summary, bottom-up.
@@ -553,6 +605,9 @@ class NodeSummarizer:
         stall_retries = self._session_policy.stall_retries if self._session_policy else 0
         sessions = 0
         last_session_recorded = True
+        started = monotonic()
+        label = tree.source_file.name if tree.source_file is not None else tree.root_id
+        self._report_progress(0, len(order), label, started=started, sessions=sessions)
         # Oversize split state: halving the batch and the payload budget is the
         # remedy for a payload the provider refuses (input window or output
         # ceiling) — a byte-identical re-ask would burn another full session.
@@ -571,6 +626,7 @@ class NodeSummarizer:
                 payload_node_ids = {self._base_node_id(entry_id) for entry_id in payload_ids}
                 # Cache hits were applied by ``_agentic_payload`` — no session needed.
                 pending.difference_update(node.id for node in window if node.id not in payload_node_ids)
+                self._report_progress(len(order) - len(pending), len(order), label, started=started, sessions=sessions)
                 if not payload:
                     continue
 
@@ -609,6 +665,7 @@ class NodeSummarizer:
                 completed = {node_id for node_id in payload_node_ids if state.is_complete(node_id)}
                 if completed:
                     pending.difference_update(completed)
+                self._report_progress(len(order) - len(pending), len(order), label, started=started, sessions=sessions)
                 if progressed:
                     last_session_recorded = True
                     # The session produced something: the nodes that are

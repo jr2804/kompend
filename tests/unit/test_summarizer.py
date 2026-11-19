@@ -224,6 +224,40 @@ class TestSummarizerStructuredLeaf:
         assert section_node.summary != ""
 
 
+class TestSummarizerProgress:
+    """Meaningful node progress is emitted while a large tree is processed."""
+
+    def test_reports_initial_and_completed_node_counts(self, agentic_tree: ChunkTree) -> None:
+        agent = cast(SummarizerAgent, _session_llm())
+        summarizer = NodeSummarizer(
+            agent=agent, content_policy=_policy(), session_policy=SummarizerSessionPolicy(batch_size=2, stall_retries=0, payload_chars=10_000)
+        )
+        events: list[tuple[int, int, str]] = []
+        summarizer.on_progress = lambda current, total, detail: events.append((current, total, detail))
+
+        summarizer.summarize(agentic_tree)
+
+        assert summarizer.progress_units(agentic_tree) == 4
+        assert events[0][:2] == (0, 4)
+        assert events[-1][:2] == (4, 4)
+        assert "doc.md" in events[-1][2]
+        assert "nodes" in events[-1][2]
+
+    def test_agentic_run_reports_node_progress_and_rate(self, agentic_tree: ChunkTree) -> None:
+        agent = cast(SummarizerAgent, _StubAgent())
+        policy = SummarizerSessionPolicy(batch_size=10, stall_retries=1, payload_chars=100_000)
+        events: list[tuple[int, int, str]] = []
+        summarizer = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy)
+        summarizer.on_progress = lambda current, total, detail: events.append((current, total, detail))
+
+        summarizer.summarize(agentic_tree)
+
+        assert events[0][0] == 0
+        assert events[-1][0:2] == (summarizer.progress_units(agentic_tree),) * 2
+        assert "nodes" in events[-1][2]
+        assert "sessions/min" in events[-1][2]
+
+
 class TestSummarizerAgenticResume:
     """Regression (p863 ``ITU-T_P_863__03_2018__root``): one agentic session
     that ran out of its request budget abandoned the rest of the tree.  A
@@ -518,6 +552,18 @@ class TestSummarizerOversizeSplit:
 class TestSummarizerWindowing:
     """Content longer than the per-call budget is split — never truncated."""
 
+    def test_default_window_uses_request_payload_budget(self) -> None:
+        policy = SummarizerContentPolicy.from_config(BudgetConfig(), payload_chars=48_000)
+
+        assert policy.window_chars == 48_000
+
+    def test_configured_window_overrides_request_payload_budget(self) -> None:
+        budget = BudgetConfig(summary_window_chars=12_000)
+
+        policy = SummarizerContentPolicy.from_config(budget, payload_chars=48_000)
+
+        assert policy.window_chars == 12_000
+
     def test_agentic_payload_carries_every_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
         agent = make_summarizer_agent("test-model")
         seen: list[list[tuple[str, str]]] = []
@@ -529,7 +575,7 @@ class TestSummarizerWindowing:
 
         monkeypatch.setattr(agent, "run", _run)
         policy = SummarizerSessionPolicy(batch_size=10, stall_retries=1, payload_chars=100_000)
-        tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(_long_tree())
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(window_chars=40), session_policy=policy).summarize(_long_tree())
 
         entries = [entry for session in seen for entry in session]
         ids = [entry_id for entry_id, _ in entries]
@@ -598,7 +644,7 @@ def _policy(
     skip_single_child: bool | None = None,
 ) -> SummarizerContentPolicy:
     """Content policy from the config defaults, with optional overrides."""
-    policy = SummarizerContentPolicy.from_config(BudgetConfig())
+    policy = SummarizerContentPolicy.from_config(BudgetConfig(), payload_chars=10_000)
     if window_chars is not None:
         policy = replace(policy, window_chars=window_chars)
     if skip_single_child is not None:

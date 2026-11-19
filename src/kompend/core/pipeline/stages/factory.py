@@ -22,7 +22,7 @@ from kompend.chunking.summarizer import (
 )
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.graph import GraphCompiler
-from kompend.compilation.two_phase import TwoPhaseCompiler, tokens_to_chars
+from kompend.compilation.two_phase import TwoPhaseCompiler
 from kompend.compilation.wicer import WiCERCompiler
 from kompend.core.cache.store import (
     SUMMARIZER_PLAN_LAYER,
@@ -41,6 +41,7 @@ from kompend.core.store import vault_db_path
 from kompend.core.templates import get_template_loader
 from kompend.llm.context_window import discover_context_window
 from kompend.llm.decision import decision_model_string
+from kompend.llm.request_budget import RequestBudget
 from kompend.logging import get_logger
 from kompend.output.base import BaseOutputWriter
 from kompend.preprocessing.parsers import build_parser
@@ -248,6 +249,19 @@ def build_pipeline(
             llm_config=config.llm,
         )
         chunker_context_window = cw
+        # Characters of node content one request against this window may
+        # carry. The summarizer's payload budget, its per-window split and the
+        # traversal planner's char budget are the same quantity: a plan can
+        # only shape what a session could summarize, and a window bigger than
+        # the request simply costs more calls for no gain.
+        #
+        # Sized through RequestBudget, not `cw.input_budget()`: the answer
+        # reserve alone is not enough. The safety margin and the density floor
+        # are what keep a planned request inside the window — a payload built
+        # from the raw input budget arrived at ~78k tokens against a 64k
+        # window, and the compaction loop could not shrink a single pinned
+        # part that large.
+        payload_chars = RequestBudget(window=cw).content_chars(config.llm.default_chars_per_token)
         summary_cache = CacheStore(config.paths.cache_dir)
         if config.budget.summary_traversal == "auto":
             traversal_model = config.budget.summary_traversal_model or decision_model_string(config.decision)
@@ -257,19 +271,14 @@ def build_pipeline(
                     model=traversal_model,
                     budget_nodes=config.budget.summary_traversal_max_nodes,
                     budget_windows=config.budget.summary_traversal_max_windows,
-                    # The same content budget one session payload may carry:
-                    # a plan can only shape what a session could summarize.
-                    budget_chars=tokens_to_chars(
-                        cw.input_budget(),
-                        chars_per_token=config.llm.default_chars_per_token,
-                    ),
+                    budget_chars=payload_chars,
                     cache_store=summary_cache,
                     include_model=not config.cache_ignore_model,
                     task=get_template_loader().get_text(_TASK_TEMPLATE),
                 )
         summarizer_agent = make_summarizer_agent(
             model_string=model,
-            timeout=config.llm.timeout,
+            timeout=config.llm.request_ceiling_s,
             skills=config.skills,
             context_window=cw.max_input,
             requests_per_node=config.budget.summary_requests_per_node,
@@ -280,7 +289,7 @@ def build_pipeline(
         if config.search.contextual.enabled:
             enricher_agent = make_context_chunk_agent(
                 model_string=model,
-                timeout=config.llm.timeout,
+                timeout=config.llm.request_ceiling_s,
                 skills=config.skills,
                 context_window=cw.max_input,
                 rlm=config.llm.rlm,
@@ -347,17 +356,12 @@ def build_pipeline(
         summarizer=NodeSummarizer(
             agent=summarizer_agent,
             cache_store=summary_cache,
-            content_policy=SummarizerContentPolicy.from_config(config.budget),
+            content_policy=SummarizerContentPolicy.from_config(config.budget, payload_chars=payload_chars),
             cache_ignore_model=config.cache_ignore_model,
             session_policy=SummarizerSessionPolicy(
                 batch_size=config.budget.summary_session_batch_size,
                 stall_retries=config.budget.summary_session_stall_retries,
-                # The window dictates how much node content one payload may
-                # carry; a bigger budget here is a request that cannot fit.
-                payload_chars=tokens_to_chars(
-                    cw.input_budget(),
-                    chars_per_token=config.llm.default_chars_per_token,
-                ),
+                payload_chars=payload_chars,
             ),
             planner=planner,
             ledger_db_path=vault_db_path(config.paths.cache_dir),

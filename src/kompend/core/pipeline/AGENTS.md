@@ -15,7 +15,7 @@ persistence, and standalone ingestion.
 | ----------------------------- | -------- |
 | `stages/pipeline.py`          | `WikiPipeline` — 5-tier orchestrator, `ProgressCallback` |
 | `stages/factory.py`           | `build_pipeline` — pipeline factory |
-| `stages/parse.py`             | Tier 1 dispatch: `parse_and_chunk`, worker pool, dedup gate, attachments, `build_resolver_chain` (VLM captioning plus the optional decision-model relevance gate) and `build_figure_gate` -- the one factory every figure path uses, so resolver chunks and standalone attachments ask the same model the same question; heavy parses are serialized by one `HeavyParseGuard` (`preprocessing/host_memory.py`) — the memory headroom half is checked in the parser, which holds the routing plan |
+| `stages/parse.py`             | Tier 1 dispatch: `parse_and_chunk`, node-weighted summary progress (`_summarize_trees`), worker pool, dedup gate, attachments, `build_resolver_chain` (VLM captioning plus the optional decision-model relevance gate) and `build_figure_gate` -- the one factory every figure path uses, so resolver chunks and standalone attachments ask the same model the same question; heavy parses are serialized by one `HeavyParseGuard` (`preprocessing/host_memory.py`) — the memory headroom half is checked in the parser, which holds the routing plan |
 | `stages/parse_sources.py`     | One source through Tier 1: `_process_single_source` (returns `list[ChunkTree]` — one tree per document), `_parse_source`, page-range splitting seam (`preprocessing.splitting`), privacy filter, dedup warning. A `ChunkingError` fails that one document (`chunk` row `failed`, repro bundle) and the run continues |
 | `stages/parse_store.py`       | Stage-side parse-cache adapter: `_load_cache`, `_save_cache`, `_try_load_parsed_cache`, `_try_load_chunk_cache`, `_chunk_cache_deps`, `parse_identity` |
 | `stages/index.py`             | Tier 0 source indexing, including `iter_sources` - the single discovery point: supported suffixes, `_archive`/`.kompend` guards, `[ignore] patterns`, and the source dir's `.gitignore` |
@@ -111,6 +111,10 @@ persistence, and standalone ingestion.
   status` surfaces a suspicion. A flagged parse still succeeds — the mislabel
   guard (`parse_target_path`) is a separate refusal and is not special-cased
   here.
+- Summary progress is node-weighted, not document-weighted. `parse._summarize_trees`
+  aggregates eligible nodes across trees and offsets each summarizer callback;
+  the CLI reports completed/total nodes plus measured sessions/min, so one
+  large document cannot pin a per-document bar for hours.
 - A failed parse leaves a repro bundle, not just a ledger row.
   `failure_bundle.write_failure_bundle` — called from `ingest_documents`, both
   `_parse_source` failure branches, and the chunk stage's splitter failure in

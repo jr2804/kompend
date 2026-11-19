@@ -51,10 +51,13 @@ class BudgetConfig(_KompendBaseModel):
     max_concept_pages: int = Field(default=50, validation_alias=EnvVar.BUDGET_MAX_CONCEPT_PAGES)
     chunk_size_min: int = Field(default=2048, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MIN)
     chunk_size_max: int = Field(default=131072, validation_alias=EnvVar.BUDGET_CHUNK_SIZE_MAX)
-    #: Characters per payload window of the summarizer. One window
-    #: costs one summarize call, so a bigger window means fewer calls (faster)
-    #: — it never drops content.
-    summary_window_chars: int = Field(default=2000, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_WINDOW_CHARS)
+    #: Characters per payload window of the summarizer. One window costs one
+    #: summarize call, so a bigger window means fewer calls (faster) — it never
+    #: drops content. ``0`` (the default) derives it from the model's context
+    #: window, so one call carries as much as the window holds instead of a
+    #: hand-set fraction of it; pin an integer only for a model that answers
+    #: long prompts badly.
+    summary_window_chars: int = Field(default=0, ge=0, validation_alias=EnvVar.BUDGET_SUMMARY_WINDOW_CHARS)
     summary_skip_single_child: bool = True
     summary_chunk_threshold: int = 10
     summary_requests_per_node: int = Field(default=2, ge=1, validation_alias=EnvVar.BUDGET_SUMMARY_REQUESTS_PER_NODE)

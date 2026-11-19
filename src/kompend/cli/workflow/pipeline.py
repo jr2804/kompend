@@ -28,7 +28,7 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
     The overall bar resets per phase. Each phase has a flat handler keyed by
     name in the dispatch table — no nested phase if/elif chain.
     - **parse**: bar tracks files (0 → N)
-    - **summary**: bar tracks per-tree LLM summarization (0 → N trees)
+    - **summary**: bar tracks eligible nodes across all trees (0 → N nodes)
     - **resolve**: bar resets to track chunks (0 → M)
     - **compile** / **output**: bar becomes indeterminate
     """
@@ -44,12 +44,12 @@ def make_progress_callback(tracker: PipelineProgress) -> Callable[[str, int, int
 
     def _summary(current: int, total: int, detail: str) -> None:
         if detail == ProgressDetail.STARTING:
-            tracker.reset_for_phase(total, f"Summarizing sections ({total} source(s) to summarize)…")
+            tracker.reset_for_phase(total, f"Summarizing sections ({total} node(s) to summarize)…")
         elif detail == ProgressDetail.DONE:
             if total:
-                tracker.update_progress(total, f"Summarized {total} source(s)")
+                tracker.update_progress(total, f"Summarized {total} node(s)")
             else:
-                tracker.message("No sources to summarize")
+                tracker.message("No nodes to summarize")
         else:
             tracker.update_progress(current, f"[{current}/{total}] {detail}")
 
@@ -217,7 +217,7 @@ def check_llm_availability(pipeline: WikiPipeline) -> None:
     try:
         agent = DoctorAgent(
             model,
-            timeout=pipeline.config.llm.timeout,
+            timeout=pipeline.config.llm.request_ceiling_s,
             llm=pipeline.config.llm,
         )
         agent.run(DoctorDeps(ping="ok"))

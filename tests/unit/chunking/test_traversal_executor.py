@@ -505,7 +505,7 @@ def _summarizer(
     executor; the real types are ``SummarizerAgent``, ``TraversalPlanner``
     and ``CacheStore``.
     """
-    content = policy or (_auto_policy() if auto else SummarizerContentPolicy.from_config(BudgetConfig()))
+    content = policy or (_auto_policy() if auto else SummarizerContentPolicy.from_config(BudgetConfig(), payload_chars=8_000))
     return NodeSummarizer(
         cast("SummarizerAgent", agent),
         cache_store=cast("CacheStore | None", cache),
@@ -519,7 +519,7 @@ def _summarizer(
 def _auto_policy() -> SummarizerContentPolicy:
     # traversal_min_nodes=0: the fixtures hold 4–6 eligible nodes, far below
     # the configured gate (50) — the gate itself is covered by its own test.
-    return replace(SummarizerContentPolicy.from_config(BudgetConfig()), traversal=TraversalMode.AUTO, traversal_min_nodes=0)
+    return replace(SummarizerContentPolicy.from_config(BudgetConfig(), payload_chars=8_000), traversal=TraversalMode.AUTO, traversal_min_nodes=0)
 
 
 def _payload_ids(agent: _StubAgent) -> set[str]:

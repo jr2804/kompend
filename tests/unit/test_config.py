@@ -431,7 +431,7 @@ class TestResolveConfig:
     def test_summary_window_chars_is_configurable(self, tmp_path: Any, monkeypatch: Any) -> None:
         """The agentic payload window is a config value, not a hardcoded constant."""
         monkeypatch.chdir(tmp_path)
-        assert resolve_config().get("compile.budget.summary_window_chars") == 2000
+        assert resolve_config().get("compile.budget.summary_window_chars") == 0
 
         (tmp_path / "kompend.toml").write_text("[compile.budget]\nsummary_window_chars = 4000\n")
         assert resolve_config().get("compile.budget.summary_window_chars") == 4000
@@ -638,7 +638,7 @@ class TestResolveConfig:
             "[compile.llm]\n"
             'default_model = "claude-sonnet-4-5"\n'
             'vlm_model = "gpt-4o"\n'
-            "timeout = 300.0\n"
+            "request_ceiling_s = 300.0\n"
             'api_base = "https://custom.api.com/v1"\n'
             'api_key = "sk-global-test"\n'
         )
@@ -653,7 +653,7 @@ class TestResolveConfig:
         # LLM values must come from global
         assert cfg.get("compile.llm.default_model") == "claude-sonnet-4-5"
         assert cfg.get("compile.llm.vlm_model") == "gpt-4o"
-        assert cfg.get("compile.llm.timeout") == 300.0
+        assert cfg.get("compile.llm.request_ceiling_s") == 300.0
         assert cfg.get("compile.llm.api_base") == "https://custom.api.com/v1"
         assert cfg.get("compile.llm.api_key") == "sk-global-test"
 
@@ -668,7 +668,7 @@ class TestResolveConfig:
         """Project-level LLM config overrides global LLM config."""
         config_dir = tmp_path / "kompend"
         config_dir.mkdir()
-        (config_dir / "config.toml").write_text('[compile.llm]\ndefault_model = "claude-sonnet-4-5"\ntimeout = 300.0\n')
+        (config_dir / "config.toml").write_text('[compile.llm]\ndefault_model = "claude-sonnet-4-5"\nrequest_ceiling_s = 300.0\n')
         monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
 
         project_dir = tmp_path / "project"
@@ -679,7 +679,21 @@ class TestResolveConfig:
 
         # Project overrides model, global still provides timeout
         assert cfg.get("compile.llm.default_model") == "local-model"
-        assert cfg.get("compile.llm.timeout") == 300.0
+        assert cfg.get("compile.llm.request_ceiling_s") == 300.0
+
+    def test_the_old_timeout_key_still_loads(self, tmp_path: Any, monkeypatch: Any) -> None:
+        """`timeout` is the validation alias: an existing vault keeps working."""
+        config_dir = tmp_path / "kompend"
+        config_dir.mkdir()
+        (config_dir / "config.toml").write_text("[compile.llm]\ntimeout = 45.0\n")
+        monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path))
+        project_dir = tmp_path / "project"
+        project_dir.mkdir()
+        monkeypatch.chdir(project_dir)
+
+        cfg = resolve_config()
+
+        assert cfg.kompend.compile.llm.request_ceiling_s == 45.0
 
     @pytest.fixture(autouse=True)
     def _isolate_global_config(self, tmp_path: Any, monkeypatch: Any) -> None:
@@ -1174,7 +1188,7 @@ class TestGenerateScaffoldConfig:
         """The scaffold carries work-shaping budgets, never response ceilings."""
         data = tomllib.loads(generate_scaffold_config())
         budget = data["compile"]["budget"]
-        assert budget["summary_window_chars"] == 2000
+        assert budget["summary_window_chars"] == 0
         assert not [key for key in budget if key.endswith("_output_max")]
 
     def test_annotates_enum_values_with_remaining_domain(self) -> None:
@@ -1224,10 +1238,10 @@ class TestExtractTomlKeys:
         assert "compile.budget.chunk_size_min" in keys
 
     def test_nested_sections(self) -> None:
-        text = '[compile.llm]\ndefault_model = "x"\ntimeout = 120.0\n'
+        text = '[compile.llm]\ndefault_model = "x"\nrequest_ceiling_s = 120.0\n'
         keys = extract_toml_keys(text)
         assert "compile.llm.default_model" in keys
-        assert "compile.llm.timeout" in keys
+        assert "compile.llm.request_ceiling_s" in keys
 
     def test_commented_keys(self) -> None:
         text = "[compile]\n# force = false\n# no_cache = false\n"

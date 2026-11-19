@@ -19,7 +19,7 @@ each model's auto-detected context window. Atomic elements are never split.
 | ``hierarchical.py`` | ``ChunkTreeBuilder`` — hierarchical chunking from ``ParsedDocument`` |
 | ``errors.py`` | ``ChunkingError`` — the splitter could not split a section |
 | ``extractors.py`` | ``ContentExtractors`` — per-element-type extraction helpers |
-| ``summarizer.py`` | ``NodeSummarizer`` — bottom-up node summaries via ``SummarizerAgent`` or the agentic summarizer session; ``SummarizerSessionPolicy`` (batch size, stall retries), ``SummarizerContentPolicy`` (content chars, window chars, target chars, skip-single-child); optional planning stage (``TraversalMode.AUTO`` + ``TraversalPlanner``: plan top-down per level, summarize the planned set, SKIP branches inherit the nearest ancestor summary) |
+| ``summarizer.py`` | ``NodeSummarizer`` — bottom-up node summaries via ``SummarizerAgent`` or the agentic summarizer session; adaptive request-window sizing plus per-node/session-rate progress; ``SummarizerSessionPolicy`` (batch size, stall retries), ``SummarizerContentPolicy`` (content chars, window chars, target chars, skip-single-child); optional planning stage (``TraversalMode.AUTO`` + ``TraversalPlanner``: plan top-down per level, summarize the planned set, SKIP branches inherit the nearest ancestor summary) |
 | ``contextual.py`` | ``ContextualEnricher`` — prepend situating context to chunks before embedding |
 | ``outline.py`` | ``OutlineNode`` / ``build_outline`` — LLM-free structural outline (sizes, kinds, preview) for decision-model traversal planning; ``outline_to_prompt`` renders it with exact ``len`` accounting |
 
@@ -43,15 +43,22 @@ each model's auto-detected context window. Atomic elements are never split.
   summaries written for ids outside the payload never count as progress.
 - Node content is **windowed, never truncated**: content longer than the
   payload window ``budget.summary_window_chars`` is summarised in several
-  windows inside one session. The per-node summary is the join of its window
-  summaries; window ids carry
-  a ``#wN`` suffix, a single-window node keeps its plain id.
+  windows inside one session. The default ``0`` derives the window from the
+  same model-safe payload budget used by the session; a positive value remains
+  an explicit override, clamped to that budget because one window has to fit
+  one request. The per-node summary is the join of its window
+  summaries; window ids carry a ``#wN`` suffix, a single-window node keeps its
+  plain id.
 - An agentic payload carries at most ``SummarizerSessionPolicy.payload_chars``
   characters of node content (from ``ContextWindow.input_budget``). Windows that
   do not fit stay pending, so the next session asks them - the bound splits a
   request, it never drops a window.
+- Progress is counted by eligible summary nodes, not by documents or agent
+  turns. ``NodeSummarizer.on_progress`` reports completed/total nodes and
+  measured sessions/min; the pipeline aggregates offsets across trees so a
+  large tree contributes proportionally more of the bar.
 - The summarizer's numbers live in ``compile.budget`` only:
-  ``SummarizerContentPolicy.from_config(budget)`` and
+  ``SummarizerContentPolicy.from_config(budget, payload_chars=...)`` and
   ``SummarizerSessionPolicy`` carry them into the summarizer. Never repeat a
   budget number as a default in this module — a default there silently
   overrides the config.

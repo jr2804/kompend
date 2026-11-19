@@ -133,7 +133,7 @@ class TestMakeProgressCallbackSummary:
         tracker = _RecordingTracker()
         cb = make_progress_callback(tracker)
         cb("summary", 0, 233, "starting")
-        assert tracker.calls == [("reset", 233, "Summarizing sections (233 source(s) to summarize)…")]
+        assert tracker.calls == [("reset", 233, "Summarizing sections (233 node(s) to summarize)…")]
 
     def test_per_unit_updates_bar(self) -> None:
         tracker = _RecordingTracker()
@@ -145,7 +145,7 @@ class TestMakeProgressCallbackSummary:
         tracker = _RecordingTracker()
         cb = make_progress_callback(tracker)
         cb("summary", 233, 233, "done")
-        assert tracker.calls == [("update", 233, "Summarized 233 source(s)")]
+        assert tracker.calls == [("update", 233, "Summarized 233 node(s)")]
 
     def test_empty_done_is_message_not_bar(self) -> None:
         tracker = _RecordingTracker()
@@ -153,8 +153,8 @@ class TestMakeProgressCallbackSummary:
         cb("summary", 0, 0, "starting")
         cb("summary", 0, 0, "done")
         assert tracker.calls == [
-            ("reset", 0, "Summarizing sections (0 source(s) to summarize)…"),
-            ("message", None, "No sources to summarize"),
+            ("reset", 0, "Summarizing sections (0 node(s) to summarize)…"),
+            ("message", None, "No nodes to summarize"),
         ]
 
 

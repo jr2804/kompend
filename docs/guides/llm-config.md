@@ -148,7 +148,7 @@ Set the primary model in `[compile.llm]`:
 [compile.llm]
 default_model = "ollama/qwen3"
 vlm_model = "ollama/qwen3"          # separate VLM if desired
-timeout = 120.0                      # per-call timeout in seconds
+request_ceiling_s = 120.0            # upper bound for one request, in seconds
 ```
 
 ## Fallback chain
@@ -407,7 +407,7 @@ llm_timeout = 300.0    # seconds, per LLM lint call
 long-context JSON requests - `coverage-gap` sends a batch of page summaries,
 `clarity-score` and `factual-consistency` send whole pages - so they need more
 headroom than a compile call of the same model. `lint.llm_timeout` is separate
-from `compile.llm.timeout` for that reason. A transient failure is retried by
+from `compile.llm.request_ceiling_s` for that reason. A transient failure is retried by
 the agent base (`compile.llm.transient_retries`) before the rule reports
 nothing. A semantic failure is not retried.
 

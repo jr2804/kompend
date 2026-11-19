@@ -230,17 +230,34 @@ def parse_and_chunk(
         elif mode is AttachmentMode.INDEX_ONLY:
             pipeline.attachment_stubs = _attachment_stub_nodes(pipeline, ledger)
 
-    if pipeline.summarizer is not None:
-        # Summarization runs one LLM session per tree and can take hours for
-        # large vaults — emit the summary sub-phase so the bar tracks it
-        # instead of pinning at "Parsed N file(s) 100%".
-        pipeline.emit("summary", 0, len(trees), ProgressDetail.STARTING)
-        for idx, tree in enumerate(trees):
-            pipeline.emit("summary", idx + 1, len(trees), tree_label(tree))
-            pipeline.summarizer.summarize(tree)
-        pipeline.emit("summary", len(trees), len(trees), ProgressDetail.DONE)
+    _summarize_trees(pipeline, trees)
 
     return trees
+
+
+def _summarize_trees(pipeline: PipelineRuntime, trees: list[ChunkTree]) -> None:
+    """Summarize trees while reporting progress in meaningful node units."""
+    summarizer = pipeline.summarizer
+    if summarizer is None:
+        return
+    work = [summarizer.progress_units(tree) for tree in trees]
+    total = sum(work)
+    pipeline.emit("summary", 0, total, ProgressDetail.STARTING)
+    completed = 0
+    try:
+        for tree, units in zip(trees, work, strict=True):
+            base = completed
+
+            def report(current: int, tree_total: int, detail: str, *, offset: int = base) -> None:
+                pipeline.emit("summary", offset + min(current, tree_total), total, detail)
+
+            summarizer.on_progress = report
+            summarizer.summarize(tree)
+            completed += units
+            pipeline.emit("summary", completed, total, tree_label(tree))
+    finally:
+        summarizer.on_progress = None
+    pipeline.emit("summary", total, total, ProgressDetail.DONE)
 
 
 def tree_label(tree: ChunkTree) -> str:
@@ -315,7 +332,7 @@ def _attachment_stub_nodes(pipeline: PipelineRuntime, ledger: StageLedger) -> li
         try:
             vlm_captioner = VlmAgent(
                 vlm_model,
-                timeout=pipeline.config.llm.timeout,
+                timeout=pipeline.config.llm.request_ceiling_s,
                 llm=pipeline.config.llm,
             )
         except Exception as exc:
@@ -430,7 +447,7 @@ def _process_attachments(pipeline: PipelineRuntime, ledger: StageLedger) -> list
         try:
             vlm_captioner = VlmAgent(
                 vlm_model,
-                timeout=pipeline.config.llm.timeout,
+                timeout=pipeline.config.llm.request_ceiling_s,
                 llm=pipeline.config.llm,
             )
         except Exception as exc:
@@ -539,7 +556,7 @@ def build_resolver_chain(config: PipelineConfig) -> BaseResolver:
         try:
             vlm_agent = VlmAgent(
                 vlm_model,
-                timeout=config.llm.timeout,
+                timeout=config.llm.request_ceiling_s,
                 llm=config.llm,
             )
             relevance_agent = build_figure_gate(config)
