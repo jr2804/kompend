@@ -624,8 +624,14 @@ class NodeSummarizer:
                 payload = self._agentic_payload(tree, window, state, payload_chars=budget, plan_view=plan_view)
                 payload_ids = {entry["id"] for entry in payload}
                 payload_node_ids = {self._base_node_id(entry_id) for entry_id in payload_ids}
-                # Cache hits were applied by ``_agentic_payload`` — no session needed.
-                pending.difference_update(node.id for node in window if node.id not in payload_node_ids)
+                # Nodes the session need not ask about leave the queue: fully
+                # cached, or complete from an earlier session. A node the
+                # payload budget left unpacked STAYS pending — the payload
+                # builder's contract ("the node stays pending, so nothing is
+                # lost"); testing payload membership instead silently
+                # abandoned every node behind a full budget (run 5861db13
+                # lost 2 nodes this way, with no log line naming them).
+                pending.difference_update(node.id for node in window if state.is_complete(node.id))
                 self._report_progress(len(order) - len(pending), len(order), label, started=started, sessions=sessions)
                 if not payload:
                     continue
@@ -683,9 +689,10 @@ class NodeSummarizer:
         if missing:
             stats.unsummarized += len(missing)
             logger.warning(
-                "Agentic summarizer left %d node(s) unsummarized after %d session(s)%s",
+                "Agentic summarizer left %d node(s) unsummarized after %d session(s): %s%s",
                 len(missing),
                 sessions,
+                ", ".join(node.id for node in missing),
                 " (last session recorded nothing for its payload)" if not last_session_recorded else "",
             )
         incomplete = [node for node in eligible if node.summary and not state.is_complete(node.id)]

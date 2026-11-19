@@ -454,6 +454,64 @@ class TestSummarizerAgenticBatching:
             assert tree.nodes[node_id].summary == f"summary {node_id}"
 
 
+class TestSummarizerPayloadBound:
+    """The payload budget splits a request; it must never drop a node.
+
+    Regression (run 5861db13): a batch window whose content exceeded the
+    payload budget packed only its head, and the tail nodes — silently
+    un-pended because they were absent from the payload — were never asked
+    and never summarized. The run ended with ``left 2 node(s) unsummarized``
+    and no log line saying which or why.
+    """
+
+    def test_a_node_the_payload_budget_skips_stays_pending(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Nodes behind a full payload budget are asked in the next session."""
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
+        rounds: list[list[str]] = []
+
+        def _run(deps: SummarizerDeps) -> None:
+            rounds.append([entry["id"] for entry in deps.nodes])
+            for entry in deps.nodes:
+                deps.results[entry["id"]] = f"summary {entry['id']}"
+
+        monkeypatch.setattr(agent, "run", _run)
+        policy = SummarizerSessionPolicy(batch_size=10, stall_retries=2, payload_chars=30)
+        tree = NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
+
+        # The budget fits one section's content per session: the tail of the
+        # first batch window (s1, then s0) waits its turn instead of being
+        # abandoned — each comes back as its own later session.
+        assert len(rounds) >= 3
+        assert ["s1"] in rounds
+        assert ["s0"] in rounds
+        for node_id in ("s0", "s1", "s2", "r"):
+            assert tree.nodes[node_id].summary == f"summary {node_id}"
+
+    def test_the_tail_warning_names_the_nodes(
+        self,
+        agentic_tree: ChunkTree,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A node dropped by stall strikes is named in the tail warning."""
+        agent = make_summarizer_agent(model_string="ollama/gpt-oss:20b")
+
+        def _run(deps: SummarizerDeps) -> None:
+            pass  # records nothing: every payload id takes a stall strike
+
+        monkeypatch.setattr(agent, "run", _run)
+        policy = SummarizerSessionPolicy(batch_size=10, stall_retries=0, payload_chars=100_000)
+        NodeSummarizer(agent=agent, content_policy=_policy(), session_policy=policy).summarize(agentic_tree)
+
+        assert "left 4 node(s) unsummarized after 1 session(s)" in caplog.text
+        for node_id in ("s0", "s1", "s2", "r"):
+            assert node_id in caplog.text
+
+
 class TestSummarizerOversizeSplit:
     """A payload the provider refuses is split, never re-asked byte-identical.
 
