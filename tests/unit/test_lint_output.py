@@ -87,6 +87,30 @@ class TestLintLogArtefact:
         assert isinstance(report, dict)
         assert report["health_score"] == 0.0
 
+    def test_header_counts_the_pages_the_report_covers(self, tmp_path: Path) -> None:
+        """The header counts linted pages, not the wiki graph's node count.
+
+        ``entry_from_report`` stores the graph's ``node_count`` (12 below) in
+        ``wiki_meta``; a degraded compile can cache an empty graph while the
+        on-disk pages still lint — the header must say what the report covers,
+        not quote the graph (run 5861db13 printed "over 0 page(s)" under 1189
+        checks). A wiki-level finding carries no page id and counts as none.
+        """
+        entry = self._entry(
+            _report(
+                _fail("rumdl", "MD024", "a.md"),
+                _fail("rumdl", "MD013", "a.md"),
+                _fail("coverage-gap", "ABLE model missing", "b.md"),
+                LintResult(rule="broken-wikilinks", outcome=LintRuleOutcome.PASS),
+            )
+        )
+
+        paths = write_lint_log(entry, tmp_path)
+
+        body = paths.markdown.read_text(encoding="utf-8")
+        assert "- Duration: 1.5s over 2 page(s)" in body
+        assert "12 page(s)" not in body
+
     def test_latest_returns_the_newest_report(self, tmp_path: Path) -> None:
         first = self._entry(_report(_fail("a", "one")))
         first.timestamp = "2026-10-24T01:00:00+02:00"

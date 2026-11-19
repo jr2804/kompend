@@ -50,7 +50,12 @@ def write_lint_log(entry: LintEntry, base_dir: Path) -> LintLogPaths:
     options = entry.options
     wiki_meta = entry.wiki_meta
     duration = entry.duration_seconds  # nocheck - lint-history schema, not WikiField
-    page_count = wiki_meta.node_count
+    # "Over N page(s)" counts the pages the report actually covers — the same
+    # distinct-page_id set the runner's summary line prints. The wiki graph's
+    # node count is a different number: a degraded compile can cache an empty
+    # graph while the on-disk pages still lint, and quoting it here printed
+    # "over 0 page(s)" under 1189 checks (run 5861db13).
+    page_count = len({result.page_id for result in report.results if result.page_id})
     header = [
         "# Lint report",
         "",
