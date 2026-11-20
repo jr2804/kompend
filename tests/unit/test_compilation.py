@@ -922,6 +922,96 @@ class TestWiCERCompilerWithMock:
         assert wiki.metadata["wicer_iterations"] == 1
         assert wiki.metadata["wicer_refinements"] == 1
 
+    def test_slow_blind_compile_does_not_eat_the_refinement_budget(self, mock_llm: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The refinement clock starts after the blind compile.
+
+        A blind compile slower than the budget must still leave iteration 1
+        reachable: run bc35f97e spent 20199.5s in the blind compile against an
+        1800s budget, so the loop stopped before its first probe.
+        """
+        mock_llm.probe.return_value = self._probe_output([{"question": "Q1?", "answer": "A1."}])
+        mock_llm.evaluate.return_value = self._evaluate_output([{"question": "Q1?", "expected_answer": "A1.", "found_answer": "", "correct": False}])
+        mock_llm.diagnose.return_value = self._diagnose_output(["a fact"])
+        chunks = _make_chunks(count=1, heading="Test")
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
+        )
+        config.budget.wicer_max_iterations = 0
+        config.budget.wicer_max_seconds = 1800
+        config.budget.min_content_length = 0
+        compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
+        compiler._has_llm = True
+        clock = {"t": 0.0}
+
+        def fake_monotonic() -> float:
+            return clock["t"]
+
+        def slow_blind_compile(chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None, pinned_facts: list[str] | None = None) -> CompiledWiki:
+            del trees, pinned_facts
+            clock["t"] = 20_199.5
+            return CompiledWiki(
+                nodes=[WikiNode(id="n0", title="N", content="X", node_type=NodeType.SECTION)],
+                edges=[],
+                toc=[{"title": "N", "id": "n0", "level": 1}],
+                metadata={"chunk_count": 1},
+            )
+
+        monkeypatch.setattr(compiler, "_blind_compile", slow_blind_compile)
+        with patch("kompend.compilation.wicer.time.monotonic", side_effect=fake_monotonic):
+            wiki = compiler.compile(chunks)
+        assert wiki.metadata["wicer_iterations"] >= 1
+        assert wiki.metadata["wicer_refinements"] >= 1
+
+    def test_budget_stop_names_the_blind_compile_duration(self, mock_llm: MagicMock, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """The stop warning states the blind-compile time and the budget needed."""
+        mock_llm.probe.return_value = self._probe_output([{"question": "Q1?", "answer": "A1."}])
+        mock_llm.evaluate.return_value = self._evaluate_output([{"question": "Q1?", "expected_answer": "A1.", "found_answer": "", "correct": False}])
+        mock_llm.diagnose.return_value = self._diagnose_output(["a fact"])
+        chunks = _make_chunks(count=1, heading="Test")
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
+        )
+        config.budget.wicer_max_iterations = 0
+        config.budget.wicer_max_seconds = 1800
+        config.budget.min_content_length = 0
+        compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
+        compiler._has_llm = True
+        clock = {"t": 0.0}
+
+        def fake_monotonic() -> float:
+            return clock["t"]
+
+        def slow_blind_compile(chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None, pinned_facts: list[str] | None = None) -> CompiledWiki:
+            del trees, pinned_facts
+            if clock["t"] == 0.0:
+                clock["t"] = 20_199.5
+            return CompiledWiki(
+                nodes=[WikiNode(id="n0", title="N", content="X", node_type=NodeType.SECTION)],
+                edges=[],
+                toc=[{"title": "N", "id": "n0", "level": 1}],
+                metadata={"chunk_count": 1},
+            )
+
+        def fake_diagnose(failures: list[Any]) -> list[str]:
+            del failures
+            clock["t"] = 22_000.5
+            return ["a fact"]
+
+        monkeypatch.setattr(compiler, "_blind_compile", slow_blind_compile)
+        monkeypatch.setattr(compiler, "_diagnose", fake_diagnose)
+        with patch("kompend.compilation.wicer.time.monotonic", side_effect=fake_monotonic), caplog.at_level("WARNING"):
+            wiki = compiler.compile(chunks)
+        assert wiki.metadata["wicer_iterations"] == 1
+        assert "20199.5" in caplog.text
+        assert "22000.5" in caplog.text
+        assert "reached iteration 1" in caplog.text
+
     def test_custom_base_compiler(self) -> None:
         """A custom BaseCompiler can be injected."""
 

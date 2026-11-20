@@ -77,7 +77,10 @@ merging and an optional iterative WiCER refinement loop.
   thresholds: short pages and every concept-page candidate are compiled. Only
   content without any body text is dropped. `wicer_max_iterations = 0` means
   "until the loop converges"; `wicer_max_seconds` is a wall-clock stop that
-  keeps the compiled wiki.
+  keeps the compiled wiki. That clock starts after the blind compile: the
+  blind pass is the base compiler's own work and is not charged to the
+  refinement budget, so a slow base compile can never make iteration 1
+  unreachable (`wicer.py`).
 - **Concept dedup groups by centroid linkage, and two guards bound it**
   (`flows/assembly.py::merge_similar_concepts`). A concept joins the cluster
   whose centroid it is closest to, and the centroid is the mean of that

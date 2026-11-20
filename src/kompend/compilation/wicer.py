@@ -177,13 +177,23 @@ class WiCERCompiler(BaseCompiler):
 
         blind_start = time.monotonic()
         wiki = self._blind_compile(chunks, trees=trees, pinned_facts=cumulative_pinned or None)
+        blind_elapsed = time.monotonic() - blind_start
         self._report(num_sources, num_sources, "blind compilation done")
         logger.info(
             "WiCER: blind compile done in %.1fs (%d nodes, %d edges)",
-            time.monotonic() - blind_start,
+            blind_elapsed,
             len(wiki.nodes),
             len(wiki.edges),
         )
+
+        # The refinement clock starts here, not at compile() entry. The blind
+        # compile is the base compiler's own work; charging it to the
+        # refinement budget made iteration 1 unreachable for every model
+        # slower than the budget (run bc35f97e: 20199.5s of blind compile
+        # against an 1800s budget, so the loop stopped before its first
+        # probe).
+        refine_start = time.monotonic()
+        first_iteration_s: float | None = None
         iteration_info: dict[str, Any] = {
             "wicer_iterations": 0,
             "wicer_refinements": 0,
@@ -196,11 +206,15 @@ class WiCERCompiler(BaseCompiler):
         for attempt in iterations:
             iter_start = time.monotonic()
 
-            if self._max_seconds > 0 and (time.monotonic() - compile_start) > self._max_seconds:
+            if self._max_seconds > 0 and (time.monotonic() - refine_start) > self._max_seconds:
                 logger.warning(
-                    "WiCER: wall-clock budget of %ds spent after %d iteration(s) — stopping the refinement loop",
+                    "WiCER: refinement budget of %ds spent after %d iteration(s) — stopping the refinement loop "
+                    "(blind compile took %.1fs and is not charged to this budget; a whole-pass budget would have "
+                    "needed %.1fs to have reached iteration 1)",
                     self._max_seconds,
                     attempt - 1,
+                    blind_elapsed,
+                    blind_elapsed + (first_iteration_s or 0.0),
                 )
                 iteration_info["wicer_iterations"] = attempt - 1
                 break
@@ -277,6 +291,8 @@ class WiCERCompiler(BaseCompiler):
                 recompile_elapsed,
                 len(cumulative_pinned),
             )
+            if first_iteration_s is None:
+                first_iteration_s = time.monotonic() - iter_start
         else:
             iteration_info["wicer_iterations"] = self.max_iterations
 
