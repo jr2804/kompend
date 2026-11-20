@@ -43,14 +43,14 @@ dependencies = [
     # tokie's `encode()`; tokie 0.2.0 (2026-11-12) removed the kwarg, so
     # every split dies with a TypeError. Unpin when chonkie adapts.
     "tokie>=0.1.4,<0.2",
-    "crawl4ai[all]>=0.9.5",
+    "crawl4ai[all]>=0.9.6",
     "sqlite-vec>=0.1.9",
     "sqlite-vec-client>=2.4.1",
     "rumdl>=0.3.5",
-    "fastmcp-slim[server]>=4.2.2",
-    "pydantic>=2.14.3",
+    "fastmcp-slim[server]>=4.2.3",
+    "pydantic>=2.14.4",
     "wenmode>=0.15.3",
-    "pydantic-ai-slim[openai,google,anthropic,groq,mistral,cohere,xai,openrouter,zai,typesafe,huggingface,voyageai,web-fetch,duckduckgo,cli,mcp,mcp-tasks]>=2.70.0",
+    "pydantic-ai-slim[openai,google,anthropic,groq,mistral,cohere,xai,openrouter,zai,typesafe,huggingface,voyageai,web-fetch,duckduckgo,cli,mcp,mcp-tasks]>=2.71.0",
     "pydantic-ai-rlm>=0.1.2",
     "python-slugify[unidecode]>=9.2.0",
     "tomli-w>=1.2.0",
@@ -66,8 +66,8 @@ dependencies = [
     "json-repair[schema]>=0.64.9",
     # latest 9.2.x is blocked by google-genai's tenacity<9.2.0 (upstream pin)
     "tenacity>=9.1.4",
-    "logfire[system-metrics]>=5.6.0",
-    "pydantic-ai-harness[acp]>=0.70.0",
+    "logfire[system-metrics]>=6.0.0",
+    "pydantic-ai-harness[acp]>=0.71.0",
     "ollama>=0.6.3",
     "aenum>=3.1.17",
     "lazy-loader>=0.6",
@@ -81,7 +81,7 @@ dependencies = [
     # embedded CFF Type1 subset fonts; without it, LaTeX-style math/symbol
     # glyphs map to garbage on every parse of ITU/IEEE-style PDFs.
     "fonttools>=4.68.0",
-    "parsecraft[docling,web]>=2026.11.7",
+    "parsecraft[docling,web]>=2026.11.8",
     "llmdb>=1.0.0",
     "resvg-py>=0.5.0",
     "sqlalchemy>=2.1.9,<2.2",
@@ -96,16 +96,16 @@ kompend = "kompend.cli.launch:main"
 rerank = ["flashrank>=0.2.10"]
 
 # Only heavy ML OCR models and licence-gated backends (pymupdf, mineru) stay opt-in.
-ocr = ["parsecraft[ocr]>=2026.11.7"]
+ocr = ["parsecraft[ocr]>=2026.11.8"]
 # parsecraft runs MinerU natively; the extra pulls model weights, not the
 # `mineru` package, so it resolves beside the model stack.
-mineru = ["parsecraft[mineru]>=2026.11.7"]
-pymupdf = ["parsecraft[pymupdf]>=2026.11.7"]
+mineru = ["parsecraft[mineru]>=2026.11.8"]
+pymupdf = ["parsecraft[pymupdf]>=2026.11.8"]
 # docling is already a base dependency; pdf-full adds the licensed pymupdf
 # backend and stays free of mineru (see the note above).
 pdf-full = [
-    "parsecraft[pymupdf]>=2026.11.7",
-    "parsecraft[docling]>=2026.11.7",
+    "parsecraft[pymupdf]>=2026.11.8",
+    "parsecraft[docling]>=2026.11.8",
 ]
 
 # marker-pdf is bring-your-own: uv add marker-pdf
@@ -118,9 +118,9 @@ otel = [
 [dependency-groups]
 
 dev = [
-    "logfire[system-metrics]>=5.6.0",
-    "pydantic-ai-slim[logfire]>=2.70.0",
-    "mkdocs-material>=9.8.1",
+    "logfire[system-metrics]>=6.0.0",
+    "pydantic-ai-slim[logfire]>=2.71.0",
+    "mkdocs-material>=9.8.2",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
     "pytest-cov>=7.1.0",

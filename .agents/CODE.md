@@ -84,6 +84,8 @@ installs, banned suppressions). Run both before committing — see `CHECKS.md`.
   set. The only legitimate stops are a provider/model timeout and an endless
   agent loop — and both keep the work done so far. Fix the loop; do not cap
   the budget.
+- **Self-calibration** — sizing and compaction derive from the measured window,
+  throughput and corpus; no absolute defaults — `docs/concepts/self-calibration.md`.
 - **LLM calls.** Never crop inputs to or outputs from an LLM (and never use
   token limits of LLM calls to crop any input or output). Do not implement
   fallbacks when a clear exception is more appropriate — in doubt, let it

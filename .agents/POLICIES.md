@@ -5,8 +5,7 @@ consistency · performance. Boundaries, DOX authoring, response format.
 
 ## Boundaries
 
-- NEVER fabricate paths, commits, APIs, config keys, env vars, test results, or
-  benchmark numbers. If you don't know, say so.
+- NEVER fabricate paths, commits, APIs, config keys, env vars, test results or benchmark numbers; if you don't know, say so.
 - NEVER guess at command names, flags, or paths — read source or run `--help`.
 - NEVER add secrets, API keys, or tokens to files; use env vars.
 - NEVER run destructive commands (`rm -rf`, `git reset --hard`,
@@ -14,17 +13,15 @@ consistency · performance. Boundaries, DOX authoring, response format.
 - NEVER delete or move files without explicit instruction.
 - NEVER modify `.gitignore`, `pyproject.toml`, `ruff.toml`, or CI config, and add
   no new dependency, without explicit instruction.
-- NEVER install with `pip install` or `uv pip install`: uv alone manages the venv
-  (`uv add`, `uv lock`, `uv sync`); pip bypasses `uv.lock` — untracked, never relied on.
-- NEVER create temp files inside the repo — never `_tmp_*.py` at the root, never
-  `scripts/tmp/` or `tmp/`. Probes and one-off scripts use the OS temp dir and
-  are deleted after use (user, 2026-11-03).
+- NEVER install with `pip install`/`uv pip install` — uv alone manages the venv (`uv add`/`uv lock`/`uv sync`); pip bypasses the untracked `uv.lock`.
+- NEVER create temp files inside the repo (`_tmp_*.py`, `scripts/tmp/`, `tmp/`);
+  probes and one-off scripts use the OS temp dir, deleted after use (user, 2026-11-03).
 - NEVER commit, push, or sync a tracker unless the user asked for it.
 
 ## Change constraints
 
-- Minimal, surgical edits; preserve existing style; no unrelated refactoring.
-  When changing tests, update only directly affected tests.
+- Minimal, surgical edits; preserve style; no unrelated refactoring; update only
+  directly affected tests.
 
 ## Code quality
 
@@ -112,6 +109,9 @@ review/debugging/analysis: findings with references, conclusion, caveats.
   reference the archive from `HISTORY.md` (procedure: `MAINTENANCE.md`).
 
 ## Project-specific policies — kompend
+
+- Self-calibration — sizing and compaction derive from the measured window,
+  throughput and corpus; no absolute defaults — see `docs/concepts/self-calibration.md`.
 
 ### User preferences
 

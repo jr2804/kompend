@@ -108,6 +108,7 @@ nav:
     - Summarization Traversal: architecture/summarization-traversal.md
   - Concepts:
     - Basic Principles: concepts/basic-principles.md
+    - Self-Calibration: concepts/self-calibration.md
     - Pipeline Tiers: concepts/pipeline-tiers.md
     - WiCER Loop: concepts/wicer-loop.md
     - Open Knowledge Format: concepts/open-knowledge-format.md
