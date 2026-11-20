@@ -204,6 +204,7 @@ def prepare_concepts(compiler: TwoPhaseRuntime, extractions: ExtractionSet) -> l
         jaccard_min_token_len=budget.jaccard_min_token_len,
         max_reduction=budget.concept_merge_max_reduction,
         max_sources=budget.concept_merge_max_sources,
+        similarity_margin=budget.concept_merge_similarity_margin,
     )
     concepts = _with_entity_pages(compiler, extractions, concepts)
     concepts, unnameable = drop_unnameable_concepts(concepts)

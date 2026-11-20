@@ -112,6 +112,11 @@ class BudgetConfig(_KompendBaseModel):
     #: spans more sources than this is refused - the p863 corpus absorbed 98
     #: sources under one canonical name. ``0`` disables the guard.
     concept_merge_max_sources: int = Field(default=24, ge=0, validation_alias=EnvVar.BUDGET_CONCEPT_MERGE_MAX_SOURCES)
+    #: Relative margin for a merge inside an oversized cluster. A pair is
+    #: merged only when its similarity is at least this fraction of the
+    #: cluster's own best pair — a margin relative to the cluster, never an
+    #: absolute similarity constant. ``1.0`` merges the best pairs only.
+    concept_merge_similarity_margin: float = Field(default=0.95, gt=0.0, le=1.0, validation_alias=EnvVar.BUDGET_CONCEPT_MERGE_SIMILARITY_MARGIN)
     jaccard_min_token_len: int = Field(default=1, validation_alias=EnvVar.BUDGET_JACCARD_MIN_TOKEN_LEN)
     edge_min_title_len: int = Field(default=4, validation_alias=EnvVar.BUDGET_EDGE_MIN_TITLE_LEN)
 

@@ -434,6 +434,10 @@ concept_string_merge_threshold = 0.70  # Jaccard fallback when no embeddings
 concept_merge_max_reduction = 0.5
 # Guard: the largest number of sources one merged concept may hold. 0 disables it.
 concept_merge_max_sources = 24
+# Relative margin for a merge inside an oversized cluster: a pair is merged
+# only when its similarity is at least this fraction of the cluster's own best
+# pair. A margin relative to the cluster — not an absolute similarity value.
+concept_merge_similarity_margin = 0.95
 jaccard_min_token_len = 1            # ignore tokens shorter than this in Jaccard
 edge_min_title_len = 4               # min title chars to create a cross-source edge
 

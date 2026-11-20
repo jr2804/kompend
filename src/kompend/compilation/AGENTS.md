@@ -87,9 +87,14 @@ merging and an optional iterative WiCER refinement loop.
   lost 340 candidates to 31 pages that way, one chain holding 98 sources).
   `compile.budget.concept_merge_max_reduction` caps the fraction of the pool
   one merge may remove and `compile.budget.concept_merge_max_sources` caps
-  how many sources one merged concept may hold. A group that breaks either
-  limit is refused and logged, and its members stay separate concepts:
-  refusing keeps them visible, merging them silently is the failure.
+  how many sources one merged concept may hold. A cluster that breaks either
+  limit is not merged in one piece: it is merged pairwise (`_top_k_merge`),
+  the most similar pairs first, every pair within
+  `compile.budget.concept_merge_similarity_margin` of the cluster's own best
+  pair, and only as many pairs as the pool's remaining budget allows — the
+  near-duplicates collapse and the distinct sub-topics stay separate. What
+  the budget cannot cover stays separate and is logged: refusing keeps it
+  visible, merging it silently is the failure.
 - **Every request is sized by the shared planner**
   (`kompend.llm.request_budget.RequestBudget`), never by stage-local
   arithmetic. A stage declares the window and its named reserved payloads

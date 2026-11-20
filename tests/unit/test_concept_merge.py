@@ -20,6 +20,7 @@ Two things are pinned here:
 from __future__ import annotations
 
 import logging
+import math
 from typing import Any
 
 import pytest
@@ -118,7 +119,14 @@ class TestReductionGuard:
     """A merge that would swallow the pool is refused, not applied."""
 
     def test_a_collapse_of_the_whole_pool_is_refused(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Every concept identical → one cluster → refused at the guard."""
+        """Every concept identical → one cluster → the wholesale merge is refused.
+
+        The refusal no longer means "nothing happens": the cluster is merged
+        pairwise up to the pool's own budget, so ten identical concepts
+        become five pairs — half the pool removed, which is exactly what
+        ``max_reduction=0.5`` allows, and no concept holds more than two
+        sources.
+        """
         vectors = {f"C{i}": [1.0, 0.0] for i in range(10)}
         monkeypatch.setattr(
             "kompend.compilation.flows.assembly.make_provider",
@@ -136,7 +144,8 @@ class TestReductionGuard:
                 max_reduction=0.5,
             )
 
-        assert len(merged) == 10, "the concepts must stay separate"
+        assert len(merged) == 5, "only the budget's share of the pool may go"
+        assert all(len(concept["sources"]) == 2 for concept in merged)
         assert any("refused" in record.message for record in caplog.records)
 
     def test_a_merge_within_budget_still_applies(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -193,7 +202,12 @@ class TestSourceGuard:
     """A cluster spanning dozens of sources is refused."""
 
     def test_a_cluster_holding_too_many_sources_is_refused(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """Four sources merged into one, with a cap of two, is refused."""
+        """Four sources merged into one, with a cap of two, is refused.
+
+        The refusal is of the wholesale merge: the cluster is merged
+        pairwise instead, and every merged concept stays within the cap of
+        two sources.
+        """
         vectors = {
             "A": [1.0, 0.0],
             "B": [0.99, 0.01],
@@ -219,9 +233,11 @@ class TestSourceGuard:
                 string_threshold=0.7,
                 jaccard_min_token_len=1,
                 max_sources=2,
+                similarity_margin=0.95,
             )
 
-        assert len(merged) == 4, "the concepts must stay separate"
+        assert len(merged) == 2, "the four concepts must not collapse into one"
+        assert all(len(concept["sources"]) <= 2 for concept in merged)
         assert any("refused" in record.message for record in caplog.records)
 
 
@@ -268,6 +284,49 @@ class TestStringFallback:
         assert any("refused" in record.message for record in caplog.records)
 
 
+class TestOversizedCluster:
+    """A cluster too big for the guards merges its top pairs, not the whole."""
+
+    def test_a_big_cluster_collapses_duplicates_and_keeps_sub_topics(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """The bc35f97e shape: four topics, three revisions each, one cluster.
+
+        The corpus is several revisions of the same documentation, so the
+        extraction finds every topic three times and the cluster holds
+        twelve of the twenty concepts. Merging it whole would swallow the
+        pool, so the guard refuses — but the refusal must not leave twelve
+        near-duplicates behind: the top-K merge takes the revisions of each
+        topic, the four topics stay four concepts, and the pool shrinks to a
+        corpus-relative count.
+        """
+        vectors = _revisions_and_fillers()
+        monkeypatch.setattr(
+            "kompend.compilation.flows.assembly.make_provider",
+            lambda _model: _FakeProvider(vectors),
+        )
+        concepts = [_concept(name, f"src-{name}") for name in vectors]
+
+        with caplog.at_level(logging.WARNING):
+            merged = merge_similar_concepts(
+                concepts,
+                "fake/model",
+                threshold=0.82,
+                string_threshold=0.7,
+                jaccard_min_token_len=1,
+                max_reduction=0.5,
+                similarity_margin=0.95,
+            )
+
+        # Twelve concepts became four (one per topic) plus the eight
+        # untouched fillers: the revisions collapsed, nothing else did.
+        assert len(merged) == 12
+        topics = [concept for concept in merged if len(concept["sources"]) > 1]
+        assert len(topics) == 4, "each topic must collapse into exactly one concept"
+        for topic in topics:
+            assert len(topic["sources"]) == 3, "the three revisions of a topic merge"
+            assert len({source.split("-", 1)[1].split(" r")[0] for source in topic["sources"]}) == 1, "a merged concept holds one topic only"
+        assert any("refused" in record.message for record in caplog.records)
+
+
 def _concept(name: str, *sources: str, definition: str = "") -> dict[str, Any]:
     """One concept candidate, as the extraction stage hands them over."""
     return {
@@ -275,6 +334,54 @@ def _concept(name: str, *sources: str, definition: str = "") -> dict[str, Any]:
         "sources": list(sources),
         "definitions": [definition] if definition else [],
     }
+
+
+def _revisions_and_fillers() -> dict[str, list[float]]:
+    """Four topics (three revisions each) and eight concepts far from them.
+
+    The four topics sit at a similarity of 0.85 from each other — above the
+    clustering threshold, so they land in one cluster, and far below the
+    revisions' 0.999, so the margin keeps them apart. The fillers sit in
+    their own clusters and give the pool the size the budget is derived
+    from.
+    """
+    bases = {
+        "alpha": [1.0, 0.0, 0.0, 0.0],
+        "beta": [0.85, 0.5268, 0.0, 0.0],
+        "gamma": [0.85, 0.2416, 0.4681, 0.0],
+        "delta": [0.85, 0.2416, 0.1477, 0.4442],
+    }
+    vectors: dict[str, list[float]] = {}
+    for topic, base in bases.items():
+        for revision in range(3):
+            name = f"{topic} r{revision}"
+            vectors[name] = _revision(base, revision) if revision else _unit(base)
+    fillers = {
+        "filler a": [0.0, 1.0, 0.0, 0.0],
+        "filler b": [0.0, 0.0, 1.0, 0.0],
+        "filler c": [0.0, 0.0, 0.0, 1.0],
+        "filler d": [0.0, -1.0, 0.0, 0.0],
+        "filler e": [0.0, 0.0, -1.0, 0.0],
+        "filler f": [0.0, 0.0, 0.0, -1.0],
+        "filler g": [0.0, 0.7071, 0.7071, 0.0],
+        "filler h": [0.0, 0.7071, -0.7071, 0.0],
+    }
+    for name, vec in fillers.items():
+        vectors[name] = _unit(vec)
+    return vectors
+
+
+def _revision(base: list[float], axis: int) -> list[float]:
+    """A near-copy of *base*: the same topic, nudged in its own direction."""
+    delta = [0.0] * len(base)
+    delta[axis % len(base)] = 0.02
+    return _unit([component + shift for component, shift in zip(base, delta, strict=True)])
+
+
+def _unit(vec: list[float]) -> list[float]:
+    """A unit vector in the fake embedding space."""
+    norm = math.sqrt(sum(component * component for component in vec))
+    return [component / norm for component in vec]
 
 
 @pytest.fixture
