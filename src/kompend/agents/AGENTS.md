@@ -121,19 +121,15 @@ The base class provides:
 Agents take their limits from the config, not the call site: a construction site
 hands over the `compile.llm` group (ceiling, retries, reasoning effort, context
 manager, window, fallback chain, delta-retry, data format) and inherits the rest.
-
-`_apply_config_defaults()` (in `base/agent.py`) fills every gap from its
-`compile.llm` twin (the tool/output retry split collapses to 0 when
-`output_retries_enabled` is false); an explicitly passed value always wins.
+`_apply_config_defaults()` (`base/agent.py`) fills every gap from its `compile.llm`
+twin (the tool/output retry split collapses to 0 when `output_retries_enabled` is
+false); an explicitly passed value always wins.
 
 There is no `max_tokens`/`budget` kwarg: an answer is bounded by the window
-minus its prompt (`llm/AGENTS.md`). Anthropic is the protocol exception - it
-rejects an unset `max_tokens`, so there the agent passes a callable
-`model_settings` computing window - prompt - margin; others send nothing.
+minus its prompt; Anthropic is the one protocol exception (`llm/AGENTS.md`).
 
-`agent.data_format` is the resolved `llm.data_format` (`llm/AGENTS.md`), read off
-the agent rather than passed, so it cannot drift from the config the agent
-carries (`CategorizeAgent` → `_build_files_payload`).
+`agent.data_format` is the resolved `llm.data_format`, read off the agent
+rather than passed (`llm/AGENTS.md`).
 
 A **transient** failure (timeout, dropped connection, 429/5xx) is retried in the
 base's `_invoke` - `compile.llm.transient_retries` times, `transient_backoff`
@@ -202,12 +198,10 @@ Thin delegate around any native pydantic-ai `Model`. Adds `_merge_reasoning()`
 response burn four output retries), `_save_debug()` (LLM debug log), and
 `_repair_tool_call_args()`/`_repair_text_part()` (`json_repair` before the
 strict validator, for malformed JSON from small local models).
-`request_stream()` mirrors the delegate's stream (pydantic-ai 2.70 routes any
-run whose agent has an `@on_event` listener — the usage gauge — through it):
-reasoning is merged, usage/elapsed land in the tracker from the assembled
-response, but response *repairs* cannot reach the graph's own assembly on that
-path — salvage there belongs in `after_model_request` if ever needed
-(`FallbackModel` documents the same limitation).
+`request_stream()` mirrors the delegate's stream (pydantic-ai 2.70 routes any run
+whose agent has an `@on_event` listener — the usage gauge — through it): reasoning
+is merged and usage lands in the tracker, but response *repairs* cannot reach the
+graph's own assembly on that path (`FallbackModel` documents the same limitation).
 History compression lives on the Agent layer (`build_fallback_compaction`,
 `build_sliding_compaction`); the doctrine lives in `templates/compaction/`.
 

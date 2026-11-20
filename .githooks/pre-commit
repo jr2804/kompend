@@ -24,10 +24,23 @@ root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 # uv is a mise tool. A git hook inherits whatever environment git was
 # started with, and uv is only on the PATH in a mise-activated shell - so
 # reach it through mise when it is not there, and the hook works anywhere.
-if command -v uv >/dev/null 2>&1; then
-    UV=uv
-else
-    UV="mise exec -- uv"
+#
+# `command -v uv` is not the test, though: `ruff` is a mise tool too, not a
+# project dependency, so a bare `uv run ruff` fails with "Failed to spawn:
+# ruff" even when uv itself is on the PATH. Only `mise exec` puts the tool
+# binaries where the child process can find them. Probe for a runner that
+# can actually spawn ruff, and fall back to mise first - it is the only one
+# that resolves the tool suite.
+UV=""
+for candidate in "mise exec -- uv" "uv"; do
+    if $candidate run ruff --version >/dev/null 2>&1; then
+        UV="$candidate"
+        break
+    fi
+done
+if [ -z "$UV" ]; then
+    echo "✗ Commit blocked — no uv runner can spawn ruff (tried 'mise exec -- uv' and 'uv')."
+    exit 1
 fi
 
 staged=$(git diff --cached --name-only --diff-filter=ACM -- '*.py')

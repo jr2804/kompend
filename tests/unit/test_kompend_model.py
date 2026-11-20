@@ -12,7 +12,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Never, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -253,7 +253,7 @@ class TestRequestStream:
         tracker = UsageTracker()
 
         class _StreamOnly(TestModel):
-            async def request(self, messages, model_settings=None, model_request_parameters=None):  # noqa: ANN001, PLR6301
+            async def request(self, messages, model_settings=None, model_request_parameters=None) -> Never:  # noqa: ANN001, PLR6301
                 raise AssertionError("the gauge must route this run through request_stream")
 
         wrapper = KompendModel(_StreamOnly(), usage_tracker=tracker)

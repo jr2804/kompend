@@ -48,7 +48,6 @@ def write_lint_log(entry: LintEntry, base_dir: Path) -> LintLogPaths:
 
     report = report_from_dict(entry.report)
     options = entry.options
-    wiki_meta = entry.wiki_meta
     duration = entry.duration_seconds  # nocheck - lint-history schema, not WikiField
     # "Over N page(s)" counts the pages the report actually covers — the same
     # distinct-page_id set the runner's summary line prints. The wiki graph's
