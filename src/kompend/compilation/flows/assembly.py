@@ -239,32 +239,33 @@ def _merge_groups(
     """
     total = len(concepts)
     budget = max_reduction * total if max_reduction < 1.0 else math.inf
-    clusters = [members for members in groups.values() if len(members) > 1]
+    entries = [(key, members) for key, members in groups.items() if len(members) > 1]
+    clusters = [members for _, members in entries]
 
-    whole: list[list[int]] = []
-    oversized: list[list[int]] = []
-    for members in clusters:
+    whole: list[tuple[int, list[int]]] = []
+    oversized: list[tuple[int, list[int]]] = []
+    for key, members in entries:
         if _breaks_guard(members, concepts, budget, max_sources):
-            oversized.append(members)
+            oversized.append((key, members))
         else:
-            whole.append(members)
+            whole.append((key, members))
 
     # The biggest absorber goes first, and a cluster that does not fit what
     # is left of the pool-wide budget is refused instead of merged.
     absorbed = 0
     refused: set[int] = set()
-    for members in sorted(whole, key=len, reverse=True):
+    for key, members in sorted(whole, key=lambda entry: len(entry[1]), reverse=True):
         if absorbed + len(members) - 1 > budget:
-            refused.add(members[0])
+            refused.add(key)
             continue
         absorbed += len(members) - 1
 
     # What is left of the budget is shared by the oversized clusters by size.
     remaining = max(0.0, budget - absorbed)
-    demand = sum(len(members) - 1 for members in oversized)
+    demand = sum(len(members) - 1 for _, members in oversized)
 
-    plan: dict[int, list[list[int]]] = {members[0]: [members] for members in clusters}
-    for members in oversized:
+    plan: dict[int, list[list[int]]] = {key: [members] for key, members in entries}
+    for key, members in oversized:
         cap = _cluster_cap(members, concepts, remaining, demand, max_sources)
         parts = _top_k_merge(
             concepts,
@@ -274,7 +275,7 @@ def _merge_groups(
             similarity_margin=similarity_margin,
             pair_similarity=pair_similarity,
         )
-        plan[members[0]] = parts
+        plan[key] = parts
         merged_pairs = sum(len(part) - 1 for part in parts)
         if merged_pairs:
             logger.info(
@@ -290,8 +291,8 @@ def _merge_groups(
                 f"{merged_pairs} of {len(members) - 1} pairs merged, the rest stay separate",
             )
 
-    for members in clusters:
-        if members[0] in refused:
+    for key, members in entries:
+        if key in refused:
             _log_refusal(members, concepts, "keeping them separate")
 
     result: list[dict[str, Any]] = []
