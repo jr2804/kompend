@@ -286,14 +286,16 @@ def _merge_groups(
             )
         if merged_pairs < len(members) - 1:
             _log_refusal(
+                clusters,
                 members,
                 concepts,
+                total,
                 f"{merged_pairs} of {len(members) - 1} pairs merged, the rest stay separate",
             )
 
     for key, members in entries:
         if key in refused:
-            _log_refusal(members, concepts, "keeping them separate")
+            _log_refusal(clusters, members, concepts, total, "keeping them separate")
 
     result: list[dict[str, Any]] = []
     for leader, members in groups.items():
@@ -490,14 +492,46 @@ def _group_name(concepts: list[dict[str, Any]], members: list[int]) -> str:
     return max((concepts[m].get("name", "") for m in members), key=len)
 
 
-def _log_refusal(members: list[int], concepts: list[dict[str, Any]], outcome: str) -> None:
-    """Log a refused merge and what was done instead."""
+def _log_refusal(
+    clusters: list[list[int]],
+    members: list[int],
+    concepts: list[dict[str, Any]],
+    pool_size: int,
+    outcome: str,
+) -> None:
+    """Log a refused merge, what was done instead, and the shape around it.
+
+    The cluster sizes are the shape of the redundancy: a refusal that names
+    only the refused cluster leaves the next run without the picture of what
+    the merge wanted to do.
+    """
     logger.warning(
-        "Concept merge refused: merging %d concepts holding %d sources would exceed the budget; %s",
+        "Concept merge refused: merging %d concepts holding %d sources would exceed the budget; %s — pool %d concepts in %d clusters, largest: %s",
         len(members),
         len(_group_sources(concepts, members)),
         outcome,
+        pool_size,
+        len(clusters),
+        _cluster_distribution(clusters, concepts, pool_size),
     )
+
+
+def _cluster_distribution(clusters: list[list[int]], concepts: list[dict[str, Any]], pool_size: int) -> str:
+    """The head of the cluster-size distribution: the clusters that hold most of the pool.
+
+    The clusters are taken from the largest down until they hold more than
+    half the pool, so the line shows the redundancy that explains the merge
+    rather than every cluster of a large corpus.
+    """
+    ranked = sorted(clusters, key=len, reverse=True)
+    head: list[str] = []
+    covered = 0
+    for members in ranked:
+        head.append(f"{len(members)} concepts/{len(_group_sources(concepts, members))} sources")
+        covered += len(members)
+        if covered * 2 >= pool_size:
+            break
+    return ", ".join(head)
 
 
 def _group_sources(concepts: list[dict[str, Any]], members: list[int]) -> list[str]:

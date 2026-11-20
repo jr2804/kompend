@@ -241,6 +241,51 @@ class TestSourceGuard:
         assert any("refused" in record.message for record in caplog.records)
 
 
+class TestRefusalLogging:
+    """A refusal logs the shape of the redundancy, not only the verdict."""
+
+    def test_a_refusal_logs_the_cluster_size_distribution(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """The refusal names the largest clusters and the sources they hold.
+
+        The verdict alone ("230 concepts / 5 sources") says nothing about
+        what the merge wanted to do; the distribution shows the next run the
+        shape of the redundancy around it.
+        """
+        vectors = {
+            "A0": [1.0, 0.0],
+            "A1": [0.99, 0.01],
+            "A2": [0.98, 0.02],
+            "A3": [0.97, 0.03],
+            "B0": [0.0, 1.0],
+            "B1": [0.01, 0.99],
+            "B2": [0.02, 0.98],
+            "C0": [-1.0, 0.0],
+            "C1": [-0.99, 0.01],
+        }
+        monkeypatch.setattr(
+            "kompend.compilation.flows.assembly.make_provider",
+            lambda _model: _FakeProvider(vectors),
+        )
+        concepts = [_concept(name, f"s{index}") for index, name in enumerate(vectors)]
+
+        with caplog.at_level(logging.WARNING):
+            merge_similar_concepts(
+                concepts,
+                "fake/model",
+                threshold=0.9,
+                string_threshold=0.7,
+                jaccard_min_token_len=1,
+                max_reduction=0.25,
+            )
+
+        refusals = [record.message for record in caplog.records if "refused" in record.message]
+        assert refusals, "the guard must log the refusal"
+        assert any(
+            "4 concepts/4 sources" in message and "3 concepts/3 sources" in message for message in refusals
+        ), f"the refusal must carry the cluster-size distribution: {refusals}"
+        assert any("pool 9 concepts in 3 clusters" in message for message in refusals)
+
+
 class TestStringFallback:
     """The offline path keeps working and honours the same guards."""
 
