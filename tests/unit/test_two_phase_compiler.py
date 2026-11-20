@@ -1,11 +1,11 @@
 """Compile accounting - the phase lines read the shared UsageTracker.
 
-knox-zu3w: the compiler kept a private ``_llm_stats`` list for the call and
-token totals, but nothing ever appended to it, so every phase line and the
-compile summary printed zeros while the run had made thousands of calls. The
-numbers live in the shared :class:`~kompend.llm.usage.UsageTracker` that every
-agent of the run records into; these tests stub the two phases with known
-call counts and assert the lines carry them.
+knox-zu3w: the compiler kept a private list for the call and token totals,
+but nothing ever appended to it, so every phase line and the compile summary
+printed zeros while the run had made thousands of calls. The numbers live in
+the shared :class:`~kompend.llm.usage.UsageTracker` that every agent of the
+run records into; these tests stub the two phases with known call counts and
+assert the lines carry them.
 """
 
 from __future__ import annotations
