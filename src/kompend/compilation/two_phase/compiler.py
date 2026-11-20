@@ -20,6 +20,7 @@ Implementation split into :mod:`kompend.compilation.flows` submodules:
 from __future__ import annotations
 
 import time
+from typing import NamedTuple
 
 from kompend.compilation.asset_registry import AssetIdMap, assign_asset_ids
 from kompend.compilation.base import BaseCompiler
@@ -59,6 +60,22 @@ logger = get_logger(__name__)
 _loader = get_template_loader()
 
 
+class _UsageCounts(NamedTuple):
+    """Calls and token totals read from the shared :class:`UsageTracker`."""
+
+    calls: int
+    prompt_tokens: int
+    completion_tokens: int
+
+    def since(self, earlier: _UsageCounts) -> _UsageCounts:
+        """The counts recorded after *earlier* - one phase of the run."""
+        return _UsageCounts(
+            self.calls - earlier.calls,
+            self.prompt_tokens - earlier.prompt_tokens,
+            self.completion_tokens - earlier.completion_tokens,
+        )
+
+
 class TwoPhaseCompiler(BaseCompiler):
     """N3 two-phase compiler with cross-source merging and adaptive budgets.
 
@@ -86,7 +103,6 @@ class TwoPhaseCompiler(BaseCompiler):
         self._config = config
         self._timeout = config.llm.request_ceiling_s
         self._cache_store = CacheStore(config.paths.cache_dir)
-        self._llm_stats: list[tuple[int, int]] = []
         self._usage_tracker = UsageTracker(throughput_window_tokens=config.llm.throughput_window_tokens)
         self._extraction_stats: list[ExtractionStats] = []
         self._asset_store: AssetStore | None = None
@@ -194,20 +210,22 @@ class TwoPhaseCompiler(BaseCompiler):
                 )
 
         extract_start = time.monotonic()
+        usage_before_extract = self._usage_counts()
         extractions = self.extract(chunks, trees=trees)
         extract_elapsed = time.monotonic() - extract_start
 
         if self._extraction_stats:
             src_times = [s.duration_s for s in self._extraction_stats]
             avg_src = sum(src_times) / len(src_times) if src_times else 0.0
+            extract_usage = self._usage_counts().since(usage_before_extract)
             logger.info(
                 "TwoPhase: extract phase done — %d source(s) in %.1fs (avg %.1fs), %d LLM call(s), %d prompt + %d completion tokens",
                 len(src_times),
                 extract_elapsed,
                 avg_src,
-                len(self._llm_stats),
-                sum(pt for pt, _ in self._llm_stats),
-                sum(ct for _, ct in self._llm_stats),
+                extract_usage.calls,
+                extract_usage.prompt_tokens,
+                extract_usage.completion_tokens,
             )
 
         gen_deps = gen_cache_deps(self, extractions, pinned_facts=pinned_facts)
@@ -237,13 +255,26 @@ class TwoPhaseCompiler(BaseCompiler):
                         }
                         for s in self._extraction_stats
                     ]
-                cached.metadata["llm_calls"] = len(self._llm_stats)
+                cached_usage = self._usage_counts()
+                cached.metadata["llm_calls"] = cached_usage.calls
+                cached.metadata["llm_prompt_tokens"] = cached_usage.prompt_tokens
+                cached.metadata["llm_completion_tokens"] = cached_usage.completion_tokens
                 return cached
 
         self._active_gen_deps = gen_deps
         gen_start = time.monotonic()
+        usage_before_generate = self._usage_counts()
         wiki = self.generate(extractions, chunks, trees=trees, pinned_facts=pinned_facts)
         gen_elapsed = time.monotonic() - gen_start
+        generate_usage = self._usage_counts().since(usage_before_generate)
+        logger.info(
+            "TwoPhase: generate phase done — %d page(s) in %.1fs, %d LLM call(s), %d prompt + %d completion tokens",
+            len(wiki.nodes),
+            gen_elapsed,
+            generate_usage.calls,
+            generate_usage.prompt_tokens,
+            generate_usage.completion_tokens,
+        )
 
         has_failures = self._batch_tracker.failed > 0
         # When batches failed, keep the transcripts (they live in the step
@@ -272,11 +303,10 @@ class TwoPhaseCompiler(BaseCompiler):
                 for s in self._extraction_stats
             ]
 
-        total_prompt = sum(pt for pt, _ in self._llm_stats)
-        total_comp = sum(ct for _, ct in self._llm_stats)
-        wiki.metadata["llm_calls"] = len(self._llm_stats)
-        wiki.metadata["llm_prompt_tokens"] = total_prompt
-        wiki.metadata["llm_completion_tokens"] = total_comp
+        run_usage = self._usage_counts()
+        wiki.metadata["llm_calls"] = run_usage.calls
+        wiki.metadata["llm_prompt_tokens"] = run_usage.prompt_tokens
+        wiki.metadata["llm_completion_tokens"] = run_usage.completion_tokens
         # The metadata store is heterogeneous — copy the snapshot into a plain
         # dict at this boundary; the JSON shape is unchanged.
         stored = self._usage_tracker.to_snapshot().model_dump(mode="json")
@@ -301,9 +331,9 @@ class TwoPhaseCompiler(BaseCompiler):
             total_elapsed,
             extract_elapsed,
             gen_elapsed,
-            len(self._llm_stats),
-            total_prompt,
-            total_comp,
+            run_usage.calls,
+            run_usage.prompt_tokens,
+            run_usage.completion_tokens,
             self._model or "unknown",
             overall_rate,
             recent_rate,
@@ -332,6 +362,19 @@ class TwoPhaseCompiler(BaseCompiler):
     ) -> CompiledWiki:
         """Phase 2: merge extractions and generate per-concept pages."""
         return run_generation(self, extractions, chunks, trees=trees, pinned_facts=pinned_facts)
+
+    def _usage_counts(self) -> _UsageCounts:
+        """The shared tracker's live totals - the run's only account.
+
+        Every agent of the run records into this tracker, so the phase lines
+        and the compile summary read the same numbers the provider reported.
+        """
+        tracker = self._usage_tracker
+        return _UsageCounts(
+            calls=tracker.call_count,
+            prompt_tokens=tracker.prompt_tokens,
+            completion_tokens=tracker.completion_tokens,
+        )
 
     @property
     def _context_window(self) -> ContextWindow:

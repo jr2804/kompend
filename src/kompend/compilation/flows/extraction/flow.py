@@ -55,7 +55,6 @@ def run_extraction(  # noqa: PLR0911, PLR0912, PLR0915
     elided from the extraction text and replaced by ``¶ <id> (summary: …)``
     references — reducing noise and context-window pressure.
     """
-    compiler._llm_stats = []
     extractions = ExtractionSet()
 
     def _rewrite_extraction_mentions(ext: Extraction, id_map: AssetIdMap | None) -> None:

@@ -229,7 +229,6 @@ class TwoPhaseRuntime(Protocol):
     _extract_system_tokens: int
     _gen_system_tokens: int
     _extract_char_cap: int | None
-    _llm_stats: list[tuple[int, int]]
     _usage_tracker: UsageTracker
 
     def merge_duplicate_nodes(

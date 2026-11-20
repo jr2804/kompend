@@ -106,6 +106,12 @@ merging and an optional iterative WiCER refinement loop.
   content is never cropped to fit. `two_phase` re-exports
   `context_safety_tokens` / `tokens_to_chars` / `chars_to_tokens` from the
   planner; do not define a second safety margin or conversion here.
+- **One account for the compile's LLM spend** (`two_phase/compiler.py`): the
+  phase lines and the compile summary read the shared `UsageTracker`
+  (`kompend.llm.usage`) that every agent of the run records into, and the
+  compiler keeps no counter of its own. A phase line reports the calls that
+  phase made (the tracker's delta over the phase); the summary reports the
+  run's totals. A second counter would drift from the provider's numbers.
 - **A provider that rejects an oversized request lowers the window**
   (`TwoPhaseCompiler._clamp_window` → `EffectiveWindow.clamp`), and the stage
   re-plans against it — the source is re-batched, the segments are
