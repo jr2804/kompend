@@ -580,6 +580,19 @@ throughput_window_tokens = 1000
 # honoured and makes every request smaller.
 # default_chars_per_token = 2.5
 
+# Fraction of the usable window (window minus answer reserve and safety
+# margin) a request's content may fill. The rest is headroom for tokenizer
+# and framing drift between the char-based estimate and the provider's
+# token count: sizing to 100% of usable is how a nominally exact-fit batch
+# arrived over the window (63961/64000 tokens, zero room left). Content that
+# does not fit is split across more requests, never cropped.
+# request_utilization = 0.9
+
+# Completed requests with a prompt-char measurement required before the run
+# sizes against its own measured chars-per-token instead of the pessimistic
+# floor alone. The measurement can only ever tighten sizing, never loosen it.
+# density_min_samples = 5
+
 # Minimum input tokens per generation segment. Prevents absurdly tiny segments
 # when the model's context window is small.
 # min_segment_tokens = 512

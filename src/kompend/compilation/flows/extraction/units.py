@@ -39,7 +39,7 @@ from kompend.core.models.enums import CacheDeps
 from kompend.core.text.windows import split_text_windows
 from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError
 from kompend.llm.format import encode_payload
-from kompend.llm.request_budget import RequestBudget, time_bounded_chars
+from kompend.llm.request_budget import RequestBudget, calibrated_density_for, time_bounded_chars
 from kompend.logging import get_logger
 
 #: Failure kinds that say "this request was too much to answer", not "this
@@ -178,7 +178,7 @@ def extract_incremental(
     included) so the bar moves with the work.
     """
     compaction_threshold = compiler._context_window.history_budget
-    chars_per_token = compiler._config.llm.default_chars_per_token
+    chars_per_token = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
     # A size correction is evidence about one source, relearned per document:
     # a single transient timeout must not halve every later request in the run.
     compiler._extract_char_cap = None
@@ -421,9 +421,11 @@ def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
     budget = RequestBudget(
         window=compiler._context_window,
         reserved={"system": compiler._extract_system_tokens},
+        utilization=compiler._config.llm.request_utilization,
     )
     logger.info("TwoPhase: extract budget (%s)", budget.report())
-    window_chars = budget.content_chars(compiler._config.llm.default_chars_per_token)
+    chars_per_token = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
+    window_chars = budget.content_chars(chars_per_token)
     # The window says how much *may* travel; the fit says how much this model
     # can answer before the ceiling. Both bound the batch, and the time bound is
     # the one that was missing when every 49k-token batch timed out at 120 s.
@@ -431,7 +433,7 @@ def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:
         compiler._usage_tracker.throughput(compiler._model),
         ceiling_s=compiler._timeout,
         completion_tokens=_expected_answer_tokens(compiler),
-        chars_per_token=compiler._config.llm.default_chars_per_token,
+        chars_per_token=chars_per_token,
     )
     if time_chars is not None:
         window_chars = min(window_chars, time_chars)

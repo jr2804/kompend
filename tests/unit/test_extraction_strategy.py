@@ -470,7 +470,10 @@ class TestExtractCharBudget:
 
     Regression: an exact-fit batch on a formula-dense standard overflowed a
     65536-token local model (65762 tokens), because the chars-per-token
-    heuristic undercounts token-dense text.
+    heuristic undercounts token-dense text. The budget is additionally
+    capped at a fraction of usable, so a nominally exact-fit batch keeps
+    room for tokenizer and framing drift (63961/64000 tokens, zero room
+    left, refused at the window edge).
     """
 
     def test_reserves_safety_margin(self) -> None:
@@ -497,9 +500,14 @@ class TestExtractCharBudget:
         )
 
         assert with_margin < without
-        # The gap is the safety margin, converted to chars (±2 for int truncation).
-        expected_gap = tokens_to_chars(context_safety_tokens(cw), chars_per_token=cpt)
-        assert abs((without - with_margin) - expected_gap) <= 2
+        # The gap is the safety margin plus the utilization headroom: content
+        # is capped at a fraction of usable, so a nominally exact-fit batch
+        # arrives with room for tokenizer and framing drift (±2 for int
+        # truncation).
+        utilization = compiler._config.llm.request_utilization
+        usable = cw - compiler._extract_system_tokens - compiler._context_window.answer_reserve - context_safety_tokens(cw)
+        expected = tokens_to_chars(int(usable * utilization), chars_per_token=cpt)
+        assert abs(with_margin - expected) <= 2
 
 
 # ── extract cache key ───────────────────────────────────────────────────

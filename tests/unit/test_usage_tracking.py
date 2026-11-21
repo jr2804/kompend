@@ -106,6 +106,46 @@ class TestUsageTracker:
         assert snapshot.completion_tokens == 50
 
 
+class TestMeasuredDensity:
+    """The run's own chars-per-token, once enough requests exist.
+
+    Prompt text (measured where the request is built) over the provider's
+    own prompt-token count (read from ``response.usage``): the fit that lets
+    sizing self-calibrate to the deployed tokenizer. Samples without a char
+    count predate the measurement and never join the fit.
+    """
+
+    def test_no_samples_is_no_density(self) -> None:
+        assert UsageTracker().measured_chars_per_token("m", min_samples=5) is None
+
+    def test_few_samples_wait_for_the_window(self) -> None:
+        t = UsageTracker()
+        for _ in range(4):
+            t.record(prompt_tokens=1000, completion_tokens=10, model="m", elapsed_s=1.0, prompt_chars=2000)
+        assert t.measured_chars_per_token("m", min_samples=5) is None
+
+    def test_density_is_total_chars_over_total_tokens(self) -> None:
+        t = UsageTracker()
+        for _ in range(5):
+            t.record(prompt_tokens=1000, completion_tokens=10, model="m", elapsed_s=1.0, prompt_chars=2000)
+        assert t.measured_chars_per_token("m", min_samples=5) == 2.0
+
+    def test_samples_without_a_char_count_do_not_fit(self) -> None:
+        t = UsageTracker()
+        for _ in range(10):
+            t.record(prompt_tokens=1000, completion_tokens=10, model="m", elapsed_s=1.0)
+        assert t.measured_chars_per_token("m", min_samples=5) is None
+
+    def test_density_is_per_model(self) -> None:
+        t = UsageTracker()
+        for _ in range(5):
+            t.record(prompt_tokens=1000, completion_tokens=10, model="dense", elapsed_s=1.0, prompt_chars=2000)
+            t.record(prompt_tokens=1000, completion_tokens=10, model="sparse", elapsed_s=1.0, prompt_chars=3800)
+        assert t.measured_chars_per_token("dense", min_samples=5) == 2.0
+        assert t.measured_chars_per_token("sparse", min_samples=5) == 3.8
+        assert t.measured_chars_per_token("unknown", min_samples=5) is None
+
+
 class TestProviderMaxConnections:
     def test_no_limit_by_default(self) -> None:
         set_user_providers({"my-llm": {"base_url": "http://x", "max_connections": None}})

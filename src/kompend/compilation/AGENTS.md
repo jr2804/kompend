@@ -112,9 +112,12 @@ merging and an optional iterative WiCER refinement loop.
   (`kompend.llm.request_budget.RequestBudget`), never by stage-local
   arithmetic. A stage declares the window and its named reserved payloads
   (`{"system": …, "known_titles": …}`) and reads the content budget from the
-  plan; the answer reserve and the safety margin are paid by default. Every
-  count uses the shared ratio in `kompend.core.text.density` — the planner and
-  the request-fit guard must not differ. A request that cannot fit raises
+  plan; the answer reserve and the safety margin are paid by default, and
+  content is capped at `compile.llm.request_utilization` of usable. Every
+  count uses the shared ratio in `kompend.core.text.density`, tightened by
+  the run's own measured density wherever samples exist
+  (`calibrated_density_for`) — the planner and the request-fit guard must
+  not differ. A request that cannot fit raises
   `LLMOutputError` naming the components —
   content is never cropped to fit. `two_phase` re-exports
   `context_safety_tokens` / `tokens_to_chars` / `chars_to_tokens` from the

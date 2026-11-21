@@ -76,7 +76,7 @@ from kompend.core.utils.exceptions import (
     LLMTransientError,
 )
 from kompend.llm.decision import ErrorAction
-from kompend.llm.request_budget import RequestBudget
+from kompend.llm.request_budget import RequestBudget, calibrated_density_for
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 
 logger = get_logger(__name__)
@@ -652,10 +652,14 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
         # The no-crop rule is honored: we never silently clamp max_tokens;
         # content is preserved by splitting into smaller segments at the
         # sizing stage.
-        _segment_content_tokens = _token_estimate(content_block, compiler._config.llm.default_chars_per_token)
+        _segment_content_tokens = _token_estimate(
+            content_block,
+            calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or ""),
+        )
         segment_budget = budget or RequestBudget(
             window=compiler._context_window,
             reserved={"system": compiler._gen_system_tokens},
+            utilization=compiler._config.llm.request_utilization,
         )
         segment_budget.require(
             _segment_content_tokens,

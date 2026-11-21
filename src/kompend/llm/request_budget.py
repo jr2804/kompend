@@ -20,6 +20,10 @@ This module owns that arithmetic:
   safety margin: the share a trigger or a target is a fraction of.
 - :func:`chars_to_tokens` / :func:`tokens_to_chars` — the single
   chars-per-token conversion, driven by the configured value.
+- :func:`calibrated_density` — the sizing density tightened by the run's
+  own measured chars-per-token, never loosened past the floor.
+- :func:`calibrated_density_for` — the same blend resolved for a stage
+  from its config, tracker and model: the single entry point stages call.
 
 The rule the whole pipeline obeys: **content is never cropped to fit.**
 A budget that is too small makes the work split across more batches or
@@ -33,10 +37,12 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 
+from kompend.core.config.models.llm import LLMConfig
 from kompend.core.text.density import CONSERVATIVE_CHARS_PER_TOKEN
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow, answer_reserve_tokens
 from kompend.llm.throughput import SAFETY_FACTOR, Throughput
+from kompend.llm.usage import UsageTracker
 
 #: Fraction of a model's context window held back as headroom beyond the
 #: measured per-request overhead.  Two reasons: a server's *effective* usable
@@ -310,6 +316,41 @@ def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int
             capped at :func:`sizing_density`.
     """
     return int(tokens * sizing_density(chars_per_token))
+
+
+def calibrated_density(configured: float | None, measured: float | None) -> float:
+    """Characters per token to *size* a request with, informed by measurement.
+
+    The floor (:func:`sizing_density`) is the worst case — the density that
+    keeps a planned request inside the window for every density the corpus
+    shows. The measured fit (chars per provider prompt token across the
+    run's own calls) is the better-informed signal: a deployed tokenizer
+    denser than the floor is caught here, before it overflows a window the
+    floor said was safe.
+
+    The blend is the minimum of the two, so the measurement can only ever
+    *tighten* sizing, never loosen it: replacing the floor with an
+    optimistic measurement would invert the safety direction (at 4
+    chars/token the estimate undercounts 76% of tails). ``None`` measured
+    keeps the floor until enough requests exist.
+    """
+    floor = sizing_density(configured)
+    if measured is None:
+        return floor
+    return min(floor, measured)
+
+
+def calibrated_density_for(llm: LLMConfig, tracker: UsageTracker | None, model: str | None) -> float:
+    """Chars-per-token a stage sizes a new payload with, given the run so far.
+
+    The single entry point for self-calibrated sizing: the configured floor
+    tightened by the run's own measured density for *model* (see
+    :func:`calibrated_density`). No tracker, no model, or too few measured
+    calls keeps the floor — the first calls are how the fit is learned, so
+    they must not be starved by it.
+    """
+    measured = tracker.measured_chars_per_token(model or "", min_samples=llm.density_min_samples) if tracker is not None else None
+    return calibrated_density(llm.default_chars_per_token, measured)
 
 
 def sizing_density(chars_per_token: float | None = None) -> float:

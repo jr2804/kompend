@@ -44,6 +44,8 @@ and merging refuses wholesale on a redundant corpus.
   prices a request in seconds.
 - `src/kompend/llm/context_window.py` — the discovered window, its answer
   reserve and history budget.
+- `src/kompend/llm/usage.py` — prompt-char measurements beside the token
+  counts, and the measured chars-per-token fit sizing self-calibrates to.
 - `src/kompend/agents/base/context.py` — compaction presets as fractions of
   that budget, never of the raw window.
 - `src/kompend/agents/context_manager.py` — the compaction trigger, target,

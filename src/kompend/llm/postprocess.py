@@ -201,14 +201,19 @@ class UsageRecorder:
     """Record token usage from a response onto the usage tracker.
 
     Reads ``response.usage`` and records input/output tokens via the
-    canonical ``UsageTracker`` interface.
+    canonical ``UsageTracker`` interface. ``prompt_chars`` is the raw
+    prompt text measured at pipeline build time (``default_pipeline``
+    counts it from the request messages): together with the provider's
+    prompt-token count it feeds the measured density fit, so sizing
+    self-calibrates to the deployed tokenizer.
     """
 
-    def __init__(self, tracker: UsageTracker | None, model_name: str, elapsed_s: float = 0.0) -> None:
-        """Initialize with usage tracker, model identifier and the request's wall clock."""
+    def __init__(self, tracker: UsageTracker | None, model_name: str, elapsed_s: float = 0.0, prompt_chars: int = 0) -> None:
+        """Initialize with usage tracker, model identifier, the request's wall clock and its prompt text size."""
         self._tracker = tracker
         self._model_name = model_name
         self._elapsed_s = elapsed_s
+        self._prompt_chars = prompt_chars
 
     def __call__(self, response: ModelResponse) -> None:
         """Record usage data from response if available."""
@@ -222,7 +227,28 @@ class UsageRecorder:
             completion_tokens=getattr(usage, "output_tokens", 0) or 0,
             model=self._model_name,
             elapsed_s=self._elapsed_s,
+            prompt_chars=self._prompt_chars,
         )
+
+
+def _prompt_text_chars(messages: Sequence[ModelMessage]) -> int:
+    """Raw prompt text length across *messages*, in characters.
+
+    Sums the string content of every part (tool-call args excluded: they
+    are structured data, not prompt text). Undercounting errs toward the
+    safe side — fewer measured chars per token can only shrink later
+    payloads, never grow them — while wire framing (JSON envelopes, base64
+    media) is deliberately left out for the same reason.
+    """
+    total = 0
+    for message in messages:
+        for part in getattr(message, "parts", []):
+            content = getattr(part, "content", None)
+            if isinstance(content, str):
+                total += len(content)
+            elif isinstance(content, list):
+                total += sum(len(item) for item in content if isinstance(item, str))
+    return total
 
 
 class DebugSaver:
@@ -417,7 +443,8 @@ def default_pipeline(
     1. ``surrogate_scrub`` — remove surrogates before JSON operations
     2. ``tool_call_repair`` — repair tool-call args using schema guidance
     3. ``thinking_part_repair`` — convert ThinkingPart/TextPart to ToolCallPart
-    4. ``usage_recorder`` — record input/output token counts
+    4. ``usage_recorder`` — record input/output token counts plus the prompt
+       text size, which feeds the measured density fit
     5. ``debug_saver`` — save debug dump if configured (only when an agent is set)
     """
     names: list[str] = ["surrogate_scrub", "tool_call_repair", "thinking_part_repair", "usage_recorder"]
@@ -430,6 +457,7 @@ def default_pipeline(
         usage_recorder__tracker=usage_tracker,
         usage_recorder__model_name=model_name,
         usage_recorder__elapsed_s=elapsed_s,
+        usage_recorder__prompt_chars=_prompt_text_chars(messages),
         debug_saver__agent=agent,
         debug_saver__model_name=model_name,
         debug_saver__messages=messages,

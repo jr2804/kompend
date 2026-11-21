@@ -43,11 +43,20 @@ MIN_TIMEOUT_S: Final[float] = 15.0
 
 @dataclass(frozen=True, slots=True)
 class CallSample:
-    """One completed request, as the provider actually served it."""
+    """One completed request, as the provider actually served it.
+
+    ``prompt_chars`` is the raw prompt text the estimate was sized from
+    (message text, not wire framing): together with ``prompt_tokens`` it
+    measures the density this model actually served, so later requests
+    can size against evidence instead of the pessimistic floor alone.
+    Older samples predate the measurement and leave it at ``0``; they
+    are excluded from the density fit, never treated as zero-density.
+    """
 
     prompt_tokens: int
     completion_tokens: int
     elapsed_s: float
+    prompt_chars: int = 0
 
 
 @dataclass(frozen=True, slots=True)

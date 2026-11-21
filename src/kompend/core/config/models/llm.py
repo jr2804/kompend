@@ -177,6 +177,29 @@ class LLMConfig(_KompendBaseModel):
             "enlarge a request - while a smaller value is honoured and shrinks every request."
         ),
     )
+    #: Share of the usable window (window minus answer reserve and safety
+    #: margin) a request's content may fill. The remainder is headroom for
+    #: tokenizer and framing drift between the char-based estimate and the
+    #: provider's token count: sizing to 100% of usable is how a nominally
+    #: exact-fit batch arrives over the window. A ratio, not a token count,
+    #: so the same value shapes every window size.
+    request_utilization: float = Field(
+        default=0.9,
+        validation_alias=EnvVar.LLM_REQUEST_UTILIZATION,
+        description=(
+            "Fraction of the usable window a request's content may fill; the rest is headroom for "
+            "tokenizer and framing drift. Content that does not fit is split across more requests, never cropped."
+        ),
+    )
+    #: Measured-density samples a model must serve before the run sizes
+    #: against its own chars-per-token instead of the pessimistic floor
+    #: alone (see ``measured_chars_per_token``). A sample window that
+    #: shapes the adaptation: fewer samples would fit noise, not density.
+    density_min_samples: int = Field(
+        default=5,
+        validation_alias=EnvVar.LLM_DENSITY_MIN_SAMPLES,
+        description=("Completed requests with a prompt-char measurement required before the measured chars-per-token tightens request sizing."),
+    )
 
 
 class EmbeddingConfig(_KompendBaseModel):

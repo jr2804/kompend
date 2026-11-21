@@ -63,6 +63,7 @@ class UsageTracker:
         model: str,
         ttft_s: float = 0.0,
         elapsed_s: float = 0.0,
+        prompt_chars: int = 0,
     ) -> None:
         """Record one successful completion. Thread-safe.
 
@@ -71,6 +72,11 @@ class UsageTracker:
         number is the aggregate token count, and "how long will this payload
         take" can only be guessed from a global rate that mixes a 200-token
         call with a 49,000-token one.
+
+        *prompt_chars* is the raw prompt text length that produced
+        *prompt_tokens* (see :func:`measured_chars_per_token`). Samples that
+        predate the measurement leave it at ``0`` and are excluded from the
+        density fit.
         """
         with self._lock:
             self.prompt_tokens += prompt_tokens
@@ -84,9 +90,29 @@ class UsageTracker:
             if completion_tokens > 0:
                 self._events.append((self._clock(), completion_tokens))
             if elapsed_s > 0.0:
-                self._samples.append((model, CallSample(prompt_tokens, completion_tokens, elapsed_s)))
+                self._samples.append((model, CallSample(prompt_tokens, completion_tokens, elapsed_s, prompt_chars)))
                 while len(self._samples) > self.sample_window:
                     self._samples.popleft()
+
+    def measured_chars_per_token(self, model: str | None = None, *, min_samples: int) -> float | None:
+        """Measured prompt density (chars per token), or ``None`` without enough data.
+
+        Aggregates the samples that carry a prompt-char measurement: total
+        chars over total tokens, so one long request weighs more than a
+        short one. Fewer than *min_samples* measured samples — or none for
+        *model* — returns ``None``, and the caller keeps the pessimistic
+        floor: a density fit from two calls is a guess, not a measurement.
+
+        The fit only ever tightens sizing (see
+        :func:`~kompend.llm.request_budget.calibrated_density`): a measured
+        density sparser than the floor is information about the deployed
+        tokenizer, never a licence to grow the payload.
+        """
+        with self._lock:
+            measured = [sample for owner, sample in self._samples if (model is None or owner == model) and sample.prompt_chars > 0 and sample.prompt_tokens > 0]
+        if len(measured) < min_samples:
+            return None
+        return sum(s.prompt_chars for s in measured) / sum(s.prompt_tokens for s in measured)
 
     def record_context_usage(self, current: int, max_tokens: int) -> None:
         """Record the latest context-window utilization.

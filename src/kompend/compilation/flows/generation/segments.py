@@ -20,7 +20,7 @@ from kompend.core.paths import safe_stem
 from kompend.core.text.matching import best_match, cosine
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.decision import ErrorAction, ErrorDecision
-from kompend.llm.request_budget import RequestBudget
+from kompend.llm.request_budget import RequestBudget, calibrated_density_for
 from kompend.logging import get_logger
 from kompend.rag.embedding_pydantic import make_provider
 
@@ -161,7 +161,7 @@ def prepare_source_segments(
     # that are exactly at the raw-content budget (observed: 27-token
     # overshoot on a 39K-token segment). Conservative: reserve the total
     # across all sources (segments share it, so this over-reserves slightly).
-    cpt = compiler._config.llm.default_chars_per_token
+    cpt = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
     label_overhead_tokens = int(sum(len(label) + 7 for label, _ in sources) / cpt)
     # Sizing-feasibility invariant, checked at planning time (before any
     # LLM call): the smallest segment the sizer can emit is
@@ -177,6 +177,7 @@ def prepare_source_segments(
         budget = RequestBudget(
             window=cw,
             reserved={"system": compiler._gen_system_tokens},
+            utilization=compiler._config.llm.request_utilization,
         )
     if budget.available_tokens - label_overhead_tokens < min_floor_tokens:
         raise LLMOutputError(

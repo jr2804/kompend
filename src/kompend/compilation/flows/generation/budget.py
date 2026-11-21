@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from kompend.compilation.two_phase import TwoPhaseRuntime
 from kompend.core.templates import get_template_loader
-from kompend.llm.request_budget import RequestBudget
+from kompend.llm.request_budget import RequestBudget, calibrated_density_for
 from kompend.logging import get_logger
 
 #: Fixed per-turn agentic conversation framing (tool call + result parts)
@@ -65,7 +65,7 @@ def _agentic_budget(
     estimates. The window, the answer reserve and the safety margin are the
     planner's business — this function only names the payloads.
     """
-    cpt = compiler._config.llm.default_chars_per_token
+    cpt = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
     categories = compiler._config.extraction_categories
     reserved = {
         "system": _token_estimate(_loader.get_body("compilation/generation_agentic_system.md.j2"), cpt),
@@ -80,7 +80,11 @@ def _agentic_budget(
         # The model may page through the titles the prompt does not inline:
         # reserve that round (framing + the window it returns).
         reserved["titles_round"] = _token_estimate_chars(titles_page_chars, cpt) + _AGENTIC_TITLES_ROUND_TOKENS
-    budget = RequestBudget(window=compiler._context_window, reserved=reserved)
+    budget = RequestBudget(
+        window=compiler._context_window,
+        reserved=reserved,
+        utilization=compiler._config.llm.request_utilization,
+    )
     logger.info("TwoPhase: agentic budget (%s)", budget.report())
     return budget
 
@@ -114,7 +118,7 @@ def _known_titles_windows(compiler: TwoPhaseRuntime, titles: list[str]) -> tuple
     the whole list fits inline, so nothing is reserved for a round the model
     never needs.
     """
-    cpt = compiler._config.llm.default_chars_per_token
+    cpt = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
     share_tokens = max(1, int(compiler._context_window.max_input * _KNOWN_TITLES_MAX_FRACTION / 2))
     share_chars = int(share_tokens * cpt)
     head: list[str] = []

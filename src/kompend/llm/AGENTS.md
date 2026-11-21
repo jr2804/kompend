@@ -105,7 +105,7 @@ chars = budget.content_chars(chars_per_token)
 | `reserved` | Named fixed payloads; only the sum is subtracted |
 | `answer_tokens` | Defaults to `window.answer_reserve` |
 | `safety_tokens` | Defaults to `context_safety_tokens(window.max_input)` |
-| `utilization` | Scales the remainder (a stage needing a second leg takes a fraction) |
+| `utilization` | Content share of usable (default `compile.llm.request_utilization` = 0.9); the rest is headroom for tokenizer and framing drift |
 | `available_tokens` | Signed: window − answer − safety − reserved |
 | `content_tokens` / `content_chars()` | What is left for content (≥ 1), sized by `compile.llm.content_window_tokens` |
 | `fits()` / `require()` | Check, or raise `LLMOutputError` naming the components |
@@ -120,9 +120,9 @@ Contracts:
   512 tokens) and `kompend.compilation.two_phase` re-exports it for the root
   path; `usable_window_tokens` derives from it the share a trigger is a fraction of.
 - `chars_to_tokens` / `tokens_to_chars` are the single chars-per-token
-  conversion; pass `compile.llm.default_chars_per_token` (default = the shared
-  bound in `core.text.density`). `sizing_density` clamps a larger value to it:
-  3.85 is how a "64k" payload arrived as ~78k tokens.
+  conversion; stages size with `calibrated_density_for` — the floor tightened
+  by the run's measured density, never loosened past it. Content keeps
+  `compile.llm.request_utilization` (0.9) of usable as headroom.
 
 Stages that size a request must use this planner, not their own arithmetic:
 extraction batching, agentic generation segments, reference extraction, the

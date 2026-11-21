@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from kompend.compilation.two_phase import context_safety_tokens as reexported_safety_tokens
+from kompend.core.config.models.llm import LLMConfig
 from kompend.core.text.density import CONSERVATIVE_CHARS_PER_TOKEN
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow
@@ -19,10 +20,12 @@ from kompend.llm.request_budget import (
     CONTEXT_SAFETY_TOKENS,
     DEFAULT_CHARS_PER_TOKEN,
     RequestBudget,
+    calibrated_density_for,
     chars_to_tokens,
     context_safety_tokens,
     tokens_to_chars,
 )
+from kompend.llm.usage import UsageTracker
 
 # -- the shared safety margin ------------------------------------------------
 
@@ -172,6 +175,54 @@ def test_the_content_window_never_raises_the_payload() -> None:
 
     assert capped.content_tokens == uncapped.content_tokens
     assert "window=" not in uncapped.report()
+
+
+def test_the_content_utilization_defaults_to_a_headroom_ratio() -> None:
+    """Content is capped at a fraction of usable, never at the full window.
+
+    Sizing to 100% of usable is how a nominally exact-fit batch arrived at
+    63961/64000 tokens with zero room left and was refused at the window
+    edge. The default keeps the headroom; the value stays a ratio so the
+    same setting shapes every window size.
+    """
+    llm = LLMConfig()
+    assert llm.request_utilization == 0.9
+    assert 0.0 < llm.request_utilization <= 1.0
+    budget = RequestBudget(window=_window(), reserved={}, utilization=llm.request_utilization)
+    assert budget.content_tokens == int(budget.available_tokens * 0.9)
+
+
+def test_a_request_never_exceeds_the_window_once_density_is_measured() -> None:
+    """A stub provider that raises at the window edge never fires.
+
+    The deployed tokenizer is denser than the floor (1.5 chars/token: every
+    floor-sized payload arrives two-thirds over its plan). Five measured
+    calls teach the run its own density, and the calibrated sizing plus the
+    utilization headroom keeps the true prompt inside the window. The
+    floor-sized arm shows the failure this replaces: it trips the edge.
+    """
+    window = _window(max_input=8192)
+    tracker = UsageTracker()
+    for _ in range(5):
+        tracker.record(prompt_tokens=1000, completion_tokens=50, model="stub", elapsed_s=1.0, prompt_chars=1500)
+
+    llm = LLMConfig()
+    cpt = calibrated_density_for(llm, tracker, "stub")
+    assert cpt == 1.5
+    budget = RequestBudget(window=window, reserved={"system": 0}, utilization=llm.request_utilization)
+    true_prompt_tokens = int(budget.content_chars(cpt) / 1.5)
+    _require_inside_window(true_prompt_tokens, window.max_input)
+
+    old_budget = RequestBudget(window=window, reserved={"system": 0}, utilization=1.0)
+    old_chars = old_budget.content_chars(CONSERVATIVE_CHARS_PER_TOKEN)
+    with pytest.raises(LLMOutputError):
+        _require_inside_window(int(old_chars / 1.5), window.max_input)
+
+
+def _require_inside_window(prompt_tokens: int, max_input: int) -> None:
+    """A stub provider edge: prompt tokens past the window are refused."""
+    if prompt_tokens > max_input:
+        raise LLMOutputError(f"request ({prompt_tokens} tokens) exceeds the available context size ({max_input} tokens)")
 
 
 def _window(max_input: int = 65536, max_output: int = 8192, content_window_tokens: int | None = None) -> ContextWindow:
