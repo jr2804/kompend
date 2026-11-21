@@ -54,7 +54,11 @@ The reference measurement is `sources/26253-j30.docx`: 26,886 tree nodes,
 
 The planner's own budgets (`budget_nodes`, `budget_windows`) shrink
 window-to-window, so a merged plan can never exceed the level budget; an
-EXPAND past the remaining budget is sent back for another verdict. Plan
+EXPAND past the remaining budget is sent back for another verdict. Each
+window is judged by a fresh agent carrying that window's verdict model —
+reusing one agent would answer every window against the first window's
+schema (bead `knox-t5ol`), because the agent surface snapshots the output
+schema at build. Plan
 reuse is a cache hit on the `summarizer_plan` layer (keyed by tree, task,
 model, and policy — see [the cache architecture](cache.md) for where the
 layers live).

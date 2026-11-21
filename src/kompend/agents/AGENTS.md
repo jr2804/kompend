@@ -88,13 +88,12 @@ The base class provides:
   model-triggered `CompactOnRequest` for history-threading agents only.
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
   `[rlm]` extra) attaches from the `compile.llm.rlm` group (`RlmConfig`;
-  `enable` is the only switch, explicit fields override the preset baseline).
-  It registers an `execute_code` tool (sandboxed REPL, deps context pre-loaded
-  from `rlm_context_field`) plus RLM instructions; the sub-model powers
-  `llm_query()` in the REPL and is usage-tracked via `KompendModel`. With
-  `max_depth > 0` the REPL also exposes `rlm_query(prompt, slice)` — a child
-  agent (same main model, own REPL) recursing to the depth budget, guarded by
-  a per-root-run node budget (default 16) and cycle detection on (depth,
+  `enable` is the only switch). It registers an `execute_code` tool
+  (sandboxed REPL, deps context from `rlm_context_field`) plus RLM
+  instructions; the sub-model powers `llm_query()`, usage-tracked via
+  `KompendModel`. With `max_depth > 0` the REPL also exposes
+  `rlm_query(prompt, slice)` — a child agent recursing to the depth budget,
+  guarded by a per-root-run node budget (default 16) and cycle detection on (depth,
   prompt, context fingerprint). The per-run REPL cache is keyed by `id(deps)`
   and a lookup must confirm the entry still belongs to that deps object (ids
   are recycled; a stale REPL would run against the previous namespace, guard
@@ -104,6 +103,8 @@ The base class provides:
 - **Skill injection** — `compile.skills` entries append to the system prompt under `## Skill: <name>`
 - **Output validation + retry** — PydanticAI validates against
   `result_type`; `ModelRetry` triggers a retry with feedback
+- **Output schema is build-time** — `result_type` snapshots at build and is
+  cached; reassigning it is silently ignored. One agent per answer shape (`knox-t5ol`).
 - **Usage tracking** — token usage recorded per call
 - **Usage limits** — `run()`/`run_with_messages()` pass `_usage_limits_for(deps)`
   (default: the RLM preset limits, else None → pydantic-ai's implicit 50-request
@@ -122,8 +123,7 @@ The base class provides:
 ### Construction contract
 
 Agents take their limits from the config, not the call site: a construction site
-hands over the `compile.llm` group (ceiling, retries, reasoning effort, context
-manager, window, fallback chain, delta-retry, data format) and inherits the rest.
+hands over the `compile.llm` group and inherits the rest.
 `_apply_config_defaults()` (`base/agent.py`) fills every gap from its `compile.llm`
 twin (the tool/output retry split collapses to 0 when `output_retries_enabled` is
 false); an explicitly passed value always wins.

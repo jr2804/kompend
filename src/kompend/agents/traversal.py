@@ -293,10 +293,11 @@ class TraversalAgent(KompendAgentBase[TraversalPlan, TraversalDeps]):
     """Decision-model agent that plans one chunk-tree level.
 
     The registered spec documents the executor-facing contract
-    (:class:`TraversalPlan`); each window run sets the instance
-    ``result_type`` to its minted verdict model before ``run()``, because the
-    grammar cannot carry the plan shape. The validation hook and the prompt
-    wiring come from the spec either way.
+    (:class:`TraversalPlan`); each window is answered by a fresh agent
+    whose ``result_type`` is its minted verdict model, because the grammar
+    cannot carry the plan shape and the base class snapshots
+    ``result_type`` at build. The validation hook and the prompt wiring
+    come from the spec either way.
     """
 
     spec: ClassVar[AgentSpec | None] = SPEC_TRAVERSAL
@@ -330,10 +331,6 @@ def decide_traversal_plan(
     model is configured, a window fails, or the verdict answers nothing;
     the executor then falls back to the full tree.
     """
-    agent = make_traversal_agent(config, model=model, timeout=timeout)
-    if agent is None:
-        logger.warning("Decision model disabled — falling back to the full tree")
-        return None
     if not outline:
         return TraversalPlan(entries=[])
     windows = traversal_windows(len(outline))
@@ -348,6 +345,15 @@ def decide_traversal_plan(
     remaining = budget_nodes
     for first, last in windows:
         window_children = outline[first : last + 1]
+        # One agent per window (knox-t5ol): the base class snapshots
+        # ``result_type`` when it builds the pydantic-ai agent and caches
+        # that build, so reassigning ``result_type`` on a shared agent is
+        # silently ignored and every later window would be answered against
+        # the first window's field names.
+        agent = make_traversal_agent(config, model=model, timeout=timeout)
+        if agent is None:
+            logger.warning("Decision model disabled — falling back to the full tree")
+            return None
         agent.result_type = traversal_verdict_model(window_children, first_index=first)
         deps = TraversalDeps(
             title=title,

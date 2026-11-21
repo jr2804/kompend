@@ -77,6 +77,28 @@ class _StubAgent:
         return model.model_validate(self._windows[first])
 
 
+class _StickySchemaAgent(_StubAgent):
+    """Fake agent reproducing the base-class schema snapshot (knox-t5ol).
+
+    ``KompendAgentBase`` snapshots ``result_type`` when it builds the
+    pydantic-ai agent and caches that build, so reassigning ``result_type``
+    on a shared agent is silently ignored. This fake pins that contract:
+    the schema freezes at the first run, and later windows are validated
+    against it — exactly what made a shared agent answer every window
+    against the first window's field names.
+    """
+
+    def __init__(self, windows: dict[int, dict[str, str]]) -> None:
+        super().__init__(windows)
+        self._built_schema: Any = None
+
+    def run(self, deps: TraversalDeps) -> BaseModel:
+        if self._built_schema is None:
+            self._built_schema = self.result_type
+        first = int(deps.outline[0].node_id[1:])
+        return self._built_schema.model_validate(self._windows[first])
+
+
 def _deps(children: list[OutlineNode], *, budget_nodes: int = 2) -> TraversalDeps:
     """Deps over *children* with a fixed identity."""
     return TraversalDeps(
@@ -331,6 +353,27 @@ def test_decide_loop_merges_windows_and_falls_back_on_failure(monkeypatch: pytes
     failing = _StubAgent({}, fail=True)
     monkeypatch.setattr("kompend.agents.traversal.make_traversal_agent", lambda *args, **kwargs: failing)
     assert decide_traversal_plan(DecisionConfig(enabled=True, model="typesafe/test-model"), **_plan_kwargs(children[:2])) is None
+
+
+def test_second_window_answered_against_its_own_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    children = [_node(f"n{i}") for i in range(130)]
+    windows = {first: {traversal_field_name(i): "summarize" for i in range(first, min(first + 64, 130))} for first in (0, 64, 128)}
+    made: list[_StickySchemaAgent] = []
+
+    def factory(*args: Any, **kwargs: Any) -> _StickySchemaAgent:
+        agent = _StickySchemaAgent(windows)
+        made.append(agent)
+        return agent
+
+    monkeypatch.setattr("kompend.agents.traversal.make_traversal_agent", factory)
+
+    plan = decide_traversal_plan(DecisionConfig(enabled=True, model="typesafe/test-model"), **_plan_kwargs(children, budget_nodes=130))
+
+    # A shared agent would validate windows 2+ against window 1's field names
+    # and the level would fall back to None; a fresh agent per window plans all 130.
+    assert plan is not None
+    assert [entry.node_id for entry in plan.entries] == [f"n{i}" for i in range(130)]
+    assert len(made) == 3
 
 
 def _node(node_id: str, *, heading: tuple[str, ...] = ("Doc", "Section"), subtree_chars: int = 100, preview: str = "preview text") -> OutlineNode:
