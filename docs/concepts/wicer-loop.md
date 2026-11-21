@@ -59,7 +59,9 @@ pinning (specific fact + location) scores ~0.95.
 ### Step D: Refinement
 
 The compiler re-runs with pinned facts as "must-include" context. The loop
-repeats until convergence (all probes score ≥ 3) or max iterations (default: 3).
+repeats until convergence (all probes score ≥ 3), max iterations, or the
+derived per-pass budget (see Configuration) — the blind compile is timed
+but never charged to that budget.
 
 ## Empirical Results
 
@@ -104,6 +106,20 @@ max_iterations = 3
 quality_threshold = 3.0  # minimum average probe score
 probes_per_source = 3     # Q&A pairs per source document
 ```
+
+`wicer_max_seconds` (`compile.budget`, default `1800`, `0` disables the
+ceiling) is **not** a whole-pass wall clock. The blind compile is timed but
+never charged to the refinement budget; each refinement pass derives its own
+cap from the corpus and the measured throughput — planned requests (one per
+probe batch and eval segment, plus the diagnosis) times the fit-priced
+seconds per request, plus the measured blind-compile time as the recompile
+allowance. Before the run's usage tracker holds enough samples the request
+ceiling prices the pass instead. Every pass logs its derivation (units,
+per-request seconds and their source, blind time, derived and effective
+caps), and the stop warning and the wiki metadata carry the same terms, so
+a run that stops early says what it planned and what it spent. A vault on a
+slow local model that cannot afford refinement iterations should use the
+plain compiler: the first calls learn the fit and run at the ceiling.
 
 ## Further Reading
 

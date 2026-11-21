@@ -324,7 +324,7 @@ Consequences worth knowing:
   model that cannot finish stops at the estimate instead of the ceiling. A
   session gets a wall-clock deadline derived from the number of units it has
   to cover, and the multi-turn request budgets of agentic sessions
-  (`budget.summary_requests_per_node`, WiCER's wall clock) still apply.
+  (`budget.summary_requests_per_node`, WiCER's per-batch deadlines) still apply.
 
 ## Structural Controls
 
@@ -337,7 +337,7 @@ Beyond token budgets, `BudgetConfig` provides content-quality controls:
 | `max_concept_pages` | `50` | `KOMP_BUDGET_MAX_CONCEPT_PAGES` | Warning threshold for generated concept pages (all candidates are compiled) |
 | `concepts_per_batch` | `8` | `KOMP_BUDGET_CONCEPTS_PER_BATCH` | Concepts extracted per LLM batch |
 | `wicer_max_iterations` | `0` | `KOMP_BUDGET_WICER_MAX_ITERATIONS` | Refinement rounds — `0` runs until the loop converges |
-| `wicer_max_seconds` | `1800` | `KOMP_BUDGET_WICER_MAX_SECONDS` | Wall-clock budget of the refinement loop (`0` disables it) |
+| `wicer_max_seconds` | `1800` | `KOMP_BUDGET_WICER_MAX_SECONDS` | Ceiling on the derived per-pass refinement budget (`0` leaves the derived budget unbounded; the blind compile is never charged to it) |
 
 ### Traversal planning
 
