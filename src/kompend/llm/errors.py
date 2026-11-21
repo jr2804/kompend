@@ -19,6 +19,7 @@ from collections.abc import Iterator
 from typing import Final
 
 import httpx
+import httpx2
 from pydantic_ai.exceptions import ModelAPIError
 
 #: HTTP status codes that indicate a retryable server/transport condition.
@@ -64,6 +65,8 @@ def _transient_cause(exc: BaseException) -> bool:
     if isinstance(exc, TimeoutError | ConnectionError):
         return True
     if isinstance(exc, httpx.TimeoutException | httpx.NetworkError | httpx.RemoteProtocolError):
+        return True
+    if isinstance(exc, httpx2.TimeoutException | httpx2.NetworkError | httpx2.RemoteProtocolError):
         return True
     if isinstance(exc, ModelAPIError):
         # A ModelAPIError without a status never reached an HTTP response

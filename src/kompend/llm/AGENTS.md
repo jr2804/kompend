@@ -218,11 +218,11 @@ the literal. `kompend doctor` probes each format on the configured model
 `kompend.llm.errors` answers one question about a failed call: **transient or
 semantic?** `is_transient_error(exc)` walks the `raise ... from ...` chain and
 matches exception *types* and HTTP *status codes* only (`TRANSIENT_STATUS_CODES`
-= 408/409/425/429/5xx/529). There is deliberately no message matching — a
-gateway that words a 400 as "timed out" is still a client error, and a 504 is
+= 408/409/425/429/5xx/529; transport matches `httpx` and `httpx2` — the provider
+stack raises `httpx2`, whose classes do not subclass `httpx`'s. No message matching:
+a gateway that words a 400 as "timed out" is still a client error, and a 504 is
 still a server-side timeout. `KompendAgentBase` raises `LLMTransientError`
-(a subclass of `LLMOutputError`) for a transient cause, so callers can retry
-that class and treat the rest as unretryable.
+(a subclass of `LLMOutputError`) for a transient cause; the rest is unretryable.
 
 `kompend.llm.decision` holds the vocabulary for the optional **decision model**
 (TypeSafe SystemOne / Jev): `ErrorAction = Literal["retry", "skip", "abort"]`

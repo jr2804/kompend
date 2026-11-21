@@ -7,7 +7,9 @@ from typing import ClassVar
 from unittest.mock import MagicMock
 
 import httpx
+import httpx2
 import pytest
+from pydantic import TypeAdapter, ValidationError
 from pydantic_ai.exceptions import ModelHTTPError
 
 from kompend.agents.base import KompendAgentBase
@@ -48,9 +50,23 @@ def test_transport_failures_are_transient() -> None:
     assert is_transient_error(TimeoutError()) is True
 
 
+def test_httpx2_transport_failures_are_transient() -> None:
+    """The provider stack raises httpx2, whose classes do not subclass httpx's."""
+    request = httpx2.Request("GET", "https://example.com")
+    assert is_transient_error(httpx2.ConnectError("refused", request=request)) is True
+    assert is_transient_error(httpx2.ReadTimeout("slow", request=request)) is True
+    assert is_transient_error(httpx2.RemoteProtocolError("dropped", request=request)) is True
+
+
 def test_cause_chain_is_followed() -> None:
     wrapper = RuntimeError("agent failed")
     wrapper.__cause__ = httpx.ReadTimeout("slow")
+    assert is_transient_error(wrapper) is True
+
+
+def test_httpx2_cause_chain_is_followed() -> None:
+    wrapper = RuntimeError("agent failed")
+    wrapper.__cause__ = httpx2.ConnectError("refused", request=httpx2.Request("GET", "https://example.com"))
     assert is_transient_error(wrapper) is True
 
 
@@ -66,6 +82,13 @@ def test_status_attribute_is_respected() -> None:
 
 def test_plain_errors_are_not_transient() -> None:
     assert is_transient_error(ValueError("Request timed out.")) is False
+
+
+def test_schema_errors_are_not_transient() -> None:
+    """A validation failure is semantic - retrying the same request fails the same way."""
+    with pytest.raises(ValidationError) as exc_info:
+        TypeAdapter(int).validate_python("not-an-int")
+    assert is_transient_error(exc_info.value) is False
 
 
 def test_transient_failure_is_retried_on_the_agent_base(monkeypatch: pytest.MonkeyPatch) -> None:
