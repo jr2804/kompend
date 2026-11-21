@@ -443,14 +443,20 @@ def summarizer_plan_deps(
     model: str,
     policy: str,
     include_model: bool = True,
+    depth: int | None = None,
 ) -> dict[str, str]:
     """Dependency dict for one ``summarizer_plan`` cache entry.
 
     ``include_model`` is the plan-layer spelling of
     ``compile.cache_ignore_model``: drop the model after a switch so plans
-    made by the previous model are reused.
+    made by the previous model are reused. ``depth`` scopes the entry to
+    one tree level — levels of the same tree are different plans and must
+    never share an entry (a level answered from another level's entry
+    plans the wrong children).
     """
     deps = {"tree_hash": tree_hash, "task_hash": task_hash, "policy": policy}
     if include_model:
         deps["model"] = model  # nocheck: summarizer cache deps, not wiki metadata
+    if depth is not None:
+        deps["depth"] = str(depth)
     return deps

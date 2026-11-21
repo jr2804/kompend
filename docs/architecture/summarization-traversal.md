@@ -60,10 +60,17 @@ reusing one agent would answer every window against the first window's
 schema (bead `knox-t5ol`), because the agent surface snapshots the output
 schema at build. The planner is consulted only about children that can be
 summarized: leaves inline into their parent, single-child wrappers are
-descended through without a verdict (bead `knox-hh2u`). Plan
-reuse is a cache hit on the `summarizer_plan` layer (keyed by tree, task,
+descended through without a verdict (bead `knox-hh2u`). The tree budget
+(`summary_traversal_max_nodes`) is carried across levels by the pipeline
+adapter: each level spends from the remaining budget and the excess
+becomes SKIP entries naming the cap (`budget`), SUMMARIZE-first and
+trailing-first, so the merged plan of a tree never exceeds the configured
+total. Plan
+reuse is a cache hit on the `summarizer_plan` layer (keyed by tree, level
+depth, task,
 model, and policy — see [the cache architecture](cache.md) for where the
-layers live).
+layers live); depth scopes the entry because levels of one tree must
+never share a plan (bead `knox-s2l1`).
 
 ## Configuration
 

@@ -197,7 +197,10 @@ class TestPlannerFailure:
         assert len(agent.calls) >= 1
 
     def test_planner_declining_a_level_falls_back_too(self, caplog: pytest.LogCaptureFixture) -> None:
-        planner = _StubPlanner({("s0", "s1", "s2"): _plan(("s0", "s1", "s2"))})  # deeper levels missing → None
+        # A level that answers nothing (no plan entry) declines the walk:
+        # leaf levels are never consulted (knox-hh2u), so the decline is
+        # staged at the root level.
+        planner = _StubPlanner({})
         agent = _StubAgent()
         tree = _tree()
 
@@ -282,11 +285,12 @@ class TestPlannedMetrics:
         infos = [record for record in caplog.records if record.levelno == logging.INFO]
         assert infos, "the planned path must emit exactly one metrics line"
         message = infos[0].getMessage()
-        # planned=3 counts eligible work nodes (root + s0 + s1); expanded=6
-        # counts every EXPAND entry incl. the four planned leaves.
-        assert message.startswith("tree=r eligible=4 planned=3 expanded=6 skipped=1 sessions=")
+        # planned=3 counts eligible work nodes (root + s0 + s1); expanded=2
+        # counts the EXPAND entries — leaves are never consulted (knox-hh2u),
+        # so they no longer inflate the count.
+        assert message.startswith("tree=r eligible=4 planned=3 expanded=2 skipped=1 sessions=")
         assert "windows=3" in message
-        assert "planner_calls=3" in message
+        assert "planner_calls=1" in message
 
     def test_off_path_emits_no_metrics_line(self, caplog: pytest.LogCaptureFixture) -> None:
         tree = _tree()
@@ -343,8 +347,9 @@ class TestTraversalGate:
 
         _summarizer(_StubAgent(), planner, policy=gated).summarize(_tree())
 
-        # All-EXPAND plan: the root level plus every section's leaf level.
-        assert len(planner.calls) == 4
+        # The gate passes, so the root level is consulted; the section leaf
+        # levels are never consulted (knox-hh2u).
+        assert len(planner.calls) == 1
 
 
 class TestPlanContextPassing:
@@ -387,7 +392,7 @@ class TestPlannedLedgerRow:
         assert stage == "summarize"
         assert outcome == StageOutcome.OK.value
         assert reason_code == ReasonCode.TRAVERSAL.value
-        assert detail == "planned=3 skipped=1 expanded=6 windows=3"
+        assert detail == "planned=3 skipped=1 expanded=2 windows=3"
 
     def test_failing_planner_records_a_failed_row(self, tmp_path: Path) -> None:
         db = vault_db_path(tmp_path)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from typing import Final
 
 from kompend.agents.context_chunk import ContextChunkAgent, make_context_chunk_agent
 from kompend.agents.summarizer import SummarizerAgent, make_summarizer_agent
@@ -61,11 +62,26 @@ class _TraversalPlannerAdapter:
     Implements the :class:`TraversalPlanner` protocol from
     ``kompend.chunking.summarizer`` on top of :func:`decide_traversal_plan`:
     one decision-model call per level, the resulting plan cached in the
-    ``summarizer_plan`` cache layer keyed on tree identity, task statement,
-    model, and budgets — a recompile of an unchanged tree never re-asks the
-    decision model. The adapter owns task text and budgets; the executor
-    owns only what it can compute from the tree.
+    ``summarizer_plan`` cache layer keyed on tree identity, level depth,
+    task statement, model, and budgets — a recompile of an unchanged tree
+    never re-asks the decision model. The adapter owns task text and
+    budgets; the executor owns only what it can compute from the tree.
+
+    The tree budget is carried across levels here, not per level: each
+    level is decided against the remaining ``budget_nodes`` (planned work
+    is EXPAND plus SUMMARIZE — summaries are cheap but they are still
+    planned nodes), and the excess over the remaining budget becomes SKIP
+    entries with reason ``"budget"`` instead of silently overrunning the
+    tree. The model's per-window validator tightens as the tree spends
+    (each level is decided against the remaining budget), but verdicts are
+    not trusted to hold it — the trim afterwards guarantees the count, so
+    the enforcement survives model nondeterminism and cache hits alike. A
+    level reached with nothing remaining is skipped without a model call.
     """
+
+    #: SKIP reason for planned work the tree budget cannot hold. Fixed code
+    #: text, like the executor's skip labels — never model prose.
+    BUDGET_SKIP_REASON: Final = "budget"
 
     def __init__(
         self,
@@ -87,37 +103,96 @@ class _TraversalPlannerAdapter:
         self._cache = cache_store
         self._include_model = include_model
         self._task = task
+        # Remaining tree budget per walk, keyed by tree hash. A walk always
+        # opens at depth 1 (the root's children), so a depth-1 call resets
+        # the counter; deeper calls spend it down. Entries are small ints,
+        # one per tree planned in this pipeline run.
+        self._remaining: dict[str, int] = {}
 
     def plan_level(self, *, outline: Sequence[OutlineNode], depth: int, context: PlanContext) -> LevelPlan | None:
+        # A new walk always opens at depth 1, so this resets the tree
+        # budget even when an earlier walk of the same tree aborted
+        # mid-way (a decline falls back to the full tree, no planner).
+        fresh_walk = depth <= 1 or context.tree_hash not in self._remaining
+        remaining = self._budget_nodes if fresh_walk else self._remaining[context.tree_hash]
+        if remaining <= 0:
+            # Nothing left to spend: skip without a model call. Deliberately
+            # uncached — this plan is budget state, not a decision, and
+            # caching it would lock later walks into the most pessimistic
+            # outcome even when their remaining budget is larger.
+            return LevelPlan(entries=tuple(PlanEntry(node_id=entry.node_id, mode=PlanMode.SKIP, reason=self.BUDGET_SKIP_REASON) for entry in outline))
         deps = summarizer_plan_deps(
             tree_hash=context.tree_hash,
             task_hash=summarizer_task_hash(self._task, ""),
             model=self._model,
             policy=summarizer_policy_key("auto", max_nodes=self._budget_nodes, max_windows=self._budget_windows),
             include_model=self._include_model,
+            depth=depth,
         )
+        level: LevelPlan | None = None
         if self._cache is not None:
             cached = self._cache.get_dict(SUMMARIZER_PLAN_LAYER, deps)
             if cached is not None:
-                return _level_plan_from_cache(cached)
-        plan = decide_traversal_plan(
-            self._decision,
-            title=context.title,
-            purpose=f"Compiled wiki for {context.title}",
-            task=self._task,
-            outline=list(outline),
-            depth=depth,
-            budget_nodes=self._budget_nodes,
-            budget_windows=self._budget_windows,
-            budget_chars=self._budget_chars,
-            model=self._model,
-        )
-        if plan is None:
-            return None
-        level = _level_plan_from_traversal(plan)
-        if self._cache is not None:
-            self._cache.set(SUMMARIZER_PLAN_LAYER, deps, _cache_payload(level))
-        return level
+                level = _level_plan_from_cache(cached)
+        if level is None:
+            plan = decide_traversal_plan(
+                self._decision,
+                title=context.title,
+                purpose=f"Compiled wiki for {context.title}",
+                task=self._task,
+                outline=list(outline),
+                depth=depth,
+                budget_nodes=remaining,
+                budget_windows=self._budget_windows,
+                budget_chars=self._budget_chars,
+                model=self._model,
+            )
+            if plan is None:
+                return None
+            level = _level_plan_from_traversal(plan)
+            if self._cache is not None:
+                # Cache the decision, not the trimmed plan: the trim below
+                # is budget state, and reusing it would lock later walks
+                # into a stale outcome.
+                self._cache.set(SUMMARIZER_PLAN_LAYER, deps, _cache_payload(level))
+        # The trim runs on cached plans too: a hit must spend from, and
+        # hold to, the current walk's remaining budget, not the remaining
+        # of the walk that populated the entry.
+        trimmed, spent = _trim_to_remaining(level.entries, remaining)
+        self._remaining[context.tree_hash] = remaining - spent
+        return LevelPlan(entries=trimmed) if spent != len(level.entries) else level
+
+
+def _trim_to_remaining(entries: tuple[PlanEntry, ...], remaining: int) -> tuple[tuple[PlanEntry, ...], int]:
+    """Cap one level's planned work at the remaining tree budget.
+
+    Planned work is EXPAND plus SUMMARIZE — summaries are cheap but they
+    are still planned nodes. The excess becomes SKIP entries with the
+    adapter's budget reason, SUMMARIZE-first and trailing-first: the
+    model's EXPAND verdicts mark the dense branches and are kept
+    preferentially, so a capped plan keeps full treatment where the model
+    judged the content densest. Returns the trimmed entries and the kept
+    planned-work count.
+    """
+    spend = sum(1 for entry in entries if entry.mode is PlanMode.EXPAND or entry.mode is PlanMode.SUMMARIZE)
+    over = spend - remaining
+    if over <= 0:
+        return entries, spend
+    trimmed: set[str] = set()
+    for mode in (PlanMode.SUMMARIZE, PlanMode.EXPAND):
+        for entry in reversed(entries):
+            if over <= 0:
+                break
+            if entry.node_id not in trimmed and entry.mode is mode:
+                trimmed.add(entry.node_id)
+                over -= 1
+        if over <= 0:
+            break
+    kept = [
+        PlanEntry(node_id=entry.node_id, mode=PlanMode.SKIP, reason=_TraversalPlannerAdapter.BUDGET_SKIP_REASON) if entry.node_id in trimmed else entry
+        for entry in entries
+    ]
+    return tuple(kept), spend - len(trimmed)
 
 
 def _cache_payload(level: LevelPlan) -> JSONDict:

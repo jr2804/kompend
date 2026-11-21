@@ -444,9 +444,7 @@ class NodeSummarizer:
             title=tree.source_file.stem if tree.source_file is not None else tree.root_id,
         )
         try:
-            work_ids, skip, focus_by_node, expand_count, planner_calls = self._plan_tree(
-                tree, context, frozenset(node.id for node in eligible)
-            )
+            work_ids, skip, focus_by_node, expand_count, planner_calls = self._plan_tree(tree, context, frozenset(node.id for node in eligible))
         except Exception as exc:
             logger.warning(
                 "Traversal planning failed for tree %s (%s) — summarizing the full tree",
@@ -488,9 +486,7 @@ class NodeSummarizer:
         )
         return tree
 
-    def _plan_tree(
-        self, tree: ChunkTree, context: PlanContext, eligible_ids: frozenset[str]
-    ) -> tuple[set[str], dict[str, str], dict[str, str], int, int]:
+    def _plan_tree(self, tree: ChunkTree, context: PlanContext, eligible_ids: frozenset[str]) -> tuple[set[str], dict[str, str], dict[str, str], int, int]:
         """Ask the planner per level, top-down from the root.
 
         Only children that can be summarized are ever consulted: leaves

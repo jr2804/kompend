@@ -48,6 +48,8 @@ def test_plan_level_converts_and_caches(tmp_path: Path, monkeypatch: pytest.Monk
     assert calls[0]["outline"] == [_node("s0")]
     # The plan landed in the cache layer under the adapter's exact deps.
     assert cache.has(SUMMARIZER_PLAN_LAYER, _deps_for("a" * 16))
+    # ... and only for its own level: depth scopes the entry.
+    assert not cache.has(SUMMARIZER_PLAN_LAYER, _deps_for("a" * 16, depth=2))
 
 
 def test_second_call_with_the_same_tree_hits_the_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -64,6 +66,72 @@ def test_second_call_with_the_same_tree_hits_the_cache(tmp_path: Path, monkeypat
 
     assert [entry.node_id for entry in second.entries] == [entry.node_id for entry in first.entries]
     assert len(calls) == 1, "the second call must be served from the cache"
+
+
+def test_second_level_does_not_reuse_first_level_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def echo_outline(config: object, **kwargs: Any) -> TraversalPlan:
+        calls.append(kwargs)
+        outline = kwargs["outline"]
+        return TraversalPlan(entries=[AgentPlanEntry(node_id=node.node_id, mode=AgentPlanMode.EXPAND) for node in outline])
+
+    monkeypatch.setattr(factory, "decide_traversal_plan", echo_outline)
+    cache = CacheStore(tmp_path)
+    adapter = _adapter(cache)
+    context = PlanContext(tree_hash="a" * 16, title="doc")
+
+    first = adapter.plan_level(outline=[_node("a"), _node("b")], depth=1, context=context)
+    second = adapter.plan_level(outline=[_node("c"), _node("d")], depth=2, context=context)
+
+    assert first is not None
+    assert [entry.node_id for entry in first.entries] == ["a", "b"]
+    # Before the depth-scoped key, the second level read the first level's
+    # cached plan (entries a/b) and the executor expanded the wrong
+    # children via missing-means-EXPAND.
+    assert second is not None
+    assert [entry.node_id for entry in second.entries] == ["c", "d"]
+    assert [entry.mode for entry in second.entries] == [PlanMode.EXPAND, PlanMode.EXPAND]
+    assert len(calls) == 2, "each level is decided (and cached) on its own"
+    assert cache.has(SUMMARIZER_PLAN_LAYER, _deps_for("a" * 16, depth=2))
+
+
+def test_tree_budget_carries_across_levels(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[dict[str, Any]] = []
+
+    def expand_everything(config: object, **kwargs: Any) -> TraversalPlan:
+        calls.append(kwargs)
+        outline = kwargs["outline"]
+        return TraversalPlan(entries=[AgentPlanEntry(node_id=node.node_id, mode=AgentPlanMode.EXPAND) for node in outline])
+
+    monkeypatch.setattr(factory, "decide_traversal_plan", expand_everything)
+    cache = CacheStore(tmp_path)
+    adapter = _TraversalPlannerAdapter(
+        decision=DecisionConfig(),
+        model="test/decision-model",
+        budget_nodes=3,
+        budget_windows=2000,
+        budget_chars=10_000,
+        cache_store=cache,
+        include_model=True,
+        task="Standing task.",
+    )
+    context = PlanContext(tree_hash="b" * 16, title="doc")
+
+    first = adapter.plan_level(outline=[_node("a"), _node("b"), _node("c"), _node("d")], depth=1, context=context)
+    second = adapter.plan_level(outline=[_node("e"), _node("f")], depth=2, context=context)
+
+    assert first is not None
+    assert second is not None
+    kept = [entry for entry in (*first.entries, *second.entries) if entry.mode is PlanMode.EXPAND or entry.mode is PlanMode.SUMMARIZE]
+    assert len(kept) <= 3, "the merged plan of a tree never exceeds the configured budget"
+    assert [entry.node_id for entry in kept] == ["a", "b", "c"]
+    # The excess is recorded, not silent: every trimmed child names the cap.
+    assert [entry.reason for entry in first.entries if entry.mode is PlanMode.SKIP] == ["budget"]
+    assert [entry.reason for entry in second.entries] == ["budget", "budget"]
+    # The exhausted level costs no model call.
+    assert len(calls) == 1
+    assert calls[0]["budget_nodes"] == 3
 
 
 def test_declining_planner_caches_nothing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -135,13 +203,14 @@ def _stub_decide(entries: tuple[AgentPlanEntry, ...], calls: list[dict[str, Any]
     return fake
 
 
-def _deps_for(tree_hash: str) -> dict[str, str]:
+def _deps_for(tree_hash: str, *, depth: int = 1) -> dict[str, str]:
     return summarizer_plan_deps(
         tree_hash=tree_hash,
         task_hash=summarizer_task_hash("Standing task.", ""),
         model="test/decision-model",
         policy=summarizer_policy_key("auto", max_nodes=200, max_windows=2000),
         include_model=True,
+        depth=depth,
     )
 
 

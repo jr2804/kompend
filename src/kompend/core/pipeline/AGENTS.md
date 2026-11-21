@@ -115,6 +115,13 @@ persistence, and standalone ingestion.
   aggregates eligible nodes across trees and offsets each summarizer callback;
   the CLI reports completed/total nodes plus measured sessions/min, so one
   large document cannot pin a per-document bar for hours.
+- **The traversal tree budget is carried by the pipeline adapter.**
+  `_TraversalPlannerAdapter` (`stages/factory.py`) spends
+  `compile.budget.summary_traversal_max_nodes` across the levels of one
+  walk (per-tree remaining, reset at depth 1) and trims the excess to SKIP
+  entries with reason `"budget"` (SUMMARIZE-first, trailing-first). The
+  `summarizer_plan` cache key includes the level depth — levels of one
+  tree must never share an entry (knox-s2l1).
 - A failed parse leaves a repro bundle, not just a ledger row.
   `failure_bundle.write_failure_bundle` — called from `ingest_documents`, both
   `_parse_source` failure branches, and the chunk stage's splitter failure in

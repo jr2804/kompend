@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Sequence, cast
+from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -690,6 +691,61 @@ class TestSummarizerWindowing:
         assert len(small_window_entries) > len(large_window_entries)
 
 
+class _RecordingPlanner:
+    """Planner stand-in recording every consulted child, expanding all."""
+
+    def __init__(self) -> None:
+        self.consulted: list[str] = []
+
+    def plan_level(
+        self,
+        *,
+        outline: Sequence[OutlineNode],
+        depth: int,
+        context: PlanContext,
+    ) -> LevelPlan:
+        self.consulted.extend(entry.node_id for entry in outline)
+        return LevelPlan(entries=tuple(PlanEntry(node_id=entry.node_id, mode=PlanMode.EXPAND, focus=None, reason=None) for entry in outline))
+
+
+class TestPlanTreeConsultation:
+    def test_planner_is_never_asked_about_leaves(self) -> None:
+        root = ChunkNode(id="r", depth=0)
+        section = ChunkNode(id="s", parent_id="r", depth=1, heading_chain=("S",))
+        leaves = [
+            ChunkNode(
+                id=leaf_id,
+                parent_id=parent_id,
+                depth=2,
+                heading_chain=("S",),
+                chunk=_make_chunk(leaf_id, f"body {leaf_id}"),
+            )
+            for leaf_id, parent_id in (("l1", "s"), ("l2", "s"), ("l3", "r"))
+        ]
+        section.children_ids = ["l1", "l2"]
+        root.children_ids = ["s", "l3"]
+        tree = ChunkTree(
+            root_id="r",
+            nodes={node.id: node for node in [root, section, *leaves]},
+            source_file=Path("doc.md"),
+            strategy=ChunkStrategy.TWO_LEVEL,
+        )
+        planner = _RecordingPlanner()
+        summarizer = NodeSummarizer(agent=_agent(), content_policy=_policy(), planner=planner)
+        eligible = summarizer._eligible_nodes(tree)
+
+        work_ids, _skip, _focus, expand_count, planner_calls = summarizer._plan_tree(
+            tree, PlanContext(tree_hash="h", title="t"), frozenset(node.id for node in eligible)
+        )
+
+        # Only the summarizable child is consulted: the root-level leaf and
+        # the section's leaves pay for no verdict.
+        assert planner.consulted == ["s"]
+        assert planner_calls == 1
+        assert work_ids == {"r", "s"}
+        assert expand_count == 1
+
+
 def _session_llm(summary: str = "Summary.") -> MagicMock:
     """A MagicMock agent obeying the session contract: records into deps.results."""
     mock = MagicMock()
@@ -887,62 +943,3 @@ def _make_chunk(cid: str, text: str, source: str = "doc.md") -> Chunk:
         source_file=Path(source),
         token_count=max(1, len(text) // 4),
     )
-
-
-class _RecordingPlanner:
-    """Planner stand-in recording every consulted child, expanding all."""
-
-    def __init__(self) -> None:
-        self.consulted: list[str] = []
-
-    def plan_level(
-        self,
-        *,
-        outline: Sequence[OutlineNode],
-        depth: int,
-        context: PlanContext,
-    ) -> LevelPlan:
-        self.consulted.extend(entry.node_id for entry in outline)
-        return LevelPlan(
-            entries=tuple(
-                PlanEntry(node_id=entry.node_id, mode=PlanMode.EXPAND, focus=None, reason=None) for entry in outline
-            )
-        )
-
-
-class TestPlanTreeConsultation:
-    def test_planner_is_never_asked_about_leaves(self) -> None:
-        root = ChunkNode(id="r", depth=0)
-        section = ChunkNode(id="s", parent_id="r", depth=1, heading_chain=("S",))
-        leaves = [
-            ChunkNode(
-                id=leaf_id,
-                parent_id=parent_id,
-                depth=2,
-                heading_chain=("S",),
-                chunk=_make_chunk(leaf_id, f"body {leaf_id}"),
-            )
-            for leaf_id, parent_id in (("l1", "s"), ("l2", "s"), ("l3", "r"))
-        ]
-        section.children_ids = ["l1", "l2"]
-        root.children_ids = ["s", "l3"]
-        tree = ChunkTree(
-            root_id="r",
-            nodes={node.id: node for node in [root, section, *leaves]},
-            source_file=Path("doc.md"),
-            strategy=ChunkStrategy.TWO_LEVEL,
-        )
-        planner = _RecordingPlanner()
-        summarizer = NodeSummarizer(agent=_agent(), content_policy=_policy(), planner=planner)
-        eligible = summarizer._eligible_nodes(tree)
-
-        work_ids, _skip, _focus, expand_count, planner_calls = summarizer._plan_tree(
-            tree, PlanContext(tree_hash="h", title="t"), frozenset(node.id for node in eligible)
-        )
-
-        # Only the summarizable child is consulted: the root-level leaf and
-        # the section's leaves pay for no verdict.
-        assert planner.consulted == ["s"]
-        assert planner_calls == 1
-        assert work_ids == {"r", "s"}
-        assert expand_count == 1
