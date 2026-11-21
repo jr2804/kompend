@@ -1,0 +1,448 @@
+{
+  "budget": {
+    "nodes": 60,
+    "windows": 200
+  },
+  "corpus": {
+    "chapters": 12,
+    "facts": 5,
+    "nodes": 1191,
+    "seed": 20261121
+  },
+  "gate": {
+    "calls_why": "B uses 89.3% fewer calls than A \u2014 strictly more than 25%",
+    "calls_win": true,
+    "quality_why": "B not clearly better: worse on answer coverage 4 < 5",
+    "quality_win": false,
+    "rule": "navigation wins iff it uses strictly more than 25 % fewer total calls, or is clearly better on the spot-checks (better on one, worse on none); otherwise planner + worker stays",
+    "total_calls_a": 1001,
+    "total_calls_b": 107,
+    "verdict": "navigation (B) wins"
+  },
+  "judge": {
+    "completion_tokens": 2401,
+    "decision_requests": 0,
+    "other_requests": 10,
+    "peak_prompt_tokens": 127932,
+    "prompt_tokens": 708246,
+    "requests": 10,
+    "summarize_requests": 0,
+    "wall_time_s": 0.0,
+    "windows": 0
+  },
+  "model": "minimax/MiniMax-M3.1-Flash",
+  "truncated": {
+    "reproduce": "mise exec -- uv run python tools/spike_traversal/run_spike.py --variant both",
+    "what": "the per-variant summary dumps are reduced to the root summary and the summaries on the planted facts' paths",
+    "why": "the full dump is ~700 kB of generated prose; the verdict rests on the measurements, the skips and the checks, which are verbatim"
+  },
+  "variants": {
+    "a": {
+      "checks": {
+        "answer_coverage": {
+          "answered": 5,
+          "facts": [
+            {
+              "answered": true,
+              "chapter": "System Requirements",
+              "evidence": "\"Operating Systems adds the requirement that the platform needs at least 16 GiB of memory per node\" (chap-00092); equivalently sec-00112: \"The platform requires at least 16 GiB of memory per node,\" and root: \"the platform needs at least 16 GiB of memory per node.\"",
+              "question": "What is the minimum memory the platform supports per node?"
+            },
+            {
+              "answered": true,
+              "chapter": "Network Configuration",
+              "evidence": "sec-00193: \"The Network Configuration / Routing section states that ports 7946 for the cluster protocol, 2380 for the peer channel, and 9090 for metrics must be open between nodes\" (also stated in chap-00177, sec-00194, and the root summary).",
+              "question": "Which ports must be open between nodes?"
+            },
+            {
+              "answered": true,
+              "chapter": "Storage and Backup",
+              "evidence": "chap-00285 (Storage and Backup): \"Key facts: snapshots are retained for 35 days by default.\" \u2014 also stated in sec-00305 / sub-00306 (\"snapshots are retained for 35 days by default\") and in the root summary (\"snapshots are retained 35 days by default\").",
+              "question": "How long are snapshots retained by default?"
+            },
+            {
+              "answered": true,
+              "chapter": "Security and Access Control",
+              "evidence": "chap-00386: \"Roles and Permissions additionally states that a session stays valid for 30 minutes without a refresh\"; sec-00410: \"Session lifetime: a session stays valid for 30 minutes without a refresh.\"",
+              "question": "How long does a session stay valid without a refresh?"
+            },
+            {
+              "answered": true,
+              "chapter": "API Reference",
+              "evidence": "sec-00820 (API Reference / Core Endpoints / Overview): \"Bounded queue: each paginated response carries a bounded queue and once it fills requests are rejected with the documented back-pressure status; a page may carry at most 200 items.\" (Also stated in chap-00800 and sec-00819: \"bounded queues with rejection via back-pressure on the paginated response (a page carries at most 200 items)\" and in [root]: \"a paginated page carries at most 200 items\".)",
+              "question": "What is the maximum number of items a page may carry?"
+            }
+          ],
+          "fraction": 1.0,
+          "missed": [],
+          "total": 5
+        },
+        "root_coverage": {
+          "count": 12,
+          "fraction": 1.0,
+          "matched": [
+            "Installation and Setup",
+            "System Requirements",
+            "Network Configuration",
+            "Storage and Backup",
+            "Security and Access Control",
+            "Monitoring and Alerting",
+            "Scaling and Load Balancing",
+            "Data Import and Export",
+            "API Reference",
+            "Troubleshooting",
+            "Upgrade Procedures",
+            "Compliance and Audit"
+          ],
+          "missing": [],
+          "note": "",
+          "root_summarized": true,
+          "total": 12
+        },
+        "skip_quality": {
+          "correct_ids": [
+            "leaf-00168",
+            "leaf-00169",
+            "leaf-00170",
+            "leaf-00173",
+            "leaf-00176",
+            "leaf-00376",
+            "leaf-00377",
+            "leaf-00380",
+            "leaf-00381",
+            "leaf-00382",
+            "leaf-00385",
+            "leaf-00576",
+            "leaf-00577",
+            "leaf-00578",
+            "leaf-00581",
+            "leaf-00582",
+            "leaf-00585",
+            "leaf-00588",
+            "leaf-00589",
+            "leaf-00592",
+            "leaf-00593",
+            "leaf-00787",
+            "leaf-00788",
+            "leaf-00789",
+            "leaf-00792",
+            "leaf-00793",
+            "leaf-00796",
+            "leaf-00799",
+            "leaf-00997",
+            "leaf-01000",
+            "leaf-01001",
+            "leaf-01002",
+            "leaf-01005",
+            "leaf-01006",
+            "leaf-01007",
+            "leaf-01010",
+            "leaf-01011",
+            "leaf-01014",
+            "leaf-01015",
+            "leaf-01016",
+            "leaf-01176",
+            "leaf-01179",
+            "leaf-01182",
+            "leaf-01183",
+            "leaf-01186",
+            "leaf-01187",
+            "leaf-01190",
+            "sec-00080",
+            "sec-00266",
+            "sec-00679",
+            "sec-00883",
+            "sec-01082"
+          ],
+          "correct_skips": 52,
+          "neutral_ids": [
+            "leaf-00017",
+            "leaf-00048",
+            "leaf-00075",
+            "leaf-00297",
+            "leaf-00345",
+            "leaf-00346",
+            "leaf-00348",
+            "leaf-00460",
+            "leaf-00462",
+            "leaf-00606",
+            "leaf-00607",
+            "leaf-00608",
+            "leaf-00640",
+            "leaf-00732",
+            "leaf-00871",
+            "leaf-00872",
+            "leaf-00873",
+            "leaf-00963",
+            "leaf-00971",
+            "leaf-00978",
+            "leaf-00979",
+            "leaf-01171"
+          ],
+          "neutral_skips": 22,
+          "note": "a skip above or on an answer-bearing branch is wrong: it loses a planted answer",
+          "wrong_ids": [
+            "leaf-00413",
+            "leaf-00414",
+            "leaf-00417"
+          ],
+          "wrong_skips": 3
+        }
+      },
+      "completion_tokens": 280686,
+      "decision_requests": 341,
+      "notes": [
+        "payload_chars=439520 window_chars=439520 batch=20 stall_retries=1 requests_per_node=2 traversal_min_nodes=50",
+        "planner calls=337 planned_children=1092 decline_fallbacks=0 work_planned=60 budget_unplanned=955",
+        "shipped budget is per level; spike enforces BUDGET_NODES=60 total: EXPAND+SUMMARIZE count as work, excess trailing entries (SUMMARIZE first) become recorded skips with reason 'budget'.",
+        "windows count each payload entry handed to a session (retried payloads re-counted); no cache store; compaction inside sessions disabled; decline falls back to EXPAND-all."
+      ],
+      "other_requests": 0,
+      "peak_prompt_tokens": 36509,
+      "prompt_tokens": 7340831,
+      "requests": 1001,
+      "skips": {
+        "leaf-00017": "repeated material",
+        "leaf-00048": "repeated material",
+        "leaf-00075": "repeated material",
+        "leaf-00168": "repeated material",
+        "leaf-00169": "repeated material",
+        "leaf-00170": "repeated material",
+        "leaf-00173": "repeated material",
+        "leaf-00176": "repeated material",
+        "leaf-00297": "repeated material",
+        "leaf-00345": "repeated material",
+        "leaf-00346": "repeated material",
+        "leaf-00348": "repeated material",
+        "leaf-00376": "repeated material",
+        "leaf-00377": "repeated material",
+        "leaf-00380": "repeated material",
+        "leaf-00381": "repeated material",
+        "leaf-00382": "repeated material",
+        "leaf-00385": "repeated material",
+        "leaf-00413": "repeated material",
+        "leaf-00414": "repeated material",
+        "leaf-00417": "repeated material",
+        "leaf-00460": "repeated material",
+        "leaf-00462": "repeated material",
+        "leaf-00576": "repeated material",
+        "leaf-00577": "repeated material",
+        "leaf-00578": "repeated material",
+        "leaf-00581": "repeated material",
+        "leaf-00582": "repeated material",
+        "leaf-00585": "repeated material",
+        "leaf-00588": "repeated material",
+        "leaf-00589": "repeated material",
+        "leaf-00592": "repeated material",
+        "leaf-00593": "repeated material",
+        "leaf-00606": "repeated material",
+        "leaf-00607": "repeated material",
+        "leaf-00608": "repeated material",
+        "leaf-00640": "repeated material",
+        "leaf-00732": "repeated material",
+        "leaf-00787": "repeated material",
+        "leaf-00788": "repeated material",
+        "leaf-00789": "repeated material",
+        "leaf-00792": "repeated material",
+        "leaf-00793": "repeated material",
+        "leaf-00796": "repeated material",
+        "leaf-00799": "repeated material",
+        "leaf-00871": "repeated material",
+        "leaf-00872": "repeated material",
+        "leaf-00873": "repeated material",
+        "leaf-00963": "repeated material",
+        "leaf-00971": "repeated material",
+        "leaf-00978": "repeated material",
+        "leaf-00979": "repeated material",
+        "leaf-00997": "repeated material",
+        "leaf-01000": "repeated material",
+        "leaf-01001": "repeated material",
+        "leaf-01002": "repeated material",
+        "leaf-01005": "repeated material",
+        "leaf-01006": "repeated material",
+        "leaf-01007": "repeated material",
+        "leaf-01010": "repeated material",
+        "leaf-01011": "repeated material",
+        "leaf-01014": "repeated material",
+        "leaf-01015": "repeated material",
+        "leaf-01016": "repeated material",
+        "leaf-01171": "repeated material",
+        "leaf-01176": "repeated material",
+        "leaf-01179": "repeated material",
+        "leaf-01182": "repeated material",
+        "leaf-01183": "repeated material",
+        "leaf-01186": "repeated material",
+        "leaf-01187": "repeated material",
+        "leaf-01190": "repeated material",
+        "sec-00080": "boilerplate",
+        "sec-00266": "boilerplate",
+        "sec-00679": "boilerplate",
+        "sec-00883": "boilerplate",
+        "sec-01082": "boilerplate"
+      },
+      "summaries_digest": {
+        "count": 366,
+        "distinct": 338,
+        "note": "the run's own payload minus the bulk summary texts; every measurement, skip and check is verbatim, and the summaries are reproduced by re-running the harness"
+      },
+      "summaries_kept": {
+        "chap-00092": "The System Requirements chapter covers Supported Hardware and Operating Systems plus four additional sections (Memory and Storage, Network Interfaces, Environmental Limits, Safety Notice), all organized around six themes: tuning, sizing, write paths, failover, reconciliation, and back-pressure, applied to kernel, node, volume, scheduler, memory pool, and interface entities in minimal, recommended, supported, and physical variants. Supported Hardware: write paths persist state before acknowledging the caller (kernel\u2192physical scheduler, kernel\u2192physical volume, scheduler\u2192minimal volume or physical volume, volume\u2192minimal volume); failover completes within one heartbeat interval (volume\u2192supported memory pool or physical volume, kernel\u2192minimal volume, recommended memory pool, physical scheduler, or recommended kernel, interface\u2192physical volume or recommended node, scheduler\u2192physical interface, physical kernel, or supported interface, memory pool\u2192physical volume); bounded queues reject with the documented back-pressure status for supported interfaces, supported schedulers, minimal schedulers, supported volumes, physical kernels, physical volumes, supported memory pools, and recommended nodes; reconciliation runs the physical interface every 15 seconds against the volume registry, minimal and recommended nodes every 5 seconds against the scheduler and volume registries, the minimal memory pool every 15 seconds against the volume registry, every 30 seconds against the node registry, and every 15 seconds against the kernel registry, the physical scheduler every 5 seconds against the volume registry and every 15 seconds against the kernel registry, and the supported volume every 5 seconds against the kernel registry; sizing rules cover node, scheduler, kernel, interface, and volume against physical volume, physical node, physical kernel, supported kernel, and physical scheduler loads; tuning balances interface, kernel, node, scheduler, and memory pool throughput against reserved in-flight memory. Operating Systems adds the requirement that the platform needs at least 16 GiB of memory per node, plus write paths node\u2192supported node, node\u2192supported interface, node\u2192minimal memory pool, scheduler\u2192supported scheduler, scheduler\u2192recommended memory pool, kernel\u2192supported node, interface\u2192minimal interface, memory pool\u2192supported node, volume\u2192physical scheduler; failover for interface\u2192physical scheduler/minimal kernel/physical kernel/supported memory pool, scheduler\u2192physical node, kernel\u2192physical memory pool, node\u2192supported interface, volume\u2192minimal interface; and reconciliations of the minimal interface every 5 seconds against the volume registry, physical volume every 15 seconds against the volume registry, recommended volume every 30 seconds against the memory pool registry, and the minimal memory pool every 5 seconds against the interface registry and every 30 seconds against the memory pool registry. Memory and Storage adds write paths kernel\u2192physical memory pool, scheduler\u2192physical node, node\u2192recommended scheduler, volume\u2192recommended node, scheduler\u2192physical kernel, kernel\u2192supported scheduler, node\u2192minimal kernel, volume\u2192recommended memory pool, interface\u2192minimal kernel, node\u2192recommended interface; failovers physical kernel on memory pool failure, minimal memory pool on interface failure, recommended node on volume failure, recommended memory pool on memory pool failure, supported interface on kernel failure, recommended scheduler on scheduler failure, recommended interface on interface failure; reconciliations for the minimal memory pool every 15 seconds against the node registry, physical node every 60 seconds against the kernel and node registries, recommended interface every 60 seconds against the scheduler registry, and physical kernel every 15/30/60 seconds against the kernel, memory pool, and scheduler registries; bounded queues on minimal and supported memory pools, recommended kernel, minimal node, physical kernel, minimal kernel, supported interface, supported volume, recommended interface, and physical scheduler; and sizing rules pairing memory pool with physical scheduler/physical memory pool/supported scheduler/supported node, scheduler with minimal volume, node with supported memory pool or recommended volume, kernel with minimal interface or recommended memory pool, and interface with minimal memory pool. Network Interfaces adds write paths kernel\u2192physical kernel, scheduler\u2192supported node, scheduler\u2192physical interface, scheduler\u2192recommended node, scheduler\u2192supported volume, interface\u2192supported volume; failovers physical scheduler on node failure, physical interface and physical node on memory pool failure, recommended node on memory pool failure, minimal kernel on interface failure, physical node, physical volume, or recommended interface on volume failure; reconciliations for supported interface every 15 seconds against the node registry, recommended node every 60 seconds against the volume registry, supported kernel every 5 seconds against the volume registry, physical volume every 5 seconds against the node registry, and physical kernel every 5 seconds against the memory pool registry; bounded queues on recommended volume, physical interface, minimal interface, supported interface, supported scheduler, minimal kernel, recommended scheduler, and minimal memory pool; and sizing rules for scheduler with recommended interface, volume with minimal scheduler/supported kernel/physical scheduler, interface with minimal memory pool, node with minimal interface, and memory pool with supported scheduler. Environmental Limits applies the same six themes, with write paths kernel\u2192minimal volume, interface\u2192minimal volume, volume\u2192supported kernel, volume\u2192recommended volume; failovers recommended kernel on volume failure, recommended memory pool on kernel failure, physical scheduler on node failure, physical volume on scheduler failure, minimal kernel and minimal scheduler on interface failure, recommended node on interface failure; reconciliations for supported kernel every 30 seconds against the node registry, minimal scheduler every 60 seconds against the kernel registry, minimal kernel every 60 seconds against the scheduler registry, recommended kernel every 15 seconds against the volume registry, and minimal volume every 5 seconds against the scheduler registry; bounded queues on minimal volume, minimal scheduler, physical node, and recommended interface; and sizing rules for kernel with minimal volume or recommended scheduler, interface with supported kernel, node with physical or minimal interface, and volume with physical memory pool. The Safety Notice section repeats three statements in its overview, requirements, and procedure subsections: before any maintenance on the appliance, disconnect the power supply and verify that the grounding conductor is attached; the unit contains no user-serviceable components; and opening the chassis voids the warranty and exposes the operator to electric shock.",
+        "chap-00177": "This Network Configuration chapter aggregates several sibling areas \u2014 addressing (summarized in the child node), Routing, Firewalls and Ports, TLS Termination, and a network configuration service discovery section with five parts (overview, requirements, procedure, configuration, verification) \u2014 each defining back-pressure, tuning, write acknowledgment paths, failover takeovers, reconciliation intervals, and sizing over entities drawn from static/dynamic and private/public variants of resolver, certificate, listener, gateway, subnet, and endpoint. Routing requires ports 7946 for the cluster protocol, 2380 for the peer channel, and 9090 for metrics to be open between nodes; bounded queues apply to the static certificate, static resolver, public listener, and private subnet; write paths are resolver\u2192public certificate, certificate\u2192static endpoint, certificate\u2192private subnet, listener\u2192private certificate, endpoint\u2192public endpoint, endpoint\u2192private gateway, subnet\u2192static resolver, certificate\u2192static gateway, resolver\u2192private subnet, subnet\u2192dynamic gateway, resolver\u2192static subnet, and resolver\u2192static endpoint; failovers within one heartbeat are private gateway when the resolver fails over, public gateway when the certificate or gateway fails over, static certificate when the gateway or listener fails over, dynamic gateway when the gateway fails over, static subnet and static gateway when the subnet fails over, dynamic subnet when the endpoint fails over, and dynamic certificate when the listener fails over; reconciliation covers static endpoint every 15s against the listener registry, static resolver every 60s against the endpoint registry, static certificate every 15s against the listener registry, public endpoint every 15s and every 5s against the gateway registry, and dynamic certificate every 15s against the certificate registry; tuning balances the endpoint against public certificate, private certificate, static certificate, and public subnet throughput, the certificate against static listener, public certificate, and public listener throughput, and the listener against static gateway throughput; sizing requires the listener not be saturated by a dynamic endpoint and the gateway not by a dynamic resolver or dynamic listener. Firewalls and Ports: bounded queues apply to the dynamic endpoint, public certificate, public listener, private listener, and static certificate; write paths are resolver\u2192static resolver, gateway\u2192public resolver, gateway\u2192static certificate, endpoint\u2192dynamic resolver, subnet\u2192public listener, listener\u2192public endpoint, listener\u2192private certificate, listener\u2192static certificate, resolver\u2192public gateway, resolver\u2192public subnet, gateway\u2192dynamic subnet, gateway\u2192public endpoint, and subnet\u2192static certificate; failovers within one heartbeat are public gateway when the gateway fails over, public resolver when the subnet fails over, static listener when the gateway fails over, private gateway when the resolver fails over, public gateway when the certificate fails over, static gateway when the certificate fails over, and static endpoint when the listener fails over; reconciliation covers public resolver every 30s against the endpoint registry and every 60s against the listener registry, dynamic certificate every 60s against the listener registry, dynamic resolver every 60s against the endpoint registry, private listener every 15s against the listener registry, dynamic gateway every 5s against the listener registry and every 60s against the endpoint registry, static resolver every 15s against the subnet registry, public subnet every 30s against the gateway registry, public gateway every 15s against the certificate registry, and dynamic endpoint and public endpoint every 30s against the certificate registry; tuning balances the listener against static gateway, dynamic gateway, private certificate, and static endpoint throughput, the certificate against private certificate and private endpoint throughput, the gateway against static certificate and public subnet throughput, and the subnet against public endpoint and static subnet throughput; sizing requires the resolver not be saturated by a static gateway, public listener, dynamic listener, or private subnet, the listener not by a private gateway or dynamic subnet, the endpoint not by a private subnet, static gateway, or public subnet, and the gateway not by a private resolver. TLS Termination: bounded queues apply to the static subnet, dynamic listener, private certificate, public listener, public resolver, and dynamic gateway; write paths are certificate\u2192public endpoint, subnet\u2192static endpoint, endpoint\u2192public gateway, and gateway\u2192public subnet; failovers within one heartbeat are public certificate when the certificate fails over, dynamic listener when the resolver fails over, public gateway when the subnet fails over, static resolver when the resolver fails over, public resolver when the listener fails over, private endpoint when the certificate fails over, private listener and dynamic subnet when the listener fails over, static certificate and dynamic certificate when the subnet fails over, private gateway when the certificate fails over, and dynamic resolver when the listener fails over; reconciliation covers static certificate every 30s against the gateway registry and against the endpoint registry, public endpoint every 60s against the certificate registry, private resolver every 60s against the endpoint registry, dynamic subnet every 60s against the gateway registry, public subnet every 30s against the resolver registry, public gateway every 60s against the gateway registry, private subnet every 30s against the resolver registry, and dynamic listener every 15s against the resolver registry; tuning balances the gateway against dynamic resolver, public endpoint, and dynamic certificate throughput, the subnet against static certificate and public resolver throughput, the endpoint against public endpoint and dynamic certificate throughput, the listener against dynamic certificate throughput, and the resolver against public listener throughput; sizing requires the resolver not be saturated by a private resolver, the subnet not by a dynamic certificate, public subnet, or static endpoint, the gateway not by a private endpoint or public certificate, the certificate not by a static gateway, the endpoint not by a private endpoint, and the listener not by a static subnet, private resolver, or private gateway. In the five-part service discovery section the overview sets back-pressure on the private endpoint, dynamic endpoint, public resolver, and public listener; write paths endpoint\u2192static subnet and subnet\u2192dynamic endpoint; failovers within one heartbeat for the static subnet (endpoint fails over), static certificate (resolver fails over), dynamic resolver (resolver fails over), and public listener (certificate or gateway fails over); reconciliation of the dynamic certificate against the listener registry every 30 seconds; tuning the endpoint against dynamic endpoint or static gateway throughput, the subnet against public resolver throughput, and the listener against dynamic subnet throughput; and sizing so a static endpoint does not saturate the resolver. The requirements add failovers for the dynamic subnet (certificate fails over), static endpoint (gateway fails over), public resolver (subnet fails over), and private endpoint (subnet fails over); write paths listener\u2192static endpoint, listener\u2192private subnet, resolver\u2192private certificate, certificate\u2192private subnet, subnet\u2192static certificate, endpoint\u2192public listener; back-pressure on the private endpoint (stated twice) and the dynamic gateway; reconciliation of the private subnet against the listener registry every 30 seconds; tuning of the certificate (public endpoint throughput) and resolver (public certificate throughput); and sizing so the endpoint is not saturated by a dynamic certificate or public resolver, the gateway not by a public endpoint, the listener not by a private resolver, and the certificate not by a public endpoint. The procedure states back-pressure on the public certificate, public gateway, and static listener; write paths endpoint\u2192private gateway and gateway\u2192dynamic resolver; failovers for the private gateway (subnet fails over) and static endpoint (resolver fails over); reconciliation of the dynamic listener against the certificate registry every 60 seconds; tuning for the certificate (dynamic subnet throughput), gateway (private resolver throughput), endpoint (private subnet throughput), listener (private certificate throughput), and resolver (private gateway throughput); and sizing the subnet against a private certificate and the listener against a public certificate. The configuration states that when the subnet fails over the static resolver takes over outstanding requests within one heartbeat and when the listener fails over the static certificate takes over within one heartbeat, that each public endpoint carries a bounded queue rejecting with the documented back-pressure status once full, that tuning the endpoint balances public listener or static resolver throughput and the certificate balances dynamic listener throughput against reserved in-flight memory, and that the gateway writes its state to the dynamic resolver before acknowledging the write. The verification section lists reconciliation of the dynamic listener against the resolver registry every 30 seconds, the static listener against the endpoint registry every 30 seconds, the static gateway against the resolver registry every 15 seconds, and the static resolver against the subnet registry every 30 seconds; tuning of the certificate against public subnet or dynamic gateway throughput; a bounded queue on each static subnet; the resolver writing its state to the dynamic endpoint before acknowledging; and sizing the gateway so a dynamic endpoint does not saturate it during peak traffic.",
+        "chap-00285": "The Storage and Backup chapter covers the storage artifacts (manifest, volume, bucket, snapshot, journal, tier, each with warm/cold/immutable/compressed qualifiers) across the Volume Layout, Snapshot Policy, Retention Rules, Restore Procedure, and Capacity Planning subsections, plus a Revision History. Cross-cutting pattern: every artifact carries a bounded queue whose saturation causes rejection with the documented back-pressure status; each artifact writes its state to a successor before acknowledging the write to the caller; on failover a named artifact takes over outstanding requests within one heartbeat interval; each artifact is reconciled against a registry on a fixed interval; and tuning balances an upstream throughput rate against the memory reserved for in-flight work, with sizing guidance so successor artifacts do not saturate a component during peak traffic. Key facts: snapshots are retained for 35 days by default. Retention Rules procedure: the journal writes its state to the warm journal, the volume to the cold volume, and the bucket to the immutable tier before acknowledging; back-pressure applies to each warm tier, warm manifest, and cold tier; on snapshot failover the compressed journal takes over within one heartbeat interval; tuning the bucket balances immutable manifest or cold bucket throughput, and tuning the snapshot balances compressed journal throughput; size the tier so an immutable volume, warm journal, or compressed tier does not saturate it and the bucket so a compressed volume does not saturate it, during peak traffic. Restore Procedure: reconciliation intervals include cold tier every 30 seconds against the bucket registry, immutable journal every 15 seconds against the manifest registry, compressed manifest every 30 seconds against the journal registry, immutable manifest every 30 seconds against the journal registry, cold journal every 60 seconds against the snapshot registry, compressed journal every 60 seconds against the volume registry and the tier registry, and cold manifest every 60 seconds against the manifest registry; write ordering covers volume\u2192warm volume, journal\u2192warm volume, manifest\u2192immutable volume/compressed manifest/compressed journal/cold tier, snapshot\u2192warm journal, bucket\u2192compressed snapshot, tier\u2192cold journal; every artifact carries a bounded queue; failover takeovers include cold volume, compressed volume, immutable tier, or warm snapshot for tier failure, warm volume for bucket failure, warm bucket for snapshot or journal failure, and immutable manifest for volume failure. Capacity Planning reconciliation intervals: warm manifest every 60 seconds against the tier registry, 15 seconds against the journal registry, and 30 seconds against the volume registry; immutable snapshot every 15 seconds against the manifest registry and 30 seconds against the tier registry; cold journal every 5 seconds against the volume registry; immutable journal every 30 seconds against the volume registry; cold bucket every 15 seconds against the bucket registry, 30 seconds against the tier registry, and 60 seconds against the journal registry; cold volume every 30 seconds against the manifest registry; immutable bucket every 30 seconds against the volume registry; compressed bucket every 15 seconds against the journal registry; compressed tier and compressed manifest each every 60 seconds against the snapshot registry; compressed snapshot every 15 seconds against the bucket registry; warm journal every 5 seconds against the volume registry; write ordering includes volume\u2192warm snapshot, bucket\u2192cold snapshot and cold volume, tier\u2192cold journal/immutable tier/compressed snapshot, manifest\u2192immutable bucket, journal\u2192immutable manifest and cold tier, snapshot\u2192warm snapshot; failover takeovers include immutable volume or cold tier for manifest failure, cold manifest for journal failure, immutable bucket for bucket failure, immutable manifest for tier failure, immutable journal or immutable bucket for snapshot failure, and compressed volume, warm volume, warm manifest, or compressed tier for volume failure. The Revision History repeats the same version list three times: Version 1.0 initial release; Version 1.1 clarified the configuration examples; Version 1.2 added the troubleshooting chapter; Version 2.0 restructured the deployment sections; Version 2.1 editorial corrections throughout.",
+        "chap-00386": "This chapter, Security and Access Control, aggregates the Identity Providers, Roles and Permissions, Secret Handling, Audit Logging, and Session Policy subsections plus a Copyright and Trademarks notice, and all of them describe the same six artifacts (token, principal, policy, credential, role binding, audit trail) through a common set of behaviors: reconciliation intervals of 5, 15, 30, or 60 seconds against a corresponding registry (credential, role binding, principal, policy, token, or audit trail registry); failover in which a named successor artifact takes over outstanding requests within one heartbeat interval; a bounded queue per artifact whose saturation causes requests to be rejected with the documented back-pressure status; write-acknowledgement ordering in which an artifact writes its state to a named downstream artifact before acknowledging the write to the caller; tuning that balances an upstream throughput rate against the memory reserved for in-flight work; and sizing guidance so that named successor artifacts do not saturate a given artifact during peak traffic. Roles and Permissions additionally states that a session stays valid for 30 minutes without a refresh, and the Identity Providers, Roles and Permissions, Secret Handling, Audit Logging, and Session Policy subsections each differ in which artifact reconciles against which registry interval, which artifact takes over on failure, and which write-ordering chains and sizing pairings apply (for example, the Secret Handling chain includes the credential writing to the scoped credential, immutable token, scoped token, and least-privilege credential, and the audit trail writing to the immutable policy, rotated token, and scoped role binding). The Copyright and Trademarks section states that all rights are reserved and that reproduction or transmission of the document in whole or part without the publisher's prior written permission is prohibited, and that product names and logos are the property of their respective owners used for identification only; this notice is repeated verbatim ten times with no additional provisions.",
+        "chap-00800": "The API Reference chapter collects five major areas \u2014 Authentication (Overview, Requirements, Procedure, Configuration, Verification), Core Endpoints (Overview, Requirements, Procedure, Configuration), Pagination (Overview, Requirements, Procedure), Error Semantics (Overview, Requirements, Procedure, Configuration) and Rate Limits (Overview, Requirements, Procedure, Configuration, Verification) \u2014 each stating back-pressure, failover, reconciliation, write-ordering, tuning and sizing rules over the same entity set (request, response, header, cursor, envelope, status code, each with authorised, paginated, idempotent or versioned modifiers), where write ordering means the entity writes its state to a named target before acknowledging the write to the caller, bounded queues reject with the documented back-pressure status once full, reconciliation runs on a fixed interval against a named registry, tuning trades throughput against memory reserved for in-flight work, and failover hands over outstanding requests within one heartbeat interval. Authentication: bounded queues on the authorised envelope, paginated status code, paginated envelope, idempotent envelope, versioned request, authorised request and versioned cursor; reconciliation of the idempotent status code (60s vs status code registry), idempotent cursor (60s vs cursor registry), authorised response (30s vs cursor registry), paginated cursor (15s vs cursor registry), paginated request (5s vs cursor registry) and versioned response (5s vs response registry); tuning of the status code (paginated response, idempotent response, authorised envelope throughput), cursor (paginated response, idempotent status code, authorised header throughput), response (versioned envelope, authorised status code throughput), envelope (idempotent response, versioned status code throughput), header (idempotent status code throughput) and request (versioned status code, versioned request throughput); sizing so a status code is not saturated by an authorised request or paginated header, a cursor by an authorised cursor, an envelope by a versioned response and a request by a versioned request; write ordering header\u2192versioned response and \u2192idempotent request, request\u2192idempotent response, response\u2192idempotent request and \u2192paginated cursor, status code\u2192versioned response, envelope\u2192paginated request; failover request\u2192authorised header/authorised request/paginated request, envelope\u2192paginated response or versioned cursor, response\u2192authorised request or idempotent response, cursor\u2192authorised status code/authorised response/idempotent response, status code\u2192paginated request. Core Endpoints: bounded queues with rejection via back-pressure on the paginated response (a page carries at most 200 items), versioned envelope, versioned request, authorised request, idempotent header and authorised response; reconciliation of the authorised response (60s vs response registry), idempotent status code (5s vs header registry), paginated response (15s vs status code registry), versioned header (30s vs envelope registry), idempotent status code (60s vs envelope registry), versioned header (60s vs cursor registry), paginated status code (15s vs envelope registry), versioned status code (60s vs request registry), paginated response (5s vs cursor registry) and paginated request (30s vs request registry); tuning of the cursor (authorised envelope throughput), request (paginated request throughput, authorised cursor throughput), header (versioned envelope, authorised cursor throughput), envelope (idempotent request, versioned envelope, authorised envelope throughput), status code (paginated cursor throughput) and response (versioned response throughput); sizing so the response is not saturated by a paginated header, the request not by an authorised cursor or versioned status code, the cursor not by an authorised status code, paginated status code or versioned response, the header not by a versioned status code, the envelope not by an idempotent header, the status code not by an idempotent request, and the request not by an idempotent request, idempotent header or paginated header; write ordering request\u2192paginated response and \u2192versioned cursor, response\u2192paginated cursor, \u2192idempotent response and \u2192versioned status code, envelope\u2192idempotent envelope, header\u2192idempotent response; failover envelope\u2192paginated response, cursor\u2192idempotent envelope, status code\u2192versioned response/idempotent envelope/versioned header, header\u2192versioned envelope or versioned request, response\u2192idempotent response. Pagination: reconciliation of the versioned status code (30s vs status code registry), idempotent response (60s vs envelope registry) and versioned header (5s vs envelope registry); bounded queues on the versioned request, authorised request, authorised header and idempotent status code; tuning of the header (versioned status code, versioned header throughput), response (paginated header throughput) and request (versioned header throughput); sizing so the response is not saturated by a versioned status code, the cursor not by an idempotent cursor, the status code not by a paginated header, the header not by an idempotent header and the request not by a paginated response; write ordering request\u2192idempotent envelope, cursor\u2192authorised status code and \u2192idempotent cursor, header\u2192idempotent header; failover cursor\u2192authorised envelope/idempotent request/authorised header, envelope\u2192paginated request or authorised request, status code\u2192versioned request or authorised status code, header\u2192authorised cursor, response\u2192authorised envelope, request\u2192idempotent request or versioned header. Error Semantics: reconciliation of the idempotent cursor (15s vs request registry), versioned header (60s vs status code registry), paginated envelope (60s vs envelope registry), idempotent status code (5s vs cursor registry), versioned request (5s vs header registry), idempotent response (60s vs cursor registry, also stated as 5s in Configuration), idempotent response (5s vs cursor registry), authorised cursor (5s vs request registry), versioned status code (15s vs response registry), idempotent header (60s vs cursor registry) and idempotent request (5s vs request registry); bounded queues on the authorised status code, versioned envelope, paginated header, paginated response and versioned response; tuning of the envelope (versioned header, paginated cursor, idempotent request throughput), header (paginated response throughput), response (paginated header throughput), cursor (idempotent status code, authorised cursor throughput) and status code (idempotent status code, idempotent cursor throughput); sizing so the status code is not saturated by an idempotent header, paginated request or authorised cursor, the header not by a versioned cursor or versioned envelope, and the request not by a paginated cursor; write ordering response\u2192paginated header and \u2192idempotent request, status code\u2192versioned header/authorised envelope/idempotent status code/paginated request/authorised request/versioned request, header\u2192authorised status code and \u2192authorised request, envelope\u2192versioned envelope, cursor\u2192idempotent header and \u2192versioned cursor, request\u2192idempotent header; failover envelope\u2192versioned request or versioned envelope, status code\u2192versioned request, header\u2192paginated status code/versioned cursor/paginated request, cursor\u2192authorised request. Rate Limits: reconciliation of the paginated header (30s vs status code registry), paginated status code (5s vs status code registry), authorised status code (60s vs envelope registry), versioned status code (15s vs cursor registry), authorised request (15s vs header registry and 30s vs cursor registry), versioned cursor (5s vs request registry), idempotent cursor (15s vs header registry), authorised cursor (5s vs envelope registry), paginated cursor (15s vs status code registry), authorised envelope (5s vs status code registry) and versioned header (30s vs request registry); bounded queues on the authorised envelope, paginated status code, idempotent status code and authorised cursor; tuning of the status code (idempotent cursor, paginated header throughput), header (idempotent request, versioned status code throughput) and cursor (versioned request, authorised header throughput); sizing so the header is not saturated by a versioned header, versioned status code, authorised header or idempotent cursor, the envelope not by a paginated header, the status code not by a paginated response or paginated envelope, the request not by an idempotent request, and the response not by an idempotent envelope or authorised status code; write ordering request\u2192versioned cursor/authorised envelope/authorised response, header\u2192authorised envelope/paginated cursor/idempotent envelope/authorised response, envelope\u2192paginated request; failover envelope\u2192idempotent header/idempotent envelope/versioned envelope, request\u2192versioned cursor/paginated envelope, header\u2192authorised cursor/versioned status code/authorised request.",
+        "root": "This is the root of an appliance/system manual whose chapters \u2014 Installation and Setup, System Requirements, Network Configuration, Storage and Backup, Security and Access Control, Monitoring and Alerting, Scaling and Load Balancing, Data Import and Export, API Reference, Troubleshooting, Upgrade Procedures, and Compliance and Audit \u2014 all restate the same six-part operating model over differing entity vocabularies: (1) each component carries a bounded queue and, once it fills, requests are rejected with the documented back-pressure status; (2) each component is reconciled against a named registry on fixed intervals of 5, 15, 30, or 60 seconds; (3) each component writes its state to a named successor before acknowledging the write to the caller; (4) on failover a named successor takes over outstanding requests within one heartbeat interval; (5) tuning balances a counterpart's throughput against the memory the component reserves for in-flight work; and (6) operators size each component so that named peers do not saturate it during peak traffic. Installation and Setup applies this model to chassis, front panel, kickplate, cable harness, mounting rail, and power supply across Unpacking the Unit, Rack Preparation, First Power-On, Initial Configuration, and Firmware Update; System Requirements applies it to kernel, node, volume, scheduler, memory pool, and interface entities across Supported Hardware, Operating Systems, Memory and Storage, Network Interfaces, Environmental Limits, and a Safety Notice; Network Configuration covers addressing, Routing, Firewalls and Ports, TLS Termination, and service discovery over resolver, certificate, listener, gateway, subnet, and endpoint variants; Storage and Backup covers manifest, volume, bucket, snapshot, journal, and tier artifacts in warm/cold/immutable/compressed variants; Security and Access Control covers token, principal, policy, credential, role binding, and audit trail artifacts plus a Copyright and Trademarks notice; Monitoring and Alerting covers window, probe, sink, counter, gauge, and dashboard components in per-tenant, sampled, streamed, and cumulative variants plus a Glossary of Terms; Scaling and Load Balancing covers shard, queue, pool, replica, scheduler, and limiter in elastic, pinned, saturated, and under-provisioned variants; Data Import and Export covers Supported Formats, Chunked Ingestion, Schema Mapping, Export Pipelines, Validation Runs, and a Safety Notice; API Reference covers Authentication, Core Endpoints, Pagination, Error Semantics, and Rate Limits over request, response, header, cursor, envelope, and status code entities; Troubleshooting covers Diagnostic Commands, Common Failures, Log Analysis, Escalation Path, Known Issues, and Revision History over ticket, diagnostic, probe, trace, stack trace, and runbook entities; Upgrade Procedures covers Version Matrix, Rolling Upgrades, Rollback Plan, Compatibility Notes, and Post-Upgrade Checks over canary, health check, manifest, migration, release, and replica set components in rolling, reversible, deprecated, and staged variants; and Compliance and Audit covers Retention Policy, Data Residency, Evidence Collection, Control Mapping, Certification Status, and a Glossary of Terms over scope, ledger, control, residency region, evidence bundle, and attestation components. Concrete facts stated across these chapters include: snapshots are retained 35 days by default; the platform needs at least 16 GiB of memory per node; a session stays valid for 30 minutes without a refresh; a paginated page carries at most 200 items; Routing requires ports 7946 (cluster protocol), 2380 (peer channel), and 9090 (metrics) open between nodes; the Safety Notice (repeated in System Requirements and Data Import and Export) requires disconnecting the power supply and verifying the grounding conductor before maintenance, states the unit contains no user-serviceable components, and warns that opening the chassis voids the warranty and exposes the operator to electric shock; the Copyright and Trademarks notice (repeated verbatim ten times) reserves all rights, prohibits reproduction or transmission in whole or part without prior written permission, and states product names and logos belong to their respective owners; and the Revision History (repeated in Storage and Backup and Troubleshooting) lists Version 1.0 initial release, 1.1 clarified the configuration examples, 1.2 added the troubleshooting chapter, 2.0 restructured the deployment sections, and 2.1 editorial corrections throughout.",
+        "sec-00112": "This section collects the System Requirements / Operating Systems requirements, overview, and procedure content covering volumes, nodes, interfaces, kernels, schedulers, and memory pools. Write acknowledgement is always ordered: the node writes to the supported node, the scheduler to the supported scheduler, the volume to the physical scheduler, the scheduler to the recommended memory pool, the kernel to the supported node, the node to the supported interface, the interface to the minimal interface, the node to the minimal memory pool, and the memory pool to the supported node \u2014 each before acknowledging the write to the caller. Failover always completes within one heartbeat interval: interface failover is taken over by the physical scheduler, the minimal kernel, the physical kernel, or the supported memory pool; scheduler failover by the physical node; kernel failover by the physical memory pool; node failover by the supported interface; volume failover by the minimal interface. Bounded queues exist on minimal nodes, recommended kernels, minimal schedulers, supported memory pools, and physical kernels, each rejecting requests with the documented back-pressure status once full. The platform requires at least 16 GiB of memory per node. Sizing guidance: size the memory pool so a recommended scheduler or minimal volume does not saturate it at peak traffic, the scheduler so a minimal kernel does not saturate it, the interface so a recommended interface does not saturate it, and the volume so a recommended node does not saturate it. Tuning the volume balances physical, recommended scheduler, or minimal interface throughput against the memory the volume reserves for in-flight work; tuning the interface balances supported volume throughput against memory the interface reserves; tuning the kernel balances physical scheduler throughput against memory the kernel reserves. Reconciliation intervals: the minimal interface every 5 seconds against the volume registry, the minimal memory pool every 5 seconds against the interface registry, the physical volume every 15 seconds against the volume registry, and the recommended volume and minimal memory pool every 30 seconds against the memory pool registry.",
+        "sec-00193": "The Network Configuration / Routing section states that ports 7946 for the cluster protocol, 2380 for the peer channel, and 9090 for metrics must be open between nodes, and defines back-pressure, tuning, write acknowledgment paths, failover takeovers, reconciliation intervals, and sizing. Bounded queues that reject with the documented back-pressure status once full apply to the static certificate, static resolver, public listener, and private subnet. Write paths (state written before acknowledging to the caller): resolver\u2192public certificate, certificate\u2192static endpoint, certificate\u2192private subnet, listener\u2192private certificate, endpoint\u2192public endpoint, endpoint\u2192private gateway, subnet\u2192static resolver, certificate\u2192static gateway, resolver\u2192private subnet, subnet\u2192dynamic gateway, resolver\u2192static subnet, and resolver\u2192static endpoint. Failover takeovers within one heartbeat interval: the private gateway when the resolver fails over, the public gateway when the certificate or the gateway fails over, the static certificate when the gateway fails over and when the listener fails over, the dynamic gateway when the gateway fails over, the static subnet and the static gateway when the subnet fails over, the dynamic subnet when the endpoint fails over, and the dynamic certificate when the listener fails over. Reconciliation: the static endpoint every 15 seconds against the listener registry, the static resolver every 60 seconds against the endpoint registry, the static certificate every 15 seconds against the listener registry, the public endpoint every 15 seconds against the gateway registry and every 5 seconds against the gateway registry, the dynamic certificate every 15 seconds against the certificate registry. Tuning balances throughput against memory reserved for in-flight work: the endpoint against public certificate, private certificate, static certificate, and public subnet throughput; the certificate against static listener, public certificate, and public listener throughput; the listener against static gateway throughput. Sizing for peak traffic: the listener must not be saturated by a dynamic endpoint, and the gateway not by a dynamic resolver or a dynamic listener.",
+        "sec-00305": "The Snapshot Policy section of Storage and Backup opens with the default retention rule that snapshots are retained for 35 days, then covers back-pressure, write acknowledgment paths, reconciliation intervals, failover, tuning, and sizing across the tiered components. Write paths (state written before acknowledging to the caller): snapshot to cold journal and to immutable bucket; tier to cold bucket and to compressed tier; manifest to immutable tier and to immutable journal; bucket to compressed tier; volume to immutable manifest. Bounded queues with rejection via the documented back-pressure status apply to every listed component: immutable journal, compressed journal, immutable snapshot, compressed snapshot, cold manifest, warm snapshot, immutable tier, cold volume, and warm tier. Reconciliation intervals: immutable manifest against the snapshot registry every 15 seconds, immutable tier against the journal registry every 60 seconds, compressed tier against the volume registry every 30 seconds, compressed manifest against the tier registry every 15 seconds, warm volume against the snapshot registry every 30 seconds, compressed snapshot against the bucket registry every 60 seconds, warm manifest against the tier registry every 5 seconds, immutable volume against the snapshot registry every 30 seconds, and cold bucket against the snapshot registry every 60 seconds. Failover (takeover within one heartbeat interval): cold manifest for bucket, compressed tier for snapshot, compressed manifest for journal, cold volume for journal, warm manifest for snapshot, compressed manifest for tier, compressed volume for manifest, warm volume for bucket. Tuning: snapshot balances immutable tier throughput, journal balances cold volume or cold bucket throughput, volume balances compressed bucket throughput, bucket balances cold snapshot throughput, and manifest balances cold tier, cold volume, or compressed bucket throughput \u2014 each against the memory reserved for in-flight work. Sizing guidance for peak traffic: size the manifest so a warm snapshot, cold bucket, cold snapshot, or immutable journal does not saturate it; size the bucket so a cold manifest does not saturate it; size the snapshot so a warm journal or warm volume does not saturate it; size the volume so a cold snapshot or warm manifest does not saturate it; size the journal so a warm journal does not saturate it; size the tier so a cold manifest does not saturate it.",
+        "sec-00410": "The Security and Access Control / Roles and Permissions section consolidates overview, requirements, and procedure guidance for the token, principal, policy, credential, role binding, and audit trail. Session lifetime: a session stays valid for 30 minutes without a refresh. Reconciliation intervals: the rotated policy every 5 seconds against the role binding registry and every 30 seconds against the role binding registry (and every 60 seconds against the principal registry per the overview); the rotated role binding every 30 seconds against the role binding registry and the principal registry; the immutable principal every 30 seconds against the policy registry; the rotated token every 15 seconds against the audit trail registry; the scoped role binding every 15 seconds against the policy registry; and the scoped credential every 30 seconds against the credential registry. Failover takeovers within one heartbeat interval: policy failure by the rotated policy, role binding failure by the immutable policy, token failure by the least-privilege token or the scoped credential, and audit trail failure by the rotated role binding. Write-acknowledgement ordering: the policy writes state to the least-privilege policy, the principal writes state to the rotated principal and the least-privilege role binding, and the audit trail writes state to the rotated token, each before acknowledging to the caller. Back-pressure: each least-privilege token, immutable principal, and immutable role binding carries a bounded queue, and once full, requests are rejected with the documented back-pressure status. Tuning: the credential balances least-privilege token throughput, the token balances scoped policy and rotated policy throughput, and the audit trail balances scoped principal throughput, each against the memory reserved for in-flight work. Sizing: operators should size the token, credential, and policy so that scoped tokens, immutable policies, least-privilege policies, rotated credentials, and immutable credentials do not saturate them during peak traffic.",
+        "sec-00819": "This node aggregates four subsections of API Reference / Core Endpoints (Overview, Requirements, Procedure, Configuration), each stating write-ordering, back-pressure, page-size, tuning, failover, reconciliation and sizing rules for the core-endpoint entities (request, response, header, cursor, envelope, status code, each with authorised, paginated, idempotent and versioned modifiers), where write ordering means the entity writes its state to a named target before acknowledging the write to the caller. Overview: the request writes its state to the paginated response; each paginated response carries a bounded queue, and once it fills, requests are rejected with the documented back-pressure status, with a page carrying at most 200 items; tuning balances throughput against memory reserved for in-flight work (the cursor against authorised envelope throughput); failover happens within one heartbeat interval (envelope fails over \u2192 the paginated response takes over the outstanding requests; cursor fails over \u2192 the idempotent envelope takes over; status code fails over \u2192 the versioned response takes over); reconciliation intervals are the authorised response every 60 seconds against the response registry, the idempotent status code every 5 seconds against the header registry, the paginated response every 15 seconds against the status code registry, and the versioned header every 30 seconds against the envelope registry; sizing for peak traffic means sizing the response so a paginated header does not saturate it, the request so an authorised cursor does not saturate it, and the cursor so an authorised status code does not saturate it. Requirements: reconciliation is the idempotent status code every 60 seconds against the envelope registry and the versioned header every 60 seconds against the cursor registry; tuning pairs the request with paginated request throughput, the header with versioned envelope throughput, and the cursor with versioned envelope throughput; write ordering has the request writing its state to the versioned cursor and the response to the paginated cursor; failover within one heartbeat interval has the idempotent envelope take over the outstanding requests when the status code fails over; sizing sizes the request so a versioned status code does not saturate it. Procedure: reconciliation is the paginated status code every 15 seconds against the envelope registry and the versioned status code every 60 seconds against the request registry; bounded queues with rejection via the documented back-pressure status apply to each versioned envelope and each versioned request; sizing sizes the header so a versioned status code does not saturate it, the cursor so a paginated status code and a versioned response do not saturate it, the request so an idempotent request, an idempotent header and a paginated header do not saturate it, and the status code so an idempotent request does not saturate it; tuning pairs the envelope with idempotent request, versioned envelope and authorised envelope throughput, the header with authorised cursor throughput, and the response with versioned response throughput; write ordering has the response writing its state to the idempotent response and to the versioned status code; failover has the versioned envelope or the versioned request take over when the header fails over, the idempotent response take over when the response fails over, and the versioned header take over when the status code fails over. Configuration: tuning pairs the request with authorised cursor throughput, the status code with paginated cursor throughput, and the envelope with idempotent request throughput and versioned envelope throughput; reconciliation is the paginated response every 5 seconds against the cursor registry and the paginated request every 30 seconds against the request registry; write ordering has the envelope writing its state to the idempotent envelope and the header to the idempotent response; bounded queues with rejection via the documented back-pressure status apply to each authorised request, each idempotent header and each authorised response; sizing sizes the envelope so an idempotent header does not saturate it and the cursor so an idempotent cursor does not saturate it; failover has the idempotent response take over the outstanding requests when the response fails over, and the idempotent status code also take over.",
+        "sub-00113": "This Overview section of System Requirements / Operating Systems states write-acknowledgement ordering, failover behavior, queueing limits, a hard memory requirement, sizing and tuning guidance, and reconciliation intervals. The node writes its state to the supported node before acknowledging the write to the caller, and the scheduler writes its state to the supported scheduler before acknowledging. Each minimal node and each recommended kernel carries a bounded queue, and once the queue fills, requests are rejected with the documented back-pressure status. The platform requires at least 16 GiB of memory per node. Failover occurs within one heartbeat interval: when the interface fails over, the physical scheduler takes over the outstanding requests; when the scheduler fails over, the physical node takes over. Tuning the volume balances physical volume throughput against the memory the volume reserves for in-flight work. Operators should size the memory pool so a recommended scheduler does not saturate it during peak traffic. Reconciliation: the minimal interface is reconciled every 5 seconds against the volume registry, and the physical volume is reconciled every 15 seconds against the volume registry.",
+        "sub-00194": "This overview subsection of network configuration / routing specifies that ports 7946 for the cluster protocol, 2380 for the peer channel, and 9090 for metrics must be open between nodes; that tuning the endpoint balances public certificate throughput and tuning the certificate balances static listener throughput, each against the memory reserved for in-flight work; that the static endpoint is reconciled every 15 seconds against the listener registry; that write paths include the resolver writing its state to the public certificate, the certificate writing its state to the static endpoint and to the private subnet, and the listener writing its state to the private certificate, each before acknowledging the write to the caller; and that failover takeovers occur within one heartbeat interval, with the private gateway taking over when the resolver fails over and the public gateway taking over when the certificate fails over.",
+        "sub-00306": "The snapshot policy overview states that snapshots are retained for 35 days by default, plus back-pressure, reconciliation, tuning, sizing, and write-path behavior. Bounded queues with rejection via the documented back-pressure status apply to the immutable journal, compressed journal, and immutable snapshot. Reconciliation intervals: the immutable manifest against the snapshot registry every 15 seconds, the immutable tier against the journal registry every 60 seconds, and the compressed tier against the volume registry every 30 seconds. Tuning the snapshot balances immutable tier throughput against the memory the snapshot reserves for in-flight work. The snapshot writes its state to the cold journal before acknowledging the write to the caller. Sizing guidance: size the manifest so a warm snapshot does not saturate it, size the bucket so a cold manifest does not saturate it, and size the snapshot so a warm journal does not saturate it, all during peak traffic.",
+        "sub-00411": "This Security and Access Control / Roles and Permissions overview states that a session stays valid for 30 minutes without a refresh. The rotated policy is reconciled every 60 seconds against the principal registry. Each least-privilege token carries a bounded queue, and once the queue fills, requests are rejected with the documented back-pressure status. Operators should size the token so that a scoped token does not saturate it, the credential so that an immutable policy does not saturate it, and the policy so that a least-privilege policy does not saturate it during peak traffic.",
+        "sub-00820": "This subsection of API Reference / Core Endpoints / Overview gives write-ordering, back-pressure, page-size, tuning, failover, reconciliation, and sizing rules for core-endpoint entities (request, response, header, cursor, envelope, status code with authorised, paginated, idempotent, versioned modifiers). Write ordering before acknowledging writes to the caller: the request writes its state to the paginated response. Bounded queue: each paginated response carries a bounded queue and once it fills requests are rejected with the documented back-pressure status; a page may carry at most 200 items. Tuning balances throughput against memory reserved for in-flight work: the cursor against authorised envelope throughput. Failover within one heartbeat interval: when the envelope fails over the paginated response takes over the outstanding requests, when the cursor fails over the idempotent envelope takes over, and when the status code fails over the versioned response takes over. Reconciliation intervals: the authorised response every 60 seconds against the response registry, the idempotent status code every 5 seconds against the header registry, the paginated response every 15 seconds against the status code registry, and the versioned header every 30 seconds against the envelope registry. Sizing guidance for peak traffic: size the response so a paginated header does not saturate it, the request so an authorised cursor does not saturate it, and the cursor so an authorised status code does not saturate it."
+      },
+      "summaries_omitted": 350,
+      "summarize_requests": 660,
+      "variant": "a",
+      "wall_time_s": 3494.77,
+      "windows": 338
+    },
+    "b": {
+      "checks": {
+        "answer_coverage": {
+          "answered": 4,
+          "facts": [
+            {
+              "answered": true,
+              "chapter": "System Requirements",
+              "evidence": "[sec-00112] \"The only hard numeric requirement recorded here is that the platform requires at least 16 GiB of memory per node\" (also stated in the root summary: \"at least 16 GiB of memory per node\").",
+              "question": "What is the minimum memory the platform supports per node?"
+            },
+            {
+              "answered": true,
+              "chapter": "Network Configuration",
+              "evidence": "[sec-00193] Routing states the hard network requirement for inter-node traffic: ports 7946 for the cluster protocol, 2380 for the peer channel and 9090 for metrics must be open between nodes.",
+              "question": "Which ports must be open between nodes?"
+            },
+            {
+              "answered": true,
+              "chapter": "Storage and Backup",
+              "evidence": "[sec-00305] Storage and Backup / Snapshot Policy: \"The key default is that snapshots are retained for 35 days.\" (also stated in the root summary: \"snapshots retained for 35 days by default\")",
+              "question": "How long are snapshots retained by default?"
+            },
+            {
+              "answered": true,
+              "chapter": "Security and Access Control",
+              "evidence": "sec-00410 (Security and Access Control / Roles and Permissions): \"A session stays valid for 30 minutes without a refresh.\" (also stated in the root summary: \"a session that stays valid for 30 minutes without a refresh\").",
+              "question": "How long does a session stay valid without a refresh?"
+            },
+            {
+              "answered": false,
+              "chapter": "API Reference",
+              "evidence": "",
+              "question": "What is the maximum number of items a page may carry?"
+            }
+          ],
+          "fraction": 0.8,
+          "missed": [
+            "What is the maximum number of items a page may carry?"
+          ],
+          "total": 5
+        },
+        "root_coverage": {
+          "count": 12,
+          "fraction": 1.0,
+          "matched": [
+            "Installation and Setup",
+            "System Requirements",
+            "Network Configuration",
+            "Storage and Backup",
+            "Security and Access Control",
+            "Monitoring and Alerting",
+            "Scaling and Load Balancing",
+            "Data Import and Export",
+            "API Reference",
+            "Troubleshooting",
+            "Upgrade Procedures",
+            "Compliance and Audit"
+          ],
+          "missing": [],
+          "note": "",
+          "root_summarized": true,
+          "total": 12
+        },
+        "skip_quality": {
+          "correct_ids": [
+            "sec-00080",
+            "sec-00165",
+            "sec-00266",
+            "sec-00373",
+            "sec-00468",
+            "sec-00573",
+            "sec-00679",
+            "sec-00784",
+            "sec-00883",
+            "sec-00994",
+            "sec-01082",
+            "sec-01173"
+          ],
+          "correct_skips": 12,
+          "neutral_ids": [
+            "sec-01159"
+          ],
+          "neutral_skips": 1,
+          "note": "a skip above or on an answer-bearing branch is wrong: it loses a planted answer",
+          "wrong_ids": [],
+          "wrong_skips": 0
+        }
+      },
+      "completion_tokens": 37794,
+      "decision_requests": 76,
+      "notes": [
+        "window_chars=4000",
+        "request_backstop=500 output_max_tokens=8192",
+        "last summary slot reserved for the root",
+        "tree nodes=1191 chapters=12"
+      ],
+      "other_requests": 0,
+      "peak_prompt_tokens": 87348,
+      "prompt_tokens": 4796994,
+      "requests": 107,
+      "skips": {
+        "sec-00080": "boilerplate",
+        "sec-00165": "boilerplate",
+        "sec-00266": "boilerplate",
+        "sec-00373": "boilerplate",
+        "sec-00468": "boilerplate",
+        "sec-00573": "boilerplate",
+        "sec-00679": "boilerplate",
+        "sec-00784": "boilerplate",
+        "sec-00883": "boilerplate",
+        "sec-00994": "boilerplate",
+        "sec-01082": "boilerplate",
+        "sec-01159": "repeated material",
+        "sec-01173": "boilerplate"
+      },
+      "summaries_digest": {
+        "count": 60,
+        "distinct": 60,
+        "note": "the run's own payload minus the bulk summary texts; every measurement, skip and check is verbatim, and the summaries are reproduced by re-running the harness"
+      },
+      "summaries_kept": {
+        "root": "This is an operations manual for a clustered storage and ingest platform, organised into twelve chapters: Installation and Setup, System Requirements, Network Configuration, Storage and Backup, Security and Access Control, Monitoring and Alerting, Scaling and Load Balancing, Data Import and Export, API Reference, Troubleshooting, Upgrade Procedures, and Compliance and Audit. The substantive content sits in the fifty-nine worked sections of those chapters (each laid out as Overview/Requirements/Procedure/Configuration/Verification subsections), while the Legal Notice, Safety Notice, Copyright and Trademarks, Table of Contents, Revision History and Glossary sections are boilerplate and were not summarized. Across every chapter the prose follows one recurring operating model: named components are reconciled against a registry every 5, 15, 30 or 60 seconds, each carries a bounded queue that rejects with a documented back-pressure status, state is written before a write is acknowledged to the caller, and failover hands outstanding requests to a peer within one heartbeat interval, with sizing and tuning guidance that balances component throughput against the memory reserved for in-flight work. The distinctive hard facts recorded are: at least 16 GiB of memory per node, a session that stays valid for 30 minutes without a refresh, TCP ports 7946 (cluster protocol), 2380 (peer channel) and 9090 (metrics) open between nodes, and snapshots retained for 35 days by default. Chapter vocabularies differ systematically \u2014 chassis, rails and panels in installation; nodes, kernels and schedulers in system requirements; gateways, resolvers and certificates in networking; buckets, manifests and journals in storage; principals, credentials and audit trails in security; probes, counters and sinks in monitoring; pools, shards and limiters in scaling; parsers, schemas and validators in import/export; requests, cursors and envelopes in the API; tickets, runbooks and traces in troubleshooting; releases, canaries and migrations in upgrades; and controls, attestations and evidence bundles in compliance. One further compliance subsection, Certification Status, was left unsummarized because it repeats the retention, residency, evidence and control-mapping material already captured in that chapter.",
+        "sec-00112": "Operating Systems states the platform's baseline requirements and the write/failover semantics that hold on the operating-system layer. The only hard numeric requirement recorded here is that the platform requires at least 16 GiB of memory per node; the rest describes behaviour, with the node writing its state to the supported node, the scheduler to the supported scheduler, and the node to the supported interface before any write is acknowledged to the caller, and each minimal node carrying a bounded queue that rejects with the documented back-pressure status. Failover pairs are stated as interface to physical scheduler, scheduler to physical node, interface to physical kernel and kernel to physical memory pool, each taking over outstanding requests within one heartbeat interval. Tuning the volume is defined as balancing recommended scheduler throughput against the memory the volume reserves for in-flight work.",
+        "sec-00193": "Routing states the hard network requirement for inter-node traffic: ports 7946 for the cluster protocol, 2380 for the peer channel and 9090 for metrics must be open between nodes. Alongside it, the endpoint writes its state to the public endpoint before acknowledging the write to the caller, the static certificate is reconciled every 15 seconds and the static resolver every 60 seconds against their registries, and operators must size the listener so a dynamic endpoint does not saturate it and the gateway so a dynamic resolver does not saturate it during peak traffic. Tuning the endpoint means balancing private certificate throughput against the memory the endpoint reserves for in-flight work, each static certificate carries a bounded queue that rejects with the documented back-pressure status, and resolver failover hands outstanding requests to the private gateway within one heartbeat interval.",
+        "sec-00305": "Snapshot Policy gives the retention default and the storage-layer behaviour around snapshots. The key default is that snapshots are retained for 35 days. Every immutable, compressed and immutable journal carries a bounded queue that rejects with the documented back-pressure status, and the immutable manifest is reconciled every 15 seconds against the snapshot registry, the compressed tier every 30 seconds against the volume registry and the immutable tier every 60 seconds against the journal registry. Tuning the snapshot means balancing immutable tier throughput against the memory the snapshot reserves for in-flight work and tuning the volume means balancing compressed bucket throughput against the memory the volume reserves. The tier writes its state to the cold bucket before acknowledging the write, and failover of the snapshot, bucket or journal hands outstanding requests to the compressed tier, cold manifest or compressed manifest within one heartbeat interval.",
+        "sec-00410": "Roles and Permissions defines the role model and session lifetime. A session stays valid for 30 minutes without a refresh. The rotated policy and rotated token are each reconciled every 60 seconds against the principal, token and credential registries, and the immutable principal every 30 seconds against the policy registry. Operators must size the token so a scoped token does not saturate it, the credential so an immutable policy does not saturate it, the policy so a least-privilege policy does not saturate it, the principal so a rotated policy does not saturate it, and the role binding so a scoped principal does not saturate it, all during peak traffic. Tuning the credential balances least-privilege token throughput against the memory the credential reserves and tuning the token balances scoped policy throughput against the memory the token reserves, each least-privilege token carries a bounded queue that rejects with the documented back-pressure status, and policy failover hands outstanding requests to the rotated policy within one heartbeat interval.",
+        "sec-00819": "Core Endpoints lists the primary API resources and the request/response objects that back them (request, response, header, cursor, envelope, status code in authorised, idempotent, paginated and versioned variants). The authorised response is reconciled every 60 seconds against the response registry, the idempotent status code every 5 seconds against the header registry and every 60 seconds against the envelope registry. The request writes its state to the paginated response and the response to the paginated cursor before acknowledging the write to the caller. Operators must size the request so an authorised cursor does not saturate it, the cursor so an authorised status code does not saturate it, the response so a paginated header does not saturate it, and the request so a versioned status code does not saturate it, during peak traffic. Tuning the request balances paginated request throughput and the header balances versioned envelope throughput against the memory each object reserves for in-flight work. Each paginated response carries a bounded queue that rejects with the documented back-pressure status, and failover of the cursor or status code hands outstanding requests to the idempotent envelope or versioned response within one heartbeat interval."
+      },
+      "summaries_omitted": 54,
+      "summarize_requests": 31,
+      "variant": "b",
+      "wall_time_s": 485.42,
+      "windows": 124
+    }
+  }
+}

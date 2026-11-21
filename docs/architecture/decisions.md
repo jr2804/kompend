@@ -162,6 +162,13 @@ All architectural, tooling, and design decisions for kompend. Each entry include
 **Decision:** The summarizer accepts an optional per-level traversal plan conditioned on the task statement; the plan cache keys on the task (a plan from another task never matches) and the switch defaults to off with a byte-identical off path.
 **Consequences:** `summary_traversal = "auto"` spends less on task-focused vaults; vaults serving unknown future questions stay on `"off"`. See [Summarization Traversal](summarization-traversal.md).
 
+### Decision: The traversal stays a planner + worker; the navigating session is measured, not adopted
+
+**Date:** Nov 21, 2026
+**Context:** The epic that introduced the traversal kept the navigating-session variant open as a spike with a decision gate: keep planner + worker unless navigation wins by more than 25 % on total calls, or produces clearly better summaries on the spot-checks. The spike (bead `knox-u84v.6`, harness in `tools/spike_traversal/`) ran both shapes over the same corpus, the same model, the same task statement and the same 60-node budget.
+**Decision:** Keep planner + worker. Navigation wins the gate's *calls* half — 107 requests against 1,001 (89 % fewer), and the margin survives a change in how the shared budget is enforced (76 against 169 in the cross-check configuration) — but it is not clearly better on the spot-checks (both root summaries named all 12 chapters; the session made no wrong skip where the planner made 3, and the planner answered 5 of 5 planted questions where the session answered 4). The win is in requests, not in tokens: the session's peak context is 2.4× the planner's (87 k against 36 k) because it threads its whole history, which is the part that would not survive a document of the reference document's size. The measurement also rests on a synthetic corpus (the pyvas document is not reachable from the machine that ran it) and on a remote model rather than the pyvas local one, and the session's prompt carries navigation strategy the planner's shipped prompt does not.
+**Consequences:** The shipped path is unchanged. The spike's findings become the work: the node budget bounds a level and not a tree (`knox-s2l1`), one sloppy verdict costs the whole tree (`knox-3zjw`), a level wider than one verdict window is answered against the wrong schema (`knox-t5ol`), and the planner is consulted about leaves that can never be summarized (`knox-hh2u`). A follow-up that re-measures on the real 26,886-node document with the local model — and gives both arms the same summarization protocol, since the shipped session is serial and the session issues parallel tool calls — is what would settle the shape.
+
 ## Resolution
 
 ### Decision: One-shot default, multi-turn opt-in

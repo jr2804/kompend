@@ -136,6 +136,7 @@ explicitly asked.
 |------|-------|
 | `src/kompend/AGENTS.md` | Python source — text-in-code rule, child index |
 | `tests/AGENTS.md` | Testing conventions, test antipatterns |
+| `tools/AGENTS.md` | Spike and measurement harnesses — no production wiring |
 
 ## Project rules
 

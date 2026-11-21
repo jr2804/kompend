@@ -37,12 +37,20 @@ The reference measurement is `sources/26253-j30.docx`: 26,886 tree nodes,
   64-child window), then worker calls for the planned nodes only. A level
   that resolves to SKIP everywhere below it costs one planner call and zero
   worker calls.
-- **Planner + worker vs navigating session:** the agentic summarizer visits
-  every eligible node through batched sessions; traversal adds a small number
-  of decision-model calls to prune whole subtrees before the sessions run.
-  The win scales with the share of skippable structure — boilerplate-heavy
-  documents gain the most; a tree where everything is task-relevant pays the
-  planner calls and keeps the worker calls.
+- **Planner + worker vs navigating session:** measured (bead `knox-u84v.6`,
+  harness in `tools/spike_traversal/`). On a synthetic 1,191-node corpus
+  with the same model, task statement and a 60-node budget, a navigating
+  session (`list_children` / `browse` / `summarize_node` / `skip`) spent
+  **107 requests** against the planner + worker's **1,001** — 89 % fewer —
+  and the margin survives a change in how the shared budget is enforced
+  (76 against 169 in the cross-check configuration). The summaries were a
+  wash: both root summaries named all 12 chapters, the session made no
+  wrong skip where the planner made 3, and the planner answered 5 of the 5
+  planted questions where the session answered 4. The navigating session's
+  **peak context is 2.4× larger** (87 k against 36 k tokens) because it
+  threads its whole history, and that thread is what would break on a
+  document of the reference document's size. See
+  [the spike's record](../../tools/spike_traversal/README.md).
 
 The planner's own budgets (`budget_nodes`, `budget_windows`) shrink
 window-to-window, so a merged plan can never exceed the level budget; an
@@ -74,6 +82,9 @@ the `summary_traversal` switch (`off` by default), node/window ceilings, the
   traversal cannot invalidate existing vault caches.
 - **Fail open to the full tree.** A declined level, a failed plan, or a
   disabled decision model logs a warning and summarizes the whole tree.
+  This is the fail-open that a single sloppy verdict can trigger (bead
+  `knox-3zjw`), and it is why the planner's own strictness matters more
+  than its coverage.
 - **Off switch.** `summary_traversal = "off"` (the default) keeps today's
   path exactly; observability is one ledger row per tree (`summarize`,
   `ok`/`partial`, `reason_code=traversal`, `planned/skipped/expanded/windows`
