@@ -44,6 +44,7 @@ from kompend.agents.context_manager import (
     _GuardedSlidingCompaction,  # noqa: PLC2701
     _per_message_cap,  # noqa: PLC2701
     _pin_first_user_turn,  # noqa: PLC2701
+    _PinningFallbackCompaction,  # noqa: PLC2701
     _tiered_target,  # noqa: PLC2701
     build_fallback_compaction,
     build_sliding_compaction,
@@ -1024,13 +1025,14 @@ class TestSummarizerFallbackCause:
     """
 
     @staticmethod
-    def _broken_capability(monkeypatch: pytest.MonkeyPatch, error: Exception) -> FallbackCompaction:
+    def _broken_capability(monkeypatch: pytest.MonkeyPatch, error: Exception) -> _PinningFallbackCompaction:
         capability = build_fallback_compaction(
             context_window=8192,
             compress_threshold=0.8,
             keep_messages=1,
             model="ollama/test-model",
         )
+        assert isinstance(capability, _PinningFallbackCompaction)
         gated = capability.fallback_chain[0]
         assert isinstance(gated, GrowthGatedCompaction)
         summarizer = gated.strategy.tiers[-1]
