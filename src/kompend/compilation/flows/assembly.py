@@ -295,6 +295,12 @@ def _merge_groups(
 
     for key, members in entries:
         if key in refused:
+            # A refused cluster keeps its members separate. The plan still
+            # held the whole cluster, so it has to be replaced by the
+            # singletons - otherwise the refusal is only a log line and the
+            # merge happens anyway, which is the failure the guard exists to
+            # prevent.
+            plan[key] = [[member] for member in members]
             _log_refusal(clusters, members, concepts, total, "keeping them separate")
 
     result: list[dict[str, Any]] = []

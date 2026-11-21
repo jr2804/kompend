@@ -280,9 +280,9 @@ class TestRefusalLogging:
 
         refusals = [record.message for record in caplog.records if "refused" in record.message]
         assert refusals, "the guard must log the refusal"
-        assert any(
-            "4 concepts/4 sources" in message and "3 concepts/3 sources" in message for message in refusals
-        ), f"the refusal must carry the cluster-size distribution: {refusals}"
+        assert any("4 concepts/4 sources" in message and "3 concepts/3 sources" in message for message in refusals), (
+            f"the refusal must carry the cluster-size distribution: {refusals}"
+        )
         assert any("pool 9 concepts in 3 clusters" in message for message in refusals)
 
 
@@ -370,6 +370,88 @@ class TestOversizedCluster:
             assert len(topic["sources"]) == 3, "the three revisions of a topic merge"
             assert len({source.split("-", 1)[1].split(" r")[0] for source in topic["sources"]}) == 1, "a merged concept holds one topic only"
         assert any("refused" in record.message for record in caplog.records)
+
+
+class TestTwoWholeClusters:
+    """Two clusters, one refused: the refusal has to hold."""
+
+    def test_a_refused_cluster_keeps_its_members_separate(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """A cluster the budget cannot cover is refused, not merged anyway.
+
+        Two clusters of four concepts each in a pool of ten: the budget
+        (max_reduction 0.5) is five concepts, so the first cluster's three
+        absorptions fit and the second's three do not. The second is
+        refused - and a refusal that only logs, while the code merges the
+        cluster anyway, is the failure the guard exists to prevent.
+        """
+        vectors = _two_clusters()
+        monkeypatch.setattr(
+            "kompend.compilation.flows.assembly.make_provider",
+            lambda _model: _FakeProvider(vectors),
+        )
+        concepts = [_concept(name, f"src-{name}") for name in vectors]
+
+        with caplog.at_level(logging.WARNING):
+            merged = merge_similar_concepts(
+                concepts,
+                "fake/model",
+                threshold=0.9,
+                string_threshold=0.7,
+                jaccard_min_token_len=1,
+                max_reduction=0.5,
+            )
+
+        # The pool lost at most the budget's five concepts; a refused
+        # cluster that was merged anyway would take nine.
+        assert len(merged) >= 5, "the refused cluster must not be merged"
+        assert len(merged) <= 8, f"the merge exceeded its budget: {len(merged)} of {len(concepts)} left"
+        assert any("refused" in record.message for record in caplog.records)
+
+    def test_two_clusters_both_merge_without_a_key_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A second multi-member cluster is merged, not a lookup failure.
+
+        The merge plan is keyed by the cluster's key in the groups map; a
+        plan keyed by anything else raises a KeyError on the second
+        cluster, so a corpus where two topics each have duplicates - the
+        common case, not just pyvas - crashed the compile.
+        """
+        vectors = _two_clusters()
+        monkeypatch.setattr(
+            "kompend.compilation.flows.assembly.make_provider",
+            lambda _model: _FakeProvider(vectors),
+        )
+        concepts = [_concept(name, f"src-{name}") for name in vectors]
+
+        merged = merge_similar_concepts(
+            concepts,
+            "fake/model",
+            threshold=0.9,
+            string_threshold=0.7,
+            jaccard_min_token_len=1,
+            max_reduction=1.0,
+        )
+
+        # Both clusters collapsed: eight concepts became two, and the two
+        # singletons stayed as they were.
+        assert len(merged) == 4
+        collapsed = [concept for concept in merged if len(concept["sources"]) == 4]
+        assert len(collapsed) == 2, "each cluster merged into one concept"
+
+
+def _two_clusters() -> dict[str, list[float]]:
+    """Two clusters of four near-duplicate concepts each, plus two singletons.
+
+    The clusters sit apart (their members are near-copies within a cluster
+    and far from the other cluster), so both land as multi-member groups.
+    The two singletons give the pool the size the budget is derived from.
+    """
+    vectors: dict[str, list[float]] = {}
+    for topic, base in (("one", [1.0, 0.0, 0.0]), ("two", [0.0, 1.0, 0.0])):
+        for index in range(4):
+            vectors[f"{topic} {index}"] = _unit([base[0] + index * 0.01, base[1] + index * 0.02, base[2]])
+    vectors["lone a"] = _unit([0.0, 0.0, 1.0])
+    vectors["lone b"] = _unit([-1.0, 0.0, 0.0])
+    return vectors
 
 
 def _concept(name: str, *sources: str, definition: str = "") -> dict[str, Any]:
