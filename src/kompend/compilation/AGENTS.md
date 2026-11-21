@@ -81,6 +81,10 @@ merging and an optional iterative WiCER refinement loop.
   blind pass is the base compiler's own work and is not charged to the
   refinement budget, so a slow base compile can never make iteration 1
   unreachable (`wicer.py`).
+- **One tracker for the WiCER loop** (`wicer.py`): the three WiCER agents
+  (probe, evaluate, diagnose) record into one shared `UsageTracker`, and the
+  done line reads it. A per-agent counter that is never set would report zero
+  calls for every run.
 - **Concept dedup groups by centroid linkage, and two guards bound it**
   (`flows/assembly.py::merge_similar_concepts`). A concept joins the cluster
   whose centroid it is closest to, and the centroid is the mean of that

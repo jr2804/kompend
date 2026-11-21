@@ -9,7 +9,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic_ai.models.test import TestModel
 
+from kompend.agents.base import models as agent_models
 from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 from kompend.compilation import GraphCompiler, WiCERCompiler
 from kompend.compilation.base import BaseCompiler
@@ -1067,6 +1069,32 @@ class TestWiCERCompilerWithMock:
             result.json_data = None
             result.content = json.dumps(payload)
         return result
+
+
+class TestWiCERUsageAccounting:
+    """WiCER's usage accounting through the shared tracker."""
+
+    def test_done_line_counts_the_agents_calls(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The done line reports the calls the three WiCER agents made.
+
+        The aggregation read attributes that were never set (the agents are
+        locals of their step methods), so every run reported 0 calls and
+        0 tokens.
+        """
+        monkeypatch.setattr(agent_models, "build_model", lambda *_args, **_kwargs: TestModel())
+        chunks = _make_chunks(count=1, heading="Test")
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
+        )
+        config.budget.wicer_max_iterations = 1
+        config.budget.min_content_length = 0
+        compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
+        wiki = compiler.compile(chunks)
+        assert wiki.metadata["wicer_llm_calls"] >= 1
+        assert wiki.metadata["wicer_llm_prompt_tokens"] > 0
 
 
 # ===========================================================================

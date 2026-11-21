@@ -29,6 +29,7 @@ from kompend.core.pipeline.config import PipelineConfig
 from kompend.llm.context_window import ContextWindow, answer_reserve_tokens, discover_context_window
 from kompend.llm.format import encode_payload
 from kompend.llm.request_budget import RequestBudget
+from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 
 # Fraction of the available context window (after reserves) allocated to
@@ -93,6 +94,10 @@ class WiCERCompiler(BaseCompiler):
         self.max_iterations = config.budget.wicer_max_iterations
         self._max_seconds = config.budget.wicer_max_seconds
         self._has_llm = bool(config.llm.default_model)
+        # One tracker for the three WiCER agents: every agent of the loop
+        # records into it, so the done line reports the provider's numbers
+        # instead of a sum of per-agent counters.
+        self._usage_tracker = UsageTracker(throughput_window_tokens=config.llm.throughput_window_tokens)
 
         # Input batch sizes adapt to the model's discovered context window.
         # The room left for the answer comes from the window itself
@@ -300,28 +305,21 @@ class WiCERCompiler(BaseCompiler):
         wiki.metadata.update(iteration_info)
 
         if self._has_llm:
-            # Aggregate usage from all agents (may not have been created)
-            total_calls = 0
-            total_prompt = 0
-            total_completion = 0
-            for attr in ("_probe_agent", "_eval_agent", "_diagnose_agent"):
-                agent = getattr(self, attr, None)
-                if agent is not None and agent.usage is not None:
-                    total_calls += agent.usage.call_count
-                    total_prompt += agent.usage.prompt_tokens
-                    total_completion += agent.usage.completion_tokens
+            # One tracker for the three WiCER agents: the totals are what the
+            # provider reported, not a sum of per-agent counters.
+            tracker = self._usage_tracker
             logger.info(
                 "WiCER: done — %d iteration(s), %d refinement(s), %.1fs total, %d agent LLM call(s), %d prompt + %d completion tokens",
                 iteration_info["wicer_iterations"],
                 iteration_info["wicer_refinements"],
                 total_elapsed,
-                total_calls,
-                total_prompt,
-                total_completion,
+                tracker.call_count,
+                tracker.prompt_tokens,
+                tracker.completion_tokens,
             )
-            wiki.metadata["wicer_llm_calls"] = total_calls
-            wiki.metadata["wicer_llm_prompt_tokens"] = total_prompt
-            wiki.metadata["wicer_llm_completion_tokens"] = total_completion
+            wiki.metadata["wicer_llm_calls"] = tracker.call_count
+            wiki.metadata["wicer_llm_prompt_tokens"] = tracker.prompt_tokens
+            wiki.metadata["wicer_llm_completion_tokens"] = tracker.completion_tokens
         else:
             logger.info(
                 "WiCER: done — %d iteration(s), %d refinement(s), %.1fs total",
@@ -415,6 +413,7 @@ class WiCERCompiler(BaseCompiler):
             agent = WicerProbeAgent(
                 model_string=self._config.llm.default_model or "",
                 skills=self._config.skills,
+                usage_tracker=self._usage_tracker,
                 timeout=self._config.llm.request_ceiling_s,
                 reasoning_effort=self._config.llm.reasoning_effort,
                 # The probe loop keeps earlier probes in context, so the
@@ -458,6 +457,7 @@ class WiCERCompiler(BaseCompiler):
                 agent = WicerEvaluateAgent(
                     model_string=self._config.llm.default_model or "",
                     skills=self._config.skills,
+                    usage_tracker=self._usage_tracker,
                     timeout=self._config.llm.request_ceiling_s,
                     reasoning_effort=self._config.llm.reasoning_effort,
                     context_manager=self._config.llm.context_manager,
@@ -499,6 +499,7 @@ class WiCERCompiler(BaseCompiler):
             agent = WicerDiagnoseAgent(
                 model_string=self._config.llm.default_model or "",
                 skills=self._config.skills,
+                usage_tracker=self._usage_tracker,
                 timeout=self._config.llm.request_ceiling_s,
                 reasoning_effort=self._config.llm.reasoning_effort,
                 context_manager=self._config.llm.context_manager,
