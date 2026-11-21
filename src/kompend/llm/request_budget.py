@@ -318,6 +318,19 @@ def tokens_to_chars(tokens: int, *, chars_per_token: float | None = None) -> int
     return int(tokens * sizing_density(chars_per_token))
 
 
+def calibrated_density_for(llm: LLMConfig, tracker: UsageTracker | None, model: str | None) -> float:
+    """Chars-per-token a stage sizes a new payload with, given the run so far.
+
+    The single entry point for self-calibrated sizing: the configured floor
+    tightened by the run's own measured density for *model* (see
+    :func:`calibrated_density`). No tracker, no model, or too few measured
+    calls keeps the floor — the first calls are how the fit is learned, so
+    they must not be starved by it.
+    """
+    measured = tracker.measured_chars_per_token(model or "", min_samples=llm.density_min_samples) if tracker is not None else None
+    return calibrated_density(llm.default_chars_per_token, measured)
+
+
 def calibrated_density(configured: float | None, measured: float | None) -> float:
     """Characters per token to *size* a request with, informed by measurement.
 
@@ -338,19 +351,6 @@ def calibrated_density(configured: float | None, measured: float | None) -> floa
     if measured is None:
         return floor
     return min(floor, measured)
-
-
-def calibrated_density_for(llm: LLMConfig, tracker: UsageTracker | None, model: str | None) -> float:
-    """Chars-per-token a stage sizes a new payload with, given the run so far.
-
-    The single entry point for self-calibrated sizing: the configured floor
-    tightened by the run's own measured density for *model* (see
-    :func:`calibrated_density`). No tracker, no model, or too few measured
-    calls keeps the floor — the first calls are how the fit is learned, so
-    they must not be starved by it.
-    """
-    measured = tracker.measured_chars_per_token(model or "", min_samples=llm.density_min_samples) if tracker is not None else None
-    return calibrated_density(llm.default_chars_per_token, measured)
 
 
 def sizing_density(chars_per_token: float | None = None) -> float:

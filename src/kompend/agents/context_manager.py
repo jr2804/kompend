@@ -545,44 +545,6 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
         return self.context_window or resolve_context_window(model) or self.fallback_context_window
 
 
-class _LoggedSummarizingCompaction(SummarizingCompaction):
-    """``SummarizingCompaction`` that logs its compression events."""
-
-    # pydantic_ai_harness 0.62 hands ``_summarize`` a ``WrittenSummary``
-    # record (``.text``/``.created_at``) instead of the plain ``str`` of
-    # 0.61 — the return type follows whichever harness is installed.
-    async def _summarize(self, messages: list[ModelMessage], ctx: Any, previous_summary: str | None = None) -> Any:
-        logger.info("Context compression starting: %d message(s)", len(messages))
-        summary = await super()._summarize(messages, ctx, previous_summary=previous_summary)
-        text = summary if isinstance(summary, str) else summary.text
-        logger.info("Context compression produced %d-char summary", len(text))
-        return summary
-
-
-class _LoggedSlidingWindowCompaction(SlidingWindowCompaction):
-    """``SlidingWindowCompaction`` that logs when it trims as a fallback.
-
-    It only ever runs after the summarizer failed, so the warning is the
-    record of that failure — the run continues, the context is degraded.
-    """
-
-    async def compact(self, messages: list[ModelMessage], ctx: RunContext[Any]) -> list[ModelMessage]:
-        logger.warning("Falling back to sliding-window trimming of %d message(s)", len(messages))
-        trigger = _fraction_trigger(
-            fraction=self.max_fraction,
-            context_window=self.context_window,
-            fallback_context_window=self.fallback_context_window,
-            model=ctx.model,
-        )
-        cap = _per_message_cap(self.context_window or resolve_context_window(ctx.model) or self.fallback_context_window)
-        before = _clamp_oversized(messages, trigger, self.tokenizer, cap)
-        compacted = await super().compact(before.messages, ctx)
-        outcome = _clamp_oversized(compacted, trigger, self.tokenizer, cap).merged_with(before)
-        logger.warning("Sliding-window fallback kept %d of %d message(s)", len(outcome.messages), len(messages))
-        _warn_if_still_over(outcome, trigger, self.tokenizer, label="Sliding-window fallback")
-        return outcome.messages
-
-
 @dataclass
 class _ReportingGrowthGatedCompaction(GrowthGatedCompaction[AgentDepsT]):
     """``GrowthGatedCompaction`` that reports each pass to the fallback owner.
@@ -668,6 +630,35 @@ class _PinningFallbackCompaction(FallbackCompaction):
     _consecutive_fallbacks: int = field(default=0, init=False, repr=False, compare=False)
     """Summarizer fallbacks in a row; any non-fallback pass resets it."""
 
+    async def before_model_request(
+        self,
+        ctx: RunContext[Any],
+        request_context: ModelRequestContext,
+    ) -> ModelRequestContext:
+        pinned = _pin_first_user_turn(list(ctx.messages))
+        if pinned is not ctx.messages:
+            ctx.messages[:] = pinned
+        trigger = _fraction_trigger(
+            fraction=self._effective_fraction(),
+            context_window=self.context_window,
+            fallback_context_window=self.fallback_context_window,
+            model=request_context.model,
+        )
+        if trigger is None:
+            return request_context
+        messages = list(ctx.messages)
+        tokens = estimate_context_tokens(
+            messages,
+            self.tokenizer,
+            model_request_parameters=request_context.model_request_parameters,
+        )
+        if tokens <= trigger:
+            return request_context
+        request_ctx = replace(ctx, model=request_context.model)
+        compacted = await self._run_chain(messages, request_ctx)
+        ctx.messages[:] = compacted
+        return replace(request_context, messages=compacted)
+
     def _note_fallback(self, exc: Exception | None) -> None:
         """Record a gated-entry outcome: count consecutive fallbacks, name the cause.
 
@@ -714,35 +705,6 @@ class _PinningFallbackCompaction(FallbackCompaction):
             return self.max_fraction * self.fallback_step_fraction
         return self.max_fraction
 
-    async def before_model_request(
-        self,
-        ctx: RunContext[Any],
-        request_context: ModelRequestContext,
-    ) -> ModelRequestContext:
-        pinned = _pin_first_user_turn(list(ctx.messages))
-        if pinned is not ctx.messages:
-            ctx.messages[:] = pinned
-        trigger = _fraction_trigger(
-            fraction=self._effective_fraction(),
-            context_window=self.context_window,
-            fallback_context_window=self.fallback_context_window,
-            model=request_context.model,
-        )
-        if trigger is None:
-            return request_context
-        messages = list(ctx.messages)
-        tokens = estimate_context_tokens(
-            messages,
-            self.tokenizer,
-            model_request_parameters=request_context.model_request_parameters,
-        )
-        if tokens <= trigger:
-            return request_context
-        request_ctx = replace(ctx, model=request_context.model)
-        compacted = await self._run_chain(messages, request_ctx)
-        ctx.messages[:] = compacted
-        return replace(request_context, messages=compacted)
-
     async def _run_chain(self, messages: list[ModelMessage], ctx: RunContext[Any]) -> list[ModelMessage]:
         """Run the fallback chain and re-inject the pinned parts.
 
@@ -759,6 +721,44 @@ class _PinningFallbackCompaction(FallbackCompaction):
                 "update `_PinningFallbackCompaction` to match"
             )
         return await compact_pinned(messages, ctx, None)
+
+
+class _LoggedSummarizingCompaction(SummarizingCompaction):
+    """``SummarizingCompaction`` that logs its compression events."""
+
+    # pydantic_ai_harness 0.62 hands ``_summarize`` a ``WrittenSummary``
+    # record (``.text``/``.created_at``) instead of the plain ``str`` of
+    # 0.61 — the return type follows whichever harness is installed.
+    async def _summarize(self, messages: list[ModelMessage], ctx: Any, previous_summary: str | None = None) -> Any:
+        logger.info("Context compression starting: %d message(s)", len(messages))
+        summary = await super()._summarize(messages, ctx, previous_summary=previous_summary)
+        text = summary if isinstance(summary, str) else summary.text
+        logger.info("Context compression produced %d-char summary", len(text))
+        return summary
+
+
+class _LoggedSlidingWindowCompaction(SlidingWindowCompaction):
+    """``SlidingWindowCompaction`` that logs when it trims as a fallback.
+
+    It only ever runs after the summarizer failed, so the warning is the
+    record of that failure — the run continues, the context is degraded.
+    """
+
+    async def compact(self, messages: list[ModelMessage], ctx: RunContext[Any]) -> list[ModelMessage]:
+        logger.warning("Falling back to sliding-window trimming of %d message(s)", len(messages))
+        trigger = _fraction_trigger(
+            fraction=self.max_fraction,
+            context_window=self.context_window,
+            fallback_context_window=self.fallback_context_window,
+            model=ctx.model,
+        )
+        cap = _per_message_cap(self.context_window or resolve_context_window(ctx.model) or self.fallback_context_window)
+        before = _clamp_oversized(messages, trigger, self.tokenizer, cap)
+        compacted = await super().compact(before.messages, ctx)
+        outcome = _clamp_oversized(compacted, trigger, self.tokenizer, cap).merged_with(before)
+        logger.warning("Sliding-window fallback kept %d of %d message(s)", len(outcome.messages), len(messages))
+        _warn_if_still_over(outcome, trigger, self.tokenizer, label="Sliding-window fallback")
+        return outcome.messages
 
 
 def _fallback_cause(exc: BaseException) -> str:

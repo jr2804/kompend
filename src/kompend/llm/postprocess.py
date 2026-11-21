@@ -231,26 +231,6 @@ class UsageRecorder:
         )
 
 
-def _prompt_text_chars(messages: Sequence[ModelMessage]) -> int:
-    """Raw prompt text length across *messages*, in characters.
-
-    Sums the string content of every part (tool-call args excluded: they
-    are structured data, not prompt text). Undercounting errs toward the
-    safe side — fewer measured chars per token can only shrink later
-    payloads, never grow them — while wire framing (JSON envelopes, base64
-    media) is deliberately left out for the same reason.
-    """
-    total = 0
-    for message in messages:
-        for part in getattr(message, "parts", []):
-            content = getattr(part, "content", None)
-            if isinstance(content, str):
-                total += len(content)
-            elif isinstance(content, list):
-                total += sum(len(item) for item in content if isinstance(item, str))
-    return total
-
-
 class DebugSaver:
     """Dump call to disk when KOMP_DEBUG_LLM_DIR is set.
 
@@ -331,6 +311,26 @@ class ResponsePipeline:
     def insert(self, index: int, processor: ResponsePostprocessor) -> None:
         """Insert a processor at a specific position."""
         self._processors.insert(index, processor)
+
+
+def _prompt_text_chars(messages: Sequence[ModelMessage]) -> int:
+    """Raw prompt text length across *messages*, in characters.
+
+    Sums the string content of every part (tool-call args excluded: they
+    are structured data, not prompt text). Undercounting errs toward the
+    safe side — fewer measured chars per token can only shrink later
+    payloads, never grow them — while wire framing (JSON envelopes, base64
+    media) is deliberately left out for the same reason.
+    """
+    total = 0
+    for message in messages:
+        for part in getattr(message, "parts", []):
+            content = getattr(part, "content", None)
+            if isinstance(content, str):
+                total += len(content)
+            elif isinstance(content, list):
+                total += sum(len(item) for item in content if isinstance(item, str))
+    return total
 
 
 def register_postprocessor(name: str) -> Callable[[type[ResponsePostprocessor]], type[ResponsePostprocessor]]:

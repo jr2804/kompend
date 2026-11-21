@@ -1024,25 +1024,6 @@ class TestSummarizerFallbackCause:
     summarizable. Any pass that does not fall back breaks the streak.
     """
 
-    @staticmethod
-    def _broken_capability(monkeypatch: pytest.MonkeyPatch, error: Exception) -> _PinningFallbackCompaction:
-        capability = build_fallback_compaction(
-            context_window=8192,
-            compress_threshold=0.8,
-            keep_messages=1,
-            model="ollama/test-model",
-        )
-        assert isinstance(capability, _PinningFallbackCompaction)
-        gated = capability.fallback_chain[0]
-        assert isinstance(gated, GrowthGatedCompaction)
-        summarizer = gated.strategy.tiers[-1]
-
-        async def _broken(*args: object, **kwargs: object) -> str:
-            raise error
-
-        monkeypatch.setattr(summarizer, "_summarize", _broken)
-        return capability
-
     async def test_the_fallback_names_a_timeout(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -1171,6 +1152,25 @@ class TestSummarizerFallbackCause:
         await capability.before_model_request(retry_ctx, _request_context(list(retry_ctx.messages)))
 
         assert capability._consecutive_fallbacks == 0  # noqa: SLF001
+
+    @staticmethod
+    def _broken_capability(monkeypatch: pytest.MonkeyPatch, error: Exception) -> _PinningFallbackCompaction:
+        capability = build_fallback_compaction(
+            context_window=8192,
+            compress_threshold=0.8,
+            keep_messages=1,
+            model="ollama/test-model",
+        )
+        assert isinstance(capability, _PinningFallbackCompaction)
+        gated = capability.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+        summarizer = gated.strategy.tiers[-1]
+
+        async def _broken(*args: object, **kwargs: object) -> str:
+            raise error
+
+        monkeypatch.setattr(summarizer, "_summarize", _broken)
+        return capability
 
 
 class TestGrowthGate:

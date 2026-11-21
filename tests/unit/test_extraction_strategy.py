@@ -853,49 +853,6 @@ class TestExtractionFailurePolicy:
         monkeypatch.setattr(units_module, "ExtractionAgent", _FailingAgent)
 
 
-def _make_big_window_compiler() -> TwoPhaseCompiler:
-    """Compiler with a realistic cloud-scale window.
-
-    Batch sizing is only meaningful when the window comfortably exceeds the
-    reserved output — the 8192-token fixture window is smaller than
-    the answer reserve and collapses every budget to the 1-token floor.
-    A 65536-token window mirrors the local model this was observed on.
-    """
-    compiler = _make_compiler()
-    compiler._context_window = ContextWindow(max_input=65536, max_output=32768, source=ContextSource.OLLAMA)
-    compiler._extract_system_tokens = 1000
-    return compiler
-
-
-def _make_compiler(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> TwoPhaseCompiler:
-    config = _make_config(strategy)
-    return TwoPhaseCompiler(config=config, context_window=_make_cw())
-
-
-def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> PipelineConfig:
-    # Absolute vault root: a CWD-relative source_dir/output_dir would resolve the
-    # vault store against the process CWD and write .kompend/ into the repo root.
-    vault = make_tmp_vault()
-    return PipelineConfig(
-        source_dir=vault / "sources",
-        output_dir=vault / "wiki",
-        llm=LLMConfig(default_model="ollama/test", vlm_model="vlm", extraction_strategy=strategy),
-        embedding=EmbeddingConfig(model="model"),
-    )
-
-
-def _make_cw() -> ContextWindow:
-    return ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
-
-
-def _make_history(chars_per_message: int) -> list[ModelMessage]:
-    """A threaded (request, response) pair carrying ``chars_per_message`` chars each."""
-    return [
-        ModelRequest(parts=[UserPromptPart(content="q" * chars_per_message)]),
-        ModelResponse(parts=[TextPart(content="a" * chars_per_message)]),
-    ]
-
-
 class TestHistoryAwarePayloadBudget:
     """The incremental batch budget prices the threaded history (knox-egxf).
 
@@ -940,3 +897,46 @@ class TestHistoryAwarePayloadBudget:
         compiler = _make_big_window_compiler()
         history = _make_history(1_000_000)
         assert units_module._extract_payload_budget(compiler, history) == 1
+
+
+def _make_big_window_compiler() -> TwoPhaseCompiler:
+    """Compiler with a realistic cloud-scale window.
+
+    Batch sizing is only meaningful when the window comfortably exceeds the
+    reserved output — the 8192-token fixture window is smaller than
+    the answer reserve and collapses every budget to the 1-token floor.
+    A 65536-token window mirrors the local model this was observed on.
+    """
+    compiler = _make_compiler()
+    compiler._context_window = ContextWindow(max_input=65536, max_output=32768, source=ContextSource.OLLAMA)
+    compiler._extract_system_tokens = 1000
+    return compiler
+
+
+def _make_compiler(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> TwoPhaseCompiler:
+    config = _make_config(strategy)
+    return TwoPhaseCompiler(config=config, context_window=_make_cw())
+
+
+def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) -> PipelineConfig:
+    # Absolute vault root: a CWD-relative source_dir/output_dir would resolve the
+    # vault store against the process CWD and write .kompend/ into the repo root.
+    vault = make_tmp_vault()
+    return PipelineConfig(
+        source_dir=vault / "sources",
+        output_dir=vault / "wiki",
+        llm=LLMConfig(default_model="ollama/test", vlm_model="vlm", extraction_strategy=strategy),
+        embedding=EmbeddingConfig(model="model"),
+    )
+
+
+def _make_cw() -> ContextWindow:
+    return ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
+
+
+def _make_history(chars_per_message: int) -> list[ModelMessage]:
+    """A threaded (request, response) pair carrying ``chars_per_message`` chars each."""
+    return [
+        ModelRequest(parts=[UserPromptPart(content="q" * chars_per_message)]),
+        ModelResponse(parts=[TextPart(content="a" * chars_per_message)]),
+    ]

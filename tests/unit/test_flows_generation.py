@@ -302,6 +302,45 @@ class TestEntityPageSourceGate:
         assert function == []
 
 
+class TestResumedHistoryPricing:
+    """The segment fit guard prices a resumed transcript (knox-egxf).
+
+    A recovered segment re-threads its old transcript on every pass, but the
+    guard sized only the new content — the thread grew past the window while
+    each segment "fit". The priced request is content plus the resumed thread
+    in the same density, so an over-budget segment splits before the first
+    pass instead of stalling mid-stream.
+    """
+
+    def test_no_resumed_thread_prices_nothing(self) -> None:
+        total, history_tokens = gen_flow._priced_request_tokens("x" * 1000, None, chars_per_token=2.5)
+        assert history_tokens == 0
+        assert total == _token_estimate("x" * 1000, 2.5)
+
+    def test_a_resumed_transcript_is_priced_with_the_sizing_density(self) -> None:
+        history = [
+            ModelRequest(parts=[UserPromptPart(content="q" * 20_000)]),
+            ModelResponse(parts=[TextPart(content="a" * 20_000)]),
+        ]
+        total, history_tokens = gen_flow._priced_request_tokens("x" * 1000, history, chars_per_token=2.5)
+        assert history_tokens == _estimate_history_tokens(history, chars_per_token=2.5) > 0
+        assert total == _token_estimate("x" * 1000, 2.5) + history_tokens
+
+    def test_content_plus_thread_trips_the_guard_that_content_alone_passes(self) -> None:
+        window = ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
+        budget = RequestBudget(window=window, reserved={"system": 1000}, utilization=LLMConfig().request_utilization)
+        content = "x" * 1000
+        content_tokens = _token_estimate(content, 2.5)
+        budget.require(content_tokens, stage="Agentic generation for seg")
+        history = [
+            ModelRequest(parts=[UserPromptPart(content="q" * 20_000)]),
+            ModelResponse(parts=[TextPart(content="a" * 20_000)]),
+        ]
+        total, _ = gen_flow._priced_request_tokens(content, history, chars_per_token=2.5)
+        with pytest.raises(LLMOutputError, match="Agentic generation for seg"):
+            budget.require(total, stage="Agentic generation for seg")
+
+
 def _extraction_set() -> ExtractionSet:
     ext_set = ExtractionSet()
     ext_set.add(
@@ -388,42 +427,3 @@ def _entity_extraction_set(entity_type: str, *, sources: int) -> ExtractionSet:
             )
         )
     return ext_set
-
-
-class TestResumedHistoryPricing:
-    """The segment fit guard prices a resumed transcript (knox-egxf).
-
-    A recovered segment re-threads its old transcript on every pass, but the
-    guard sized only the new content — the thread grew past the window while
-    each segment "fit". The priced request is content plus the resumed thread
-    in the same density, so an over-budget segment splits before the first
-    pass instead of stalling mid-stream.
-    """
-
-    def test_no_resumed_thread_prices_nothing(self) -> None:
-        total, history_tokens = gen_flow._priced_request_tokens("x" * 1000, None, chars_per_token=2.5)
-        assert history_tokens == 0
-        assert total == _token_estimate("x" * 1000, 2.5)
-
-    def test_a_resumed_transcript_is_priced_with_the_sizing_density(self) -> None:
-        history = [
-            ModelRequest(parts=[UserPromptPart(content="q" * 20_000)]),
-            ModelResponse(parts=[TextPart(content="a" * 20_000)]),
-        ]
-        total, history_tokens = gen_flow._priced_request_tokens("x" * 1000, history, chars_per_token=2.5)
-        assert history_tokens == _estimate_history_tokens(history, chars_per_token=2.5) > 0
-        assert total == _token_estimate("x" * 1000, 2.5) + history_tokens
-
-    def test_content_plus_thread_trips_the_guard_that_content_alone_passes(self) -> None:
-        window = ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
-        budget = RequestBudget(window=window, reserved={"system": 1000}, utilization=LLMConfig().request_utilization)
-        content = "x" * 1000
-        content_tokens = _token_estimate(content, 2.5)
-        budget.require(content_tokens, stage="Agentic generation for seg")
-        history = [
-            ModelRequest(parts=[UserPromptPart(content="q" * 20_000)]),
-            ModelResponse(parts=[TextPart(content="a" * 20_000)]),
-        ]
-        total, _ = gen_flow._priced_request_tokens(content, history, chars_per_token=2.5)
-        with pytest.raises(LLMOutputError, match="Agentic generation for seg"):
-            budget.require(total, stage="Agentic generation for seg")

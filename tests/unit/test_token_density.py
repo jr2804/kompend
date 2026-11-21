@@ -26,6 +26,55 @@ from kompend.llm.request_budget import (
 from kompend.llm.usage import UsageTracker
 
 
+class TestCalibratedDensity:
+    """The measured density tightens sizing; it never loosens it.
+
+    The floor is the worst case — it keeps a planned request inside the
+    window for every density the corpus shows. The run's own samples are
+    the better-informed signal: a deployed tokenizer denser than the floor
+    is caught before it overflows a window the floor said was safe.
+    Replacing the floor with an optimistic measurement would invert the
+    safety direction, so the blend is the minimum of the two.
+    """
+
+    def test_no_measurement_keeps_the_floor(self) -> None:
+        assert calibrated_density(2.5, None) == CONSERVATIVE_CHARS_PER_TOKEN
+        assert calibrated_density(None, None) == CONSERVATIVE_CHARS_PER_TOKEN
+
+    def test_a_denser_tokenizer_tightens_sizing(self) -> None:
+        assert calibrated_density(2.5, 2.0) == 2.0
+
+    def test_a_sparser_tokenizer_never_loosens_sizing(self) -> None:
+        assert calibrated_density(2.5, 3.8) == CONSERVATIVE_CHARS_PER_TOKEN
+
+    def test_configured_pessimism_still_wins(self) -> None:
+        assert calibrated_density(2.0, 2.2) == 2.0
+
+    def test_two_conservative_signals_take_the_tighter(self) -> None:
+        assert calibrated_density(2.0, 1.8) == 1.8
+
+    def test_without_a_tracker_the_floor_sizes(self) -> None:
+        assert calibrated_density_for(LLMConfig(), None, "m") == CONSERVATIVE_CHARS_PER_TOKEN
+
+    def test_measured_calls_tighten_the_stage(self) -> None:
+        tracker = UsageTracker()
+        for _ in range(5):
+            tracker.record(prompt_tokens=1000, completion_tokens=10, model="m", elapsed_s=1.0, prompt_chars=2000)
+        assert calibrated_density_for(LLMConfig(), tracker, "m") == 2.0
+
+    def test_too_few_samples_keep_the_floor(self) -> None:
+        tracker = UsageTracker()
+        for _ in range(4):
+            tracker.record(prompt_tokens=1000, completion_tokens=10, model="m", elapsed_s=1.0, prompt_chars=2000)
+        assert calibrated_density_for(LLMConfig(), tracker, "m") == CONSERVATIVE_CHARS_PER_TOKEN
+
+    def test_an_optimistic_measurement_never_sizes(self) -> None:
+        tracker = UsageTracker()
+        for _ in range(5):
+            tracker.record(prompt_tokens=1000, completion_tokens=10, model="m", elapsed_s=1.0, prompt_chars=3800)
+        assert calibrated_density_for(LLMConfig(), tracker, "m") == CONSERVATIVE_CHARS_PER_TOKEN
+
+
 def test_the_default_ratio_is_the_pessimistic_density_bound() -> None:
     """One number owns the heuristic — the nominal median is gone."""
     assert CONSERVATIVE_CHARS_PER_TOKEN == 2.5
@@ -81,52 +130,3 @@ def test_a_configured_ratio_above_the_floor_is_clamped() -> None:
 def test_the_compaction_estimator_counts_at_the_shared_ratio() -> None:
     assert conservative_tokens("x" * 250) == 100
     assert conservative_tokens("") == 0
-
-
-class TestCalibratedDensity:
-    """The measured density tightens sizing; it never loosens it.
-
-    The floor is the worst case — it keeps a planned request inside the
-    window for every density the corpus shows. The run's own samples are
-    the better-informed signal: a deployed tokenizer denser than the floor
-    is caught before it overflows a window the floor said was safe.
-    Replacing the floor with an optimistic measurement would invert the
-    safety direction, so the blend is the minimum of the two.
-    """
-
-    def test_no_measurement_keeps_the_floor(self) -> None:
-        assert calibrated_density(2.5, None) == CONSERVATIVE_CHARS_PER_TOKEN
-        assert calibrated_density(None, None) == CONSERVATIVE_CHARS_PER_TOKEN
-
-    def test_a_denser_tokenizer_tightens_sizing(self) -> None:
-        assert calibrated_density(2.5, 2.0) == 2.0
-
-    def test_a_sparser_tokenizer_never_loosens_sizing(self) -> None:
-        assert calibrated_density(2.5, 3.8) == CONSERVATIVE_CHARS_PER_TOKEN
-
-    def test_configured_pessimism_still_wins(self) -> None:
-        assert calibrated_density(2.0, 2.2) == 2.0
-
-    def test_two_conservative_signals_take_the_tighter(self) -> None:
-        assert calibrated_density(2.0, 1.8) == 1.8
-
-    def test_without_a_tracker_the_floor_sizes(self) -> None:
-        assert calibrated_density_for(LLMConfig(), None, "m") == CONSERVATIVE_CHARS_PER_TOKEN
-
-    def test_measured_calls_tighten_the_stage(self) -> None:
-        tracker = UsageTracker()
-        for _ in range(5):
-            tracker.record(prompt_tokens=1000, completion_tokens=10, model="m", elapsed_s=1.0, prompt_chars=2000)
-        assert calibrated_density_for(LLMConfig(), tracker, "m") == 2.0
-
-    def test_too_few_samples_keep_the_floor(self) -> None:
-        tracker = UsageTracker()
-        for _ in range(4):
-            tracker.record(prompt_tokens=1000, completion_tokens=10, model="m", elapsed_s=1.0, prompt_chars=2000)
-        assert calibrated_density_for(LLMConfig(), tracker, "m") == CONSERVATIVE_CHARS_PER_TOKEN
-
-    def test_an_optimistic_measurement_never_sizes(self) -> None:
-        tracker = UsageTracker()
-        for _ in range(5):
-            tracker.record(prompt_tokens=1000, completion_tokens=10, model="m", elapsed_s=1.0, prompt_chars=3800)
-        assert calibrated_density_for(LLMConfig(), tracker, "m") == CONSERVATIVE_CHARS_PER_TOKEN
