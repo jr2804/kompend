@@ -671,10 +671,36 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
             reserved={"system": compiler._gen_system_tokens},
             utilization=compiler._config.llm.request_utilization,
         )
-        segment_budget.require(
-            _priced_tokens,
-            stage=f"Agentic generation for {seg_label}",
-        )
+        try:
+            segment_budget.require(
+                _priced_tokens,
+                stage=f"Agentic generation for {seg_label}",
+            )
+        except LLMOutputError as exc:
+            # Pre-pass split: a resumed transcript can push an otherwise
+            # fittable segment over the window, and no pass ran yet to
+            # overflow into the Loop-1 path. Split the segment the same way
+            # a mid-pass overflow would — the halves carry fresh transcript
+            # prefixes, so they run without the oversized thread. A segment
+            # that cannot split keeps the loud failure the error carries.
+            if not _resumed_history_tokens:
+                raise
+            record_unit_failure(stage=f"Agentic generation for {seg_label}", unit=seg_id, exc=exc)
+            outcome = _shrink_and_requeue(
+                broker,
+                coverage,
+                compiler,
+                pending,
+                unit,
+                start_remaining=start_remaining,
+                seg_titles=seg_titles,
+                max_splits=max_splits,
+                kind=AgentFailureKind.CONTEXT_OVERFLOW,
+                err=str(exc),
+            )
+            if outcome is ShrinkOutcome.SPLIT:
+                continue
+            raise
         while broker.remaining(seg_id) > 0 and passes < cap:
             # One pass = one agent run. The agent base owns the whole-request
             # retry policy (``compile.llm.transient_retries``), so a transient
