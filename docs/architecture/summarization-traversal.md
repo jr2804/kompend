@@ -50,7 +50,7 @@ The reference measurement is `sources/26253-j30.docx`: 26,886 tree nodes,
   **peak context is 2.4× larger** (87 k against 36 k tokens) because it
   threads its whole history, and that thread is what would break on a
   document of the reference document's size. See
-  [the spike's record](../../tools/spike_traversal/README.md).
+  the spike's record (`tools/spike_traversal/README.md`).
 
 The planner's own budgets (`budget_nodes`, `budget_windows`) shrink
 window-to-window, so a merged plan can never exceed the level budget; an
