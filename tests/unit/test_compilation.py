@@ -968,7 +968,7 @@ class TestWiCERCompilerWithMock:
         assert wiki.metadata["wicer_refinements"] >= 1
 
     def test_budget_stop_names_the_blind_compile_duration(self, mock_llm: MagicMock, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
-        """The stop warning states the blind-compile time and the budget needed."""
+        """The stop warning states the blind-compile time and the derived pass budget."""
         mock_llm.probe.return_value = self._probe_output([{"question": "Q1?", "answer": "A1."}])
         mock_llm.evaluate.return_value = self._evaluate_output([{"question": "Q1?", "expected_answer": "A1.", "found_answer": "", "correct": False}])
         mock_llm.diagnose.return_value = self._diagnose_output(["a fact"])
@@ -1011,8 +1011,110 @@ class TestWiCERCompilerWithMock:
             wiki = compiler.compile(chunks)
         assert wiki.metadata["wicer_iterations"] == 1
         assert "20199.5" in caplog.text
-        assert "22000.5" in caplog.text
-        assert "reached iteration 1" in caplog.text
+        # The stop names the derived pass budget: corpus units, the measured
+        # blind-compile recompile allowance, and the effective cap.
+        assert "probe batches" in caplog.text
+        assert "derived" in caplog.text
+        assert "effective 1800s" in caplog.text
+
+    def test_derived_cap_grows_with_slow_model_and_large_corpus(self) -> None:
+        """The pass cap derives from corpus units x measured throughput.
+
+        A slow corpus on a slow model derives a larger cap than a small
+        corpus on a fast model, and the derivation's terms are reported —
+        a bare constant could say neither.
+        """
+        fast = self._budget_compiler()
+        for prompt_tokens, completion_tokens, elapsed_s in ((2000, 100, 2.0), (2000, 400, 3.5), (8000, 100, 6.5)):
+            fast._usage_tracker.record(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, model="ollama/test", elapsed_s=elapsed_s)
+        slow = self._budget_compiler()
+        for prompt_tokens, completion_tokens, elapsed_s in ((2000, 100, 80.0), (2000, 400, 290.0), (8000, 100, 110.0)):
+            slow._usage_tracker.record(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, model="ollama/test", elapsed_s=elapsed_s)
+        small_chunks = [ResolvedChunk(chunk=_chunk(text="x" * 100, heading="S", chunk_id=f"small_{i}")) for i in range(2)]
+        large_chunks = [ResolvedChunk(chunk=_chunk(text="y" * 8000, heading="L", chunk_id=f"large_{i}")) for i in range(30)]
+        small_wiki = CompiledWiki(
+            nodes=[WikiNode(id="s", title="S", content="short wiki", node_type=NodeType.SECTION)],
+            edges=[],
+            toc=[{"title": "S", "id": "s", "level": 1}],
+            metadata={},
+        )
+        large_wiki = CompiledWiki(
+            nodes=[WikiNode(id="l", title="L", content="y" * 200_000, node_type=NodeType.SECTION)],
+            edges=[],
+            toc=[{"title": "L", "id": "l", "level": 1}],
+            metadata={},
+        )
+        fast_budget = fast._derive_pass_budget(small_chunks, small_wiki, blind_s=30.0)
+        slow_budget = slow._derive_pass_budget(large_chunks, large_wiki, blind_s=30.0)
+        assert slow_budget.probe_batches > fast_budget.probe_batches
+        assert slow_budget.pass_cap_s > fast_budget.pass_cap_s
+        assert slow_budget.priced_by == "fit"
+        assert slow_budget.fit_samples == 3
+        report = slow_budget.report()
+        for term in ("probe batches", "eval segments", "requests", "s/req", "blind", "derived", "effective"):
+            assert term in report
+
+    def test_pass_budget_without_fit_prices_from_ceiling(self) -> None:
+        """Before the tracker holds enough samples the ceiling prices the pass.
+
+        The first calls are how the fit is learned, so they must not be
+        starved by it — and a tiny corpus derives a cap far under the
+        configured one, never the configured number itself.
+        """
+        compiler = self._budget_compiler()
+        chunks = _make_chunks(count=1, heading="Test")
+        wiki = CompiledWiki(
+            nodes=[WikiNode(id="n", title="N", content="X", node_type=NodeType.SECTION)],
+            edges=[],
+            toc=[{"title": "N", "id": "n", "level": 1}],
+            metadata={},
+        )
+        budget = compiler._derive_pass_budget(chunks, wiki, blind_s=5.0)
+        assert budget.priced_by == "ceiling"
+        assert budget.fit_samples == 0
+        assert budget.turn_s == compiler._config.llm.request_ceiling_s
+        assert budget.effective_s == budget.pass_cap_s
+        assert budget.pass_cap_s < compiler._max_seconds
+
+    def test_pass_budget_stop_reports_the_derivation(self, mock_llm: MagicMock, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """A hung batch cannot silently consume the whole pass.
+
+        The loop stops at the derived cap (not the configured constant),
+        and the warning names the derivation's inputs.
+        """
+        mock_llm.probe.return_value = self._probe_output([{"question": "Q1?", "answer": "A1."}])
+        mock_llm.diagnose.return_value = self._diagnose_output(["a fact"])
+        chunks = _make_chunks(count=1, heading="Test")
+        compiler = self._budget_compiler()
+        clock = {"t": 0.0}
+
+        def fake_monotonic() -> float:
+            return clock["t"]
+
+        def fast_blind_compile(chunks: list[ResolvedChunk], *, trees: list[ChunkTree] | None = None, pinned_facts: list[str] | None = None) -> CompiledWiki:
+            del chunks, trees, pinned_facts
+            return CompiledWiki(
+                nodes=[WikiNode(id="n0", title="N", content="X", node_type=NodeType.SECTION)],
+                edges=[],
+                toc=[{"title": "N", "id": "n0", "level": 1}],
+                metadata={"chunk_count": 1},
+            )
+
+        def hung_evaluate(wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
+            del wiki
+            clock["t"] = 10_000.0  # the eval batch hangs: the pass budget is spent
+            return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
+
+        monkeypatch.setattr(compiler, "_blind_compile", fast_blind_compile)
+        monkeypatch.setattr(compiler, "_evaluate", hung_evaluate)
+        with patch("kompend.compilation.wicer.time.monotonic", side_effect=fake_monotonic), caplog.at_level("INFO"):
+            wiki = compiler.compile(chunks)
+        assert wiki.metadata["wicer_iterations"] == 1
+        assert "refinement budget spent" in caplog.text
+        assert "probe batches" in caplog.text
+        assert "blind" in caplog.text
+        assert wiki.metadata["wicer_pass_units"] >= 2
+        assert wiki.metadata["wicer_pass_derived_s"] > 0
 
     def test_custom_base_compiler(self) -> None:
         """A custom BaseCompiler can be injected."""
@@ -1055,6 +1157,21 @@ class TestWiCERCompilerWithMock:
 
     def _diagnose_output(self, facts: list[str]) -> WicerDiagnoseOutput:
         return WicerDiagnoseOutput(critical_facts=list(facts))
+
+    @staticmethod
+    def _budget_compiler() -> WiCERCompiler:
+        """A loop-ready compiler with an explicit window (no discovery)."""
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
+        )
+        config.budget.wicer_max_iterations = 0
+        config.budget.min_content_length = 0
+        compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
+        compiler._has_llm = True
+        return compiler
 
     @staticmethod
     def _llm_result(payload: dict | list, content: str = "") -> MagicMock:

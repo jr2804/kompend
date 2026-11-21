@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Final
 
+from pydantic_ai import UsageLimits
+
 from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
 from kompend.compilation.schema import WicerDiagnoseOutput, WicerEvaluateOutput, WicerProbeOutput
@@ -32,6 +34,19 @@ class WicerProbeAgent(KompendAgentBase[WicerProbeOutput, WicerProbeDeps]):
 
     spec: ClassVar[AgentSpec | None] = SPEC_PROBE
 
+    #: Requests one probe batch costs: a single-shot generation over the batch text.
+    requests_per_batch: ClassVar[int] = 1
+
+    def _usage_limits_for(self, deps: WicerProbeDeps) -> UsageLimits | None:
+        """Budget the one batch this run generates probes for.
+
+        One run covers exactly one batch, so the count is fixed — the
+        value is the wall-clock deadline the fit prices: a hung batch
+        is bounded by its own deadline instead of consuming the whole
+        refinement pass.
+        """
+        return self._session_limits(units=1, per_unit=self.requests_per_batch)
+
 
 def _wicer_evaluate_system_prompt(agent: Any, deps: Any) -> str:
     """WiCER system message plus any skills."""
@@ -56,6 +71,18 @@ class WicerEvaluateAgent(KompendAgentBase[WicerEvaluateOutput, WicerEvaluateDeps
 
     spec: ClassVar[AgentSpec | None] = SPEC_EVALUATE
 
+    #: Requests one wiki segment costs: a single-shot judgement over the segment.
+    requests_per_segment: ClassVar[int] = 1
+
+    def _usage_limits_for(self, deps: WicerEvaluateDeps) -> UsageLimits | None:
+        """Budget the one segment this run judges.
+
+        Each run covers exactly one wiki segment (the loop re-arms per
+        segment), so a hung segment is bounded by its own
+        fit-priced deadline instead of consuming the whole pass.
+        """
+        return self._session_limits(units=1, per_unit=self.requests_per_segment)
+
 
 def _wicer_diagnose_system_prompt(agent: Any, deps: Any) -> str:
     """WiCER system message plus any skills."""
@@ -79,3 +106,15 @@ class WicerDiagnoseAgent(KompendAgentBase[WicerDiagnoseOutput, WicerDiagnoseDeps
     """PydanticAI agent for WiCER diagnosis (Stage 3 — extract critical facts)."""
 
     spec: ClassVar[AgentSpec | None] = SPEC_DIAGNOSE
+
+    #: Requests one diagnosis costs: a single-shot extraction over the failures.
+    requests_per_diagnosis: ClassVar[int] = 1
+
+    def _usage_limits_for(self, deps: WicerDiagnoseDeps) -> UsageLimits | None:
+        """Budget the one diagnosis this run performs.
+
+        One run carries the whole failure set in a single request, so
+        the deadline is one fit-priced turn plus retry headroom — a hung
+        diagnosis cannot consume the whole refinement pass.
+        """
+        return self._session_limits(units=1, per_unit=self.requests_per_diagnosis)

@@ -12,6 +12,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from kompend.agents.base.deadline import MIN_TURN_TIMEOUT_S
 from kompend.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
 from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 from kompend.compilation.schema import (
@@ -154,3 +155,39 @@ class TestWicerDepsDefaults:
     def test_diagnose_deps_defaults(self) -> None:
         deps = WicerDiagnoseDeps(failures_json="[]", source_id="s")
         assert not hasattr(deps, "timeout")
+
+
+# ── Per-batch session deadlines (knox-uhdh) ────────────────────────────
+
+
+class TestWicerBatchDeadlines:
+    """Each WiCER batch arms a session deadline priced from measured throughput."""
+
+    def test_batches_arm_a_session_deadline(self) -> None:
+        probe = WicerProbeAgent(model_string="test")
+        evaluate = WicerEvaluateAgent(model_string="test")
+        diagnose = WicerDiagnoseAgent(model_string="test")
+        assert probe.requests_per_batch == 1
+        assert evaluate.requests_per_segment == 1
+        assert diagnose.requests_per_diagnosis == 1
+        probe_limits = probe._usage_limits_for(WicerProbeDeps(text="Source text.", source_id="batch-1"))
+        assert probe_limits is not None
+        assert probe_limits.request_limit is not None
+        assert probe_limits.request_limit >= 1
+        eval_limits = evaluate._usage_limits_for(WicerEvaluateDeps(wiki_text="wiki content", probes_json="[]", source_id="eval-1"))
+        assert eval_limits is not None
+        assert eval_limits.request_limit is not None
+        assert eval_limits.request_limit >= 1
+        diag_limits = diagnose._usage_limits_for(WicerDiagnoseDeps(failures_json="[]", source_id="diag-1"))
+        assert diag_limits is not None
+        assert diag_limits.request_limit is not None
+        assert diag_limits.request_limit >= 1
+
+    def test_spent_deadline_collapses_the_request_timeout(self) -> None:
+        """A hung batch is bounded by the per-request deadline, not the pass."""
+        agent = WicerProbeAgent(model_string="test")
+        agent._usage_limits_for(WicerProbeDeps(text="x", source_id="s"))
+        assert agent._deadline.budget_s is not None
+        assert agent._deadline.budget_s > 0
+        agent._deadline.budget_s = 0.0  # the session's time is spent
+        assert agent._timeout_for_messages([]) == MIN_TURN_TIMEOUT_S

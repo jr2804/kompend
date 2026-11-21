@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterable
+from dataclasses import dataclass
 from itertools import count
 from typing import Any, Final
 
@@ -29,6 +30,7 @@ from kompend.core.pipeline.config import PipelineConfig
 from kompend.llm.context_window import ContextWindow, answer_reserve_tokens, discover_context_window
 from kompend.llm.format import encode_payload
 from kompend.llm.request_budget import RequestBudget
+from kompend.llm.throughput import timeout_for
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 
@@ -45,7 +47,57 @@ _WICER_CONTEXT_UTILIZATION: Final[float] = 0.50
 # ``probe_eval.md.j2``; both are short fixed envelopes.
 _WICER_PROMPT_RESERVE_TOKENS: Final[int] = 1024
 
+# Requests one refinement work unit costs: each probe batch and each eval
+# segment is covered by exactly one single-shot agent run (the diagnosis is
+# one more run on top). The count shapes the derived pass budget; the clock
+# comes from the measured throughput fit, never from this number.
+_WICER_REQUESTS_PER_UNIT: Final[int] = 1
+
+# Headroom multiplier on the derived refinement-pass budget. The per-turn
+# price already carries the throughput fit's own safety factor, so this only
+# covers pass-level spread (batches are not all average-sized, and the fit
+# is still settling in early iterations). A fraction that shapes the
+# adaptive bound, never an absolute number.
+_WICER_PASS_HEADROOM: Final[float] = 1.5
+
+
 logger = get_logger(__name__)
+
+
+@dataclass(frozen=True)
+class WicerPassBudget:
+    """Refinement budget for one loop pass, derived — never configured.
+
+    ``pass_cap_s`` is the pass's own price: the planned agent requests (one
+    per probe batch and eval segment, plus the diagnosis) times the
+    fit-priced seconds per request, with headroom for pass-level spread,
+    plus the measured blind-compile time as the recompile allowance (a
+    refinement re-runs the same base compiler over the same corpus).
+    ``effective_s`` applies the configured ``wicer_max_seconds`` ceiling
+    (``0`` disables the ceiling, leaving the derived budget unbounded).
+    """
+
+    probe_batches: int
+    eval_segments: int
+    requests_per_unit: int
+    planned_requests: int
+    turn_s: float
+    priced_by: str
+    fit_samples: int
+    blind_s: float
+    pass_cap_s: float
+    configured_s: float
+    effective_s: float
+
+    def report(self) -> str:
+        """One-line derivation of the budget, for log lines."""
+        return (
+            f"{self.probe_batches} probe batches + {self.eval_segments} eval segments + 1 diagnose "
+            f"= {self.planned_requests} requests x {self.turn_s:.1f}s/req "
+            f"({self.priced_by}, {self.fit_samples} fit samples) x headroom {_WICER_PASS_HEADROOM} "
+            f"+ blind {self.blind_s:.1f}s recompile -> derived {self.pass_cap_s:.0f}s, "
+            f"configured cap {self.configured_s:.0f}s, effective {self.effective_s:.0f}s"
+        )
 
 
 class WiCERCompiler(BaseCompiler):
@@ -198,28 +250,34 @@ class WiCERCompiler(BaseCompiler):
         # against an 1800s budget, so the loop stopped before its first
         # probe).
         refine_start = time.monotonic()
-        first_iteration_s: float | None = None
         iteration_info: dict[str, Any] = {
             "wicer_iterations": 0,
             "wicer_refinements": 0,
             "wicer_probes_generated": 0,
             "wicer_probes_passed": 0,
             "wicer_pinned_facts": len(cumulative_pinned),
+            "wicer_pass_cap_s": 0.0,
+            "wicer_pass_derived_s": 0.0,
+            "wicer_pass_units": 0,
+            "wicer_pass_turn_s": 0.0,
         }
 
         iterations: Iterable[int] = range(1, self.max_iterations + 1) if self.max_iterations > 0 else count(1)
         for attempt in iterations:
             iter_start = time.monotonic()
 
-            if self._max_seconds > 0 and (time.monotonic() - refine_start) > self._max_seconds:
+            budget = self._derive_pass_budget(chunks, wiki, blind_s=blind_elapsed)
+            logger.info("WiCER: pass budget — %s", budget.report())
+            iteration_info["wicer_pass_cap_s"] = round(budget.effective_s, 1)
+            iteration_info["wicer_pass_derived_s"] = round(budget.pass_cap_s, 1)
+            iteration_info["wicer_pass_units"] = budget.probe_batches + budget.eval_segments
+            iteration_info["wicer_pass_turn_s"] = round(budget.turn_s, 2)
+
+            if (time.monotonic() - refine_start) > budget.effective_s:
                 logger.warning(
-                    "WiCER: refinement budget of %ds spent after %d iteration(s) — stopping the refinement loop "
-                    "(blind compile took %.1fs and is not charged to this budget; a whole-pass budget would have "
-                    "needed %.1fs to have reached iteration 1)",
-                    self._max_seconds,
+                    "WiCER: refinement budget spent after %d iteration(s) — stopping the loop (%s; the blind compile is not charged to this budget)",
                     attempt - 1,
-                    blind_elapsed,
-                    blind_elapsed + (first_iteration_s or 0.0),
+                    budget.report(),
                 )
                 iteration_info["wicer_iterations"] = attempt - 1
                 break
@@ -296,8 +354,6 @@ class WiCERCompiler(BaseCompiler):
                 recompile_elapsed,
                 len(cumulative_pinned),
             )
-            if first_iteration_s is None:
-                first_iteration_s = time.monotonic() - iter_start
         else:
             iteration_info["wicer_iterations"] = self.max_iterations
 
@@ -330,6 +386,54 @@ class WiCERCompiler(BaseCompiler):
         wiki.metadata["compile_duration_s"] = round(total_elapsed, 1)
         return wiki
 
+    def _derive_pass_budget(self, chunks: list[ResolvedChunk], wiki: CompiledWiki, *, blind_s: float) -> WicerPassBudget:
+        """Price one refinement pass from the corpus and the measured fit.
+
+        The corpus units are the batches and segments the pass will
+        actually cover (same helpers the steps use, so the plan and the
+        work count identically); the per-unit allowance is one agent run
+        per unit plus the diagnosis; the clock per request is the
+        throughput fit once the shared tracker holds enough samples,
+        else the request ceiling — the first calls are how the fit is
+        learned, so they must not be starved by it. The measured
+        blind-compile time is the recompile allowance: a refinement
+        re-runs the same base compiler over the same corpus.
+        """
+        probe_batches = len(self._probe_batches(chunks))
+        eval_segments = len(self._eval_segments(wiki))
+        planned = (probe_batches + eval_segments) * _WICER_REQUESTS_PER_UNIT + 1
+        ceiling = self._config.llm.request_ceiling_s
+        throughput = self._usage_tracker.throughput()
+        if throughput is None:
+            turn_s = ceiling
+            priced_by = "ceiling"
+            fit_samples = 0
+        else:
+            turn_s = timeout_for(
+                throughput,
+                self._usage_tracker.average_prompt_tokens(),
+                self._usage_tracker.average_completion_tokens(),
+                ceiling_s=ceiling,
+            )
+            priced_by = "fit"
+            fit_samples = throughput.samples
+        pass_cap_s = planned * turn_s * _WICER_PASS_HEADROOM + blind_s
+        configured = self._max_seconds
+        effective = min(pass_cap_s, configured) if configured > 0 else pass_cap_s
+        return WicerPassBudget(
+            probe_batches=probe_batches,
+            eval_segments=eval_segments,
+            requests_per_unit=_WICER_REQUESTS_PER_UNIT,
+            planned_requests=planned,
+            turn_s=turn_s,
+            priced_by=priced_by,
+            fit_samples=fit_samples,
+            blind_s=blind_s,
+            pass_cap_s=pass_cap_s,
+            configured_s=configured,
+            effective_s=effective,
+        )
+
     # ------------------------------------------------------------------
     # WiCER steps  (each is overridable for testing)
     # ------------------------------------------------------------------
@@ -349,6 +453,30 @@ class WiCERCompiler(BaseCompiler):
         """
         return self._compiler.compile(chunks, trees=trees, pinned_facts=pinned_facts)
 
+    def _probe_batches(self, chunks: list[ResolvedChunk]) -> list[str]:
+        """Group chunk texts into budget-sized probe batches.
+
+        Single definition of the probe batching: the budget derivation
+        and probe generation count the same batches, so the plan and the
+        work cannot drift apart. Every non-empty chunk lands in exactly
+        one batch — no content is dropped.
+        """
+        batches: list[str] = []
+        batch_parts: list[str] = []
+        batch_len = 0
+        for rc in chunks:
+            if not rc.chunk.text:
+                continue
+            if batch_len + len(rc.chunk.text) > self._probe_input_chars and batch_parts:
+                batches.append("\n\n".join(batch_parts))
+                batch_parts = []
+                batch_len = 0
+            batch_parts.append(rc.chunk.text)
+            batch_len += len(rc.chunk.text)
+        if batch_parts:
+            batches.append("\n\n".join(batch_parts))
+        return batches
+
     def _generate_probes(self, wiki: CompiledWiki, chunks: list[ResolvedChunk]) -> list[dict]:
         """Step B: generate probe Q&A pairs from source chunks.
 
@@ -357,34 +485,13 @@ class WiCERCompiler(BaseCompiler):
         """
         all_probes: list[dict] = []
         seen_questions: set[str] = set()
-
-        # Accumulate chunk texts into budget-sized batches.
-        batch_parts: list[str] = []
-        batch_len = 0
-
-        for rc in chunks:
-            if not rc.chunk.text:
-                continue
-            if batch_len + len(rc.chunk.text) > self._probe_input_chars and batch_parts:
-                probes = self._probe_batch("\n\n".join(batch_parts))
-                for p in probes:
-                    q = p.get("question", "")
-                    if q not in seen_questions:
-                        all_probes.append(p)
-                        seen_questions.add(q)
-                batch_parts = []
-                batch_len = 0
-            batch_parts.append(rc.chunk.text)
-            batch_len += len(rc.chunk.text)
-
-        if batch_parts:
-            probes = self._probe_batch("\n\n".join(batch_parts))
+        for batch in self._probe_batches(chunks):
+            probes = self._probe_batch(batch)
             for p in probes:
                 q = p.get("question", "")
                 if q not in seen_questions:
                     all_probes.append(p)
                     seen_questions.add(q)
-
         return all_probes
 
     def _loop_context_manager(self) -> ContextManagerPreset | bool:
@@ -431,6 +538,18 @@ class WiCERCompiler(BaseCompiler):
             logger.warning("WiCER: probe generation failed: %s", exc, exc_info=True)
             return []
 
+    def _eval_segments(self, wiki: CompiledWiki) -> list[str]:
+        """Split wiki text into budget-sized evaluation segments.
+
+        Single definition of the eval segmentation: the budget derivation
+        and evaluation cover the same segments. An empty wiki yields no
+        segments — the caller marks every probe unevaluated.
+        """
+        wiki_text = "\n\n".join(n.content for n in wiki.nodes if n.content)
+        if not wiki_text:
+            return []
+        return [wiki_text[seg_start : seg_start + self._eval_input_chars] for seg_start in range(0, len(wiki_text), self._eval_input_chars)]
+
     def _evaluate(self, wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
         """Step B: evaluate wiki against probes using LLM-as-judge.
 
@@ -438,8 +557,8 @@ class WiCERCompiler(BaseCompiler):
         so the full wiki is checked, not just the first few kilobytes.
         A probe is marked correct if it passes in ANY segment.
         """
-        wiki_text = "\n\n".join(n.content for n in wiki.nodes if n.content)
-        if not wiki_text:
+        segments = self._eval_segments(wiki)
+        if not segments:
             return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
 
         if not self._has_llm:
@@ -450,9 +569,7 @@ class WiCERCompiler(BaseCompiler):
         # segment is considered passed.
         probe_results: dict[int, dict] = {}
 
-        for seg_start in range(0, len(wiki_text), self._eval_input_chars):
-            segment = wiki_text[seg_start : seg_start + self._eval_input_chars]
-
+        for segment in segments:
             try:
                 agent = WicerEvaluateAgent(
                     model_string=self._config.llm.default_model or "",

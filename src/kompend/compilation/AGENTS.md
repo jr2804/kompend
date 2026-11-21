@@ -76,15 +76,21 @@ merging and an optional iterative WiCER refinement loop.
   `.agents/CODE.md`). `min_content_length` and `max_concept_pages` are warning
   thresholds: short pages and every concept-page candidate are compiled. Only
   content without any body text is dropped. `wicer_max_iterations = 0` means
-  "until the loop converges"; `wicer_max_seconds` is a wall-clock stop that
-  keeps the compiled wiki. That clock starts after the blind compile: the
+  "until the loop converges"; `wicer_max_seconds` is a ceiling on the derived
+  per-pass refinement budget (`0` leaves the derived budget unbounded). That
+  clock starts after the blind compile: the
   blind pass is the base compiler's own work and is not charged to the
   refinement budget, so a slow base compile can never make iteration 1
-  unreachable (`wicer.py`).
+  unreachable. Each pass derives its cap from corpus units × measured
+  throughput (fit-priced seconds per request, else the request ceiling) plus
+  the measured blind-compile time as the recompile allowance; the
+  derivation's terms are logged, warned, and stored in the wiki metadata
+  (`wicer_pass_*`) (`wicer.py`).
 - **One tracker for the WiCER loop** (`wicer.py`): the three WiCER agents
   (probe, evaluate, diagnose) record into one shared `UsageTracker`, and the
   done line reads it. A per-agent counter that is never set would report zero
   calls for every run.
+- **A WiCER batch is bounded by its own deadline, not the pass** (`agents/wicer.py`): each probe/evaluate/diagnose batch arms a per-batch session deadline (one unit per batch, segment, or diagnosis) priced from the shared tracker's throughput fit, on top of the agent's fitted per-request timeout — a hung batch stops at its own deadline instead of consuming the whole pass.
 - **Concept dedup groups by centroid linkage, and two guards bound it**
   (`flows/assembly.py::merge_similar_concepts`). A concept joins the cluster
   whose centroid it is closest to, and the centroid is the mean of that
