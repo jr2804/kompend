@@ -203,43 +203,47 @@ def traversal_verdict_model(children: Sequence[OutlineNode], *, first_index: int
 def plan_from_verdict(answers: Mapping[str, str], *, children: Sequence[OutlineNode]) -> TraversalPlan:
     """Turn answered verdict fields into the executor-facing plan.
 
-    Every child appears exactly once: a missing or extra key is a caller bug,
-    not a model judgement, so it raises instead of degrading. An unknown
-    answer value raises the same way — the verdict model's ``Literal``
-    already bars it at parse time, so reaching here means the mapping was
-    built by hand.
+    Every child appears exactly once. A child the verdict does not mention
+    defaults to EXPAND — the safe choice (do the work and descend) — and so
+    does a child whose answer is not a known option; an answer outside the
+    level is ignored. This mirrors the executor's own merge, so one sloppy
+    verdict degrades one child, never the whole level. A verdict that
+    answers nothing at all is still a failure, not a plan: it raises, and
+    the caller fails open to the full tree.
 
     Raises:
-        ValueError: when the answers do not cover exactly *children*, or an
-            answer is not a known option.
+        ValueError: when there are no children, or when no answers were
+            given — an empty verdict is a failed decision, and the caller
+            fails open to the full tree.
     """
     if not children:
         msg = "a traversal plan needs at least one child; got none"
         raise ValueError(msg)
-    expected = {traversal_field_name(index) for index in range(len(children))}
-    given = set(answers)
-    if given != expected:
-        missing = sorted(expected - given)
-        extra = sorted(given - expected)
-        msg = f"traversal answers must cover every child exactly once: missing {missing}, extra {extra}"
+    if not answers:
+        msg = "a traversal verdict answered nothing; failing open to the full tree"
         raise ValueError(msg)
+    tolerated: list[str] = []
     entries: list[PlanEntry] = []
     for index, child in enumerate(children):
-        answer = answers[traversal_field_name(index)]
+        answer = answers.get(traversal_field_name(index))
         if answer == PlanMode.EXPAND.value:
             mode, reason = PlanMode.EXPAND, None
         elif answer == PlanMode.SUMMARIZE.value:
             mode, reason = PlanMode.SUMMARIZE, None
+        elif answer is None:
+            mode, reason = PlanMode.EXPAND, None
+            tolerated.append(f"{child.node_id} unanswered, defaulted to expand")
         else:
             try:
                 skip = SkipReason(answer)
             except ValueError:
-                msg = f"unknown traversal answer {answer!r} for child {child.node_id}; want expand, summarize, or a skip_* option"
-                raise ValueError(msg) from None
-            mode, reason = PlanMode.SKIP, _SKIP_REASON_LABELS[skip]
+                mode, reason = PlanMode.EXPAND, None
+                tolerated.append(f"{child.node_id} answered {answer!r}, treated as expand")
+            else:
+                mode, reason = PlanMode.SKIP, _SKIP_REASON_LABELS[skip]
         heading = " / ".join(child.heading_chain)
         entries.append(PlanEntry(node_id=child.node_id, mode=mode, focus=heading or child.preview or None, reason=reason))
-    return TraversalPlan(entries=entries)
+    return TraversalPlan(entries=entries, notes="; ".join(tolerated) if tolerated else None)
 
 
 def traversal_field_name(index: int) -> str:
@@ -321,9 +325,10 @@ def decide_traversal_plan(
     plan can never exceed the level's budget even though each window is
     validated on its own.
 
-    Returns the plan, or ``None`` — never a partial plan — when no decision
-    model is configured or a window fails; the executor then falls back to
-    the full tree.
+    Returns the plan — every child exactly once, with a child the verdict
+    does not mention defaulting to EXPAND — or ``None`` when no decision
+    model is configured, a window fails, or the verdict answers nothing;
+    the executor then falls back to the full tree.
     """
     agent = make_traversal_agent(config, model=model, timeout=timeout)
     if agent is None:

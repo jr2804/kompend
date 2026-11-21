@@ -136,17 +136,45 @@ def test_focus_is_heading_chain_or_preview() -> None:
     assert [entry.focus for entry in plan.entries] == ["Doc / Part / Section", "first line here", None]
 
 
-def test_plan_rejects_incomplete_or_unknown_answers() -> None:
+def test_plan_tolerates_partial_answers_child_by_child() -> None:
     children = [_node("a"), _node("b")]
 
-    with pytest.raises(ValueError, match="missing"):
-        plan_from_verdict({"child_0_mode": "expand"}, children=children)
-    with pytest.raises(ValueError, match="extra"):
-        plan_from_verdict({"child_0_mode": "expand", "child_1_mode": "summarize", "child_9_mode": "expand"}, children=children)
-    with pytest.raises(ValueError, match="unknown traversal answer"):
-        plan_from_verdict({"child_0_mode": "expand", "child_1_mode": "sideways"}, children=children)
+    # A missing key degrades that child to EXPAND and is noted; the level plans on.
+    plan = plan_from_verdict({"child_0_mode": "expand"}, children=children)
+    assert [entry.mode for entry in plan.entries] == [PlanMode.EXPAND, PlanMode.EXPAND]
+    assert plan.notes is not None
+    assert "b" in plan.notes
+
+    # An extra key is ignored: it answers no child of this level.
+    plan = plan_from_verdict(
+        {"child_0_mode": "expand", "child_1_mode": "summarize", "child_9_mode": "expand"},
+        children=children,
+    )
+    assert [entry.mode for entry in plan.entries] == [PlanMode.EXPAND, PlanMode.SUMMARIZE]
+    assert plan.notes is None
+
+    # An unknown answer value is unusable, so that child takes the safe default.
+    plan = plan_from_verdict({"child_0_mode": "expand", "child_1_mode": "sideways"}, children=children)
+    assert [entry.mode for entry in plan.entries] == [PlanMode.EXPAND, PlanMode.EXPAND]
+    assert plan.notes is not None
+    assert "sideways" in plan.notes
+
+    # The fail-open cases survive: nothing to plan, or nothing answered.
     with pytest.raises(ValueError, match="at least one child"):
         plan_from_verdict({}, children=[])
+    with pytest.raises(ValueError, match="answered nothing"):
+        plan_from_verdict({}, children=children)
+
+
+def test_eleven_of_twelve_verdict_plans_all_twelve_without_fallback() -> None:
+    children = [_node(f"n{i}") for i in range(12)]
+    answers = {traversal_field_name(i): "summarize" for i in range(11)}
+
+    plan = plan_from_verdict(answers, children=children)
+
+    assert len(plan.entries) == 12
+    assert plan.entries[11].mode is PlanMode.EXPAND
+    assert plan.notes is not None
 
 
 def test_windows_cover_64_in_one_and_65_in_two() -> None:

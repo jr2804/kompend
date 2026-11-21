@@ -80,11 +80,13 @@ the `summary_traversal` switch (`off` by default), node/window ceilings, the
   the task statement and frontmatter — a plan from another task never
   matches. The off-path summary deps are pinned byte-for-byte so enabling
   traversal cannot invalidate existing vault caches.
-- **Fail open to the full tree.** A declined level, a failed plan, or a
-  disabled decision model logs a warning and summarizes the whole tree.
-  This is the fail-open that a single sloppy verdict can trigger (bead
-  `knox-3zjw`), and it is why the planner's own strictness matters more
-  than its coverage.
+- **Fail open to the full tree.** A declined level, a failed plan, an empty
+  verdict, or a disabled decision model logs a warning and summarizes the
+  whole tree. A merely sloppy verdict no longer triggers this: since bead
+  `knox-3zjw` the merge tolerates it the way the executor does — an
+  unmentioned child is EXPAND, an out-of-level answer is ignored, an
+  unknown value takes the safe default, each noted in the plan notes — so
+  one bad answer degrades one child instead of failing the level.
 - **Off switch.** `summary_traversal = "off"` (the default) keeps today's
   path exactly; observability is one ledger row per tree (`summarize`,
   `ok`/`partial`, `reason_code=traversal`, `planned/skipped/expanded/windows`
