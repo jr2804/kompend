@@ -152,6 +152,14 @@ _DEFAULT_KEEP_TOKENS: Final[int] = 8_000
 #: ``CompactionConfig.min_growth_tokens``.
 _DEFAULT_MIN_GROWTH_TOKENS: Final[int] = 2_048
 
+#: Default consecutive summarizer fallbacks before the trigger steps down.
+#: Mirrors ``CompactionConfig.fallback_step_after``.
+_FALLBACK_STEP_AFTER: Final[int] = 2
+
+#: Default trigger multiplier applied once fallbacks turn consecutive.
+#: Mirrors ``CompactionConfig.fallback_step_fraction``.
+_FALLBACK_STEP_FRACTION: Final[float] = 0.9
+
 #: Read-only tools whose result for identical arguments is identical, so an
 #: earlier read is safely blanked once a later read of the same key exists.
 #: Queues and writes are absent on purpose: their results differ per call.
@@ -559,10 +567,7 @@ class _LoggedSlidingWindowCompaction(SlidingWindowCompaction):
     """
 
     async def compact(self, messages: list[ModelMessage], ctx: RunContext[Any]) -> list[ModelMessage]:
-        logger.warning(
-            "Summarizer failed; falling back to sliding-window trimming of %d message(s)",
-            len(messages),
-        )
+        logger.warning("Falling back to sliding-window trimming of %d message(s)", len(messages))
         trigger = _fraction_trigger(
             fraction=self.max_fraction,
             context_window=self.context_window,
@@ -578,6 +583,57 @@ class _LoggedSlidingWindowCompaction(SlidingWindowCompaction):
         return outcome.messages
 
 
+@dataclass
+class _ReportingGrowthGatedCompaction(GrowthGatedCompaction[AgentDepsT]):
+    """``GrowthGatedCompaction`` that reports each pass to the fallback owner.
+
+    The harness swallows the exception a chain entry raises when the next
+    entry still succeeds, so the sliding fallback runs with no record of why
+    the summarizer failed. This entry reports the outcome first — the
+    exception, or ``None`` when the pass did not raise — and re-raises, so
+    the harness still falls through to the next entry. Only the fallback
+    owner decides what counts: it names failure kinds it would fall back on
+    and ignores the rest, so an error that kills the run moves no counter.
+    """
+
+    on_entry_outcome: Callable[[Exception | None], None] | None = None
+    """Outcome hook the fallback owner sets; ``None`` reports nowhere.
+
+    The hook fires on a failure, and on a pass that actually folds the
+    history (fewer estimated tokens afterwards). A pass that changes
+    nothing — gated out, or the tiers already fitting — reports nothing,
+    so an irrelevant pass neither moves the fallback streak nor breaks it.
+    """
+
+    def with_focus(self, focus: str) -> _ReportingGrowthGatedCompaction[AgentDepsT]:
+        """Forward the focus, keeping the outcome hook."""
+        refocused = super().with_focus(focus)
+        return replace(self, strategy=refocused.strategy, _baseline_tokens=refocused._baseline_tokens)
+
+    async def compact(
+        self,
+        messages: list[ModelMessage],
+        ctx: RunContext[AgentDepsT],
+    ) -> list[ModelMessage]:
+        """Report a real outcome, then behave exactly like the gate."""
+        try:
+            compacted = await super().compact(messages, ctx)
+        except Exception as exc:
+            if self.on_entry_outcome is not None:
+                self.on_entry_outcome(exc)
+            raise
+        if self.on_entry_outcome is not None and self._folded(messages, compacted):
+            self.on_entry_outcome(None)
+        return compacted
+
+    def _folded(self, before: list[ModelMessage], after: list[ModelMessage]) -> bool:
+        """Whether the pass reclaimed room: fewer estimated tokens afterwards."""
+        if self.tokenizer is None:
+            return after != before
+        return estimate_context_tokens(after, self.tokenizer) < estimate_context_tokens(before, self.tokenizer)
+
+
+@dataclass
 class _PinningFallbackCompaction(FallbackCompaction):
     """``FallbackCompaction`` that pins the task assignment before the chain runs.
 
@@ -592,7 +648,71 @@ class _PinningFallbackCompaction(FallbackCompaction):
     and the safety margin. The chain therefore runs once the history passes
     ``(window − answer reserve − safety margin) x fraction`` — the budget the
     request actually has.
+
+    The gated entry reports real outcomes: a failure the chain falls back on
+    names its kind in the log and moves the consecutive-fallback streak, and
+    once the streak reaches ``fallback_step_after`` the trigger steps down by
+    ``fallback_step_fraction`` — a history the summarizer repeatedly fails on
+    is systematically too big for it, so the trigger fires earlier while the
+    history is still summarizable. A pass that folds the history breaks the
+    streak and restores the base trigger; a pass that changes nothing leaves
+    the streak alone.
     """
+
+    fallback_step_after: int = _FALLBACK_STEP_AFTER
+    """Consecutive summarizer fallbacks before the trigger steps down."""
+
+    fallback_step_fraction: float = _FALLBACK_STEP_FRACTION
+    """Trigger multiplier applied once fallbacks turn consecutive."""
+
+    _consecutive_fallbacks: int = field(default=0, init=False, repr=False, compare=False)
+    """Summarizer fallbacks in a row; any non-fallback pass resets it."""
+
+    def _note_fallback(self, exc: Exception | None) -> None:
+        """Record a gated-entry outcome: count consecutive fallbacks, name the cause.
+
+        An exception the chain falls back on names its failure kind and moves
+        the streak; a pass that folds the history breaks the streak and
+        restores the base trigger. Anything else — an error outside
+        ``fallback_on`` that kills the run, or a pass the hook never reports
+        because nothing changed — leaves the streak alone.
+        """
+        if exc is not None and not isinstance(exc, self.fallback_on):
+            return
+        if exc is None:
+            self._consecutive_fallbacks = 0
+            return
+        self._consecutive_fallbacks += 1
+        streak = self._consecutive_fallbacks
+        step_note = ""
+        effective = self._effective_fraction()
+        if streak >= self.fallback_step_after and effective is not None:
+            step_note = f"; trigger stepped down to {effective:.2f} of usable"
+        cause = exc.__cause__ or exc.__context__
+        cause_note = f" (caused by {type(cause).__name__}: {cause})" if isinstance(cause, BaseException) else ""
+        logger.warning(
+            "Summarizer failed (%s: %s: %s%s); falling back to sliding-window trimming (%d consecutive fallback(s)%s)",
+            _fallback_cause(exc),
+            type(exc).__name__,
+            exc,
+            cause_note,
+            streak,
+            step_note,
+        )
+
+    def _effective_fraction(self) -> float | None:
+        """The trigger fraction after consecutive fallbacks step it down.
+
+        The base fraction until the streak reaches ``fallback_step_after``,
+        then one step down by ``fallback_step_fraction`` — a single step, not
+        a compounding one, so a stale streak cannot ratchet the trigger to
+        zero; the next non-fallback pass restores the base.
+        """
+        if self.max_fraction is None:
+            return None
+        if self._consecutive_fallbacks >= self.fallback_step_after:
+            return self.max_fraction * self.fallback_step_fraction
+        return self.max_fraction
 
     async def before_model_request(
         self,
@@ -603,7 +723,7 @@ class _PinningFallbackCompaction(FallbackCompaction):
         if pinned is not ctx.messages:
             ctx.messages[:] = pinned
         trigger = _fraction_trigger(
-            fraction=self.max_fraction,
+            fraction=self._effective_fraction(),
             context_window=self.context_window,
             fallback_context_window=self.fallback_context_window,
             model=request_context.model,
@@ -641,6 +761,31 @@ class _PinningFallbackCompaction(FallbackCompaction):
         return await compact_pinned(messages, ctx, None)
 
 
+def _fallback_cause(exc: BaseException) -> str:
+    """Name the failure kind behind a summarizer fallback.
+
+    A timeout says the history — or the summarizer's answer — outgrew the
+    time budget; an empty summary says the model answered nothing usable.
+    The run cannot tell them apart from the bare ``UnexpectedModelBehavior``
+    the harness raises, so the log names the kind the cause chain shows.
+    Anything else is the model failing some other way, named by its type.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    empty = False
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, TimeoutError):
+            return "timeout"
+        if "empty" in str(current).lower():
+            empty = True
+        next_error = current.__cause__ or current.__context__
+        current = next_error if isinstance(next_error, BaseException) else None
+    if empty:
+        return "empty-summary"
+    return f"model-error:{type(exc).__name__}"
+
+
 def _pin_first_user_turn(messages: Sequence[ModelMessage]) -> list[ModelMessage]:
     """Return *messages* with the first user turn marked pinned (idempotent).
 
@@ -673,6 +818,8 @@ def build_fallback_compaction(
     judge: Model | None = None,
     keep_tokens: int | None = None,
     min_growth_tokens: int | None = None,
+    fallback_step_after: int | None = None,
+    fallback_step_fraction: float | None = None,
     instructions: str | None = None,
 ) -> FallbackCompaction:
     """Build the rank-based, tiered compaction capability kompend attaches.
@@ -709,6 +856,12 @@ def build_fallback_compaction(
     min_growth_tokens:
         Token growth that re-arms the tiered stack
         (``CompactionConfig.min_growth_tokens``).
+    fallback_step_after:
+        Consecutive summarizer fallbacks before the trigger steps down
+        (``CompactionConfig.fallback_step_after``).
+    fallback_step_fraction:
+        Trigger multiplier applied once fallbacks turn consecutive
+        (``CompactionConfig.fallback_step_fraction``).
     instructions:
         The summarizer's doctrine; ``None`` keeps the harness default.
     """
@@ -746,7 +899,7 @@ def build_fallback_compaction(
             ),
         )
     tiers.append(summarizer)
-    gated = GrowthGatedCompaction(
+    gated = _ReportingGrowthGatedCompaction(
         strategy=_UsableTargetCompaction(
             tiers=tiers,
             target_fraction=compress_threshold,
@@ -757,7 +910,7 @@ def build_fallback_compaction(
         tokenizer=conservative_tokens,
     )
     window = context_window or DEFAULT_CONTEXT_WINDOW
-    return _PinningFallbackCompaction(
+    capability = _PinningFallbackCompaction(
         fallback_chain=[
             gated,
             _LoggedSlidingWindowCompaction(
@@ -771,7 +924,11 @@ def build_fallback_compaction(
         max_fraction=compress_threshold,
         context_window=context_window,
         tokenizer=conservative_tokens,
+        fallback_step_after=fallback_step_after if fallback_step_after is not None else _FALLBACK_STEP_AFTER,
+        fallback_step_fraction=fallback_step_fraction if fallback_step_fraction is not None else _FALLBACK_STEP_FRACTION,
     )
+    gated.on_entry_outcome = capability._note_fallback
+    return capability
 
 
 def build_sliding_compaction(

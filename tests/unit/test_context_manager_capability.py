@@ -1011,6 +1011,166 @@ class TestFallbackCompaction:
         return messages
 
 
+class TestSummarizerFallbackCause:
+    """The fallback names its cause and steps the trigger down (knox-okyh).
+
+    The sliding trim used to run with no record of why the summarizer
+    failed, and a history systematically too big for the summarizer kept
+    failing the same way on every request. The gated entry now reports each
+    pass: a failure the chain falls back on names its kind and moves a
+    consecutive streak, and the trigger steps down once the streak turns
+    systematic — so the trigger fires earlier while the history is still
+    summarizable. Any pass that does not fall back breaks the streak.
+    """
+
+    @staticmethod
+    def _broken_capability(monkeypatch: pytest.MonkeyPatch, error: Exception) -> FallbackCompaction:
+        capability = build_fallback_compaction(
+            context_window=8192,
+            compress_threshold=0.8,
+            keep_messages=1,
+            model="ollama/test-model",
+        )
+        gated = capability.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+        summarizer = gated.strategy.tiers[-1]
+
+        async def _broken(*args: object, **kwargs: object) -> str:
+            raise error
+
+        monkeypatch.setattr(summarizer, "_summarize", _broken)
+        return capability
+
+    async def test_the_fallback_names_a_timeout(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        timed_out = UnexpectedModelBehavior("summarizer timed out")
+        timed_out.__cause__ = TimeoutError("request timed out")
+        capability = self._broken_capability(monkeypatch, timed_out)
+        messages = _heavy_history(messages=8, chars_per_message=3_000)
+
+        with caplog.at_level("WARNING", logger="kompend.agents.context_manager"):
+            compacted = await capability.compact(messages, _ctx())
+
+        assert len(compacted) < len(messages)
+        assert "Summarizer failed (timeout:" in caplog.text
+        assert "TimeoutError" in caplog.text
+        assert capability._consecutive_fallbacks == 1  # noqa: SLF001
+
+    async def test_the_fallback_names_an_empty_summary(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        capability = self._broken_capability(
+            monkeypatch,
+            UnexpectedModelBehavior("The summary was empty. Write the summary in full sentences."),
+        )
+        messages = _heavy_history(messages=8, chars_per_message=3_000)
+
+        with caplog.at_level("WARNING", logger="kompend.agents.context_manager"):
+            compacted = await capability.compact(messages, _ctx())
+
+        assert len(compacted) < len(messages)
+        assert "Summarizer failed (empty-summary:" in caplog.text
+        assert capability._consecutive_fallbacks == 1  # noqa: SLF001
+
+    async def test_an_error_outside_fallback_on_moves_no_counter(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        capability = self._broken_capability(monkeypatch, RuntimeError("provider exploded"))
+        messages = _heavy_history(messages=8, chars_per_message=3_000)
+
+        with caplog.at_level("WARNING", logger="kompend.agents.context_manager"), pytest.raises(RuntimeError, match="provider exploded"):
+            await capability.compact(messages, _ctx())
+
+        assert "Summarizer failed" not in caplog.text
+        assert capability._consecutive_fallbacks == 0  # noqa: SLF001
+
+    async def test_the_trigger_steps_down_after_consecutive_fallbacks(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        usable = usable_window_tokens(8192)
+        base = int(usable * 0.8)
+        stepped = int(usable * 0.8 * 0.9)
+        over = _heavy_history(messages=6, chars_per_message=1_040)
+        mid = _heavy_history(messages=6, chars_per_message=860)
+        over_tokens = estimate_context_tokens(over, conservative_tokens)
+        mid_tokens = estimate_context_tokens(mid, conservative_tokens)
+        assert over_tokens > base
+        assert stepped < mid_tokens < base
+
+        control = self._broken_capability(monkeypatch, UnexpectedModelBehavior("no summary today"))
+        control_gated = control.fallback_chain[0]
+        control_entered: list[int] = []
+        control_compact = control_gated.compact
+
+        async def _control_spy(messages: list[ModelMessage], ctx: RunContext[object]) -> list[ModelMessage]:
+            control_entered.append(len(messages))
+            return await control_compact(messages, ctx)
+
+        monkeypatch.setattr(control_gated, "compact", _control_spy)
+        control_ctx = _ctx()
+        control_ctx.messages[:] = mid
+        await control.before_model_request(control_ctx, _request_context(list(control_ctx.messages)))
+        assert control_entered == []
+        assert estimate_context_tokens(control_ctx.messages, conservative_tokens) == mid_tokens
+
+        capability = self._broken_capability(monkeypatch, UnexpectedModelBehavior("no summary today"))
+        gated = capability.fallback_chain[0]
+        entered: list[int] = []
+        gated_compact = gated.compact
+
+        async def _spy(messages: list[ModelMessage], ctx: RunContext[object]) -> list[ModelMessage]:
+            entered.append(len(messages))
+            return await gated_compact(messages, ctx)
+
+        monkeypatch.setattr(gated, "compact", _spy)
+        for _ in range(2):
+            over_ctx = _ctx()
+            over_ctx.messages[:] = over
+            await capability.before_model_request(over_ctx, _request_context(list(over_ctx.messages)))
+        assert capability._consecutive_fallbacks == 2  # noqa: SLF001
+
+        stepped_ctx = _ctx()
+        stepped_ctx.messages[:] = mid
+        with caplog.at_level("WARNING", logger="kompend.agents.context_manager"):
+            await capability.before_model_request(stepped_ctx, _request_context(list(stepped_ctx.messages)))
+
+        assert len(entered) == 3
+        assert estimate_context_tokens(stepped_ctx.messages, conservative_tokens) == mid_tokens
+        assert capability._consecutive_fallbacks == 2  # noqa: SLF001
+        assert "trigger stepped down" in caplog.text
+
+    async def test_a_successful_pass_breaks_the_streak(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        capability = self._broken_capability(monkeypatch, UnexpectedModelBehavior("no summary today"))
+        over = _heavy_history(messages=6, chars_per_message=1_040)
+        over_ctx = _ctx()
+        over_ctx.messages[:] = over
+        await capability.before_model_request(over_ctx, _request_context(list(over_ctx.messages)))
+        assert capability._consecutive_fallbacks == 1  # noqa: SLF001
+
+        gated = capability.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+        summarizer = gated.strategy.tiers[-1]
+
+        async def _ok(*args: object, **kwargs: object) -> str:
+            return "a short summary"
+
+        monkeypatch.setattr(summarizer, "_summarize", _ok)
+        retry_ctx = _ctx()
+        retry_ctx.messages[:] = over
+        await capability.before_model_request(retry_ctx, _request_context(list(retry_ctx.messages)))
+
+        assert capability._consecutive_fallbacks == 0  # noqa: SLF001
+
+
 class TestGrowthGate:
     """A static oversized context must not re-fold — it would burn the cache prefix."""
 

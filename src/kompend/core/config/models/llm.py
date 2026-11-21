@@ -43,12 +43,18 @@ class CompactionConfig(_KompendBaseModel):
     clears and deduplicates tool results and summarizes. ``keep_tokens`` is
     the recent tail the judge may never touch; ``min_growth_tokens`` gates the
     expensive tiers so a static context is not re-folded on every request
-    (prompt-cache protection).
+    (prompt-cache protection). ``fallback_step_after`` counts consecutive
+    summarizer fallbacks before the trigger steps down by
+    ``fallback_step_fraction``: after that many fallbacks in a row the history
+    is systematically too big for the summarizer, so the trigger fires earlier
+    while the history is still summarizable.
     """
 
     judge: str | None = None
     keep_tokens: int = 8_000
     min_growth_tokens: int = 2_048
+    fallback_step_after: int = 2
+    fallback_step_fraction: float = 0.9
 
 
 class LLMConfig(_KompendBaseModel):

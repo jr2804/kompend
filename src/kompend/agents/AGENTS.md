@@ -61,28 +61,29 @@ The base class provides:
   (`context_manager.py`) comes from the `context_manager` preset
   (`"default"`/`"aggressive"`/`"sliding"`/`false`), tuned by
   `[compile.llm.compaction]` (`CompactionConfig`: `judge`, `keep_tokens`,
-  `min_growth_tokens`). Default/aggressive is a `_PinningFallbackCompaction`:
+  `min_growth_tokens`, `fallback_step_after`, `fallback_step_fraction`). Default/aggressive is a `_PinningFallbackCompaction`:
   a `GrowthGatedCompaction` around a `TieredCompaction` (clear tool results →
   dedupe superseded reads via `_file_key` → `RelevanceCompaction` when a
   `judge` is set → doctrine summarizer; cheapest first, stopping when the
   history fits), then a token-triggered `SlidingWindowCompaction` for when the
   summarizer cannot answer (`UnexpectedModelBehavior`,
-  pydantic/pydantic-ai#12307). The `sliding` preset is
+  pydantic/pydantic-ai#12307). The gated entry reports real outcomes to the
+  owner (`_ReportingGrowthGatedCompaction`): a failure names its kind, moving
+  a streak that steps the trigger down; folding breaks it. The `sliding` preset is
   `build_sliding_compaction()`: a `_GuardedSlidingCompaction` trim on a token
   trigger (not just the 100-message count) with the same pin and gate, every
   figure using `conservative_tokens` (the shared density floor, see the guide).
 - **Compaction invariants** — `_pin_first_user_turn` pins the task assignment
   (harness `pin()`, model-invisible) before any tier runs and every strategy
   re-injects it; the gate re-arms only after `min_growth_tokens` of growth since
-  the last pass — a skip never moves the baseline, so growth accumulates (a fold
-  invalidates the provider prompt cache from the rewrite point on); summaries
-  come from `templates/compaction/doctrine.md.j2`; every trim is logged, and a
+  the last pass — a skip never moves the baseline, so growth accumulates;
+  summaries come from `templates/compaction/doctrine.md.j2`; every trim is logged; a
   retained message that alone exceeds the trigger — a fraction of the *usable*
   window (`llm/AGENTS.md`), never of the raw one — or the per-message history
   budget is dropped (never the pin, never half a tool call/return pair); a
   history the tiers cannot shrink loses its largest turn, named in the log.
-  A silent trim is indistinguishable from no compaction; never add a path that
-  skips the pin, crops instead of folding, or fires on message count alone.
+  Never add a path that skips the pin, crops instead of folding, or fires on
+  message count alone.
   `compact_on_request: ClassVar[bool]` (default `False`) adds
   model-triggered `CompactOnRequest` for history-threading agents only.
 - **RLM (code exploration)** — `RLMCapability` (`rlm.py`, optional
@@ -164,10 +165,9 @@ swallows a failure into a smaller result set.
 
 `resolve_retry_budget(llm, retries=…, output_retries=…)` derives the
 tool/output retry split from the same config — the agentic factories use it so
-a multi-turn agent does not share the single-shot budget. The halves are
-separate because the remedies differ (correction attempt vs regeneration).
-`KompendAgentBase.tool_retry_budget()` exposes the tool half to the
-capabilities that need it (the context manager's summarizer agent).
+a multi-turn agent does not share the single-shot budget (correction attempt
+vs regeneration). `KompendAgentBase.tool_retry_budget()` exposes the tool
+half to the capabilities that need it (the context manager's summarizer agent).
 
 The agentic harness offers the memory capability only on request
 (`AgenticHarness(memory=True)`). The notebook is a `read_memory`/`write_memory`

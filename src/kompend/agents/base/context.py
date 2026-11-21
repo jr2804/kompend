@@ -120,6 +120,8 @@ def resolve_context_capability(
         judge=judge,
         keep_tokens=compaction.keep_tokens,
         min_growth_tokens=compaction.min_growth_tokens,
+        fallback_step_after=compaction.fallback_step_after,
+        fallback_step_fraction=compaction.fallback_step_fraction,
         instructions=get_template_loader().render(_DOCTRINE_TEMPLATE),
     )
 

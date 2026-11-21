@@ -669,6 +669,16 @@ context_manager = "default"  # aggressive, sliding; or false to disable
 # on, so re-folding a static context would pay the cache write for nothing.
 # min_growth_tokens = 2048
 
+# Consecutive summarizer fallbacks before the compaction trigger steps down
+# (2). After this many fallbacks in a row the history is systematically too
+# big for the summarizer, so the trigger fires earlier while the history is
+# still summarizable.
+# fallback_step_after = 2
+
+# Trigger multiplier applied once fallbacks turn consecutive (0.9). A ratio:
+# shapes how eagerly the trigger adapts, never an absolute token count.
+# fallback_step_fraction = 0.9
+
 # RLM (Recursive Language Model) — lets agents explore large contexts by
 # writing Python code in a sandboxed REPL instead of packing everything
 # into the prompt. Composes with context_manager above.
