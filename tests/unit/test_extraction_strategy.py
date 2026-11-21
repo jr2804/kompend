@@ -46,6 +46,7 @@ from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError, LLMTransientError
 from kompend.core.utils.tokens import estimate_tokens
 from kompend.llm.context_window import ContextSource, ContextWindow
+from kompend.llm.request_budget import RequestBudget, calibrated_density_for
 from tests.conftest import make_tmp_vault
 
 # ── _batch_texts ─────────────────────────────────────────────────────────
@@ -885,3 +886,57 @@ def _make_config(strategy: ExtractionStrategy = ExtractionStrategy.INCREMENTAL) 
 
 def _make_cw() -> ContextWindow:
     return ContextWindow(max_input=8192, max_output=4096, source=ContextSource.FALLBACK)
+
+
+def _make_history(chars_per_message: int) -> list[ModelMessage]:
+    """A threaded (request, response) pair carrying ``chars_per_message`` chars each."""
+    return [
+        ModelRequest(parts=[UserPromptPart(content="q" * chars_per_message)]),
+        ModelResponse(parts=[TextPart(content="a" * chars_per_message)]),
+    ]
+
+
+class TestHistoryAwarePayloadBudget:
+    """The incremental batch budget prices the threaded history (knox-egxf).
+
+    Every request carries the new payload AND the threaded conversation, but
+    the window budget sizes only the payload — a long document's thread grew
+    past the window (101849 tokens) even though every batch "fit". The
+    payload shrinks by the history estimate so payload + history stays inside
+    usable, measured with the same calibrated density the budget is built
+    from. Content is never cropped: a smaller payload packs the source
+    across more batches.
+    """
+
+    def test_empty_history_keeps_the_window_budget(self) -> None:
+        compiler = _make_big_window_compiler()
+        assert units_module._extract_payload_budget(compiler, []) == units_module._extract_char_budget(compiler)
+
+    def test_history_shrinks_the_payload_by_its_own_estimate(self) -> None:
+        compiler = _make_big_window_compiler()
+        history = _make_history(20_000)
+        cpt = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
+        history_tokens = _estimate_history_tokens(history, chars_per_token=cpt)
+        assert history_tokens > 0
+        window_budget = units_module._extract_char_budget(compiler)
+        payload = units_module._extract_payload_budget(compiler, history)
+        assert payload == window_budget - tokens_to_chars(history_tokens, chars_per_token=cpt)
+
+    def test_payload_plus_history_stays_inside_usable(self) -> None:
+        compiler = _make_big_window_compiler()
+        llm = compiler._config.llm
+        cpt = calibrated_density_for(llm, compiler._usage_tracker, compiler._model or "")
+        history = _make_history(20_000)
+        payload = units_module._extract_payload_budget(compiler, history)
+        history_tokens = _estimate_history_tokens(history, chars_per_token=cpt)
+        budget = RequestBudget(
+            window=compiler._context_window,
+            reserved={"system": compiler._extract_system_tokens},
+            utilization=llm.request_utilization,
+        )
+        assert chars_to_tokens(payload, chars_per_token=cpt) + history_tokens <= budget.content_tokens
+
+    def test_a_thread_bigger_than_the_budget_still_makes_progress(self) -> None:
+        compiler = _make_big_window_compiler()
+        history = _make_history(1_000_000)
+        assert units_module._extract_payload_budget(compiler, history) == 1

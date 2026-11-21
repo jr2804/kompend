@@ -24,6 +24,7 @@ from kompend.agents.failure import (
 )
 from kompend.compilation.flows.extraction.prompt import (
     _compact_history_inplace,
+    _estimate_history_tokens,
     _synthetic_history_response,
 )
 from kompend.compilation.schema import ExtractionOutput
@@ -39,7 +40,7 @@ from kompend.core.models.enums import CacheDeps
 from kompend.core.text.windows import split_text_windows
 from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError
 from kompend.llm.format import encode_payload
-from kompend.llm.request_budget import RequestBudget, calibrated_density_for, time_bounded_chars
+from kompend.llm.request_budget import RequestBudget, calibrated_density_for, time_bounded_chars, tokens_to_chars
 from kompend.logging import get_logger
 
 #: Failure kinds that say "this request was too much to answer", not "this
@@ -191,7 +192,7 @@ def extract_incremental(
     while pending:
         # Without the unbatched texts there is no text grouping to recover:
         # keep the batches the caller already packed.
-        groups = _text_groups(pending, _extract_char_budget(compiler)) if texts is not None else [[batch] for batch in pending]
+        groups = _text_groups(pending, _extract_payload_budget(compiler, history)) if texts is not None else [[batch] for batch in pending]
         extracted = 0
         #: Texts still to extract after the batch cap was halved. ``None``
         #: means this pass finished normally.
@@ -282,12 +283,14 @@ def extract_incremental(
                 raise
             # Keep every completed batch and the history it built; re-plan
             # only what this batch and the later ones cover.
-            pending = _replan_after_overflow(compiler, source, pending[extracted:], exc)
+            pending = _replan_after_overflow(compiler, source, pending[extracted:], exc, history)
             continue
         if replan is not None:
             # The cap was halved: re-split what is left so a single text that
             # is still bigger than the new cap is windowed instead of re-sent.
-            pending = _fit_texts(replan, _extract_char_budget(compiler))
+            # The history it threads with is priced in, or the re-split text
+            # still overflows once the thread is attached.
+            pending = _fit_texts(replan, _extract_payload_budget(compiler, history))
             continue
         pending = []
     return results, False
@@ -298,6 +301,7 @@ def _replan_after_overflow(
     source: str,
     texts: list[str],
     exc: LLMContextOverflowError,
+    history: list[ModelMessage] | None = None,
 ) -> list[str]:
     """Lower the window to the provider's limit and fit *texts* to it.
 
@@ -319,7 +323,10 @@ def _replan_after_overflow(
         raise exc
     if not compiler._clamp_window(limit, reason=f"provider enforces {limit} tokens"):
         raise exc
-    char_budget = _extract_char_budget(compiler)
+    # The history the re-planned texts thread with travels on every request,
+    # so the windowed texts are fit to the payload that leaves room for it.
+    # The batch path threads nothing and passes no history.
+    char_budget = _extract_payload_budget(compiler, history or [])
     fitted = _fit_texts(texts, char_budget)
     logger.info(
         "TwoPhase: re-planned '%s' into %d text window(s) for the %d-token window",
@@ -396,6 +403,32 @@ def _shrink_extract_budget(compiler: TwoPhaseRuntime) -> int | None:
         compiler._timeout,
     )
     return new_cap
+
+
+def _extract_payload_budget(compiler: TwoPhaseRuntime, history: list[ModelMessage]) -> int:
+    """Character budget for one extraction batch with the thread priced in.
+
+    The batch budget sizes only the new payload, but the threaded history
+    travels on every request: a long document's thread grows past the window
+    even though each batch "fits". The history estimate comes from the same
+    density machinery the budget is built from, and the payload shrinks so
+    payload + history stays inside the usable budget. Content is never
+    cropped: a smaller payload packs the source across more batches.
+    """
+    char_budget = _extract_char_budget(compiler)
+    if not history:
+        return char_budget
+    chars_per_token = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
+    history_tokens = _estimate_history_tokens(history, chars_per_token=chars_per_token)
+    history_chars = tokens_to_chars(history_tokens, chars_per_token=chars_per_token)
+    payload = char_budget - history_chars
+    logger.info(
+        "TwoPhase: extract payload %d chars (%d history tokens priced in %d chars)",
+        max(1, payload),
+        history_tokens,
+        history_chars,
+    )
+    return max(1, payload)
 
 
 def _extract_char_budget(compiler: TwoPhaseRuntime) -> int:

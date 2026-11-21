@@ -11,6 +11,7 @@ import json
 from collections import deque
 from typing import Any
 
+from pydantic_ai.messages import ModelMessage
 from pydantic_ai_harness.step_persistence import SqliteStepStore, StepStore
 
 from kompend.agents.failure import AgentFailureKind, classify_agent_failure, record_unit_failure
@@ -22,6 +23,7 @@ from kompend.compilation.concept_keys import normalize_concept_key
 from kompend.compilation.flows.assembly import (
     merge_similar_concepts,
 )
+from kompend.compilation.flows.extraction.prompt import _estimate_history_tokens
 from kompend.compilation.flows.generation.budget import (
     _MAX_CONTEXT_CLAMPS,
     _agentic_budget,
@@ -652,17 +654,25 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
         # The no-crop rule is honored: we never silently clamp max_tokens;
         # content is preserved by splitting into smaller segments at the
         # sizing stage.
-        _segment_content_tokens = _token_estimate(
-            content_block,
-            calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or ""),
-        )
+        # A resumed transcript threads on every pass of this segment, so its
+        # tokens are priced with the same density the segment was sized with:
+        # the payload shrinks so payload + history stays inside usable, and a
+        # segment that cannot shrink keeps the loud failure the error carries.
+        _sizing_cpt = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
+        _priced_tokens, _resumed_history_tokens = _priced_request_tokens(content_block, resume_history, chars_per_token=_sizing_cpt)
+        if _resumed_history_tokens:
+            logger.info(
+                "TwoPhase: agentic %s prices %d resumed history tokens against the segment budget",
+                seg_label,
+                _resumed_history_tokens,
+            )
         segment_budget = budget or RequestBudget(
             window=compiler._context_window,
             reserved={"system": compiler._gen_system_tokens},
             utilization=compiler._config.llm.request_utilization,
         )
         segment_budget.require(
-            _segment_content_tokens,
+            _priced_tokens,
             stage=f"Agentic generation for {seg_label}",
         )
         while broker.remaining(seg_id) > 0 and passes < cap:
@@ -980,6 +990,23 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
     return nodes, slug_to_idx, caller_progress
+
+
+def _priced_request_tokens(
+    content_block: str,
+    history: list[ModelMessage] | None,
+    *,
+    chars_per_token: float,
+) -> tuple[int, int]:
+    """Request tokens for the fit guard: new content plus the resumed thread.
+
+    A resumed transcript threads on every pass of the segment, so its tokens
+    are priced with the same density the segment was sized with — the shared
+    history estimator, never a second one. Returns the priced total and the
+    history share, so the caller can name the priced thread in the log.
+    """
+    history_tokens = _estimate_history_tokens(history or [], chars_per_token=chars_per_token)
+    return _token_estimate(content_block, chars_per_token) + history_tokens, history_tokens
 
 
 def generation_detail(
