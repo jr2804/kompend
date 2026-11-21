@@ -40,8 +40,11 @@ from kompend.agents.base.context import resolve_context_capability
 from kompend.agents.context_manager import (
     GrowthGatedCompaction,
     _file_key,  # noqa: PLC2701
+    _fraction_trigger,  # noqa: PLC2701
     _GuardedSlidingCompaction,  # noqa: PLC2701
+    _per_message_cap,  # noqa: PLC2701
     _pin_first_user_turn,  # noqa: PLC2701
+    _tiered_target,  # noqa: PLC2701
     build_fallback_compaction,
     build_sliding_compaction,
     build_summarizing_compaction,
@@ -49,6 +52,199 @@ from kompend.agents.context_manager import (
 from kompend.core.config import CompactionConfig, ContextManagerPreset
 from kompend.core.templates import get_template_loader
 from kompend.core.text.density import conservative_tokens
+from kompend.llm.context_window import answer_reserve_tokens
+from kompend.llm.request_budget import context_safety_tokens, usable_window_tokens
+
+
+class TestUsableWindowBudget:
+    """A compaction budget must leave room for the answer and the safety margin.
+
+    Regression: the presets computed trigger = fraction x window
+    (0.9 x 64 000 = 57 600) while the request also carries the answer
+    reserve (8 192) and the safety margin (5 120) — a history exactly at
+    its target already asked for 70 912 tokens against a 64 000-token
+    window. The bound is a fraction of the *usable* window instead, and the
+    formula has to hold at any window size, not only at 64 000.
+    """
+
+    @pytest.mark.parametrize("window", [64_000, 1_000_000])
+    def test_the_tiered_target_is_a_fraction_of_the_usable_window(self, window: int) -> None:
+        capability = build_fallback_compaction(context_window=window, compress_threshold=0.9, keep_messages=0)
+        gated = capability.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+
+        target = _tiered_target(gated.strategy, "ollama/test-model")
+
+        assert target == int(usable_window_tokens(window) * 0.9)
+
+    @pytest.mark.parametrize("window", [64_000, 1_000_000])
+    def test_a_history_at_the_target_still_fits_the_window(self, window: int) -> None:
+        """The target plus the answer and the safety margin must fit the window."""
+        capability = build_fallback_compaction(context_window=window, compress_threshold=0.9, keep_messages=0)
+        gated = capability.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+        target = _tiered_target(gated.strategy, "ollama/test-model")
+        assert target is not None, "a bounded window has a target"
+
+        total = target + answer_reserve_tokens(window) + context_safety_tokens(window)
+
+        assert total <= window
+
+    def test_a_fraction_of_the_whole_window_would_not_fit(self) -> None:
+        """The old arithmetic is the defect this pins: it overflows the window."""
+        window = 64_000
+
+        assert int(window * 0.9) + answer_reserve_tokens(window) + context_safety_tokens(window) > window
+
+    @pytest.mark.parametrize("window", [64_000, 1_000_000])
+    def test_the_sliding_trigger_is_a_fraction_of_the_usable_window(self, window: int) -> None:
+        capability = build_sliding_compaction(
+            context_window=window,
+            compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
+            keep_messages=_SLIDING_KEEP_MESSAGES,
+            keep_tokens=8_000,
+        )
+
+        trigger = _fraction_trigger(
+            fraction=capability.max_fraction,
+            context_window=capability.context_window,
+            fallback_context_window=capability.fallback_context_window,
+            model="ollama/test-model",
+        )
+
+        assert trigger == int(usable_window_tokens(window) * _SLIDING_COMPRESS_THRESHOLD)
+
+    @pytest.mark.parametrize("window", [64_000, 1_000_000])
+    def test_the_relevance_tier_targets_the_usable_window(self, window: int) -> None:
+        capability = build_fallback_compaction(
+            context_window=window,
+            compress_threshold=0.9,
+            keep_messages=0,
+            judge=TestModel(),
+        )
+        gated = capability.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+        relevance = gated.strategy.tiers[-2]
+        assert isinstance(relevance, RelevanceCompaction)
+
+        assert relevance._target("ollama/test-model") == int(usable_window_tokens(window) * 0.9)  # noqa: SLF001
+
+    async def test_the_chain_runs_on_the_usable_budget(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A history between the usable trigger and the whole-window trigger compacts.
+
+        The old gate compared the history against 0.9 x window, so this
+        history — past the usable budget, well inside the whole window — was
+        sent to the provider untouched.
+        """
+        window = 64_000
+        capability = build_fallback_compaction(context_window=window, compress_threshold=0.9, keep_messages=0)
+        gated = capability.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+        calls: list[int] = []
+        original = gated.compact
+
+        async def _spy(messages: list[ModelMessage], ctx: RunContext[object]) -> list[ModelMessage]:
+            calls.append(len(messages))
+            return await original(messages, ctx)
+
+        monkeypatch.setattr(gated, "compact", _spy)
+        # 13 turns of 9 200 chars: ~47 840 tokens at kompend's density —
+        # past the usable trigger (45 619), inside the whole-window one (57 600).
+        messages = _heavy_history(messages=13, chars_per_message=9_200)
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert calls
+
+    async def test_a_history_inside_the_usable_budget_is_left_alone(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        window = 64_000
+        capability = build_fallback_compaction(context_window=window, compress_threshold=0.9, keep_messages=0)
+        gated = capability.fallback_chain[0]
+        assert isinstance(gated, GrowthGatedCompaction)
+        calls: list[int] = []
+        original = gated.compact
+
+        async def _spy(messages: list[ModelMessage], ctx: RunContext[object]) -> list[ModelMessage]:
+            calls.append(len(messages))
+            return await original(messages, ctx)
+
+        monkeypatch.setattr(gated, "compact", _spy)
+        messages = _heavy_history(messages=4, chars_per_message=9_200)
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert not calls
+
+
+class TestCompactionEscalation:
+    """A history the tiers cannot shrink must lose a turn, not only warn.
+
+    Regression: the p863 run ran every tier and stayed at an estimated
+    101 849 tokens against a 57 600-token target, because one message was
+    50 502 tokens and the tiers only drop or summarise whole messages.
+    """
+
+    async def test_the_largest_turn_goes_when_the_tiers_cannot_win(self, caplog: pytest.LogCaptureFixture) -> None:
+        gate = _gated()
+        messages = _heavy_history(messages=3, chars_per_message=37_500)
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        with caplog.at_level("WARNING", logger="kompend.agents.context_manager"):
+            await gate.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert len(ctx.messages) < len(messages)
+        record = next(record for record in caplog.records if "Compaction escalation" in record.getMessage())
+        assert "token(s)" in record.getMessage()
+
+    async def test_the_task_assignment_survives_the_escalation(self) -> None:
+        gate = _gated()
+        messages = _heavy_history(messages=3, chars_per_message=37_500)
+        task = messages[0].parts[0]
+        assert isinstance(task, UserPromptPart)
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        await gate.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        pinned = [
+            part
+            for message in ctx.messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+            if isinstance(part, UserPromptPart) and is_pinned(part)
+        ]
+        assert [_text(part) for part in pinned] == [task.content]
+
+    async def test_the_escalation_stops_at_the_target(self) -> None:
+        gate = _gated()
+        messages = _heavy_history(messages=3, chars_per_message=37_500)
+        ctx = _ctx()
+        ctx.messages[:] = messages
+
+        await gate.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert estimate_context_tokens(ctx.messages, conservative_tokens) <= int(64_000 * _SLIDING_COMPRESS_THRESHOLD)
+
+    async def test_a_message_above_the_per_message_cap_leaves_the_history(self) -> None:
+        """A single oversized message never enters the history at all."""
+        gate = _gated()
+        big = ModelRequest(parts=[UserPromptPart(content="x" * 50_000)])
+        ctx = _ctx()
+        ctx.messages[:] = [*_short_history(), big]
+
+        await gate.before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert big not in ctx.messages
+
+    def test_the_per_message_cap_is_the_history_budget(self) -> None:
+        """The cap is derived from the window, never a fixed number."""
+        assert _per_message_cap(64_000) == 2 * answer_reserve_tokens(64_000)
+        assert _per_message_cap(1_000_000) == 2 * answer_reserve_tokens(1_000_000)
 
 
 class TestBuildSummarizingCompaction:
@@ -231,7 +427,7 @@ class TestSlidingPreset:
             keep_tokens=100_000,
         )
 
-        assert capability.keep_tokens == int(8_000 * 0.8 * 0.5)
+        assert capability.keep_tokens == int(usable_window_tokens(8_000) * 0.8 * 0.5)
 
     def _capability(self, window: int = 64_000) -> SlidingWindowCompaction:
         return build_sliding_compaction(
@@ -671,7 +867,7 @@ class TestFallbackCompaction:
         assert isinstance(fallback, SlidingWindowCompaction)
         # The fallback trims on the same trigger, keeping half of it.
         assert fallback.max_fraction == 0.9
-        assert fallback.keep_tokens == 90_000
+        assert fallback.keep_tokens == int(usable_window_tokens(200_000) * 0.9 * 0.5)
 
     def test_tiers_run_cheap_to_expensive(self) -> None:
         """Zero-cost passes first, the LLM summarizer last."""
@@ -1166,6 +1362,24 @@ def _sliding() -> SlidingWindowCompaction:
         compress_threshold=_SLIDING_COMPRESS_THRESHOLD,
         keep_messages=_SLIDING_KEEP_MESSAGES,
         keep_tokens=8_000,
+    )
+
+
+def _gated() -> GrowthGatedCompaction:
+    """The gated tiered stack with a tier that rewrites nothing.
+
+    The tier is a no-op on purpose: the escalation has to work when the
+    tiers already ran and could not win.
+    """
+    return GrowthGatedCompaction(
+        strategy=TieredCompaction(
+            tiers=[cast("Any", _RecordingStrategy())],
+            target_fraction=_SLIDING_COMPRESS_THRESHOLD,
+            context_window=64_000,
+            tokenizer=conservative_tokens,
+        ),
+        min_growth_tokens=0,
+        tokenizer=conservative_tokens,
     )
 
 

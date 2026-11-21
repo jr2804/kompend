@@ -79,7 +79,7 @@ reply, thinking included). For that protocol only, the agent passes a callable
 `model_settings` that computes the value per request - window minus estimated
 prompt minus a 5% margin, clamped by the model's own catalog output limit.
 `requires_output_ceiling(model)` marks such models (it unwraps wrappers and
-fallback chains); OpenAI-compatible endpoints and Ollama get no ceiling at all.
+fallback chains); OpenAI-compatible endpoints and Ollama get no ceiling, and
 `kompend doctor` prints which rule applies in its `output-ceiling` check.
 
 **Catalog freshness.** The models.dev payload is downloaded, not shipped, and
@@ -115,10 +115,10 @@ Contracts:
 
 - **Content is never cropped to fit.** A too-small budget makes the work split
   across more batches or segments; it never drops text.
-- The answer reserve and the safety margin are paid by default, so a stage
-  cannot forget either by accident.
+- The answer reserve and the safety margin are paid by default, so a stage cannot forget either.
 - `context_safety_tokens` is defined **once** here (8% of the window, floor
-  512 tokens); `kompend.compilation.two_phase` re-exports it for the root path.
+  512 tokens) and `kompend.compilation.two_phase` re-exports it for the root
+  path; `usable_window_tokens` derives from it the share a trigger is a fraction of.
 - `chars_to_tokens` / `tokens_to_chars` are the single chars-per-token
   conversion; pass `compile.llm.default_chars_per_token` (default = the shared
   bound in `core.text.density`). `sizing_density` clamps a larger value to it:

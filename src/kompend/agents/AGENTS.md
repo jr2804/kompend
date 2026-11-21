@@ -77,8 +77,10 @@ The base class provides:
   the last pass — a skip never moves the baseline, so growth accumulates (a fold
   invalidates the provider prompt cache from the rewrite point on); summaries
   come from `templates/compaction/doctrine.md.j2`; every trim is logged, and a
-  retained message that alone exceeds the trigger is dropped (an echo of an
-  already-counted response) — never the pin, never half a tool call/return pair.
+  retained message that alone exceeds the trigger — a fraction of the *usable*
+  window (`llm/AGENTS.md`), never of the raw one — or the per-message history
+  budget is dropped (never the pin, never half a tool call/return pair); a
+  history the tiers cannot shrink loses its largest turn, named in the log.
   A silent trim is indistinguishable from no compaction; never add a path that
   skips the pin, crops instead of folding, or fires on message count alone.
   `compact_on_request: ClassVar[bool]` (default `False`) adds
@@ -202,8 +204,7 @@ strict validator, for malformed JSON from small local models).
 whose agent has an `@on_event` listener — the usage gauge — through it): reasoning
 is merged and usage lands in the tracker, but response *repairs* cannot reach the
 graph's own assembly on that path (`FallbackModel` documents the same limitation).
-History compression lives on the Agent layer (`build_fallback_compaction`,
-`build_sliding_compaction`); the doctrine lives in `templates/compaction/`.
+History compression lives on the Agent layer; the doctrine lives in `templates/compaction/`.
 
 ### Dependency types (`types.py`, `deps.py`)
 
@@ -234,8 +235,7 @@ Agentic-session payloads are `TypedDict`s in `types.py`; `DistillPage` is
 - **No direct pydantic-ai `Agent` construction outside this package**, and no
   `litellm` imports: pipeline code imports an agent class and calls
   `agent.run(deps)`; models come from `kompend.llm.models.build_model()`.
-- **Roles.** Every agent names an `LLMRole` value from `kompend.llm.roles`; add
-  one there when adding an agent.
+- **Roles.** Every agent names an `LLMRole` value from `kompend.llm.roles`; add one there when adding an agent.
 - **Export new agents** from `__init__.py`; **result types** live in the
   consuming module (e.g. `kompend.compilation.schema.ExtractionOutput`).
   The package surface is attached **lazily** (`lazy_loader.attach`, mirroring

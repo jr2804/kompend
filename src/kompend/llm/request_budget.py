@@ -16,6 +16,8 @@ This module owns that arithmetic:
 - :func:`context_safety_tokens` — the shared headroom every stage holds
   back (a server's usable context is smaller than its nominal window, and
   the chars-per-token heuristic undercounts dense content).
+- :func:`usable_window_tokens` — the window minus the answer reserve and the
+  safety margin: the share a trigger or a target is a fraction of.
 - :func:`chars_to_tokens` / :func:`tokens_to_chars` — the single
   chars-per-token conversion, driven by the configured value.
 
@@ -33,7 +35,7 @@ from dataclasses import dataclass, field, replace
 
 from kompend.core.text.density import CONSERVATIVE_CHARS_PER_TOKEN
 from kompend.core.utils.exceptions import LLMOutputError
-from kompend.llm.context_window import ContextSource, ContextWindow
+from kompend.llm.context_window import ContextSource, ContextWindow, answer_reserve_tokens
 from kompend.llm.throughput import SAFETY_FACTOR, Throughput
 
 #: Fraction of a model's context window held back as headroom beyond the
@@ -230,6 +232,22 @@ class EffectiveWindow:
             return f"cw={self.window.max_input} (source={self.window.source})"
         discovered = self.discovered.max_input if self.discovered else self.window.max_input
         return f"cw={self.window.max_input} (discovered {discovered}, {self.reason})"
+
+
+def usable_window_tokens(max_input: int) -> int:
+    """Tokens of a *max_input*-token window a request may spend on content.
+
+    The answer reserve and the safety margin are paid before the content:
+    a history that fills the *whole* window already asks for more than the
+    window holds. At a 64 000-token window the usable share is
+    ``64 000 - 8 192 (answer) - 5 120 (safety) = 50 688`` tokens; at a
+    1 000 000-token window it is ``1 000 000 - 8 192 - 80 000 = 911 808``.
+
+    Every bound that scales with the window derives from this number, so a
+    trigger or a target expressed as a fraction of it holds at any window
+    size — the formula, not the 64 000 case, is the contract.
+    """
+    return max(1, max_input - answer_reserve_tokens(max_input) - context_safety_tokens(max_input))
 
 
 def context_safety_tokens(max_input: int) -> int:

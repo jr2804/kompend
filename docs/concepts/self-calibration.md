@@ -46,3 +46,5 @@ and merging refuses wholesale on a redundant corpus.
   reserve and history budget.
 - `src/kompend/agents/base/context.py` — compaction presets as fractions of
   that budget, never of the raw window.
+- `src/kompend/agents/context_manager.py` — the compaction trigger, target,
+  per-message cap and the escalation that drops a turn the tiers cannot shrink.

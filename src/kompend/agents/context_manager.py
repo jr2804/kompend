@@ -36,6 +36,15 @@ A message count alone cannot protect a token budget: a p863 vault set this
 preset and the provider rejected one request at 90 154 actual tokens
 against a 65 536-token window.
 
+How the budget is derived (``usable_window_tokens``): a request does not own
+the whole window — it also carries the answer reserve and the safety margin.
+A trigger or a target is therefore a fraction of the *usable* window (window
+minus answer reserve minus safety margin), not of the window itself: at
+64 000 tokens the usable share is 50 688, at 1 000 000 tokens it is 911 808.
+The formula is the contract; the 64 000-token case is only one instance of it.
+Every bound kompend derives this way scales with the discovered window, so a
+1M-context model gets a proportionally larger budget instead of a fixed one.
+
 How the estimate is defended (``conservative_tokens``): the harness anchors
 ``estimate_context_tokens`` on the newest provider-reported usage, so most of
 any history is measured exactly and only the messages after that anchor are
@@ -100,6 +109,8 @@ from pydantic_ai_harness.compaction import (
 from pydantic_core import ValidationError
 
 from kompend.core.text.density import conservative_tokens
+from kompend.llm.context_window import answer_reserve_tokens
+from kompend.llm.request_budget import usable_window_tokens
 from kompend.logging import get_logger
 
 #: Sliding-window defaults (zero-cost, no LLM call). Owned here so the
@@ -277,9 +288,11 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
         if not self._gate_open(pinned):
             return pinned
         trigger = _tiered_target(self.strategy, ctx.model)
-        before = _clamp_oversized(pinned, trigger, self.tokenizer)
+        cap = _per_message_cap(_strategy_window(self.strategy, ctx.model))
+        before = _clamp_oversized(pinned, trigger, self.tokenizer, cap)
         compacted = await self.strategy.compact(before.messages, ctx)
-        outcome = _clamp_oversized(compacted, trigger, self.tokenizer).merged_with(before)
+        outcome = _clamp_oversized(compacted, trigger, self.tokenizer, cap).merged_with(before)
+        outcome = _escalate(outcome, trigger, self.tokenizer)
         _warn_if_still_over(outcome, trigger, self.tokenizer, label="Context compaction")
         self._baseline_tokens = estimate_context_tokens(outcome.messages, self.tokenizer)
         return outcome.messages
@@ -298,11 +311,13 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
         # own escalation target from the request context's model, so a capability
         # that swaps in a smaller-window model must shrink the clamp budget too.
         trigger = _tiered_target(self.strategy, request_context.model)
-        before = _clamp_oversized(pinned, trigger, self.tokenizer)
+        cap = _per_message_cap(_strategy_window(self.strategy, request_context.model))
+        before = _clamp_oversized(pinned, trigger, self.tokenizer, cap)
         if before.dropped:
             ctx.messages[:] = before.messages
         request_context = await self.strategy.before_model_request(ctx, request_context)
-        outcome = _clamp_oversized(list(ctx.messages), trigger, self.tokenizer).merged_with(before)
+        outcome = _clamp_oversized(list(ctx.messages), trigger, self.tokenizer, cap).merged_with(before)
+        outcome = _escalate(outcome, trigger, self.tokenizer)
         if outcome.dropped:
             ctx.messages[:] = outcome.messages
             request_context = replace(request_context, messages=outcome.messages)
@@ -323,6 +338,46 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
             )
             return False
         return True
+
+
+@dataclass
+class _UsableTargetCompaction(TieredCompaction[AgentDepsT]):
+    """``TieredCompaction`` whose target is a fraction of the *usable* window.
+
+    The harness resolves ``target_fraction`` against the whole window, so a
+    history at its target already asks for more than the window holds: the
+    request also carries the answer reserve and the safety margin. This
+    subclass resolves the same fraction against the usable window instead
+    (window − answer reserve − safety margin), so the target holds at every
+    window size — the formula, not the 64 000-token case, is the contract.
+    """
+
+    def _target(self, model: AbstractModel | str) -> int | None:
+        """The absolute token target for *model*, or ``None`` for a realtime one."""
+        fraction = self.target_fraction
+        if fraction is None:
+            return super()._target(model)
+        window = self.context_window or resolve_context_window(model) or self.fallback_context_window
+        return max(1, int(usable_window_tokens(window) * fraction))
+
+
+@dataclass
+class _UsableRelevanceCompaction(RelevanceCompaction[AgentDepsT]):
+    """``RelevanceCompaction`` whose target is a fraction of the *usable* window.
+
+    The relevance tier judges the history down to its own target; that target
+    has to leave room for the answer and the safety margin exactly like the
+    tiered stack's, or the judged history is still too big for the request.
+    """
+
+    def _target(self, model: AbstractModel | str) -> int | None:
+        """The size to compact down to for *model*, or ``None`` for a realtime one."""
+        window = self.context_window or resolve_context_window(model) or self.fallback_context_window
+        if self.target_fraction is not None:
+            return max(1, int(usable_window_tokens(window) * self.target_fraction))
+        if self.max_fraction is not None:
+            return max(1, int(usable_window_tokens(window) * self.max_fraction) // 2)
+        return super()._target(model)
 
 
 @dataclass
@@ -389,14 +444,15 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
     ) -> list[ModelMessage]:
         """Trim, clamp the tail, then record what was kept, what was dropped, and the cost."""
         trigger = self._trigger_tokens(ctx.model)
-        before = _clamp_oversized(messages, trigger, self.tokenizer)
+        cap = _per_message_cap(self._window(ctx.model))
+        before = _clamp_oversized(messages, trigger, self.tokenizer, cap)
         # The trim is measured against the post-clamp list: a clamp drop charged
         # to the trim would misname the mechanism, and a clamp-only pass — where
         # the trim itself reclaimed nothing — must still hit the warning below.
         trim_from = len(before.messages)
         before_tokens = estimate_context_tokens(before.messages, self.tokenizer)
         compacted = await super().compact(before.messages, ctx)
-        outcome = _clamp_oversized(compacted, trigger, self.tokenizer).merged_with(before)
+        outcome = _clamp_oversized(compacted, trigger, self.tokenizer, cap).merged_with(before)
         compacted = outcome.messages
         after_tokens = estimate_context_tokens(compacted, self.tokenizer)
         dropped = trim_from - len(compacted)
@@ -443,7 +499,7 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
         if fraction is None:  # not the shape this build produces; stay passive
             return await super().before_model_request(ctx, request_context)
         window = self.context_window or resolve_context_window(request_context.model) or self.fallback_context_window
-        trigger = max(1, int(window * fraction))
+        trigger = max(1, int(usable_window_tokens(window) * fraction))
         tokens = estimate_context_tokens(
             pinned,
             self.tokenizer,
@@ -459,7 +515,13 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
                 self.min_growth_tokens,
             )
             return request_context
-        return await super().before_model_request(ctx, request_context)
+        # The trim is driven here, not by the harness: the harness resolves its
+        # own fraction against the whole window, while the budget this trim
+        # protects is the usable window (window − answer reserve − safety).
+        request_ctx = replace(ctx, model=request_context.model)
+        compacted = await self.compact(list(ctx.messages), request_ctx)
+        ctx.messages[:] = compacted
+        return replace(request_context, messages=compacted)
 
     def _trigger_tokens(self, model: AbstractModel | str) -> int | None:
         """The token budget this trim compares against, ``None`` when it has none."""
@@ -469,6 +531,10 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
             fallback_context_window=self.fallback_context_window,
             model=model,
         )
+
+    def _window(self, model: AbstractModel | str) -> int:
+        """The window this trim's fractions are resolved against."""
+        return self.context_window or resolve_context_window(model) or self.fallback_context_window
 
 
 class _LoggedSummarizingCompaction(SummarizingCompaction):
@@ -503,9 +569,10 @@ class _LoggedSlidingWindowCompaction(SlidingWindowCompaction):
             fallback_context_window=self.fallback_context_window,
             model=ctx.model,
         )
-        before = _clamp_oversized(messages, trigger, self.tokenizer)
+        cap = _per_message_cap(self.context_window or resolve_context_window(ctx.model) or self.fallback_context_window)
+        before = _clamp_oversized(messages, trigger, self.tokenizer, cap)
         compacted = await super().compact(before.messages, ctx)
-        outcome = _clamp_oversized(compacted, trigger, self.tokenizer).merged_with(before)
+        outcome = _clamp_oversized(compacted, trigger, self.tokenizer, cap).merged_with(before)
         logger.warning("Sliding-window fallback kept %d of %d message(s)", len(outcome.messages), len(messages))
         _warn_if_still_over(outcome, trigger, self.tokenizer, label="Sliding-window fallback")
         return outcome.messages
@@ -519,6 +586,12 @@ class _PinningFallbackCompaction(FallbackCompaction):
     ``ctx.messages`` before the chain is entered — pinning inside a chain
     entry is invisible to that re-injection and the sliding fallback would
     drop the task assignment along with the trimmed history.
+
+    The gate is kompend's own as well: the harness resolves its trigger
+    against the whole window, while a request also carries the answer reserve
+    and the safety margin. The chain therefore runs once the history passes
+    ``(window − answer reserve − safety margin) x fraction`` — the budget the
+    request actually has.
     """
 
     async def before_model_request(
@@ -529,7 +602,43 @@ class _PinningFallbackCompaction(FallbackCompaction):
         pinned = _pin_first_user_turn(list(ctx.messages))
         if pinned is not ctx.messages:
             ctx.messages[:] = pinned
-        return await super().before_model_request(ctx, request_context)
+        trigger = _fraction_trigger(
+            fraction=self.max_fraction,
+            context_window=self.context_window,
+            fallback_context_window=self.fallback_context_window,
+            model=request_context.model,
+        )
+        if trigger is None:
+            return request_context
+        messages = list(ctx.messages)
+        tokens = estimate_context_tokens(
+            messages,
+            self.tokenizer,
+            model_request_parameters=request_context.model_request_parameters,
+        )
+        if tokens <= trigger:
+            return request_context
+        request_ctx = replace(ctx, model=request_context.model)
+        compacted = await self._run_chain(messages, request_ctx)
+        ctx.messages[:] = compacted
+        return replace(request_context, messages=compacted)
+
+    async def _run_chain(self, messages: list[ModelMessage], ctx: RunContext[Any]) -> list[ModelMessage]:
+        """Run the fallback chain and re-inject the pinned parts.
+
+        ``_compact_pinned`` is the harness's own entry point for this: it runs
+        the chain (a summary that does not shrink the history falls through to
+        the next entry) and puts the pinned parts back. A renamed private API
+        must fail loudly rather than silently skip the compaction.
+        """
+        compact_pinned = getattr(self, "_compact_pinned", None)
+        if compact_pinned is None:
+            raise AttributeError(
+                f"{type(self).__name__} has no `_compact_pinned(messages, ctx, held)` method, so the "
+                "fallback chain cannot run; the harness FallbackCompaction private API changed; "
+                "update `_PinningFallbackCompaction` to match"
+            )
+        return await compact_pinned(messages, ctx, None)
 
 
 def _pin_first_user_turn(messages: Sequence[ModelMessage]) -> list[ModelMessage]:
@@ -583,7 +692,8 @@ def build_fallback_compaction(
     context_window:
         The model's input window; every trigger is a fraction of it.
     compress_threshold:
-        Fraction of the window at which compaction runs. The single
+        Fraction of the *usable* window at which compaction runs (the window
+        minus the answer reserve and the safety margin). The single
         fraction the whole stack derives from: tier target, judge trigger
         and fallback trigger all read it.
     keep_messages:
@@ -625,7 +735,7 @@ def build_fallback_compaction(
     ]
     if judge is not None:
         tiers.append(
-            RelevanceCompaction(
+            _UsableRelevanceCompaction(
                 model=judge,
                 summarizer=summarizer,
                 max_fraction=compress_threshold,
@@ -637,7 +747,7 @@ def build_fallback_compaction(
         )
     tiers.append(summarizer)
     gated = GrowthGatedCompaction(
-        strategy=TieredCompaction(
+        strategy=_UsableTargetCompaction(
             tiers=tiers,
             target_fraction=compress_threshold,
             context_window=context_window,
@@ -646,19 +756,21 @@ def build_fallback_compaction(
         min_growth_tokens=min_growth_tokens if min_growth_tokens is not None else _DEFAULT_MIN_GROWTH_TOKENS,
         tokenizer=conservative_tokens,
     )
+    window = context_window or DEFAULT_CONTEXT_WINDOW
     return _PinningFallbackCompaction(
         fallback_chain=[
             gated,
             _LoggedSlidingWindowCompaction(
                 max_fraction=compress_threshold,
                 context_window=context_window,
-                keep_tokens=int((context_window or DEFAULT_CONTEXT_WINDOW) * compress_threshold * _FALLBACK_KEEP_SHARE),
+                keep_tokens=int(usable_window_tokens(window) * compress_threshold * _FALLBACK_KEEP_SHARE),
                 tokenizer=conservative_tokens,
             ),
         ],
         fallback_on=(UnexpectedModelBehavior,),
         max_fraction=compress_threshold,
         context_window=context_window,
+        tokenizer=conservative_tokens,
     )
 
 
@@ -683,7 +795,7 @@ def build_sliding_compaction(
     context_window:
         The model's input window; the trigger is a fraction of it.
     compress_threshold:
-        Fraction of the window at which the trim runs. Well below 1.0: it
+        Fraction of the *usable* window at which the trim runs. Well below 1.0: it
         absorbs a server that enforces a smaller window than kompend was
         configured for, so a trim that lands near the limit still arrives
         before the provider rejects.
@@ -701,7 +813,7 @@ def build_sliding_compaction(
         (``CompactionConfig.min_growth_tokens``).
     """
     window = context_window or DEFAULT_CONTEXT_WINDOW
-    headroom = int(window * compress_threshold * _FALLBACK_KEEP_SHARE)
+    headroom = int(usable_window_tokens(window) * compress_threshold * _FALLBACK_KEEP_SHARE)
     tail = min(keep_tokens, headroom) if keep_tokens else 0
     return _GuardedSlidingCompaction(
         max_messages=_SLIDING_MAX_MESSAGES,
@@ -747,7 +859,8 @@ def build_summarizing_compaction(
     context_window:
         The model's input window; the trigger is a fraction of it.
     compress_threshold:
-        Fraction of the window at which compaction runs (``max_fraction``).
+        Fraction of the *usable* window at which compaction runs
+        (``max_fraction``).
     keep_messages:
         How many recent messages survive compaction verbatim.
     model:
@@ -784,13 +897,16 @@ def _fraction_trigger(
 ) -> int | None:
     """Resolve a fractional trigger to tokens, or ``None`` when there is none.
 
-    Mirrors the harness's own resolution so kompend's clamp measures against
-    exactly the budget the strategy measured against.
+    The fraction is a share of the *usable* window — the window minus the
+    answer reserve and the safety margin — because a request also carries
+    those two: a history at the whole window already asks for more than the
+    window holds. Mirrors the harness's own resolution so kompend's clamp
+    measures against exactly the budget the strategy measured against.
     """
     if fraction is None:
         return None
     window = context_window or resolve_context_window(model) or fallback_context_window
-    return max(1, int(window * fraction))
+    return max(1, int(usable_window_tokens(window) * fraction))
 
 
 def _tiered_target(strategy: Any, model: AbstractModel | str) -> int | None:
@@ -817,6 +933,7 @@ def _clamp_oversized(
     messages: list[ModelMessage],
     trigger: int | None,
     tokenizer: Callable[[str], int] | None,
+    per_message_cap: int | None = None,
 ) -> _ClampOutcome:
     """Drop retained messages that alone exceed *trigger*; report what went.
 
@@ -827,6 +944,12 @@ def _clamp_oversized(
     65 536-token window and was refused. Such a message is an echo of a
     response whose cost is already in that response's usage, so it is dropped
     rather than split: a truncated echo would still be sent as prompt text.
+
+    *per_message_cap* is the second, tighter bound: the largest a single
+    message may be before it is dropped whatever the trigger says. The
+    compaction tiers drop or summarise whole messages, so a message above the
+    cap can never be folded into the request — it is dropped at the first
+    pass that sees it, which is where it would otherwise enter the history.
 
     Two things are never dropped, because a request without them answers the
     wrong question:
@@ -843,7 +966,8 @@ def _clamp_oversized(
     counts = estimate_message_tokens(messages, tokenizer)
     if len(counts) != len(messages):  # pragma: no cover - the harness pairs them
         return _ClampOutcome(messages, [], False)
-    oversized = [index for index, count in enumerate(counts) if count > trigger]
+    limit = trigger if per_message_cap is None else min(trigger, per_message_cap)
+    oversized = [index for index, count in enumerate(counts) if count > limit]
     if not oversized:
         return _ClampOutcome(messages, [], False)
     pinned = _pinned_indexes(messages)
@@ -856,6 +980,140 @@ def _clamp_oversized(
             continue
         dropped.append(_describe(message, counts[index]))
     return _ClampOutcome(survivors, dropped, bool(pinned.intersection(oversized)))
+
+
+def _escalate(
+    outcome: _ClampOutcome,
+    target: int | None,
+    tokenizer: Callable[[str], int] | None,
+) -> _ClampOutcome:
+    """Drop the turns the tiers could not shrink, and name every drop.
+
+    The last resort of the compaction stack: the tiers drop or summarise
+    whole messages, so a history that still exceeds its target after every
+    tier ran needs a message to go. The drop is logged by name — role, size
+    and part kinds — so a run log says which turn the escalation gave up.
+    """
+    escalated = _drop_largest_to_target(outcome.messages, target, tokenizer)
+    if not escalated.dropped:
+        return outcome
+    logger.warning(
+        "Compaction escalation: dropped %d message(s) the tiers could not shrink (%s)",
+        len(escalated.dropped),
+        "; ".join(escalated.dropped),
+    )
+    return escalated.merged_with(outcome)
+
+
+def _drop_largest_to_target(
+    messages: list[ModelMessage],
+    target: int | None,
+    tokenizer: Callable[[str], int] | None,
+) -> _ClampOutcome:
+    """Drop the largest droppable turns until the history fits *target*.
+
+    The escalation the compaction tiers cannot do: they drop or summarise
+    whole messages, so one message the summarizer cannot shrink leaves the
+    history above its target no matter how many tiers ran. The p863 run
+    reached that state — every tier ran and the history stayed at an
+    estimated 101 849 tokens against a 57 600-token target, because one
+    message was 50 502 tokens.
+
+    A *turn* is a request and the response that answered it, so dropping one
+    keeps the provider's alternation intact. The pinned task assignment, both
+    halves of a tool call/return pair and the request being answered now are
+    never dropped: a history without them answers the wrong question.
+    """
+    if target is None or not messages:
+        return _ClampOutcome(list(messages), [], False)
+    survivors = list(messages)
+    protected = _protected_message_ids(survivors)
+    dropped: list[str] = []
+    while survivors and estimate_context_tokens(survivors, tokenizer) > target:
+        counts = estimate_message_tokens(survivors, tokenizer)
+        turn = _largest_droppable_turn(survivors, counts, protected)
+        if turn is None:
+            break
+        for index in turn:
+            dropped.append(_describe(survivors[index], counts[index]))
+        removed = set(turn)
+        survivors = [message for index, message in enumerate(survivors) if index not in removed]
+    return _ClampOutcome(survivors, dropped, False)
+
+
+def _protected_message_ids(messages: Sequence[ModelMessage]) -> set[int]:
+    """Identity of every message the compaction may not drop.
+
+    The pinned parts (the task assignment first), both halves of every tool
+    call/return pair, and the request being answered now — the last message
+    is the one the run is about to send, and a history without it would
+    answer a different question.
+    """
+    protected = _pinned_indexes(messages) | _paired_indexes(messages)
+    if messages:
+        protected.add(len(messages) - 1)
+    return {id(messages[index]) for index in protected}
+
+
+def _largest_droppable_turn(
+    messages: Sequence[ModelMessage],
+    counts: Sequence[int],
+    protected: set[int],
+) -> list[int] | None:
+    """Indexes of the largest turn that may be dropped, or ``None``.
+
+    A turn is a request together with the response that answered it, so the
+    provider's request/response alternation survives the drop. A turn holding
+    a protected message is not droppable at all.
+    """
+    turns = _turns(messages)
+    best: list[int] | None = None
+    best_size = 0
+    for turn in turns:
+        if any(id(messages[index]) in protected for index in turn):
+            continue
+        size = sum(counts[index] for index in turn)
+        if size > best_size:
+            best, best_size = turn, size
+    return best
+
+
+def _turns(messages: Sequence[ModelMessage]) -> list[list[int]]:
+    """Group the messages into turns: a request and the response answering it."""
+    turns: list[list[int]] = []
+    current: list[int] = []
+    for index, message in enumerate(messages):
+        if isinstance(message, ModelRequest) and current:
+            turns.append(current)
+            current = []
+        current.append(index)
+        if isinstance(message, ModelResponse) and current:
+            turns.append(current)
+            current = []
+    if current:
+        turns.append(current)
+    return turns
+
+
+def _per_message_cap(window: int) -> int:
+    """The largest a single message may be before it leaves the history.
+
+    Twice the answer reserve — the window's own history budget. It scales
+    with the discovered window, so a 1M-context model allows a proportionally
+    larger message than a 64k one; the number is never fixed.
+    """
+    return 2 * answer_reserve_tokens(window)
+
+
+def _strategy_window(strategy: Any, model: AbstractModel | str) -> int:
+    """The window a strategy resolves its fractions against."""
+    window = getattr(strategy, "context_window", None)
+    if window:
+        return int(window)
+    resolved = resolve_context_window(model)
+    if resolved:
+        return int(resolved)
+    return int(getattr(strategy, "fallback_context_window", DEFAULT_CONTEXT_WINDOW))
 
 
 def _pinned_indexes(messages: Sequence[ModelMessage]) -> set[int]:
