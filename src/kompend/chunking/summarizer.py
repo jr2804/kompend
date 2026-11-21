@@ -444,7 +444,9 @@ class NodeSummarizer:
             title=tree.source_file.stem if tree.source_file is not None else tree.root_id,
         )
         try:
-            work_ids, skip, focus_by_node, expand_count, planner_calls = self._plan_tree(tree, context)
+            work_ids, skip, focus_by_node, expand_count, planner_calls = self._plan_tree(
+                tree, context, frozenset(node.id for node in eligible)
+            )
         except Exception as exc:
             logger.warning(
                 "Traversal planning failed for tree %s (%s) — summarizing the full tree",
@@ -486,15 +488,22 @@ class NodeSummarizer:
         )
         return tree
 
-    def _plan_tree(self, tree: ChunkTree, context: PlanContext) -> tuple[set[str], dict[str, str], dict[str, str], int, int]:
+    def _plan_tree(
+        self, tree: ChunkTree, context: PlanContext, eligible_ids: frozenset[str]
+    ) -> tuple[set[str], dict[str, str], dict[str, str], int, int]:
         """Ask the planner per level, top-down from the root.
 
-        Returns the work set (EXPAND and SUMMARIZE nodes plus the root),
-        the SKIP decisions as ``node_id -> reason``, the SUMMARIZE nodes'
-        focus lines, the EXPAND count, and the number of planner calls.
-        A child missing from its level's plan is treated as EXPAND — the
-        safe default (work plus descend) — so a partial plan can never
-        silently drop a subtree.
+        Only children that can be summarized are ever consulted: leaves
+        carry their chunk, so a verdict about them could decide nothing —
+        their content reaches the parent through inlining instead. Children
+        the planner is never asked about but that hide summarizable
+        descendants (single-child wrappers) are descended through without
+        a verdict. Returns the work set (EXPAND and SUMMARIZE nodes plus
+        the root), the SKIP decisions as ``node_id -> reason``, the
+        SUMMARIZE nodes' focus lines, the EXPAND count, and the number of
+        planner calls. A child missing from its level's plan is treated as
+        EXPAND — the safe default (work plus descend) — so a partial plan
+        can never silently drop a subtree.
         """
         planner = self._planner
         if planner is None:
@@ -512,9 +521,17 @@ class NodeSummarizer:
             if parent is None:
                 continue
             child_ids = [cid for cid in parent.children_ids if cid in tree.nodes and cid in outline_by_id]
-            if not child_ids:
+            ask_ids = [cid for cid in child_ids if cid in eligible_ids]
+            for cid in child_ids:
+                # A child the planner is never asked about but that hides
+                # summarizable descendants is descended through without a
+                # verdict (knox-hh2u); a leaf has nothing below to reach.
+                if cid not in eligible_ids and tree.nodes[cid].children_ids:
+                    expand_count += 1
+                    frontier.append((cid, parent_depth + 1))
+            if not ask_ids:
                 continue
-            entries = [outline_by_id[cid] for cid in child_ids]
+            entries = [outline_by_id[cid] for cid in ask_ids]
             level = planner.plan_level(outline=entries, depth=parent_depth + 1, context=context)
             planner_calls += 1
             if level is None:
@@ -522,7 +539,7 @@ class NodeSummarizer:
             by_id: dict[str, PlanEntry] = {}
             for entry in level.entries:
                 by_id.setdefault(entry.node_id, entry)
-            for child_id in child_ids:
+            for child_id in ask_ids:
                 entry = by_id.get(child_id)
                 if entry is None or entry.mode is PlanMode.EXPAND:
                     work_ids.add(child_id)

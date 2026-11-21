@@ -62,3 +62,7 @@ each model's auto-detected context window. Atomic elements are never split.
   ``SummarizerSessionPolicy`` carry them into the summarizer. Never repeat a
   budget number as a default in this module — a default there silently
   overrides the config.
+- Traversal planning consults only summarizable children: leaves inline
+  into their parent, single-child wrappers are descended through without
+  a verdict (bead ``knox-hh2u``). The consulted set equals the summarizable
+  set.
