@@ -280,19 +280,31 @@ class TestExtractIncrementalHistoryCompaction:
         synth_mock.assert_called_once_with(results[0])
         compact_mock.assert_called_once()
 
-    def test_progress_is_reported_for_every_batch(self) -> None:
+    def test_progress_is_reported_for_every_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A long document must move the bar inside, not jump at the end."""
         compiler = _make_compiler()
         reports: list[tuple[int, int, str]] = []
 
-        with patch.object(units_module, "extract_one", return_value=Extraction(source="doc.md")):
-            results, stopped = units_module.extract_incremental(
-                compiler,
-                source="doc.md",
-                batches_list=["batch 1", "batch 2", "batch 3"],
-                extraction_system="sys",
-                progress=lambda done, total, activity: reports.append((done, total, activity)),
-            )
+        class _StubAgent:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def run_with_messages(self, deps: object, message_history: object = None) -> tuple[ExtractionOutput, list[object]]:
+                text = str(getattr(deps, "text", ""))
+                return ExtractionOutput(summary=text, entities=[], concepts=[], tags=[]), []
+
+        # The agent is the seam extract_incremental uses; patching
+        # extract_one would not intercept it and the test would reach a
+        # real model.
+        monkeypatch.setattr(units_module, "ExtractionAgent", _StubAgent)
+
+        results, stopped = units_module.extract_incremental(
+            compiler,
+            source="doc.md",
+            batches_list=["batch 1", "batch 2", "batch 3"],
+            extraction_system="sys",
+            progress=lambda done, total, activity: reports.append((done, total, activity)),
+        )
 
         assert stopped is False
         assert len(results) == 3

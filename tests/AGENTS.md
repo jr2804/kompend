@@ -61,7 +61,9 @@ They apply here too: no magic crops, no bare `except` to silence a failure.
    ``tests/integration/test_pipeline_mock.py`` for the canonical mock
    pattern and ``tests/integration/test_real_corpus.py`` /
    ``test_arxiv_pipeline.py`` for the only permitted exception: network
-   downloads for preprocessing data (no LLM/VLM/embed calls).
+   downloads for preprocessing data (no LLM/VLM/embed calls). A patch is
+   only a mock if it names something the code still calls — check the
+   seam, because a stale target silently lets the real call through.
 
 5. **No filesystem litter.** Use `tmp_path` fixture for all filesystem
    operations. Never write to the real project tree. The suite enforces this
