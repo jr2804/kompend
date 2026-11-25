@@ -215,7 +215,7 @@ merging and an optional iterative WiCER refinement loop.
   deterministic path; when the budget is spent the segment is a recorded
   hole and the run continues degraded — the summary names the state and the
   hole count, and the lint gap analysis names the holes
-  (`decision_unjudged_segments`). Only a segment whose *request died* still
+  (`decision_unjudged_segments`). Only a segment whose _request died_ still
   fails the compile. A quota-dead sidecar fails over to
   `compile.llm.fallback_chain` first; a config error does not.
 - **A bar line carries counters, not labels** — `extraction_detail`

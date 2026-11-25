@@ -1,0 +1,8 @@
+# Prompt text is not documentation.
+#
+# The spike's prompts are sent to the model verbatim (string.Template
+# substitution, no rendering layer), so a documentation heading would change
+# the measured prompt -- and the recorded run in tools/spike_traversal/result.json
+# was made with these exact texts. The shipped task statement keeps its
+# heading because it is a copy of a documentation-shaped template.
+tools/spike_traversal/prompts/
