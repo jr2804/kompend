@@ -115,13 +115,21 @@ persistence, and standalone ingestion.
   aggregates eligible nodes across trees and offsets each summarizer callback;
   the CLI reports completed/total nodes plus measured sessions/min, so one
   large document cannot pin a per-document bar for hours.
-- **The traversal tree budget is carried by the pipeline adapter.**
-  `_TraversalPlannerAdapter` (`stages/factory.py`) spends
+- **The traversal tree budget is carried by the pipeline adapter.**  `_TraversalPlannerAdapter` (`stages/factory.py`) spends
   `compile.budget.summary_traversal_max_nodes` across the levels of one
   walk (per-tree remaining, reset at depth 1) and trims the excess to SKIP
   entries with reason `"budget"` (SUMMARIZE-first, trailing-first). The
   `summarizer_plan` cache key includes the level depth — levels of one
   tree must never share an entry (knox-s2l1).
+- **A figure the relevance gate could not judge is counted, not warned per
+  figure** (`attachments.py`): the gate fails open — the figure is kept and
+  reads as informative downstream — but each unjudged figure records one
+  `degraded` / `decision_fallback` ledger row, so the run report states how
+  many figures went in unjudged instead of a hardcoded number. The
+  per-figure line is a debug: the run's breaker already warned once for the
+  whole outage ("Model 'X' is dead for the rest of this run"), and a warning
+  per figure would put the hundreds back (run 594a0c4d: 394 attachments in
+  unfiltered, nothing at the default level said so).
 - A failed parse leaves a repro bundle, not just a ledger row.
   `failure_bundle.write_failure_bundle` — called from `ingest_documents`, both
   `_parse_source` failure branches, and the chunk stage's splitter failure in
