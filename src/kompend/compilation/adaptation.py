@@ -18,14 +18,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, Final
+from typing import Any
 
 from kompend.agents.failure import AgentFailureKind
-
-#: Utilization at or above which a failed request counts as dying at the
-#: window even when the provider's words were not recognized: at 95% the
-#: remaining headroom cannot cover another fetch round plus the answer.
-_WINDOW_PRESSURE_THRESHOLD: Final[float] = 0.95
 
 
 class ShrinkOutcome(StrEnum):
@@ -53,14 +48,27 @@ class AdaptationSignal:
     fetches: int
     context_tokens: int | None
     context_budget: int | None
-    last_error: str
+    answer_tokens: int | None = None  #: measured answer size (model average), if a snapshot exists.
+    answer_reserve: int | None = None  #: reserved answer room the answer must fit (effective window's reserve).
+    last_error: str = ""
 
     @property
-    def window_pressure(self) -> bool:
-        """Whether the last request died at (not merely near) the window."""
+    def input_share(self) -> float | None:
+        """Measured context share (tokens/budget), or ``None`` with no snapshot."""
         if not self.context_tokens or not self.context_budget:
+            return None
+        return self.context_tokens / self.context_budget
+
+    @property
+    def output_pressure(self) -> bool:
+        """Whether the measured answer does not fit its measured reserve.
+
+        Unknown (no snapshot) never counts as pressure: without evidence the
+        policy cannot claim the answer was the ceiling.
+        """
+        if not self.answer_tokens or not self.answer_reserve:
             return False
-        return self.context_tokens >= _WINDOW_PRESSURE_THRESHOLD * self.context_budget
+        return self.answer_tokens >= self.answer_reserve
 
     def describe(self) -> str:
         """Render the compact failure record for the Loop-2 decision model.
@@ -69,11 +77,12 @@ class AdaptationSignal:
         does not fit the window it failed in.
         """
         window = f"{self.context_tokens}/{self.context_budget} tokens" if self.context_tokens is not None and self.context_budget else "no usage snapshot"
+        answer = f"{self.answer_tokens}/{self.answer_reserve} tokens" if self.answer_tokens is not None and self.answer_reserve else "no answer snapshot"
         return (
             f"unit={self.seg_id} kind={self.kind.value} "
             f"adaptations={self.adaptations_used} "
             f"concepts_assigned={self.concepts_assigned} concepts_remaining={self.concepts_remaining} "
-            f"fetches={self.fetches} window={window} last_error={self.last_error}"
+            f"fetches={self.fetches} window={window} answer={answer} last_error={self.last_error}"
         )
 
 
@@ -85,12 +94,14 @@ class Adaptation:
     reason: str
 
 
-def plan_adaptation(signal: AdaptationSignal, *, max_adaptations: int) -> Adaptation:
+def plan_adaptation(signal: AdaptationSignal, *, max_adaptations: int, pressure_ratio: float) -> Adaptation:
     """Decide whether *signal* earns another, smaller attempt.
 
     Overflow is arithmetic, not judgment: a provider rejection, or a failure
-    whose utilization snapshot shows the window was the ceiling, re-runs as
-    two halves. Anything else (transport, genuine schema problems, an answer
+    whose measured utilization shows the window was the ceiling, re-runs as
+    two halves. *pressure_ratio* is the pipeline's own sizing ratio
+    (``compile.llm.request_utilization``) — the line lives in config, not in
+    a constant. Anything else (transport, genuine schema problems, an answer
     that arrived under no pressure) keeps today's path.
     """
     if signal.adaptations_used >= max_adaptations:
@@ -100,8 +111,10 @@ def plan_adaptation(signal: AdaptationSignal, *, max_adaptations: int) -> Adapta
         )
     if signal.kind is AgentFailureKind.TRANSIENT:
         return Adaptation(split=False, reason=f"{signal.seg_id}: transport failure is worth repeating unchanged")
+    share = signal.input_share
+    pressured = (share is not None and share >= pressure_ratio) or signal.output_pressure
     if signal.kind is AgentFailureKind.CONTEXT_OVERFLOW or (
-        signal.kind in (AgentFailureKind.SCHEMA_MISMATCH, AgentFailureKind.OTHER, AgentFailureKind.EMPTY_ANSWER) and signal.window_pressure
+        signal.kind in (AgentFailureKind.SCHEMA_MISMATCH, AgentFailureKind.OTHER, AgentFailureKind.EMPTY_ANSWER) and pressured
     ):
         return Adaptation(
             split=True,

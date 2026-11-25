@@ -314,6 +314,20 @@ def print_compile_summary(wiki: CompiledWiki) -> None:
         wc = meta.get("wicer_llm_calls")
         if wc:
             parts.append(f"+{wc} probe/eval call(s)")
+        if meta.get("wicer_evaluation_unavailable"):
+            unevaluated = meta_int(meta.get("wicer_probes_unevaluated"))
+            parts.append(f"evaluation unavailable ({unevaluated} probe(s) unevaluated, no recompile)")
+
+    decision_state = meta.get("decision_model_state")
+    if decision_state in ("answered", "not_configured", "unavailable"):
+        # The compile summary names the sidecar's contribution instead of
+        # committing to "the model decided" or silently falling back: a
+        # reader can tell a clean deterministic run (not configured) from
+        # an outage (unavailable). The figure-gate count is not printed here:
+        # unjudged figures are counted by the parse-stage ledger under
+        # DECISION_FALLBACK and rendered by the run report, so the summary
+        # must not print a number it does not know.
+        parts.append(f"decision model {decision_state}")
 
     get_console().print(f"Compiled: {', '.join(parts)}")
 
@@ -325,6 +339,14 @@ def print_compile_summary(wiki: CompiledWiki) -> None:
             f"{concepts} concept(s) were extracted but could not be synthesized. "
             f"Check LLM backend and re-run."
         )
+
+    if decision_state == "unavailable":
+        degraded = meta_int(meta.get("decision_degraded_segments"))
+        if degraded:
+            get_err_console().print(
+                f"Warning: decision model unavailable — {degraded} segment(s) kept the deterministic path. "
+                f"Check the decision backend and re-run for full adaptation."
+            )
 
 
 def run_overview_synthesis(

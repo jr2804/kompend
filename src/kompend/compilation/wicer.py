@@ -15,22 +15,24 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import StrEnum
 from itertools import count
 from typing import Any, Final
 
 from kompend.agents.deps import WicerDiagnoseDeps, WicerEvaluateDeps, WicerProbeDeps
+from kompend.agents.failure import classify_agent_failure
 from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.graph import GraphCompiler
-from kompend.compilation.two_phase import tokens_to_chars
+from kompend.compilation.two_phase import chars_to_tokens, tokens_to_chars
 from kompend.core.config import ContextManagerPreset
 from kompend.core.models import ChunkTree, CompiledWiki, MetadataField, ResolvedChunk, WikiField
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.llm.context_window import ContextWindow, answer_reserve_tokens, discover_context_window
-from kompend.llm.format import encode_payload
-from kompend.llm.request_budget import RequestBudget
-from kompend.llm.throughput import timeout_for
+from kompend.llm.format import encode_for_llm, encode_payload
+from kompend.llm.request_budget import RequestBudget, calibrated_density_for
+from kompend.llm.throughput import Throughput, fits_within, timeout_for
 from kompend.llm.usage import UsageTracker
 from kompend.logging import get_logger
 
@@ -62,6 +64,19 @@ _WICER_PASS_HEADROOM: Final[float] = 1.5
 
 
 logger = get_logger(__name__)
+
+
+class WicerEvalStatus(StrEnum):
+    """Whether an evaluation pass produced judgements or nothing at all.
+
+    Unevaluated and wrong must never share a value: the loop recompiles on
+    wrong and stops on unevaluated. A bare ``correct: False`` default said
+    the former when it meant the latter, and the loop recompiled the corpus
+    with no evaluation behind it.
+    """
+
+    EVALUATED = "evaluated"
+    UNAVAILABLE = "unavailable"
 
 
 @dataclass(frozen=True)
@@ -98,6 +113,23 @@ class WicerPassBudget:
             f"+ blind {self.blind_s:.1f}s recompile -> derived {self.pass_cap_s:.0f}s, "
             f"configured cap {self.configured_s:.0f}s, effective {self.effective_s:.0f}s"
         )
+
+
+@dataclass(frozen=True)
+class EvalOutcome:
+    """What one evaluation pass produced.
+
+    ``results`` holds only probes that were actually judged — a probe no
+    judge call covered is absent, never marked wrong. ``unevaluated`` counts
+    those absent probes so the summary can name them.
+    """
+
+    results: list[dict]
+    status: WicerEvalStatus
+    unevaluated: int = 0
+    #: Judge failures by classified kind (``AgentFailureKind.value`` counts),
+    #: so the next such log answers what failed instead of only that it failed.
+    failure_kinds: dict[str, int] = field(default_factory=dict)
 
 
 class WiCERCompiler(BaseCompiler):
@@ -150,6 +182,10 @@ class WiCERCompiler(BaseCompiler):
         # records into it, so the done line reports the provider's numbers
         # instead of a sum of per-agent counters.
         self._usage_tracker = UsageTracker(throughput_window_tokens=config.llm.throughput_window_tokens)
+        # Measured answer size per judged probe, learned from this run's own
+        # eval calls (completion-token delta per probe sent). Sizes the
+        # judge's probe batches; ``None`` until an eval call succeeds.
+        self._eval_answer_per_probe: float | None = None
 
         # Input batch sizes adapt to the model's discovered context window.
         # The room left for the answer comes from the window itself
@@ -255,6 +291,8 @@ class WiCERCompiler(BaseCompiler):
             "wicer_refinements": 0,
             "wicer_probes_generated": 0,
             "wicer_probes_passed": 0,
+            "wicer_probes_unevaluated": 0,
+            "wicer_evaluation_unavailable": False,
             "wicer_pinned_facts": len(cumulative_pinned),
             "wicer_pass_cap_s": 0.0,
             "wicer_pass_derived_s": 0.0,
@@ -292,10 +330,33 @@ class WiCERCompiler(BaseCompiler):
             iteration_info["wicer_probes_generated"] += len(probes)
 
             self._report(num_sources, num_sources, f"iter {label} — evaluating {len(probes)} probes")
-            eval_results = self._evaluate(wiki, probes)
+            eval_outcome = self._evaluate(wiki, probes)
+            eval_results = eval_outcome.results
             failures = [r for r in eval_results if not r.get("correct", False)]
             passed = len(eval_results) - len(failures)
             iteration_info["wicer_probes_passed"] += passed
+            if eval_outcome.unevaluated:
+                iteration_info["wicer_probes_unevaluated"] += eval_outcome.unevaluated
+                logger.warning(
+                    "WiCER: iter %s — %d of %d probe(s) unevaluated (judge failures by kind: %s)",
+                    label,
+                    eval_outcome.unevaluated,
+                    len(probes),
+                    eval_outcome.failure_kinds or "none recorded",
+                )
+
+            if eval_outcome.status is WicerEvalStatus.UNAVAILABLE:
+                # No diagnose, no recompile: an evaluation that produced
+                # nothing is not evidence that every probe failed. Ending
+                # the pass here is what keeps a dead judge from triggering
+                # a blind recompile of the corpus.
+                logger.warning(
+                    "WiCER: iter %s — evaluation unavailable, ending the pass with no diagnose and no recompile",
+                    label,
+                )
+                iteration_info["wicer_evaluation_unavailable"] = True
+                iteration_info["wicer_iterations"] = attempt
+                break
 
             if not failures:
                 logger.info(
@@ -550,58 +611,161 @@ class WiCERCompiler(BaseCompiler):
             return []
         return [wiki_text[seg_start : seg_start + self._eval_input_chars] for seg_start in range(0, len(wiki_text), self._eval_input_chars)]
 
-    def _evaluate(self, wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
+    def _evaluate(self, wiki: CompiledWiki, probes: list[dict]) -> EvalOutcome:
         """Step B: evaluate wiki against probes using LLM-as-judge.
 
         Wiki content is processed in segments of ``self._eval_input_chars`` chars
         so the full wiki is checked, not just the first few kilobytes.
         A probe is marked correct if it passes in ANY segment.
+
+        Returns an :class:`EvalOutcome`: probes no judge call covered are
+        absent from ``results`` (never marked wrong), and the status is
+        ``UNAVAILABLE`` when nothing was judged at all.
         """
         segments = self._eval_segments(wiki)
         if not segments:
-            return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
+            return EvalOutcome(results=[], status=WicerEvalStatus.UNAVAILABLE, unevaluated=len(probes))
 
         if not self._has_llm:
-            logger.debug("WiCER has no LLM client — skipping evaluation")
-            return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
+            logger.debug("WiCER: no LLM client — skipping evaluation")
+            return EvalOutcome(results=[], status=WicerEvalStatus.UNAVAILABLE, unevaluated=len(probes))
 
         # Track probe correctness across segments — a probe passing in any
         # segment is considered passed.
         probe_results: dict[int, dict] = {}
+        failure_kinds: dict[str, int] = {}
 
         for segment in segments:
-            try:
-                agent = WicerEvaluateAgent(
-                    model_string=self._config.llm.default_model or "",
-                    skills=self._config.skills,
-                    usage_tracker=self._usage_tracker,
-                    timeout=self._config.llm.request_ceiling_s,
-                    reasoning_effort=self._config.llm.reasoning_effort,
-                    context_manager=self._config.llm.context_manager,
-                    context_window=self._context_window.max_input if self._context_window else None,
-                    llm=self._config.llm,
-                )
-                output = agent.run(
-                    WicerEvaluateDeps(
-                        wiki_text=segment,
-                        probes_json=encode_payload(probes, self._config.llm.data_format),
-                        source_id="wicer-eval",
-                    )
-                )
-                for i, r in enumerate(output.results):
-                    if i >= len(probes):
-                        break
-                    rd = r.model_dump()
-                    if rd.get("correct", False) or i not in probe_results:
-                        probe_results[i] = rd
-            except Exception as exc:
-                logger.warning("WiCER: evaluation failed: %s", exc, exc_info=True)
+            for batch in self._eval_probe_batches(segment, probes):
+                for probe_index, judged in self._judge_batch(segment, batch, failure_kinds).items():
+                    if judged.get("correct", False) or probe_index not in probe_results:
+                        probe_results[probe_index] = judged
 
-        if probe_results:
-            return [probe_results.get(i, {"question": p.get("question", ""), "correct": False}) for i, p in enumerate(probes)]
+        evaluated = [probe_results[index] for index in sorted(probe_results)]
+        unevaluated = len(probes) - len(probe_results)
+        if evaluated:
+            if unevaluated:
+                logger.warning(
+                    "WiCER: evaluation partly unavailable — %d of %d probe(s) judged",
+                    len(evaluated),
+                    len(probes),
+                )
+            return EvalOutcome(
+                results=evaluated,
+                status=WicerEvalStatus.EVALUATED,
+                unevaluated=unevaluated,
+                failure_kinds=failure_kinds,
+            )
 
-        logger.warning("WiCER: evaluation returned no results — marking all probes as unevaluated")
-        return [{"question": p.get("question", ""), "correct": False} for p in probes]
+        logger.warning("WiCER: evaluation returned no results — no probe was judged")
+        return EvalOutcome(
+            results=[],
+            status=WicerEvalStatus.UNAVAILABLE,
+            unevaluated=len(probes),
+            failure_kinds=failure_kinds,
+        )
+
+    def _eval_probe_batches(self, segment: str, probes: list[dict]) -> list[list[tuple[int, dict]]]:
+        """Split probes into judge requests sized from the measured answer throughput.
+
+        The answer grows with the probe count (one verdict per probe), so a
+        batch is the largest leading run whose prompt plus expected answer
+        still finishes inside the ceiling with slack (:func:`fits_within`).
+        The per-verdict size is this run's own measured eval answer per
+        judged probe, else the probes' own priced size — a verdict restates
+        its probe's question and answer plus a quote, so the probe JSON is
+        the measured lower bound of that. The prompt is priced with the
+        calibrated density. No fit yet judges everything in one request:
+        the first calls are how the fit is learned, so they must not be
+        starved by it.
+        """
+        if not probes:
+            return []
+        throughput = self._usage_tracker.throughput()
+        if throughput is None:
+            return [[(index, probe) for index, probe in enumerate(probes)]]
+        fmt = self._config.llm.data_format
+        payloads = [encode_for_llm(probe, fmt) for probe in probes]
+        chars_per_token = calibrated_density_for(self._config.llm, self._usage_tracker, self._config.llm.default_model or "")
+        per_verdict = self._eval_answer_per_probe
+        if per_verdict is None:
+            per_verdict = max(1.0, chars_to_tokens(sum(len(payload) for payload in payloads) // max(1, len(payloads))))
+        ceiling_s = self._config.llm.request_ceiling_s
+        batches: list[list[tuple[int, dict]]] = []
+        start = 0
+        while start < len(probes):
+            end = start + 1
+            while end < len(probes) and self._eval_batch_fits(segment, payloads[start : end + 1], per_verdict, chars_per_token, throughput, ceiling_s):
+                end += 1
+            batches.append([(index, probes[index]) for index in range(start, end)])
+            start = end
+        return batches
+
+    def _judge_batch(self, segment: str, batch: list[tuple[int, dict]], failure_kinds: dict[str, int]) -> dict[int, dict]:
+        """Judge one probe batch; retry once smaller, then leave it unevaluated.
+
+        A failed batch is a size signal as well as a model failure: the
+        retry covers half the probes, so a validation failure on a long
+        structured answer gets a shorter answer to validate. Halves that
+        still fail stay unevaluated — a probe no judge call covered is
+        absent from the outcome, never marked wrong.
+        """
+        judged = self._run_judge(segment, batch, failure_kinds)
+        if judged is not None:
+            return judged
+        if len(batch) <= 1:
+            return {}
+        halfway = max(1, len(batch) // 2)
+        retried: dict[int, dict] = {}
+        for half in (batch[:halfway], batch[halfway:]):
+            half_judged = self._run_judge(segment, half, failure_kinds)
+            if half_judged is not None:
+                retried.update(half_judged)
+        return retried
+
+    def _run_judge(self, segment: str, batch: list[tuple[int, dict]], failure_kinds: dict[str, int]) -> dict[int, dict] | None:
+        """Judge one probe batch, or ``None`` when the judge call failed.
+
+        Records the failure's classified kind (``AgentFailureKind``) so the
+        log names what failed — an empty answer, a schema mismatch, a
+        timeout — instead of only that the budget was spent. A successful
+        call teaches the per-verdict answer size the next batch is sized
+        from, measured off the shared tracker (a fit, not a second counter).
+        """
+        batch_probes = [probe for _, probe in batch]
+        try:
+            agent = WicerEvaluateAgent(
+                model_string=self._config.llm.default_model or "",
+                skills=self._config.skills,
+                usage_tracker=self._usage_tracker,
+                timeout=self._config.llm.request_ceiling_s,
+                reasoning_effort=self._config.llm.reasoning_effort,
+                context_manager=self._config.llm.context_manager,
+                context_window=self._context_window.max_input if self._context_window else None,
+                llm=self._config.llm,
+            )
+            completion_before = self._usage_tracker.completion_tokens
+            output = agent.run(
+                WicerEvaluateDeps(
+                    wiki_text=segment,
+                    probes_json=encode_payload(batch_probes, self._config.llm.data_format),
+                    source_id="wicer-eval",
+                )
+            )
+            answered = self._usage_tracker.completion_tokens - completion_before
+            if batch_probes:
+                self._eval_answer_per_probe = max(1.0, answered / len(batch_probes))
+            judged: dict[int, dict] = {}
+            for offset, result in enumerate(output.results):
+                if offset >= len(batch):
+                    break
+                judged[batch[offset][0]] = result.model_dump()
+            return judged
+        except Exception as exc:
+            kind = classify_agent_failure(exc)
+            failure_kinds[kind.value] = failure_kinds.get(kind.value, 0) + 1
+            logger.warning("WiCER: evaluation of %d probe(s) failed (%s): %s", len(batch), kind.value, exc, exc_info=True)
+            return None
 
     def _diagnose(self, failures: list[dict]) -> list[str]:
         """Step C: extract critical facts from failures using LLM."""
@@ -633,6 +797,21 @@ class WiCERCompiler(BaseCompiler):
         except Exception as exc:
             logger.warning("WiCER: diagnosis failed: %s", exc, exc_info=True)
             return [f.get("expected_answer", "") for f in failures if f.get("expected_answer")]
+
+    @staticmethod
+    def _eval_batch_fits(
+        segment: str,
+        payloads: list[str],
+        per_verdict_tokens: float,
+        chars_per_token: float,
+        throughput: Throughput,
+        ceiling_s: float,
+    ) -> bool:
+        """Whether a judge batch of this size finishes inside the ceiling with slack."""
+        prompt_chars = len(segment) + sum(len(payload) for payload in payloads)
+        prompt_tokens = chars_to_tokens(prompt_chars, chars_per_token=chars_per_token)
+        answer_tokens = int(len(payloads) * per_verdict_tokens)
+        return fits_within(throughput, prompt_tokens, answer_tokens, ceiling_s=ceiling_s)
 
 
 __all__ = ["WiCERCompiler"]

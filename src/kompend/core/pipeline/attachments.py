@@ -169,7 +169,7 @@ def ingest_attachment(
             return None
         doc = _caption_image(att_file, att, vlm_captioner, vlm_model=vlm_model, ledger=ledger, size_bytes=_size_of(att_file))
         if doc is not None and figure_gate is not None:
-            _stamp_figure_verdict(doc, figure_gate)
+            _stamp_figure_verdict(doc, figure_gate, ledger=ledger, source=att.path, size_bytes=_size_of(att_file))
         return doc
 
     # Non-image attachments: any non-binary file is text. The configured backend
@@ -192,19 +192,49 @@ def ingest_attachment(
     return _parse_text(att_file, att, parser, vp.cache_dir, ledger=ledger, size_bytes=_size_of(att_file))
 
 
-def _stamp_figure_verdict(doc: ParsedDocument, gate: FigureRelevanceAgent) -> None:
+def _stamp_figure_verdict(
+    doc: ParsedDocument,
+    gate: FigureRelevanceAgent,
+    *,
+    ledger: StageLedger | None,
+    source: str,
+    size_bytes: int | None = None,
+) -> None:
     """Ask the gate what the captioned figure is worth; stamp the verdict.
 
     A standalone attachment has no surrounding prose, so its caption is the
     whole of the evidence. A failed classification stamps nothing — the
     document then reads as informative downstream, which is the conservative
-    direction (a page is kept rather than silently dropped).
+    direction (a page is kept rather than silently dropped). The failure is
+    still counted: one DEGRADED ledger row under ``DECISION_FALLBACK``, so
+    the run report says how many figures went in unjudged instead of a
+    constant. (A deliberate ``marginal``/decorative verdict is different —
+    the gate ran; only a gate that could not run counts here.)
     """
     caption = next((element_text(el.content) for el in doc.elements if element_text(el.content)), "")
     try:
         verdict = gate.run(FigureRelevanceDeps(context=caption)).verdict
     except Exception as exc:
-        logger.debug("Relevance classification failed for %s: %s", doc.title, exc, exc_info=is_verbose())
+        # Debug, not a warning: the breaker already warned once for the whole
+        # run ("Model 'X' is dead for the rest of this run"), and one warning
+        # per figure would put the hundreds back. The count is the ledger
+        # row below.
+        logger.debug(
+            "Relevance gate unavailable (%s) - keeping figure '%s' without a verdict",
+            exc,
+            doc.title,
+            extra={"reason_code": ReasonCode.DECISION_FALLBACK},
+            exc_info=is_verbose(),
+        )
+        if ledger is not None:
+            ledger.record(
+                source,
+                "attachment",
+                outcome=StageOutcome.DEGRADED,
+                reason_code=ReasonCode.DECISION_FALLBACK,
+                detail=f"relevance gate could not run: {exc}",
+                size_bytes=size_bytes,
+            )
         return
     doc.metadata[MetadataField.FIGURE_VERDICT] = verdict.value
 

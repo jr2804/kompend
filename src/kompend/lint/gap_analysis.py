@@ -12,6 +12,9 @@ Gap signals by rule:
 - ``empty-page``       → pages with no content (source parsing may have failed)
 - ``orphan-page``      → isolated topics (add related sources to build connections)
 - ``contradiction-detection`` → conflicting claims (add authoritative source)
+- ``decision_unjudged_segments`` wiki metadata → segments that spent their
+  pass budget without a decision-model judgment (make the sidecar reachable
+  and re-run; passed explicitly, never scraped from lint results)
 """
 
 from __future__ import annotations
@@ -85,6 +88,7 @@ def analyze_gaps(
     report: LintReport,
     degree_map: dict[str, int] | None = None,
     display: DisplayConfig | None = None,
+    unjudged_segments: list[str] | None = None,
 ) -> list[GapRecommendation]:
     """Extract knowledge-gap recommendations from a typed lint report.
 
@@ -92,6 +96,10 @@ def analyze_gaps(
     ``lint_history.jsonl``, wrapped by :func:`kompend.lint.remediation.remediate`).
     *degree_map* (page id → edge count, from the compiled wiki graph) enables
     coverage-weighted priority for missing topics.
+    *unjudged_segments* names compiled segments that spent their pass budget
+    without a decision-model judgment (from the wiki's
+    ``decision_unjudged_segments`` metadata via :func:`unjudged_from_cached_wiki`);
+    each is a hole the operator must see, not a lint finding.
     """
     results: list[LintResult] = report.results
     recs: list[GapRecommendation] = []
@@ -102,6 +110,7 @@ def analyze_gaps(
     recs.extend(_analyze_empty_pages(results))
     recs.extend(_analyze_orphans(results))
     recs.extend(_analyze_contradictions(results))
+    recs.extend(_analyze_unjudged_segments(unjudged_segments))
 
     priority_order = {GapPriority.HIGH: 0, GapPriority.MEDIUM: 1, GapPriority.LOW: 2}
     recs.sort(key=lambda r: priority_order.get(r.priority, 3))
@@ -129,6 +138,46 @@ def gaps_to_text(recs: list[GapRecommendation]) -> str:
 
 
 # ── Per-rule analyzers ───────────────────────────────────────────────────
+
+
+def unjudged_from_cached_wiki(base_dir: Path) -> list[str]:
+    """Segment labels that spent their budget without a decision judgment.
+
+    Reads the ``decision_unjudged_segments`` wiki metadata from the last
+    compiled-wiki snapshot; empty when no wiki exists or no segment went
+    unjudged. Callers with a vault pass this into :func:`analyze_gaps` so
+    the gap report names the holes instead of just counting them.
+    """
+    wiki = load_cached_wiki(base_dir)
+    if wiki is None:
+        return []
+    metadata = wiki.get("metadata") if isinstance(wiki, dict) else getattr(wiki, "metadata", None)
+    if not isinstance(metadata, dict):
+        return []
+    holes = metadata.get("decision_unjudged_segments", [])
+    return sorted({str(label) for label in holes}) if isinstance(holes, list) else []
+
+
+def _analyze_unjudged_segments(unjudged: list[str] | None) -> list[GapRecommendation]:
+    """Name the segments the decision tier never judged.
+
+    A segment that spent its pass budget unjudged contributes no page for
+    reasons no source edit can fix — the decision model was unreachable.
+    One HIGH recommendation names them all so the operator sees the holes.
+    """
+    if not unjudged:
+        return []
+    names = ", ".join(sorted(set(unjudged)))
+    count = len(set(unjudged))
+    return [
+        GapRecommendation(
+            priority=GapPriority.HIGH,
+            category="Unjudged segment",
+            finding=f"{count} segment(s) spent their pass budget without a decision-model judgment: {names}.",
+            action="Make the decision model reachable and re-run — the step store kept the transcripts, so only the unjudged segments resume.",
+            resolution="missing",
+        )
+    ]
 
 
 def _analyze_broken_wikilinks(

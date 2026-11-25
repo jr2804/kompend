@@ -126,3 +126,23 @@ def _lr(target: str, alias_of: str | None = None, page_id: str = "n1") -> LintRe
         message=f"Broken wikilink [[{target}]]",
         details=details,
     )
+
+
+def test_unjudged_segments_are_named_not_just_counted() -> None:
+    """Unjudged segments are holes the operator must see, not lint findings."""
+    report = LintReport(results=[])
+    recs = analyze_gaps(report, unjudged_segments=["seg_1", "seg_0"])
+    assert len(recs) == 1
+    rec = recs[0]
+    assert rec.priority == GapPriority.HIGH
+    assert rec.category == "Unjudged segment"
+    assert "seg_0" in rec.finding
+    assert "seg_1" in rec.finding
+    assert rec.resolution == "missing"
+
+
+def test_no_unjudged_segments_no_recommendation() -> None:
+    """A clean run adds no unjudged recommendation to the gap report."""
+    report = LintReport(results=[])
+    assert analyze_gaps(report) == []
+    assert analyze_gaps(report, unjudged_segments=[]) == []

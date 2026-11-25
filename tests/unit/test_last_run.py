@@ -138,6 +138,39 @@ def test_to_dict_round_trips_the_record(tmp_path: Path) -> None:
     assert isinstance(data["slowest"], list)
 
 
+def test_decision_outage_is_counted_from_the_run_log(tmp_path: Path) -> None:
+    """Each 'Decision model unavailable' warning is one decision-tier fallback."""
+    _seed(tmp_path, [{"source": "a.md", "stage": "parse", "outcome": StageOutcome.OK}])
+    log_path = VaultPaths(tmp_path).run_log_file("run-1")
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    log_path.write_text(
+        "WARNING Decision model unavailable (boom) - falling back to the deterministic classification\n"
+        "WARNING Decision model unavailable (bam) - falling back to the deterministic path\n",
+        encoding="utf-8",
+    )
+    report = build_last_run_report(tmp_path)
+    counts = {entry.reason: entry for entry in report.degradations}
+    assert counts["decision_fallback"].count == 2
+    assert counts["decision_fallback"].source == "run log"
+    assert "decision_fallback 2 (run log)" in " ".join(render_last_run(report))
+
+
+def test_unjudged_figures_are_counted_from_the_ledger(tmp_path: Path) -> None:
+    """A gate that could not run records one DEGRADED row per unjudged figure."""
+    _seed(
+        tmp_path,
+        [
+            {"source": "fig1.png", "stage": "attachment", "outcome": StageOutcome.DEGRADED, "reason_code": ReasonCode.DECISION_FALLBACK},
+            {"source": "fig2.png", "stage": "attachment", "outcome": StageOutcome.DEGRADED, "reason_code": ReasonCode.DECISION_FALLBACK},
+            {"source": "a.md", "stage": "parse", "outcome": StageOutcome.OK},
+        ],
+    )
+    report = build_last_run_report(tmp_path)
+    counts = {entry.reason: entry for entry in report.degradations}
+    assert counts["decision_fallback"].count == 2
+    assert "decision_fallback 2/2 (ledger)" in " ".join(render_last_run(report))
+
+
 def _seed(tmp_path: Path, rows: list[dict[str, Any]], *, run_id: str = "run-1") -> Path:
     db_path = VaultPaths(tmp_path).kompend_db_file
     ledger = StageLedger.open(db_path)

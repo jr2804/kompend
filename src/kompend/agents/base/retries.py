@@ -7,7 +7,11 @@ fast-fail (``EmptyAnswerError`` raised by
 unmolested — an empty answer must fail fast, a transient one retries;
 do not simplify either half. ``_map_agent_error`` turns everything else
 into the exception type the stage reports, and ``_is_cache_rejection``
-recognises provider schema mismatches that no retry can fix.
+recognises provider schema mismatches that no retry can fix. The run's
+circuit breaker (:mod:`kompend.llm.breaker`) rides the same loop: a quota
+refusal trips the model unconditionally and a run of identical failures
+trips it past one full retry cycle, after which the loop refuses instead
+of sending.
 
 The agent is typed as :class:`~kompend.agents.base.protocols.RetryHost`
 rather than :class:`KompendAgentBase`: ``agent.py`` imports this module,
@@ -32,7 +36,8 @@ from kompend.core.utils.exceptions import (
     LLMOutputError,
     LLMTransientError,
 )
-from kompend.llm.errors import is_transient_error
+from kompend.llm.breaker import BreakerOpenError, breaker_for_tracker
+from kompend.llm.errors import is_quota_refusal, is_transient_error, quota_cause
 from kompend.llm.overflow import is_context_overflow, stated_context_size
 from kompend.llm.throughput import MIN_TIMEOUT_S, timeout_for
 from kompend.llm.usage import UsageTracker
@@ -58,6 +63,95 @@ class _DeadlineHost(Protocol):
     _rlm_usage_limits: UsageLimits | None
 
 
+def invoke_agent(
+    agent: RetryHost,
+    user_prompt: str,
+    deps: DepsT,
+    system_prompt: str,
+    message_history: list[ModelMessage] | None,
+    *,
+    conversation_id: str | None = None,
+    run_id: str | None = None,
+) -> Any:
+    """Run the agent: one transient-retry policy, one cache-rejection retry.
+
+    The retry policy is the *only* place a request is repeated. A stage that
+    needs a different number of tries changes ``compile.llm.transient_retries``
+    instead of growing its own backoff loop.
+
+    A gateway that does not know the provider's cache field answers 400 with
+    the field name in the body; caching is an optimisation, so that failure
+    disables caching for this agent and retries immediately.
+    """
+    if agent._agent is None:
+        agent._agent = agent._build_agent()
+
+    # The run's breaker, if the call is scoped to a run. The check rides at
+    # the top of every attempt (not just the first): a trip mid-loop must
+    # refuse the next send, not sleep into it.
+    breaker = breaker_for_tracker(agent.usage_tracker)
+    model_id = agent.model_string
+    retry_budget = agent._transient_retries()
+    transient_left = retry_budget
+    attempt = 0
+    while True:
+        if breaker is not None:
+            breaker.check(model_id)
+        try:
+            result = agent._agent.run_sync(
+                user_prompt,
+                deps=deps,
+                instructions=system_prompt,
+                message_history=message_history,
+                usage_limits=agent._usage_limits_for(deps),
+                conversation_id=conversation_id,
+                run_id=run_id,
+            )
+            if breaker is not None:
+                breaker.record_success(model_id)
+            return result
+        except Exception as exc:
+            if agent._prompt_cache and _is_cache_rejection(exc):
+                logger.warning(
+                    "Prompt caching rejected by '%s' (%s) - retrying without it; set compile.llm.prompt_cache = false to skip the probe",
+                    agent.model_string,
+                    exc,
+                )
+                agent._prompt_cache = False
+                agent._agent = agent._build_agent()
+                continue
+            if breaker is not None:
+                if is_quota_refusal(exc):
+                    # The allowance is dead for the rest of the run: trip
+                    # the model and fail this call as a refusal, not as a
+                    # transient that would sleep and re-send into the outage.
+                    breaker.trip(model_id, quota_cause(exc), stage=deps.source_id)
+                    raise failure(agent, breaker.refusal(model_id), deps) from exc
+                would_retry = transient_left > 0 and is_transient_error(exc)
+                if breaker.record_failure(model_id, exc, retry_budget) and would_retry:
+                    # The run outlasted a full retry cycle across calls, but
+                    # this call still holds retries: refuse instead of
+                    # burning them against a model that keeps failing
+                    # identically. When no retry is left the loop falls
+                    # through to the existing raise path, so a call that
+                    # spends its whole budget fails exactly as before.
+                    raise failure(agent, breaker.refusal(model_id), deps) from exc
+            if transient_left <= 0 or not is_transient_error(exc):
+                raise
+            attempt += 1
+            transient_left -= 1
+            delay = agent._transient_backoff() * 2 ** (attempt - 1)
+            logger.warning(
+                "Transient failure from '%s' (attempt %d, %d retry/retries left, waiting %.1fs): %s",
+                agent.model_string,
+                attempt,
+                transient_left,
+                delay,
+                exc,
+            )
+            time.sleep(delay)
+
+
 def failure(agent: RetryHost, exc: Exception, deps: DepsT) -> LLMOutputError:
     """Log a failed run once and return the exception the stage must see.
 
@@ -74,6 +168,19 @@ def failure(agent: RetryHost, exc: Exception, deps: DepsT) -> LLMOutputError:
     """
     debug_hint = f" (debug: {agent._last_debug_file})" if agent._last_debug_file else ""
     ctx_info = _context_usage_str(agent.usage_tracker)
+    if isinstance(exc, BreakerOpenError):
+        # A refusal is the breaker's verdict, not a new failure: the trip
+        # already logged the one WARNING naming model, cause and stage, so
+        # every refused call after it is debug — otherwise one dead model
+        # floods the log with hundreds of identical warnings.
+        logger.debug(
+            "Agent '%s' refused on '%s': %s%s",
+            type(agent).__name__,
+            deps.source_id,
+            exc,
+            ctx_info,
+        )
+        return _map_agent_error(exc, model_string=agent.model_string, debug_hint=debug_hint)
     if classify_agent_failure(exc) is AgentFailureKind.REQUEST_BUDGET:
         logger.info(
             "Agent '%s' spent its request budget on '%s': %s%s",
@@ -115,6 +222,10 @@ def _map_agent_error(exc: Exception, *, model_string: str, debug_hint: str) -> L
       before the output-retry budget is spent) stays an empty answer: the
       stage and the classifier both need to see *why* the unit has no
       result, not a generic "agent failed";
+    - a breaker refusal (:class:`BreakerOpenError <kompend.llm.breaker.BreakerOpenError>`,
+      raised instead of sending to a quota-dead model) passes through
+      untouched: it is already the exception the stage must see, and mapping
+      it again would lose the trip cause;
     - a context-window overflow becomes :class:`LLMContextOverflowError`
       carrying the limit the provider named, so the stage can lower the
       effective window and re-plan instead of failing the run;
@@ -122,6 +233,8 @@ def _map_agent_error(exc: Exception, *, model_string: str, debug_hint: str) -> L
     - everything else becomes :class:`LLMOutputError`.
     """
     message = f"Agent failed for model '{model_string}': {exc}{debug_hint}"
+    if isinstance(exc, BreakerOpenError):
+        return exc
     if isinstance(exc, EmptyAnswerError):
         return EmptyAnswerError(message)
     if is_context_overflow(exc):
@@ -129,68 +242,6 @@ def _map_agent_error(exc: Exception, *, model_string: str, debug_hint: str) -> L
     if is_transient_error(exc):
         return LLMTransientError(message)
     return LLMOutputError(message)
-
-
-def invoke_agent(
-    agent: RetryHost,
-    user_prompt: str,
-    deps: DepsT,
-    system_prompt: str,
-    message_history: list[ModelMessage] | None,
-    *,
-    conversation_id: str | None = None,
-    run_id: str | None = None,
-) -> Any:
-    """Run the agent: one transient-retry policy, one cache-rejection retry.
-
-    The retry policy is the *only* place a request is repeated. A stage that
-    needs a different number of tries changes ``compile.llm.transient_retries``
-    instead of growing its own backoff loop.
-
-    A gateway that does not know the provider's cache field answers 400 with
-    the field name in the body; caching is an optimisation, so that failure
-    disables caching for this agent and retries immediately.
-    """
-    if agent._agent is None:
-        agent._agent = agent._build_agent()
-
-    transient_left = agent._transient_retries()
-    attempt = 0
-    while True:
-        try:
-            return agent._agent.run_sync(
-                user_prompt,
-                deps=deps,
-                instructions=system_prompt,
-                message_history=message_history,
-                usage_limits=agent._usage_limits_for(deps),
-                conversation_id=conversation_id,
-                run_id=run_id,
-            )
-        except Exception as exc:
-            if agent._prompt_cache and _is_cache_rejection(exc):
-                logger.warning(
-                    "Prompt caching rejected by '%s' (%s) - retrying without it; set compile.llm.prompt_cache = false to skip the probe",
-                    agent.model_string,
-                    exc,
-                )
-                agent._prompt_cache = False
-                agent._agent = agent._build_agent()
-                continue
-            if transient_left <= 0 or not is_transient_error(exc):
-                raise
-            attempt += 1
-            transient_left -= 1
-            delay = agent._transient_backoff() * 2 ** (attempt - 1)
-            logger.warning(
-                "Transient failure from '%s' (attempt %d, %d retry/retries left, waiting %.1fs): %s",
-                agent.model_string,
-                attempt,
-                transient_left,
-                delay,
-                exc,
-            )
-            time.sleep(delay)
 
 
 def _is_cache_rejection(exc: BaseException) -> bool:

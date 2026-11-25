@@ -11,6 +11,11 @@ message matching: a gateway that words a 400 as "timed out" is still a client
 error, and a 504 is still a server-side timeout. When a caller needs a judgement
 beyond "was this transport or semantics", it asks the optional decision model
 (see :mod:`kompend.llm.decision`).
+
+The one exception is :func:`is_quota_refusal`: a quota death and a
+per-minute throttle share the 429 status, so telling "do not send again
+this run" from "retry in a minute" needs the body's quota vocabulary.
+That matcher lives here, next to the status walk, and nowhere else.
 """
 
 from __future__ import annotations
@@ -31,6 +36,27 @@ TRANSIENT_STATUS_CODES: Final[frozenset[int]] = frozenset({408, 409, 425, 429, 5
 _MAX_CAUSE_DEPTH: Final[int] = 5
 
 
+#: The status that carries quota refusals. A quota death surfaces as 429
+#: (the rate-limit family); nothing else trips a model unconditionally.
+_QUOTA_STATUS: Final[int] = 429
+
+#: Lowercase body markers that name a quota/allowance death rather than a
+#: per-minute throttle. Deliberately narrower than "rate limit": a throttle
+#: clears in seconds and stays retryable, while these name a balance that
+#: will not restore inside the run.
+QUOTA_BODY_MARKERS: Final[frozenset[str]] = frozenset(
+    {
+        "quota",
+        "usage limit",
+        "usage credit",
+        "out of credit",
+        "out of credits",
+        "billing",
+        "spend limit",
+    }
+)
+
+
 def is_transient_error(exc: BaseException) -> bool:
     """True when *exc* — or one of its causes — is a retryable failure.
 
@@ -45,19 +71,14 @@ def is_transient_error(exc: BaseException) -> bool:
         ``True`` for transport failures and retryable status codes, ``False``
         for validation, schema and request errors.
     """
+    # A breaker refusal is a local verdict, not a provider signal: it must
+    # never read as transient even when raised inside a transient handler,
+    # whose ``__context__`` would otherwise classify transient and re-drive
+    # the dead model. The refusal carries the marker as a class attribute so
+    # this module stays type-and-status-only (no import of the breaker).
+    if getattr(exc, "_kompend_breaker_open", False):
+        return False
     return any(_transient_cause(cause) for cause in _cause_chain(exc))
-
-
-def _cause_chain(exc: BaseException) -> Iterator[BaseException]:
-    """Yield *exc* and up to ``_MAX_CAUSE_DEPTH`` causes, without looping."""
-    seen: set[int] = set()
-    current: BaseException | None = exc
-    depth = 0
-    while current is not None and depth <= _MAX_CAUSE_DEPTH and id(current) not in seen:
-        seen.add(id(current))
-        yield current
-        current = current.__cause__ or current.__context__
-        depth += 1
 
 
 def _transient_cause(exc: BaseException) -> bool:
@@ -77,3 +98,54 @@ def _transient_cause(exc: BaseException) -> bool:
     # the HTTP status as an attribute; treat it like a ModelHTTPError.
     status = getattr(exc, "status_code", None)
     return isinstance(status, int) and status in TRANSIENT_STATUS_CODES
+
+
+def is_quota_refusal(exc: BaseException) -> bool:
+    """True when the chain shows a 429 whose body names a quota death.
+
+    Both halves must hold: the status proves the provider refused for
+    load/allowance reasons, and the marker proves the refusal is the
+    allowance (which will not restore this run) rather than a per-minute
+    throttle (which will). A plain 429 — "too many requests", "slow
+    down" — stays transient and keeps retrying.
+    """
+    chain = list(_cause_chain(exc))
+    if not any(_link_status(link) == _QUOTA_STATUS for link in chain):
+        return False
+    text = " ".join(str(link) for link in chain).lower()
+    return any(marker in text for marker in QUOTA_BODY_MARKERS)
+
+
+def quota_cause(exc: BaseException) -> str:
+    """Short operator-facing cause for a refusal :func:`is_quota_refusal` found.
+
+    Names the matched quota marker (or the bare status when the body is
+    empty) so the trip warning says what died, not just that something did.
+    """
+    text = " ".join(str(link) for link in _cause_chain(exc)).lower()
+    markers = sorted(m for m in QUOTA_BODY_MARKERS if m in text)
+    if markers:
+        named = ", ".join(repr(m) for m in markers)
+        return f"quota refusal (429, body names {named})"
+    return "quota refusal (429)"
+
+
+def _cause_chain(exc: BaseException) -> Iterator[BaseException]:
+    """Yield *exc* and up to ``_MAX_CAUSE_DEPTH`` causes, without looping."""
+    seen: set[int] = set()
+    current: BaseException | None = exc
+    depth = 0
+    while current is not None and depth <= _MAX_CAUSE_DEPTH and id(current) not in seen:
+        seen.add(id(current))
+        yield current
+        current = current.__cause__ or current.__context__
+        depth += 1
+
+
+def _link_status(exc: BaseException) -> int | None:
+    """The HTTP status a chain link carries, if any."""
+    if isinstance(exc, ModelAPIError):
+        status = getattr(exc, "status_code", None)
+        return status if isinstance(status, int) else None
+    status = getattr(exc, "status_code", None)
+    return status if isinstance(status, int) else None

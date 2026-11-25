@@ -11,12 +11,28 @@ through a hardcoded provider.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
 from pydantic import BaseModel, Field
 
 from kompend.core.config._configs import DecisionConfig
+
+
+class DecisionState(StrEnum):
+    """How the decision sidecar contributed to one judgement call.
+
+    Three states, because "no verdict" is ambiguous: a caller that cannot
+    tell "not configured" from "configured but dead" cannot tell a clean
+    run from an outage either. ``ANSWERED`` carries a verdict; the other
+    two carry no verdict and different remedies (keep the deterministic
+    path vs degrade the run and say so).
+    """
+
+    ANSWERED = "answered"
+    NOT_CONFIGURED = "not_configured"
+    UNAVAILABLE = "unavailable"
 
 
 class ErrorAction(StrEnum):
@@ -57,6 +73,22 @@ class QueryIntentVerdict(StrEnum):
     GRATITUDE = "gratitude"
     HELP = "help"
     OFFTOPIC = "offtopic"
+
+
+@dataclass(frozen=True)
+class ErrorActionOutcome:
+    """What the decision model said about a failed call, and whether it spoke."""
+
+    state: DecisionState
+    action: ErrorAction | None = None  #: set only when ``state`` is ANSWERED.
+
+
+@dataclass(frozen=True)
+class UnitAdaptationOutcome:
+    """What the decision model said about a declined unit, and whether it spoke."""
+
+    state: DecisionState
+    decision: ErrorDecision | None = None  #: set only when ``state`` is ANSWERED.
 
 
 class ErrorDecision(BaseModel):

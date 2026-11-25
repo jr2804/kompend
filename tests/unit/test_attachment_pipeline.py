@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -269,6 +270,44 @@ def test_ingest_unsupported_type(vault: VaultPaths) -> None:
 
     result = ingest_attachment(vault, att, mock_parser)
     assert result is None
+
+
+def test_failing_figure_gate_keeps_the_figure_and_counts_it(vault: VaultPaths, caplog: pytest.LogCaptureFixture) -> None:
+    """A gate that could not run keeps the figure and records one ledger row."""
+    att = Attachment(path="r/photo.jpg", source="r", ingestible=True)
+    att_dir = vault.attachments_dir / "r"
+    att_dir.mkdir(parents=True)
+    (att_dir / "photo.jpg").write_bytes(b"\xff\xd8\xff\xe0")
+
+    mock_parser = MagicMock()
+    mock_captioner = MagicMock()
+    mock_captioner.run.return_value = "A landscape photo."
+    gate = MagicMock()
+    gate.run.side_effect = RuntimeError("boom")
+    ledger = StageLedger.open(vault_db_path(vault.base_dir / CACHE_DIR))
+    try:
+        with caplog.at_level("DEBUG"):
+            result = ingest_attachment(vault, att, mock_parser, vlm_captioner=mock_captioner, figure_gate=gate, ledger=ledger)
+    finally:
+        ledger.close()
+    # Fail-open: the figure is kept, with no verdict stamped.
+    assert result is not None
+    assert MetadataField.FIGURE_VERDICT not in result.metadata
+    # Debug, not a warning: the outage is one warning for the whole run (the
+    # breaker names it), and a warning per figure would put the hundreds back.
+    assert "Relevance gate unavailable" in caplog.text
+    assert not [record for record in caplog.records if record.levelname == "WARNING" and "Relevance gate unavailable" in record.getMessage()]
+    # Exactly one DEGRADED row under DECISION_FALLBACK — the run report
+    # counts these instead of a hardcoded gate-skip number.
+    conn = sqlite3.connect(vault_db_path(vault.base_dir / CACHE_DIR))
+    try:
+        rows = conn.execute(
+            "SELECT outcome, reason_code FROM stages WHERE source = ? AND reason_code = 'decision_fallback'",
+            ("r/photo.jpg",),
+        ).fetchall()
+    finally:
+        conn.close()
+    assert rows == [("degraded", "decision_fallback")]
 
 
 def test_ingest_unknown_text_extension(vault: VaultPaths) -> None:

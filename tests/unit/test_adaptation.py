@@ -31,7 +31,7 @@ from kompend.compilation.two_phase import TwoPhaseCompiler
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.pipeline.orchestrator import PipelineConfig
 from kompend.core.utils.exceptions import LLMContextOverflowError, LLMOutputError
-from kompend.llm.decision import ErrorAction, ErrorDecision
+from kompend.llm.decision import DecisionState, ErrorAction, ErrorDecision, UnitAdaptationOutcome
 from tests.conftest import make_tmp_vault
 
 CONCEPTS = [
@@ -42,26 +42,39 @@ CONCEPTS = [
 ]
 
 
-class TestWindowPressure:
+class TestSignalEvidence:
     @pytest.mark.parametrize(
         ("tokens", "budget", "expected"),
         [
-            (None, None, False),
-            (None, 128000, False),
-            (138319, None, False),
-            (0, 128000, False),
-            (121599, 128000, False),  # just under the line
-            (121601, 128000, True),
-            (138319, 128000, True),
+            (None, None, None),
+            (None, 128000, None),
+            (138319, None, None),
+            (0, 128000, None),  # no snapshot is not a share
+            (121599, 128000, 121599 / 128000),
+            (138319, 128000, 138319 / 128000),
         ],
     )
-    def test_pressure_needs_a_snapshot_at_the_line(self, tokens: int | None, budget: int | None, expected: bool) -> None:
-        assert _signal(AgentFailureKind.OTHER, context_tokens=tokens, context_budget=budget).window_pressure is expected
+    def test_input_share_is_the_measured_ratio(self, tokens: int | None, budget: int | None, expected: float | None) -> None:
+        assert _signal(AgentFailureKind.OTHER, context_tokens=tokens, context_budget=budget).input_share == expected
+
+    @pytest.mark.parametrize(
+        ("answer", "reserve", "expected"),
+        [
+            (None, None, False),
+            (9000, None, False),
+            (None, 8192, False),
+            (8191, 8192, False),  # fits: not pressure
+            (8192, 8192, True),  # exactly at the reserve: no room for the answer
+            (20000, 8192, True),
+        ],
+    )
+    def test_output_pressure_needs_a_measured_overflow(self, answer: int | None, reserve: int | None, expected: bool) -> None:
+        assert _signal(AgentFailureKind.OTHER, answer_tokens=answer, answer_reserve=reserve).output_pressure is expected
 
 
 class TestPlanAdaptation:
     def test_provider_overflow_splits_without_any_snapshot(self) -> None:
-        plan = plan_adaptation(_signal(AgentFailureKind.CONTEXT_OVERFLOW), max_adaptations=2)
+        plan = plan_adaptation(_signal(AgentFailureKind.CONTEXT_OVERFLOW), max_adaptations=2, pressure_ratio=0.9)
         assert plan.split
 
     @pytest.mark.parametrize(
@@ -69,21 +82,21 @@ class TestPlanAdaptation:
         [AgentFailureKind.SCHEMA_MISMATCH, AgentFailureKind.OTHER, AgentFailureKind.EMPTY_ANSWER],
     )
     def test_ambiguous_failure_splits_only_under_pressure(self, kind: AgentFailureKind) -> None:
-        assert not plan_adaptation(_signal(kind), max_adaptations=2).split
+        assert not plan_adaptation(_signal(kind), max_adaptations=2, pressure_ratio=0.9).split
         pressured = _signal(kind, context_tokens=138319, context_budget=128000)
-        assert plan_adaptation(pressured, max_adaptations=2).split
+        assert plan_adaptation(pressured, max_adaptations=2, pressure_ratio=0.9).split
 
     def test_transport_never_splits_even_at_the_window(self) -> None:
         pressured = _signal(AgentFailureKind.TRANSIENT, context_tokens=138319, context_budget=128000)
-        assert not plan_adaptation(pressured, max_adaptations=2).split
+        assert not plan_adaptation(pressured, max_adaptations=2, pressure_ratio=0.9).split
 
     def test_spent_budget_keeps_todays_loud_failure(self) -> None:
         used_up = _signal(AgentFailureKind.CONTEXT_OVERFLOW, adaptations_used=2)
-        plan = plan_adaptation(used_up, max_adaptations=2)
+        plan = plan_adaptation(used_up, max_adaptations=2, pressure_ratio=0.9)
         assert not plan.split
 
     def test_zero_budget_disables_the_shrink(self) -> None:
-        plan = plan_adaptation(_signal(AgentFailureKind.CONTEXT_OVERFLOW), max_adaptations=0)
+        plan = plan_adaptation(_signal(AgentFailureKind.CONTEXT_OVERFLOW), max_adaptations=0, pressure_ratio=0.9)
         assert not plan.split
 
 
@@ -197,7 +210,7 @@ class TestShrinkLoop:
             return agent
 
         with patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", side_effect=_factory):
-            nodes, _, caller_progress = generate_all_pages_agentic(
+            nodes, _, caller_progress, _decision_report = generate_all_pages_agentic(
                 compiler,
                 [dict(c) for c in CONCEPTS],
                 [[("a", "x" * 500)]],
@@ -302,16 +315,24 @@ class TestConsultGate:
             decide.assert_not_called()
 
     def test_no_model_keeps_todays_path(self) -> None:
-        with patch.object(segments_module, "decide_unit_adaptation", return_value=None) as decide:
+        outcome = UnitAdaptationOutcome(state=DecisionState.NOT_CONFIGURED)
+        with patch.object(segments_module, "decide_unit_adaptation", return_value=outcome) as decide:
             signal = _loop2_signal(AgentFailureKind.OTHER)
             assert _consult_loop2(self._compiler(), self._unit(), signal, 2) is None
             decide.assert_called_once()
 
     def test_verdict_passes_through(self) -> None:
         verdict = ErrorDecision(action=ErrorAction.RETRY, shrink=True)
-        with patch.object(segments_module, "decide_unit_adaptation", return_value=verdict):
+        outcome = UnitAdaptationOutcome(state=DecisionState.ANSWERED, decision=verdict)
+        with patch.object(segments_module, "decide_unit_adaptation", return_value=outcome):
             signal = _loop2_signal(AgentFailureKind.OTHER)
             assert _consult_loop2(self._compiler(), self._unit(), signal, 2) is verdict
+
+    def test_unavailable_model_keeps_todays_path(self) -> None:
+        outcome = UnitAdaptationOutcome(state=DecisionState.UNAVAILABLE)
+        with patch.object(segments_module, "decide_unit_adaptation", return_value=outcome):
+            signal = _loop2_signal(AgentFailureKind.OTHER)
+            assert _consult_loop2(self._compiler(), self._unit(), signal, 2) is None
 
     def _compiler(self) -> MagicMock:
         compiler = MagicMock()
@@ -338,7 +359,7 @@ class TestLoop2Shrink:
         assert sorted(calls[1:]) == ["seg_0/sa", "seg_0/sb"]
         assert any("kind=empty_answer" in s and "unit=seg_0" in s for s in seen_signals)
         assert all(("x" * 100) not in s for s in seen_signals)
-        nodes, _, caller_progress = result
+        nodes, _, caller_progress, _decision_report = result
         assert sorted(caller_progress.keys()) == ["seg_0"]
         assert len(nodes) == 4
 
@@ -366,7 +387,7 @@ class TestLoop2Shrink:
         # The tail decides the run outcome: a skipped segment is a recorded
         # hole, not a failure - this run only has the one segment, so the
         # result carries no page while the call itself returns normally.
-        nodes, _, caller_progress = result
+        nodes, _, caller_progress, _decision_report = result
         assert nodes == []
         assert caller_progress == {"seg_0": []}
 
@@ -394,7 +415,7 @@ class TestLoop2Shrink:
     def _run_loop(
         self,
         fail: Callable[[str, list[dict[str, Any]]], None],
-        decide: Callable[[AdaptationSignal], ErrorDecision | None],
+        decide: Callable[[AdaptationSignal], UnitAdaptationOutcome | ErrorDecision | None],
     ) -> Any:
         compiler = self._compiler()
         calls: list[str] = []
@@ -417,9 +438,14 @@ class TestLoop2Shrink:
             agent.run = _run
             return agent
 
-        def _decide(config: object, *, signal: AdaptationSignal, stage: str, max_adaptations: int) -> Any:
+        def _decide(config: object, *, signal: AdaptationSignal, stage: str, max_adaptations: int, **kwargs: object) -> Any:
             seen_signals.append(signal.describe())
-            return decide(signal)
+            outcome = decide(signal)
+            if isinstance(outcome, UnitAdaptationOutcome):
+                return outcome
+            if outcome is None:
+                return UnitAdaptationOutcome(state=DecisionState.NOT_CONFIGURED)
+            return UnitAdaptationOutcome(state=DecisionState.ANSWERED, decision=outcome)
 
         with (
             patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", side_effect=_factory),

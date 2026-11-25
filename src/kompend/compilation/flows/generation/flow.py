@@ -33,6 +33,7 @@ from kompend.compilation.flows.generation.budget import (
 from kompend.compilation.flows.generation.prompt import _categories_block, build_known_titles
 from kompend.compilation.flows.generation.segments import (
     _PASS_CONTINUATION_KINDS,
+    DecisionReport,
     FailureVerdict,
     _CoverageCredit,
     _failure_action,
@@ -77,7 +78,7 @@ from kompend.core.utils.exceptions import (
     LLMOutputError,
     LLMTransientError,
 )
-from kompend.llm.decision import ErrorAction
+from kompend.llm.decision import DecisionState, ErrorAction
 from kompend.llm.request_budget import RequestBudget, calibrated_density_for
 from kompend.logging import LOG_SAMPLE_LIMIT, get_logger
 
@@ -137,7 +138,7 @@ def run_generation(
     clamps = 0
     while True:
         try:
-            nodes, slug_to_idx, _caller_progress = run_generation_resumable(
+            nodes, slug_to_idx, _caller_progress, decision_report = run_generation_resumable(
                 compiler,
                 concepts,
                 source_segments,
@@ -185,7 +186,13 @@ def run_generation(
             )
             raise
 
-    return assemble_wiki(compiler, nodes, slug_to_idx, chunks, extractions, concepts=concepts, pinned_clean=pinned_clean)
+    wiki = assemble_wiki(compiler, nodes, slug_to_idx, chunks, extractions, concepts=concepts, pinned_clean=pinned_clean)
+    if decision_report.engaged:
+        # Provisional decision-tier facts for the compiler's metadata writer:
+        # the tier ran, and these segments spent their budget unjudged.
+        wiki.metadata["decision_unjudged_segments"] = sorted(decision_report.unjudged)
+        wiki.metadata["decision_engaged"] = True
+    return wiki
 
 
 def prepare_concepts(compiler: TwoPhaseRuntime, extractions: ExtractionSet) -> list[dict[str, Any]]:
@@ -280,7 +287,7 @@ def run_generation_resumable(
     known_titles_prompt: list[str] | None = None,
     known_titles_page_chars: int = 0,
     budget: RequestBudget | None = None,
-) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
+) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]], DecisionReport]:
     """Run agentic generation with transcript-level resume.
 
     Every segment agent run is persisted to the step store
@@ -321,7 +328,7 @@ def generate_all_pages_agentic(
     known_titles_page_chars: int = 0,
     budget: RequestBudget | None = None,
     step_store: StepStore | None = None,
-) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
+) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]], DecisionReport]:
     """Run the segment loop, and release the search index on the way out.
 
     The index owns the judge pool — ``JUDGE_CONCURRENCY`` worker threads that
@@ -370,7 +377,7 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
     budget: RequestBudget | None = None,
     step_store: StepStore | None = None,
     source_index: SourceIndex,
-) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
+) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]], DecisionReport]:
     """Generate wiki pages using per-segment agentic tool loop.
 
     Replaces the nested ``for batch × for segment`` loop with per-segment
@@ -524,6 +531,12 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
     # Segments the decision model skipped: they contribute no page, and the
     # run says so once, at the end, instead of leaving a silent hole.
     skipped_segments: list[str] = []
+    # Segments that spent their pass budget without the decision tier ever
+    # answering. They become recorded holes, not run-ending errors.
+    unjudged_segments: list[str] = []
+    # Every FailureVerdict state the run produced: the compiler derives the
+    # decision_model_state wiki metadata from these.
+    decision_states: list[DecisionState] = []
     while pending:
         unit = pending.popleft()
         seg_label, seg_id, segment, seg_prefix, seg_idx, depth = unit
@@ -643,6 +656,10 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
         last_verdict = "none"
         last_kind: AgentFailureKind | None = None
         model_skip = False
+        # Whether the segment's last pass ended without a judgment (the
+        # decision tier was unavailable). The tail turns a spent unjudged
+        # budget into a recorded hole instead of failing the compile.
+        unjudged = False
         seg_start_nodes = len(nodes)
         seg_titles: set[str] = set()  # normalized page titles produced for this segment
         seg_consumed_names: list[str] = list(caller_progress.get(seg_id, []))  # recovered from the transcript store
@@ -714,6 +731,10 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
             last_verdict = "none"
             last_kind = None
             model_skip = False
+            # Whether this pass ended without a judgment (the decision tier
+            # was unavailable). Reset every pass; the tail turns a spent
+            # unjudged budget into a recorded hole instead of failing.
+            unjudged = False
             try:
                 gen_output = agent.run(
                     deps,
@@ -769,6 +790,7 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                     transient=kind is AgentFailureKind.TRANSIENT,
                 )
                 action = verdict.action
+                decision_states.append(verdict.decision_state)
                 record_unit_failure(stage="agentic-generation", unit=seg_id, exc=exc, attempts=passes)
                 if action is ErrorAction.ABORT:
                     raise LLMOutputError(f"Agentic generation aborted for '{seg_id}': {exc}") from exc
@@ -803,6 +825,13 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                     retry_pass = kind in _PASS_CONTINUATION_KINDS
                 else:
                     last_verdict = "retry" if retry_pass else "gave-up"
+                if verdict.decision_state is DecisionState.UNAVAILABLE:
+                    # The tier never answered: spend the remaining passes on
+                    # the deterministic fallback instead of ending here. A
+                    # spent unjudged budget becomes a recorded hole at the tail.
+                    unjudged = True
+                    last_verdict = "unjudged"
+                    retry_pass = passes < cap
             except Exception as exc:  # PydanticAI raises many subclassed errors; treat uniformly
                 kind = classify_agent_failure(exc)
                 last_kind = kind
@@ -848,6 +877,12 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                     retry_pass = kind in _PASS_CONTINUATION_KINDS
                 else:
                     last_verdict = "retry" if retry_pass else "gave-up"
+                decision_states.append(verdict.decision_state)
+                if verdict.decision_state is DecisionState.UNAVAILABLE:
+                    # Same unjudged rule as above: keep spending the budget.
+                    unjudged = True
+                    last_verdict = "unjudged"
+                    retry_pass = passes < cap
             debug_file = getattr(agent, "_last_debug_file", None)
 
             compiler._batch_tracker.record(failed=gen_output is None)
@@ -954,6 +989,22 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
                         debug_hint,
                     )
                     skipped_segments.append(seg_label)
+                elif unjudged:
+                    # The decision tier never answered, so the segment could
+                    # not be judged — but the request itself did not die
+                    # (a dead request raises below). The budget is spent, the
+                    # hole is recorded, and the run continues degraded.
+                    logger.warning(
+                        "TwoPhase: agentic %s (caller_id=%s) spent its %d pass(es) without a decision-model judgment "
+                        "(%s) — the segment contributes no page and the run continues. Uncovered: [%s].%s",
+                        seg_label,
+                        seg_id,
+                        passes,
+                        last_error or "no error text",
+                        sample,
+                        debug_hint,
+                    )
+                    unjudged_segments.append(seg_label)
                 else:
                     # Hard fail: no pages at all. The transcript is already in
                     # the step store, so re-running retries only this segment.
@@ -1013,9 +1064,23 @@ def _generate_pages_agentic(  # noqa: PLR0915 — per-segment loop + recovery; l
             len(skipped_segments),
             ", ".join(skipped_segments),
         )
+    if unjudged_segments:
+        logger.warning(
+            "TwoPhase: %d segment(s) spent their pass budget without a decision-model judgment and contribute no page: %s",
+            len(unjudged_segments),
+            ", ".join(unjudged_segments),
+        )
 
     compiler._report(gen_progress_total, gen_progress_total, "generating complete")
-    return nodes, slug_to_idx, caller_progress
+    return (
+        nodes,
+        slug_to_idx,
+        caller_progress,
+        DecisionReport(
+            engaged=bool(decision_states),
+            unjudged=tuple(unjudged_segments),
+        ),
+    )
 
 
 def _priced_request_tokens(

@@ -284,7 +284,7 @@ class TestRecoveryIngestionGate:
             patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
             caplog.at_level(logging.INFO),
         ):
-            nodes, _, _ = generate_all_pages_agentic(
+            nodes, _, _, _decision_report = generate_all_pages_agentic(
                 compiler,
                 [{"name": "Listening Effort", "kind": "concept"}],
                 [[("a", "x" * 500)]],

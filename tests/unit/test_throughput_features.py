@@ -28,6 +28,7 @@ from kompend.compilation.flows.generation import (
     generate_all_pages_agentic,
     prepare_source_segments,
 )
+from kompend.compilation.flows.generation.segments import DecisionReport
 from kompend.compilation.gen_tools import list_known_titles
 from kompend.compilation.schema import Concept, Entity, GenerationOutput, GenerationPage
 from kompend.compilation.step_recovery import generation_conversation, pass_run_id, segment_run_prefix
@@ -1029,7 +1030,7 @@ class TestAgenticSegmentSizing:
             known_titles_prompt: list[str] | None = None,
             known_titles_page_chars: int = 0,
             budget: object = None,
-        ) -> tuple[list[object], dict[str, int], dict[str, list[str]]]:
+        ) -> tuple[list[object], dict[str, int], dict[str, list[str]], DecisionReport]:
             assert known_titles_prompt is not None
             calls.append((len(known_titles_prompt), len(known_titles or []) == len(known_titles_prompt)))
             if len(calls) == 1:
@@ -1102,11 +1103,11 @@ class TestAgenticSegmentSizing:
             known_titles_prompt: list[str] | None = None,
             known_titles_page_chars: int = 0,
             budget: object = None,
-        ) -> tuple[list[object], dict[str, int], dict[str, list[str]]]:
+        ) -> tuple[list[object], dict[str, int], dict[str, list[str]], DecisionReport]:
             windows.append(compiler._context_window.max_input)
             if limits:
                 raise LLMContextOverflowError("too big", stated_limit=limits.pop(0))
-            return [], {}, {}
+            return [], {}, {}, DecisionReport(engaged=False, unjudged=())
 
         monkeypatch.setattr(gen_module, "prepare_concepts", lambda *_args, **_kwargs: [{"name": "Alpha"}])
         monkeypatch.setattr(gen_module, "run_generation_resumable", fake_generation)
@@ -1123,7 +1124,7 @@ class TestAgenticSegmentSizing:
         compiler._context_window = ContextWindow(max_input=65536, max_output=8192, source=ContextSource.OLLAMA)
         attempts: list[int] = []
 
-        def fake_generation(*_args: object, **_kwargs: object) -> tuple[list[object], dict[str, int], dict[str, list[str]]]:
+        def fake_generation(*_args: object, **_kwargs: object) -> tuple[list[object], dict[str, int], dict[str, list[str]], DecisionReport]:
             attempts.append(compiler._context_window.max_input)
             raise LLMContextOverflowError("too big", stated_limit=8192)
 
@@ -1413,7 +1414,7 @@ class TestStepStoreRecovery:
         def _fail_factory(**_kwargs: object) -> object:
             raise AssertionError("the agent must not run for a recovered segment")
 
-        nodes, slug_to_idx, progress = self._run_generation(compiler, _fail_factory)
+        nodes, slug_to_idx, progress, _decision = self._run_generation(compiler, _fail_factory)
         assert [n.title for n in nodes] == ["Attention"]
         assert "attention" in slug_to_idx
         assert progress == {"seg_0": ["attention"]}
@@ -1424,7 +1425,7 @@ class TestStepStoreRecovery:
         self._seed_finished_run(compiler, pages=[])
         calls: list[dict[str, object]] = []
 
-        nodes, _slug_to_idx, progress = self._run_generation(compiler, self._agent_factory(calls))
+        nodes, _slug_to_idx, progress, _decision = self._run_generation(compiler, self._agent_factory(calls))
         assert len(calls) == 1
         assert [n.title for n in nodes] == ["Attention"]
         assert progress == {"seg_0": ["attention"]}
@@ -1441,7 +1442,7 @@ class TestStepStoreRecovery:
         self._seed_finished_run(compiler, pages=[dict(self.PAGE)])
         calls: list[dict[str, object]] = []
 
-        nodes, _slug_to_idx, _progress = self._run_generation(compiler, self._agent_factory(calls))
+        nodes, _slug_to_idx, _progress, _decision = self._run_generation(compiler, self._agent_factory(calls))
         assert len(calls) == 1
         assert [n.title for n in nodes] == ["Attention"]
 
@@ -1451,7 +1452,7 @@ class TestStepStoreRecovery:
         self._seed_finished_run(compiler, pages=[dict(self.PAGE)], state="interrupted")
         calls: list[dict[str, object]] = []
 
-        nodes, _slug_to_idx, _progress = self._run_generation(compiler, self._agent_factory(calls))
+        nodes, _slug_to_idx, _progress, _decision = self._run_generation(compiler, self._agent_factory(calls))
         assert len(calls) == 1
         # The run continues the interrupted conversation: history is passed,
         # the prompt is the resume template, and the run id advances to
@@ -1488,7 +1489,9 @@ class TestStepStoreRecovery:
         )
         return TwoPhaseCompiler(config=config)
 
-    def _run_generation(self, compiler: TwoPhaseCompiler, factory: Callable[..., object]) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]]]:
+    def _run_generation(
+        self, compiler: TwoPhaseCompiler, factory: Callable[..., object]
+    ) -> tuple[list[WikiNode], dict[str, int], dict[str, list[str]], DecisionReport]:
         with patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", side_effect=factory):
             return generate_all_pages_agentic(
                 compiler,

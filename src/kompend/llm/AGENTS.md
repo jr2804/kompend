@@ -215,29 +215,29 @@ the literal. `kompend doctor` probes each format on the configured model
 
 ## Failure classification and the decision sidecar
 
-`kompend.llm.errors` answers one question about a failed call: **transient or
-semantic?** `is_transient_error(exc)` walks the `raise ... from ...` chain and
+`kompend.llm.errors` answers **transient or semantic?** `is_transient_error`
 matches exception *types* and HTTP *status codes* only (`TRANSIENT_STATUS_CODES`
-= 408/409/425/429/5xx/529; transport matches `httpx` and `httpx2` — the provider
-stack raises `httpx2`, whose classes do not subclass `httpx`'s. No message matching:
-a gateway that words a 400 as "timed out" is still a client error, and a 504 is
-still a server-side timeout. `KompendAgentBase` raises `LLMTransientError`
-(a subclass of `LLMOutputError`) for a transient cause; the rest is unretryable.
+= 408/409/425/429/5xx/529, `httpx`/`httpx2`); `KompendAgentBase` raises
+`LLMTransientError` (an `LLMOutputError`) for a transient cause, the rest is
+unretryable. Sanctioned exception: `is_quota_refusal` — quota death and throttle
+share 429, so the body's quota vocabulary (`QUOTA_BODY_MARKERS`, narrower than
+"rate limit") tells "do not send again this run" from "retry in a minute".
 
-`kompend.llm.decision` holds the vocabulary for the optional **decision model**
-(TypeSafe SystemOne / Jev): `ErrorAction = Literal["retry", "skip", "abort"]`
-and `ErrorDecision` (only `action` — a decision model can fill choices and
-booleans, never free text). `DECISION_RESULT_TYPES` maps every result type
-kompend ships to a decision model to its class, `CandidateVerdict` included; the doctor's offline schema
-check walks it (`../diagnostics/AGENTS.md`). The model is an ordinary agent
-(`kompend.agents.decision.DecisionAgent`) reached through pydantic-ai's
-`typesafe` provider; `decision.enabled/model/timeout` name it, `[providers.*]`
-carries the credentials. Every helper returns `None` when the sidecar is off or
-unreachable, so the deterministic floor holds.
-**The decision endpoint follows the config, not the call order**:
-`build_decision_model` resolves the config itself when nobody has yet, and a
-provider nobody configured raises rather than trusting the SDK default — a
-wrong endpoint is worse than an honest failure; only `typesafe/...` may use it.
+`kompend.llm.breaker` is the per-model circuit breaker: one `ModelBreaker` per
+run, consulted atop every `invoke_agent` attempt (quota trips unconditionally,
+identical failures past one full retry cycle — `transient_retries`, at least a pair,
+refusing with `BreakerOpenError`, never transient, one WARNING on the trip).
+
+`kompend.llm.decision` holds the **decision model** vocabulary (TypeSafe SystemOne /
+Jev): `ErrorAction`, `ErrorDecision` (action only — never free text),
+`DECISION_RESULT_TYPES` (the doctor's offline schema check reads it). The model is an
+ordinary agent on the `typesafe` provider; `decision.enabled/model/timeout` name it,
+`[providers.*]` carries the credentials. `decide_query_intent` returns the verdict or
+`None`; the generation helpers return a three-state outcome (`ANSWERED`, silent
+`NOT_CONFIGURED`, `UNAVAILABLE` = degrade the run and say so). A quota-dead primary
+fails over to `compile.llm.fallback_chain` first (dead-model errors only; config errors
+stay `UNAVAILABLE`). **The endpoint follows the config, not the call order**: an
+unconfigured provider raises rather than trusting the SDK default — only `typesafe/...` may use it.
 
 `build_decision_model` sends decision payloads uncompressed
 (`compression=False`): the SDK zstd-compresses bodies of 1 KiB and more, and

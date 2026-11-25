@@ -312,6 +312,12 @@ class TwoPhaseCompiler(BaseCompiler):
         stored = self._usage_tracker.to_snapshot().model_dump(mode="json")
         wiki.metadata[str(WikiField.LLM_USAGE)] = stored
         wiki.metadata[str(WikiField.LLM_MODEL)] = self._model
+        _write_decision_metadata(
+            wiki,
+            decision_enabled=self._config.decision.enabled,
+            engaged=bool(wiki.metadata.pop("decision_engaged", False)),
+            unjudged=wiki.metadata.pop("decision_unjudged_segments", []),
+        )
         wiki.metadata["compile_duration_s"] = round(time.monotonic() - compile_start, 1)
 
         if self._batch_tracker.should_stop() or self._batch_tracker.failed > 0:
@@ -420,6 +426,40 @@ class TwoPhaseCompiler(BaseCompiler):
     def _batch_texts(texts: list[str], char_budget: int) -> list[str]:
         """Group texts into batches that fit within *char_budget* (chars)."""
         return batch_texts(texts, char_budget)
+
+
+def _write_decision_metadata(
+    wiki: CompiledWiki,
+    *,
+    decision_enabled: bool,
+    engaged: bool,
+    unjudged: object,
+) -> None:
+    """Stamp the decision-tier outcome the summary and lint read.
+
+    The generation flow reports provisional facts (``decision_engaged`` /
+    ``decision_unjudged_segments`` wiki metadata, popped here); this writer
+    owns the canonical keys. ``decision_model_state`` is ``unavailable``
+    when any segment spent its budget unjudged, ``answered`` when the tier
+    ran clean, ``not_configured`` when the sidecar is off — and absent when
+    the sidecar is on but was never needed, so a clean run prints no
+    decision line. ``decision_degraded_segments`` is the hole count;
+    ``decision_unjudged_segments`` names the holes for lint.
+    """
+    holes = sorted({str(label) for label in unjudged}) if isinstance(unjudged, list) else []
+    if holes:
+        state: str | None = "unavailable"
+    elif engaged:
+        state = "answered"
+    elif not decision_enabled:
+        state = "not_configured"
+    else:
+        state = None
+    if state is not None:
+        wiki.metadata["decision_model_state"] = state
+    wiki.metadata["decision_degraded_segments"] = len(holes)
+    if holes:
+        wiki.metadata["decision_unjudged_segments"] = holes
 
 
 # Re-export for backward compatibility.

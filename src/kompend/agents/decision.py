@@ -8,26 +8,33 @@ Usage::
 
     from kompend.agents.decision import decide_error_action
 
-    action = decide_error_action(config.decision, error=..., stage=..., attempt=1, max_attempts=3)
-    # "retry" | "skip" | "abort" | None (no decision model configured)
+    outcome = decide_error_action(config.decision, error=..., stage=..., attempt=1, max_attempts=3)
+    # ErrorActionOutcome: ANSWERED carries .action, NOT_CONFIGURED means the
+    # sidecar is off, UNAVAILABLE means no decision model answered.
 """
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import ClassVar, Final
 
 from kompend.agents.base import AgentSpec, KompendAgentBase
 from kompend.compilation.adaptation import AdaptationSignal
 from kompend.core.config._configs import DecisionConfig
+from kompend.core.utils.exceptions import LLMTransientError
+from kompend.llm.breaker import BreakerOpenError
 from kompend.llm.decision import (
-    ErrorAction,
+    DecisionState,
+    ErrorActionOutcome,
     ErrorDecision,
     FigureRelevanceDecision,
     QueryIntentDecision,
     QueryIntentVerdict,
+    UnitAdaptationOutcome,
     decision_model_string,
 )
+from kompend.llm.errors import is_quota_refusal
 from kompend.llm.models import build_decision_model
 from kompend.logging import get_logger
 
@@ -183,34 +190,57 @@ def decide_error_action(
     attempt: int,
     max_attempts: int,
     context: str = "",
-) -> ErrorAction | None:
+    fallback_models: Sequence[str] | None = None,
+) -> ErrorActionOutcome:
     """Ask the decision model what to do with a failed LLM call.
 
-    Returns the decided action, or ``None`` when no decision model is
-    configured or the call failed - callers then keep their deterministic
-    fallback (see :func:`kompend.llm.errors.is_transient_error`).
+    Returns an :class:`ErrorActionOutcome`: ``ANSWERED`` carries the decided
+    action, ``NOT_CONFIGURED`` means the sidecar is off (the caller keeps
+    its deterministic fallback, exactly as before), and ``UNAVAILABLE``
+    means a decision model is configured but none answered — the caller
+    must degrade the run and say so, not silently fall back.
+
+    A quota-dead primary fails over to the configured fallback chain
+    (``compile.llm.fallback_chain`` — typically a local model) before the
+    call is declared unavailable.
     """
     model_string = decision_model_string(config)
     if model_string is None or config is None:
-        return None
+        return ErrorActionOutcome(state=DecisionState.NOT_CONFIGURED)
 
-    agent = DecisionAgent(model_string=model_string, timeout=config.timeout, retries=0)
-    try:
-        decision = agent.run(
-            DecisionDeps(
-                stage=stage,
-                error=error,
-                attempt=attempt,
-                max_attempts=max_attempts,
-                context=context,
-                timeout=config.timeout,
+    models = [model_string, *_failover_candidates(model_string, fallback_models)]
+    last_exc: Exception | None = None
+    for position, candidate in enumerate(models):
+        agent = DecisionAgent(model_string=candidate, timeout=config.timeout, retries=0)
+        try:
+            decision = agent.run(
+                DecisionDeps(
+                    stage=stage,
+                    error=error,
+                    attempt=attempt,
+                    max_attempts=max_attempts,
+                    context=context,
+                    timeout=config.timeout,
+                )
             )
-        )
-    except Exception as exc:  # ponytail: a sidecar failure must never break the pipeline
-        logger.warning("Decision model unavailable (%s) - falling back to the deterministic classification", exc)
-        return None
-    logger.info("Decision model: %s for %s after attempt %d/%d", decision.action, stage, attempt, max_attempts)
-    return decision.action
+        except Exception as exc:  # ponytail: a sidecar failure must never break the pipeline
+            last_exc = exc
+            if _is_dead_model_error(exc) and position + 1 < len(models):
+                logger.warning(
+                    "Decision model '%s' is dead (%s) - failing over to '%s'",
+                    candidate,
+                    exc,
+                    models[position + 1],
+                )
+                continue
+            logger.warning("Decision model unavailable (%s) - falling back to the deterministic classification", exc)
+            return ErrorActionOutcome(state=DecisionState.UNAVAILABLE)
+        if position > 0:
+            logger.info("Decision model failed over to '%s'", candidate)
+        logger.info("Decision model: %s for %s after attempt %d/%d", decision.action, stage, attempt, max_attempts)
+        return ErrorActionOutcome(state=DecisionState.ANSWERED, action=decision.action)
+    logger.warning("Decision model unavailable (%s) - falling back to the deterministic classification", last_exc)
+    return ErrorActionOutcome(state=DecisionState.UNAVAILABLE)
 
 
 def decide_unit_adaptation(
@@ -219,32 +249,79 @@ def decide_unit_adaptation(
     signal: AdaptationSignal,
     stage: str,
     max_adaptations: int,
-) -> ErrorDecision | None:
+    fallback_models: Sequence[str] | None = None,
+) -> UnitAdaptationOutcome:
     """Ask the decision model whether a declined unit deserves one more split.
 
-    Returns the model's verdict, or ``None`` when no decision model is
-    configured or the call failed - the caller then keeps its deterministic
-    path. Consumes only the compact failure record, never request content.
+    Returns a :class:`UnitAdaptationOutcome`: ``ANSWERED`` carries the
+    model's verdict, ``NOT_CONFIGURED`` means the sidecar is off, and
+    ``UNAVAILABLE`` means a decision model is configured but none answered.
+    Consumes only the compact failure record, never request content. A
+    quota-dead primary fails over to the configured fallback chain before
+    the call is declared unavailable.
     """
     model_string = decision_model_string(config)
     if model_string is None or config is None:
-        return None
+        return UnitAdaptationOutcome(state=DecisionState.NOT_CONFIGURED)
 
-    agent = AdaptationAgent(model_string=model_string, timeout=config.timeout, retries=0)
-    try:
-        return agent.run(
-            DecisionDeps(
-                stage=stage,
-                error=signal.last_error,
-                attempt=signal.adaptations_used + 1,
-                max_attempts=max_adaptations,
-                context=signal.describe(),
-                timeout=config.timeout,
+    models = [model_string, *_failover_candidates(model_string, fallback_models)]
+    last_exc: Exception | None = None
+    for position, candidate in enumerate(models):
+        agent = AdaptationAgent(model_string=candidate, timeout=config.timeout, retries=0)
+        try:
+            decision = agent.run(
+                DecisionDeps(
+                    stage=stage,
+                    error=signal.last_error,
+                    attempt=signal.adaptations_used + 1,
+                    max_attempts=max_adaptations,
+                    context=signal.describe(),
+                    timeout=config.timeout,
+                )
             )
-        )
-    except Exception as exc:  # ponytail: a sidecar failure must never break the pipeline
-        logger.warning("Decision model unavailable (%s) - falling back to the deterministic path", exc)
-        return None
+        except Exception as exc:  # ponytail: a sidecar failure must never break the pipeline
+            last_exc = exc
+            if _is_dead_model_error(exc) and position + 1 < len(models):
+                logger.warning(
+                    "Decision model '%s' is dead (%s) - failing over to '%s'",
+                    candidate,
+                    exc,
+                    models[position + 1],
+                )
+                continue
+            logger.warning("Decision model unavailable (%s) - falling back to the deterministic path", exc)
+            return UnitAdaptationOutcome(state=DecisionState.UNAVAILABLE)
+        if position > 0:
+            logger.info("Decision model failed over to '%s'", candidate)
+        return UnitAdaptationOutcome(state=DecisionState.ANSWERED, decision=decision)
+    logger.warning("Decision model unavailable (%s) - falling back to the deterministic path", last_exc)
+    return UnitAdaptationOutcome(state=DecisionState.UNAVAILABLE)
+
+
+def _failover_candidates(primary: str, fallback_models: Sequence[str] | None) -> list[str]:
+    """Fallback-chain entries worth asking after the primary decision model died.
+
+    The primary is skipped (asking it again would refuse instantly) and
+    empties are dropped; order is the operator's chain order.
+    """
+    if not fallback_models:
+        return []
+    return [model for model in fallback_models if model and model != primary]
+
+
+def _is_dead_model_error(exc: BaseException) -> bool:
+    """Whether *exc* means the model is dead rather than the question bad.
+
+    Quota/breaker refusals and an exhausted transient budget say the model
+    cannot answer right now, so a fallback chain entry may still answer. A
+    config error (bad model string, unknown provider) or a model error says
+    the question or the configuration is wrong — failing over would mask it.
+    """
+    if isinstance(exc, BreakerOpenError):
+        return True
+    if isinstance(exc, LLMTransientError):
+        return True
+    return is_quota_refusal(exc)
 
 
 SPEC_FIGURE_RELEVANCE: Final[AgentSpec] = AgentSpec(

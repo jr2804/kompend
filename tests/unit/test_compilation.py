@@ -13,6 +13,7 @@ from pydantic_ai.models.test import TestModel
 
 from kompend.agents.base import models as agent_models
 from kompend.agents.wicer import WicerDiagnoseAgent, WicerEvaluateAgent, WicerProbeAgent
+from kompend.cli.workflow.post_compile import print_compile_summary
 from kompend.compilation import GraphCompiler, WiCERCompiler
 from kompend.compilation.base import BaseCompiler
 from kompend.compilation.schema import (
@@ -32,8 +33,10 @@ from kompend.compilation.two_phase import (
     merge_node,
     slugify,
 )
+from kompend.compilation.two_phase.compiler import _write_decision_metadata
 from kompend.compilation.two_phase.core import _SLUG_MAX_LENGTH
 from kompend.compilation.two_phase.state import _FAILURE_THRESHOLD_MIN
+from kompend.compilation.wicer import EvalOutcome, WicerEvalStatus
 from kompend.core.config import EmbeddingConfig, LLMConfig
 from kompend.core.models import Chunk, ChunkTree, CompiledWiki, ElementType, MetadataField, ResolvedChunk, WikiNode
 from kompend.core.models.enums import NodeType
@@ -1100,10 +1103,11 @@ class TestWiCERCompilerWithMock:
                 metadata={"chunk_count": 1},
             )
 
-        def hung_evaluate(wiki: CompiledWiki, probes: list[dict]) -> list[dict]:
+        def hung_evaluate(wiki: CompiledWiki, probes: list[dict]) -> EvalOutcome:
             del wiki
             clock["t"] = 10_000.0  # the eval batch hangs: the pass budget is spent
-            return [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
+            judged = [{"question": p.get("question", ""), "expected_answer": p.get("answer", ""), "found_answer": "", "correct": False} for p in probes]
+            return EvalOutcome(results=judged, status=WicerEvalStatus.EVALUATED, unevaluated=0)
 
         monkeypatch.setattr(compiler, "_blind_compile", fast_blind_compile)
         monkeypatch.setattr(compiler, "_evaluate", hung_evaluate)
@@ -1186,6 +1190,197 @@ class TestWiCERCompilerWithMock:
             result.json_data = None
             result.content = json.dumps(payload)
         return result
+
+
+class TestWicerEvalUnavailable:
+    """An evaluation with no results ends the pass: no diagnose, no recompile."""
+
+    def test_judge_failure_twice_means_no_diagnose_no_recompile(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+        """A judge that fails twice produces no diagnose call and no recompile.
+
+        The old code returned ``correct: False`` for every probe, so the
+        loop diagnosed and recompiled (two blind compiles). The new code
+        ends the pass after the first compile and reports unavailable.
+        """
+        compiler = self._unavailable_compiler()
+        blind_calls: list[None] = []
+
+        def fake_blind_compile(
+            chunks: list[ResolvedChunk],
+            *,
+            trees: list[ChunkTree] | None = None,
+            pinned_facts: list[str] | None = None,
+        ) -> CompiledWiki:
+            del chunks, trees, pinned_facts
+            blind_calls.append(None)
+            return CompiledWiki(
+                nodes=[WikiNode(id="n0", title="N", content="X", node_type=NodeType.SECTION)],
+                edges=[],
+                toc=[{"title": "N", "id": "n0", "level": 1}],
+                metadata={"chunk_count": 1},
+            )
+
+        diagnose = MagicMock(return_value=WicerDiagnoseOutput(critical_facts=["a fact"]))
+        monkeypatch.setattr(compiler, "_blind_compile", fake_blind_compile)
+        with (
+            patch.object(WicerProbeAgent, "run", return_value=WicerProbeOutput(probes=[{"question": "Q?", "answer": "A."}])),
+            patch.object(WicerEvaluateAgent, "run", side_effect=LLMOutputError("boom")),
+            patch.object(WicerDiagnoseAgent, "run", diagnose),
+            caplog.at_level("WARNING"),
+        ):
+            wiki = compiler.compile(_make_chunks(count=1, heading="Test"))
+        diagnose.assert_not_called()
+        assert len(blind_calls) == 1
+        assert wiki.metadata["wicer_evaluation_unavailable"] is True
+        assert wiki.metadata["wicer_probes_unevaluated"] == 1
+        assert wiki.metadata["wicer_probes_passed"] == 0
+        assert wiki.metadata["wicer_refinements"] == 0
+        assert "other" in caplog.text
+
+    def test_partly_evaluated_probe_set_counts_only_evaluated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Probes no judge call covered are absent from the outcome, never wrong."""
+        compiler = self._unavailable_compiler()
+        monkeypatch.setattr(compiler, "_eval_probe_batches", lambda segment, probes: [[(0, probes[0])], [(1, probes[1])]])
+        judge = MagicMock(
+            side_effect=[
+                WicerEvaluateOutput(results=[{"question": "Q0?", "expected_answer": "A0.", "found_answer": "A0.", "correct": True}]),
+                LLMOutputError("boom"),
+            ]
+        )
+        diagnose = MagicMock(return_value=WicerDiagnoseOutput(critical_facts=[]))
+        with (
+            patch.object(
+                WicerProbeAgent,
+                "run",
+                return_value=WicerProbeOutput(probes=[{"question": "Q0?", "answer": "A0."}, {"question": "Q1?", "answer": "A1."}]),
+            ),
+            patch.object(WicerEvaluateAgent, "run", judge),
+            patch.object(WicerDiagnoseAgent, "run", diagnose),
+        ):
+            wiki = compiler.compile(_make_chunks(count=1, heading="Test"))
+        assert wiki.metadata["wicer_probes_passed"] == 1
+        assert wiki.metadata["wicer_probes_unevaluated"] == 1
+        assert wiki.metadata["wicer_evaluation_unavailable"] is False
+        assert wiki.metadata["wicer_refinements"] == 0
+        diagnose.assert_not_called()
+
+    def test_failed_batch_is_retried_once_smaller(self) -> None:
+        """A failed judge batch is retried once at half size before giving up."""
+        compiler = self._unavailable_compiler()
+        answered = WicerEvaluateOutput(results=[{"question": "Q?", "expected_answer": "A.", "found_answer": "A.", "correct": True}])
+        judge = MagicMock(side_effect=[LLMOutputError("boom"), answered, answered])
+        with (
+            patch.object(
+                WicerProbeAgent,
+                "run",
+                return_value=WicerProbeOutput(probes=[{"question": "Q0?", "answer": "A0."}, {"question": "Q1?", "answer": "A1."}]),
+            ),
+            patch.object(WicerEvaluateAgent, "run", judge),
+        ):
+            wiki = compiler.compile(_make_chunks(count=1, heading="Test"))
+        assert judge.call_count == 3
+        assert wiki.metadata["wicer_probes_passed"] == 2
+        assert wiki.metadata["wicer_probes_unevaluated"] == 0
+        assert wiki.metadata["wicer_evaluation_unavailable"] is False
+
+    def test_judge_batches_split_under_a_slow_fit(self) -> None:
+        """One verdict per probe: a slow model judges fewer probes per request."""
+        compiler = self._unavailable_compiler()
+        for prompt_tokens, completion_tokens, elapsed_s in ((2000, 100, 80.0), (2000, 400, 290.0), (8000, 100, 110.0)):
+            compiler._usage_tracker.record(prompt_tokens=prompt_tokens, completion_tokens=completion_tokens, model="ollama/test", elapsed_s=elapsed_s)
+        probes = [{"question": f"Q{i}?", "answer": "y" * 2000} for i in range(10)]
+        batches = compiler._eval_probe_batches("short segment", probes)
+        assert len(batches) > 1
+        assert [index for batch in batches for index, _ in batch] == list(range(10))
+
+    def test_no_fit_judges_everything_in_one_request(self) -> None:
+        """Before the tracker holds a fit the judge is not starved by sizing."""
+        compiler = self._unavailable_compiler()
+        probes = [{"question": f"Q{i}?", "answer": "y" * 2000} for i in range(10)]
+        batches = compiler._eval_probe_batches("short segment", probes)
+        assert len(batches) == 1
+        assert [index for index, _ in batches[0]] == list(range(10))
+
+    def test_summary_says_evaluation_unavailable(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """The run summary says the evaluation was unavailable, never N failed."""
+        wiki = CompiledWiki(
+            nodes=[WikiNode(id="n0", title="N", content="X", node_type=NodeType.SECTION)],
+            edges=[],
+            toc=[],
+            metadata={
+                "wicer_iterations": 1,
+                "wicer_refinements": 0,
+                "wicer_evaluation_unavailable": True,
+                "wicer_probes_unevaluated": 3,
+                "compile_duration_s": 5.0,
+            },
+        )
+        print_compile_summary(wiki)
+        out = " ".join(capsys.readouterr().out.split())
+        assert "evaluation unavailable" in out
+        assert "3 probe(s) unevaluated" in out
+        assert "failed" not in out
+
+    def test_summary_names_an_unavailable_decision_model(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """An outage reads as unavailable with a degraded count — never as model verdicts."""
+        print_compile_summary(self._decision_wiki("unavailable", degraded=2))
+        out, err = capsys.readouterr()
+        assert "decision model unavailable" in out
+        assert "2 segment(s) kept the deterministic path" in err
+        assert "failed" not in out
+
+    def test_summary_names_a_quiet_sidecar(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Not configured is a clean deterministic run, not an outage: no warning."""
+        print_compile_summary(self._decision_wiki("not_configured"))
+        out, err = capsys.readouterr()
+        assert "decision model not_configured" in out
+        assert err == ""
+
+    def test_summary_names_an_answering_sidecar(self, capsys: pytest.CaptureFixture[str]) -> None:
+        print_compile_summary(self._decision_wiki("answered"))
+        out, err = capsys.readouterr()
+        assert "decision model answered" in out
+        assert err == ""
+
+    def test_summary_without_sidecar_evidence_says_nothing(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """Runs predating the metadata keys print no decision line at all."""
+        wiki = CompiledWiki(
+            nodes=[WikiNode(id="n0", title="N", content="X", node_type=NodeType.SECTION)],
+            edges=[],
+            toc=[],
+            metadata={},
+        )
+        print_compile_summary(wiki)
+        out = capsys.readouterr().out
+        assert "decision model" not in out
+        assert "figures skipped" not in out
+
+    @staticmethod
+    def _decision_wiki(state: str, degraded: int = 0) -> CompiledWiki:
+        return CompiledWiki(
+            nodes=[WikiNode(id="n0", title="N", content="X", node_type=NodeType.SECTION)],
+            edges=[],
+            toc=[],
+            metadata={
+                "decision_model_state": state,
+                "decision_degraded_segments": degraded,
+            },
+        )
+
+    @staticmethod
+    def _unavailable_compiler() -> WiCERCompiler:
+        """A loop-ready compiler with an explicit window (no discovery)."""
+        config = PipelineConfig(
+            source_dir=make_tmp_vault(),
+            output_dir=make_tmp_vault(),
+            llm=LLMConfig(default_model="ollama/test", vlm_model="vlm"),
+            embedding=EmbeddingConfig(model="model"),
+        )
+        config.budget.wicer_max_iterations = 1
+        config.budget.min_content_length = 0
+        compiler = WiCERCompiler(config=config, context_window=_make_test_cw())
+        compiler._has_llm = True
+        return compiler
 
 
 class TestWiCERUsageAccounting:
@@ -1608,6 +1803,46 @@ class TestSlugifyLengthCap:
         b = slugify(base + " beta ending")
         # Same prefix, different long titles → different hash suffixes
         assert a != b
+
+
+class TestDecisionMetadataWriter:
+    """The compiler owns the canonical decision-tier metadata keys.
+
+    The flow reports provisional facts; the writer turns them into the
+    ``decision_model_state`` / ``decision_degraded_segments`` contract the
+    summary and the run report read.
+    """
+
+    def test_holes_mean_unavailable(self) -> None:
+        wiki = self._wiki()
+        _write_decision_metadata(wiki, decision_enabled=True, engaged=True, unjudged=["seg_1", "seg_0"])
+        assert wiki.metadata["decision_model_state"] == "unavailable"
+        assert wiki.metadata["decision_degraded_segments"] == 2
+        assert wiki.metadata["decision_unjudged_segments"] == ["seg_0", "seg_1"]
+
+    def test_clean_engagement_means_answered(self) -> None:
+        wiki = self._wiki()
+        _write_decision_metadata(wiki, decision_enabled=True, engaged=True, unjudged=[])
+        assert wiki.metadata["decision_model_state"] == "answered"
+        assert wiki.metadata["decision_degraded_segments"] == 0
+        assert "decision_unjudged_segments" not in wiki.metadata
+
+    def test_disabled_sidecar_means_not_configured(self) -> None:
+        wiki = self._wiki()
+        _write_decision_metadata(wiki, decision_enabled=False, engaged=False, unjudged=[])
+        assert wiki.metadata["decision_model_state"] == "not_configured"
+        assert wiki.metadata["decision_degraded_segments"] == 0
+
+    def test_enabled_but_idle_writes_no_state(self) -> None:
+        """A run that never needed the tier prints no decision line."""
+        wiki = self._wiki()
+        _write_decision_metadata(wiki, decision_enabled=True, engaged=False, unjudged=[])
+        assert "decision_model_state" not in wiki.metadata
+        assert wiki.metadata["decision_degraded_segments"] == 0
+
+    @staticmethod
+    def _wiki() -> CompiledWiki:
+        return CompiledWiki(nodes=[], edges=[], toc=[], metadata={})
 
 
 # ===========================================================================

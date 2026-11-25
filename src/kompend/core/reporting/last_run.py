@@ -34,6 +34,10 @@ from kompend.core.types import ReasonCode, StageOutcome
 _LOG_DEGRADATION_PHRASES: Final[dict[ReasonCode, str]] = {
     ReasonCode.EMBEDDING_MERGE_DISABLED: "Embedding merge disabled",
     ReasonCode.JUDGE_DEGRADED: "falling back to the deterministic rule table",
+    # Each sidecar call that finds its primary dead warns this line (the
+    # fallback-chain attempt warns its own line first); the count is the
+    # run's decision-tier outage in warnings.
+    ReasonCode.DECISION_FALLBACK: "Decision model unavailable",
 }
 #: Rows shown as the overall slowest list.
 _SLOWEST_LIMIT: Final[int] = 5

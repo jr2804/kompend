@@ -6,6 +6,7 @@ failed unit shrinks; the pass loop in :mod:`.flow` consumes these units.
 
 from __future__ import annotations
 
+import dataclasses
 from collections import defaultdict, deque
 from typing import Final, NamedTuple
 
@@ -19,7 +20,7 @@ from kompend.core.models.enums import ExtractionField
 from kompend.core.paths import safe_stem
 from kompend.core.text.matching import best_match, cosine
 from kompend.core.utils.exceptions import LLMOutputError
-from kompend.llm.decision import ErrorAction, ErrorDecision
+from kompend.llm.decision import DecisionState, ErrorAction, ErrorDecision
 from kompend.llm.request_budget import RequestBudget, calibrated_density_for
 from kompend.logging import get_logger
 from kompend.rag.embedding_pydantic import make_provider
@@ -50,6 +51,21 @@ _COVER_SEMANTIC_THRESHOLD = 0.65
 _AMBIGUOUS_KINDS: Final[frozenset[AgentFailureKind]] = frozenset({AgentFailureKind.SCHEMA_MISMATCH, AgentFailureKind.OTHER, AgentFailureKind.EMPTY_ANSWER})
 
 logger = get_logger(__name__)
+
+
+@dataclasses.dataclass(frozen=True)
+class DecisionReport:
+    """What the decision tier did across one generation run.
+
+    ``engaged`` is True when any failed pass consulted the tier (or found
+    it off); ``unjudged`` names the segment labels that spent their pass
+    budget without ever receiving a judgment. The compiler turns this into
+    the ``decision_model_state`` / ``decision_degraded_segments`` wiki
+    metadata; the tuple return keeps the wiki assembly untouched.
+    """
+
+    engaged: bool
+    unjudged: tuple[str, ...]
 
 
 class _CoverageCredit:
@@ -116,6 +132,7 @@ class FailureVerdict(NamedTuple):
 
     action: ErrorAction
     from_model: bool
+    decision_state: DecisionState = DecisionState.NOT_CONFIGURED  #: default: flow-internal fallback constructions ask no model.
 
 
 class _SegmentUnit(NamedTuple):
@@ -251,10 +268,12 @@ def _shrink_and_requeue(
         fetches=len(broker.consumed(unit.seg_id)),
         context_tokens=tracker.context_tokens or None,
         context_budget=tracker.context_budget or None,
+        answer_tokens=tracker.average_completion_tokens(compiler._model) or None,
+        answer_reserve=compiler._context_window.answer_reserve,
         last_error=err,
     )
     reason = ""
-    plan = plan_adaptation(signal, max_adaptations=max_splits)
+    plan = plan_adaptation(signal, max_adaptations=max_splits, pressure_ratio=compiler._config.llm.request_utilization)
     if plan.split:
         reason = plan.reason
     else:
@@ -313,12 +332,14 @@ def _consult_loop2(
     """
     if signal.kind not in _AMBIGUOUS_KINDS or signal.adaptations_used >= max_splits:
         return None
-    return decide_unit_adaptation(
+    outcome = decide_unit_adaptation(
         compiler._config.decision,
         signal=signal,
         stage=f"agentic-generation:{unit.seg_id}",
         max_adaptations=max_splits,
+        fallback_models=compiler._config.llm.fallback_chain,
     )
+    return outcome.decision if outcome.state is DecisionState.ANSWERED else None
 
 
 def _format_uncovered_concepts(
@@ -380,7 +401,12 @@ def _failure_action(
         attempt=attempt,
         max_attempts=max_attempts,
         context=f"model={compiler._model or '?'}",
+        fallback_models=compiler._config.llm.fallback_chain,
     )
-    if decided is not None:
-        return FailureVerdict(action=decided, from_model=True)
-    return FailureVerdict(action=ErrorAction.RETRY if transient else ErrorAction.SKIP, from_model=False)
+    if decided.state is DecisionState.ANSWERED and decided.action is not None:
+        return FailureVerdict(action=decided.action, from_model=True, decision_state=decided.state)
+    return FailureVerdict(
+        action=ErrorAction.RETRY if transient else ErrorAction.SKIP,
+        from_model=False,
+        decision_state=decided.state,
+    )

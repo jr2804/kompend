@@ -31,6 +31,7 @@ from kompend.compilation.flows.generation import flow as gen_flow
 from kompend.compilation.flows.generation import prepare_concepts
 from kompend.compilation.flows.generation.budget import _token_estimate
 from kompend.compilation.flows.generation.flow import generate_all_pages_agentic
+from kompend.compilation.flows.generation.segments import _failure_action
 from kompend.compilation.schema import (
     Concept,
     Entity,
@@ -44,7 +45,7 @@ from kompend.core.models import Chunk, ElementType, ResolvedChunk, WikiNode
 from kompend.core.pipeline.config import PipelineConfig
 from kompend.core.utils.exceptions import LLMOutputError
 from kompend.llm.context_window import ContextSource, ContextWindow
-from kompend.llm.decision import ErrorAction, ErrorDecision
+from kompend.llm.decision import DecisionState, ErrorAction, ErrorActionOutcome, ErrorDecision, UnitAdaptationOutcome
 from kompend.llm.request_budget import RequestBudget
 from tests.conftest import make_tmp_vault
 
@@ -142,10 +143,16 @@ class TestModelSkipVerdict:
         with (
             patch.object(compiler, "extract", return_value=_extraction_set()),
             patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
-            patch("kompend.compilation.flows.generation.segments.decide_error_action", return_value=ErrorAction.RETRY),
+            patch(
+                "kompend.compilation.flows.generation.segments.decide_error_action",
+                return_value=ErrorActionOutcome(state=DecisionState.ANSWERED, action=ErrorAction.RETRY),
+            ),
             patch(
                 "kompend.compilation.flows.generation.segments.decide_unit_adaptation",
-                return_value=ErrorDecision(action=ErrorAction.SKIP, shrink=False),
+                return_value=UnitAdaptationOutcome(
+                    state=DecisionState.ANSWERED,
+                    decision=ErrorDecision(action=ErrorAction.SKIP, shrink=False),
+                ),
             ),
         ):
             wiki = compiler.compile(_chunks())
@@ -170,10 +177,16 @@ class TestModelSkipVerdict:
                 "kompend.compilation.flows.generation.flow.prepare_source_segments",
                 return_value=[[("first.pdf", "first")], [("second.pdf", "second")]],
             ),
-            patch("kompend.compilation.flows.generation.segments.decide_error_action", return_value=ErrorAction.RETRY),
+            patch(
+                "kompend.compilation.flows.generation.segments.decide_error_action",
+                return_value=ErrorActionOutcome(state=DecisionState.ANSWERED, action=ErrorAction.RETRY),
+            ),
             patch(
                 "kompend.compilation.flows.generation.segments.decide_unit_adaptation",
-                return_value=ErrorDecision(action=ErrorAction.SKIP, shrink=False),
+                return_value=UnitAdaptationOutcome(
+                    state=DecisionState.ANSWERED,
+                    decision=ErrorDecision(action=ErrorAction.SKIP, shrink=False),
+                ),
             ),
             caplog.at_level(logging.WARNING),
         ):
@@ -193,10 +206,16 @@ class TestModelSkipVerdict:
         with (
             patch.object(compiler, "extract", return_value=_extraction_set()),
             patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
-            patch("kompend.compilation.flows.generation.segments.decide_error_action", return_value=ErrorAction.RETRY),
+            patch(
+                "kompend.compilation.flows.generation.segments.decide_error_action",
+                return_value=ErrorActionOutcome(state=DecisionState.ANSWERED, action=ErrorAction.RETRY),
+            ),
             patch(
                 "kompend.compilation.flows.generation.segments.decide_unit_adaptation",
-                return_value=ErrorDecision(action=ErrorAction.SKIP, shrink=False),
+                return_value=UnitAdaptationOutcome(
+                    state=DecisionState.ANSWERED,
+                    decision=ErrorDecision(action=ErrorAction.SKIP, shrink=False),
+                ),
             ),
             pytest.raises(LLMOutputError, match=r"Generation failed: 0 of"),
         ):
@@ -384,6 +403,100 @@ class TestResumedHistoryPricing:
         assert agent.run.call_count == 0
 
 
+class TestFailureActionDecisionState:
+    """The verdict carries whether the decision model spoke.
+
+    The flow tail needs the difference between "the model said retry" and
+    "nobody answered, so the fallback retries": only the second degrades
+    the run.
+    """
+
+    def test_no_sidecar_marks_the_verdict_not_configured(self) -> None:
+        verdict = _failure_action(self._compiler(), ValueError("bad"), stage="s", attempt=1, max_attempts=3, transient=False)
+        assert verdict.action is ErrorAction.SKIP
+        assert verdict.from_model is False
+        assert verdict.decision_state is DecisionState.NOT_CONFIGURED
+
+    def test_unavailable_sidecar_rides_on_the_verdict(self) -> None:
+        outcome = ErrorActionOutcome(state=DecisionState.UNAVAILABLE)
+        with patch("kompend.compilation.flows.generation.segments.decide_error_action", return_value=outcome):
+            verdict = _failure_action(self._compiler(), ValueError("bad"), stage="s", attempt=1, max_attempts=3, transient=True)
+        assert verdict.action is ErrorAction.RETRY
+        assert verdict.from_model is False
+        assert verdict.decision_state is DecisionState.UNAVAILABLE
+
+    def test_answered_verdict_marks_the_model(self) -> None:
+        outcome = ErrorActionOutcome(state=DecisionState.ANSWERED, action=ErrorAction.RETRY)
+        with patch("kompend.compilation.flows.generation.segments.decide_error_action", return_value=outcome):
+            verdict = _failure_action(self._compiler(), ValueError("bad"), stage="s", attempt=1, max_attempts=3, transient=True)
+        assert verdict.action is ErrorAction.RETRY
+        assert verdict.from_model is True
+        assert verdict.decision_state is DecisionState.ANSWERED
+
+    def _compiler(self) -> MagicMock:
+        compiler = MagicMock()
+        compiler._config.decision = None
+        compiler._config.llm.fallback_chain = []
+        compiler._model = "test/model"
+        return compiler
+
+
+class TestUnjudgedDecisionTier:
+    """A dead decision tier degrades the run instead of failing it.
+
+    When every pass ends without a judgment (the tier never answered) and
+    the budget is spent, the segment becomes a recorded hole: the run does
+    not raise, and the segment is named. A request that dies on its own
+    (no unjudged verdict anywhere) still fails loudly.
+    """
+
+    def test_unjudged_budget_becomes_a_hole_not_an_error(self, caplog: pytest.LogCaptureFixture) -> None:
+        compiler = _compiler()
+        agent = MagicMock()
+        agent.run.side_effect = TimeoutError("boom")
+        with (
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
+            patch(
+                "kompend.compilation.flows.generation.segments.decide_error_action",
+                return_value=ErrorActionOutcome(state=DecisionState.UNAVAILABLE),
+            ),
+            caplog.at_level(logging.INFO),
+        ):
+            nodes, _slugs, _progress, report = generate_all_pages_agentic(
+                compiler,
+                [{"name": "Listening Effort", "kind": "concept", "definition": "d"}],
+                [[("a", "x" * 500)]],
+                [],
+                pinned_facts=[],
+                known_titles=[],
+            )
+        assert nodes == []
+        assert report.engaged is True
+        assert report.unjudged == ("segment 1/1",)
+        assert "without a decision-model judgment" in caplog.text
+        assert "segment 1/1" in caplog.text
+
+    def test_answered_give_up_still_fails_loudly(self) -> None:
+        """The model spoke and the budget is spent: no hole, an error."""
+        compiler = _compiler()
+        agent = MagicMock()
+        agent.run.side_effect = TimeoutError("boom")
+        outcome = ErrorActionOutcome(state=DecisionState.ANSWERED, action=ErrorAction.SKIP)
+        with (
+            patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent),
+            patch("kompend.compilation.flows.generation.segments.decide_error_action", return_value=outcome),
+            pytest.raises(LLMOutputError, match=r"produced no page\(s\)"),
+        ):
+            generate_all_pages_agentic(
+                compiler,
+                [{"name": "Listening Effort", "kind": "concept", "definition": "d"}],
+                [[("a", "x" * 500)]],
+                [],
+                pinned_facts=[],
+                known_titles=[],
+            )
+
+
 def _run_over_thread_segment(
     tmp_path: Path,
     segments: list[list[tuple[str, str]]],
@@ -392,7 +505,7 @@ def _run_over_thread_segment(
     compiler, store, budget = _over_thread_setup(tmp_path)
     agent = _answering_agent()
     with patch("kompend.compilation.flows.generation.flow.make_agentic_generation_agent", return_value=agent):
-        nodes, _slug_to_idx, _progress = generate_all_pages_agentic(
+        nodes, _slug_to_idx, _progress, _decision_report = generate_all_pages_agentic(
             compiler,
             [{"name": "attention", "kind": "concept", "importance": "high", "definition": "def"}],
             segments,
