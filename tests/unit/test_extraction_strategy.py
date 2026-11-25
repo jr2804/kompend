@@ -11,6 +11,7 @@ Tests verify:
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -279,6 +280,196 @@ class TestExtractIncrementalHistoryCompaction:
         assert results[0] == cached_ext
         synth_mock.assert_called_once_with(results[0])
         compact_mock.assert_called_once()
+
+    def test_a_cache_miss_threads_the_digest_not_the_raw_prompt(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The 45k source text of batch 1 must not ride into batch 2.
+
+        The stub deliberately returns a huge raw new_messages pair, as the
+        real agent does. Old code threaded it verbatim; the digest path keeps
+        only the extraction summary.
+        """
+        compiler = _make_compiler()
+        compiler._config.no_cache = True
+        seen: list[list[ModelMessage] | None] = []
+        raw_prompt = "UNIQUE_BATCH_ONE_PAYLOAD" + "r" * 20_000
+
+        class _StubAgent:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def run_with_messages(
+                self,
+                deps: object,
+                message_history: list[ModelMessage] | None = None,
+            ) -> tuple[ExtractionOutput, list[ModelMessage]]:
+                seen.append(message_history)
+                text = str(getattr(deps, "text", ""))
+                output = ExtractionOutput(summary=f"summary of {text[:12]}", entities=[], concepts=[], tags=[])
+                # The raw turn is what caused the run-away thread.
+                raw = [
+                    ModelRequest(parts=[UserPromptPart(content=text)]),
+                    ModelResponse(parts=[TextPart(content="raw answer" + "a" * 20_000)]),
+                ]
+                return output, raw
+
+        monkeypatch.setattr(units_module, "ExtractionAgent", _StubAgent)
+        results, stopped = units_module.extract_incremental(
+            compiler,
+            source="doc.md",
+            batches_list=[raw_prompt, "batch two unique text"],
+            extraction_system="sys",
+        )
+
+        assert stopped is False
+        assert len(results) == 2
+        assert seen[0] is None
+        assert seen[1] is not None
+        threaded = "\n".join(str(getattr(part, "content", "")) for msg in seen[1] for part in msg.parts)
+        assert raw_prompt not in threaded
+        assert "summary of UNIQUE_BAT" in threaded
+        assert all(isinstance(msg, ModelResponse) for msg in seen[1])
+
+    def test_cache_hit_and_cache_miss_build_the_same_thread(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """A cached batch leaves the same thread shape as an answered one."""
+        cached = Extraction(source="doc.md", summary="a shared summary", entities=[], concepts=[], tags=[])
+        seen_hit: list[list[str]] = []
+        seen_miss: list[list[str]] = []
+
+        def _shape(messages: list[ModelMessage]) -> list[str]:
+            return [type(msg).__name__ + ":" + str(getattr(part, "content", "")) for msg in messages for part in msg.parts]
+
+        def _capture(target: list[list[str]]) -> Callable[..., None]:
+            def record(history: list[ModelMessage], *_args: object, **_kwargs: object) -> None:
+                target.append(_shape(history))
+
+            return record
+
+        hit = _make_compiler()
+        hit._config.no_cache = False
+        hit._cache_store.get_dict = MagicMock(return_value=cached.to_dict())
+        with patch.object(units_module, "_compact_history_inplace", side_effect=_capture(seen_hit)):
+            units_module.extract_incremental(hit, "doc.md", ["one", "two"], "sys")
+
+        miss = _make_compiler()
+        miss._config.no_cache = False
+        miss._cache_store.get_dict = MagicMock(return_value=None)
+
+        class _StubAgent:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def run_with_messages(
+                self,
+                deps: object,
+                message_history: list[ModelMessage] | None = None,
+            ) -> tuple[ExtractionOutput, list[ModelMessage]]:
+                return ExtractionOutput(summary="a shared summary", entities=[], concepts=[], tags=[]), []
+
+        monkeypatch.setattr(units_module, "ExtractionAgent", _StubAgent)
+        with patch.object(units_module, "_compact_history_inplace", side_effect=_capture(seen_miss)):
+            units_module.extract_incremental(miss, "doc.md", ["one", "two"], "sys")
+
+        assert len(seen_hit) == len(seen_miss) == 2
+        assert seen_hit[1] == seen_miss[1]
+
+    def test_ten_batches_keep_the_digest_under_budget(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """No compaction on batches 2..10: the digest never grows to a prompt."""
+        compiler = _make_compiler()
+        compiler._config.no_cache = True
+        sizes: list[tuple[int, int]] = []
+        real_compact = units_module._compact_history_inplace
+
+        def _watching_compact(history: list[ModelMessage], max_tokens: int, *, chars_per_token: float) -> None:
+            before = len(history)
+            real_compact(history, max_tokens, chars_per_token=chars_per_token)
+            sizes.append((before, len(history)))
+
+        class _StubAgent:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def run_with_messages(
+                self,
+                deps: object,
+                message_history: list[ModelMessage] | None = None,
+            ) -> tuple[ExtractionOutput, list[ModelMessage]]:
+                return ExtractionOutput(summary="brief summary", entities=[], concepts=[], tags=[]), [
+                    ModelRequest(parts=[UserPromptPart(content=str(getattr(deps, "text", "")))]),
+                    ModelResponse(parts=[TextPart(content="raw answer")]),
+                ]
+
+        monkeypatch.setattr(units_module, "ExtractionAgent", _StubAgent)
+        monkeypatch.setattr(units_module, "_compact_history_inplace", _watching_compact)
+        results, stopped = units_module.extract_incremental(
+            compiler,
+            "doc.md",
+            [f"batch {index} unique text" for index in range(10)],
+            "sys",
+        )
+
+        assert stopped is False
+        assert len(results) == 10
+        assert len(sizes) == 10
+        assert all(before == after for before, after in sizes)
+
+    def test_an_over_large_digest_is_dropped_whole_not_cropped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """One echoed 30k summary must not leave the next question no room."""
+        compiler = _make_compiler()
+        compiler._config.no_cache = True
+        huge = "ECHO" + "e" * 30_000
+        seen: list[list[ModelMessage] | None] = []
+
+        class _StubAgent:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def run_with_messages(
+                self,
+                deps: object,
+                message_history: list[ModelMessage] | None = None,
+            ) -> tuple[ExtractionOutput, list[ModelMessage]]:
+                seen.append(message_history)
+                return ExtractionOutput(summary=huge, entities=[], concepts=[], tags=[]), []
+
+        monkeypatch.setattr(units_module, "ExtractionAgent", _StubAgent)
+        results, stopped = units_module.extract_incremental(compiler, "doc.md", ["one", "two"], "sys")
+
+        assert stopped is False
+        assert len(results) == 2
+        assert seen == [None, None]  # no thread starved the second question
+        assert results[1] is not None
+        assert results[1].summary == huge
+
+    def test_the_planner_subtracts_the_measured_digest_thread(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """The actual thread, not a fixed share, shrinks the next payload."""
+        compiler = _make_compiler()
+        compiler._config.no_cache = True
+
+        class _StubAgent:
+            def __init__(self, **_kwargs: object) -> None:
+                pass
+
+            def run_with_messages(
+                self,
+                deps: object,
+                message_history: list[ModelMessage] | None = None,
+            ) -> tuple[ExtractionOutput, list[ModelMessage]]:
+                return ExtractionOutput(summary="x" * 2_000, entities=[], concepts=[], tags=[]), []
+
+        monkeypatch.setattr(units_module, "ExtractionAgent", _StubAgent)
+        units_module.extract_incremental(compiler, "doc.md", ["one", "two"], "sys")
+        full = units_module._extract_char_budget(compiler)
+        with_history = units_module._extract_payload_budget(
+            compiler,
+            [ModelResponse(parts=[TextPart(content="x" * 2_000)])],
+        )
+        assert with_history < full
+        chars_per_token = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
+        tokens = units_module._estimate_history_tokens(
+            [ModelResponse(parts=[TextPart(content="x" * 2_000)])],
+            chars_per_token=chars_per_token,
+        )
+        assert with_history == max(1, full - tokens_to_chars(tokens, chars_per_token=chars_per_token))
 
     def test_progress_is_reported_for_every_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """A long document must move the bar inside, not jump at the end."""

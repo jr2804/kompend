@@ -162,13 +162,14 @@ def extract_incremental(
     entirely. Only uncached batches are sent to the model, and the
     message history threads between consecutive uncached batches.
 
-    History compaction: the threaded ``message_history`` is compacted
-    when its estimated token cost exceeds ``context_window.history_budget``.
-    The oldest (request, response) pair is dropped first, preserving
-    the most recent context the model actually needs. Without this
-    guard, long documents with many batches fill the model's context
-    window and the model returns empty (``finish_reason: stop``, no
-    content) — see commit history for the regression this fixed.
+    History threading: consecutive batches share a digest of the results
+    already extracted, never the previous batch's raw prompt. Cache hits and
+    misses append the same one-line response, so the thread shape does not
+    depend on which batches were cached. The digest is compacted against the
+    shared request planner's history allowance, and
+    :func:`_extract_payload_budget` prices the actual thread before packing
+    the next batch. Without this, long documents fill the window with echoes
+    and the model returns empty (``finish_reason: stop``, no content).
 
     *texts*, when given, are the source's text blocks the batches were packed
     from. A provider overflow then re-plans only the texts not yet extracted
@@ -178,7 +179,7 @@ def extract_incremental(
     *progress* is called after every finished batch (cached ones
     included) so the bar moves with the work.
     """
-    compaction_threshold = compiler._context_window.history_budget
+    compaction_threshold = _digest_thread_tokens(compiler)
     chars_per_token = calibrated_density_for(compiler._config.llm, compiler._usage_tracker, compiler._model or "")
     # A size correction is evidence about one source, relearned per document:
     # a single transient timeout must not halve every later request in the run.
@@ -212,7 +213,7 @@ def extract_incremental(
                         # Inject a synthetic summary of the cached result so the
                         # next uncached batch sees coherent cross-batch context
                         # (otherwise the agent loses the document thread).
-                        history.append(_synthetic_history_response(extraction))
+                        _append_digest(history, extraction, compiler, chars_per_token)
                         _compact_history_inplace(history, compaction_threshold, chars_per_token=chars_per_token)
                         extracted += len(group)
                         if progress is not None:
@@ -239,12 +240,10 @@ def extract_incremental(
                     )
                 deps = PipelineAgentDeps(text=combined, source_id=f"{source}:{batch_idx}")
                 try:
-                    validated, new_messages = agent.run_with_messages(
+                    validated, _ = agent.run_with_messages(
                         deps,
                         message_history=history if history else None,
                     )
-                    history = new_messages
-                    _compact_history_inplace(history, compaction_threshold, chars_per_token=chars_per_token)
                     compiler._batch_tracker.record(failed=False)
                     result = Extraction(
                         source=source,
@@ -253,6 +252,13 @@ def extract_incremental(
                         concepts=list(validated.concepts),
                         tags=validated.tags,
                     )
+                    # The raw request/response pair is NOT threaded: it carries
+                    # the previous batch's source text, which compounds across
+                    # batches until the next request is all echo and no question.
+                    # A cache hit already appends this same digest, so both paths
+                    # hand the next batch an identical thread shape.
+                    _append_digest(history, result, compiler, chars_per_token)
+                    _compact_history_inplace(history, compaction_threshold, chars_per_token=chars_per_token)
                     if not compiler._config.no_cache:
                         compiler._cache_store.set("extract", extract_deps, result.to_dict())
                     results.append(result)
@@ -403,6 +409,47 @@ def _shrink_extract_budget(compiler: TwoPhaseRuntime) -> int | None:
         compiler._timeout,
     )
     return new_cap
+
+
+def _append_digest(
+    history: list[ModelMessage],
+    extraction: Extraction,
+    compiler: TwoPhaseRuntime,
+    chars_per_token: float,
+) -> None:
+    """Thread one digest, never a single message that eats the whole window.
+
+    An over-large digest is dropped whole, not cropped: it is history, and a
+    request whose retained history leaves no room for the question is worse
+    than losing one batch's cross-batch context. The extraction result itself
+    is kept in ``results`` either way.
+    """
+    digest = _synthetic_history_response(extraction)
+    allowance = _digest_thread_tokens(compiler)
+    if _estimate_history_tokens([digest], chars_per_token=chars_per_token) > allowance:
+        logger.debug(
+            "TwoPhase: digest for '%s' exceeds its %d-token allowance - dropping the digest, not cropping it",
+            extraction.source,
+            allowance,
+        )
+        return
+    history.append(digest)
+
+
+def _digest_thread_tokens(compiler: TwoPhaseRuntime) -> int:
+    """Tokens the digest thread may occupy, from the shared request planner.
+
+    The thread is retained history, so its share is the window's history
+    allowance (derived from the measured answer reserve) capped by the
+    content the same :class:`RequestBudget` gives the extraction payload.
+    No absolute token count decides it: a larger window gets a larger thread.
+    """
+    budget = RequestBudget(
+        window=compiler._context_window,
+        reserved={"system": compiler._extract_system_tokens},
+        utilization=compiler._config.llm.request_utilization,
+    )
+    return min(compiler._context_window.history_budget, budget.content_tokens)
 
 
 def _extract_payload_budget(compiler: TwoPhaseRuntime, history: list[ModelMessage]) -> int:

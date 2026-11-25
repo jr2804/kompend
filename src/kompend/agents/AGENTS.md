@@ -82,6 +82,7 @@ The base class provides:
   window (`llm/AGENTS.md`), never of the raw one — or the per-message history
   budget is dropped (never the pin, never half a tool call/return pair); a
   history the tiers cannot shrink loses its largest turn, named in the log.
+  The current request is owned by `RequestBudget`, never the history cap: if alone over budget it raises typed `context_overflow` for the caller to re-plan.
   Never add a path that skips the pin, crops instead of folding, or fires on
   message count alone.
   `compact_on_request: ClassVar[bool]` (default `False`) adds

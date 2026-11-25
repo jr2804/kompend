@@ -12,6 +12,8 @@ from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
     ModelResponse,
+    RetryFeedbackPart,
+    RetryInfo,
     TextPart,
     ToolCallPart,
     ToolReturnPart,
@@ -39,6 +41,10 @@ from kompend.agents.base import _CONTEXT_PRESETS, _SLIDING_COMPRESS_THRESHOLD, _
 from kompend.agents.base.context import resolve_context_capability
 from kompend.agents.context_manager import (
     GrowthGatedCompaction,
+    _clamp_oversized,  # noqa: PLC2701
+    _ClampOutcome,  # noqa: PLC2701
+    _drop_largest_to_target,  # noqa: PLC2701
+    _escalate,  # noqa: PLC2701
     _file_key,  # noqa: PLC2701
     _fraction_trigger,  # noqa: PLC2701
     _GuardedSlidingCompaction,  # noqa: PLC2701
@@ -53,8 +59,9 @@ from kompend.agents.context_manager import (
 from kompend.core.config import CompactionConfig, ContextManagerPreset
 from kompend.core.templates import get_template_loader
 from kompend.core.text.density import conservative_tokens
-from kompend.llm.context_window import answer_reserve_tokens
-from kompend.llm.request_budget import context_safety_tokens, usable_window_tokens
+from kompend.core.utils.exceptions import LLMContextOverflowError
+from kompend.llm.context_window import ContextSource, ContextWindow, answer_reserve_tokens
+from kompend.llm.request_budget import RequestBudget, context_safety_tokens, usable_window_tokens
 
 
 class TestUsableWindowBudget:
@@ -235,12 +242,14 @@ class TestCompactionEscalation:
         """A single oversized message never enters the history at all."""
         gate = _gated()
         big = ModelRequest(parts=[UserPromptPart(content="x" * 50_000)])
+        tail = _echo(chars=10)
         ctx = _ctx()
-        ctx.messages[:] = [*_short_history(), big]
+        ctx.messages[:] = [*_short_history(), big, tail]
 
         await gate.before_model_request(ctx, _request_context(list(ctx.messages)))
 
         assert big not in ctx.messages
+        assert tail in ctx.messages
 
     def test_the_per_message_cap_is_the_history_budget(self) -> None:
         """The cap is derived from the window, never a fixed number."""
@@ -625,13 +634,15 @@ class TestOversizedPartClamp:
         """(a) The p863 shape: drop the echo, and the retained tail now fits."""
         capability = _sliding()
         echo = _echo(chars=300_000)
+        tail = _echo(chars=10)
         ctx = _ctx()
-        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), echo]
+        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), echo, tail]
 
         with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
             await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
 
         assert echo not in ctx.messages
+        assert tail in ctx.messages
         trigger = int(64_000 * _SLIDING_COMPRESS_THRESHOLD)
         assert estimate_context_tokens(ctx.messages, conservative_tokens) <= trigger
         assert "dropped the oversized part(s) no trim could fit" in caplog.text
@@ -649,14 +660,15 @@ class TestOversizedPartClamp:
         """
         capability = _sliding()
         echo = _echo(chars=300_000)
+        tail = _echo(chars=10)
         ctx = _ctx()
-        ctx.messages[:] = [*_short_history(), echo]
+        ctx.messages[:] = [*_short_history(), echo, tail]
 
         with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
             await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
 
         assert echo not in ctx.messages
-        assert "Sliding-window trim reclaimed nothing: 4 message(s)" in caplog.text
+        assert "Sliding-window trim reclaimed nothing: 5 message(s)" in caplog.text
         assert "Sliding-window trim: dropped" not in caplog.text
         assert "dropped the oversized part(s) no trim could fit" in caplog.text
         guarded = cast("_GuardedSlidingCompaction", capability)
@@ -714,6 +726,93 @@ class TestOversizedPartClamp:
         assert "q" * 300_000 in pinned
         assert "this request cannot be saved" in caplog.text
 
+    def test_the_request_being_answered_survives_both_protection_sets(self) -> None:
+        """The clamp and the escalation share one protected-message set.
+
+        Regression: the clamp protected pins and tool pairs but not the last
+        request, so a 45k extraction batch survived the tiers only to be
+        dropped by the clamp and leave the history ending in a response.
+        """
+        request = ModelRequest(parts=[UserPromptPart(content="answer this batch " + "y" * 45_000)])
+        older = _echo(chars=300_000)
+        ctx_messages: list[ModelMessage] = [older, request]
+
+        clamped = _clamp_oversized(ctx_messages, 51_200, conservative_tokens, _per_message_cap(64_000))
+        assert request in clamped.messages
+        assert older not in clamped.messages
+        assert clamped.request_over is True
+
+    def test_escalation_and_sliding_drop_share_the_request_protection(self) -> None:
+        """Every trim path hands back the request the run is answering."""
+        request = ModelRequest(parts=[UserPromptPart(content="answer this batch " + "y" * 45_000)])
+        older = _echo(chars=300_000)
+        messages: list[ModelMessage] = [older, request]
+
+        outcomes = [
+            _clamp_oversized(list(messages), 51_200, conservative_tokens, _per_message_cap(64_000)),
+            _escalate(_ClampOutcome(list(messages), [], False), 1_000, conservative_tokens),
+            _drop_largest_to_target(list(messages), 1_000, conservative_tokens),
+        ]
+
+        for outcome in outcomes:
+            assert any(message is request for message in outcome.messages)
+            assert all(message is not older for message in outcome.messages)
+
+    def test_the_newest_request_is_protected_when_the_tail_ends_in_a_response(self) -> None:
+        """A trailing response does not turn the previous request into history."""
+        request = ModelRequest(parts=[UserPromptPart(content="current request " + "y" * 45_000)])
+        response = ModelResponse(parts=[TextPart(content="a later tool-round reply")])
+        clamped = _clamp_oversized([request, response], 51_200, conservative_tokens, _per_message_cap(64_000))
+        assert request in clamped.messages
+        assert clamped.request_over is True
+
+    def test_a_trailing_request_without_user_voice_is_protected(self) -> None:
+        """The tail's request is protected even when it carries no question.
+
+        A tool return or a retry is the request the next provider call
+        carries. Dropping it would leave the history ending in a response,
+        which is the shape pydantic-ai refuses ("Processed history must end
+        with a `ModelRequest`").
+        """
+        question = ModelRequest(parts=[UserPromptPart(content="the task")])
+        answer = ModelResponse(parts=[TextPart(content="a model reply")])
+        tail = ModelRequest(parts=[RetryFeedbackPart(content="z" * 300_000, retry=RetryInfo(cause="validation_error"))])
+        clamped = _clamp_oversized([question, answer, tail], 51_200, conservative_tokens, _per_message_cap(64_000))
+        assert tail in clamped.messages
+        assert clamped.messages[-1] is tail
+
+    async def test_an_oversized_request_is_kept_and_reported_not_dropped(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """A request over the history cap stays; the log names the condition."""
+        request = ModelRequest(parts=[UserPromptPart(content="current batch " + "y" * 45_000)])
+        ctx = _ctx()
+        ctx.messages[:] = [*_heavy_history(messages=8, chars_per_message=9_200), request]
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
+            await _gated().before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert request in ctx.messages
+        assert "the current request alone is over budget" in caplog.text
+
+    async def test_a_request_that_cannot_fit_reports_a_typed_context_overflow(
+        self,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """Only a request over the request-fit trigger becomes a re-plan signal."""
+        request = ModelRequest(parts=[UserPromptPart(content="current batch " + "y" * 150_000)])
+        ctx = _ctx()
+        ctx.messages[:] = [*_short_history(), request]
+        trigger = int(usable_window_tokens(64_000) * _SLIDING_COMPRESS_THRESHOLD)
+
+        with caplog.at_level("INFO", logger="kompend.agents.context_manager"), pytest.raises(LLMContextOverflowError) as raised:
+            await _sliding().before_model_request(ctx, _request_context(list(ctx.messages)))
+
+        assert raised.value.stated_limit == trigger
+        assert request in ctx.messages
+        assert "re-plan it" in caplog.text
+
     async def test_a_normal_history_is_untouched_and_stays_quiet(
         self,
         caplog: pytest.LogCaptureFixture,
@@ -736,8 +835,9 @@ class TestOversizedPartClamp:
         """(d) One line carries both facts, so a run log explains the ranking."""
         capability = _sliding()
         echo = _echo(chars=300_000)
+        tail = _echo(chars=10)
         ctx = _ctx()
-        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), echo]
+        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), echo, tail]
 
         with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
             await capability.before_model_request(ctx, _request_context(list(ctx.messages)))
@@ -760,7 +860,8 @@ class TestOversizedPartClamp:
             tokenizer=conservative_tokens,
         )
         echo = _echo(chars=300_000)
-        messages = [*_heavy_history(messages=6, chars_per_message=9_200), echo]
+        tail = _echo(chars=10)
+        messages = [*_heavy_history(messages=6, chars_per_message=9_200), echo, tail]
 
         result = await gate.compact(messages, _ctx())
 
@@ -790,8 +891,9 @@ class TestOversizedPartClamp:
             tokenizer=conservative_tokens,
         )
         echo = _echo(chars=300_000)
+        tail = _echo(chars=10)
         ctx = _ctx()
-        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), echo]
+        ctx.messages[:] = [*_heavy_history(messages=6, chars_per_message=9_200), echo, tail]
         request_context = _request_context(list(ctx.messages))
 
         with caplog.at_level("INFO", logger="kompend.agents.context_manager"):
@@ -799,6 +901,7 @@ class TestOversizedPartClamp:
 
         assert echo not in ctx.messages
         assert echo not in returned.messages
+        assert tail in returned.messages
         assert recording.compact_calls == 0  # the stack declined; the clamp did the work
         clamp_records = [record for record in caplog.records if "dropped the oversized part(s)" in record.getMessage()]
         assert len(clamp_records) == 1
@@ -826,10 +929,11 @@ class TestOversizedPartClamp:
             tokenizer=conservative_tokens,
         )
         echo = _echo(chars=100_000)
+        tail = _echo(chars=10)
         wide = TestModel(profile=ModelProfile(context_window=128_000))
         narrow = TestModel(profile=ModelProfile(context_window=32_000))
         ctx = RunContext(deps=object(), model=wide, usage=RunUsage())
-        ctx.messages[:] = [*_heavy_history(messages=2, chars_per_message=9_200), echo]
+        ctx.messages[:] = [*_heavy_history(messages=2, chars_per_message=9_200), echo, tail]
         request_context = ModelRequestContext(
             model=narrow,
             messages=list(ctx.messages),
@@ -1447,6 +1551,28 @@ class TestWrittenSummaryCompat:
             return value
 
         return _stub
+
+
+class TestSingleRequestOwner:
+    """One bound per question: the planner sizes a request, the clamp sizes history."""
+
+    @pytest.mark.parametrize("window", [8192, 65_536, 1_000_000])
+    def test_the_largest_planned_request_survives_the_clamp(self, window: int) -> None:
+        cw = ContextWindow(max_input=window, max_output=max(1, window // 4), source=ContextSource.USER_PROVIDER)
+        planned_chars = RequestBudget(window=cw).content_chars(2.5)
+        request = ModelRequest(parts=[UserPromptPart(content="q" * planned_chars)])
+        over_history = ModelResponse(parts=[TextPart(content="h" * (_per_message_cap(window) * 3))])
+        trigger = int(usable_window_tokens(window) * _SLIDING_COMPRESS_THRESHOLD)
+
+        outcome = _clamp_oversized(
+            [over_history, request],
+            trigger,
+            conservative_tokens,
+            per_message_cap=_per_message_cap(window),
+        )
+
+        assert outcome.messages[-1] is request  # the cap never drops the request
+        assert all(message is not over_history for message in outcome.messages)  # history cap still bites
 
 
 class _RecordingStrategy(AbstractCapability[object]):

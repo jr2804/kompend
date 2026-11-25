@@ -109,6 +109,7 @@ from pydantic_ai_harness.compaction import (
 from pydantic_core import ValidationError
 
 from kompend.core.text.density import conservative_tokens
+from kompend.core.utils.exceptions import LLMContextOverflowError
 from kompend.llm.context_window import answer_reserve_tokens
 from kompend.llm.request_budget import usable_window_tokens
 from kompend.logging import get_logger
@@ -206,6 +207,13 @@ class _ClampOutcome:
     pinned_over: bool
     """Whether a pinned part alone exceeds the trigger."""
 
+    request_over: bool = False
+    """Whether the request being answered alone exceeds the clamp's budget.
+
+    It is never dropped — dropping it answers a different question — so the
+    caller must either re-plan the request or report a context overflow.
+    """
+
     def merged_with(self, prior: _ClampOutcome) -> _ClampOutcome:
         """Fold an earlier clamp pass into this one, for a single log line.
 
@@ -218,6 +226,7 @@ class _ClampOutcome:
             messages=self.messages,
             dropped=[*prior.dropped, *self.dropped],
             pinned_over=self.pinned_over or prior.pinned_over,
+            request_over=self.request_over or prior.request_over,
         )
 
 
@@ -302,6 +311,7 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
         outcome = _clamp_oversized(compacted, trigger, self.tokenizer, cap).merged_with(before)
         outcome = _escalate(outcome, trigger, self.tokenizer)
         _warn_if_still_over(outcome, trigger, self.tokenizer, label="Context compaction")
+        _reject_oversized_request(outcome, trigger, self.tokenizer, label="Context compaction")
         self._baseline_tokens = estimate_context_tokens(outcome.messages, self.tokenizer)
         return outcome.messages
 
@@ -330,6 +340,7 @@ class GrowthGatedCompaction(AbstractCapability[AgentDepsT]):
             ctx.messages[:] = outcome.messages
             request_context = replace(request_context, messages=outcome.messages)
         _warn_if_still_over(outcome, trigger, self.tokenizer, label="Context compaction")
+        _reject_oversized_request(outcome, trigger, self.tokenizer, label="Context compaction")
         self._baseline_tokens = estimate_context_tokens(outcome.messages, self.tokenizer)
         return request_context
 
@@ -492,6 +503,7 @@ class _GuardedSlidingCompaction(SlidingWindowCompaction):
                 self.keep_tokens,
             )
         _warn_if_still_over(outcome, trigger, self.tokenizer, label="Sliding-window trim", seen=self._still_over_seen)
+        _reject_oversized_request(outcome, trigger, self.tokenizer, label="Sliding-window trim")
         return compacted
 
     async def before_model_request(
@@ -758,6 +770,7 @@ class _LoggedSlidingWindowCompaction(SlidingWindowCompaction):
         outcome = _clamp_oversized(compacted, trigger, self.tokenizer, cap).merged_with(before)
         logger.warning("Sliding-window fallback kept %d of %d message(s)", len(outcome.messages), len(messages))
         _warn_if_still_over(outcome, trigger, self.tokenizer, label="Sliding-window fallback")
+        _reject_oversized_request(outcome, trigger, self.tokenizer, label="Sliding-window fallback")
         return outcome.messages
 
 
@@ -1102,15 +1115,17 @@ def _clamp_oversized(
     response whose cost is already in that response's usage, so it is dropped
     rather than split: a truncated echo would still be sent as prompt text.
 
-    *per_message_cap* is the second, tighter bound: the largest a single
-    message may be before it is dropped whatever the trigger says. The
-    compaction tiers drop or summarise whole messages, so a message above the
-    cap can never be folded into the request — it is dropped at the first
-    pass that sees it, which is where it would otherwise enter the history.
+    *per_message_cap* is the second, tighter bound on **retained history**:
+    it does not apply to the request being answered, whose size is owned by
+    the request-fit planner. A history message above the cap can never be
+    folded into the request, so it is dropped at the first pass that sees it.
 
-    Two things are never dropped, because a request without them answers the
-    wrong question:
+    Three things are never dropped, because a request without them answers
+    the wrong question:
 
+    * the current request — the newest request carrying user text, whether or
+      not a response follows it. If it alone exceeds the trigger the caller
+      gets a typed overflow and re-plans the batch.
     * pinned messages — the task assignment first, then any later part the
       pin contract marks: every strategy re-injects each one, so the clamp
       may not drop them either. If one alone is over budget the request
@@ -1127,16 +1142,27 @@ def _clamp_oversized(
     oversized = [index for index, count in enumerate(counts) if count > limit]
     if not oversized:
         return _ClampOutcome(messages, [], False)
-    pinned = _pinned_indexes(messages)
-    paired = _paired_indexes(messages)
+    protected = _protected_message_indexes(messages)
+    request_index = _current_request_index(messages)
     dropped: list[str] = []
     survivors: list[ModelMessage] = []
     for index, message in enumerate(messages):
-        if index not in oversized or index in pinned or index in paired:
+        if index not in oversized or index in protected:
             survivors.append(message)
             continue
         dropped.append(_describe(message, counts[index]))
-    return _ClampOutcome(survivors, dropped, bool(pinned.intersection(oversized)))
+    # The request being answered is protected from the drop, and the caller
+    # is told it was over the cap: the tighter per-message cap is the history
+    # budget, so a request above it is the condition the caller must re-plan
+    # around. Whether it also exceeds the request-fit trigger — the one that
+    # cannot be answered at all — is decided by ``_reject_oversized_request``.
+    request_over = request_index is not None and request_index in oversized
+    return _ClampOutcome(
+        survivors,
+        dropped,
+        bool(_pinned_indexes(messages).intersection(oversized)),
+        request_over=request_over,
+    )
 
 
 def _escalate(
@@ -1199,17 +1225,34 @@ def _drop_largest_to_target(
 
 
 def _protected_message_ids(messages: Sequence[ModelMessage]) -> set[int]:
-    """Identity of every message the compaction may not drop.
+    """Identities of :func:`_protected_message_indexes`, for iterative drops."""
+    return {id(messages[index]) for index in _protected_message_indexes(messages)}
 
-    The pinned parts (the task assignment first), both halves of every tool
-    call/return pair, and the request being answered now — the last message
-    is the one the run is about to send, and a history without it would
-    answer a different question.
+
+def _protected_message_indexes(messages: Sequence[ModelMessage]) -> set[int]:
+    """The one protection set shared by the clamp and the escalation drop.
+
+    Pinned parts (the task assignment first), both halves of every tool
+    call/return pair, the last message and the request being answered now.
+    A second list here is how the two passes drift: the clamp used to protect
+    only pins and pairs while the escalation protected the last message, so
+    the request being answered survived the tiers only to be dropped by the
+    clamp.
+
+    The last message and the request being answered are not the same one: a
+    tail can end in a response (the model answered, the next request is not
+    built yet) and a tail can end in a request that carries no user voice (a
+    tool return, a retry prompt). Both are protected — a history that ends
+    without a request answers a different question, and dropping the question
+    loses it.
     """
     protected = _pinned_indexes(messages) | _paired_indexes(messages)
     if messages:
         protected.add(len(messages) - 1)
-    return {id(messages[index]) for index in protected}
+    request_index = _current_request_index(messages)
+    if request_index is not None:
+        protected.add(request_index)
+    return protected
 
 
 def _largest_droppable_turn(
@@ -1271,16 +1314,6 @@ def _strategy_window(strategy: Any, model: AbstractModel | str) -> int:
     if resolved:
         return int(resolved)
     return int(getattr(strategy, "fallback_context_window", DEFAULT_CONTEXT_WINDOW))
-
-
-def _pinned_indexes(messages: Sequence[ModelMessage]) -> set[int]:
-    """Indexes of every message holding a pinned part, not just the first.
-
-    The harness pin contract (``reinject_pinned``) protects each pinned
-    part, so a clamp that spared only the first would drop a later pin the
-    strategies would faithfully re-inject.
-    """
-    return {index for index, message in enumerate(messages) if isinstance(message, ModelRequest) and any(is_pinned(part) for part in message.parts)}
 
 
 def _paired_indexes(messages: Sequence[ModelMessage]) -> set[int]:
@@ -1353,6 +1386,8 @@ def _warn_if_still_over(
         clamp = f"dropped the oversized part(s) no trim could fit ({'; '.join(outcome.dropped)}); "
     if outcome.pinned_over:
         verdict = "a pinned part alone exceeds it, so this request cannot be saved"
+    elif outcome.request_over:
+        verdict = "the current request alone is over budget; it is protected, so re-plan it"
     elif over:
         verdict = "the retained tail cannot reclaim more"
     else:
@@ -1374,3 +1409,65 @@ def _warn_if_still_over(
         largest,
         verdict,
     )
+
+
+def _reject_oversized_request(
+    outcome: _ClampOutcome,
+    trigger: int | None,
+    tokenizer: Callable[[str], int] | None,
+    *,
+    label: str,
+) -> None:
+    """Fail as a context overflow when the request itself cannot fit.
+
+    The clamp protects the request being answered: dropping it answers a
+    different question, which is how the pyvas run turned an oversized batch
+    into a framework history-shape error instead of a re-planned batch. The
+    budget for the request is the request-fit trigger, not the tighter
+    per-message cap — that cap governs retained history only. A pinned
+    assignment is the caller's own work and is reported, not raised: only an
+    unpinned request that alone exceeds the trigger can be split by the
+    caller, so that is the case that becomes a typed failure the extraction
+    stage can catch and re-plan from.
+    """
+    if trigger is None or not outcome.request_over:
+        return
+    request_index = _current_request_index(outcome.messages)
+    if request_index is None or request_index in _pinned_indexes(outcome.messages):
+        return
+    counts = estimate_message_tokens(outcome.messages, tokenizer)
+    if request_index >= len(counts) or counts[request_index] <= trigger:
+        return
+    raise LLMContextOverflowError(
+        f"{label}: the current request alone exceeds the available context size ({trigger} tokens); "
+        "it is protected from the clamp, so split the request instead of dropping it",
+        stated_limit=trigger,
+    )
+
+
+def _current_request_index(messages: Sequence[ModelMessage]) -> int | None:
+    """Index of the request being answered, not merely the last message.
+
+    A run's tail can end in a response (a tool round, or a staged reply), so
+    the request it is answering is the newest request carrying user voice.
+    A request made only of tool returns is the tool round's own history, not
+    the question the run is answering — but when the history holds no
+    question at all, the tail's request is the one being sent.
+    """
+    for index in range(len(messages) - 1, -1, -1):
+        message = messages[index]
+        if isinstance(message, ModelRequest) and any(isinstance(part, UserPromptPart) for part in message.parts):
+            return index
+    if messages and isinstance(messages[-1], ModelRequest):
+        return len(messages) - 1
+    return None
+
+
+def _pinned_indexes(messages: Sequence[ModelMessage]) -> set[int]:
+    """Indexes of every message holding a pinned part, not just the first.
+
+    The harness pin contract (``reinject_pinned``) protects each pinned
+    part, so a clamp that spared only the first would drop a later pin the
+    strategies would faithfully re-inject.
+    """
+    return {index for index, message in enumerate(messages) if isinstance(message, ModelRequest) and any(is_pinned(part) for part in message.parts)}
